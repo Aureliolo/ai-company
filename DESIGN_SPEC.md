@@ -1,6 +1,6 @@
 # AI Company - High-Level Design Specification
 
-> A framework for orchestrating autonomous AI agents as employees within a virtual company structure, with configurable roles, hierarchies, communication patterns, and tool access.
+> A framework for orchestrating autonomous AI agents within a virtual company structure, with configurable roles, hierarchies, communication patterns, and tool access.
 
 ---
 
@@ -13,16 +13,17 @@
 5. [Communication Architecture](#5-communication-architecture)
 6. [Task & Workflow Engine](#6-task--workflow-engine)
 7. [Memory & Persistence](#7-memory--persistence)
-8. [Model Provider Layer](#8-model-provider-layer)
-9. [Cost & Budget Management](#9-cost--budget-management)
-10. [Tool & Capability System](#10-tool--capability-system)
-11. [Security & Approval System](#11-security--approval-system)
-12. [Human Interaction Layer](#12-human-interaction-layer)
-13. [Templates & Builder](#13-templates--builder)
-14. [Technical Architecture](#14-technical-architecture)
-15. [Research & Prior Art](#15-research--prior-art)
-16. [Open Questions & Risks](#16-open-questions--risks)
-17. [Backlog & Future Vision](#17-backlog--future-vision)
+8. [HR & Workforce Management](#8-hr--workforce-management)
+9. [Model Provider Layer](#9-model-provider-layer)
+10. [Cost & Budget Management](#10-cost--budget-management)
+11. [Tool & Capability System](#11-tool--capability-system)
+12. [Security & Approval System](#12-security--approval-system)
+13. [Human Interaction Layer](#13-human-interaction-layer)
+14. [Templates & Builder](#14-templates--builder)
+15. [Technical Architecture](#15-technical-architecture)
+16. [Research & Prior Art](#16-research--prior-art)
+17. [Open Questions & Risks](#17-open-questions--risks)
+18. [Backlog & Future Vision](#18-backlog--future-vision)
 
 ---
 
@@ -30,7 +31,7 @@
 
 ### 1.1 Core Vision
 
-Build a **configurable AI company framework** where AI agents operate as employees within a virtual organization. Each agent has a defined role, personality, skills, memory, and model backend. The company can be configured from a 2-person startup to a 50+ enterprise, handling software development, business operations, creative work, or any domain.
+Build a **configurable AI company framework** where AI agents operate within a virtual organization. Each agent has a defined role, personality, skills, memory, and model backend. The company can be configured from a 2-person startup to a 50+ enterprise, handling software development, business operations, creative work, or any domain.
 
 ### 1.2 Design Principles
 
@@ -60,13 +61,12 @@ Build a **configurable AI company framework** where AI agents operate as employe
 
 | Term | Definition |
 |------|-----------|
-| **Agent** | An AI entity with a role, personality, model backend, memory, and tool access |
-| **Employee** | An instantiated agent assigned to a company with a specific position |
-| **Company** | A configured organization of employees with structure, hierarchy, and workflows |
+| **Agent** | An AI entity with a role, personality, model backend, memory, and tool access. The primary entity in the framework. Within a company context, agents serve as the company's employees. |
+| **Company** | A configured organization of agents with structure, hierarchy, and workflows |
 | **Department** | A grouping of related roles (Engineering, Product, Design, Operations, etc.) |
 | **Role** | A job definition with required skills, responsibilities, authority level, and tool access |
 | **Skill** | A capability an agent possesses (coding, writing, analysis, design, etc.) |
-| **Task** | A unit of work assigned to one or more employees |
+| **Task** | A unit of work assigned to one or more agents |
 | **Project** | A collection of related tasks with a goal, deadline, and assigned team |
 | **Meeting** | A structured multi-agent interaction for decisions, reviews, or planning |
 | **Artifact** | Any output produced by agents: code, documents, designs, reports, etc. |
@@ -76,21 +76,21 @@ Build a **configurable AI company framework** where AI agents operate as employe
 ```
 Company
   ├── Departments[]
-  │     ├── Department Head (Employee)
-  │     └── Members (Employee[])
+  │     ├── Department Head (Agent)
+  │     └── Members (Agent[])
   ├── Projects[]
   │     ├── Tasks[]
-  │     │     ├── Assigned Employee(s)
+  │     │     ├── Assigned Agent(s)
   │     │     ├── Artifacts[]
   │     │     └── Status / History
-  │     └── Team (Employee[])
+  │     └── Team (Agent[])
   ├── Config
   │     ├── Autonomy Level
   │     ├── Budget
   │     ├── Communication Settings
   │     └── Tool Permissions
   └── HR Registry
-        ├── Active Employees[]
+        ├── Active Agents[]
         ├── Available Roles[]
         └── Hiring Queue
 ```
@@ -101,7 +101,7 @@ Company
 
 ### 3.1 Agent Identity Card
 
-Every agent/employee has a comprehensive identity:
+Every agent has a comprehensive identity:
 
 ```yaml
 agent:
@@ -133,11 +133,11 @@ agent:
       - redis
       - testing
   model:
-    provider: "anthropic"
-    model_id: "claude-sonnet-4-6"
+    provider: "anthropic"            # example provider
+    model_id: "claude-sonnet-4-6"    # example model — actual models TBD per agent/role
     temperature: 0.3
     max_tokens: 8192
-    fallback_model: "openrouter/anthropic/claude-haiku"
+    fallback_model: "openrouter/anthropic/claude-haiku"  # example fallback
   memory:
     type: "persistent"           # persistent, project, session, none
     retention_days: null         # null = forever
@@ -315,7 +315,7 @@ departments:
 The company can dynamically grow or shrink:
 
 - **Auto-scale**: HR agent detects workload increase, proposes new hires
-- **Manual scale**: Human adds/removes employees via config or UI
+- **Manual scale**: Human adds/removes agents via config or UI
 - **Budget-driven**: CFO agent caps headcount based on budget constraints
 - **Skill-gap**: HR analyzes team capabilities, identifies missing skills, proposes hires
 
@@ -391,8 +391,8 @@ Combines all three:
 
 The framework should align with emerging industry standards:
 
-- **A2A Protocol** (Agent-to-Agent, Google/Linux Foundation) - For inter-agent task delegation, capability discovery via Agent Cards, and structured task lifecycle management
-- **MCP** (Model Context Protocol, Anthropic/Linux Foundation) - For agent-to-tool integration, providing standardized tool discovery and invocation
+- **A2A Protocol** (Agent-to-Agent, Linux Foundation) - For inter-agent task delegation, capability discovery via Agent Cards, and structured task lifecycle management
+- **MCP** (Model Context Protocol, Agentic AI Foundation / Linux Foundation) - For agent-to-tool integration, providing standardized tool discovery and invocation
 
 ### 5.3 Message Format
 
@@ -451,6 +451,37 @@ communication:
     enforce_chain_of_command: true
     allow_skip_level: false    # can a junior message the CEO directly?
 ```
+
+### 5.5 Loop Prevention
+
+Agent communication loops (A delegates to B who delegates back to A) are a critical risk. The framework enforces multiple safeguards:
+
+| Mechanism | Description | Default |
+|-----------|-------------|---------|
+| **Max delegation depth** | Hard limit on chain length (A→B→C→D stops at depth N) | 5 |
+| **Message rate limit** | Max messages per agent pair within a time window | 10 per minute |
+| **Identical request dedup** | Detects and rejects duplicate task delegations within a window | 60s window |
+| **Circuit breaker** | If an agent pair exceeds error/bounce threshold, block further messages until manual reset or cooldown | 3 bounces → 5min cooldown |
+| **Task ancestry tracking** | Every delegated task carries its full delegation chain; agents cannot delegate back to any ancestor in the chain | Always on |
+
+```yaml
+loop_prevention:
+  max_delegation_depth: 5
+  rate_limit:
+    max_per_pair_per_minute: 10
+    burst_allowance: 3
+  dedup_window_seconds: 60
+  circuit_breaker:
+    bounce_threshold: 3
+    cooldown_seconds: 300
+  ancestry_tracking: true       # always on, not configurable
+```
+
+When a loop is detected, the framework:
+1. Blocks the looping message
+2. Notifies the sending agent with the detected loop chain
+3. Escalates to the sender's manager (or human if at top of hierarchy)
+4. Logs the loop for analytics and process improvement
 
 ---
 
@@ -521,19 +552,22 @@ task:
 ### 6.3 Workflow Types
 
 #### Sequential Pipeline
-```
+
+```text
 Requirements ──▶ Design ──▶ Implementation ──▶ Review ──▶ Testing ──▶ Deploy
 ```
 
 #### Parallel Execution
-```
+
+```text
         ┌──▶ Frontend Dev ──┐
 Task ───┤                    ├──▶ Integration ──▶ QA
         └──▶ Backend Dev  ──┘
 ```
 
 #### Kanban Board
-```
+
+```text
 Backlog │ Ready │ In Progress │ Review │ Done
    ○    │   ○   │     ●       │   ○    │  ●●●
    ○    │   ○   │     ●       │        │  ●●
@@ -541,7 +575,8 @@ Backlog │ Ready │ In Progress │ Review │ Done
 ```
 
 #### Agile Sprints
-```
+
+```text
 Sprint Backlog → Sprint Execution → Review → Retrospective → Next Sprint
 ```
 
@@ -603,11 +638,14 @@ memory:
     shared_knowledge_base: true      # agents can access shared facts
 ```
 
-### 7.4 HR: Hiring & Firing
+---
+
+## 8. HR & Workforce Management
+
+### 8.1 Hiring Process
 
 The HR system manages the agent workforce dynamically:
 
-#### Hiring Process
 1. HR agent (or human) identifies skill gap or workload issue
 2. HR generates **candidate cards** based on team needs:
    - What skills are underrepresented?
@@ -616,17 +654,19 @@ The HR system manages the agent workforce dynamically:
    - What model/provider fits the budget?
 3. Candidate cards are presented for approval (to CEO or human)
 4. Approved candidates are instantiated and onboarded
-5. Onboarding includes: company context, project briefing, team introductions
+5. Onboarding includes: company context, project briefing, team introductions.
 
-#### Firing / Offboarding
+### 8.2 Firing / Offboarding
+
 1. Triggered by: budget cuts, poor performance metrics, project completion, human decision
 2. Agent's memory is archived (not deleted)
 3. Active tasks are reassigned
 4. Team is notified
 
-#### Performance Tracking
+### 8.3 Performance Tracking
+
 ```yaml
-employee_metrics:
+agent_metrics:
   tasks_completed: 42
   tasks_failed: 2
   average_quality_score: 8.5     # from code reviews, peer feedback
@@ -636,11 +676,19 @@ employee_metrics:
   last_review_date: "2026-02-20"
 ```
 
+### 8.4 Promotions & Demotions
+
+Agents can move between seniority levels based on performance:
+- Promotion criteria: sustained high quality scores, task complexity handled, peer feedback
+- Demotion criteria: repeated failures, quality drops, cost inefficiency
+- Promotions can unlock higher tool access levels (see Progressive Trust)
+- Model upgrades/downgrades may accompany level changes (configurable)
+
 ---
 
-## 8. Model Provider Layer
+## 9. Model Provider Layer
 
-### 8.1 Provider Abstraction
+### 9.1 Provider Abstraction
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -655,16 +703,18 @@ employee_metrics:
 └───────────┴───────────┴───────────┴─────────┘
 ```
 
-### 8.2 Provider Configuration
+### 9.2 Provider Configuration
+
+> Note: Model IDs, pricing, and provider examples below are **illustrative**. Actual models, costs, and provider availability will be determined during implementation and should be loaded dynamically from provider APIs where possible.
 
 ```yaml
 providers:
   anthropic:
     api_key: "${ANTHROPIC_API_KEY}"
-    models:
+    models:                        # example entries — real list loaded from provider
       - id: "claude-opus-4-6"
         alias: "opus"
-        cost_per_1k_input: 0.015
+        cost_per_1k_input: 0.015   # illustrative, verify at implementation time
         cost_per_1k_output: 0.075
         max_context: 200000
       - id: "claude-sonnet-4-6"
@@ -681,7 +731,7 @@ providers:
   openrouter:
     api_key: "${OPENROUTER_API_KEY}"
     base_url: "https://openrouter.ai/api/v1"
-    models:
+    models:                        # example entries
       - id: "anthropic/claude-sonnet-4-6"
         alias: "or-sonnet"
       - id: "google/gemini-2.5-pro"
@@ -691,7 +741,7 @@ providers:
 
   ollama:
     base_url: "http://localhost:11434"
-    models:
+    models:                        # example entries
       - id: "llama3.3:70b"
         alias: "local-llama"
         cost_per_1k_input: 0.0    # free, local
@@ -702,7 +752,7 @@ providers:
         cost_per_1k_output: 0.0
 ```
 
-### 8.3 LiteLLM Integration
+### 9.3 LiteLLM Integration (Candidate)
 
 Use **LiteLLM** as the provider abstraction layer:
 - Unified API across 100+ providers
@@ -711,7 +761,7 @@ Use **LiteLLM** as the provider abstraction layer:
 - Load balancing across providers
 - OpenAI-compatible interface (all providers normalized)
 
-### 8.4 Model Routing Strategy
+### 9.4 Model Routing Strategy
 
 ```yaml
 routing:
@@ -725,7 +775,7 @@ routing:
       fallback: "haiku"
     - role_level: "junior"
       preferred_model: "haiku"
-      fallback: "local-llama"
+      fallback: "local-small"
     - task_type: "code_review"
       preferred_model: "sonnet"
     - task_type: "documentation"
@@ -740,24 +790,27 @@ routing:
 
 ---
 
-## 9. Cost & Budget Management
+## 10. Cost & Budget Management
 
-### 9.1 Budget Hierarchy
+### 10.1 Budget Hierarchy
 
-```
+```text
 Company Budget ($100/month)
-  ├── Engineering Dept (60%) ── $60
-  │     ├── Backend Team (40%) ── $24
-  │     ├── Frontend Team (30%) ── $18
-  │     └── DevOps Team (30%) ── $18
-  ├── Product Dept (20%) ── $20
+  ├── Engineering Dept (50%) ── $50
+  │     ├── Backend Team (40%) ── $20
+  │     ├── Frontend Team (30%) ── $15
+  │     └── DevOps Team (30%) ── $15
+  ├── Quality/QA (10%) ── $10
+  ├── Product Dept (15%) ── $15
   ├── Operations (10%) ── $10
-  └── Reserve (10%) ── $10
+  └── Reserve (15%) ── $15
 ```
 
-### 9.2 Cost Tracking
+> Note: Percentages are illustrative defaults. All allocations are configurable per company.
 
-Every API call is tracked:
+### 10.2 Cost Tracking
+
+Every API call is tracked (illustrative schema):
 
 ```json
 {
@@ -772,7 +825,7 @@ Every API call is tracked:
 }
 ```
 
-### 9.3 CFO Agent Responsibilities
+### 10.3 CFO Agent Responsibilities
 
 The CFO agent (when enabled) acts as a cost management system:
 
@@ -784,7 +837,7 @@ The CFO agent (when enabled) acts as a cost management system:
 - Blocks tasks that would exceed remaining budget
 - Optimizes model routing for cost/quality balance
 
-### 9.4 Cost Controls
+### 10.4 Cost Controls
 
 ```yaml
 budget:
@@ -798,17 +851,17 @@ budget:
   auto_downgrade:
     enabled: true
     threshold: 85              # percent of budget used
-    downgrade_map:
+    downgrade_map:             # example — aliases reference configured models
       opus: "sonnet"
       sonnet: "haiku"
-      haiku: "local-llama"
+      haiku: "local-small"
 ```
 
 ---
 
-## 10. Tool & Capability System
+## 11. Tool & Capability System
 
-### 10.1 Tool Categories
+### 11.1 Tool Categories
 
 | Category | Tools | Typical Roles |
 |----------|-------|---------------|
@@ -824,7 +877,7 @@ budget:
 | **Deployment** | CI/CD, container management | DevOps, SRE |
 | **MCP Servers** | Any MCP-compatible tool | Configurable per agent |
 
-### 10.2 Tool Access Levels
+### 11.2 Tool Access Levels
 
 ```yaml
 tool_access:
@@ -865,7 +918,7 @@ tool_access:
       description: "Per-agent custom configuration."
 ```
 
-### 10.3 Progressive Trust
+### 11.3 Progressive Trust
 
 Agents can earn higher tool access over time:
 
@@ -887,9 +940,9 @@ trust:
 
 ---
 
-## 11. Security & Approval System
+## 12. Security & Approval System
 
-### 11.1 Approval Workflow
+### 12.1 Approval Workflow
 
 ```
                     ┌──────────────┐
@@ -917,7 +970,7 @@ trust:
                      └────────┘    └──────────┘
 ```
 
-### 11.2 Autonomy Levels
+### 12.2 Autonomy Levels
 
 ```yaml
 autonomy:
@@ -944,10 +997,10 @@ autonomy:
       description: "Human must approve every action."
       auto_approve: []
       human_approval: ["all"]
-      security_agent: false       # human IS the security layer
+      security_agent: true        # still runs for audit logging, but human is approval authority
 ```
 
-### 11.3 Security Operations Agent
+### 12.3 Security Operations Agent
 
 A special meta-agent that reviews all actions before execution:
 
@@ -960,9 +1013,9 @@ A special meta-agent that reviews all actions before execution:
 
 ---
 
-## 12. Human Interaction Layer
+## 13. Human Interaction Layer
 
-### 12.1 Architecture: API-First
+### 13.1 Architecture: API-First
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -981,12 +1034,12 @@ A special meta-agent that reviews all actions before execution:
       └──────────┘  └────────────┘
 ```
 
-### 12.2 API Surface
+### 13.2 API Surface
 
 ```
 /api/v1/
   ├── /company          # CRUD company config
-  ├── /employees        # List, hire, fire, modify agents
+  ├── /agents           # List, hire, fire, modify agents
   ├── /departments      # Department management
   ├── /projects         # Project CRUD
   ├── /tasks            # Task management
@@ -1000,7 +1053,7 @@ A special meta-agent that reviews all actions before execution:
   └── /ws               # WebSocket for real-time updates
 ```
 
-### 12.3 Web UI Features
+### 13.3 Web UI Features
 
 - **Dashboard**: Real-time company overview, active tasks, spending
 - **Org Chart**: Visual hierarchy, click to inspect any agent
@@ -1013,7 +1066,7 @@ A special meta-agent that reviews all actions before execution:
 - **Artifact Browser**: Browse and inspect all produced work
 - **Settings**: Company config, autonomy levels, provider settings
 
-### 12.4 Human Roles
+### 13.4 Human Roles
 
 The human can interact as:
 
@@ -1027,9 +1080,9 @@ The human can interact as:
 
 ---
 
-## 13. Templates & Builder
+## 14. Templates & Builder
 
-### 13.1 Template System
+### 14.1 Template System
 
 Templates are YAML/JSON files defining a complete company setup:
 
@@ -1046,7 +1099,7 @@ template:
     budget_monthly: "{{ budget | default(50.00) }}"
     autonomy: "semi"
 
-  employees:
+  agents:
     - role: "ceo"
       name: "{{ ceo_name | auto }}"
       model: "opus"
@@ -1073,7 +1126,7 @@ template:
   communication: "hybrid"
 ```
 
-### 13.2 Company Builder
+### 14.2 Company Builder
 
 Interactive CLI/web wizard for creating custom companies:
 
@@ -1106,11 +1159,11 @@ $ ai-company create
   [x] Local Ollama
   [ ] OpenRouter
 
-Created company "Acme Corp" with 9 employees.
+Created company "Acme Corp" with 9 agents.
 Run: ai-company start acme-corp
 ```
 
-### 13.3 Community Marketplace (Future)
+### 14.3 Community Marketplace (Future)
 
 - Share company templates
 - Share custom role definitions
@@ -1120,9 +1173,9 @@ Run: ai-company start acme-corp
 
 ---
 
-## 14. Technical Architecture
+## 15. Technical Architecture
 
-### 14.1 High-Level Architecture
+### 15.1 High-Level Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -1137,31 +1190,31 @@ Run: ai-company start acme-corp
 │                                                               │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │
 │  │ Comms Layer  │  │ Memory Layer  │  │ Tool/Capability    │  │
-│  │ (Message Bus,│  │ (Mem0/SQLite,│  │ System (MCP,       │  │
+│  │ (Message Bus,│  │ (Pluggable,  │  │ System (MCP,       │  │
 │  │  Meetings,   │  │  Retrieval,  │  │  Sandboxing,       │  │
 │  │  A2A)        │  │  Archive)    │  │  Permissions)      │  │
 │  └──────────────┘  └──────────────┘  └────────────────────┘  │
 │                                                               │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │
 │  │ Provider Lyr │  │ Budget/Cost  │  │ Security/Approval  │  │
-│  │ (LiteLLM,   │  │ Engine       │  │ System             │  │
+│  │ (Unified,   │  │ Engine       │  │ System             │  │
 │  │  Routing,    │  │ (Tracking,   │  │ (SecOps Agent,     │  │
 │  │  Fallbacks)  │  │  Limits,     │  │  Audit Log,        │  │
 │  │              │  │  CFO Agent)  │  │  Human Queue)      │  │
 │  └──────────────┘  └──────────────┘  └────────────────────┘  │
 │                                                               │
 │  ┌────────────────────────────────────────────────────────┐  │
-│  │              API Layer (FastAPI + WebSocket)             │  │
+│  │              API Layer (Async Framework + WebSocket)      │  │
 │  └────────────────────────────────────────────────────────┘  │
 │                                                               │
 │  ┌──────────────────────┐  ┌─────────────────────────────┐  │
 │  │     Web UI (Local)    │  │         CLI Tool            │  │
-│  │  React/Vue Dashboard  │  │    ai-company <command>     │  │
+│  │     Web Dashboard      │  │    ai-company <command>     │  │
 │  └──────────────────────┘  └─────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 14.2 Technology Stack (Research-Informed Recommendation)
+### 15.2 Technology Stack (Candidates - TBD After Research)
 
 | Component | Technology | Rationale |
 |-----------|-----------|-----------|
@@ -1180,7 +1233,7 @@ Run: ai-company start acme-corp
 | **Config Format** | YAML + Pydantic validation | Human-readable config with strict validation |
 | **CLI** | Typer (Click-based) | Pythonic CLI framework, auto-help, completions |
 
-### 14.3 Project Structure (Proposed)
+### 15.3 Project Structure (Proposed)
 
 ```
 ai-company/
@@ -1243,7 +1296,7 @@ ai-company/
 │       │   ├── app.py              # FastAPI application
 │       │   ├── routes/             # Route handlers
 │       │   │   ├── company.py
-│       │   │   ├── employees.py
+│       │   │   ├── agents.py
 │       │   │   ├── tasks.py
 │       │   │   ├── projects.py
 │       │   │   ├── messages.py
@@ -1256,7 +1309,7 @@ ai-company/
 │       │   ├── main.py             # Typer app
 │       │   ├── commands/           # CLI commands
 │       │   │   ├── company.py      # create, start, stop
-│       │   │   ├── employees.py    # hire, fire, list
+│       │   │   ├── agents.py       # hire, fire, list
 │       │   │   ├── tasks.py        # create, assign, status
 │       │   │   └── budget.py       # spending, limits
 │       │   └── display.py          # Rich terminal output
@@ -1293,7 +1346,7 @@ ai-company/
 └── CLAUDE.md
 ```
 
-### 14.4 Key Design Decisions
+### 15.4 Key Design Decisions (Preliminary - Subject to Research)
 
 | Decision | Choice | Alternatives Considered | Rationale |
 |----------|--------|------------------------|-----------|
@@ -1308,9 +1361,9 @@ ai-company/
 
 ---
 
-## 15. Research & Prior Art
+## 16. Research & Prior Art
 
-### 15.1 Existing Frameworks Comparison
+### 16.1 Existing Frameworks Comparison
 
 | Framework | Stars | Architecture | Roles | Models | Memory | Custom Roles | Production Ready |
 |-----------|-------|-------------|-------|--------|--------|-------------|-----------------|
@@ -1321,20 +1374,20 @@ ai-company/
 | **LangGraph** | Large | Graph-based DAG | Custom nodes | LangChain ecosystem | Stateful graphs | Yes (nodes) | Yes |
 | **Smolagents** | Growing | Code-centric minimal | Code agent | HuggingFace ecosystem | Minimal | Yes | Rapid prototyping |
 
-### 15.2 What Exists vs What We Need
+### 16.2 What Exists vs What We Need
 
 | Feature | MetaGPT | ChatDev | CrewAI | **AI Company (Ours)** |
 |---------|---------|---------|--------|----------------------|
 | Full company simulation | Partial | Partial | No | **Yes - complete** |
 | HR (hiring/firing) | No | No | No | **Yes** |
 | Budget management (CFO) | No | No | No | **Yes** |
-| Persistent agent memory | No | No | Basic | **Yes (Mem0)** |
+| Persistent agent memory | No | No | Basic | **Yes (Mem0 candidate)** |
 | Agent personalities | Basic | Basic | Basic | **Deep - traits, styles, evolution** |
 | Dynamic team scaling | No | No | Manual | **Yes - auto + manual** |
 | Multiple company types | No | No | Manual | **Yes - templates + builder** |
 | Security ops agent | No | No | No | **Yes** |
 | Configurable autonomy | No | No | Limited | **Yes - full spectrum** |
-| Local + cloud providers | Partial | Partial | Partial | **Yes - all via LiteLLM** |
+| Local + cloud providers | Partial | Partial | Partial | **Yes - unified abstraction (LiteLLM candidate)** |
 | Cost tracking per agent | No | No | No | **Yes - full budget system** |
 | Progressive trust | No | No | No | **Yes** |
 | Performance metrics | No | No | No | **Yes** |
@@ -1342,7 +1395,7 @@ ai-company/
 | A2A protocol support | No | No | No | **Planned** |
 | Community marketplace | MGX (commercial) | No | No | **Planned (backlog)** |
 
-### 15.3 Build vs Fork Decision
+### 16.3 Build vs Fork Decision
 
 **Recommendation: Build from scratch, leverage libraries.**
 
@@ -1353,20 +1406,20 @@ Rationale:
 - **LiteLLM**, **Mem0**, **FastAPI**, and **MCP** give us battle-tested components for the hard parts
 - The "company simulation" layer on top is our unique value and must be purpose-built
 
-What we **use** (not fork):
-- **LiteLLM** - Provider abstraction (don't reinvent this)
-- **Mem0** - Agent memory (don't reinvent this)
-- **FastAPI** - API layer
-- **MCP** - Tool integration standard
-- **Pydantic** - Config validation and data models
-- **Typer** - CLI
-- **Vue 3** - Web UI
+What we **plan to leverage** (not fork) — subject to evaluation:
+- **LiteLLM** (candidate) - Provider abstraction
+- **Mem0** (candidate) - Agent memory
+- **FastAPI** (candidate) - API layer
+- **MCP** - Tool integration standard (strong candidate, emerging industry standard)
+- **Pydantic** (candidate) - Config validation and data models
+- **Typer** (candidate) - CLI
+- **Web UI framework** - TBD (Vue 3, React, Svelte, HTMX all under consideration)
 
 ---
 
-## 16. Open Questions & Risks
+## 17. Open Questions & Risks
 
-### 16.1 Open Questions
+### 17.1 Open Questions
 
 | # | Question | Impact | Notes |
 |---|----------|--------|-------|
@@ -1381,19 +1434,19 @@ What we **use** (not fork):
 | 9 | How to handle code execution safely? | High | Sandboxing strategy, Docker vs WASM vs subprocess |
 | 10 | What's the minimum viable meeting set? | Low | Standup + planning + review as minimum? |
 
-### 16.2 Technical Risks
+### 17.2 Technical Risks
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
 | Context window exhaustion on complex tasks | High | Memory summarization, task decomposition, working memory management |
 | Cost explosion from agent loops | High | Budget hard stops, loop detection, max iterations per task |
 | Agent quality degradation with cheap models | Medium | Quality gates, minimum model requirements per task type |
-| LiteLLM/Mem0 breaking changes | Medium | Pin versions, integration tests, abstraction layers |
-| Memory retrieval quality | Medium | Mem0 handles this well, but test with our use case |
+| Third-party library breaking changes | Medium | Pin versions, integration tests, abstraction layers |
+| Memory retrieval quality | Medium | Evaluate candidates (Mem0, custom, etc.) against our use case |
 | Agent personality inconsistency | Low | Strong system prompts, few-shot examples, personality tests |
 | WebSocket scaling | Low | Start local, add Redis pub/sub when needed |
 
-### 16.3 Architecture Risks
+### 17.3 Architecture Risks
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
@@ -1404,9 +1457,9 @@ What we **use** (not fork):
 
 ---
 
-## 17. Backlog & Future Vision
+## 18. Backlog & Future Vision
 
-### 17.1 Future Features (Not for MVP)
+### 18.1 Future Features (Not for MVP)
 
 | Feature | Priority | Description |
 |---------|----------|-------------|
@@ -1429,20 +1482,20 @@ What we **use** (not fork):
 | Integration APIs | Medium | Connect to real Slack, GitHub, Jira, Linear |
 | Self-improving company | High | The AI company developing AI company (meta!) |
 
-### 17.2 Scaling Path
+### 18.2 Scaling Path
 
 ```
 Phase 1: Local Single-Process
-  └── asyncio, SQLite, in-memory bus, 1-10 agents
+  └── Async runtime, embedded DB, in-memory bus, 1-10 agents
 
 Phase 2: Local Multi-Process
-  └── Redis bus, PostgreSQL, Docker sandbox, 10-30 agents
+  └── External message bus, production DB, sandboxed execution, 10-30 agents
 
 Phase 3: Network/Server
   └── Full API, multi-user, distributed agents, 30-100 agents
 
 Phase 4: Cloud/Hosted
-  └── Kubernetes, horizontal scaling, marketplace, 100+ agents
+  └── Container orchestration, horizontal scaling, marketplace, 100+ agents
 ```
 
 ---
@@ -1453,7 +1506,7 @@ Phase 4: Cloud/Hosted
 |----------|-------|---------|-----------|
 | **MCP** (Model Context Protocol) | Anthropic → Linux Foundation (AAIF) | LLM ↔ Tool integration | Tool system backbone |
 | **A2A** (Agent-to-Agent Protocol) | Google → Linux Foundation | Agent ↔ Agent communication | Future agent interop |
-| **OpenAI API format** | OpenAI (de facto standard) | LLM API interface | Via LiteLLM compatibility |
+| **OpenAI API format** | OpenAI (de facto standard) | LLM API interface | Via provider abstraction layer (LiteLLM candidate) |
 
 ## Appendix B: Research Sources
 
