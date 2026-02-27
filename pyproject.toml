@@ -25,6 +25,16 @@ path = "src/ai_company/__init__.py"
 packages = ["src/ai_company"]
 
 [dependency-groups]
+test = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.0.0",
+    "pytest-cov>=6.2.1",
+    "pytest-mock>=3.14.0",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.6.1",
+    "polyfactory>=2.21.0",
+    "respx>=0.22.0",
+]
 dev = [
     "commitizen>=4.13.9",
     "mypy>=1.19.1",
@@ -32,6 +42,7 @@ dev = [
     "pre-commit-uv>=4.2.1",
     "pydantic>=2.12.5",
     "ruff>=0.15.4",
+    {include-group = "test"},
 ]
 
 # ---------------------------------------------------------------------------
@@ -95,12 +106,13 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
-    "S101",   # assert allowed in tests
-    "ARG",    # unused arguments (fixtures)
-    "FBT",    # boolean trap (parametrize)
-    "D",      # no docstrings required in tests
+    "S101",    # assert allowed in tests
+    "ARG",     # unused arguments (fixtures)
+    "FBT",     # boolean trap (parametrize)
+    "D",       # no docstrings required in tests
     "PLR2004", # magic values in tests
-    "SLF001", # private member access in tests
+    "SLF001",  # private member access in tests
+    "PLC0415", # local imports in test functions
 ]
 "__init__.py" = ["F401", "F403"]
 
@@ -149,3 +161,41 @@ name = "cz_conventional_commits"
 version = "0.1.0"
 version_files = ["src/ai_company/__init__.py:__version__"]
 tag_format = "v$version"
+
+# ---------------------------------------------------------------------------
+# pytest — test runner
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+timeout = 30
+markers = [
+    "unit: Unit tests (fast, isolated, no I/O)",
+    "integration: Integration tests (may use I/O, databases, APIs)",
+    "e2e: End-to-end tests (full system, slow)",
+    "slow: Slow tests (excluded from default runs)",
+]
+addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short"]
+filterwarnings = ["error"]
+
+# ---------------------------------------------------------------------------
+# coverage — test coverage reporting
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["ai_company"]
+branch = true
+parallel = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "@overload",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+]
