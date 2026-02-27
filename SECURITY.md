@@ -1,0 +1,35 @@
+# Security Policy
+
+## Supported Versions
+
+| Version | Supported |
+|---------|-----------|
+| 0.x     | Yes       |
+
+## Reporting a Vulnerability
+
+If you discover a security vulnerability, please report it responsibly.
+
+**Do not open a public GitHub issue.**
+
+Instead, use [GitHub's private vulnerability reporting](https://github.com/Aureliolo/ai-company/security/advisories/new) to submit your report.
+
+You should receive a response within 72 hours. If the vulnerability is confirmed, a fix will be prioritized and released as soon as possible.
+
+## Scope
+
+This project will handle LLM API keys, sandboxed code execution, and agent-to-tool interactions. Security-relevant areas include:
+
+- API key and secret management
+- Sandboxed code execution boundaries
+- Agent permission and approval gates
+- Input validation on all external boundaries
+- Dependency supply chain (monitored via Dependabot and dependency review)
+
+## Security Features
+
+- **Secret scanning** and **push protection** enabled on the repository
+- **Dependabot** monitors dependencies for known vulnerabilities
+- **Dependency review** runs on every pull request
+- **Gitleaks** pre-commit hook prevents committing secrets locally
+- **Ruff bandit rules** (S category) check for common security issues in Python code

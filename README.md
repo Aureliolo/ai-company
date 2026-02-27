@@ -23,7 +23,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ## Status
 
-**M0: Tooling & Infrastructure** in progress. See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
+**M0: Tooling & Infrastructure** complete. See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
 
 ## Tech Stack
 
