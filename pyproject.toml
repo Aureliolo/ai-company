@@ -152,7 +152,7 @@ warn_required_dynamic_aliases = true
 # ---------------------------------------------------------------------------
 [tool.pyright]
 pythonVersion = "3.14"
-typeCheckingMode = "basic"
+typeCheckingMode = "strict"
 venvPath = "."
 venv = ".venv"
 
