@@ -23,6 +23,7 @@ from ai_company.core.company import (
 )
 from ai_company.core.enums import (
     DepartmentName,
+    MemoryType,
     ProficiencyLevel,
     SeniorityLevel,
     SkillCategory,
@@ -67,6 +68,7 @@ class ModelConfigFactory(ModelFactory):
 
 class MemoryConfigFactory(ModelFactory):
     __model__ = MemoryConfig
+    type = MemoryType.SESSION
 
 
 class ToolPermissionsFactory(ModelFactory):
@@ -135,11 +137,11 @@ def sample_role() -> Role:
 @pytest.fixture
 def sample_model_config() -> ModelConfig:
     return ModelConfig(
-        provider="anthropic",
-        model_id="claude-sonnet-4-6",
+        provider="test-provider",
+        model_id="test-model-sonnet-4-6",
         temperature=0.3,
         max_tokens=8192,
-        fallback_model="openrouter/anthropic/claude-haiku",
+        fallback_model="test-provider/test-model-haiku",
     )
 
 

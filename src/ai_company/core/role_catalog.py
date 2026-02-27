@@ -386,6 +386,15 @@ BUILTIN_ROLES: tuple[Role, ...] = (
 )
 
 
+# ── Lookup Maps (built once at import time) ──────────────────────
+
+_BUILTIN_ROLES_BY_NAME: dict[str, Role] = {r.name.lower(): r for r in BUILTIN_ROLES}
+
+_SENIORITY_INFO_BY_LEVEL: dict[SeniorityLevel, SeniorityInfo] = {
+    info.level: info for info in SENIORITY_INFO
+}
+
+
 def get_builtin_role(name: str) -> Role | None:
     """Look up a built-in role by name (case-insensitive).
 
@@ -395,11 +404,7 @@ def get_builtin_role(name: str) -> Role | None:
     Returns:
         The matching Role, or ``None`` if not found.
     """
-    lower = name.lower()
-    for role in BUILTIN_ROLES:
-        if role.name.lower() == lower:
-            return role
-    return None
+    return _BUILTIN_ROLES_BY_NAME.get(name.lower())
 
 
 def get_seniority_info(level: SeniorityLevel) -> SeniorityInfo | None:
@@ -410,8 +415,7 @@ def get_seniority_info(level: SeniorityLevel) -> SeniorityInfo | None:
 
     Returns:
         The matching SeniorityInfo, or ``None`` if not found.
+        Returns ``None`` only if the catalog is incomplete (all standard
+        levels are covered by default).
     """
-    for info in SENIORITY_INFO:
-        if info.level == level:
-            return info
-    return None
+    return _SENIORITY_INFO_BY_LEVEL.get(level)

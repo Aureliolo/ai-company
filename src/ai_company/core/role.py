@@ -1,6 +1,6 @@
 """Role and skill domain models."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ai_company.core.enums import (
     DepartmentName,
@@ -47,6 +47,7 @@ class Authority(BaseModel):
     )
     reports_to: str | None = Field(
         default=None,
+        min_length=1,
         description="Role this position reports to",
     )
     can_delegate_to: tuple[str, ...] = Field(
@@ -67,7 +68,7 @@ class SeniorityInfo(BaseModel):
         level: The seniority level.
         authority_scope: Description of authority at this level.
         typical_model_tier: Recommended model tier (e.g. ``"opus"``).
-        cost_tier: Expected cost tier for this level.
+        cost_tier: Cost tier identifier (built-in ``CostTier`` or user-defined string).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -138,7 +139,7 @@ class CustomRole(BaseModel):
     Attributes:
         name: Custom role name.
         department: Department (standard or custom name).
-        skills: Required skills for this role.
+        required_skills: Required skills for this role.
         system_prompt_template: Template file for system prompt.
         authority_level: Default seniority level.
         suggested_model: Suggested model tier.
@@ -150,7 +151,7 @@ class CustomRole(BaseModel):
     department: DepartmentName | str = Field(
         description="Department (standard or custom name)",
     )
-    skills: tuple[str, ...] = Field(
+    required_skills: tuple[str, ...] = Field(
         default=(),
         description="Required skills for this role",
     )
@@ -166,3 +167,12 @@ class CustomRole(BaseModel):
         default=None,
         description="Suggested model tier",
     )
+
+    @field_validator("department")
+    @classmethod
+    def _department_not_empty(cls, v: DepartmentName | str) -> DepartmentName | str:
+        """Ensure department is not an empty string."""
+        if isinstance(v, str) and not v.strip():
+            msg = "Department name must not be empty"
+            raise ValueError(msg)
+        return v

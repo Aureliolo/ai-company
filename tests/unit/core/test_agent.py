@@ -37,7 +37,7 @@ from .conftest import (
 
 @pytest.mark.unit
 class TestPersonalityConfig:
-    def test_defaults(self):
+    def test_defaults(self) -> None:
         p = PersonalityConfig()
         assert p.traits == ()
         assert p.communication_style == "neutral"
@@ -45,7 +45,7 @@ class TestPersonalityConfig:
         assert p.creativity is CreativityLevel.MEDIUM
         assert p.description == ""
 
-    def test_custom_values(self):
+    def test_custom_values(self) -> None:
         p = PersonalityConfig(
             traits=("analytical", "pragmatic"),
             communication_style="concise and technical",
@@ -56,16 +56,16 @@ class TestPersonalityConfig:
         assert len(p.traits) == 2
         assert p.communication_style == "concise and technical"
 
-    def test_empty_communication_style_rejected(self):
+    def test_empty_communication_style_rejected(self) -> None:
         with pytest.raises(ValidationError):
             PersonalityConfig(communication_style="")
 
-    def test_frozen(self):
+    def test_frozen(self) -> None:
         p = PersonalityConfig()
         with pytest.raises(ValidationError):
             p.creativity = CreativityLevel.LOW  # type: ignore[misc]
 
-    def test_factory(self):
+    def test_factory(self) -> None:
         p = PersonalityConfigFactory.build()
         assert isinstance(p, PersonalityConfig)
 
@@ -75,12 +75,12 @@ class TestPersonalityConfig:
 
 @pytest.mark.unit
 class TestSkillSet:
-    def test_defaults(self):
+    def test_defaults(self) -> None:
         s = SkillSet()
         assert s.primary == ()
         assert s.secondary == ()
 
-    def test_custom_values(self):
+    def test_custom_values(self) -> None:
         s = SkillSet(
             primary=("python", "fastapi"),
             secondary=("docker", "redis"),
@@ -88,12 +88,20 @@ class TestSkillSet:
         assert "python" in s.primary
         assert "docker" in s.secondary
 
-    def test_frozen(self):
+    def test_empty_skill_name_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            SkillSet(primary=("python", ""))
+
+    def test_whitespace_skill_name_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            SkillSet(secondary=("  ",))
+
+    def test_frozen(self) -> None:
         s = SkillSet()
         with pytest.raises(ValidationError):
             s.primary = ("new",)  # type: ignore[misc]
 
-    def test_factory(self):
+    def test_factory(self) -> None:
         s = SkillSetFactory.build()
         assert isinstance(s, SkillSet)
 
@@ -103,55 +111,59 @@ class TestSkillSet:
 
 @pytest.mark.unit
 class TestModelConfig:
-    def test_valid_config(self, sample_model_config: ModelConfig):
-        assert sample_model_config.provider == "anthropic"
-        assert sample_model_config.model_id == "claude-sonnet-4-6"
+    def test_valid_config(self, sample_model_config: ModelConfig) -> None:
+        assert sample_model_config.provider == "test-provider"
+        assert sample_model_config.model_id == "test-model-sonnet-4-6"
         assert sample_model_config.temperature == 0.3
         assert sample_model_config.max_tokens == 8192
 
-    def test_defaults(self):
+    def test_defaults(self) -> None:
         m = ModelConfig(provider="test", model_id="test-model")
         assert m.temperature == 0.7
         assert m.max_tokens == 4096
         assert m.fallback_model is None
 
-    def test_empty_provider_rejected(self):
+    def test_empty_provider_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ModelConfig(provider="", model_id="test")
 
-    def test_empty_model_id_rejected(self):
+    def test_empty_model_id_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ModelConfig(provider="test", model_id="")
 
-    def test_temperature_below_zero_rejected(self):
+    def test_empty_fallback_model_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ModelConfig(provider="test", model_id="m", fallback_model="")
+
+    def test_temperature_below_zero_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ModelConfig(provider="test", model_id="m", temperature=-0.1)
 
-    def test_temperature_above_two_rejected(self):
+    def test_temperature_above_two_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ModelConfig(provider="test", model_id="m", temperature=2.1)
 
-    def test_temperature_boundary_zero(self):
+    def test_temperature_boundary_zero(self) -> None:
         m = ModelConfig(provider="test", model_id="m", temperature=0.0)
         assert m.temperature == 0.0
 
-    def test_temperature_boundary_two(self):
+    def test_temperature_boundary_two(self) -> None:
         m = ModelConfig(provider="test", model_id="m", temperature=2.0)
         assert m.temperature == 2.0
 
-    def test_max_tokens_zero_rejected(self):
+    def test_max_tokens_zero_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ModelConfig(provider="test", model_id="m", max_tokens=0)
 
-    def test_max_tokens_negative_rejected(self):
+    def test_max_tokens_negative_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ModelConfig(provider="test", model_id="m", max_tokens=-1)
 
-    def test_frozen(self, sample_model_config: ModelConfig):
+    def test_frozen(self, sample_model_config: ModelConfig) -> None:
         with pytest.raises(ValidationError):
             sample_model_config.temperature = 1.0  # type: ignore[misc]
 
-    def test_factory(self):
+    def test_factory(self) -> None:
         m = ModelConfigFactory.build()
         assert isinstance(m, ModelConfig)
         assert 0.0 <= m.temperature <= 2.0
@@ -162,30 +174,38 @@ class TestModelConfig:
 
 @pytest.mark.unit
 class TestMemoryConfig:
-    def test_defaults(self):
+    def test_defaults(self) -> None:
         m = MemoryConfig()
         assert m.type is MemoryType.SESSION
         assert m.retention_days is None
 
-    def test_custom_values(self):
+    def test_custom_values(self) -> None:
         m = MemoryConfig(type=MemoryType.PERSISTENT, retention_days=30)
         assert m.type is MemoryType.PERSISTENT
         assert m.retention_days == 30
 
-    def test_retention_days_zero_rejected(self):
+    def test_retention_days_zero_rejected(self) -> None:
         with pytest.raises(ValidationError):
             MemoryConfig(retention_days=0)
 
-    def test_retention_days_negative_rejected(self):
+    def test_retention_days_negative_rejected(self) -> None:
         with pytest.raises(ValidationError):
             MemoryConfig(retention_days=-1)
 
-    def test_frozen(self):
+    def test_none_type_with_retention_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="retention_days must be None"):
+            MemoryConfig(type=MemoryType.NONE, retention_days=30)
+
+    def test_none_type_without_retention_accepted(self) -> None:
+        m = MemoryConfig(type=MemoryType.NONE)
+        assert m.retention_days is None
+
+    def test_frozen(self) -> None:
         m = MemoryConfig()
         with pytest.raises(ValidationError):
             m.type = MemoryType.PERSISTENT  # type: ignore[misc]
 
-    def test_factory(self):
+    def test_factory(self) -> None:
         m = MemoryConfigFactory.build()
         assert isinstance(m, MemoryConfig)
 
@@ -195,12 +215,12 @@ class TestMemoryConfig:
 
 @pytest.mark.unit
 class TestToolPermissions:
-    def test_defaults(self):
+    def test_defaults(self) -> None:
         t = ToolPermissions()
         assert t.allowed == ()
         assert t.denied == ()
 
-    def test_custom_values(self):
+    def test_custom_values(self) -> None:
         t = ToolPermissions(
             allowed=("file_system", "git"),
             denied=("deployment",),
@@ -208,12 +228,19 @@ class TestToolPermissions:
         assert "file_system" in t.allowed
         assert "deployment" in t.denied
 
-    def test_frozen(self):
+    def test_overlap_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="both allowed and denied"):
+            ToolPermissions(
+                allowed=("git", "file_system"),
+                denied=("git",),
+            )
+
+    def test_frozen(self) -> None:
         t = ToolPermissions()
         with pytest.raises(ValidationError):
             t.allowed = ("new",)  # type: ignore[misc]
 
-    def test_factory(self):
+    def test_factory(self) -> None:
         t = ToolPermissionsFactory.build()
         assert isinstance(t, ToolPermissions)
 
@@ -223,14 +250,14 @@ class TestToolPermissions:
 
 @pytest.mark.unit
 class TestAgentIdentity:
-    def test_valid_agent(self, sample_agent: AgentIdentity):
+    def test_valid_agent(self, sample_agent: AgentIdentity) -> None:
         assert sample_agent.name == "Sarah Chen"
         assert sample_agent.role == "Senior Backend Developer"
         assert sample_agent.department == "Engineering"
         assert sample_agent.level is SeniorityLevel.SENIOR
         assert isinstance(sample_agent.id, UUID)
 
-    def test_auto_generated_id(self, sample_model_config: ModelConfig):
+    def test_auto_generated_id(self, sample_model_config: ModelConfig) -> None:
         agent = AgentIdentity(
             name="Test Agent",
             role="Developer",
@@ -240,7 +267,7 @@ class TestAgentIdentity:
         )
         assert isinstance(agent.id, UUID)
 
-    def test_defaults(self, sample_model_config: ModelConfig):
+    def test_defaults(self, sample_model_config: ModelConfig) -> None:
         agent = AgentIdentity(
             name="Test",
             role="Dev",
@@ -256,7 +283,7 @@ class TestAgentIdentity:
         assert isinstance(agent.tools, ToolPermissions)
         assert isinstance(agent.authority, Authority)
 
-    def test_model_is_required(self):
+    def test_model_is_required(self) -> None:
         with pytest.raises(ValidationError):
             AgentIdentity(
                 name="Test",
@@ -265,7 +292,7 @@ class TestAgentIdentity:
                 hiring_date=date(2026, 1, 1),
             )  # type: ignore[call-arg]
 
-    def test_hiring_date_is_required(self, sample_model_config: ModelConfig):
+    def test_hiring_date_is_required(self, sample_model_config: ModelConfig) -> None:
         with pytest.raises(ValidationError):
             AgentIdentity(
                 name="Test",
@@ -274,7 +301,7 @@ class TestAgentIdentity:
                 model=sample_model_config,
             )  # type: ignore[call-arg]
 
-    def test_empty_name_rejected(self, sample_model_config: ModelConfig):
+    def test_empty_name_rejected(self, sample_model_config: ModelConfig) -> None:
         with pytest.raises(ValidationError):
             AgentIdentity(
                 name="",
@@ -284,25 +311,45 @@ class TestAgentIdentity:
                 hiring_date=date(2026, 1, 1),
             )
 
-    def test_frozen(self, sample_agent: AgentIdentity):
+    def test_empty_role_rejected(self, sample_model_config: ModelConfig) -> None:
+        with pytest.raises(ValidationError):
+            AgentIdentity(
+                name="Test",
+                role="",
+                department="Eng",
+                model=sample_model_config,
+                hiring_date=date(2026, 1, 1),
+            )
+
+    def test_empty_department_rejected(self, sample_model_config: ModelConfig) -> None:
+        with pytest.raises(ValidationError):
+            AgentIdentity(
+                name="Test",
+                role="Dev",
+                department="",
+                model=sample_model_config,
+                hiring_date=date(2026, 1, 1),
+            )
+
+    def test_frozen(self, sample_agent: AgentIdentity) -> None:
         with pytest.raises(ValidationError):
             sample_agent.name = "Changed"  # type: ignore[misc]
 
-    def test_model_copy_update(self, sample_agent: AgentIdentity):
+    def test_model_copy_update(self, sample_agent: AgentIdentity) -> None:
         updated = sample_agent.model_copy(
             update={"status": AgentStatus.TERMINATED},
         )
         assert updated.status is AgentStatus.TERMINATED
         assert sample_agent.status is AgentStatus.ACTIVE
 
-    def test_json_roundtrip(self, sample_agent: AgentIdentity):
+    def test_json_roundtrip(self, sample_agent: AgentIdentity) -> None:
         json_str = sample_agent.model_dump_json()
         restored = AgentIdentity.model_validate_json(json_str)
         assert restored.name == sample_agent.name
         assert restored.id == sample_agent.id
         assert restored.model.provider == sample_agent.model.provider
 
-    def test_factory(self):
+    def test_factory(self) -> None:
         agent = AgentIdentityFactory.build()
         assert isinstance(agent, AgentIdentity)
         assert isinstance(agent.id, UUID)

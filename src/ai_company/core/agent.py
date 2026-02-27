@@ -3,7 +3,7 @@
 from datetime import date  # noqa: TC003 — required at runtime by Pydantic
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import (
     AgentStatus,
@@ -70,6 +70,16 @@ class SkillSet(BaseModel):
         description="Secondary skills",
     )
 
+    @model_validator(mode="after")
+    def _validate_no_empty_skills(self) -> SkillSet:
+        """Ensure no empty or whitespace-only skill names."""
+        for field_name in ("primary", "secondary"):
+            for skill in getattr(self, field_name):
+                if not skill.strip():
+                    msg = f"Empty or whitespace-only skill name in {field_name}"
+                    raise ValueError(msg)
+        return self
+
 
 class ModelConfig(BaseModel):
     """LLM model configuration for an agent.
@@ -99,6 +109,7 @@ class ModelConfig(BaseModel):
     )
     fallback_model: str | None = Field(
         default=None,
+        min_length=1,
         description="Fallback model identifier",
     )
 
@@ -123,6 +134,14 @@ class MemoryConfig(BaseModel):
         description="Days to retain memories (None = forever)",
     )
 
+    @model_validator(mode="after")
+    def _validate_retention_consistency(self) -> MemoryConfig:
+        """Ensure retention_days is None when memory type is 'none'."""
+        if self.type is MemoryType.NONE and self.retention_days is not None:
+            msg = "retention_days must be None when memory type is 'none'"
+            raise ValueError(msg)
+        return self
+
 
 class ToolPermissions(BaseModel):
     """Tool access permissions for an agent.
@@ -143,6 +162,15 @@ class ToolPermissions(BaseModel):
         description="Explicitly denied tools",
     )
 
+    @model_validator(mode="after")
+    def _validate_no_overlap(self) -> ToolPermissions:
+        """Ensure no tool appears in both allowed and denied lists."""
+        overlap = set(self.allowed) & set(self.denied)
+        if overlap:
+            msg = f"Tools appear in both allowed and denied lists: {sorted(overlap)}"
+            raise ValueError(msg)
+        return self
+
 
 class AgentIdentity(BaseModel):
     """Complete agent identity card.
@@ -159,7 +187,7 @@ class AgentIdentity(BaseModel):
         level: Seniority level.
         personality: Personality configuration.
         skills: Primary and secondary skill set.
-        model: LLM model configuration (required).
+        model: LLM model configuration.
         memory: Memory configuration.
         tools: Tool permissions.
         authority: Authority scope.

@@ -7,9 +7,10 @@ class SeniorityLevel(StrEnum):
     """Seniority levels for agents within the organization.
 
     Maps to authority scope, typical model tier, and cost tier.
-    See ``role_catalog.SENIORITY_INFO`` for the full mapping.
+    See ``ai_company.core.role_catalog.SENIORITY_INFO`` for the full mapping.
     """
 
+    # Design spec says "Intern/Junior" — collapsed to a single JUNIOR level.
     JUNIOR = "junior"
     MID = "mid"
     SENIOR = "senior"
