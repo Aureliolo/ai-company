@@ -23,7 +23,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ## Status
 
-**M0: Tooling & Infrastructure** in progress. See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
+**M0: Tooling & Infrastructure** complete. See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
 
 ## Tech Stack
 
@@ -51,3 +51,7 @@ See [docs/getting_started.md](docs/getting_started.md) for prerequisites, IDE se
 - [Contributing](CONTRIBUTING.md) - Branch, commit, and PR workflow
 - [CLAUDE.md](CLAUDE.md) - Code conventions and AI assistant reference
 - [Design Specification](DESIGN_SPEC.md) - Full high-level design
+
+## License
+
+[Business Source License 1.1](LICENSE) — converts to Apache 2.0 on 2030-02-27.
