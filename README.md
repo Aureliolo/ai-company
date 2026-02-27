@@ -35,6 +35,19 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Vue 3** for web dashboard (planned)
 - **SQLite** → PostgreSQL for data persistence (planned)
 
+## Getting Started
+
+```bash
+git clone https://github.com/Aureliolo/ai-company.git
+cd ai-company
+uv sync
+```
+
+See [docs/getting_started.md](docs/getting_started.md) for prerequisites, IDE setup, and the full walkthrough.
+
 ## Documentation
 
+- [Getting Started](docs/getting_started.md) - Setup and installation guide
+- [Contributing](CONTRIBUTING.md) - Branch, commit, and PR workflow
+- [CLAUDE.md](CLAUDE.md) - Code conventions and AI assistant reference
 - [Design Specification](DESIGN_SPEC.md) - Full high-level design
