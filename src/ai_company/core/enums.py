@@ -6,8 +6,8 @@ from enum import StrEnum
 class SeniorityLevel(StrEnum):
     """Seniority levels for agents within the organization.
 
-    Maps to authority scope, typical model tier, and cost tier.
-    See ``ai_company.core.role_catalog.SENIORITY_INFO`` for the full mapping.
+    Each level corresponds to an authority scope, typical model tier, and
+    cost tier defined in ``ai_company.core.role_catalog.SENIORITY_INFO``.
     """
 
     # Design spec says "Intern/Junior" — collapsed to a single JUNIOR level.
@@ -58,8 +58,9 @@ class CostTier(StrEnum):
     """Built-in cost tier identifiers.
 
     These are the default tiers shipped with the framework. Users can
-    define additional tiers via configuration; any field that accepts a
-    cost tier uses ``str`` so custom tier IDs are valid too.
+    define additional tiers via configuration. Fields that accept cost
+    tiers (e.g. ``SeniorityInfo.cost_tier``) use ``str`` rather than
+    this enum, so custom tier IDs are also valid.
     """
 
     LOW = "low"

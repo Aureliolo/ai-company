@@ -50,6 +50,15 @@ class PersonalityConfig(BaseModel):
         description="Extended personality description",
     )
 
+    @model_validator(mode="after")
+    def _validate_no_empty_traits(self) -> PersonalityConfig:
+        """Ensure no empty or whitespace-only trait strings."""
+        for trait in self.traits:
+            if not trait.strip():
+                msg = "Empty or whitespace-only entry in traits"
+                raise ValueError(msg)
+        return self
+
 
 class SkillSet(BaseModel):
     """Primary and secondary skills for an agent.
@@ -113,6 +122,16 @@ class ModelConfig(BaseModel):
         description="Fallback model identifier",
     )
 
+    @model_validator(mode="after")
+    def _validate_non_blank_identifiers(self) -> ModelConfig:
+        """Ensure identifier fields are not whitespace-only."""
+        for field_name in ("provider", "model_id", "fallback_model"):
+            value = getattr(self, field_name)
+            if value is not None and not value.strip():
+                msg = f"{field_name} must not be whitespace-only"
+                raise ValueError(msg)
+        return self
+
 
 class MemoryConfig(BaseModel):
     """Memory configuration for an agent.
@@ -136,7 +155,7 @@ class MemoryConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_retention_consistency(self) -> MemoryConfig:
-        """Ensure retention_days is None when memory type is 'none'."""
+        """Ensure retention_days is None when memory type is MemoryType.NONE."""
         if self.type is MemoryType.NONE and self.retention_days is not None:
             msg = "retention_days must be None when memory type is 'none'"
             raise ValueError(msg)
@@ -161,6 +180,16 @@ class ToolPermissions(BaseModel):
         default=(),
         description="Explicitly denied tools",
     )
+
+    @model_validator(mode="after")
+    def _validate_no_empty_tools(self) -> ToolPermissions:
+        """Ensure no empty or whitespace-only tool names."""
+        for field_name in ("allowed", "denied"):
+            for tool in getattr(self, field_name):
+                if not tool.strip():
+                    msg = f"Empty or whitespace-only tool name in {field_name}"
+                    raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _validate_no_overlap(self) -> ToolPermissions:
@@ -231,3 +260,12 @@ class AgentIdentity(BaseModel):
         default=AgentStatus.ACTIVE,
         description="Current lifecycle status",
     )
+
+    @model_validator(mode="after")
+    def _validate_non_blank_identifiers(self) -> AgentIdentity:
+        """Ensure name, role, and department are not whitespace-only."""
+        for field_name in ("name", "role", "department"):
+            if not getattr(self, field_name).strip():
+                msg = f"{field_name} must not be whitespace-only"
+                raise ValueError(msg)
+        return self

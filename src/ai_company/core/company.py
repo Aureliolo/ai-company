@@ -1,22 +1,26 @@
 """Company structure and configuration models."""
 
+from collections import Counter
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import CompanyType
 
+_BUDGET_ROUNDING_PRECISION = 10
+"""Decimal places for budget sum rounding; avoids IEEE 754 float artifacts."""
+
 
 class Team(BaseModel):
     """A team within a department.
 
-    The ``lead`` is the team's manager and is not required to appear in
-    ``members``.  ``members`` lists the individual contributors on the team.
+    The ``lead`` is the team's manager. The ``lead`` may also appear in
+    ``members`` if they are also an individual contributor.
 
     Attributes:
         name: Team name.
         lead: Team lead agent name (string reference).
-        members: Team member agent names (excluding the lead).
+        members: Team member agent names.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -27,6 +31,19 @@ class Team(BaseModel):
         default=(),
         description="Team member agent names",
     )
+
+    @model_validator(mode="after")
+    def _validate_strings(self) -> Team:
+        """Ensure no empty or whitespace-only names in identifiers and members."""
+        for field_name in ("name", "lead"):
+            if not getattr(self, field_name).strip():
+                msg = f"{field_name} must not be whitespace-only"
+                raise ValueError(msg)
+        for member in self.members:
+            if not member.strip():
+                msg = "Empty or whitespace-only entry in members"
+                raise ValueError(msg)
+        return self
 
 
 class Department(BaseModel):
@@ -59,11 +76,20 @@ class Department(BaseModel):
     )
 
     @model_validator(mode="after")
+    def _validate_non_blank_identifiers(self) -> Department:
+        """Ensure name and head are not whitespace-only."""
+        for field_name in ("name", "head"):
+            if not getattr(self, field_name).strip():
+                msg = f"{field_name} must not be whitespace-only"
+                raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _validate_unique_team_names(self) -> Department:
         """Ensure no duplicate team names within a department."""
         names = [t.name for t in self.teams]
         if len(names) != len(set(names)):
-            dupes = sorted({n for n in names if names.count(n) > 1})
+            dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate team names in department {self.name!r}: {dupes}"
             raise ValueError(msg)
         return self
@@ -102,6 +128,18 @@ class CompanyConfig(BaseModel):
         description="Default tool access for all agents",
     )
 
+    @model_validator(mode="after")
+    def _validate_strings(self) -> CompanyConfig:
+        """Ensure no whitespace-only identifiers or tool access entries."""
+        if not self.communication_pattern.strip():
+            msg = "communication_pattern must not be whitespace-only"
+            raise ValueError(msg)
+        for tool in self.tool_access_default:
+            if not tool.strip():
+                msg = "Empty or whitespace-only entry in tool_access_default"
+                raise ValueError(msg)
+        return self
+
 
 class HRRegistry(BaseModel):
     """Human resources registry for the company.
@@ -128,11 +166,16 @@ class HRRegistry(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_no_duplicate_agents(self) -> HRRegistry:
-        """Ensure no duplicate entries in active_agents."""
+    def _validate_entries(self) -> HRRegistry:
+        """Ensure no empty strings and no duplicate entries in active_agents."""
+        for field_name in ("active_agents", "available_roles", "hiring_queue"):
+            for value in getattr(self, field_name):
+                if not value.strip():
+                    msg = f"Empty or whitespace-only entry in {field_name}"
+                    raise ValueError(msg)
         agents = self.active_agents
         if len(agents) != len(set(agents)):
-            dupes = sorted({a for a in agents if agents.count(a) > 1})
+            dupes = sorted(a for a, c in Counter(agents).items() if c > 1)
             msg = f"Duplicate entries in active_agents: {dupes}"
             raise ValueError(msg)
         return self
@@ -141,8 +184,9 @@ class HRRegistry(BaseModel):
 class Company(BaseModel):
     """Top-level company entity.
 
-    Validates that department budget allocations do not exceed 100%.
-    The sum may be less than 100% to allow for an unallocated reserve.
+    Validates that department names are unique and that budget allocations
+    do not exceed 100%. The sum may be less than 100% to allow for an
+    unallocated reserve.
 
     Attributes:
         id: Company identifier.
@@ -175,19 +219,27 @@ class Company(BaseModel):
     )
 
     @model_validator(mode="after")
+    def _validate_non_blank_name(self) -> Company:
+        """Ensure company name is not whitespace-only."""
+        if not self.name.strip():
+            msg = "name must not be whitespace-only"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _validate_departments(self) -> Company:
         """Validate department names are unique and budgets do not exceed 100%."""
         # Unique department names
         names = [d.name for d in self.departments]
         if len(names) != len(set(names)):
-            dupes = sorted({n for n in names if names.count(n) > 1})
+            dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate department names: {dupes}"
             raise ValueError(msg)
 
-        # Budget sum (round to 10 decimals to avoid float artifacts)
+        # Budget sum
         max_budget_percent = 100.0
         total = sum(d.budget_percent for d in self.departments)
-        if round(total, 10) > max_budget_percent:
+        if round(total, _BUDGET_ROUNDING_PRECISION) > max_budget_percent:
             msg = (
                 f"Department budget allocations sum to {total:.2f}%, "
                 f"exceeding {max_budget_percent:.0f}%"

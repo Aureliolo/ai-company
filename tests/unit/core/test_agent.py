@@ -60,6 +60,14 @@ class TestPersonalityConfig:
         with pytest.raises(ValidationError):
             PersonalityConfig(communication_style="")
 
+    def test_empty_trait_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            PersonalityConfig(traits=("analytical", ""))
+
+    def test_whitespace_trait_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            PersonalityConfig(traits=("  ",))
+
     def test_frozen(self) -> None:
         p = PersonalityConfig()
         with pytest.raises(ValidationError):
@@ -94,6 +102,14 @@ class TestSkillSet:
 
     def test_whitespace_skill_name_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            SkillSet(secondary=("  ",))
+
+    def test_empty_primary_error_mentions_primary(self) -> None:
+        with pytest.raises(ValidationError, match="primary"):
+            SkillSet(primary=("python", ""))
+
+    def test_empty_secondary_error_mentions_secondary(self) -> None:
+        with pytest.raises(ValidationError, match="secondary"):
             SkillSet(secondary=("  ",))
 
     def test_frozen(self) -> None:
@@ -158,6 +174,18 @@ class TestModelConfig:
     def test_max_tokens_negative_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ModelConfig(provider="test", model_id="m", max_tokens=-1)
+
+    def test_whitespace_provider_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            ModelConfig(provider="   ", model_id="test")
+
+    def test_whitespace_model_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            ModelConfig(provider="test", model_id="   ")
+
+    def test_whitespace_fallback_model_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            ModelConfig(provider="test", model_id="m", fallback_model="   ")
 
     def test_frozen(self, sample_model_config: ModelConfig) -> None:
         with pytest.raises(ValidationError):
@@ -234,6 +262,24 @@ class TestToolPermissions:
                 allowed=("git", "file_system"),
                 denied=("git",),
             )
+
+    def test_multiple_overlapping_tools_all_reported(self) -> None:
+        with pytest.raises(ValidationError) as exc_info:
+            ToolPermissions(
+                allowed=("git", "deploy", "shell"),
+                denied=("git", "deploy"),
+            )
+        error_text = str(exc_info.value)
+        assert "deploy" in error_text
+        assert "git" in error_text
+
+    def test_empty_tool_name_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            ToolPermissions(allowed=("git", ""))
+
+    def test_whitespace_tool_name_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            ToolPermissions(denied=("  ",))
 
     def test_frozen(self) -> None:
         t = ToolPermissions()
@@ -331,6 +377,38 @@ class TestAgentIdentity:
                 hiring_date=date(2026, 1, 1),
             )
 
+    def test_whitespace_name_rejected(self, sample_model_config: ModelConfig) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            AgentIdentity(
+                name="   ",
+                role="Dev",
+                department="Eng",
+                model=sample_model_config,
+                hiring_date=date(2026, 1, 1),
+            )
+
+    def test_whitespace_role_rejected(self, sample_model_config: ModelConfig) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            AgentIdentity(
+                name="Test",
+                role="   ",
+                department="Eng",
+                model=sample_model_config,
+                hiring_date=date(2026, 1, 1),
+            )
+
+    def test_whitespace_department_rejected(
+        self, sample_model_config: ModelConfig
+    ) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            AgentIdentity(
+                name="Test",
+                role="Dev",
+                department="   ",
+                model=sample_model_config,
+                hiring_date=date(2026, 1, 1),
+            )
+
     def test_frozen(self, sample_agent: AgentIdentity) -> None:
         with pytest.raises(ValidationError):
             sample_agent.name = "Changed"  # type: ignore[misc]
@@ -348,6 +426,39 @@ class TestAgentIdentity:
         assert restored.name == sample_agent.name
         assert restored.id == sample_agent.id
         assert restored.model.provider == sample_agent.model.provider
+
+    def test_json_roundtrip_with_full_nested_data(
+        self, sample_model_config: ModelConfig
+    ) -> None:
+        agent = AgentIdentity(
+            name="Full Agent",
+            role="Lead Dev",
+            department="Engineering",
+            level=SeniorityLevel.LEAD,
+            personality=PersonalityConfig(
+                traits=("analytical", "pragmatic"),
+                communication_style="direct",
+                risk_tolerance=RiskTolerance.HIGH,
+            ),
+            skills=SkillSet(
+                primary=("python", "architecture"),
+                secondary=("docker",),
+            ),
+            model=sample_model_config,
+            memory=MemoryConfig(type=MemoryType.PERSISTENT, retention_days=90),
+            tools=ToolPermissions(allowed=("git",), denied=("deploy",)),
+            authority=Authority(
+                can_approve=("code_review",),
+                reports_to="cto",
+                can_delegate_to=("junior_dev",),
+                budget_limit=50.0,
+            ),
+            hiring_date=date(2026, 1, 15),
+            status=AgentStatus.ACTIVE,
+        )
+        json_str = agent.model_dump_json()
+        restored = AgentIdentity.model_validate_json(json_str)
+        assert restored == agent
 
     def test_factory(self) -> None:
         agent = AgentIdentityFactory.build()

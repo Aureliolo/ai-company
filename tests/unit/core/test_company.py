@@ -47,6 +47,22 @@ class TestTeam:
         with pytest.raises(ValidationError):
             Team(name="test", lead="")
 
+    def test_whitespace_name_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Team(name="   ", lead="lead")
+
+    def test_whitespace_lead_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Team(name="test", lead="   ")
+
+    def test_empty_member_name_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            Team(name="test", lead="lead", members=("dev", ""))
+
+    def test_whitespace_member_name_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            Team(name="test", lead="lead", members=("  ",))
+
     def test_frozen(self) -> None:
         team = Team(name="test", lead="lead")
         with pytest.raises(ValidationError):
@@ -88,6 +104,18 @@ class TestDepartment:
     def test_budget_percent_over_hundred_rejected(self) -> None:
         with pytest.raises(ValidationError):
             Department(name="Test", head="head", budget_percent=100.1)
+
+    def test_multiple_distinct_teams_accepted(self) -> None:
+        dept = Department(
+            name="Engineering",
+            head="cto",
+            teams=(
+                Team(name="backend", lead="a"),
+                Team(name="frontend", lead="b"),
+                Team(name="infra", lead="c"),
+            ),
+        )
+        assert len(dept.teams) == 3
 
     def test_duplicate_team_names_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Duplicate team names"):
@@ -144,6 +172,14 @@ class TestCompanyConfig:
         with pytest.raises(ValidationError):
             CompanyConfig(communication_pattern="")
 
+    def test_whitespace_communication_pattern_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            CompanyConfig(communication_pattern="   ")
+
+    def test_empty_tool_access_entry_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            CompanyConfig(tool_access_default=("git", ""))
+
     def test_frozen(self) -> None:
         cfg = CompanyConfig()
         with pytest.raises(ValidationError):
@@ -177,6 +213,28 @@ class TestHRRegistry:
     def test_duplicate_active_agents_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Duplicate entries"):
             HRRegistry(active_agents=("alice", "alice"))
+
+    def test_empty_active_agent_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            HRRegistry(active_agents=("",))
+
+    def test_empty_available_role_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            HRRegistry(available_roles=("  ",))
+
+    def test_empty_hiring_queue_entry_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            HRRegistry(hiring_queue=("",))
+
+    def test_duplicate_available_roles_accepted(self) -> None:
+        """Duplicates are intentionally allowed in available_roles."""
+        hr = HRRegistry(available_roles=("dev", "dev"))
+        assert hr.available_roles == ("dev", "dev")
+
+    def test_duplicate_hiring_queue_accepted(self) -> None:
+        """Duplicates are intentionally allowed in hiring_queue."""
+        hr = HRRegistry(hiring_queue=("pm", "pm"))
+        assert hr.hiring_queue == ("pm", "pm")
 
     def test_frozen(self) -> None:
         hr = HRRegistry()
@@ -236,6 +294,17 @@ class TestCompany:
         )
         with pytest.raises(ValidationError, match="exceeding 100%"):
             Company(name="Just Over", departments=depts)
+
+    def test_budget_sum_float_precision_accepted(self) -> None:
+        """Classic float artifacts (e.g. 33.33+33.33+33.34) should not cause
+        false rejections thanks to rounding."""
+        depts = (
+            Department(name="A", head="a", budget_percent=33.33),
+            Department(name="B", head="b", budget_percent=33.33),
+            Department(name="C", head="c", budget_percent=33.34),
+        )
+        co = Company(name="Float Precision", departments=depts)
+        assert len(co.departments) == 3
 
     def test_duplicate_department_names_rejected(self) -> None:
         depts = (

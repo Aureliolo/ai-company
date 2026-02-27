@@ -73,10 +73,14 @@ class MemoryConfigFactory(ModelFactory):
 
 class ToolPermissionsFactory(ModelFactory):
     __model__ = ToolPermissions
+    allowed = ()
+    denied = ()
 
 
 class AgentIdentityFactory(ModelFactory):
     __model__ = AgentIdentity
+    memory = MemoryConfigFactory
+    tools = ToolPermissionsFactory
 
 
 class TeamFactory(ModelFactory):

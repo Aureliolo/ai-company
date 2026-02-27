@@ -77,6 +77,14 @@ class TestAuthority:
         with pytest.raises(ValidationError):
             Authority(reports_to="")
 
+    def test_empty_can_approve_entry_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            Authority(can_approve=("code_review", ""))
+
+    def test_whitespace_can_delegate_to_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            Authority(can_delegate_to=("  ",))
+
     def test_frozen(self, sample_authority: Authority) -> None:
         with pytest.raises(ValidationError):
             sample_authority.budget_limit = 10.0  # type: ignore[misc]
@@ -180,6 +188,22 @@ class TestRole:
         with pytest.raises(ValidationError):
             Role(name="Test", department="not_a_department")  # type: ignore[arg-type]
 
+    def test_empty_required_skill_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            Role(
+                name="Dev",
+                department=DepartmentName.ENGINEERING,
+                required_skills=("python", ""),
+            )
+
+    def test_whitespace_tool_access_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            Role(
+                name="Dev",
+                department=DepartmentName.ENGINEERING,
+                tool_access=("  ",),
+            )
+
     def test_frozen(self, sample_role: Role) -> None:
         with pytest.raises(ValidationError):
             sample_role.name = "Frontend Developer"  # type: ignore[misc]
@@ -239,6 +263,22 @@ class TestCustomRole:
         with pytest.raises(ValidationError):
             role.name = "Changed"  # type: ignore[misc]
 
+    def test_standard_department_as_plain_string(self) -> None:
+        role = CustomRole(name="Test", department="engineering")
+        assert role.department == "engineering"
+
+    def test_whitespace_department_normalized(self) -> None:
+        role = CustomRole(name="Test", department="  blockchain  ")
+        assert role.department == "blockchain"
+
+    def test_empty_required_skill_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Empty or whitespace-only"):
+            CustomRole(
+                name="Dev",
+                department="custom",
+                required_skills=("solidity", ""),
+            )
+
     def test_json_roundtrip(self) -> None:
         role = CustomRole(
             name="Custom Dev",
@@ -248,9 +288,7 @@ class TestCustomRole:
         )
         json_str = role.model_dump_json()
         restored = CustomRole.model_validate_json(json_str)
-        assert restored.name == role.name
-        assert restored.department == role.department
-        assert restored.required_skills == role.required_skills
+        assert restored == role
 
     def test_factory_creates_valid_custom_role(self) -> None:
         role = CustomRoleFactory.build()

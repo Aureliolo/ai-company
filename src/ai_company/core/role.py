@@ -1,6 +1,6 @@
 """Role and skill domain models."""
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ai_company.core.enums import (
     DepartmentName,
@@ -59,6 +59,16 @@ class Authority(BaseModel):
         ge=0.0,
         description="Maximum USD per task",
     )
+
+    @model_validator(mode="after")
+    def _validate_no_empty_strings(self) -> Authority:
+        """Ensure no empty or whitespace-only entries in string tuples."""
+        for field_name in ("can_approve", "can_delegate_to"):
+            for value in getattr(self, field_name):
+                if not value.strip():
+                    msg = f"Empty or whitespace-only entry in {field_name}"
+                    raise ValueError(msg)
+        return self
 
 
 class SeniorityInfo(BaseModel):
@@ -128,6 +138,16 @@ class Role(BaseModel):
         description="Human-readable description",
     )
 
+    @model_validator(mode="after")
+    def _validate_no_empty_strings(self) -> Role:
+        """Ensure no empty or whitespace-only entries in string tuples."""
+        for field_name in ("required_skills", "tool_access"):
+            for value in getattr(self, field_name):
+                if not value.strip():
+                    msg = f"Empty or whitespace-only entry in {field_name}"
+                    raise ValueError(msg)
+        return self
+
 
 class CustomRole(BaseModel):
     """User-defined custom role via configuration.
@@ -171,8 +191,20 @@ class CustomRole(BaseModel):
     @field_validator("department")
     @classmethod
     def _department_not_empty(cls, v: DepartmentName | str) -> DepartmentName | str:
-        """Ensure department is not an empty string."""
-        if isinstance(v, str) and not v.strip():
+        """Ensure department is not empty and normalize whitespace."""
+        if isinstance(v, DepartmentName):
+            return v
+        stripped = v.strip()
+        if not stripped:
             msg = "Department name must not be empty"
             raise ValueError(msg)
-        return v
+        return stripped
+
+    @model_validator(mode="after")
+    def _validate_no_empty_required_skills(self) -> CustomRole:
+        """Ensure no empty or whitespace-only entries in required_skills."""
+        for value in self.required_skills:
+            if not value.strip():
+                msg = "Empty or whitespace-only entry in required_skills"
+                raise ValueError(msg)
+        return self

@@ -1,7 +1,7 @@
 """Built-in role catalog and seniority information.
 
-Provides the canonical set of roles and seniority mappings derived from
-the design specification (DESIGN_SPEC.md sections 3.2 and 3.3).
+Provides the canonical set of built-in roles from DESIGN_SPEC.md section 3.3
+and the seniority mapping from section 3.2.
 """
 
 from ai_company.core.enums import (
@@ -388,7 +388,10 @@ BUILTIN_ROLES: tuple[Role, ...] = (
 
 # ── Lookup Maps (built once at import time) ──────────────────────
 
-_BUILTIN_ROLES_BY_NAME: dict[str, Role] = {r.name.lower(): r for r in BUILTIN_ROLES}
+_BUILTIN_ROLES_BY_NAME: dict[str, Role] = {r.name.casefold(): r for r in BUILTIN_ROLES}
+if len(_BUILTIN_ROLES_BY_NAME) != len(BUILTIN_ROLES):
+    _msg = "Duplicate built-in role names after case-normalization"
+    raise ValueError(_msg)
 
 _SENIORITY_INFO_BY_LEVEL: dict[SeniorityLevel, SeniorityInfo] = {
     info.level: info for info in SENIORITY_INFO
@@ -396,7 +399,7 @@ _SENIORITY_INFO_BY_LEVEL: dict[SeniorityLevel, SeniorityInfo] = {
 
 
 def get_builtin_role(name: str) -> Role | None:
-    """Look up a built-in role by name (case-insensitive).
+    """Look up a built-in role by name (case-insensitive, whitespace-stripped).
 
     Args:
         name: Role name to search for.
@@ -404,18 +407,23 @@ def get_builtin_role(name: str) -> Role | None:
     Returns:
         The matching Role, or ``None`` if not found.
     """
-    return _BUILTIN_ROLES_BY_NAME.get(name.lower())
+    return _BUILTIN_ROLES_BY_NAME.get(name.strip().casefold())
 
 
-def get_seniority_info(level: SeniorityLevel) -> SeniorityInfo | None:
+def get_seniority_info(level: SeniorityLevel) -> SeniorityInfo:
     """Look up seniority info by level.
 
     Args:
         level: The seniority level to look up.
 
     Returns:
-        The matching SeniorityInfo, or ``None`` if not found.
-        Returns ``None`` only if the catalog is incomplete (all standard
-        levels are covered by default).
+        The matching SeniorityInfo.
+
+    Raises:
+        LookupError: If no entry exists for the given level.
     """
-    return _SENIORITY_INFO_BY_LEVEL.get(level)
+    info = _SENIORITY_INFO_BY_LEVEL.get(level)
+    if info is None:
+        msg = f"No seniority info for level {level!r}; catalog may be incomplete"
+        raise LookupError(msg)
+    return info

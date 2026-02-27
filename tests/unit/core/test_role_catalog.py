@@ -40,17 +40,14 @@ class TestSeniorityInfo:
 
     def test_junior_is_low_cost(self) -> None:
         info = get_seniority_info(SeniorityLevel.JUNIOR)
-        assert info is not None
         assert info.cost_tier == CostTier.LOW
 
     def test_c_suite_is_premium_cost(self) -> None:
         info = get_seniority_info(SeniorityLevel.C_SUITE)
-        assert info is not None
         assert info.cost_tier == CostTier.PREMIUM
 
     def test_senior_uses_sonnet_tier(self) -> None:
         info = get_seniority_info(SeniorityLevel.SENIOR)
-        assert info is not None
         assert info.typical_model_tier == "sonnet"
 
     def test_all_entries_frozen(self) -> None:
@@ -131,6 +128,14 @@ class TestGetBuiltinRole:
     def test_empty_string_returns_none(self) -> None:
         assert get_builtin_role("") is None
 
+    def test_whitespace_stripped(self) -> None:
+        role = get_builtin_role("  CEO  ")
+        assert role is not None
+        assert role.name == "CEO"
+
+    def test_whitespace_only_returns_none(self) -> None:
+        assert get_builtin_role("   ") is None
+
     @pytest.mark.parametrize(
         "name",
         [
@@ -177,19 +182,20 @@ class TestGetBuiltinRole:
 class TestGetSeniorityInfo:
     def test_found(self) -> None:
         info = get_seniority_info(SeniorityLevel.SENIOR)
-        assert info is not None
         assert info.level is SeniorityLevel.SENIOR
 
     @pytest.mark.parametrize("level", list(SeniorityLevel))
     def test_all_levels_lookupable(self, level: SeniorityLevel) -> None:
         info = get_seniority_info(level)
-        assert info is not None
         assert info.level is level
 
-    def test_returns_none_for_missing_level(self) -> None:
-        with patch.dict(
-            "ai_company.core.role_catalog._SENIORITY_INFO_BY_LEVEL",
-            {},
-            clear=True,
+    def test_raises_lookup_error_for_missing_level(self) -> None:
+        with (
+            patch.dict(
+                "ai_company.core.role_catalog._SENIORITY_INFO_BY_LEVEL",
+                {},
+                clear=True,
+            ),
+            pytest.raises(LookupError, match="catalog may be incomplete"),
         ):
-            assert get_seniority_info(SeniorityLevel.JUNIOR) is None
+            get_seniority_info(SeniorityLevel.JUNIOR)
