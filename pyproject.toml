@@ -102,7 +102,7 @@ convention = "google"
     "PLR2004", # magic values in tests
     "SLF001", # private member access in tests
 ]
-"__init__.py" = ["D104"]
+"__init__.py" = ["F401", "F403"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["ai_company"]

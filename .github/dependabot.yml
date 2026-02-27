@@ -22,7 +22,9 @@ updates:
       time: "06:00"
       timezone: Etc/UTC
     groups:
-      all:
-        update-types: [major, minor, patch]
+      minor-and-patch:
+        update-types: [minor, patch]
+    reviewers:
+      - Aureliolo
     labels:
       - type:ci
