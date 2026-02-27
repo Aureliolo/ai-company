@@ -1,0 +1,30 @@
+version: 2
+
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: daily
+      time: "06:00"
+      timezone: Etc/UTC
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    reviewers:
+      - Aureliolo
+    labels:
+      - type:chore
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+      time: "06:00"
+      timezone: Etc/UTC
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    reviewers:
+      - Aureliolo
+    labels:
+      - type:ci

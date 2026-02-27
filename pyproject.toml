@@ -23,3 +23,121 @@ path = "src/ai_company/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ai_company"]
+
+[dependency-groups]
+dev = [
+    "commitizen>=4.13.9",
+    "mypy>=1.19.1",
+    "pre-commit>=4.5.1",
+    "pre-commit-uv>=4.2.1",
+    "pydantic>=2.12.5",
+    "ruff>=0.15.4",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff — linter + formatter (replaces flake8, isort, pyupgrade, etc.)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "F",      # pyflakes
+    "E", "W", # pycodestyle
+    "C90",    # mccabe complexity
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "A",      # flake8-builtins
+    "C4",     # flake8-comprehensions
+    "DTZ",    # flake8-datetimez
+    "T10",    # flake8-debugger
+    "EM",     # flake8-errmsg
+    "ISC",    # flake8-implicit-str-concat
+    "ICN",    # flake8-import-conventions
+    "LOG",    # flake8-logging
+    "PIE",    # flake8-pie
+    "T20",    # flake8-print
+    "PT",     # flake8-pytest-style
+    "Q",      # flake8-quotes
+    "RSE",    # flake8-raise
+    "RET",    # flake8-return
+    "SLF",    # flake8-self
+    "SIM",    # flake8-simplify
+    "TID",    # flake8-tidy-imports
+    "TCH",    # flake8-type-checking
+    "ARG",    # flake8-unused-arguments
+    "PTH",    # flake8-use-pathlib
+    "PERF",   # perflint
+    "FURB",   # refurb
+    "RUF",    # ruff-specific rules
+    "S",      # flake8-bandit (security)
+    "FAST",   # fastapi
+    "ASYNC",  # flake8-async
+    "FBT",    # flake8-boolean-trap
+    "PL",     # pylint
+    "TRY",    # tryceratops
+    "FLY",    # flynt
+    "D",      # pydocstyle
+]
+ignore = [
+    "D100",   # missing docstring in public module
+    "D104",   # missing docstring in public package
+    "D107",   # missing docstring in __init__
+    "ISC001", # conflicts with ruff formatter
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",   # assert allowed in tests
+    "ARG",    # unused arguments (fixtures)
+    "FBT",    # boolean trap (parametrize)
+    "D",      # no docstrings required in tests
+    "PLR2004", # magic values in tests
+    "SLF001", # private member access in tests
+]
+"__init__.py" = ["F401", "F403"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ai_company"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# ---------------------------------------------------------------------------
+# mypy — static type checker (strict mode)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# ---------------------------------------------------------------------------
+# pyright — IDE type checking only (not used in CI)
+# ---------------------------------------------------------------------------
+[tool.pyright]
+pythonVersion = "3.14"
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"
+
+# ---------------------------------------------------------------------------
+# commitizen — conventional commits
+# ---------------------------------------------------------------------------
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+version_files = ["src/ai_company/__init__.py:__version__"]
+tag_format = "v$version"
