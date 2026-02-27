@@ -4,6 +4,12 @@ import re
 
 import pytest
 
+SEMVER_PATTERN = re.compile(
+    r"^\d+\.\d+\.\d+"
+    r"(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?"
+    r"(\+[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$"
+)
+
 
 @pytest.mark.unit
 def test_package_importable() -> None:
@@ -15,16 +21,17 @@ def test_package_importable() -> None:
 
 @pytest.mark.unit
 def test_version_format() -> None:
-    """Verify version string follows semver format."""
+    """Verify version string matches MAJOR.MINOR.PATCH format."""
     from ai_company import __version__
 
-    pattern = r"^\d+\.\d+\.\d+([a-zA-Z0-9.+-]+)?$"
-    assert re.match(pattern, __version__), f"Version {__version__!r} is not semver"
+    assert SEMVER_PATTERN.match(__version__), (
+        f"Version {__version__!r} is not valid semver"
+    )
 
 
 @pytest.mark.unit
 def test_markers_registered(pytestconfig: pytest.Config) -> None:
-    """Verify custom markers are registered (strict-markers won't fail)."""
+    """Verify custom markers are registered in pyproject.toml."""
     raw_markers: list[str] = pytestconfig.getini("markers")  # type: ignore[assignment]
     marker_names = {m.split(":")[0].strip() for m in raw_markers}
     expected = {"unit", "integration", "e2e", "slow"}

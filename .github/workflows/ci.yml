@@ -51,7 +51,9 @@ jobs:
           uv run pytest tests/ \
             -n auto \
             --cov=ai_company \
+            --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
+            --cov-fail-under=80 \
             --junitxml=junit.xml
 
       - name: Upload coverage
