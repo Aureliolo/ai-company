@@ -73,7 +73,7 @@ Build a **configurable AI company framework** where AI agents operate within a v
 
 ### 2.2 Entity Relationships
 
-```
+```text
 Company
   ├── Departments[]
   │     ├── Department Head (Agent)
@@ -176,6 +176,7 @@ agent:
 ### 3.3 Role Catalog (Extensible)
 
 #### C-Suite / Executive
+
 - **CEO** - Overall strategy, final decision authority, cross-department coordination
 - **CTO** - Technical vision, architecture decisions, technology choices
 - **CFO** - Budget management, cost optimization, resource allocation
@@ -183,6 +184,7 @@ agent:
 - **CPO** - Product strategy, roadmap, feature prioritization
 
 #### Product & Design
+
 - **Product Manager** - Requirements, user stories, prioritization, stakeholder communication
 - **UX Designer** - User research, wireframes, user flows, usability
 - **UI Designer** - Visual design, component design, design systems
@@ -190,6 +192,7 @@ agent:
 - **Technical Writer** - Documentation, API docs, user guides
 
 #### Engineering
+
 - **Software Architect** - System design, technology decisions, patterns
 - **Frontend Developer** (Junior/Mid/Senior) - UI implementation, components, state management
 - **Backend Developer** (Junior/Mid/Senior) - APIs, business logic, databases
@@ -199,23 +202,27 @@ agent:
 - **Security Engineer** - Security audits, vulnerability assessment, secure coding
 
 #### Quality Assurance
+
 - **QA Lead** - Test strategy, quality gates, release readiness
 - **QA Engineer** - Test plans, manual testing, bug reporting
 - **Automation Engineer** - Test frameworks, CI integration, E2E tests
 - **Performance Engineer** - Load testing, profiling, optimization
 
 #### Data & Analytics
+
 - **Data Analyst** - Metrics, dashboards, business intelligence
 - **Data Engineer** - Pipelines, ETL, data infrastructure
 - **ML Engineer** - Model training, inference, MLOps
 
 #### Operations & Support
+
 - **Project Manager** - Timelines, dependencies, risk management, status tracking
 - **Scrum Master** - Agile ceremonies, impediment removal, team health
 - **HR Manager** - Hiring recommendations, team composition, performance tracking
 - **Security Operations** - Request validation, safety checks, approval workflows
 
 #### Creative & Marketing
+
 - **Content Writer** - Blog posts, marketing copy, social media
 - **Brand Strategist** - Messaging, positioning, competitive analysis
 - **Growth Marketer** - Campaigns, analytics, conversion optimization
@@ -253,7 +260,7 @@ custom_roles:
 
 ### 4.2 Organizational Hierarchy
 
-```
+```text
                         ┌─────────┐
                         │   CEO   │
                         └────┬────┘
@@ -329,7 +336,7 @@ The system supports multiple communication patterns, configurable per company:
 
 #### Pattern 1: Event-Driven Message Bus (Recommended Default)
 
-```
+```text
 ┌──────────┐     ┌─────────────────┐     ┌──────────┐
 │  Agent A  │────▶│   Message Bus    │◀────│  Agent B  │
 └──────────┘     │  (Topics/Queues) │     └──────────┘
@@ -349,7 +356,7 @@ The system supports multiple communication patterns, configurable per company:
 
 #### Pattern 2: Hierarchical Delegation
 
-```
+```text
 CEO ──▶ CTO ──▶ Eng Lead ──▶ Sr Dev ──▶ Jr Dev
                     │
                     └──▶ QA Lead ──▶ QA Eng
@@ -362,7 +369,7 @@ CEO ──▶ CTO ──▶ Eng Lead ──▶ Sr Dev ──▶ Jr Dev
 
 #### Pattern 3: Meeting-Based
 
-```
+```text
 ┌─────────────────────────────────┐
 │        Sprint Planning          │
 │  PM + CTO + Devs + QA + Design │
@@ -489,7 +496,7 @@ When a loop is detected, the framework:
 
 ### 6.1 Task Lifecycle
 
-```
+```text
                  ┌──────────┐
                  │ CREATED   │
                  └─────┬─────┘
@@ -599,7 +606,7 @@ Tasks can be assigned through multiple strategies:
 
 ### 7.1 Memory Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────┐
 │              Agent Memory System             │
 ├──────────┬──────────┬───────────┬───────────┤
@@ -630,7 +637,7 @@ Tasks can be assigned through multiple strategies:
 ```yaml
 memory:
   level: "full"                 # none, session, project, full
-  backend: "sqlite"             # sqlite, postgresql, mem0, file
+  backend: "sqlite"             # sqlite, postgresql, file (Mem0 is a memory layer on top, not a backend itself — see 15.2)
   options:
     retention_days: null         # null = forever
     max_memories_per_agent: 10000
@@ -690,7 +697,7 @@ Agents can move between seniority levels based on performance:
 
 ### 9.1 Provider Abstraction
 
-```
+```text
 ┌─────────────────────────────────────────────┐
 │            Unified Model Interface            │
 │   completion(messages, tools, config) → resp  │
@@ -767,13 +774,13 @@ Use **LiteLLM** as the provider abstraction layer:
 routing:
   strategy: "smart"              # smart, cheapest, fastest, manual
   rules:
-    - role_level: "c_suite"
+    - role_level: "C-Suite"
       preferred_model: "opus"
       fallback: "sonnet"
-    - role_level: "senior"
+    - role_level: "Senior"
       preferred_model: "sonnet"
       fallback: "haiku"
-    - role_level: "junior"
+    - role_level: "Junior"
       preferred_model: "haiku"
       fallback: "local-small"
     - task_type: "code_review"
@@ -944,7 +951,7 @@ trust:
 
 ### 12.1 Approval Workflow
 
-```
+```text
                     ┌──────────────┐
                     │  Task/Action  │
                     └──────┬───────┘
@@ -1017,7 +1024,7 @@ A special meta-agent that reviews all actions before execution:
 
 ### 13.1 Architecture: API-First
 
-```
+```text
 ┌─────────────────────────────────────────────┐
 │               AI Company Engine              │
 │  (Core Logic, Agent Orchestration, Tasks)    │
@@ -1036,7 +1043,7 @@ A special meta-agent that reviews all actions before execution:
 
 ### 13.2 API Surface
 
-```
+```text
 /api/v1/
   ├── /company          # CRUD company config
   ├── /agents           # List, hire, fire, modify agents
@@ -1130,7 +1137,7 @@ template:
 
 Interactive CLI/web wizard for creating custom companies:
 
-```
+```bash
 $ ai-company create
 
 ? Company name: Acme Corp
@@ -1177,7 +1184,7 @@ Run: ai-company start acme-corp
 
 ### 15.1 High-Level Architecture
 
-```
+```text
 ┌──────────────────────────────────────────────────────────────┐
 │                        AI Company Engine                      │
 │                                                               │
@@ -1235,7 +1242,7 @@ Run: ai-company start acme-corp
 
 ### 15.3 Project Structure (Proposed)
 
-```
+```text
 ai-company/
 ├── src/
 │   └── ai_company/
@@ -1484,7 +1491,7 @@ What we **plan to leverage** (not fork) — subject to evaluation:
 
 ### 18.2 Scaling Path
 
-```
+```text
 Phase 1: Local Single-Process
   └── Async runtime, embedded DB, in-memory bus, 1-10 agents
 
