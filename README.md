@@ -25,7 +25,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ## Tech Stack
 
-- **Python 3.14+** with FastAPI, Pydantic, Typer
+- **Python 3.14+** with FastAPI, Pydantic, Typer (planned)
 - **uv** as package manager, **Hatchling** as build backend
 - **LiteLLM** for multi-provider LLM abstraction (planned)
 - **Mem0** for agent memory (planned)
