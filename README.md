@@ -1,5 +1,7 @@
 # AI Company
 
+[![CI](https://github.com/Aureliolo/ai-company/actions/workflows/ci.yml/badge.svg)](https://github.com/Aureliolo/ai-company/actions/workflows/ci.yml)
+
 A framework for orchestrating autonomous AI agents as employees within a virtual company structure.
 
 ## Concept
