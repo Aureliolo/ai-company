@@ -12,7 +12,9 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Typing :: Typed",
 ]
-dependencies = []
+dependencies = [
+    "pydantic==2.12.5",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -40,7 +42,6 @@ dev = [
     "mypy==1.19.1",
     "pre-commit==4.5.1",
     "pre-commit-uv==4.2.1",
-    "pydantic==2.12.5",
     "ruff==0.15.4",
     {include-group = "test"},
 ]
