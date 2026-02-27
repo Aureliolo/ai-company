@@ -119,6 +119,9 @@ convention = "google"
 [tool.ruff.lint.isort]
 known-first-party = ["ai_company"]
 
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"__future__.annotations".msg = "Python 3.14+ has native lazy annotations (PEP 649). Do not use `from __future__ import annotations`."
+
 [tool.ruff.format]
 docstring-code-format = true
 
