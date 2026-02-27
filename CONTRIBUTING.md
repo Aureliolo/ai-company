@@ -14,7 +14,7 @@ For the full setup walkthrough (prerequisites, IDE config, etc.), see [docs/gett
 
 Branch from `main`. Use the naming convention:
 
-```
+```text
 <type>/<slug>
 ```
 
@@ -35,7 +35,7 @@ Types match commit types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `p
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) enforced by commitizen.
 
-```
+```text
 <type>: <description>
 
 <optional body>
@@ -56,7 +56,7 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) e
 
 ### Examples
 
-```
+```text
 feat: add YAML config loader with schema validation
 fix: prevent division by zero in budget calculator
 test: add integration tests for message bus
@@ -125,7 +125,7 @@ Code conventions (type hints, docstrings, immutability, line length, etc.) are d
 
 ## Project Structure
 
-```
+```text
 src/ai_company/       # Main package
   api/  budget/  cli/  communication/  config/  core/
   engine/  memory/  providers/  security/  templates/  tools/

@@ -97,7 +97,7 @@ uv run ruff format src/ tests/
 
 ## Project Layout
 
-```
+```text
 ai-company/
   src/ai_company/       # Main package (src layout)
     api/                # FastAPI REST + WebSocket routes
@@ -133,9 +133,11 @@ Recommended extensions:
 - **Ruff** (`charliermarsh.ruff`) — linting and formatting
 - **Pylance** (`ms-python.vscode-pylance`) — type checking and IntelliSense
 
+Both Pylance (pyright) and mypy are configured in strict mode. They complement each other: Pylance provides real-time IDE feedback while mypy runs in CI as the authoritative check.
+
 Set the Python interpreter to the project virtual environment:
 
-```
+```text
 .venv/Scripts/python    # Windows
 .venv/bin/python        # macOS / Linux
 ```

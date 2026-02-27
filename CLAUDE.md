@@ -19,12 +19,12 @@ uv run mypy src/                           # type-check (strict)
 uv run pytest tests/ -m unit               # unit tests only
 uv run pytest tests/ -m integration        # integration tests only
 uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite + coverage
-pre-commit run --all-files                 # all pre-commit hooks
+uv run pre-commit run --all-files          # all pre-commit hooks
 ```
 
 ## Package Structure
 
-```
+```text
 src/ai_company/
   api/            # FastAPI REST + WebSocket routes
   budget/         # Per-agent cost tracking and spending controls
@@ -69,9 +69,9 @@ src/ai_company/
 
 ## CI
 
-- **Jobs**: lint (ruff) → type-check (mypy) → test (pytest + coverage) → ci-pass (gate)
+- **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) run in parallel → ci-pass (gate)
 - **Matrix**: Python 3.14
-- **Dependabot**: weekly pip + github-actions updates, auto-merge for patch/minor
+- **Dependabot**: daily uv + github-actions updates, auto-merge for patch/minor
 
 ## Dependencies
 
