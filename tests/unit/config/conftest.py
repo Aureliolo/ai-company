@@ -112,10 +112,6 @@ ENV_VAR_SIMPLE_YAML = """\
 company_name: ${COMPANY_NAME}
 """
 
-ENV_VAR_DEFAULT_YAML = """\
-company_name: ${COMPANY_NAME:-Fallback Corp}
-"""
-
 ENV_VAR_NESTED_YAML = """\
 company_name: ${COMPANY_NAME}
 budget:

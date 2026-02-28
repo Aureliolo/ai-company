@@ -274,6 +274,63 @@ def _validate_config_dict(
         ) from exc
 
 
+def _resolve_env_var_match(
+    match: re.Match[str],
+    *,
+    source_file: str | None,
+) -> str:
+    """Resolve a single ``${VAR}`` or ``${VAR:-default}`` match.
+
+    Args:
+        match: Regex match from :data:`_ENV_VAR_PATTERN`.
+        source_file: File path label for error messages.
+
+    Returns:
+        Resolved environment variable value or default.
+
+    Raises:
+        ConfigValidationError: If the env var is not set and no
+            default is provided.
+    """
+    var_name = match.group(1)
+    default = match.group(2)
+    value = os.environ.get(var_name)
+    if value is not None:
+        return value
+    if default is not None:
+        return default
+    msg = f"Environment variable '{var_name}' is not set and no default was provided"
+    raise ConfigValidationError(
+        msg,
+        locations=(ConfigLocation(file_path=source_file),),
+    )
+
+
+def _walk_substitute(node: Any, *, source_file: str | None) -> Any:
+    """Recursively substitute env var placeholders in a config node.
+
+    Args:
+        node: Config value (str, dict, list, or scalar).
+        source_file: File path label for error messages.
+
+    Returns:
+        Node with all ``${VAR}`` placeholders resolved.
+    """
+    if isinstance(node, str):
+        return _ENV_VAR_PATTERN.sub(
+            lambda m: _resolve_env_var_match(m, source_file=source_file),
+            node,
+        )
+    if isinstance(node, dict):
+        return {
+            key: _walk_substitute(value, source_file=source_file)
+            for key, value in node.items()
+        }
+    if isinstance(node, list):
+        return [_walk_substitute(item, source_file=source_file) for item in node]
+    return node
+
+
 def _substitute_env_vars(
     data: dict[str, Any],
     *,
@@ -297,33 +354,7 @@ def _substitute_env_vars(
         ConfigValidationError: If a referenced env var is not set
             and no default is provided.
     """
-
-    def _resolve_match(match: re.Match[str]) -> str:
-        var_name = match.group(1)
-        default = match.group(2)
-        value = os.environ.get(var_name)
-        if value is not None:
-            return value
-        if default is not None:
-            return default
-        msg = (
-            f"Environment variable '{var_name}' is not set and no default was provided"
-        )
-        raise ConfigValidationError(
-            msg,
-            locations=(ConfigLocation(file_path=source_file),),
-        )
-
-    def _walk(node: Any) -> Any:
-        if isinstance(node, str):
-            return _ENV_VAR_PATTERN.sub(_resolve_match, node)
-        if isinstance(node, dict):
-            return {key: _walk(value) for key, value in node.items()}
-        if isinstance(node, list):
-            return [_walk(item) for item in node]
-        return node
-
-    result: dict[str, Any] = _walk(data)
+    result: dict[str, Any] = _walk_substitute(data, source_file=source_file)
     return result
 
 
@@ -422,8 +453,10 @@ def load_config(
         override = _parse_yaml_file(Path(override_path))
         merged = _deep_merge(merged, override)
 
-    # 4. Substitute environment variables
-    merged = _substitute_env_vars(merged, source_file=str(config_path))
+    # 4. Substitute environment variables on the fully merged config.
+    # Use a neutral label so env-var errors aren't misattributed solely
+    # to the primary config file when they may originate from overrides.
+    merged = _substitute_env_vars(merged, source_file="<merged config>")
 
     # Build line map from primary file for error enrichment
     line_map = _build_line_map(yaml_text)

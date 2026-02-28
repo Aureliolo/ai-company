@@ -356,6 +356,12 @@ class TestLoadConfig:
         assert cfg.budget.total_monthly == 200.0
         assert cfg.budget.per_task_limit == 10.0
 
+    def test_string_path_accepted(self, tmp_config_file):
+        """String paths are coerced to Path objects."""
+        path = tmp_config_file(MINIMAL_VALID_YAML)
+        cfg = load_config(str(path))
+        assert cfg.company_name == "Test Corp"
+
     def test_directory_path_rejected(self, tmp_path):
         with pytest.raises(ConfigFileNotFoundError):
             load_config(tmp_path)
@@ -482,6 +488,28 @@ class TestSubstituteEnvVars:
         result = _substitute_env_vars(data)
         assert result == {"a": {"b": {"c": {"d": {"e": "found"}}}}}
 
+    def test_no_recursive_expansion(self, monkeypatch):
+        """Env var values containing ${...} syntax are NOT recursively expanded."""
+        monkeypatch.setenv("OUTER", "${INNER}")
+        monkeypatch.setenv("INNER", "should_not_appear")
+        data = {"key": "${OUTER}"}
+        result = _substitute_env_vars(data)
+        assert result == {"key": "${INNER}"}
+
+    def test_special_chars_in_env_value(self, monkeypatch):
+        """Env var values with regex/URL special chars are preserved verbatim."""
+        monkeypatch.setenv("URL", "https://example.com/path?a=1&b=2#frag")
+        data = {"endpoint": "${URL}"}
+        result = _substitute_env_vars(data)
+        assert result == {"endpoint": "https://example.com/path?a=1&b=2#frag"}
+
+    def test_missing_var_error_includes_source_file(self):
+        """Error for missing env var includes the source_file in locations."""
+        data = {"key": "${MISSING_XYZ}"}
+        with pytest.raises(ConfigValidationError) as exc_info:
+            _substitute_env_vars(data, source_file="my-config.yaml")
+        assert exc_info.value.locations[0].file_path == "my-config.yaml"
+
 
 # ── discover_config ─────────────────────────────────────────────
 
@@ -551,8 +579,12 @@ class TestDiscoverConfig:
         fake_home = tmp_path / "fakehome"
         fake_home.mkdir()
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
-        with pytest.raises(ConfigFileNotFoundError, match="No configuration file"):
+        with pytest.raises(
+            ConfigFileNotFoundError, match="No configuration file"
+        ) as exc_info:
             discover_config()
+        # All 3 search locations should be reported
+        assert len(exc_info.value.locations) == 3
 
     def test_returns_resolved_path(self, tmp_path, monkeypatch):
         config_file = tmp_path / "ai-company.yaml"
@@ -562,11 +594,11 @@ class TestDiscoverConfig:
         assert result.is_absolute()
 
 
-# ── Integration: env var substitution through load_config ───────
+# ── Env var substitution through load_config ────────────────────
 
 
 @pytest.mark.unit
-class TestLoadConfigEnvVarIntegration:
+class TestLoadConfigEnvVar:
     def test_env_var_in_load_config(self, tmp_config_file, monkeypatch):
         monkeypatch.setenv("COMPANY_NAME", "Env Corp")
         path = tmp_config_file(ENV_VAR_SIMPLE_YAML)
@@ -617,11 +649,11 @@ class TestLoadConfigEnvVarIntegration:
         assert cfg.company_name == "Override Corp"
 
 
-# ── Integration: discover_config with load_config ───────────────
+# ── discover_config with load_config ────────────────────────────
 
 
 @pytest.mark.unit
-class TestLoadConfigDiscoveryIntegration:
+class TestLoadConfigDiscovery:
     def test_load_config_none_uses_discovery(self, tmp_path, monkeypatch):
         config_file = tmp_path / "ai-company.yaml"
         config_file.write_text(MINIMAL_VALID_YAML, encoding="utf-8")
