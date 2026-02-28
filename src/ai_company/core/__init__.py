@@ -50,7 +50,7 @@ from ai_company.core.role_catalog import (
 )
 from ai_company.core.task import AcceptanceCriterion, Task
 from ai_company.core.task_transitions import VALID_TRANSITIONS, validate_transition
-from ai_company.core.types import NotBlankStr
+from ai_company.core.types import NotBlankStr, validate_non_blank_unique_strings
 
 __all__ = [
     "BUILTIN_ROLES",
@@ -96,5 +96,6 @@ __all__ = [
     "ToolPermissions",
     "get_builtin_role",
     "get_seniority_info",
+    "validate_non_blank_unique_strings",
     "validate_transition",
 ]

@@ -10,7 +10,8 @@ from ai_company.communication.enums import (
     MessageBusBackend,
 )
 from ai_company.core.types import (
-    NotBlankStr,  # noqa: TC001 -- required at runtime by Pydantic
+    NotBlankStr,
+    validate_non_blank_unique_strings,
 )
 
 # Default channels from DESIGN_SPEC Section 5.4.
@@ -49,14 +50,7 @@ class MessageBusConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_channels(self) -> Self:
         """Ensure channel names are non-blank and unique."""
-        for ch in self.channels:
-            if not ch.strip():
-                msg = "Empty or whitespace-only entry in channels"
-                raise ValueError(msg)
-        if len(self.channels) != len(set(self.channels)):
-            dupes = sorted(c for c, n in Counter(self.channels).items() if n > 1)
-            msg = f"Duplicate entries in channels: {dupes}"
-            raise ValueError(msg)
+        validate_non_blank_unique_strings(self.channels, "channels")
         return self
 
 
@@ -109,14 +103,7 @@ class MeetingTypeConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_participants(self) -> Self:
         """Ensure participant entries are non-blank and unique."""
-        for p in self.participants:
-            if not p.strip():
-                msg = "Empty or whitespace-only entry in participants"
-                raise ValueError(msg)
-        if len(self.participants) != len(set(self.participants)):
-            dupes = sorted(p for p, c in Counter(self.participants).items() if c > 1)
-            msg = f"Duplicate entries in participants: {dupes}"
-            raise ValueError(msg)
+        validate_non_blank_unique_strings(self.participants, "participants")
         return self
 
 
