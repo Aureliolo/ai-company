@@ -369,6 +369,36 @@ class TestRootConfig:
                 routing=RoutingConfig(fallback_chain=("nonexistent",)),
             )
 
+    def test_routing_ambiguous_model_ref_across_providers(self):
+        model_a = ProviderModelConfig(id="shared-model")
+        model_b = ProviderModelConfig(id="shared-model")
+        with pytest.raises(ValidationError, match="Ambiguous model reference"):
+            RootConfig(
+                company_name="X",
+                providers={
+                    "provider_a": ProviderConfig(models=(model_a,)),
+                    "provider_b": ProviderConfig(models=(model_b,)),
+                },
+                routing=RoutingConfig(
+                    fallback_chain=("shared-model",),
+                ),
+            )
+
+    def test_routing_ambiguous_alias_across_providers(self):
+        model_a = ProviderModelConfig(id="m1", alias="fast")
+        model_b = ProviderModelConfig(id="m2", alias="fast")
+        with pytest.raises(ValidationError, match="Ambiguous model reference"):
+            RootConfig(
+                company_name="X",
+                providers={
+                    "provider_a": ProviderConfig(models=(model_a,)),
+                    "provider_b": ProviderConfig(models=(model_b,)),
+                },
+                routing=RoutingConfig(
+                    rules=(RoutingRuleConfig(preferred_model="fast"),),
+                ),
+            )
+
     def test_routing_references_valid_model(self):
         model = ProviderModelConfig(id="m1", alias="fast")
         cfg = RootConfig(

@@ -181,11 +181,19 @@ class LogConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_log_dir_safe(self) -> Self:
-        """Ensure ``log_dir`` is not blank and has no path traversal."""
+        """Ensure ``log_dir`` is not blank, relative, and has no traversal."""
         if not self.log_dir.strip():
             msg = "log_dir must not be blank"
             raise ValueError(msg)
-        if ".." in PurePath(self.log_dir).parts:
+        path = PurePath(self.log_dir)
+        if (
+            path.is_absolute()
+            or PurePosixPath(self.log_dir).is_absolute()
+            or PureWindowsPath(self.log_dir).is_absolute()
+        ):
+            msg = f"log_dir must be relative: {self.log_dir}"
+            raise ValueError(msg)
+        if ".." in path.parts:
             msg = f"log_dir must not contain '..' components: {self.log_dir}"
             raise ValueError(msg)
         return self

@@ -240,6 +240,14 @@ class TestLogConfig:
         ):
             LogConfig(sinks=(_console_sink(),), log_dir="../../../tmp")
 
+    @pytest.mark.parametrize(
+        "absolute_dir",
+        ["/var/log", "/etc/evil", "C:\\Windows\\System32"],
+    )
+    def test_absolute_log_dir_rejected(self, absolute_dir: str) -> None:
+        with pytest.raises(ValidationError, match="log_dir must be relative"):
+            LogConfig(sinks=(_console_sink(),), log_dir=absolute_dir)
+
     def test_frozen(self) -> None:
         cfg = LogConfig(sinks=(_console_sink(),))
         with pytest.raises(ValidationError):
