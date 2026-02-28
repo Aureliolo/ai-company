@@ -1,0 +1,392 @@
+"""Template rendering: Jinja2 substitution + validation to RootConfig.
+
+Implements the second pass of the two-pass rendering pipeline:
+
+1. Collect user variables + defaults from the ``CompanyTemplate``.
+2. Render the raw YAML text through a Jinja2 ``SandboxedEnvironment``.
+3. YAML-parse the rendered text.
+4. Build a ``RootConfig``-compatible dict and validate.
+"""
+
+import logging
+from typing import TYPE_CHECKING, Any
+
+import yaml
+from jinja2.sandbox import SandboxedEnvironment
+from pydantic import ValidationError
+
+from ai_company.config.defaults import default_config_dict
+from ai_company.config.errors import ConfigLocation
+from ai_company.config.schema import RootConfig
+from ai_company.config.utils import deep_merge
+from ai_company.templates.errors import (
+    TemplateRenderError,
+    TemplateValidationError,
+)
+from ai_company.templates.presets import (
+    generate_auto_name,
+    get_personality_preset,
+)
+
+if TYPE_CHECKING:
+    from ai_company.templates.loader import LoadedTemplate
+    from ai_company.templates.schema import CompanyTemplate
+
+logger = logging.getLogger(__name__)
+
+
+def render_template(
+    loaded: LoadedTemplate,
+    variables: dict[str, Any] | None = None,
+) -> RootConfig:
+    """Render a loaded template into a validated RootConfig.
+
+    Pipeline:
+
+    1. Collect variables (user-supplied + defaults from template).
+    2. Jinja2-render the raw YAML text with collected variables.
+    3. YAML-parse the rendered text.
+    4. Normalize into ``RootConfig`` shape.
+    5. Deep-merge with ``default_config_dict()``.
+    6. Validate as ``RootConfig``.
+
+    Args:
+        loaded: :class:`LoadedTemplate` from the loader.
+        variables: User-supplied variable values (overrides defaults).
+
+    Returns:
+        Validated, frozen :class:`RootConfig`.
+
+    Raises:
+        TemplateRenderError: If variable collection or Jinja2 rendering
+            fails.
+        TemplateValidationError: If the rendered result fails
+            ``RootConfig`` validation.
+    """
+    template = loaded.template
+    vars_dict = _collect_variables(template, variables or {})
+
+    # Jinja2-render the raw YAML (Pass 2).
+    rendered_text = _render_jinja2(
+        loaded.raw_yaml,
+        vars_dict,
+        source_name=loaded.source_name,
+    )
+
+    # Parse the rendered YAML.
+    rendered_data = _parse_rendered_yaml(rendered_text, loaded.source_name)
+
+    # Build RootConfig dict from the rendered data.
+    config_dict = _build_config_dict(rendered_data, template, vars_dict)
+
+    # Merge with defaults and validate.
+    merged = deep_merge(default_config_dict(), config_dict)
+    return _validate_as_root_config(merged, loaded.source_name)
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+
+def _collect_variables(
+    template: CompanyTemplate,
+    user_vars: dict[str, Any],
+) -> dict[str, Any]:
+    """Merge user variables with template defaults.
+
+    Args:
+        template: Template with variable declarations.
+        user_vars: User-supplied values.
+
+    Returns:
+        Complete variable dict.
+
+    Raises:
+        TemplateRenderError: If a required variable is missing.
+    """
+    result: dict[str, Any] = {}
+    for var in template.variables:
+        if var.name in user_vars:
+            result[var.name] = user_vars[var.name]
+        elif var.default is not None:
+            result[var.name] = var.default
+        elif var.required:
+            msg = f"Required template variable {var.name!r} was not provided"
+            raise TemplateRenderError(msg)
+        # Optional vars with no default and no user value are omitted;
+        # the Jinja2 template will get ``Undefined`` for them.
+
+    # Pass through extra user vars not declared in the template.
+    for key, value in user_vars.items():
+        if key not in result:
+            result[key] = value
+
+    return result
+
+
+def _create_jinja_env() -> SandboxedEnvironment:
+    """Create a sandboxed Jinja2 environment with custom filters.
+
+    Returns:
+        Configured :class:`SandboxedEnvironment`.
+    """
+    env = SandboxedEnvironment(
+        keep_trailing_newline=True,
+    )
+    # ``auto`` filter: returns empty string for falsy values (triggers
+    # auto-name generation in _expand_agents).
+    env.filters["auto"] = lambda value: value or ""
+    return env
+
+
+def _render_jinja2(
+    raw_yaml: str,
+    variables: dict[str, Any],
+    *,
+    source_name: str,
+) -> str:
+    """Render raw YAML text through Jinja2 with given variables.
+
+    Args:
+        raw_yaml: Template YAML text with Jinja2 expressions.
+        variables: Collected variable values.
+        source_name: Label for error messages.
+
+    Returns:
+        Rendered YAML text with all expressions resolved.
+
+    Raises:
+        TemplateRenderError: If Jinja2 rendering fails.
+    """
+    env = _create_jinja_env()
+    try:
+        jinja_template = env.from_string(raw_yaml)
+        return jinja_template.render(**variables)
+    except Exception as exc:
+        msg = f"Jinja2 rendering failed for {source_name}: {exc}"
+        raise TemplateRenderError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        ) from exc
+
+
+def _parse_rendered_yaml(
+    rendered_text: str,
+    source_name: str,
+) -> dict[str, Any]:
+    """Parse the Jinja2-rendered YAML text.
+
+    Args:
+        rendered_text: YAML text with all Jinja2 expressions resolved.
+        source_name: Label for error messages.
+
+    Returns:
+        Parsed dict from the ``template`` key.
+
+    Raises:
+        TemplateRenderError: If YAML parsing fails.
+    """
+    try:
+        data = yaml.safe_load(rendered_text)
+    except yaml.YAMLError as exc:
+        msg = f"Rendered template YAML is invalid for {source_name}: {exc}"
+        raise TemplateRenderError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        ) from exc
+
+    if not isinstance(data, dict) or "template" not in data:
+        msg = f"Rendered template missing 'template' key: {source_name}"
+        raise TemplateRenderError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        )
+
+    result: dict[str, Any] = data["template"]
+    return result
+
+
+def _build_config_dict(
+    rendered_data: dict[str, Any],
+    template: CompanyTemplate,
+    variables: dict[str, Any],
+) -> dict[str, Any]:
+    """Build a RootConfig-compatible dict from rendered template data.
+
+    Args:
+        rendered_data: Parsed dict from the rendered YAML.
+        template: Original template metadata (for fallback values).
+        variables: Collected variables.
+
+    Returns:
+        Dict suitable for ``RootConfig(**deep_merge(defaults, result))``.
+    """
+    company = rendered_data.get("company", {})
+    company_name = variables.get(
+        "company_name",
+        template.metadata.name,
+    )
+
+    # Expand agents.
+    raw_agents = rendered_data.get("agents", [])
+    agents = _expand_agents(raw_agents, variables)
+
+    # Build departments for RootConfig.
+    raw_depts = rendered_data.get("departments", [])
+    departments = _build_departments(raw_depts)
+
+    return {
+        "company_name": company_name,
+        "company_type": company.get("type", template.metadata.company_type.value),
+        "agents": agents,
+        "departments": departments,
+        "config": {
+            "autonomy": _safe_float(company.get("autonomy", template.autonomy)),
+            "budget_monthly": _safe_float(
+                company.get("budget_monthly", template.budget_monthly),
+            ),
+            "communication_pattern": rendered_data.get(
+                "communication",
+                template.communication,
+            ),
+        },
+    }
+
+
+def _expand_agents(
+    raw_agents: list[dict[str, Any]],
+    _variables: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Expand template agent dicts into AgentConfig-compatible dicts.
+
+    Handles auto-name generation and personality preset expansion.
+
+    Args:
+        raw_agents: List of agent dicts from rendered YAML.
+        variables: Collected variables.
+
+    Returns:
+        List of dicts suitable for ``AgentConfig`` construction.
+    """
+    expanded: list[dict[str, Any]] = []
+    used_names: set[str] = set()
+
+    for idx, agent in enumerate(raw_agents):
+        role = agent.get("role", "Agent")
+        name = str(agent.get("name", "")).strip()
+
+        # Auto-generate name if empty or still a Jinja2 expression.
+        if not name or name.startswith("{{"):
+            name = generate_auto_name(role, seed=idx)
+
+        # Ensure uniqueness by appending a suffix if needed.
+        base_name = name
+        counter = 2
+        while name in used_names:
+            name = f"{base_name} {counter}"
+            counter += 1
+        used_names.add(name)
+
+        agent_dict: dict[str, Any] = {
+            "name": name,
+            "role": role,
+            "department": agent.get("department", "engineering"),
+            "level": agent.get("level", "mid"),
+        }
+
+        # Expand personality preset.
+        preset_name = agent.get("personality_preset")
+        if preset_name:
+            try:
+                agent_dict["personality"] = get_personality_preset(preset_name)
+            except KeyError:
+                logger.warning(
+                    "Unknown personality preset %r for agent %r, using defaults",
+                    preset_name,
+                    name,
+                )
+
+        # Model config (raw dict for AgentConfig).
+        model_tier = agent.get("model", "sonnet")
+        agent_dict["model"] = {"provider": "default", "model_id": model_tier}
+
+        expanded.append(agent_dict)
+
+    return expanded
+
+
+def _build_departments(
+    raw_depts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build RootConfig-compatible department dicts.
+
+    Args:
+        raw_depts: List of department dicts from rendered YAML.
+
+    Returns:
+        List of dicts suitable for ``Department`` construction.
+    """
+    departments: list[dict[str, Any]] = []
+    for dept in raw_depts:
+        dept_dict: dict[str, Any] = {
+            "name": dept.get("name", ""),
+            "head": dept.get("head_role", dept.get("name", "")),
+            "budget_percent": _safe_float(dept.get("budget_percent", 0.0)),
+        }
+        departments.append(dept_dict)
+    return departments
+
+
+def _validate_as_root_config(
+    merged: dict[str, Any],
+    source_name: str,
+) -> RootConfig:
+    """Validate a merged config dict as RootConfig.
+
+    Args:
+        merged: Merged config dict.
+        source_name: Label for error messages.
+
+    Returns:
+        Validated, frozen :class:`RootConfig`.
+
+    Raises:
+        TemplateValidationError: If validation fails.
+    """
+    try:
+        return RootConfig(**merged)
+    except ValidationError as exc:
+        field_errors: list[tuple[str, str]] = []
+        locations: list[ConfigLocation] = []
+        for error in exc.errors():
+            key_path = ".".join(str(p) for p in error["loc"])
+            error_msg = error["msg"]
+            field_errors.append((key_path, error_msg))
+            locations.append(
+                ConfigLocation(
+                    file_path=source_name,
+                    key_path=key_path,
+                ),
+            )
+        msg = f"Rendered template failed RootConfig validation: {source_name}"
+        raise TemplateValidationError(
+            msg,
+            locations=tuple(locations),
+            field_errors=tuple(field_errors),
+        ) from exc
+
+
+def _safe_float(value: Any) -> float:
+    """Coerce a value to float safely.
+
+    Args:
+        value: Value from rendered YAML (str, int, or float).
+
+    Returns:
+        Float value, or 0.0 on conversion failure.
+    """
+    try:
+        return float(value)
+    except TypeError, ValueError:
+        return 0.0

@@ -11,7 +11,6 @@ from ai_company.config.errors import (
 )
 from ai_company.config.loader import (
     _build_line_map,
-    _deep_merge,
     _parse_yaml_file,
     _parse_yaml_string,
     _read_config_text,
@@ -22,6 +21,7 @@ from ai_company.config.loader import (
     load_config_from_string,
 )
 from ai_company.config.schema import RootConfig
+from ai_company.config.utils import deep_merge
 
 from .conftest import (
     ENV_VAR_MISSING_YAML,
@@ -34,7 +34,7 @@ from .conftest import (
     MISSING_REQUIRED_YAML,
 )
 
-# ── _deep_merge ──────────────────────────────────────────────────
+# ── deep_merge ──────────────────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -42,31 +42,31 @@ class TestDeepMerge:
     def test_simple_override(self):
         base = {"a": 1, "b": 2}
         override = {"b": 3}
-        result = _deep_merge(base, override)
+        result = deep_merge(base, override)
         assert result == {"a": 1, "b": 3}
 
     def test_nested_merge(self):
         base = {"x": {"a": 1, "b": 2}}
         override = {"x": {"b": 3, "c": 4}}
-        result = _deep_merge(base, override)
+        result = deep_merge(base, override)
         assert result == {"x": {"a": 1, "b": 3, "c": 4}}
 
     def test_list_replaced_entirely(self):
         base = {"items": [1, 2, 3]}
         override = {"items": [4, 5]}
-        result = _deep_merge(base, override)
+        result = deep_merge(base, override)
         assert result == {"items": [4, 5]}
 
     def test_base_preserved(self):
         base = {"a": 1, "b": 2}
         override = {"c": 3}
-        result = _deep_merge(base, override)
+        result = deep_merge(base, override)
         assert result == {"a": 1, "b": 2, "c": 3}
 
     def test_new_keys_added(self):
         base = {"a": 1}
         override = {"b": 2, "c": 3}
-        result = _deep_merge(base, override)
+        result = deep_merge(base, override)
         assert result == {"a": 1, "b": 2, "c": 3}
 
     def test_inputs_not_mutated(self):
@@ -74,28 +74,28 @@ class TestDeepMerge:
         override = {"x": {"b": 2}}
         base_copy = {"x": {"a": 1}}
         override_copy = {"x": {"b": 2}}
-        _deep_merge(base, override)
+        deep_merge(base, override)
         assert base == base_copy
         assert override == override_copy
 
     def test_deeply_nested(self):
         base = {"a": {"b": {"c": 1}}}
         override = {"a": {"b": {"d": 2}}}
-        result = _deep_merge(base, override)
+        result = deep_merge(base, override)
         assert result == {"a": {"b": {"c": 1, "d": 2}}}
 
     def test_result_does_not_share_mutable_refs_with_base(self):
         base = {"x": {"nested": [1, 2, 3]}}
-        result = _deep_merge(base, {})
+        result = deep_merge(base, {})
         result["x"]["nested"].append(4)
         assert base["x"]["nested"] == [1, 2, 3]
 
     def test_empty_base(self):
-        result = _deep_merge({}, {"a": 1})
+        result = deep_merge({}, {"a": 1})
         assert result == {"a": 1}
 
     def test_empty_override(self):
-        result = _deep_merge({"a": 1}, {})
+        result = deep_merge({"a": 1}, {})
         assert result == {"a": 1}
 
 

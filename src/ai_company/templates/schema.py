@@ -1,0 +1,237 @@
+"""Template schema: Pydantic models for company templates."""
+
+from collections import Counter
+from typing import Any, Literal, Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from ai_company.core.enums import CompanyType, SeniorityLevel
+from ai_company.core.types import NotBlankStr  # noqa: TC001
+
+
+class TemplateVariable(BaseModel):
+    """A user-configurable variable within a template.
+
+    Variables declared here are extracted from the template YAML during
+    the first parsing pass (before Jinja2 rendering).  The ``variables``
+    section must use plain YAML — no Jinja2 expressions.
+
+    Attributes:
+        name: Variable name (used in ``{{ name }}`` placeholders).
+        description: Human-readable description for prompts/docs.
+        var_type: Expected Python type name.
+        default: Default value (``None`` means the variable is required).
+        required: Whether the user must provide this value.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: NotBlankStr = Field(description="Variable name")
+    description: str = Field(default="", description="Human-readable description")
+    var_type: Literal["str", "int", "float", "bool"] = Field(
+        default="str",
+        description="Expected value type",
+    )
+    default: Any = Field(default=None, description="Default value")
+    required: bool = Field(default=False, description="Whether required")
+
+    @model_validator(mode="after")
+    def _validate_required_has_no_default(self) -> Self:
+        """Required variables must not define a default."""
+        if self.required and self.default is not None:
+            msg = f"Variable {self.name!r} is required but defines a default"
+            raise ValueError(msg)
+        return self
+
+
+class TemplateAgentConfig(BaseModel):
+    """Agent definition within a template.
+
+    Uses string references and presets rather than full ``AgentConfig``.
+    The renderer expands these into full agent configuration dicts.
+
+    Attributes:
+        role: Built-in role name (case-insensitive match to role catalog).
+        name: Agent name (may contain Jinja2 placeholders; empty triggers
+            auto-generation).
+        level: Seniority level override.
+        model: Model tier alias (e.g. ``"opus"``, ``"sonnet"``, ``"haiku"``).
+        personality_preset: Named personality preset from the presets registry.
+        department: Department override (``None`` uses the role's default).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    role: NotBlankStr = Field(description="Built-in role name")
+    name: str = Field(default="", description="Agent name (may have Jinja2 vars)")
+    level: SeniorityLevel = Field(
+        default=SeniorityLevel.MID,
+        description="Seniority level",
+    )
+    model: str = Field(default="sonnet", description="Model tier alias")
+    personality_preset: str | None = Field(
+        default=None,
+        description="Named personality preset",
+    )
+    department: str | None = Field(
+        default=None,
+        description="Department override",
+    )
+
+
+class TemplateDepartmentConfig(BaseModel):
+    """Department definition within a template.
+
+    Provides structural information only — department names, budget
+    allocations, and the head role.  Internal team composition and
+    reporting lines are defined separately (see follow-up issues).
+
+    Attributes:
+        name: Department name (standard or custom).
+        budget_percent: Percentage of company budget (0-100).
+        head_role: Role name of the department head.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: NotBlankStr = Field(description="Department name")
+    budget_percent: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=100.0,
+        description="Percentage of company budget",
+    )
+    head_role: str | None = Field(
+        default=None,
+        description="Role name of department head",
+    )
+
+
+class TemplateMetadata(BaseModel):
+    """Metadata about a company template.
+
+    Attributes:
+        name: Template display name.
+        description: What this template is for.
+        version: Semantic version string.
+        company_type: Which ``CompanyType`` this template creates.
+        min_agents: Minimum number of agents.
+        max_agents: Maximum number of agents.
+        tags: Categorization tags.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: NotBlankStr = Field(description="Template display name")
+    description: str = Field(default="", description="Template description")
+    version: NotBlankStr = Field(default="1.0.0", description="Semantic version")
+    company_type: CompanyType = Field(
+        description="Company type this template creates",
+    )
+    min_agents: int = Field(default=1, ge=1, description="Minimum agents")
+    max_agents: int = Field(default=100, ge=1, description="Maximum agents")
+    tags: tuple[str, ...] = Field(default=(), description="Categorization tags")
+
+    @model_validator(mode="after")
+    def _validate_agent_range(self) -> Self:
+        """Ensure min_agents <= max_agents."""
+        if self.min_agents > self.max_agents:
+            msg = f"min_agents ({self.min_agents}) > max_agents ({self.max_agents})"
+            raise ValueError(msg)
+        return self
+
+
+class CompanyTemplate(BaseModel):
+    """A complete company template definition.
+
+    This is the top-level model parsed from a template YAML file
+    during the first pass (before Jinja2 rendering).  It holds
+    metadata, variable declarations, and the structural definitions
+    for agents and departments.
+
+    The raw YAML text is stored separately by the loader for the
+    second pass (Jinja2 rendering).
+
+    Attributes:
+        metadata: Template metadata.
+        variables: Declared template variables (plain YAML, no Jinja2).
+        agents: Template agent definitions.
+        departments: Template department definitions.
+        workflow: Workflow name.
+        communication: Communication pattern name.
+        budget_monthly: Default monthly budget in USD.
+        autonomy: Autonomy level (0.0 = full human oversight,
+            1.0 = fully autonomous).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    metadata: TemplateMetadata = Field(description="Template metadata")
+    variables: tuple[TemplateVariable, ...] = Field(
+        default=(),
+        description="Declared template variables",
+    )
+    agents: tuple[TemplateAgentConfig, ...] = Field(
+        description="Template agent definitions",
+    )
+    departments: tuple[TemplateDepartmentConfig, ...] = Field(
+        default=(),
+        description="Template department definitions",
+    )
+    workflow: str = Field(
+        default="agile_kanban",
+        description="Workflow name",
+    )
+    communication: str = Field(
+        default="hybrid",
+        description="Communication pattern",
+    )
+    budget_monthly: float = Field(
+        default=50.0,
+        ge=0.0,
+        description="Default monthly budget in USD",
+    )
+    autonomy: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Autonomy level",
+    )
+
+    @model_validator(mode="after")
+    def _validate_agent_count_in_range(self) -> Self:
+        """Agent count must be within metadata min/max."""
+        count = len(self.agents)
+        if count < self.metadata.min_agents:
+            msg = (
+                f"Template defines {count} agent(s), "
+                f"minimum is {self.metadata.min_agents}"
+            )
+            raise ValueError(msg)
+        if count > self.metadata.max_agents:
+            msg = (
+                f"Template defines {count} agent(s), "
+                f"maximum is {self.metadata.max_agents}"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_unique_variable_names(self) -> Self:
+        """Variable names must be unique."""
+        names = [v.name for v in self.variables]
+        if len(names) != len(set(names)):
+            dupes = sorted(n for n, c in Counter(names).items() if c > 1)
+            msg = f"Duplicate variable names: {dupes}"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_unique_department_names(self) -> Self:
+        """Department names must be unique."""
+        names = [d.name for d in self.departments]
+        if len(names) != len(set(names)):
+            dupes = sorted(n for n, c in Counter(names).items() if c > 1)
+            msg = f"Duplicate department names: {dupes}"
+            raise ValueError(msg)
+        return self

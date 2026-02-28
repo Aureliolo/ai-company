@@ -1,0 +1,68 @@
+template:
+  name: "Full Company"
+  description: "Enterprise simulation with all departments and full hierarchy"
+  version: "1.0.0"
+  tags:
+    - "enterprise"
+    - "full-hierarchy"
+    - "all-departments"
+
+  variables:
+    - name: "company_name"
+      description: "Name of your company"
+      default: "Acme Corp"
+    - name: "budget"
+      description: "Monthly budget in USD"
+      var_type: "float"
+      default: 200.0
+
+  company:
+    type: "full_company"
+    budget_monthly: {{ budget | default(200.0) }}
+    autonomy: 0.5
+
+  departments:
+    - name: "executive"
+      budget_percent: 15
+      head_role: "CEO"
+    - name: "engineering"
+      budget_percent: 50
+      head_role: "CTO"
+    - name: "product"
+      budget_percent: 15
+      head_role: "Product Manager"
+    - name: "quality_assurance"
+      budget_percent: 10
+      head_role: "QA Engineer"
+    - name: "operations"
+      budget_percent: 10
+      head_role: "CFO"
+
+  agents:
+    - role: "CEO"
+      level: "c_suite"
+      model: "opus"
+      personality_preset: "visionary_leader"
+      department: "executive"
+    - role: "CTO"
+      level: "c_suite"
+      model: "opus"
+      personality_preset: "methodical_analyst"
+      department: "executive"
+    - role: "CFO"
+      level: "c_suite"
+      model: "opus"
+      department: "operations"
+    - role: "Backend Developer"
+      level: "senior"
+      model: "sonnet"
+      personality_preset: "pragmatic_builder"
+      department: "engineering"
+    - role: "QA Engineer"
+      level: "mid"
+      model: "haiku"
+      personality_preset: "methodical_analyst"
+      department: "quality_assurance"
+
+  workflow: "agile_kanban"
+  communication: "hybrid"

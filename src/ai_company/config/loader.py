@@ -1,6 +1,5 @@
 """YAML configuration loader with layered merging and validation."""
 
-import copy
 import logging
 import os
 import re
@@ -18,6 +17,7 @@ from ai_company.config.errors import (
     ConfigValidationError,
 )
 from ai_company.config.schema import RootConfig
+from ai_company.config.utils import deep_merge
 
 logger = logging.getLogger(__name__)
 
@@ -33,33 +33,6 @@ _HOME_CONFIG_RELATIVE = Path(".ai-company") / "config.yaml"
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
-
-
-def _deep_merge(
-    base: dict[str, Any],
-    override: dict[str, Any],
-) -> dict[str, Any]:
-    """Recursively merge *override* into *base*, returning a new dict.
-
-    Nested dicts are merged recursively.  Lists, scalars, and all other
-    types in *override* replace the corresponding value in *base*
-    entirely.  Keys present only in *base* are preserved unchanged in
-    the result.  Neither input dict is mutated.
-
-    Args:
-        base: Base configuration dict.
-        override: Override values to layer on top.
-
-    Returns:
-        A new merged dict.
-    """
-    result = copy.deepcopy(base)
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
-        else:
-            result[key] = copy.deepcopy(value)
-    return result
 
 
 def _read_config_text(file_path: Path) -> str:
@@ -446,12 +419,12 @@ def load_config(
     #    and line-map construction)
     yaml_text = _read_config_text(config_path)
     primary = _parse_yaml_string(yaml_text, str(config_path))
-    merged = _deep_merge(merged, primary)
+    merged = deep_merge(merged, primary)
 
     # 3. Apply override layers
     for override_path in override_paths:
         override = _parse_yaml_file(Path(override_path))
-        merged = _deep_merge(merged, override)
+        merged = deep_merge(merged, override)
 
     # 4. Substitute environment variables on the fully merged config.
     # Use a neutral label so env-var errors aren't misattributed solely
@@ -491,7 +464,7 @@ def load_config_from_string(
         ConfigValidationError: If the merged config fails validation.
     """
     data = _parse_yaml_string(yaml_string, source_name)
-    merged = _deep_merge(default_config_dict(), data)
+    merged = deep_merge(default_config_dict(), data)
     merged = _substitute_env_vars(merged, source_file=source_name)
     line_map = _build_line_map(yaml_string)
     return _validate_config_dict(

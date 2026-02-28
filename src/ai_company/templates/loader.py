@@ -1,0 +1,349 @@
+"""Template loading from built-in, user directory, and file-system sources.
+
+Implements a two-pass loading strategy:
+
+- **Pass 1**: YAML-parse the template to extract metadata and the
+  ``variables`` section (which uses plain YAML, no Jinja2).
+- **Pass 2**: Performed later by the renderer — Jinja2-renders the raw
+  YAML text, then YAML-parses the result.
+
+The loader returns both the structured :class:`CompanyTemplate` (from
+Pass 1) and the raw YAML text (for Pass 2).
+"""
+
+import logging
+import re
+from dataclasses import dataclass
+from importlib import resources
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from ai_company.config.errors import ConfigLocation
+from ai_company.templates.errors import (
+    TemplateNotFoundError,
+    TemplateRenderError,
+    TemplateValidationError,
+)
+from ai_company.templates.schema import CompanyTemplate
+
+logger = logging.getLogger(__name__)
+
+_USER_TEMPLATES_DIR = Path.home() / ".ai-company" / "templates"
+
+# Registry of built-in template names -> resource filenames.
+BUILTIN_TEMPLATES: dict[str, str] = {
+    "solo_founder": "solo_founder.yaml",
+    "startup": "startup.yaml",
+    "dev_shop": "dev_shop.yaml",
+    "product_team": "product_team.yaml",
+    "agency": "agency.yaml",
+    "full_company": "full_company.yaml",
+    "research_lab": "research_lab.yaml",
+}
+
+
+@dataclass(frozen=True)
+class TemplateInfo:
+    """Summary information about an available template.
+
+    Attributes:
+        name: Template identifier (e.g. ``"startup"``).
+        display_name: Human-readable display name.
+        description: Short description.
+        source: Where the template was found (``"builtin"`` or ``"user"``).
+    """
+
+    name: str
+    display_name: str
+    description: str
+    source: str
+
+
+@dataclass(frozen=True)
+class LoadedTemplate:
+    """Result of loading a template: structured data + raw text.
+
+    Attributes:
+        template: Validated ``CompanyTemplate`` from Pass 1.
+        raw_yaml: Raw YAML text for Pass 2 (Jinja2 rendering).
+        source_name: Label for error messages.
+    """
+
+    template: CompanyTemplate
+    raw_yaml: str
+    source_name: str
+
+
+def list_templates() -> tuple[TemplateInfo, ...]:
+    """Return all available templates (user directory + built-in).
+
+    User templates are listed first.  If a user template has the same
+    name as a built-in, only the user template appears.
+
+    Returns:
+        Sorted tuple of :class:`TemplateInfo` objects.
+    """
+    seen: dict[str, TemplateInfo] = {}
+
+    # User templates (higher priority).
+    if _USER_TEMPLATES_DIR.is_dir():
+        for path in sorted(_USER_TEMPLATES_DIR.glob("*.yaml")):
+            name = path.stem
+            try:
+                loaded = _load_from_file(path)
+                meta = loaded.template.metadata
+                seen[name] = TemplateInfo(
+                    name=name,
+                    display_name=meta.name,
+                    description=meta.description,
+                    source="user",
+                )
+            except Exception:
+                logger.warning("Skipping invalid user template: %s", path)
+
+    # Built-in templates (lower priority).
+    for name in sorted(BUILTIN_TEMPLATES):
+        if name not in seen:
+            try:
+                loaded = _load_builtin(name)
+                meta = loaded.template.metadata
+                seen[name] = TemplateInfo(
+                    name=name,
+                    display_name=meta.name,
+                    description=meta.description,
+                    source="builtin",
+                )
+            except Exception:
+                logger.warning("Skipping invalid builtin template: %s", name)
+
+    return tuple(info for _, info in sorted(seen.items()))
+
+
+def list_builtin_templates() -> tuple[str, ...]:
+    """Return names of all built-in templates.
+
+    Returns:
+        Sorted tuple of built-in template names.
+    """
+    return tuple(sorted(BUILTIN_TEMPLATES))
+
+
+def load_template(name: str) -> LoadedTemplate:
+    """Load a template by name: user directory first, then builtins.
+
+    Args:
+        name: Template name (e.g. ``"startup"``).
+
+    Returns:
+        :class:`LoadedTemplate` with validated data and raw YAML.
+
+    Raises:
+        TemplateNotFoundError: If no template with *name* exists.
+    """
+    name_clean = name.strip().lower()
+
+    # Try user directory first.
+    if _USER_TEMPLATES_DIR.is_dir():
+        user_path = _USER_TEMPLATES_DIR / f"{name_clean}.yaml"
+        if user_path.is_file():
+            return _load_from_file(user_path)
+
+    # Fall back to builtins.
+    if name_clean in BUILTIN_TEMPLATES:
+        return _load_builtin(name_clean)
+
+    available = list_builtin_templates()
+    msg = f"Unknown template {name!r}. Available: {list(available)}"
+    raise TemplateNotFoundError(
+        msg,
+        locations=(ConfigLocation(file_path=f"<template:{name}>"),),
+    )
+
+
+def load_template_file(path: Path | str) -> LoadedTemplate:
+    """Load a template from an explicit file path.
+
+    Args:
+        path: Path to the template YAML file.
+
+    Returns:
+        :class:`LoadedTemplate` with validated data and raw YAML.
+
+    Raises:
+        TemplateNotFoundError: If the file does not exist.
+        TemplateValidationError: If validation fails.
+    """
+    path = Path(path)
+    if not path.is_file():
+        msg = f"Template file not found: {path}"
+        raise TemplateNotFoundError(
+            msg,
+            locations=(ConfigLocation(file_path=str(path)),),
+        )
+    return _load_from_file(path)
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+
+def _load_builtin(name: str) -> LoadedTemplate:
+    """Load a built-in template by name."""
+    filename = BUILTIN_TEMPLATES.get(name)
+    if filename is None:
+        msg = f"Unknown built-in template: {name!r}"
+        raise TemplateNotFoundError(
+            msg,
+            locations=(ConfigLocation(file_path=f"<builtin:{name}>"),),
+        )
+    ref = resources.files("ai_company.templates.builtins") / filename
+    yaml_text = ref.read_text(encoding="utf-8")
+    source_name = f"<builtin:{name}>"
+    template = _parse_template_yaml(yaml_text, source_name=source_name)
+    return LoadedTemplate(
+        template=template,
+        raw_yaml=yaml_text,
+        source_name=source_name,
+    )
+
+
+def _load_from_file(path: Path) -> LoadedTemplate:
+    """Load a template from a file path."""
+    yaml_text = path.read_text(encoding="utf-8")
+    source_name = str(path)
+    template = _parse_template_yaml(yaml_text, source_name=source_name)
+    return LoadedTemplate(
+        template=template,
+        raw_yaml=yaml_text,
+        source_name=source_name,
+    )
+
+
+def _strip_jinja2_for_pass1(yaml_text: str) -> str:
+    """Replace Jinja2 expressions with YAML-safe placeholders for Pass 1.
+
+    Pass 1 only extracts metadata and the ``variables`` section (which
+    must be plain YAML).  The rest of the template may contain unquoted
+    Jinja2 expressions (``{{ }}``, ``{% %}``, ``{# #}``) that are
+    invalid YAML.  This function replaces them with safe placeholders
+    so that ``yaml.safe_load`` succeeds.
+
+    Args:
+        yaml_text: Raw template YAML with possible Jinja2 expressions.
+
+    Returns:
+        YAML text with Jinja2 expressions replaced by safe strings.
+    """
+    # Replace {{ ... }} with a bare placeholder (no extra quotes,
+    # so it works both inside quoted strings and unquoted values).
+    text = re.sub(r"\{\{.*?\}\}", "__JINJA2__", yaml_text)
+    # Remove {% ... %} block tags (lines containing only a tag are removed).
+    text = re.sub(r"\{%.*?%\}", "", text)
+    # Remove {# ... #} comments.
+    return re.sub(r"\{#.*?#\}", "", text)
+
+
+def _parse_template_yaml(
+    yaml_text: str,
+    *,
+    source_name: str,
+) -> CompanyTemplate:
+    """Parse a template YAML string into a CompanyTemplate (Pass 1).
+
+    Jinja2 expressions are stripped before YAML parsing so that
+    unquoted ``{{ }}`` syntax does not cause parse errors.  Only
+    metadata and the ``variables`` section (which must be plain YAML)
+    are needed from this pass.
+
+    Args:
+        yaml_text: Raw YAML content.
+        source_name: Label for error messages.
+
+    Returns:
+        Validated :class:`CompanyTemplate`.
+
+    Raises:
+        TemplateRenderError: If YAML parsing fails.
+        TemplateValidationError: If the structure fails validation.
+    """
+    safe_text = _strip_jinja2_for_pass1(yaml_text)
+    try:
+        data = yaml.safe_load(safe_text)
+    except yaml.YAMLError as exc:
+        msg = f"Template YAML syntax error in {source_name}: {exc}"
+        raise TemplateRenderError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        ) from exc
+
+    if not isinstance(data, dict) or "template" not in data:
+        msg = f"Template YAML must have a top-level 'template' key in {source_name}"
+        raise TemplateValidationError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        )
+
+    template_data = data["template"]
+    normalized = _normalize_template_data(template_data)
+    try:
+        return CompanyTemplate(**normalized)
+    except Exception as exc:
+        msg = f"Template validation failed for {source_name}: {exc}"
+        raise TemplateValidationError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        ) from exc
+
+
+def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Transform raw YAML template data into CompanyTemplate kwargs.
+
+    Bridges the human-friendly flat YAML format and the nested Pydantic
+    model shape.
+
+    Args:
+        data: The dict under the top-level ``template`` key.
+
+    Returns:
+        Dict suitable for ``CompanyTemplate(**result)``.
+    """
+    company = data.get("company", {})
+
+    metadata = {
+        "name": data.get("name", ""),
+        "description": data.get("description", ""),
+        "version": data.get("version", "1.0.0"),
+        "company_type": company.get("type", "custom"),
+        "tags": tuple(data.get("tags", ())),
+    }
+
+    return {
+        "metadata": metadata,
+        "variables": data.get("variables", ()),
+        "agents": data.get("agents", ()),
+        "departments": data.get("departments", ()),
+        "workflow": data.get("workflow", "agile_kanban"),
+        "communication": data.get("communication", "hybrid"),
+        "budget_monthly": _to_float(company.get("budget_monthly", 50.0)),
+        "autonomy": _to_float(company.get("autonomy", 0.5)),
+    }
+
+
+def _to_float(value: Any) -> float:
+    """Coerce a value to float, handling string numerics.
+
+    Args:
+        value: Raw value from YAML (may be str, int, float).
+
+    Returns:
+        Float value.
+    """
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return float(value)

@@ -1,0 +1,46 @@
+template:
+  name: "Solo Founder"
+  description: "Minimal setup for quick prototypes and solo projects"
+  version: "1.0.0"
+  tags:
+    - "minimal"
+    - "solo"
+    - "prototype"
+
+  variables:
+    - name: "company_name"
+      description: "Name of your company"
+      default: "My Company"
+    - name: "budget"
+      description: "Monthly budget in USD"
+      var_type: "float"
+      default: 25.0
+
+  company:
+    type: "solo_founder"
+    budget_monthly: {{ budget | default(25.0) }}
+    autonomy: 0.5
+
+  departments:
+    - name: "executive"
+      budget_percent: 40
+      head_role: "CEO"
+    - name: "engineering"
+      budget_percent: 60
+      head_role: "Full-Stack Developer"
+
+  agents:
+    - role: "CEO"
+      name: "{{ company_name | default('My Company') }} CEO"
+      level: "c_suite"
+      model: "opus"
+      personality_preset: "visionary_leader"
+      department: "executive"
+    - role: "Full-Stack Developer"
+      level: "senior"
+      model: "sonnet"
+      personality_preset: "pragmatic_builder"
+      department: "engineering"
+
+  workflow: "kanban"
+  communication: "hybrid"
