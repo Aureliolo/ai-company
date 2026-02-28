@@ -122,12 +122,26 @@ class TestSinkConfig:
                 file_path="logs/../../etc/shadow.log",
             )
 
-    def test_console_sink_ignores_path(self) -> None:
-        cfg = SinkConfig(
-            sink_type=SinkType.CONSOLE,
-            file_path="ignored.log",
-        )
-        assert cfg.file_path == "ignored.log"
+    def test_console_sink_rejects_file_path(self) -> None:
+        with pytest.raises(ValidationError, match="file_path must be None"):
+            SinkConfig(
+                sink_type=SinkType.CONSOLE,
+                file_path="ignored.log",
+            )
+
+    def test_console_sink_rejects_rotation(self) -> None:
+        with pytest.raises(ValidationError, match="rotation must be None"):
+            SinkConfig(
+                sink_type=SinkType.CONSOLE,
+                rotation=RotationConfig(),
+            )
+
+    def test_file_sink_rejects_absolute_path(self) -> None:
+        with pytest.raises(ValidationError, match="file_path must be relative"):
+            SinkConfig(
+                sink_type=SinkType.FILE,
+                file_path="/etc/passwd",
+            )
 
     def test_custom_level(self) -> None:
         cfg = SinkConfig(sink_type=SinkType.CONSOLE, level=LogLevel.ERROR)
@@ -219,6 +233,12 @@ class TestLogConfig:
     def test_blank_log_dir_rejected(self) -> None:
         with pytest.raises(ValidationError, match="log_dir must not be blank"):
             LogConfig(sinks=(_console_sink(),), log_dir="   ")
+
+    def test_log_dir_traversal_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError, match=r"must not contain '\.\.' components"
+        ):
+            LogConfig(sinks=(_console_sink(),), log_dir="../../../tmp")
 
     def test_frozen(self) -> None:
         cfg = LogConfig(sinks=(_console_sink(),))

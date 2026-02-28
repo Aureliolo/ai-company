@@ -28,11 +28,26 @@ class TestGetLogger:
         assert hasattr(logger, "warning")
         assert hasattr(logger, "error")
 
-    def test_logger_name_bound(self) -> None:
-        configure_logging()
+    def test_logger_name_bound(self, tmp_path: Path) -> None:
+        config = LogConfig(
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.DEBUG,
+                    file_path="name-bound.log",
+                    json_format=True,
+                ),
+            ),
+            log_dir=str(tmp_path),
+        )
+        configure_logging(config)
         logger = get_logger("my.module")
-        # The logger should be usable without errors
-        assert logger is not None
+        logger.info("name-check")
+        log_file = tmp_path / "name-bound.log"
+        content = log_file.read_text().strip()
+        assert content
+        record = json.loads(content)
+        assert record["logger"] == "my.module"
 
     def test_initial_bindings_applied(self, tmp_path: Path) -> None:
         config = LogConfig(

@@ -27,6 +27,8 @@ class SinkConfigFactory(ModelFactory):
     __model__ = SinkConfig
     sink_type = SinkType.CONSOLE
     level = LogLevel.INFO
+    file_path = None
+    rotation = None
     json_format = False
 
 
@@ -48,10 +50,8 @@ class LogConfigFactory(ModelFactory):
 # -- Reset Fixture -----------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def _reset_logging() -> Iterator[None]:
-    """Reset structlog and stdlib logging state after each test."""
-    yield
+def _clear_logging_state() -> None:
+    """Clear structlog context and stdlib root handlers."""
     structlog.reset_defaults()
     structlog.contextvars.clear_contextvars()
     root = logging.getLogger()
@@ -59,3 +59,11 @@ def _reset_logging() -> Iterator[None]:
         root.removeHandler(handler)
         handler.close()
     root.setLevel(logging.WARNING)
+
+
+@pytest.fixture(autouse=True)
+def _reset_logging() -> Iterator[None]:
+    """Reset structlog and stdlib logging state before and after each test."""
+    _clear_logging_state()
+    yield
+    _clear_logging_state()

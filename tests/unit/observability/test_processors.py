@@ -101,3 +101,30 @@ class TestSanitizeSensitiveFields:
         result = sanitize_sensitive_fields(None, "info", event)  # type: ignore[arg-type]
         assert result[42] == "value"  # type: ignore[index]
         assert result["event"] == "test"
+
+    def test_redacts_nested_dict(self) -> None:
+        event = {"event": "req", "payload": {"token": "secret", "user": "alice"}}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["payload"]["token"] == "**REDACTED**"
+        assert result["payload"]["user"] == "alice"
+
+    def test_redacts_deeply_nested(self) -> None:
+        event = {"event": "req", "outer": {"inner": {"password": "deep"}}}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["outer"]["inner"]["password"] == "**REDACTED**"
+
+    def test_redacts_in_list_of_dicts(self) -> None:
+        event = {"event": "batch", "items": [{"api_key": "k1"}, {"name": "ok"}]}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["items"][0]["api_key"] == "**REDACTED**"
+        assert result["items"][1]["name"] == "ok"
+
+    def test_redacts_in_tuple_of_dicts(self) -> None:
+        event = {"event": "batch", "items": ({"secret": "s"},)}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["items"][0]["secret"] == "**REDACTED**"
+
+    def test_nested_non_sensitive_preserved(self) -> None:
+        event = {"event": "req", "data": {"name": "alice", "count": 5}}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["data"] == {"name": "alice", "count": 5}

@@ -192,6 +192,18 @@ class TestWithCorrelation:
 
         assert add(3, 4) == 7
 
+    def test_preserves_outer_context(self) -> None:
+        bind_correlation_id(request_id="outer")
+
+        @with_correlation(request_id="inner")
+        def inner() -> str:
+            ctx = structlog.contextvars.get_contextvars()
+            return ctx["request_id"]
+
+        assert inner() == "inner"
+        ctx = structlog.contextvars.get_contextvars()
+        assert ctx["request_id"] == "outer"
+
     def test_rejects_async_function(self) -> None:
         with pytest.raises(TypeError, match="does not support async"):
 

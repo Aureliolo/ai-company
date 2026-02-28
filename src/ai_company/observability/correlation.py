@@ -11,7 +11,6 @@ propagation across agent actions, tasks, and API requests.
 
 # TODO: Add with_correlation_async() for async functions (engine/API)
 
-import contextlib
 import functools
 import inspect
 import uuid
@@ -139,20 +138,16 @@ def with_correlation(
 
         @functools.wraps(func)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-            bind_correlation_id(
-                request_id=request_id,
-                task_id=task_id,
-                agent_id=agent_id,
-            )
-            try:
+            bindings: dict[str, str] = {}
+            if request_id is not None:
+                bindings["request_id"] = request_id
+            if task_id is not None:
+                bindings["task_id"] = task_id
+            if agent_id is not None:
+                bindings["agent_id"] = agent_id
+
+            with structlog.contextvars.bound_contextvars(**bindings):
                 return func(*args, **kwargs)
-            finally:
-                with contextlib.suppress(Exception):
-                    unbind_correlation_id(
-                        request_id=request_id is not None,
-                        task_id=task_id is not None,
-                        agent_id=agent_id is not None,
-                    )
 
         return wrapper
 

@@ -12,7 +12,7 @@ configuration.  All models are immutable and validated on construction.
 # TODO(#59): Integrate LogConfig with central config/ YAML loading
 
 from collections import Counter
-from pathlib import PurePath
+from pathlib import PurePath, PurePosixPath, PureWindowsPath
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -93,8 +93,23 @@ class SinkConfig(BaseModel):
             if not self.file_path.strip():
                 msg = "file_path must not be empty or whitespace-only"
                 raise ValueError(msg)
-            if ".." in PurePath(self.file_path).parts:
+            path = PurePath(self.file_path)
+            if (
+                path.is_absolute()
+                or PurePosixPath(self.file_path).is_absolute()
+                or PureWindowsPath(self.file_path).is_absolute()
+            ):
+                msg = f"file_path must be relative: {self.file_path}"
+                raise ValueError(msg)
+            if ".." in path.parts:
                 msg = f"file_path must not contain '..' components: {self.file_path}"
+                raise ValueError(msg)
+        else:
+            if self.file_path is not None:
+                msg = "file_path must be None for CONSOLE sinks"
+                raise ValueError(msg)
+            if self.rotation is not None:
+                msg = "rotation must be None for CONSOLE sinks"
                 raise ValueError(msg)
         return self
 
@@ -167,10 +182,13 @@ class LogConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_log_dir_not_blank(self) -> Self:
-        """Ensure ``log_dir`` is not blank."""
+    def _validate_log_dir_safe(self) -> Self:
+        """Ensure ``log_dir`` is not blank and has no path traversal."""
         if not self.log_dir.strip():
             msg = "log_dir must not be blank"
+            raise ValueError(msg)
+        if ".." in PurePath(self.log_dir).parts:
+            msg = f"log_dir must not contain '..' components: {self.log_dir}"
             raise ValueError(msg)
         return self
 
