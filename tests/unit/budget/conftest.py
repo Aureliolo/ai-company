@@ -1,0 +1,189 @@
+"""Unit test configuration and fixtures for budget models."""
+
+from datetime import UTC, datetime
+
+import pytest
+from polyfactory.factories.pydantic_factory import ModelFactory
+
+from ai_company.budget.config import (
+    AutoDowngradeConfig,
+    BudgetAlertConfig,
+    BudgetConfig,
+)
+from ai_company.budget.cost_record import CostRecord
+from ai_company.budget.enums import BudgetAlertLevel
+from ai_company.budget.hierarchy import (
+    BudgetHierarchy,
+    DepartmentBudget,
+    TeamBudget,
+)
+from ai_company.budget.spending_summary import (
+    AgentSpending,
+    DepartmentSpending,
+    PeriodSpending,
+    SpendingSummary,
+)
+
+# ── Factories ──────────────────────────────────────────────────────
+
+
+class BudgetAlertConfigFactory(ModelFactory):
+    __model__ = BudgetAlertConfig
+    warn_at = 75
+    critical_at = 90
+    hard_stop_at = 100
+
+
+class AutoDowngradeConfigFactory(ModelFactory):
+    __model__ = AutoDowngradeConfig
+    enabled = False
+    downgrade_map = ()
+
+
+class BudgetConfigFactory(ModelFactory):
+    __model__ = BudgetConfig
+    total_monthly = 100.0
+    per_task_limit = 5.0
+    per_agent_daily_limit = 10.0
+    alerts = BudgetAlertConfigFactory
+    auto_downgrade = AutoDowngradeConfigFactory
+
+
+class TeamBudgetFactory(ModelFactory):
+    __model__ = TeamBudget
+    budget_percent = 10.0
+
+
+class DepartmentBudgetFactory(ModelFactory):
+    __model__ = DepartmentBudget
+    budget_percent = 25.0
+    teams = ()
+
+
+class BudgetHierarchyFactory(ModelFactory):
+    __model__ = BudgetHierarchy
+    departments = ()
+
+
+class CostRecordFactory(ModelFactory):
+    __model__ = CostRecord
+
+
+class PeriodSpendingFactory(ModelFactory):
+    __model__ = PeriodSpending
+    start = datetime(2026, 2, 1, tzinfo=UTC)
+    end = datetime(2026, 3, 1, tzinfo=UTC)
+
+
+class AgentSpendingFactory(ModelFactory):
+    __model__ = AgentSpending
+
+
+class DepartmentSpendingFactory(ModelFactory):
+    __model__ = DepartmentSpending
+
+
+class SpendingSummaryFactory(ModelFactory):
+    __model__ = SpendingSummary
+    period = PeriodSpendingFactory
+    by_agent = ()
+    by_department = ()
+
+
+# ── Sample Fixtures ────────────────────────────────────────────────
+
+
+@pytest.fixture
+def sample_budget_config() -> BudgetConfig:
+    return BudgetConfig(
+        total_monthly=500.0,
+        alerts=BudgetAlertConfig(warn_at=70, critical_at=85, hard_stop_at=95),
+        per_task_limit=10.0,
+        per_agent_daily_limit=25.0,
+        auto_downgrade=AutoDowngradeConfig(
+            enabled=True,
+            threshold=80,
+            downgrade_map=(("opus", "sonnet"), ("sonnet", "haiku")),
+        ),
+    )
+
+
+@pytest.fixture
+def sample_cost_record() -> CostRecord:
+    return CostRecord(
+        agent_id="sarah_chen",
+        task_id="task-123",
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        input_tokens=4500,
+        output_tokens=1200,
+        cost_usd=0.0315,
+        timestamp=datetime(2026, 2, 27, 10, 30, 0, tzinfo=UTC),
+    )
+
+
+@pytest.fixture
+def sample_budget_hierarchy() -> BudgetHierarchy:
+    return BudgetHierarchy(
+        total_monthly=100.0,
+        departments=(
+            DepartmentBudget(
+                department_name="Engineering",
+                budget_percent=50.0,
+                teams=(
+                    TeamBudget(team_name="Backend", budget_percent=40.0),
+                    TeamBudget(team_name="Frontend", budget_percent=30.0),
+                ),
+            ),
+            DepartmentBudget(
+                department_name="Product",
+                budget_percent=30.0,
+                teams=(
+                    TeamBudget(team_name="Design", budget_percent=50.0),
+                    TeamBudget(team_name="Research", budget_percent=50.0),
+                ),
+            ),
+        ),
+    )
+
+
+@pytest.fixture
+def sample_spending_summary() -> SpendingSummary:
+    return SpendingSummary(
+        period=PeriodSpending(
+            start=datetime(2026, 2, 1, tzinfo=UTC),
+            end=datetime(2026, 3, 1, tzinfo=UTC),
+            total_cost_usd=75.50,
+            total_input_tokens=500000,
+            total_output_tokens=120000,
+            record_count=150,
+        ),
+        by_agent=(
+            AgentSpending(
+                agent_id="sarah_chen",
+                total_cost_usd=40.0,
+                total_input_tokens=300000,
+                total_output_tokens=80000,
+                record_count=80,
+            ),
+            AgentSpending(
+                agent_id="alex_dev",
+                total_cost_usd=35.50,
+                total_input_tokens=200000,
+                total_output_tokens=40000,
+                record_count=70,
+            ),
+        ),
+        by_department=(
+            DepartmentSpending(
+                department_name="Engineering",
+                total_cost_usd=75.50,
+                total_input_tokens=500000,
+                total_output_tokens=120000,
+                record_count=150,
+            ),
+        ),
+        budget_total_monthly=100.0,
+        budget_used_percent=75.5,
+        alert_level=BudgetAlertLevel.WARNING,
+    )
