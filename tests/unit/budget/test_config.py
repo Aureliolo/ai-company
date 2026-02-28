@@ -175,6 +175,14 @@ class TestAutoDowngradeConfig:
         with pytest.raises(ValidationError):
             AutoDowngradeConfig(threshold=101)
 
+    def test_aliases_normalized(self) -> None:
+        """Verify whitespace is stripped from aliases."""
+        cfg = AutoDowngradeConfig(
+            enabled=True,
+            downgrade_map=(("  opus  ", "  sonnet  "),),
+        )
+        assert cfg.downgrade_map == (("opus", "sonnet"),)
+
     def test_frozen(self) -> None:
         """Ensure AutoDowngradeConfig is immutable."""
         cfg = AutoDowngradeConfig()
@@ -234,6 +242,11 @@ class TestBudgetConfig:
         """Accept per_task_limit equal to total_monthly."""
         cfg = BudgetConfig(total_monthly=10.0, per_task_limit=10.0)
         assert cfg.per_task_limit == cfg.total_monthly
+
+    def test_per_agent_equals_monthly_accepted(self) -> None:
+        """Accept per_agent_daily_limit equal to total_monthly."""
+        cfg = BudgetConfig(total_monthly=10.0, per_agent_daily_limit=10.0)
+        assert cfg.per_agent_daily_limit == cfg.total_monthly
 
     def test_zero_monthly_skips_limit_validation(self) -> None:
         """When total_monthly is 0, skip limit checks."""

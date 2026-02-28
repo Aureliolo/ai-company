@@ -1,7 +1,8 @@
 """Task domain model and acceptance criteria."""
 
 from collections import Counter
-from typing import Self
+from datetime import datetime
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -125,8 +126,8 @@ class Task(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_non_blank_strings(self) -> Self:
-        """Ensure string identifier fields are not whitespace-only."""
+    def _validate_fields(self) -> Self:
+        """Validate string fields and deadline format."""
         for field_name in ("id", "title", "description", "project", "created_by"):
             if not getattr(self, field_name).strip():
                 msg = f"{field_name} must not be whitespace-only"
@@ -134,41 +135,32 @@ class Task(BaseModel):
         if self.assigned_to is not None and not self.assigned_to.strip():
             msg = "assigned_to must not be whitespace-only"
             raise ValueError(msg)
-        if self.deadline is not None and not self.deadline.strip():
-            msg = "deadline must not be whitespace-only"
-            raise ValueError(msg)
+        if self.deadline is not None:
+            if not self.deadline.strip():
+                msg = "deadline must not be whitespace-only"
+                raise ValueError(msg)
+            try:
+                datetime.fromisoformat(self.deadline)
+            except ValueError:
+                msg = f"deadline must be a valid ISO 8601 string, got {self.deadline!r}"
+                raise ValueError(msg) from None
         return self
 
     @model_validator(mode="after")
-    def _validate_no_empty_collection_entries(self) -> Self:
-        """Ensure no empty or whitespace-only entries in string tuples."""
+    def _validate_collections(self) -> Self:
+        """Validate collection entries, self-dependency, and uniqueness."""
         for field_name in ("reviewers", "dependencies"):
             for value in getattr(self, field_name):
                 if not value.strip():
                     msg = f"Empty or whitespace-only entry in {field_name}"
                     raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_no_self_dependency(self) -> Self:
-        """Ensure a task does not depend on itself."""
         if self.id in self.dependencies:
             msg = f"Task {self.id!r} cannot depend on itself"
             raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_no_duplicate_dependencies(self) -> Self:
-        """Ensure no duplicate task IDs in dependencies."""
         if len(self.dependencies) != len(set(self.dependencies)):
             dupes = sorted(d for d, c in Counter(self.dependencies).items() if c > 1)
             msg = f"Duplicate entries in dependencies: {dupes}"
             raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_no_duplicate_reviewers(self) -> Self:
-        """Ensure no duplicate agent IDs in reviewers."""
         if len(self.reviewers) != len(set(self.reviewers)):
             dupes = sorted(r for r, c in Counter(self.reviewers).items() if c > 1)
             msg = f"Duplicate entries in reviewers: {dupes}"
@@ -198,12 +190,13 @@ class Task(BaseModel):
             raise ValueError(msg)
         return self
 
-    def with_transition(self, target: TaskStatus, **overrides: object) -> Task:
+    def with_transition(self, target: TaskStatus, **overrides: Any) -> Task:
         """Create a new Task with a validated status transition.
 
         Calls :func:`~ai_company.core.task_transitions.validate_transition`
         before producing the new instance, ensuring the state machine is
-        enforced.
+        enforced.  Uses ``model_validate`` so all validators run on the
+        new instance.
 
         Args:
             target: The desired target status.
@@ -213,7 +206,14 @@ class Task(BaseModel):
             A new Task with the target status.
 
         Raises:
-            ValueError: If the transition is not valid.
+            ValueError: If the transition is not valid or overrides
+                contain ``status``.
         """
+        if "status" in overrides:
+            msg = "status override is not allowed; pass transition target explicitly"
+            raise ValueError(msg)
         validate_transition(self.status, target)
-        return self.model_copy(update={"status": target, **overrides})
+        payload = self.model_dump()
+        payload.update(overrides)
+        payload["status"] = target
+        return Task.model_validate(payload)

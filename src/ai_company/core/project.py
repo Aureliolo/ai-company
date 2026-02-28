@@ -1,6 +1,7 @@
 """Project domain model for task collection management."""
 
 from collections import Counter
+from datetime import datetime
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -63,8 +64,8 @@ class Project(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_non_blank_strings(self) -> Self:
-        """Ensure string identifier fields are not whitespace-only."""
+    def _validate_fields(self) -> Self:
+        """Validate string fields and deadline format."""
         for field_name in ("id", "name"):
             if not getattr(self, field_name).strip():
                 msg = f"{field_name} must not be whitespace-only"
@@ -72,33 +73,29 @@ class Project(BaseModel):
         if self.lead is not None and not self.lead.strip():
             msg = "lead must not be whitespace-only"
             raise ValueError(msg)
-        if self.deadline is not None and not self.deadline.strip():
-            msg = "deadline must not be whitespace-only"
-            raise ValueError(msg)
+        if self.deadline is not None:
+            if not self.deadline.strip():
+                msg = "deadline must not be whitespace-only"
+                raise ValueError(msg)
+            try:
+                datetime.fromisoformat(self.deadline)
+            except ValueError:
+                msg = f"deadline must be a valid ISO 8601 string, got {self.deadline!r}"
+                raise ValueError(msg) from None
         return self
 
     @model_validator(mode="after")
-    def _validate_no_empty_collection_entries(self) -> Self:
-        """Ensure no empty or whitespace-only entries in string tuples."""
+    def _validate_collections(self) -> Self:
+        """Validate collection entries and uniqueness."""
         for field_name in ("team", "task_ids"):
             for value in getattr(self, field_name):
                 if not value.strip():
                     msg = f"Empty or whitespace-only entry in {field_name}"
                     raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_no_duplicate_team_members(self) -> Self:
-        """Ensure no duplicate agent IDs in team."""
         if len(self.team) != len(set(self.team)):
             dupes = sorted(m for m, c in Counter(self.team).items() if c > 1)
             msg = f"Duplicate entries in team: {dupes}"
             raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_no_duplicate_task_ids(self) -> Self:
-        """Ensure no duplicate task IDs."""
         if len(self.task_ids) != len(set(self.task_ids)):
             dupes = sorted(t for t, c in Counter(self.task_ids).items() if c > 1)
             msg = f"Duplicate entries in task_ids: {dupes}"

@@ -91,6 +91,18 @@ class TestProjectStringValidation:
         ):
             _make_project(deadline="   ")
 
+    def test_invalid_deadline_format_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="valid ISO 8601"):
+            _make_project(deadline="not-a-date")
+
+    def test_valid_iso_date_deadline_accepted(self) -> None:
+        project = _make_project(deadline="2026-12-31")
+        assert project.deadline == "2026-12-31"
+
+    def test_valid_iso_datetime_deadline_accepted(self) -> None:
+        project = _make_project(deadline="2026-12-31T23:59:59")
+        assert project.deadline == "2026-12-31T23:59:59"
+
     def test_empty_team_member_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Empty or whitespace-only"):
             _make_project(team=("agent-1", "   "))

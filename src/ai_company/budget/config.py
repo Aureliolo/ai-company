@@ -5,7 +5,7 @@ thresholds, per-task and per-agent limits, and automatic model downgrade.
 """
 
 from collections import Counter
-from typing import Self
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -92,31 +92,34 @@ class AutoDowngradeConfig(BaseModel):
         description="Ordered pairs of (from_alias, to_alias)",
     )
 
-    @model_validator(mode="after")
-    def _validate_no_empty_aliases(self) -> Self:
-        """Ensure no empty or whitespace-only alias strings."""
-        for source, target in self.downgrade_map:
-            if not source.strip():
-                msg = "Empty or whitespace-only source alias in downgrade_map"
-                raise ValueError(msg)
-            if not target.strip():
-                msg = "Empty or whitespace-only target alias in downgrade_map"
-                raise ValueError(msg)
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_downgrade_map(cls, data: Any) -> Any:
+        """Strip whitespace from downgrade_map alias strings."""
+        if isinstance(data, dict) and "downgrade_map" in data:
+            raw_map = data["downgrade_map"]
+            if isinstance(raw_map, (list, tuple)):
+                return {
+                    **data,
+                    "downgrade_map": tuple((s.strip(), t.strip()) for s, t in raw_map),
+                }
+        return data
 
     @model_validator(mode="after")
-    def _validate_no_self_downgrade(self) -> Self:
-        """Ensure no alias downgrades to itself."""
+    def _validate_downgrade_map(self) -> Self:
+        """Validate downgrade_map for correctness."""
+        sources: list[str] = []
         for source, target in self.downgrade_map:
+            if not source:
+                msg = "Empty or whitespace-only source alias in downgrade_map"
+                raise ValueError(msg)
+            if not target:
+                msg = "Empty or whitespace-only target alias in downgrade_map"
+                raise ValueError(msg)
             if source == target:
                 msg = f"Self-downgrade in downgrade_map: {source!r} -> {target!r}"
                 raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_no_duplicate_source_aliases(self) -> Self:
-        """Ensure each source alias maps to exactly one target."""
-        sources = [source for source, _ in self.downgrade_map]
+            sources.append(source)
         if len(sources) != len(set(sources)):
             dupes = sorted(s for s, c in Counter(sources).items() if c > 1)
             msg = f"Duplicate source aliases in downgrade_map: {dupes}"

@@ -182,6 +182,18 @@ class TestTaskStringValidation:
         ):
             _make_task(deadline="   ")
 
+    def test_invalid_deadline_format_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="valid ISO 8601"):
+            _make_task(deadline="not-a-date")
+
+    def test_valid_iso_date_deadline_accepted(self) -> None:
+        task = _make_task(deadline="2026-12-31")
+        assert task.deadline == "2026-12-31"
+
+    def test_valid_iso_datetime_deadline_accepted(self) -> None:
+        task = _make_task(deadline="2026-12-31T23:59:59")
+        assert task.deadline == "2026-12-31T23:59:59"
+
     def test_empty_reviewer_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Empty or whitespace-only"):
             _make_task(reviewers=("valid", "   "))
@@ -422,6 +434,25 @@ class TestTaskWithTransition:
         """Reject transition from terminal state COMPLETED."""
         task = _make_task(assigned_to="agent-1", status=TaskStatus.COMPLETED)
         with pytest.raises(ValueError, match="Invalid task status transition"):
+            task.with_transition(TaskStatus.ASSIGNED)
+
+    def test_status_override_rejected(self) -> None:
+        """Reject explicit status override in overrides."""
+        task = _make_task()
+        with pytest.raises(ValueError, match="status override is not allowed"):
+            task.with_transition(
+                TaskStatus.ASSIGNED,
+                status=TaskStatus.COMPLETED,
+                assigned_to="agent-1",
+            )
+
+    def test_validators_enforced_on_transition(self) -> None:
+        """Ensure validators run on the new instance (assigned_to required)."""
+        task = _make_task()
+        with pytest.raises(
+            (ValueError, ValidationError),
+            match="assigned_to is required",
+        ):
             task.with_transition(TaskStatus.ASSIGNED)
 
     def test_original_unchanged(self) -> None:

@@ -129,10 +129,12 @@ class TaskFactory(ModelFactory):
     __model__ = Task
     status = TaskStatus.CREATED
     assigned_to = None
+    deadline = None
 
 
 class ProjectFactory(ModelFactory):
     __model__ = Project
+    deadline = None
 
 
 # ── Sample Fixtures ────────────────────────────────────────────────
