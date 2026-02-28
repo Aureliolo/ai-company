@@ -117,3 +117,71 @@ class DepartmentName(StrEnum):
     OPERATIONS = "operations"
     CREATIVE_MARKETING = "creative_marketing"
     SECURITY = "security"
+
+
+class TaskStatus(StrEnum):
+    """Lifecycle status of a task.
+
+    Valid transitions (see ``ai_company.core.task_transitions``):
+        CREATED -> ASSIGNED
+        ASSIGNED -> IN_PROGRESS | BLOCKED | CANCELLED
+        IN_PROGRESS -> IN_REVIEW | BLOCKED | CANCELLED
+        IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
+        BLOCKED -> ASSIGNED (unblocked)
+        COMPLETED and CANCELLED are terminal states.
+    """
+
+    CREATED = "created"
+    ASSIGNED = "assigned"
+    IN_PROGRESS = "in_progress"
+    IN_REVIEW = "in_review"
+    COMPLETED = "completed"
+    BLOCKED = "blocked"
+    CANCELLED = "cancelled"
+
+
+class TaskType(StrEnum):
+    """Classification of the kind of work a task represents."""
+
+    DEVELOPMENT = "development"
+    DESIGN = "design"
+    RESEARCH = "research"
+    REVIEW = "review"
+    MEETING = "meeting"
+    ADMIN = "admin"
+
+
+class Priority(StrEnum):
+    """Task urgency and importance level."""
+
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class Complexity(StrEnum):
+    """Estimated task complexity."""
+
+    SIMPLE = "simple"
+    MEDIUM = "medium"
+    COMPLEX = "complex"
+    EPIC = "epic"
+
+
+class ArtifactType(StrEnum):
+    """Type of produced artifact."""
+
+    CODE = "code"
+    TESTS = "tests"
+    DOCUMENTATION = "documentation"
+
+
+class ProjectStatus(StrEnum):
+    """Lifecycle status of a project."""
+
+    PLANNING = "planning"
+    ACTIVE = "active"
+    ON_HOLD = "on_hold"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"

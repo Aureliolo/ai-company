@@ -8,6 +8,7 @@ from ai_company.core.agent import (
     SkillSet,
     ToolPermissions,
 )
+from ai_company.core.artifact import Artifact, ExpectedArtifact
 from ai_company.core.company import (
     Company,
     CompanyConfig,
@@ -17,16 +18,23 @@ from ai_company.core.company import (
 )
 from ai_company.core.enums import (
     AgentStatus,
+    ArtifactType,
     CompanyType,
+    Complexity,
     CostTier,
     CreativityLevel,
     DepartmentName,
     MemoryType,
+    Priority,
     ProficiencyLevel,
+    ProjectStatus,
     RiskTolerance,
     SeniorityLevel,
     SkillCategory,
+    TaskStatus,
+    TaskType,
 )
+from ai_company.core.project import Project
 from ai_company.core.role import (
     Authority,
     CustomRole,
@@ -40,27 +48,38 @@ from ai_company.core.role_catalog import (
     get_builtin_role,
     get_seniority_info,
 )
+from ai_company.core.task import AcceptanceCriterion, Task
+from ai_company.core.task_transitions import VALID_TRANSITIONS, validate_transition
 
 __all__ = [
     "BUILTIN_ROLES",
     "SENIORITY_INFO",
+    "VALID_TRANSITIONS",
+    "AcceptanceCriterion",
     "AgentIdentity",
     "AgentStatus",
+    "Artifact",
+    "ArtifactType",
     "Authority",
     "Company",
     "CompanyConfig",
     "CompanyType",
+    "Complexity",
     "CostTier",
     "CreativityLevel",
     "CustomRole",
     "Department",
     "DepartmentName",
+    "ExpectedArtifact",
     "HRRegistry",
     "MemoryConfig",
     "MemoryType",
     "ModelConfig",
     "PersonalityConfig",
+    "Priority",
     "ProficiencyLevel",
+    "Project",
+    "ProjectStatus",
     "RiskTolerance",
     "Role",
     "SeniorityInfo",
@@ -68,8 +87,12 @@ __all__ = [
     "Skill",
     "SkillCategory",
     "SkillSet",
+    "Task",
+    "TaskStatus",
+    "TaskType",
     "Team",
     "ToolPermissions",
     "get_builtin_role",
     "get_seniority_info",
+    "validate_transition",
 ]

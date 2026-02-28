@@ -4,15 +4,21 @@ import pytest
 
 from ai_company.core.enums import (
     AgentStatus,
+    ArtifactType,
     CompanyType,
+    Complexity,
     CostTier,
     CreativityLevel,
     DepartmentName,
     MemoryType,
+    Priority,
     ProficiencyLevel,
+    ProjectStatus,
     RiskTolerance,
     SeniorityLevel,
     SkillCategory,
+    TaskStatus,
+    TaskType,
 )
 
 # ── Member Counts ──────────────────────────────────────────────────
@@ -50,6 +56,24 @@ class TestEnumMemberCounts:
     def test_department_name_has_9_members(self) -> None:
         assert len(DepartmentName) == 9
 
+    def test_task_status_has_7_members(self) -> None:
+        assert len(TaskStatus) == 7
+
+    def test_task_type_has_6_members(self) -> None:
+        assert len(TaskType) == 6
+
+    def test_priority_has_4_members(self) -> None:
+        assert len(Priority) == 4
+
+    def test_complexity_has_4_members(self) -> None:
+        assert len(Complexity) == 4
+
+    def test_artifact_type_has_3_members(self) -> None:
+        assert len(ArtifactType) == 3
+
+    def test_project_status_has_5_members(self) -> None:
+        assert len(ProjectStatus) == 5
+
 
 # ── String Values ──────────────────────────────────────────────────
 
@@ -75,6 +99,47 @@ class TestEnumStringValues:
         assert CompanyType.SOLO_FOUNDER == "solo_founder"
         assert CompanyType.STARTUP == "startup"
         assert CompanyType.CUSTOM == "custom"
+
+    def test_task_status_values(self) -> None:
+        assert TaskStatus.CREATED == "created"
+        assert TaskStatus.ASSIGNED == "assigned"
+        assert TaskStatus.IN_PROGRESS == "in_progress"
+        assert TaskStatus.IN_REVIEW == "in_review"
+        assert TaskStatus.COMPLETED == "completed"
+        assert TaskStatus.BLOCKED == "blocked"
+        assert TaskStatus.CANCELLED == "cancelled"
+
+    def test_task_type_values(self) -> None:
+        assert TaskType.DEVELOPMENT == "development"
+        assert TaskType.DESIGN == "design"
+        assert TaskType.RESEARCH == "research"
+        assert TaskType.REVIEW == "review"
+        assert TaskType.MEETING == "meeting"
+        assert TaskType.ADMIN == "admin"
+
+    def test_priority_values(self) -> None:
+        assert Priority.CRITICAL == "critical"
+        assert Priority.HIGH == "high"
+        assert Priority.MEDIUM == "medium"
+        assert Priority.LOW == "low"
+
+    def test_complexity_values(self) -> None:
+        assert Complexity.SIMPLE == "simple"
+        assert Complexity.MEDIUM == "medium"
+        assert Complexity.COMPLEX == "complex"
+        assert Complexity.EPIC == "epic"
+
+    def test_artifact_type_values(self) -> None:
+        assert ArtifactType.CODE == "code"
+        assert ArtifactType.TESTS == "tests"
+        assert ArtifactType.DOCUMENTATION == "documentation"
+
+    def test_project_status_values(self) -> None:
+        assert ProjectStatus.PLANNING == "planning"
+        assert ProjectStatus.ACTIVE == "active"
+        assert ProjectStatus.ON_HOLD == "on_hold"
+        assert ProjectStatus.COMPLETED == "completed"
+        assert ProjectStatus.CANCELLED == "cancelled"
 
 
 # ── StrEnum Behavior ───────────────────────────────────────────────
