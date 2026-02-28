@@ -110,6 +110,7 @@ convention = "google"
 "tests/**/*.py" = [
     "S101",    # assert allowed in tests
     "S105",    # hardcoded passwords in test data
+    "S106",    # hardcoded passwords as arguments in test data
     "ARG",     # unused arguments (fixtures)
     "FBT",     # boolean trap (parametrize)
     "D",       # no docstrings required in tests

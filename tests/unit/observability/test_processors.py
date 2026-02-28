@@ -80,3 +80,24 @@ class TestSanitizeSensitiveFields:
         assert result["api_key"] == "**REDACTED**"
         assert result["token"] == "**REDACTED**"
         assert result["event"] == "multi"
+
+    def test_redacts_private_key(self) -> None:
+        event = {"private_key": "-----BEGIN RSA", "event": "ssh"}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["private_key"] == "**REDACTED**"
+
+    def test_redacts_bearer(self) -> None:
+        event = {"bearer": "xyz", "event": "auth"}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["bearer"] == "**REDACTED**"
+
+    def test_redacts_session(self) -> None:
+        event = {"session_id": "abc123", "event": "track"}
+        result = sanitize_sensitive_fields(None, "info", event)
+        assert result["session_id"] == "**REDACTED**"
+
+    def test_non_string_key_preserved(self) -> None:
+        event: dict[str | int, str] = {42: "value", "event": "test"}  # type: ignore[assignment]
+        result = sanitize_sensitive_fields(None, "info", event)  # type: ignore[arg-type]
+        assert result[42] == "value"  # type: ignore[index]
+        assert result["event"] == "test"

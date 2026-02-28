@@ -13,7 +13,7 @@ from polyfactory.factories.pydantic_factory import ModelFactory
 from ai_company.observability.config import LogConfig, RotationConfig, SinkConfig
 from ai_company.observability.enums import LogLevel, RotationStrategy, SinkType
 
-# ── Factories ──────────────────────────────────────────────────────
+# -- Factories --------------------------------------------------------------
 
 
 class RotationConfigFactory(ModelFactory):
@@ -45,7 +45,7 @@ class LogConfigFactory(ModelFactory):
     log_dir = "logs"
 
 
-# ── Reset Fixture ─────────────────────────────────────────────────
+# -- Reset Fixture -----------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)

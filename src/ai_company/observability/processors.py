@@ -7,7 +7,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, MutableMapping
 
 _SENSITIVE_PATTERN: re.Pattern[str] = re.compile(
-    r"(password|secret|token|api_key|api_secret|authorization|credential)",
+    r"(password|secret|token|api_key|api_secret|authorization"
+    r"|credential|private_key|bearer|session)",
     re.IGNORECASE,
 )
 
@@ -21,7 +22,8 @@ def sanitize_sensitive_fields(
 ) -> Mapping[str, Any]:
     """Redact values of keys matching sensitive patterns.
 
-    Creates a new dict to preserve immutability of the original event.
+    Returns a new dict rather than mutating the original event dict,
+    following the project's immutability convention.
 
     Args:
         logger: The wrapped logger object (unused, required by structlog).
@@ -33,6 +35,10 @@ def sanitize_sensitive_fields(
         ``**REDACTED**``.
     """
     return {
-        key: _REDACTED if _SENSITIVE_PATTERN.search(key) else value
+        key: (
+            _REDACTED
+            if isinstance(key, str) and _SENSITIVE_PATTERN.search(key)
+            else value
+        )
         for key, value in event_dict.items()
     }

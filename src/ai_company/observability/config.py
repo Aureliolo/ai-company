@@ -12,6 +12,7 @@ configuration.  All models are immutable and validated on construction.
 # TODO(#59): Integrate LogConfig with central config/ YAML loading
 
 from collections import Counter
+from pathlib import PurePath
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -24,7 +25,9 @@ class RotationConfig(BaseModel):
 
     Attributes:
         strategy: Rotation mechanism to use.
-        max_bytes: Maximum file size in bytes before rotation (BUILTIN).
+        max_bytes: Maximum file size in bytes before rotation.
+            Only used when ``strategy`` is
+            :attr:`RotationStrategy.BUILTIN`.
         backup_count: Number of rotated backup files to keep.
     """
 
@@ -53,6 +56,7 @@ class SinkConfig(BaseModel):
         sink_type: Where to send log output (console or file).
         level: Minimum log level for this sink.
         file_path: Relative path for FILE sinks (within ``log_dir``).
+            Must be ``None`` for CONSOLE sinks, required for FILE sinks.
         rotation: Rotation settings for FILE sinks.
         json_format: Whether to format output as JSON.
     """
@@ -81,13 +85,16 @@ class SinkConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_file_sink_requires_path(self) -> Self:
-        """Ensure FILE sinks have a non-blank ``file_path``."""
+        """Ensure FILE sinks have a non-blank, safe ``file_path``."""
         if self.sink_type == SinkType.FILE:
             if self.file_path is None:
                 msg = "file_path is required for FILE sinks"
                 raise ValueError(msg)
             if not self.file_path.strip():
-                msg = "file_path must not be whitespace-only"
+                msg = "file_path must not be empty or whitespace-only"
+                raise ValueError(msg)
+            if ".." in PurePath(self.file_path).parts:
+                msg = f"file_path must not contain '..' components: {self.file_path}"
                 raise ValueError(msg)
         return self
 

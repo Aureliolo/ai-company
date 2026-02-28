@@ -39,28 +39,40 @@ def handler_cleanup() -> Iterator[list[logging.Handler]]:
 class TestBuildHandlerConsole:
     """Tests for console handler creation."""
 
-    def test_returns_stream_handler(self, tmp_path: Path) -> None:
+    def test_returns_stream_handler(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
         sink = SinkConfig(sink_type=SinkType.CONSOLE, json_format=False)
         handler = build_handler(sink, tmp_path, _foreign_pre_chain())
+        handler_cleanup.append(handler)
         assert isinstance(handler, logging.StreamHandler)
 
-    def test_has_processor_formatter(self, tmp_path: Path) -> None:
+    def test_has_processor_formatter(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
         sink = SinkConfig(sink_type=SinkType.CONSOLE, json_format=False)
         handler = build_handler(sink, tmp_path, _foreign_pre_chain())
+        handler_cleanup.append(handler)
         assert isinstance(handler.formatter, ProcessorFormatter)
 
-    def test_console_json_format(self, tmp_path: Path) -> None:
+    def test_console_json_format(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
         sink = SinkConfig(sink_type=SinkType.CONSOLE, json_format=True)
         handler = build_handler(sink, tmp_path, _foreign_pre_chain())
+        handler_cleanup.append(handler)
         assert isinstance(handler, logging.StreamHandler)
 
-    def test_handler_level_matches_config(self, tmp_path: Path) -> None:
+    def test_handler_level_matches_config(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
         sink = SinkConfig(
             sink_type=SinkType.CONSOLE,
             level=LogLevel.ERROR,
             json_format=False,
         )
         handler = build_handler(sink, tmp_path, _foreign_pre_chain())
+        handler_cleanup.append(handler)
         assert handler.level == logging.ERROR
 
 

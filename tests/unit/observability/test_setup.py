@@ -5,11 +5,13 @@ import logging
 from typing import TYPE_CHECKING
 
 import pytest
+import structlog
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 from ai_company.observability.config import LogConfig, SinkConfig
+from ai_company.observability.correlation import bind_correlation_id
 from ai_company.observability.enums import LogLevel, SinkType
 from ai_company.observability.setup import _DEFAULT_LOGGER_LEVELS, configure_logging
 
@@ -66,6 +68,15 @@ class TestConfigureLogging:
         configure_logging(_console_only_config())
         root = logging.getLogger()
         assert root.level == logging.DEBUG
+
+    def test_custom_root_level_applied(self) -> None:
+        config = LogConfig(
+            sinks=(_console_only_config().sinks),
+            root_level=LogLevel.WARNING,
+        )
+        configure_logging(config)
+        root = logging.getLogger()
+        assert root.level == logging.WARNING
 
     def test_default_logger_levels_applied(self) -> None:
         configure_logging(_console_only_config())
@@ -148,3 +159,35 @@ class TestDefaultLoggerLevels:
     def test_all_levels_are_valid(self) -> None:
         for _, level in _DEFAULT_LOGGER_LEVELS:
             assert isinstance(level, LogLevel)
+
+
+@pytest.mark.unit
+class TestSanitizationPipeline:
+    """E2E tests for sensitive field sanitization through the pipeline."""
+
+    def test_sensitive_fields_redacted_in_log_file(self, tmp_path: Path) -> None:
+        configure_logging(_file_config(tmp_path))
+        logger = structlog.get_logger("test.sanitize")
+        logger.info("login attempt", password="s3cret", user="alice")
+        log_file = tmp_path / "test.log"
+        content = log_file.read_text().strip()
+        assert content
+        record = json.loads(content)
+        assert record["password"] == "**REDACTED**"
+        assert record["user"] == "alice"
+
+
+@pytest.mark.unit
+class TestCorrelationPipeline:
+    """E2E tests for correlation IDs appearing in log file output."""
+
+    def test_correlation_id_in_log_output(self, tmp_path: Path) -> None:
+        configure_logging(_file_config(tmp_path))
+        bind_correlation_id(request_id="test-req-123")
+        logger = structlog.get_logger("test.correlation")
+        logger.info("correlated event")
+        log_file = tmp_path / "test.log"
+        content = log_file.read_text().strip()
+        assert content
+        record = json.loads(content)
+        assert record["request_id"] == "test-req-123"

@@ -34,6 +34,7 @@ src/ai_company/
   core/           # Shared domain models and base classes
   engine/         # Agent execution engine and task lifecycle
   memory/         # Persistent agent memory (Mem0 adapter)
+  observability/  # Structured logging, correlation tracking, log sinks
   providers/      # LLM provider abstraction (LiteLLM adapter)
   security/       # SecOps agent, approval gates, sandboxing
   templates/      # Pre-built company templates and builder

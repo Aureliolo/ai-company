@@ -106,11 +106,21 @@ class TestUnbindCorrelationId:
 class TestClearCorrelationIds:
     """Tests for clear_correlation_ids."""
 
-    def test_clears_all(self) -> None:
+    def test_clears_all_correlation_keys(self) -> None:
         bind_correlation_id(request_id="r", task_id="t", agent_id="a")
         clear_correlation_ids()
         ctx = structlog.contextvars.get_contextvars()
-        assert ctx == {}
+        assert "request_id" not in ctx
+        assert "task_id" not in ctx
+        assert "agent_id" not in ctx
+
+    def test_preserves_non_correlation_context(self) -> None:
+        structlog.contextvars.bind_contextvars(custom_key="keep-me")
+        bind_correlation_id(request_id="r")
+        clear_correlation_ids()
+        ctx = structlog.contextvars.get_contextvars()
+        assert ctx["custom_key"] == "keep-me"
+        assert "request_id" not in ctx
 
 
 @pytest.mark.unit
@@ -174,3 +184,17 @@ class TestWithCorrelation:
             pass
 
         assert my_func.__name__ == "my_func"
+
+    def test_forwards_arguments(self) -> None:
+        @with_correlation(task_id="t-1")
+        def add(a: int, b: int) -> int:
+            return a + b
+
+        assert add(3, 4) == 7
+
+    def test_rejects_async_function(self) -> None:
+        with pytest.raises(TypeError, match="does not support async"):
+
+            @with_correlation(request_id="r")
+            async def async_fn() -> None:
+                pass

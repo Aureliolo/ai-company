@@ -101,12 +101,26 @@ class TestSinkConfig:
             SinkConfig(sink_type=SinkType.FILE)
 
     def test_file_sink_rejects_whitespace_path(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
+        with pytest.raises(ValidationError, match="empty or whitespace-only"):
             SinkConfig(sink_type=SinkType.FILE, file_path="   ")
 
     def test_file_sink_rejects_empty_path(self) -> None:
-        with pytest.raises(ValidationError, match="whitespace-only"):
+        with pytest.raises(ValidationError, match="empty or whitespace-only"):
             SinkConfig(sink_type=SinkType.FILE, file_path="")
+
+    def test_file_sink_rejects_path_traversal(self) -> None:
+        with pytest.raises(ValidationError, match=r"must not contain '\.\.'"):
+            SinkConfig(
+                sink_type=SinkType.FILE,
+                file_path="../../../etc/passwd",
+            )
+
+    def test_file_sink_rejects_embedded_path_traversal(self) -> None:
+        with pytest.raises(ValidationError, match=r"must not contain '\.\.'"):
+            SinkConfig(
+                sink_type=SinkType.FILE,
+                file_path="logs/../../etc/shadow.log",
+            )
 
     def test_console_sink_ignores_path(self) -> None:
         cfg = SinkConfig(

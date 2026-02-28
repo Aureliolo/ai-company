@@ -11,7 +11,9 @@ propagation across agent actions, tasks, and API requests.
 
 # TODO: Add with_correlation_async() for async functions (engine/API)
 
+import contextlib
 import functools
+import inspect
 import uuid
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
@@ -85,8 +87,16 @@ def unbind_correlation_id(
 
 
 def clear_correlation_ids() -> None:
-    """Clear all correlation IDs from the current context."""
-    structlog.contextvars.clear_contextvars()
+    """Remove all correlation IDs from the current context.
+
+    Unbinds ``request_id``, ``task_id``, and ``agent_id``.  Other
+    context variables are preserved.
+    """
+    structlog.contextvars.unbind_contextvars(
+        "request_id",
+        "task_id",
+        "agent_id",
+    )
 
 
 def with_correlation(
@@ -100,6 +110,12 @@ def with_correlation(
     Correlation IDs are bound before the function executes and unbound
     after it returns or raises.  Only non-``None`` IDs are managed.
 
+    Note:
+        This decorator is for **synchronous** functions only.  Applying
+        it to an ``async def`` function raises :exc:`TypeError`.  For
+        async functions, manually call :func:`bind_correlation_id` and
+        :func:`unbind_correlation_id` in a ``try``/``finally`` block.
+
     Args:
         request_id: Request correlation identifier to bind.
         task_id: Task correlation identifier to bind.
@@ -107,9 +123,20 @@ def with_correlation(
 
     Returns:
         A decorator that manages correlation ID lifecycle.
+
+    Raises:
+        TypeError: If the decorated function is a coroutine function.
     """
 
     def decorator(func: Callable[_P, _T]) -> Callable[_P, _T]:
+        if inspect.iscoroutinefunction(func):
+            msg = (
+                "with_correlation() does not support async functions. "
+                "Manually call bind_correlation_id/unbind_correlation_id "
+                "in a try/finally block."
+            )
+            raise TypeError(msg)
+
         @functools.wraps(func)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
             bind_correlation_id(
@@ -120,11 +147,12 @@ def with_correlation(
             try:
                 return func(*args, **kwargs)
             finally:
-                unbind_correlation_id(
-                    request_id=request_id is not None,
-                    task_id=task_id is not None,
-                    agent_id=agent_id is not None,
-                )
+                with contextlib.suppress(Exception):
+                    unbind_correlation_id(
+                        request_id=request_id is not None,
+                        task_id=task_id is not None,
+                        agent_id=agent_id is not None,
+                    )
 
         return wrapper
 

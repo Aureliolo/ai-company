@@ -1,9 +1,17 @@
 """Tests for the get_logger convenience wrapper."""
 
+import json
+from typing import TYPE_CHECKING
+
 import pytest
 
 from ai_company.observability._logger import get_logger
+from ai_company.observability.config import LogConfig, SinkConfig
+from ai_company.observability.enums import LogLevel, SinkType
 from ai_company.observability.setup import configure_logging
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -26,10 +34,26 @@ class TestGetLogger:
         # The logger should be usable without errors
         assert logger is not None
 
-    def test_initial_bindings_applied(self) -> None:
-        configure_logging()
+    def test_initial_bindings_applied(self, tmp_path: Path) -> None:
+        config = LogConfig(
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.DEBUG,
+                    file_path="bindings.log",
+                    json_format=True,
+                ),
+            ),
+            log_dir=str(tmp_path),
+        )
+        configure_logging(config)
         logger = get_logger("test.bindings", service="api")
-        assert logger is not None
+        logger.info("binding-check")
+        log_file = tmp_path / "bindings.log"
+        content = log_file.read_text().strip()
+        assert content
+        record = json.loads(content)
+        assert record["service"] == "api"
 
     def test_different_names_return_different_loggers(self) -> None:
         configure_logging()

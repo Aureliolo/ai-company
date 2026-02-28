@@ -14,8 +14,6 @@ Provides:
     modules to obtain a bound structured logger.
 """
 
-# TODO(#59): Integrate LogConfig with central config/ YAML loading
-
 from ai_company.observability._logger import get_logger
 from ai_company.observability.config import (
     DEFAULT_SINKS,
