@@ -67,6 +67,9 @@ class BudgetHierarchyFactory(ModelFactory):
 
 class CostRecordFactory(ModelFactory):
     __model__ = CostRecord
+    input_tokens = 1000
+    output_tokens = 500
+    cost_usd = 0.05
 
 
 class PeriodSpendingFactory(ModelFactory):
