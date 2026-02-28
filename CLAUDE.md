@@ -41,6 +41,10 @@ src/ai_company/
   tools/          # Tool registry, MCP integration, role-based access
 ```
 
+## Shell Usage
+
+- **NEVER use `cd` in Bash commands** — the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/ai-company &&`.
+
 ## Code Conventions
 
 - **No `from __future__ import annotations`** — Python 3.14 has PEP 649
