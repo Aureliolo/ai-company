@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 import pytest
+from pydantic import ValidationError
 
 from ai_company.core.enums import (
     CostTier,
@@ -51,8 +52,6 @@ class TestSeniorityInfo:
         assert info.typical_model_tier == "sonnet"
 
     def test_all_entries_frozen(self) -> None:
-        from pydantic import ValidationError
-
         for info in SENIORITY_INFO:
             with pytest.raises(ValidationError):
                 info.level = SeniorityLevel.JUNIOR  # type: ignore[misc]
@@ -95,8 +94,6 @@ class TestBuiltinRoles:
             assert len(role.required_skills) > 0, f"{role.name} has no required_skills"
 
     def test_all_roles_frozen(self) -> None:
-        from pydantic import ValidationError
-
         for role in BUILTIN_ROLES:
             with pytest.raises(ValidationError):
                 role.name = "Changed"  # type: ignore[misc]

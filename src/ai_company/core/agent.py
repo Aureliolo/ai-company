@@ -1,6 +1,7 @@
 """Agent identity and configuration models."""
 
 from datetime import date  # noqa: TC003 — required at runtime by Pydantic
+from typing import Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -51,7 +52,7 @@ class PersonalityConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_no_empty_traits(self) -> PersonalityConfig:
+    def _validate_no_empty_traits(self) -> Self:
         """Ensure no empty or whitespace-only traits or communication_style."""
         if not self.communication_style.strip():
             msg = "communication_style must not be whitespace-only"
@@ -83,7 +84,7 @@ class SkillSet(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_no_empty_skills(self) -> SkillSet:
+    def _validate_no_empty_skills(self) -> Self:
         """Ensure no empty or whitespace-only skill names."""
         for field_name in ("primary", "secondary"):
             for skill in getattr(self, field_name):
@@ -126,7 +127,7 @@ class ModelConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_non_blank_identifiers(self) -> ModelConfig:
+    def _validate_non_blank_identifiers(self) -> Self:
         """Ensure identifier fields are not whitespace-only."""
         for field_name in ("provider", "model_id", "fallback_model"):
             value = getattr(self, field_name)
@@ -157,7 +158,7 @@ class MemoryConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_retention_consistency(self) -> MemoryConfig:
+    def _validate_retention_consistency(self) -> Self:
         """Ensure retention_days is None when memory type is MemoryType.NONE."""
         if self.type is MemoryType.NONE and self.retention_days is not None:
             msg = "retention_days must be None when memory type is 'none'"
@@ -185,7 +186,7 @@ class ToolPermissions(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_no_empty_tools(self) -> ToolPermissions:
+    def _validate_no_empty_tools(self) -> Self:
         """Ensure no empty or whitespace-only tool names."""
         for field_name in ("allowed", "denied"):
             for tool in getattr(self, field_name):
@@ -195,7 +196,7 @@ class ToolPermissions(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_no_overlap(self) -> ToolPermissions:
+    def _validate_no_overlap(self) -> Self:
         """Ensure no tool appears in both allowed and denied lists.
 
         Comparison is case-insensitive.
@@ -270,7 +271,7 @@ class AgentIdentity(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_non_blank_identifiers(self) -> AgentIdentity:
+    def _validate_non_blank_identifiers(self) -> Self:
         """Ensure name, role, and department are not whitespace-only."""
         for field_name in ("name", "role", "department"):
             if not getattr(self, field_name).strip():

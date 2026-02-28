@@ -1,6 +1,7 @@
 """Company structure and configuration models."""
 
 from collections import Counter
+from typing import Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -33,7 +34,7 @@ class Team(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_strings(self) -> Team:
+    def _validate_strings(self) -> Self:
         """Ensure no empty or whitespace-only names in identifiers and members."""
         for field_name in ("name", "lead"):
             if not getattr(self, field_name).strip():
@@ -80,7 +81,7 @@ class Department(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_non_blank_identifiers(self) -> Department:
+    def _validate_non_blank_identifiers(self) -> Self:
         """Ensure name and head are not whitespace-only."""
         for field_name in ("name", "head"):
             if not getattr(self, field_name).strip():
@@ -89,7 +90,7 @@ class Department(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_unique_team_names(self) -> Department:
+    def _validate_unique_team_names(self) -> Self:
         """Ensure no duplicate team names within a department."""
         names = [t.name for t in self.teams]
         if len(names) != len(set(names)):
@@ -133,7 +134,7 @@ class CompanyConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_strings(self) -> CompanyConfig:
+    def _validate_strings(self) -> Self:
         """Ensure no whitespace-only identifiers or tool access entries."""
         if not self.communication_pattern.strip():
             msg = "communication_pattern must not be whitespace-only"
@@ -173,7 +174,7 @@ class HRRegistry(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_entries(self) -> HRRegistry:
+    def _validate_entries(self) -> Self:
         """Ensure no empty strings and no duplicate entries in active_agents."""
         for field_name in ("active_agents", "available_roles", "hiring_queue"):
             for value in getattr(self, field_name):
@@ -226,7 +227,7 @@ class Company(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_non_blank_name(self) -> Company:
+    def _validate_non_blank_name(self) -> Self:
         """Ensure company name is not whitespace-only."""
         if not self.name.strip():
             msg = "name must not be whitespace-only"
@@ -234,7 +235,7 @@ class Company(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_departments(self) -> Company:
+    def _validate_departments(self) -> Self:
         """Validate department names are unique and budgets do not exceed 100%."""
         # Unique department names
         names = [d.name for d in self.departments]

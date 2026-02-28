@@ -1,5 +1,7 @@
 """Role and skill domain models."""
 
+from typing import Self
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ai_company.core.enums import (
@@ -29,7 +31,7 @@ class Skill(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_name_not_blank(self) -> Skill:
+    def _validate_name_not_blank(self) -> Self:
         """Ensure skill name is not whitespace-only."""
         if not self.name.strip():
             msg = "Skill name must not be whitespace-only"
@@ -69,7 +71,7 @@ class Authority(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_no_empty_strings(self) -> Authority:
+    def _validate_no_empty_strings(self) -> Self:
         """Ensure no whitespace-only entries in string tuples or reports_to."""
         for field_name in ("can_approve", "can_delegate_to"):
             for value in getattr(self, field_name):
@@ -109,7 +111,7 @@ class SeniorityInfo(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_non_blank_strings(self) -> SeniorityInfo:
+    def _validate_non_blank_strings(self) -> Self:
         """Ensure string fields are not whitespace-only."""
         for field_name in ("authority_scope", "typical_model_tier", "cost_tier"):
             if not getattr(self, field_name).strip():
@@ -159,7 +161,7 @@ class Role(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_no_empty_strings(self) -> Role:
+    def _validate_no_empty_strings(self) -> Self:
         """Ensure no empty or whitespace-only entries in name and string tuples."""
         if not self.name.strip():
             msg = "name must not be whitespace-only"
@@ -230,7 +232,7 @@ class CustomRole(BaseModel):
         return stripped
 
     @model_validator(mode="after")
-    def _validate_no_empty_required_skills(self) -> CustomRole:
+    def _validate_no_empty_required_skills(self) -> Self:
         """Ensure no whitespace-only name, optional fields, or skills."""
         if not self.name.strip():
             msg = "name must not be whitespace-only"
