@@ -10,8 +10,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-_BUDGET_ROUNDING_PRECISION = 10
-"""Decimal places for budget sum rounding; avoids IEEE 754 float artifacts."""
+from ai_company.constants import BUDGET_ROUNDING_PRECISION
 
 
 class TeamBudget(BaseModel):
@@ -98,7 +97,7 @@ class DepartmentBudget(BaseModel):
         """Ensure team budget percentages do not exceed 100%."""
         max_budget_percent = 100.0
         total = sum(t.budget_percent for t in self.teams)
-        if round(total, _BUDGET_ROUNDING_PRECISION) > max_budget_percent:
+        if round(total, BUDGET_ROUNDING_PRECISION) > max_budget_percent:
             msg = (
                 f"Team budget allocations in department "
                 f"{self.department_name!r} sum to {total:.2f}%, "
@@ -147,7 +146,7 @@ class BudgetHierarchy(BaseModel):
         """Ensure department budget percentages do not exceed 100%."""
         max_budget_percent = 100.0
         total = sum(d.budget_percent for d in self.departments)
-        if round(total, _BUDGET_ROUNDING_PRECISION) > max_budget_percent:
+        if round(total, BUDGET_ROUNDING_PRECISION) > max_budget_percent:
             msg = (
                 f"Department budget allocations sum to {total:.2f}%, "
                 f"exceeding {max_budget_percent:.0f}%"

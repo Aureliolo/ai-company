@@ -21,6 +21,8 @@ from ai_company.core.enums import (
     TaskType,
 )
 
+pytestmark = pytest.mark.timeout(30)
+
 # ── Member Counts ──────────────────────────────────────────────────
 
 

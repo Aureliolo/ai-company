@@ -5,6 +5,8 @@ import pytest
 from ai_company.core.enums import TaskStatus
 from ai_company.core.task_transitions import VALID_TRANSITIONS, validate_transition
 
+pytestmark = pytest.mark.timeout(30)
+
 # ── Valid Transitions ─────────────────────────────────────────────
 
 

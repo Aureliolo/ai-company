@@ -13,6 +13,8 @@ from ai_company.core.enums import (
 )
 from ai_company.core.task import AcceptanceCriterion, Task
 
+pytestmark = pytest.mark.timeout(30)
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 _TASK_KWARGS: dict[str, object] = {
@@ -387,3 +389,45 @@ class TestTaskFixtures:
     def test_sample_assigned_task_fixture(self, sample_assigned_task: Task) -> None:
         assert sample_assigned_task.status is TaskStatus.ASSIGNED
         assert sample_assigned_task.assigned_to == "sarah_chen"
+
+
+# ── Task: with_transition ───────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestTaskWithTransition:
+    """Tests for Task.with_transition() state machine enforcement."""
+
+    def test_valid_transition_created_to_assigned(self) -> None:
+        """Allow valid transition from CREATED to ASSIGNED."""
+        task = _make_task()
+        new_task = task.with_transition(TaskStatus.ASSIGNED, assigned_to="agent-1")
+        assert new_task.status is TaskStatus.ASSIGNED
+        assert new_task.assigned_to == "agent-1"
+        assert new_task.id == task.id
+
+    def test_valid_transition_assigned_to_in_progress(self) -> None:
+        """Allow valid transition from ASSIGNED to IN_PROGRESS."""
+        task = _make_task(assigned_to="agent-1", status=TaskStatus.ASSIGNED)
+        new_task = task.with_transition(TaskStatus.IN_PROGRESS)
+        assert new_task.status is TaskStatus.IN_PROGRESS
+
+    def test_invalid_transition_created_to_completed(self) -> None:
+        """Reject invalid transition from CREATED to COMPLETED."""
+        task = _make_task()
+        with pytest.raises(ValueError, match="Invalid task status transition"):
+            task.with_transition(TaskStatus.COMPLETED, assigned_to="agent-1")
+
+    def test_invalid_transition_from_terminal(self) -> None:
+        """Reject transition from terminal state COMPLETED."""
+        task = _make_task(assigned_to="agent-1", status=TaskStatus.COMPLETED)
+        with pytest.raises(ValueError, match="Invalid task status transition"):
+            task.with_transition(TaskStatus.ASSIGNED)
+
+    def test_original_unchanged(self) -> None:
+        """Ensure the original task is not modified (immutability)."""
+        task = _make_task()
+        new_task = task.with_transition(TaskStatus.ASSIGNED, assigned_to="agent-1")
+        assert task.status is TaskStatus.CREATED
+        assert task.assigned_to is None
+        assert new_task is not task

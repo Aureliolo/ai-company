@@ -4,6 +4,7 @@ Implements DESIGN_SPEC Section 10.4: cost controls including alert
 thresholds, per-task and per-agent limits, and automatic model downgrade.
 """
 
+from collections import Counter
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -27,18 +28,21 @@ class BudgetAlertConfig(BaseModel):
         default=75,
         ge=0,
         le=100,
+        strict=True,
         description="Percent of budget triggering warning",
     )
     critical_at: int = Field(
         default=90,
         ge=0,
         le=100,
+        strict=True,
         description="Percent of budget triggering critical alert",
     )
     hard_stop_at: int = Field(
         default=100,
         ge=0,
         le=100,
+        strict=True,
         description="Percent of budget triggering hard stop",
     )
 
@@ -80,6 +84,7 @@ class AutoDowngradeConfig(BaseModel):
         default=85,
         ge=0,
         le=100,
+        strict=True,
         description="Budget percent triggering downgrade",
     )
     downgrade_map: tuple[tuple[str, str], ...] = Field(
@@ -100,17 +105,21 @@ class AutoDowngradeConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _validate_no_self_downgrade(self) -> Self:
+        """Ensure no alias downgrades to itself."""
+        for source, target in self.downgrade_map:
+            if source == target:
+                msg = f"Self-downgrade in downgrade_map: {source!r} -> {target!r}"
+                raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _validate_no_duplicate_source_aliases(self) -> Self:
         """Ensure each source alias maps to exactly one target."""
         sources = [source for source, _ in self.downgrade_map]
         if len(sources) != len(set(sources)):
-            seen: set[str] = set()
-            dupes: list[str] = []
-            for s in sources:
-                if s in seen:
-                    dupes.append(s)
-                seen.add(s)
-            msg = f"Duplicate source aliases in downgrade_map: {sorted(set(dupes))}"
+            dupes = sorted(s for s, c in Counter(sources).items() if c > 1)
+            msg = f"Duplicate source aliases in downgrade_map: {dupes}"
             raise ValueError(msg)
         return self
 
@@ -157,7 +166,12 @@ class BudgetConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_per_task_limit_within_monthly(self) -> Self:
-        """Ensure per_task_limit does not exceed total_monthly."""
+        """Ensure per_task_limit does not exceed total_monthly.
+
+        When ``total_monthly`` is ``0.0``, per-task and per-agent limits
+        are not validated against it.  A zero monthly budget means budget
+        enforcement is disabled; limits are ignored at runtime.
+        """
         if self.total_monthly > 0 and self.per_task_limit > self.total_monthly:
             msg = (
                 f"per_task_limit ({self.per_task_limit}) "

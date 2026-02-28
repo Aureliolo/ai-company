@@ -1,11 +1,13 @@
 """Task domain model and acceptance criteria."""
 
+from collections import Counter
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.artifact import ExpectedArtifact  # noqa: TC001
 from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
+from ai_company.core.task_transitions import validate_transition
 
 
 class AcceptanceCriterion(BaseModel):
@@ -159,7 +161,8 @@ class Task(BaseModel):
     def _validate_no_duplicate_dependencies(self) -> Self:
         """Ensure no duplicate task IDs in dependencies."""
         if len(self.dependencies) != len(set(self.dependencies)):
-            msg = "Duplicate entries in dependencies"
+            dupes = sorted(d for d, c in Counter(self.dependencies).items() if c > 1)
+            msg = f"Duplicate entries in dependencies: {dupes}"
             raise ValueError(msg)
         return self
 
@@ -167,7 +170,8 @@ class Task(BaseModel):
     def _validate_no_duplicate_reviewers(self) -> Self:
         """Ensure no duplicate agent IDs in reviewers."""
         if len(self.reviewers) != len(set(self.reviewers)):
-            msg = "Duplicate entries in reviewers"
+            dupes = sorted(r for r, c in Counter(self.reviewers).items() if c > 1)
+            msg = f"Duplicate entries in reviewers: {dupes}"
             raise ValueError(msg)
         return self
 
@@ -193,3 +197,23 @@ class Task(BaseModel):
             msg = f"assigned_to is required when status is {self.status.value!r}"
             raise ValueError(msg)
         return self
+
+    def with_transition(self, target: TaskStatus, **overrides: object) -> Task:
+        """Create a new Task with a validated status transition.
+
+        Calls :func:`~ai_company.core.task_transitions.validate_transition`
+        before producing the new instance, ensuring the state machine is
+        enforced.
+
+        Args:
+            target: The desired target status.
+            **overrides: Additional field overrides for the new task.
+
+        Returns:
+            A new Task with the target status.
+
+        Raises:
+            ValueError: If the transition is not valid.
+        """
+        validate_transition(self.status, target)
+        return self.model_copy(update={"status": target, **overrides})

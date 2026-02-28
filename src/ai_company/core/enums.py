@@ -10,7 +10,7 @@ class SeniorityLevel(StrEnum):
     cost tier defined in ``ai_company.core.role_catalog.SENIORITY_INFO``.
     """
 
-    # Design spec §3.2 says "Intern/Junior" — collapsed to a single JUNIOR level.
+    # DESIGN_SPEC Section 3.2 says "Intern/Junior" — collapsed to a single JUNIOR level.
     JUNIOR = "junior"
     MID = "mid"
     SENIOR = "senior"
@@ -122,7 +122,10 @@ class DepartmentName(StrEnum):
 class TaskStatus(StrEnum):
     """Lifecycle status of a task.
 
-    Valid transitions (see ``ai_company.core.task_transitions``):
+    The authoritative transition map lives in
+    ``ai_company.core.task_transitions.VALID_TRANSITIONS``.
+    Summary for quick reference:
+
         CREATED -> ASSIGNED
         ASSIGNED -> IN_PROGRESS | BLOCKED | CANCELLED
         IN_PROGRESS -> IN_REVIEW | BLOCKED | CANCELLED

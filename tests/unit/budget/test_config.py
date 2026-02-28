@@ -48,6 +48,11 @@ class TestBudgetAlertConfig:
         cfg = BudgetAlertConfig(warn_at=10, critical_at=50, hard_stop_at=100)
         assert cfg.hard_stop_at == 100
 
+    def test_float_threshold_rejected(self) -> None:
+        """Reject float value for threshold (strict int)."""
+        with pytest.raises(ValidationError):
+            BudgetAlertConfig(warn_at=75.5, critical_at=90, hard_stop_at=100)
+
     def test_negative_threshold_rejected(self) -> None:
         """Reject negative threshold values."""
         with pytest.raises(ValidationError):
@@ -126,6 +131,14 @@ class TestAutoDowngradeConfig:
                 downgrade_map=(("opus", "  "),),
             )
 
+    def test_self_downgrade_rejected(self) -> None:
+        """Reject downgrade_map entry where source equals target."""
+        with pytest.raises(ValidationError, match="Self-downgrade"):
+            AutoDowngradeConfig(
+                enabled=True,
+                downgrade_map=(("opus", "opus"),),
+            )
+
     def test_duplicate_source_alias_rejected(self) -> None:
         """Reject duplicate source aliases in downgrade_map."""
         with pytest.raises(ValidationError, match="Duplicate source aliases"):
@@ -136,6 +149,11 @@ class TestAutoDowngradeConfig:
                     ("opus", "haiku"),
                 ),
             )
+
+    def test_float_threshold_rejected(self) -> None:
+        """Reject float value for threshold (strict int)."""
+        with pytest.raises(ValidationError):
+            AutoDowngradeConfig(threshold=85.5)
 
     def test_threshold_boundary_0(self) -> None:
         """Accept threshold at lower boundary (0)."""

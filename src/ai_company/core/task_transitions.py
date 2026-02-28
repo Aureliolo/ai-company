@@ -1,8 +1,8 @@
 """Task lifecycle state machine transitions.
 
-Defines the valid state transitions for the task lifecycle per
-DESIGN_SPEC Section 6.1.  The transition map is derived from the
-state diagram::
+Defines the valid state transitions for the task lifecycle, based on
+DESIGN_SPEC Section 6.1 and extended with BLOCKED and CANCELLED
+transitions from IN_PROGRESS and IN_REVIEW for completeness::
 
     CREATED -> ASSIGNED
     ASSIGNED -> IN_PROGRESS | BLOCKED | CANCELLED
@@ -57,7 +57,13 @@ def validate_transition(current: TaskStatus, target: TaskStatus) -> None:
         ValueError: If the transition from *current* to *target*
             is not in :data:`VALID_TRANSITIONS`.
     """
-    allowed = VALID_TRANSITIONS.get(current, frozenset())
+    if current not in VALID_TRANSITIONS:
+        msg = (
+            f"TaskStatus {current.value!r} has no entry in VALID_TRANSITIONS. "
+            f"This is a configuration error — update task_transitions.py."
+        )
+        raise ValueError(msg)
+    allowed = VALID_TRANSITIONS[current]
     if target not in allowed:
         msg = (
             f"Invalid task status transition: {current.value!r} -> "

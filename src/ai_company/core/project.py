@@ -1,5 +1,6 @@
 """Project domain model for task collection management."""
 
+from collections import Counter
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -90,7 +91,8 @@ class Project(BaseModel):
     def _validate_no_duplicate_team_members(self) -> Self:
         """Ensure no duplicate agent IDs in team."""
         if len(self.team) != len(set(self.team)):
-            msg = "Duplicate entries in team"
+            dupes = sorted(m for m, c in Counter(self.team).items() if c > 1)
+            msg = f"Duplicate entries in team: {dupes}"
             raise ValueError(msg)
         return self
 
@@ -98,6 +100,7 @@ class Project(BaseModel):
     def _validate_no_duplicate_task_ids(self) -> Self:
         """Ensure no duplicate task IDs."""
         if len(self.task_ids) != len(set(self.task_ids)):
-            msg = "Duplicate entries in task_ids"
+            dupes = sorted(t for t, c in Counter(self.task_ids).items() if c > 1)
+            msg = f"Duplicate entries in task_ids: {dupes}"
             raise ValueError(msg)
         return self

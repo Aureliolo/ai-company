@@ -5,6 +5,9 @@ from pydantic import ValidationError
 
 from ai_company.core.enums import ProjectStatus
 from ai_company.core.project import Project
+from tests.unit.core.conftest import ProjectFactory
+
+pytestmark = pytest.mark.timeout(30)
 
 # ── Helpers ──────────────────────────────────────────────────────
 
@@ -159,8 +162,6 @@ class TestProjectImmutability:
 @pytest.mark.unit
 class TestProjectFactory:
     def test_factory(self) -> None:
-        from tests.unit.core.conftest import ProjectFactory
-
         project = ProjectFactory.build()
         assert isinstance(project, Project)
         assert isinstance(project.status, ProjectStatus)

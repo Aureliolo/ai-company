@@ -6,10 +6,8 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ai_company.constants import BUDGET_ROUNDING_PRECISION
 from ai_company.core.enums import CompanyType
-
-_BUDGET_ROUNDING_PRECISION = 10
-"""Decimal places for budget sum rounding; avoids IEEE 754 float artifacts."""
 
 
 class Team(BaseModel):
@@ -247,7 +245,7 @@ class Company(BaseModel):
         # Budget sum
         max_budget_percent = 100.0
         total = sum(d.budget_percent for d in self.departments)
-        if round(total, _BUDGET_ROUNDING_PRECISION) > max_budget_percent:
+        if round(total, BUDGET_ROUNDING_PRECISION) > max_budget_percent:
             msg = (
                 f"Department budget allocations sum to {total:.2f}%, "
                 f"exceeding {max_budget_percent:.0f}%"

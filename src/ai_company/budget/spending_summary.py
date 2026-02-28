@@ -1,10 +1,12 @@
 """Spending summary models for aggregated cost reporting.
 
-Provides aggregation views of :class:`~ai_company.budget.cost_record.CostRecord`
-data by agent, department, and time period, supporting the CFO agent
-responsibilities described in DESIGN_SPEC Section 10.3.
+Provides the aggregation data structures consumed by the CFO agent
+(DESIGN_SPEC Section 10.3) for cost reporting and budget monitoring.
+Views of :class:`~ai_company.budget.cost_record.CostRecord` data are
+aggregated by agent, department, and time period.
 """
 
+from collections import Counter
 from datetime import datetime  # noqa: TC003 — required at runtime by Pydantic
 from typing import Self
 
@@ -199,7 +201,8 @@ class SpendingSummary(BaseModel):
         """Ensure no duplicate agent_id values in by_agent."""
         ids = [a.agent_id for a in self.by_agent]
         if len(ids) != len(set(ids)):
-            msg = "Duplicate agent_id values in by_agent"
+            dupes = sorted(i for i, c in Counter(ids).items() if c > 1)
+            msg = f"Duplicate agent_id values in by_agent: {dupes}"
             raise ValueError(msg)
         return self
 
@@ -208,6 +211,7 @@ class SpendingSummary(BaseModel):
         """Ensure no duplicate department_name values in by_department."""
         names = [d.department_name for d in self.by_department]
         if len(names) != len(set(names)):
-            msg = "Duplicate department_name values in by_department"
+            dupes = sorted(n for n, c in Counter(names).items() if c > 1)
+            msg = f"Duplicate department_name values in by_department: {dupes}"
             raise ValueError(msg)
         return self
