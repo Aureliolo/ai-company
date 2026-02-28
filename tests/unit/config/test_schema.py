@@ -1,0 +1,342 @@
+"""Tests for config schema models."""
+
+import pytest
+from pydantic import ValidationError
+
+from ai_company.config.schema import (
+    AgentConfig,
+    ProviderConfig,
+    ProviderModelConfig,
+    RootConfig,
+    RoutingConfig,
+    RoutingRuleConfig,
+)
+from ai_company.core.enums import CompanyType, SeniorityLevel
+
+from .conftest import (
+    AgentConfigFactory,
+    ProviderConfigFactory,
+    ProviderModelConfigFactory,
+    RootConfigFactory,
+    RoutingConfigFactory,
+    RoutingRuleConfigFactory,
+)
+
+# ── ProviderModelConfig ──────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestProviderModelConfig:
+    def test_valid_minimal(self):
+        m = ProviderModelConfig(id="claude-sonnet-4-6")
+        assert m.id == "claude-sonnet-4-6"
+        assert m.alias is None
+        assert m.cost_per_1k_input == 0.0
+        assert m.cost_per_1k_output == 0.0
+        assert m.max_context == 200_000
+
+    def test_valid_full(self):
+        m = ProviderModelConfig(
+            id="claude-sonnet-4-6",
+            alias="sonnet",
+            cost_per_1k_input=0.003,
+            cost_per_1k_output=0.015,
+            max_context=200_000,
+        )
+        assert m.alias == "sonnet"
+        assert m.cost_per_1k_input == 0.003
+
+    def test_blank_id_rejected(self):
+        with pytest.raises(ValidationError):
+            ProviderModelConfig(id="")
+
+    def test_whitespace_id_rejected(self):
+        with pytest.raises(ValidationError):
+            ProviderModelConfig(id="   ")
+
+    def test_negative_cost_rejected(self):
+        with pytest.raises(ValidationError):
+            ProviderModelConfig(id="m1", cost_per_1k_input=-1.0)
+
+    def test_frozen(self):
+        m = ProviderModelConfig(id="m1")
+        with pytest.raises(ValidationError):
+            m.id = "m2"  # type: ignore[misc]
+
+    def test_factory(self):
+        m = ProviderModelConfigFactory.build()
+        assert isinstance(m, ProviderModelConfig)
+        assert m.id
+
+
+# ── ProviderConfig ───────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestProviderConfig:
+    def test_defaults(self):
+        p = ProviderConfig()
+        assert p.api_key is None
+        assert p.base_url is None
+        assert p.models == ()
+
+    def test_with_models(self):
+        p = ProviderConfig(
+            models=(
+                ProviderModelConfig(id="m1", alias="fast"),
+                ProviderModelConfig(id="m2", alias="smart"),
+            ),
+        )
+        assert len(p.models) == 2
+
+    def test_duplicate_model_ids_rejected(self):
+        with pytest.raises(ValidationError, match="Duplicate model IDs"):
+            ProviderConfig(
+                models=(
+                    ProviderModelConfig(id="m1"),
+                    ProviderModelConfig(id="m1"),
+                ),
+            )
+
+    def test_duplicate_aliases_rejected(self):
+        with pytest.raises(ValidationError, match="Duplicate model aliases"):
+            ProviderConfig(
+                models=(
+                    ProviderModelConfig(id="m1", alias="fast"),
+                    ProviderModelConfig(id="m2", alias="fast"),
+                ),
+            )
+
+    def test_whitespace_api_key_rejected(self):
+        with pytest.raises(ValidationError, match="api_key"):
+            ProviderConfig(api_key="   ")
+
+    def test_factory(self):
+        p = ProviderConfigFactory.build()
+        assert isinstance(p, ProviderConfig)
+
+
+# ── RoutingRuleConfig ────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestRoutingRuleConfig:
+    def test_minimal(self):
+        r = RoutingRuleConfig(preferred_model="sonnet")
+        assert r.preferred_model == "sonnet"
+        assert r.role_level is None
+        assert r.task_type is None
+        assert r.fallback is None
+
+    def test_full(self):
+        r = RoutingRuleConfig(
+            role_level=SeniorityLevel.SENIOR,
+            task_type="development",
+            preferred_model="opus",
+            fallback="sonnet",
+        )
+        assert r.role_level == SeniorityLevel.SENIOR
+        assert r.task_type == "development"
+
+    def test_blank_preferred_model_rejected(self):
+        with pytest.raises(ValidationError):
+            RoutingRuleConfig(preferred_model="")
+
+    def test_factory(self):
+        r = RoutingRuleConfigFactory.build()
+        assert isinstance(r, RoutingRuleConfig)
+
+
+# ── RoutingConfig ────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestRoutingConfig:
+    def test_defaults(self):
+        r = RoutingConfig()
+        assert r.strategy == "cost_aware"
+        assert r.rules == ()
+        assert r.fallback_chain == ()
+
+    def test_with_rules(self):
+        r = RoutingConfig(
+            rules=(RoutingRuleConfig(preferred_model="sonnet"),),
+            fallback_chain=("sonnet",),
+        )
+        assert len(r.rules) == 1
+        assert r.fallback_chain == ("sonnet",)
+
+    def test_whitespace_strategy_rejected(self):
+        with pytest.raises(ValidationError, match="strategy"):
+            RoutingConfig(strategy="   ")
+
+    def test_whitespace_fallback_entry_rejected(self):
+        with pytest.raises(
+            ValidationError,
+            match="whitespace-only entry in fallback_chain",
+        ):
+            RoutingConfig(fallback_chain=("   ",))
+
+    def test_factory(self):
+        r = RoutingConfigFactory.build()
+        assert isinstance(r, RoutingConfig)
+
+
+# ── AgentConfig ──────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestAgentConfig:
+    def test_minimal(self):
+        a = AgentConfig(
+            name="Alice",
+            role="Backend Developer",
+            department="Engineering",
+        )
+        assert a.name == "Alice"
+        assert a.level == SeniorityLevel.MID
+        assert a.personality == {}
+        assert a.model == {}
+
+    def test_full(self):
+        a = AgentConfig(
+            name="Alice",
+            role="Backend Developer",
+            department="Engineering",
+            level=SeniorityLevel.SENIOR,
+            personality={"traits": ["analytical"]},
+            model={"provider": "anthropic", "model_id": "claude-sonnet-4-6"},
+        )
+        assert a.level == SeniorityLevel.SENIOR
+        assert a.personality == {"traits": ["analytical"]}
+
+    def test_blank_name_rejected(self):
+        with pytest.raises(ValidationError):
+            AgentConfig(name="", role="dev", department="eng")
+
+    def test_whitespace_name_rejected(self):
+        with pytest.raises(ValidationError, match="name"):
+            AgentConfig(name="   ", role="dev", department="eng")
+
+    def test_frozen(self):
+        a = AgentConfig(name="A", role="R", department="D")
+        with pytest.raises(ValidationError):
+            a.name = "B"  # type: ignore[misc]
+
+    def test_factory(self):
+        a = AgentConfigFactory.build()
+        assert isinstance(a, AgentConfig)
+        assert a.name
+
+
+# ── RootConfig ───────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestRootConfig:
+    def test_minimal(self):
+        cfg = RootConfig(company_name="Test Corp")
+        assert cfg.company_name == "Test Corp"
+        assert cfg.company_type == CompanyType.CUSTOM
+        assert cfg.departments == ()
+        assert cfg.agents == ()
+        assert cfg.providers == {}
+        assert cfg.logging is None
+
+    def test_full(self):
+        model = ProviderModelConfig(id="m1", alias="fast")
+        cfg = RootConfig(
+            company_name="Acme AI",
+            company_type=CompanyType.STARTUP,
+            agents=(
+                AgentConfig(
+                    name="Alice",
+                    role="dev",
+                    department="eng",
+                ),
+            ),
+            providers={
+                "anthropic": ProviderConfig(models=(model,)),
+            },
+            routing=RoutingConfig(
+                fallback_chain=("fast",),
+            ),
+        )
+        assert cfg.company_type == CompanyType.STARTUP
+        assert len(cfg.agents) == 1
+        assert "anthropic" in cfg.providers
+
+    def test_defaults_applied(self):
+        cfg = RootConfig(company_name="X")
+        assert cfg.budget.total_monthly == 100.0
+        assert cfg.communication.default_pattern.value == "hybrid"
+        assert cfg.routing.strategy == "cost_aware"
+
+    def test_missing_company_name_rejected(self):
+        with pytest.raises(ValidationError):
+            RootConfig()  # type: ignore[call-arg]
+
+    def test_blank_company_name_rejected(self):
+        with pytest.raises(ValidationError):
+            RootConfig(company_name="")
+
+    def test_whitespace_company_name_rejected(self):
+        with pytest.raises(ValidationError, match="company_name"):
+            RootConfig(company_name="   ")
+
+    def test_frozen(self):
+        cfg = RootConfig(company_name="X")
+        with pytest.raises(ValidationError):
+            cfg.company_name = "Y"  # type: ignore[misc]
+
+    def test_unique_agent_names(self):
+        with pytest.raises(ValidationError, match="Duplicate agent names"):
+            RootConfig(
+                company_name="X",
+                agents=(
+                    AgentConfig(name="Alice", role="a", department="a"),
+                    AgentConfig(name="Alice", role="b", department="b"),
+                ),
+            )
+
+    def test_unique_department_names(self):
+        with pytest.raises(
+            ValidationError,
+            match="Duplicate department names",
+        ):
+            RootConfig(
+                company_name="X",
+                departments=(
+                    {"name": "Engineering", "head": "cto"},
+                    {"name": "Engineering", "head": "vp"},
+                ),
+            )
+
+    def test_routing_references_unknown_model(self):
+        with pytest.raises(
+            ValidationError,
+            match="unknown model",
+        ):
+            RootConfig(
+                company_name="X",
+                routing=RoutingConfig(
+                    rules=(RoutingRuleConfig(preferred_model="nonexistent"),),
+                ),
+            )
+
+    def test_routing_references_valid_model(self):
+        model = ProviderModelConfig(id="m1", alias="fast")
+        cfg = RootConfig(
+            company_name="X",
+            providers={"p": ProviderConfig(models=(model,))},
+            routing=RoutingConfig(
+                rules=(RoutingRuleConfig(preferred_model="fast"),),
+                fallback_chain=("m1",),
+            ),
+        )
+        assert cfg.routing.rules[0].preferred_model == "fast"
+
+    def test_factory(self):
+        cfg = RootConfigFactory.build()
+        assert isinstance(cfg, RootConfig)
+        assert cfg.company_name

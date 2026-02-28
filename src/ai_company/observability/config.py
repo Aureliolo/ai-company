@@ -9,8 +9,6 @@ configuration.  All models are immutable and validated on construction.
     in the design spec (console + six file sinks).
 """
 
-# TODO(#59): Integrate LogConfig with central config/ YAML loading
-
 from collections import Counter
 from pathlib import PurePath, PurePosixPath, PureWindowsPath
 from typing import Self
