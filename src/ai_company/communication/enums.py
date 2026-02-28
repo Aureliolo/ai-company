@@ -33,7 +33,13 @@ class MessagePriority(StrEnum):
 
 
 class ChannelType(StrEnum):
-    """Channel delivery semantics."""
+    """Channel delivery semantics.
+
+    Members:
+        TOPIC: Publish-subscribe delivery to all subscribers.
+        DIRECT: Point-to-point delivery to a single recipient.
+        BROADCAST: Delivery to all agents regardless of subscription.
+    """
 
     TOPIC = "topic"
     DIRECT = "direct"
@@ -41,7 +47,13 @@ class ChannelType(StrEnum):
 
 
 class AttachmentType(StrEnum):
-    """Type of message attachment."""
+    """Type of message attachment.
+
+    Members:
+        ARTIFACT: Reference to a domain artifact (e.g. PR, build output).
+        FILE: Reference to a file path.
+        LINK: Reference to a URL.
+    """
 
     ARTIFACT = "artifact"
     FILE = "file"

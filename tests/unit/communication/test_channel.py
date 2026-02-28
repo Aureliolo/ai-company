@@ -41,8 +41,14 @@ class TestChannelValidation:
             Channel(name="")
 
     def test_whitespace_name_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="name must not be whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             Channel(name="   ")
+
+    def test_empty_subscriber_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError, match="Empty or whitespace-only entry in subscribers"
+        ):
+            Channel(name="#test", subscribers=("agent-a", ""))
 
     def test_whitespace_subscriber_rejected(self) -> None:
         with pytest.raises(

@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from ai_company.communication.config import (
+    _DEFAULT_CHANNELS,
     CircuitBreakerConfig,
     CommunicationConfig,
     HierarchyConfig,
@@ -29,10 +30,7 @@ class TestMessageBusConfigDefaults:
     def test_defaults(self) -> None:
         cfg = MessageBusConfig()
         assert cfg.backend is MessageBusBackend.INTERNAL
-        assert len(cfg.channels) == 7
-        assert "#all-hands" in cfg.channels
-        assert "#engineering" in cfg.channels
-        assert "#watercooler" in cfg.channels
+        assert cfg.channels == _DEFAULT_CHANNELS
 
     def test_custom_values(self) -> None:
         cfg = MessageBusConfig(
@@ -45,6 +43,12 @@ class TestMessageBusConfigDefaults:
 
 @pytest.mark.unit
 class TestMessageBusConfigValidation:
+    def test_empty_channel_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError, match="Empty or whitespace-only entry in channels"
+        ):
+            MessageBusConfig(channels=("#valid", ""))
+
     def test_whitespace_channel_rejected(self) -> None:
         with pytest.raises(
             ValidationError, match="Empty or whitespace-only entry in channels"
@@ -139,6 +143,44 @@ class TestMeetingTypeConfigValidation:
     def test_empty_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
             MeetingTypeConfig(name="", frequency="daily")
+
+    def test_whitespace_name_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            MeetingTypeConfig(name="   ", frequency="daily")
+
+    def test_whitespace_frequency_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            MeetingTypeConfig(name="standup", frequency="   ")
+
+    def test_whitespace_trigger_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            MeetingTypeConfig(name="review", trigger="   ")
+
+    def test_whitespace_participant_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="Empty or whitespace-only entry in participants",
+        ):
+            MeetingTypeConfig(
+                name="standup", frequency="daily", participants=("eng", "  ")
+            )
+
+    def test_empty_participant_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="Empty or whitespace-only entry in participants",
+        ):
+            MeetingTypeConfig(
+                name="standup", frequency="daily", participants=("eng", "")
+            )
+
+    def test_duplicate_participants_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Duplicate entries in participants"):
+            MeetingTypeConfig(
+                name="standup",
+                frequency="daily",
+                participants=("eng", "qa", "eng"),
+            )
 
     def test_zero_duration_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -391,7 +433,7 @@ class TestLoopPreventionConfigValidation:
     def test_ancestry_tracking_false_rejected(self) -> None:
         with pytest.raises(
             ValidationError,
-            match="ancestry_tracking must be True",
+            match="Input should be True",
         ):
             LoopPreventionConfig(ancestry_tracking=False)
 

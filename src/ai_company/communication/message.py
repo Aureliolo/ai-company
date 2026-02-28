@@ -1,16 +1,18 @@
 """Message domain models (DESIGN_SPEC Section 5.3)."""
 
 from collections import Counter
-from datetime import datetime  # noqa: TC003
 from typing import Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.communication.enums import (
     AttachmentType,
     MessagePriority,
     MessageType,
+)
+from ai_company.core.types import (
+    NotBlankStr,  # noqa: TC001 -- required at runtime by Pydantic
 )
 
 
@@ -25,38 +27,31 @@ class Attachment(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     type: AttachmentType = Field(description="Kind of attachment")
-    ref: str = Field(min_length=1, description="Reference identifier")
-
-    @model_validator(mode="after")
-    def _validate_ref_not_blank(self) -> Self:
-        """Ensure ref is not whitespace-only."""
-        if not self.ref.strip():
-            msg = "ref must not be whitespace-only"
-            raise ValueError(msg)
-        return self
+    ref: NotBlankStr = Field(description="Reference identifier")
 
 
 class MessageMetadata(BaseModel):
     """Optional metadata carried with a message.
+
+    Extends DESIGN_SPEC Section 5.3 metadata with an additional ``extra``
+    field for arbitrary key-value pairs.
 
     Attributes:
         task_id: Related task identifier.
         project_id: Related project identifier.
         tokens_used: LLM tokens consumed producing the message.
         cost_usd: Estimated USD cost of the message.
-        extra: Immutable key-value pairs for arbitrary metadata.
+        extra: Immutable key-value pairs for arbitrary metadata (extension).
     """
 
     model_config = ConfigDict(frozen=True)
 
-    task_id: str | None = Field(
+    task_id: NotBlankStr | None = Field(
         default=None,
-        min_length=1,
         description="Related task identifier",
     )
-    project_id: str | None = Field(
+    project_id: NotBlankStr | None = Field(
         default=None,
-        min_length=1,
         description="Related project identifier",
     )
     tokens_used: int | None = Field(
@@ -73,16 +68,6 @@ class MessageMetadata(BaseModel):
         default=(),
         description="Immutable key-value pairs for arbitrary metadata",
     )
-
-    @model_validator(mode="after")
-    def _validate_optional_strings(self) -> Self:
-        """Ensure optional string fields are not whitespace-only."""
-        for field_name in ("task_id", "project_id"):
-            value = getattr(self, field_name)
-            if value is not None and not value.strip():
-                msg = f"{field_name} must not be whitespace-only"
-                raise ValueError(msg)
-        return self
 
     @model_validator(mode="after")
     def _validate_extra(self) -> Self:
@@ -103,12 +88,13 @@ class MessageMetadata(BaseModel):
 class Message(BaseModel):
     """An inter-agent message.
 
-    Field schema matches DESIGN_SPEC Section 5.3.  The ``sender`` field
-    is aliased to ``"from"`` for JSON compatibility with the spec format.
+    Field schema is based on DESIGN_SPEC Section 5.3 with typed refinements.
+    The ``sender`` field is aliased to ``"from"`` for JSON compatibility with
+    the spec format.
 
     Attributes:
         id: Unique message identifier.
-        timestamp: When the message was created.
+        timestamp: When the message was created (must be timezone-aware).
         sender: Agent ID of the sender (aliased to ``"from"`` in JSON).
         to: Recipient agent or channel identifier.
         type: Message type classification.
@@ -125,23 +111,23 @@ class Message(BaseModel):
         default_factory=uuid4,
         description="Unique message identifier",
     )
-    timestamp: datetime = Field(description="When the message was created")
-    sender: str = Field(
-        min_length=1,
+    timestamp: AwareDatetime = Field(
+        description="When the message was created (must be timezone-aware)",
+    )
+    sender: NotBlankStr = Field(
         alias="from",
         description="Sender agent ID",
     )
-    to: str = Field(min_length=1, description="Recipient agent or channel")
+    to: NotBlankStr = Field(description="Recipient agent or channel")
     type: MessageType = Field(description="Message type classification")
     priority: MessagePriority = Field(
         default=MessagePriority.NORMAL,
         description="Message priority level",
     )
-    channel: str = Field(
-        min_length=1,
+    channel: NotBlankStr = Field(
         description="Channel the message is sent through",
     )
-    content: str = Field(min_length=1, description="Message body text")
+    content: NotBlankStr = Field(description="Message body text")
     attachments: tuple[Attachment, ...] = Field(
         default=(),
         description="Attached references",
@@ -150,12 +136,3 @@ class Message(BaseModel):
         default_factory=MessageMetadata,
         description="Optional message metadata",
     )
-
-    @model_validator(mode="after")
-    def _validate_strings_not_blank(self) -> Self:
-        """Ensure required string fields are not whitespace-only."""
-        for field_name in ("sender", "to", "channel", "content"):
-            if not getattr(self, field_name).strip():
-                msg = f"{field_name} must not be whitespace-only"
-                raise ValueError(msg)
-        return self

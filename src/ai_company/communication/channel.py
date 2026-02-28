@@ -6,6 +6,9 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.communication.enums import ChannelType
+from ai_company.core.types import (
+    NotBlankStr,  # noqa: TC001 -- required at runtime by Pydantic
+)
 
 
 class Channel(BaseModel):
@@ -19,7 +22,7 @@ class Channel(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    name: str = Field(min_length=1, description="Channel name")
+    name: NotBlankStr = Field(description="Channel name")
     type: ChannelType = Field(
         default=ChannelType.TOPIC,
         description="Channel delivery semantics",
@@ -28,14 +31,6 @@ class Channel(BaseModel):
         default=(),
         description="Agent IDs subscribed to this channel",
     )
-
-    @model_validator(mode="after")
-    def _validate_name_not_blank(self) -> Self:
-        """Ensure name is not whitespace-only."""
-        if not self.name.strip():
-            msg = "name must not be whitespace-only"
-            raise ValueError(msg)
-        return self
 
     @model_validator(mode="after")
     def _validate_subscribers(self) -> Self:

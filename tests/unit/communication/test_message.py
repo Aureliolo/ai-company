@@ -48,7 +48,7 @@ class TestAttachment:
             Attachment(type=AttachmentType.FILE, ref="")
 
     def test_whitespace_ref_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="ref must not be whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             Attachment(type=AttachmentType.FILE, ref="   ")
 
     def test_frozen(self) -> None:
@@ -110,16 +110,20 @@ class TestMessageMetadataDefaults:
 
 @pytest.mark.unit
 class TestMessageMetadataValidation:
+    def test_empty_task_id_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MessageMetadata(task_id="")
+
     def test_whitespace_task_id_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="task_id must not be whitespace-only"
-        ):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             MessageMetadata(task_id="   ")
 
+    def test_empty_project_id_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MessageMetadata(project_id="")
+
     def test_whitespace_project_id_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="project_id must not be whitespace-only"
-        ):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             MessageMetadata(project_id="   ")
 
     def test_negative_tokens_rejected(self) -> None:
@@ -221,6 +225,14 @@ class TestMessageConstruction:
 
 
 @pytest.mark.unit
+class TestMessageUniqueIds:
+    def test_unique_ids(self) -> None:
+        msg1 = _make_message()
+        msg2 = _make_message()
+        assert msg1.id != msg2.id
+
+
+@pytest.mark.unit
 class TestMessageAlias:
     def test_alias_from_parsing(self) -> None:
         """Parse JSON with 'from' key (DESIGN_SPEC 5.3 format)."""
@@ -264,13 +276,24 @@ class TestMessageAlias:
 
 
 @pytest.mark.unit
+class TestMessageAliasRoundtrip:
+    def test_json_roundtrip_with_alias(self) -> None:
+        """Ensure JSON with 'from' key (DESIGN_SPEC 5.3 format) round-trips."""
+        msg = _make_message()
+        json_str = msg.model_dump_json(by_alias=True)
+        assert '"from"' in json_str
+        restored = Message.model_validate_json(json_str)
+        assert restored == msg
+
+
+@pytest.mark.unit
 class TestMessageStringValidation:
     def test_empty_sender_rejected(self) -> None:
         with pytest.raises(ValidationError):
             _make_message(sender="")
 
     def test_whitespace_sender_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="sender must not be whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             _make_message(sender="   ")
 
     def test_empty_to_rejected(self) -> None:
@@ -278,7 +301,7 @@ class TestMessageStringValidation:
             _make_message(to="")
 
     def test_whitespace_to_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="to must not be whitespace-only"):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             _make_message(to="   ")
 
     def test_empty_channel_rejected(self) -> None:
@@ -286,9 +309,7 @@ class TestMessageStringValidation:
             _make_message(channel="")
 
     def test_whitespace_channel_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="channel must not be whitespace-only"
-        ):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             _make_message(channel="   ")
 
     def test_empty_content_rejected(self) -> None:
@@ -296,9 +317,7 @@ class TestMessageStringValidation:
             _make_message(content="")
 
     def test_whitespace_content_rejected(self) -> None:
-        with pytest.raises(
-            ValidationError, match="content must not be whitespace-only"
-        ):
+        with pytest.raises(ValidationError, match="whitespace-only"):
             _make_message(content="   ")
 
 

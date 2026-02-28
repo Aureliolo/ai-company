@@ -50,6 +50,7 @@ from ai_company.core.role_catalog import (
 )
 from ai_company.core.task import AcceptanceCriterion, Task
 from ai_company.core.task_transitions import VALID_TRANSITIONS, validate_transition
+from ai_company.core.types import NotBlankStr
 
 __all__ = [
     "BUILTIN_ROLES",
@@ -75,6 +76,7 @@ __all__ = [
     "MemoryConfig",
     "MemoryType",
     "ModelConfig",
+    "NotBlankStr",
     "PersonalityConfig",
     "Priority",
     "ProficiencyLevel",

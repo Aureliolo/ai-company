@@ -86,6 +86,15 @@ class TestCommunicationPattern:
 
 
 @pytest.mark.unit
+class TestCommunicationExports:
+    def test_all_exports_importable(self) -> None:
+        import ai_company.communication as comm_module
+
+        for name in comm_module.__all__:
+            assert hasattr(comm_module, name), f"{name} in __all__ but not importable"
+
+
+@pytest.mark.unit
 class TestMessageBusBackend:
     def test_member_count(self) -> None:
         assert len(MessageBusBackend) == 4

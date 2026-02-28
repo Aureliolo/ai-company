@@ -1,13 +1,16 @@
 """Communication configuration models (DESIGN_SPEC Sections 5.4, 5.5)."""
 
 from collections import Counter
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.communication.enums import (
     CommunicationPattern,
     MessageBusBackend,
+)
+from ai_company.core.types import (
+    NotBlankStr,  # noqa: TC001 -- required at runtime by Pydantic
 )
 
 # Default channels from DESIGN_SPEC Section 5.4.
@@ -73,15 +76,13 @@ class MeetingTypeConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    name: str = Field(min_length=1, description="Meeting type name")
-    frequency: str | None = Field(
+    name: NotBlankStr = Field(description="Meeting type name")
+    frequency: NotBlankStr | None = Field(
         default=None,
-        min_length=1,
         description="Recurrence schedule",
     )
-    trigger: str | None = Field(
+    trigger: NotBlankStr | None = Field(
         default=None,
-        min_length=1,
         description="Event trigger",
     )
     participants: tuple[str, ...] = Field(
@@ -102,6 +103,19 @@ class MeetingTypeConfig(BaseModel):
             raise ValueError(msg)
         if self.frequency is None and self.trigger is None:
             msg = "Exactly one of frequency or trigger must be set"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_participants(self) -> Self:
+        """Ensure participant entries are non-blank and unique."""
+        for p in self.participants:
+            if not p.strip():
+                msg = "Empty or whitespace-only entry in participants"
+                raise ValueError(msg)
+        if len(self.participants) != len(set(self.participants)):
+            dupes = sorted(p for p, c in Counter(self.participants).items() if c > 1)
+            msg = f"Duplicate entries in participants: {dupes}"
             raise ValueError(msg)
         return self
 
@@ -239,18 +253,10 @@ class LoopPreventionConfig(BaseModel):
         default_factory=CircuitBreakerConfig,
         description="Circuit breaker settings",
     )
-    ancestry_tracking: bool = Field(
+    ancestry_tracking: Literal[True] = Field(
         default=True,
-        description="Task ancestry tracking (always on)",
+        description="Task ancestry tracking (always on, not configurable)",
     )
-
-    @model_validator(mode="after")
-    def _validate_ancestry_tracking(self) -> Self:
-        """Ancestry tracking must always be enabled (spec: not configurable)."""
-        if not self.ancestry_tracking:
-            msg = "ancestry_tracking must be True (always on, not configurable)"
-            raise ValueError(msg)
-        return self
 
 
 class CommunicationConfig(BaseModel):
