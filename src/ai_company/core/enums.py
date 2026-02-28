@@ -10,7 +10,7 @@ class SeniorityLevel(StrEnum):
     cost tier defined in ``ai_company.core.role_catalog.SENIORITY_INFO``.
     """
 
-    # Design spec says "Intern/Junior" — collapsed to a single JUNIOR level.
+    # Design spec §3.2 says "Intern/Junior" — collapsed to a single JUNIOR level.
     JUNIOR = "junior"
     MID = "mid"
     SENIOR = "senior"

@@ -43,6 +43,10 @@ class Team(BaseModel):
             if not member.strip():
                 msg = "Empty or whitespace-only entry in members"
                 raise ValueError(msg)
+        if len(self.members) != len(set(self.members)):
+            dupes = sorted(m for m, c in Counter(self.members).items() if c > 1)
+            msg = f"Duplicate members in team {self.name!r}: {dupes}"
+            raise ValueError(msg)
         return self
 
 
@@ -144,10 +148,13 @@ class CompanyConfig(BaseModel):
 class HRRegistry(BaseModel):
     """Human resources registry for the company.
 
+    ``available_roles`` and ``hiring_queue`` intentionally allow duplicate
+    entries to represent multiple openings for the same role or position.
+
     Attributes:
-        active_agents: Currently active agent names.
-        available_roles: Roles available for hiring.
-        hiring_queue: Roles in the hiring pipeline.
+        active_agents: Currently active agent names (must be unique).
+        available_roles: Roles available for hiring (duplicates allowed).
+        hiring_queue: Roles in the hiring pipeline (duplicates allowed).
     """
 
     model_config = ConfigDict(frozen=True)

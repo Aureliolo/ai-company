@@ -28,6 +28,14 @@ class Skill(BaseModel):
         description="Proficiency level",
     )
 
+    @model_validator(mode="after")
+    def _validate_name_not_blank(self) -> Skill:
+        """Ensure skill name is not whitespace-only."""
+        if not self.name.strip():
+            msg = "Skill name must not be whitespace-only"
+            raise ValueError(msg)
+        return self
+
 
 class Authority(BaseModel):
     """Authority scope for an agent or role.
@@ -62,12 +70,15 @@ class Authority(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_empty_strings(self) -> Authority:
-        """Ensure no empty or whitespace-only entries in string tuples."""
+        """Ensure no whitespace-only entries in string tuples or reports_to."""
         for field_name in ("can_approve", "can_delegate_to"):
             for value in getattr(self, field_name):
                 if not value.strip():
                     msg = f"Empty or whitespace-only entry in {field_name}"
                     raise ValueError(msg)
+        if self.reports_to is not None and not self.reports_to.strip():
+            msg = "reports_to must not be whitespace-only"
+            raise ValueError(msg)
         return self
 
 
@@ -96,6 +107,15 @@ class SeniorityInfo(BaseModel):
         min_length=1,
         description="Cost tier identifier (built-in or user-defined)",
     )
+
+    @model_validator(mode="after")
+    def _validate_non_blank_strings(self) -> SeniorityInfo:
+        """Ensure string fields are not whitespace-only."""
+        for field_name in ("authority_scope", "typical_model_tier", "cost_tier"):
+            if not getattr(self, field_name).strip():
+                msg = f"{field_name} must not be whitespace-only"
+                raise ValueError(msg)
+        return self
 
 
 class Role(BaseModel):
@@ -140,7 +160,16 @@ class Role(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_empty_strings(self) -> Role:
-        """Ensure no empty or whitespace-only entries in string tuples."""
+        """Ensure no empty or whitespace-only entries in name and string tuples."""
+        if not self.name.strip():
+            msg = "name must not be whitespace-only"
+            raise ValueError(msg)
+        if (
+            self.system_prompt_template is not None
+            and not self.system_prompt_template.strip()
+        ):
+            msg = "system_prompt_template must not be whitespace-only"
+            raise ValueError(msg)
         for field_name in ("required_skills", "tool_access"):
             for value in getattr(self, field_name):
                 if not value.strip():
@@ -191,7 +220,7 @@ class CustomRole(BaseModel):
     @field_validator("department")
     @classmethod
     def _department_not_empty(cls, v: DepartmentName | str) -> DepartmentName | str:
-        """Ensure department is not empty and normalize whitespace."""
+        """Ensure department is not empty and strip surrounding whitespace."""
         if isinstance(v, DepartmentName):
             return v
         stripped = v.strip()
@@ -202,7 +231,15 @@ class CustomRole(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_empty_required_skills(self) -> CustomRole:
-        """Ensure no empty or whitespace-only entries in required_skills."""
+        """Ensure no whitespace-only name, optional fields, or skills."""
+        if not self.name.strip():
+            msg = "name must not be whitespace-only"
+            raise ValueError(msg)
+        for field_name in ("system_prompt_template", "suggested_model"):
+            value = getattr(self, field_name)
+            if value is not None and not value.strip():
+                msg = f"{field_name} must not be whitespace-only"
+                raise ValueError(msg)
         for value in self.required_skills:
             if not value.strip():
                 msg = "Empty or whitespace-only entry in required_skills"

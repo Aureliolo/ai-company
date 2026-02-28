@@ -52,7 +52,10 @@ class PersonalityConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_empty_traits(self) -> PersonalityConfig:
-        """Ensure no empty or whitespace-only trait strings."""
+        """Ensure no empty or whitespace-only traits or communication_style."""
+        if not self.communication_style.strip():
+            msg = "communication_style must not be whitespace-only"
+            raise ValueError(msg)
         for trait in self.traits:
             if not trait.strip():
                 msg = "Empty or whitespace-only entry in traits"
@@ -193,8 +196,13 @@ class ToolPermissions(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_overlap(self) -> ToolPermissions:
-        """Ensure no tool appears in both allowed and denied lists."""
-        overlap = set(self.allowed) & set(self.denied)
+        """Ensure no tool appears in both allowed and denied lists.
+
+        Comparison is case-insensitive.
+        """
+        allowed_normalized = {t.strip().casefold() for t in self.allowed}
+        denied_normalized = {t.strip().casefold() for t in self.denied}
+        overlap = allowed_normalized & denied_normalized
         if overlap:
             msg = f"Tools appear in both allowed and denied lists: {sorted(overlap)}"
             raise ValueError(msg)
@@ -206,7 +214,7 @@ class AgentIdentity(BaseModel):
 
     Every agent in the company is represented by an ``AgentIdentity``
     containing its role, personality, model backend, memory settings,
-    tool permissions, and authority scope.
+    tool permissions, and authority configuration.
 
     Attributes:
         id: Unique agent identifier.
@@ -219,7 +227,7 @@ class AgentIdentity(BaseModel):
         model: LLM model configuration.
         memory: Memory configuration.
         tools: Tool permissions.
-        authority: Authority scope.
+        authority: Authority configuration for this agent.
         hiring_date: Date the agent was hired.
         status: Current lifecycle status.
     """

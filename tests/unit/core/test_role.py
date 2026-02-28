@@ -37,6 +37,10 @@ class TestSkill:
         with pytest.raises(ValidationError):
             Skill(name="", category=SkillCategory.ENGINEERING)
 
+    def test_whitespace_name_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            Skill(name="   ", category=SkillCategory.ENGINEERING)
+
     def test_frozen(self, sample_skill: Skill) -> None:
         with pytest.raises(ValidationError):
             sample_skill.name = "rust"  # type: ignore[misc]
@@ -84,6 +88,10 @@ class TestAuthority:
     def test_whitespace_can_delegate_to_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Empty or whitespace-only"):
             Authority(can_delegate_to=("  ",))
+
+    def test_whitespace_reports_to_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            Authority(reports_to="   ")
 
     def test_frozen(self, sample_authority: Authority) -> None:
         with pytest.raises(ValidationError):
@@ -147,6 +155,33 @@ class TestSeniorityInfo:
                 cost_tier="",
             )
 
+    def test_whitespace_authority_scope_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            SeniorityInfo(
+                level=SeniorityLevel.JUNIOR,
+                authority_scope="   ",
+                typical_model_tier="haiku",
+                cost_tier="low",
+            )
+
+    def test_whitespace_model_tier_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            SeniorityInfo(
+                level=SeniorityLevel.JUNIOR,
+                authority_scope="tasks",
+                typical_model_tier="   ",
+                cost_tier="low",
+            )
+
+    def test_whitespace_cost_tier_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            SeniorityInfo(
+                level=SeniorityLevel.JUNIOR,
+                authority_scope="tasks",
+                typical_model_tier="haiku",
+                cost_tier="   ",
+            )
+
     def test_frozen(self) -> None:
         info = SeniorityInfo(
             level=SeniorityLevel.MID,
@@ -183,6 +218,18 @@ class TestRole:
     def test_empty_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
             Role(name="", department=DepartmentName.ENGINEERING)
+
+    def test_whitespace_name_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            Role(name="   ", department=DepartmentName.ENGINEERING)
+
+    def test_whitespace_system_prompt_template_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            Role(
+                name="Dev",
+                department=DepartmentName.ENGINEERING,
+                system_prompt_template="   ",
+            )
 
     def test_invalid_department_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -249,6 +296,26 @@ class TestCustomRole:
     def test_empty_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
             CustomRole(name="", department="custom")
+
+    def test_whitespace_name_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            CustomRole(name="   ", department="custom")
+
+    def test_whitespace_system_prompt_template_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            CustomRole(
+                name="Dev",
+                department="custom",
+                system_prompt_template="   ",
+            )
+
+    def test_whitespace_suggested_model_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            CustomRole(
+                name="Dev",
+                department="custom",
+                suggested_model="   ",
+            )
 
     def test_empty_department_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Department name must not be empty"):

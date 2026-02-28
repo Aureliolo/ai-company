@@ -60,6 +60,10 @@ class TestPersonalityConfig:
         with pytest.raises(ValidationError):
             PersonalityConfig(communication_style="")
 
+    def test_whitespace_communication_style_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            PersonalityConfig(communication_style="   ")
+
     def test_empty_trait_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Empty or whitespace-only"):
             PersonalityConfig(traits=("analytical", ""))
@@ -272,6 +276,13 @@ class TestToolPermissions:
         error_text = str(exc_info.value)
         assert "deploy" in error_text
         assert "git" in error_text
+
+    def test_case_insensitive_overlap_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="both allowed and denied"):
+            ToolPermissions(
+                allowed=("Git",),
+                denied=("git",),
+            )
 
     def test_empty_tool_name_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Empty or whitespace-only"):

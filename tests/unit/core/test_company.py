@@ -63,6 +63,14 @@ class TestTeam:
         with pytest.raises(ValidationError, match="Empty or whitespace-only"):
             Team(name="test", lead="lead", members=("  ",))
 
+    def test_duplicate_members_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Duplicate members"):
+            Team(
+                name="backend",
+                lead="lead",
+                members=("alice", "bob", "alice"),
+            )
+
     def test_frozen(self) -> None:
         team = Team(name="test", lead="lead")
         with pytest.raises(ValidationError):
@@ -116,6 +124,14 @@ class TestDepartment:
             ),
         )
         assert len(dept.teams) == 3
+
+    def test_whitespace_name_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            Department(name="   ", head="head")
+
+    def test_whitespace_head_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            Department(name="Eng", head="   ")
 
     def test_duplicate_team_names_rejected(self) -> None:
         with pytest.raises(ValidationError, match="Duplicate team names"):
@@ -313,6 +329,14 @@ class TestCompany:
         )
         with pytest.raises(ValidationError, match="Duplicate department names"):
             Company(name="Dup Depts", departments=depts)
+
+    def test_empty_name_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            Company(name="")
+
+    def test_whitespace_name_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            Company(name="   ")
 
     def test_empty_departments_accepted(self) -> None:
         co = Company(name="Empty")

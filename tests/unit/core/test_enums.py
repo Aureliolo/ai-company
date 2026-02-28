@@ -149,3 +149,15 @@ class TestEnumPydanticIntegration:
         restored = _M.model_validate_json(json_str)
         assert restored.status is AgentStatus.ACTIVE
         assert restored.tier is CostTier.PREMIUM
+
+
+# ── __all__ exports ──────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCoreExports:
+    def test_all_exports_importable(self) -> None:
+        import ai_company.core as core_module
+
+        for name in core_module.__all__:
+            assert hasattr(core_module, name), f"{name} in __all__ but not importable"
