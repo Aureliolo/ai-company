@@ -108,6 +108,27 @@ budget:
   total_monthly: -100.0
 """
 
+ENV_VAR_SIMPLE_YAML = """\
+company_name: ${COMPANY_NAME}
+"""
+
+ENV_VAR_NESTED_YAML = """\
+company_name: ${COMPANY_NAME}
+budget:
+  total_monthly: 500.0
+  alerts:
+    warn_at: 75
+    critical_at: 90
+    hard_stop_at: 100
+providers:
+  anthropic:
+    base_url: ${ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+"""
+
+ENV_VAR_MISSING_YAML = """\
+company_name: ${UNDEFINED_VAR}
+"""
+
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
