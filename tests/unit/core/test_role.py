@@ -19,6 +19,8 @@ from .conftest import (
     SkillFactory,
 )
 
+pytestmark = pytest.mark.timeout(30)
+
 # ── Skill ──────────────────────────────────────────────────────────
 
 

@@ -397,6 +397,14 @@ if len(_BUILTIN_ROLES_BY_NAME) != len(BUILTIN_ROLES):
 _SENIORITY_INFO_BY_LEVEL: dict[SeniorityLevel, SeniorityInfo] = {
     info.level: info for info in SENIORITY_INFO
 }
+if len(_SENIORITY_INFO_BY_LEVEL) != len(SENIORITY_INFO):
+    _msg = "Duplicate seniority levels found in SENIORITY_INFO"
+    raise ValueError(_msg)
+
+_missing_levels = set(SeniorityLevel) - set(_SENIORITY_INFO_BY_LEVEL)
+if _missing_levels:
+    _msg = f"Missing seniority mappings: {sorted(lv.value for lv in _missing_levels)}"
+    raise ValueError(_msg)
 
 
 def get_builtin_role(name: str) -> Role | None:
