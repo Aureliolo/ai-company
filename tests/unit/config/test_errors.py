@@ -52,6 +52,7 @@ class TestConfigError:
                     file_path="config.yaml",
                     key_path="budget",
                     line=5,
+                    column=3,
                 ),
             ),
         )
@@ -59,7 +60,25 @@ class TestConfigError:
         assert "Something failed" in result
         assert "budget" in result
         assert "config.yaml" in result
-        assert "line 5" in result
+        assert "line 5, column 3" in result
+
+    def test_str_with_file_only_location(self):
+        err = ConfigError(
+            "Parse failed",
+            locations=(ConfigLocation(file_path="config.yaml", line=3),),
+        )
+        result = str(err)
+        assert "config.yaml" in result
+        assert "line 3" in result
+        assert "column" not in result
+
+    def test_str_with_file_path_no_key_path(self):
+        err = ConfigError(
+            "Parse failed",
+            locations=(ConfigLocation(file_path="config.yaml"),),
+        )
+        result = str(err)
+        assert "config.yaml" in result
 
     def test_inherits_exception(self):
         assert isinstance(ConfigError("test"), Exception)
@@ -106,6 +125,7 @@ class TestConfigValidationError:
                     file_path="config.yaml",
                     key_path="budget.alerts.warn_at",
                     line=12,
+                    column=5,
                 ),
                 ConfigLocation(
                     file_path="config.yaml",
@@ -123,8 +143,18 @@ class TestConfigValidationError:
         assert "budget.alerts.warn_at: Input should be <= 100" in result
         assert "agents.0.name: String should have at least 1 character" in result
         assert "config.yaml" in result
-        assert "line 12" in result
+        assert "line 12, column 5" in result
         assert "line 25" in result
+
+    def test_field_error_without_matching_location(self):
+        err = ConfigValidationError(
+            "validation failed",
+            locations=(),
+            field_errors=(("budget.total_monthly", "must be positive"),),
+        )
+        result = str(err)
+        assert "budget.total_monthly: must be positive" in result
+        assert "in " not in result
 
     def test_no_field_errors_falls_back(self):
         err = ConfigValidationError("validation failed")

@@ -30,3 +30,12 @@ class TestDefaultConfigDict:
         b = default_config_dict()
         assert a == b
         assert a is not b
+
+    def test_keys_match_root_config_fields(self):
+        defaults = default_config_dict()
+        root_fields = set(RootConfig.model_fields.keys())
+        default_keys = set(defaults.keys())
+        missing = root_fields - default_keys
+        extra = default_keys - root_fields
+        assert not missing, f"Defaults missing keys for RootConfig fields: {missing}"
+        assert not extra, f"Defaults has extra keys not in RootConfig: {extra}"

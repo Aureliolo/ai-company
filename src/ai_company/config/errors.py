@@ -48,7 +48,12 @@ class ConfigError(Exception):
             if loc.key_path:
                 loc_parts.append(f"  {loc.key_path}")
             if loc.file_path:
-                line_info = f" at line {loc.line}" if loc.line is not None else ""
+                if loc.line is not None and loc.column is not None:
+                    line_info = f" at line {loc.line}, column {loc.column}"
+                elif loc.line is not None:
+                    line_info = f" at line {loc.line}"
+                else:
+                    line_info = ""
                 loc_parts.append(f"    in {loc.file_path}{line_info}")
             parts.extend(loc_parts)
         return "\n".join(parts)
@@ -91,6 +96,11 @@ class ConfigValidationError(ConfigError):
             parts.append(f"  {key_path}: {msg}")
             loc = loc_by_key.get(key_path)
             if loc and loc.file_path:
-                line_info = f" at line {loc.line}" if loc.line is not None else ""
+                if loc.line is not None and loc.column is not None:
+                    line_info = f" at line {loc.line}, column {loc.column}"
+                elif loc.line is not None:
+                    line_info = f" at line {loc.line}"
+                else:
+                    line_info = ""
                 parts.append(f"    in {loc.file_path}{line_info}")
         return "\n".join(parts)

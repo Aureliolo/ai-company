@@ -8,9 +8,12 @@ from ai_company.config.errors import (
     ConfigValidationError,
 )
 from ai_company.config.loader import (
+    _build_line_map,
     _deep_merge,
     _parse_yaml_file,
     _parse_yaml_string,
+    _read_config_text,
+    _validate_config_dict,
     load_config,
     load_config_from_string,
 )
@@ -74,6 +77,49 @@ class TestDeepMerge:
         result = _deep_merge(base, override)
         assert result == {"a": {"b": {"c": 1, "d": 2}}}
 
+    def test_result_does_not_share_mutable_refs_with_base(self):
+        base = {"x": {"nested": [1, 2, 3]}}
+        result = _deep_merge(base, {})
+        result["x"]["nested"].append(4)
+        assert base["x"]["nested"] == [1, 2, 3]
+
+    def test_empty_base(self):
+        result = _deep_merge({}, {"a": 1})
+        assert result == {"a": 1}
+
+    def test_empty_override(self):
+        result = _deep_merge({"a": 1}, {})
+        assert result == {"a": 1}
+
+
+# ── _read_config_text ────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestReadConfigText:
+    def test_reads_file(self, tmp_path):
+        f = tmp_path / "config.yaml"
+        f.write_text("company_name: Test\n", encoding="utf-8")
+        assert _read_config_text(f) == "company_name: Test\n"
+
+    def test_file_not_found(self, tmp_path):
+        with pytest.raises(ConfigFileNotFoundError, match="not found"):
+            _read_config_text(tmp_path / "missing.yaml")
+
+    def test_directory_rejected(self, tmp_path):
+        with pytest.raises(ConfigFileNotFoundError, match="not found"):
+            _read_config_text(tmp_path)
+
+    def test_os_error_wrapped(self, tmp_path, monkeypatch):
+        f = tmp_path / "config.yaml"
+        f.write_text("content", encoding="utf-8")
+        monkeypatch.setattr(
+            "pathlib.Path.read_text",
+            lambda *a, **kw: (_ for _ in ()).throw(PermissionError("denied")),
+        )
+        with pytest.raises(ConfigParseError, match="Unable to read"):
+            _read_config_text(f)
+
 
 # ── _parse_yaml_file ─────────────────────────────────────────────
 
@@ -135,6 +181,92 @@ class TestParseYamlString:
             _parse_yaml_string("- a\n- b\n", "<test>")
 
 
+# ── _build_line_map / _walk_node ─────────────────────────────────
+
+
+@pytest.mark.unit
+class TestBuildLineMap:
+    def test_simple_mapping(self):
+        yaml_text = "company_name: Test\nbudget:\n  total_monthly: 100\n"
+        result = _build_line_map(yaml_text)
+        assert "company_name" in result
+        assert "budget" in result
+        assert "budget.total_monthly" in result
+        assert result["company_name"][0] == 1
+        assert result["budget.total_monthly"][0] == 3
+
+    def test_sequence_elements(self):
+        yaml_text = "agents:\n  - name: Alice\n  - name: Bob\n"
+        result = _build_line_map(yaml_text)
+        assert "agents.0" in result
+        assert "agents.1" in result
+        assert "agents.0.name" in result
+
+    def test_invalid_yaml_returns_empty(self):
+        result = _build_line_map("invalid: [unterminated\n")
+        assert result == {}
+
+    def test_non_mapping_root_returns_empty(self):
+        result = _build_line_map("- item1\n- item2\n")
+        assert result == {}
+
+    def test_empty_string_returns_empty(self):
+        result = _build_line_map("")
+        assert result == {}
+
+    def test_null_yaml_returns_empty(self):
+        result = _build_line_map("null\n")
+        assert result == {}
+
+
+# ── _validate_config_dict ────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestValidateConfigDict:
+    def test_valid_dict(self):
+        data = {"company_name": "Test Corp"}
+        result = _validate_config_dict(data)
+        assert isinstance(result, RootConfig)
+        assert result.company_name == "Test Corp"
+
+    def test_invalid_dict_raises(self):
+        with pytest.raises(ConfigValidationError) as exc_info:
+            _validate_config_dict({"company_name": ""})
+        assert exc_info.value.field_errors
+
+    def test_line_map_enriches_errors(self):
+        line_map = {"company_name": (5, 16)}
+        with pytest.raises(ConfigValidationError) as exc_info:
+            _validate_config_dict(
+                {"company_name": ""},
+                source_file="test.yaml",
+                line_map=line_map,
+            )
+        err = exc_info.value
+        loc = next(
+            loc
+            for loc in err.locations
+            if loc.key_path and "company_name" in loc.key_path
+        )
+        assert loc.file_path == "test.yaml"
+        assert loc.line == 5
+        assert loc.column == 16
+
+    def test_none_line_map_gracefully_degrades(self):
+        with pytest.raises(ConfigValidationError) as exc_info:
+            _validate_config_dict(
+                {"company_name": ""},
+                source_file="test.yaml",
+                line_map=None,
+            )
+        err = exc_info.value
+        assert err.field_errors
+        for loc in err.locations:
+            assert loc.line is None
+            assert loc.column is None
+
+
 # ── load_config ──────────────────────────────────────────────────
 
 
@@ -165,6 +297,13 @@ class TestLoadConfig:
         )
         cfg = load_config(base_path, override_paths=(override_path,))
         assert cfg.company_name == "Override Corp"
+
+    def test_multiple_override_files_applied_in_order(self, tmp_config_file):
+        base = tmp_config_file("company_name: Base\n", name="base.yaml")
+        over1 = tmp_config_file("company_name: Override1\n", name="over1.yaml")
+        over2 = tmp_config_file("company_name: Override2\n", name="over2.yaml")
+        cfg = load_config(base, override_paths=(over1, over2))
+        assert cfg.company_name == "Override2"
 
     def test_defaults_applied(self, tmp_config_file):
         path = tmp_config_file(MINIMAL_VALID_YAML)
@@ -209,6 +348,10 @@ class TestLoadConfig:
         cfg = load_config(base_path, override_paths=(override_path,))
         assert cfg.budget.total_monthly == 200.0
         assert cfg.budget.per_task_limit == 10.0
+
+    def test_directory_path_rejected(self, tmp_path):
+        with pytest.raises(ConfigFileNotFoundError):
+            load_config(tmp_path)
 
 
 # ── load_config_from_string ──────────────────────────────────────

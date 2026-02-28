@@ -1,5 +1,7 @@
 """YAML configuration loader with layered merging and validation."""
 
+import copy
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +17,8 @@ from ai_company.config.errors import (
 )
 from ai_company.config.schema import RootConfig
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
@@ -28,7 +32,8 @@ def _deep_merge(
 
     Nested dicts are merged recursively.  Lists, scalars, and all other
     types in *override* replace the corresponding value in *base*
-    entirely.  Neither input dict is mutated.
+    entirely.  Keys present only in *base* are preserved unchanged in
+    the result.  Neither input dict is mutated.
 
     Args:
         base: Base configuration dict.
@@ -37,13 +42,42 @@ def _deep_merge(
     Returns:
         A new merged dict.
     """
-    result = dict(base)
+    result = copy.deepcopy(base)
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = _deep_merge(result[key], value)
         else:
-            result[key] = value
+            result[key] = copy.deepcopy(value)
     return result
+
+
+def _read_config_text(file_path: Path) -> str:
+    """Read a configuration file as UTF-8 text.
+
+    Args:
+        file_path: Path to the configuration file.
+
+    Returns:
+        File content as a string.
+
+    Raises:
+        ConfigFileNotFoundError: If *file_path* is not a regular file.
+        ConfigParseError: If the file cannot be read due to OS errors.
+    """
+    if not file_path.is_file():
+        msg = f"Configuration file not found: {file_path}"
+        raise ConfigFileNotFoundError(
+            msg,
+            locations=(ConfigLocation(file_path=str(file_path)),),
+        )
+    try:
+        return file_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        msg = f"Unable to read configuration file: {file_path}"
+        raise ConfigParseError(
+            msg,
+            locations=(ConfigLocation(file_path=str(file_path)),),
+        ) from exc
 
 
 def _parse_yaml_file(file_path: Path) -> dict[str, Any]:
@@ -56,17 +90,11 @@ def _parse_yaml_file(file_path: Path) -> dict[str, Any]:
         Parsed dict (empty dict for ``null`` / empty files).
 
     Raises:
-        ConfigFileNotFoundError: If *file_path* does not exist.
-        ConfigParseError: If the file contains invalid YAML or its
-            top-level value is not a mapping.
+        ConfigFileNotFoundError: If *file_path* is not a regular file.
+        ConfigParseError: If the file cannot be read or contains invalid
+            YAML or its top-level value is not a mapping.
     """
-    if not file_path.exists():
-        msg = f"Configuration file not found: {file_path}"
-        raise ConfigFileNotFoundError(
-            msg,
-            locations=(ConfigLocation(file_path=str(file_path)),),
-        )
-    text = file_path.read_text(encoding="utf-8")
+    text = _read_config_text(file_path)
     return _parse_yaml_string(text, str(file_path))
 
 
@@ -126,7 +154,14 @@ def _walk_node(
     """Recursively traverse a composed YAML node tree.
 
     Populates *result* with ``dot.path`` -> ``(line, column)`` entries
-    for every scalar, mapping key, and sequence element.
+    for each mapping value (keyed by dot-separated path) and each
+    sequence element (indexed numerically).
+
+    Args:
+        node: YAML AST node to traverse.
+        prefix: Dot-path prefix for the current tree level.
+        result: Accumulator dict (mutated in place) mapping dot-paths
+            to ``(line, column)`` tuples.
     """
     if isinstance(node, yaml.MappingNode):
         for key_node, value_node in node.value:
@@ -137,6 +172,11 @@ def _walk_node(
                 if mark is not None:
                     result[path] = (mark.line + 1, mark.column + 1)
                 _walk_node(value_node, path, result)
+            else:
+                logger.debug(
+                    "Skipping non-scalar YAML key: %s",
+                    type(key_node).__name__,
+                )
     elif isinstance(node, yaml.SequenceNode):
         for idx, item_node in enumerate(node.value):
             path = f"{prefix}.{idx}"
@@ -164,6 +204,10 @@ def _build_line_map(yaml_text: str) -> dict[str, tuple[int, int]]:
     try:
         root = yaml.compose(yaml_text, Loader=yaml.SafeLoader)
     except yaml.YAMLError:
+        logger.warning(
+            "Failed to compose YAML AST for line mapping; "
+            "validation errors will lack line/column information",
+        )
         return {}
     if root is None or not isinstance(root, yaml.MappingNode):
         return {}
@@ -237,6 +281,13 @@ def load_config(
     2. Primary config file at *config_path*.
     3. Override files in order.
 
+    .. note::
+
+        The YAML line map used for error enrichment is built from the
+        primary config file only.  When override files introduce or
+        replace values, validation errors may reference the primary
+        file's line numbers or lack location information entirely.
+
     Args:
         config_path: Path to the primary config file.
         override_paths: Additional config files layered on top.
@@ -246,7 +297,8 @@ def load_config(
 
     Raises:
         ConfigFileNotFoundError: If any config file does not exist.
-        ConfigParseError: If any file contains invalid YAML.
+        ConfigParseError: If any file contains invalid YAML or cannot
+            be read.
         ConfigValidationError: If the merged config fails validation.
     """
     config_path = Path(config_path)
@@ -254,8 +306,10 @@ def load_config(
     # 1. Start with built-in defaults
     merged = default_config_dict()
 
-    # 2. Load and merge primary config
-    primary = _parse_yaml_file(config_path)
+    # 2. Read and parse primary config (single read for both parsing
+    #    and line-map construction)
+    yaml_text = _read_config_text(config_path)
+    primary = _parse_yaml_string(yaml_text, str(config_path))
     merged = _deep_merge(merged, primary)
 
     # 3. Apply override layers
@@ -263,11 +317,10 @@ def load_config(
         override = _parse_yaml_file(Path(override_path))
         merged = _deep_merge(merged, override)
 
-    # 4. Build line map from primary file for error reporting
-    yaml_text = config_path.read_text(encoding="utf-8")
+    # Build line map from primary file for error enrichment
     line_map = _build_line_map(yaml_text)
 
-    # 5. Validate
+    # Validate merged config
     return _validate_config_dict(
         merged,
         source_file=str(config_path),

@@ -10,6 +10,7 @@ from ai_company.communication.config import CommunicationConfig
 from ai_company.core.company import CompanyConfig, Department
 from ai_company.core.enums import CompanyType, SeniorityLevel
 from ai_company.core.role import CustomRole  # noqa: TC001
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability.config import LogConfig  # noqa: TC001
 
 
@@ -26,10 +27,9 @@ class ProviderModelConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    id: str = Field(min_length=1, description="Model identifier")
-    alias: str | None = Field(
+    id: NotBlankStr = Field(description="Model identifier")
+    alias: NotBlankStr | None = Field(
         default=None,
-        min_length=1,
         description="Short alias for routing rules",
     )
     cost_per_1k_input: float = Field(
@@ -48,17 +48,6 @@ class ProviderModelConfig(BaseModel):
         description="Maximum context window size in tokens",
     )
 
-    @model_validator(mode="after")
-    def _validate_non_blank_strings(self) -> Self:
-        """Ensure identifier fields are not whitespace-only."""
-        if not self.id.strip():
-            msg = "id must not be whitespace-only"
-            raise ValueError(msg)
-        if self.alias is not None and not self.alias.strip():
-            msg = "alias must not be whitespace-only"
-            raise ValueError(msg)
-        return self
-
 
 class ProviderConfig(BaseModel):
     """Configuration for an LLM provider.
@@ -71,30 +60,19 @@ class ProviderConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    api_key: str | None = Field(
+    api_key: NotBlankStr | None = Field(
         default=None,
+        repr=False,
         description="API key",
     )
-    base_url: str | None = Field(
+    base_url: NotBlankStr | None = Field(
         default=None,
-        min_length=1,
         description="Base URL for the provider API",
     )
     models: tuple[ProviderModelConfig, ...] = Field(
         default=(),
         description="Available models",
     )
-
-    @model_validator(mode="after")
-    def _validate_non_blank_strings(self) -> Self:
-        """Ensure optional string fields are not whitespace-only."""
-        if self.api_key is not None and not self.api_key.strip():
-            msg = "api_key must not be whitespace-only"
-            raise ValueError(msg)
-        if self.base_url is not None and not self.base_url.strip():
-            msg = "base_url must not be whitespace-only"
-            raise ValueError(msg)
-        return self
 
     @model_validator(mode="after")
     def _validate_unique_model_identifiers(self) -> Self:
@@ -128,34 +106,17 @@ class RoutingRuleConfig(BaseModel):
         default=None,
         description="Seniority level filter",
     )
-    task_type: str | None = Field(
+    task_type: NotBlankStr | None = Field(
         default=None,
-        min_length=1,
         description="Task type filter",
     )
-    preferred_model: str = Field(
-        min_length=1,
+    preferred_model: NotBlankStr = Field(
         description="Preferred model alias or ID",
     )
-    fallback: str | None = Field(
+    fallback: NotBlankStr | None = Field(
         default=None,
-        min_length=1,
         description="Fallback model alias or ID",
     )
-
-    @model_validator(mode="after")
-    def _validate_non_blank_strings(self) -> Self:
-        """Ensure string fields are not whitespace-only."""
-        if not self.preferred_model.strip():
-            msg = "preferred_model must not be whitespace-only"
-            raise ValueError(msg)
-        if self.task_type is not None and not self.task_type.strip():
-            msg = "task_type must not be whitespace-only"
-            raise ValueError(msg)
-        if self.fallback is not None and not self.fallback.strip():
-            msg = "fallback must not be whitespace-only"
-            raise ValueError(msg)
-        return self
 
 
 class RoutingConfig(BaseModel):
@@ -169,31 +130,18 @@ class RoutingConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    strategy: str = Field(
+    strategy: NotBlankStr = Field(
         default="cost_aware",
-        min_length=1,
         description="Routing strategy name",
     )
     rules: tuple[RoutingRuleConfig, ...] = Field(
         default=(),
         description="Ordered routing rules",
     )
-    fallback_chain: tuple[str, ...] = Field(
+    fallback_chain: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Ordered fallback model aliases or IDs",
     )
-
-    @model_validator(mode="after")
-    def _validate_non_blank_strings(self) -> Self:
-        """Ensure strategy and fallback entries are not whitespace-only."""
-        if not self.strategy.strip():
-            msg = "strategy must not be whitespace-only"
-            raise ValueError(msg)
-        for entry in self.fallback_chain:
-            if not entry.strip():
-                msg = "Empty or whitespace-only entry in fallback_chain"
-                raise ValueError(msg)
-        return self
 
 
 class AgentConfig(BaseModel):
@@ -219,9 +167,9 @@ class AgentConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    name: str = Field(min_length=1, description="Agent display name")
-    role: str = Field(min_length=1, description="Role name")
-    department: str = Field(min_length=1, description="Department name")
+    name: NotBlankStr = Field(description="Agent display name")
+    role: NotBlankStr = Field(description="Role name")
+    department: NotBlankStr = Field(description="Department name")
     level: SeniorityLevel = Field(
         default=SeniorityLevel.MID,
         description="Seniority level",
@@ -247,15 +195,6 @@ class AgentConfig(BaseModel):
         description="Raw authority config",
     )
 
-    @model_validator(mode="after")
-    def _validate_non_blank_identifiers(self) -> Self:
-        """Ensure name, role, and department are not whitespace-only."""
-        for field_name in ("name", "role", "department"):
-            if not getattr(self, field_name).strip():
-                msg = f"{field_name} must not be whitespace-only"
-                raise ValueError(msg)
-        return self
-
 
 class RootConfig(BaseModel):
     """Root company configuration — the top-level validation target.
@@ -279,8 +218,7 @@ class RootConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    company_name: str = Field(
-        min_length=1,
+    company_name: NotBlankStr = Field(
         description="Company name",
     )
     company_type: CompanyType = Field(
@@ -323,14 +261,6 @@ class RootConfig(BaseModel):
         default=None,
         description="Logging configuration",
     )
-
-    @model_validator(mode="after")
-    def _validate_company_name_not_blank(self) -> Self:
-        """Ensure company name is not whitespace-only."""
-        if not self.company_name.strip():
-            msg = "company_name must not be whitespace-only"
-            raise ValueError(msg)
-        return self
 
     @model_validator(mode="after")
     def _validate_unique_agent_names(self) -> Self:

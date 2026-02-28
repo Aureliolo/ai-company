@@ -6,9 +6,9 @@ from typing import Any
 def default_config_dict() -> dict[str, Any]:
     """Return base-layer configuration defaults as a raw dict.
 
-    These defaults are merged beneath any user-provided YAML before
-    Pydantic validation.  They ensure that every field has a sensible
-    starting value even if omitted from the config file.
+    These defaults serve as the base layer; user-provided YAML values
+    override them during merging.  They ensure that every field has a
+    sensible starting value even if omitted from the config file.
 
     Returns:
         Base-layer configuration dictionary.
@@ -24,4 +24,5 @@ def default_config_dict() -> dict[str, Any]:
         "communication": {},
         "providers": {},
         "routing": {},
+        "logging": None,
     }

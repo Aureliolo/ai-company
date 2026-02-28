@@ -1,8 +1,12 @@
 """Unit test configuration and fixtures for config models."""
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
 from polyfactory.factories.pydantic_factory import ModelFactory
 
 from ai_company.budget.config import BudgetConfig
@@ -81,7 +85,7 @@ budget:
 providers:
   anthropic:
     models:
-      - id: claude-sonnet-4-6
+      - id: test-model-001
         alias: sonnet
 routing:
   strategy: cost_aware
@@ -99,7 +103,9 @@ company_name: ""
 """
 
 INVALID_FIELD_VALUES_YAML = """\
-company_name: ""
+company_name: Test Corp
+budget:
+  total_monthly: -100.0
 """
 
 
@@ -112,8 +118,8 @@ def sample_root_config() -> RootConfig:
 
 
 @pytest.fixture
-def tmp_config_file(tmp_path: Any) -> Any:
-    def _create(content: str, name: str = "config.yaml") -> Any:
+def tmp_config_file(tmp_path: Path) -> Callable[[str, str], Path]:
+    def _create(content: str, name: str = "config.yaml") -> Path:
         path = tmp_path / name
         path.write_text(content, encoding="utf-8")
         return path
