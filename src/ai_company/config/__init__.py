@@ -5,6 +5,7 @@ Public API
 .. autosummary::
     load_config
     load_config_from_string
+    discover_config
     default_config_dict
     RootConfig
     AgentConfig
@@ -27,7 +28,11 @@ from ai_company.config.errors import (
     ConfigParseError,
     ConfigValidationError,
 )
-from ai_company.config.loader import load_config, load_config_from_string
+from ai_company.config.loader import (
+    discover_config,
+    load_config,
+    load_config_from_string,
+)
 from ai_company.config.schema import (
     AgentConfig,
     ProviderConfig,
@@ -50,6 +55,7 @@ __all__ = [
     "RoutingConfig",
     "RoutingRuleConfig",
     "default_config_dict",
+    "discover_config",
     "load_config",
     "load_config_from_string",
 ]

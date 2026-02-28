@@ -2,6 +2,8 @@
 
 import copy
 import logging
+import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,15 @@ from ai_company.config.errors import (
 from ai_company.config.schema import RootConfig
 
 logger = logging.getLogger(__name__)
+
+_ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+?)(?::-([^}]*))?\}")
+
+_CWD_CONFIG_LOCATIONS: tuple[Path, ...] = (
+    Path("ai-company.yaml"),
+    Path("config/ai-company.yaml"),
+)
+
+_HOME_CONFIG_RELATIVE = Path(".ai-company") / "config.yaml"
 
 # ---------------------------------------------------------------------------
 # Private helpers
@@ -263,13 +274,97 @@ def _validate_config_dict(
         ) from exc
 
 
+def _substitute_env_vars(
+    data: dict[str, Any],
+    *,
+    source_file: str | None = None,
+) -> dict[str, Any]:
+    """Substitute ``${VAR}`` and ``${VAR:-default}`` in string values.
+
+    Walks the dict recursively, replacing environment variable
+    placeholders in string values.  Non-string values (int, float,
+    bool, None) are passed through unchanged.  Returns a new dict;
+    the input is never mutated.
+
+    Args:
+        data: Configuration dict to process.
+        source_file: File path label for error messages.
+
+    Returns:
+        A new dict with all env var placeholders resolved.
+
+    Raises:
+        ConfigValidationError: If a referenced env var is not set
+            and no default is provided.
+    """
+
+    def _resolve_match(match: re.Match[str]) -> str:
+        var_name = match.group(1)
+        default = match.group(2)
+        value = os.environ.get(var_name)
+        if value is not None:
+            return value
+        if default is not None:
+            return default
+        msg = (
+            f"Environment variable '{var_name}' is not set and no default was provided"
+        )
+        raise ConfigValidationError(
+            msg,
+            locations=(ConfigLocation(file_path=source_file),),
+        )
+
+    def _walk(node: Any) -> Any:
+        if isinstance(node, str):
+            return _ENV_VAR_PATTERN.sub(_resolve_match, node)
+        if isinstance(node, dict):
+            return {key: _walk(value) for key, value in node.items()}
+        if isinstance(node, list):
+            return [_walk(item) for item in node]
+        return node
+
+    result: dict[str, Any] = _walk(data)
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 
+def discover_config() -> Path:
+    """Auto-discover a configuration file from well-known locations.
+
+    Search order:
+
+    1. ``./ai-company.yaml``
+    2. ``./config/ai-company.yaml``
+    3. ``~/.ai-company/config.yaml``
+
+    Returns:
+        Resolved absolute :class:`~pathlib.Path` to the first file found.
+
+    Raises:
+        ConfigFileNotFoundError: If no configuration file is found
+            at any searched location.
+    """
+    candidates = [*_CWD_CONFIG_LOCATIONS, Path.home() / _HOME_CONFIG_RELATIVE]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+
+    searched = [str(c) for c in candidates]
+    msg = "No configuration file found. Searched:\n" + "\n".join(
+        f"  - {p}" for p in searched
+    )
+    raise ConfigFileNotFoundError(
+        msg,
+        locations=tuple(ConfigLocation(file_path=p) for p in searched),
+    )
+
+
 def load_config(
-    config_path: Path | str,
+    config_path: Path | str | None = None,
     *,
     override_paths: tuple[Path | str, ...] = (),
 ) -> RootConfig:
@@ -280,6 +375,11 @@ def load_config(
     1. Built-in defaults (from :func:`default_config_dict`).
     2. Primary config file at *config_path*.
     3. Override files in order.
+    4. Environment variable substitution (``${VAR}`` /
+       ``${VAR:-default}``).
+
+    When *config_path* is ``None``, :func:`discover_config` is called
+    to auto-discover the configuration file.
 
     .. note::
 
@@ -289,18 +389,23 @@ def load_config(
         file's line numbers or lack location information entirely.
 
     Args:
-        config_path: Path to the primary config file.
+        config_path: Path to the primary config file, or ``None``
+            to auto-discover.
         override_paths: Additional config files layered on top.
 
     Returns:
         Validated, frozen :class:`RootConfig`.
 
     Raises:
-        ConfigFileNotFoundError: If any config file does not exist.
+        ConfigFileNotFoundError: If any config file does not exist
+            (or discovery finds nothing).
         ConfigParseError: If any file contains invalid YAML or cannot
             be read.
-        ConfigValidationError: If the merged config fails validation.
+        ConfigValidationError: If the merged config fails validation
+            or an env var is missing.
     """
+    if config_path is None:
+        config_path = discover_config()
     config_path = Path(config_path)
 
     # 1. Start with built-in defaults
@@ -316,6 +421,9 @@ def load_config(
     for override_path in override_paths:
         override = _parse_yaml_file(Path(override_path))
         merged = _deep_merge(merged, override)
+
+    # 4. Substitute environment variables
+    merged = _substitute_env_vars(merged, source_file=str(config_path))
 
     # Build line map from primary file for error enrichment
     line_map = _build_line_map(yaml_text)
@@ -351,6 +459,7 @@ def load_config_from_string(
     """
     data = _parse_yaml_string(yaml_string, source_name)
     merged = _deep_merge(default_config_dict(), data)
+    merged = _substitute_env_vars(merged, source_file=source_name)
     line_map = _build_line_map(yaml_string)
     return _validate_config_dict(
         merged,

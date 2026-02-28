@@ -1,5 +1,7 @@
 """Tests for config loader (parsing, merging, validation)."""
 
+from pathlib import Path
+
 import pytest
 
 from ai_company.config.errors import (
@@ -13,13 +15,18 @@ from ai_company.config.loader import (
     _parse_yaml_file,
     _parse_yaml_string,
     _read_config_text,
+    _substitute_env_vars,
     _validate_config_dict,
+    discover_config,
     load_config,
     load_config_from_string,
 )
 from ai_company.config.schema import RootConfig
 
 from .conftest import (
+    ENV_VAR_MISSING_YAML,
+    ENV_VAR_NESTED_YAML,
+    ENV_VAR_SIMPLE_YAML,
     FULL_VALID_YAML,
     INVALID_FIELD_VALUES_YAML,
     INVALID_SYNTAX_YAML,
@@ -393,3 +400,245 @@ class TestLoadConfigFromString:
     def test_empty_string_uses_defaults(self):
         cfg = load_config_from_string("")
         assert cfg.company_name == "AI Company"
+
+
+# ── _substitute_env_vars ────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestSubstituteEnvVars:
+    def test_simple_substitution(self, monkeypatch):
+        monkeypatch.setenv("FOO", "bar")
+        data = {"key": "${FOO}"}
+        result = _substitute_env_vars(data)
+        assert result == {"key": "bar"}
+
+    def test_missing_var_raises(self):
+        data = {"key": "${MISSING_VAR_XYZ}"}
+        with pytest.raises(ConfigValidationError, match="MISSING_VAR_XYZ"):
+            _substitute_env_vars(data)
+
+    def test_default_used_when_missing(self):
+        data = {"key": "${MISSING_VAR_XYZ:-fallback}"}
+        result = _substitute_env_vars(data)
+        assert result == {"key": "fallback"}
+
+    def test_default_ignored_when_present(self, monkeypatch):
+        monkeypatch.setenv("SET_VAR", "real")
+        data = {"key": "${SET_VAR:-fallback}"}
+        result = _substitute_env_vars(data)
+        assert result == {"key": "real"}
+
+    def test_empty_default(self):
+        data = {"key": "${MISSING_VAR_XYZ:-}"}
+        result = _substitute_env_vars(data)
+        assert result == {"key": ""}
+
+    def test_nested_dict(self, monkeypatch):
+        monkeypatch.setenv("INNER", "resolved")
+        data = {"outer": {"inner": "${INNER}"}}
+        result = _substitute_env_vars(data)
+        assert result == {"outer": {"inner": "resolved"}}
+
+    def test_list_values(self, monkeypatch):
+        monkeypatch.setenv("ITEM", "hello")
+        data = {"items": ["${ITEM}", "static"]}
+        result = _substitute_env_vars(data)
+        assert result == {"items": ["hello", "static"]}
+
+    def test_non_string_unchanged(self):
+        data = {"int": 42, "float": 3.14, "bool": True, "null": None}
+        result = _substitute_env_vars(data)
+        assert result == {"int": 42, "float": 3.14, "bool": True, "null": None}
+
+    def test_multiple_vars_in_one_string(self, monkeypatch):
+        monkeypatch.setenv("A", "alpha")
+        monkeypatch.setenv("B", "beta")
+        data = {"key": "${A}:${B}"}
+        result = _substitute_env_vars(data)
+        assert result == {"key": "alpha:beta"}
+
+    def test_partial_string(self, monkeypatch):
+        monkeypatch.setenv("VAR", "middle")
+        data = {"key": "prefix-${VAR}-suffix"}
+        result = _substitute_env_vars(data)
+        assert result == {"key": "prefix-middle-suffix"}
+
+    def test_input_not_mutated(self, monkeypatch):
+        monkeypatch.setenv("X", "replaced")
+        original = {"key": "${X}", "nested": {"deep": "${X}"}}
+        original_copy = {"key": "${X}", "nested": {"deep": "${X}"}}
+        _substitute_env_vars(original)
+        assert original == original_copy
+
+    def test_no_placeholders_passthrough(self):
+        data = {"key": "no vars here", "num": 123}
+        result = _substitute_env_vars(data)
+        assert result == {"key": "no vars here", "num": 123}
+
+    def test_deeply_nested(self, monkeypatch):
+        monkeypatch.setenv("DEEP", "found")
+        data = {"a": {"b": {"c": {"d": {"e": "${DEEP}"}}}}}
+        result = _substitute_env_vars(data)
+        assert result == {"a": {"b": {"c": {"d": {"e": "found"}}}}}
+
+
+# ── discover_config ─────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDiscoverConfig:
+    def test_finds_cwd_config(self, tmp_path, monkeypatch):
+        config_file = tmp_path / "ai-company.yaml"
+        config_file.write_text("company_name: Test\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        result = discover_config()
+        assert result == config_file.resolve()
+
+    def test_finds_config_subdir(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        config_file = config_dir / "ai-company.yaml"
+        config_file.write_text("company_name: Test\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        result = discover_config()
+        assert result == config_file.resolve()
+
+    def test_finds_home_config(self, tmp_path, monkeypatch):
+        # CWD has no config
+        monkeypatch.chdir(tmp_path)
+        # Home dir has config
+        fake_home = tmp_path / "fakehome"
+        config_dir = fake_home / ".ai-company"
+        config_dir.mkdir(parents=True)
+        config_file = config_dir / "config.yaml"
+        config_file.write_text("company_name: Test\n", encoding="utf-8")
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+        result = discover_config()
+        assert result == config_file.resolve()
+
+    def test_precedence_cwd_over_subdir(self, tmp_path, monkeypatch):
+        # Both CWD and config/ have files
+        cwd_file = tmp_path / "ai-company.yaml"
+        cwd_file.write_text("company_name: CWD\n", encoding="utf-8")
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        subdir_file = config_dir / "ai-company.yaml"
+        subdir_file.write_text("company_name: SubDir\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        result = discover_config()
+        assert result == cwd_file.resolve()
+
+    def test_precedence_subdir_over_home(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        # config/ subdir has file
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        subdir_file = config_dir / "ai-company.yaml"
+        subdir_file.write_text("company_name: SubDir\n", encoding="utf-8")
+        # Home dir has file
+        fake_home = tmp_path / "fakehome"
+        home_config_dir = fake_home / ".ai-company"
+        home_config_dir.mkdir(parents=True)
+        home_file = home_config_dir / "config.yaml"
+        home_file.write_text("company_name: Home\n", encoding="utf-8")
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+        result = discover_config()
+        assert result == subdir_file.resolve()
+
+    def test_no_config_raises(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        fake_home = tmp_path / "fakehome"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+        with pytest.raises(ConfigFileNotFoundError, match="No configuration file"):
+            discover_config()
+
+    def test_returns_resolved_path(self, tmp_path, monkeypatch):
+        config_file = tmp_path / "ai-company.yaml"
+        config_file.write_text("company_name: Test\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        result = discover_config()
+        assert result.is_absolute()
+
+
+# ── Integration: env var substitution through load_config ───────
+
+
+@pytest.mark.unit
+class TestLoadConfigEnvVarIntegration:
+    def test_env_var_in_load_config(self, tmp_config_file, monkeypatch):
+        monkeypatch.setenv("COMPANY_NAME", "Env Corp")
+        path = tmp_config_file(ENV_VAR_SIMPLE_YAML)
+        cfg = load_config(path)
+        assert cfg.company_name == "Env Corp"
+
+    def test_env_var_with_default_in_load_config(self, tmp_config_file):
+        yaml_content = "company_name: ${UNDEFINED_TEST_VAR:-Default Corp}\n"
+        path = tmp_config_file(yaml_content)
+        cfg = load_config(path)
+        assert cfg.company_name == "Default Corp"
+
+    def test_missing_env_var_raises_in_load_config(self, tmp_config_file):
+        path = tmp_config_file(ENV_VAR_MISSING_YAML)
+        with pytest.raises(ConfigValidationError, match="UNDEFINED_VAR"):
+            load_config(path)
+
+    def test_env_var_in_nested_config(self, tmp_config_file, monkeypatch):
+        monkeypatch.setenv("COMPANY_NAME", "Nested Corp")
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://custom.api")
+        path = tmp_config_file(ENV_VAR_NESTED_YAML)
+        cfg = load_config(path)
+        assert cfg.company_name == "Nested Corp"
+        assert cfg.providers["anthropic"].base_url == "https://custom.api"
+
+    def test_env_var_in_load_config_from_string(self, monkeypatch):
+        monkeypatch.setenv("COMPANY_NAME", "String Corp")
+        cfg = load_config_from_string(ENV_VAR_SIMPLE_YAML)
+        assert cfg.company_name == "String Corp"
+
+    def test_env_var_default_in_load_config_from_string(self):
+        yaml_content = "company_name: ${UNDEFINED_TEST_VAR:-FromString Corp}\n"
+        cfg = load_config_from_string(yaml_content)
+        assert cfg.company_name == "FromString Corp"
+
+    def test_missing_env_var_raises_in_load_config_from_string(self):
+        with pytest.raises(ConfigValidationError, match="UNDEFINED_VAR"):
+            load_config_from_string(ENV_VAR_MISSING_YAML)
+
+    def test_env_var_in_override_file(self, tmp_config_file, monkeypatch):
+        monkeypatch.setenv("OVERRIDE_NAME", "Override Corp")
+        base = tmp_config_file(MINIMAL_VALID_YAML, name="base.yaml")
+        override = tmp_config_file(
+            "company_name: ${OVERRIDE_NAME}\n",
+            name="override.yaml",
+        )
+        cfg = load_config(base, override_paths=(override,))
+        assert cfg.company_name == "Override Corp"
+
+
+# ── Integration: discover_config with load_config ───────────────
+
+
+@pytest.mark.unit
+class TestLoadConfigDiscoveryIntegration:
+    def test_load_config_none_uses_discovery(self, tmp_path, monkeypatch):
+        config_file = tmp_path / "ai-company.yaml"
+        config_file.write_text(MINIMAL_VALID_YAML, encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        cfg = load_config(None)
+        assert cfg.company_name == "Test Corp"
+
+    def test_load_config_none_no_config_raises(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        fake_home = tmp_path / "fakehome"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
+        with pytest.raises(ConfigFileNotFoundError):
+            load_config(None)
+
+    def test_load_config_explicit_path_still_works(self, tmp_config_file):
+        """Backward compatibility: explicit path still works as before."""
+        path = tmp_config_file(MINIMAL_VALID_YAML)
+        cfg = load_config(path)
+        assert cfg.company_name == "Test Corp"
