@@ -1,12 +1,8 @@
 """Unit test configuration and fixtures for config models."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import pytest
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-    from pathlib import Path
 from polyfactory.factories.pydantic_factory import ModelFactory
 
 from ai_company.budget.config import BudgetConfig
@@ -20,6 +16,16 @@ from ai_company.config.schema import (
     RoutingRuleConfig,
 )
 from ai_company.core.company import CompanyConfig
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+class ConfigFileFactory(Protocol):
+    """Callable signature for the tmp_config_file fixture."""
+
+    def __call__(self, content: str, name: str = ...) -> Path: ...
+
 
 # ── Factories ──────────────────────────────────────────────────────
 
@@ -139,7 +145,7 @@ def sample_root_config() -> RootConfig:
 
 
 @pytest.fixture
-def tmp_config_file(tmp_path: Path) -> Callable[..., Path]:
+def tmp_config_file(tmp_path: Path) -> ConfigFileFactory:
     def _create(content: str, name: str = "config.yaml") -> Path:
         path = tmp_path / name
         path.write_text(content, encoding="utf-8")

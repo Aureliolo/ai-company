@@ -22,7 +22,7 @@ from ai_company.templates.loader import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from .conftest import TemplateFileFactory
 
 from .conftest import (
     INVALID_SYNTAX_YAML,
@@ -75,7 +75,7 @@ class TestListTemplates:
     def test_user_template_overrides_builtin(
         self,
         tmp_path: Path,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         user_dir = tmp_path / "user_templates"
         user_dir.mkdir()
@@ -140,7 +140,7 @@ class TestLoadTemplate:
 class TestLoadTemplateFile:
     def test_load_from_path(
         self,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         path = tmp_template_file(MINIMAL_TEMPLATE_YAML)
         loaded = load_template_file(path)
@@ -149,7 +149,7 @@ class TestLoadTemplateFile:
 
     def test_load_with_variables(
         self,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         path = tmp_template_file(TEMPLATE_WITH_VARIABLES_YAML)
         loaded = load_template_file(path)
@@ -162,7 +162,7 @@ class TestLoadTemplateFile:
 
     def test_invalid_yaml_raises_render_error(
         self,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         path = tmp_template_file(INVALID_SYNTAX_YAML)
         with pytest.raises(TemplateRenderError, match="syntax error"):
@@ -170,7 +170,7 @@ class TestLoadTemplateFile:
 
     def test_missing_template_key_raises_validation_error(
         self,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         path = tmp_template_file(MISSING_TEMPLATE_KEY_YAML)
         with pytest.raises(TemplateValidationError, match="template"):
@@ -178,7 +178,7 @@ class TestLoadTemplateFile:
 
     def test_accepts_string_path(
         self,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         path = tmp_template_file(MINIMAL_TEMPLATE_YAML)
         loaded = load_template_file(str(path))

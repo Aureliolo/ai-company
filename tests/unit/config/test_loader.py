@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from .conftest import ConfigFileFactory
 
 from ai_company.config.errors import (
     ConfigFileNotFoundError,
@@ -219,13 +219,13 @@ class TestValidateConfigDict:
 
 @pytest.mark.unit
 class TestLoadConfig:
-    def test_explicit_path(self, tmp_config_file: Callable[..., Path]) -> None:
+    def test_explicit_path(self, tmp_config_file: ConfigFileFactory) -> None:
         path = tmp_config_file(MINIMAL_VALID_YAML)
         cfg = load_config(path)
         assert isinstance(cfg, RootConfig)
         assert cfg.company_name == "Test Corp"
 
-    def test_full_config(self, tmp_config_file: Callable[..., Path]) -> None:
+    def test_full_config(self, tmp_config_file: ConfigFileFactory) -> None:
         path = tmp_config_file(FULL_VALID_YAML)
         cfg = load_config(path)
         assert cfg.company_name == "Test Corp"
@@ -233,7 +233,7 @@ class TestLoadConfig:
         assert cfg.agents[0].name == "Alice"
         assert "anthropic" in cfg.providers
 
-    def test_layered_override(self, tmp_config_file: Callable[..., Path]) -> None:
+    def test_layered_override(self, tmp_config_file: ConfigFileFactory) -> None:
         base_path = tmp_config_file(
             "company_name: Base Corp\ncompany_type: custom\n",
             name="base.yaml",
@@ -246,7 +246,7 @@ class TestLoadConfig:
         assert cfg.company_name == "Override Corp"
 
     def test_multiple_override_files_applied_in_order(
-        self, tmp_config_file: Callable[..., Path]
+        self, tmp_config_file: ConfigFileFactory
     ) -> None:
         base = tmp_config_file("company_name: Base\n", name="base.yaml")
         over1 = tmp_config_file("company_name: Override1\n", name="over1.yaml")
@@ -254,14 +254,14 @@ class TestLoadConfig:
         cfg = load_config(base, override_paths=(over1, over2))
         assert cfg.company_name == "Override2"
 
-    def test_defaults_applied(self, tmp_config_file: Callable[..., Path]) -> None:
+    def test_defaults_applied(self, tmp_config_file: ConfigFileFactory) -> None:
         path = tmp_config_file(MINIMAL_VALID_YAML)
         cfg = load_config(path)
         assert cfg.budget.total_monthly == 100.0
         assert cfg.routing.strategy == "cost_aware"
 
     def test_validation_error_with_location(
-        self, tmp_config_file: Callable[..., Path]
+        self, tmp_config_file: ConfigFileFactory
     ) -> None:
         path = tmp_config_file(MISSING_REQUIRED_YAML)
         with pytest.raises(ConfigValidationError) as exc_info:
@@ -270,7 +270,7 @@ class TestLoadConfig:
         assert err.field_errors
         assert any("company_name" in key for key, _ in err.field_errors)
 
-    def test_frozen_result(self, tmp_config_file: Callable[..., Path]) -> None:
+    def test_frozen_result(self, tmp_config_file: ConfigFileFactory) -> None:
         from pydantic import ValidationError
 
         path = tmp_config_file(MINIMAL_VALID_YAML)
@@ -282,12 +282,12 @@ class TestLoadConfig:
         with pytest.raises(ConfigFileNotFoundError):
             load_config(tmp_path / "nonexistent.yaml")
 
-    def test_syntax_error(self, tmp_config_file: Callable[..., Path]) -> None:
+    def test_syntax_error(self, tmp_config_file: ConfigFileFactory) -> None:
         path = tmp_config_file(INVALID_SYNTAX_YAML)
         with pytest.raises(ConfigParseError):
             load_config(path)
 
-    def test_nested_override_merge(self, tmp_config_file: Callable[..., Path]) -> None:
+    def test_nested_override_merge(self, tmp_config_file: ConfigFileFactory) -> None:
         base_path = tmp_config_file(
             "company_name: X\nbudget:\n  total_monthly: 200.0\n",
             name="base.yaml",
@@ -300,7 +300,7 @@ class TestLoadConfig:
         assert cfg.budget.total_monthly == 200.0
         assert cfg.budget.per_task_limit == 10.0
 
-    def test_string_path_accepted(self, tmp_config_file: Callable[..., Path]) -> None:
+    def test_string_path_accepted(self, tmp_config_file: ConfigFileFactory) -> None:
         """String paths are coerced to Path objects."""
         path = tmp_config_file(MINIMAL_VALID_YAML)
         cfg = load_config(str(path))
@@ -560,7 +560,7 @@ class TestDiscoverConfig:
 @pytest.mark.unit
 class TestLoadConfigEnvVar:
     def test_env_var_in_load_config(
-        self, tmp_config_file: Callable[..., Path], monkeypatch: pytest.MonkeyPatch
+        self, tmp_config_file: ConfigFileFactory, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("COMPANY_NAME", "Env Corp")
         path = tmp_config_file(ENV_VAR_SIMPLE_YAML)
@@ -568,7 +568,7 @@ class TestLoadConfigEnvVar:
         assert cfg.company_name == "Env Corp"
 
     def test_env_var_with_default_in_load_config(
-        self, tmp_config_file: Callable[..., Path]
+        self, tmp_config_file: ConfigFileFactory
     ) -> None:
         yaml_content = "company_name: ${UNDEFINED_TEST_VAR:-Default Corp}\n"
         path = tmp_config_file(yaml_content)
@@ -576,14 +576,14 @@ class TestLoadConfigEnvVar:
         assert cfg.company_name == "Default Corp"
 
     def test_missing_env_var_raises_in_load_config(
-        self, tmp_config_file: Callable[..., Path]
+        self, tmp_config_file: ConfigFileFactory
     ) -> None:
         path = tmp_config_file(ENV_VAR_MISSING_YAML)
         with pytest.raises(ConfigValidationError, match="UNDEFINED_VAR"):
             load_config(path)
 
     def test_env_var_in_nested_config(
-        self, tmp_config_file: Callable[..., Path], monkeypatch: pytest.MonkeyPatch
+        self, tmp_config_file: ConfigFileFactory, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("COMPANY_NAME", "Nested Corp")
         monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://custom.api")
@@ -609,7 +609,7 @@ class TestLoadConfigEnvVar:
             load_config_from_string(ENV_VAR_MISSING_YAML)
 
     def test_env_var_in_override_file(
-        self, tmp_config_file: Callable[..., Path], monkeypatch: pytest.MonkeyPatch
+        self, tmp_config_file: ConfigFileFactory, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("OVERRIDE_NAME", "Override Corp")
         base = tmp_config_file(MINIMAL_VALID_YAML, name="base.yaml")
@@ -646,7 +646,7 @@ class TestLoadConfigDiscovery:
             load_config(None)
 
     def test_load_config_explicit_path_still_works(
-        self, tmp_config_file: Callable[..., Path]
+        self, tmp_config_file: ConfigFileFactory
     ) -> None:
         """Backward compatibility: explicit path still works as before."""
         path = tmp_config_file(MINIMAL_VALID_YAML)

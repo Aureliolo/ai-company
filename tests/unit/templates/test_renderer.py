@@ -13,8 +13,7 @@ from ai_company.templates.renderer import render_template
 from .conftest import TEMPLATE_REQUIRED_VAR_YAML, TEMPLATE_WITH_VARIABLES_YAML
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from pathlib import Path
+    from .conftest import TemplateFileFactory
 
 # ── render_template basic ────────────────────────────────────────
 
@@ -58,7 +57,7 @@ class TestRenderTemplateBasic:
 class TestRenderTemplateVariables:
     def test_default_variables_applied(
         self,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         path = tmp_template_file(TEMPLATE_WITH_VARIABLES_YAML)
         loaded = load_template_file(path)
@@ -67,7 +66,7 @@ class TestRenderTemplateVariables:
 
     def test_user_variables_override_defaults(
         self,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         path = tmp_template_file(TEMPLATE_WITH_VARIABLES_YAML)
         loaded = load_template_file(path)
@@ -76,7 +75,7 @@ class TestRenderTemplateVariables:
 
     def test_budget_variable_applied(
         self,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         path = tmp_template_file(TEMPLATE_WITH_VARIABLES_YAML)
         loaded = load_template_file(path)
@@ -85,7 +84,7 @@ class TestRenderTemplateVariables:
 
     def test_required_variable_missing_raises_error(
         self,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         path = tmp_template_file(TEMPLATE_REQUIRED_VAR_YAML)
         loaded = load_template_file(path)
@@ -94,7 +93,7 @@ class TestRenderTemplateVariables:
 
     def test_required_variable_provided(
         self,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         path = tmp_template_file(TEMPLATE_REQUIRED_VAR_YAML)
         loaded = load_template_file(path)
@@ -103,7 +102,7 @@ class TestRenderTemplateVariables:
 
     def test_extra_variables_passed_through(
         self,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         path = tmp_template_file(TEMPLATE_WITH_VARIABLES_YAML)
         loaded = load_template_file(path)
@@ -167,7 +166,7 @@ class TestRenderTemplateDepartments:
 class TestRenderTemplateErrors:
     def test_invalid_jinja2_raises_render_error(
         self,
-        tmp_template_file: Callable[..., Path],
+        tmp_template_file: TemplateFileFactory,
     ) -> None:
         bad_yaml = """\
 template:
