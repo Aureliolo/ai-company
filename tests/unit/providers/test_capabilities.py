@@ -15,8 +15,8 @@ class TestModelCapabilities:
     """Tests for ModelCapabilities validation and immutability."""
 
     def test_valid(self, sample_model_capabilities: ModelCapabilities) -> None:
-        assert sample_model_capabilities.model_id == "claude-sonnet-4-6"
-        assert sample_model_capabilities.provider == "anthropic"
+        assert sample_model_capabilities.model_id == "test-model"
+        assert sample_model_capabilities.provider == "test-provider"
         assert sample_model_capabilities.max_context_tokens == 200_000
         assert sample_model_capabilities.supports_tools is True
 
@@ -108,6 +108,44 @@ class TestModelCapabilities:
     def test_factory(self) -> None:
         caps = ModelCapabilitiesFactory.build()
         assert isinstance(caps, ModelCapabilities)
+
+    def test_output_exceeding_context_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="max_output_tokens"):
+            ModelCapabilities(
+                model_id="test-model",
+                provider="test",
+                max_context_tokens=1000,
+                max_output_tokens=2000,
+                cost_per_1k_input=0.0,
+                cost_per_1k_output=0.0,
+            )
+
+    def test_streaming_tool_calls_requires_tools(self) -> None:
+        with pytest.raises(ValidationError, match="supports_tools"):
+            ModelCapabilities(
+                model_id="test-model",
+                provider="test",
+                max_context_tokens=1000,
+                max_output_tokens=500,
+                supports_streaming_tool_calls=True,
+                supports_tools=False,
+                cost_per_1k_input=0.0,
+                cost_per_1k_output=0.0,
+            )
+
+    def test_streaming_tool_calls_requires_streaming(self) -> None:
+        with pytest.raises(ValidationError, match="supports_streaming"):
+            ModelCapabilities(
+                model_id="test-model",
+                provider="test",
+                max_context_tokens=1000,
+                max_output_tokens=500,
+                supports_streaming_tool_calls=True,
+                supports_tools=True,
+                supports_streaming=False,
+                cost_per_1k_input=0.0,
+                cost_per_1k_output=0.0,
+            )
 
     def test_json_roundtrip(
         self,

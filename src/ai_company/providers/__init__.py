@@ -1,24 +1,7 @@
 """Unified provider interface for LLM completion.
 
-Public API
-----------
-Protocols & base:
-    CompletionProvider, BaseCompletionProvider
-
-Models:
-    ChatMessage, CompletionConfig, CompletionResponse, StreamChunk,
-    TokenUsage, ToolCall, ToolDefinition, ToolResult
-
-Capabilities:
-    ModelCapabilities
-
-Enums:
-    FinishReason, MessageRole, StreamEventType
-
-Errors:
-    ProviderError, AuthenticationError, ContentFilterError,
-    InvalidRequestError, ModelNotFoundError, ProviderConnectionError,
-    ProviderInternalError, ProviderTimeoutError, RateLimitError
+Exports protocols, base classes, domain models, enums, and errors
+for the provider layer.
 """
 
 from .base import BaseCompletionProvider

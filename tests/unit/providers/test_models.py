@@ -257,6 +257,26 @@ class TestChatMessage:
         with pytest.raises(ValidationError, match="content or tool_calls"):
             ChatMessage(role=MessageRole.SYSTEM, content=None)
 
+    def test_assistant_requires_content_or_tool_calls(self) -> None:
+        with pytest.raises(ValidationError, match="content or tool_calls"):
+            ChatMessage(role=MessageRole.ASSISTANT, content=None)
+
+    def test_system_rejects_tool_calls(self) -> None:
+        with pytest.raises(ValidationError, match="tool_calls"):
+            ChatMessage(
+                role=MessageRole.SYSTEM,
+                content="You are helpful.",
+                tool_calls=(ToolCall(id="c1", name="x", arguments={}),),
+            )
+
+    def test_user_rejects_tool_result(self) -> None:
+        with pytest.raises(ValidationError, match="tool_result"):
+            ChatMessage(
+                role=MessageRole.USER,
+                content="hi",
+                tool_result=ToolResult(tool_call_id="c1", content="ok"),
+            )
+
     def test_factory(self) -> None:
         msg = ChatMessageFactory.build()
         assert isinstance(msg, ChatMessage)
@@ -345,6 +365,42 @@ class TestCompletionResponse:
                 model="",
             )
 
+    def test_empty_response_rejected(
+        self,
+        sample_token_usage: TokenUsage,
+    ) -> None:
+        with pytest.raises(ValidationError, match="must have content"):
+            CompletionResponse(
+                content=None,
+                finish_reason=FinishReason.STOP,
+                usage=sample_token_usage,
+                model="test",
+            )
+
+    def test_empty_response_allowed_for_content_filter(
+        self,
+        sample_token_usage: TokenUsage,
+    ) -> None:
+        resp = CompletionResponse(
+            content=None,
+            finish_reason=FinishReason.CONTENT_FILTER,
+            usage=sample_token_usage,
+            model="test",
+        )
+        assert resp.content is None
+
+    def test_empty_response_allowed_for_error(
+        self,
+        sample_token_usage: TokenUsage,
+    ) -> None:
+        resp = CompletionResponse(
+            content=None,
+            finish_reason=FinishReason.ERROR,
+            usage=sample_token_usage,
+            model="test",
+        )
+        assert resp.finish_reason == FinishReason.ERROR
+
     def test_frozen(self, sample_completion_response: CompletionResponse) -> None:
         with pytest.raises(ValidationError):
             sample_completion_response.content = "new"  # type: ignore[misc]
@@ -410,6 +466,24 @@ class TestStreamChunk:
         chunk = StreamChunk(event_type=StreamEventType.DONE)
         assert chunk.event_type == StreamEventType.DONE
 
+    def test_done_rejects_extraneous_content(self) -> None:
+        with pytest.raises(ValidationError, match="must not include"):
+            StreamChunk(
+                event_type=StreamEventType.DONE,
+                content="extra",
+            )
+
+    def test_content_delta_rejects_extraneous_usage(
+        self,
+        sample_token_usage: TokenUsage,
+    ) -> None:
+        with pytest.raises(ValidationError, match="must not include"):
+            StreamChunk(
+                event_type=StreamEventType.CONTENT_DELTA,
+                content="Hello",
+                usage=sample_token_usage,
+            )
+
     def test_factory(self) -> None:
         chunk = StreamChunkFactory.build()
         assert isinstance(chunk, StreamChunk)
@@ -422,3 +496,17 @@ class TestStreamChunk:
         json_str = chunk.model_dump_json()
         restored = StreamChunk.model_validate_json(json_str)
         assert restored.usage == chunk.usage
+
+
+# ── __all__ exports ──────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestExports:
+    """Verify that __all__ matches the importable public API."""
+
+    def test_all_exports_are_importable(self) -> None:
+        import ai_company.providers as pkg
+
+        for name in pkg.__all__:
+            assert hasattr(pkg, name), f"{name} in __all__ but not importable"

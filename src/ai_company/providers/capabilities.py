@@ -1,6 +1,8 @@
 """Model capability descriptors for provider routing decisions."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
@@ -12,8 +14,8 @@ class ModelCapabilities(BaseModel):
     based on required features (tools, vision, streaming) and cost.
 
     Attributes:
-        model_id: Provider model identifier (e.g. ``"claude-sonnet-4-6"``).
-        provider: Provider name (e.g. ``"anthropic"``).
+        model_id: Provider model identifier (e.g. ``"gpt-4o"``).
+        provider: Provider name (e.g. ``"openai"``).
         max_context_tokens: Maximum context window size in tokens.
         max_output_tokens: Maximum output tokens per request.
         supports_tools: Whether the model supports tool/function calling.
@@ -53,3 +55,29 @@ class ModelCapabilities(BaseModel):
         ge=0.0,
         description="Cost per 1k output tokens in USD",
     )
+
+    @model_validator(mode="after")
+    def _validate_cross_field_constraints(self) -> Self:
+        """Enforce cross-field consistency.
+
+        Rules:
+            - max_output_tokens must not exceed max_context_tokens.
+            - supports_streaming_tool_calls requires both supports_tools
+              and supports_streaming.
+
+        Raises:
+            ValueError: If any cross-field constraint is violated.
+        """
+        if self.max_output_tokens > self.max_context_tokens:
+            msg = (
+                f"max_output_tokens ({self.max_output_tokens}) must not "
+                f"exceed max_context_tokens ({self.max_context_tokens})"
+            )
+            raise ValueError(msg)
+        if self.supports_streaming_tool_calls and not self.supports_tools:
+            msg = "supports_streaming_tool_calls requires supports_tools to be True"
+            raise ValueError(msg)
+        if self.supports_streaming_tool_calls and not self.supports_streaming:
+            msg = "supports_streaming_tool_calls requires supports_streaming to be True"
+            raise ValueError(msg)
+        return self

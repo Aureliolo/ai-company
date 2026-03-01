@@ -13,7 +13,7 @@ class TokenUsage(BaseModel):
     """Token counts and cost for a single completion call.
 
     This is the lightweight provider-layer record.  The budget layer's
-    ``CostRecord`` adds agent/task context around it.
+    ``ai_company.budget.CostRecord`` adds agent/task context around it.
 
     Attributes:
         input_tokens: Number of input (prompt) tokens.
@@ -124,7 +124,21 @@ class ChatMessage(BaseModel):
 
     @model_validator(mode="after")
     def _validate_role_constraints(self) -> Self:
-        """Enforce role-specific field constraints."""
+        """Enforce role-specific field constraints.
+
+        Rules:
+            - tool: must have tool_result, must not have tool_calls.
+            - assistant: must not have tool_result.
+            - system/user: must not have tool_calls or tool_result.
+            - Non-tool messages must have content or tool_calls.
+
+        Note:
+            Empty-string content (``content=""``) is intentionally
+            permitted — some providers return it legitimately.
+
+        Raises:
+            ValueError: If any role-specific constraint is violated.
+        """
         if self.role == MessageRole.TOOL:
             if self.tool_result is None:
                 msg = "tool messages must include a tool_result"
@@ -226,6 +240,30 @@ class CompletionResponse(BaseModel):
         description="Provider request ID",
     )
 
+    @model_validator(mode="after")
+    def _validate_has_output(self) -> Self:
+        """Ensure normal completions have content or tool_calls.
+
+        Responses with ``content_filter`` or ``error`` finish reasons
+        may legitimately have no output.
+
+        Raises:
+            ValueError: If a non-filtered/non-error response lacks output.
+        """
+        if (
+            self.content is None
+            and not self.tool_calls
+            and self.finish_reason
+            not in (FinishReason.CONTENT_FILTER, FinishReason.ERROR)
+        ):
+            msg = (
+                f"CompletionResponse with finish_reason="
+                f"{self.finish_reason.value} must have content "
+                f"or tool_calls"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class StreamChunk(BaseModel):
     """A single chunk from a streaming completion response.
@@ -260,22 +298,49 @@ class StreamChunk(BaseModel):
 
     @model_validator(mode="after")
     def _validate_event_fields(self) -> Self:
-        """Ensure the populated fields match the event_type."""
+        """Ensure only the relevant fields are populated for each event_type.
+
+        Each event type requires specific fields and rejects extraneous
+        payload fields to maintain strict discriminated-union semantics.
+
+        Raises:
+            ValueError: If required fields are missing or extraneous
+                fields are set.
+        """
+        payload: dict[str, object] = {
+            "content": self.content,
+            "tool_call_delta": self.tool_call_delta,
+            "usage": self.usage,
+            "error_message": self.error_message,
+        }
+        required: set[str] = set()
         match self.event_type:
             case StreamEventType.CONTENT_DELTA:
-                if self.content is None:
-                    msg = "content_delta event must include content"
-                    raise ValueError(msg)
+                required = {"content"}
             case StreamEventType.TOOL_CALL_DELTA:
-                if self.tool_call_delta is None:
-                    msg = "tool_call_delta event must include tool_call_delta"
-                    raise ValueError(msg)
+                required = {"tool_call_delta"}
             case StreamEventType.USAGE:
-                if self.usage is None:
-                    msg = "usage event must include usage"
-                    raise ValueError(msg)
+                required = {"usage"}
             case StreamEventType.ERROR:
-                if self.error_message is None:
-                    msg = "error event must include error_message"
-                    raise ValueError(msg)
+                required = {"error_message"}
+            case StreamEventType.DONE:
+                pass  # Terminal event, no required payload fields.
+            case _:
+                msg = f"Unhandled stream event type: {self.event_type}"  # type: ignore[unreachable]
+                raise ValueError(msg)
+
+        for name in required:
+            if payload[name] is None:
+                msg = f"{self.event_type.value} event must include {name}"
+                raise ValueError(msg)
+
+        extraneous = sorted(
+            name
+            for name, value in payload.items()
+            if name not in required and value is not None
+        )
+        if extraneous:
+            fields = ", ".join(extraneous)
+            msg = f"{self.event_type.value} event must not include {fields}"
+            raise ValueError(msg)
         return self

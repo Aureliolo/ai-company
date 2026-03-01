@@ -1,7 +1,8 @@
 """Typed protocol for completion providers.
 
 The engine and tests type-hint against ``CompletionProvider`` for loose
-coupling.  Concrete adapters (LiteLLM, stubs) satisfy it structurally.
+coupling.  Concrete adapters (e.g. ``LiteLLMProvider``) and test doubles
+satisfy it structurally.
 """
 
 from collections.abc import AsyncIterator  # noqa: TC003
@@ -21,10 +22,9 @@ from .models import (
 class CompletionProvider(Protocol):
     """Structural interface every LLM provider adapter must satisfy.
 
-    Methods:
-        complete: Execute a non-streaming chat completion.
-        stream: Execute a streaming chat completion.
-        get_model_capabilities: Return capability metadata for the model.
+    Defines three async methods: ``complete`` for non-streaming chat
+    completion, ``stream`` for streaming completion, and
+    ``get_model_capabilities`` for capability metadata lookup.
     """
 
     async def complete(

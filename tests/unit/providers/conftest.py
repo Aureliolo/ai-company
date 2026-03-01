@@ -77,7 +77,7 @@ class CompletionResponseFactory(ModelFactory):
     tool_calls = ()
     finish_reason = FinishReason.STOP
     usage = TokenUsageFactory
-    model = "claude-sonnet-4-6"
+    model = "test-model"
     provider_request_id = None
 
 
@@ -92,8 +92,8 @@ class StreamChunkFactory(ModelFactory):
 
 class ModelCapabilitiesFactory(ModelFactory):
     __model__ = ModelCapabilities
-    model_id = "claude-sonnet-4-6"
-    provider = "anthropic"
+    model_id = "test-model"
+    provider = "test-provider"
     max_context_tokens = 200_000
     max_output_tokens = 8_192
     supports_tools = True
@@ -218,15 +218,15 @@ def sample_completion_response(sample_token_usage: TokenUsage) -> CompletionResp
         content="The answer is 42.",
         finish_reason=FinishReason.STOP,
         usage=sample_token_usage,
-        model="claude-sonnet-4-6",
+        model="test-model",
     )
 
 
 @pytest.fixture
 def sample_model_capabilities() -> ModelCapabilities:
     return ModelCapabilities(
-        model_id="claude-sonnet-4-6",
-        provider="anthropic",
+        model_id="test-model",
+        provider="test-provider",
         max_context_tokens=200_000,
         max_output_tokens=8_192,
         supports_tools=True,

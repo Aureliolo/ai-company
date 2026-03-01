@@ -2,7 +2,7 @@
 
 Concrete adapters (e.g. ``LiteLLMProvider``) subclass
 ``BaseCompletionProvider`` and implement the ``_do_*`` hooks.  The base
-class handles validation and cost computation.
+class handles input validation and provides a cost-computation helper.
 """
 
 from abc import ABC, abstractmethod
@@ -19,17 +19,22 @@ from .models import (
     ToolDefinition,
 )
 
+_COST_ROUNDING_PRECISION: int = 10
+"""Decimal places for cost rounding to avoid floating-point dust."""
+
 
 class BaseCompletionProvider(ABC):
     """Shared base for all completion provider adapters.
 
     Subclasses implement three hooks:
 
-    * ``_do_complete`` - raw non-streaming call
-    * ``_do_stream`` - raw streaming call
-    * ``_do_get_model_capabilities`` - capability lookup
+    * ``_do_complete`` — raw non-streaming call
+    * ``_do_stream`` — raw streaming call
+    * ``_do_get_model_capabilities`` — capability lookup
 
-    The public methods add validation and cost computation.
+    The public methods validate inputs before delegating to hooks.
+    A static ``compute_cost`` helper is available for subclasses to
+    build ``TokenUsage`` records from raw token counts.
     """
 
     # -- Public API ---------------------------------------------------
@@ -51,12 +56,14 @@ class BaseCompletionProvider(ABC):
             config: Optional completion parameters.
 
         Returns:
-            The full completion response.
+            The completion response returned by the subclass
+            ``_do_complete`` hook, unmodified.
 
         Raises:
-            InvalidRequestError: If messages are empty.
+            InvalidRequestError: If messages are empty or model is blank.
         """
         self._validate_messages(messages)
+        self._validate_model(model)
         return await self._do_complete(
             messages,
             model,
@@ -81,12 +88,14 @@ class BaseCompletionProvider(ABC):
             config: Optional completion parameters.
 
         Returns:
-            Async iterator of stream chunks.
+            Async iterator of stream chunks returned by the subclass
+            ``_do_stream`` hook, unmodified.
 
         Raises:
-            InvalidRequestError: If messages are empty.
+            InvalidRequestError: If messages are empty or model is blank.
         """
         self._validate_messages(messages)
+        self._validate_model(model)
         return await self._do_stream(
             messages,
             model,
@@ -95,14 +104,18 @@ class BaseCompletionProvider(ABC):
         )
 
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
-        """Delegate to ``_do_get_model_capabilities``.
+        """Validate model identifier, delegate to ``_do_get_model_capabilities``.
 
         Args:
             model: Model identifier.
 
         Returns:
             Static capability and cost information.
+
+        Raises:
+            InvalidRequestError: If model is blank.
         """
+        self._validate_model(model)
         return await self._do_get_model_capabilities(model)
 
     # -- Hooks (subclasses implement) ---------------------------------
@@ -152,14 +165,41 @@ class BaseCompletionProvider(ABC):
         """Build a ``TokenUsage`` from raw token counts and per-1k rates.
 
         Args:
-            input_tokens: Number of input tokens.
-            output_tokens: Number of output tokens.
-            cost_per_1k_input: Cost per 1 000 input tokens in USD.
-            cost_per_1k_output: Cost per 1 000 output tokens in USD.
+            input_tokens: Number of input tokens (must be >= 0).
+            output_tokens: Number of output tokens (must be >= 0).
+            cost_per_1k_input: Cost per 1 000 input tokens in USD (>= 0).
+            cost_per_1k_output: Cost per 1 000 output tokens in USD (>= 0).
 
         Returns:
             Populated ``TokenUsage`` with computed cost.
+
+        Raises:
+            InvalidRequestError: If any parameter is negative.
         """
+        if input_tokens < 0:
+            msg = "input_tokens must be non-negative"
+            raise InvalidRequestError(
+                msg,
+                context={"input_tokens": input_tokens},
+            )
+        if output_tokens < 0:
+            msg = "output_tokens must be non-negative"
+            raise InvalidRequestError(
+                msg,
+                context={"output_tokens": output_tokens},
+            )
+        if cost_per_1k_input < 0:
+            msg = "cost_per_1k_input must be non-negative"
+            raise InvalidRequestError(
+                msg,
+                context={"cost_per_1k_input": cost_per_1k_input},
+            )
+        if cost_per_1k_output < 0:
+            msg = "cost_per_1k_output must be non-negative"
+            raise InvalidRequestError(
+                msg,
+                context={"cost_per_1k_output": cost_per_1k_output},
+            )
         cost = (input_tokens / 1000) * cost_per_1k_input + (
             output_tokens / 1000
         ) * cost_per_1k_output
@@ -167,7 +207,7 @@ class BaseCompletionProvider(ABC):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             total_tokens=input_tokens + output_tokens,
-            cost_usd=round(cost, 10),
+            cost_usd=round(cost, _COST_ROUNDING_PRECISION),
         )
 
     @staticmethod
@@ -183,3 +223,17 @@ class BaseCompletionProvider(ABC):
         if not messages:
             msg = "messages must not be empty"
             raise InvalidRequestError(msg, context={"field": "messages"})
+
+    @staticmethod
+    def _validate_model(model: str) -> None:
+        """Reject blank or empty model identifiers.
+
+        Args:
+            model: Model identifier string.
+
+        Raises:
+            InvalidRequestError: If model is empty or whitespace-only.
+        """
+        if not model or not model.strip():
+            msg = "model must be a non-blank string"
+            raise InvalidRequestError(msg, context={"field": "model"})

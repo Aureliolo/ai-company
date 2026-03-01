@@ -192,3 +192,91 @@ class TestBaseCompletionProvider:
     def test_base_satisfies_protocol(self) -> None:
         provider = _ConcreteProvider()
         assert isinstance(provider, CompletionProvider)
+
+    def test_cannot_instantiate_abc_directly(self) -> None:
+        with pytest.raises(TypeError, match="abstract"):
+            BaseCompletionProvider()  # type: ignore[abstract]
+
+    def test_partial_implementation_rejected(self) -> None:
+        class _PartialProvider(BaseCompletionProvider):
+            async def _do_complete(  # type: ignore[override]
+                self,
+                messages: list[ChatMessage],
+                model: str,
+                **kwargs: object,
+            ) -> CompletionResponse: ...
+
+        with pytest.raises(TypeError, match="abstract"):
+            _PartialProvider()  # type: ignore[abstract]
+
+    async def test_complete_rejects_empty_messages_context(self) -> None:
+        provider = _ConcreteProvider()
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await provider.complete([], "test-model")
+        assert exc_info.value.context == {"field": "messages"}
+
+    async def test_complete_rejects_blank_model(self) -> None:
+        provider = _ConcreteProvider()
+        msg = ChatMessage(role=MessageRole.USER, content="Hi")
+        with pytest.raises(InvalidRequestError, match="non-blank"):
+            await provider.complete([msg], "")
+
+    async def test_stream_rejects_blank_model(self) -> None:
+        provider = _ConcreteProvider()
+        msg = ChatMessage(role=MessageRole.USER, content="Hi")
+        with pytest.raises(InvalidRequestError, match="non-blank"):
+            await provider.stream([msg], "  ")
+
+    async def test_get_capabilities_rejects_blank_model(self) -> None:
+        provider = _ConcreteProvider()
+        with pytest.raises(InvalidRequestError, match="non-blank"):
+            await provider.get_model_capabilities("")
+
+    def test_compute_cost_negative_input_tokens(self) -> None:
+        with pytest.raises(InvalidRequestError, match="input_tokens"):
+            BaseCompletionProvider.compute_cost(
+                -1,
+                100,
+                cost_per_1k_input=0.003,
+                cost_per_1k_output=0.015,
+            )
+
+    def test_compute_cost_negative_output_tokens(self) -> None:
+        with pytest.raises(InvalidRequestError, match="output_tokens"):
+            BaseCompletionProvider.compute_cost(
+                100,
+                -1,
+                cost_per_1k_input=0.003,
+                cost_per_1k_output=0.015,
+            )
+
+    def test_compute_cost_negative_input_rate(self) -> None:
+        with pytest.raises(InvalidRequestError, match="cost_per_1k_input"):
+            BaseCompletionProvider.compute_cost(
+                100,
+                100,
+                cost_per_1k_input=-0.003,
+                cost_per_1k_output=0.015,
+            )
+
+    def test_compute_cost_negative_output_rate(self) -> None:
+        with pytest.raises(InvalidRequestError, match="cost_per_1k_output"):
+            BaseCompletionProvider.compute_cost(
+                100,
+                100,
+                cost_per_1k_input=0.003,
+                cost_per_1k_output=-0.015,
+            )
+
+    def test_compute_cost_rounding_precision(self) -> None:
+        usage = BaseCompletionProvider.compute_cost(
+            333,
+            777,
+            cost_per_1k_input=0.003,
+            cost_per_1k_output=0.015,
+        )
+        expected = round(
+            (333 / 1000) * 0.003 + (777 / 1000) * 0.015,
+            10,
+        )
+        assert usage.cost_usd == expected
