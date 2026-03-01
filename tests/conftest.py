@@ -4,6 +4,7 @@ import structlog
 
 
 def _patched_configure(
+    *args: object,
     _original: object = structlog.configure,
     **kwargs: object,
 ) -> None:
@@ -21,7 +22,7 @@ def _patched_configure(
     processor list.
     """
     kwargs["cache_logger_on_first_use"] = False
-    _original(**kwargs)  # type: ignore[operator]
+    _original(*args, **kwargs)  # type: ignore[operator]
 
 
-structlog.configure = _patched_configure  # type: ignore[assignment]
+structlog.configure = _patched_configure

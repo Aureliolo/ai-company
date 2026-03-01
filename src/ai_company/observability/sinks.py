@@ -8,6 +8,7 @@ appropriate structlog :class:`~structlog.stdlib.ProcessorFormatter`.
 import logging
 import logging.handlers
 import sys
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -24,11 +25,13 @@ from ai_company.observability.enums import RotationStrategy, SinkType
 # Maps sink file_path to the logger name prefixes that should be
 # routed to that sink.  Sinks not listed here are catch-all sinks
 # (no name filter attached).
-_SINK_ROUTING: dict[str, tuple[str, ...]] = {
-    "audit.log": ("ai_company.security.",),
-    "cost_usage.log": ("ai_company.budget.", "ai_company.providers."),
-    "agent_activity.log": ("ai_company.engine.", "ai_company.core."),
-}
+_SINK_ROUTING: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "audit.log": ("ai_company.security.",),
+        "cost_usage.log": ("ai_company.budget.", "ai_company.providers."),
+        "agent_activity.log": ("ai_company.engine.", "ai_company.core."),
+    }
+)
 
 
 class _LoggerNameFilter(logging.Filter):
@@ -51,6 +54,10 @@ class _LoggerNameFilter(logging.Filter):
         exclude_prefixes: tuple[str, ...] = (),
     ) -> None:
         super().__init__()
+        for prefix in (*include_prefixes, *exclude_prefixes):
+            if not prefix or not prefix.strip():
+                msg = "Logger name prefixes must be non-empty strings"
+                raise ValueError(msg)
         self._include = include_prefixes
         self._exclude = exclude_prefixes
 

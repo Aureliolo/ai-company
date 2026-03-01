@@ -71,6 +71,14 @@ def _reset_logging() -> Iterator[None]:
 
 @pytest.fixture
 def captured_logs() -> Iterator[list[MutableMapping[str, Any]]]:
-    """Capture structlog output as list of dicts for field-level assertions."""
+    """Capture structlog output as list of dicts for field-level assertions.
+
+    Usage::
+
+        def test_my_event(self, captured_logs: list) -> None:
+            do_something()
+            events = [e for e in captured_logs if e["event"] == MY_EVENT]
+            assert len(events) == 1
+    """
     with structlog.testing.capture_logs() as cap:
         yield cap

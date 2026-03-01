@@ -664,6 +664,7 @@ class TestLoadConfigDiscovery:
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestLoaderLogging:
     def test_config_loaded_event_on_success(
         self,

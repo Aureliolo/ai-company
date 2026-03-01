@@ -6,6 +6,7 @@ Public API
     load_config
     load_config_from_string
     discover_config
+    bootstrap_logging
     default_config_dict
     RootConfig
     AgentConfig

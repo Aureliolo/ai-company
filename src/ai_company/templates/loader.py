@@ -27,6 +27,7 @@ from ai_company.observability.events import (
     TEMPLATE_LOAD_ERROR,
     TEMPLATE_LOAD_START,
     TEMPLATE_LOAD_SUCCESS,
+    TEMPLATE_PASS1_FLOAT_FALLBACK,
 )
 from ai_company.templates.errors import (
     TemplateNotFoundError,
@@ -431,7 +432,7 @@ def _to_float(value: Any) -> float:
         return float(value)
     except TypeError, ValueError:
         logger.debug(
-            "template.pass1.float_fallback",
+            TEMPLATE_PASS1_FLOAT_FALLBACK,
             value=repr(value),
         )
         return 0.0

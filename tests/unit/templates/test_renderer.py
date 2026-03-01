@@ -20,6 +20,8 @@ from .conftest import TEMPLATE_REQUIRED_VAR_YAML, TEMPLATE_WITH_VARIABLES_YAML
 if TYPE_CHECKING:
     from .conftest import TemplateFileFactory
 
+pytestmark = pytest.mark.timeout(30)
+
 # ── render_template basic ────────────────────────────────────────
 
 

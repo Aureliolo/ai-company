@@ -32,7 +32,7 @@ class TestBootstrapLogging:
             bootstrap_logging(config)
         mock_configure.assert_called_once_with(log_cfg)
 
-    def test_is_idempotent(self) -> None:
+    def test_forwards_each_call_to_configure_logging(self) -> None:
         with patch(
             "ai_company.observability.configure_logging",
         ) as mock_configure:

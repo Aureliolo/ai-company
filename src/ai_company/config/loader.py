@@ -22,10 +22,12 @@ from ai_company.observability.events import (
     CONFIG_DISCOVERY_FOUND,
     CONFIG_DISCOVERY_STARTED,
     CONFIG_ENV_VAR_RESOLVED,
+    CONFIG_LINE_MAP_COMPOSE_FAILED,
     CONFIG_LOADED,
     CONFIG_OVERRIDE_APPLIED,
     CONFIG_PARSE_FAILED,
     CONFIG_VALIDATION_FAILED,
+    CONFIG_YAML_NON_SCALAR_KEY,
 )
 
 logger = get_logger(__name__)
@@ -173,7 +175,7 @@ def _walk_node(
                 _walk_node(value_node, path, result)
             else:
                 logger.debug(
-                    "config.yaml.non_scalar_key",
+                    CONFIG_YAML_NON_SCALAR_KEY,
                     key_type=type(key_node).__name__,
                 )
     elif isinstance(node, yaml.SequenceNode):
@@ -204,7 +206,7 @@ def _build_line_map(yaml_text: str) -> dict[str, tuple[int, int]]:
         root = yaml.compose(yaml_text, Loader=yaml.SafeLoader)
     except yaml.YAMLError as exc:
         logger.warning(
-            "config.line_map.compose_failed",
+            CONFIG_LINE_MAP_COMPOSE_FAILED,
             error=str(exc),
         )
         return {}

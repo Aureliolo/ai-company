@@ -78,12 +78,16 @@ class BaseCompletionProvider(ABC):
             model=model,
             message_count=len(messages),
         )
-        result = await self._do_complete(
-            messages,
-            model,
-            tools=tools,
-            config=config,
-        )
+        try:
+            result = await self._do_complete(
+                messages,
+                model,
+                tools=tools,
+                config=config,
+            )
+        except Exception:
+            logger.error(PROVIDER_CALL_ERROR, model=model, exc_info=True)
+            raise
         logger.debug(
             PROVIDER_CALL_SUCCESS,
             model=model,
@@ -120,12 +124,16 @@ class BaseCompletionProvider(ABC):
             model=model,
             message_count=len(messages),
         )
-        return await self._do_stream(
-            messages,
-            model,
-            tools=tools,
-            config=config,
-        )
+        try:
+            return await self._do_stream(
+                messages,
+                model,
+                tools=tools,
+                config=config,
+            )
+        except Exception:
+            logger.error(PROVIDER_CALL_ERROR, model=model, exc_info=True)
+            raise
 
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         """Validate model identifier, delegate to ``_do_get_model_capabilities``.

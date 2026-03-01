@@ -43,13 +43,17 @@ from litellm.exceptions import (
 from ai_company.observability import get_logger
 from ai_company.observability.events import (
     PROVIDER_AUTH_ERROR,
-    PROVIDER_CALL_START,
-    PROVIDER_CALL_SUCCESS,
     PROVIDER_CONNECTION_ERROR,
+    PROVIDER_MODEL_INFO_UNAVAILABLE,
+    PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
     PROVIDER_MODEL_NOT_FOUND,
     PROVIDER_RATE_LIMITED,
+    PROVIDER_RETRY_AFTER_PARSE_FAILED,
+    PROVIDER_STREAM_CHUNK_NO_DELTA,
     PROVIDER_STREAM_DONE,
-    PROVIDER_STREAM_START,
+    PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+    PROVIDER_TOOL_CALL_ARGUMENTS_TRUNCATED,
+    PROVIDER_TOOL_CALL_INCOMPLETE,
 )
 from ai_company.providers import errors
 from ai_company.providers.base import BaseCompletionProvider
@@ -134,12 +138,6 @@ class LiteLLMDriver(BaseCompletionProvider):
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
         """Call ``litellm.acompletion`` and map the response."""
-        logger.debug(
-            PROVIDER_CALL_START,
-            provider=self._provider_name,
-            model=model,
-            message_count=len(messages),
-        )
         model_config = self._resolve_model(model)
         litellm_model = f"{self._provider_name}/{model_config.id}"
         kwargs = self._build_kwargs(
@@ -156,13 +154,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         except Exception as exc:
             raise self._map_exception(exc, model) from exc
         else:
-            result = self._map_response(response, model_config)
-            logger.debug(
-                PROVIDER_CALL_SUCCESS,
-                provider=self._provider_name,
-                model=model,
-            )
-            return result
+            return self._map_response(response, model_config)
 
     async def _do_stream(
         self,
@@ -178,12 +170,6 @@ class LiteLLMDriver(BaseCompletionProvider):
         directly) because the base class ``await``s this coroutine to
         obtain the iterator.
         """
-        logger.debug(
-            PROVIDER_STREAM_START,
-            provider=self._provider_name,
-            model=model,
-            message_count=len(messages),
-        )
         model_config = self._resolve_model(model)
         litellm_model = f"{self._provider_name}/{model_config.id}"
         kwargs = self._build_kwargs(
@@ -427,7 +413,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
         delta = getattr(choices[0], "delta", None)
         if delta is None:
-            logger.debug("provider.stream.chunk_no_delta")
+            logger.debug(PROVIDER_STREAM_CHUNK_NO_DELTA)
             return result
 
         text = getattr(delta, "content", None)
@@ -476,7 +462,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         self,
         exc: Exception,
         model: str,
-    ) -> Exception:
+    ) -> errors.ProviderError:
         """Map a LiteLLM exception to the provider error hierarchy."""
         ctx: dict[str, Any] = {
             "provider": self._provider_name,
@@ -539,7 +525,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             return float(raw)
         except ValueError, TypeError:
             logger.debug(
-                "provider.retry_after.parse_failed",
+                PROVIDER_RETRY_AFTER_PARSE_FAILED,
                 raw_value=repr(raw),
             )
             return None
@@ -560,13 +546,13 @@ class LiteLLMDriver(BaseCompletionProvider):
             info: dict[str, Any] = dict(raw) if raw else {}
         except KeyError, ValueError:
             logger.info(
-                "provider.model_info.unavailable",
+                PROVIDER_MODEL_INFO_UNAVAILABLE,
                 model=litellm_model,
             )
             return {}
         except Exception:
             logger.warning(
-                "provider.model_info.unexpected_error",
+                PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
                 model=litellm_model,
                 exc_info=True,
             )
@@ -656,7 +642,7 @@ class _ToolCallAccumulator:
                 fragment = str(args)
                 if len(self.arguments) + len(fragment) > self._MAX_ARGUMENTS_LEN:
                     logger.warning(
-                        "provider.tool_call.arguments_truncated",
+                        PROVIDER_TOOL_CALL_ARGUMENTS_TRUNCATED,
                         max_bytes=self._MAX_ARGUMENTS_LEN,
                     )
                     return
@@ -671,7 +657,7 @@ class _ToolCallAccumulator:
         if not self.id or not self.name:
             if self.arguments:
                 logger.warning(
-                    "provider.tool_call.incomplete",
+                    PROVIDER_TOOL_CALL_INCOMPLETE,
                     tool_id=self.id,
                     tool_name=self.name,
                     args_len=len(self.arguments),
@@ -681,7 +667,7 @@ class _ToolCallAccumulator:
             parsed = json.loads(self.arguments) if self.arguments else {}
         except json.JSONDecodeError, ValueError:
             logger.warning(
-                "provider.tool_call.arguments_parse_failed",
+                PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
                 tool_name=self.name,
                 tool_id=self.id,
                 args_preview=self.arguments[:200] if self.arguments else "",

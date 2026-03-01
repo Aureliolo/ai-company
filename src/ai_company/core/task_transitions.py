@@ -52,6 +52,11 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.CANCELLED: frozenset(),  # terminal
 }
 
+_missing = set(TaskStatus) - set(VALID_TRANSITIONS)
+if _missing:
+    _msg = f"Missing transition entries for: {sorted(s.value for s in _missing)}"
+    raise ValueError(_msg)
+
 
 def validate_transition(current: TaskStatus, target: TaskStatus) -> None:
     """Validate that a state transition is allowed.

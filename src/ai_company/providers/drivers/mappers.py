@@ -10,6 +10,12 @@ import json
 from typing import Any
 
 from ai_company.observability import get_logger
+from ai_company.observability.events import (
+    PROVIDER_FINISH_REASON_UNKNOWN,
+    PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+    PROVIDER_TOOL_CALL_INCOMPLETE,
+    PROVIDER_TOOL_CALL_MISSING_FUNCTION,
+)
 from ai_company.providers.enums import FinishReason, MessageRole
 from ai_company.providers.models import ChatMessage, ToolCall, ToolDefinition
 
@@ -116,7 +122,7 @@ def map_finish_reason(reason: str | None) -> FinishReason:
     if result is None:
         if reason is not None:
             logger.warning(
-                "provider.finish_reason.unknown",
+                PROVIDER_FINISH_REASON_UNKNOWN,
                 reason=reason,
             )
         return FinishReason.ERROR
@@ -145,7 +151,7 @@ def extract_tool_calls(raw: list[Any] | None) -> tuple[ToolCall, ...]:
         func = _get(item, "function", None)
         if func is None:
             logger.warning(
-                "provider.tool_call.missing_function",
+                PROVIDER_TOOL_CALL_MISSING_FUNCTION,
                 item=repr(item),
             )
             continue
@@ -156,7 +162,7 @@ def extract_tool_calls(raw: list[Any] | None) -> tuple[ToolCall, ...]:
             calls.append(ToolCall(id=call_id, name=name, arguments=arguments))
         else:
             logger.warning(
-                "provider.tool_call.incomplete",
+                PROVIDER_TOOL_CALL_INCOMPLETE,
                 tool_id=call_id,
                 tool_name=name,
             )
@@ -171,11 +177,14 @@ def _get(obj: Any, key: str, default: Any) -> Any:
     return getattr(obj, key, default)
 
 
-def _parse_arguments(raw: str | dict[str, Any] | Any) -> dict[str, Any]:
+def _parse_arguments(raw: Any) -> dict[str, Any]:
     """Parse tool call arguments from string or dict form.
 
+    Expected inputs are ``str`` (JSON) or ``dict``, but any type is
+    accepted so callers need not pre-validate LLM response shapes.
+
     Args:
-        raw: JSON string or pre-parsed dict.
+        raw: JSON string, pre-parsed dict, or other value.
 
     Returns:
         Parsed arguments dict.  Returns empty dict on parse failure.
@@ -187,11 +196,16 @@ def _parse_arguments(raw: str | dict[str, Any] | Any) -> dict[str, Any]:
             parsed = json.loads(raw)
         except json.JSONDecodeError, ValueError:
             logger.warning(
-                "provider.tool_call.arguments_parse_failed",
+                PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
                 args_preview=raw[:200],
             )
             return {}
         if isinstance(parsed, dict):
             return dict(parsed)
+        logger.warning(
+            PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+            args_preview=raw[:200],
+            parsed_type=type(parsed).__name__,
+        )
         return {}
     return {}

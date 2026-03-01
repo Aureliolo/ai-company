@@ -110,8 +110,7 @@ def with_correlation(
     Note:
         This decorator is for **synchronous** functions only.  Applying
         it to an ``async def`` function raises :exc:`TypeError`.  For
-        async functions, manually call :func:`bind_correlation_id` and
-        :func:`unbind_correlation_id` in a ``try``/``finally`` block.
+        async functions, use :func:`with_correlation_async` instead.
 
     Args:
         request_id: Request correlation identifier to bind.

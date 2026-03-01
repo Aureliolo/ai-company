@@ -70,7 +70,7 @@ class _StubProvider(BaseCompletionProvider):
     ) -> AsyncIterator[StreamChunk]:
         async def _gen() -> AsyncIterator[StreamChunk]:
             return
-            yield  # make it an async generator
+            yield  # make it an async generator  # type: ignore[unreachable]
 
         return _gen()
 

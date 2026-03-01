@@ -189,7 +189,7 @@ def _render_jinja2(
         jinja_template = env.from_string(raw_yaml)
         return jinja_template.render(**variables)
     except Jinja2TemplateError as exc:
-        logger.warning(
+        logger.exception(
             TEMPLATE_RENDER_JINJA2_ERROR,
             source_name=source_name,
             error=str(exc),
@@ -220,7 +220,7 @@ def _parse_rendered_yaml(
     try:
         data = yaml.safe_load(rendered_text)
     except yaml.YAMLError as exc:
-        logger.warning(
+        logger.exception(
             TEMPLATE_RENDER_YAML_ERROR,
             source_name=source_name,
             error=str(exc),
@@ -445,7 +445,7 @@ def _validate_as_root_config(
                     key_path=key_path,
                 ),
             )
-        logger.warning(
+        logger.exception(
             TEMPLATE_RENDER_VALIDATION_ERROR,
             source_name=source_name,
             error_count=len(exc.errors()),
