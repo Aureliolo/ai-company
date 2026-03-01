@@ -1,12 +1,18 @@
 """Unit test configuration and fixtures for templates."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+
+
+class TemplateFileFactory(Protocol):
+    """Callable signature for the tmp_template_file fixture."""
+
+    def __call__(self, content: str, name: str = ...) -> Path: ...
 
 
 MINIMAL_TEMPLATE_YAML = """\
@@ -120,7 +126,7 @@ def make_template_dict() -> Callable[..., dict[str, Any]]:
 
 
 @pytest.fixture
-def tmp_template_file(tmp_path: Path) -> Callable[[str, str], Path]:
+def tmp_template_file(tmp_path: Path) -> TemplateFileFactory:
     """Factory fixture for writing a temporary template YAML file."""
 
     def _create(content: str, name: str = "test_template.yaml") -> Path:

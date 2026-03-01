@@ -20,10 +20,10 @@ class TestMessageRole:
         assert MessageRole.TOOL in members
 
     def test_values_are_strings(self) -> None:
-        assert MessageRole.SYSTEM == "system"
-        assert MessageRole.USER == "user"
-        assert MessageRole.ASSISTANT == "assistant"
-        assert MessageRole.TOOL == "tool"
+        assert MessageRole.SYSTEM.value == "system"
+        assert MessageRole.USER.value == "user"
+        assert MessageRole.ASSISTANT.value == "assistant"
+        assert MessageRole.TOOL.value == "tool"
 
     def test_membership(self) -> None:
         assert "system" in MessageRole.__members__.values()
@@ -47,11 +47,11 @@ class TestFinishReason:
         assert FinishReason.ERROR in members
 
     def test_values_are_strings(self) -> None:
-        assert FinishReason.STOP == "stop"
-        assert FinishReason.MAX_TOKENS == "max_tokens"
-        assert FinishReason.TOOL_USE == "tool_use"
-        assert FinishReason.CONTENT_FILTER == "content_filter"
-        assert FinishReason.ERROR == "error"
+        assert FinishReason.STOP.value == "stop"
+        assert FinishReason.MAX_TOKENS.value == "max_tokens"
+        assert FinishReason.TOOL_USE.value == "tool_use"
+        assert FinishReason.CONTENT_FILTER.value == "content_filter"
+        assert FinishReason.ERROR.value == "error"
 
     def test_is_str_subclass(self) -> None:
         assert isinstance(FinishReason.STOP, str)
@@ -71,11 +71,11 @@ class TestStreamEventType:
         assert StreamEventType.DONE in members
 
     def test_values_are_strings(self) -> None:
-        assert StreamEventType.CONTENT_DELTA == "content_delta"
-        assert StreamEventType.TOOL_CALL_DELTA == "tool_call_delta"
-        assert StreamEventType.USAGE == "usage"
-        assert StreamEventType.ERROR == "error"
-        assert StreamEventType.DONE == "done"
+        assert StreamEventType.CONTENT_DELTA.value == "content_delta"
+        assert StreamEventType.TOOL_CALL_DELTA.value == "tool_call_delta"
+        assert StreamEventType.USAGE.value == "usage"
+        assert StreamEventType.ERROR.value == "error"
+        assert StreamEventType.DONE.value == "done"
 
     def test_is_str_subclass(self) -> None:
         assert isinstance(StreamEventType.DONE, str)
