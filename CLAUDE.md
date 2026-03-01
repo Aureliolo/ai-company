@@ -48,6 +48,7 @@ src/ai_company/
 ## Code Conventions
 
 - **No `from __future__ import annotations`** — Python 3.14 has PEP 649
+- **PEP 758 except syntax**: use `except A, B:` (no parentheses) — ruff enforces this on Python 3.14
 - **Type hints**: all public functions, mypy strict mode
 - **Docstrings**: Google style, required on public classes/functions (enforced by ruff D rules)
 - **Immutability**: create new objects, never mutate existing ones
