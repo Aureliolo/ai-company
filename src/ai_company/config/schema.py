@@ -53,6 +53,7 @@ class ProviderConfig(BaseModel):
     """Configuration for an LLM provider.
 
     Attributes:
+        driver: Driver backend name (e.g. ``"litellm"``).
         api_key: API key (typically injected by secret management).
         base_url: Base URL for the provider API.
         models: Available models for this provider.
@@ -60,6 +61,10 @@ class ProviderConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    driver: NotBlankStr = Field(
+        default="litellm",
+        description="Driver backend name",
+    )
     api_key: NotBlankStr | None = Field(
         default=None,
         repr=False,

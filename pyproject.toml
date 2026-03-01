@@ -14,6 +14,7 @@ classifiers = [
 ]
 dependencies = [
     "jinja2==3.1.6",
+    "litellm==1.82.0",
     "pydantic==2.12.5",
     "pyyaml==6.0.2",
     "structlog==25.5.0",
@@ -121,7 +122,7 @@ convention = "google"
     "SLF001",  # private member access in tests
     "PLC0415", # local imports in test functions
 ]
-"__init__.py" = ["F401", "F403"]
+"__init__.py" = ["F401"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["ai_company"]
@@ -144,6 +145,10 @@ warn_unreachable = true
 show_error_codes = true
 enable_error_code = ["ignore-without-code", "redundant-cast", "truthy-bool"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "litellm.*"
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"
@@ -187,7 +192,9 @@ markers = [
     "slow: Slow tests (excluded from default runs)",
 ]
 addopts = ["--strict-markers", "--strict-config", "-ra", "--tb=short"]
-filterwarnings = ["error"]
+filterwarnings = [
+    "error",
+]
 
 # ---------------------------------------------------------------------------
 # coverage — test coverage reporting
