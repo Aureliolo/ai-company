@@ -4,10 +4,8 @@ from collections.abc import AsyncIterator  # noqa: TC003
 
 import pytest
 
-from ai_company.providers.base import (
-    _COST_ROUNDING_PRECISION,
-    BaseCompletionProvider,
-)
+from ai_company.constants import BUDGET_ROUNDING_PRECISION
+from ai_company.providers.base import BaseCompletionProvider
 from ai_company.providers.capabilities import ModelCapabilities
 from ai_company.providers.enums import FinishReason, MessageRole, StreamEventType
 from ai_company.providers.errors import InvalidRequestError
@@ -348,7 +346,7 @@ class TestBaseCompletionProvider:
         )
         expected = round(
             (333 / 1000) * 0.003 + (777 / 1000) * 0.015,
-            _COST_ROUNDING_PRECISION,
+            BUDGET_ROUNDING_PRECISION,
         )
         assert usage.cost_usd == expected
 

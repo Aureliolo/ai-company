@@ -9,6 +9,8 @@ import math
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator  # noqa: TC003
 
+from ai_company.constants import BUDGET_ROUNDING_PRECISION
+
 from .capabilities import ModelCapabilities  # noqa: TC001
 from .errors import InvalidRequestError
 from .models import (
@@ -19,9 +21,6 @@ from .models import (
     TokenUsage,
     ToolDefinition,
 )
-
-_COST_ROUNDING_PRECISION: int = 10
-"""Decimal places for cost rounding to avoid floating-point dust."""
 
 
 class BaseCompletionProvider(ABC):
@@ -192,14 +191,17 @@ class BaseCompletionProvider(ABC):
         Args:
             input_tokens: Number of input tokens (must be >= 0).
             output_tokens: Number of output tokens (must be >= 0).
-            cost_per_1k_input: Cost per 1 000 input tokens in USD (>= 0).
-            cost_per_1k_output: Cost per 1 000 output tokens in USD (>= 0).
+            cost_per_1k_input: Cost per 1 000 input tokens in USD
+                (finite and >= 0).
+            cost_per_1k_output: Cost per 1 000 output tokens in USD
+                (finite and >= 0).
 
         Returns:
             Populated ``TokenUsage`` with computed cost.
 
         Raises:
-            InvalidRequestError: If any parameter is negative.
+            InvalidRequestError: If any parameter is negative or
+                non-finite.
         """
         if input_tokens < 0:
             msg = "input_tokens must be non-negative"
@@ -232,7 +234,7 @@ class BaseCompletionProvider(ABC):
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             total_tokens=input_tokens + output_tokens,
-            cost_usd=round(cost, _COST_ROUNDING_PRECISION),
+            cost_usd=round(cost, BUDGET_ROUNDING_PRECISION),
         )
 
     @staticmethod
