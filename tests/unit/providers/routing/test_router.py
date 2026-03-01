@@ -72,7 +72,7 @@ class TestModelRouterRoute:
 
         decision = router.route(RoutingRequest())
 
-        assert decision.resolved_model.alias == "haiku"
+        assert decision.resolved_model.alias == "small"
         assert decision.strategy_used == "cost_aware"
 
     def test_routes_manual(
@@ -83,10 +83,10 @@ class TestModelRouterRoute:
         router = ModelRouter(config, three_model_provider)
 
         decision = router.route(
-            RoutingRequest(model_override="opus"),
+            RoutingRequest(model_override="large"),
         )
 
-        assert decision.resolved_model.model_id == "claude-opus-4-6"
+        assert decision.resolved_model.model_id == "test-opus-001"
 
     def test_routes_role_based(
         self,
@@ -99,7 +99,7 @@ class TestModelRouterRoute:
             RoutingRequest(agent_level=SeniorityLevel.SENIOR),
         )
 
-        assert decision.resolved_model.alias == "sonnet"
+        assert decision.resolved_model.alias == "medium"
 
     def test_routes_smart(
         self,
@@ -112,7 +112,7 @@ class TestModelRouterRoute:
             RoutingRequest(agent_level=SeniorityLevel.C_SUITE),
         )
 
-        assert decision.resolved_model.alias == "opus"
+        assert decision.resolved_model.alias == "large"
 
     def test_logs_decision(
         self,

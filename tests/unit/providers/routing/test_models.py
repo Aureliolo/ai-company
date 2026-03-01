@@ -21,8 +21,8 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 class TestResolvedModel:
     def test_build_from_factory(self) -> None:
         model = ResolvedModelFactory.build()
-        assert model.provider_name == "anthropic"
-        assert model.model_id == "claude-sonnet-4-6"
+        assert model.provider_name == "test-provider"
+        assert model.model_id == "test-sonnet-001"
 
     def test_frozen(self) -> None:
         model = ResolvedModelFactory.build()

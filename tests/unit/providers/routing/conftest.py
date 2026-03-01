@@ -26,9 +26,9 @@ class ResolvedModelFactory(ModelFactory[ResolvedModel]):
     """Factory for ResolvedModel."""
 
     __model__ = ResolvedModel
-    provider_name = "anthropic"
-    model_id = "claude-sonnet-4-6"
-    alias = "sonnet"
+    provider_name = "test-provider"
+    model_id = "test-sonnet-001"
+    alias = "medium"
     cost_per_1k_input = 0.003
     cost_per_1k_output = 0.015
     max_context = 200_000
@@ -57,24 +57,24 @@ class RoutingDecisionFactory(ModelFactory[RoutingDecision]):
 # ── Standard 3-model provider config ─────────────────────────────
 
 HAIKU_MODEL = ProviderModelConfig(
-    id="claude-haiku-4-5",
-    alias="haiku",
+    id="test-haiku-001",
+    alias="small",
     cost_per_1k_input=0.001,
     cost_per_1k_output=0.005,
     max_context=200_000,
 )
 
 SONNET_MODEL = ProviderModelConfig(
-    id="claude-sonnet-4-6",
-    alias="sonnet",
+    id="test-sonnet-001",
+    alias="medium",
     cost_per_1k_input=0.003,
     cost_per_1k_output=0.015,
     max_context=200_000,
 )
 
 OPUS_MODEL = ProviderModelConfig(
-    id="claude-opus-4-6",
-    alias="opus",
+    id="test-opus-001",
+    alias="large",
     cost_per_1k_input=0.015,
     cost_per_1k_output=0.075,
     max_context=200_000,
@@ -85,7 +85,7 @@ OPUS_MODEL = ProviderModelConfig(
 def three_model_provider() -> dict[str, ProviderConfig]:
     """Provider config with haiku, sonnet, opus."""
     return {
-        "anthropic": ProviderConfig(
+        "test-provider": ProviderConfig(
             driver="litellm",
             api_key="sk-test",
             models=(HAIKU_MODEL, SONNET_MODEL, OPUS_MODEL),
@@ -109,22 +109,22 @@ def standard_routing_config() -> RoutingConfig:
         rules=(
             RoutingRuleConfig(
                 role_level=SeniorityLevel.JUNIOR,
-                preferred_model="haiku",
+                preferred_model="small",
             ),
             RoutingRuleConfig(
                 role_level=SeniorityLevel.SENIOR,
-                preferred_model="sonnet",
-                fallback="haiku",
+                preferred_model="medium",
+                fallback="small",
             ),
             RoutingRuleConfig(
                 role_level=SeniorityLevel.C_SUITE,
-                preferred_model="opus",
-                fallback="sonnet",
+                preferred_model="large",
+                fallback="medium",
             ),
             RoutingRuleConfig(
                 task_type="review",
-                preferred_model="opus",
+                preferred_model="large",
             ),
         ),
-        fallback_chain=("sonnet", "haiku"),
+        fallback_chain=("medium", "small"),
     )

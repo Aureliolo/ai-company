@@ -51,12 +51,12 @@ class TestManualStrategy:
         resolver: ModelResolver,
     ) -> None:
         strategy = ManualStrategy()
-        request = RoutingRequest(model_override="sonnet")
+        request = RoutingRequest(model_override="medium")
         config = RoutingConfig()
 
         decision = strategy.select(request, config, resolver)
 
-        assert decision.resolved_model.model_id == "claude-sonnet-4-6"
+        assert decision.resolved_model.model_id == "test-sonnet-001"
         assert decision.strategy_used == "manual"
         assert "override" in decision.reason.lower()
 
@@ -65,11 +65,11 @@ class TestManualStrategy:
         resolver: ModelResolver,
     ) -> None:
         strategy = ManualStrategy()
-        request = RoutingRequest(model_override="claude-opus-4-6")
+        request = RoutingRequest(model_override="test-opus-001")
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.model_id == "claude-opus-4-6"
+        assert decision.resolved_model.model_id == "test-opus-001"
 
     def test_raises_without_override(
         self,
@@ -106,7 +106,7 @@ class TestRoleBasedStrategy:
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        assert decision.resolved_model.alias == "haiku"
+        assert decision.resolved_model.alias == "small"
         assert decision.strategy_used == "role_based"
 
     def test_matches_senior_rule(
@@ -119,7 +119,7 @@ class TestRoleBasedStrategy:
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        assert decision.resolved_model.alias == "sonnet"
+        assert decision.resolved_model.alias == "medium"
 
     def test_matches_csuite_rule(
         self,
@@ -131,7 +131,7 @@ class TestRoleBasedStrategy:
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        assert decision.resolved_model.alias == "opus"
+        assert decision.resolved_model.alias == "large"
 
     def test_falls_back_to_seniority_default(
         self,
@@ -144,7 +144,7 @@ class TestRoleBasedStrategy:
 
         decision = strategy.select(request, config, resolver)
 
-        assert decision.resolved_model.alias == "sonnet"
+        assert decision.resolved_model.alias == "medium"
         assert "seniority" in decision.reason.lower()
 
     def test_falls_back_to_global_chain(
@@ -154,19 +154,19 @@ class TestRoleBasedStrategy:
         """LEAD has tier=opus; if opus not registered, use fallback chain."""
         provider = ProviderConfig(
             models=(
-                three_model_provider["anthropic"].models[0],  # haiku only
+                three_model_provider["test-provider"].models[0],  # haiku only
             ),
         )
-        resolver = ModelResolver.from_config({"anthropic": provider})
+        resolver = ModelResolver.from_config({"test-provider": provider})
         config = RoutingConfig(
             strategy="role_based",
-            fallback_chain=("haiku",),
+            fallback_chain=("small",),
         )
         request = RoutingRequest(agent_level=SeniorityLevel.LEAD)
 
         decision = RoleBasedStrategy().select(request, config, resolver)
 
-        assert decision.resolved_model.alias == "haiku"
+        assert decision.resolved_model.alias == "small"
 
     def test_raises_without_agent_level(
         self,
@@ -193,17 +193,17 @@ class TestRoleBasedStrategy:
         """When preferred not found, rule's fallback is tried."""
         provider = ProviderConfig(
             models=(
-                three_model_provider["anthropic"].models[0],  # haiku only
+                three_model_provider["test-provider"].models[0],  # haiku only
             ),
         )
-        resolver = ModelResolver.from_config({"anthropic": provider})
+        resolver = ModelResolver.from_config({"test-provider": provider})
         config = RoutingConfig(
             strategy="role_based",
             rules=(
                 RoutingRuleConfig(
                     role_level=SeniorityLevel.SENIOR,
-                    preferred_model="sonnet",  # not available
-                    fallback="haiku",
+                    preferred_model="medium",  # not available
+                    fallback="small",
                 ),
             ),
         )
@@ -211,8 +211,8 @@ class TestRoleBasedStrategy:
 
         decision = RoleBasedStrategy().select(request, config, resolver)
 
-        assert decision.resolved_model.alias == "haiku"
-        assert "sonnet" in decision.fallbacks_tried
+        assert decision.resolved_model.alias == "small"
+        assert "medium" in decision.fallbacks_tried
 
 
 # ── CostAwareStrategy ────────────────────────────────────────────
@@ -225,7 +225,7 @@ class TestCostAwareStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "haiku"
+        assert decision.resolved_model.alias == "small"
         assert decision.strategy_used == "cost_aware"
 
     def test_task_type_rule_takes_priority(
@@ -238,7 +238,7 @@ class TestCostAwareStrategy:
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        assert decision.resolved_model.alias == "opus"
+        assert decision.resolved_model.alias == "large"
 
     def test_budget_filters_models(self, resolver: ModelResolver) -> None:
         """With tight budget, should still return cheapest."""
@@ -247,7 +247,7 @@ class TestCostAwareStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "haiku"
+        assert decision.resolved_model.alias == "small"
 
     def test_budget_exceeded_still_returns(self, resolver: ModelResolver) -> None:
         """Even if budget is 0.0, returns cheapest with warning."""
@@ -256,7 +256,7 @@ class TestCostAwareStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "haiku"
+        assert decision.resolved_model.alias == "small"
         assert "exceed" in decision.reason.lower()
 
     def test_no_models_raises(self) -> None:
@@ -280,7 +280,7 @@ class TestCostAwareStrategy:
             rules=(
                 RoutingRuleConfig(
                     task_type="review",
-                    preferred_model="opus",
+                    preferred_model="large",
                 ),
             ),
         )
@@ -288,7 +288,7 @@ class TestCostAwareStrategy:
 
         decision = strategy.select(request, config, resolver)
 
-        assert decision.resolved_model.alias == "haiku"
+        assert decision.resolved_model.alias == "small"
 
 
 # ── SmartStrategy ────────────────────────────────────────────────
@@ -302,14 +302,14 @@ class TestSmartStrategy:
     ) -> None:
         strategy = SmartStrategy()
         request = RoutingRequest(
-            model_override="opus",
+            model_override="large",
             agent_level=SeniorityLevel.JUNIOR,
             task_type="review",
         )
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        assert decision.resolved_model.alias == "opus"
+        assert decision.resolved_model.alias == "large"
         assert "override" in decision.reason.lower()
 
     def test_task_type_before_role(
@@ -326,7 +326,7 @@ class TestSmartStrategy:
         decision = strategy.select(request, standard_routing_config, resolver)
 
         # review rule -> opus; junior role rule -> haiku; task wins
-        assert decision.resolved_model.alias == "opus"
+        assert decision.resolved_model.alias == "large"
         assert "task-type" in decision.reason.lower()
 
     def test_role_rule_when_no_task_match(
@@ -339,7 +339,7 @@ class TestSmartStrategy:
 
         decision = strategy.select(request, standard_routing_config, resolver)
 
-        assert decision.resolved_model.alias == "haiku"
+        assert decision.resolved_model.alias == "small"
 
     def test_seniority_default_when_no_rules(
         self,
@@ -352,7 +352,7 @@ class TestSmartStrategy:
 
         decision = strategy.select(request, config, resolver)
 
-        assert decision.resolved_model.alias == "sonnet"
+        assert decision.resolved_model.alias == "medium"
         assert "seniority" in decision.reason.lower()
 
     def test_cheapest_when_no_level(self, resolver: ModelResolver) -> None:
@@ -361,7 +361,7 @@ class TestSmartStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "haiku"
+        assert decision.resolved_model.alias == "small"
 
     def test_fallback_chain_last_resort(
         self,
@@ -370,16 +370,16 @@ class TestSmartStrategy:
         """Empty resolver but fallback chain has a valid ref."""
         # Build resolver with only haiku
         provider = ProviderConfig(
-            models=(three_model_provider["anthropic"].models[0],),
+            models=(three_model_provider["test-provider"].models[0],),
         )
-        resolver = ModelResolver.from_config({"anthropic": provider})
-        config = RoutingConfig(fallback_chain=("haiku",))
+        resolver = ModelResolver.from_config({"test-provider": provider})
+        config = RoutingConfig(fallback_chain=("small",))
         # Override is unknown, no role, no task
         request = RoutingRequest(model_override="nonexistent")
 
         decision = SmartStrategy().select(request, config, resolver)
 
-        assert decision.resolved_model.alias == "haiku"
+        assert decision.resolved_model.alias == "small"
 
     def test_raises_when_nothing_available(self) -> None:
         resolver = ModelResolver.from_config({})
@@ -398,5 +398,5 @@ class TestSmartStrategy:
 
         decision = strategy.select(request, RoutingConfig(), resolver)
 
-        assert decision.resolved_model.alias == "haiku"
+        assert decision.resolved_model.alias == "small"
         assert "exceed" in decision.reason.lower()

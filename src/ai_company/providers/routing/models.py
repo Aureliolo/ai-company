@@ -22,7 +22,7 @@ class ResolvedModel(BaseModel):
 
     provider_name: NotBlankStr = Field(description="Provider name")
     model_id: NotBlankStr = Field(description="Model identifier")
-    alias: str | None = Field(default=None, description="Short alias")
+    alias: NotBlankStr | None = Field(default=None, description="Short alias")
     cost_per_1k_input: float = Field(
         default=0.0,
         ge=0.0,
@@ -56,11 +56,11 @@ class RoutingRequest(BaseModel):
         default=None,
         description="Seniority level of the requesting agent",
     )
-    task_type: str | None = Field(
+    task_type: NotBlankStr | None = Field(
         default=None,
         description="Task type label",
     )
-    model_override: str | None = Field(
+    model_override: NotBlankStr | None = Field(
         default=None,
         description="Explicit model reference for manual routing",
     )
@@ -84,8 +84,8 @@ class RoutingDecision(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     resolved_model: ResolvedModel = Field(description="The chosen model")
-    strategy_used: str = Field(description="Strategy name")
-    reason: str = Field(description="Human-readable explanation")
+    strategy_used: NotBlankStr = Field(description="Strategy name")
+    reason: NotBlankStr = Field(description="Human-readable explanation")
     fallbacks_tried: tuple[str, ...] = Field(
         default=(),
         description="Model refs tried before the final choice",

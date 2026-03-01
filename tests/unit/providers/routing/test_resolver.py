@@ -15,17 +15,17 @@ class TestResolverFromConfig:
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
         resolver = ModelResolver.from_config(three_model_provider)
-        model = resolver.resolve("claude-sonnet-4-6")
-        assert model.model_id == "claude-sonnet-4-6"
-        assert model.provider_name == "anthropic"
+        model = resolver.resolve("test-sonnet-001")
+        assert model.model_id == "test-sonnet-001"
+        assert model.provider_name == "test-provider"
 
     def test_indexes_aliases(
         self,
         three_model_provider: dict[str, ProviderConfig],
     ) -> None:
         resolver = ModelResolver.from_config(three_model_provider)
-        model = resolver.resolve("sonnet")
-        assert model.model_id == "claude-sonnet-4-6"
+        model = resolver.resolve("medium")
+        assert model.model_id == "test-sonnet-001"
 
     def test_empty_providers(self) -> None:
         resolver = ModelResolver.from_config({})
@@ -33,21 +33,21 @@ class TestResolverFromConfig:
 
     def test_multiple_providers(self) -> None:
         providers = {
-            "anthropic": ProviderConfig(
+            "test-provider": ProviderConfig(
                 models=(
                     ProviderModelConfig(
-                        id="claude-sonnet-4-6",
-                        alias="sonnet",
+                        id="test-sonnet-001",
+                        alias="medium",
                         cost_per_1k_input=0.003,
                         cost_per_1k_output=0.015,
                     ),
                 ),
             ),
-            "openai": ProviderConfig(
+            "test-provider-b": ProviderConfig(
                 models=(
                     ProviderModelConfig(
-                        id="gpt-4o",
-                        alias="gpt4",
+                        id="test-fast-001",
+                        alias="fast",
                         cost_per_1k_input=0.005,
                         cost_per_1k_output=0.015,
                     ),
@@ -60,12 +60,12 @@ class TestResolverFromConfig:
 
 class TestResolverResolve:
     def test_resolve_by_id(self, resolver: ModelResolver) -> None:
-        model = resolver.resolve("claude-haiku-4-5")
-        assert model.model_id == "claude-haiku-4-5"
+        model = resolver.resolve("test-haiku-001")
+        assert model.model_id == "test-haiku-001"
 
     def test_resolve_by_alias(self, resolver: ModelResolver) -> None:
-        model = resolver.resolve("opus")
-        assert model.model_id == "claude-opus-4-6"
+        model = resolver.resolve("large")
+        assert model.model_id == "test-opus-001"
 
     def test_resolve_unknown_raises(self, resolver: ModelResolver) -> None:
         with pytest.raises(ModelResolutionError, match="not found"):
@@ -79,9 +79,9 @@ class TestResolverResolve:
 
 class TestResolverResolveSafe:
     def test_resolve_safe_found(self, resolver: ModelResolver) -> None:
-        model = resolver.resolve_safe("sonnet")
+        model = resolver.resolve_safe("medium")
         assert model is not None
-        assert model.model_id == "claude-sonnet-4-6"
+        assert model.model_id == "test-sonnet-001"
 
     def test_resolve_safe_not_found(self, resolver: ModelResolver) -> None:
         assert resolver.resolve_safe("nonexistent") is None
@@ -101,11 +101,11 @@ class TestResolverAllModels:
 
     def test_cheapest_is_haiku(self, resolver: ModelResolver) -> None:
         models = resolver.all_models_sorted_by_cost()
-        assert models[0].alias == "haiku"
+        assert models[0].alias == "small"
 
     def test_most_expensive_is_opus(self, resolver: ModelResolver) -> None:
         models = resolver.all_models_sorted_by_cost()
-        assert models[-1].alias == "opus"
+        assert models[-1].alias == "large"
 
 
 class TestResolverImmutability:

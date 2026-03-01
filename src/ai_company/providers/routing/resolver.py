@@ -1,9 +1,9 @@
 """Model resolver — maps aliases and model IDs to ``ResolvedModel``.
 
-Built from ``dict[str, ProviderConfig]`` at construction time.  Indexes
-every model ID and alias to a ``ResolvedModel``.  Uses
-``MappingProxyType`` for immutability (matches ``ProviderRegistry``
-pattern).
+Indexes every model ID and alias to a ``ResolvedModel``.  Typically
+built via the ``from_config`` classmethod from
+``dict[str, ProviderConfig]``.  Uses ``MappingProxyType`` to guarantee
+immutability after construction.
 """
 
 from types import MappingProxyType
@@ -45,8 +45,9 @@ class ModelResolver:
         """Initialize with a pre-built ref -> model index.
 
         Args:
-            index: Mutable dict of model ref to resolved model.
-                The resolver takes ownership and freezes a copy.
+            index: Mapping of model ref to resolved model.  A frozen
+                copy is made internally; the caller's dict is not
+                modified.
         """
         self._index: MappingProxyType[str, ResolvedModel] = MappingProxyType(
             dict(index),
@@ -77,13 +78,38 @@ class ModelResolver:
                     cost_per_1k_output=model_config.cost_per_1k_output,
                     max_context=model_config.max_context,
                 )
-                index[model_config.id] = resolved
-                if model_config.alias is not None:
-                    index[model_config.alias] = resolved
+                for ref in (model_config.id, model_config.alias):
+                    if ref is None:
+                        continue
+                    existing = index.get(ref)
+                    if existing is not None and existing.model_id != resolved.model_id:
+                        logger.error(
+                            ROUTING_MODEL_RESOLUTION_FAILED,
+                            ref=ref,
+                            existing_provider=existing.provider_name,
+                            existing_model_id=existing.model_id,
+                            new_provider=provider_name,
+                            new_model_id=resolved.model_id,
+                        )
+                        msg = (
+                            f"Duplicate model reference {ref!r}: "
+                            f"{existing.provider_name}/{existing.model_id} "
+                            f"vs {provider_name}/{resolved.model_id}"
+                        )
+                        raise ModelResolutionError(
+                            msg,
+                            context={
+                                "ref": ref,
+                                "existing_provider": existing.provider_name,
+                                "new_provider": provider_name,
+                            },
+                        )
+                    index[ref] = resolved
 
         logger.info(
             ROUTING_RESOLVER_BUILT,
-            model_count=len(index),
+            model_count=len({m.model_id for m in index.values()}),
+            ref_count=len(index),
             providers=sorted(providers),
         )
         return cls(index)
@@ -120,23 +146,27 @@ class ModelResolver:
     def resolve_safe(self, ref: str) -> ResolvedModel | None:
         """Resolve a model ref without raising.
 
+        Returns ``None`` instead of raising ``ModelResolutionError``
+        when *ref* is not found.
+
         Args:
             ref: Model alias or ID string.
 
         Returns:
             The resolved model, or ``None`` if not found.
         """
-        return self._index.get(ref)
+        model = self._index.get(ref)
+        if model is None:
+            logger.debug(
+                ROUTING_MODEL_RESOLUTION_FAILED,
+                ref=ref,
+            )
+        return model
 
     def all_models(self) -> tuple[ResolvedModel, ...]:
         """Return deduplicated tuple of all resolved models."""
-        seen_ids: set[str] = set()
-        unique: list[ResolvedModel] = []
-        for model in self._index.values():
-            if model.model_id not in seen_ids:
-                seen_ids.add(model.model_id)
-                unique.append(model)
-        return tuple(unique)
+        unique = {m.model_id: m for m in self._index.values()}
+        return tuple(unique.values())
 
     def all_models_sorted_by_cost(self) -> tuple[ResolvedModel, ...]:
         """Return models sorted by total cost (ascending).

@@ -10,6 +10,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events import (
     ROUTING_DECISION_MADE,
     ROUTING_ROUTER_BUILT,
+    ROUTING_STRATEGY_UNKNOWN,
 )
 
 from .errors import UnknownStrategyError
@@ -59,6 +60,11 @@ class ModelRouter:
         strategy_name = routing_config.strategy
         strategy = STRATEGY_MAP.get(strategy_name)
         if strategy is None:
+            logger.error(
+                ROUTING_STRATEGY_UNKNOWN,
+                strategy=strategy_name,
+                available=sorted(STRATEGY_MAP),
+            )
             msg = (
                 f"Unknown routing strategy {strategy_name!r}. "
                 f"Available: {sorted(STRATEGY_MAP)}"
@@ -71,7 +77,8 @@ class ModelRouter:
 
         logger.info(
             ROUTING_ROUTER_BUILT,
-            strategy=strategy_name,
+            strategy_configured=strategy_name,
+            strategy=self._strategy.name,
             rule_count=len(routing_config.rules),
             fallback_count=len(routing_config.fallback_chain),
         )
