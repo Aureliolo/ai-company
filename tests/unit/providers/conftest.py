@@ -113,8 +113,22 @@ class FakeProvider:
 
     def __init__(self, capabilities: ModelCapabilities | None = None) -> None:
         self._capabilities = capabilities or ModelCapabilitiesFactory.build()
-        self.complete_calls: list[tuple[list[ChatMessage], str]] = []
-        self.stream_calls: list[tuple[list[ChatMessage], str]] = []
+        self.complete_calls: list[
+            tuple[
+                list[ChatMessage],
+                str,
+                list[ToolDefinition] | None,
+                CompletionConfig | None,
+            ]
+        ] = []
+        self.stream_calls: list[
+            tuple[
+                list[ChatMessage],
+                str,
+                list[ToolDefinition] | None,
+                CompletionConfig | None,
+            ]
+        ] = []
 
     async def complete(
         self,
@@ -124,7 +138,7 @@ class FakeProvider:
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
-        self.complete_calls.append((messages, model))
+        self.complete_calls.append((messages, model, tools, config))
         return CompletionResponseFactory.build()
 
     async def stream(
@@ -135,7 +149,7 @@ class FakeProvider:
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        self.stream_calls.append((messages, model))
+        self.stream_calls.append((messages, model, tools, config))
 
         async def _gen() -> AsyncIterator[StreamChunk]:
             yield StreamChunk(

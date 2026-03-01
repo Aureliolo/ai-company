@@ -1,10 +1,11 @@
 """Abstract base class for completion providers.
 
-Concrete adapters (e.g. ``LiteLLMProvider``) subclass
-``BaseCompletionProvider`` and implement the ``_do_*`` hooks.  The base
-class handles input validation and provides a cost-computation helper.
+Concrete adapters subclass ``BaseCompletionProvider`` and implement
+the ``_do_*`` hooks.  The base class handles input validation and
+provides a cost-computation helper.
 """
 
+import math
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator  # noqa: TC003
 
@@ -129,7 +130,16 @@ class BaseCompletionProvider(ABC):
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
-        """Provider-specific non-streaming completion."""
+        """Provider-specific non-streaming completion.
+
+        Subclasses **must** catch all provider-specific exceptions and
+        re-raise them as appropriate ``ProviderError`` subclasses.
+        Exceptions that escape without wrapping will bypass the error
+        hierarchy.
+
+        Raises:
+            ProviderError: All errors must use the provider error hierarchy.
+        """
         ...
 
     @abstractmethod
@@ -141,7 +151,18 @@ class BaseCompletionProvider(ABC):
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Provider-specific streaming completion."""
+        r"""Provider-specific streaming completion.
+
+        Implementations must *return* an ``AsyncIterator`` (not ``yield``
+        directly), since the caller ``await``\s this coroutine to obtain
+        the iterator.
+
+        Subclasses **must** catch all provider-specific exceptions and
+        re-raise them as appropriate ``ProviderError`` subclasses.
+
+        Raises:
+            ProviderError: All errors must use the provider error hierarchy.
+        """
         ...
 
     @abstractmethod
@@ -149,7 +170,11 @@ class BaseCompletionProvider(ABC):
         self,
         model: str,
     ) -> ModelCapabilities:
-        """Provider-specific capability lookup."""
+        """Provider-specific capability lookup.
+
+        Raises:
+            ProviderError: All errors must use the provider error hierarchy.
+        """
         ...
 
     # -- Helpers ------------------------------------------------------
@@ -188,14 +213,14 @@ class BaseCompletionProvider(ABC):
                 msg,
                 context={"output_tokens": output_tokens},
             )
-        if cost_per_1k_input < 0:
-            msg = "cost_per_1k_input must be non-negative"
+        if cost_per_1k_input < 0 or not math.isfinite(cost_per_1k_input):
+            msg = "cost_per_1k_input must be a finite non-negative number"
             raise InvalidRequestError(
                 msg,
                 context={"cost_per_1k_input": cost_per_1k_input},
             )
-        if cost_per_1k_output < 0:
-            msg = "cost_per_1k_output must be non-negative"
+        if cost_per_1k_output < 0 or not math.isfinite(cost_per_1k_output):
+            msg = "cost_per_1k_output must be a finite non-negative number"
             raise InvalidRequestError(
                 msg,
                 context={"cost_per_1k_output": cost_per_1k_output},
@@ -226,14 +251,21 @@ class BaseCompletionProvider(ABC):
 
     @staticmethod
     def _validate_model(model: str) -> None:
-        """Reject blank or empty model identifiers.
+        """Reject blank, empty, or non-string model identifiers.
 
         Args:
             model: Model identifier string.
 
         Raises:
-            InvalidRequestError: If model is empty or whitespace-only.
+            InvalidRequestError: If model is not a string, empty,
+                or whitespace-only.
         """
-        if not model or not model.strip():
+        if not isinstance(model, str) or not model.strip():
             msg = "model must be a non-blank string"
-            raise InvalidRequestError(msg, context={"field": "model"})
+            raise InvalidRequestError(
+                msg,
+                context={
+                    "field": "model",
+                    "received_type": type(model).__name__,
+                },
+            )

@@ -213,6 +213,15 @@ class TestChatMessage:
         )
         assert len(msg.tool_calls) == 1
 
+    def test_valid_assistant_with_content_and_tool_calls(self) -> None:
+        msg = ChatMessage(
+            role=MessageRole.ASSISTANT,
+            content="I'll search for that.",
+            tool_calls=(ToolCall(id="c1", name="search", arguments={}),),
+        )
+        assert msg.content == "I'll search for that."
+        assert len(msg.tool_calls) == 1
+
     def test_tool_message_requires_tool_result(self) -> None:
         with pytest.raises(ValidationError, match="tool_result"):
             ChatMessage(role=MessageRole.TOOL, content="hi")
@@ -365,7 +374,7 @@ class TestCompletionResponse:
                 model="",
             )
 
-    def test_empty_response_rejected(
+    def test_empty_response_rejected_for_stop(
         self,
         sample_token_usage: TokenUsage,
     ) -> None:
@@ -373,6 +382,30 @@ class TestCompletionResponse:
             CompletionResponse(
                 content=None,
                 finish_reason=FinishReason.STOP,
+                usage=sample_token_usage,
+                model="test",
+            )
+
+    def test_empty_response_rejected_for_max_tokens(
+        self,
+        sample_token_usage: TokenUsage,
+    ) -> None:
+        with pytest.raises(ValidationError, match="must have content"):
+            CompletionResponse(
+                content=None,
+                finish_reason=FinishReason.MAX_TOKENS,
+                usage=sample_token_usage,
+                model="test",
+            )
+
+    def test_empty_response_rejected_for_tool_use(
+        self,
+        sample_token_usage: TokenUsage,
+    ) -> None:
+        with pytest.raises(ValidationError, match="must have content"):
+            CompletionResponse(
+                content=None,
+                finish_reason=FinishReason.TOOL_USE,
                 usage=sample_token_usage,
                 model="test",
             )

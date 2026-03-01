@@ -4,7 +4,10 @@ from collections.abc import AsyncIterator  # noqa: TC003
 
 import pytest
 
-from ai_company.providers.base import BaseCompletionProvider
+from ai_company.providers.base import (
+    _COST_ROUNDING_PRECISION,
+    BaseCompletionProvider,
+)
 from ai_company.providers.capabilities import ModelCapabilities
 from ai_company.providers.enums import FinishReason, MessageRole, StreamEventType
 from ai_company.providers.errors import InvalidRequestError
@@ -121,6 +124,49 @@ class _ConcreteProvider(BaseCompletionProvider):
         return self._caps
 
 
+class _RecordingProvider(BaseCompletionProvider):
+    """Records all arguments passed to hooks for forwarding verification."""
+
+    def __init__(self) -> None:
+        self._caps = ModelCapabilitiesFactory.build()
+        self.last_complete_kwargs: dict[str, object] = {}
+        self.last_stream_kwargs: dict[str, object] = {}
+
+    async def _do_complete(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> CompletionResponse:
+        self.last_complete_kwargs = {"tools": tools, "config": config}
+        return CompletionResponse(
+            content="ok",
+            finish_reason=FinishReason.STOP,
+            usage=TokenUsageFactory.build(),
+            model=model,
+        )
+
+    async def _do_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        self.last_stream_kwargs = {"tools": tools, "config": config}
+
+        async def _gen() -> AsyncIterator[StreamChunk]:
+            yield StreamChunk(event_type=StreamEventType.DONE)
+
+        return _gen()
+
+    async def _do_get_model_capabilities(self, model: str) -> ModelCapabilities:
+        return self._caps
+
+
 @pytest.mark.unit
 class TestBaseCompletionProvider:
     """Tests for BaseCompletionProvider validation and helpers."""
@@ -215,6 +261,31 @@ class TestBaseCompletionProvider:
             await provider.complete([], "test-model")
         assert exc_info.value.context == {"field": "messages"}
 
+    async def test_complete_forwards_tools_and_config(self) -> None:
+        provider = _RecordingProvider()
+        msg = ChatMessage(role=MessageRole.USER, content="Hi")
+        tool = ToolDefinition(name="ping")
+        cfg = CompletionConfig(temperature=0.5)
+        await provider.complete([msg], "m", tools=[tool], config=cfg)
+        assert provider.last_complete_kwargs["tools"] == [tool]
+        assert provider.last_complete_kwargs["config"] == cfg
+
+    async def test_stream_forwards_tools_and_config(self) -> None:
+        provider = _RecordingProvider()
+        msg = ChatMessage(role=MessageRole.USER, content="Hi")
+        tool = ToolDefinition(name="ping")
+        cfg = CompletionConfig(temperature=0.5)
+        stream = await provider.stream([msg], "m", tools=[tool], config=cfg)
+        _ = [chunk async for chunk in stream]
+        assert provider.last_stream_kwargs["tools"] == [tool]
+        assert provider.last_stream_kwargs["config"] == cfg
+
+    async def test_complete_rejects_none_model(self) -> None:
+        provider = _ConcreteProvider()
+        msg = ChatMessage(role=MessageRole.USER, content="Hi")
+        with pytest.raises(InvalidRequestError, match="non-blank"):
+            await provider.complete([msg], None)  # type: ignore[arg-type]
+
     async def test_complete_rejects_blank_model(self) -> None:
         provider = _ConcreteProvider()
         msg = ChatMessage(role=MessageRole.USER, content="Hi")
@@ -277,6 +348,24 @@ class TestBaseCompletionProvider:
         )
         expected = round(
             (333 / 1000) * 0.003 + (777 / 1000) * 0.015,
-            10,
+            _COST_ROUNDING_PRECISION,
         )
         assert usage.cost_usd == expected
+
+    def test_compute_cost_inf_input_rate_rejected(self) -> None:
+        with pytest.raises(InvalidRequestError, match="finite"):
+            BaseCompletionProvider.compute_cost(
+                100,
+                100,
+                cost_per_1k_input=float("inf"),
+                cost_per_1k_output=0.015,
+            )
+
+    def test_compute_cost_nan_output_rate_rejected(self) -> None:
+        with pytest.raises(InvalidRequestError, match="finite"):
+            BaseCompletionProvider.compute_cost(
+                100,
+                100,
+                cost_per_1k_input=0.003,
+                cost_per_1k_output=float("nan"),
+            )

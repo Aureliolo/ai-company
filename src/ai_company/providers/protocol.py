@@ -1,8 +1,7 @@
 """Typed protocol for completion providers.
 
 The engine and tests type-hint against ``CompletionProvider`` for loose
-coupling.  Concrete adapters (e.g. ``LiteLLMProvider``) and test doubles
-satisfy it structurally.
+coupling.  Concrete adapters and test doubles satisfy it structurally.
 """
 
 from collections.abc import AsyncIterator  # noqa: TC003

@@ -128,7 +128,8 @@ class ChatMessage(BaseModel):
 
         Rules:
             - tool: must have tool_result, must not have tool_calls.
-            - assistant: must not have tool_result.
+            - assistant: may have content and/or tool_calls, must not
+              have tool_result.
             - system/user: must not have tool_calls or tool_result.
             - Non-tool messages must have content or tool_calls.
 
@@ -139,24 +140,27 @@ class ChatMessage(BaseModel):
         Raises:
             ValueError: If any role-specific constraint is violated.
         """
-        if self.role == MessageRole.TOOL:
-            if self.tool_result is None:
-                msg = "tool messages must include a tool_result"
-                raise ValueError(msg)
-            if self.tool_calls:
-                msg = "tool messages must not include tool_calls"
-                raise ValueError(msg)
-
-        if self.role == MessageRole.ASSISTANT and self.tool_result is not None:
-            msg = "assistant messages must not include a tool_result"
-            raise ValueError(msg)
-
-        if self.role in (MessageRole.SYSTEM, MessageRole.USER):
-            if self.tool_calls:
-                msg = f"{self.role} messages must not include tool_calls"
-                raise ValueError(msg)
-            if self.tool_result is not None:
-                msg = f"{self.role} messages must not include a tool_result"
+        match self.role:
+            case MessageRole.TOOL:
+                if self.tool_result is None:
+                    msg = "tool messages must include a tool_result"
+                    raise ValueError(msg)
+                if self.tool_calls:
+                    msg = "tool messages must not include tool_calls"
+                    raise ValueError(msg)
+            case MessageRole.ASSISTANT:
+                if self.tool_result is not None:
+                    msg = "assistant messages must not include a tool_result"
+                    raise ValueError(msg)
+            case MessageRole.SYSTEM | MessageRole.USER:
+                if self.tool_calls:
+                    msg = f"{self.role} messages must not include tool_calls"
+                    raise ValueError(msg)
+                if self.tool_result is not None:
+                    msg = f"{self.role} messages must not include a tool_result"
+                    raise ValueError(msg)
+            case _:
+                msg = f"Unhandled message role: {self.role}"  # type: ignore[unreachable]
                 raise ValueError(msg)
 
         if (
@@ -176,7 +180,8 @@ class CompletionConfig(BaseModel):
     All fields are optional — the provider fills in defaults.
 
     Attributes:
-        temperature: Sampling temperature (0.0-2.0).
+        temperature: Sampling temperature (0.0-2.0). Actual valid range
+            may vary by provider.
         max_tokens: Maximum tokens to generate.
         stop_sequences: Sequences that stop generation.
         top_p: Nucleus sampling threshold.
@@ -274,7 +279,7 @@ class StreamChunk(BaseModel):
     Attributes:
         event_type: Type of stream event.
         content: Text delta (for ``content_delta``).
-        tool_call_delta: Partial tool call (for ``tool_call_delta``).
+        tool_call_delta: Tool call received during streaming (for ``tool_call_delta``).
         usage: Final token usage (for ``usage`` event).
         error_message: Error description (for ``error`` event).
     """
@@ -285,7 +290,7 @@ class StreamChunk(BaseModel):
     content: str | None = Field(default=None, description="Text delta")
     tool_call_delta: ToolCall | None = Field(
         default=None,
-        description="Partial tool call",
+        description="Tool call received during streaming",
     )
     usage: TokenUsage | None = Field(
         default=None,

@@ -1,16 +1,22 @@
 """Provider error hierarchy.
 
 Every provider error carries a ``is_retryable`` flag so retry logic
-(issue #9) can decide whether to attempt again without inspecting
-concrete exception types.
+can decide whether to attempt again without inspecting concrete
+exception types.
 """
 
+import math
 from types import MappingProxyType
 from typing import Any
 
 _REDACTED_KEYS: frozenset[str] = frozenset(
     {"api_key", "token", "secret", "password", "authorization"},
 )
+
+
+def _is_sensitive_key(key: str) -> bool:
+    """Check if a context key should be redacted (case-insensitive)."""
+    return key.lower() in _REDACTED_KEYS
 
 
 class ProviderError(Exception):
@@ -20,6 +26,11 @@ class ProviderError(Exception):
         message: Human-readable error description.
         context: Immutable metadata about the error (provider, model, etc.).
         is_retryable: Whether the caller should retry the request.
+
+    Note:
+        When converted to string, sensitive context keys (api_key, token,
+        secret, password, authorization) are automatically redacted
+        regardless of casing.
     """
 
     is_retryable: bool = False
@@ -39,7 +50,7 @@ class ProviderError(Exception):
         """
         self.message = message
         self.context: MappingProxyType[str, Any] = MappingProxyType(
-            context or {},
+            dict(context) if context else {},
         )
         super().__init__(message)
 
@@ -51,7 +62,7 @@ class ProviderError(Exception):
         """
         if self.context:
             ctx = ", ".join(
-                f"{k}='***'" if k in _REDACTED_KEYS else f"{k}={v!r}"
+                f"{k}='***'" if _is_sensitive_key(k) else f"{k}={v!r}"
                 for k, v in self.context.items()
             )
             return f"{self.message} ({ctx})"
@@ -84,6 +95,11 @@ class RateLimitError(ProviderError):
                 by the provider.
             context: Arbitrary metadata about the error.
         """
+        if retry_after is not None and (
+            retry_after < 0 or not math.isfinite(retry_after)
+        ):
+            msg = "retry_after must be a finite non-negative number"
+            raise ValueError(msg)
         self.retry_after = retry_after
         super().__init__(message, context=context)
 
