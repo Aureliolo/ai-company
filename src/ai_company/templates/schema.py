@@ -26,7 +26,7 @@ class TemplateVariable(BaseModel):
         required: Whether the user must provide this value.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: NotBlankStr = Field(description="Variable name")
     description: str = Field(default="", description="Human-readable description")
@@ -50,6 +50,14 @@ class TemplateVariable(BaseModel):
         """Default value type must match ``var_type`` when provided."""
         if self.default is None:
             return self
+        # Reject bools explicitly for numeric types because
+        # ``isinstance(True, int)`` is ``True`` in Python.
+        if isinstance(self.default, bool) and self.var_type in ("int", "float"):
+            msg = (
+                f"Variable {self.name!r}: default {self.default!r} "
+                f"is not compatible with var_type {self.var_type!r}"
+            )
+            raise ValueError(msg)
         type_map: dict[str, type | tuple[type, ...]] = {
             "str": str,
             "int": int,
@@ -83,7 +91,7 @@ class TemplateAgentConfig(BaseModel):
             ``"engineering"`` during rendering).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     role: NotBlankStr = Field(description="Built-in role name")
     name: str = Field(default="", description="Agent name (may have Jinja2 vars)")
@@ -115,7 +123,7 @@ class TemplateDepartmentConfig(BaseModel):
         head_role: Role name of the department head.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: NotBlankStr = Field(description="Department name")
     budget_percent: float = Field(
@@ -143,7 +151,7 @@ class TemplateMetadata(BaseModel):
         tags: Categorization tags.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: NotBlankStr = Field(description="Template display name")
     description: str = Field(default="", description="Template description")
@@ -187,7 +195,7 @@ class CompanyTemplate(BaseModel):
             1.0 = fully autonomous).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     metadata: TemplateMetadata = Field(description="Template metadata")
     variables: tuple[TemplateVariable, ...] = Field(

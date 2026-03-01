@@ -356,7 +356,13 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Dict suitable for ``CompanyTemplate(**result)``.
     """
-    company = data.get("company", {})
+    company_raw = data.get("company", {})
+    if company_raw is None:
+        company_raw = {}
+    if not isinstance(company_raw, dict):
+        msg = "Template field 'template.company' must be a mapping"
+        raise TypeError(msg)
+    company: dict[str, Any] = company_raw
 
     metadata: dict[str, Any] = {
         "description": data.get("description", ""),

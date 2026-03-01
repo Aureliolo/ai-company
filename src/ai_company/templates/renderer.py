@@ -232,6 +232,12 @@ def _build_config_dict(
         Dict suitable for ``RootConfig(**deep_merge(defaults, result))``.
     """
     company = rendered_data.get("company", {})
+    if company is None:
+        company = {}
+    if not isinstance(company, dict):
+        msg = "Rendered template 'company' must be a mapping"
+        raise TemplateRenderError(msg)
+
     company_name = variables.get(
         "company_name",
         template.metadata.name,
@@ -239,10 +245,20 @@ def _build_config_dict(
 
     # Expand agents.
     raw_agents = rendered_data.get("agents", [])
+    if raw_agents is None:
+        raw_agents = []
+    if not isinstance(raw_agents, list):
+        msg = "Rendered template 'agents' must be a list"
+        raise TemplateRenderError(msg)
     agents = _expand_agents(raw_agents)
 
     # Build departments for RootConfig.
     raw_depts = rendered_data.get("departments", [])
+    if raw_depts is None:
+        raw_depts = []
+    if not isinstance(raw_depts, list):
+        msg = "Rendered template 'departments' must be a list"
+        raise TemplateRenderError(msg)
     departments = _build_departments(raw_depts)
 
     source_name = template.metadata.name
