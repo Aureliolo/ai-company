@@ -670,7 +670,7 @@ class _ToolCallAccumulator:
                 PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
                 tool_name=self.name,
                 tool_id=self.id,
-                args_preview=self.arguments[:200] if self.arguments else "",
+                args_length=len(self.arguments) if self.arguments else 0,
             )
             parsed = {}
         args: dict[str, Any] = parsed if isinstance(parsed, dict) else {}

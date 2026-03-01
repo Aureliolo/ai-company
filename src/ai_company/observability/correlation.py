@@ -23,6 +23,22 @@ _P = ParamSpec("_P")
 _T = TypeVar("_T")
 
 
+def _build_bindings(
+    request_id: str | None,
+    task_id: str | None,
+    agent_id: str | None,
+) -> dict[str, str]:
+    """Build a contextvars bindings dict from non-None correlation IDs."""
+    bindings: dict[str, str] = {}
+    if request_id is not None:
+        bindings["request_id"] = request_id
+    if task_id is not None:
+        bindings["task_id"] = task_id
+    if agent_id is not None:
+        bindings["agent_id"] = agent_id
+    return bindings
+
+
 def generate_correlation_id() -> str:
     """Generate a new correlation ID.
 
@@ -134,14 +150,7 @@ def with_correlation(
 
         @functools.wraps(func)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-            bindings: dict[str, str] = {}
-            if request_id is not None:
-                bindings["request_id"] = request_id
-            if task_id is not None:
-                bindings["task_id"] = task_id
-            if agent_id is not None:
-                bindings["agent_id"] = agent_id
-
+            bindings = _build_bindings(request_id, task_id, agent_id)
             with structlog.contextvars.bound_contextvars(**bindings):
                 return func(*args, **kwargs)
 
@@ -194,14 +203,7 @@ def with_correlation_async(
 
         @functools.wraps(func)
         async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-            bindings: dict[str, str] = {}
-            if request_id is not None:
-                bindings["request_id"] = request_id
-            if task_id is not None:
-                bindings["task_id"] = task_id
-            if agent_id is not None:
-                bindings["agent_id"] = agent_id
-
+            bindings = _build_bindings(request_id, task_id, agent_id)
             with structlog.contextvars.bound_contextvars(**bindings):
                 return await func(*args, **kwargs)
 

@@ -1,6 +1,23 @@
 """Root test configuration and shared fixtures."""
 
+import logging
+
 import structlog
+
+
+def clear_logging_state() -> None:
+    """Clear structlog context and stdlib root handlers.
+
+    Shared helper for observability test fixtures that need to reset
+    logging state between tests.
+    """
+    structlog.reset_defaults()
+    structlog.contextvars.clear_contextvars()
+    root = logging.getLogger()
+    for handler in root.handlers[:]:
+        root.removeHandler(handler)
+        handler.close()
+    root.setLevel(logging.WARNING)
 
 
 def _patched_configure(

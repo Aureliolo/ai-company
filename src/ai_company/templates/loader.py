@@ -160,8 +160,8 @@ def load_template(name: str) -> LoadedTemplate:
     Raises:
         TemplateNotFoundError: If no template with *name* exists.
     """
-    logger.debug(TEMPLATE_LOAD_START, template_name=name)
     name_clean = name.strip().lower()
+    logger.debug(TEMPLATE_LOAD_START, template_name=name_clean)
 
     # Sanitize to prevent path traversal.
     safe_name = Path(name_clean).name

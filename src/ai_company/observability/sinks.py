@@ -169,6 +169,8 @@ def build_handler(
     handler.setFormatter(formatter)
 
     # Attach a logger name filter for dedicated sink files.
+    # Only include_prefixes is used today; exclude_prefixes exists on
+    # _LoggerNameFilter for future routing needs (e.g. noisy-logger suppression).
     if sink.file_path is not None and sink.file_path in _SINK_ROUTING:
         name_filter = _LoggerNameFilter(
             include_prefixes=_SINK_ROUTING[sink.file_path],

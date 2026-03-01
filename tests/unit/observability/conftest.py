@@ -1,6 +1,5 @@
 """Test fixtures and factories for observability tests."""
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -12,6 +11,7 @@ from polyfactory.factories.pydantic_factory import ModelFactory
 
 from ai_company.observability.config import LogConfig, RotationConfig, SinkConfig
 from ai_company.observability.enums import LogLevel, RotationStrategy, SinkType
+from tests.conftest import clear_logging_state
 
 # -- Factories --------------------------------------------------------------
 
@@ -50,23 +50,12 @@ class LogConfigFactory(ModelFactory[LogConfig]):
 # -- Reset Fixture -----------------------------------------------------------
 
 
-def _clear_logging_state() -> None:
-    """Clear structlog context and stdlib root handlers."""
-    structlog.reset_defaults()
-    structlog.contextvars.clear_contextvars()
-    root = logging.getLogger()
-    for handler in root.handlers[:]:
-        root.removeHandler(handler)
-        handler.close()
-    root.setLevel(logging.WARNING)
-
-
 @pytest.fixture(autouse=True)
 def _reset_logging() -> Iterator[None]:
     """Reset structlog and stdlib logging state before and after each test."""
-    _clear_logging_state()
+    clear_logging_state()
     yield
-    _clear_logging_state()
+    clear_logging_state()
 
 
 @pytest.fixture

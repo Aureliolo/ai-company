@@ -152,7 +152,7 @@ def extract_tool_calls(raw: list[Any] | None) -> tuple[ToolCall, ...]:
         if func is None:
             logger.warning(
                 PROVIDER_TOOL_CALL_MISSING_FUNCTION,
-                item=repr(item),
+                item_type=type(item).__name__,
             )
             continue
         name = _get(func, "name", "")
@@ -197,14 +197,14 @@ def _parse_arguments(raw: Any) -> dict[str, Any]:
         except json.JSONDecodeError, ValueError:
             logger.warning(
                 PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
-                args_preview=raw[:200],
+                args_length=len(raw),
             )
             return {}
         if isinstance(parsed, dict):
             return dict(parsed)
         logger.warning(
             PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
-            args_preview=raw[:200],
+            args_length=len(raw),
             parsed_type=type(parsed).__name__,
         )
         return {}
