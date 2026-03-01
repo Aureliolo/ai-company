@@ -138,3 +138,25 @@ class ProviderInternalError(ProviderError):
     """Provider returned a server-side error (5xx)."""
 
     is_retryable = True
+
+
+class DriverNotRegisteredError(ProviderError):
+    """Requested provider driver is not registered in the registry."""
+
+    is_retryable = False
+
+
+class DriverAlreadyRegisteredError(ProviderError):
+    """A driver with this name is already registered.
+
+    Reserved for future use if the registry gains mutable operations
+    (add/remove after construction).  Not currently raised.
+    """
+
+    is_retryable = False
+
+
+class DriverFactoryNotFoundError(ProviderError):
+    """No factory found for the requested driver type string."""
+
+    is_retryable = False
