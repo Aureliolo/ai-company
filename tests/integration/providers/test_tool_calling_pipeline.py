@@ -32,7 +32,7 @@ from .conftest import (
     make_anthropic_config,
 )
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 
 _PATCH_TARGET = "ai_company.providers.drivers.litellm_driver._litellm.acompletion"
 
@@ -254,6 +254,34 @@ async def test_streaming_mixed_text_and_tool_calls(
     assert tc_chunks[0].tool_call_delta.name == "get_weather"
 
 
+async def test_streaming_malformed_json_tool_call(
+    user_messages: list[ChatMessage],
+    sample_tool_definitions: list[ToolDefinition],
+) -> None:
+    """Malformed JSON in streamed tool call args degrades to empty dict."""
+    driver = _make_driver()
+    chunks = [
+        build_tool_call_delta_chunk(
+            index=0,
+            call_id="call_bad",
+            name="get_weather",
+            arguments="{not valid json",
+        ),
+        build_finish_chunk("tool_calls"),
+    ]
+    mock_stream = async_iter_chunks(chunks)
+    with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_stream):
+        stream = await driver.stream(
+            user_messages, "sonnet", tools=sample_tool_definitions
+        )
+        result = [sc async for sc in stream]
+
+    tc_chunks = [c for c in result if c.event_type == StreamEventType.TOOL_CALL_DELTA]
+    assert len(tc_chunks) == 1
+    assert tc_chunks[0].tool_call_delta is not None
+    assert tc_chunks[0].tool_call_delta.arguments == {}
+
+
 async def test_multi_turn_tool_conversation(
     sample_tool_definitions: list[ToolDefinition],
 ) -> None:
@@ -308,7 +336,9 @@ async def test_multi_turn_tool_conversation(
         content="It's sunny and 25°C in Tokyo!",
         finish_reason="stop",
     )
-    with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp_t2):
+    with patch(
+        _PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp_t2
+    ) as mock_call_t2:
         result_t2 = await driver.complete(
             messages_t2, "sonnet", tools=sample_tool_definitions
         )
@@ -316,3 +346,13 @@ async def test_multi_turn_tool_conversation(
     assert result_t2.content == "It's sunny and 25°C in Tokyo!"
     assert result_t2.finish_reason == FinishReason.STOP
     assert len(result_t2.tool_calls) == 0
+
+    # Verify forwarded messages include tool-call and tool-result roles
+    fwd = mock_call_t2.call_args.kwargs["messages"]
+    assert len(fwd) == 4
+    assert fwd[0]["role"] == "user"
+    assert fwd[1]["role"] == "assistant"
+    assert fwd[1]["tool_calls"][0]["id"] == "call_w1"
+    assert fwd[2]["role"] == "tool"
+    assert fwd[2]["tool_call_id"] == "call_w1"
+    assert fwd[3]["role"] == "user"

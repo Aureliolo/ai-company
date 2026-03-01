@@ -41,7 +41,7 @@ from .conftest import (
     make_anthropic_config,
 )
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 
 _PATCH_TARGET = "ai_company.providers.drivers.litellm_driver._litellm.acompletion"
 
@@ -143,6 +143,8 @@ async def test_rate_limit_maps_to_retryable_error(
 
     assert exc_info.value.is_retryable is True
     assert exc_info.value.retry_after == 30.0
+    assert exc_info.value.context["provider"] == "anthropic"
+    assert exc_info.value.context["model"] == "sonnet"
 
 
 async def test_rate_limit_without_retry_after(
@@ -160,6 +162,7 @@ async def test_rate_limit_without_retry_after(
 
     assert exc_info.value.is_retryable is True
     assert exc_info.value.retry_after is None
+    assert exc_info.value.context["provider"] == "anthropic"
 
 
 async def test_rate_limit_during_streaming(
@@ -181,6 +184,8 @@ async def test_rate_limit_during_streaming(
                 pass
 
     assert exc_info.value.is_retryable is True
+    assert exc_info.value.retry_after == 5.0
+    assert exc_info.value.context["provider"] == "anthropic"
 
 
 # ── Authentication ────────────────────────────────────────────────
@@ -200,7 +205,25 @@ async def test_auth_error_maps_to_non_retryable(
         await driver.complete(user_messages, "sonnet")
 
     assert exc_info.value.is_retryable is False
-    assert "provider" in exc_info.value.context
+    assert exc_info.value.context["provider"] == "anthropic"
+    assert exc_info.value.context["model"] == "sonnet"
+
+
+async def test_auth_error_during_stream_setup(
+    user_messages: list[ChatMessage],
+) -> None:
+    """Authentication error before streaming starts raises AuthenticationError."""
+    driver, _ = _make_driver()
+    exc = _make_litellm_auth_error()
+
+    with (
+        patch(_PATCH_TARGET, new_callable=AsyncMock, side_effect=exc),
+        pytest.raises(errors.AuthenticationError) as exc_info,
+    ):
+        await driver.stream(user_messages, "sonnet")
+
+    assert exc_info.value.is_retryable is False
+    assert exc_info.value.context["provider"] == "anthropic"
 
 
 # ── Timeout ───────────────────────────────────────────────────────
@@ -220,6 +243,8 @@ async def test_timeout_maps_to_retryable(
         await driver.complete(user_messages, "sonnet")
 
     assert exc_info.value.is_retryable is True
+    assert exc_info.value.context["provider"] == "anthropic"
+    assert exc_info.value.context["model"] == "sonnet"
 
 
 async def test_timeout_during_streaming(
@@ -258,6 +283,30 @@ async def test_connection_error_maps(
         await driver.complete(user_messages, "sonnet")
 
     assert exc_info.value.is_retryable is True
+    assert exc_info.value.context["provider"] == "anthropic"
+    assert exc_info.value.context["model"] == "sonnet"
+
+
+async def test_connection_error_during_streaming(
+    user_messages: list[ChatMessage],
+) -> None:
+    """Connection error during streaming raises ProviderConnectionError."""
+    driver, _ = _make_driver()
+    exc = _make_litellm_connection_error()
+
+    async def _failing_stream() -> AsyncIterator[object]:
+        yield build_content_chunk("partial")
+        raise exc
+
+    mock_stream = _failing_stream()
+    with patch(_PATCH_TARGET, new_callable=AsyncMock, return_value=mock_stream):
+        stream = await driver.stream(user_messages, "sonnet")
+        with pytest.raises(errors.ProviderConnectionError) as exc_info:
+            async for _ in stream:
+                pass
+
+    assert exc_info.value.is_retryable is True
+    assert exc_info.value.context["provider"] == "anthropic"
 
 
 # ── Internal server error ─────────────────────────────────────────
@@ -277,6 +326,8 @@ async def test_internal_error_maps(
         await driver.complete(user_messages, "sonnet")
 
     assert exc_info.value.is_retryable is True
+    assert exc_info.value.context["provider"] == "anthropic"
+    assert exc_info.value.context["model"] == "sonnet"
 
 
 # ── Unknown exception fallback ────────────────────────────────────
@@ -298,4 +349,45 @@ async def test_unknown_exception_maps_to_internal(
     ):
         await driver.complete(user_messages, "sonnet")
 
-    assert "Unexpected error" in exc_info.value.message
+    assert exc_info.value.message == "Unexpected error from provider anthropic"
+    assert exc_info.value.context["provider"] == "anthropic"
+    assert exc_info.value.context["model"] == "sonnet"
+    assert "something broke" in exc_info.value.context["detail"]
+
+
+# ── Model resolution errors ──────────────────────────────────────
+
+
+async def test_unknown_model_raises_model_not_found(
+    user_messages: list[ChatMessage],
+) -> None:
+    """Unknown model alias raises ModelNotFoundError before litellm call."""
+    driver, _ = _make_driver()
+
+    with pytest.raises(errors.ModelNotFoundError) as exc_info:
+        await driver.complete(user_messages, "nonexistent-model")
+
+    assert exc_info.value.context["provider"] == "anthropic"
+    assert exc_info.value.context["model"] == "nonexistent-model"
+
+
+# ── ProviderError passthrough ────────────────────────────────────
+
+
+async def test_provider_error_passes_through_unmodified(
+    user_messages: list[ChatMessage],
+) -> None:
+    """ProviderError raised by litellm is re-raised without re-wrapping."""
+    driver, _ = _make_driver()
+    original = errors.ModelNotFoundError(
+        "Custom model error",
+        context={"custom_key": "custom_value"},
+    )
+
+    with (
+        patch(_PATCH_TARGET, new_callable=AsyncMock, side_effect=original),
+        pytest.raises(errors.ModelNotFoundError) as exc_info,
+    ):
+        await driver.complete(user_messages, "sonnet")
+
+    assert exc_info.value is original

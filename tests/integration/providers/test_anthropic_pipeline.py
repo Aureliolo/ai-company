@@ -25,7 +25,7 @@ from .conftest import (
     make_anthropic_config,
 )
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 
 _PATCH_TARGET = "ai_company.providers.drivers.litellm_driver._litellm.acompletion"
 
@@ -96,7 +96,13 @@ async def test_completion_config_forwarded(
     registry = ProviderRegistry.from_config(config)
     driver = registry.get("anthropic")
 
-    comp_config = CompletionConfig(temperature=0.7, max_tokens=1024, timeout=30.0)
+    comp_config = CompletionConfig(
+        temperature=0.7,
+        max_tokens=1024,
+        timeout=30.0,
+        top_p=0.9,
+        stop_sequences=("STOP", "END"),
+    )
     mock_resp = build_model_response()
     with patch(
         _PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp
@@ -107,6 +113,8 @@ async def test_completion_config_forwarded(
     assert kwargs["temperature"] == 0.7
     assert kwargs["max_tokens"] == 1024
     assert kwargs["timeout"] == 30.0
+    assert kwargs["top_p"] == 0.9
+    assert kwargs["stop"] == ["STOP", "END"]
 
 
 async def test_api_key_forwarded(
@@ -235,6 +243,8 @@ async def test_stream_usage_chunk(
     assert usage_chunks[0].usage is not None
     assert usage_chunks[0].usage.input_tokens == 200
     assert usage_chunks[0].usage.output_tokens == 100
+    # (200/1000)*0.003 + (100/1000)*0.015 = 0.0006 + 0.0015 = 0.0021
+    assert usage_chunks[0].usage.cost_usd == pytest.approx(0.0021)
 
 
 async def test_stream_multiple_content_deltas(

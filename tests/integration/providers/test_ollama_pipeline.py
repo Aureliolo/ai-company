@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 from .conftest import build_model_response, make_ollama_config
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
 
 _PATCH_TARGET = "ai_company.providers.drivers.litellm_driver._litellm.acompletion"
 

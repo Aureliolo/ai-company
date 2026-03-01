@@ -117,9 +117,11 @@ def build_model_response(  # noqa: PLR0913
     model: str = "claude-sonnet-4-6",
 ) -> ModelResponse:
     """Build a real ``litellm.ModelResponse`` for non-streaming tests."""
-    message: dict[str, Any] = {"role": "assistant", "content": content}
-    if tool_calls is not None:
-        message["tool_calls"] = tool_calls
+    message: dict[str, Any] = {
+        "role": "assistant",
+        "content": content,
+        **({} if tool_calls is None else {"tool_calls": tool_calls}),
+    }
     return ModelResponse(
         id=request_id,
         choices=[
