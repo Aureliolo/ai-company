@@ -1,0 +1,52 @@
+template:
+  name: "Agency"
+  description: "Client-focused agency with project management and creative roles"
+  version: "1.0.0"
+  tags:
+    - "agency"
+    - "client-work"
+    - "creative"
+
+  variables:
+    - name: "company_name"
+      description: "Name of your agency"
+      default: "Creative Agency"
+    - name: "budget"
+      description: "Monthly budget in USD"
+      var_type: "float"
+      default: 100.0
+
+  company:
+    type: "agency"
+    budget_monthly: {{ budget | default(100.0) }}
+    autonomy: 0.5
+
+  departments:
+    - name: "operations"
+      budget_percent: 30
+      head_role: "Project Manager"
+    - name: "engineering"
+      budget_percent: 40
+      head_role: "Full-Stack Developer"
+    - name: "design"
+      budget_percent: 30
+      head_role: "UI Designer"
+
+  agents:
+    - role: "Project Manager"
+      level: "senior"
+      model: "sonnet"
+      personality_preset: "visionary_leader"
+      department: "operations"
+    - role: "UI Designer"
+      level: "mid"
+      model: "sonnet"
+      department: "design"
+    - role: "Full-Stack Developer"
+      level: "senior"
+      model: "sonnet"
+      personality_preset: "pragmatic_builder"
+      department: "engineering"
+
+  workflow: "kanban"
+  communication: "hybrid"

@@ -1,0 +1,63 @@
+template:
+  name: "Dev Shop"
+  description: "Software development focused team with QA and DevOps"
+  version: "1.0.0"
+  tags:
+    - "development"
+    - "engineering"
+    - "qa"
+
+  variables:
+    - name: "company_name"
+      description: "Name of your company"
+      default: "Dev Shop"
+    - name: "budget"
+      description: "Monthly budget in USD"
+      var_type: "float"
+      default: 75.0
+
+  company:
+    type: "dev_shop"
+    budget_monthly: {{ budget | default(75.0) }}
+    autonomy: 0.5
+
+  departments:
+    - name: "engineering"
+      budget_percent: 70
+      head_role: "Software Architect"
+    - name: "quality_assurance"
+      budget_percent: 20
+      head_role: "QA Lead"
+    - name: "operations"
+      budget_percent: 10
+      head_role: "DevOps/SRE Engineer"
+
+  agents:
+    - role: "Software Architect"
+      level: "principal"
+      model: "opus"
+      personality_preset: "methodical_analyst"
+      department: "engineering"
+    - role: "Backend Developer"
+      level: "senior"
+      model: "sonnet"
+      personality_preset: "pragmatic_builder"
+      department: "engineering"
+    - role: "Backend Developer"
+      level: "mid"
+      model: "haiku"
+      personality_preset: "eager_learner"
+      department: "engineering"
+    - role: "QA Lead"
+      level: "lead"
+      model: "sonnet"
+      personality_preset: "methodical_analyst"
+      department: "quality_assurance"
+    - role: "DevOps/SRE Engineer"
+      level: "mid"
+      model: "sonnet"
+      personality_preset: "pragmatic_builder"
+      department: "operations"
+
+  workflow: "agile_kanban"
+  communication: "hybrid"
