@@ -79,7 +79,7 @@ src/ai_company/
 - **Matrix**: Python 3.14
 - **Dependabot**: daily uv + github-actions updates, grouped minor/patch, no auto-merge
 - **Secret scanning**: gitleaks workflow on push/PR + weekly schedule
-- **Dependency review**: license deny-list (AGPL), PR comment summaries
+- **Dependency review**: license allow-list (permissive only), PR comment summaries
 - **Coverage**: Codecov integration (replaces artifact-only uploads)
 
 ## Dependencies
