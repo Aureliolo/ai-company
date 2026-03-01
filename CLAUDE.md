@@ -58,6 +58,18 @@ src/ai_company/
 - **Errors**: handle explicitly, never silently swallow
 - **Validate**: at system boundaries (user input, external APIs, config files)
 
+## Logging
+
+- **Every module** with business logic MUST have: `from ai_company.observability import get_logger` then `logger = get_logger(__name__)`
+- **Never** use `import logging` / `logging.getLogger()` / `print()` in application code
+- **Variable name**: always `logger` (not `_logger`, not `log`)
+- **Event names**: always use constants from `ai_company.observability.events`
+- **Structured kwargs**: always `logger.info(EVENT, key=value)` — never `logger.info("msg %s", val)`
+- **All error paths** must log at WARNING or ERROR with context before raising
+- **All state transitions** must log at INFO
+- **DEBUG** for object creation, internal flow, entry/exit of key functions
+- Pure data models, enums, and re-exports do NOT need logging
+
 ## Testing
 
 - **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`, `@pytest.mark.slow`

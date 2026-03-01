@@ -11,6 +11,10 @@ from ai_company.core.enums import (
     SeniorityLevel,
 )
 from ai_company.core.role import Role, SeniorityInfo
+from ai_company.observability import get_logger
+from ai_company.observability.events import ROLE_LOOKUP_MISS
+
+logger = get_logger(__name__)
 
 # ── Seniority Mapping ──────────────────────────────────────────────
 
@@ -416,7 +420,10 @@ def get_builtin_role(name: str) -> Role | None:
     Returns:
         The matching Role, or ``None`` if not found.
     """
-    return _BUILTIN_ROLES_BY_NAME.get(name.strip().casefold())
+    result = _BUILTIN_ROLES_BY_NAME.get(name.strip().casefold())
+    if result is None:
+        logger.debug(ROLE_LOOKUP_MISS, role_name=name)
+    return result
 
 
 def get_seniority_info(level: SeniorityLevel) -> SeniorityInfo:

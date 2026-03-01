@@ -7,13 +7,13 @@ Reusable by future native SDK drivers.
 
 import copy
 import json
-import logging
 from typing import Any
 
+from ai_company.observability import get_logger
 from ai_company.providers.enums import FinishReason, MessageRole
 from ai_company.providers.models import ChatMessage, ToolCall, ToolDefinition
 
-_logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def messages_to_dicts(messages: list[ChatMessage]) -> list[dict[str, object]]:
@@ -115,9 +115,9 @@ def map_finish_reason(reason: str | None) -> FinishReason:
     result = _FINISH_REASON_MAP.get(reason)
     if result is None:
         if reason is not None:
-            _logger.warning(
-                "Unknown finish reason %r, defaulting to ERROR",
-                reason,
+            logger.warning(
+                "provider.finish_reason.unknown",
+                reason=reason,
             )
         return FinishReason.ERROR
     return result
@@ -144,9 +144,9 @@ def extract_tool_calls(raw: list[Any] | None) -> tuple[ToolCall, ...]:
         call_id = _get(item, "id", "")
         func = _get(item, "function", None)
         if func is None:
-            _logger.warning(
-                "Tool call item missing 'function' field, skipping: %r",
-                item,
+            logger.warning(
+                "provider.tool_call.missing_function",
+                item=repr(item),
             )
             continue
         name = _get(func, "name", "")
@@ -155,10 +155,10 @@ def extract_tool_calls(raw: list[Any] | None) -> tuple[ToolCall, ...]:
         if call_id and name:
             calls.append(ToolCall(id=call_id, name=name, arguments=arguments))
         else:
-            _logger.warning(
-                "Incomplete tool call (id=%r, name=%r), skipping",
-                call_id,
-                name,
+            logger.warning(
+                "provider.tool_call.incomplete",
+                tool_id=call_id,
+                tool_name=name,
             )
 
     return tuple(calls)
@@ -186,9 +186,9 @@ def _parse_arguments(raw: str | dict[str, Any] | Any) -> dict[str, Any]:
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError, ValueError:
-            _logger.warning(
-                "Failed to parse tool call arguments: %r",
-                raw[:200],
+            logger.warning(
+                "provider.tool_call.arguments_parse_failed",
+                args_preview=raw[:200],
             )
             return {}
         if isinstance(parsed, dict):

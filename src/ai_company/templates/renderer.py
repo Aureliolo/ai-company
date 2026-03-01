@@ -8,7 +8,6 @@ Implements the second pass of the two-pass rendering pipeline:
 4. Build a ``RootConfig``-compatible dict and validate.
 """
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 import yaml
@@ -20,6 +19,16 @@ from ai_company.config.defaults import default_config_dict
 from ai_company.config.errors import ConfigLocation
 from ai_company.config.schema import RootConfig
 from ai_company.config.utils import deep_merge, to_float
+from ai_company.observability import get_logger
+from ai_company.observability.events import (
+    TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
+    TEMPLATE_RENDER_JINJA2_ERROR,
+    TEMPLATE_RENDER_START,
+    TEMPLATE_RENDER_SUCCESS,
+    TEMPLATE_RENDER_VALIDATION_ERROR,
+    TEMPLATE_RENDER_VARIABLE_ERROR,
+    TEMPLATE_RENDER_YAML_ERROR,
+)
 from ai_company.templates.errors import (
     TemplateRenderError,
     TemplateValidationError,
@@ -34,7 +43,7 @@ if TYPE_CHECKING:
     from ai_company.templates.loader import LoadedTemplate
     from ai_company.templates.schema import CompanyTemplate
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def render_template(
@@ -65,6 +74,10 @@ def render_template(
         TemplateValidationError: If the rendered result fails
             ``RootConfig`` validation.
     """
+    logger.info(
+        TEMPLATE_RENDER_START,
+        source_name=loaded.source_name,
+    )
     template = loaded.template
     vars_dict = _collect_variables(template, variables or {})
 
@@ -83,7 +96,12 @@ def render_template(
 
     # Merge with defaults and validate.
     merged = deep_merge(default_config_dict(), config_dict)
-    return _validate_as_root_config(merged, loaded.source_name)
+    result = _validate_as_root_config(merged, loaded.source_name)
+    logger.info(
+        TEMPLATE_RENDER_SUCCESS,
+        source_name=loaded.source_name,
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +132,10 @@ def _collect_variables(
         elif var.default is not None:
             result[var.name] = var.default
         elif var.required:
+            logger.error(
+                TEMPLATE_RENDER_VARIABLE_ERROR,
+                variable=var.name,
+            )
             msg = f"Required template variable {var.name!r} was not provided"
             raise TemplateRenderError(msg)
         # Optional vars with no default and no user value are omitted;
@@ -167,6 +189,11 @@ def _render_jinja2(
         jinja_template = env.from_string(raw_yaml)
         return jinja_template.render(**variables)
     except Jinja2TemplateError as exc:
+        logger.warning(
+            TEMPLATE_RENDER_JINJA2_ERROR,
+            source_name=source_name,
+            error=str(exc),
+        )
         msg = f"Jinja2 rendering failed for {source_name}: {exc}"
         raise TemplateRenderError(
             msg,
@@ -193,6 +220,11 @@ def _parse_rendered_yaml(
     try:
         data = yaml.safe_load(rendered_text)
     except yaml.YAMLError as exc:
+        logger.warning(
+            TEMPLATE_RENDER_YAML_ERROR,
+            source_name=source_name,
+            error=str(exc),
+        )
         msg = f"Rendered template YAML is invalid for {source_name}: {exc}"
         raise TemplateRenderError(
             msg,
@@ -336,13 +368,11 @@ def _expand_agents(
             try:
                 agent_dict["personality"] = get_personality_preset(preset_name)
             except KeyError:
-                available = sorted(PERSONALITY_PRESETS)
                 logger.warning(
-                    "Unknown personality preset %r for agent %r; "
-                    "using default personality. Available presets: %s",
-                    preset_name,
-                    name,
-                    available,
+                    TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
+                    preset_name=preset_name,
+                    agent_name=name,
+                    available=sorted(PERSONALITY_PRESETS),
                 )
 
         # Model config (raw dict for AgentConfig).
@@ -415,6 +445,11 @@ def _validate_as_root_config(
                     key_path=key_path,
                 ),
             )
+        logger.warning(
+            TEMPLATE_RENDER_VALIDATION_ERROR,
+            source_name=source_name,
+            error_count=len(exc.errors()),
+        )
         msg = f"Rendered template failed RootConfig validation: {source_name}"
         raise TemplateValidationError(
             msg,

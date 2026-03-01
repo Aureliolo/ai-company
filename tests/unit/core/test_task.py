@@ -1,6 +1,7 @@
 """Tests for the Task and AcceptanceCriterion domain models."""
 
 import pytest
+import structlog
 from pydantic import ValidationError
 
 from ai_company.core.artifact import ExpectedArtifact
@@ -12,6 +13,7 @@ from ai_company.core.enums import (
     TaskType,
 )
 from ai_company.core.task import AcceptanceCriterion, Task
+from ai_company.observability.events import TASK_STATUS_CHANGED
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -462,3 +464,19 @@ class TestTaskWithTransition:
         assert task.status is TaskStatus.CREATED
         assert task.assigned_to is None
         assert new_task is not task
+
+
+# ── Logging tests ─────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestTaskLogging:
+    def test_status_changed_event_on_transition(self) -> None:
+        task = _make_task()
+        with structlog.testing.capture_logs() as cap:
+            task.with_transition(TaskStatus.ASSIGNED, assigned_to="agent-1")
+        events = [e for e in cap if e.get("event") == TASK_STATUS_CHANGED]
+        assert len(events) == 1
+        assert events[0]["task_id"] == "task-123"
+        assert events[0]["from_status"] == "created"
+        assert events[0]["to_status"] == "assigned"

@@ -1,9 +1,11 @@
 """Tests for the task lifecycle state machine transitions."""
 
 import pytest
+import structlog
 
 from ai_company.core.enums import TaskStatus
 from ai_company.core.task_transitions import VALID_TRANSITIONS, validate_transition
+from ai_company.observability.events import TASK_TRANSITION_INVALID
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -132,3 +134,20 @@ class TestTransitionMapCompleteness:
         """No status should transition to itself."""
         for source, targets in VALID_TRANSITIONS.items():
             assert source not in targets, f"{source.value!r} has a self-transition"
+
+
+# ── Logging tests ─────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestTransitionLogging:
+    def test_invalid_transition_emits_warning(self) -> None:
+        with (
+            structlog.testing.capture_logs() as cap,
+            pytest.raises(ValueError, match="Invalid task status"),
+        ):
+            validate_transition(TaskStatus.CREATED, TaskStatus.COMPLETED)
+        events = [e for e in cap if e.get("event") == TASK_TRANSITION_INVALID]
+        assert len(events) == 1
+        assert events[0]["current_status"] == "created"
+        assert events[0]["target_status"] == "completed"

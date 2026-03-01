@@ -8,11 +8,21 @@ provider's ``driver`` field to select the appropriate factory.
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Self
 
+from ai_company.observability import get_logger
+from ai_company.observability.events import (
+    PROVIDER_DRIVER_FACTORY_MISSING,
+    PROVIDER_DRIVER_INSTANTIATED,
+    PROVIDER_DRIVER_NOT_REGISTERED,
+    PROVIDER_REGISTRY_BUILT,
+)
+
 from .base import BaseCompletionProvider
 from .errors import (
     DriverFactoryNotFoundError,
     DriverNotRegisteredError,
 )
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from ai_company.config.schema import ProviderConfig
@@ -67,9 +77,15 @@ class ProviderRegistry:
         """
         driver = self._drivers.get(name)
         if driver is None:
-            available = ", ".join(sorted(self._drivers)) or "(none)"
+            available = sorted(self._drivers) or ["(none)"]
+            logger.error(
+                PROVIDER_DRIVER_NOT_REGISTERED,
+                name=name,
+                available=available,
+            )
             msg = (
-                f"Provider {name!r} is not registered. Available providers: {available}"
+                f"Provider {name!r} is not registered. "
+                f"Available providers: {', '.join(available)}"
             )
             raise DriverNotRegisteredError(
                 msg,
@@ -136,6 +152,11 @@ class ProviderRegistry:
             )
             drivers[name] = driver
 
+        logger.info(
+            PROVIDER_REGISTRY_BUILT,
+            provider_count=len(drivers),
+            providers=sorted(drivers),
+        )
         return cls(drivers)
 
 
@@ -158,6 +179,12 @@ def _build_driver(
 
     if factory is None:
         available = sorted(set(defaults) | set(overrides))
+        logger.error(
+            PROVIDER_DRIVER_FACTORY_MISSING,
+            provider=name,
+            driver=driver_type,
+            available=available,
+        )
         msg = (
             f"No factory for driver type {driver_type!r} "
             f"(provider {name!r}). Available: {available}"
@@ -191,4 +218,9 @@ def _build_driver(
             msg,
             context={"provider": name, "driver": driver_type},
         )
+    logger.debug(
+        PROVIDER_DRIVER_INSTANTIATED,
+        provider=name,
+        driver=driver_type,
+    )
     return driver

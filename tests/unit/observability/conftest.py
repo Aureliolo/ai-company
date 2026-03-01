@@ -1,12 +1,12 @@
 """Test fixtures and factories for observability tests."""
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, MutableMapping
 import structlog
 from polyfactory.factories.pydantic_factory import ModelFactory
 
@@ -67,3 +67,10 @@ def _reset_logging() -> Iterator[None]:
     _clear_logging_state()
     yield
     _clear_logging_state()
+
+
+@pytest.fixture
+def captured_logs() -> Iterator[list[MutableMapping[str, Any]]]:
+    """Capture structlog output as list of dicts for field-level assertions."""
+    with structlog.testing.capture_logs() as cap:
+        yield cap

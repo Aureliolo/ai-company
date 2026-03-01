@@ -28,6 +28,7 @@ dev = [
     { name = "pytest-xdist" },
     { name = "respx" },
     { name = "ruff" },
+    { name = "syrupy" },
     { name = "types-pyyaml" },
 ]
 test = [
@@ -39,6 +40,7 @@ test = [
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "respx" },
+    { name = "syrupy" },
 ]
 
 [package.metadata]
@@ -65,6 +67,7 @@ dev = [
     { name = "pytest-xdist", specifier = "==3.8.0" },
     { name = "respx", specifier = "==0.22.0" },
     { name = "ruff", specifier = "==0.15.4" },
+    { name = "syrupy", specifier = "==5.1.0" },
     { name = "types-pyyaml", specifier = "==6.0.12.20250915" },
 ]
 test = [
@@ -76,6 +79,7 @@ test = [
     { name = "pytest-timeout", specifier = "==2.4.0" },
     { name = "pytest-xdist", specifier = "==3.8.0" },
     { name = "respx", specifier = "==0.22.0" },
+    { name = "syrupy", specifier = "==5.1.0" },
 ]
 
 [[package]]
@@ -1356,6 +1360,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ef/52/9ba0f43b686e7f3ddfeaa78ac3af750292662284b3661e91ad5494f21dbc/structlog-25.5.0.tar.gz", hash = "sha256:098522a3bebed9153d4570c6d0288abf80a031dfdb2048d59a49e9dc2190fc98", size = 1460830, upload-time = "2025-10-27T08:28:23.028Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a8/45/a132b9074aa18e799b891b91ad72133c98d8042c70f6240e4c5f9dabee2f/structlog-25.5.0-py3-none-any.whl", hash = "sha256:a8453e9b9e636ec59bd9e79bbd4a72f025981b3ba0f5837aebf48f02f37a7f9f", size = 72510, upload-time = "2025-10-27T08:28:21.535Z" },
+]
+
+[[package]]
+name = "syrupy"
+version = "5.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/2e/b0/24bca682d6a6337854be37f242d116cceeda9942571d5804c44bc1bdd427/syrupy-5.1.0.tar.gz", hash = "sha256:df543c7aa50d3cf1246e83d58fe490afe5f7dab7b41e74ecc0d8d23ae19bd4b8", size = 50495, upload-time = "2026-01-25T14:53:06.2Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/de/70/cf880c3b95a6034ef673e74b369941b42315c01f1554a5637a4f8b911009/syrupy-5.1.0-py3-none-any.whl", hash = "sha256:95162d2b05e61ed3e13f117b88dfab7c58bd6f90e66ebbf918e8a77114ad51c5", size = 51658, upload-time = "2026-01-25T14:53:05.105Z" },
 ]
 
 [[package]]
