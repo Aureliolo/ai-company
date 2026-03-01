@@ -20,7 +20,9 @@ class TemplateVariable(BaseModel):
         name: Variable name (used in ``{{ name }}`` placeholders).
         description: Human-readable description for prompts/docs.
         var_type: Expected Python type name.
-        default: Default value (``None`` means the variable is required).
+        default: Default value (``None`` means no default is provided).
+            The ``required`` attribute determines whether the user must
+            supply a value.
         required: Whether the user must provide this value.
     """
 
@@ -43,6 +45,26 @@ class TemplateVariable(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _validate_default_matches_var_type(self) -> Self:
+        """Default value type must match ``var_type`` when provided."""
+        if self.default is None:
+            return self
+        type_map: dict[str, type | tuple[type, ...]] = {
+            "str": str,
+            "int": int,
+            "float": (int, float),
+            "bool": bool,
+        }
+        expected = type_map[self.var_type]
+        if not isinstance(self.default, expected):
+            msg = (
+                f"Variable {self.name!r}: default {self.default!r} "
+                f"is not compatible with var_type {self.var_type!r}"
+            )
+            raise ValueError(msg)  # noqa: TRY004
+        return self
+
 
 class TemplateAgentConfig(BaseModel):
     """Agent definition within a template.
@@ -57,7 +79,8 @@ class TemplateAgentConfig(BaseModel):
         level: Seniority level override.
         model: Model tier alias (e.g. ``"opus"``, ``"sonnet"``, ``"haiku"``).
         personality_preset: Named personality preset from the presets registry.
-        department: Department override (``None`` uses the role's default).
+        department: Department override (``None`` defaults to
+            ``"engineering"`` during rendering).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -69,11 +92,11 @@ class TemplateAgentConfig(BaseModel):
         description="Seniority level",
     )
     model: str = Field(default="sonnet", description="Model tier alias")
-    personality_preset: str | None = Field(
+    personality_preset: NotBlankStr | None = Field(
         default=None,
         description="Named personality preset",
     )
-    department: str | None = Field(
+    department: NotBlankStr | None = Field(
         default=None,
         description="Department override",
     )
@@ -101,7 +124,7 @@ class TemplateDepartmentConfig(BaseModel):
         le=100.0,
         description="Percentage of company budget",
     )
-    head_role: str | None = Field(
+    head_role: NotBlankStr | None = Field(
         default=None,
         description="Role name of department head",
     )

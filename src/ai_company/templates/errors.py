@@ -12,7 +12,12 @@ class TemplateNotFoundError(TemplateError):
 
 
 class TemplateRenderError(TemplateError):
-    """Raised when Jinja2 rendering fails or a required variable is missing."""
+    """Raised when template rendering fails.
+
+    Covers Jinja2 evaluation errors, missing required variables,
+    YAML parse errors during template processing, and invalid
+    numeric values in rendered output.
+    """
 
 
 class TemplateValidationError(TemplateError):
@@ -31,3 +36,24 @@ class TemplateValidationError(TemplateError):
     ) -> None:
         super().__init__(message, locations)
         self.field_errors = field_errors
+
+    def __str__(self) -> str:
+        """Format validation error with per-field details."""
+        if not self.field_errors:
+            return super().__str__()
+        parts = [f"{self.message} ({len(self.field_errors)} errors):"]
+        loc_by_key: dict[str, ConfigLocation] = {
+            loc.key_path: loc for loc in self.locations if loc.key_path
+        }
+        for key_path, msg in self.field_errors:
+            parts.append(f"  {key_path}: {msg}")
+            loc = loc_by_key.get(key_path)
+            if loc and loc.file_path:
+                if loc.line is not None and loc.column is not None:
+                    line_info = f" at line {loc.line}, column {loc.column}"
+                elif loc.line is not None:
+                    line_info = f" at line {loc.line}"
+                else:
+                    line_info = ""
+                parts.append(f"    in {loc.file_path}{line_info}")
+        return "\n".join(parts)

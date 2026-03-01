@@ -4,6 +4,29 @@ import copy
 from typing import Any
 
 
+def to_float(value: Any, *, field_name: str = "value") -> float:
+    """Coerce a value to float with clear error reporting.
+
+    Args:
+        value: Value to convert (str, int, float, etc.).
+        field_name: Field name for error messages.
+
+    Returns:
+        Float value.
+
+    Raises:
+        ValueError: If *value* cannot be converted to float.
+    """
+    if value is None:
+        msg = f"Expected numeric value for {field_name}, got None"
+        raise ValueError(msg)
+    try:
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        msg = f"Invalid numeric value for {field_name}: {value!r}"
+        raise ValueError(msg) from exc
+
+
 def deep_merge(
     base: dict[str, Any],
     override: dict[str, Any],

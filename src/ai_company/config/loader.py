@@ -187,10 +187,11 @@ def _build_line_map(yaml_text: str) -> dict[str, tuple[int, int]]:
     """
     try:
         root = yaml.compose(yaml_text, Loader=yaml.SafeLoader)
-    except yaml.YAMLError:
+    except yaml.YAMLError as exc:
         logger.warning(
             "Failed to compose YAML AST for line mapping; "
-            "validation errors will lack line/column information",
+            "validation errors will lack line/column information: %s",
+            exc,
         )
         return {}
     if root is None or not isinstance(root, yaml.MappingNode):

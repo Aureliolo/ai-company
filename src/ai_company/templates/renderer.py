@@ -12,18 +12,20 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 import yaml
+from jinja2 import TemplateError as Jinja2TemplateError
 from jinja2.sandbox import SandboxedEnvironment
 from pydantic import ValidationError
 
 from ai_company.config.defaults import default_config_dict
 from ai_company.config.errors import ConfigLocation
 from ai_company.config.schema import RootConfig
-from ai_company.config.utils import deep_merge
+from ai_company.config.utils import deep_merge, to_float
 from ai_company.templates.errors import (
     TemplateRenderError,
     TemplateValidationError,
 )
 from ai_company.templates.presets import (
+    PERSONALITY_PRESETS,
     generate_auto_name,
     get_personality_preset,
 )
@@ -47,7 +49,7 @@ def render_template(
     2. Jinja2-render the raw YAML text with collected variables.
     3. YAML-parse the rendered text.
     4. Normalize into ``RootConfig`` shape.
-    5. Deep-merge with ``default_config_dict()``.
+    5. Deep-merge template output onto ``default_config_dict()`` base.
     6. Validate as ``RootConfig``.
 
     Args:
@@ -134,8 +136,9 @@ def _create_jinja_env() -> SandboxedEnvironment:
     env = SandboxedEnvironment(
         keep_trailing_newline=True,
     )
-    # ``auto`` filter: returns empty string for falsy values (triggers
-    # auto-name generation in _expand_agents).
+    # ``auto`` filter: converts falsy values to empty string, which
+    # triggers auto-name generation downstream (empty names are
+    # detected by ``_expand_agents``).
     env.filters["auto"] = lambda value: value or ""
     return env
 
@@ -163,7 +166,7 @@ def _render_jinja2(
     try:
         jinja_template = env.from_string(raw_yaml)
         return jinja_template.render(**variables)
-    except Exception as exc:
+    except Jinja2TemplateError as exc:
         msg = f"Jinja2 rendering failed for {source_name}: {exc}"
         raise TemplateRenderError(
             msg,
@@ -203,8 +206,14 @@ def _parse_rendered_yaml(
             locations=(ConfigLocation(file_path=source_name),),
         )
 
-    result: dict[str, Any] = data["template"]
-    return result
+    template_data = data["template"]
+    if not isinstance(template_data, dict):
+        msg = f"Rendered template 'template' key must be a mapping: {source_name}"
+        raise TemplateRenderError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        )
+    return template_data
 
 
 def _build_config_dict(
@@ -230,11 +239,25 @@ def _build_config_dict(
 
     # Expand agents.
     raw_agents = rendered_data.get("agents", [])
-    agents = _expand_agents(raw_agents, variables)
+    agents = _expand_agents(raw_agents)
 
     # Build departments for RootConfig.
     raw_depts = rendered_data.get("departments", [])
     departments = _build_departments(raw_depts)
+
+    source_name = template.metadata.name
+    try:
+        autonomy = to_float(
+            company.get("autonomy", template.autonomy),
+            field_name="autonomy",
+        )
+        budget_monthly = to_float(
+            company.get("budget_monthly", template.budget_monthly),
+            field_name="budget_monthly",
+        )
+    except ValueError as exc:
+        msg = f"Invalid numeric value in rendered template {source_name!r}: {exc}"
+        raise TemplateRenderError(msg) from exc
 
     return {
         "company_name": company_name,
@@ -242,10 +265,8 @@ def _build_config_dict(
         "agents": agents,
         "departments": departments,
         "config": {
-            "autonomy": _safe_float(company.get("autonomy", template.autonomy)),
-            "budget_monthly": _safe_float(
-                company.get("budget_monthly", template.budget_monthly),
-            ),
+            "autonomy": autonomy,
+            "budget_monthly": budget_monthly,
             "communication_pattern": rendered_data.get(
                 "communication",
                 template.communication,
@@ -256,7 +277,6 @@ def _build_config_dict(
 
 def _expand_agents(
     raw_agents: list[dict[str, Any]],
-    _variables: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Expand template agent dicts into AgentConfig-compatible dicts.
 
@@ -264,7 +284,6 @@ def _expand_agents(
 
     Args:
         raw_agents: List of agent dicts from rendered YAML.
-        variables: Collected variables.
 
     Returns:
         List of dicts suitable for ``AgentConfig`` construction.
@@ -301,10 +320,13 @@ def _expand_agents(
             try:
                 agent_dict["personality"] = get_personality_preset(preset_name)
             except KeyError:
+                available = sorted(PERSONALITY_PRESETS)
                 logger.warning(
-                    "Unknown personality preset %r for agent %r, using defaults",
+                    "Unknown personality preset %r for agent %r; "
+                    "using default personality. Available presets: %s",
                     preset_name,
                     name,
+                    available,
                 )
 
         # Model config (raw dict for AgentConfig).
@@ -329,10 +351,18 @@ def _build_departments(
     """
     departments: list[dict[str, Any]] = []
     for dept in raw_depts:
+        try:
+            budget_pct = to_float(
+                dept.get("budget_percent", 0.0),
+                field_name=f"departments[{dept.get('name', '')}].budget_percent",
+            )
+        except ValueError as exc:
+            msg = f"Invalid department budget value: {exc}"
+            raise TemplateRenderError(msg) from exc
         dept_dict: dict[str, Any] = {
             "name": dept.get("name", ""),
             "head": dept.get("head_role", dept.get("name", "")),
-            "budget_percent": _safe_float(dept.get("budget_percent", 0.0)),
+            "budget_percent": budget_pct,
         }
         departments.append(dept_dict)
     return departments
@@ -375,18 +405,3 @@ def _validate_as_root_config(
             locations=tuple(locations),
             field_errors=tuple(field_errors),
         ) from exc
-
-
-def _safe_float(value: Any) -> float:
-    """Coerce a value to float safely.
-
-    Args:
-        value: Value from rendered YAML (str, int, or float).
-
-    Returns:
-        Float value, or 0.0 on conversion failure.
-    """
-    try:
-        return float(value)
-    except TypeError, ValueError:
-        return 0.0

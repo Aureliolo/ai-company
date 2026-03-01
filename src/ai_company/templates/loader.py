@@ -7,8 +7,7 @@ Implements a two-pass loading strategy:
 - **Pass 2**: Performed later by the renderer — Jinja2-renders the raw
   YAML text, then YAML-parses the result.
 
-The loader returns both the structured :class:`CompanyTemplate` (from
-Pass 1) and the raw YAML text (for Pass 2).
+Both are returned bundled as a :class:`LoadedTemplate` dataclass.
 """
 
 import logging
@@ -16,9 +15,10 @@ import re
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
+from pydantic import ValidationError
 
 from ai_company.config.errors import ConfigLocation
 from ai_company.templates.errors import (
@@ -58,7 +58,7 @@ class TemplateInfo:
     name: str
     display_name: str
     description: str
-    source: str
+    source: Literal["builtin", "user"]
 
 
 @dataclass(frozen=True)
@@ -79,8 +79,9 @@ class LoadedTemplate:
 def list_templates() -> tuple[TemplateInfo, ...]:
     """Return all available templates (user directory + built-in).
 
-    User templates are listed first.  If a user template has the same
-    name as a built-in, only the user template appears.
+    User templates override built-in templates of the same name.
+    The result is sorted alphabetically by template name.  Templates
+    that fail to load are silently skipped with a warning log.
 
     Returns:
         Sorted tuple of :class:`TemplateInfo` objects.
@@ -89,7 +90,9 @@ def list_templates() -> tuple[TemplateInfo, ...]:
 
     # User templates (higher priority).
     if _USER_TEMPLATES_DIR.is_dir():
-        for path in sorted(_USER_TEMPLATES_DIR.glob("*.yaml")):
+        for path in sorted(
+            p for p in _USER_TEMPLATES_DIR.glob("*.yaml") if p.is_file()
+        ):
             name = path.stem
             try:
                 loaded = _load_from_file(path)
@@ -100,8 +103,12 @@ def list_templates() -> tuple[TemplateInfo, ...]:
                     description=meta.description,
                     source="user",
                 )
-            except Exception:
-                logger.warning("Skipping invalid user template: %s", path)
+            except (TemplateRenderError, TemplateValidationError, OSError) as exc:
+                logger.warning(
+                    "Skipping invalid user template %s: %s",
+                    path,
+                    exc,
+                )
 
     # Built-in templates (lower priority).
     for name in sorted(BUILTIN_TEMPLATES):
@@ -115,8 +122,11 @@ def list_templates() -> tuple[TemplateInfo, ...]:
                     description=meta.description,
                     source="builtin",
                 )
-            except Exception:
-                logger.warning("Skipping invalid builtin template: %s", name)
+            except TemplateRenderError, TemplateValidationError, OSError:
+                logger.exception(
+                    "Built-in template %r is invalid (packaging defect)",
+                    name,
+                )
 
     return tuple(info for _, info in sorted(seen.items()))
 
@@ -144,9 +154,18 @@ def load_template(name: str) -> LoadedTemplate:
     """
     name_clean = name.strip().lower()
 
+    # Sanitize to prevent path traversal.
+    safe_name = Path(name_clean).name
+    if safe_name != name_clean:
+        msg = f"Invalid template name {name!r}: must not contain path separators"
+        raise TemplateNotFoundError(
+            msg,
+            locations=(ConfigLocation(file_path=f"<template:{name}>"),),
+        )
+
     # Try user directory first.
     if _USER_TEMPLATES_DIR.is_dir():
-        user_path = _USER_TEMPLATES_DIR / f"{name_clean}.yaml"
+        user_path = _USER_TEMPLATES_DIR / f"{safe_name}.yaml"
         if user_path.is_file():
             return _load_from_file(user_path)
 
@@ -211,9 +230,27 @@ def _load_builtin(name: str) -> LoadedTemplate:
 
 
 def _load_from_file(path: Path) -> LoadedTemplate:
-    """Load a template from a file path."""
-    yaml_text = path.read_text(encoding="utf-8")
+    """Load a template from a file path.
+
+    Raises:
+        TemplateRenderError: If the file cannot be read.
+        TemplateValidationError: If validation fails.
+    """
     source_name = str(path)
+    try:
+        yaml_text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        msg = f"Unable to read template file: {path}"
+        raise TemplateRenderError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        ) from exc
+    except UnicodeDecodeError as exc:
+        msg = f"Template file is not valid UTF-8: {path}"
+        raise TemplateRenderError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        ) from exc
     template = _parse_template_yaml(yaml_text, source_name=source_name)
     return LoadedTemplate(
         template=template,
@@ -287,10 +324,19 @@ def _parse_template_yaml(
         )
 
     template_data = data["template"]
-    normalized = _normalize_template_data(template_data)
     try:
+        if not isinstance(template_data, dict):
+            msg = f"Template 'template' key must map to an object in {source_name}"
+            raise TypeError(msg)  # noqa: TRY301
+        normalized = _normalize_template_data(template_data)
         return CompanyTemplate(**normalized)
-    except Exception as exc:
+    except ValidationError as exc:
+        msg = f"Template validation failed for {source_name}: {exc}"
+        raise TemplateValidationError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        ) from exc
+    except (ValueError, TypeError) as exc:
         msg = f"Template validation failed for {source_name}: {exc}"
         raise TemplateValidationError(
             msg,
@@ -312,13 +358,14 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
     """
     company = data.get("company", {})
 
-    metadata = {
-        "name": data.get("name", ""),
+    metadata: dict[str, Any] = {
         "description": data.get("description", ""),
         "version": data.get("version", "1.0.0"),
         "company_type": company.get("type", "custom"),
         "tags": tuple(data.get("tags", ())),
     }
+    if "name" in data:
+        metadata["name"] = data["name"]
 
     return {
         "metadata": metadata,
@@ -333,17 +380,28 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _to_float(value: Any) -> float:
-    """Coerce a value to float, handling string numerics.
+    """Coerce a value to float for Pass 1 normalization.
+
+    Returns ``0.0`` for values that cannot be converted (e.g. Jinja2
+    placeholders like ``__JINJA2__``) since the real value will be
+    resolved in Pass 2.
 
     Args:
-        value: Raw value from YAML (may be str, int, float).
+        value: Raw value from YAML (may be str, int, float, or
+            ``None``).
 
     Returns:
-        Float value.
+        Float value, or ``0.0`` for ``None`` or unconvertible strings
+        (typically Jinja2 placeholders).
     """
-    if isinstance(value, str):
-        try:
-            return float(value)
-        except ValueError:
-            return 0.0
-    return float(value)
+    if value is None:
+        return 0.0
+    try:
+        return float(value)
+    except TypeError, ValueError:
+        logger.debug(
+            "Cannot convert %r to float in Pass 1 "
+            "(may be a Jinja2 placeholder), using 0.0",
+            value,
+        )
+        return 0.0
