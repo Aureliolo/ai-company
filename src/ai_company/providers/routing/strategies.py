@@ -1,0 +1,575 @@
+"""Routing strategies — stateless implementations of ``RoutingStrategy``.
+
+Each strategy selects a model given a ``RoutingRequest``, a
+``RoutingConfig``, and a ``ModelResolver``.  Strategies are stateless
+singletons registered in a module-level mapping.
+"""
+
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+from ai_company.core.role_catalog import get_seniority_info
+from ai_company.observability import get_logger
+from ai_company.observability.events import (
+    ROUTING_BUDGET_EXCEEDED,
+    ROUTING_FALLBACK_ATTEMPTED,
+    ROUTING_FALLBACK_EXHAUSTED,
+    ROUTING_NO_RULE_MATCHED,
+)
+
+from .errors import ModelResolutionError, NoAvailableModelError
+from .models import ResolvedModel, RoutingDecision, RoutingRequest
+
+logger = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from ai_company.config.schema import RoutingConfig, RoutingRuleConfig
+
+    from .resolver import ModelResolver
+
+
+# ── Protocol ──────────────────────────────────────────────────────
+
+
+@runtime_checkable
+class RoutingStrategy(Protocol):
+    """Protocol for model routing strategies."""
+
+    @property
+    def name(self) -> str:
+        """Strategy name (matches config value)."""
+        ...
+
+    def select(
+        self,
+        request: RoutingRequest,
+        config: RoutingConfig,
+        resolver: ModelResolver,
+    ) -> RoutingDecision:
+        """Select a model for the given request.
+
+        Args:
+            request: Routing inputs (agent level, task type, etc.).
+            config: Routing configuration (rules, fallback chain).
+            resolver: Model resolver for alias/ID lookup.
+
+        Returns:
+            A routing decision with the chosen model.
+
+        Raises:
+            ModelResolutionError: If the requested model cannot be found.
+            NoAvailableModelError: If all candidates are exhausted.
+        """
+        ...
+
+
+# ── Shared helpers (private) ──────────────────────────────────────
+
+
+def _try_resolve_with_fallback(
+    ref: str,
+    rule: RoutingRuleConfig | None,
+    config: RoutingConfig,
+    resolver: ModelResolver,
+) -> tuple[ResolvedModel, tuple[str, ...]]:
+    """Try to resolve *ref*, then rule fallback, then global chain.
+
+    Returns:
+        Tuple of (resolved_model, fallbacks_tried).
+
+    Raises:
+        NoAvailableModelError: If all candidates are exhausted.
+    """
+    tried: list[str] = []
+
+    # Try the primary ref
+    model = resolver.resolve_safe(ref)
+    if model is not None:
+        return model, tuple(tried)
+
+    tried.append(ref)
+    logger.debug(ROUTING_FALLBACK_ATTEMPTED, ref=ref, source="primary")
+
+    # Try rule-level fallback
+    if rule is not None and rule.fallback is not None:
+        model = resolver.resolve_safe(rule.fallback)
+        if model is not None:
+            return model, tuple(tried)
+        tried.append(rule.fallback)
+        logger.debug(
+            ROUTING_FALLBACK_ATTEMPTED,
+            ref=rule.fallback,
+            source="rule_fallback",
+        )
+
+    # Walk global fallback chain
+    for chain_ref in config.fallback_chain:
+        model = resolver.resolve_safe(chain_ref)
+        if model is not None:
+            return model, tuple(tried)
+        tried.append(chain_ref)
+        logger.debug(
+            ROUTING_FALLBACK_ATTEMPTED,
+            ref=chain_ref,
+            source="global_chain",
+        )
+
+    logger.warning(ROUTING_FALLBACK_EXHAUSTED, tried=tried)
+    msg = f"All model candidates exhausted: {tried}"
+    raise NoAvailableModelError(msg, context={"tried": tried})
+
+
+def _try_resolve_with_fallback_safe(
+    ref: str,
+    rule: RoutingRuleConfig | None,
+    config: RoutingConfig,
+    resolver: ModelResolver,
+) -> tuple[ResolvedModel, tuple[str, ...]] | None:
+    """Like ``_try_resolve_with_fallback`` but returns ``None``."""
+    try:
+        return _try_resolve_with_fallback(ref, rule, config, resolver)
+    except NoAvailableModelError:
+        return None
+
+
+def _walk_fallback_chain(
+    config: RoutingConfig,
+    resolver: ModelResolver,
+) -> tuple[ResolvedModel, tuple[str, ...]] | None:
+    """Walk the global fallback chain, return first resolvable."""
+    tried: list[str] = []
+    for ref in config.fallback_chain:
+        model = resolver.resolve_safe(ref)
+        if model is not None:
+            return model, tuple(tried)
+        tried.append(ref)
+    return None
+
+
+def _cheapest_within_budget(
+    resolver: ModelResolver,
+    remaining_budget: float | None,
+) -> tuple[ResolvedModel, bool]:
+    """Pick cheapest model, optionally filtering by budget.
+
+    Returns:
+        Tuple of (model, budget_exceeded).  If budget is exceeded by
+        all models, returns cheapest anyway with ``budget_exceeded=True``.
+
+    Raises:
+        NoAvailableModelError: If no models are registered at all.
+    """
+    all_models = resolver.all_models_sorted_by_cost()
+    if not all_models:
+        msg = "No models registered in resolver"
+        raise NoAvailableModelError(msg)
+
+    if remaining_budget is None:
+        return all_models[0], False
+
+    for model in all_models:
+        total = model.cost_per_1k_input + model.cost_per_1k_output
+        if total <= remaining_budget:
+            return model, False
+
+    cheapest = all_models[0]
+    cheapest_cost = cheapest.cost_per_1k_input + cheapest.cost_per_1k_output
+    logger.warning(
+        ROUTING_BUDGET_EXCEEDED,
+        remaining_budget=remaining_budget,
+        cheapest_cost=cheapest_cost,
+    )
+    return cheapest, True
+
+
+def _try_task_type_rules(
+    request: RoutingRequest,
+    config: RoutingConfig,
+    resolver: ModelResolver,
+    strategy_name: str,
+) -> RoutingDecision | None:
+    """Match task_type rules; return decision or None."""
+    if request.task_type is None:
+        return None
+    for rule in config.rules:
+        if rule.task_type == request.task_type:
+            result = _try_resolve_with_fallback_safe(
+                rule.preferred_model,
+                rule,
+                config,
+                resolver,
+            )
+            if result is not None:
+                model, tried = result
+                return RoutingDecision(
+                    resolved_model=model,
+                    strategy_used=strategy_name,
+                    reason=(
+                        f"Task-type rule: type={request.task_type}"
+                        f", model={model.model_id}"
+                    ),
+                    fallbacks_tried=tried,
+                )
+    return None
+
+
+def _try_role_rules(
+    request: RoutingRequest,
+    config: RoutingConfig,
+    resolver: ModelResolver,
+    strategy_name: str,
+) -> RoutingDecision | None:
+    """Match role_level rules; return decision or None."""
+    if request.agent_level is None:
+        return None
+    for rule in config.rules:
+        if rule.role_level == request.agent_level:
+            result = _try_resolve_with_fallback_safe(
+                rule.preferred_model,
+                rule,
+                config,
+                resolver,
+            )
+            if result is not None:
+                model, tried = result
+                return RoutingDecision(
+                    resolved_model=model,
+                    strategy_used=strategy_name,
+                    reason=(
+                        f"Role rule: "
+                        f"level={request.agent_level.value}"
+                        f", model={model.model_id}"
+                    ),
+                    fallbacks_tried=tried,
+                )
+    return None
+
+
+def _try_seniority_default(
+    request: RoutingRequest,
+    resolver: ModelResolver,
+    strategy_name: str,
+) -> RoutingDecision | None:
+    """Try seniority catalog tier; return decision or None."""
+    if request.agent_level is None:
+        return None
+    tier = get_seniority_info(request.agent_level).typical_model_tier
+    model = resolver.resolve_safe(tier)
+    if model is not None:
+        return RoutingDecision(
+            resolved_model=model,
+            strategy_used=strategy_name,
+            reason=(
+                f"Seniority default: level={request.agent_level.value}, tier={tier}"
+            ),
+        )
+    return None
+
+
+# ── Strategy 1: Manual ────────────────────────────────────────────
+
+
+class ManualStrategy:
+    """Resolve an explicit model override.
+
+    Requires ``request.model_override`` to be set.
+    """
+
+    @property
+    def name(self) -> str:
+        """Return strategy name."""
+        return "manual"
+
+    def select(
+        self,
+        request: RoutingRequest,
+        config: RoutingConfig,  # noqa: ARG002
+        resolver: ModelResolver,
+    ) -> RoutingDecision:
+        """Select the explicitly requested model.
+
+        Raises:
+            ModelResolutionError: If ``model_override`` is not set or
+                the model cannot be resolved.
+        """
+        if request.model_override is None:
+            msg = "ManualStrategy requires model_override to be set"
+            raise ModelResolutionError(msg)
+
+        model = resolver.resolve(request.model_override)
+        return RoutingDecision(
+            resolved_model=model,
+            strategy_used=self.name,
+            reason=f"Explicit override: {request.model_override}",
+        )
+
+
+# ── Strategy 2: Role-Based ───────────────────────────────────────
+
+
+class RoleBasedStrategy:
+    """Select model based on agent seniority level.
+
+    Matches the first routing rule where ``rule.role_level`` equals
+    ``request.agent_level``.  If no rule matches, uses the seniority
+    catalog's ``typical_model_tier`` as a fallback lookup.
+    """
+
+    @property
+    def name(self) -> str:
+        """Return strategy name."""
+        return "role_based"
+
+    def select(
+        self,
+        request: RoutingRequest,
+        config: RoutingConfig,
+        resolver: ModelResolver,
+    ) -> RoutingDecision:
+        """Select model based on role level.
+
+        Raises:
+            ModelResolutionError: If no agent_level is set.
+            NoAvailableModelError: If all candidates are exhausted.
+        """
+        if request.agent_level is None:
+            msg = "RoleBasedStrategy requires agent_level to be set"
+            raise ModelResolutionError(msg)
+
+        # Try matching rules
+        for rule in config.rules:
+            if rule.role_level == request.agent_level:
+                model, tried = _try_resolve_with_fallback(
+                    rule.preferred_model,
+                    rule,
+                    config,
+                    resolver,
+                )
+                return RoutingDecision(
+                    resolved_model=model,
+                    strategy_used=self.name,
+                    reason=(
+                        f"Role rule match: "
+                        f"level={request.agent_level.value}"
+                        f", model={model.model_id}"
+                    ),
+                    fallbacks_tried=tried,
+                )
+
+        # No rule matched — use seniority default
+        logger.debug(
+            ROUTING_NO_RULE_MATCHED,
+            level=request.agent_level.value,
+            strategy=self.name,
+        )
+        tier = get_seniority_info(
+            request.agent_level,
+        ).typical_model_tier
+        result = _try_resolve_with_fallback_safe(
+            tier,
+            None,
+            config,
+            resolver,
+        )
+        if result is not None:
+            model, tried = result
+            return RoutingDecision(
+                resolved_model=model,
+                strategy_used=self.name,
+                reason=(
+                    f"Seniority default: level={request.agent_level.value}, tier={tier}"
+                ),
+                fallbacks_tried=tried,
+            )
+
+        # Last resort: global fallback chain
+        chain_result = _walk_fallback_chain(config, resolver)
+        if chain_result is not None:
+            model, tried = chain_result
+            return RoutingDecision(
+                resolved_model=model,
+                strategy_used=self.name,
+                reason=(f"Global fallback for level={request.agent_level.value}"),
+                fallbacks_tried=tried,
+            )
+
+        msg = (
+            f"No model available for "
+            f"level={request.agent_level.value} "
+            f"(tier={tier}, no rules, no fallback chain)"
+        )
+        raise NoAvailableModelError(msg)
+
+
+# ── Strategy 3: Cost-Aware ───────────────────────────────────────
+
+
+class CostAwareStrategy:
+    """Select the cheapest model, optionally respecting a budget.
+
+    Matches ``task_type`` rules first, then falls back to the cheapest
+    model from the resolver.
+    """
+
+    @property
+    def name(self) -> str:
+        """Return strategy name."""
+        return "cost_aware"
+
+    def select(
+        self,
+        request: RoutingRequest,
+        config: RoutingConfig,
+        resolver: ModelResolver,
+    ) -> RoutingDecision:
+        """Select the cheapest available model.
+
+        Raises:
+            NoAvailableModelError: If no models are registered.
+        """
+        decision = _try_task_type_rules(
+            request,
+            config,
+            resolver,
+            self.name,
+        )
+        if decision is not None:
+            return decision
+
+        # Pick cheapest
+        model, budget_exceeded = _cheapest_within_budget(
+            resolver,
+            request.remaining_budget,
+        )
+        reason = f"Cheapest available: {model.model_id}"
+        if budget_exceeded:
+            reason += " (all models exceed remaining budget)"
+        return RoutingDecision(
+            resolved_model=model,
+            strategy_used=self.name,
+            reason=reason,
+        )
+
+
+# ── Strategy 4: Smart ────────────────────────────────────────────
+
+
+class SmartStrategy:
+    """Combined strategy with priority-based signal merging.
+
+    Priority order: model_override > task_type rules > role_level
+    rules > seniority default > cheapest available > global
+    fallback_chain.
+    """
+
+    @property
+    def name(self) -> str:
+        """Return strategy name."""
+        return "smart"
+
+    def select(
+        self,
+        request: RoutingRequest,
+        config: RoutingConfig,
+        resolver: ModelResolver,
+    ) -> RoutingDecision:
+        """Select a model using all available signals.
+
+        Raises:
+            NoAvailableModelError: If all candidates are exhausted.
+        """
+        return (
+            self._try_override(request, resolver)
+            or _try_task_type_rules(
+                request,
+                config,
+                resolver,
+                self.name,
+            )
+            or _try_role_rules(
+                request,
+                config,
+                resolver,
+                self.name,
+            )
+            or _try_seniority_default(
+                request,
+                resolver,
+                self.name,
+            )
+            or self._try_cheapest(request, resolver)
+            or self._try_global_chain(config, resolver)
+            or self._raise_exhausted()
+        )
+
+    def _try_override(
+        self,
+        request: RoutingRequest,
+        resolver: ModelResolver,
+    ) -> RoutingDecision | None:
+        if request.model_override is None:
+            return None
+        model = resolver.resolve_safe(request.model_override)
+        if model is None:
+            return None
+        return RoutingDecision(
+            resolved_model=model,
+            strategy_used=self.name,
+            reason=f"Explicit override: {request.model_override}",
+        )
+
+    def _try_cheapest(
+        self,
+        request: RoutingRequest,
+        resolver: ModelResolver,
+    ) -> RoutingDecision | None:
+        if not resolver.all_models_sorted_by_cost():
+            return None
+        model, budget_exceeded = _cheapest_within_budget(
+            resolver,
+            request.remaining_budget,
+        )
+        reason = f"Cheapest available: {model.model_id}"
+        if budget_exceeded:
+            reason += " (all models exceed remaining budget)"
+        return RoutingDecision(
+            resolved_model=model,
+            strategy_used=self.name,
+            reason=reason,
+        )
+
+    def _try_global_chain(
+        self,
+        config: RoutingConfig,
+        resolver: ModelResolver,
+    ) -> RoutingDecision | None:
+        chain_result = _walk_fallback_chain(config, resolver)
+        if chain_result is None:
+            return None
+        model, tried = chain_result
+        return RoutingDecision(
+            resolved_model=model,
+            strategy_used=self.name,
+            reason="Global fallback chain",
+            fallbacks_tried=tried,
+        )
+
+    def _raise_exhausted(self) -> RoutingDecision:
+        msg = "SmartStrategy: no model available from any signal"
+        raise NoAvailableModelError(msg)
+
+
+# ── Strategy Registry ────────────────────────────────────────────
+
+_MANUAL = ManualStrategy()
+_ROLE_BASED = RoleBasedStrategy()
+_COST_AWARE = CostAwareStrategy()
+_SMART = SmartStrategy()
+
+STRATEGY_MAP: dict[str, RoutingStrategy] = {
+    "manual": _MANUAL,
+    "role_based": _ROLE_BASED,
+    "cost_aware": _COST_AWARE,
+    "smart": _SMART,
+    "cheapest": _COST_AWARE,  # alias
+}
+"""Maps config strategy names to singleton instances."""

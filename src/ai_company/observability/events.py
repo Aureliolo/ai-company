@@ -76,6 +76,18 @@ TEMPLATE_RENDER_VALIDATION_ERROR: Final[str] = "template.render.validation_error
 TEMPLATE_PERSONALITY_PRESET_UNKNOWN: Final[str] = "template.personality_preset.unknown"
 TEMPLATE_PASS1_FLOAT_FALLBACK: Final[str] = "template.pass1.float_fallback"
 
+# ── Routing lifecycle ─────────────────────────────────────────────
+
+ROUTING_ROUTER_BUILT: Final[str] = "routing.router.built"
+ROUTING_RESOLVER_BUILT: Final[str] = "routing.resolver.built"
+ROUTING_MODEL_RESOLVED: Final[str] = "routing.model.resolved"
+ROUTING_MODEL_RESOLUTION_FAILED: Final[str] = "routing.model.resolution_failed"
+ROUTING_DECISION_MADE: Final[str] = "routing.decision.made"
+ROUTING_FALLBACK_ATTEMPTED: Final[str] = "routing.fallback.attempted"
+ROUTING_FALLBACK_EXHAUSTED: Final[str] = "routing.fallback.exhausted"
+ROUTING_NO_RULE_MATCHED: Final[str] = "routing.rule.no_match"
+ROUTING_BUDGET_EXCEEDED: Final[str] = "routing.budget.exceeded"
+
 # ── Role catalog ──────────────────────────────────────────────────
 
 ROLE_LOOKUP_MISS: Final[str] = "role.lookup.miss"
