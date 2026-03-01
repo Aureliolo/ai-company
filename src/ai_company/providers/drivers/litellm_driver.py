@@ -451,14 +451,17 @@ class LiteLLMDriver(BaseCompletionProvider):
                         retry_after=self._extract_retry_after(exc),
                         context=ctx,
                     )
-                return our_type(str(exc), context=ctx)
+                return our_type(
+                    f"Provider {self._provider_name} error",
+                    context={**ctx, "detail": str(exc)},
+                )
 
         if isinstance(exc, errors.ProviderError):
             return exc
 
         return errors.ProviderInternalError(
-            f"Unexpected error from {self._provider_name}: {exc}",
-            context=ctx,
+            f"Unexpected error from provider {self._provider_name}",
+            context={**ctx, "detail": str(exc)},
         )
 
     @staticmethod
@@ -578,6 +581,9 @@ class _ToolCallAccumulator:
         self.name: str = ""
         self.arguments: str = ""
 
+    #: Maximum total length of accumulated argument bytes (1 MiB).
+    _MAX_ARGUMENTS_LEN: int = 1_048_576
+
     def update(self, delta: Any) -> None:
         """Merge a single tool call delta."""
         call_id = getattr(delta, "id", None)
@@ -590,7 +596,14 @@ class _ToolCallAccumulator:
                 self.name = str(name)
             args = getattr(func, "arguments", None)
             if args:
-                self.arguments += str(args)
+                fragment = str(args)
+                if len(self.arguments) + len(fragment) > self._MAX_ARGUMENTS_LEN:
+                    _logger.warning(
+                        "Tool call arguments exceeded %d byte limit, truncating",
+                        self._MAX_ARGUMENTS_LEN,
+                    )
+                    return
+                self.arguments += fragment
 
     def build(self) -> ToolCall | None:
         """Build a ``ToolCall`` if enough data accumulated.

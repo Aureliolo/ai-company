@@ -177,12 +177,10 @@ def _build_driver(
     try:
         driver = factory(name, config)
     except Exception as exc:
-        msg = (
-            f"Failed to instantiate driver {driver_type!r} for provider {name!r}: {exc}"
-        )
+        msg = f"Failed to instantiate driver {driver_type!r} for provider {name!r}"
         raise DriverFactoryNotFoundError(
             msg,
-            context={"provider": name, "driver": driver_type},
+            context={"provider": name, "driver": driver_type, "detail": str(exc)},
         ) from exc
     if not isinstance(driver, BaseCompletionProvider):
         msg = (

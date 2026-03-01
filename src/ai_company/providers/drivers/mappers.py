@@ -181,7 +181,7 @@ def _parse_arguments(raw: str | dict[str, Any] | Any) -> dict[str, Any]:
         Parsed arguments dict.  Returns empty dict on parse failure.
     """
     if isinstance(raw, dict):
-        return raw
+        return dict(raw)
     if isinstance(raw, str):
         try:
             parsed = json.loads(raw)
@@ -192,6 +192,6 @@ def _parse_arguments(raw: str | dict[str, Any] | Any) -> dict[str, Any]:
             )
             return {}
         if isinstance(parsed, dict):
-            return parsed
+            return dict(parsed)
         return {}
     return {}

@@ -210,7 +210,7 @@ class TestRegistryFromConfig:
 
         with pytest.raises(
             DriverFactoryNotFoundError,
-            match="construction failed",
+            match="Failed to instantiate",
         ):
             ProviderRegistry.from_config(
                 providers,

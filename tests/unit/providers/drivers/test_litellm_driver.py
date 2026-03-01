@@ -439,6 +439,32 @@ class TestDoStream:
         assert usage_chunks[0].usage.input_tokens == 0
         assert usage_chunks[0].usage.output_tokens == 10
 
+    async def test_tool_call_arguments_length_limit(self):
+        """Tool call arguments exceeding 1 MiB are truncated."""
+        from ai_company.providers.drivers.litellm_driver import _ToolCallAccumulator
+
+        acc = _ToolCallAccumulator()
+        acc.id = "call_001"
+        acc.name = "test_tool"
+
+        # Fill up to near the limit
+        large_fragment = "x" * (acc._MAX_ARGUMENTS_LEN - 10)
+        acc.arguments = large_fragment
+
+        # This should be rejected (would exceed limit)
+        from unittest.mock import MagicMock
+
+        delta = MagicMock()
+        delta.id = None
+        func = MagicMock()
+        func.name = None
+        func.arguments = "y" * 100
+        delta.function = func
+        acc.update(delta)
+
+        # Arguments should not have grown
+        assert len(acc.arguments) == len(large_fragment)
+
 
 # ── Exception mapping ────────────────────────────────────────────
 
