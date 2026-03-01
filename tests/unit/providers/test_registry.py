@@ -111,6 +111,10 @@ class TestRegistryContainsAndLen:
         assert "anthropic" in registry
         assert "unknown" not in registry
 
+    def test_contains_unhashable_returns_false(self):
+        registry = ProviderRegistry({})
+        assert [1, 2, 3] not in registry
+
     def test_len_reflects_registered_count(self):
         drivers = {
             "a": _StubDriver("a", _make_config()),
@@ -169,6 +173,49 @@ class TestRegistryFromConfig:
 
         assert len(registry) == 0
         assert registry.list_providers() == ()
+
+    def test_from_config_raises_for_non_callable_factory(self):
+        config = _make_config(driver="bad")
+        providers = {"test": config}
+
+        with pytest.raises(DriverFactoryNotFoundError, match="not callable"):
+            ProviderRegistry.from_config(
+                providers,
+                factory_overrides={"bad": "not-a-function"},
+            )
+
+    def test_from_config_raises_for_non_provider_return(self):
+        config = _make_config(driver="bad")
+        providers = {"test": config}
+
+        with pytest.raises(
+            DriverFactoryNotFoundError,
+            match="BaseCompletionProvider",
+        ):
+            ProviderRegistry.from_config(
+                providers,
+                factory_overrides={
+                    "bad": lambda name, cfg: "not-a-provider",
+                },
+            )
+
+    def test_from_config_raises_for_factory_exception(self):
+        """Factory that raises is wrapped as DriverFactoryNotFoundError."""
+        config = _make_config(driver="bad")
+        providers = {"test": config}
+
+        def _failing_factory(name, cfg):
+            msg = "construction failed"
+            raise TypeError(msg)
+
+        with pytest.raises(
+            DriverFactoryNotFoundError,
+            match="construction failed",
+        ):
+            ProviderRegistry.from_config(
+                providers,
+                factory_overrides={"bad": _failing_factory},
+            )
 
     def test_from_config_uses_litellm_by_default(self):
         """Default driver='litellm' resolves to LiteLLMDriver factory."""

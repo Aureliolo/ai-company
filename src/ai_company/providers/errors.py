@@ -147,7 +147,11 @@ class DriverNotRegisteredError(ProviderError):
 
 
 class DriverAlreadyRegisteredError(ProviderError):
-    """A driver with this name is already registered."""
+    """A driver with this name is already registered.
+
+    Reserved for future use if the registry gains mutable operations
+    (add/remove after construction).  Not currently raised.
+    """
 
     is_retryable = False
 

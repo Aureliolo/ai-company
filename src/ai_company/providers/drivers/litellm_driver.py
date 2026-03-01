@@ -6,6 +6,7 @@ API.
 """
 
 import json
+import logging
 from typing import TYPE_CHECKING, Any
 
 import litellm as _litellm
@@ -67,6 +68,8 @@ if TYPE_CHECKING:
         ToolDefinition,
     )
 
+_logger = logging.getLogger(__name__)
+
 # ── Exception mapping table ──────────────────────────────────────
 
 _EXCEPTION_TABLE: tuple[tuple[type[Exception], type[errors.ProviderError]], ...] = (
@@ -95,6 +98,10 @@ class LiteLLMDriver(BaseCompletionProvider):
         provider_name: Provider key from config (e.g. ``"anthropic"``).
         config: Provider configuration including API key, base URL,
             and model definitions.
+
+    Raises:
+        ProviderError: All LiteLLM exceptions are mapped to the
+            ``ProviderError`` hierarchy via ``_map_exception``.
     """
 
     def __init__(
@@ -128,10 +135,11 @@ class LiteLLMDriver(BaseCompletionProvider):
 
         try:
             response = await _litellm.acompletion(**kwargs)
+            return self._map_response(response, model_config)
+        except errors.ProviderError:
+            raise
         except Exception as exc:
             raise self._map_exception(exc, model) from exc
-
-        return self._map_response(response, model_config)
 
     async def _do_stream(
         self,
@@ -141,7 +149,12 @@ class LiteLLMDriver(BaseCompletionProvider):
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Call ``litellm.acompletion(stream=True)``."""
+        """Call ``litellm.acompletion(stream=True)`` and return a mapped iterator.
+
+        Returns an ``AsyncIterator[StreamChunk]`` (rather than yielding
+        directly) because the base class ``await``s this coroutine to
+        obtain the iterator.
+        """
         model_config = self._resolve_model(model)
         litellm_model = f"{self._provider_name}/{model_config.id}"
         kwargs = self._build_kwargs(
@@ -154,16 +167,23 @@ class LiteLLMDriver(BaseCompletionProvider):
 
         try:
             raw_stream = await _litellm.acompletion(**kwargs)
+            return self._wrap_stream(raw_stream, model, model_config)
+        except errors.ProviderError:
+            raise
         except Exception as exc:
             raise self._map_exception(exc, model) from exc
-
-        return self._wrap_stream(raw_stream, model, model_config)
 
     async def _do_get_model_capabilities(
         self,
         model: str,
     ) -> ModelCapabilities:
-        """Build ``ModelCapabilities`` from config + LiteLLM info."""
+        """Build ``ModelCapabilities`` from config + LiteLLM info.
+
+        Queries LiteLLM's model registry for metadata (tool support,
+        vision, max output tokens).  Falls back to 4096 max output
+        tokens if LiteLLM has no data.  The final ``max_output_tokens``
+        is capped at the model's configured ``max_context``.
+        """
         model_config = self._resolve_model(model)
         litellm_model = f"{self._provider_name}/{model_config.id}"
         info = self._get_litellm_model_info(litellm_model)
@@ -171,22 +191,22 @@ class LiteLLMDriver(BaseCompletionProvider):
         max_output = int(
             info.get("max_output_tokens", 0) or info.get("max_tokens", 0) or 4096,
         )
+        supports_streaming = bool(info.get("supports_streaming", True))
+        supports_tools = bool(
+            info.get("supports_function_calling", False),
+        )
 
         return ModelCapabilities(
             model_id=model_config.id,
             provider=self._provider_name,
             max_context_tokens=model_config.max_context,
             max_output_tokens=min(max_output, model_config.max_context),
-            supports_tools=bool(
-                info.get("supports_function_calling", False),
-            ),
+            supports_tools=supports_tools,
             supports_vision=bool(
                 info.get("supports_vision", False),
             ),
-            supports_streaming=True,
-            supports_streaming_tool_calls=bool(
-                info.get("supports_function_calling", False),
-            ),
+            supports_streaming=supports_streaming,
+            supports_streaming_tool_calls=supports_tools and supports_streaming,
             supports_system_messages=bool(
                 info.get("supports_system_messages", True),
             ),
@@ -200,11 +220,25 @@ class LiteLLMDriver(BaseCompletionProvider):
     def _build_model_lookup(
         models: tuple[ProviderModelConfig, ...],
     ) -> dict[str, ProviderModelConfig]:
-        """Build alias/id -> model config lookup."""
+        """Build alias/id -> model config lookup.
+
+        Raises:
+            ValueError: If an alias collides with another model's ID
+                or alias.
+        """
         lookup: dict[str, ProviderModelConfig] = {}
         for m in models:
+            if m.id in lookup and lookup[m.id] is not m:
+                msg = f"Duplicate model lookup key: {m.id!r}"
+                raise ValueError(msg)
             lookup[m.id] = m
             if m.alias is not None:
+                if m.alias in lookup and lookup[m.alias].id != m.id:
+                    msg = (
+                        f"Model alias {m.alias!r} collides with "
+                        f"existing key for model {lookup[m.alias].id!r}"
+                    )
+                    raise ValueError(msg)
                 lookup[m.alias] = m
         return lookup
 
@@ -262,7 +296,18 @@ class LiteLLMDriver(BaseCompletionProvider):
         model_config: ProviderModelConfig,
     ) -> CompletionResponse:
         """Map a LiteLLM ``ModelResponse`` to ``CompletionResponse``."""
-        choice = response.choices[0]
+        choices = getattr(response, "choices", [])
+        if not choices:
+            msg = f"Provider returned empty choices for model {model_config.id!r}"
+            raise errors.ProviderInternalError(
+                msg,
+                context={
+                    "provider": self._provider_name,
+                    "model": model_config.id,
+                },
+            )
+
+        choice = choices[0]
         message = choice.message
 
         content: str | None = getattr(message, "content", None)
@@ -273,8 +318,8 @@ class LiteLLMDriver(BaseCompletionProvider):
         )
 
         usage_obj = getattr(response, "usage", None)
-        input_tok = int(getattr(usage_obj, "prompt_tokens", 0))
-        output_tok = int(getattr(usage_obj, "completion_tokens", 0))
+        input_tok = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
+        output_tok = int(getattr(usage_obj, "completion_tokens", 0) or 0)
         usage = self.compute_cost(
             input_tok,
             output_tok,
@@ -342,6 +387,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
         delta = getattr(choices[0], "delta", None)
         if delta is None:
+            _logger.debug("Stream chunk has choices but no delta, skipping")
             return result
 
         text = getattr(delta, "content", None)
@@ -358,7 +404,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             _accumulate_tool_call_deltas(raw_tc, pending)
 
         usage_obj = getattr(chunk, "usage", None)
-        if usage_obj and getattr(usage_obj, "prompt_tokens", 0):
+        if usage_obj is not None:
             result.append(
                 self._make_usage_chunk(usage_obj, model_config),
             )
@@ -371,8 +417,8 @@ class LiteLLMDriver(BaseCompletionProvider):
         model_config: ProviderModelConfig,
     ) -> StreamChunk:
         """Build a ``USAGE`` stream chunk."""
-        input_tok = int(getattr(usage_obj, "prompt_tokens", 0))
-        output_tok = int(getattr(usage_obj, "completion_tokens", 0))
+        input_tok = int(getattr(usage_obj, "prompt_tokens", 0) or 0)
+        output_tok = int(getattr(usage_obj, "completion_tokens", 0) or 0)
         usage = self.compute_cost(
             input_tok,
             output_tok,
@@ -421,12 +467,21 @@ class LiteLLMDriver(BaseCompletionProvider):
         headers = getattr(exc, "headers", None)
         if not isinstance(headers, dict):
             return None
-        raw = headers.get("retry-after")
+        # Case-insensitive lookup per HTTP semantics
+        raw: str | None = None
+        for key, value in headers.items():
+            if isinstance(key, str) and key.lower() == "retry-after":
+                raw = value
+                break
         if raw is None:
             return None
         try:
             return float(raw)
         except ValueError, TypeError:
+            _logger.debug(
+                "Could not parse retry-after header as seconds: %r",
+                raw,
+            )
             return None
 
     # ── LiteLLM model info ───────────────────────────────────────
@@ -438,11 +493,23 @@ class LiteLLMDriver(BaseCompletionProvider):
         """Query LiteLLM for static model metadata.
 
         Returns empty dict if the model is unknown to LiteLLM.
+        Uses config defaults when metadata is unavailable.
         """
         try:
             raw = _litellm.get_model_info(model=litellm_model)
             info: dict[str, Any] = dict(raw) if raw else {}
+        except KeyError, ValueError:
+            _logger.info(
+                "No LiteLLM metadata for model %r, using config defaults",
+                litellm_model,
+            )
+            return {}
         except Exception:
+            _logger.warning(
+                "Unexpected error querying LiteLLM model info for %r",
+                litellm_model,
+                exc_info=True,
+            )
             return {}
         return info if isinstance(info, dict) else {}
 
@@ -484,7 +551,12 @@ def _accumulate_tool_call_deltas(
 def _emit_pending_tool_calls(
     pending: dict[int, _ToolCallAccumulator],
 ) -> list[StreamChunk]:
-    """Build ``TOOL_CALL_DELTA`` chunks from accumulated data."""
+    """Build ``TOOL_CALL_DELTA`` chunks from accumulated data.
+
+    Although the event type is ``TOOL_CALL_DELTA``, each chunk contains
+    a fully assembled ``ToolCall`` (not a partial delta).  The stream
+    protocol reuses the delta event type for final tool call delivery.
+    """
     result: list[StreamChunk] = []
     for idx in sorted(pending):
         tc = pending[idx].build()
@@ -521,12 +593,30 @@ class _ToolCallAccumulator:
                 self.arguments += str(args)
 
     def build(self) -> ToolCall | None:
-        """Build a ``ToolCall`` if enough data accumulated."""
+        """Build a ``ToolCall`` if enough data accumulated.
+
+        Returns ``None`` if either ``id`` or ``name`` is still empty,
+        which can happen with malformed or incomplete streaming deltas.
+        """
         if not self.id or not self.name:
+            if self.arguments:
+                _logger.warning(
+                    "Dropping incomplete streamed tool call "
+                    "(id=%r, name=%r, args_len=%d)",
+                    self.id,
+                    self.name,
+                    len(self.arguments),
+                )
             return None
         try:
             parsed = json.loads(self.arguments) if self.arguments else {}
         except json.JSONDecodeError, ValueError:
+            _logger.warning(
+                "Failed to parse tool call arguments for tool %r (id=%r): %r",
+                self.name,
+                self.id,
+                self.arguments[:200] if self.arguments else "",
+            )
             parsed = {}
         args: dict[str, Any] = parsed if isinstance(parsed, dict) else {}
         return ToolCall(id=self.id, name=self.name, arguments=args)

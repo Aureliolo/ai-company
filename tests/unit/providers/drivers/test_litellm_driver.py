@@ -20,6 +20,7 @@ from ai_company.providers.errors import (
     InvalidRequestError,
     ModelNotFoundError,
     ProviderConnectionError,
+    ProviderError,
     ProviderInternalError,
     ProviderTimeoutError,
     RateLimitError,
@@ -331,6 +332,113 @@ class TestDoStream:
         assert kw["stream"] is True
         assert kw["stream_options"] == {"include_usage": True}
 
+    async def test_streaming_incomplete_tool_call_dropped(self):
+        """Tool call with no id/name is silently dropped."""
+        driver = _make_driver()
+        # Delta with arguments but no id or name
+        td = make_stream_tool_call_delta(
+            index=0,
+            arguments='{"query": "test"}',
+        )
+        chunks = [
+            make_stream_chunk(tool_calls=[td]),
+            make_stream_chunk(finish_reason="tool_calls"),
+        ]
+
+        with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
+            collected = await _collect_stream(driver, m, chunks)
+
+        tc_chunks = [
+            c for c in collected if c.event_type == StreamEventType.TOOL_CALL_DELTA
+        ]
+        assert len(tc_chunks) == 0
+
+    async def test_streaming_multiple_concurrent_tool_calls(self):
+        """Multiple tool calls at different indices are emitted separately."""
+        driver = _make_driver()
+        td1_a = make_stream_tool_call_delta(
+            index=0,
+            call_id="call_001",
+            name="search",
+            arguments='{"q":',
+        )
+        td2_a = make_stream_tool_call_delta(
+            index=1,
+            call_id="call_002",
+            name="read",
+            arguments='{"path":',
+        )
+        td1_b = make_stream_tool_call_delta(
+            index=0,
+            arguments=' "test"}',
+        )
+        td2_b = make_stream_tool_call_delta(
+            index=1,
+            arguments=' "f.py"}',
+        )
+        chunks = [
+            make_stream_chunk(tool_calls=[td1_a, td2_a]),
+            make_stream_chunk(tool_calls=[td1_b, td2_b]),
+            make_stream_chunk(finish_reason="tool_calls"),
+        ]
+
+        with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
+            collected = await _collect_stream(driver, m, chunks)
+
+        tc_chunks = [
+            c for c in collected if c.event_type == StreamEventType.TOOL_CALL_DELTA
+        ]
+        assert len(tc_chunks) == 2
+        assert tc_chunks[0].tool_call_delta.id == "call_001"
+        assert tc_chunks[0].tool_call_delta.name == "search"
+        assert tc_chunks[0].tool_call_delta.arguments == {"q": "test"}
+        assert tc_chunks[1].tool_call_delta.id == "call_002"
+        assert tc_chunks[1].tool_call_delta.name == "read"
+        assert tc_chunks[1].tool_call_delta.arguments == {"path": "f.py"}
+
+    async def test_streaming_usage_only_chunk_no_choices(self):
+        """Usage-only chunk with empty choices is emitted."""
+        from unittest.mock import MagicMock
+
+        driver = _make_driver()
+        # Usage-only chunk: choices=[] with usage present
+        usage_chunk = MagicMock()
+        usage_chunk.choices = []
+        usage_obj = MagicMock()
+        usage_obj.prompt_tokens = 50
+        usage_obj.completion_tokens = 10
+        usage_obj.total_tokens = 60
+        usage_chunk.usage = usage_obj
+
+        content_chunk = make_stream_chunk(content="Hi")
+        chunks = [content_chunk, usage_chunk]
+
+        with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
+            collected = await _collect_stream(driver, m, chunks)
+
+        usage_chunks = [c for c in collected if c.event_type == StreamEventType.USAGE]
+        assert len(usage_chunks) == 1
+        assert usage_chunks[0].usage.input_tokens == 50
+
+    async def test_streaming_usage_emitted_when_prompt_tokens_zero(self):
+        """Usage with prompt_tokens=0 is still emitted."""
+        driver = _make_driver()
+        chunks = [
+            make_stream_chunk(
+                content="Hi",
+                prompt_tokens=0,
+                completion_tokens=10,
+            ),
+        ]
+
+        with patch(_PATCH_ACOMPLETION, new_callable=AsyncMock) as m:
+            collected = await _collect_stream(driver, m, chunks)
+
+        usage_chunks = [c for c in collected if c.event_type == StreamEventType.USAGE]
+        assert len(usage_chunks) == 1
+        assert usage_chunks[0].usage.input_tokens == 0
+        assert usage_chunks[0].usage.output_tokens == 10
+
 
 # ── Exception mapping ────────────────────────────────────────────
 
@@ -395,6 +503,73 @@ class TestExceptionMapping:
 
         assert exc_info.value.retry_after == 30.0
 
+    async def test_rate_limit_retry_after_case_insensitive(self):
+        """Header lookup is case-insensitive per HTTP semantics."""
+        import litellm as _litellm
+
+        driver = _make_driver()
+        exc = _litellm.RateLimitError(
+            message="Rate limited",
+            model="test",
+            llm_provider="anthropic",
+        )
+        exc.headers = {"Retry-After": "15"}
+
+        with patch(
+            _PATCH_ACOMPLETION,
+            new_callable=AsyncMock,
+        ) as m:
+            m.side_effect = exc
+            with pytest.raises(RateLimitError) as exc_info:
+                await driver.complete(_user_message(), "sonnet")
+
+        assert exc_info.value.retry_after == 15.0
+
+    async def test_rate_limit_no_headers(self):
+        """No headers attribute yields retry_after=None."""
+        import litellm as _litellm
+
+        driver = _make_driver()
+        exc = _litellm.RateLimitError(
+            message="Rate limited",
+            model="test",
+            llm_provider="anthropic",
+        )
+
+        with patch(
+            _PATCH_ACOMPLETION,
+            new_callable=AsyncMock,
+        ) as m:
+            m.side_effect = exc
+            with pytest.raises(RateLimitError) as exc_info:
+                await driver.complete(_user_message(), "sonnet")
+
+        assert exc_info.value.retry_after is None
+
+    async def test_rate_limit_non_numeric_retry_after(self):
+        """Non-numeric retry-after gracefully returns None."""
+        import litellm as _litellm
+
+        driver = _make_driver()
+        exc = _litellm.RateLimitError(
+            message="Rate limited",
+            model="test",
+            llm_provider="anthropic",
+        )
+        exc.headers = {
+            "retry-after": "Wed, 21 Oct 2025 07:28:00 GMT",
+        }
+
+        with patch(
+            _PATCH_ACOMPLETION,
+            new_callable=AsyncMock,
+        ) as m:
+            m.side_effect = exc
+            with pytest.raises(RateLimitError) as exc_info:
+                await driver.complete(_user_message(), "sonnet")
+
+        assert exc_info.value.retry_after is None
+
     async def test_unknown_exception_maps_to_internal(self):
         driver = _make_driver()
 
@@ -438,6 +613,39 @@ class TestExceptionMapping:
                 async for _ in stream:
                     pass
 
+    async def test_stream_exception_before_iteration(self):
+        """Stream setup failure maps to ProviderError."""
+        import litellm as _litellm
+
+        driver = _make_driver()
+        with patch(
+            _PATCH_ACOMPLETION,
+            new_callable=AsyncMock,
+        ) as m:
+            m.side_effect = _litellm.AuthenticationError(
+                message="Invalid key",
+                model="test",
+                llm_provider="anthropic",
+            )
+            with pytest.raises(AuthenticationError):
+                await driver.stream(_user_message(), "sonnet")
+
+    async def test_response_mapping_error_wrapped_as_provider_error(self):
+        """Errors during response mapping are caught, not leaked raw."""
+        from unittest.mock import MagicMock
+
+        driver = _make_driver()
+        response = MagicMock()
+        response.choices = []  # empty choices triggers our guard
+
+        with patch(
+            _PATCH_ACOMPLETION,
+            new_callable=AsyncMock,
+        ) as m:
+            m.return_value = response
+            with pytest.raises(ProviderError):
+                await driver.complete(_user_message(), "sonnet")
+
 
 # ── Model capabilities ───────────────────────────────────────────
 
@@ -478,7 +686,41 @@ class TestGetModelCapabilities:
             caps = await driver.get_model_capabilities("sonnet")
 
         assert caps.model_id == "claude-sonnet-4-6"
-        assert caps.max_output_tokens == 4096  # default
+        assert caps.max_output_tokens == 4096
+
+    async def test_streaming_capability_from_model_info(self):
+        """supports_streaming reads from model info, not hard-coded."""
+        driver = _make_driver()
+        model_info = {
+            "supports_streaming": False,
+            "supports_function_calling": True,
+        }
+
+        with patch(
+            _PATCH_MODEL_INFO,
+            return_value=model_info,
+        ):
+            caps = await driver.get_model_capabilities("sonnet")
+
+        assert caps.supports_streaming is False
+        assert caps.supports_streaming_tool_calls is False
+
+    async def test_streaming_tool_calls_requires_both(self):
+        """supports_streaming_tool_calls needs streaming AND tools."""
+        driver = _make_driver()
+        model_info = {
+            "supports_streaming": True,
+            "supports_function_calling": False,
+        }
+
+        with patch(
+            _PATCH_MODEL_INFO,
+            return_value=model_info,
+        ):
+            caps = await driver.get_model_capabilities("sonnet")
+
+        assert caps.supports_streaming is True
+        assert caps.supports_streaming_tool_calls is False
 
     async def test_max_output_capped_at_context(self):
         config = make_provider_config(

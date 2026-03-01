@@ -158,10 +158,13 @@ class TestMapFinishReason:
         ("raw", "expected"),
         [
             ("stop", FinishReason.STOP),
+            ("end_turn", FinishReason.STOP),
+            ("stop_sequence", FinishReason.STOP),
             ("length", FinishReason.MAX_TOKENS),
             ("max_tokens", FinishReason.MAX_TOKENS),
             ("tool_calls", FinishReason.TOOL_USE),
             ("function_call", FinishReason.TOOL_USE),
+            ("tool_use", FinishReason.TOOL_USE),
             ("content_filter", FinishReason.CONTENT_FILTER),
         ],
     )

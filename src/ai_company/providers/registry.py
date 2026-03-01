@@ -83,7 +83,10 @@ class ProviderRegistry:
 
     def __contains__(self, name: object) -> bool:
         """Check whether a provider name is registered."""
-        return name in self._drivers
+        try:
+            return name in self._drivers
+        except TypeError:
+            return False
 
     def __len__(self) -> int:
         """Return the number of registered providers."""
@@ -171,7 +174,16 @@ def _build_driver(
             context={"provider": name, "driver": driver_type},
         )
 
-    driver = factory(name, config)
+    try:
+        driver = factory(name, config)
+    except Exception as exc:
+        msg = (
+            f"Failed to instantiate driver {driver_type!r} for provider {name!r}: {exc}"
+        )
+        raise DriverFactoryNotFoundError(
+            msg,
+            context={"provider": name, "driver": driver_type},
+        ) from exc
     if not isinstance(driver, BaseCompletionProvider):
         msg = (
             f"Factory for {driver_type!r} did not produce a "

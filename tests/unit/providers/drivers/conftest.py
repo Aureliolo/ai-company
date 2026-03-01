@@ -1,7 +1,7 @@
 """Shared fixtures and mock factories for driver tests."""
 
 from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -168,9 +168,3 @@ async def mock_stream_response(
     """Create an async iterator from a list of mock chunks."""
     for chunk in chunks:
         yield chunk
-
-
-@pytest.fixture
-def mock_acompletion() -> AsyncMock:
-    """Pre-configured ``AsyncMock`` for ``litellm.acompletion``."""
-    return AsyncMock()
