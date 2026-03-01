@@ -48,6 +48,12 @@ class ToolDefinition(BaseModel):
     Uses raw JSON Schema for ``parameters_schema`` because every LLM
     provider (OpenAI, Anthropic, LiteLLM) consumes it natively.
 
+    Note:
+        The ``parameters_schema`` dict is shallowly immutable under the
+        frozen model — reassignment is prevented but contents can still
+        be mutated.  Callers should treat it as read-only or copy before
+        modifying.
+
     Attributes:
         name: Tool name (must be non-blank).
         description: Human-readable description of the tool.
@@ -66,6 +72,12 @@ class ToolDefinition(BaseModel):
 
 class ToolCall(BaseModel):
     """A tool invocation requested by the model.
+
+    Note:
+        The ``arguments`` dict is shallowly immutable under the frozen
+        model — reassignment is prevented but contents can still be
+        mutated.  Callers should treat it as read-only or copy before
+        modifying.
 
     Attributes:
         id: Provider-assigned tool call identifier.
