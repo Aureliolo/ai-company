@@ -6,6 +6,7 @@ Public API
     load_config
     load_config_from_string
     discover_config
+    bootstrap_logging
     default_config_dict
     RootConfig
     AgentConfig
@@ -29,6 +30,7 @@ from ai_company.config.errors import (
     ConfigValidationError,
 )
 from ai_company.config.loader import (
+    bootstrap_logging,
     discover_config,
     load_config,
     load_config_from_string,
@@ -54,6 +56,7 @@ __all__ = [
     "RootConfig",
     "RoutingConfig",
     "RoutingRuleConfig",
+    "bootstrap_logging",
     "default_config_dict",
     "discover_config",
     "load_config",

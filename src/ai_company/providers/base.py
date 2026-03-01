@@ -10,6 +10,13 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator  # noqa: TC003
 
 from ai_company.constants import BUDGET_ROUNDING_PRECISION
+from ai_company.observability import get_logger
+from ai_company.observability.events import (
+    PROVIDER_CALL_ERROR,
+    PROVIDER_CALL_START,
+    PROVIDER_CALL_SUCCESS,
+    PROVIDER_STREAM_START,
+)
 
 from .capabilities import ModelCapabilities  # noqa: TC001
 from .errors import InvalidRequestError
@@ -21,6 +28,8 @@ from .models import (
     TokenUsage,
     ToolDefinition,
 )
+
+logger = get_logger(__name__)
 
 
 class BaseCompletionProvider(ABC):
@@ -64,12 +73,26 @@ class BaseCompletionProvider(ABC):
         """
         self._validate_messages(messages)
         self._validate_model(model)
-        return await self._do_complete(
-            messages,
-            model,
-            tools=tools,
-            config=config,
+        logger.debug(
+            PROVIDER_CALL_START,
+            model=model,
+            message_count=len(messages),
         )
+        try:
+            result = await self._do_complete(
+                messages,
+                model,
+                tools=tools,
+                config=config,
+            )
+        except Exception:
+            logger.error(PROVIDER_CALL_ERROR, model=model, exc_info=True)
+            raise
+        logger.debug(
+            PROVIDER_CALL_SUCCESS,
+            model=model,
+        )
+        return result
 
     async def stream(
         self,
@@ -96,12 +119,21 @@ class BaseCompletionProvider(ABC):
         """
         self._validate_messages(messages)
         self._validate_model(model)
-        return await self._do_stream(
-            messages,
-            model,
-            tools=tools,
-            config=config,
+        logger.debug(
+            PROVIDER_STREAM_START,
+            model=model,
+            message_count=len(messages),
         )
+        try:
+            return await self._do_stream(
+                messages,
+                model,
+                tools=tools,
+                config=config,
+            )
+        except Exception:
+            logger.error(PROVIDER_CALL_ERROR, model=model, exc_info=True)
+            raise
 
     async def get_model_capabilities(self, model: str) -> ModelCapabilities:
         """Validate model identifier, delegate to ``_do_get_model_capabilities``.
@@ -249,6 +281,7 @@ class BaseCompletionProvider(ABC):
         """
         if not messages:
             msg = "messages must not be empty"
+            logger.error(PROVIDER_CALL_ERROR, error="messages must not be empty")
             raise InvalidRequestError(msg, context={"field": "messages"})
 
     @staticmethod
@@ -264,6 +297,11 @@ class BaseCompletionProvider(ABC):
         """
         if not isinstance(model, str) or not model.strip():
             msg = "model must be a non-blank string"
+            logger.error(
+                PROVIDER_CALL_ERROR,
+                error="model must be a non-blank string",
+                received_type=type(model).__name__,
+            )
             raise InvalidRequestError(
                 msg,
                 context={

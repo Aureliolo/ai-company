@@ -3,8 +3,13 @@
 from typing import TYPE_CHECKING
 
 import pytest
+import structlog
 
 from ai_company.config.schema import ProviderConfig, ProviderModelConfig
+from ai_company.observability.events import (
+    PROVIDER_DRIVER_NOT_REGISTERED,
+    PROVIDER_REGISTRY_BUILT,
+)
 from ai_company.providers.base import BaseCompletionProvider
 
 if TYPE_CHECKING:
@@ -278,3 +283,32 @@ class TestRegistryImmutability:
         # Registry should not be affected
         assert len(registry) == 1
         assert "b" not in registry
+
+
+# ── Logging tests ─────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestRegistryLogging:
+    def test_registry_built_event(self) -> None:
+        stub = _StubDriver("test", _make_config())
+        with structlog.testing.capture_logs() as cap:
+            ProviderRegistry.from_config(
+                {"test": _make_config()},
+                factory_overrides={"litellm": lambda n, c: stub},
+            )
+        events = [e for e in cap if e.get("event") == PROVIDER_REGISTRY_BUILT]
+        assert len(events) == 1
+        assert events[0]["provider_count"] == 1
+
+    def test_driver_not_registered_event(self) -> None:
+        registry = ProviderRegistry({})
+        with (
+            structlog.testing.capture_logs() as cap,
+            pytest.raises(DriverNotRegisteredError),
+        ):
+            registry.get("nonexistent")
+        events = [e for e in cap if e.get("event") == PROVIDER_DRIVER_NOT_REGISTERED]
+        assert len(events) == 1
+        assert events[0]["name"] == "nonexistent"

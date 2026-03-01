@@ -5,12 +5,10 @@ into fully configured :class:`logging.Handler` objects with the
 appropriate structlog :class:`~structlog.stdlib.ProcessorFormatter`.
 """
 
-# TODO: Add logger name filters to route specific loggers to specific
-# sinks (e.g., security -> audit.log)
-
 import logging
 import logging.handlers
 import sys
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -21,6 +19,58 @@ from structlog.stdlib import ProcessorFormatter
 
 from ai_company.observability.config import RotationConfig, SinkConfig
 from ai_company.observability.enums import RotationStrategy, SinkType
+
+# ── Logger name routing ───────────────────────────────────────────
+
+# Maps sink file_path to the logger name prefixes that should be
+# routed to that sink.  Sinks not listed here are catch-all sinks
+# (no name filter attached).
+_SINK_ROUTING: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "audit.log": ("ai_company.security.",),
+        "cost_usage.log": ("ai_company.budget.", "ai_company.providers."),
+        "agent_activity.log": ("ai_company.engine.", "ai_company.core."),
+    }
+)
+
+
+class _LoggerNameFilter(logging.Filter):
+    """Filter log records by logger name prefixes.
+
+    When *include_prefixes* is non-empty, only records whose
+    ``record.name`` starts with one of the prefixes are accepted.
+    When *exclude_prefixes* is non-empty, records matching any
+    exclude prefix are rejected (checked before includes).
+
+    Args:
+        include_prefixes: Accept only these prefixes (empty = accept all).
+        exclude_prefixes: Reject these prefixes (empty = reject none).
+    """
+
+    def __init__(
+        self,
+        *,
+        include_prefixes: tuple[str, ...] = (),
+        exclude_prefixes: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__()
+        for prefix in (*include_prefixes, *exclude_prefixes):
+            if not prefix or not prefix.strip():
+                msg = "Logger name prefixes must be non-empty strings"
+                raise ValueError(msg)
+        self._include = include_prefixes
+        self._exclude = exclude_prefixes
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Return True if *record* passes the prefix filters."""
+        name = record.name
+        if self._exclude:
+            for prefix in self._exclude:
+                if name.startswith(prefix):
+                    return False
+        if self._include:
+            return any(name.startswith(prefix) for prefix in self._include)
+        return True
 
 
 def _build_file_handler(
@@ -117,5 +167,14 @@ def build_handler(
         foreign_pre_chain=foreign_pre_chain,
     )
     handler.setFormatter(formatter)
+
+    # Attach a logger name filter for dedicated sink files.
+    # Only include_prefixes is used today; exclude_prefixes exists on
+    # _LoggerNameFilter for future routing needs (e.g. noisy-logger suppression).
+    if sink.file_path is not None and sink.file_path in _SINK_ROUTING:
+        name_filter = _LoggerNameFilter(
+            include_prefixes=_SINK_ROUTING[sink.file_path],
+        )
+        handler.addFilter(name_filter)
 
     return handler

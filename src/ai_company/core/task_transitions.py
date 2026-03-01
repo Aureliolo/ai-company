@@ -15,6 +15,13 @@ transitions.
 """
 
 from ai_company.core.enums import TaskStatus
+from ai_company.observability import get_logger
+from ai_company.observability.events import (
+    TASK_TRANSITION_CONFIG_ERROR,
+    TASK_TRANSITION_INVALID,
+)
+
+logger = get_logger(__name__)
 
 VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.CREATED: frozenset({TaskStatus.ASSIGNED}),
@@ -45,6 +52,11 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.CANCELLED: frozenset(),  # terminal
 }
 
+_missing = set(TaskStatus) - set(VALID_TRANSITIONS)
+if _missing:
+    _msg = f"Missing transition entries for: {sorted(s.value for s in _missing)}"
+    raise ValueError(_msg)
+
 
 def validate_transition(current: TaskStatus, target: TaskStatus) -> None:
     """Validate that a state transition is allowed.
@@ -58,6 +70,10 @@ def validate_transition(current: TaskStatus, target: TaskStatus) -> None:
             is not in :data:`VALID_TRANSITIONS`.
     """
     if current not in VALID_TRANSITIONS:
+        logger.critical(
+            TASK_TRANSITION_CONFIG_ERROR,
+            current_status=current.value,
+        )
         msg = (
             f"TaskStatus {current.value!r} has no entry in VALID_TRANSITIONS. "
             f"This is a configuration error — update task_transitions.py."
@@ -65,6 +81,12 @@ def validate_transition(current: TaskStatus, target: TaskStatus) -> None:
         raise ValueError(msg)
     allowed = VALID_TRANSITIONS[current]
     if target not in allowed:
+        logger.warning(
+            TASK_TRANSITION_INVALID,
+            current_status=current.value,
+            target_status=target.value,
+            allowed=sorted(s.value for s in allowed),
+        )
         msg = (
             f"Invalid task status transition: {current.value!r} -> "
             f"{target.value!r}. Allowed from {current.value!r}: "

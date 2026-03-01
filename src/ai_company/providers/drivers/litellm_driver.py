@@ -6,7 +6,6 @@ API.
 """
 
 import json
-import logging
 from typing import TYPE_CHECKING, Any
 
 import litellm as _litellm
@@ -41,6 +40,21 @@ from litellm.exceptions import (
     Timeout as LiteLLMTimeout,
 )
 
+from ai_company.observability import get_logger
+from ai_company.observability.events import (
+    PROVIDER_AUTH_ERROR,
+    PROVIDER_CONNECTION_ERROR,
+    PROVIDER_MODEL_INFO_UNAVAILABLE,
+    PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
+    PROVIDER_MODEL_NOT_FOUND,
+    PROVIDER_RATE_LIMITED,
+    PROVIDER_RETRY_AFTER_PARSE_FAILED,
+    PROVIDER_STREAM_CHUNK_NO_DELTA,
+    PROVIDER_STREAM_DONE,
+    PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+    PROVIDER_TOOL_CALL_ARGUMENTS_TRUNCATED,
+    PROVIDER_TOOL_CALL_INCOMPLETE,
+)
 from ai_company.providers import errors
 from ai_company.providers.base import BaseCompletionProvider
 from ai_company.providers.capabilities import ModelCapabilities
@@ -68,7 +82,7 @@ if TYPE_CHECKING:
         ToolDefinition,
     )
 
-_logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ── Exception mapping table ──────────────────────────────────────
 
@@ -135,11 +149,12 @@ class LiteLLMDriver(BaseCompletionProvider):
 
         try:
             response = await _litellm.acompletion(**kwargs)
-            return self._map_response(response, model_config)
         except errors.ProviderError:
             raise
         except Exception as exc:
             raise self._map_exception(exc, model) from exc
+        else:
+            return self._map_response(response, model_config)
 
     async def _do_stream(
         self,
@@ -250,6 +265,12 @@ class LiteLLMDriver(BaseCompletionProvider):
         """
         config = self._model_lookup.get(model)
         if config is None:
+            logger.error(
+                PROVIDER_MODEL_NOT_FOUND,
+                provider=self._provider_name,
+                model=model,
+                available=sorted(self._model_lookup),
+            )
             msg = f"Model {model!r} not found in provider {self._provider_name!r}"
             raise errors.ModelNotFoundError(
                 msg,
@@ -363,6 +384,11 @@ class LiteLLMDriver(BaseCompletionProvider):
 
             for sc in _emit_pending_tool_calls(pending):
                 yield sc
+            logger.debug(
+                PROVIDER_STREAM_DONE,
+                provider=self._provider_name,
+                model=model,
+            )
             yield StreamChunk(event_type=StreamEventType.DONE)
 
         return _generate()
@@ -387,7 +413,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
         delta = getattr(choices[0], "delta", None)
         if delta is None:
-            _logger.debug("Stream chunk has choices but no delta, skipping")
+            logger.debug(PROVIDER_STREAM_CHUNK_NO_DELTA)
             return result
 
         text = getattr(delta, "content", None)
@@ -436,7 +462,7 @@ class LiteLLMDriver(BaseCompletionProvider):
         self,
         exc: Exception,
         model: str,
-    ) -> Exception:
+    ) -> errors.ProviderError:
         """Map a LiteLLM exception to the provider error hierarchy."""
         ctx: dict[str, Any] = {
             "provider": self._provider_name,
@@ -446,10 +472,27 @@ class LiteLLMDriver(BaseCompletionProvider):
         for litellm_type, our_type in _EXCEPTION_TABLE:
             if isinstance(exc, litellm_type):
                 if our_type is errors.RateLimitError:
+                    logger.warning(
+                        PROVIDER_RATE_LIMITED,
+                        provider=self._provider_name,
+                        model=model,
+                    )
                     return errors.RateLimitError(
                         str(exc),
                         retry_after=self._extract_retry_after(exc),
                         context=ctx,
+                    )
+                if our_type is errors.AuthenticationError:
+                    logger.error(
+                        PROVIDER_AUTH_ERROR,
+                        provider=self._provider_name,
+                        model=model,
+                    )
+                elif our_type is errors.ProviderConnectionError:
+                    logger.warning(
+                        PROVIDER_CONNECTION_ERROR,
+                        provider=self._provider_name,
+                        model=model,
                     )
                 return our_type(
                     f"Provider {self._provider_name} error",
@@ -481,9 +524,9 @@ class LiteLLMDriver(BaseCompletionProvider):
         try:
             return float(raw)
         except ValueError, TypeError:
-            _logger.debug(
-                "Could not parse retry-after header as seconds: %r",
-                raw,
+            logger.debug(
+                PROVIDER_RETRY_AFTER_PARSE_FAILED,
+                raw_value=repr(raw),
             )
             return None
 
@@ -502,15 +545,15 @@ class LiteLLMDriver(BaseCompletionProvider):
             raw = _litellm.get_model_info(model=litellm_model)
             info: dict[str, Any] = dict(raw) if raw else {}
         except KeyError, ValueError:
-            _logger.info(
-                "No LiteLLM metadata for model %r, using config defaults",
-                litellm_model,
+            logger.info(
+                PROVIDER_MODEL_INFO_UNAVAILABLE,
+                model=litellm_model,
             )
             return {}
         except Exception:
-            _logger.warning(
-                "Unexpected error querying LiteLLM model info for %r",
-                litellm_model,
+            logger.warning(
+                PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
+                model=litellm_model,
                 exc_info=True,
             )
             return {}
@@ -598,9 +641,9 @@ class _ToolCallAccumulator:
             if args:
                 fragment = str(args)
                 if len(self.arguments) + len(fragment) > self._MAX_ARGUMENTS_LEN:
-                    _logger.warning(
-                        "Tool call arguments exceeded %d byte limit, truncating",
-                        self._MAX_ARGUMENTS_LEN,
+                    logger.warning(
+                        PROVIDER_TOOL_CALL_ARGUMENTS_TRUNCATED,
+                        max_bytes=self._MAX_ARGUMENTS_LEN,
                     )
                     return
                 self.arguments += fragment
@@ -613,22 +656,21 @@ class _ToolCallAccumulator:
         """
         if not self.id or not self.name:
             if self.arguments:
-                _logger.warning(
-                    "Dropping incomplete streamed tool call "
-                    "(id=%r, name=%r, args_len=%d)",
-                    self.id,
-                    self.name,
-                    len(self.arguments),
+                logger.warning(
+                    PROVIDER_TOOL_CALL_INCOMPLETE,
+                    tool_id=self.id,
+                    tool_name=self.name,
+                    args_len=len(self.arguments),
                 )
             return None
         try:
             parsed = json.loads(self.arguments) if self.arguments else {}
         except json.JSONDecodeError, ValueError:
-            _logger.warning(
-                "Failed to parse tool call arguments for tool %r (id=%r): %r",
-                self.name,
-                self.id,
-                self.arguments[:200] if self.arguments else "",
+            logger.warning(
+                PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+                tool_name=self.name,
+                tool_id=self.id,
+                args_length=len(self.arguments) if self.arguments else 0,
             )
             parsed = {}
         args: dict[str, Any] = parsed if isinstance(parsed, dict) else {}

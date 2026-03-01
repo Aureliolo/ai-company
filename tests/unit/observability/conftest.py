@@ -1,17 +1,17 @@
 """Test fixtures and factories for observability tests."""
 
-import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, MutableMapping
 import structlog
 from polyfactory.factories.pydantic_factory import ModelFactory
 
 from ai_company.observability.config import LogConfig, RotationConfig, SinkConfig
 from ai_company.observability.enums import LogLevel, RotationStrategy, SinkType
+from tests.conftest import clear_logging_state
 
 # -- Factories --------------------------------------------------------------
 
@@ -50,20 +50,24 @@ class LogConfigFactory(ModelFactory[LogConfig]):
 # -- Reset Fixture -----------------------------------------------------------
 
 
-def _clear_logging_state() -> None:
-    """Clear structlog context and stdlib root handlers."""
-    structlog.reset_defaults()
-    structlog.contextvars.clear_contextvars()
-    root = logging.getLogger()
-    for handler in root.handlers[:]:
-        root.removeHandler(handler)
-        handler.close()
-    root.setLevel(logging.WARNING)
-
-
 @pytest.fixture(autouse=True)
 def _reset_logging() -> Iterator[None]:
     """Reset structlog and stdlib logging state before and after each test."""
-    _clear_logging_state()
+    clear_logging_state()
     yield
-    _clear_logging_state()
+    clear_logging_state()
+
+
+@pytest.fixture
+def captured_logs() -> Iterator[list[MutableMapping[str, Any]]]:
+    """Capture structlog output as list of dicts for field-level assertions.
+
+    Usage::
+
+        def test_my_event(self, captured_logs: list) -> None:
+            do_something()
+            events = [e for e in captured_logs if e["event"] == MY_EVENT]
+            assert len(events) == 1
+    """
+    with structlog.testing.capture_logs() as cap:
+        yield cap

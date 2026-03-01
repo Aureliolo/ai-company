@@ -27,6 +27,7 @@ from ai_company.observability.correlation import (
     generate_correlation_id,
     unbind_correlation_id,
     with_correlation,
+    with_correlation_async,
 )
 from ai_company.observability.enums import LogLevel, RotationStrategy, SinkType
 from ai_company.observability.processors import sanitize_sensitive_fields
@@ -48,4 +49,5 @@ __all__ = [
     "sanitize_sensitive_fields",
     "unbind_correlation_id",
     "with_correlation",
+    "with_correlation_async",
 ]

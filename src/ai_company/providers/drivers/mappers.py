@@ -7,13 +7,19 @@ Reusable by future native SDK drivers.
 
 import copy
 import json
-import logging
 from typing import Any
 
+from ai_company.observability import get_logger
+from ai_company.observability.events import (
+    PROVIDER_FINISH_REASON_UNKNOWN,
+    PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+    PROVIDER_TOOL_CALL_INCOMPLETE,
+    PROVIDER_TOOL_CALL_MISSING_FUNCTION,
+)
 from ai_company.providers.enums import FinishReason, MessageRole
 from ai_company.providers.models import ChatMessage, ToolCall, ToolDefinition
 
-_logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def messages_to_dicts(messages: list[ChatMessage]) -> list[dict[str, object]]:
@@ -115,9 +121,9 @@ def map_finish_reason(reason: str | None) -> FinishReason:
     result = _FINISH_REASON_MAP.get(reason)
     if result is None:
         if reason is not None:
-            _logger.warning(
-                "Unknown finish reason %r, defaulting to ERROR",
-                reason,
+            logger.warning(
+                PROVIDER_FINISH_REASON_UNKNOWN,
+                reason=reason,
             )
         return FinishReason.ERROR
     return result
@@ -144,9 +150,9 @@ def extract_tool_calls(raw: list[Any] | None) -> tuple[ToolCall, ...]:
         call_id = _get(item, "id", "")
         func = _get(item, "function", None)
         if func is None:
-            _logger.warning(
-                "Tool call item missing 'function' field, skipping: %r",
-                item,
+            logger.warning(
+                PROVIDER_TOOL_CALL_MISSING_FUNCTION,
+                item_type=type(item).__name__,
             )
             continue
         name = _get(func, "name", "")
@@ -155,10 +161,10 @@ def extract_tool_calls(raw: list[Any] | None) -> tuple[ToolCall, ...]:
         if call_id and name:
             calls.append(ToolCall(id=call_id, name=name, arguments=arguments))
         else:
-            _logger.warning(
-                "Incomplete tool call (id=%r, name=%r), skipping",
-                call_id,
-                name,
+            logger.warning(
+                PROVIDER_TOOL_CALL_INCOMPLETE,
+                tool_id=call_id,
+                tool_name=name,
             )
 
     return tuple(calls)
@@ -171,11 +177,14 @@ def _get(obj: Any, key: str, default: Any) -> Any:
     return getattr(obj, key, default)
 
 
-def _parse_arguments(raw: str | dict[str, Any] | Any) -> dict[str, Any]:
+def _parse_arguments(raw: Any) -> dict[str, Any]:
     """Parse tool call arguments from string or dict form.
 
+    Expected inputs are ``str`` (JSON) or ``dict``, but any type is
+    accepted so callers need not pre-validate LLM response shapes.
+
     Args:
-        raw: JSON string or pre-parsed dict.
+        raw: JSON string, pre-parsed dict, or other value.
 
     Returns:
         Parsed arguments dict.  Returns empty dict on parse failure.
@@ -186,12 +195,17 @@ def _parse_arguments(raw: str | dict[str, Any] | Any) -> dict[str, Any]:
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError, ValueError:
-            _logger.warning(
-                "Failed to parse tool call arguments: %r",
-                raw[:200],
+            logger.warning(
+                PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+                args_length=len(raw),
             )
             return {}
         if isinstance(parsed, dict):
             return dict(parsed)
+        logger.warning(
+            PROVIDER_TOOL_CALL_ARGUMENTS_PARSE_FAILED,
+            args_length=len(raw),
+            parsed_type=type(parsed).__name__,
+        )
         return {}
     return {}

@@ -3,9 +3,14 @@
 from typing import TYPE_CHECKING
 
 import pytest
+import structlog
 from pydantic import ValidationError
 
 from ai_company.config.schema import RootConfig
+from ai_company.observability.events import (
+    TEMPLATE_RENDER_START,
+    TEMPLATE_RENDER_SUCCESS,
+)
 from ai_company.templates.errors import TemplateRenderError
 from ai_company.templates.loader import load_template, load_template_file
 from ai_company.templates.renderer import render_template
@@ -14,6 +19,8 @@ from .conftest import TEMPLATE_REQUIRED_VAR_YAML, TEMPLATE_WITH_VARIABLES_YAML
 
 if TYPE_CHECKING:
     from .conftest import TemplateFileFactory
+
+pytestmark = pytest.mark.timeout(30)
 
 # ── render_template basic ────────────────────────────────────────
 
@@ -188,3 +195,18 @@ template:
         loaded = load_template_file(path)
         with pytest.raises(TemplateRenderError, match="Jinja2 rendering failed"):
             render_template(loaded)
+
+
+# ── Logging tests ─────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestRendererLogging:
+    def test_render_emits_start_and_success(self) -> None:
+        loaded = load_template("solo_founder")
+        with structlog.testing.capture_logs() as cap:
+            render_template(loaded)
+        starts = [e for e in cap if e.get("event") == TEMPLATE_RENDER_START]
+        successes = [e for e in cap if e.get("event") == TEMPLATE_RENDER_SUCCESS]
+        assert len(starts) == 1
+        assert len(successes) == 1

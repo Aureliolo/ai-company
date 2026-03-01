@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+import structlog
 
 if TYPE_CHECKING:
     from .conftest import ConfigFileFactory
@@ -25,6 +26,11 @@ from ai_company.config.loader import (
     load_config_from_string,
 )
 from ai_company.config.schema import RootConfig
+from ai_company.observability.events import (
+    CONFIG_LOADED,
+    CONFIG_PARSE_FAILED,
+    CONFIG_VALIDATION_FAILED,
+)
 
 from .conftest import (
     ENV_VAR_MISSING_YAML,
@@ -652,3 +658,41 @@ class TestLoadConfigDiscovery:
         path = tmp_config_file(MINIMAL_VALID_YAML)
         cfg = load_config(path)
         assert cfg.company_name == "Test Corp"
+
+
+# ── Logging tests ─────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestLoaderLogging:
+    def test_config_loaded_event_on_success(
+        self,
+        tmp_config_file: ConfigFileFactory,
+    ) -> None:
+        path = tmp_config_file(MINIMAL_VALID_YAML)
+        with structlog.testing.capture_logs() as cap:
+            load_config(path)
+        events = [e for e in cap if e.get("event") == CONFIG_LOADED]
+        assert len(events) == 1
+        assert "config_path" in events[0]
+
+    def test_config_parse_failed_event(self) -> None:
+        with structlog.testing.capture_logs() as cap, pytest.raises(ConfigParseError):
+            _parse_yaml_string(INVALID_SYNTAX_YAML, "test.yaml")
+        events = [e for e in cap if e.get("event") == CONFIG_PARSE_FAILED]
+        assert len(events) == 1
+        assert events[0]["source"] == "test.yaml"
+
+    def test_config_validation_failed_event(self) -> None:
+        with (
+            structlog.testing.capture_logs() as cap,
+            pytest.raises(ConfigValidationError),
+        ):
+            _validate_config_dict(
+                {"company_name": 12345},
+                source_file="test.yaml",
+            )
+        events = [e for e in cap if e.get("event") == CONFIG_VALIDATION_FAILED]
+        assert len(events) == 1
+        assert events[0]["error_count"] >= 1

@@ -10,7 +10,6 @@ Implements a two-pass loading strategy:
 Both are returned bundled as a :class:`LoadedTemplate` dataclass.
 """
 
-import logging
 import re
 from dataclasses import dataclass
 from importlib import resources
@@ -21,6 +20,15 @@ import yaml
 from pydantic import ValidationError
 
 from ai_company.config.errors import ConfigLocation
+from ai_company.observability import get_logger
+from ai_company.observability.events import (
+    TEMPLATE_BUILTIN_DEFECT,
+    TEMPLATE_LIST_SKIP_INVALID,
+    TEMPLATE_LOAD_ERROR,
+    TEMPLATE_LOAD_START,
+    TEMPLATE_LOAD_SUCCESS,
+    TEMPLATE_PASS1_FLOAT_FALLBACK,
+)
 from ai_company.templates.errors import (
     TemplateNotFoundError,
     TemplateRenderError,
@@ -28,7 +36,7 @@ from ai_company.templates.errors import (
 )
 from ai_company.templates.schema import CompanyTemplate
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _USER_TEMPLATES_DIR = Path.home() / ".ai-company" / "templates"
 
@@ -105,9 +113,9 @@ def list_templates() -> tuple[TemplateInfo, ...]:
                 )
             except (TemplateRenderError, TemplateValidationError, OSError) as exc:
                 logger.warning(
-                    "Skipping invalid user template %s: %s",
-                    path,
-                    exc,
+                    TEMPLATE_LIST_SKIP_INVALID,
+                    template_path=str(path),
+                    error=str(exc),
                 )
 
     # Built-in templates (lower priority).
@@ -124,8 +132,8 @@ def list_templates() -> tuple[TemplateInfo, ...]:
                 )
             except TemplateRenderError, TemplateValidationError, OSError:
                 logger.exception(
-                    "Built-in template %r is invalid (packaging defect)",
-                    name,
+                    TEMPLATE_BUILTIN_DEFECT,
+                    template_name=name,
                 )
 
     return tuple(info for _, info in sorted(seen.items()))
@@ -153,6 +161,7 @@ def load_template(name: str) -> LoadedTemplate:
         TemplateNotFoundError: If no template with *name* exists.
     """
     name_clean = name.strip().lower()
+    logger.debug(TEMPLATE_LOAD_START, template_name=name_clean)
 
     # Sanitize to prevent path traversal.
     safe_name = Path(name_clean).name
@@ -167,13 +176,30 @@ def load_template(name: str) -> LoadedTemplate:
     if _USER_TEMPLATES_DIR.is_dir():
         user_path = _USER_TEMPLATES_DIR / f"{safe_name}.yaml"
         if user_path.is_file():
-            return _load_from_file(user_path)
+            result = _load_from_file(user_path)
+            logger.debug(
+                TEMPLATE_LOAD_SUCCESS,
+                template_name=name_clean,
+                source="user",
+            )
+            return result
 
     # Fall back to builtins.
     if name_clean in BUILTIN_TEMPLATES:
-        return _load_builtin(name_clean)
+        result = _load_builtin(name_clean)
+        logger.debug(
+            TEMPLATE_LOAD_SUCCESS,
+            template_name=name_clean,
+            source="builtin",
+        )
+        return result
 
     available = list_builtin_templates()
+    logger.error(
+        TEMPLATE_LOAD_ERROR,
+        template_name=name,
+        available=list(available),
+    )
     msg = f"Unknown template {name!r}. Available: {list(available)}"
     raise TemplateNotFoundError(
         msg,
@@ -406,8 +432,7 @@ def _to_float(value: Any) -> float:
         return float(value)
     except TypeError, ValueError:
         logger.debug(
-            "Cannot convert %r to float in Pass 1 "
-            "(may be a Jinja2 placeholder), using 0.0",
-            value,
+            TEMPLATE_PASS1_FLOAT_FALLBACK,
+            value=repr(value),
         )
         return 0.0

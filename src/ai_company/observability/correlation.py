@@ -9,8 +9,6 @@ propagation across agent actions, tasks, and API requests.
     code because Python's :mod:`contextvars` is natively async-aware.
 """
 
-# TODO: Add with_correlation_async() for async functions (engine/API)
-
 import functools
 import inspect
 import uuid
@@ -19,10 +17,26 @@ from typing import TYPE_CHECKING, ParamSpec, TypeVar
 import structlog
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Coroutine
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
+
+
+def _build_bindings(
+    request_id: str | None,
+    task_id: str | None,
+    agent_id: str | None,
+) -> dict[str, str]:
+    """Build a contextvars bindings dict from non-None correlation IDs."""
+    bindings: dict[str, str] = {}
+    if request_id is not None:
+        bindings["request_id"] = request_id
+    if task_id is not None:
+        bindings["task_id"] = task_id
+    if agent_id is not None:
+        bindings["agent_id"] = agent_id
+    return bindings
 
 
 def generate_correlation_id() -> str:
@@ -112,8 +126,7 @@ def with_correlation(
     Note:
         This decorator is for **synchronous** functions only.  Applying
         it to an ``async def`` function raises :exc:`TypeError`.  For
-        async functions, manually call :func:`bind_correlation_id` and
-        :func:`unbind_correlation_id` in a ``try``/``finally`` block.
+        async functions, use :func:`with_correlation_async` instead.
 
     Args:
         request_id: Request correlation identifier to bind.
@@ -131,23 +144,68 @@ def with_correlation(
         if inspect.iscoroutinefunction(func):
             msg = (
                 "with_correlation() does not support async functions. "
-                "Manually call bind_correlation_id/unbind_correlation_id "
-                "in a try/finally block."
+                "Use with_correlation_async() instead."
             )
             raise TypeError(msg)
 
         @functools.wraps(func)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
-            bindings: dict[str, str] = {}
-            if request_id is not None:
-                bindings["request_id"] = request_id
-            if task_id is not None:
-                bindings["task_id"] = task_id
-            if agent_id is not None:
-                bindings["agent_id"] = agent_id
-
+            bindings = _build_bindings(request_id, task_id, agent_id)
             with structlog.contextvars.bound_contextvars(**bindings):
                 return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def with_correlation_async(
+    *,
+    request_id: str | None = None,
+    task_id: str | None = None,
+    agent_id: str | None = None,
+) -> Callable[
+    [Callable[_P, Coroutine[object, object, _T]]],
+    Callable[_P, Coroutine[object, object, _T]],
+]:
+    """Decorator that binds correlation IDs for an async function's duration.
+
+    Correlation IDs are bound before the coroutine executes and unbound
+    after it returns or raises.  Only non-``None`` IDs are managed.
+
+    Note:
+        This decorator is for **async** functions only.  Applying it to
+        a synchronous function raises :exc:`TypeError`.  For sync
+        functions use :func:`with_correlation`.
+
+    Args:
+        request_id: Request correlation identifier to bind.
+        task_id: Task correlation identifier to bind.
+        agent_id: Agent correlation identifier to bind.
+
+    Returns:
+        A decorator that manages correlation ID lifecycle for async
+        functions.
+
+    Raises:
+        TypeError: If the decorated function is not a coroutine function.
+    """
+
+    def decorator(
+        func: Callable[_P, Coroutine[object, object, _T]],
+    ) -> Callable[_P, Coroutine[object, object, _T]]:
+        if not inspect.iscoroutinefunction(func):
+            msg = (
+                "with_correlation_async() requires an async function. "
+                "Use with_correlation() for synchronous functions."
+            )
+            raise TypeError(msg)
+
+        @functools.wraps(func)
+        async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+            bindings = _build_bindings(request_id, task_id, agent_id)
+            with structlog.contextvars.bound_contextvars(**bindings):
+                return await func(*args, **kwargs)
 
         return wrapper
 

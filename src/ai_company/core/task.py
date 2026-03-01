@@ -9,6 +9,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ai_company.core.artifact import ExpectedArtifact  # noqa: TC001
 from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
 from ai_company.core.task_transitions import validate_transition
+from ai_company.observability import get_logger
+from ai_company.observability.events import TASK_STATUS_CHANGED
+
+logger = get_logger(__name__)
 
 
 class AcceptanceCriterion(BaseModel):
@@ -216,4 +220,11 @@ class Task(BaseModel):
         payload = self.model_dump()
         payload.update(overrides)
         payload["status"] = target
-        return Task.model_validate(payload)
+        result = Task.model_validate(payload)
+        logger.info(
+            TASK_STATUS_CHANGED,
+            task_id=self.id,
+            from_status=self.status.value,
+            to_status=target.value,
+        )
+        return result
