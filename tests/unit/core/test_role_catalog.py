@@ -57,10 +57,10 @@ class TestSeniorityInfo:
         info = get_seniority_info(SeniorityLevel.C_SUITE)
         assert info.cost_tier == CostTier.PREMIUM
 
-    def test_senior_uses_sonnet_tier(self) -> None:
-        """Verify SENIOR maps to 'sonnet' model tier."""
+    def test_senior_uses_medium_tier(self) -> None:
+        """Verify SENIOR maps to 'medium' model tier."""
         info = get_seniority_info(SeniorityLevel.SENIOR)
-        assert info.typical_model_tier == "sonnet"
+        assert info.typical_model_tier == "medium"
 
     def test_all_entries_frozen(self) -> None:
         """Verify all SeniorityInfo entries are immutable."""

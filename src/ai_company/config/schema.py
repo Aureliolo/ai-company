@@ -11,7 +11,11 @@ from ai_company.core.company import CompanyConfig, Department
 from ai_company.core.enums import CompanyType, SeniorityLevel
 from ai_company.core.role import CustomRole  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.observability import get_logger
 from ai_company.observability.config import LogConfig  # noqa: TC001
+from ai_company.observability.events import CONFIG_VALIDATION_FAILED
+
+logger = get_logger(__name__)
 
 
 class ProviderModelConfig(BaseModel):
@@ -25,7 +29,7 @@ class ProviderModelConfig(BaseModel):
         max_context: Maximum context window size in tokens.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     id: NotBlankStr = Field(description="Model identifier")
     alias: NotBlankStr | None = Field(
@@ -98,6 +102,9 @@ class ProviderConfig(BaseModel):
 class RoutingRuleConfig(BaseModel):
     """A single model routing rule.
 
+    At least one of ``role_level`` or ``task_type`` must be set so the
+    rule can match incoming requests.
+
     Attributes:
         role_level: Seniority level this rule applies to.
         task_type: Task type this rule applies to.
@@ -122,6 +129,22 @@ class RoutingRuleConfig(BaseModel):
         default=None,
         description="Fallback model alias or ID",
     )
+
+    @model_validator(mode="after")
+    def _at_least_one_matcher(self) -> Self:
+        if self.role_level is None and self.task_type is None:
+            msg = "Routing rule must specify at least role_level or task_type"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="RoutingRuleConfig",
+                error=msg,
+                role_level=self.role_level,
+                task_type=self.task_type,
+                preferred_model=self.preferred_model,
+                fallback=self.fallback,
+            )
+            raise ValueError(msg)
+        return self
 
 
 class RoutingConfig(BaseModel):

@@ -22,49 +22,49 @@ SENIORITY_INFO: tuple[SeniorityInfo, ...] = (
     SeniorityInfo(
         level=SeniorityLevel.JUNIOR,
         authority_scope="Execute assigned tasks only",
-        typical_model_tier="haiku",
+        typical_model_tier="small",
         cost_tier=CostTier.LOW,
     ),
     SeniorityInfo(
         level=SeniorityLevel.MID,
         authority_scope="Execute and suggest improvements",
-        typical_model_tier="sonnet",
+        typical_model_tier="medium",
         cost_tier=CostTier.MEDIUM,
     ),
     SeniorityInfo(
         level=SeniorityLevel.SENIOR,
         authority_scope="Execute, design, and review others",
-        typical_model_tier="sonnet",
+        typical_model_tier="medium",
         cost_tier=CostTier.HIGH,
     ),
     SeniorityInfo(
         level=SeniorityLevel.LEAD,
         authority_scope="All above plus approve and delegate",
-        typical_model_tier="opus",
+        typical_model_tier="large",
         cost_tier=CostTier.HIGH,
     ),
     SeniorityInfo(
         level=SeniorityLevel.PRINCIPAL,
         authority_scope="All above plus architectural decisions",
-        typical_model_tier="opus",
+        typical_model_tier="large",
         cost_tier=CostTier.PREMIUM,
     ),
     SeniorityInfo(
         level=SeniorityLevel.DIRECTOR,
         authority_scope="Strategic decisions and budget authority",
-        typical_model_tier="opus",
+        typical_model_tier="large",
         cost_tier=CostTier.PREMIUM,
     ),
     SeniorityInfo(
         level=SeniorityLevel.VP,
         authority_scope="Department-wide authority",
-        typical_model_tier="opus",
+        typical_model_tier="large",
         cost_tier=CostTier.PREMIUM,
     ),
     SeniorityInfo(
         level=SeniorityLevel.C_SUITE,
         authority_scope="Company-wide authority and final approvals",
-        typical_model_tier="opus",
+        typical_model_tier="large",
         cost_tier=CostTier.PREMIUM,
     ),
 )
@@ -440,6 +440,11 @@ def get_seniority_info(level: SeniorityLevel) -> SeniorityInfo:
     """
     info = _SENIORITY_INFO_BY_LEVEL.get(level)
     if info is None:
+        logger.warning(
+            ROLE_LOOKUP_MISS,
+            level=level.value,
+            reason="no seniority info in catalog",
+        )
         msg = f"No seniority info for level {level!r}; catalog may be incomplete"
         raise LookupError(msg)
     return info

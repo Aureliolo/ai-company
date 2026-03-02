@@ -77,6 +77,7 @@ src/ai_company/
 - **Async**: `asyncio_mode = "auto"` — no manual `@pytest.mark.asyncio` needed
 - **Timeout**: 30 seconds per test
 - **Parallelism**: `pytest-xdist` via `-n auto`
+- **Vendor-agnostic fixtures**: use fake model IDs/names in tests (e.g. `test-haiku-001`, `test-provider`), never real vendor model IDs — tests must not be coupled to external providers
 
 ## Git
 

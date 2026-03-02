@@ -124,7 +124,7 @@ class TestSeniorityInfo:
         info = SeniorityInfo(
             level=SeniorityLevel.SENIOR,
             authority_scope="Execute, design, and review",
-            typical_model_tier="sonnet",
+            typical_model_tier="medium",
             cost_tier="high",
         )
         assert info.level is SeniorityLevel.SENIOR
@@ -135,7 +135,7 @@ class TestSeniorityInfo:
             SeniorityInfo(
                 level=SeniorityLevel.JUNIOR,
                 authority_scope="",
-                typical_model_tier="haiku",
+                typical_model_tier="small",
                 cost_tier="low",
             )
 
@@ -153,7 +153,7 @@ class TestSeniorityInfo:
             SeniorityInfo(
                 level=SeniorityLevel.JUNIOR,
                 authority_scope="tasks",
-                typical_model_tier="haiku",
+                typical_model_tier="small",
                 cost_tier="",
             )
 
@@ -162,7 +162,7 @@ class TestSeniorityInfo:
             SeniorityInfo(
                 level=SeniorityLevel.JUNIOR,
                 authority_scope="   ",
-                typical_model_tier="haiku",
+                typical_model_tier="small",
                 cost_tier="low",
             )
 
@@ -180,7 +180,7 @@ class TestSeniorityInfo:
             SeniorityInfo(
                 level=SeniorityLevel.JUNIOR,
                 authority_scope="tasks",
-                typical_model_tier="haiku",
+                typical_model_tier="small",
                 cost_tier="   ",
             )
 
@@ -188,7 +188,7 @@ class TestSeniorityInfo:
         info = SeniorityInfo(
             level=SeniorityLevel.MID,
             authority_scope="execute",
-            typical_model_tier="sonnet",
+            typical_model_tier="medium",
             cost_tier="medium",
         )
         with pytest.raises(ValidationError):

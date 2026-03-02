@@ -90,7 +90,7 @@ class SeniorityInfo(BaseModel):
     Attributes:
         level: The seniority level.
         authority_scope: Description of authority at this level.
-        typical_model_tier: Recommended model tier (e.g. ``"opus"``).
+        typical_model_tier: Recommended model tier (e.g. ``"large"``).
         cost_tier: Cost tier identifier (built-in ``CostTier`` or user-defined string).
     """
 
