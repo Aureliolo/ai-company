@@ -270,6 +270,21 @@ class TestCostAwareStrategy:
                 resolver,
             )
 
+    def test_task_type_rule_skipped_when_over_budget(
+        self,
+        resolver: ModelResolver,
+        standard_routing_config: RoutingConfig,
+    ) -> None:
+        """Task-type rule picks 'large' but budget is too low -> cheapest."""
+        strategy = CostAwareStrategy()
+        # review rule -> large (cost=0.090), budget below that
+        request = RoutingRequest(task_type="review", remaining_budget=0.02)
+
+        decision = strategy.select(request, standard_routing_config, resolver)
+
+        # Should fall through to cheapest, not use the over-budget large model
+        assert decision.resolved_model.alias == "small"
+
     def test_task_type_miss_falls_to_cheapest(
         self,
         resolver: ModelResolver,

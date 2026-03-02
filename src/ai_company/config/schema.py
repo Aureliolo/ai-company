@@ -138,6 +138,10 @@ class RoutingRuleConfig(BaseModel):
                 CONFIG_VALIDATION_FAILED,
                 model="RoutingRuleConfig",
                 error=msg,
+                role_level=self.role_level,
+                task_type=self.task_type,
+                preferred_model=self.preferred_model,
+                fallback=self.fallback,
             )
             raise ValueError(msg)
         return self

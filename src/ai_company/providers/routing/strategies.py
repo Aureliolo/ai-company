@@ -198,6 +198,16 @@ def _walk_fallback_chain(
     return None
 
 
+def _within_budget(
+    model: ResolvedModel,
+    remaining_budget: float | None,
+) -> bool:
+    """Check whether a model's cost is within the remaining budget."""
+    if remaining_budget is None:
+        return True
+    return model.total_cost_per_1k <= remaining_budget
+
+
 def _cheapest_within_budget(
     resolver: ModelResolver,
     remaining_budget: float | None,
@@ -566,7 +576,15 @@ class CostAwareStrategy:
             self.name,
         )
         if decision is not None:
-            return decision
+            if _within_budget(decision.resolved_model, request.remaining_budget):
+                return decision
+            logger.info(
+                ROUTING_BUDGET_EXCEEDED,
+                model=decision.resolved_model.model_id,
+                cost=decision.resolved_model.total_cost_per_1k,
+                remaining_budget=request.remaining_budget,
+                source="task_type_rule_budget_check",
+            )
 
         # Pick cheapest
         model, budget_exceeded = _cheapest_within_budget(
@@ -590,8 +608,8 @@ class SmartStrategy:
     """Combined strategy with priority-based signal merging.
 
     Priority order: model_override > task_type rules > role_level
-    rules > seniority default > global fallback_chain > cheapest
-    available.
+    rules > seniority default > cheapest available (budget-aware) >
+    global fallback_chain > exhausted.
     """
 
     @property
@@ -629,8 +647,8 @@ class SmartStrategy:
                 resolver,
                 self.name,
             )
-            or self._try_global_chain(config, resolver)
             or self._try_cheapest(request, resolver)
+            or self._try_global_chain(config, resolver)
             or self._raise_exhausted()
         )
 

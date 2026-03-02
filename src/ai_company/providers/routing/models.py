@@ -66,7 +66,7 @@ class RoutingRequest(BaseModel):
             total session budget — use the budget module for that.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_level: SeniorityLevel | None = Field(
         default=None,

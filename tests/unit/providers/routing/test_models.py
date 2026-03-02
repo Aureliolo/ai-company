@@ -110,6 +110,14 @@ class TestRoutingRequest:
         assert request.model_override is None
         assert request.remaining_budget is None
 
+    def test_inf_budget_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            RoutingRequest(remaining_budget=float("inf"))
+
+    def test_nan_budget_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            RoutingRequest(remaining_budget=float("nan"))
+
     def test_negative_budget_rejected(self) -> None:
         with pytest.raises(
             ValidationError,
