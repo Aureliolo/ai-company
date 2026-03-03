@@ -95,7 +95,7 @@ class TestDoComplete:
 
         assert result.content == "Hello! How can I help?"
         assert result.finish_reason == FinishReason.STOP
-        assert result.model == "claude-sonnet-4-6"
+        assert result.model == "test-model-001"
         assert result.usage.input_tokens == 100
         assert result.usage.output_tokens == 50
 
@@ -127,7 +127,7 @@ class TestDoComplete:
             await driver.complete(_user_message(), "haiku")
 
         kw = m.call_args.kwargs
-        assert kw["model"] == "anthropic/claude-haiku-4-5"
+        assert kw["model"] == "anthropic/test-model-002"
 
     async def test_model_id_resolution(self) -> None:
         driver = _make_driver()
@@ -137,11 +137,11 @@ class TestDoComplete:
             m.return_value = mock_resp
             await driver.complete(
                 _user_message(),
-                "claude-sonnet-4-6",
+                "test-model-001",
             )
 
         kw = m.call_args.kwargs
-        assert kw["model"] == "anthropic/claude-sonnet-4-6"
+        assert kw["model"] == "anthropic/test-model-001"
 
     async def test_unknown_model_raises(self) -> None:
         driver = _make_driver()
@@ -705,7 +705,7 @@ class TestGetModelCapabilities:
         ):
             caps = await driver.get_model_capabilities("sonnet")
 
-        assert caps.model_id == "claude-sonnet-4-6"
+        assert caps.model_id == "test-model-001"
         assert caps.provider == "anthropic"
         assert caps.max_context_tokens == 200_000
         assert caps.max_output_tokens == 8192
@@ -723,7 +723,7 @@ class TestGetModelCapabilities:
         ):
             caps = await driver.get_model_capabilities("sonnet")
 
-        assert caps.model_id == "claude-sonnet-4-6"
+        assert caps.model_id == "test-model-001"
         assert caps.max_output_tokens == 4096
 
     async def test_streaming_capability_from_model_info(self) -> None:

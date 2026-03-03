@@ -21,7 +21,7 @@ class TestCostRecord:
         assert sample_cost_record.agent_id == "sarah_chen"
         assert sample_cost_record.task_id == "task-123"
         assert sample_cost_record.provider == "anthropic"
-        assert sample_cost_record.model == "claude-sonnet-4-6"
+        assert sample_cost_record.model == "test-model-001"
         assert sample_cost_record.input_tokens == 4500
         assert sample_cost_record.output_tokens == 1200
         assert sample_cost_record.cost_usd == 0.0315

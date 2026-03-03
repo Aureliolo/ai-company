@@ -93,5 +93,5 @@ async def test_full_response_mapping(
 
     assert result.content == "Local LLM response"
     assert result.finish_reason == FinishReason.STOP
-    assert result.model == "llama3.1:latest"
+    assert result.model == "test-model-003"
     assert result.provider_request_id == "ollama_req_001"

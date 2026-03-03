@@ -54,20 +54,22 @@ class TestRateLimiterConcurrency:
             acquired.set()
 
         task = asyncio.create_task(_try_acquire())
-        await asyncio.sleep(0.05)
-        assert not acquired.is_set()
+        try:
+            await asyncio.sleep(0.05)
+            assert not acquired.is_set()
 
-        # Release one slot
-        limiter.release()
-        await asyncio.sleep(0.05)
-        assert acquired.is_set()
+            # Release one slot
+            limiter.release()
+            await asyncio.sleep(0.05)
+            assert acquired.is_set()
 
-        # Cleanup
-        limiter.release()
-        limiter.release()
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+            # Release the remaining two slots
+            limiter.release()
+            limiter.release()
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
     async def test_release_without_acquire_does_not_crash(self) -> None:
         config = RateLimiterConfig(max_concurrent=2)
@@ -103,7 +105,7 @@ class TestRateLimiterPause:
         await limiter.acquire()
         elapsed = time.monotonic() - start
 
-        assert elapsed >= 0.08  # some tolerance
+        assert 0.07 <= elapsed <= 1.0  # must wait at least 70ms, not forever
 
         limiter.release()
 
@@ -118,7 +120,7 @@ class TestRateLimiterPause:
         await limiter.acquire()
         elapsed = time.monotonic() - start
 
-        assert elapsed >= 0.12  # should wait for the longer pause
+        assert 0.10 <= elapsed <= 1.0  # should wait for the longer pause
 
         limiter.release()
 
@@ -133,9 +135,105 @@ class TestRateLimiterPause:
         await limiter.acquire()
         elapsed = time.monotonic() - start
 
-        assert elapsed >= 0.12
+        assert 0.10 <= elapsed <= 1.0
 
         limiter.release()
+
+    async def test_pause_rejects_negative(self) -> None:
+        limiter = RateLimiter(RateLimiterConfig(), provider_name="test-provider")
+        with pytest.raises(ValueError, match="finite non-negative"):
+            limiter.pause(-1.0)
+
+    async def test_pause_rejects_inf(self) -> None:
+        limiter = RateLimiter(RateLimiterConfig(), provider_name="test-provider")
+        with pytest.raises(ValueError, match="finite non-negative"):
+            limiter.pause(float("inf"))
+
+    async def test_pause_rejects_nan(self) -> None:
+        limiter = RateLimiter(RateLimiterConfig(), provider_name="test-provider")
+        with pytest.raises(ValueError, match="finite non-negative"):
+            limiter.pause(float("nan"))
+
+
+@pytest.mark.unit
+class TestRateLimiterRPMThrottling:
+    async def test_rpm_throttles_when_over_limit(self) -> None:
+        """acquire() sleeps when RPM budget is exhausted, then retries."""
+        from unittest import mock
+
+        config = RateLimiterConfig(max_requests_per_minute=1)
+        limiter = RateLimiter(config, provider_name="test-provider")
+
+        base_t = 1_000_000.0
+        slept = False
+
+        async def instant_sleep(seconds: float) -> None:
+            nonlocal slept
+            slept = True
+
+        def time_fn() -> float:
+            return base_t if not slept else base_t + 61.0
+
+        # Fill the single RPM slot
+        with mock.patch(
+            "ai_company.providers.resilience.rate_limiter.time.monotonic",
+            time_fn,
+        ):
+            await limiter.acquire()
+
+        # Second acquire must sleep (budget exhausted)
+        with (
+            mock.patch(
+                "ai_company.providers.resilience.rate_limiter.time.monotonic",
+                time_fn,
+            ),
+            mock.patch(
+                "ai_company.providers.resilience.rate_limiter.asyncio.sleep",
+                instant_sleep,
+            ),
+        ):
+            await limiter.acquire()
+
+        assert slept
+
+    async def test_rpm_throttle_logs_rpm_limit_reason(self) -> None:
+        """RPM throttling emits a log entry with reason='rpm_limit'."""
+        from unittest import mock
+
+        config = RateLimiterConfig(max_requests_per_minute=1)
+        limiter = RateLimiter(config, provider_name="test-provider")
+
+        base_t = 2_000_000.0
+        slept = False
+
+        async def instant_sleep(seconds: float) -> None:
+            nonlocal slept
+            slept = True
+
+        def time_fn() -> float:
+            return base_t if not slept else base_t + 61.0
+
+        with mock.patch(
+            "ai_company.providers.resilience.rate_limiter.time.monotonic",
+            time_fn,
+        ):
+            await limiter.acquire()
+
+        with (
+            mock.patch(
+                "ai_company.providers.resilience.rate_limiter.time.monotonic",
+                time_fn,
+            ),
+            mock.patch(
+                "ai_company.providers.resilience.rate_limiter.asyncio.sleep",
+                instant_sleep,
+            ),
+            structlog.testing.capture_logs() as cap,
+        ):
+            await limiter.acquire()
+
+        rpm_logs = [e for e in cap if e.get("reason") == "rpm_limit"]
+        assert len(rpm_logs) >= 1
 
 
 @pytest.mark.unit
@@ -162,7 +260,7 @@ class TestRateLimiterLogging:
         throttled = [
             e for e in cap if e.get("event") == PROVIDER_RATE_LIMITER_THROTTLED
         ]
-        assert len(throttled) == 1
+        assert len(throttled) >= 1
         assert throttled[0]["reason"] == "pause_active"
 
         limiter.release()

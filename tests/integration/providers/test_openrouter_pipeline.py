@@ -55,7 +55,7 @@ async def test_model_prefixed(
         await driver.complete(user_messages, "or-sonnet")
 
     kwargs = mock_call.call_args.kwargs
-    assert kwargs["model"] == "openrouter/anthropic/claude-sonnet-4-6"
+    assert kwargs["model"] == "openrouter/test-model-openrouter-001"
 
 
 async def test_api_key_forwarded(
@@ -109,7 +109,7 @@ async def test_multi_model_alias_resolution(
     driver = registry.get("openrouter")
 
     mock_resp = build_model_response(
-        model="meta-llama/llama-3.1-70b-instruct",
+        model="test-model-openrouter-002",
         prompt_tokens=1000,
         completion_tokens=1000,
     )
@@ -119,6 +119,6 @@ async def test_multi_model_alias_resolution(
         result = await driver.complete(user_messages, "llama-70b")
 
     kwargs = mock_call.call_args.kwargs
-    assert kwargs["model"] == "openrouter/meta-llama/llama-3.1-70b-instruct"
+    assert kwargs["model"] == "openrouter/test-model-openrouter-002"
     # (1000/1000)*0.0008 + (1000/1000)*0.0008 = 0.0016
     assert result.usage.cost_usd == pytest.approx(0.0016)

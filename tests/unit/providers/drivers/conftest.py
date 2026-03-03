@@ -35,14 +35,14 @@ def make_provider_config(  # noqa: PLR0913
     if models is None:
         models = (
             ProviderModelConfig(
-                id="claude-sonnet-4-6",
+                id="test-model-001",
                 alias="sonnet",
                 cost_per_1k_input=0.003,
                 cost_per_1k_output=0.015,
                 max_context=200_000,
             ),
             ProviderModelConfig(
-                id="claude-haiku-4-5",
+                id="test-model-002",
                 alias="haiku",
                 cost_per_1k_input=0.001,
                 cost_per_1k_output=0.005,
@@ -76,7 +76,7 @@ def make_mock_response(  # noqa: PLR0913
     prompt_tokens: int = 100,
     completion_tokens: int = 50,
     request_id: str = "req_abc123",
-    model: str = "claude-sonnet-4-6",
+    model: str = "test-model-001",
 ) -> MagicMock:
     """Build a mock LiteLLM ``ModelResponse``."""
     message = MagicMock()

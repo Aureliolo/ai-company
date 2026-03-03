@@ -188,6 +188,43 @@ class TestRetryIntegration:
 
 
 @pytest.mark.integration
+class TestStreamRetryIntegration:
+    """Retry behaviour on the streaming path."""
+
+    async def test_stream_succeeds_after_transient_connection_error(self) -> None:
+        """Stream setup is retried on transient failure; success on second attempt."""
+        from ai_company.providers.enums import StreamEventType
+
+        driver = _make_driver()
+        import litellm as _litellm
+
+        transient = _litellm.APIConnectionError(  # type: ignore[attr-defined]
+            message="Connection refused",
+            model="test-model-001",
+            llm_provider="test-provider",
+        )
+
+        async def _empty_stream() -> None:  # type: ignore[misc]
+            # Async generator that yields nothing (makes it an async iterable)
+            return
+            yield  # pragma: no cover
+
+        with patch(
+            _PATCH_ACOMPLETION,
+            new_callable=AsyncMock,
+        ) as m:
+            # First call raises; second returns an empty async stream.
+            m.side_effect = [transient, _empty_stream()]  # type: ignore[func-returns-value]
+
+            stream = await driver.stream(_user_messages(), "test-model")
+            chunks = [c async for c in stream]
+
+        assert m.await_count == 2
+        # _wrap_stream always emits a DONE chunk at the end
+        assert chunks[-1].event_type == StreamEventType.DONE
+
+
+@pytest.mark.integration
 class TestRetryDisabledIntegration:
     """When retries are disabled, errors pass through unchanged."""
 

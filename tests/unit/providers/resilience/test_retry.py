@@ -13,6 +13,7 @@ from ai_company.observability.events import (
 from ai_company.providers.errors import (
     AuthenticationError,
     ProviderConnectionError,
+    ProviderInternalError,
     ProviderTimeoutError,
     RateLimitError,
 )
@@ -59,11 +60,13 @@ class TestRetryHandlerSuccess:
         assert result == "ok"
         assert func.await_count == 3
 
-    async def test_passes_args_and_kwargs(self) -> None:
-        handler = RetryHandler(_fast_config())
-        func = AsyncMock(return_value="ok")
-        await handler.execute(func, "a", "b", key="val")
-        func.assert_awaited_once_with("a", "b", key="val")
+    async def test_internal_error_is_retried(self) -> None:
+        handler = RetryHandler(_fast_config(max_retries=2))
+        error = ProviderInternalError("server error")
+        func = AsyncMock(side_effect=[error, "ok"])
+        result = await handler.execute(func)
+        assert result == "ok"
+        assert func.await_count == 2
 
 
 @pytest.mark.unit
@@ -131,10 +134,20 @@ class TestRetryHandlerDisabled:
         assert exc_info.value.original_error is error
         func.assert_awaited_once()
 
+    async def test_zero_retries_non_retryable_raises_unwrapped(self) -> None:
+        handler = RetryHandler(_fast_config(max_retries=0))
+        from ai_company.providers.errors import AuthenticationError
+
+        error = AuthenticationError("bad key")
+        func = AsyncMock(side_effect=error)
+        with pytest.raises(AuthenticationError):
+            await handler.execute(func)
+        func.assert_awaited_once()
+
 
 @pytest.mark.unit
 class TestRetryHandlerBackoff:
-    async def test_backoff_without_jitter(self) -> None:
+    def test_backoff_without_jitter(self) -> None:
         config = RetryConfig(
             max_retries=3,
             base_delay=1.0,
@@ -152,7 +165,7 @@ class TestRetryHandlerBackoff:
         # attempt 2: 1.0 * 2^2 = 4.0
         assert handler._compute_delay(2, error) == 4.0
 
-    async def test_backoff_capped_by_max_delay(self) -> None:
+    def test_backoff_capped_by_max_delay(self) -> None:
         config = RetryConfig(
             max_retries=10,
             base_delay=1.0,
@@ -166,7 +179,7 @@ class TestRetryHandlerBackoff:
         # attempt 5: 1.0 * 2^5 = 32.0, capped to 5.0
         assert handler._compute_delay(5, error) == 5.0
 
-    async def test_jitter_produces_bounded_values(self) -> None:
+    def test_jitter_produces_bounded_values(self) -> None:
         config = RetryConfig(
             max_retries=3,
             base_delay=1.0,
@@ -181,7 +194,7 @@ class TestRetryHandlerBackoff:
             delay = handler._compute_delay(0, error)
             assert 0.0 <= delay <= 1.0  # base_delay * 2^0 = 1.0
 
-    async def test_retry_after_respected(self) -> None:
+    def test_retry_after_respected(self) -> None:
         config = RetryConfig(
             max_retries=3,
             base_delay=1.0,
@@ -195,7 +208,7 @@ class TestRetryHandlerBackoff:
         delay = handler._compute_delay(0, error)
         assert delay == 5.0
 
-    async def test_retry_after_capped_by_max_delay(self) -> None:
+    def test_retry_after_capped_by_max_delay(self) -> None:
         config = RetryConfig(
             max_retries=3,
             base_delay=1.0,

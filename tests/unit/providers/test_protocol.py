@@ -1,6 +1,7 @@
 """Tests for CompletionProvider protocol and BaseCompletionProvider ABC."""
 
 from collections.abc import AsyncIterator  # noqa: TC003
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -8,7 +9,7 @@ from ai_company.constants import BUDGET_ROUNDING_PRECISION
 from ai_company.providers.base import BaseCompletionProvider
 from ai_company.providers.capabilities import ModelCapabilities
 from ai_company.providers.enums import FinishReason, MessageRole, StreamEventType
-from ai_company.providers.errors import InvalidRequestError
+from ai_company.providers.errors import InvalidRequestError, RateLimitError
 from ai_company.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -18,6 +19,7 @@ from ai_company.providers.models import (
     ToolDefinition,
 )
 from ai_company.providers.protocol import CompletionProvider
+from ai_company.providers.resilience.rate_limiter import RateLimiter
 
 from .conftest import FakeProvider, ModelCapabilitiesFactory, TokenUsageFactory
 
@@ -369,3 +371,79 @@ class TestBaseCompletionProvider:
                 cost_per_1k_input=0.003,
                 cost_per_1k_output=float("nan"),
             )
+
+
+class _RateLimitProvider(BaseCompletionProvider):
+    """Provider that always raises RateLimitError with retry_after."""
+
+    def __init__(self, retry_after: float | None = None) -> None:
+        super().__init__()
+        self._retry_after = retry_after
+
+    async def _do_complete(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> CompletionResponse:
+        msg = "limited"
+        raise RateLimitError(msg, retry_after=self._retry_after)
+
+    async def _do_stream(
+        self,
+        messages: list[ChatMessage],
+        model: str,
+        *,
+        tools: list[ToolDefinition] | None = None,
+        config: CompletionConfig | None = None,
+    ) -> AsyncIterator[StreamChunk]:
+        msg = "limited"
+        raise RateLimitError(msg, retry_after=self._retry_after)
+
+    async def _do_get_model_capabilities(self, model: str) -> ModelCapabilities:
+        return ModelCapabilitiesFactory.build()
+
+
+@pytest.mark.unit
+class TestBaseCompletionProviderResilience:
+    """Tests for retry + rate-limiter wiring in BaseCompletionProvider."""
+
+    async def test_rate_limited_call_acquires_and_releases(self) -> None:
+        """_rate_limited_call acquires before and releases after the call."""
+        mock_limiter = MagicMock(spec=RateLimiter)
+        mock_limiter.acquire = AsyncMock()
+        mock_limiter.is_enabled = True
+
+        provider = _ConcreteProvider()
+        provider._rate_limiter = mock_limiter
+
+        msg = ChatMessage(role=MessageRole.USER, content="Hi")
+        await provider.complete([msg], "test-model")
+
+        mock_limiter.acquire.assert_awaited_once()
+        mock_limiter.release.assert_called_once()
+
+    async def test_rate_limit_error_with_retry_after_triggers_pause(self) -> None:
+        """RateLimitError with retry_after triggers rate_limiter.pause."""
+        mock_limiter = MagicMock(spec=RateLimiter)
+        mock_limiter.acquire = AsyncMock()
+        mock_limiter.is_enabled = True
+
+        provider = _RateLimitProvider(retry_after=5.0)
+        provider._rate_limiter = mock_limiter
+
+        msg = ChatMessage(role=MessageRole.USER, content="Hi")
+        with pytest.raises(RateLimitError):
+            await provider.complete([msg], "test-model")
+
+        mock_limiter.pause.assert_called_once_with(5.0)
+
+    async def test_without_retry_handler_retryable_error_propagates(self) -> None:
+        """Without retry_handler, retryable errors propagate unchanged."""
+        provider = _RateLimitProvider(retry_after=None)
+
+        msg = ChatMessage(role=MessageRole.USER, content="Hi")
+        with pytest.raises(RateLimitError):
+            await provider.complete([msg], "test-model")

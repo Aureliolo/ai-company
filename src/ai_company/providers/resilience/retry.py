@@ -2,10 +2,11 @@
 
 import asyncio
 import random
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from ai_company.observability import get_logger
 from ai_company.observability.events import (
+    PROVIDER_CALL_ERROR,
     PROVIDER_RETRY_ATTEMPT,
     PROVIDER_RETRY_EXHAUSTED,
     PROVIDER_RETRY_SKIPPED,
@@ -40,16 +41,12 @@ class RetryHandler:
 
     async def execute(
         self,
-        func: Callable[..., Coroutine[Any, Any, T]],
-        *args: Any,
-        **kwargs: Any,
+        func: Callable[[], Coroutine[object, object, T]],
     ) -> T:
         """Execute *func* with retry on transient errors.
 
         Args:
-            func: Async callable to execute.
-            *args: Positional arguments for *func*.
-            **kwargs: Keyword arguments for *func*.
+            func: Zero-argument async callable to execute.
 
         Returns:
             The return value of *func*.
@@ -62,10 +59,10 @@ class RetryHandler:
 
         for attempt in range(1 + self._config.max_retries):
             try:
-                return await func(*args, **kwargs)
+                return await func()
             except ProviderError as exc:
                 if not exc.is_retryable:
-                    logger.debug(
+                    logger.warning(
                         PROVIDER_RETRY_SKIPPED,
                         error_type=type(exc).__name__,
                         reason="non_retryable",
@@ -86,8 +83,17 @@ class RetryHandler:
                     error_type=type(exc).__name__,
                 )
                 await asyncio.sleep(delay)
+            except Exception:
+                logger.warning(
+                    PROVIDER_CALL_ERROR,
+                    reason="unexpected_non_provider_error",
+                    exc_info=True,
+                )
+                raise
 
-        assert last_error is not None  # noqa: S101
+        if last_error is None:
+            msg = "RetryHandler reached exhaustion with no recorded error"
+            raise RuntimeError(msg)
         logger.warning(
             PROVIDER_RETRY_EXHAUSTED,
             max_retries=self._config.max_retries,
@@ -96,13 +102,14 @@ class RetryHandler:
         raise RetryExhaustedError(last_error) from last_error
 
     def _compute_delay(self, attempt: int, exc: ProviderError) -> float:
-        """Compute delay for the given attempt.
+        """Compute delay for the given retry iteration.
 
         Respects ``RateLimitError.retry_after`` when available.  Otherwise
         uses exponential backoff with optional jitter.
 
         Args:
-            attempt: Zero-based attempt index.
+            attempt: Zero-based retry iteration counter (0 = first retry,
+                1 = second retry, etc.).
             exc: The error that triggered the retry.
 
         Returns:

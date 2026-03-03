@@ -117,7 +117,7 @@ def sample_cost_record() -> CostRecord:
         agent_id="sarah_chen",
         task_id="task-123",
         provider="anthropic",
-        model="claude-sonnet-4-6",
+        model="test-model-001",
         input_tokens=4500,
         output_tokens=1200,
         cost_usd=0.0315,

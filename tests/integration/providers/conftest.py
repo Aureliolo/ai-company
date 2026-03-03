@@ -31,21 +31,21 @@ if TYPE_CHECKING:
 
 
 def make_anthropic_config() -> dict[str, ProviderConfig]:
-    """Anthropic provider with two Claude models."""
+    """Provider config with two fake models (Anthropic-shaped)."""
     return {
         "anthropic": ProviderConfig(
             driver="litellm",
             api_key="sk-ant-test-key",
             models=(
                 ProviderModelConfig(
-                    id="claude-sonnet-4-6",
+                    id="test-model-001",
                     alias="sonnet",
                     cost_per_1k_input=0.003,
                     cost_per_1k_output=0.015,
                     max_context=200_000,
                 ),
                 ProviderModelConfig(
-                    id="claude-haiku-4-5",
+                    id="test-model-002",
                     alias="haiku",
                     cost_per_1k_input=0.001,
                     cost_per_1k_output=0.005,
@@ -58,7 +58,7 @@ def make_anthropic_config() -> dict[str, ProviderConfig]:
 
 
 def make_openrouter_config() -> dict[str, ProviderConfig]:
-    """OpenRouter provider with custom base_url and two models."""
+    """Provider config with custom base_url and two fake models (OpenRouter-shaped)."""
     return {
         "openrouter": ProviderConfig(
             driver="litellm",
@@ -66,14 +66,14 @@ def make_openrouter_config() -> dict[str, ProviderConfig]:
             base_url="https://openrouter.ai/api/v1",
             models=(
                 ProviderModelConfig(
-                    id="anthropic/claude-sonnet-4-6",
+                    id="test-model-openrouter-001",
                     alias="or-sonnet",
                     cost_per_1k_input=0.003,
                     cost_per_1k_output=0.015,
                     max_context=200_000,
                 ),
                 ProviderModelConfig(
-                    id="meta-llama/llama-3.1-70b-instruct",
+                    id="test-model-openrouter-002",
                     alias="llama-70b",
                     cost_per_1k_input=0.0008,
                     cost_per_1k_output=0.0008,
@@ -86,7 +86,7 @@ def make_openrouter_config() -> dict[str, ProviderConfig]:
 
 
 def make_ollama_config() -> dict[str, ProviderConfig]:
-    """Ollama provider — local, no api_key, zero cost."""
+    """Provider config — local, no api_key, zero cost (Ollama-shaped)."""
     return {
         "ollama": ProviderConfig(
             driver="litellm",
@@ -94,7 +94,7 @@ def make_ollama_config() -> dict[str, ProviderConfig]:
             base_url="http://localhost:11434",
             models=(
                 ProviderModelConfig(
-                    id="llama3.1:latest",
+                    id="test-model-003",
                     alias="llama",
                     cost_per_1k_input=0.0,
                     cost_per_1k_output=0.0,
@@ -117,7 +117,7 @@ def build_model_response(  # noqa: PLR0913
     prompt_tokens: int = 100,
     completion_tokens: int = 50,
     request_id: str = "req_abc123",
-    model: str = "claude-sonnet-4-6",
+    model: str = "test-model-001",
 ) -> ModelResponse:
     """Build a real ``litellm.ModelResponse`` for non-streaming tests."""
     message: dict[str, Any] = {
@@ -163,7 +163,7 @@ def build_tool_call_dict(
 def build_content_chunk(
     content: str,
     *,
-    model: str = "claude-sonnet-4-6",
+    model: str = "test-model-001",
     chunk_id: str = "chunk_0",
 ) -> ModelResponse:
     """Build a streaming chunk with text content."""
@@ -185,7 +185,7 @@ def build_usage_chunk(
     *,
     prompt_tokens: int = 100,
     completion_tokens: int = 50,
-    model: str = "claude-sonnet-4-6",
+    model: str = "test-model-001",
     chunk_id: str = "chunk_usage",
 ) -> ModelResponse:
     """Build a streaming chunk with usage data and no choices."""
@@ -208,7 +208,7 @@ def build_tool_call_delta_chunk(  # noqa: PLR0913
     call_id: str | None = None,
     name: str | None = None,
     arguments: str | None = None,
-    model: str = "claude-sonnet-4-6",
+    model: str = "test-model-001",
     chunk_id: str = "chunk_tc",
 ) -> ModelResponse:
     """Build a streaming chunk with a tool call delta."""
@@ -237,7 +237,7 @@ def build_tool_call_delta_chunk(  # noqa: PLR0913
 def build_finish_chunk(
     finish_reason: str = "stop",
     *,
-    model: str = "claude-sonnet-4-6",
+    model: str = "test-model-001",
     chunk_id: str = "chunk_fin",
 ) -> ModelResponse:
     """Build a streaming chunk with only a finish reason."""

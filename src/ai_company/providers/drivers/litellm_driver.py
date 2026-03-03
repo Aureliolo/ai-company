@@ -43,6 +43,7 @@ from litellm.exceptions import (
 from ai_company.observability import get_logger
 from ai_company.observability.events import (
     PROVIDER_AUTH_ERROR,
+    PROVIDER_CALL_ERROR,
     PROVIDER_CONNECTION_ERROR,
     PROVIDER_MODEL_INFO_UNAVAILABLE,
     PROVIDER_MODEL_INFO_UNEXPECTED_ERROR,
@@ -75,7 +76,7 @@ from .mappers import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator, AsyncIterator
 
     from ai_company.config.schema import ProviderConfig, ProviderModelConfig
     from ai_company.providers.models import (
@@ -251,17 +252,28 @@ class LiteLLMDriver(BaseCompletionProvider):
         """Build alias/id -> model config lookup.
 
         Raises:
-            ValueError: If an alias collides with another model's ID
-                or alias.
+            ValueError: If two models share the same ID, or an alias
+                collides with another model's ID or alias.
         """
         lookup: dict[str, ProviderModelConfig] = {}
         for m in models:
             if m.id in lookup and lookup[m.id] is not m:
+                logger.error(
+                    PROVIDER_CALL_ERROR,
+                    error="duplicate_model_id",
+                    model_id=m.id,
+                )
                 msg = f"Duplicate model lookup key: {m.id!r}"
                 raise ValueError(msg)
             lookup[m.id] = m
             if m.alias is not None:
                 if m.alias in lookup and lookup[m.alias].id != m.id:
+                    logger.error(
+                        PROVIDER_CALL_ERROR,
+                        error="model_alias_collision",
+                        alias=m.alias,
+                        collides_with=lookup[m.alias].id,
+                    )
                     msg = (
                         f"Model alias {m.alias!r} collides with "
                         f"existing key for model {lookup[m.alias].id!r}"
@@ -319,8 +331,7 @@ class LiteLLMDriver(BaseCompletionProvider):
             kwargs["api_key"] = self._config.api_key
         if self._config.base_url is not None:
             kwargs["api_base"] = self._config.base_url
-        _apply_completion_config(kwargs, config)
-        return kwargs
+        return _apply_completion_config(kwargs, config)
 
     # ── Response mapping ─────────────────────────────────────────
 
@@ -332,6 +343,12 @@ class LiteLLMDriver(BaseCompletionProvider):
         """Map a LiteLLM ``ModelResponse`` to ``CompletionResponse``."""
         choices = getattr(response, "choices", [])
         if not choices:
+            logger.error(
+                PROVIDER_CALL_ERROR,
+                provider=self._provider_name,
+                model=model_config.id,
+                error="empty_choices_in_response",
+            )
             msg = f"Provider returned empty choices for model {model_config.id!r}"
             raise errors.ProviderInternalError(
                 msg,
@@ -377,12 +394,13 @@ class LiteLLMDriver(BaseCompletionProvider):
         raw_stream: Any,
         model: str,
         model_config: ProviderModelConfig,
-    ) -> AsyncIterator[StreamChunk]:
-        """Return an async iterator that maps raw chunks."""
+    ) -> AsyncGenerator[StreamChunk]:
+        """Return an async generator that maps raw chunks."""
         process = self._process_chunk
         handle_exc = self._map_exception
+        provider = self._provider_name
 
-        async def _generate() -> AsyncIterator[StreamChunk]:
+        async def _generate() -> AsyncGenerator[StreamChunk]:
             pending: dict[int, _ToolCallAccumulator] = {}
             try:
                 async for chunk in raw_stream:
@@ -393,13 +411,19 @@ class LiteLLMDriver(BaseCompletionProvider):
                     ):
                         yield sc
             except Exception as exc:
+                logger.error(
+                    PROVIDER_CALL_ERROR,
+                    provider=provider,
+                    model=model,
+                    exc_info=True,
+                )
                 raise handle_exc(exc, model) from exc
 
             for sc in _emit_pending_tool_calls(pending):
                 yield sc
             logger.debug(
                 PROVIDER_STREAM_DONE,
-                provider=self._provider_name,
+                provider=provider,
                 model=model,
             )
             yield StreamChunk(event_type=StreamEventType.DONE)
@@ -579,20 +603,22 @@ class LiteLLMDriver(BaseCompletionProvider):
 def _apply_completion_config(
     kwargs: dict[str, Any],
     config: CompletionConfig | None,
-) -> None:
-    """Merge ``CompletionConfig`` fields into kwargs dict."""
+) -> dict[str, Any]:
+    """Return a new kwargs dict with ``CompletionConfig`` fields merged in."""
     if config is None:
-        return
+        return kwargs
+    extra: dict[str, Any] = {}
     if config.temperature is not None:
-        kwargs["temperature"] = config.temperature
+        extra["temperature"] = config.temperature
     if config.max_tokens is not None:
-        kwargs["max_tokens"] = config.max_tokens
+        extra["max_tokens"] = config.max_tokens
     if config.stop_sequences:
-        kwargs["stop"] = list(config.stop_sequences)
+        extra["stop"] = list(config.stop_sequences)
     if config.top_p is not None:
-        kwargs["top_p"] = config.top_p
+        extra["top_p"] = config.top_p
     if config.timeout is not None:
-        kwargs["timeout"] = config.timeout
+        extra["timeout"] = config.timeout
+    return {**kwargs, **extra}
 
 
 def _accumulate_tool_call_deltas(
@@ -632,13 +658,19 @@ def _emit_pending_tool_calls(
 class _ToolCallAccumulator:
     """Accumulates streaming tool call deltas into a ``ToolCall``."""
 
-    def __init__(self) -> None:
-        self.id: str = ""
-        self.name: str = ""
-        self.arguments: str = ""
-
     #: Maximum total length of accumulated argument bytes (1 MiB).
     _MAX_ARGUMENTS_LEN: int = 1_048_576
+
+    id: str
+    name: str
+    arguments: str
+    _truncated: bool
+
+    def __init__(self) -> None:
+        self.id = ""
+        self.name = ""
+        self.arguments = ""
+        self._truncated = False
 
     def update(self, delta: Any) -> None:
         """Merge a single tool call delta."""
@@ -652,20 +684,24 @@ class _ToolCallAccumulator:
                 self.name = str(name)
             args = getattr(func, "arguments", None)
             if args:
+                if self._truncated:
+                    return
                 fragment = str(args)
                 if len(self.arguments) + len(fragment) > self._MAX_ARGUMENTS_LEN:
                     logger.warning(
                         PROVIDER_TOOL_CALL_ARGUMENTS_TRUNCATED,
                         max_bytes=self._MAX_ARGUMENTS_LEN,
                     )
+                    self._truncated = True
                     return
                 self.arguments += fragment
 
     def build(self) -> ToolCall | None:
         """Build a ``ToolCall`` if enough data accumulated.
 
-        Returns ``None`` if either ``id`` or ``name`` is still empty,
-        which can happen with malformed or incomplete streaming deltas.
+        Returns ``None`` if either ``id`` or ``name`` is still empty
+        (malformed/incomplete streaming deltas), or if the argument JSON
+        could not be parsed.
         """
         if not self.id or not self.name:
             if self.arguments:
@@ -685,6 +721,6 @@ class _ToolCallAccumulator:
                 tool_id=self.id,
                 args_length=len(self.arguments) if self.arguments else 0,
             )
-            parsed = {}
+            return None
         args: dict[str, Any] = parsed if isinstance(parsed, dict) else {}
         return ToolCall(id=self.id, name=self.name, arguments=args)

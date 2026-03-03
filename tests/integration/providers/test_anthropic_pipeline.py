@@ -47,7 +47,7 @@ async def test_config_to_registry_to_complete(
 
     assert result.content == "Hi there!"
     assert result.finish_reason == FinishReason.STOP
-    assert result.model == "claude-sonnet-4-6"
+    assert result.model == "test-model-001"
     assert result.usage.input_tokens == 100
     assert result.usage.output_tokens == 50
 
@@ -67,7 +67,7 @@ async def test_alias_resolution(
         await driver.complete(user_messages, "sonnet")
 
     kwargs = mock_call.call_args.kwargs
-    assert kwargs["model"] == "anthropic/claude-sonnet-4-6"
+    assert kwargs["model"] == "anthropic/test-model-001"
 
 
 async def test_full_model_id_works(
@@ -82,10 +82,10 @@ async def test_full_model_id_works(
     with patch(
         _PATCH_TARGET, new_callable=AsyncMock, return_value=mock_resp
     ) as mock_call:
-        await driver.complete(user_messages, "claude-sonnet-4-6")
+        await driver.complete(user_messages, "test-model-001")
 
     kwargs = mock_call.call_args.kwargs
-    assert kwargs["model"] == "anthropic/claude-sonnet-4-6"
+    assert kwargs["model"] == "anthropic/test-model-001"
 
 
 async def test_completion_config_forwarded(
@@ -175,7 +175,7 @@ async def test_haiku_model(
     driver = registry.get("anthropic")
 
     mock_resp = build_model_response(
-        model="claude-haiku-4-5",
+        model="test-model-002",
         prompt_tokens=1000,
         completion_tokens=1000,
     )
@@ -185,7 +185,7 @@ async def test_haiku_model(
         result = await driver.complete(user_messages, "haiku")
 
     kwargs = mock_call.call_args.kwargs
-    assert kwargs["model"] == "anthropic/claude-haiku-4-5"
+    assert kwargs["model"] == "anthropic/test-model-002"
     # (1000/1000)*0.001 + (1000/1000)*0.005 = 0.001 + 0.005 = 0.006
     assert result.usage.cost_usd == pytest.approx(0.006)
 

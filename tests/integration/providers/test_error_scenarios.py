@@ -69,7 +69,7 @@ def _make_litellm_rate_limit(
     )
     exc = LiteLLMRateLimit(
         message="Rate limit exceeded",
-        model="anthropic/claude-sonnet-4-6",
+        model="anthropic/test-model-001",
         llm_provider="anthropic",
         response=response,
     )
@@ -86,7 +86,7 @@ def _make_litellm_auth_error() -> LiteLLMAuthError:
     )
     return LiteLLMAuthError(
         message="Invalid API key",
-        model="anthropic/claude-sonnet-4-6",
+        model="anthropic/test-model-001",
         llm_provider="anthropic",
         response=response,
     )
@@ -96,7 +96,7 @@ def _make_litellm_timeout() -> LiteLLMTimeout:
     """Build a LiteLLM Timeout error."""
     return LiteLLMTimeout(
         message="Request timed out",
-        model="anthropic/claude-sonnet-4-6",
+        model="anthropic/test-model-001",
         llm_provider="anthropic",
     )
 
@@ -105,7 +105,7 @@ def _make_litellm_connection_error() -> LiteLLMConnectionError:
     """Build a LiteLLM APIConnectionError."""
     return LiteLLMConnectionError(
         message="Connection refused",
-        model="anthropic/claude-sonnet-4-6",
+        model="anthropic/test-model-001",
         llm_provider="anthropic",
         request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
     )
@@ -119,7 +119,7 @@ def _make_litellm_internal_error() -> LiteLLMInternalError:
     )
     return LiteLLMInternalError(
         message="Internal server error",
-        model="anthropic/claude-sonnet-4-6",
+        model="anthropic/test-model-001",
         llm_provider="anthropic",
         response=response,
     )

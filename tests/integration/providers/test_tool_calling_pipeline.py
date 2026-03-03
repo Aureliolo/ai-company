@@ -258,7 +258,7 @@ async def test_streaming_malformed_json_tool_call(
     user_messages: list[ChatMessage],
     sample_tool_definitions: list[ToolDefinition],
 ) -> None:
-    """Malformed JSON in streamed tool call args degrades to empty dict."""
+    """Malformed JSON in streamed tool call args causes the tool call to be dropped."""
     driver = _make_driver()
     chunks = [
         build_tool_call_delta_chunk(
@@ -277,9 +277,7 @@ async def test_streaming_malformed_json_tool_call(
         result = [sc async for sc in stream]
 
     tc_chunks = [c for c in result if c.event_type == StreamEventType.TOOL_CALL_DELTA]
-    assert len(tc_chunks) == 1
-    assert tc_chunks[0].tool_call_delta is not None
-    assert tc_chunks[0].tool_call_delta.arguments == {}
+    assert len(tc_chunks) == 0
 
 
 async def test_multi_turn_tool_conversation(

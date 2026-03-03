@@ -7,7 +7,7 @@ automatic retry, rate limiting, and provides a cost-computation helper.
 
 import math
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Callable, Coroutine  # noqa: TC003
+from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any, TypeVar
 
 from ai_company.constants import BUDGET_ROUNDING_PRECISION
@@ -203,6 +203,12 @@ class BaseCompletionProvider(ABC):
         Exceptions that escape without wrapping will bypass the error
         hierarchy.
 
+        Args:
+            messages: Conversation history.
+            model: Model identifier to use.
+            tools: Available tools for function calling.
+            config: Optional completion parameters.
+
         Raises:
             ProviderError: All errors must use the provider error hierarchy.
         """
@@ -226,6 +232,12 @@ class BaseCompletionProvider(ABC):
         Subclasses **must** catch all provider-specific exceptions and
         re-raise them as appropriate ``ProviderError`` subclasses.
 
+        Args:
+            messages: Conversation history.
+            model: Model identifier to use.
+            tools: Available tools for function calling.
+            config: Optional completion parameters.
+
         Raises:
             ProviderError: All errors must use the provider error hierarchy.
         """
@@ -237,6 +249,9 @@ class BaseCompletionProvider(ABC):
         model: str,
     ) -> ModelCapabilities:
         """Provider-specific capability lookup.
+
+        Args:
+            model: Model identifier.
 
         Raises:
             ProviderError: All errors must use the provider error hierarchy.
@@ -273,6 +288,10 @@ class BaseCompletionProvider(ABC):
         limiter before re-raising so subsequent attempts respect the
         provider's backoff hint.
 
+        For streaming results (``AsyncIterator``), the rate-limiter slot
+        is held for the full lifetime of the iterator, not just the
+        connection setup phase.
+
         Args:
             func: Async callable to invoke.
             *args: Positional arguments for *func*.
@@ -281,17 +300,39 @@ class BaseCompletionProvider(ABC):
         Returns:
             The return value of *func*.
         """
+        acquired = False
         if self._rate_limiter is not None:
             await self._rate_limiter.acquire()
+            acquired = True
+        streaming_owns_release = False
         try:
-            return await func(*args, **kwargs)
+            result = await func(*args, **kwargs)
+            if acquired and isinstance(result, AsyncIterator):
+                # Transfer slot ownership to a wrapper generator so the
+                # concurrency slot is held until the stream is exhausted.
+                rate_limiter = self._rate_limiter
+                streaming_owns_release = True
+                acquired = False
+
+                async def _hold_slot_for_stream(
+                    inner: AsyncIterator[Any],
+                ) -> AsyncIterator[Any]:
+                    try:
+                        async for chunk in inner:
+                            yield chunk
+                    finally:
+                        rate_limiter.release()  # type: ignore[union-attr]
+
+                return _hold_slot_for_stream(result)  # type: ignore[return-value]
         except RateLimitError as exc:
             if self._rate_limiter is not None and exc.retry_after is not None:
                 self._rate_limiter.pause(exc.retry_after)
             raise
+        else:
+            return result
         finally:
-            if self._rate_limiter is not None:
-                self._rate_limiter.release()
+            if acquired and not streaming_owns_release:
+                self._rate_limiter.release()  # type: ignore[union-attr]
 
     # -- Helpers ------------------------------------------------------
 

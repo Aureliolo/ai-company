@@ -34,7 +34,7 @@ class RetryConfig(BaseModel):
         jitter: Whether to add random jitter to delay.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     max_retries: int = Field(
         default=3,
@@ -62,6 +62,17 @@ class RetryConfig(BaseModel):
         description="Whether to add random jitter to delay",
     )
 
+    @model_validator(mode="after")
+    def _validate_delay_ordering(self) -> Self:
+        """Ensure base_delay does not exceed max_delay."""
+        if self.base_delay > self.max_delay:
+            msg = (
+                f"base_delay ({self.base_delay}) must be"
+                f" <= max_delay ({self.max_delay})"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class RateLimiterConfig(BaseModel):
     """Configuration for client-side rate limiting.
@@ -73,7 +84,7 @@ class RateLimiterConfig(BaseModel):
             (0 means unlimited).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     max_requests_per_minute: int = Field(
         default=0,
@@ -130,6 +141,8 @@ class ProviderConfig(BaseModel):
         api_key: API key (typically injected by secret management).
         base_url: Base URL for the provider API.
         models: Available models for this provider.
+        retry: Retry configuration for transient errors.
+        rate_limiter: Client-side rate limiting configuration.
     """
 
     model_config = ConfigDict(frozen=True)
