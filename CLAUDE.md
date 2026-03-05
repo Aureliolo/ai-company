@@ -111,6 +111,11 @@ src/ai_company/
 - **Branches**: `<type>/<slug>` from main
 - **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks
 
+## Post-Implementation (MANDATORY)
+
+- **After finishing an issue implementation**: always create a feature branch (`<type>/<slug>`), commit, and push — do NOT create a PR automatically
+- Do NOT leave work uncommitted on main — branch, commit, push immediately after finishing
+
 ## Pre-PR Review (MANDATORY)
 
 - **NEVER create a PR directly** — `gh pr create` is blocked by hookify
