@@ -133,7 +133,7 @@ ROLE_LOOKUP_MISS: Final[str] = "role.lookup.miss"
 
 PROMPT_BUILD_START: Final[str] = "prompt.build.start"
 PROMPT_BUILD_SUCCESS: Final[str] = "prompt.build.success"
-PROMPT_BUILD_TOKEN_TRIMMED: Final[str] = "prompt.build.token_trimmed"  # noqa: S105
+PROMPT_BUILD_TOKEN_TRIMMED: Final[str] = "prompt.build.token_trimmed"  # noqa: S105 — event name, not a credential
 PROMPT_BUILD_ERROR: Final[str] = "prompt.build.error"
 PROMPT_CUSTOM_TEMPLATE_LOADED: Final[str] = "prompt.custom_template.loaded"
 PROMPT_CUSTOM_TEMPLATE_FAILED: Final[str] = "prompt.custom_template.failed"

@@ -13,6 +13,7 @@ from ai_company.core.enums import (
     RiskTolerance,
     SeniorityLevel,
 )
+from ai_company.engine.errors import PromptBuildError
 from ai_company.engine.prompt import (
     DefaultTokenEstimator,
     SystemPrompt,
@@ -255,17 +256,31 @@ class TestBuildSystemPrompt:
 class TestSeniorityAutonomy:
     """Tests for seniority-based autonomy instructions."""
 
+    @staticmethod
+    def _make_agent(
+        name: str,
+        role: str,
+        department: str,
+        level: SeniorityLevel,
+    ) -> AgentIdentity:
+        """Create a minimal agent identity at the given seniority level."""
+        return AgentIdentity(
+            name=name,
+            role=role,
+            department=department,
+            level=level,
+            model=ModelConfig(provider="test", model_id="test-001"),
+            hiring_date=date(2026, 1, 1),
+        )
+
     @pytest.mark.unit
     def test_junior_gets_guidance_instructions(self) -> None:
         """Junior agents get step-by-step guidance language."""
-        model_cfg = ModelConfig(provider="test", model_id="test-001")
-        agent = AgentIdentity(
-            name="Junior Dev",
-            role="Developer",
-            department="Engineering",
-            level=SeniorityLevel.JUNIOR,
-            model=model_cfg,
-            hiring_date=date(2026, 1, 1),
+        agent = self._make_agent(
+            "Junior Dev",
+            "Developer",
+            "Engineering",
+            SeniorityLevel.JUNIOR,
         )
         result = build_system_prompt(agent=agent)
 
@@ -275,14 +290,11 @@ class TestSeniorityAutonomy:
     @pytest.mark.unit
     def test_senior_gets_ownership_instructions(self) -> None:
         """Senior agents get ownership-focused language."""
-        model_cfg = ModelConfig(provider="test", model_id="test-001")
-        agent = AgentIdentity(
-            name="Senior Dev",
-            role="Developer",
-            department="Engineering",
-            level=SeniorityLevel.SENIOR,
-            model=model_cfg,
-            hiring_date=date(2026, 1, 1),
+        agent = self._make_agent(
+            "Senior Dev",
+            "Developer",
+            "Engineering",
+            SeniorityLevel.SENIOR,
         )
         result = build_system_prompt(agent=agent)
 
@@ -291,14 +303,11 @@ class TestSeniorityAutonomy:
     @pytest.mark.unit
     def test_c_suite_gets_strategic_scope(self) -> None:
         """C-suite agents get strategic language."""
-        model_cfg = ModelConfig(provider="test", model_id="test-001")
-        agent = AgentIdentity(
-            name="CEO",
-            role="Chief Executive",
-            department="Executive",
-            level=SeniorityLevel.C_SUITE,
-            model=model_cfg,
-            hiring_date=date(2026, 1, 1),
+        agent = self._make_agent(
+            "CEO",
+            "Chief Executive",
+            "Executive",
+            SeniorityLevel.C_SUITE,
         )
         result = build_system_prompt(agent=agent)
 
@@ -455,17 +464,21 @@ class TestSystemPromptModel:
             prompt.content = "modified"  # type: ignore[misc]
 
     @pytest.mark.unit
-    def test_metadata_contains_agent_info(
+    def test_metadata_contains_all_agent_info(
         self,
         sample_agent_with_personality: AgentIdentity,
     ) -> None:
-        """Metadata contains agent_id and role keys."""
+        """Metadata contains all five expected keys with correct values."""
         result = build_system_prompt(agent=sample_agent_with_personality)
+        agent = sample_agent_with_personality
 
-        assert "agent_id" in result.metadata
-        assert "role" in result.metadata
-        assert result.metadata["agent_id"] == str(sample_agent_with_personality.id)
-        assert result.metadata["role"] == sample_agent_with_personality.role
+        assert result.metadata == {
+            "agent_id": str(agent.id),
+            "name": agent.name,
+            "role": agent.role,
+            "department": agent.department,
+            "level": agent.level.value,
+        }
 
 
 # ── TestPromptLogging ────────────────────────────────────────────
@@ -505,3 +518,96 @@ class TestPromptLogging:
 
         events = [entry["event"] for entry in logs]
         assert "prompt.build.token_trimmed" in events
+
+
+# ── TestPromptErrorHandling ─────────────────────────────────────
+
+
+class TestPromptErrorHandling:
+    """Tests for error paths in prompt construction."""
+
+    @pytest.mark.unit
+    def test_invalid_custom_template_raises_prompt_build_error(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Syntactically invalid custom template raises PromptBuildError."""
+        with pytest.raises(PromptBuildError, match="invalid Jinja2 syntax"):
+            build_system_prompt(
+                agent=sample_agent_with_personality,
+                custom_template="{% if %}",
+            )
+
+    @pytest.mark.unit
+    def test_invalid_template_preserves_exception_chain(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """PromptBuildError chains the original TemplateSyntaxError."""
+        with pytest.raises(PromptBuildError) as exc_info:
+            build_system_prompt(
+                agent=sample_agent_with_personality,
+                custom_template="{% if %}",
+            )
+
+        assert exc_info.value.__cause__ is not None
+
+    @pytest.mark.unit
+    def test_render_error_raises_prompt_build_error(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """Template with undefined filter raises PromptBuildError at render time."""
+        with pytest.raises(PromptBuildError, match="rendering failed"):
+            build_system_prompt(
+                agent=sample_agent_with_personality,
+                custom_template="{{ agent_name | nonexistent_filter }}",
+            )
+
+
+# ── TestTrimmingPriority ────────────────────────────────────────
+
+
+class TestTrimmingPriority:
+    """Tests for section trimming priority order."""
+
+    @pytest.mark.unit
+    def test_company_trimmed_before_tools_and_task(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        sample_tool_definitions: tuple[ToolDefinition, ...],
+        sample_company: Company,
+    ) -> None:
+        """With a moderately tight budget, only company is trimmed first."""
+        # Build full prompt to get its token count.
+        full = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            available_tools=sample_tool_definitions,
+            company=sample_company,
+        )
+        assert "company" in full.sections
+
+        # Build without company to find a budget that fits without company
+        # but not with it.
+        without_company = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            available_tools=sample_tool_definitions,
+        )
+
+        # Set max_tokens between without-company and full sizes.
+        budget = (without_company.estimated_tokens + full.estimated_tokens) // 2
+        trimmed = build_system_prompt(
+            agent=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            available_tools=sample_tool_definitions,
+            company=sample_company,
+            max_tokens=budget,
+        )
+
+        # Company should be trimmed but tools and task remain.
+        assert "company" not in trimmed.sections
+        assert "tools" in trimmed.sections
+        assert "task" in trimmed.sections

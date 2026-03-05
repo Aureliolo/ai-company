@@ -29,6 +29,7 @@ from ai_company.providers.models import ToolDefinition
 
 @pytest.fixture
 def sample_model_config() -> ModelConfig:
+    """Vendor-agnostic model config for prompt testing."""
     return ModelConfig(provider="test-provider", model_id="test-model-001")
 
 

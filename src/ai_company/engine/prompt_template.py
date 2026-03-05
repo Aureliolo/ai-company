@@ -14,7 +14,7 @@ PROMPT_TEMPLATE_VERSION: Final[str] = "1.0.0"
 
 # ── Autonomy instructions by seniority level ─────────────────────
 
-AUTONOMY_INSTRUCTIONS: dict[SeniorityLevel, str] = {
+AUTONOMY_INSTRUCTIONS: Final[dict[SeniorityLevel, str]] = {
     SeniorityLevel.JUNIOR: (
         "Follow instructions carefully and precisely. "
         "Ask clarifying questions when requirements are ambiguous. "
@@ -64,6 +64,12 @@ AUTONOMY_INSTRUCTIONS: dict[SeniorityLevel, str] = {
         "Coordinate across all departments to achieve company objectives."
     ),
 }
+
+_missing_levels = set(SeniorityLevel) - set(AUTONOMY_INSTRUCTIONS)
+if _missing_levels:
+    _names = sorted(lv.value for lv in _missing_levels)
+    _msg = f"Missing autonomy instructions for: {_names}"
+    raise ValueError(_msg)
 
 # ── Default Jinja2 template ──────────────────────────────────────
 

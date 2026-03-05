@@ -162,7 +162,7 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 | **comment-analyzer** | Diff contains docstring changes (`"""`) or significant comment changes | `pr-review-toolkit:comment-analyzer` |
 | **type-design-analyzer** | Diff contains `class ` definitions, `BaseModel`, `TypedDict`, type aliases | `pr-review-toolkit:type-design-analyzer` |
 | **logging-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **resilience-audit** | Files in `src/ai_company/providers/` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+| **resilience-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **security-reviewer** | Files in `src/ai_company/api/`, `src/ai_company/security/`, `src/ai_company/tools/`, `src/ai_company/config/` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, auth/credential patterns | `everything-claude-code:security-reviewer` |
 
 ### Logging-audit custom prompt
@@ -195,18 +195,27 @@ For every function touched by the changes, analyze its logic and suggest missing
 
 ### Resilience-audit custom prompt
 
-The resilience-audit agent must check for these violations (from CLAUDE.md `## Resilience`):
+The resilience-audit agent must check for these violations (from CLAUDE.md `## Resilience`).
 
-**Hard rules:**
+Resilience is a cross-cutting concern — ANY code can introduce resilience issues, not just provider files. Check all changed source files.
+
+**Hard rules (provider layer):**
 1. Driver subclass implements its own retry/backoff logic instead of relying on base class (CRITICAL)
 2. Calling code wraps provider calls in manual retry loops (CRITICAL)
 3. New `BaseCompletionProvider` subclass doesn't pass `retry_handler`/`rate_limiter` to `super().__init__()` (MAJOR)
 4. Retryable error type created without `is_retryable = True` (MAJOR)
 5. `asyncio.sleep` used for retry delays outside of `RetryHandler` (MAJOR)
 
+**Hard rules (any code):**
+6. Error hierarchy overlap — new exception classes that accidentally inherit from or shadow `ProviderError`, which could cause incorrect error routing (MAJOR)
+7. Code that catches broad `Exception` or `BaseException` and silently swallows provider errors that should propagate (MAJOR)
+8. Manual retry/backoff patterns (e.g., `for attempt in range(...)`, `while retries > 0`, `time.sleep` in loops) anywhere in the codebase — retries belong in `RetryHandler` only (CRITICAL)
+
 **Soft rules (SUGGESTION):**
-6. New provider error type missing `is_retryable` classification (SUGGESTION)
-7. Provider call site that catches `ProviderError` but doesn't account for `RetryExhaustedError` (SUGGESTION)
+9. New error types missing `is_retryable` classification when they represent I/O or network failures (SUGGESTION)
+10. Provider call site that catches `ProviderError` but doesn't account for `RetryExhaustedError` (SUGGESTION)
+11. Engine or orchestration code that imports from `providers/` without considering that provider calls may raise `RetryExhaustedError` (SUGGESTION)
+12. Non-retryable error types (e.g., deterministic failures like bad templates, invalid config) that should NOT be retryable — verify they don't accidentally inherit retryable classification (SUGGESTION)
 
 ## Phase 4: Launch Review Agents (parallel)
 
