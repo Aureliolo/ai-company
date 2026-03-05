@@ -447,3 +447,68 @@ class TestBaseCompletionProviderResilience:
         msg = ChatMessage(role=MessageRole.USER, content="Hi")
         with pytest.raises(RateLimitError):
             await provider.complete([msg], "test-model")
+
+    async def test_rate_limited_call_releases_on_non_rate_limit_error(self) -> None:
+        """Semaphore slot is released even when a non-RateLimitError is raised."""
+        from ai_company.providers.errors import ProviderTimeoutError
+
+        mock_limiter = MagicMock(spec=RateLimiter)
+        mock_limiter.acquire = AsyncMock()
+        mock_limiter.is_enabled = True
+
+        provider = _RateLimitProvider(retry_after=None)
+        # Swap to throw ProviderTimeoutError instead of RateLimitError
+        error = ProviderTimeoutError("timed out")
+        provider._do_complete = AsyncMock(side_effect=error)  # type: ignore[method-assign]
+        provider._rate_limiter = mock_limiter
+
+        msg = ChatMessage(role=MessageRole.USER, content="Hi")
+        with pytest.raises(ProviderTimeoutError):
+            await provider.complete([msg], "test-model")
+
+        mock_limiter.acquire.assert_awaited_once()
+        mock_limiter.release.assert_called_once()
+
+    async def test_stream_holds_rate_limiter_until_consumed(self) -> None:
+        """Streaming holds the rate limiter slot until the stream is fully consumed."""
+        mock_limiter = MagicMock(spec=RateLimiter)
+        mock_limiter.acquire = AsyncMock()
+        mock_limiter.is_enabled = True
+
+        provider = _ConcreteProvider()
+        provider._rate_limiter = mock_limiter
+
+        msg = ChatMessage(role=MessageRole.USER, content="Hi")
+        stream = await provider.stream([msg], "test-model")
+
+        # After getting the iterator, acquire should have been called but
+        # release should NOT have been called yet (slot held for stream).
+        mock_limiter.acquire.assert_awaited_once()
+        mock_limiter.release.assert_not_called()
+
+        # Consume the stream
+        _ = [chunk async for chunk in stream]
+
+        # Now release should have been called exactly once
+        mock_limiter.release.assert_called_once()
+
+    async def test_stream_releases_rate_limiter_on_early_close(self) -> None:
+        """Rate limiter slot is released when the stream is closed early."""
+        mock_limiter = MagicMock(spec=RateLimiter)
+        mock_limiter.acquire = AsyncMock()
+        mock_limiter.is_enabled = True
+
+        provider = _ConcreteProvider()
+        provider._rate_limiter = mock_limiter
+
+        msg = ChatMessage(role=MessageRole.USER, content="Hi")
+        stream = await provider.stream([msg], "test-model")
+
+        # Consume only the first chunk, then explicitly close
+        async for _ in stream:
+            break
+        # Async generators require explicit aclose() — break alone
+        # does not trigger the finally block in CPython.
+        await stream.aclose()  # type: ignore[attr-defined]
+
+        mock_limiter.release.assert_called_once()

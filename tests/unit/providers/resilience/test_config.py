@@ -65,6 +65,22 @@ class TestRetryConfig:
         with pytest.raises(ValidationError):
             config.max_retries = 5  # type: ignore[misc]
 
+    def test_base_delay_exceeds_max_delay_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="base_delay"):
+            RetryConfig(base_delay=10.0, max_delay=5.0)
+
+    def test_inf_base_delay_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            RetryConfig(base_delay=float("inf"))
+
+    def test_nan_max_delay_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            RetryConfig(max_delay=float("nan"))
+
+    def test_inf_exponential_base_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            RetryConfig(exponential_base=float("inf"))
+
 
 @pytest.mark.unit
 class TestRateLimiterConfig:

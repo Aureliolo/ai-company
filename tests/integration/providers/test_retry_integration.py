@@ -271,3 +271,34 @@ class TestRetryDisabledIntegration:
 
         assert exc_info.value.retry_after == 5.0
         m.assert_awaited_once()
+
+
+@pytest.mark.integration
+class TestRetryWithRateLimitIntegration:
+    """Retry + rate limiting enabled together."""
+
+    async def test_retry_with_concurrent_limit(self) -> None:
+        """Retry correctly releases and re-acquires rate limiter slot."""
+        config = _make_config(max_retries=1, max_concurrent=1)
+        driver = _make_driver(config)
+        import litellm as _litellm
+
+        transient = _litellm.Timeout(  # type: ignore[attr-defined]
+            message="Timeout",
+            model="test-model-001",
+            llm_provider="test-provider",
+        )
+        success = build_model_response(
+            content="Recovered",
+            model="test-model-001",
+        )
+
+        with patch(
+            _PATCH_ACOMPLETION,
+            new_callable=AsyncMock,
+        ) as m:
+            m.side_effect = [transient, success]
+            result = await driver.complete(_user_messages(), "test-model")
+
+        assert result.content == "Recovered"
+        assert m.await_count == 2

@@ -6,6 +6,7 @@ import pytest
 import structlog
 
 from ai_company.observability.events import (
+    PROVIDER_CALL_ERROR,
     PROVIDER_RETRY_ATTEMPT,
     PROVIDER_RETRY_EXHAUSTED,
     PROVIDER_RETRY_SKIPPED,
@@ -257,3 +258,38 @@ class TestRetryHandlerLogging:
             await handler.execute(func)
         skipped = [e for e in cap if e.get("event") == PROVIDER_RETRY_SKIPPED]
         assert len(skipped) == 1
+
+
+@pytest.mark.unit
+class TestRetryHandlerNonProviderError:
+    """Non-ProviderError exceptions must raise immediately without retry."""
+
+    async def test_type_error_raises_immediately(self) -> None:
+        handler = RetryHandler(_fast_config(max_retries=3))
+        func = AsyncMock(side_effect=TypeError("unexpected"))
+        with pytest.raises(TypeError, match="unexpected"):
+            await handler.execute(func)
+        func.assert_awaited_once()
+
+    async def test_runtime_error_raises_immediately(self) -> None:
+        handler = RetryHandler(_fast_config(max_retries=3))
+        func = AsyncMock(side_effect=RuntimeError("bug"))
+        with pytest.raises(RuntimeError, match="bug"):
+            await handler.execute(func)
+        func.assert_awaited_once()
+
+    async def test_non_provider_error_logs_warning(self) -> None:
+        handler = RetryHandler(_fast_config(max_retries=3))
+        func = AsyncMock(side_effect=ValueError("bad value"))
+        with (
+            structlog.testing.capture_logs() as cap,
+            pytest.raises(ValueError, match="bad value"),
+        ):
+            await handler.execute(func)
+        errors = [
+            e
+            for e in cap
+            if e.get("event") == PROVIDER_CALL_ERROR
+            and e.get("reason") == "unexpected_non_provider_error"
+        ]
+        assert len(errors) == 1
