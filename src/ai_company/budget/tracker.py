@@ -3,14 +3,15 @@
 Provides an append-only in-memory store for :class:`CostRecord` entries and
 aggregation queries consumed by the CFO agent and budget monitoring.
 
-Implements DESIGN_SPEC Section 10.2 service layer.  Persistence (SQLite) is
-deferred to M5; the current implementation is purely in-memory.
+Service layer for the cost tracking schema defined in DESIGN_SPEC Section 10.2.
+Persistence (SQLite) is deferred to M5; the current implementation is purely
+in-memory.
 """
 
 import asyncio
 import math
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from ai_company.budget.enums import BudgetAlertLevel
 from ai_company.budget.spending_summary import (
@@ -22,9 +23,13 @@ from ai_company.budget.spending_summary import (
 from ai_company.constants import BUDGET_ROUNDING_PRECISION
 from ai_company.observability import get_logger
 from ai_company.observability.events import (
+    BUDGET_AGENT_COST_QUERIED,
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
     BUDGET_RECORD_ADDED,
     BUDGET_SUMMARY_BUILT,
+    BUDGET_TIME_RANGE_INVALID,
+    BUDGET_TOTAL_COST_QUERIED,
+    BUDGET_TRACKER_CREATED,
 )
 
 if TYPE_CHECKING:
@@ -35,6 +40,15 @@ if TYPE_CHECKING:
     from ai_company.budget.cost_record import CostRecord
 
 logger = get_logger(__name__)
+
+
+class _AggregateResult(NamedTuple):
+    """Aggregated cost and token totals."""
+
+    cost: float
+    input_tokens: int
+    output_tokens: int
+    record_count: int
 
 
 class CostTracker:
@@ -62,6 +76,11 @@ class CostTracker:
         self._lock: asyncio.Lock = asyncio.Lock()
         self._budget_config = budget_config
         self._department_resolver = department_resolver
+        logger.debug(
+            BUDGET_TRACKER_CREATED,
+            has_budget_config=budget_config is not None,
+            has_department_resolver=department_resolver is not None,
+        )
 
     async def record(self, cost_record: CostRecord) -> None:
         """Append a cost record.
@@ -98,10 +117,10 @@ class CostTracker:
                 ``start >= end``.
         """
         _validate_time_range(start, end)
+        logger.debug(BUDGET_TOTAL_COST_QUERIED, start=start, end=end)
         snapshot = await self._snapshot()
         filtered = _filter_records(snapshot, start=start, end=end)
-        cost, _, _, _ = _aggregate(filtered)
-        return cost
+        return _aggregate(filtered).cost
 
     async def get_agent_cost(
         self,
@@ -125,10 +144,20 @@ class CostTracker:
                 ``start >= end``.
         """
         _validate_time_range(start, end)
+        logger.debug(
+            BUDGET_AGENT_COST_QUERIED,
+            agent_id=agent_id,
+            start=start,
+            end=end,
+        )
         snapshot = await self._snapshot()
-        filtered = _filter_records(snapshot, agent_id=agent_id, start=start, end=end)
-        cost, _, _, _ = _aggregate(filtered)
-        return cost
+        filtered = _filter_records(
+            snapshot,
+            agent_id=agent_id,
+            start=start,
+            end=end,
+        )
+        return _aggregate(filtered).cost
 
     async def get_record_count(self) -> int:
         """Total number of recorded cost entries.
@@ -165,65 +194,22 @@ class CostTracker:
         _validate_time_range(start, end)
         snapshot = await self._snapshot()
         filtered = _filter_records(snapshot, start=start, end=end)
-        total_cost, total_in, total_out, count = _aggregate(filtered)
+        totals = _aggregate(filtered)
 
-        # Per-agent aggregation
-        by_agent_map: dict[str, list[CostRecord]] = defaultdict(list)
-        for rec in filtered:
-            by_agent_map[rec.agent_id].append(rec)
-
-        agent_spendings: list[AgentSpending] = []
-        for aid in sorted(by_agent_map):
-            a_cost, a_in, a_out, a_count = _aggregate(by_agent_map[aid])
-            agent_spendings.append(
-                AgentSpending(
-                    agent_id=aid,
-                    total_cost_usd=a_cost,
-                    total_input_tokens=a_in,
-                    total_output_tokens=a_out,
-                    record_count=a_count,
-                )
-            )
-
-        # Per-department aggregation
-        dept_map: dict[str, list[CostRecord]] = defaultdict(list)
-        for aid, records in by_agent_map.items():
-            dept = self._resolve_department(aid)
-            if dept is not None:
-                dept_map[dept].extend(records)
-
-        dept_spendings: list[DepartmentSpending] = []
-        for dname in sorted(dept_map):
-            d_cost, d_in, d_out, d_count = _aggregate(dept_map[dname])
-            dept_spendings.append(
-                DepartmentSpending(
-                    department_name=dname,
-                    total_cost_usd=d_cost,
-                    total_input_tokens=d_in,
-                    total_output_tokens=d_out,
-                    record_count=d_count,
-                )
-            )
-
-        # Budget context
-        budget_monthly = (
-            self._budget_config.total_monthly if self._budget_config else 0.0
+        agent_spendings = _build_agent_spendings(filtered)
+        dept_spendings = self._build_dept_spendings(agent_spendings)
+        budget_monthly, used_pct, alert = self._build_budget_context(
+            totals.cost,
         )
-        used_pct = (
-            round(total_cost / budget_monthly * 100, BUDGET_ROUNDING_PRECISION)
-            if budget_monthly > 0
-            else 0.0
-        )
-        alert = self._compute_alert_level(total_cost)
 
         summary = SpendingSummary(
             period=PeriodSpending(
                 start=start,
                 end=end,
-                total_cost_usd=total_cost,
-                total_input_tokens=total_in,
-                total_output_tokens=total_out,
-                record_count=count,
+                total_cost_usd=totals.cost,
+                total_input_tokens=totals.input_tokens,
+                total_output_tokens=totals.output_tokens,
+                record_count=totals.record_count,
             ),
             by_agent=tuple(agent_spendings),
             by_department=tuple(dept_spendings),
@@ -234,8 +220,8 @@ class CostTracker:
 
         logger.info(
             BUDGET_SUMMARY_BUILT,
-            total_cost_usd=total_cost,
-            record_count=count,
+            total_cost_usd=totals.cost,
+            record_count=totals.record_count,
             agent_count=len(agent_spendings),
             department_count=len(dept_spendings),
             alert_level=alert.value,
@@ -246,23 +232,66 @@ class CostTracker:
     # ── Private helpers ──────────────────────────────────────────────
 
     async def _snapshot(self) -> tuple[CostRecord, ...]:
-        """Acquire lock, copy records, release lock."""
+        """Return an immutable snapshot of all current records."""
         async with self._lock:
             return tuple(self._records)
 
-    def _compute_alert_level(self, total_cost: float) -> BudgetAlertLevel:
-        """Determine alert level from total cost and budget config."""
+    def _build_dept_spendings(
+        self,
+        agent_spendings: list[AgentSpending],
+    ) -> list[DepartmentSpending]:
+        """Aggregate per-department spending from agent spendings."""
+        dept_map: dict[str, list[AgentSpending]] = defaultdict(list)
+        for agent_spend in agent_spendings:
+            dept = self._resolve_department(agent_spend.agent_id)
+            if dept is not None:
+                dept_map[dept].append(agent_spend)
+
+        return [
+            DepartmentSpending(
+                department_name=dname,
+                total_cost_usd=round(
+                    math.fsum(s.total_cost_usd for s in spends),
+                    BUDGET_ROUNDING_PRECISION,
+                ),
+                total_input_tokens=sum(s.total_input_tokens for s in spends),
+                total_output_tokens=sum(s.total_output_tokens for s in spends),
+                record_count=sum(s.record_count for s in spends),
+            )
+            for dname, spends in sorted(dept_map.items())
+        ]
+
+    def _build_budget_context(
+        self,
+        total_cost: float,
+    ) -> tuple[float, float, BudgetAlertLevel]:
+        """Compute budget monthly, used percentage, and alert level."""
+        budget_monthly = (
+            self._budget_config.total_monthly if self._budget_config else 0.0
+        )
+        used_pct = (
+            round(
+                total_cost / budget_monthly * 100,
+                BUDGET_ROUNDING_PRECISION,
+            )
+            if budget_monthly > 0
+            else 0.0
+        )
+        alert = self._compute_alert_level(used_pct)
+        return budget_monthly, used_pct, alert
+
+    def _compute_alert_level(self, used_pct: float) -> BudgetAlertLevel:
+        """Determine alert level from the rounded budget percentage."""
         if self._budget_config is None or self._budget_config.total_monthly <= 0:
             return BudgetAlertLevel.NORMAL
 
-        pct = total_cost / self._budget_config.total_monthly * 100
         alerts = self._budget_config.alerts
 
-        if pct >= alerts.hard_stop_at:
+        if used_pct >= alerts.hard_stop_at:
             return BudgetAlertLevel.HARD_STOP
-        if pct >= alerts.critical_at:
+        if used_pct >= alerts.critical_at:
             return BudgetAlertLevel.CRITICAL
-        if pct >= alerts.warn_at:
+        if used_pct >= alerts.warn_at:
             return BudgetAlertLevel.WARNING
         return BudgetAlertLevel.NORMAL
 
@@ -291,6 +320,11 @@ def _validate_time_range(
 ) -> None:
     """Raise ``ValueError`` if *start* >= *end* when both are given."""
     if start is not None and end is not None and start >= end:
+        logger.warning(
+            BUDGET_TIME_RANGE_INVALID,
+            start=start.isoformat(),
+            end=end.isoformat(),
+        )
         msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
         raise ValueError(msg)
 
@@ -315,14 +349,37 @@ def _filter_records(
     )
 
 
+def _build_agent_spendings(
+    filtered: Sequence[CostRecord],
+) -> list[AgentSpending]:
+    """Group filtered records by agent and aggregate each group."""
+    by_agent: dict[str, list[CostRecord]] = defaultdict(list)
+    for rec in filtered:
+        by_agent[rec.agent_id].append(rec)
+
+    return [
+        AgentSpending(
+            agent_id=aid,
+            total_cost_usd=agg.cost,
+            total_input_tokens=agg.input_tokens,
+            total_output_tokens=agg.output_tokens,
+            record_count=agg.record_count,
+        )
+        for aid in sorted(by_agent)
+        if (agg := _aggregate(by_agent[aid])) is not None
+    ]
+
+
 def _aggregate(
     records: Sequence[CostRecord],
-) -> tuple[float, int, int, int]:
-    """Aggregate records into (cost, input_tokens, output_tokens, count)."""
-    cost = round(
-        math.fsum(r.cost_usd for r in records),
-        BUDGET_ROUNDING_PRECISION,
-    )
-    input_tokens = sum(r.input_tokens for r in records)
-    output_tokens = sum(r.output_tokens for r in records)
-    return cost, input_tokens, output_tokens, len(records)
+) -> _AggregateResult:
+    """Aggregate records into cost, token totals, and count."""
+    costs: list[float] = []
+    input_tokens = 0
+    output_tokens = 0
+    for r in records:
+        costs.append(r.cost_usd)
+        input_tokens += r.input_tokens
+        output_tokens += r.output_tokens
+    cost = round(math.fsum(costs), BUDGET_ROUNDING_PRECISION)
+    return _AggregateResult(cost, input_tokens, output_tokens, len(costs))
