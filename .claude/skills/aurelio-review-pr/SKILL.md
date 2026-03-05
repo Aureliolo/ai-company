@@ -104,9 +104,9 @@ Read the current `DESIGN_SPEC.md`, `CLAUDE.md`, and `README.md` in full. Then co
 
 **DESIGN_SPEC.md (CRITICAL — this is the project's source of truth):**
 1. §15.3 Project Structure — does it match the actual files/directories under `src/ai_company/`? Any new modules missing? Any listed files that no longer exist? (CRITICAL)
-2. §15.5 Pydantic Model Conventions — do the documented conventions match how models are actually written in code? (MAJOR)
+2. §3.1 Agent Identity Card — does the config/runtime split documentation match the actual model code? (MAJOR)
 3. §15.4 Key Design Decisions — are technology choices and rationale still accurate? (MAJOR)
-4. §3.1 Agent Identity Card — does the config/runtime split documentation match the actual model code? (MAJOR)
+4. §15.5 Pydantic Model Conventions — do the documented conventions match how models are actually written in code? Are "Adopted" vs "Planned" labels still accurate? (MAJOR)
 5. §10.2 Cost Tracking — does the implementation note match the actual `TokenUsage` and spending summary models? (MAJOR)
 6. §11.1.1 Tool Execution Model — does it match actual `ToolInvoker` behavior? (MAJOR)
 7. §15.2 Technology Stack — are versions, libraries, and rationale current? (MEDIUM)

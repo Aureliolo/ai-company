@@ -68,8 +68,8 @@ src/ai_company/
 - **Docstrings**: Google style, required on public classes/functions (enforced by ruff D rules)
 - **Immutability**: create new objects, never mutate existing ones. For `dict`/`list` fields in frozen Pydantic models, use `MappingProxyType` wrapping at construction (not `deepcopy` on access). Deep-copy only at system boundaries (e.g. passing data to `tool.execute()`, serializing for persistence).
 - **Config vs runtime state**: frozen Pydantic models for config/identity; separate mutable-via-copy models (using `model_copy(update=...)`) for runtime state that evolves (e.g. agent execution state, task progress). Never mix static config fields with mutable runtime fields in one model.
-- **Models**: Pydantic v2 (`BaseModel`, `model_validator`, `computed_field`, `ConfigDict`). Use `@computed_field` for derived values (e.g. `total_tokens = input + output`) instead of storing + validating redundant fields. Use `NotBlankStr` (from `core.types`) for all non-optional identifier/name fields instead of manual whitespace validators.
-- **Async concurrency**: use `asyncio.TaskGroup` for fan-out/fan-in parallel operations (e.g. multiple tool invocations, parallel agent calls). Prefer structured concurrency over bare `create_task`.
+- **Models**: Pydantic v2 (`BaseModel`, `model_validator`, `ConfigDict`). Planned conventions for new code: use `@computed_field` for derived values instead of storing + validating redundant fields; use `NotBlankStr` (from `core.types`) for non-optional identifier/name fields instead of manual whitespace validators. Existing models are being migrated incrementally.
+- **Async concurrency**: prefer `asyncio.TaskGroup` for fan-out/fan-in parallel operations in new code (e.g. multiple tool invocations, parallel agent calls). Prefer structured concurrency over bare `create_task`. Existing code is being migrated incrementally.
 - **Line length**: 88 characters (ruff)
 - **Functions**: < 50 lines, files < 800 lines
 - **Errors**: handle explicitly, never silently swallow
@@ -80,7 +80,7 @@ src/ai_company/
 - **Every module** with business logic MUST have: `from ai_company.observability import get_logger` then `logger = get_logger(__name__)`
 - **Never** use `import logging` / `logging.getLogger()` / `print()` in application code
 - **Variable name**: always `logger` (not `_logger`, not `log`)
-- **Event names**: always use constants from the appropriate domain module under `ai_company.observability.events/` (e.g. `events.provider`, `events.budget`, `events.tool`, `events.config`, `events.template`, `events.routing`, `events.task`, `events.prompt`)
+- **Event names**: always use constants from `ai_company.observability.events` (e.g. `PROVIDER_CALL_START`, `BUDGET_RECORD_ADDED`, `TOOL_INVOKE_START`). Import directly: `from ai_company.observability.events import EVENT_CONSTANT`
 - **Structured kwargs**: always `logger.info(EVENT, key=value)` — never `logger.info("msg %s", val)`
 - **All error paths** must log at WARNING or ERROR with context before raising
 - **All state transitions** must log at INFO
@@ -133,5 +133,5 @@ src/ai_company/
 ## Dependencies
 
 - **Pinned**: all versions use `==` in `pyproject.toml`
-- **Groups**: `test` (pytest + plugins), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pydantic)
+- **Groups**: `test` (pytest + plugins), `dev` (includes test + ruff, mypy, pre-commit, commitizen)
 - **Install**: `uv sync` installs everything (dev group is default)
