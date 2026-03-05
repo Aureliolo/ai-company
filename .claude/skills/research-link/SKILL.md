@@ -87,7 +87,7 @@ Cross-reference findings against the ai-company project. Search these in paralle
 1. **DESIGN_SPEC.md** — Grep for related sections (memory, providers, communication, agents, etc.)
 2. **Source code** — Grep `src/ai_company/` for overlapping implementations or modules
 3. **CLAUDE.md** — Check for relevant conventions, decisions, or constraints
-4. **Memory files** — Grep `~/.claude/projects/C--Users-Aurelio-ai-company/memory/` for prior research on same or related topics
+4. **Memory files** — Grep the project's auto memory directory (the path is in your system context) for prior research on same or related topics
 5. **pyproject.toml** — Check current dependencies for overlap or conflict
 
 For each match, note:
@@ -111,7 +111,7 @@ For each relevant concept, tool, or pattern found, assign exactly one verdict:
 ### Verdict Rules
 
 - Every verdict must reference a specific part of the project (module, design section, convention)
-- **USE** and **REPLACE** require license check (must be compatible with BUSL-1.1 / Apache 2.0)
+- **USE** and **REPLACE** require a license check against the repo's dependency review allow-list (see CI workflow and `CLAUDE.md` dependency notes; must be permissive and CI-compatible)
 - **RETHINK** must explain the scope of impact — is it one module or the whole architecture?
 - **LATER** must specify the trigger condition (e.g., "when we start M5 Memory & Budget")
 - Be honest — most research produces ADAPT or LATER, not USE or RETHINK
@@ -150,17 +150,16 @@ After presenting results, use AskUserQuestion to ask how to proceed. The options
 - "Note it and move on" — Append one-liner to research log only, no detailed file
 
 **If any USE/REPLACE/RETHINK verdicts exist, also include:**
-- "Create GitHub issues for actionable items" — Create issues for USE/REPLACE/RETHINK items
-- "Implement now" — Start implementing the highest-impact actionable item immediately
+- "Act on recommendations" — Create GitHub issues for actionable items, or implement the highest-impact one now (ask which in a follow-up)
 
 **If any ADAPT/LATER verdicts exist, also include:**
 - "Explore [specific item] deeper" — Do a deeper dive on the most promising ADAPT/LATER item
 
-Tailor the options to what actually came out of the research. Don't offer "Create issues" if everything was SKIP/LATER.
+Tailor the options to what actually came out of the research. Don't offer "Act on recommendations" if everything was SKIP/LATER. Keep the total to 4 options max (the AskUserQuestion tool limit).
 
 ### Memory Persistence
 
-**Always** (regardless of user choice): append a one-liner to `~/.claude/projects/C--Users-Aurelio-ai-company/memory/research-log.md`:
+**Always** (regardless of user choice): append a one-liner to `research-log.md` in the project's auto memory directory:
 
 ```
 | YYYY-MM-DD | [Title](URL) | VERDICT | Relevant areas | One-line summary |
@@ -168,7 +167,7 @@ Tailor the options to what actually came out of the research. Don't offer "Creat
 
 Create the file with a header row if it doesn't exist yet.
 
-**If user chooses "Save findings to memory"**: write a detailed file to `~/.claude/projects/C--Users-Aurelio-ai-company/memory/research/` with the full analysis in under 40 lines. Use a slugified filename based on the topic.
+**If user chooses "Save findings to memory"**: write a detailed file to a `research/` subdirectory inside the project's auto memory directory, with the full analysis in under 40 lines. Use a slugified filename based on the topic.
 
 ---
 
