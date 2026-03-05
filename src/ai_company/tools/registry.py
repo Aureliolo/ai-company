@@ -109,14 +109,13 @@ class ToolRegistry:
 
     def __contains__(self, name: object) -> bool:
         """Check whether a tool name is registered."""
-        try:
-            return name in self._tools
-        except TypeError:
+        if not isinstance(name, str):
             logger.debug(
                 TOOL_REGISTRY_CONTAINS_TYPE_ERROR,
                 name_type=type(name).__name__,
             )
             return False
+        return name in self._tools
 
     def __len__(self) -> int:
         """Return the number of registered tools."""

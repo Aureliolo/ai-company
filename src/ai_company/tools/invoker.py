@@ -27,6 +27,7 @@ from ai_company.observability.events import (
     TOOL_INVOKE_START,
     TOOL_INVOKE_SUCCESS,
     TOOL_INVOKE_TOOL_ERROR,
+    TOOL_INVOKE_VALIDATION_UNEXPECTED,
 )
 from ai_company.providers.models import ToolCall, ToolResult
 
@@ -54,8 +55,9 @@ _SAFE_REGISTRY: JsonSchemaRegistry = JsonSchemaRegistry(  # type: ignore[call-ar
 class ToolInvoker:
     """Validates parameters and executes tool calls against a registry.
 
-    All errors are caught and returned as ``ToolResult(is_error=True)``
-    — the invoker never raises on tool failures.
+    Recoverable errors are returned as ``ToolResult(is_error=True)``.
+    Non-recoverable errors (``MemoryError``, ``RecursionError``) are
+    re-raised after logging.
 
     Examples:
         Invoke a single tool call::
@@ -85,8 +87,8 @@ class ToolInvoker:
             3. Call ``tool.execute(arguments=...)``.
             4. Return a ``ToolResult`` with the output.
 
-        Any error at any step produces a ``ToolResult(is_error=True)``
-        rather than propagating the exception.
+        Recoverable errors produce ``ToolResult(is_error=True)``.
+        Non-recoverable errors are re-raised.
 
         Args:
             tool_call: The tool call from the LLM.
@@ -149,52 +151,83 @@ class ToolInvoker:
                 registry=_SAFE_REGISTRY,
             )
         except jsonschema.SchemaError as exc:
-            logger.exception(
-                TOOL_INVOKE_SCHEMA_ERROR,
-                tool_call_id=tool_call.id,
-                tool_name=tool_call.name,
-                error=exc.message,
-            )
-            return ToolResult(
-                tool_call_id=tool_call.id,
-                content=(
-                    f"Tool {tool_call.name!r} has an invalid "
-                    f"parameter schema: {exc.message}"
-                ),
-                is_error=True,
-            )
+            return self._schema_error_result(tool_call, exc.message)
         except jsonschema.ValidationError as exc:
-            logger.warning(
-                TOOL_INVOKE_PARAMETER_ERROR,
+            return self._param_error_result(tool_call, exc.message)
+        except (MemoryError, RecursionError) as exc:
+            logger.exception(
+                TOOL_INVOKE_NON_RECOVERABLE,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                error=exc.message,
+                error=f"{type(exc).__name__}: {exc}",
             )
-            param_err = ToolParameterError(
-                exc.message,
-                context={"tool": tool_call.name},
-            )
-            return ToolResult(
-                tool_call_id=tool_call.id,
-                content=str(param_err),
-                is_error=True,
-            )
+            raise
         except Exception as exc:
             error_msg = str(exc) or f"{type(exc).__name__} (no message)"
-            logger.exception(
-                TOOL_INVOKE_SCHEMA_ERROR,
-                tool_call_id=tool_call.id,
-                tool_name=tool_call.name,
-                error=error_msg,
-            )
-            return ToolResult(
-                tool_call_id=tool_call.id,
-                content=(
-                    f"Tool {tool_call.name!r} parameter validation failed: {error_msg}"
-                ),
-                is_error=True,
-            )
+            return self._unexpected_validation_result(tool_call, error_msg)
         return None
+
+    def _schema_error_result(
+        self,
+        tool_call: ToolCall,
+        error_msg: str,
+    ) -> ToolResult:
+        """Build an error result for an invalid tool schema."""
+        logger.exception(
+            TOOL_INVOKE_SCHEMA_ERROR,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            error=error_msg,
+        )
+        return ToolResult(
+            tool_call_id=tool_call.id,
+            content=(
+                f"Tool {tool_call.name!r} has an invalid parameter schema: {error_msg}"
+            ),
+            is_error=True,
+        )
+
+    def _param_error_result(
+        self,
+        tool_call: ToolCall,
+        error_msg: str,
+    ) -> ToolResult:
+        """Build an error result for failed parameter validation."""
+        logger.warning(
+            TOOL_INVOKE_PARAMETER_ERROR,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            error=error_msg,
+        )
+        param_err = ToolParameterError(
+            error_msg,
+            context={"tool": tool_call.name},
+        )
+        return ToolResult(
+            tool_call_id=tool_call.id,
+            content=str(param_err),
+            is_error=True,
+        )
+
+    def _unexpected_validation_result(
+        self,
+        tool_call: ToolCall,
+        error_msg: str,
+    ) -> ToolResult:
+        """Build an error result for unexpected validation failures."""
+        logger.exception(
+            TOOL_INVOKE_VALIDATION_UNEXPECTED,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            error=error_msg,
+        )
+        return ToolResult(
+            tool_call_id=tool_call.id,
+            content=(
+                f"Tool {tool_call.name!r} parameter validation failed: {error_msg}"
+            ),
+            is_error=True,
+        )
 
     async def _execute_tool(
         self,
@@ -261,8 +294,8 @@ class ToolInvoker:
     ) -> tuple[ToolResult, ...]:
         """Execute multiple tool calls sequentially.
 
-        All calls are executed regardless of individual failures;
-        errors are captured in each ``ToolResult``.
+        Calls continue through recoverable failures; non-recoverable
+        errors propagate immediately.
 
         Args:
             tool_calls: Tool calls to execute in order.
