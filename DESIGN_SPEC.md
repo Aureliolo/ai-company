@@ -109,7 +109,7 @@ Every agent has a comprehensive identity. At the design level, agent data splits
 > **Current state (M2):** Only the config layer exists as `AgentIdentity` (frozen Pydantic model in `core/agent.py`). The runtime state layer will be introduced in M3 when the agent execution engine is implemented. Non-optional identifier fields currently use `str` with `Field(min_length=1)` + a manual `@model_validator`; migration to `NotBlankStr` (from `core.types`) is planned.
 
 ```yaml
-# --- Config layer (frozen after creation) ---
+# --- Current (M2): Config layer — AgentIdentity (frozen) ---
 agent:
   id: "uuid"
   name: "Sarah Chen"
@@ -165,7 +165,7 @@ agent:
   hiring_date: "2026-02-27"
   status: "active"              # active, on_leave, terminated (on config model today)
 
-# --- Runtime state layer (M3 — evolves via model_copy) ---
+# --- Planned (M3): Runtime state — AgentRuntimeState (mutable-via-copy) ---
 # current_task_id: "task-456"
 # turn_count: 12
 # accumulated_cost_usd: 1.23
@@ -900,7 +900,7 @@ budget:
 
 ### 11.1.1 Tool Execution Model
 
-When the LLM requests multiple tool calls in a single turn, `ToolInvoker.invoke_all` currently executes them **sequentially**. Migration to `asyncio.TaskGroup` for parallel structured concurrency is planned (see §15.5). Individual errors are captured as `ToolResult(is_error=True)` without aborting remaining invocations.
+When the LLM requests multiple tool calls in a single turn, `ToolInvoker.invoke_all` currently executes them **sequentially**. Migration to `asyncio.TaskGroup` for parallel structured concurrency is planned (see §15.5). Recoverable errors are captured as `ToolResult(is_error=True)` without aborting remaining invocations; non-recoverable errors (`MemoryError`, `RecursionError`) propagate immediately and abort the sequence.
 
 Tool parameter schemas (`parameters_schema`) are currently exposed via `deepcopy` on each property access (construction also deep-copies). `MappingProxyType` wrapping is used in the `ToolRegistry` for its internal collections. Migrating `BaseTool.parameters_schema` to `MappingProxyType` at construction (removing per-access `deepcopy`) is a planned convention (see §15.5).
 

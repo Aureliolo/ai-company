@@ -182,20 +182,22 @@ Read the current `DESIGN_SPEC.md`, `CLAUDE.md`, and `README.md` in full. Then co
 5. §10.2 Cost Tracking — does the implementation note match the actual `TokenUsage` and spending summary models? (MAJOR)
 6. §11.1.1 Tool Execution Model — does it match actual `ToolInvoker` behavior? (MAJOR)
 7. §15.2 Technology Stack — are versions, libraries, and rationale current? (MEDIUM)
-8. Any other section that describes behavior, structure, or patterns that have changed (MAJOR)
+8. §9.2 Provider Configuration — are model IDs, provider capability examples, and config/runtime mapping still representative? (MEDIUM)
+9. §9.3 LiteLLM Integration — does the integration status match reality? (MEDIUM)
+10. Any other section that describes behavior, structure, or patterns that have changed (MAJOR)
 
 **CLAUDE.md (CRITICAL — this guides all future development):**
-9. Code Conventions — do documented patterns match what's actually in the code? New patterns used but not documented? Documented patterns no longer followed? (CRITICAL)
-10. Logging section — are event import paths, logger patterns, and rules accurate? (CRITICAL)
-11. Resilience section — does it match the actual retry/rate-limit implementation? (MAJOR)
-12. Package Structure — does it match the actual directory layout? (MAJOR)
-13. Testing section — are markers, commands, and conventions current? (MEDIUM)
-14. Any other section that gives instructions that don't match reality (CRITICAL)
+11. Code Conventions — do documented patterns match what's actually in the code? New patterns used but not documented? Documented patterns no longer followed? (CRITICAL)
+12. Logging section — are event import paths, logger patterns, and rules accurate? (CRITICAL)
+13. Resilience section — does it match the actual retry/rate-limit implementation? (MAJOR)
+14. Package Structure — does it match the actual directory layout? (MAJOR)
+15. Testing section — are markers, commands, and conventions current? (MEDIUM)
+16. Any other section that gives instructions that don't match reality (CRITICAL)
 
 **README.md:**
-15. Installation, usage, and getting-started instructions — still accurate? (MAJOR)
-16. Feature descriptions — do they match what's actually built? (MEDIUM)
-17. Links — any dead links or references to things that moved? (MINOR)
+17. Installation, usage, and getting-started instructions — still accurate? (MAJOR)
+18. Feature descriptions — do they match what's actually built? (MEDIUM)
+19. Links — any dead links or references to things that moved? (MINOR)
 
 **Key principle:** It is better to flag a false positive than to let documentation drift silently. When in doubt, flag it.
 
