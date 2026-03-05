@@ -120,6 +120,9 @@ TOOL_INVOKE_NOT_FOUND: Final[str] = "tool.invoke.not_found"
 TOOL_INVOKE_PARAMETER_ERROR: Final[str] = "tool.invoke.parameter_error"
 TOOL_INVOKE_SCHEMA_ERROR: Final[str] = "tool.invoke.schema_error"
 TOOL_INVOKE_EXECUTION_ERROR: Final[str] = "tool.invoke.execution_error"
+TOOL_INVOKE_NON_RECOVERABLE: Final[str] = "tool.invoke.non_recoverable"
+TOOL_BASE_INVALID_NAME: Final[str] = "tool.base.invalid_name"
+TOOL_REGISTRY_CONTAINS_TYPE_ERROR: Final[str] = "tool.registry.contains_type_error"
 
 # ── Role catalog ──────────────────────────────────────────────────
 

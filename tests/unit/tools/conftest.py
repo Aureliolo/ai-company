@@ -123,6 +123,91 @@ class _SoftErrorTool(BaseTool):
         return ToolExecutionResult(content="soft fail", is_error=True)
 
 
+class _RecursionTool(BaseTool):
+    """Raises RecursionError in execute."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="recursion",
+            description="Raises RecursionError",
+            parameters_schema={
+                "type": "object",
+                "properties": {"input": {"type": "string"}},
+            },
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        msg = "maximum recursion depth"
+        raise RecursionError(msg)
+
+
+class _InvalidSchemaTool(BaseTool):
+    """Tool with an invalid JSON Schema (properties is not a dict)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="invalid_schema",
+            description="Has invalid schema",
+            parameters_schema={"type": "object", "properties": "not_a_dict"},
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        return ToolExecutionResult(content="ok")
+
+
+class _EmptyErrorTool(BaseTool):
+    """Raises exception with empty string message."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="empty_error",
+            description="Raises with empty message",
+            parameters_schema={
+                "type": "object",
+                "properties": {"input": {"type": "string"}},
+            },
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        msg = ""
+        raise ValueError(msg)
+
+
+class _RemoteRefTool(BaseTool):
+    """Tool with a remote ``$ref`` in its schema (for SSRF testing)."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="remote_ref",
+            description="Has remote ref in schema",
+            parameters_schema={
+                "type": "object",
+                "properties": {
+                    "data": {"$ref": "http://evil.example.com/schema.json"},
+                },
+            },
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        return ToolExecutionResult(content="ok")
+
+
 # ── Fixtures ──────────────────────────────────────────────────────
 
 
@@ -182,3 +267,16 @@ def sample_tool_call() -> ToolCall:
         name="echo_test",
         arguments={"message": "hello"},
     )
+
+
+@pytest.fixture
+def extended_invoker() -> ToolInvoker:
+    """Invoker with additional edge-case tools for advanced tests."""
+    tools = [
+        _EchoTestTool(),
+        _RecursionTool(),
+        _InvalidSchemaTool(),
+        _EmptyErrorTool(),
+        _RemoteRefTool(),
+    ]
+    return ToolInvoker(ToolRegistry(tools))

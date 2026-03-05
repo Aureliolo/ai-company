@@ -227,3 +227,110 @@ class TestInvokeAll:
         assert results[0].tool_call_id == "c1"
         assert results[1].tool_call_id == "c2"
         assert results[2].tool_call_id == "c3"
+
+
+@pytest.mark.unit
+class TestInvokeNonRecoverableErrors:
+    """Tests for MemoryError/RecursionError re-raise behavior."""
+
+    async def test_recursion_error_propagates(
+        self,
+        extended_invoker: ToolInvoker,
+    ) -> None:
+        call = ToolCall(
+            id="call_recursion",
+            name="recursion",
+            arguments={"input": "test"},
+        )
+        with pytest.raises(RecursionError, match="maximum recursion depth"):
+            await extended_invoker.invoke(call)
+
+    async def test_recursion_error_not_swallowed_as_tool_result(
+        self,
+        extended_invoker: ToolInvoker,
+    ) -> None:
+        call = ToolCall(
+            id="call_recursion2",
+            name="recursion",
+            arguments={"input": "test"},
+        )
+        with pytest.raises(RecursionError):
+            await extended_invoker.invoke(call)
+
+
+@pytest.mark.unit
+class TestInvokeSchemaError:
+    """Tests for invalid tool schema (SchemaError) handling."""
+
+    async def test_invalid_schema_returns_error(
+        self,
+        extended_invoker: ToolInvoker,
+    ) -> None:
+        call = ToolCall(
+            id="call_bad_schema",
+            name="invalid_schema",
+            arguments={"data": "test"},
+        )
+        result = await extended_invoker.invoke(call)
+        assert result.is_error is True
+        assert result.tool_call_id == "call_bad_schema"
+
+    async def test_invalid_schema_does_not_raise(
+        self,
+        extended_invoker: ToolInvoker,
+    ) -> None:
+        call = ToolCall(
+            id="call_bad_schema2",
+            name="invalid_schema",
+            arguments={"data": "test"},
+        )
+        result = await extended_invoker.invoke(call)
+        assert isinstance(result, ToolResult)
+
+
+@pytest.mark.unit
+class TestInvokeSsrfProtection:
+    """Tests for SSRF prevention via blocked remote $ref resolution."""
+
+    async def test_remote_ref_blocked(
+        self,
+        extended_invoker: ToolInvoker,
+    ) -> None:
+        call = ToolCall(
+            id="call_ssrf",
+            name="remote_ref",
+            arguments={"data": "test"},
+        )
+        result = await extended_invoker.invoke(call)
+        assert result.is_error is True
+        assert result.tool_call_id == "call_ssrf"
+
+    async def test_remote_ref_does_not_raise(
+        self,
+        extended_invoker: ToolInvoker,
+    ) -> None:
+        call = ToolCall(
+            id="call_ssrf2",
+            name="remote_ref",
+            arguments={"data": "test"},
+        )
+        result = await extended_invoker.invoke(call)
+        assert isinstance(result, ToolResult)
+
+
+@pytest.mark.unit
+class TestInvokeEmptyErrorMessage:
+    """Tests for empty exception message fallback."""
+
+    async def test_empty_error_message_fallback(
+        self,
+        extended_invoker: ToolInvoker,
+    ) -> None:
+        call = ToolCall(
+            id="call_empty_err",
+            name="empty_error",
+            arguments={"input": "test"},
+        )
+        result = await extended_invoker.invoke(call)
+        assert result.is_error is True
+        assert "ValueError (no message)" in result.content

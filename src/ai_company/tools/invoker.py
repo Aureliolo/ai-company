@@ -7,7 +7,7 @@ Note:
     ``BaseException`` subclasses (``KeyboardInterrupt``, ``SystemExit``,
     ``asyncio.CancelledError``) are NOT caught and will propagate
     normally.  Non-recoverable errors (``MemoryError``,
-    ``RecursionError``) are also re-raised.
+    ``RecursionError``) are re-raised after logging.
 """
 
 from typing import TYPE_CHECKING
@@ -20,6 +20,7 @@ from referencing.exceptions import NoSuchResource
 from ai_company.observability import get_logger
 from ai_company.observability.events import (
     TOOL_INVOKE_EXECUTION_ERROR,
+    TOOL_INVOKE_NON_RECOVERABLE,
     TOOL_INVOKE_NOT_FOUND,
     TOOL_INVOKE_PARAMETER_ERROR,
     TOOL_INVOKE_SCHEMA_ERROR,
@@ -34,6 +35,7 @@ from .errors import ToolExecutionError, ToolNotFoundError, ToolParameterError
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from .base import BaseTool, ToolExecutionResult
     from .registry import ToolRegistry
 
 logger = get_logger(__name__)
@@ -98,8 +100,24 @@ class ToolInvoker:
             tool_name=tool_call.name,
         )
 
+        tool_or_error = self._lookup_tool(tool_call)
+        if isinstance(tool_or_error, ToolResult):
+            return tool_or_error
+
+        param_error = self._validate_params(tool_or_error, tool_call)
+        if param_error is not None:
+            return param_error
+
+        exec_result = await self._execute_tool(tool_or_error, tool_call)
+        if isinstance(exec_result, ToolResult):
+            return exec_result
+
+        return self._build_result(tool_call, exec_result)
+
+    def _lookup_tool(self, tool_call: ToolCall) -> BaseTool | ToolResult:
+        """Look up a tool in the registry, returning an error on miss."""
         try:
-            tool = self._registry.get(tool_call.name)
+            return self._registry.get(tool_call.name)
         except ToolNotFoundError as exc:
             logger.warning(
                 TOOL_INVOKE_NOT_FOUND,
@@ -112,49 +130,87 @@ class ToolInvoker:
                 is_error=True,
             )
 
-        schema = tool.parameters_schema
-        if schema is not None:
-            try:
-                jsonschema.validate(
-                    instance=dict(tool_call.arguments),
-                    schema=schema,
-                    registry=_SAFE_REGISTRY,
-                )
-            except jsonschema.SchemaError as exc:
-                logger.exception(
-                    TOOL_INVOKE_SCHEMA_ERROR,
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
-                    error=exc.message,
-                )
-                return ToolResult(
-                    tool_call_id=tool_call.id,
-                    content=(
-                        f"Tool {tool_call.name!r} has an invalid "
-                        f"parameter schema: {exc.message}"
-                    ),
-                    is_error=True,
-                )
-            except jsonschema.ValidationError as exc:
-                logger.warning(
-                    TOOL_INVOKE_PARAMETER_ERROR,
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
-                    error=exc.message,
-                )
-                param_err = ToolParameterError(
-                    exc.message,
-                    context={"tool": tool_call.name},
-                )
-                return ToolResult(
-                    tool_call_id=tool_call.id,
-                    content=str(param_err),
-                    is_error=True,
-                )
+    def _validate_params(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> ToolResult | None:
+        """Validate tool call arguments against JSON Schema.
 
+        Returns ``None`` on success or a ``ToolResult`` on failure.
+        """
+        schema = tool.parameters_schema
+        if schema is None:
+            return None
         try:
-            result = await tool.execute(arguments=dict(tool_call.arguments))
-        except MemoryError, RecursionError:
+            jsonschema.validate(
+                instance=dict(tool_call.arguments),
+                schema=schema,
+                registry=_SAFE_REGISTRY,
+            )
+        except jsonschema.SchemaError as exc:
+            logger.exception(
+                TOOL_INVOKE_SCHEMA_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=exc.message,
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=(
+                    f"Tool {tool_call.name!r} has an invalid "
+                    f"parameter schema: {exc.message}"
+                ),
+                is_error=True,
+            )
+        except jsonschema.ValidationError as exc:
+            logger.warning(
+                TOOL_INVOKE_PARAMETER_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=exc.message,
+            )
+            param_err = ToolParameterError(
+                exc.message,
+                context={"tool": tool_call.name},
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=str(param_err),
+                is_error=True,
+            )
+        except Exception as exc:
+            error_msg = str(exc) or f"{type(exc).__name__} (no message)"
+            logger.exception(
+                TOOL_INVOKE_SCHEMA_ERROR,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=error_msg,
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=(
+                    f"Tool {tool_call.name!r} parameter validation failed: {error_msg}"
+                ),
+                is_error=True,
+            )
+        return None
+
+    async def _execute_tool(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> ToolExecutionResult | ToolResult:
+        """Execute the tool, catching errors as ``ToolResult``."""
+        try:
+            return await tool.execute(arguments=dict(tool_call.arguments))
+        except (MemoryError, RecursionError) as exc:
+            logger.exception(
+                TOOL_INVOKE_NON_RECOVERABLE,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                error=f"{type(exc).__name__}: {exc}",
+            )
             raise
         except Exception as exc:
             error_msg = str(exc) or f"{type(exc).__name__} (no message)"
@@ -174,6 +230,12 @@ class ToolInvoker:
                 is_error=True,
             )
 
+    def _build_result(
+        self,
+        tool_call: ToolCall,
+        result: ToolExecutionResult,
+    ) -> ToolResult:
+        """Map a successful execution result to a ``ToolResult``."""
         if result.is_error:
             logger.warning(
                 TOOL_INVOKE_TOOL_ERROR,
@@ -201,10 +263,6 @@ class ToolInvoker:
 
         All calls are executed regardless of individual failures;
         errors are captured in each ``ToolResult``.
-
-        Note:
-            Calls are executed one at a time in order.  Parallel
-            execution is left for a future iteration.
 
         Args:
             tool_calls: Tool calls to execute in order.

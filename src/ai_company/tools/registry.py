@@ -1,7 +1,7 @@
 """Tool registry — maps tool names to ``BaseTool`` instances.
 
 Immutable after construction.  Provides lookup, membership testing,
-and conversion to ``ToolDefinition`` tuples for LLM providers.
+and conversion to a tuple of ``ToolDefinition`` objects for LLM providers.
 """
 
 from types import MappingProxyType
@@ -11,6 +11,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events import (
     TOOL_NOT_FOUND,
     TOOL_REGISTRY_BUILT,
+    TOOL_REGISTRY_CONTAINS_TYPE_ERROR,
     TOOL_REGISTRY_DUPLICATE,
 )
 
@@ -61,7 +62,7 @@ class ToolRegistry:
                 raise ValueError(msg)
             mapping[tool.name] = tool
         self._tools: MappingProxyType[str, BaseTool] = MappingProxyType(mapping)
-        logger.debug(
+        logger.info(
             TOOL_REGISTRY_BUILT,
             tool_count=len(self._tools),
             tools=sorted(self._tools),
@@ -84,7 +85,7 @@ class ToolRegistry:
             available = sorted(self._tools) or ["(none)"]
             logger.warning(
                 TOOL_NOT_FOUND,
-                name=name,
+                tool_name=name,
                 available=available,
             )
             msg = (
@@ -111,6 +112,10 @@ class ToolRegistry:
         try:
             return name in self._tools
         except TypeError:
+            logger.debug(
+                TOOL_REGISTRY_CONTAINS_TYPE_ERROR,
+                name_type=type(name).__name__,
+            )
             return False
 
     def __len__(self) -> int:

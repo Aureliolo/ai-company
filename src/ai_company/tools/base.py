@@ -10,7 +10,11 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ai_company.observability import get_logger
+from ai_company.observability.events import TOOL_BASE_INVALID_NAME
 from ai_company.providers.models import ToolDefinition
+
+logger = get_logger(__name__)
 
 
 class ToolExecutionResult(BaseModel):
@@ -74,6 +78,7 @@ class BaseTool(ABC):
             ValueError: If name is empty or whitespace-only.
         """
         if not name or not name.strip():
+            logger.warning(TOOL_BASE_INVALID_NAME, name=repr(name))
             msg = "Tool name must not be empty or whitespace-only"
             raise ValueError(msg)
         self._name = name
@@ -109,7 +114,7 @@ class BaseTool(ABC):
         return ToolDefinition(
             name=self._name,
             description=self._description,
-            parameters_schema=self._parameters_schema or {},
+            parameters_schema=self.parameters_schema or {},
         )
 
     @abstractmethod
@@ -120,9 +125,11 @@ class BaseTool(ABC):
     ) -> ToolExecutionResult:
         """Execute the tool with the given arguments.
 
-        Arguments are pre-validated against the tool's JSON Schema by
-        the ``ToolInvoker`` before reaching this method.  Implementations
-        can assume schema compliance when invoked through the invoker.
+        Arguments are pre-validated against the tool's JSON Schema (if
+        one is defined) by the ``ToolInvoker`` before reaching this
+        method.  Implementations with a schema can assume compliance
+        when invoked through the invoker; tools without a schema
+        receive unvalidated arguments.
 
         Args:
             arguments: Parsed arguments matching the parameters schema.
