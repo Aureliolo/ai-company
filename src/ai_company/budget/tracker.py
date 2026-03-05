@@ -8,6 +8,7 @@ deferred to M5; the current implementation is purely in-memory.
 """
 
 import asyncio
+import math
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
@@ -62,19 +63,6 @@ class CostTracker:
         self._budget_config = budget_config
         self._department_resolver = department_resolver
 
-    @property
-    def record_count(self) -> int:
-        """Total number of recorded cost entries (lock-free)."""
-        return len(self._records)
-
-    @property
-    def total_cost_usd(self) -> float:
-        """Total cost across all records (lock-free)."""
-        return round(
-            sum(r.cost_usd for r in self._records),
-            BUDGET_ROUNDING_PRECISION,
-        )
-
     async def record(self, cost_record: CostRecord) -> None:
         """Append a cost record.
 
@@ -83,12 +71,12 @@ class CostTracker:
         """
         async with self._lock:
             self._records.append(cost_record)
-        logger.info(
-            BUDGET_RECORD_ADDED,
-            agent_id=cost_record.agent_id,
-            model=cost_record.model,
-            cost_usd=cost_record.cost_usd,
-        )
+            logger.info(
+                BUDGET_RECORD_ADDED,
+                agent_id=cost_record.agent_id,
+                model=cost_record.model,
+                cost_usd=cost_record.cost_usd,
+            )
 
     async def get_total_cost(
         self,
@@ -104,7 +92,12 @@ class CostTracker:
 
         Returns:
             Rounded total cost in USD.
+
+        Raises:
+            ValueError: If both *start* and *end* are given and
+                ``start >= end``.
         """
+        _validate_time_range(start, end)
         snapshot = await self._snapshot()
         filtered = _filter_records(snapshot, start=start, end=end)
         cost, _, _, _ = _aggregate(filtered)
@@ -126,14 +119,19 @@ class CostTracker:
 
         Returns:
             Rounded total cost in USD for the agent.
+
+        Raises:
+            ValueError: If both *start* and *end* are given and
+                ``start >= end``.
         """
+        _validate_time_range(start, end)
         snapshot = await self._snapshot()
         filtered = _filter_records(snapshot, agent_id=agent_id, start=start, end=end)
         cost, _, _, _ = _aggregate(filtered)
         return cost
 
     async def get_record_count(self) -> int:
-        """Total number of recorded cost entries (async, lock-safe).
+        """Total number of recorded cost entries.
 
         Returns:
             Number of cost records.
@@ -149,6 +147,10 @@ class CostTracker:
     ) -> SpendingSummary:
         """Build a full spending summary for the given period.
 
+        The alert level is computed against the *period* cost — callers
+        should pass the full billing-month window for accurate budget
+        monitoring.
+
         Args:
             start: Inclusive period start.
             end: Exclusive period end.
@@ -156,7 +158,11 @@ class CostTracker:
         Returns:
             Aggregated spending summary with per-agent and per-department
             breakdowns, budget utilisation, and alert level.
+
+        Raises:
+            ValueError: If ``start >= end``.
         """
+        _validate_time_range(start, end)
         snapshot = await self._snapshot()
         filtered = _filter_records(snapshot, start=start, end=end)
         total_cost, total_in, total_out, count = _aggregate(filtered)
@@ -261,20 +267,32 @@ class CostTracker:
         return BudgetAlertLevel.NORMAL
 
     def _resolve_department(self, agent_id: str) -> str | None:
-        """Resolve agent to department, swallowing resolver errors."""
+        """Resolve agent to department, logging resolver errors."""
         if self._department_resolver is None:
             return None
         try:
             return self._department_resolver(agent_id)
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 BUDGET_DEPARTMENT_RESOLVE_FAILED,
                 agent_id=agent_id,
+                error=str(exc),
+                error_type=type(exc).__qualname__,
             )
             return None
 
 
 # ── Module-level pure helpers ────────────────────────────────────
+
+
+def _validate_time_range(
+    start: datetime | None,
+    end: datetime | None,
+) -> None:
+    """Raise ``ValueError`` if *start* >= *end* when both are given."""
+    if start is not None and end is not None and start >= end:
+        msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
+        raise ValueError(msg)
 
 
 def _filter_records(
@@ -288,14 +306,13 @@ def _filter_records(
 
     Time semantics: ``start <= timestamp < end``.
     """
-    result = records
-    if agent_id is not None:
-        result = [r for r in result if r.agent_id == agent_id]
-    if start is not None:
-        result = [r for r in result if r.timestamp >= start]
-    if end is not None:
-        result = [r for r in result if r.timestamp < end]
-    return tuple(result)
+    return tuple(
+        r
+        for r in records
+        if (agent_id is None or r.agent_id == agent_id)
+        and (start is None or r.timestamp >= start)
+        and (end is None or r.timestamp < end)
+    )
 
 
 def _aggregate(
@@ -303,7 +320,7 @@ def _aggregate(
 ) -> tuple[float, int, int, int]:
     """Aggregate records into (cost, input_tokens, output_tokens, count)."""
     cost = round(
-        sum(r.cost_usd for r in records),
+        math.fsum(r.cost_usd for r in records),
         BUDGET_ROUNDING_PRECISION,
     )
     input_tokens = sum(r.input_tokens for r in records)
