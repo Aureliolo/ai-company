@@ -11,6 +11,8 @@ from ai_company.config.schema import (
     AgentConfig,
     ProviderConfig,
     ProviderModelConfig,
+    RateLimiterConfig,
+    RetryConfig,
     RootConfig,
     RoutingConfig,
     RoutingRuleConfig,
@@ -37,6 +39,8 @@ class ProviderModelConfigFactory(ModelFactory[ProviderModelConfig]):
 class ProviderConfigFactory(ModelFactory[ProviderConfig]):
     __model__ = ProviderConfig
     models = ()
+    retry = RetryConfig()
+    rate_limiter = RateLimiterConfig()
 
 
 class RoutingRuleConfigFactory(ModelFactory[RoutingRuleConfig]):
