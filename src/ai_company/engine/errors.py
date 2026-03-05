@@ -14,4 +14,4 @@ class ExecutionStateError(EngineError):
 
 
 class MaxTurnsExceededError(EngineError):
-    """Raised when turn_count reaches max_turns."""
+    """Raised when ``turn_count`` reaches ``max_turns`` in ``AgentContext``."""

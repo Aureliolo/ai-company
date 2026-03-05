@@ -1302,7 +1302,9 @@ ai-company/
 │       │   ├── role.py             # Role model
 │       │   └── role_catalog.py     # Role catalog
 │       ├── engine/                  # Core engines (M3+)
+│       │   ├── errors.py           # Engine error hierarchy (M3)
 │       │   ├── prompt.py           # System prompt builder (M3)
+│       │   ├── prompt_template.py  # System prompt Jinja2 templates (M3)
 │       │   ├── task_execution.py   # TaskExecution + StatusTransition (M3)
 │       │   ├── context.py          # AgentContext + AgentContextSnapshot (M3)
 │       │   ├── agent_engine.py     # Agent execution loop (M3)

@@ -4,7 +4,11 @@ Re-exports the public API for system prompt construction,
 runtime execution state, and engine errors.
 """
 
-from ai_company.engine.context import AgentContext, AgentContextSnapshot
+from ai_company.engine.context import (
+    DEFAULT_MAX_TURNS,
+    AgentContext,
+    AgentContextSnapshot,
+)
 from ai_company.engine.errors import (
     EngineError,
     ExecutionStateError,
@@ -17,9 +21,16 @@ from ai_company.engine.prompt import (
     SystemPrompt,
     build_system_prompt,
 )
-from ai_company.engine.task_execution import StatusTransition, TaskExecution
+from ai_company.engine.task_execution import (
+    ZERO_TOKEN_USAGE,
+    StatusTransition,
+    TaskExecution,
+    add_token_usage,
+)
 
 __all__ = [
+    "DEFAULT_MAX_TURNS",
+    "ZERO_TOKEN_USAGE",
     "AgentContext",
     "AgentContextSnapshot",
     "DefaultTokenEstimator",
@@ -31,5 +42,6 @@ __all__ = [
     "StatusTransition",
     "SystemPrompt",
     "TaskExecution",
+    "add_token_usage",
     "build_system_prompt",
 ]

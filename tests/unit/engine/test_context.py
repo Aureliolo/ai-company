@@ -13,6 +13,7 @@ from ai_company.engine.context import AgentContext, AgentContextSnapshot
 from ai_company.engine.errors import ExecutionStateError
 from ai_company.observability.events import (
     EXECUTION_CONTEXT_CREATED,
+    EXECUTION_CONTEXT_NO_TASK,
     EXECUTION_CONTEXT_SNAPSHOT,
     EXECUTION_CONTEXT_TURN,
 )
@@ -30,6 +31,7 @@ def _make_user_msg(text: str = "hi") -> ChatMessage:
     return ChatMessage(role=MessageRole.USER, content=text)
 
 
+@pytest.mark.unit
 class TestAgentContextFromIdentity:
     """AgentContext.from_identity factory."""
 
@@ -78,6 +80,7 @@ class TestAgentContextFromIdentity:
         assert ctx.started_at >= before
 
 
+@pytest.mark.unit
 class TestAgentContextConversation:
     """AgentContext.with_message."""
 
@@ -102,6 +105,7 @@ class TestAgentContextConversation:
         assert step2.conversation[1].content == "second"
 
 
+@pytest.mark.unit
 class TestAgentContextTurns:
     """AgentContext.with_turn_completed and has_turns_remaining."""
 
@@ -158,6 +162,7 @@ class TestAgentContextTurns:
         assert step2.has_turns_remaining is False
 
 
+@pytest.mark.unit
 class TestAgentContextTransitions:
     """AgentContext.with_task_transition."""
 
@@ -184,6 +189,7 @@ class TestAgentContextTransitions:
             sample_agent_context.with_task_transition(TaskStatus.COMPLETED)
 
 
+@pytest.mark.unit
 class TestAgentContextSnapshot:
     """AgentContext.to_snapshot."""
 
@@ -224,6 +230,7 @@ class TestAgentContextSnapshot:
         assert snapshot.snapshot_at >= before
 
 
+@pytest.mark.unit
 class TestAgentContextImmutability:
     """AgentContext is frozen and model_copy preserves originals."""
 
@@ -250,6 +257,7 @@ class TestAgentContextImmutability:
         assert sample_agent_context.task_execution.status is original_status
 
 
+@pytest.mark.unit
 class TestAgentContextLogging:
     """Event constants are logged."""
 
@@ -277,3 +285,15 @@ class TestAgentContextLogging:
             sample_agent_context.to_snapshot()
         events = [entry["event"] for entry in logs]
         assert EXECUTION_CONTEXT_SNAPSHOT in events
+
+    def test_no_task_transition_logs_error(
+        self, sample_agent_with_personality: AgentIdentity
+    ) -> None:
+        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(ExecutionStateError),
+        ):
+            ctx.with_task_transition(TaskStatus.IN_PROGRESS)
+        events = [entry["event"] for entry in logs]
+        assert EXECUTION_CONTEXT_NO_TASK in events

@@ -22,7 +22,7 @@ from ai_company.providers.models import TokenUsage
 
 logger = get_logger(__name__)
 
-_ZERO_USAGE = TokenUsage(
+ZERO_TOKEN_USAGE = TokenUsage(
     input_tokens=0,
     output_tokens=0,
     total_tokens=0,
@@ -32,8 +32,8 @@ _ZERO_USAGE = TokenUsage(
 _TERMINAL_STATUSES = frozenset({TaskStatus.COMPLETED, TaskStatus.CANCELLED})
 
 
-def _add_token_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:
-    """Create a new ``TokenUsage`` with summed fields.
+def add_token_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:
+    """Create a new ``TokenUsage`` with summed token counts and cost.
 
     Computes ``total_tokens`` from the summed parts to maintain the
     ``total_tokens == input_tokens + output_tokens`` invariant.
@@ -43,7 +43,7 @@ def _add_token_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:
         b: Second usage record.
 
     Returns:
-        New ``TokenUsage`` with all fields summed.
+        New ``TokenUsage`` with summed token counts and cost.
     """
     input_tokens = a.input_tokens + b.input_tokens
     output_tokens = a.output_tokens + b.output_tokens
@@ -105,7 +105,7 @@ class TaskExecution(BaseModel):
         description="Audit trail of status transitions",
     )
     accumulated_cost: TokenUsage = Field(
-        default=_ZERO_USAGE,
+        default=ZERO_TOKEN_USAGE,
         description="Running cost totals",
     )
     turn_count: int = Field(
@@ -201,7 +201,7 @@ class TaskExecution(BaseModel):
         """
         result = self.model_copy(
             update={
-                "accumulated_cost": _add_token_usage(self.accumulated_cost, usage),
+                "accumulated_cost": add_token_usage(self.accumulated_cost, usage),
                 "turn_count": self.turn_count + 1,
             }
         )

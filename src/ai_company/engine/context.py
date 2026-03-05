@@ -8,26 +8,31 @@ Wraps an ``AgentIdentity`` (frozen config) with evolving runtime state
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.agent import AgentIdentity  # noqa: TC001
 from ai_company.core.enums import TaskStatus  # noqa: TC001
 from ai_company.core.task import Task  # noqa: TC001
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.errors import ExecutionStateError
 from ai_company.engine.task_execution import (
-    _ZERO_USAGE,
+    ZERO_TOKEN_USAGE,
     TaskExecution,
-    _add_token_usage,
+    add_token_usage,
 )
 from ai_company.observability import get_logger
 from ai_company.observability.events import (
     EXECUTION_CONTEXT_CREATED,
+    EXECUTION_CONTEXT_NO_TASK,
     EXECUTION_CONTEXT_SNAPSHOT,
     EXECUTION_CONTEXT_TURN,
 )
 from ai_company.providers.models import ChatMessage, TokenUsage  # noqa: TC001
 
 logger = get_logger(__name__)
+
+DEFAULT_MAX_TURNS: int = 20
+"""Default hard limit on LLM turns per agent execution."""
 
 
 class AgentContextSnapshot(BaseModel):
@@ -47,8 +52,8 @@ class AgentContextSnapshot(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    execution_id: str = Field(description="Unique execution identifier")
-    agent_id: str = Field(description="Agent identifier")
+    execution_id: NotBlankStr = Field(description="Unique execution identifier")
+    agent_id: NotBlankStr = Field(description="Agent identifier")
     task_id: str | None = Field(
         default=None,
         description="Task identifier",
@@ -66,6 +71,14 @@ class AgentContextSnapshot(BaseModel):
         description="When snapshot was taken",
     )
     message_count: int = Field(ge=0, description="Messages in conversation")
+
+    @model_validator(mode="after")
+    def _validate_task_pair(self) -> AgentContextSnapshot:
+        """Ensure task_id and task_status are both set or both None."""
+        if (self.task_id is None) != (self.task_status is None):
+            msg = "task_id and task_status must both be set or both be None"
+            raise ValueError(msg)
+        return self
 
 
 class AgentContext(BaseModel):
@@ -88,7 +101,7 @@ class AgentContext(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    execution_id: str = Field(
+    execution_id: NotBlankStr = Field(
         description="Unique execution run identifier",
     )
     identity: AgentIdentity = Field(
@@ -103,7 +116,7 @@ class AgentContext(BaseModel):
         description="Accumulated conversation messages",
     )
     accumulated_cost: TokenUsage = Field(
-        default=_ZERO_USAGE,
+        default=ZERO_TOKEN_USAGE,
         description="Running cost totals across all turns",
     )
     turn_count: int = Field(
@@ -112,7 +125,7 @@ class AgentContext(BaseModel):
         description="Turns completed",
     )
     max_turns: int = Field(
-        default=20,
+        default=DEFAULT_MAX_TURNS,
         gt=0,
         description="Hard turn limit",
     )
@@ -126,7 +139,7 @@ class AgentContext(BaseModel):
         identity: AgentIdentity,
         *,
         task: Task | None = None,
-        max_turns: int = 20,
+        max_turns: int = DEFAULT_MAX_TURNS,
     ) -> AgentContext:
         """Create a fresh execution context from an agent identity.
 
@@ -186,7 +199,7 @@ class AgentContext(BaseModel):
         updates: dict[str, object] = {
             "turn_count": self.turn_count + 1,
             "conversation": (*self.conversation, response_msg),
-            "accumulated_cost": _add_token_usage(self.accumulated_cost, usage),
+            "accumulated_cost": add_token_usage(self.accumulated_cost, usage),
         }
         if self.task_execution is not None:
             updates["task_execution"] = self.task_execution.with_cost(usage)
@@ -225,6 +238,12 @@ class AgentContext(BaseModel):
         """
         if self.task_execution is None:
             msg = "Cannot transition task status: no task execution is set"
+            logger.error(
+                EXECUTION_CONTEXT_NO_TASK,
+                execution_id=self.execution_id,
+                agent_id=str(self.identity.id),
+                target_status=target.value,
+            )
             raise ExecutionStateError(msg)
         new_execution = self.task_execution.with_transition(target, reason=reason)
         return self.model_copy(update={"task_execution": new_execution})
@@ -235,17 +254,14 @@ class AgentContext(BaseModel):
         Returns:
             Frozen ``AgentContextSnapshot`` with current state.
         """
+        te = self.task_execution
         snapshot = AgentContextSnapshot(
             execution_id=self.execution_id,
             agent_id=str(self.identity.id),
-            task_id=(
-                self.task_execution.task.id if self.task_execution is not None else None
-            ),
+            task_id=te.task.id if te is not None else None,
             turn_count=self.turn_count,
             accumulated_cost=self.accumulated_cost,
-            task_status=(
-                self.task_execution.status if self.task_execution is not None else None
-            ),
+            task_status=te.status if te is not None else None,
             started_at=self.started_at,
             snapshot_at=datetime.now(UTC),
             message_count=len(self.conversation),

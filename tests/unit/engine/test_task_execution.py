@@ -9,9 +9,10 @@ from pydantic import ValidationError
 from ai_company.core.enums import TaskStatus
 from ai_company.core.task import Task
 from ai_company.engine.task_execution import (
+    ZERO_TOKEN_USAGE,
     StatusTransition,
     TaskExecution,
-    _add_token_usage,
+    add_token_usage,
 )
 from ai_company.observability.events import (
     EXECUTION_COST_RECORDED,
@@ -21,6 +22,7 @@ from ai_company.observability.events import (
 from ai_company.providers.models import TokenUsage
 
 
+@pytest.mark.unit
 class TestStatusTransition:
     """StatusTransition construction and immutability."""
 
@@ -55,6 +57,7 @@ class TestStatusTransition:
             t.from_status = TaskStatus.CREATED  # type: ignore[misc]
 
 
+@pytest.mark.unit
 class TestTaskExecutionFromTask:
     """TaskExecution.from_task factory."""
 
@@ -77,6 +80,7 @@ class TestTaskExecutionFromTask:
         assert exe.is_terminal is False
 
 
+@pytest.mark.unit
 class TestTaskExecutionTransitions:
     """TaskExecution.with_transition valid and invalid paths."""
 
@@ -152,6 +156,7 @@ class TestTaskExecutionTransitions:
         assert exe.is_terminal is True
 
 
+@pytest.mark.unit
 class TestTaskExecutionCost:
     """TaskExecution.with_cost accumulation."""
 
@@ -181,6 +186,7 @@ class TestTaskExecutionCost:
         assert step2.turn_count == 2
 
 
+@pytest.mark.unit
 class TestTaskExecutionSnapshot:
     """TaskExecution.to_task_snapshot."""
 
@@ -201,6 +207,7 @@ class TestTaskExecutionSnapshot:
         assert snapshot.project == sample_task_execution.task.project
 
 
+@pytest.mark.unit
 class TestTaskExecutionImmutability:
     """TaskExecution is frozen and model_copy preserves originals."""
 
@@ -226,8 +233,9 @@ class TestTaskExecutionImmutability:
         assert sample_task_execution.accumulated_cost.cost_usd == 0.0
 
 
+@pytest.mark.unit
 class TestAddTokenUsage:
-    """Helper _add_token_usage."""
+    """Helper add_token_usage."""
 
     def test_sums_correctly(self) -> None:
         a = TokenUsage(
@@ -242,7 +250,7 @@ class TestAddTokenUsage:
             total_tokens=30,
             cost_usd=0.02,
         )
-        result = _add_token_usage(a, b)
+        result = add_token_usage(a, b)
         assert result.input_tokens == 30
         assert result.output_tokens == 15
         assert result.total_tokens == 45
@@ -261,10 +269,24 @@ class TestAddTokenUsage:
             total_tokens=20,
             cost_usd=0.0,
         )
-        result = _add_token_usage(a, b)
+        result = add_token_usage(a, b)
         assert result.total_tokens == result.input_tokens + result.output_tokens
 
+    def test_with_zero_usage(self) -> None:
+        usage = TokenUsage(
+            input_tokens=50,
+            output_tokens=25,
+            total_tokens=75,
+            cost_usd=0.05,
+        )
+        result = add_token_usage(ZERO_TOKEN_USAGE, usage)
+        assert result.input_tokens == 50
+        assert result.output_tokens == 25
+        assert result.total_tokens == 75
+        assert result.cost_usd == pytest.approx(0.05)
 
+
+@pytest.mark.unit
 class TestTaskExecutionLogging:
     """Event constants are logged on transitions."""
 
