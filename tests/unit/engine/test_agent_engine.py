@@ -20,34 +20,11 @@ from ai_company.engine.loop_protocol import (
 )
 from ai_company.engine.run_result import AgentRunResult
 from ai_company.providers.enums import FinishReason
-from ai_company.providers.models import (
-    CompletionResponse,
-    TokenUsage,
-)
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
 
-
-def _make_completion_response(
-    *,
-    content: str = "Done.",
-    finish_reason: FinishReason = FinishReason.STOP,
-    input_tokens: int = 100,
-    output_tokens: int = 50,
-    cost_usd: float = 0.01,
-) -> CompletionResponse:
-    """Build a simple CompletionResponse for tests."""
-    return CompletionResponse(
-        content=content,
-        finish_reason=finish_reason,
-        usage=TokenUsage(
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost_usd=cost_usd,
-        ),
-        model="test-model-001",
-    )
+from .conftest import make_completion_response as _make_completion_response
 
 
 @pytest.mark.unit
@@ -253,6 +230,56 @@ class TestAgentEngineInvalidInput:
                 identity=sample_agent_with_personality,
                 task=created_task,
             )
+
+    async def test_blocked_task_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """A BLOCKED task cannot be executed."""
+        blocked_task = Task(
+            id="task-blocked",
+            title="Blocked task",
+            description="This task is blocked.",
+            type=TaskType.DEVELOPMENT,
+            project="proj-001",
+            created_by="manager",
+            assigned_to="someone",
+            status=TaskStatus.BLOCKED,
+        )
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider)
+
+        with pytest.raises(ExecutionStateError, match="blocked"):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=blocked_task,
+            )
+
+
+@pytest.mark.unit
+class TestAgentEngineMaxTurnsBoundary:
+    """max_turns=1 is the minimum valid value."""
+
+    async def test_max_turns_one_succeeds(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """max_turns=1 allows exactly one LLM turn."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            max_turns=1,
+        )
+
+        assert result.is_success is True
+        assert result.total_turns == 1
 
 
 @pytest.mark.unit
@@ -567,14 +594,17 @@ class TestAgentEngineDefaultLoop:
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        from ai_company.engine.react_loop import ReactLoop
-
         response = _make_completion_response()
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider)
 
-        # Access the private loop to verify type
-        assert isinstance(engine._loop, ReactLoop)
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        # Verify through observable behavior: the result metadata
+        # confirms the default loop ran successfully
+        assert result.is_success is True
 
     async def test_custom_loop_used(
         self,

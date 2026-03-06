@@ -217,6 +217,8 @@ def build_system_prompt(  # noqa: PLR0913
         )
     except PromptBuildError:
         raise  # Already logged by inner functions.
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         logger.exception(
             PROMPT_BUILD_ERROR,

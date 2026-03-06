@@ -915,14 +915,14 @@ hybrid:
 
 `AgentEngine` (in `engine/agent_engine.py`) is the top-level entry point for running an agent on a task. It composes the execution loop with prompt construction, context management, tool invocation, and cost tracking into a single `run()` call.
 
-**`run(identity, task, completion_config?, max_turns?) -> AgentRunResult`**
+**`run(identity, task, completion_config?, max_turns?, memory_messages?) -> AgentRunResult`**
 
 Pipeline steps:
 
 1. **Validate inputs** — agent must be `ACTIVE`, task must be `ASSIGNED` or `IN_PROGRESS`. Raises `ExecutionStateError` on violation.
 2. **Build system prompt** — calls `build_system_prompt()` with agent identity, task, and available tool definitions.
 3. **Create context** — `AgentContext.from_identity()` with the configured `max_turns`.
-4. **Seed conversation** — injects system prompt and formatted task instruction as initial messages.
+4. **Seed conversation** — injects system prompt, optional memory messages, and formatted task instruction as initial messages.
 5. **Transition task** — `ASSIGNED` → `IN_PROGRESS` (pass-through if already `IN_PROGRESS`).
 6. **Prepare tools and budget** — creates `ToolInvoker` from registry and `BudgetChecker` from task budget limit.
 7. **Delegate to loop** — calls `ExecutionLoop.execute()` with context, provider, tool invoker, budget checker, and completion config.

@@ -374,6 +374,8 @@ class AgentEngine:
             return
 
         usage = result.context.accumulated_cost
+        # Skip only when provably nothing happened (both zero); a run with
+        # tokens but zero cost (e.g., a test provider) is still recorded.
         if usage.cost_usd <= 0.0 and usage.input_tokens == 0:
             logger.debug(
                 EXECUTION_ENGINE_COST_SKIPPED,
@@ -397,11 +399,12 @@ class AgentEngine:
             await self._cost_tracker.record(record)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 EXECUTION_ENGINE_COST_FAILED,
                 agent_id=agent_id,
                 task_id=task_id,
+                error=f"{type(exc).__name__}: {exc}",
                 cost_usd=usage.cost_usd,
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,

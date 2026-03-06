@@ -15,35 +15,12 @@ from ai_company.engine.loop_protocol import (
     TurnRecord,
 )
 from ai_company.providers.enums import FinishReason, MessageRole
-from ai_company.providers.models import (
-    ChatMessage,
-    CompletionResponse,
-    TokenUsage,
-)
+from ai_company.providers.models import ChatMessage
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
 
-
-def _make_completion_response(
-    *,
-    content: str = "Done.",
-    finish_reason: FinishReason = FinishReason.STOP,
-    input_tokens: int = 100,
-    output_tokens: int = 50,
-    cost_usd: float = 0.01,
-) -> CompletionResponse:
-    """Build a simple CompletionResponse for tests."""
-    return CompletionResponse(
-        content=content,
-        finish_reason=finish_reason,
-        usage=TokenUsage(
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost_usd=cost_usd,
-        ),
-        model="test-model-001",
-    )
+from .conftest import make_completion_response as _make_completion_response
 
 
 @pytest.mark.unit
@@ -175,8 +152,8 @@ class TestAgentEngineMaxTurnsValidation:
 
 
 @pytest.mark.unit
-class TestAgentEngineCostRecordingMemoryError:
-    """MemoryError in _record_costs propagates unconditionally."""
+class TestAgentEngineCostRecordingNonRecoverable:
+    """MemoryError/RecursionError in _record_costs propagate unconditionally."""
 
     async def test_memory_error_in_cost_recording_propagates(
         self,
@@ -192,6 +169,27 @@ class TestAgentEngineCostRecordingMemoryError:
         engine = AgentEngine(provider=provider, cost_tracker=tracker)
 
         with pytest.raises(MemoryError, match="OOM in tracker"):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+    async def test_recursion_error_in_cost_recording_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """RecursionError from CostTracker.record() is not swallowed."""
+        tracker = MagicMock()
+        tracker.record = AsyncMock(
+            side_effect=RecursionError("infinite in tracker"),
+        )
+        response = _make_completion_response(cost_usd=0.05)
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider, cost_tracker=tracker)
+
+        with pytest.raises(RecursionError, match="infinite in tracker"):
             await engine.run(
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,
@@ -249,6 +247,37 @@ class TestAgentEngineFatalErrorResult:
                 side_effect=ValueError("secondary failure"),
             ),
             pytest.raises(RuntimeError, match="original error"),
+        ):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+
+@pytest.mark.unit
+class TestAgentEngineFatalErrorNonRecoverable:
+    """MemoryError/RecursionError in _handle_fatal_error build path propagate."""
+
+    async def test_memory_error_in_error_build_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """MemoryError during error-result construction propagates directly."""
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider)
+
+        with (
+            patch(
+                "ai_company.engine.agent_engine.build_system_prompt",
+                side_effect=RuntimeError("trigger fatal path"),
+            ),
+            patch(
+                "ai_company.engine.agent_engine.AgentContext.from_identity",
+                side_effect=MemoryError("OOM in error build"),
+            ),
+            pytest.raises(MemoryError, match="OOM in error build"),
         ):
             await engine.run(
                 identity=sample_agent_with_personality,

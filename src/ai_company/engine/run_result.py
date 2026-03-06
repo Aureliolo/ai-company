@@ -47,6 +47,10 @@ class AgentRunResult(BaseModel):
         description="Task identifier, or None for future taskless runs",
     )
 
+    # mypy does not yet model Pydantic's @computed_field + @property
+    # combination correctly; the ignores are safe — Pydantic enforces
+    # the return type at runtime.
+
     @computed_field(  # type: ignore[prop-decorator]
         description="Why the execution terminated",
     )
