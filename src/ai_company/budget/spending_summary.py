@@ -1,7 +1,8 @@
 """Spending summary models for aggregated cost reporting.
 
-Provides the aggregation data structures consumed by the CFO agent
-(DESIGN_SPEC Section 10.3) for cost reporting and budget monitoring.
+Provides the aggregation data structures used by
+:class:`~ai_company.budget.tracker.CostTracker` for cost reporting and
+designed for consumption by the CFO agent (DESIGN_SPEC Section 10.3).
 Views of :class:`~ai_company.budget.cost_record.CostRecord` data are
 aggregated by agent, department, and time period.
 """
@@ -16,13 +17,14 @@ from ai_company.budget.enums import BudgetAlertLevel
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
-class PeriodSpending(BaseModel):
-    """Spending aggregation for a specific time period.
+class _SpendingTotals(BaseModel):
+    """Shared aggregation fields for spending summary models.
+
+    Not intended for direct instantiation — subclass with a
+    dimension-specific identifier (agent, department, or period).
 
     Attributes:
-        start: Period start (inclusive).
-        end: Period end (exclusive).
-        total_cost_usd: Total cost for the period.
+        total_cost_usd: Total cost for the aggregation group.
         total_input_tokens: Total input tokens consumed.
         total_output_tokens: Total output tokens consumed.
         record_count: Number of cost records aggregated.
@@ -30,12 +32,10 @@ class PeriodSpending(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    start: datetime = Field(description="Period start (inclusive)")
-    end: datetime = Field(description="Period end (exclusive)")
     total_cost_usd: float = Field(
         default=0.0,
         ge=0.0,
-        description="Total cost for the period",
+        description="Total cost for the aggregation group",
     )
     total_input_tokens: int = Field(
         default=0,
@@ -53,6 +53,18 @@ class PeriodSpending(BaseModel):
         description="Number of cost records aggregated",
     )
 
+
+class PeriodSpending(_SpendingTotals):
+    """Spending aggregation for a specific time period.
+
+    Attributes:
+        start: Period start (inclusive).
+        end: Period end (exclusive).
+    """
+
+    start: datetime = Field(description="Period start (inclusive)")
+    end: datetime = Field(description="Period end (exclusive)")
+
     @model_validator(mode="after")
     def _validate_period_ordering(self) -> Self:
         """Ensure start is strictly before end."""
@@ -65,77 +77,25 @@ class PeriodSpending(BaseModel):
         return self
 
 
-class AgentSpending(BaseModel):
+class AgentSpending(_SpendingTotals):
     """Spending aggregation for a single agent.
 
     Attributes:
         agent_id: Agent identifier.
-        total_cost_usd: Total cost for this agent.
-        total_input_tokens: Total input tokens consumed.
-        total_output_tokens: Total output tokens consumed.
-        record_count: Number of cost records.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     agent_id: NotBlankStr = Field(description="Agent identifier")
-    total_cost_usd: float = Field(
-        default=0.0,
-        ge=0.0,
-        description="Total cost for this agent",
-    )
-    total_input_tokens: int = Field(
-        default=0,
-        ge=0,
-        description="Total input tokens consumed",
-    )
-    total_output_tokens: int = Field(
-        default=0,
-        ge=0,
-        description="Total output tokens consumed",
-    )
-    record_count: int = Field(
-        default=0,
-        ge=0,
-        description="Number of cost records",
-    )
 
 
-class DepartmentSpending(BaseModel):
+class DepartmentSpending(_SpendingTotals):
     """Spending aggregation for a department.
 
     Attributes:
         department_name: Department name.
-        total_cost_usd: Total cost for this department.
-        total_input_tokens: Total input tokens consumed.
-        total_output_tokens: Total output tokens consumed.
-        record_count: Number of cost records.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     department_name: NotBlankStr = Field(
         description="Department name",
-    )
-    total_cost_usd: float = Field(
-        default=0.0,
-        ge=0.0,
-        description="Total cost for this department",
-    )
-    total_input_tokens: int = Field(
-        default=0,
-        ge=0,
-        description="Total input tokens consumed",
-    )
-    total_output_tokens: int = Field(
-        default=0,
-        ge=0,
-        description="Total output tokens consumed",
-    )
-    record_count: int = Field(
-        default=0,
-        ge=0,
-        description="Number of cost records",
     )
 
 
