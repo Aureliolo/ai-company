@@ -38,6 +38,8 @@ if TYPE_CHECKING:
 
     from ai_company.providers.capabilities import ModelCapabilities
 
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
+
 
 class UppercaseTool(BaseTool):
     """Test tool that uppercases input text."""
@@ -127,7 +129,6 @@ class _ToolCallingProvider:
         )
 
 
-@pytest.mark.integration
 class TestAgentEngineToolCallIntegration:
     """Full pipeline: AgentEngine -> ReactLoop -> tool execution -> result."""
 

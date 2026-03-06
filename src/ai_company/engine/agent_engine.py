@@ -33,7 +33,7 @@ from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_TASK_TRANSITION,
 )
 from ai_company.providers.enums import MessageRole
-from ai_company.providers.models import ChatMessage
+from ai_company.providers.models import ChatMessage, TokenUsage
 from ai_company.tools.invoker import ToolInvoker
 
 if TYPE_CHECKING:
@@ -48,7 +48,11 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _EXECUTABLE_STATUSES = frozenset({TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS})
-"""Task statuses the engine will accept for execution."""
+"""Task statuses the engine will accept for execution.
+
+CREATED tasks lack an assignee; terminal statuses (COMPLETED, CANCELLED,
+FAILED) and BLOCKED/IN_REVIEW are not executable.
+"""
 
 
 class AgentEngine:
@@ -154,6 +158,13 @@ class AgentEngine:
                 start=start,
             )
         except MemoryError, RecursionError:
+            logger.error(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="non-recoverable error in run()",
+                exc_info=True,
+            )
             raise
         except Exception as exc:
             return self._handle_fatal_error(
@@ -374,30 +385,52 @@ class AgentEngine:
             return
 
         usage = result.context.accumulated_cost
-        # Skip only when provably nothing happened (both zero); a run with
-        # tokens but zero cost (e.g., a test provider) is still recorded.
-        if usage.cost_usd <= 0.0 and usage.input_tokens == 0:
+        # Skip only when provably nothing happened (zero cost and zero
+        # tokens); a run with tokens but zero cost (e.g., a free-tier
+        # provider) is still recorded.
+        if (
+            usage.cost_usd <= 0.0
+            and usage.input_tokens == 0
+            and usage.output_tokens == 0
+        ):
             logger.debug(
                 EXECUTION_ENGINE_COST_SKIPPED,
                 agent_id=agent_id,
                 task_id=task_id,
-                reason="zero cost and zero input tokens",
+                reason="zero cost and zero tokens",
             )
             return
 
+        record = CostRecord(
+            agent_id=agent_id,
+            task_id=task_id,
+            provider=identity.model.provider,
+            model=identity.model.model_id,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cost_usd=usage.cost_usd,
+            timestamp=datetime.now(UTC),
+        )
+        await self._submit_cost(record, usage, agent_id, task_id)
+
+    async def _submit_cost(
+        self,
+        record: CostRecord,
+        usage: TokenUsage,
+        agent_id: str,
+        task_id: str,
+    ) -> None:
+        """Submit a cost record to the tracker, logging failures."""
         try:
-            record = CostRecord(
+            await self._cost_tracker.record(record)  # type: ignore[union-attr]
+        except MemoryError, RecursionError:
+            logger.error(
+                EXECUTION_ENGINE_COST_FAILED,
                 agent_id=agent_id,
                 task_id=task_id,
-                provider=identity.model.provider,
-                model=identity.model.model_id,
-                input_tokens=usage.input_tokens,
-                output_tokens=usage.output_tokens,
-                cost_usd=usage.cost_usd,
-                timestamp=datetime.now(UTC),
+                error="non-recoverable error in cost recording",
+                exc_info=True,
             )
-            await self._cost_tracker.record(record)
-        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.exception(
@@ -453,7 +486,13 @@ class AgentEngine:
                 template_version="error",
                 estimated_tokens=0,
                 sections=(),
-                metadata={"agent_id": agent_id},
+                metadata={
+                    "agent_id": agent_id,
+                    "name": identity.name,
+                    "role": identity.role,
+                    "department": identity.department,
+                    "level": identity.level.value,
+                },
             )
             return AgentRunResult(
                 execution_result=error_execution,
@@ -463,6 +502,13 @@ class AgentEngine:
                 task_id=task_id,
             )
         except MemoryError, RecursionError:
+            logger.error(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="non-recoverable error while building error result",
+                exc_info=True,
+            )
             raise
         except Exception as build_exc:
             logger.exception(
@@ -472,7 +518,7 @@ class AgentEngine:
                 error=f"Failed to build error result: {build_exc}",
                 original_error=error_msg,
             )
-            raise exc from build_exc
+            raise exc from None
 
 
 def _format_task_instruction(task: Task) -> str:

@@ -1,7 +1,6 @@
 """Unit tests for AgentRunResult model and _format_task_instruction helper."""
 
 from datetime import date
-from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -204,7 +203,7 @@ class TestAgentRunResultValidation:
 class TestFormatTaskInstruction:
     """Test _format_task_instruction helper."""
 
-    def test_basic_format(self, sample_task_with_criteria: Any) -> None:
+    def test_basic_format(self, sample_task_with_criteria: Task) -> None:
         result = _format_task_instruction(sample_task_with_criteria)
 
         assert "# Task: Implement authentication module" in result
@@ -213,13 +212,13 @@ class TestFormatTaskInstruction:
         assert "- Login endpoint returns JWT token" in result
         assert "$5.00 USD" in result
 
-    def test_deadline_included(self, sample_task_with_criteria: Any) -> None:
+    def test_deadline_included(self, sample_task_with_criteria: Task) -> None:
         result = _format_task_instruction(sample_task_with_criteria)
         assert "**Deadline:** 2026-04-01T00:00:00" in result
 
     def test_deadline_has_blank_line_separator(
         self,
-        sample_task_with_criteria: Any,
+        sample_task_with_criteria: Task,
     ) -> None:
         """Deadline block has a blank line before it (consistent with budget)."""
         result = _format_task_instruction(sample_task_with_criteria)

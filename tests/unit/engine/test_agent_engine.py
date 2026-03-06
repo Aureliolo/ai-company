@@ -467,6 +467,36 @@ class TestAgentEngineCostRecording:
         count = await tracker.get_record_count()
         assert count == 0
 
+    async def test_free_provider_tokens_recorded(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Free provider: cost=0 but tokens>0 -> record IS created."""
+        tracker = CostTracker()
+        task = Task(
+            id="task-free-tokens",
+            title="Free with tokens",
+            description="Zero cost but nonzero tokens.",
+            type=TaskType.DEVELOPMENT,
+            project="proj-001",
+            created_by="manager",
+            assigned_to="someone",
+            status=TaskStatus.ASSIGNED,
+        )
+        response = _make_completion_response(
+            cost_usd=0.0,
+            input_tokens=5,
+            output_tokens=2,
+        )
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider, cost_tracker=tracker)
+
+        await engine.run(identity=sample_agent_with_personality, task=task)
+
+        count = await tracker.get_record_count()
+        assert count == 1
+
     async def test_cost_tracker_failure_preserves_result(
         self,
         sample_agent_with_personality: AgentIdentity,

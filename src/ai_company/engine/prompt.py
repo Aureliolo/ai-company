@@ -7,8 +7,8 @@ Example::
 
     from ai_company.engine.prompt import build_system_prompt
 
-    prompt = build_system_prompt(agent=agent_identity)
-    print(prompt.content)
+    prompt = build_system_prompt(agent=agent_identity, task=task)
+    prompt.content  # rendered system prompt string
 """
 
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
