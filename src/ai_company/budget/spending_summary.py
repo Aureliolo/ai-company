@@ -16,26 +16,22 @@ from ai_company.budget.enums import BudgetAlertLevel
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
-class PeriodSpending(BaseModel):
-    """Spending aggregation for a specific time period.
+class _SpendingTotals(BaseModel):
+    """Shared aggregation fields for spending summary models.
 
     Attributes:
-        start: Period start (inclusive).
-        end: Period end (exclusive).
-        total_cost_usd: Total cost for the period.
-        total_input_tokens: Total input tokens consumed.
-        total_output_tokens: Total output tokens consumed.
+        total_cost_usd: Sum of cost_usd across aggregated records.
+        total_input_tokens: Sum of input tokens across aggregated records.
+        total_output_tokens: Sum of output tokens across aggregated records.
         record_count: Number of cost records aggregated.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    start: datetime = Field(description="Period start (inclusive)")
-    end: datetime = Field(description="Period end (exclusive)")
     total_cost_usd: float = Field(
         default=0.0,
         ge=0.0,
-        description="Total cost for the period",
+        description="Total cost for the aggregation group",
     )
     total_input_tokens: int = Field(
         default=0,
@@ -53,6 +49,18 @@ class PeriodSpending(BaseModel):
         description="Number of cost records aggregated",
     )
 
+
+class PeriodSpending(_SpendingTotals):
+    """Spending aggregation for a specific time period.
+
+    Attributes:
+        start: Period start (inclusive).
+        end: Period end (exclusive).
+    """
+
+    start: datetime = Field(description="Period start (inclusive)")
+    end: datetime = Field(description="Period end (exclusive)")
+
     @model_validator(mode="after")
     def _validate_period_ordering(self) -> Self:
         """Ensure start is strictly before end."""
@@ -65,77 +73,25 @@ class PeriodSpending(BaseModel):
         return self
 
 
-class AgentSpending(BaseModel):
+class AgentSpending(_SpendingTotals):
     """Spending aggregation for a single agent.
 
     Attributes:
         agent_id: Agent identifier.
-        total_cost_usd: Total cost for this agent.
-        total_input_tokens: Total input tokens consumed.
-        total_output_tokens: Total output tokens consumed.
-        record_count: Number of cost records.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     agent_id: NotBlankStr = Field(description="Agent identifier")
-    total_cost_usd: float = Field(
-        default=0.0,
-        ge=0.0,
-        description="Total cost for this agent",
-    )
-    total_input_tokens: int = Field(
-        default=0,
-        ge=0,
-        description="Total input tokens consumed",
-    )
-    total_output_tokens: int = Field(
-        default=0,
-        ge=0,
-        description="Total output tokens consumed",
-    )
-    record_count: int = Field(
-        default=0,
-        ge=0,
-        description="Number of cost records",
-    )
 
 
-class DepartmentSpending(BaseModel):
+class DepartmentSpending(_SpendingTotals):
     """Spending aggregation for a department.
 
     Attributes:
         department_name: Department name.
-        total_cost_usd: Total cost for this department.
-        total_input_tokens: Total input tokens consumed.
-        total_output_tokens: Total output tokens consumed.
-        record_count: Number of cost records.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     department_name: NotBlankStr = Field(
         description="Department name",
-    )
-    total_cost_usd: float = Field(
-        default=0.0,
-        ge=0.0,
-        description="Total cost for this department",
-    )
-    total_input_tokens: int = Field(
-        default=0,
-        ge=0,
-        description="Total input tokens consumed",
-    )
-    total_output_tokens: int = Field(
-        default=0,
-        ge=0,
-        description="Total output tokens consumed",
-    )
-    record_count: int = Field(
-        default=0,
-        ge=0,
-        description="Number of cost records",
     )
 
 
