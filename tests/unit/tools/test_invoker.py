@@ -319,6 +319,35 @@ class TestInvokeSsrfProtection:
 
 
 @pytest.mark.unit
+class TestInvokeBoundaryIsolation:
+    """Tests that tool execution receives isolated argument copies."""
+
+    async def test_tool_receives_deep_copy_of_arguments(
+        self,
+        extended_invoker: ToolInvoker,
+    ) -> None:
+        """Nested argument structures are isolated from the frozen model."""
+        nested = {"inner": {"key": "original"}}
+        call = ToolCall(id="c1", name="mutating", arguments=nested)
+        await extended_invoker.invoke(call)
+        assert call.arguments["inner"]["key"] == "original"
+        assert "injected" not in call.arguments
+
+    async def test_nested_mutation_does_not_leak(
+        self,
+        extended_invoker: ToolInvoker,
+    ) -> None:
+        """Tool mutating nested dicts does not affect the original ToolCall."""
+        call = ToolCall(
+            id="c2",
+            name="mutating",
+            arguments={"nested": {"value": 42}},
+        )
+        await extended_invoker.invoke(call)
+        assert "mutated" not in call.arguments.get("nested", {})
+
+
+@pytest.mark.unit
 class TestInvokeEmptyErrorMessage:
     """Tests for empty exception message fallback."""
 

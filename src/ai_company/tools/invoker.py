@@ -10,6 +10,7 @@ Note:
     ``RecursionError``) are re-raised after logging.
 """
 
+import copy
 from typing import TYPE_CHECKING
 
 import jsonschema
@@ -236,7 +237,9 @@ class ToolInvoker:
     ) -> ToolExecutionResult | ToolResult:
         """Execute the tool, catching errors as ``ToolResult``."""
         try:
-            return await tool.execute(arguments=dict(tool_call.arguments))
+            return await tool.execute(
+                arguments=copy.deepcopy(tool_call.arguments),
+            )
         except (MemoryError, RecursionError) as exc:
             logger.exception(
                 TOOL_INVOKE_NON_RECOVERABLE,

@@ -81,10 +81,11 @@ class ToolDefinition(BaseModel):
     provider (OpenAI, Anthropic, LiteLLM) consumes it natively.
 
     Note:
-        The ``parameters_schema`` dict is shallowly immutable under the
-        frozen model — reassignment is prevented but contents can still
-        be mutated.  Callers should treat it as read-only or copy before
-        modifying.
+        The ``parameters_schema`` dict is shallowly frozen by Pydantic's
+        ``frozen=True`` — field reassignment is prevented but nested
+        contents can still be mutated in place.  Callers that pass this
+        data to external code (tool implementations, LLM providers) must
+        deep-copy at the boundary.  See DESIGN_SPEC.md section 15.5.
 
     Attributes:
         name: Tool name (must be non-blank).
@@ -106,10 +107,11 @@ class ToolCall(BaseModel):
     """A tool invocation requested by the model.
 
     Note:
-        The ``arguments`` dict is shallowly immutable under the frozen
-        model — reassignment is prevented but contents can still be
-        mutated.  Callers should treat it as read-only or copy before
-        modifying.
+        The ``arguments`` dict is shallowly frozen by Pydantic's
+        ``frozen=True`` — field reassignment is prevented but nested
+        contents can still be mutated in place.  The ``ToolInvoker``
+        deep-copies arguments before passing them to tool
+        implementations.  See DESIGN_SPEC.md section 15.5.
 
     Attributes:
         id: Provider-assigned tool call identifier.

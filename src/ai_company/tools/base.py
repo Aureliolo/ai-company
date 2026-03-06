@@ -4,8 +4,8 @@ Defines the ``BaseTool`` ABC that all concrete tools extend, and the
 ``ToolExecutionResult`` value object returned by tool execution.
 """
 
-import copy
 from abc import ABC, abstractmethod
+from types import MappingProxyType
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,9 +26,9 @@ class ToolExecutionResult(BaseModel):
     to the LLM and is available only for programmatic consumers.
 
     Note:
-        The ``metadata`` dict is shallowly immutable under the frozen
-        model — reassignment is prevented but contents can still be
-        mutated.  Callers should treat it as read-only.
+        The ``metadata`` dict is shallowly frozen by Pydantic's
+        ``frozen=True``.  This model is internal-only (not sent to LLMs
+        or external code), so no boundary copy is needed.
 
     Attributes:
         content: Tool output as a string.
@@ -83,8 +83,10 @@ class BaseTool(ABC):
             raise ValueError(msg)
         self._name = name
         self._description = description
-        self._parameters_schema: dict[str, Any] | None = (
-            copy.deepcopy(parameters_schema) if parameters_schema is not None else None
+        self._parameters_schema: MappingProxyType[str, Any] | None = (
+            MappingProxyType(dict(parameters_schema))
+            if parameters_schema is not None
+            else None
         )
 
     @property
@@ -101,9 +103,12 @@ class BaseTool(ABC):
     def parameters_schema(self) -> dict[str, Any] | None:
         """JSON Schema for tool parameters, or None if unspecified.
 
-        Returns a deep copy to prevent mutation of the internal schema.
+        Returns a shallow dict copy. Internal schema is protected by
+        MappingProxyType.
         """
-        return copy.deepcopy(self._parameters_schema)
+        if self._parameters_schema is None:
+            return None
+        return dict(self._parameters_schema)
 
     def to_definition(self) -> ToolDefinition:
         """Convert this tool to a ``ToolDefinition`` for LLM providers.

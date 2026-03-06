@@ -98,13 +98,19 @@ class TestBaseTool:
         tool = _ConcreteTool(name="t")
         assert tool.parameters_schema is None
 
-    def test_schema_deep_copied_on_construction(self) -> None:
+    def test_schema_isolated_on_construction(self) -> None:
         props: dict[str, Any] = {"x": {"type": "string"}}
         schema: dict[str, Any] = {"type": "object", "properties": props}
         tool = _ConcreteTool(name="t", parameters_schema=schema)
-        props["y"] = {"type": "integer"}
+        schema["injected"] = True
         assert tool.parameters_schema is not None
-        assert "y" not in tool.parameters_schema["properties"]
+        assert "injected" not in tool.parameters_schema
+
+    def test_schema_internal_is_read_only(self) -> None:
+        schema = {"type": "object", "properties": {"x": {"type": "string"}}}
+        tool = _ConcreteTool(name="t", parameters_schema=schema)
+        with pytest.raises(TypeError):
+            tool._parameters_schema["injected"] = True  # type: ignore[index]
 
     def test_schema_property_returns_copy(self) -> None:
         schema: dict[str, Any] = {
