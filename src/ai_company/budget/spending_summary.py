@@ -19,10 +19,13 @@ from ai_company.core.types import NotBlankStr  # noqa: TC001
 class _SpendingTotals(BaseModel):
     """Shared aggregation fields for spending summary models.
 
+    Not intended for direct instantiation — subclass with a
+    dimension-specific identifier (agent, department, or period).
+
     Attributes:
-        total_cost_usd: Sum of cost_usd across aggregated records.
-        total_input_tokens: Sum of input tokens across aggregated records.
-        total_output_tokens: Sum of output tokens across aggregated records.
+        total_cost_usd: Total cost for the aggregation group.
+        total_input_tokens: Total input tokens consumed.
+        total_output_tokens: Total output tokens consumed.
         record_count: Number of cost records aggregated.
     """
 
