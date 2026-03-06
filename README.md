@@ -23,7 +23,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ## Status
 
-**M2: Provider Layer** complete (M0 Tooling, M1 Config & Core, M2 Providers — all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
+**M3: Single Agent** in progress (M0 Tooling, M1 Config & Core, M2 Providers — all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
 
 ## Tech Stack
 

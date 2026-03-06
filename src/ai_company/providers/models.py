@@ -42,6 +42,38 @@ class TokenUsage(BaseModel):
         return self
 
 
+ZERO_TOKEN_USAGE = TokenUsage(
+    input_tokens=0,
+    output_tokens=0,
+    total_tokens=0,
+    cost_usd=0.0,
+)
+"""Additive identity for ``TokenUsage``."""
+
+
+def add_token_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:
+    """Create a new ``TokenUsage`` with summed token counts and cost.
+
+    Computes ``total_tokens`` from the summed parts to maintain the
+    ``total_tokens == input_tokens + output_tokens`` invariant.
+
+    Args:
+        a: First usage record.
+        b: Second usage record.
+
+    Returns:
+        New ``TokenUsage`` with summed token counts and cost.
+    """
+    input_tokens = a.input_tokens + b.input_tokens
+    output_tokens = a.output_tokens + b.output_tokens
+    return TokenUsage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        cost_usd=a.cost_usd + b.cost_usd,
+    )
+
+
 class ToolDefinition(BaseModel):
     """Schema for a tool the model can invoke.
 
