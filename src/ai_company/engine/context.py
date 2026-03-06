@@ -14,20 +14,23 @@ from ai_company.core.agent import AgentIdentity  # noqa: TC001
 from ai_company.core.enums import TaskStatus  # noqa: TC001
 from ai_company.core.task import Task  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
-from ai_company.engine.errors import ExecutionStateError
-from ai_company.engine.task_execution import (
-    ZERO_TOKEN_USAGE,
-    TaskExecution,
-    add_token_usage,
-)
+from ai_company.engine.errors import ExecutionStateError, MaxTurnsExceededError
+from ai_company.engine.task_execution import TaskExecution
 from ai_company.observability import get_logger
 from ai_company.observability.events import (
     EXECUTION_CONTEXT_CREATED,
     EXECUTION_CONTEXT_NO_TASK,
     EXECUTION_CONTEXT_SNAPSHOT,
+    EXECUTION_CONTEXT_TRANSITION_FAILED,
     EXECUTION_CONTEXT_TURN,
+    EXECUTION_MAX_TURNS_EXCEEDED,
 )
-from ai_company.providers.models import ChatMessage, TokenUsage  # noqa: TC001
+from ai_company.providers.models import (
+    ZERO_TOKEN_USAGE,
+    ChatMessage,
+    TokenUsage,
+    add_token_usage,
+)
 
 logger = get_logger(__name__)
 
@@ -54,7 +57,7 @@ class AgentContextSnapshot(BaseModel):
 
     execution_id: NotBlankStr = Field(description="Unique execution identifier")
     agent_id: NotBlankStr = Field(description="Agent identifier")
-    task_id: str | None = Field(
+    task_id: NotBlankStr | None = Field(
         default=None,
         description="Task identifier",
     )
@@ -195,7 +198,23 @@ class AgentContext(BaseModel):
 
         Returns:
             New ``AgentContext`` with updated state.
+
+        Raises:
+            MaxTurnsExceededError: If ``max_turns`` has been reached.
         """
+        if not self.has_turns_remaining:
+            msg = (
+                f"Agent {self.identity.id} exceeded max_turns "
+                f"({self.max_turns}) for execution {self.execution_id}"
+            )
+            logger.error(
+                EXECUTION_MAX_TURNS_EXCEEDED,
+                execution_id=self.execution_id,
+                agent_id=str(self.identity.id),
+                max_turns=self.max_turns,
+                turn_count=self.turn_count,
+            )
+            raise MaxTurnsExceededError(msg)
         updates: dict[str, object] = {
             "turn_count": self.turn_count + 1,
             "conversation": (*self.conversation, response_msg),
@@ -245,7 +264,17 @@ class AgentContext(BaseModel):
                 target_status=target.value,
             )
             raise ExecutionStateError(msg)
-        new_execution = self.task_execution.with_transition(target, reason=reason)
+        try:
+            new_execution = self.task_execution.with_transition(target, reason=reason)
+        except ValueError:
+            logger.warning(
+                EXECUTION_CONTEXT_TRANSITION_FAILED,
+                execution_id=self.execution_id,
+                agent_id=str(self.identity.id),
+                target_status=target.value,
+                current_status=self.task_execution.status.value,
+            )
+            raise
         return self.model_copy(update={"task_execution": new_execution})
 
     def to_snapshot(self) -> AgentContextSnapshot:

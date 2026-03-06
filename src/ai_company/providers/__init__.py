@@ -23,6 +23,7 @@ from .errors import (
     RateLimitError,
 )
 from .models import (
+    ZERO_TOKEN_USAGE,
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
@@ -31,6 +32,7 @@ from .models import (
     ToolCall,
     ToolDefinition,
     ToolResult,
+    add_token_usage,
 )
 from .protocol import CompletionProvider
 from .registry import ProviderRegistry
@@ -71,6 +73,7 @@ __all__ = [
     "STRATEGY_NAME_MANUAL",
     "STRATEGY_NAME_ROLE_BASED",
     "STRATEGY_NAME_SMART",
+    "ZERO_TOKEN_USAGE",
     "AuthenticationError",
     "BaseCompletionProvider",
     "ChatMessage",
@@ -118,4 +121,5 @@ __all__ = [
     "ToolDefinition",
     "ToolResult",
     "UnknownStrategyError",
+    "add_token_usage",
 ]

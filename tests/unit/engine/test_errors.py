@@ -27,3 +27,5 @@ class TestEngineErrorHierarchy:
 
     def test_prompt_build_error_is_engine_error(self) -> None:
         assert issubclass(PromptBuildError, EngineError)
+        err = PromptBuildError("test")
+        assert isinstance(err, EngineError)

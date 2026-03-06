@@ -9,13 +9,19 @@ from pydantic import ValidationError
 from ai_company.core.agent import AgentIdentity  # noqa: TC001
 from ai_company.core.enums import TaskStatus
 from ai_company.core.task import Task  # noqa: TC001
-from ai_company.engine.context import AgentContext, AgentContextSnapshot
-from ai_company.engine.errors import ExecutionStateError
+from ai_company.engine.context import (
+    DEFAULT_MAX_TURNS,
+    AgentContext,
+    AgentContextSnapshot,
+)
+from ai_company.engine.errors import ExecutionStateError, MaxTurnsExceededError
 from ai_company.observability.events import (
     EXECUTION_CONTEXT_CREATED,
     EXECUTION_CONTEXT_NO_TASK,
     EXECUTION_CONTEXT_SNAPSHOT,
+    EXECUTION_CONTEXT_TRANSITION_FAILED,
     EXECUTION_CONTEXT_TURN,
+    EXECUTION_MAX_TURNS_EXCEEDED,
 )
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import ChatMessage, TokenUsage
@@ -57,7 +63,7 @@ class TestAgentContextFromIdentity:
         assert ctx.conversation == ()
         assert ctx.accumulated_cost.cost_usd == 0.0
         assert ctx.turn_count == 0
-        assert ctx.max_turns == 20
+        assert ctx.max_turns == DEFAULT_MAX_TURNS
         assert ctx.has_turns_remaining is True
 
     def test_execution_id_generated(
@@ -161,6 +167,27 @@ class TestAgentContextTurns:
         step2 = step1.with_turn_completed(usage, msg)
         assert step2.has_turns_remaining is False
 
+    def test_max_turns_exceeded_raises(
+        self, sample_agent_with_personality: AgentIdentity
+    ) -> None:
+        ctx = AgentContext.from_identity(sample_agent_with_personality, max_turns=1)
+        usage = TokenUsage(
+            input_tokens=1,
+            output_tokens=1,
+            total_tokens=2,
+            cost_usd=0.0,
+        )
+        msg = _make_assistant_msg()
+        step1 = ctx.with_turn_completed(usage, msg)
+        with pytest.raises(MaxTurnsExceededError, match="max_turns"):
+            step1.with_turn_completed(usage, msg)
+
+    def test_max_turns_zero_rejected(
+        self, sample_agent_with_personality: AgentIdentity
+    ) -> None:
+        with pytest.raises(ValidationError):
+            AgentContext.from_identity(sample_agent_with_personality, max_turns=0)
+
 
 @pytest.mark.unit
 class TestAgentContextTransitions:
@@ -228,6 +255,44 @@ class TestAgentContextSnapshot:
         snapshot = sample_agent_context.to_snapshot()
         assert snapshot.started_at == sample_agent_context.started_at
         assert snapshot.snapshot_at >= before
+
+    def test_snapshot_task_id_without_status_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="task_id and task_status"):
+            AgentContextSnapshot(
+                execution_id="exec-1",
+                agent_id="agent-1",
+                task_id="task-1",
+                task_status=None,
+                turn_count=0,
+                accumulated_cost=TokenUsage(
+                    input_tokens=0,
+                    output_tokens=0,
+                    total_tokens=0,
+                    cost_usd=0.0,
+                ),
+                started_at=datetime.now(UTC),
+                snapshot_at=datetime.now(UTC),
+                message_count=0,
+            )
+
+    def test_snapshot_task_status_without_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="task_id and task_status"):
+            AgentContextSnapshot(
+                execution_id="exec-1",
+                agent_id="agent-1",
+                task_id=None,
+                task_status=TaskStatus.IN_PROGRESS,
+                turn_count=0,
+                accumulated_cost=TokenUsage(
+                    input_tokens=0,
+                    output_tokens=0,
+                    total_tokens=0,
+                    cost_usd=0.0,
+                ),
+                started_at=datetime.now(UTC),
+                snapshot_at=datetime.now(UTC),
+                message_count=0,
+            )
 
 
 @pytest.mark.unit
@@ -297,3 +362,34 @@ class TestAgentContextLogging:
             ctx.with_task_transition(TaskStatus.IN_PROGRESS)
         events = [entry["event"] for entry in logs]
         assert EXECUTION_CONTEXT_NO_TASK in events
+
+    def test_max_turns_exceeded_logs_error(
+        self, sample_agent_with_personality: AgentIdentity
+    ) -> None:
+        ctx = AgentContext.from_identity(sample_agent_with_personality, max_turns=1)
+        usage = TokenUsage(
+            input_tokens=1,
+            output_tokens=1,
+            total_tokens=2,
+            cost_usd=0.0,
+        )
+        msg = _make_assistant_msg()
+        step1 = ctx.with_turn_completed(usage, msg)
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(MaxTurnsExceededError),
+        ):
+            step1.with_turn_completed(usage, msg)
+        events = [entry["event"] for entry in logs]
+        assert EXECUTION_MAX_TURNS_EXCEEDED in events
+
+    def test_invalid_transition_logs_warning(
+        self, sample_agent_context: AgentContext
+    ) -> None:
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(ValueError, match="Invalid task status"),
+        ):
+            sample_agent_context.with_task_transition(TaskStatus.COMPLETED)
+        events = [entry["event"] for entry in logs]
+        assert EXECUTION_CONTEXT_TRANSITION_FAILED in events

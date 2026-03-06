@@ -11,48 +11,27 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from ai_company.core.enums import TaskStatus
 from ai_company.core.task import Task  # noqa: TC001
-from ai_company.core.task_transitions import validate_transition
+from ai_company.core.task_transitions import VALID_TRANSITIONS, validate_transition
+from ai_company.engine.errors import ExecutionStateError
 from ai_company.observability import get_logger
 from ai_company.observability.events import (
+    EXECUTION_COST_ON_TERMINAL,
     EXECUTION_COST_RECORDED,
     EXECUTION_TASK_CREATED,
     EXECUTION_TASK_TRANSITION,
+    EXECUTION_TASK_TRANSITION_FAILED,
 )
-from ai_company.providers.models import TokenUsage
+from ai_company.providers.models import (
+    ZERO_TOKEN_USAGE,
+    TokenUsage,
+    add_token_usage,
+)
 
 logger = get_logger(__name__)
 
-ZERO_TOKEN_USAGE = TokenUsage(
-    input_tokens=0,
-    output_tokens=0,
-    total_tokens=0,
-    cost_usd=0.0,
+_TERMINAL_STATUSES = frozenset(
+    status for status, targets in VALID_TRANSITIONS.items() if not targets
 )
-
-_TERMINAL_STATUSES = frozenset({TaskStatus.COMPLETED, TaskStatus.CANCELLED})
-
-
-def add_token_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:
-    """Create a new ``TokenUsage`` with summed token counts and cost.
-
-    Computes ``total_tokens`` from the summed parts to maintain the
-    ``total_tokens == input_tokens + output_tokens`` invariant.
-
-    Args:
-        a: First usage record.
-        b: Second usage record.
-
-    Returns:
-        New ``TokenUsage`` with summed token counts and cost.
-    """
-    input_tokens = a.input_tokens + b.input_tokens
-    output_tokens = a.output_tokens + b.output_tokens
-    return TokenUsage(
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        total_tokens=input_tokens + output_tokens,
-        cost_usd=a.cost_usd + b.cost_usd,
-    )
 
 
 class StatusTransition(BaseModel):
@@ -92,7 +71,8 @@ class TaskExecution(BaseModel):
         transition_log: Audit trail of status transitions.
         accumulated_cost: Running token usage and cost totals.
         turn_count: Number of LLM turns completed.
-        started_at: When execution first entered ``IN_PROGRESS``.
+        started_at: Set by ``with_transition`` on first entry to
+            ``IN_PROGRESS`` (``None`` until then).
         completed_at: When execution reached a terminal state.
     """
 
@@ -163,7 +143,17 @@ class TaskExecution(BaseModel):
         Raises:
             ValueError: If the transition is invalid.
         """
-        validate_transition(self.status, target)
+        try:
+            validate_transition(self.status, target)
+        except ValueError:
+            logger.warning(
+                EXECUTION_TASK_TRANSITION_FAILED,
+                task_id=self.task.id,
+                from_status=self.status.value,
+                to_status=target.value,
+                turn_count=self.turn_count,
+            )
+            raise
         now = datetime.now(UTC)
         transition = StatusTransition(
             from_status=self.status,
@@ -198,7 +188,21 @@ class TaskExecution(BaseModel):
 
         Returns:
             New ``TaskExecution`` with updated cost and turn count.
+
+        Raises:
+            ExecutionStateError: If execution is in a terminal state.
         """
+        if self.is_terminal:
+            msg = (
+                f"Cannot record cost on terminal task execution "
+                f"(task_id={self.task.id}, status={self.status.value})"
+            )
+            logger.error(
+                EXECUTION_COST_ON_TERMINAL,
+                task_id=self.task.id,
+                status=self.status.value,
+            )
+            raise ExecutionStateError(msg)
         result = self.model_copy(
             update={
                 "accumulated_cost": add_token_usage(self.accumulated_cost, usage),

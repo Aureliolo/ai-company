@@ -21,12 +21,8 @@ from ai_company.engine.prompt import (
     SystemPrompt,
     build_system_prompt,
 )
-from ai_company.engine.task_execution import (
-    ZERO_TOKEN_USAGE,
-    StatusTransition,
-    TaskExecution,
-    add_token_usage,
-)
+from ai_company.engine.task_execution import StatusTransition, TaskExecution
+from ai_company.providers.models import ZERO_TOKEN_USAGE, add_token_usage
 
 __all__ = [
     "DEFAULT_MAX_TURNS",

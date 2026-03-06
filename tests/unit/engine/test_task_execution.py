@@ -8,18 +8,20 @@ from pydantic import ValidationError
 
 from ai_company.core.enums import TaskStatus
 from ai_company.core.task import Task
-from ai_company.engine.task_execution import (
-    ZERO_TOKEN_USAGE,
-    StatusTransition,
-    TaskExecution,
-    add_token_usage,
-)
+from ai_company.engine.errors import ExecutionStateError
+from ai_company.engine.task_execution import StatusTransition, TaskExecution
 from ai_company.observability.events import (
+    EXECUTION_COST_ON_TERMINAL,
     EXECUTION_COST_RECORDED,
     EXECUTION_TASK_CREATED,
     EXECUTION_TASK_TRANSITION,
+    EXECUTION_TASK_TRANSITION_FAILED,
 )
-from ai_company.providers.models import TokenUsage
+from ai_company.providers.models import (
+    ZERO_TOKEN_USAGE,
+    TokenUsage,
+    add_token_usage,
+)
 
 
 @pytest.mark.unit
@@ -185,6 +187,15 @@ class TestTaskExecutionCost:
         assert step2.accumulated_cost.cost_usd == pytest.approx(0.02)
         assert step2.turn_count == 2
 
+    def test_cost_on_terminal_raises(
+        self,
+        sample_task_execution: TaskExecution,
+        sample_token_usage: TokenUsage,
+    ) -> None:
+        exe = sample_task_execution.with_transition(TaskStatus.CANCELLED)
+        with pytest.raises(ExecutionStateError, match="terminal"):
+            exe.with_cost(sample_token_usage)
+
 
 @pytest.mark.unit
 class TestTaskExecutionSnapshot:
@@ -313,3 +324,28 @@ class TestTaskExecutionLogging:
             sample_task_execution.with_cost(sample_token_usage)
         events = [entry["event"] for entry in logs]
         assert EXECUTION_COST_RECORDED in events
+
+    def test_invalid_transition_logs_warning(
+        self, sample_task_execution: TaskExecution
+    ) -> None:
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(ValueError, match="Invalid task status"),
+        ):
+            sample_task_execution.with_transition(TaskStatus.COMPLETED)
+        events = [entry["event"] for entry in logs]
+        assert EXECUTION_TASK_TRANSITION_FAILED in events
+
+    def test_cost_on_terminal_logs_error(
+        self,
+        sample_task_execution: TaskExecution,
+        sample_token_usage: TokenUsage,
+    ) -> None:
+        exe = sample_task_execution.with_transition(TaskStatus.CANCELLED)
+        with (
+            structlog.testing.capture_logs() as logs,
+            pytest.raises(ExecutionStateError),
+        ):
+            exe.with_cost(sample_token_usage)
+        events = [entry["event"] for entry in logs]
+        assert EXECUTION_COST_ON_TERMINAL in events
