@@ -149,7 +149,7 @@ def build_tool_call_dict(
     name: str = "get_weather",
     arguments: str = '{"location": "London"}',
 ) -> dict[str, Any]:
-    """Build a single tool call dict in OpenAI format."""
+    """Build a single tool call dict in chat-completion format."""
     return {
         "id": call_id,
         "type": "function",

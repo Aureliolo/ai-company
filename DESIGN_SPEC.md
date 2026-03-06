@@ -1240,16 +1240,19 @@ providers:
         cost_per_1k_input: 0.015   # illustrative, verify at implementation time
         cost_per_1k_output: 0.075
         max_context: 200000
+        estimated_latency_ms: 1500 # optional, used by fastest strategy
       - id: "example-medium-001"
         alias: "medium"
         cost_per_1k_input: 0.003
         cost_per_1k_output: 0.015
         max_context: 200000
+        estimated_latency_ms: 500
       - id: "example-small-001"
         alias: "small"
         cost_per_1k_input: 0.0008
         cost_per_1k_output: 0.004
         max_context: 200000
+        estimated_latency_ms: 200
 
   openrouter:
     api_key: "${OPENROUTER_API_KEY}"
@@ -1289,6 +1292,14 @@ Use **LiteLLM** as the provider abstraction layer:
 ```yaml
 routing:
   strategy: "smart"              # smart, cheapest, fastest, role_based, cost_aware, manual
+  # Strategy behaviors:
+  #   manual      — resolve an explicit model override; fails if not set
+  #   role_based  — match agent seniority level to routing rules, then catalog default
+  #   cost_aware  — match task-type rules, then pick cheapest model within budget
+  #   cheapest    — alias for cost_aware
+  #   fastest     — match task-type rules, then pick fastest model (by estimated_latency_ms)
+  #                 within budget; falls back to cheapest when no latency data is available
+  #   smart       — priority cascade: override > task-type > role > seniority > cheapest > fallback chain
   rules:
     - role_level: "C-Suite"
       preferred_model: "large"
@@ -1388,10 +1399,10 @@ budget:
     enabled: true
     threshold: 85              # percent of budget used
     boundary: "task_assignment" # task_assignment only — NEVER mid-execution
-    downgrade_map:             # example — aliases reference configured models
-      large: "medium"
-      medium: "small"
-      small: "local-small"
+    downgrade_map:             # ordered pairs — aliases reference configured models
+      - ["large", "medium"]
+      - ["medium", "small"]
+      - ["small", "local-small"]
 ```
 
 > **Auto-downgrade boundary:** Model downgrades apply only at **task assignment time**, never mid-execution. An agent halfway through an architecture review cannot be switched to a cheaper model — the task completes on its assigned model. The next task assignment respects the downgrade threshold. This prevents quality degradation from mid-thought model switches.
@@ -1435,7 +1446,7 @@ call_analytics:
     - success                          # true/false
     - retry_count                      # 0 = first attempt succeeded
     - retry_reason                     # rate_limit, timeout, internal_error
-    - latency_ms                       # wall-clock time for the call
+    - latency_ms                       # wall-clock time for the call (not estimated_latency_ms from config)
     - finish_reason                    # stop, tool_use, max_tokens, error
     - cache_hit                        # prompt caching hit/miss (provider-dependent)
   aggregation:
@@ -2143,6 +2154,7 @@ ai-company/
 │       │   │   ├── litellm_driver.py  # LiteLLM adapter
 │       │   │   └── mappers.py     # Request/response mappers
 │       │   ├── routing/            # Model routing (6 strategies)
+│       │   │   ├── _strategy_helpers.py  # Shared routing helper functions
 │       │   │   ├── errors.py      # Routing errors
 │       │   │   ├── models.py      # Routing models (candidates, results)
 │       │   │   ├── resolver.py    # Model resolver

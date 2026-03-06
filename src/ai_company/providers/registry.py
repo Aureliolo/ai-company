@@ -45,7 +45,7 @@ class ProviderRegistry:
 
         Check membership::
 
-            if "openrouter" in registry:
+            if "example-provider" in registry:
                 ...
     """
 

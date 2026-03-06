@@ -247,6 +247,11 @@ class RoleBasedStrategy:
         try:
             tier = get_seniority_info(level).typical_model_tier
         except LookupError:
+            logger.debug(
+                ROUTING_NO_RULE_MATCHED,
+                level=level.value,
+                reason="seniority level not in catalog",
+            )
             tier = "unknown"
         if config.fallback_chain:
             chain_detail = f"fallback chain exhausted: {list(config.fallback_chain)}"
@@ -377,7 +382,13 @@ class FastestStrategy:
             resolver,
             request.remaining_budget,
         )
-        reason = f"Fastest available: {model.model_id}"
+        # _fastest_within_budget may delegate to cheapest when no latency data
+        basis = (
+            "fastest"
+            if model.estimated_latency_ms is not None
+            else "cheapest (no latency data)"
+        )
+        reason = f"Selected by {basis}: {model.model_id}"
         if budget_exceeded:
             reason += " (all models exceed remaining budget)"
         if skipped_task_rule is not None:
@@ -480,6 +491,12 @@ class SmartStrategy:
                 request.remaining_budget,
             )
         except NoAvailableModelError:
+            logger.info(
+                ROUTING_FALLBACK_EXHAUSTED,
+                source="smart_cheapest_fallback",
+                strategy=self.name,
+                reason="no models available for cheapest fallback",
+            )
             return None
         reason = f"Cheapest available: {model.model_id}"
         if budget_exceeded:

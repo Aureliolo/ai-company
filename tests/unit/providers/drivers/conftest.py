@@ -107,7 +107,7 @@ def make_mock_tool_call(
     name: str = "get_weather",
     arguments: str = '{"location": "London"}',
 ) -> MagicMock:
-    """Build a mock tool call object (OpenAI format)."""
+    """Build a mock tool call object (chat-completion format)."""
     func = MagicMock()
     func.name = name
     func.arguments = arguments

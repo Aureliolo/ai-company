@@ -117,6 +117,19 @@ class TestModelRouterRoute:
 
         assert decision.resolved_model.alias == "large"
 
+    def test_routes_fastest(
+        self,
+        three_model_provider: dict[str, ProviderConfig],
+    ) -> None:
+        config = RoutingConfig(strategy="fastest")
+        router = ModelRouter(config, three_model_provider)
+
+        decision = router.route(RoutingRequest())
+
+        # small has lowest latency (200ms)
+        assert decision.resolved_model.alias == "small"
+        assert decision.strategy_used == "fastest"
+
     def test_logs_decision(
         self,
         three_model_provider: dict[str, ProviderConfig],

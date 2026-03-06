@@ -507,6 +507,49 @@ class TestFastestStrategy:
         # Should pick fast-expensive (100ms), not no-latency
         assert decision.resolved_model.alias == "fast-expensive"
 
+    def test_budget_picks_slower_when_fastest_exceeds(self) -> None:
+        """Fastest model exceeds budget, slower model is within budget."""
+        providers = {
+            "test-provider": ProviderConfig(
+                models=(
+                    ProviderModelConfig(
+                        id="test-fast-expensive",
+                        alias="fast-expensive",
+                        cost_per_1k_input=0.050,
+                        cost_per_1k_output=0.100,
+                        estimated_latency_ms=100,
+                    ),
+                    ProviderModelConfig(
+                        id="test-medium-speed",
+                        alias="medium-speed",
+                        cost_per_1k_input=0.005,
+                        cost_per_1k_output=0.010,
+                        estimated_latency_ms=500,
+                    ),
+                    ProviderModelConfig(
+                        id="test-slow-cheap",
+                        alias="slow-cheap",
+                        cost_per_1k_input=0.001,
+                        cost_per_1k_output=0.005,
+                        estimated_latency_ms=1000,
+                    ),
+                ),
+            ),
+        }
+        resolver = ModelResolver.from_config(providers)
+        strategy = FastestStrategy()
+
+        # Budget 0.02: fast-expensive total=0.150 (exceeds),
+        # medium-speed total=0.015 (within budget)
+        decision = strategy.select(
+            RoutingRequest(remaining_budget=0.02),
+            RoutingConfig(),
+            resolver,
+        )
+
+        assert decision.resolved_model.alias == "medium-speed"
+        assert "exceed" not in decision.reason.lower()
+
 
 # ── SmartStrategy ────────────────────────────────────────────────
 

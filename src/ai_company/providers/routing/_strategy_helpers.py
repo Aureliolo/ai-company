@@ -105,11 +105,6 @@ def _try_resolve_with_fallback_safe(
     try:
         return _try_resolve_with_fallback(ref, rule, config, resolver)
     except NoAvailableModelError:
-        logger.info(
-            ROUTING_FALLBACK_EXHAUSTED,
-            ref=ref,
-            source="safe_wrapper",
-        )
         return None
 
 
@@ -190,7 +185,7 @@ def _cheapest_within_budget(
     logger.warning(
         ROUTING_BUDGET_EXCEEDED,
         remaining_budget=remaining_budget,
-        cheapest_cost=cheapest_cost,
+        model_cost=cheapest_cost,
     )
     return cheapest, True
 
@@ -230,6 +225,7 @@ def _fastest_within_budget(
     if not models_with_latency:
         logger.info(
             ROUTING_FALLBACK_ATTEMPTED,
+            ref=None,
             source="fastest_within_budget",
             reason="no latency data, delegating to cheapest",
         )
@@ -247,7 +243,8 @@ def _fastest_within_budget(
     logger.warning(
         ROUTING_BUDGET_EXCEEDED,
         remaining_budget=remaining_budget,
-        fastest_cost=fastest_cost,
+        model_cost=fastest_cost,
+        model=fastest.model_id,
     )
     return fastest, True
 
