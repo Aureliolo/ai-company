@@ -221,7 +221,7 @@ class ToolInvoker:
         error_msg: str,
     ) -> ToolResult:
         """Build an error result for unexpected validation failures."""
-        logger.error(
+        logger.exception(
             TOOL_INVOKE_VALIDATION_UNEXPECTED,
             tool_call_id=tool_call.id,
             tool_name=tool_call.name,
@@ -345,13 +345,6 @@ class ToolInvoker:
             async with ctx:
                 results[index] = await self.invoke(tool_call)
         except (MemoryError, RecursionError) as exc:
-            logger.warning(
-                TOOL_INVOKE_NON_RECOVERABLE,
-                tool_call_id=tool_call.id,
-                tool_name=tool_call.name,
-                index=index,
-                error=f"{type(exc).__name__}: {exc}",
-            )
             fatal_errors.append(exc)
 
     async def invoke_all(

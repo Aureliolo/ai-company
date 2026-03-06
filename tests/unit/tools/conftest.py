@@ -298,7 +298,9 @@ def sample_tool_call() -> ToolCall:
 
 @pytest.fixture
 def extended_invoker() -> ToolInvoker:
-    """Invoker with additional edge-case tools for advanced tests."""
+    """Invoker with echo, recursion, invalid-schema, empty-error,
+    remote-ref, and mutating tools for edge-case tests.
+    """
     tools = [
         _EchoTestTool(),
         _RecursionTool(),
@@ -341,7 +343,7 @@ class _DelayTool(BaseTool):
 
 
 class _ConcurrencyTrackingTool(BaseTool):
-    """Tracks peak concurrent executions via an atomic counter."""
+    """Tracks peak concurrent executions via a lock-guarded counter."""
 
     def __init__(self) -> None:
         super().__init__(
@@ -364,11 +366,6 @@ class _ConcurrencyTrackingTool(BaseTool):
     def peak(self) -> int:
         """Return the peak concurrent execution count."""
         return self._peak
-
-    def reset(self) -> None:
-        """Reset counters for reuse across tests."""
-        self._current = 0
-        self._peak = 0
 
     async def execute(
         self,

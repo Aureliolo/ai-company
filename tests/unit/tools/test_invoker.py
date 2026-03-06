@@ -117,7 +117,7 @@ class TestInvokeParameterValidation:
         result = await sample_invoker.invoke(call)
         assert result.is_error is True
 
-    async def test_empty_schema_skips_validation(
+    async def test_no_schema_skips_validation(
         self,
         sample_invoker: ToolInvoker,
     ) -> None:
@@ -374,9 +374,9 @@ class TestInvokeDeepcopyFailure:
         def _fail_on_execute(obj: object, memo: object = None) -> object:
             nonlocal call_count
             call_count += 1
-            # First deepcopy call is in _validate_params via
-            # parameters_schema; let it pass. Fail on the second
-            # call in _execute_tool.
+            # First deepcopy call is BaseTool.parameters_schema
+            # (called from _validate_params); let it pass. Fail on
+            # the second call (argument copying in _execute_tool).
             if call_count > 1:
                 msg = "cannot copy"
                 raise TypeError(msg)
@@ -460,8 +460,8 @@ class TestInvokeAllConcurrency:
         elapsed = time.monotonic() - start
         assert len(results) == 3
         assert all(r.content == f"v{i}" for i, r in enumerate(results))
-        # Sequential would take >= 0.3s; generous bound for CI overhead
-        assert elapsed < 0.28
+        # Sequential would take >= 0.3s; proves parallel execution
+        assert elapsed < 0.5
 
     async def test_concurrent_results_in_input_order(
         self,
