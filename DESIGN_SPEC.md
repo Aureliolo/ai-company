@@ -2178,7 +2178,7 @@ ai-company/
 │       │   ├── config.py           # Budget configuration models
 │       │   ├── cost_record.py      # CostRecord model (frozen)
 │       │   ├── tracker.py          # CostTracker service (records + queries)
-│       │   ├── spending_summary.py # AgentSpending, DepartmentSpending, PeriodSpending
+│       │   ├── spending_summary.py # _SpendingTotals base + spending summary models
 │       │   ├── hierarchy.py        # BudgetHierarchy, BudgetConfig
 │       │   ├── enums.py            # Budget-related enums
 │       │   ├── limits.py           # Budget enforcement (M5)
