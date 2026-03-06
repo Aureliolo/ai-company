@@ -28,9 +28,11 @@ class ToolExecutionResult(BaseModel):
 
     Note:
         The ``metadata`` dict is shallowly frozen by Pydantic's
-        ``frozen=True``.  This model is not forwarded to tool
-        implementations or LLM providers, so no additional boundary
-        copy is needed at this layer.
+        ``frozen=True``.  Tool implementations construct and return
+        this model, but the invoker converts it into a provider-facing
+        ``ToolResult`` — ``metadata`` is not forwarded to LLM providers
+        or other external boundaries, so no additional boundary copy
+        is needed at this layer.
 
     Attributes:
         content: Tool output as a string.
@@ -110,6 +112,7 @@ class BaseTool(ABC):
         """
         if self._parameters_schema is None:
             return None
+        # dict() needed: MappingProxyType cannot be deep-copied directly
         return copy.deepcopy(dict(self._parameters_schema))
 
     def to_definition(self) -> ToolDefinition:

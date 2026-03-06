@@ -83,9 +83,12 @@ class ToolDefinition(BaseModel):
     Note:
         The ``parameters_schema`` dict is shallowly frozen by Pydantic's
         ``frozen=True`` — field reassignment is prevented but nested
-        contents can still be mutated in place.  Callers that pass this
-        data to external code (tool implementations, LLM providers) must
-        deep-copy at the boundary.  See DESIGN_SPEC.md section 15.5.
+        contents can still be mutated in place.  ``BaseTool.to_definition()``
+        provides a deep-copied schema, and ``ToolInvoker`` deep-copies
+        arguments at the execution boundary, so no additional caller-side
+        copying is needed for standard tool/provider workflows.  Direct
+        consumers outside these paths should deep-copy if they intend to
+        modify the schema.  See DESIGN_SPEC.md section 15.5.
 
     Attributes:
         name: Tool name (must be non-blank).

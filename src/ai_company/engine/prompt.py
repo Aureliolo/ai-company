@@ -77,7 +77,7 @@ class SystemPrompt(BaseModel):
         description="Names of sections included in the prompt",
     )
     metadata: dict[str, str] = Field(
-        description="Agent identity metadata",
+        description="Agent identity metadata (string-only values; shallow-frozen)",
     )
 
 
