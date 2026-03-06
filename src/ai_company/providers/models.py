@@ -28,7 +28,7 @@ class TokenUsage(BaseModel):
     output_tokens: int = Field(ge=0, description="Output token count")
     cost_usd: float = Field(ge=0.0, description="Estimated cost in USD")
 
-    @computed_field  # type: ignore[prop-decorator]
+    @computed_field  # type: ignore[prop-decorator]  # mypy doesn't support stacked decorators on @property
     @property
     def total_tokens(self) -> int:
         """Sum of input and output tokens."""
@@ -51,7 +51,8 @@ def add_token_usage(a: TokenUsage, b: TokenUsage) -> TokenUsage:
         b: Second usage record.
 
     Returns:
-        New ``TokenUsage`` with summed token counts and cost.
+        New ``TokenUsage`` with summed token counts and cost
+        (``total_tokens`` is computed automatically).
     """
     return TokenUsage(
         input_tokens=a.input_tokens + b.input_tokens,

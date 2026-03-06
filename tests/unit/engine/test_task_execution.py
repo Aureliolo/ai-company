@@ -265,7 +265,7 @@ class TestAddTokenUsage:
         assert result.total_tokens == 45
         assert result.cost_usd == pytest.approx(0.03)
 
-    def test_maintains_total_invariant(self) -> None:
+    def test_total_tokens_is_sum_of_parts(self) -> None:
         a = TokenUsage(
             input_tokens=7,
             output_tokens=3,

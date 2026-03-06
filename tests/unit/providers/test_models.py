@@ -70,6 +70,27 @@ class TestTokenUsage:
         with pytest.raises(ValidationError):
             sample_token_usage.cost_usd = 999.0  # type: ignore[misc]
 
+    def test_total_tokens_is_always_computed(self) -> None:
+        usage = TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.0)
+        assert usage.total_tokens == 15
+
+    def test_total_tokens_in_serialization(self) -> None:
+        usage = TokenUsage(input_tokens=100, output_tokens=50, cost_usd=0.01)
+        dumped = usage.model_dump()
+        assert dumped["total_tokens"] == 150
+
+    def test_total_tokens_roundtrip(self) -> None:
+        """Stale total_tokens in deserialized payload is silently recomputed."""
+        usage = TokenUsage.model_validate(
+            {
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "cost_usd": 0.0,
+                "total_tokens": 999,
+            }
+        )
+        assert usage.total_tokens == 15
+
     def test_factory(self) -> None:
         usage = TokenUsageFactory.build()
         assert isinstance(usage, TokenUsage)
