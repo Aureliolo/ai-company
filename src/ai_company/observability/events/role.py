@@ -1,4 +1,4 @@
-"""Role catalog event constants."""
+"""Role event constants."""
 
 from typing import Final
 

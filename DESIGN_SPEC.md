@@ -2117,7 +2117,7 @@ ai-company/
 │       │   ├── correlation.py      # Correlation ID tracking
 │       │   ├── enums.py            # Log-related enums
 │       │   ├── events/             # Per-domain event constants
-│       │   │   ├── __init__.py    # Package marker
+│       │   │   ├── __init__.py    # Package marker with usage docs; no re-exports
 │       │   │   ├── budget.py      # BUDGET_* constants
 │       │   │   ├── config.py      # CONFIG_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants

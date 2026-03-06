@@ -1,4 +1,4 @@
-"""Budget lifecycle event constants."""
+"""Budget event constants."""
 
 from typing import Final
 

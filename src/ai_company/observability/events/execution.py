@@ -1,4 +1,4 @@
-"""Execution lifecycle event constants."""
+"""Execution event constants."""
 
 from typing import Final
 

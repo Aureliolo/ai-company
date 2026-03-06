@@ -1,4 +1,4 @@
-"""Provider lifecycle and resilience event constants."""
+"""Provider event constants."""
 
 from typing import Final
 

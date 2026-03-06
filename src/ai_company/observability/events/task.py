@@ -1,4 +1,4 @@
-"""Task state machine event constants."""
+"""Task event constants."""
 
 from typing import Final
 

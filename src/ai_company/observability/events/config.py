@@ -1,4 +1,4 @@
-"""Config lifecycle event constants."""
+"""Config event constants."""
 
 from typing import Final
 

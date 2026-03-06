@@ -1,4 +1,4 @@
-"""Routing lifecycle event constants."""
+"""Routing event constants."""
 
 from typing import Final
 

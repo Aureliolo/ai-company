@@ -1,4 +1,4 @@
-"""Tool lifecycle event constants."""
+"""Tool event constants."""
 
 from typing import Final
 

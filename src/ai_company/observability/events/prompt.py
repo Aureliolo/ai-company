@@ -1,4 +1,4 @@
-"""Prompt construction event constants."""
+"""Prompt event constants."""
 
 from typing import Final
 

@@ -1,4 +1,4 @@
-"""Template lifecycle event constants."""
+"""Template event constants."""
 
 from typing import Final
 

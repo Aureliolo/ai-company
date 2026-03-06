@@ -56,7 +56,7 @@ class TestEventConstants:
     def test_follow_dot_pattern(self) -> None:
         for attr, val in _all_event_names():
             assert _DOT_PATTERN.match(val), (
-                f"{attr}={val!r} does not match domain.noun.verb pattern"
+                f"{attr}={val!r} does not match domain.subject.qualifier pattern"
             )
 
     def test_no_duplicates(self) -> None:
@@ -67,6 +67,23 @@ class TestEventConstants:
 
     def test_has_at_least_20_events(self) -> None:
         assert len(_all_event_names()) >= 20
+
+    def test_all_domain_modules_discovered(self) -> None:
+        """Every expected domain module is found by pkgutil discovery."""
+        expected = {
+            "budget",
+            "config",
+            "execution",
+            "prompt",
+            "provider",
+            "role",
+            "routing",
+            "task",
+            "template",
+            "tool",
+        }
+        discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
+        assert discovered == expected
 
     def test_config_events_exist(self) -> None:
         assert CONFIG_LOADED == "config.load.success"
