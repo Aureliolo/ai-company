@@ -15,6 +15,7 @@ from ai_company.engine.errors import ExecutionStateError
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
+    TurnRecord,
 )
 from ai_company.engine.prompt import SystemPrompt, build_system_prompt
 from ai_company.engine.react_loop import ReactLoop
@@ -33,7 +34,7 @@ from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_TASK_TRANSITION,
 )
 from ai_company.providers.enums import MessageRole
-from ai_company.providers.models import ChatMessage, TokenUsage
+from ai_company.providers.models import ChatMessage
 from ai_company.tools.invoker import ToolInvoker
 
 if TYPE_CHECKING:
@@ -50,8 +51,8 @@ logger = get_logger(__name__)
 _EXECUTABLE_STATUSES = frozenset({TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS})
 """Task statuses the engine will accept for execution.
 
-CREATED tasks lack an assignee; terminal statuses (COMPLETED, CANCELLED,
-FAILED) and BLOCKED/IN_REVIEW are not executable.
+CREATED tasks lack an assignee; terminal statuses (COMPLETED, CANCELLED)
+and BLOCKED/IN_REVIEW are not executable.
 """
 
 
@@ -146,15 +147,25 @@ class AgentEngine:
         )
 
         start = time.monotonic()
+        ctx: AgentContext | None = None
+        system_prompt: SystemPrompt | None = None
         try:
+            ctx, system_prompt = self._prepare_context(
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                max_turns=max_turns,
+                memory_messages=memory_messages,
+            )
             return await self._execute(
                 identity=identity,
                 task=task,
                 agent_id=agent_id,
                 task_id=task_id,
                 completion_config=completion_config,
-                max_turns=max_turns,
-                memory_messages=memory_messages,
+                ctx=ctx,
+                system_prompt=system_prompt,
                 start=start,
             )
         except MemoryError, RecursionError:
@@ -174,6 +185,8 @@ class AgentEngine:
                 agent_id=agent_id,
                 task_id=task_id,
                 duration_seconds=time.monotonic() - start,
+                ctx=ctx,
+                system_prompt=system_prompt,
             )
 
     async def _execute(  # noqa: PLR0913
@@ -184,19 +197,11 @@ class AgentEngine:
         agent_id: str,
         task_id: str,
         completion_config: CompletionConfig | None,
-        max_turns: int,
-        memory_messages: tuple[ChatMessage, ...],
+        ctx: AgentContext,
+        system_prompt: SystemPrompt,
         start: float,
     ) -> AgentRunResult:
-        """Prepare context, run the execution loop, record costs, and build result."""
-        ctx, system_prompt = self._prepare_context(
-            identity=identity,
-            task=task,
-            agent_id=agent_id,
-            task_id=task_id,
-            max_turns=max_turns,
-            memory_messages=memory_messages,
-        )
+        """Run the execution loop, record costs, and build result."""
         budget_checker = _make_budget_checker(task)
         tool_invoker = self._make_tool_invoker()
 
@@ -369,11 +374,15 @@ class AgentEngine:
         agent_id: str,
         task_id: str,
     ) -> None:
-        """Record accumulated costs to the CostTracker if available.
+        """Record per-turn costs to the CostTracker if available.
 
-        Cost recording failures are logged but do not affect the
-        execution result — a successful run is never downgraded to
-        an error because of a recording failure.
+        Each turn produces its own ``CostRecord``, preserving per-call
+        granularity. Turns with zero cost and zero tokens are skipped.
+
+        Recording failures for regular exceptions are logged but do not
+        affect the execution result. ``MemoryError`` and
+        ``RecursionError`` propagate unconditionally as non-recoverable
+        system errors.
         """
         if self._cost_tracker is None:
             logger.debug(
@@ -384,45 +393,56 @@ class AgentEngine:
             )
             return
 
-        usage = result.context.accumulated_cost
-        # Skip only when provably nothing happened (zero cost and zero
-        # tokens); a run with tokens but zero cost (e.g., a free-tier
-        # provider) is still recorded.
-        if (
-            usage.cost_usd <= 0.0
-            and usage.input_tokens == 0
-            and usage.output_tokens == 0
-        ):
-            logger.debug(
-                EXECUTION_ENGINE_COST_SKIPPED,
+        tracker = self._cost_tracker
+
+        for turn in result.turns:
+            # Skip only when provably nothing happened (zero cost and
+            # zero tokens); a turn with tokens but zero cost (e.g., a
+            # free-tier provider) is still recorded.
+            if (
+                turn.cost_usd <= 0.0
+                and turn.input_tokens == 0
+                and turn.output_tokens == 0
+            ):
+                logger.debug(
+                    EXECUTION_ENGINE_COST_SKIPPED,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    turn_number=turn.turn_number,
+                    reason="zero cost and zero tokens",
+                )
+                continue
+
+            record = CostRecord(
                 agent_id=agent_id,
                 task_id=task_id,
-                reason="zero cost and zero tokens",
+                provider=identity.model.provider,
+                model=identity.model.model_id,
+                input_tokens=turn.input_tokens,
+                output_tokens=turn.output_tokens,
+                cost_usd=turn.cost_usd,
+                timestamp=datetime.now(UTC),
             )
-            return
-
-        record = CostRecord(
-            agent_id=agent_id,
-            task_id=task_id,
-            provider=identity.model.provider,
-            model=identity.model.model_id,
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-            cost_usd=usage.cost_usd,
-            timestamp=datetime.now(UTC),
-        )
-        await self._submit_cost(record, usage, agent_id, task_id)
+            await self._submit_cost(
+                record,
+                turn,
+                agent_id,
+                task_id,
+                tracker=tracker,
+            )
 
     async def _submit_cost(
         self,
         record: CostRecord,
-        usage: TokenUsage,
+        turn: TurnRecord,
         agent_id: str,
         task_id: str,
+        *,
+        tracker: CostTracker,
     ) -> None:
         """Submit a cost record to the tracker, logging failures."""
         try:
-            await self._cost_tracker.record(record)  # type: ignore[union-attr]
+            await tracker.record(record)
         except MemoryError, RecursionError:
             logger.error(
                 EXECUTION_ENGINE_COST_FAILED,
@@ -438,9 +458,9 @@ class AgentEngine:
                 agent_id=agent_id,
                 task_id=task_id,
                 error=f"{type(exc).__name__}: {exc}",
-                cost_usd=usage.cost_usd,
-                input_tokens=usage.input_tokens,
-                output_tokens=usage.output_tokens,
+                cost_usd=turn.cost_usd,
+                input_tokens=turn.input_tokens,
+                output_tokens=turn.output_tokens,
             )
             return
 
@@ -448,7 +468,7 @@ class AgentEngine:
             EXECUTION_ENGINE_COST_RECORDED,
             agent_id=agent_id,
             task_id=task_id,
-            cost_usd=usage.cost_usd,
+            cost_usd=turn.cost_usd,
         )
 
     def _handle_fatal_error(  # noqa: PLR0913
@@ -460,8 +480,15 @@ class AgentEngine:
         agent_id: str,
         task_id: str,
         duration_seconds: float,
+        ctx: AgentContext | None = None,
+        system_prompt: SystemPrompt | None = None,
     ) -> AgentRunResult:
         """Build an error ``AgentRunResult`` when the execution pipeline fails.
+
+        When ``ctx`` and ``system_prompt`` are provided (i.e. context
+        preparation succeeded before the failure), they are preserved in
+        the error result so that accumulated state (conversation, task
+        transition) is not lost.
 
         If constructing the error result itself fails, the original
         exception is re-raised so it is never silently lost.
@@ -475,13 +502,13 @@ class AgentEngine:
         )
 
         try:
-            ctx = AgentContext.from_identity(identity, task=task)
+            error_ctx = ctx or AgentContext.from_identity(identity, task=task)
             error_execution = ExecutionResult(
-                context=ctx,
+                context=error_ctx,
                 termination_reason=TerminationReason.ERROR,
                 error_message=error_msg,
             )
-            error_prompt = SystemPrompt(
+            error_prompt = system_prompt or SystemPrompt(
                 content="",
                 template_version="error",
                 estimated_tokens=0,

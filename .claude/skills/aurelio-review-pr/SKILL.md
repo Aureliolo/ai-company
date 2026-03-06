@@ -262,7 +262,7 @@ Fetch from three GitHub API sources **in parallel** using `gh api` — **always 
 1. **Review submissions** (top-level review bodies):
 
    ```bash
-   gh api repos/OWNER/REPO/pulls/NUMBER/reviews --paginate --jq '.[] | {author: .user.login, state: .state, body: (.body // "" | if length > 15000 then .[0:15000] else . end)}'
+   gh api repos/OWNER/REPO/pulls/NUMBER/reviews --paginate --jq '.[] | {author: .user.login, state: .state, body: (.body // "")}'
    ```
 
    Extract: author, state, body. List ALL unique authors to identify every reviewer.
@@ -272,7 +272,7 @@ Fetch from three GitHub API sources **in parallel** using `gh api` — **always 
 2. **Inline review comments** (comments on specific lines):
 
    ```bash
-   gh api repos/OWNER/REPO/pulls/NUMBER/comments --paginate --jq '.[] | {author: .user.login, path: .path, line: .line, body: (.body // "" | if length > 5000 then .[0:5000] else . end)}'
+   gh api repos/OWNER/REPO/pulls/NUMBER/comments --paginate --jq '.[] | {author: .user.login, path: .path, line: .line, body: (.body // "")}'
    ```
 
    Extract: author, file path, line number, body. **Include ALL authors.**
@@ -280,7 +280,7 @@ Fetch from three GitHub API sources **in parallel** using `gh api` — **always 
 3. **Issue-level comments** (general PR comments, e.g. CodeRabbit walkthrough):
 
    ```bash
-   gh api repos/OWNER/REPO/issues/NUMBER/comments --paginate --jq '.[] | {author: .user.login, body: (.body // "" | if length > 15000 then .[0:15000] else . end)}'
+   gh api repos/OWNER/REPO/issues/NUMBER/comments --paginate --jq '.[] | {author: .user.login, body: (.body // "")}'
    ```
 
    Extract: author, body (look for actionable items, not just summaries). **Include ALL authors.**
@@ -289,7 +289,7 @@ After fetching, **enumerate all unique external reviewers** found across all thr
 
 **Important:** Use `gh api` with `--jq` for filtering fields only (not filtering authors). Keep it simple and robust — no complex Python scripts to parse JSON.
 
-**Important:** When review bodies are large (e.g. CodeRabbit's review with embedded outside-diff comments), fetch the **full body** without truncation. Use `head -c` with a generous limit (e.g. 15000 chars) rather than `--jq '.body[0:500]'` truncation. Outside-diff comments are typically at the top of the review body.
+**Important:** When review bodies are large (e.g. CodeRabbit's review with embedded outside-diff comments), fetch the **full body** without truncation. Outside-diff comments are typically at the top of the review body.
 
 ## Phase 5: Consolidate and triage
 
