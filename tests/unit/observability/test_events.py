@@ -13,16 +13,20 @@ from ai_company.observability.events.config import (
     CONFIG_PARSE_FAILED,
     CONFIG_VALIDATION_FAILED,
 )
+from ai_company.observability.events.execution import EXECUTION_TASK_CREATED
+from ai_company.observability.events.prompt import PROMPT_BUILD_START
 from ai_company.observability.events.provider import (
     PROVIDER_CALL_START,
     PROVIDER_REGISTRY_BUILT,
 )
 from ai_company.observability.events.role import ROLE_LOOKUP_MISS
+from ai_company.observability.events.routing import ROUTING_DECISION_MADE
 from ai_company.observability.events.task import TASK_STATUS_CHANGED
 from ai_company.observability.events.template import (
     TEMPLATE_RENDER_START,
     TEMPLATE_RENDER_SUCCESS,
 )
+from ai_company.observability.events.tool import TOOL_INVOKE_START
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -38,7 +42,7 @@ def _all_event_names() -> list[tuple[str, str]]:
             if attr.startswith("_"):
                 continue
             val = getattr(mod, attr)
-            if isinstance(val, str):
+            if attr.isupper() and isinstance(val, str):
                 result.append((attr, val))
     return result
 
@@ -85,3 +89,15 @@ class TestEventConstants:
 
     def test_budget_events_exist(self) -> None:
         assert BUDGET_RECORD_ADDED == "budget.record.added"
+
+    def test_execution_events_exist(self) -> None:
+        assert EXECUTION_TASK_CREATED == "execution.task.created"
+
+    def test_routing_events_exist(self) -> None:
+        assert ROUTING_DECISION_MADE == "routing.decision.made"
+
+    def test_prompt_events_exist(self) -> None:
+        assert PROMPT_BUILD_START == "prompt.build.start"
+
+    def test_tool_events_exist(self) -> None:
+        assert TOOL_INVOKE_START == "tool.invoke.start"

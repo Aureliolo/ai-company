@@ -1,6 +1,6 @@
 """Per-domain event name constants for observability.
 
-All event names follow the ``domain.noun.verb`` convention and are
+All event names follow a dotted ``domain.noun[.verb]`` convention and are
 used as the first positional argument to structured log calls::
 
     from ai_company.observability.events.config import CONFIG_LOADED
@@ -10,3 +10,5 @@ used as the first positional argument to structured log calls::
 Import constants from their domain module directly (e.g.
 ``events.provider``, ``events.budget``, ``events.tool``).
 """
+
+__all__: list[str] = []
