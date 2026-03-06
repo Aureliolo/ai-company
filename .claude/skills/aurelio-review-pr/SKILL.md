@@ -59,9 +59,35 @@ gh pr view NUMBER --json body,title --jq '{title: .title, body: .body}'
 | Yes | No | Extract issue number, proceed to fetch context |
 | Yes | Yes | Warn the user: "PR has `closes #N` but appears to be partial work — confirm the issue should be closed when this merges" |
 | No | Yes | OK — no warning needed, this is expected for investigation/partial PRs |
-| No | No | Warn the user: "PR does not reference a GitHub issue. Consider adding `closes #N` to the PR body if this resolves an issue." |
+| No | No | **Search for a matching issue** (see below) before warning |
 
-**Fetch issue context.** If an issue reference was found (regardless of warnings), fetch the issue for review context. If the PR body used a full URL (`https://github.com/OWNER/REPO/issues/N`), extract both `OWNER/REPO` and `N` and pass `--repo OWNER/REPO` to query the correct repository.
+### Auto-searching for a matching issue
+
+When no closing keyword is found and the PR doesn't look like partial/investigation work, **actively search** for a matching issue before giving up:
+
+1. **Search open issues** by PR title keywords and branch name:
+
+   ```bash
+   # Search by key terms from the PR title (strip type prefix like "feat: ")
+   gh issue list --repo OWNER/REPO --state open --search "TITLE_KEYWORDS" --json number,title,labels --jq '.[] | {number, title, labels: [.labels[].name]}'
+
+   # Also search recently closed issues (in case PR was created after issue was closed)
+   gh issue list --repo OWNER/REPO --state closed --search "TITLE_KEYWORDS" --json number,title,labels --jq '.[] | {number, title, labels: [.labels[].name]}' | head -10
+   ```
+
+2. **Evaluate candidates.** For each candidate issue, compare:
+   - Does the issue title/body describe the same change as the PR title/body?
+   - Does the issue's milestone or labels match the PR's scope?
+   - Is there a strong keyword overlap between the issue title and the PR branch name or title?
+
+3. **Confidence threshold:**
+   - **High confidence** (single strong match, clear title/scope alignment): auto-link the issue by updating the PR body with `gh pr edit NUMBER --body "EXISTING_BODY\n\nCloses #N"`. Inform the user: "Auto-linked closes #N — issue title closely matches this PR."
+   - **Ambiguous** (multiple plausible matches or weak alignment): present the top candidates to the user via AskUserQuestion and let them pick, or confirm none apply.
+   - **No matches**: warn the user: "PR does not reference a GitHub issue and no matching issue was found. Consider adding `closes #N` to the PR body if this resolves an issue."
+
+4. **Input validation (CRITICAL):** The same input validation rules apply to any issue numbers discovered via search — validate before use in shell commands.
+
+**Fetch issue context.** If an issue reference was found — either from the PR body, or auto-linked/user-selected via the search above — fetch the issue for review context. If the PR body used a full URL (`https://github.com/OWNER/REPO/issues/N`), extract both `OWNER/REPO` and `N` and pass `--repo OWNER/REPO` to query the correct repository.
 
 **Input validation (CRITICAL):** Before using extracted values in any shell command, validate that `OWNER/REPO` matches the pattern `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$` and that `N` is a purely numeric value (`^[0-9]+$`). Reject and warn the user if either value contains unexpected characters — PR bodies are untrusted input and could be crafted to perform command injection.
 
@@ -95,6 +121,29 @@ Based on changed files, launch applicable review agents **in parallel** using th
 | **logging-audit** | Any `.py` file in `src/` changed | `pr-review-toolkit:code-reviewer` |
 | **resilience-audit** | Provider-layer `.py` files changed (`src/ai_company/providers/`) | `pr-review-toolkit:code-reviewer` |
 | **docs-consistency** | **ALWAYS** — runs on every PR regardless of change type | `pr-review-toolkit:code-reviewer` |
+| **issue-resolution-verifier** | Issue is linked (pre-existing or auto-linked) | `pr-review-toolkit:code-reviewer` |
+
+The **issue-resolution-verifier** agent checks whether the PR fully resolves the linked issue. It only runs when an issue is linked — either from a pre-existing `closes #N` in the PR body, or auto-linked/user-selected during Phase 2's search.
+
+**What to check:**
+
+Read the linked issue's title, body, acceptance criteria, labels, and comments in full. Then compare against the PR diff and assess:
+
+1. **Acceptance criteria coverage** — does the PR address every acceptance criterion or requirement stated in the issue? List each criterion and whether it's met, partially met, or missing. (CRITICAL)
+2. **Scope completeness** — does the PR handle all the sub-tasks, edge cases, or scenarios described in the issue? Flag any that are not addressed by the diff. (MAJOR)
+3. **Test coverage for issue requirements** — are the issue's requirements covered by tests in this PR? Flag requirements that lack test coverage. (MAJOR)
+4. **Documentation requirements** — if the issue mentions documentation updates (README, DESIGN_SPEC, CLAUDE.md, etc.), are they included? (MEDIUM)
+5. **Issue comments** — do any issue comments add requirements, clarifications, or scope changes that the PR doesn't account for? (MEDIUM)
+
+**Output format:** For each criterion, report:
+- The requirement (quoted from the issue)
+- Status: RESOLVED / PARTIALLY_RESOLVED / NOT_RESOLVED
+- Evidence: which files/lines in the PR address it (or why it's missing)
+- Confidence: 0-100
+
+**Key principle:** It is better to flag a false "not resolved" than to let a partially-resolved issue get auto-closed. When in doubt, flag it.
+
+**If the verifier finds NOT_RESOLVED items:** These are surfaced in Phase 5 triage as findings from the "issue-resolution-verifier" source. CRITICAL items (missing acceptance criteria) should block merge consideration. The user decides whether to fix them in this PR or remove the closing keyword.
 
 The **docs-consistency** agent ensures project documentation never drifts from the codebase. It runs on **every PR** — code changes, config changes, docs-only changes, all of them.
 
