@@ -1,7 +1,8 @@
 """Agent execution engine.
 
-Re-exports the public API for system prompt construction,
-runtime execution state, execution loops, and engine errors.
+Re-exports the public API for the agent orchestrator, run results,
+system prompt construction, runtime execution state, execution loops,
+and engine errors.
 """
 
 from ai_company.engine.agent_engine import AgentEngine

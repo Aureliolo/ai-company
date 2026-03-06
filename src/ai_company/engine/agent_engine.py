@@ -92,6 +92,7 @@ class AgentEngine:
         task: Task,
         completion_config: CompletionConfig | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
+        memory_messages: tuple[ChatMessage, ...] = (),
     ) -> AgentRunResult:
         """Execute an agent on a task.
 
@@ -99,19 +100,35 @@ class AgentEngine:
             identity: Frozen agent identity card.
             task: Task to execute (must be ASSIGNED or IN_PROGRESS).
             completion_config: Optional per-run LLM config override.
-            max_turns: Maximum LLM turns allowed.
+            max_turns: Maximum LLM turns allowed (must be >= 1).
+            memory_messages: Optional working memory messages to inject
+                between the system prompt and task instruction.
 
         Returns:
             ``AgentRunResult`` with execution outcome and metadata.
+            All exceptions during execution (other than those listed
+            below) are caught and returned as an error result rather
+            than propagated.
 
         Raises:
-            ExecutionStateError: If the agent is not ACTIVE or the task
-                is not ASSIGNED/IN_PROGRESS.
+            ExecutionStateError: If pre-flight validation fails (agent
+                not ACTIVE or task not ASSIGNED/IN_PROGRESS).
+            ValueError: If ``max_turns`` is less than 1.
             MemoryError: Re-raised unconditionally (non-recoverable).
             RecursionError: Re-raised unconditionally (non-recoverable).
         """
         agent_id = str(identity.id)
         task_id = task.id
+
+        if max_turns < 1:
+            msg = f"max_turns must be >= 1, got {max_turns}"
+            logger.warning(
+                EXECUTION_ENGINE_INVALID_INPUT,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason=msg,
+            )
+            raise ValueError(msg)
 
         self._validate_agent(identity, agent_id)
         self._validate_task(task, agent_id, task_id)
@@ -133,6 +150,7 @@ class AgentEngine:
                 task_id=task_id,
                 completion_config=completion_config,
                 max_turns=max_turns,
+                memory_messages=memory_messages,
                 start=start,
             )
         except MemoryError, RecursionError:
@@ -156,15 +174,17 @@ class AgentEngine:
         task_id: str,
         completion_config: CompletionConfig | None,
         max_turns: int,
+        memory_messages: tuple[ChatMessage, ...],
         start: float,
     ) -> AgentRunResult:
-        """Run loop, record costs, return result."""
+        """Prepare context, run the execution loop, record costs, and build result."""
         ctx, system_prompt = self._prepare_context(
             identity=identity,
             task=task,
             agent_id=agent_id,
             task_id=task_id,
             max_turns=max_turns,
+            memory_messages=memory_messages,
         )
         budget_checker = _make_budget_checker(task)
         tool_invoker = self._make_tool_invoker()
@@ -185,12 +205,7 @@ class AgentEngine:
         )
         duration = time.monotonic() - start
 
-        await self._record_costs(
-            execution_result,
-            identity,
-            agent_id,
-            task_id,
-        )
+        await self._record_costs(execution_result, identity, agent_id, task_id)
 
         result = AgentRunResult(
             execution_result=execution_result,
@@ -199,21 +214,12 @@ class AgentEngine:
             agent_id=agent_id,
             task_id=task_id,
         )
-        logger.info(
-            EXECUTION_ENGINE_COMPLETE,
-            agent_id=agent_id,
-            task_id=task_id,
-            termination_reason=result.termination_reason.value,
-            total_turns=result.total_turns,
-            total_tokens=execution_result.context.accumulated_cost.total_tokens,
-            duration_seconds=duration,
-            cost_usd=result.total_cost_usd,
-        )
+        self._log_completion(result, execution_result, agent_id, task_id, duration)
         return result
 
     # ── Setup ────────────────────────────────────────────────────
 
-    def _prepare_context(
+    def _prepare_context(  # noqa: PLR0913
         self,
         *,
         identity: AgentIdentity,
@@ -221,6 +227,7 @@ class AgentEngine:
         agent_id: str,
         task_id: str,
         max_turns: int,
+        memory_messages: tuple[ChatMessage, ...],
     ) -> tuple[AgentContext, SystemPrompt]:
         """Build system prompt and prepare execution context."""
         tool_defs = self._get_tool_definitions()
@@ -235,10 +242,11 @@ class AgentEngine:
             task=task,
             max_turns=max_turns,
         )
-        # Seed conversation with system prompt and task instruction
         ctx = ctx.with_message(
             ChatMessage(role=MessageRole.SYSTEM, content=system_prompt.content),
         )
+        for msg in memory_messages:
+            ctx = ctx.with_message(msg)
         ctx = ctx.with_message(
             ChatMessage(
                 role=MessageRole.USER,
@@ -323,6 +331,26 @@ class AgentEngine:
             return None
         return ToolInvoker(self._tool_registry)
 
+    def _log_completion(
+        self,
+        result: AgentRunResult,
+        execution_result: ExecutionResult,
+        agent_id: str,
+        task_id: str,
+        duration: float,
+    ) -> None:
+        """Log structured completion event for the finished run."""
+        logger.info(
+            EXECUTION_ENGINE_COMPLETE,
+            agent_id=agent_id,
+            task_id=task_id,
+            termination_reason=result.termination_reason.value,
+            total_turns=result.total_turns,
+            total_tokens=execution_result.context.accumulated_cost.total_tokens,
+            duration_seconds=duration,
+            cost_usd=result.total_cost_usd,
+        )
+
     async def _record_costs(
         self,
         result: ExecutionResult,
@@ -337,6 +365,12 @@ class AgentEngine:
         an error because of a recording failure.
         """
         if self._cost_tracker is None:
+            logger.debug(
+                EXECUTION_ENGINE_COST_SKIPPED,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason="no cost tracker configured",
+            )
             return
 
         usage = result.context.accumulated_cost
@@ -368,6 +402,9 @@ class AgentEngine:
                 EXECUTION_ENGINE_COST_FAILED,
                 agent_id=agent_id,
                 task_id=task_id,
+                cost_usd=usage.cost_usd,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
             )
             return
 
@@ -388,7 +425,11 @@ class AgentEngine:
         task_id: str,
         duration_seconds: float,
     ) -> AgentRunResult:
-        """Build an error result from an unexpected exception."""
+        """Build an error ``AgentRunResult`` when the execution pipeline fails.
+
+        If constructing the error result itself fails, the original
+        exception is re-raised so it is never silently lost.
+        """
         error_msg = f"{type(exc).__name__}: {exc}"
         logger.exception(
             EXECUTION_ENGINE_ERROR,
@@ -397,26 +438,38 @@ class AgentEngine:
             error=error_msg,
         )
 
-        ctx = AgentContext.from_identity(identity, task=task)
-        error_execution = ExecutionResult(
-            context=ctx,
-            termination_reason=TerminationReason.ERROR,
-            error_message=error_msg,
-        )
-        error_prompt = SystemPrompt(
-            content="",
-            template_version="error",
-            estimated_tokens=0,
-            sections=(),
-            metadata={"agent_id": agent_id},
-        )
-        return AgentRunResult(
-            execution_result=error_execution,
-            system_prompt=error_prompt,
-            duration_seconds=duration_seconds,
-            agent_id=agent_id,
-            task_id=task_id,
-        )
+        try:
+            ctx = AgentContext.from_identity(identity, task=task)
+            error_execution = ExecutionResult(
+                context=ctx,
+                termination_reason=TerminationReason.ERROR,
+                error_message=error_msg,
+            )
+            error_prompt = SystemPrompt(
+                content="",
+                template_version="error",
+                estimated_tokens=0,
+                sections=(),
+                metadata={"agent_id": agent_id},
+            )
+            return AgentRunResult(
+                execution_result=error_execution,
+                system_prompt=error_prompt,
+                duration_seconds=duration_seconds,
+                agent_id=agent_id,
+                task_id=task_id,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as build_exc:
+            logger.exception(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=f"Failed to build error result: {build_exc}",
+                original_error=error_msg,
+            )
+            raise exc from build_exc
 
 
 def _format_task_instruction(task: Task) -> str:
@@ -433,13 +486,19 @@ def _format_task_instruction(task: Task) -> str:
         parts.append(f"**Budget limit:** ${task.budget_limit:.2f} USD")
 
     if task.deadline:
+        parts.append("")
         parts.append(f"**Deadline:** {task.deadline}")
 
     return "\n".join(parts)
 
 
 def _make_budget_checker(task: Task) -> BudgetChecker | None:
-    """Create a budget checker if the task has a positive budget limit."""
+    """Create a budget checker if the task has a positive budget limit.
+
+    The returned callable returns ``True`` when accumulated cost meets
+    or exceeds the limit (budget exhausted), ``False`` otherwise.
+    Returns ``None`` when there is no positive budget limit.
+    """
     if task.budget_limit <= 0:
         return None
 

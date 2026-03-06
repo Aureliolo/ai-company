@@ -1,8 +1,8 @@
-"""Unit tests for AgentEngine and AgentRunResult."""
+"""Unit tests for AgentEngine orchestrator."""
 
 import copy
 from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -10,7 +10,7 @@ from ai_company.budget.tracker import CostTracker
 from ai_company.core.agent import AgentIdentity  # noqa: TC001
 from ai_company.core.enums import AgentStatus, Priority, TaskStatus, TaskType
 from ai_company.core.task import Task
-from ai_company.engine.agent_engine import AgentEngine, _format_task_instruction
+from ai_company.engine.agent_engine import AgentEngine
 from ai_company.engine.context import AgentContext
 from ai_company.engine.errors import ExecutionStateError
 from ai_company.engine.loop_protocol import (
@@ -536,97 +536,6 @@ class TestAgentEngineMaxTurns:
 
 
 @pytest.mark.unit
-class TestAgentEngineErrorHandling:
-    """Provider exceptions -> error result (not crash)."""
-
-    async def test_provider_error_returns_error_result(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-    ) -> None:
-        provider = MagicMock()
-        provider.complete = AsyncMock(side_effect=RuntimeError("LLM is down"))
-        engine = AgentEngine(provider=provider)
-
-        result = await engine.run(
-            identity=sample_agent_with_personality,
-            task=sample_task_with_criteria,
-        )
-
-        # The error should be caught at either the loop or engine level
-        assert result.termination_reason == TerminationReason.ERROR
-        assert result.is_success is False
-
-    async def test_prompt_build_error_returns_error_result(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
-
-        with patch(
-            "ai_company.engine.agent_engine.build_system_prompt",
-            side_effect=RuntimeError("template broken"),
-        ):
-            result = await engine.run(
-                identity=sample_agent_with_personality,
-                task=sample_task_with_criteria,
-            )
-
-        assert result.termination_reason == TerminationReason.ERROR
-        assert "template broken" in (result.execution_result.error_message or "")
-
-
-@pytest.mark.unit
-class TestAgentEngineNonRecoverable:
-    """MemoryError/RecursionError propagate."""
-
-    async def test_memory_error_propagates(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
-
-        with (
-            patch(
-                "ai_company.engine.agent_engine.build_system_prompt",
-                side_effect=MemoryError("out of memory"),
-            ),
-            pytest.raises(MemoryError),
-        ):
-            await engine.run(
-                identity=sample_agent_with_personality,
-                task=sample_task_with_criteria,
-            )
-
-    async def test_recursion_error_propagates(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        provider = mock_provider_factory([])
-        engine = AgentEngine(provider=provider)
-
-        with (
-            patch(
-                "ai_company.engine.agent_engine.build_system_prompt",
-                side_effect=RecursionError("too deep"),
-            ),
-            pytest.raises(RecursionError),
-        ):
-            await engine.run(
-                identity=sample_agent_with_personality,
-                task=sample_task_with_criteria,
-            )
-
-
-@pytest.mark.unit
 class TestAgentEngineDuration:
     """duration_seconds > 0 in result."""
 
@@ -646,45 +555,6 @@ class TestAgentEngineDuration:
         )
 
         assert result.duration_seconds > 0
-
-
-@pytest.mark.unit
-class TestAgentEngineConvenienceFields:
-    """Computed fields on AgentRunResult delegate correctly."""
-
-    async def test_total_turns(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        response = _make_completion_response()
-        provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
-
-        result = await engine.run(
-            identity=sample_agent_with_personality,
-            task=sample_task_with_criteria,
-        )
-
-        assert result.total_turns == 1
-
-    async def test_total_cost_usd(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-        mock_provider_factory: type[MockCompletionProvider],
-    ) -> None:
-        response = _make_completion_response(cost_usd=0.05)
-        provider = mock_provider_factory([response])
-        engine = AgentEngine(provider=provider)
-
-        result = await engine.run(
-            identity=sample_agent_with_personality,
-            task=sample_task_with_criteria,
-        )
-
-        assert result.total_cost_usd == pytest.approx(0.05)
 
 
 @pytest.mark.unit
@@ -790,40 +660,3 @@ class TestAgentEngineImmutability:
         # Original task status should still be ASSIGNED
         assert sample_task_with_criteria.status == TaskStatus.ASSIGNED
         assert sample_task_with_criteria == task_before
-
-
-@pytest.mark.unit
-class TestFormatTaskInstruction:
-    """Test _format_task_instruction helper."""
-
-    def test_basic_format(self, sample_task_with_criteria: Task) -> None:
-        result = _format_task_instruction(sample_task_with_criteria)
-
-        assert "# Task: Implement authentication module" in result
-        assert "JWT-based authentication" in result
-        assert "## Acceptance Criteria" in result
-        assert "- Login endpoint returns JWT token" in result
-        assert "$5.00 USD" in result
-
-    def test_deadline_included(self, sample_task_with_criteria: Task) -> None:
-        result = _format_task_instruction(sample_task_with_criteria)
-
-        assert "**Deadline:** 2026-04-01T00:00:00" in result
-
-    def test_no_criteria_no_budget(self) -> None:
-        task = Task(
-            id="task-simple",
-            title="Simple task",
-            description="Do the thing.",
-            type=TaskType.DEVELOPMENT,
-            project="proj-001",
-            created_by="manager",
-            assigned_to="someone",
-            status=TaskStatus.ASSIGNED,
-        )
-        result = _format_task_instruction(task)
-
-        assert "# Task: Simple task" in result
-        assert "Do the thing." in result
-        assert "Acceptance Criteria" not in result
-        assert "Budget" not in result

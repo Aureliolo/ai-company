@@ -25,7 +25,8 @@ class AgentRunResult(BaseModel):
         system_prompt: System prompt used for this run.
         duration_seconds: Wall-clock run time in seconds.
         agent_id: Agent identifier (string form of UUID).
-        task_id: Task identifier, if task-bound.
+        task_id: Task identifier (always set currently; ``None``
+            reserved for future taskless runs).
     """
 
     model_config = ConfigDict(frozen=True)

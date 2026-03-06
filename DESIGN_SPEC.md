@@ -931,7 +931,9 @@ Pipeline steps:
 
 Error handling: `MemoryError` and `RecursionError` propagate unconditionally. All other exceptions are caught and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
 
-Constructor accepts: `provider` (required), `execution_loop` (defaults to `ReactLoop`), `tool_registry`, `cost_tracker`.
+Constructor accepts: `provider` (required), `execution_loop` (defaults to `ReactLoop`), `tool_registry`, `cost_tracker`. The `run()` method also accepts `memory_messages` — optional working memory to inject between the system prompt and task instruction (memory retrieval is M5; the engine provides the injection hook).
+
+Logs structured events under the `execution.engine.*` namespace (10 constants in `events/execution.py`): creation, start, prompt built, completion, errors, invalid input, task transitions, and cost recording outcomes.
 
 **`AgentRunResult`** — frozen Pydantic model wrapping `ExecutionResult` with engine metadata:
 
@@ -2144,7 +2146,7 @@ ai-company/
 │       │   ├── artifact.py         # Produced work items
 │       │   ├── role.py             # Role model
 │       │   └── role_catalog.py     # Role catalog
-│       ├── engine/                  # Core engines (M3+)
+│       ├── engine/                  # Agent orchestration, execution loops, and task lifecycle
 │       │   ├── errors.py           # Engine error hierarchy
 │       │   ├── prompt.py           # System prompt builder
 │       │   ├── prompt_template.py  # System prompt Jinja2 templates
@@ -2153,7 +2155,7 @@ ai-company/
 │       │   ├── loop_protocol.py    # ExecutionLoop protocol + result models
 │       │   ├── react_loop.py       # ReAct loop implementation
 │       │   ├── run_result.py       # AgentRunResult outcome model
-│       │   ├── agent_engine.py     # Agent execution engine (M3)
+│       │   ├── agent_engine.py     # Agent execution engine
 │       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)
 │       │   ├── workflow_engine.py  # Workflow orchestration (M4)
 │       │   ├── meeting_engine.py   # Meeting coordination (M4)
