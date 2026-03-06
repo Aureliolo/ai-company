@@ -5,6 +5,7 @@ tool invocation, and budget tracking into a single ``run()`` entry point.
 """
 
 import asyncio
+import contextlib
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -135,26 +136,12 @@ class AgentEngine:
         agent_id = str(identity.id)
         task_id = task.id
 
-        if max_turns < 1:
-            msg = f"max_turns must be >= 1, got {max_turns}"
-            logger.warning(
-                EXECUTION_ENGINE_INVALID_INPUT,
-                agent_id=agent_id,
-                task_id=task_id,
-                reason=msg,
-            )
-            raise ValueError(msg)
-
-        if timeout_seconds is not None and timeout_seconds <= 0:
-            msg = f"timeout_seconds must be > 0, got {timeout_seconds}"
-            logger.warning(
-                EXECUTION_ENGINE_INVALID_INPUT,
-                agent_id=agent_id,
-                task_id=task_id,
-                reason=msg,
-            )
-            raise ValueError(msg)
-
+        self._validate_run_inputs(
+            agent_id=agent_id,
+            task_id=task_id,
+            max_turns=max_turns,
+            timeout_seconds=timeout_seconds,
+        )
         self._validate_agent(identity, agent_id)
         self._validate_task(task, agent_id, task_id)
 
@@ -223,7 +210,12 @@ class AgentEngine:
         start: float,
         timeout_seconds: float | None = None,
     ) -> AgentRunResult:
-        """Run the execution loop, record costs, and build result."""
+        """Run execution loop, record costs, apply transitions, and build result.
+
+        Orchestrates the full execution pipeline: loop execution (with
+        optional wall-clock timeout via ``asyncio.wait``), per-turn cost
+        recording, post-execution task transitions, and metrics logging.
+        """
         budget_checker = _make_budget_checker(task)
         tool_invoker = self._make_tool_invoker()
 
@@ -234,40 +226,16 @@ class AgentEngine:
             estimated_tokens=system_prompt.estimated_tokens,
         )
 
-        try:
-            coro = self._loop.execute(
-                context=ctx,
-                provider=self._provider,
-                tool_invoker=tool_invoker,
-                budget_checker=budget_checker,
-                completion_config=completion_config,
-            )
-            if timeout_seconds is not None:
-                execution_result = await asyncio.wait_for(
-                    coro,
-                    timeout=timeout_seconds,
-                )
-            else:
-                execution_result = await coro
-        except TimeoutError:
-            if timeout_seconds is None:
-                raise
-            duration = time.monotonic() - start
-            error_msg = (
-                f"Wall-clock timeout after {duration:.1f}s (limit: {timeout_seconds}s)"
-            )
-            logger.warning(
-                EXECUTION_ENGINE_TIMEOUT,
-                agent_id=agent_id,
-                task_id=task_id,
-                duration_seconds=duration,
-                timeout_seconds=timeout_seconds,
-            )
-            execution_result = ExecutionResult(
-                context=ctx,
-                termination_reason=TerminationReason.ERROR,
-                error_message=error_msg,
-            )
+        execution_result = await self._run_loop_with_timeout(
+            ctx=ctx,
+            agent_id=agent_id,
+            task_id=task_id,
+            completion_config=completion_config,
+            budget_checker=budget_checker,
+            tool_invoker=tool_invoker,
+            start=start,
+            timeout_seconds=timeout_seconds,
+        )
 
         await self._record_costs(execution_result, identity, agent_id, task_id)
         execution_result = self._apply_post_execution_transitions(
@@ -277,7 +245,6 @@ class AgentEngine:
         )
 
         duration = time.monotonic() - start
-
         result = AgentRunResult(
             execution_result=execution_result,
             system_prompt=system_prompt,
@@ -285,8 +252,72 @@ class AgentEngine:
             agent_id=agent_id,
             task_id=task_id,
         )
-        self._log_completion(result, agent_id, task_id, duration)
+        try:
+            self._log_completion(result, agent_id, task_id, duration)
+        except Exception:
+            logger.exception(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="Completion logging failed",
+            )
         return result
+
+    async def _run_loop_with_timeout(  # noqa: PLR0913
+        self,
+        *,
+        ctx: AgentContext,
+        agent_id: str,
+        task_id: str,
+        completion_config: CompletionConfig | None,
+        budget_checker: BudgetChecker | None,
+        tool_invoker: ToolInvoker | None,
+        start: float,
+        timeout_seconds: float | None,
+    ) -> ExecutionResult:
+        """Execute the loop, using ``asyncio.wait`` for timeout control.
+
+        Uses ``asyncio.wait`` instead of ``asyncio.wait_for`` so that
+        ``TimeoutError`` raised inside the loop propagates normally
+        and is not conflated with the engine's wall-clock deadline.
+        """
+        coro = self._loop.execute(
+            context=ctx,
+            provider=self._provider,
+            tool_invoker=tool_invoker,
+            budget_checker=budget_checker,
+            completion_config=completion_config,
+        )
+        if timeout_seconds is None:
+            return await coro
+
+        loop_task = asyncio.create_task(coro)
+        _done, pending = await asyncio.wait(
+            {loop_task},
+            timeout=timeout_seconds,
+        )
+        if not pending:
+            return loop_task.result()
+
+        duration = time.monotonic() - start
+        error_msg = (
+            f"Wall-clock timeout after {duration:.1f}s (limit: {timeout_seconds}s)"
+        )
+        logger.warning(
+            EXECUTION_ENGINE_TIMEOUT,
+            agent_id=agent_id,
+            task_id=task_id,
+            duration_seconds=duration,
+            timeout_seconds=timeout_seconds,
+        )
+        loop_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await loop_task
+        return ExecutionResult(
+            context=ctx,
+            termination_reason=TerminationReason.ERROR,
+            error_message=error_msg,
+        )
 
     # ── Setup ────────────────────────────────────────────────────
 
@@ -330,6 +361,34 @@ class AgentEngine:
 
     # ── Validation ───────────────────────────────────────────────
 
+    def _validate_run_inputs(
+        self,
+        *,
+        agent_id: str,
+        task_id: str,
+        max_turns: int,
+        timeout_seconds: float | None,
+    ) -> None:
+        """Validate scalar ``run()`` arguments before execution."""
+        if max_turns < 1:
+            msg = f"max_turns must be >= 1, got {max_turns}"
+            logger.warning(
+                EXECUTION_ENGINE_INVALID_INPUT,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            msg = f"timeout_seconds must be > 0, got {timeout_seconds}"
+            logger.warning(
+                EXECUTION_ENGINE_INVALID_INPUT,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason=msg,
+            )
+            raise ValueError(msg)
+
     def _validate_agent(self, identity: AgentIdentity, agent_id: str) -> None:
         """Raise if agent is not ACTIVE."""
         if identity.status != AgentStatus.ACTIVE:
@@ -350,11 +409,23 @@ class AgentEngine:
         agent_id: str,
         task_id: str,
     ) -> None:
-        """Raise if task is not in an executable status."""
+        """Raise if task is not executable or not assigned to this agent."""
         if task.status not in _EXECUTABLE_STATUSES:
             msg = (
                 f"Task {task_id!r} has status {task.status.value!r}; "
                 f"only 'assigned' or 'in_progress' tasks can be executed"
+            )
+            logger.warning(
+                EXECUTION_ENGINE_INVALID_INPUT,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason=msg,
+            )
+            raise ExecutionStateError(msg)
+        if task.assigned_to is not None and task.assigned_to != agent_id:
+            msg = (
+                f"Task {task_id!r} is assigned to {task.assigned_to!r}, "
+                f"not to agent {agent_id!r}"
             )
             logger.warning(
                 EXECUTION_ENGINE_INVALID_INPUT,
@@ -434,6 +505,7 @@ class AgentEngine:
             return execution_result
 
         try:
+            prev_status = ctx.task_execution.status
             ctx = ctx.with_task_transition(
                 TaskStatus.IN_REVIEW,
                 reason="Agent completed execution",
@@ -442,10 +514,11 @@ class AgentEngine:
                 EXECUTION_ENGINE_TASK_TRANSITION,
                 agent_id=agent_id,
                 task_id=task_id,
-                from_status=TaskStatus.IN_PROGRESS.value,
+                from_status=prev_status.value,
                 to_status=TaskStatus.IN_REVIEW.value,
             )
             # TODO(M4): Replace auto-complete with review gate
+            prev_status = ctx.task_execution.status  # type: ignore[union-attr]
             ctx = ctx.with_task_transition(
                 TaskStatus.COMPLETED,
                 reason="Auto-completed (no reviewers in M3)",
@@ -454,7 +527,7 @@ class AgentEngine:
                 EXECUTION_ENGINE_TASK_TRANSITION,
                 agent_id=agent_id,
                 task_id=task_id,
-                from_status=TaskStatus.IN_REVIEW.value,
+                from_status=prev_status.value,
                 to_status=TaskStatus.COMPLETED.value,
             )
         except (ValueError, ExecutionStateError) as exc:
@@ -499,6 +572,7 @@ class AgentEngine:
             EXECUTION_ENGINE_TASK_METRICS,
             agent_id=agent_id,
             task_id=task_id,
+            termination_reason=result.termination_reason.value,
             turns_per_task=metrics.turns_per_task,
             tokens_per_task=metrics.tokens_per_task,
             cost_per_task=metrics.cost_per_task,
@@ -683,7 +757,7 @@ class AgentEngine:
                 error=f"Failed to build error result: {build_exc}",
                 original_error=error_msg,
             )
-            raise exc from build_exc
+            raise exc from None
 
 
 def _format_task_instruction(task: Task) -> str:

@@ -98,6 +98,37 @@ class TestTaskCompletionMetricsConstruction:
                 duration_seconds=0.0,
             )
 
+    def test_negative_cost_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="cost_per_task"):
+            TaskCompletionMetrics(
+                agent_id="agent-001",
+                turns_per_task=0,
+                tokens_per_task=0,
+                cost_per_task=-0.01,
+                duration_seconds=0.0,
+            )
+
+    def test_negative_duration_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="duration_seconds"):
+            TaskCompletionMetrics(
+                agent_id="agent-001",
+                turns_per_task=0,
+                tokens_per_task=0,
+                cost_per_task=0.0,
+                duration_seconds=-1.0,
+            )
+
+    def test_blank_task_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="task_id"):
+            TaskCompletionMetrics(
+                task_id="  ",
+                agent_id="agent-001",
+                turns_per_task=0,
+                tokens_per_task=0,
+                cost_per_task=0.0,
+                duration_seconds=0.0,
+            )
+
 
 @pytest.mark.unit
 class TestTaskCompletionMetricsFromRunResult:

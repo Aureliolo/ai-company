@@ -1,6 +1,6 @@
 """Task completion metrics model.
 
-Proxy overhead metrics for a completed task, computed from
+Proxy overhead metrics for an agent run, computed from
 ``AgentRunResult`` data per DESIGN_SPEC §10.5 (M3).
 """
 
@@ -15,9 +15,9 @@ if TYPE_CHECKING:
 
 
 class TaskCompletionMetrics(BaseModel):
-    """Proxy overhead metrics for a completed task (DESIGN_SPEC §10.5).
+    """Proxy overhead metrics for an agent run (DESIGN_SPEC §10.5).
 
-    Computed from ``AgentRunResult`` at task completion to surface
+    Computed from ``AgentRunResult`` after execution to surface
     orchestration overhead indicators (turns, tokens, cost, duration).
 
     Attributes:
@@ -55,10 +55,10 @@ class TaskCompletionMetrics(BaseModel):
 
     @classmethod
     def from_run_result(cls, result: AgentRunResult) -> TaskCompletionMetrics:
-        """Build metrics from a completed agent run result.
+        """Build metrics from an agent run result.
 
         Args:
-            result: The completed ``AgentRunResult``.
+            result: The ``AgentRunResult`` to extract metrics from.
 
         Returns:
             New ``TaskCompletionMetrics`` with values extracted from

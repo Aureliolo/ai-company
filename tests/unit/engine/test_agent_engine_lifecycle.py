@@ -274,7 +274,7 @@ class TestAgentEngineTimeout:
 
         assert result.is_success is True
 
-    async def test_invalid_timeout_raises(
+    async def test_zero_timeout_raises(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
@@ -289,6 +289,15 @@ class TestAgentEngineTimeout:
                 task=sample_task_with_criteria,
                 timeout_seconds=0,
             )
+
+    async def test_negative_timeout_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider)
 
         with pytest.raises(ValueError, match="timeout_seconds must be > 0"):
             await engine.run(
@@ -328,3 +337,116 @@ class TestAgentEngineCompletionMetrics:
         assert metrics.duration_seconds > 0
         assert metrics.agent_id == str(sample_agent_with_personality.id)
         assert metrics.task_id == sample_task_with_criteria.id
+
+
+@pytest.mark.unit
+class TestAgentEngineTimeoutEdgeCases:
+    """Edge cases for timeout behaviour."""
+
+    async def test_inner_timeout_propagates_without_engine_timeout(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """TimeoutError from inside the loop is treated as a fatal error."""
+
+        async def raises_timeout(**kwargs: Any) -> ExecutionResult:
+            msg = "inner timeout"
+            raise TimeoutError(msg)
+
+        mock_loop = MagicMock()
+        mock_loop.execute = raises_timeout
+        mock_loop.get_loop_type = MagicMock(return_value="react")
+
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        assert result.termination_reason == TerminationReason.ERROR
+        assert "TimeoutError" in (result.execution_result.error_message or "")
+
+    async def test_timeout_records_no_costs(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Timeout result has no turns, so no costs are recorded."""
+
+        async def slow_execute(**kwargs: Any) -> ExecutionResult:
+            await asyncio.sleep(10)
+            msg = "Should not reach here"
+            raise AssertionError(msg)
+
+        mock_tracker = MagicMock()
+        mock_tracker.record = AsyncMock()
+
+        mock_loop = MagicMock()
+        mock_loop.execute = slow_execute
+        mock_loop.get_loop_type = MagicMock(return_value="react")
+
+        provider = mock_provider_factory([])
+        engine = AgentEngine(
+            provider=provider,
+            execution_loop=mock_loop,
+            cost_tracker=mock_tracker,
+        )
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+            timeout_seconds=0.1,
+        )
+
+        assert result.termination_reason == TerminationReason.ERROR
+        mock_tracker.record.assert_not_called()
+
+
+@pytest.mark.unit
+class TestAgentEnginePostExecutionResilience:
+    """Post-execution transition failure resilience."""
+
+    async def test_transition_failure_preserves_result(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Transition failure preserves execution result unchanged."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(
+            TaskStatus.IN_PROGRESS,
+            reason="Engine starting execution",
+        )
+        te = ctx.task_execution
+        assert te is not None
+        bad_te = te.model_copy(update={"status": TaskStatus.CANCELLED})
+        ctx_bad = ctx.model_copy(update={"task_execution": bad_te})
+
+        mock_result = ExecutionResult(
+            context=ctx_bad,
+            termination_reason=TerminationReason.COMPLETED,
+        )
+        mock_loop = MagicMock()
+        mock_loop.execute = AsyncMock(return_value=mock_result)
+        mock_loop.get_loop_type = MagicMock(return_value="react")
+
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider, execution_loop=mock_loop)
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        te = result.execution_result.context.task_execution
+        assert te is not None
+        assert te.status == TaskStatus.CANCELLED

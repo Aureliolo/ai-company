@@ -196,7 +196,7 @@ class TestAgentEngineInvalidInput:
             priority=Priority.MEDIUM,
             project="proj-001",
             created_by="manager",
-            assigned_to="someone",
+            assigned_to=str(sample_agent_with_personality.id),
             status=TaskStatus.COMPLETED,
         )
         provider = mock_provider_factory([])
@@ -245,7 +245,7 @@ class TestAgentEngineInvalidInput:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to="someone",
+            assigned_to=str(sample_agent_with_personality.id),
             status=TaskStatus.BLOCKED,
         )
         provider = mock_provider_factory([])
@@ -375,7 +375,7 @@ class TestAgentEngineBudgetChecker:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to="someone",
+            assigned_to=str(sample_agent_with_personality.id),
             budget_limit=0.0,
             status=TaskStatus.ASSIGNED,
         )
@@ -452,7 +452,7 @@ class TestAgentEngineCostRecording:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to="someone",
+            assigned_to=str(sample_agent_with_personality.id),
             status=TaskStatus.ASSIGNED,
         )
         response = _make_completion_response(
@@ -482,7 +482,7 @@ class TestAgentEngineCostRecording:
             type=TaskType.DEVELOPMENT,
             project="proj-001",
             created_by="manager",
-            assigned_to="someone",
+            assigned_to=str(sample_agent_with_personality.id),
             status=TaskStatus.ASSIGNED,
         )
         response = _make_completion_response(

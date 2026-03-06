@@ -6,6 +6,7 @@ from the engine layer (system prompt, wall-clock duration, agent/task IDs).
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
+from ai_company.core.artifact import Artifact  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
@@ -46,6 +47,10 @@ class AgentRunResult(BaseModel):
     task_id: NotBlankStr | None = Field(
         default=None,
         description="Task identifier, or None for future taskless runs",
+    )
+    produced_artifacts: tuple[Artifact, ...] = Field(
+        default=(),
+        description="Artifacts produced during execution",
     )
 
     # mypy does not yet model Pydantic's @computed_field + @property
