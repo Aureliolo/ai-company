@@ -4,6 +4,7 @@ Ties together prompt construction, execution context, execution loop,
 tool invocation, and budget tracking into a single ``run()`` entry point.
 """
 
+import asyncio
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -17,6 +18,7 @@ from ai_company.engine.loop_protocol import (
     TerminationReason,
     TurnRecord,
 )
+from ai_company.engine.metrics import TaskCompletionMetrics
 from ai_company.engine.prompt import SystemPrompt, build_system_prompt
 from ai_company.engine.react_loop import ReactLoop
 from ai_company.engine.run_result import AgentRunResult
@@ -31,7 +33,9 @@ from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_INVALID_INPUT,
     EXECUTION_ENGINE_PROMPT_BUILT,
     EXECUTION_ENGINE_START,
+    EXECUTION_ENGINE_TASK_METRICS,
     EXECUTION_ENGINE_TASK_TRANSITION,
+    EXECUTION_ENGINE_TIMEOUT,
 )
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import ChatMessage
@@ -90,7 +94,7 @@ class AgentEngine:
             has_cost_tracker=self._cost_tracker is not None,
         )
 
-    async def run(
+    async def run(  # noqa: PLR0913
         self,
         *,
         identity: AgentIdentity,
@@ -98,6 +102,7 @@ class AgentEngine:
         completion_config: CompletionConfig | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
         memory_messages: tuple[ChatMessage, ...] = (),
+        timeout_seconds: float | None = None,
     ) -> AgentRunResult:
         """Execute an agent on a task.
 
@@ -108,6 +113,8 @@ class AgentEngine:
             max_turns: Maximum LLM turns allowed (must be >= 1).
             memory_messages: Optional working memory messages to inject
                 between the system prompt and task instruction.
+            timeout_seconds: Optional wall-clock timeout. When exceeded,
+                the run terminates with an ERROR result.
 
         Returns:
             ``AgentRunResult`` with execution outcome and metadata.
@@ -118,7 +125,8 @@ class AgentEngine:
         Raises:
             ExecutionStateError: If pre-flight validation fails (agent
                 not ACTIVE or task not ASSIGNED/IN_PROGRESS).
-            ValueError: If ``max_turns`` is less than 1.
+            ValueError: If ``max_turns`` is less than 1, or if
+                ``timeout_seconds`` is not positive.
             MemoryError: Re-raised unconditionally (non-recoverable).
             RecursionError: Re-raised unconditionally (non-recoverable).
         """
@@ -127,6 +135,16 @@ class AgentEngine:
 
         if max_turns < 1:
             msg = f"max_turns must be >= 1, got {max_turns}"
+            logger.warning(
+                EXECUTION_ENGINE_INVALID_INPUT,
+                agent_id=agent_id,
+                task_id=task_id,
+                reason=msg,
+            )
+            raise ValueError(msg)
+
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            msg = f"timeout_seconds must be > 0, got {timeout_seconds}"
             logger.warning(
                 EXECUTION_ENGINE_INVALID_INPUT,
                 agent_id=agent_id,
@@ -167,6 +185,7 @@ class AgentEngine:
                 ctx=ctx,
                 system_prompt=system_prompt,
                 start=start,
+                timeout_seconds=timeout_seconds,
             )
         except MemoryError, RecursionError:
             logger.error(
@@ -200,6 +219,7 @@ class AgentEngine:
         ctx: AgentContext,
         system_prompt: SystemPrompt,
         start: float,
+        timeout_seconds: float | None = None,
     ) -> AgentRunResult:
         """Run the execution loop, record costs, and build result."""
         budget_checker = _make_budget_checker(task)
@@ -212,16 +232,47 @@ class AgentEngine:
             estimated_tokens=system_prompt.estimated_tokens,
         )
 
-        execution_result = await self._loop.execute(
-            context=ctx,
-            provider=self._provider,
-            tool_invoker=tool_invoker,
-            budget_checker=budget_checker,
-            completion_config=completion_config,
-        )
+        try:
+            coro = self._loop.execute(
+                context=ctx,
+                provider=self._provider,
+                tool_invoker=tool_invoker,
+                budget_checker=budget_checker,
+                completion_config=completion_config,
+            )
+            if timeout_seconds is not None:
+                execution_result = await asyncio.wait_for(
+                    coro,
+                    timeout=timeout_seconds,
+                )
+            else:
+                execution_result = await coro
+        except TimeoutError:
+            duration = time.monotonic() - start
+            error_msg = (
+                f"Wall-clock timeout after {duration:.1f}s (limit: {timeout_seconds}s)"
+            )
+            logger.warning(
+                EXECUTION_ENGINE_TIMEOUT,
+                agent_id=agent_id,
+                task_id=task_id,
+                duration_seconds=duration,
+                timeout_seconds=timeout_seconds,
+            )
+            execution_result = ExecutionResult(
+                context=ctx,
+                termination_reason=TerminationReason.ERROR,
+                error_message=error_msg,
+            )
+
         duration = time.monotonic() - start
 
         await self._record_costs(execution_result, identity, agent_id, task_id)
+        execution_result = self._apply_post_execution_transitions(
+            execution_result,
+            agent_id,
+            task_id,
+        )
 
         result = AgentRunResult(
             execution_result=execution_result,
@@ -341,6 +392,58 @@ class AgentEngine:
             )
         return ctx
 
+    def _apply_post_execution_transitions(
+        self,
+        execution_result: ExecutionResult,
+        agent_id: str,
+        task_id: str,
+    ) -> ExecutionResult:
+        """Apply post-execution task transitions based on termination reason.
+
+        Only ``TerminationReason.COMPLETED`` triggers transitions:
+        IN_PROGRESS → IN_REVIEW → COMPLETED (two-hop auto-complete).
+        All other reasons leave the task in its current state.
+
+        Args:
+            execution_result: Result from the execution loop.
+            agent_id: Agent identifier for logging.
+            task_id: Task identifier for logging.
+
+        Returns:
+            New ``ExecutionResult`` with updated context if transitions
+            were applied, or the original result unchanged.
+        """
+        ctx = execution_result.context
+        if ctx.task_execution is None:
+            return execution_result
+
+        if execution_result.termination_reason != TerminationReason.COMPLETED:
+            return execution_result
+
+        ctx = ctx.with_task_transition(
+            TaskStatus.IN_REVIEW,
+            reason="Agent completed execution",
+        )
+        logger.info(
+            EXECUTION_ENGINE_TASK_TRANSITION,
+            agent_id=agent_id,
+            task_id=task_id,
+            from_status=TaskStatus.IN_PROGRESS.value,
+            to_status=TaskStatus.IN_REVIEW.value,
+        )
+        ctx = ctx.with_task_transition(
+            TaskStatus.COMPLETED,
+            reason="Auto-completed (no reviewers in M3)",
+        )
+        logger.info(
+            EXECUTION_ENGINE_TASK_TRANSITION,
+            agent_id=agent_id,
+            task_id=task_id,
+            from_status=TaskStatus.IN_REVIEW.value,
+            to_status=TaskStatus.COMPLETED.value,
+        )
+        return execution_result.model_copy(update={"context": ctx})
+
     def _make_tool_invoker(self) -> ToolInvoker | None:
         """Create a ToolInvoker from the registry, or None."""
         if self._tool_registry is None:
@@ -355,7 +458,7 @@ class AgentEngine:
         task_id: str,
         duration: float,
     ) -> None:
-        """Log structured completion event for the finished run."""
+        """Log structured completion event and proxy overhead metrics."""
         logger.info(
             EXECUTION_ENGINE_COMPLETE,
             agent_id=agent_id,
@@ -365,6 +468,17 @@ class AgentEngine:
             total_tokens=execution_result.context.accumulated_cost.total_tokens,
             duration_seconds=duration,
             cost_usd=result.total_cost_usd,
+        )
+
+        metrics = TaskCompletionMetrics.from_run_result(result)
+        logger.info(
+            EXECUTION_ENGINE_TASK_METRICS,
+            agent_id=agent_id,
+            task_id=task_id,
+            turns_per_task=metrics.turns_per_task,
+            tokens_per_task=metrics.tokens_per_task,
+            cost_per_task=metrics.cost_per_task,
+            duration_seconds=metrics.duration_seconds,
         )
 
     async def _record_costs(
