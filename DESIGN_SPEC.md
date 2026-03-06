@@ -11,7 +11,7 @@
 3. [Agent System](#3-agent-system)
 4. [Company Structure](#4-company-structure)
 5. [Communication Architecture](#5-communication-architecture) — 5.6 Conflict Resolution, 5.7 Meeting Protocol
-6. [Task & Workflow Engine](#6-task--workflow-engine) — 6.5 Execution Loop, 6.6 Crash Recovery, **6.7 Graceful Shutdown**, **6.8 Workspace Isolation**
+6. [Task & Workflow Engine](#6-task--workflow-engine) — 6.5 Execution Loop, 6.6 Crash Recovery, **6.7 Graceful Shutdown**, **6.8 Workspace Isolation**, **6.9 Task Decomposability & Topology**
 7. [Memory & Persistence](#7-memory--persistence) — 7.4 Shared Org Memory (Research Directions)
 8. [HR & Workforce Management](#8-hr--workforce-management)
 9. [Model Provider Layer](#9-model-provider-layer)
@@ -744,6 +744,7 @@ task:
     - "Unit and integration tests with >80% coverage"
     - "API documentation"
   estimated_complexity: "medium"  # simple, medium, complex, epic
+  task_structure: "parallel"      # sequential, parallel, mixed (M4 — see §6.9)
   budget_limit: 2.00             # max USD for this task
   deadline: null
   status: "assigned"
@@ -1093,6 +1094,57 @@ These are complementary systems handling different types of shared state:
 | Code and files (agent work output) | Workspace isolation (`WorkspaceIsolationStrategy`) | Git worktrees / branches |
 | Agent memory (personal) | Per-agent ownership | Each agent owns its memory exclusively |
 | Org memory (shared knowledge) | Single-writer (`OrgMemoryBackend`) | `OrgMemoryBackend` protocol with role-based write access control |
+
+### 6.9 Task Decomposability & Coordination Topology (M4+)
+
+> **MVP: Not applicable.** M3 is single-agent. This section defines M4+ concepts for multi-agent task routing.
+
+Empirical research on agent scaling ([Kim et al., 2025](https://arxiv.org/abs/2512.08296) — 180 controlled experiments across 3 LLM families and 4 benchmarks) demonstrates that **task decomposability is the strongest predictor of multi-agent effectiveness** — stronger than team size, model capability, or coordination architecture.
+
+#### Task Structure Classification
+
+Each task carries a `task_structure` field (added to §6.2 Task Definition) classifying its decomposability:
+
+| Structure | Description | MAS Effect | Example |
+|-----------|-------------|------------|---------|
+| `sequential` | Steps must execute in strict order; each depends on prior state | **Negative** (−39% to −70%) | Multi-step build processes, ordered migrations, chained API calls |
+| `parallel` | Sub-problems can be investigated independently, then synthesized | **Positive** (+57% to +81%) | Financial analysis (revenue + cost + market), multi-file review, research across sources |
+| `mixed` | Some sub-tasks are parallel, but a sequential backbone connects phases | **Variable** (depends on ratio) | Feature implementation (design ∥ research → implement → test) |
+
+Classification can be:
+- **Explicit** — set in task config by the task creator or manager agent
+- **Inferred** — derived from task properties (tool count, dependency graph, acceptance criteria structure) by the task router (M4+)
+
+#### Per-Task Coordination Topology (M4+)
+
+The communication pattern (§5.1) is configured at the company level, but **coordination topology can be selected per-task** based on task structure and properties. This allows the engine to use the most efficient coordination approach for each task rather than applying a single company-wide pattern.
+
+| Task Properties | Recommended Topology | Rationale |
+|----------------|---------------------|-----------|
+| `sequential` + few tools (≤4) | **Single-agent (SAS)** | Coordination overhead fragments reasoning capacity on sequential tasks |
+| `parallel` + structured domain | **Centralized** | Orchestrator decomposes, sub-agents execute in parallel, orchestrator synthesizes. Lowest error amplification (4.4×) |
+| `parallel` + exploratory/open-ended | **Decentralized** | Peer debate enables diverse exploration of high-entropy search spaces |
+| `mixed` | **Context-dependent** | Sequential backbone handled by single agent; parallel sub-tasks delegated to sub-agents |
+
+#### Auto Topology Selector (M4+)
+
+When topology is set to `"auto"`, the engine selects coordination topology based on measurable task properties:
+
+```yaml
+coordination:
+  topology: "auto"                    # auto, sas, centralized, decentralized
+  auto_topology_rules:
+    # sequential tasks → always single-agent
+    sequential_override: "sas"
+    # parallel tasks → select based on domain structure
+    parallel_default: "centralized"
+    # mixed tasks → hybrid approach (SAS backbone + delegation)
+    mixed_default: "context_dependent"
+```
+
+The auto-selector uses task structure, tool count, and (when available from M5 memory) historical single-agent success rate as inputs. The exact selection logic is an M4 implementation detail — the spec defines the interface and the empirically-grounded heuristics above.
+
+> **Reference:** These heuristics are derived from Kim et al. (2025), which achieved 87% accuracy predicting optimal architecture from task properties across held-out configurations. Our context differs (role-differentiated agents vs. identical agents), so thresholds should be validated empirically once multi-agent execution is implemented.
 
 ---
 
@@ -1485,6 +1537,32 @@ When multi-agent coordination exists, each `CostRecord` is tagged with a **call 
 
 The **orchestration ratio** (`coordination / total`) is surfaced in metrics and alerts. If coordination tokens consistently exceed productive tokens, the company configuration needs tuning (fewer approval layers, simpler meeting protocols, etc.).
 
+#### M4: Coordination Metrics Suite
+
+Beyond call categorization and orchestration ratio, M4 introduces a comprehensive suite of coordination metrics derived from empirical agent scaling research ([Kim et al., 2025](https://arxiv.org/abs/2512.08296)). These metrics explain coordination dynamics and enable data-driven tuning of multi-agent configurations.
+
+| Metric | Symbol | Definition | What It Signals |
+|--------|--------|------------|-----------------|
+| **Coordination efficiency** | `Ec` | `success_rate / (turns / turns_sas)` — success normalized by relative turn count vs single-agent baseline | Overall coordination ROI. Low Ec = coordination costs exceed benefits |
+| **Coordination overhead** | `O%` | `(turns_mas - turns_sas) / turns_sas × 100%` — relative turn increase | Communication cost. Optimal band: 200–300%. Above 400% = over-coordination |
+| **Error amplification** | `Ae` | `error_rate_mas / error_rate_sas` — relative failure probability | Whether MAS corrects or propagates errors. Centralized ≈ 4.4×, Independent ≈ 17.2× |
+| **Message density** | `c` | Inter-agent messages per reasoning turn | Communication intensity. Performance saturates at ≈ 0.39 messages/turn |
+| **Redundancy rate** | `R` | Mean cosine similarity of agent output embeddings | Agent agreement. Optimal at ≈ 0.41 (balances fusion with independence) |
+
+> **Configurable collection:** All 5 metrics are opt-in via `coordination_metrics.enabled` in analytics config. `Ec` and `O%` are cheap (turn counting). `Ae` requires baseline comparison data. `c` and `R` require semantic analysis of agent outputs (embedding computation). Enable selectively based on data-gathering needs.
+
+```yaml
+coordination_metrics:
+  enabled: false                       # opt-in — enable for data gathering
+  collect:
+    - efficiency                       # cheap — turn counting
+    - overhead                         # cheap — turn counting
+    - error_amplification              # requires SAS baseline data
+    - message_density                  # requires message counting infrastructure
+    - redundancy                       # requires embedding computation on outputs
+  baseline_window: 50                  # number of SAS runs to establish baseline for Ae
+```
+
 #### M5+: Full Analytics Layer
 
 Expanded per-call metadata for comprehensive financial and operational reporting:
@@ -1506,11 +1584,40 @@ call_analytics:
     - per_provider                     # provider reliability and cost comparison
     - orchestration_ratio              # coordination vs productive tokens
   alerts:
-    orchestration_ratio_warn: 0.5      # warn if coordination > 50% of total
+    orchestration_ratio:
+      info: 0.30                       # info if coordination > 30% of total
+      warn: 0.50                       # warn if coordination > 50% of total
+      critical: 0.70                   # critical if coordination > 70% of total
     retry_rate_warn: 0.1               # warn if > 10% of calls need retries
 ```
 
 > **Design principle:** Analytics metadata is append-only and never blocks execution. Failed analytics writes are logged and skipped — the agent's task is never delayed by telemetry. All analytics data flows through the existing `CostRecord` and structured logging infrastructure.
+
+#### M4/M5: Coordination Error Taxonomy
+
+When coordination metrics collection is enabled, the system can optionally classify coordination errors into structured categories. This enables targeted diagnosis — e.g., if coordination failures spike, the topology may be too complex; if context omissions spike, the orchestrator's synthesis is insufficient.
+
+| Error Category | Description | Detection Method |
+|---------------|-------------|-----------------|
+| **Logical contradiction** | Agent asserts both "X is true" and "X is false", or derives conclusions violating its stated premises | Semantic contradiction detection on agent outputs |
+| **Numerical drift** | Accumulated computational errors from cascading rounding or unit conversion (>5% deviation) | Numerical comparison against ground truth or cross-agent verification |
+| **Context omission** | Failure to reference previously established entities, relationships, or state required for current reasoning | Missing-reference detection across agent conversation history |
+| **Coordination failure** | MAS-specific: message misinterpretation, task allocation conflicts, state synchronization errors between agents | Protocol-level error detection in orchestration layer |
+
+> **Configurable and opt-in:** Error taxonomy classification requires semantic analysis of agent outputs and is expensive. Enable via `coordination_metrics.error_taxonomy: true` only when actively gathering data for system tuning. The classification pipeline runs post-execution (never blocks agent work) and logs structured events to the observability layer.
+
+```yaml
+coordination_metrics:
+  error_taxonomy:
+    enabled: false                     # opt-in — enable for targeted diagnosis
+    categories:
+      - logical_contradiction
+      - numerical_drift
+      - context_omission
+      - coordination_failure
+```
+
+> **Reference:** Error categories derived from [Kim et al., 2025](https://arxiv.org/abs/2512.08296) and the Multi-Agent System Failure Taxonomy (MAST) by Cemri et al. (2025). Architecture-specific patterns: centralized coordination reduces logical contradictions by 36.4% and context omissions by 66.8% via orchestrator synthesis; hybrid topology introduces 12.4% coordination failures due to protocol complexity.
 
 ---
 
@@ -2356,7 +2463,19 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | A2A protocol support | No | No | No | **Planned** |
 | Community marketplace | MGX (commercial) | No | No | **Planned (backlog)** |
 
-### 16.3 Build vs Fork Decision
+### 16.3 Agent Scaling Research
+
+[Kim et al., "Towards a Science of Scaling Agent Systems" (2025)](https://arxiv.org/abs/2512.08296) — 180 controlled experiments across 3 LLM families (OpenAI, Google, Anthropic), 4 agentic benchmarks, 5 coordination topologies. Key findings informing our design:
+
+- **Task decomposability is the #1 predictor** of multi-agent success. Parallelizable tasks gain up to +81%, sequential tasks degrade -39% to -70% under all MAS variants. Informs §6.9.
+- **Coordination metrics suite** (efficiency, overhead, error amplification, message density, redundancy) explains 52.4% of performance variance (R²=0.524). Adopted in §10.5.
+- **Tiered coordination overhead**: optimal band 200–300%, over-coordination above 400%. Informs §10.5 tiered alerts.
+- **Error taxonomy** (logical contradiction, numerical drift, context omission, coordination failure) with architecture-specific patterns. Adopted as opt-in classification in §10.5.
+- **Auto topology selection** achieves 87% accuracy from measurable task properties. Informs §6.9 auto topology selector.
+- **Centralized verification** contains error amplification to 4.4× vs 17.2× for independent agents. Validates §5.6 authority + dissent strategy.
+- **Context:** Paper tested identical agents on individual tasks; our architecture uses role-differentiated agents in an organizational structure. Thresholds (e.g., 45% capability ceiling, 3–4 agent sweet spot) are directional — to be validated empirically in our context.
+
+### 16.4 Build vs Fork Decision
 
 **Recommendation: Build from scratch, leverage libraries.**
 
