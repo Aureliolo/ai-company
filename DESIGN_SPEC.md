@@ -578,6 +578,8 @@ When a loop is detected, the framework:
 3. Escalates to the sender's manager (or human if at top of hierarchy)
 4. Logs the loop for analytics and process improvement
 
+> **Current state (M4 in-progress):** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5), conflict resolution (§5.6), and meeting protocol (§5.7) are planned for later M4 work.
+
 ### 5.6 Conflict Resolution Protocol
 
 When two or more agents disagree on an approach (architecture, implementation, priority, etc.), the framework provides multiple configurable resolution strategies behind a `ConflictResolver` protocol. New strategies can be added without modifying existing ones. The strategy is configurable per company, per department, or per conflict type.
@@ -833,7 +835,7 @@ Tasks can be assigned through multiple strategies:
 
 The agent execution loop defines how an agent processes a task from start to finish. The framework provides multiple configurable loop architectures behind an `ExecutionLoop` protocol, making the system extensible. The default can vary by task complexity, and is configurable per agent or role.
 
-> **MVP: ReAct only (Loop 1).** Plan-and-Execute and Hybrid are M4+. Auto-selection is M4+.
+> **Current state (M3):** ReAct (Loop 1) and Plan-and-Execute (Loop 2) are implemented. Hybrid loop and auto-selection are M4+.
 
 #### ExecutionLoop Protocol
 
@@ -1563,7 +1565,7 @@ budget:
 
 ### 10.5 LLM Call Analytics
 
-> **MVP: Proxy metrics only (M3).** Call categorization is M4. Full analytics layer is M5+.
+> **Current state:** Proxy metrics (M3) and call categorization + coordination metric data models (M4 models, brought forward) are implemented. Runtime collection pipeline and full analytics layer are M5+.
 
 Every LLM provider call is tracked with comprehensive metadata for financial reporting, debugging, and orchestration overhead analysis. The analytics system builds incrementally across milestones.
 
@@ -1581,6 +1583,8 @@ These are natural overhead indicators — a task consuming 15 turns and 50k toke
 These metrics are captured in `TaskCompletionMetrics` (in `engine/metrics.py`), a frozen Pydantic model with a `from_run_result()` factory method. The engine logs these metrics at task completion via the `EXECUTION_ENGINE_TASK_METRICS` event.
 
 #### M4: Call Categorization + Orchestration Ratio
+
+> **Current state:** Data models (`LLMCallCategory`, `CategoryBreakdown`, `OrchestrationRatio`, `CostRecord.call_category`) and query methods (`CostTracker.get_category_breakdown`, `get_orchestration_ratio`) are implemented. Runtime categorization logic (automatic tagging of calls during multi-agent execution) is deferred to M4 runtime integration.
 
 When multi-agent coordination exists, each `CostRecord` is tagged with a **call category**:
 
@@ -2329,6 +2333,9 @@ ai-company/
 │       │   ├── loop_protocol.py    # ExecutionLoop protocol + result models
 │       │   ├── metrics.py          # TaskCompletionMetrics proxy overhead model
 │       │   ├── react_loop.py       # ReAct loop implementation
+│       │   ├── plan_models.py      # Plan step, plan, and plan-execute config models
+│       │   ├── plan_execute_loop.py # Plan-and-Execute loop implementation
+│       │   ├── loop_helpers.py     # Shared stateless helpers for all loop implementations
 │       │   ├── recovery.py         # Crash recovery strategies (RecoveryStrategy protocol)
 │       │   ├── cost_recording.py   # Per-turn cost recording helpers
 │       │   ├── run_result.py       # AgentRunResult outcome model
@@ -2339,10 +2346,17 @@ ai-company/
 │       │   ├── meeting_engine.py   # Meeting coordination (M4)
 │       │   └── hr_engine.py        # Hiring, firing, performance (M7)
 │       ├── communication/           # Inter-agent communication
+│       │   ├── bus_memory.py       # InMemoryMessageBus implementation
+│       │   ├── bus_protocol.py     # MessageBus protocol interface
 │       │   ├── channel.py          # Channel model
-│       │   ├── message.py          # Message model
 │       │   ├── config.py           # Communication config
-│       │   └── enums.py            # Communication enums
+│       │   ├── dispatcher.py       # MessageDispatcher + DispatchResult
+│       │   ├── enums.py            # Communication enums
+│       │   ├── errors.py           # Communication error hierarchy
+│       │   ├── handler.py          # MessageHandler protocol, FunctionHandler, HandlerRegistration
+│       │   ├── message.py          # Message model
+│       │   ├── messenger.py        # AgentMessenger per-agent facade
+│       │   └── subscription.py     # Subscription + DeliveryEnvelope models
 │       ├── memory/                  # Agent memory system (M5, stubs only)
 │       │   ├── store.py            # Memory storage backend (M5)
 │       │   ├── retrieval.py        # Memory retrieval & ranking (M5)
@@ -2357,6 +2371,7 @@ ai-company/
 │       │   ├── events/             # Per-domain event constants
 │       │   │   ├── __init__.py    # Package marker with usage docs; no re-exports
 │       │   │   ├── budget.py      # BUDGET_* constants
+│       │   │   ├── communication.py # COMM_* constants
 │       │   │   ├── config.py      # CONFIG_* constants
 │       │   │   ├── correlation.py # CORRELATION_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants
@@ -2434,6 +2449,10 @@ ai-company/
 │       ├── budget/                  # Cost management
 │       │   ├── config.py           # Budget configuration models
 │       │   ├── cost_record.py      # CostRecord model (frozen)
+│       │   ├── call_category.py   # LLM call category enums (productive, coordination, system)
+│       │   ├── category_analytics.py # Per-category cost breakdown + orchestration ratio
+│       │   ├── coordination_config.py # Coordination metrics config models
+│       │   ├── coordination_metrics.py # Five coordination metric models + computation
 │       │   ├── tracker.py          # CostTracker service (records + queries)
 │       │   ├── spending_summary.py # _SpendingTotals base + spending summary models
 │       │   ├── hierarchy.py        # BudgetHierarchy, BudgetConfig
@@ -2508,10 +2527,11 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Crash recovery** | Adopted (M3) | Pluggable `RecoveryStrategy` protocol. M3: `FailAndReassignStrategy` (catch at engine boundary, log snapshot, mark FAILED / eligible for reassignment). M4/M5: `CheckpointStrategy` (persist `AgentContext` per turn, resume from last checkpoint). | Immutable `model_copy` pattern makes checkpoint serialization trivial to add later. Fail-and-reassign is sufficient for short MVP tasks. See §6.6. |
 | **Personality compatibility scoring** | Adopted (M3) | Weighted composite: 60% Big Five similarity (openness, conscientiousness, agreeableness, stress_response → 1−\|diff\|; extraversion → tent-function peaking at 0.3 diff), 20% collaboration alignment (ordinal adjacency: INDEPENDENT↔PAIR↔TEAM), 20% conflict approach (constructive pairs score 1.0, destructive pairs 0.2, mixed 0.4–0.6). `itertools.combinations` for team-level averaging. Result clamped to [0, 1]. | Covers behavioral diversity (extraversion complement), task alignment (conscientiousness similarity), and interpersonal friction (conflict approach). Weights are configurable module constants. |
 | **Agent behavior testing** | Planned (M3) | Scripted `FakeProvider` for unit tests (deterministic turn sequences); behavioral outcome assertions for integration tests (task completed, tools called, cost within budget). | Leverages existing `FakeProvider` and `CompletionResponseFactory` fixtures. Precise engine testing without brittle response-matching at integration level. |
-| **LLM call analytics** | Planned (incremental) | M3: proxy metrics (`turns_per_task`, `tokens_per_task`). M4: call categorization (`productive`, `coordination`, `system`) + orchestration ratio. M5+: full analytics (retry tracking, latency, cache hits, per-provider comparison). | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |
+| **LLM call analytics** | Adopted (incremental) | M3: proxy metrics (`turns_per_task`, `tokens_per_task`) — adopted. M4 data models: call categorization (`productive`, `coordination`, `system`), category analytics, coordination metrics, orchestration ratio — adopted. M4 runtime collection pipeline and M5+ full analytics: planned. | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |
 | **State coordination** | Planned (M4) | Centralized single-writer: `TaskEngine` owns all task/project mutations via `asyncio.Queue`. Agents submit requests, engine applies `model_copy(update=...)` sequentially and publishes snapshots. `version: int` field on state models for future optimistic concurrency if multi-process scaling is needed. | Prevents lost updates by design. Trivial in single-threaded asyncio (no locks). Perfect audit trail. Industry consensus: MetaGPT, CrewAI, AutoGen all use prevention-by-design, not conflict resolution. See §6.8 State Coordination table. |
 | **Workspace isolation** | Planned (M4) | Pluggable `WorkspaceIsolationStrategy` protocol. Default: planner + git worktrees. Each agent works in an isolated worktree; sequential merge on completion. Textual conflicts detected by git; semantic conflicts reviewed by agent or human. | Industry standard (Codex, Cursor, Claude Code, VS Code). Maximum parallelism. Leverages mature git infrastructure. See §6.8. |
 | **Graceful shutdown** | Adopted (M3) | Pluggable `ShutdownStrategy` protocol. Default: cooperative with 30s timeout. Agents check shutdown event at turn boundaries. Force-cancel after timeout. `INTERRUPTED` status for force-cancelled tasks. M4/M5: upgrade to checkpoint-and-stop. | Cross-platform (Windows `signal.signal()` fallback). Bounded shutdown time. Mirrors cooperative shutdown in §6.7. |
+| **Communication foundation** | Adopted (M4) | `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()` with shutdown signaling via `asyncio.Event`). `MessageDispatcher` routes to concurrent handlers via `asyncio.TaskGroup` with pre-allocated error collection. `AgentMessenger` per-agent facade auto-fills sender/timestamp/ID; deterministic direct-channel naming `@{sorted_a}:{sorted_b}`. `DeliveryEnvelope` for delivery tracking. `NotBlankStr` validation on all protocol boundary identifiers. | Pull-model avoids callback complexity and enables agents to consume at their own pace. Protocol + backend split enables future persistent/distributed bus implementations. Deterministic DM channel names prevent duplicates. See §5. |
 
 ---
 

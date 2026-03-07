@@ -28,4 +28,5 @@ def default_config_dict() -> dict[str, Any]:
         "graceful_shutdown": {},
         "workflow_handoffs": [],
         "escalation_paths": [],
+        "coordination_metrics": {},
     }

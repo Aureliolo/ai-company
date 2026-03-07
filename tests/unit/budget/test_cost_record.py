@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
+from ai_company.budget.call_category import LLMCallCategory
 from ai_company.budget.cost_record import CostRecord
 
 from .conftest import CostRecordFactory
@@ -213,6 +214,82 @@ class TestCostRecord:
         assert restored.agent_id == sample_cost_record.agent_id
         assert restored.timestamp == sample_cost_record.timestamp
         assert restored.cost_usd == sample_cost_record.cost_usd
+
+    def test_call_category_none_default(self) -> None:
+        """Default call_category is None."""
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+        )
+        assert record.call_category is None
+
+    def test_call_category_productive(self) -> None:
+        """Accept PRODUCTIVE call_category."""
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+            call_category=LLMCallCategory.PRODUCTIVE,
+        )
+        assert record.call_category == LLMCallCategory.PRODUCTIVE
+
+    def test_call_category_coordination(self) -> None:
+        """Accept COORDINATION call_category."""
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+            call_category=LLMCallCategory.COORDINATION,
+        )
+        assert record.call_category == LLMCallCategory.COORDINATION
+
+    def test_call_category_system(self) -> None:
+        """Accept SYSTEM call_category."""
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+            call_category=LLMCallCategory.SYSTEM,
+        )
+        assert record.call_category == LLMCallCategory.SYSTEM
+
+    def test_call_category_roundtrip(self) -> None:
+        """Verify call_category survives JSON roundtrip."""
+        record = CostRecord(
+            agent_id="agent-1",
+            task_id="task-1",
+            provider="test",
+            model="test-model",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+            timestamp=datetime(2026, 2, 27, tzinfo=UTC),
+            call_category=LLMCallCategory.PRODUCTIVE,
+        )
+        json_str = record.model_dump_json()
+        restored = CostRecord.model_validate_json(json_str)
+        assert restored.call_category == LLMCallCategory.PRODUCTIVE
 
     def test_factory(self) -> None:
         """Verify factory produces a valid instance."""

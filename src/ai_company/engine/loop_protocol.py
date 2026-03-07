@@ -6,12 +6,14 @@ run a task, along with ``ExecutionResult``, ``TurnRecord``,
 type aliases.
 """
 
+import copy
 from collections.abc import Callable
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Protocol, Self, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from ai_company.budget.call_category import LLMCallCategory  # noqa: TC001
 from ai_company.core.task import Task  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.context import AgentContext
@@ -44,6 +46,8 @@ class TurnRecord(BaseModel):
         cost_usd: Cost in USD for this turn.
         tool_calls_made: Names of tools invoked this turn.
         finish_reason: LLM finish reason for this turn.
+        call_category: Optional LLM call category for coordination
+            metrics (productive, coordination, system).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -58,6 +62,10 @@ class TurnRecord(BaseModel):
     )
     finish_reason: FinishReason = Field(
         description="LLM finish reason this turn",
+    )
+    call_category: LLMCallCategory | None = Field(
+        default=None,
+        description="LLM call category (productive, coordination, system)",
     )
 
     @computed_field(description="Total token count")  # type: ignore[prop-decorator]
@@ -96,7 +104,7 @@ class ExecutionResult(BaseModel):
         default=None,
         description="Error description (when reason is ERROR)",
     )
-    metadata: dict[str, Any] = Field(
+    metadata: dict[str, object] = Field(
         default_factory=dict,
         description="Forward-compatible metadata for future loop types",
     )
@@ -119,6 +127,12 @@ class ExecutionResult(BaseModel):
             msg = "error_message must be None when termination_reason is not ERROR"
             raise ValueError(msg)
         return self
+
+    def __init__(self, **data: object) -> None:
+        """Deep-copy metadata dict at construction boundary."""
+        if "metadata" in data and isinstance(data["metadata"], dict):
+            data["metadata"] = copy.deepcopy(data["metadata"])
+        super().__init__(**data)
 
 
 BudgetChecker = Callable[[AgentContext], bool]

@@ -188,6 +188,7 @@ class MockCompletionProvider:
         self._responses = list(responses)
         self._call_count = 0
         self._recorded_configs: list[CompletionConfig | None] = []
+        self._recorded_models: list[str] = []
 
     @property
     def call_count(self) -> int:
@@ -198,6 +199,11 @@ class MockCompletionProvider:
     def recorded_configs(self) -> list[CompletionConfig | None]:
         """Configs passed to each ``complete()`` call."""
         return list(self._recorded_configs)
+
+    @property
+    def recorded_models(self) -> list[str]:
+        """Models passed to each ``complete()`` call."""
+        return list(self._recorded_models)
 
     async def complete(
         self,
@@ -213,6 +219,7 @@ class MockCompletionProvider:
             raise IndexError(msg)
         self._call_count += 1
         self._recorded_configs.append(config)
+        self._recorded_models.append(model)
         return self._responses.pop(0)
 
     async def stream(

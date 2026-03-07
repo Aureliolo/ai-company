@@ -6,6 +6,7 @@ from typing import Any, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.budget.config import BudgetConfig
+from ai_company.budget.coordination_config import CoordinationMetricsConfig
 from ai_company.communication.config import CommunicationConfig
 from ai_company.core.company import (
     CompanyConfig,
@@ -436,6 +437,10 @@ class RootConfig(BaseModel):
     escalation_paths: tuple[EscalationPath, ...] = Field(
         default=(),
         description="Cross-department escalation paths",
+    )
+    coordination_metrics: CoordinationMetricsConfig = Field(
+        default_factory=CoordinationMetricsConfig,
+        description="Coordination metrics configuration",
     )
 
     @model_validator(mode="after")
