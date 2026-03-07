@@ -375,6 +375,65 @@ class TestParallelExecutorResourceLocking:
 
         assert not lock.is_locked("src/a.py")
 
+    async def test_external_lock_holder_raises(self) -> None:
+        a1 = _make_assignment(
+            "a1",
+            "t1",
+            resource_claims=("src/shared.py",),
+        )
+        engine = _mock_engine()
+        lock = InMemoryResourceLock()
+        await lock.acquire("src/shared.py", "external-agent")
+        executor = ParallelExecutor(
+            engine=engine,
+            resource_lock=lock,
+        )
+        group = _make_group(a1)
+
+        with pytest.raises(ResourceConflictError):
+            await executor.execute_group(group)
+
+        assert lock.holder_of("src/shared.py") == "external-agent"
+
+    async def test_auto_creates_lock_for_claims(self) -> None:
+        a1 = _make_assignment(
+            "a1",
+            "t1",
+            resource_claims=("src/a.py",),
+        )
+        a2 = _make_assignment(
+            "a2",
+            "t2",
+            resource_claims=("src/b.py",),
+        )
+        r1 = _make_run_result(a1.identity, a1.task)
+        r2 = _make_run_result(a2.identity, a2.task)
+        engine = _mock_engine(side_effect=[r1, r2])
+        executor = ParallelExecutor(engine=engine)
+        group = _make_group(a1, a2)
+
+        result = await executor.execute_group(group)
+
+        assert result.all_succeeded is True
+
+    async def test_auto_created_lock_detects_conflicts(self) -> None:
+        a1 = _make_assignment(
+            "a1",
+            "t1",
+            resource_claims=("src/shared.py",),
+        )
+        a2 = _make_assignment(
+            "a2",
+            "t2",
+            resource_claims=("src/shared.py",),
+        )
+        engine = _mock_engine()
+        executor = ParallelExecutor(engine=engine)
+        group = _make_group(a1, a2)
+
+        with pytest.raises(ResourceConflictError):
+            await executor.execute_group(group)
+
     async def test_locks_released_on_error(self) -> None:
         a1 = _make_assignment(
             "a1",
@@ -423,6 +482,25 @@ class TestParallelExecutorProgress:
         assert final.completed == 1
         assert final.total == 1
 
+    async def test_progress_callback_exception_swallowed(self) -> None:
+        a1 = _make_assignment("a1", "t1")
+        r1 = _make_run_result(a1.identity, a1.task)
+        engine = _mock_engine(side_effect=[r1])
+
+        def bad_callback(p: ParallelProgress) -> None:
+            msg = "callback error"
+            raise ValueError(msg)
+
+        executor = ParallelExecutor(
+            engine=engine,
+            progress_callback=bad_callback,
+        )
+        group = _make_group(a1)
+
+        result = await executor.execute_group(group)
+
+        assert result.all_succeeded is True
+
     async def test_progress_tracks_multiple_agents(self) -> None:
         a1 = _make_assignment("a1", "t1")
         a2 = _make_assignment("a2", "t2")
@@ -451,6 +529,25 @@ class TestParallelExecutorProgress:
 @pytest.mark.unit
 class TestParallelExecutorShutdown:
     """Shutdown manager integration."""
+
+    async def test_shutdown_in_progress_rejected(self) -> None:
+        a1 = _make_assignment("a1", "t1")
+        engine = _mock_engine()
+        sm = ShutdownManager()
+        sm.register_task = MagicMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("Shutdown in progress"),
+        )
+        executor = ParallelExecutor(
+            engine=engine,
+            shutdown_manager=sm,
+        )
+        group = _make_group(a1)
+
+        result = await executor.execute_group(group)
+
+        assert result.all_succeeded is False
+        assert result.outcomes[0].error == "Shutdown in progress"
+        engine.run.assert_not_awaited()
 
     async def test_shutdown_manager_integration(self) -> None:
         a1 = _make_assignment("a1", "t1")

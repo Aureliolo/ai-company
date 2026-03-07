@@ -14,7 +14,7 @@ from ai_company.core.enums import (
     TaskType,
 )
 from ai_company.core.task import Task
-from ai_company.engine.context import DEFAULT_MAX_TURNS
+from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -83,14 +83,12 @@ def _make_assignment(
 
 
 def _make_run_result(
-    agent_id: str = "agent-1",
-    task_id: str = "task-1",
+    identity: AgentIdentity | None = None,
+    task: Task | None = None,
     reason: TerminationReason = TerminationReason.COMPLETED,
 ) -> AgentRunResult:
-    identity = _make_identity()
-    task = _make_task()
-    from ai_company.engine.context import AgentContext
-
+    identity = identity or _make_identity()
+    task = task or _make_task()
     ctx = AgentContext.from_identity(identity, task=task)
     error_msg = "test error" if reason == TerminationReason.ERROR else None
     execution_result = ExecutionResult(
@@ -105,11 +103,11 @@ def _make_run_result(
             template_version="1.0",
             estimated_tokens=1,
             sections=("identity",),
-            metadata={"agent_id": agent_id},
+            metadata={"agent_id": str(identity.id)},
         ),
         duration_seconds=1.0,
-        agent_id=agent_id,
-        task_id=task_id,
+        agent_id=str(identity.id),
+        task_id=task.id,
     )
 
 
@@ -296,6 +294,10 @@ class TestAgentOutcome:
 
         assert outcome.is_success is False
 
+    def test_both_none_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="result or error"):
+            AgentOutcome(task_id="t1", agent_id="a1")
+
     def test_frozen(self) -> None:
         outcome = AgentOutcome(
             task_id="t1",
@@ -369,8 +371,9 @@ class TestParallelExecutionResult:
             total_duration_seconds=3.0,
         )
 
-        # Cost from error outcomes is 0, cost from success = context cost
-        assert result.total_cost_usd >= 0.0
+        # Error outcome contributes no cost, success contributes its cost
+        assert o1.result is not None
+        assert result.total_cost_usd == o1.result.total_cost_usd
 
     def test_frozen(self) -> None:
         result = ParallelExecutionResult(
@@ -392,7 +395,6 @@ class TestParallelProgress:
             total=4,
             completed=2,
             in_progress=1,
-            pending=1,
             succeeded=2,
             failed=0,
         )
@@ -400,9 +402,31 @@ class TestParallelProgress:
         assert progress.total == 4
         assert progress.completed == 2
         assert progress.in_progress == 1
-        assert progress.pending == 1
+        assert progress.pending == 1  # computed: 4 - 2 - 1
         assert progress.succeeded == 2
         assert progress.failed == 0
+
+    def test_pending_computed(self) -> None:
+        progress = ParallelProgress(
+            group_id="grp",
+            total=5,
+            completed=1,
+            in_progress=2,
+            succeeded=1,
+            failed=0,
+        )
+        assert progress.pending == 2  # 5 - 1 - 2
+
+    def test_pending_clamped_to_zero(self) -> None:
+        progress = ParallelProgress(
+            group_id="grp",
+            total=1,
+            completed=1,
+            in_progress=1,
+            succeeded=1,
+            failed=0,
+        )
+        assert progress.pending == 0  # max(0, 1 - 1 - 1)
 
     def test_frozen(self) -> None:
         progress = ParallelProgress(
@@ -410,7 +434,6 @@ class TestParallelProgress:
             total=1,
             completed=0,
             in_progress=0,
-            pending=1,
             succeeded=0,
             failed=0,
         )

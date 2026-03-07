@@ -803,6 +803,8 @@ Task ───┤                    ├──▶ Integration ──▶ QA
         └──▶ Backend Dev  ──┘
 ```
 
+> **Current state (M3):** `ParallelExecutor` (in `engine/parallel.py`) implements concurrent agent execution with `asyncio.TaskGroup`, configurable concurrency limits, resource locking for exclusive file access, and error isolation. Models in `engine/parallel_models.py`: `AgentAssignment`, `ParallelExecutionGroup`, `AgentOutcome`, `ParallelExecutionResult`, `ParallelProgress`.
+
 #### Kanban Board
 
 ```text
@@ -835,7 +837,7 @@ Tasks can be assigned through multiple strategies:
 
 The agent execution loop defines how an agent processes a task from start to finish. The framework provides multiple configurable loop architectures behind an `ExecutionLoop` protocol, making the system extensible. The default can vary by task complexity, and is configurable per agent or role.
 
-> **Current state (M3):** ReAct (Loop 1) and Plan-and-Execute (Loop 2) are implemented. Hybrid loop and auto-selection are M4+.
+> **Current state (M3):** ReAct (Loop 1) and Plan-and-Execute (Loop 2) are implemented. `ParallelExecutor` enables concurrent `AgentEngine.run()` calls with `TaskGroup` + Semaphore concurrency limits, resource locking, and error isolation (see §6.3). Hybrid loop and auto-selection are M4+.
 
 #### ExecutionLoop Protocol
 
@@ -2340,6 +2342,9 @@ ai-company/
 │       │   ├── cost_recording.py   # Per-turn cost recording helpers
 │       │   ├── run_result.py       # AgentRunResult outcome model
 │       │   ├── agent_engine.py     # Agent execution engine
+│       │   ├── parallel.py         # Parallel agent executor (TaskGroup + Semaphore)
+│       │   ├── parallel_models.py  # AgentAssignment, ParallelExecutionGroup, AgentOutcome, ParallelExecutionResult
+│       │   ├── resource_lock.py    # ResourceLock protocol + InMemoryResourceLock
 │       │   ├── shutdown.py        # Graceful shutdown strategy & manager
 │       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)
 │       │   ├── workflow_engine.py  # Workflow orchestration (M4)
@@ -2376,6 +2381,7 @@ ai-company/
 │       │   │   ├── correlation.py # CORRELATION_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants
 │       │   │   ├── git.py         # GIT_* constants
+│       │   │   ├── parallel.py    # PARALLEL_* constants
 │       │   │   ├── personality.py # PERSONALITY_* constants
 │       │   │   ├── prompt.py      # PROMPT_* constants
 │       │   │   ├── provider.py    # PROVIDER_* constants
@@ -2522,6 +2528,7 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Shared field groups** | Adopted (M2.5) | Extracted common field sets into base models (e.g. `_SpendingTotals`) | Prevents field duplication across spending summary models. `_SpendingTotals` provides shared aggregation fields; `AgentSpending`, `DepartmentSpending`, `PeriodSpending` extend it. |
 | **Event constants** | Adopted (per-domain) | Per-domain submodules under `events/` package (e.g. `events.provider`, `events.budget`). Import directly: `from ai_company.observability.events.<domain> import CONSTANT` | Split by domain for discoverability, co-location with domain logic, and reduced merge conflicts as constants grow. `__init__.py` serves as package marker with usage documentation; no re-exports. |
 | **Parallel tool execution** | Adopted (M2.5) | `asyncio.TaskGroup` in `ToolInvoker.invoke_all` with optional `max_concurrency` semaphore | Structured concurrency with proper cancellation semantics. Fatal errors collected via guarded wrapper and re-raised after all tasks complete. |
+| **Parallel agent execution** | Adopted (M3) | `ParallelExecutor` coordinates concurrent `AgentEngine.run()` calls via `asyncio.TaskGroup` + optional `Semaphore` concurrency limit + `_run_guarded()` error isolation. `ResourceLock` protocol with `InMemoryResourceLock` for exclusive file-path claims. Progress tracking via `ProgressCallback`. Shutdown-aware via `ShutdownManager` task registration. Fail-fast mode re-raises first failure through `TaskGroup`. | Follows the `ToolInvoker.invoke_all()` pattern (parallel tool execution above). Composition over inheritance — wraps `AgentEngine`. Structured concurrency with proper cancellation. See §6.3 Parallel Execution. |
 | **Tool permission checking** | Adopted (M3) | `ToolPermissionChecker` enforces category-level gating based on `ToolAccessLevel` (sandboxed → restricted → standard → elevated, plus custom). Priority-based resolution: denied list → allowed list → level categories → deny. Case-insensitive name matching. `ToolInvoker` filters definitions for prompt and checks at invocation time. | Defense-in-depth: agents only see permitted tools in the LLM prompt, and invocations are re-checked at execution time. Explicit allow/deny lists provide per-agent overrides. See §11.1.1. |
 | **Tool sandboxing** | Adopted (M3, incremental) | File system tools use in-process `PathValidator` for workspace-scoped path validation (symlink resolution + containment check). `BaseFileSystemTool` ABC provides shared `ToolCategory.FILE_SYSTEM` and `PathValidator` integration — all file system tools extend this base. `SandboxBackend` protocol with `SubprocessSandbox` implemented — git tools accept optional `SandboxBackend` injection and delegate subprocess management to it (env filtering, workspace enforcement, timeout + process-group kill). `DockerSandbox` planned for code_runner, terminal, web, and database tools. `K8sSandbox` planned for future container deployments. Config-driven per-category backend selection planned for engine wiring. | File system tools use defence-in-depth path validation; subprocess sandbox provides lightweight isolation for git tools; heavier Docker/K8s isolation reserved for higher-risk tool categories (code execution, network). See §11.1.2. |
 | **Crash recovery** | Adopted (M3) | Pluggable `RecoveryStrategy` protocol. M3: `FailAndReassignStrategy` (catch at engine boundary, log snapshot, mark FAILED / eligible for reassignment). M4/M5: `CheckpointStrategy` (persist `AgentContext` per turn, resume from last checkpoint). | Immutable `model_copy` pattern makes checkpoint serialization trivial to add later. Fail-and-reassign is sufficient for short MVP tasks. See §6.6. |

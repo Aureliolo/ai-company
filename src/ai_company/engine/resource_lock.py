@@ -99,12 +99,20 @@ class InMemoryResourceLock:
         """Release a lock on *resource* if held by *holder*."""
         async with self._mutex:
             current = self._locks.get(resource)
-            if current is not None and current == holder:
+            if current == holder:
                 del self._locks[resource]
                 logger.debug(
                     PARALLEL_LOCK_RELEASED,
                     resource=resource,
                     holder=holder,
+                )
+            elif current is not None:
+                logger.warning(
+                    PARALLEL_LOCK_CONFLICT,
+                    resource=resource,
+                    holder=holder,
+                    current_holder=current,
+                    error="Release attempted by non-holder",
                 )
 
     async def release_all(self, holder: str) -> int:

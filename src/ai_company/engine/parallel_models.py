@@ -5,6 +5,7 @@ their outcomes, and execution group metadata.
 """
 
 from collections import Counter
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -54,7 +55,7 @@ class AgentAssignment(BaseModel):
         default=(),
         description="Pre-loaded memory messages",
     )
-    resource_claims: tuple[str, ...] = Field(
+    resource_claims: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="File paths requiring exclusive access",
     )
@@ -105,7 +106,7 @@ class ParallelExecutionGroup(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_assignments(self) -> ParallelExecutionGroup:
+    def _validate_assignments(self) -> Self:
         if not self.assignments:
             msg = "assignments must contain at least one entry"
             raise ValueError(msg)
@@ -149,6 +150,13 @@ class AgentOutcome(BaseModel):
         default=None,
         description="Present if agent crashed before producing result",
     )
+
+    @model_validator(mode="after")
+    def _validate_result_or_error(self) -> Self:
+        if self.result is None and self.error is None:
+            msg = "Either result or error must be set"
+            raise ValueError(msg)
+        return self
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Whether the agent completed successfully",
@@ -202,7 +210,7 @@ class ParallelExecutionResult(BaseModel):
     )
     @property
     def agents_failed(self) -> int:
-        """Count of failed agent outcomes."""
+        """Count of non-successful outcomes (includes cancelled)."""
         return sum(1 for o in self.outcomes if not o.is_success)
 
     @computed_field(  # type: ignore[prop-decorator]
@@ -222,7 +230,7 @@ class ParallelProgress(BaseModel):
         total: Total number of assignments.
         completed: Number of assignments finished (success or failure).
         in_progress: Number of assignments currently running.
-        pending: Number of assignments not yet started.
+        pending: Derived: ``total - completed - in_progress`` (clamped >= 0).
         succeeded: Number of successful completions.
         failed: Number of failed completions.
     """
@@ -233,6 +241,13 @@ class ParallelProgress(BaseModel):
     total: int = Field(ge=0, description="Total assignments")
     completed: int = Field(ge=0, description="Finished assignments")
     in_progress: int = Field(ge=0, description="Currently running")
-    pending: int = Field(ge=0, description="Not yet started")
     succeeded: int = Field(ge=0, description="Successful completions")
     failed: int = Field(ge=0, description="Failed completions")
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Not yet started",
+    )
+    @property
+    def pending(self) -> int:
+        """Assignments not yet started."""
+        return max(0, self.total - self.completed - self.in_progress)

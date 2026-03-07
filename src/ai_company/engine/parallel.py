@@ -13,6 +13,7 @@ import asyncio
 import dataclasses
 import time
 from collections.abc import Callable
+from contextlib import nullcontext
 from typing import TYPE_CHECKING
 
 from ai_company.engine.errors import ParallelExecutionError, ResourceConflictError
@@ -25,11 +26,6 @@ from ai_company.engine.parallel_models import (
 )
 from ai_company.engine.resource_lock import InMemoryResourceLock, ResourceLock
 from ai_company.observability import get_logger
-
-if TYPE_CHECKING:
-    from ai_company.engine.agent_engine import AgentEngine
-    from ai_company.engine.run_result import AgentRunResult
-    from ai_company.engine.shutdown import ShutdownManager
 from ai_company.observability.events.parallel import (
     PARALLEL_AGENT_COMPLETE,
     PARALLEL_AGENT_ERROR,
@@ -40,10 +36,19 @@ from ai_company.observability.events.parallel import (
     PARALLEL_VALIDATION_ERROR,
 )
 
+if TYPE_CHECKING:
+    from ai_company.engine.agent_engine import AgentEngine
+    from ai_company.engine.run_result import AgentRunResult
+    from ai_company.engine.shutdown import ShutdownManager
+
 logger = get_logger(__name__)
 
 ProgressCallback = Callable[[ParallelProgress], None]
-"""Synchronous callback invoked on progress updates."""
+"""Synchronous callback invoked on progress updates.
+
+Called directly (not awaited) from the executor's event loop;
+must not block.
+"""
 
 
 @dataclasses.dataclass
@@ -64,7 +69,6 @@ class _ProgressState:
             total=self.total,
             completed=self.completed,
             in_progress=self.in_progress,
-            pending=self.total - self.completed - self.in_progress,
             succeeded=self.succeeded,
             failed=self.failed,
         )
@@ -157,22 +161,30 @@ class ParallelExecutor:
                             fatal_errors=fatal_errors,
                             progress=progress,
                             semaphore=semaphore,
-                            lock=lock,
                         ),
                     )
         except* Exception as eg:
             # TaskGroup wraps exceptions in ExceptionGroup when
             # fail_fast re-raises inside _run_guarded.
             # Outcomes from completed tasks are already collected.
-            logger.debug(
+            exc_summaries = [f"{type(e).__name__}: {e}" for e in eg.exceptions]
+            logger.info(
                 PARALLEL_GROUP_COMPLETE,
                 group_id=group.group_id,
                 note="TaskGroup exited with exceptions",
                 exception_count=len(eg.exceptions),
+                exceptions=exc_summaries,
             )
 
         if lock is not None:
-            await self._release_all_locks(group, lock)
+            try:
+                await self._release_all_locks(group, lock)
+            except Exception:
+                logger.exception(
+                    PARALLEL_GROUP_COMPLETE,
+                    error="Failed to release resource locks",
+                    group_id=group.group_id,
+                )
 
         duration = time.monotonic() - start
 
@@ -218,13 +230,13 @@ class ParallelExecutor:
         fatal_errors: list[Exception],
         progress: _ProgressState,
         semaphore: asyncio.Semaphore | None,
-        lock: ResourceLock | None,
     ) -> None:
         """Execute a single agent, isolating errors from siblings.
 
         Follows the ``ToolInvoker._run_guarded()`` pattern:
         - ``MemoryError``/``RecursionError`` → collected in fatal_errors
-        - Regular ``Exception`` → stored as error outcome
+        - Regular ``Exception`` → stored as error outcome;
+          re-raised when ``fail_fast`` is enabled
         - ``BaseException`` → propagates through TaskGroup
         """
         task_id = assignment.task_id
@@ -237,18 +249,26 @@ class ParallelExecutor:
             progress.in_progress += 1
             self._emit_progress(progress)
             await self._execute_assignment(
-                assignment,
-                group,
-                outcomes,
-                progress,
-                semaphore,
+                assignment=assignment,
+                group_id=group.group_id,
+                outcomes=outcomes,
+                progress=progress,
+                semaphore=semaphore,
             )
         except (MemoryError, RecursionError) as exc:
+            error_msg = f"Fatal: {type(exc).__name__}: {exc}"
+            logger.exception(
+                PARALLEL_AGENT_ERROR,
+                group_id=group.group_id,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=error_msg,
+            )
             fatal_errors.append(exc)
             outcomes[task_id] = AgentOutcome(
                 task_id=task_id,
                 agent_id=agent_id,
-                error=f"Fatal: {type(exc).__name__}: {exc}",
+                error=error_msg,
             )
             progress.failed += 1
         except Exception as exc:
@@ -265,10 +285,6 @@ class ParallelExecutor:
             progress.in_progress = max(0, progress.in_progress - 1)
             progress.completed += 1
             self._emit_progress(progress)
-
-            if lock is not None:
-                for resource in assignment.resource_claims:
-                    await lock.release(resource, agent_id)
 
             if self._shutdown_manager is not None:
                 self._shutdown_manager.unregister_task(task_id)
@@ -287,7 +303,13 @@ class ParallelExecutor:
             return True
         try:
             self._shutdown_manager.register_task(task_id, asyncio_task)
-        except RuntimeError:
+        except RuntimeError as exc:
+            logger.warning(
+                PARALLEL_AGENT_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=f"Failed to register with shutdown manager: {exc}",
+            )
             outcomes[task_id] = AgentOutcome(
                 task_id=task_id,
                 agent_id=agent_id,
@@ -298,8 +320,9 @@ class ParallelExecutor:
 
     async def _execute_assignment(
         self,
+        *,
         assignment: AgentAssignment,
-        group: ParallelExecutionGroup,
+        group_id: str,
         outcomes: dict[str, AgentOutcome],
         progress: _ProgressState,
         semaphore: asyncio.Semaphore | None,
@@ -310,14 +333,13 @@ class ParallelExecutor:
 
         logger.info(
             PARALLEL_AGENT_START,
-            group_id=group.group_id,
+            group_id=group_id,
             agent_id=agent_id,
             task_id=task_id,
         )
 
-        if semaphore is not None:
-            await semaphore.acquire()
-        try:
+        ctx = semaphore if semaphore is not None else nullcontext()
+        async with ctx:
             run_result: AgentRunResult = await self._engine.run(
                 identity=assignment.identity,
                 task=assignment.task,
@@ -334,14 +356,11 @@ class ParallelExecutor:
             progress.succeeded += 1
             logger.info(
                 PARALLEL_AGENT_COMPLETE,
-                group_id=group.group_id,
+                group_id=group_id,
                 agent_id=agent_id,
                 task_id=task_id,
                 success=True,
             )
-        finally:
-            if semaphore is not None:
-                semaphore.release()
 
     def _record_error_outcome(
         self,
@@ -371,10 +390,15 @@ class ParallelExecutor:
         self,
         group: ParallelExecutionGroup,
     ) -> ResourceLock | None:
-        """Return the resource lock to use, if any claims exist."""
+        """Return the resource lock to use, or ``None`` if not needed.
+
+        When no assignments declare resource claims, returns ``None``
+        (no locking needed).  When claims exist, falls back to
+        ``InMemoryResourceLock()`` if no lock was injected.
+        """
         has_claims = any(a.resource_claims for a in group.assignments)
         if not has_claims:
-            return self._resource_lock
+            return None
         if self._resource_lock is not None:
             return self._resource_lock
         return InMemoryResourceLock()
