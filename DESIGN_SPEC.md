@@ -944,7 +944,7 @@ Pipeline steps:
 6. **Prepare tools and budget** — creates `ToolInvoker` from registry and `BudgetChecker` from task budget limit.
 7. **Delegate to loop** — calls `ExecutionLoop.execute()` with context, provider, tool invoker, budget checker, and completion config. If `timeout_seconds` is set, wraps the call in `asyncio.wait_for`; on expiry the run returns with `TerminationReason.ERROR` but cost recording and post-execution processing still occur.
 8. **Record costs** — records accumulated `TokenUsage` to `CostTracker` (if available). Cost recording failures are logged but do not affect the result.
-9. **Apply post-execution transitions** — on `COMPLETED` termination: IN_PROGRESS → IN_REVIEW → COMPLETED (two-hop auto-complete in M3; reviewers deferred to M4+). All other termination reasons leave the task in its current state. Transition failures are logged but do not discard the successful execution result.
+9. **Apply post-execution transitions** — on `COMPLETED` termination: IN_PROGRESS → IN_REVIEW → COMPLETED (two-hop auto-complete in M3; reviewers deferred to M4+). On `SHUTDOWN` termination: current status → INTERRUPTED (see §6.7). On `ERROR` termination: recovery strategy is applied (default `FailAndReassignStrategy` transitions to FAILED; see §6.6). All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`) leave the task in its current state. Transition failures are logged but do not discard the successful execution result.
 10. **Return result** — wraps `ExecutionResult` in `AgentRunResult` with engine-level metadata.
 
 Error handling: `MemoryError` and `RecursionError` propagate unconditionally. All other exceptions are caught and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.

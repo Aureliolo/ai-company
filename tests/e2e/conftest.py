@@ -30,6 +30,7 @@ from ai_company.providers.models import (
     ToolCall,
     ToolDefinition,
 )
+from ai_company.providers.protocol import CompletionProvider
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -64,8 +65,7 @@ class ScriptedProvider:
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
-        """Return the next scripted response."""
-        self.received_messages.append(list(messages))
+        """Record the messages and return the next scripted response."""
         idx = self._call_count
         if idx >= len(self._responses):
             msg = (
@@ -73,6 +73,7 @@ class ScriptedProvider:
                 f"{len(self._responses)} responses were scripted"
             )
             raise IndexError(msg)
+        self.received_messages.append(list(messages))
         self._call_count += 1
         return self._responses[idx]
 
@@ -84,7 +85,7 @@ class ScriptedProvider:
         tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        """Not used in e2e tests."""
+        """Not used in e2e tests; raises ``NotImplementedError``."""
         msg = "stream not supported in ScriptedProvider"
         raise NotImplementedError(msg)
 
@@ -100,6 +101,10 @@ class ScriptedProvider:
             cost_per_1k_input=0.01,
             cost_per_1k_output=0.03,
         )
+
+
+# Verify ScriptedProvider satisfies the CompletionProvider protocol.
+assert isinstance(ScriptedProvider([]), CompletionProvider)
 
 
 @pytest.fixture
@@ -160,7 +165,7 @@ def make_tool_call_response(
 ) -> CompletionResponse:
     """Build a ``CompletionResponse`` with tool calls."""
     return CompletionResponse(
-        content="",
+        content=None,
         finish_reason=FinishReason.TOOL_USE,
         usage=TokenUsage(
             input_tokens=input_tokens,

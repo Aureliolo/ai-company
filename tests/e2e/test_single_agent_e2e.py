@@ -20,7 +20,6 @@ from ai_company.engine.agent_engine import AgentEngine
 from ai_company.engine.loop_protocol import TerminationReason
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import ToolCall
-from ai_company.tools.file_system.read_file import ReadFileTool
 from ai_company.tools.file_system.write_file import WriteFileTool
 from ai_company.tools.registry import ToolRegistry
 
@@ -43,8 +42,7 @@ class TestFileToolAgent:
     ) -> None:
         """Agent writes a file to disk, then completes with a summary."""
         write_tool = WriteFileTool(workspace_root=e2e_workspace)
-        read_tool = ReadFileTool(workspace_root=e2e_workspace)
-        registry = ToolRegistry([write_tool, read_tool])
+        registry = ToolRegistry([write_tool])
         cost_tracker = CostTracker()
 
         identity = make_e2e_identity()
@@ -164,6 +162,7 @@ class TestTextOnlyAgent:
 
         # No tool messages in conversation
         conversation = result.execution_result.context.conversation
+        assert len(conversation) >= 3  # system + user + assistant minimum
         tool_msgs = [m for m in conversation if m.role == MessageRole.TOOL]
         assert len(tool_msgs) == 0
 
@@ -273,7 +272,7 @@ class TestPermissionDeniedRecovery:
         assert result.duration_seconds > 0
 
 
-class TestMaxIterationsExhausted:
+class TestMaxTurnsExhausted:
     """Agent exhausts max_turns without completing."""
 
     async def test_max_turns_terminates_cleanly(self, e2e_workspace: Path) -> None:
@@ -353,6 +352,10 @@ class TestMaxIterationsExhausted:
         # Provider was called exactly twice
         assert provider.call_count == 2
 
+        # Files were actually written to disk
+        assert (e2e_workspace / "file1.txt").exists()
+        assert (e2e_workspace / "file2.txt").exists()
+
         # Tool results are present in conversation (tools were executed)
         conversation = result.execution_result.context.conversation
         tool_msgs = [m for m in conversation if m.role == MessageRole.TOOL]
@@ -379,11 +382,21 @@ class TestRealLLMIntegration:
     """Optional smoke test with a real LLM provider.
 
     Skipped unless REAL_LLM_TEST=1 is set; not expected to run in CI.
+    Currently a placeholder — all methods skip until a real provider
+    is configured via environment variables.
     """
 
     async def test_real_provider_text_completion(self) -> None:
         """Minimal text-only task with a real provider.
 
-        Placeholder — replace the skip with real provider setup when ready.
+        TODO: Replace the skip with real provider setup when ready.
         """
-        pytest.skip("Real LLM test placeholder — configure a real provider")
+        provider_model = os.environ.get("REAL_LLM_MODEL")
+        if not provider_model:
+            pytest.skip(
+                "Set REAL_LLM_MODEL to a valid model ID "
+                "(e.g. 'example-large-001') to run this test"
+            )
+        pytest.skip(
+            f"Real LLM provider integration not yet wired — model={provider_model}"
+        )
