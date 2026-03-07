@@ -18,6 +18,14 @@ from .file_system import (
     ReadFileTool,
     WriteFileTool,
 )
+from .git_tools import (
+    GitBranchTool,
+    GitCloneTool,
+    GitCommitTool,
+    GitDiffTool,
+    GitLogTool,
+    GitStatusTool,
+)
 from .invoker import ToolInvoker
 from .permissions import ToolPermissionChecker
 from .registry import ToolRegistry
@@ -28,6 +36,12 @@ __all__ = [
     "DeleteFileTool",
     "EchoTool",
     "EditFileTool",
+    "GitBranchTool",
+    "GitCloneTool",
+    "GitCommitTool",
+    "GitDiffTool",
+    "GitLogTool",
+    "GitStatusTool",
     "ListDirectoryTool",
     "PathValidator",
     "ReadFileTool",

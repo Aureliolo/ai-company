@@ -693,28 +693,34 @@ structured_phases:
                  │ CREATED   │
                  └─────┬─────┘
                        │ assignment
-                 ┌─────▼─────┐
-          ┌──────│ ASSIGNED   │
-          │      └─────┬─────┘
-          │            │ agent starts
+                 ┌─────▼─────┐           ┌──────────┐
+          ┌──────│ ASSIGNED   │──────────▶│  FAILED   │
+          │      └─────┬─────┘◀───┐      └────┬─────┘
+          │            │ starts    │ reassign  │
+          │      ┌─────▼─────┐    │      ┌────▼─────┐
+          │      │IN_PROGRESS │───┼─────▶│  (retry)  │
+          │      └─────┬─────┘   │       └──────────┘
+          │            │  ◀── (rework)
+          │            │ agent done
           │      ┌─────▼─────┐
-          │      │IN_PROGRESS │◀──── (rework)
-          │      └─────┬─────┘        │
-          │            │ agent done    │
-          │      ┌─────▼─────┐        │
-          │      │ IN_REVIEW  │───────┘
+          │      │ IN_REVIEW  │
           │      └─────┬─────┘
           │            │ approved
           │      ┌─────▼─────┐
           │      │ COMPLETED  │
           │      └────────────┘
           │
-          │ blocked / cancelled
-    ┌─────▼─────┐
-    │ BLOCKED /  │
-    │ CANCELLED  │
-    └────────────┘
+          │ blocked          cancelled
+    ┌─────▼─────┐      ┌────────────┐
+    │  BLOCKED   │      │ CANCELLED   │
+    └─────┬─────┘      └────────────┘
+          │ unblocked        (terminal)
+          └──▶ ASSIGNED
 ```
+
+> **Non-terminal states:** BLOCKED and FAILED are non-terminal — BLOCKED returns to ASSIGNED when unblocked, FAILED returns to ASSIGNED for retry (see §6.6). COMPLETED and CANCELLED are terminal states with no outgoing transitions.
+>
+> **Transitions into FAILED:** Both `ASSIGNED → FAILED` (early setup failures) and `IN_PROGRESS → FAILED` (runtime crashes) are valid. `FAILED → ASSIGNED` enables reassignment when `retry_count < max_retries`.
 
 > **Runtime wrapper (M3):** During execution, `Task` is wrapped by `TaskExecution` (in `engine/task_execution.py`). `TaskExecution` is a frozen Pydantic model that tracks status transitions via `model_copy(update=...)`, accumulates `TokenUsage` cost, and records a `StatusTransition` audit trail. The original `Task` is preserved unchanged; `to_task_snapshot()` produces a `Task` copy with the current execution status for persistence.
 
@@ -748,6 +754,7 @@ task:
   task_structure: "parallel"      # sequential, parallel, mixed (M4 — see §6.9)
   budget_limit: 2.00             # max USD for this task
   deadline: null
+  max_retries: 1                 # max reassignment attempts after failure (0 = no retry)
   status: "assigned"
 ```
 
@@ -952,11 +959,28 @@ When an agent execution fails unexpectedly (unhandled exception, OOM, process ki
 
 > **MVP: Fail-and-Reassign only (Strategy 1).** Checkpoint Recovery is M4/M5.
 
+**`RecoveryStrategy` protocol:**
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `recover` | `async def recover(*, task_execution: TaskExecution, error_message: str, context: AgentContext) -> RecoveryResult` | Apply recovery to a failed task execution |
+| `get_strategy_type` | `def get_strategy_type() -> str` | Return strategy type identifier (must not be empty) |
+
+**`RecoveryResult` model (frozen):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `task_execution` | `TaskExecution` | Updated execution after recovery (typically `FAILED`) |
+| `strategy_type` | `NotBlankStr` | Strategy identifier |
+| `context_snapshot` | `AgentContextSnapshot` | Redacted snapshot (turn count, accumulated cost, message count, max turns — no message contents) |
+| `error_message` | `NotBlankStr` | Error that triggered recovery |
+| `can_reassign` | `bool` (computed) | `retry_count < task.max_retries` |
+
 #### Strategy 1: Fail-and-Reassign (Default / MVP)
 
 The engine catches the failure at its outermost boundary, logs a redacted `AgentContext` snapshot (turn count, accumulated cost — excluding message contents to avoid leaking sensitive prompts/tool outputs), transitions the task to `FAILED`, and makes it available for reassignment (manual or automatic via the task router).
 
-> **New non-terminal state:** `FAILED` is a new `TaskStatus` variant to be added alongside `CANCELLED`. The §6.1 lifecycle diagram and `TaskStatus` enum will be updated when crash recovery is implemented in M3. `FAILED` differs from `CANCELLED` (which is terminal) in that failed tasks are eligible for automatic reassignment.
+> **Non-terminal state (implemented in M3):** `FAILED` is a `TaskStatus` variant alongside `CANCELLED`. `FAILED` differs from `CANCELLED` (which is terminal) in that failed tasks are eligible for automatic reassignment. Valid transitions: `IN_PROGRESS → FAILED`, `ASSIGNED → FAILED` (early setup failures), `FAILED → ASSIGNED` (reassignment). See the updated §6.1 lifecycle diagram.
 
 ```yaml
 crash_recovery:
@@ -967,10 +991,12 @@ crash_recovery:
 - All progress is lost on crash — acceptable for short single-agent tasks in the MVP
 
 On crash:
-1. Catch exception at the engine boundary (outermost `try/except` in the execution loop)
-2. Log at ERROR with redacted `AgentContext` snapshot (turn count, accumulated cost, tool call history — message contents excluded)
+1. Catch exception at the `AgentEngine` boundary (outermost `try/except` in `AgentEngine.run()`)
+2. Log at ERROR with redacted `AgentContextSnapshot` (turn count, accumulated cost, message count, max turns — message contents excluded)
 3. Transition `TaskExecution` → `FAILED` with the exception as the failure reason
-4. Task becomes available for reassignment via the task router
+4. `RecoveryResult.can_reassign` reports whether `retry_count < max_retries`
+
+> **M3 limitation:** The `can_reassign` flag is computed and returned in `RecoveryResult`, but automated reassignment is not yet implemented — the task router (§6.4) will consume this in a later milestone. The caller (task router) is responsible for incrementing `retry_count` when creating the next `TaskExecution`.
 
 #### Strategy 2: Checkpoint Recovery (Planned — M4/M5)
 
@@ -1649,6 +1675,8 @@ When the LLM requests multiple tool calls in a single turn, `ToolInvoker.invoke_
 
 The `ToolPermissionChecker` resolves permissions using a priority-based system: denied list (highest) → allowed list → access-level categories → deny (default). `AgentEngine._make_tool_invoker()` creates a permission-aware invoker from the agent's `ToolPermissions` at the start of each `run()` call. Note: M3 implements category-level gating only; the granular sub-constraints described in §11.2 (workspace scope, network mode) are planned for when sandboxing is implemented.
 
+> **M3 implementation note — Built-in git tools:** Six workspace-scoped git tools are implemented in `tools/git_tools.py` with a shared `_BaseGitTool` base class in `tools/_git_base.py`: `GitStatusTool`, `GitLogTool`, `GitDiffTool`, `GitBranchTool`, `GitCommitTool`, and `GitCloneTool`. The base class enforces workspace boundary security (path traversal prevention via `resolve()` + `relative_to()`) and provides a common `_run_git()` helper using `asyncio.create_subprocess_exec` (never `shell=True`). Security hardening includes: `GIT_TERMINAL_PROMPT=0` to prevent credential prompts, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, and `GIT_PROTOCOL_FROM_USER=0` to restrict config/protocol attack surfaces, rejection of flag-like ref/branch values (starting with `-`), URL scheme validation on clone (only `https://`, `http://`, `ssh://`, `git://`, and SCP-like syntax) with `--` separator before positional URL argument, and clone URLs starting with `-` are rejected. All tools return `ToolExecutionResult` for errors rather than raising exceptions. **Future:** Consider adding host/IP allowlisting for clone URLs to prevent SSRF against internal networks (loopback, link-local, private ranges).
+
 ### 11.1.2 Tool Sandboxing
 
 Tool execution requires safety boundaries proportional to the risk of each tool category. The framework uses a **layered sandboxing strategy** with a pluggable `SandboxBackend` protocol — new backends can be added without modifying existing ones. The default configuration uses lighter isolation for low-risk tools and stronger isolation for high-risk tools.
@@ -2272,6 +2300,8 @@ ai-company/
 │       │   ├── loop_protocol.py    # ExecutionLoop protocol + result models
 │       │   ├── metrics.py          # TaskCompletionMetrics proxy overhead model
 │       │   ├── react_loop.py       # ReAct loop implementation
+│       │   ├── recovery.py         # Crash recovery strategies (RecoveryStrategy protocol)
+│       │   ├── cost_recording.py   # Per-turn cost recording helpers
 │       │   ├── run_result.py       # AgentRunResult outcome model
 │       │   ├── agent_engine.py     # Agent execution engine
 │       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)
@@ -2299,6 +2329,7 @@ ai-company/
 │       │   │   ├── budget.py      # BUDGET_* constants
 │       │   │   ├── config.py      # CONFIG_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants
+│       │   │   ├── git.py         # GIT_* constants
 │       │   │   ├── prompt.py      # PROMPT_* constants
 │       │   │   ├── provider.py    # PROVIDER_* constants
 │       │   │   ├── role.py        # ROLE_* constants
@@ -2353,7 +2384,8 @@ ai-company/
 │       │   │   ├── list_directory.py # ListDirectoryTool
 │       │   │   ├── read_file.py   # ReadFileTool
 │       │   │   └── write_file.py  # WriteFileTool
-│       │   ├── git_tools.py        # Git operations (M3)
+│       │   ├── _git_base.py        # Base class for git tools (workspace, subprocess)
+│       │   ├── git_tools.py        # Git operations — 6 built-in tools
 │       │   ├── code_runner.py      # Code execution (M3)
 │       │   ├── web_tools.py        # HTTP, search (M3)
 │       │   └── mcp_bridge.py       # MCP server integration (M7)

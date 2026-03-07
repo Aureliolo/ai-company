@@ -58,6 +58,7 @@ class Task(BaseModel):
         estimated_complexity: Task complexity estimate.
         budget_limit: Maximum USD spend for this task.
         deadline: Optional deadline (ISO 8601 string or ``None``).
+        max_retries: Max reassignment attempts after failure (default 1).
         status: Current lifecycle status.
     """
 
@@ -112,6 +113,11 @@ class Task(BaseModel):
         default=None,
         description="Optional deadline (ISO 8601 string)",
     )
+    max_retries: int = Field(
+        default=1,
+        ge=0,
+        description="Max reassignment attempts after failure",
+    )
     status: TaskStatus = Field(
         default=TaskStatus.CREATED,
         description="Current lifecycle status",
@@ -153,8 +159,8 @@ class Task(BaseModel):
 
         ``CREATED`` status must have ``assigned_to=None``.  Statuses beyond
         ``CREATED`` (``ASSIGNED``, ``IN_PROGRESS``, ``IN_REVIEW``,
-        ``COMPLETED``) require ``assigned_to`` to be set.  ``BLOCKED``
-        and ``CANCELLED`` may or may not have an assignee.
+        ``COMPLETED``) require ``assigned_to`` to be set.  ``BLOCKED``,
+        ``FAILED``, and ``CANCELLED`` may or may not have an assignee.
         """
         requires_assignee = {
             TaskStatus.ASSIGNED,
