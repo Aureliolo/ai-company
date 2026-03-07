@@ -16,6 +16,7 @@ DELEGATION_LOOP_ANCESTRY_BLOCKED: Final[str] = "delegation.loop.ancestry_blocked
 DELEGATION_LOOP_DEDUP_BLOCKED: Final[str] = "delegation.loop.dedup_blocked"
 DELEGATION_LOOP_RATE_LIMITED: Final[str] = "delegation.loop.rate_limited"
 DELEGATION_LOOP_CIRCUIT_OPEN: Final[str] = "delegation.loop.circuit_open"
+DELEGATION_LOOP_CIRCUIT_RESET: Final[str] = "delegation.loop.circuit_reset"
 DELEGATION_LOOP_ESCALATED: Final[str] = "delegation.loop.escalated"
 
 # Hierarchy

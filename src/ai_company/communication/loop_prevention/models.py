@@ -1,6 +1,8 @@
 """Loop prevention check outcome model."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
@@ -24,3 +26,14 @@ class GuardCheckOutcome(BaseModel):
         default="",
         description="Human-readable detail",
     )
+
+    @model_validator(mode="after")
+    def _validate_passed_message(self) -> Self:
+        """Enforce passed/message correlation."""
+        if self.passed and self.message:
+            msg = "message must be empty when passed is True"
+            raise ValueError(msg)
+        if not self.passed and not self.message:
+            msg = "message is required when passed is False"
+            raise ValueError(msg)
+        return self

@@ -1,5 +1,7 @@
 """Hierarchy resolver for organizational structure."""
 
+from types import MappingProxyType
+
 from ai_company.communication.errors import HierarchyResolutionError
 from ai_company.core.company import Company  # noqa: TC001
 from ai_company.observability import get_logger
@@ -16,7 +18,8 @@ class HierarchyResolver:
 
     Built from three sources, in priority order:
 
-    1. Explicit ``ReportingLine.supervisor`` (most specific)
+    1. Explicit ``ReportingLine.supervisor`` (most specific) — overrides
+       team-derived relationships.
     2. ``Team.lead`` for team members
     3. ``Department.head`` for team leads without explicit reporting
 
@@ -37,12 +40,12 @@ class HierarchyResolver:
 
         for dept in company.departments:
             for team in dept.teams:
-                # Team lead → department head (lowest priority)
+                # Team lead -> department head (lowest priority)
                 if team.lead not in supervisor_of:
                     supervisor_of[team.lead] = dept.head
                     reports_of.setdefault(dept.head, []).append(team.lead)
 
-                # Team members → team lead (medium priority)
+                # Team members -> team lead (medium priority)
                 for member in team.members:
                     if member == team.lead:
                         continue
@@ -53,22 +56,29 @@ class HierarchyResolver:
             # Explicit reporting lines (highest priority — override)
             for line in dept.reporting_lines:
                 old_sup = supervisor_of.get(line.subordinate)
-                if old_sup is not None and old_sup != line.supervisor:
+                if old_sup == line.supervisor:
+                    continue
+                if old_sup is not None:
                     # Remove from old supervisor's reports
                     old_reports = reports_of.get(old_sup, [])
-                    if line.subordinate in old_reports:
-                        old_reports.remove(line.subordinate)
+                    reports_of[old_sup] = [
+                        r for r in old_reports if r != line.subordinate
+                    ]
                 supervisor_of[line.subordinate] = line.supervisor
-                reports_of.setdefault(line.supervisor, []).append(line.subordinate)
+                reports_of.setdefault(line.supervisor, []).append(
+                    line.subordinate,
+                )
 
         # Cycle detection
         self._detect_cycles(supervisor_of)
 
-        # Freeze internal state
-        self._supervisor_of: dict[str, str] = supervisor_of
-        self._reports_of: dict[str, tuple[str, ...]] = {
-            k: tuple(v) for k, v in reports_of.items()
-        }
+        # Freeze internal state with MappingProxyType
+        self._supervisor_of: MappingProxyType[str, str] = MappingProxyType(
+            supervisor_of,
+        )
+        self._reports_of: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
+            {k: tuple(v) for k, v in reports_of.items()}
+        )
 
         logger.debug(
             DELEGATION_HIERARCHY_BUILT,
@@ -78,7 +88,10 @@ class HierarchyResolver:
 
     @staticmethod
     def _detect_cycles(supervisor_of: dict[str, str]) -> None:
-        """Detect cycles in the supervisor graph.
+        """Detect cycles in the supervisor graph via single-pass DFS.
+
+        Uses a visited/in-stack colouring approach for O(n)
+        complexity instead of restarting traversal per node.
 
         Args:
             supervisor_of: Mapping from agent to supervisor.
@@ -86,11 +99,15 @@ class HierarchyResolver:
         Raises:
             HierarchyResolutionError: If a cycle is found.
         """
+        visited: set[str] = set()
+
         for agent in supervisor_of:
-            visited: set[str] = set()
-            current = agent
-            while current in supervisor_of:
-                if current in visited:
+            if agent in visited:
+                continue
+            in_stack: set[str] = set()
+            current: str | None = agent
+            while current is not None and current not in visited:
+                if current in in_stack:
                     logger.warning(
                         DELEGATION_HIERARCHY_CYCLE,
                         agent=agent,
@@ -107,8 +124,9 @@ class HierarchyResolver:
                             "cycle_at": current,
                         },
                     )
-                visited.add(current)
-                current = supervisor_of[current]
+                in_stack.add(current)
+                current = supervisor_of.get(current)
+            visited.update(in_stack)
 
     def get_supervisor(self, agent_name: str) -> str | None:
         """Get the direct supervisor of an agent.

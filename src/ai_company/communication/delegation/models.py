@@ -1,6 +1,8 @@
 """Delegation request, result, and audit trail models."""
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.task import Task  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
@@ -61,6 +63,24 @@ class DelegationResult(BaseModel):
         default=None,
         description="Mechanism name that blocked delegation",
     )
+
+    @model_validator(mode="after")
+    def _validate_success_consistency(self) -> Self:
+        """Enforce success/failure field correlation."""
+        if self.success:
+            if self.delegated_task is None:
+                msg = "delegated_task is required when success is True"
+                raise ValueError(msg)
+            if self.rejection_reason is not None:
+                msg = "rejection_reason must be None when success is True"
+                raise ValueError(msg)
+            if self.blocked_by is not None:
+                msg = "blocked_by must be None when success is True"
+                raise ValueError(msg)
+        elif self.rejection_reason is None:
+            msg = "rejection_reason is required when success is False"
+            raise ValueError(msg)
+        return self
 
 
 class DelegationRecord(BaseModel):

@@ -26,10 +26,10 @@ _SUCCESS_MECHANISM = "all_passed"
 
 
 class DelegationGuard:
-    """Orchestrates all five loop prevention mechanisms.
+    """Orchestrates all loop prevention mechanisms.
 
     Checks run in order: ancestry, depth, dedup, rate_limit,
-    circuit_breaker. Returns the first failure or an overall success.
+    circuit_breaker. Short-circuits on the first failure.
 
     Args:
         config: Loop prevention configuration.
@@ -73,27 +73,48 @@ class DelegationGuard:
         Returns:
             First failing outcome or an all-passed success.
         """
-        checks = [
+        # Pure (stateless) checks first
+        for outcome in (
             check_ancestry(delegation_chain, delegatee_id),
-            check_delegation_depth(delegation_chain, self._config.max_delegation_depth),
-            self._deduplicator.check(delegator_id, delegatee_id, task_title),
+            check_delegation_depth(
+                delegation_chain,
+                self._config.max_delegation_depth,
+            ),
+        ):
+            if not outcome.passed:
+                return self._log_and_return(outcome, delegator_id, delegatee_id)
+        # Stateful checks — only run if pure checks passed
+        for outcome in (
+            self._deduplicator.check(
+                delegator_id,
+                delegatee_id,
+                task_title,
+            ),
             self._rate_limiter.check(delegator_id, delegatee_id),
             self._circuit_breaker.check(delegator_id, delegatee_id),
-        ]
-        for outcome in checks:
+        ):
             if not outcome.passed:
-                logger.info(
-                    DELEGATION_LOOP_BLOCKED,
-                    mechanism=outcome.mechanism,
-                    delegator=delegator_id,
-                    delegatee=delegatee_id,
-                    message=outcome.message,
-                )
-                return outcome
+                return self._log_and_return(outcome, delegator_id, delegatee_id)
         return GuardCheckOutcome(
             passed=True,
             mechanism=_SUCCESS_MECHANISM,
         )
+
+    @staticmethod
+    def _log_and_return(
+        outcome: GuardCheckOutcome,
+        delegator_id: str,
+        delegatee_id: str,
+    ) -> GuardCheckOutcome:
+        """Log a blocked delegation and return the outcome."""
+        logger.info(
+            DELEGATION_LOOP_BLOCKED,
+            mechanism=outcome.mechanism,
+            delegator=delegator_id,
+            delegatee=delegatee_id,
+            message=outcome.message,
+        )
+        return outcome
 
     def record_delegation(
         self,

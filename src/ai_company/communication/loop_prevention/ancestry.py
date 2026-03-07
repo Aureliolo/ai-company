@@ -1,6 +1,12 @@
 """Ancestry cycle detection check (pure function)."""
 
 from ai_company.communication.loop_prevention.models import GuardCheckOutcome
+from ai_company.observability import get_logger
+from ai_company.observability.events.delegation import (
+    DELEGATION_LOOP_ANCESTRY_BLOCKED,
+)
+
+logger = get_logger(__name__)
 
 _MECHANISM = "ancestry"
 
@@ -19,6 +25,11 @@ def check_ancestry(
         Outcome with passed=False if delegatee is already in the chain.
     """
     if delegatee_id in delegation_chain:
+        logger.info(
+            DELEGATION_LOOP_ANCESTRY_BLOCKED,
+            delegatee=delegatee_id,
+            chain=delegation_chain,
+        )
         return GuardCheckOutcome(
             passed=False,
             mechanism=_MECHANISM,

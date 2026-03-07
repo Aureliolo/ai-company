@@ -1,6 +1,12 @@
 """Max delegation depth check (pure function)."""
 
 from ai_company.communication.loop_prevention.models import GuardCheckOutcome
+from ai_company.observability import get_logger
+from ai_company.observability.events.delegation import (
+    DELEGATION_LOOP_DEPTH_EXCEEDED,
+)
+
+logger = get_logger(__name__)
 
 _MECHANISM = "max_depth"
 
@@ -19,6 +25,11 @@ def check_delegation_depth(
         Outcome with passed=True if within limit.
     """
     if len(delegation_chain) >= max_depth:
+        logger.info(
+            DELEGATION_LOOP_DEPTH_EXCEEDED,
+            chain_length=len(delegation_chain),
+            max_depth=max_depth,
+        )
         return GuardCheckOutcome(
             passed=False,
             mechanism=_MECHANISM,

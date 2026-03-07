@@ -253,6 +253,78 @@ class TestExplicitReportingLines:
 
 
 @pytest.mark.unit
+class TestEdgeCases:
+    def test_lead_in_members_list_not_duplicated(self) -> None:
+        """Team lead appearing in members should not be registered twice."""
+        dept = Department(
+            name="Engineering",
+            head="cto",
+            budget_percent=50.0,
+            teams=(
+                Team(
+                    name="backend",
+                    lead="backend_lead",
+                    members=("backend_lead", "dev1"),
+                ),
+            ),
+        )
+        company = _make_company(departments=(dept,))
+        resolver = HierarchyResolver(company)
+        assert resolver.get_supervisor("backend_lead") == "cto"
+        reports = resolver.get_direct_reports("backend_lead")
+        assert reports.count("dev1") == 1
+        assert "backend_lead" not in reports
+
+    def test_multi_team_lead_keeps_first_supervisor(self) -> None:
+        """Agent leading two teams keeps the first team's dept head."""
+        dept = Department(
+            name="Engineering",
+            head="cto",
+            budget_percent=50.0,
+            teams=(
+                Team(name="t1", lead="shared_lead", members=("dev1",)),
+                Team(name="t2", lead="shared_lead", members=("dev2",)),
+            ),
+        )
+        company = _make_company(departments=(dept,))
+        resolver = HierarchyResolver(company)
+        assert resolver.get_supervisor("shared_lead") == "cto"
+        assert resolver.get_supervisor("dev1") == "shared_lead"
+        assert resolver.get_supervisor("dev2") == "shared_lead"
+
+    def test_member_with_prior_supervisor_keeps_first(self) -> None:
+        """Member already assigned to a supervisor is not re-assigned."""
+        dept = Department(
+            name="Engineering",
+            head="cto",
+            budget_percent=50.0,
+            teams=(
+                Team(name="t1", lead="lead1", members=("dev1",)),
+                Team(name="t2", lead="lead2", members=("dev1",)),
+            ),
+        )
+        company = _make_company(departments=(dept,))
+        resolver = HierarchyResolver(company)
+        # dev1 seen first under lead1
+        assert resolver.get_supervisor("dev1") == "lead1"
+
+    def test_redundant_reporting_line_no_duplicate(self) -> None:
+        """Explicit line matching inferred relationship doesn't duplicate."""
+        dept = Department(
+            name="Engineering",
+            head="cto",
+            budget_percent=50.0,
+            teams=(Team(name="backend", lead="lead1", members=("dev1",)),),
+            reporting_lines=(ReportingLine(subordinate="dev1", supervisor="lead1"),),
+        )
+        company = _make_company(departments=(dept,))
+        resolver = HierarchyResolver(company)
+        assert resolver.get_supervisor("dev1") == "lead1"
+        reports = resolver.get_direct_reports("lead1")
+        assert reports.count("dev1") == 1
+
+
+@pytest.mark.unit
 class TestCycleDetection:
     def test_cycle_raises_hierarchy_error(self) -> None:
         dept = Department(

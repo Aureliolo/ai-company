@@ -107,7 +107,7 @@ class DelegationService:
             )
 
         # 3. Create sub-task
-        sub_task = self.create_sub_task(request)
+        sub_task = self._create_sub_task(request)
 
         # 4. Record in guard and audit trail
         self._guard.record_delegation(
@@ -139,7 +139,7 @@ class DelegationService:
             delegated_task=sub_task,
         )
 
-    def create_sub_task(self, request: DelegationRequest) -> Task:
+    def _create_sub_task(self, request: DelegationRequest) -> Task:
         """Create a new sub-task from a delegation request.
 
         The sub-task inherits the original task's properties but gets

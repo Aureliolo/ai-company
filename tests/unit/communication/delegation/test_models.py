@@ -110,9 +110,36 @@ class TestDelegationResult:
         assert result.blocked_by == "hierarchy"
 
     def test_frozen(self) -> None:
-        result = DelegationResult(success=True)
+        task = _make_task()
+        result = DelegationResult(success=True, delegated_task=task)
         with pytest.raises(ValidationError):
             result.success = False  # type: ignore[misc]
+
+    def test_success_without_task_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="delegated_task is required"):
+            DelegationResult(success=True)
+
+    def test_success_with_rejection_reason_rejected(self) -> None:
+        task = _make_task()
+        with pytest.raises(ValidationError, match="rejection_reason must be None"):
+            DelegationResult(
+                success=True,
+                delegated_task=task,
+                rejection_reason="oops",
+            )
+
+    def test_success_with_blocked_by_rejected(self) -> None:
+        task = _make_task()
+        with pytest.raises(ValidationError, match="blocked_by must be None"):
+            DelegationResult(
+                success=True,
+                delegated_task=task,
+                blocked_by="guard",
+            )
+
+    def test_failure_without_reason_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="rejection_reason is required"):
+            DelegationResult(success=False)
 
 
 @pytest.mark.unit

@@ -578,7 +578,7 @@ When a loop is detected, the framework:
 3. Escalates to the sender's manager (or human if at top of hierarchy)
 4. Logs the loop for analytics and process improvement
 
-> **Current state (M4 in-progress):** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5), conflict resolution (§5.6), and meeting protocol (§5.7) are planned for later M4 work.
+> **Current state (M4 in-progress):** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5) is implemented: `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) with `LoopPreventionConfig`. Hierarchical delegation is implemented via `DelegationService` with `HierarchyResolver` and `AuthorityValidator`. Task model extended with `parent_task_id` and `delegation_chain` fields. Conflict resolution (§5.6) and meeting protocol (§5.7) are planned for later M4 work.
 
 ### 5.6 Conflict Resolution Protocol
 
@@ -785,6 +785,8 @@ task:
   deadline: null
   max_retries: 1                 # max reassignment attempts after failure (0 = no retry)
   status: "assigned"
+  parent_task_id: null           # parent task ID when created via delegation
+  delegation_chain: []           # ordered agent IDs of delegators (root first)
 ```
 
 ### 6.3 Workflow Types
@@ -2350,10 +2352,24 @@ ai-company/
 │       │   ├── bus_protocol.py     # MessageBus protocol interface
 │       │   ├── channel.py          # Channel model
 │       │   ├── config.py           # Communication config
+│       │   ├── delegation/         # Hierarchical delegation subsystem
+│       │   │   ├── authority.py   # AuthorityValidator + AuthorityCheckResult
+│       │   │   ├── hierarchy.py   # HierarchyResolver (org hierarchy from Company)
+│       │   │   ├── models.py      # DelegationRequest, DelegationResult, DelegationRecord
+│       │   │   └── service.py     # DelegationService (orchestrates delegation flow)
 │       │   ├── dispatcher.py       # MessageDispatcher + DispatchResult
 │       │   ├── enums.py            # Communication enums
-│       │   ├── errors.py           # Communication error hierarchy
+│       │   ├── errors.py           # Communication + delegation error hierarchy
 │       │   ├── handler.py          # MessageHandler protocol, FunctionHandler, HandlerRegistration
+│       │   ├── loop_prevention/    # Delegation loop prevention mechanisms
+│       │   │   ├── _pair_key.py   # Canonical agent-pair key utility
+│       │   │   ├── ancestry.py    # Ancestry cycle detection (pure function)
+│       │   │   ├── circuit_breaker.py # DelegationCircuitBreaker (per-pair)
+│       │   │   ├── dedup.py       # DelegationDeduplicator (time-windowed)
+│       │   │   ├── depth.py       # Max delegation depth check (pure function)
+│       │   │   ├── guard.py       # DelegationGuard (orchestrates all mechanisms)
+│       │   │   ├── models.py      # GuardCheckOutcome, CircuitBreakerState
+│       │   │   └── rate_limit.py  # DelegationRateLimiter (per-pair)
 │       │   ├── message.py          # Message model
 │       │   ├── messenger.py        # AgentMessenger per-agent facade
 │       │   └── subscription.py     # Subscription + DeliveryEnvelope models
@@ -2373,6 +2389,7 @@ ai-company/
 │       │   │   ├── budget.py      # BUDGET_* constants
 │       │   │   ├── communication.py # COMM_* constants
 │       │   │   ├── config.py      # CONFIG_* constants
+│       │   │   ├── delegation.py  # DELEGATION_* constants
 │       │   │   ├── correlation.py # CORRELATION_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants
 │       │   │   ├── git.py         # GIT_* constants
@@ -2532,6 +2549,7 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Workspace isolation** | Planned (M4) | Pluggable `WorkspaceIsolationStrategy` protocol. Default: planner + git worktrees. Each agent works in an isolated worktree; sequential merge on completion. Textual conflicts detected by git; semantic conflicts reviewed by agent or human. | Industry standard (Codex, Cursor, Claude Code, VS Code). Maximum parallelism. Leverages mature git infrastructure. See §6.8. |
 | **Graceful shutdown** | Adopted (M3) | Pluggable `ShutdownStrategy` protocol. Default: cooperative with 30s timeout. Agents check shutdown event at turn boundaries. Force-cancel after timeout. `INTERRUPTED` status for force-cancelled tasks. M4/M5: upgrade to checkpoint-and-stop. | Cross-platform (Windows `signal.signal()` fallback). Bounded shutdown time. Mirrors cooperative shutdown in §6.7. |
 | **Communication foundation** | Adopted (M4) | `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()` with shutdown signaling via `asyncio.Event`). `MessageDispatcher` routes to concurrent handlers via `asyncio.TaskGroup` with pre-allocated error collection. `AgentMessenger` per-agent facade auto-fills sender/timestamp/ID; deterministic direct-channel naming `@{sorted_a}:{sorted_b}`. `DeliveryEnvelope` for delivery tracking. `NotBlankStr` validation on all protocol boundary identifiers. | Pull-model avoids callback complexity and enables agents to consume at their own pace. Protocol + backend split enables future persistent/distributed bus implementations. Deterministic DM channel names prevent duplicates. See §5. |
+| **Delegation & loop prevention** | Adopted (M4) | `HierarchyResolver` resolves org hierarchy from `Company` at construction (cycle-detected, `MappingProxyType`-frozen). `AuthorityValidator` checks chain-of-command + role permissions. `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) in sequence, short-circuiting on first rejection. `DelegationService` is synchronous (CPU-only); messaging integration deferred. Stateful mechanisms use injectable clock for deterministic testing. Task model extended with `parent_task_id` and `delegation_chain` fields. | Synchronous delegation avoids async complexity for CPU-only validation. Five-mechanism guard provides defence-in-depth against all loop patterns. Injectable clocks enable deterministic testing. See §5.4, §5.5. |
 
 ---
 

@@ -50,11 +50,15 @@ class DelegationDeduplicator:
         Returns:
             Outcome with passed=False if a duplicate exists.
         """
+        # Directional key: A->B and B->A are distinct delegations
         key = (delegator_id, delegatee_id, task_title)
         recorded_at = self._records.get(key)
         if recorded_at is not None:
             elapsed = self._clock() - recorded_at
-            if elapsed < self._window_seconds:
+            if elapsed >= self._window_seconds:
+                # Expired: remove stale entry
+                del self._records[key]
+            else:
                 logger.info(
                     DELEGATION_LOOP_DEDUP_BLOCKED,
                     delegator=delegator_id,

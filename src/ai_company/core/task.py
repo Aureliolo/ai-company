@@ -60,6 +60,9 @@ class Task(BaseModel):
         deadline: Optional deadline (ISO 8601 string or ``None``).
         max_retries: Max reassignment attempts after failure (default 1).
         status: Current lifecycle status.
+        parent_task_id: Parent task ID when created via delegation
+            (``None`` for root tasks).
+        delegation_chain: Ordered agent IDs of delegators (root first).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -140,9 +143,9 @@ class Task(BaseModel):
                 raise ValueError(msg)
             try:
                 datetime.fromisoformat(self.deadline)
-            except ValueError:
+            except ValueError as exc:
                 msg = f"deadline must be a valid ISO 8601 string, got {self.deadline!r}"
-                raise ValueError(msg) from None
+                raise ValueError(msg) from exc
         return self
 
     @model_validator(mode="after")

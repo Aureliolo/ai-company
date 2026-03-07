@@ -1,6 +1,8 @@
 """Authority validation for hierarchical delegation."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.communication.config import HierarchyConfig  # noqa: TC001
 from ai_company.communication.delegation.hierarchy import (  # noqa: TC001
@@ -28,6 +30,17 @@ class AuthorityCheckResult(BaseModel):
 
     allowed: bool = Field(description="Whether delegation is allowed")
     reason: str = Field(default="", description="Explanation")
+
+    @model_validator(mode="after")
+    def _validate_allowed_reason(self) -> Self:
+        """Enforce allowed/reason correlation."""
+        if self.allowed and self.reason:
+            msg = "reason must be empty when allowed is True"
+            raise ValueError(msg)
+        if not self.allowed and not self.reason:
+            msg = "reason is required when allowed is False"
+            raise ValueError(msg)
+        return self
 
 
 class AuthorityValidator:

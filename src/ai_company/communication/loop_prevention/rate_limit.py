@@ -4,6 +4,7 @@ import time
 from collections.abc import Callable  # noqa: TC003
 
 from ai_company.communication.config import RateLimitConfig  # noqa: TC001
+from ai_company.communication.loop_prevention._pair_key import pair_key
 from ai_company.communication.loop_prevention.models import GuardCheckOutcome
 from ai_company.observability import get_logger
 from ai_company.observability.events.delegation import (
@@ -13,36 +14,35 @@ from ai_company.observability.events.delegation import (
 logger = get_logger(__name__)
 
 _MECHANISM = "rate_limit"
-_WINDOW_SECONDS = 60.0
-
-
-def _pair_key(a: str, b: str) -> tuple[str, str]:
-    """Create a canonical sorted key for an agent pair."""
-    return (min(a, b), max(a, b))
+_DEFAULT_WINDOW_SECONDS = 60.0
 
 
 class DelegationRateLimiter:
     """Per-pair rate limit with burst allowance.
 
     The key is the sorted (a, b) agent pair. Counts delegations within
-    the last 60-second window. If the count exceeds
+    the sliding window. If the count exceeds
     ``max_per_pair_per_minute + burst_allowance``, the check fails.
 
     Args:
         config: Rate limit configuration.
         clock: Monotonic clock function for deterministic testing.
+        window_seconds: Duration of the sliding window.  Defaults to
+            60.0, matching the ``max_per_pair_per_minute`` semantics.
     """
 
-    __slots__ = ("_clock", "_config", "_timestamps")
+    __slots__ = ("_clock", "_config", "_timestamps", "_window_seconds")
 
     def __init__(
         self,
         config: RateLimitConfig,
         *,
         clock: Callable[[], float] = time.monotonic,
+        window_seconds: float = _DEFAULT_WINDOW_SECONDS,
     ) -> None:
         self._config = config
         self._clock = clock
+        self._window_seconds = window_seconds
         self._timestamps: dict[tuple[str, str], list[float]] = {}
 
     def check(
@@ -52,6 +52,8 @@ class DelegationRateLimiter:
     ) -> GuardCheckOutcome:
         """Check whether the pair has exceeded the rate limit.
 
+        Expired timestamps are pruned on every call.
+
         Args:
             delegator_id: ID of the delegating agent.
             delegatee_id: ID of the target agent.
@@ -59,11 +61,13 @@ class DelegationRateLimiter:
         Returns:
             Outcome with passed=False if rate limit exceeded.
         """
-        key = _pair_key(delegator_id, delegatee_id)
+        key = pair_key(delegator_id, delegatee_id)
         now = self._clock()
-        cutoff = now - _WINDOW_SECONDS
+        cutoff = now - self._window_seconds
         timestamps = self._timestamps.get(key, [])
         recent = [t for t in timestamps if t > cutoff]
+        # Prune expired entries on read
+        self._timestamps[key] = recent
         limit = self._config.max_per_pair_per_minute + self._config.burst_allowance
         if len(recent) >= limit:
             logger.info(
@@ -79,7 +83,8 @@ class DelegationRateLimiter:
                 message=(
                     f"Rate limit exceeded for pair "
                     f"({delegator_id!r}, {delegatee_id!r}): "
-                    f"{len(recent)} delegations in last 60s "
+                    f"{len(recent)} delegations in last "
+                    f"{self._window_seconds:.0f}s "
                     f"(limit {limit})"
                 ),
             )
@@ -96,9 +101,9 @@ class DelegationRateLimiter:
             delegator_id: ID of the delegating agent.
             delegatee_id: ID of the target agent.
         """
-        key = _pair_key(delegator_id, delegatee_id)
+        key = pair_key(delegator_id, delegatee_id)
         now = self._clock()
-        cutoff = now - _WINDOW_SECONDS
+        cutoff = now - self._window_seconds
         timestamps = self._timestamps.get(key, [])
         # Prune expired entries on write
         self._timestamps[key] = [t for t in timestamps if t > cutoff] + [now]

@@ -5,10 +5,12 @@ from collections.abc import Callable  # noqa: TC003
 from enum import StrEnum
 
 from ai_company.communication.config import CircuitBreakerConfig  # noqa: TC001
+from ai_company.communication.loop_prevention._pair_key import pair_key
 from ai_company.communication.loop_prevention.models import GuardCheckOutcome
 from ai_company.observability import get_logger
 from ai_company.observability.events.delegation import (
     DELEGATION_LOOP_CIRCUIT_OPEN,
+    DELEGATION_LOOP_CIRCUIT_RESET,
 )
 
 logger = get_logger(__name__)
@@ -28,13 +30,13 @@ class CircuitBreakerState(StrEnum):
     OPEN = "open"
 
 
-def _pair_key(a: str, b: str) -> tuple[str, str]:
-    """Create a canonical sorted key for an agent pair."""
-    return (min(a, b), max(a, b))
-
-
 class _PairState:
-    """Internal mutable state for a single agent pair."""
+    """Internal mutable state for a single agent pair.
+
+    Attributes:
+        bounce_count: Delegations since last reset.
+        opened_at: Monotonic timestamp when opened, or ``None``.
+    """
 
     __slots__ = ("bounce_count", "opened_at")
 
@@ -72,10 +74,8 @@ class DelegationCircuitBreaker:
         delegator_id: str,
         delegatee_id: str,
     ) -> _PairState:
-        key = _pair_key(delegator_id, delegatee_id)
-        if key not in self._pairs:
-            self._pairs[key] = _PairState()
-        return self._pairs[key]
+        key = pair_key(delegator_id, delegatee_id)
+        return self._pairs.setdefault(key, _PairState())
 
     def get_state(
         self,
@@ -83,6 +83,9 @@ class DelegationCircuitBreaker:
         delegatee_id: str,
     ) -> CircuitBreakerState:
         """Get the circuit breaker state for an agent pair.
+
+        If the circuit was previously open and the cooldown has expired,
+        the pair state is reset before returning ``CLOSED``.
 
         Args:
             delegator_id: First agent ID.
@@ -97,6 +100,12 @@ class DelegationCircuitBreaker:
             if elapsed < self._config.cooldown_seconds:
                 return CircuitBreakerState.OPEN
             # Cooldown expired: reset
+            logger.info(
+                DELEGATION_LOOP_CIRCUIT_RESET,
+                delegator=delegator_id,
+                delegatee=delegatee_id,
+                cooldown_seconds=self._config.cooldown_seconds,
+            )
             pair.bounce_count = 0
             pair.opened_at = None
         return CircuitBreakerState.CLOSED
@@ -141,14 +150,25 @@ class DelegationCircuitBreaker:
         """Record a delegation bounce for the pair.
 
         If the bounce count reaches the threshold, opens the circuit.
+        If the circuit was previously open and the cooldown has expired,
+        the bounce count is reset before recording.  If the circuit is
+        already open (cooldown not yet expired), this call is a no-op.
 
         Args:
             delegator_id: First agent ID.
             delegatee_id: Second agent ID.
         """
+        state = self.get_state(delegator_id, delegatee_id)
+        if state is CircuitBreakerState.OPEN:
+            return
         pair = self._get_pair(delegator_id, delegatee_id)
-        # If cooldown expired, get_state already reset
-        self.get_state(delegator_id, delegatee_id)
         pair.bounce_count += 1
         if pair.bounce_count >= self._config.bounce_threshold:
             pair.opened_at = self._clock()
+            logger.warning(
+                DELEGATION_LOOP_CIRCUIT_OPEN,
+                delegator=delegator_id,
+                delegatee=delegatee_id,
+                bounce_count=pair.bounce_count,
+                threshold=self._config.bounce_threshold,
+            )
