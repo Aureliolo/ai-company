@@ -7,17 +7,15 @@ tool invocation, and budget tracking into a single ``run()`` entry point.
 import asyncio
 import contextlib
 import time
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from ai_company.budget.cost_record import CostRecord
 from ai_company.core.enums import AgentStatus, TaskStatus
 from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
+from ai_company.engine.cost_recording import record_execution_costs
 from ai_company.engine.errors import ExecutionStateError
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
-    TurnRecord,
 )
 from ai_company.engine.metrics import TaskCompletionMetrics
 from ai_company.engine.prompt import (
@@ -31,9 +29,6 @@ from ai_company.engine.run_result import AgentRunResult
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_COMPLETE,
-    EXECUTION_ENGINE_COST_FAILED,
-    EXECUTION_ENGINE_COST_RECORDED,
-    EXECUTION_ENGINE_COST_SKIPPED,
     EXECUTION_ENGINE_CREATED,
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_INVALID_INPUT,
@@ -85,8 +80,9 @@ class AgentEngine:
         tool_registry: Optional tools available to the agent.
         cost_tracker: Optional cost recording service. When ``None``,
             cost recording is skipped silently.
-        recovery_strategy: Crash recovery strategy. Defaults to
-            ``FailAndReassignStrategy()``. Pass ``None`` to disable.
+        recovery_strategy: Crash recovery strategy. Defaults to a
+            shared ``FailAndReassignStrategy`` instance. Pass ``None``
+            to disable.
     """
 
     def __init__(
@@ -255,7 +251,13 @@ class AgentEngine:
             timeout_seconds=timeout_seconds,
         )
 
-        await self._record_costs(execution_result, identity, agent_id, task_id)
+        await record_execution_costs(
+            execution_result,
+            identity,
+            agent_id,
+            task_id,
+            tracker=self._cost_tracker,
+        )
         execution_result = self._apply_post_execution_transitions(
             execution_result,
             agent_id,
@@ -548,7 +550,7 @@ class AgentEngine:
                 from_status=prev_status.value,
                 to_status=TaskStatus.IN_REVIEW.value,
             )
-            # TODO(M4): Replace auto-complete with review gate
+            # TODO(M4): Replace auto-complete with review gate (§6.5)
             prev_status = ctx.task_execution.status  # type: ignore[union-attr]
             ctx = ctx.with_task_transition(
                 TaskStatus.COMPLETED,
@@ -578,12 +580,12 @@ class AgentEngine:
         agent_id: str,
         task_id: str,
     ) -> ExecutionResult:
-        """Invoke recovery strategy on error outcomes.
+        """Invoke the configured recovery strategy on error outcomes.
 
-        Transitions the task to FAILED via the configured recovery
-        strategy.  If no strategy is set or no task execution exists,
-        returns the result unchanged.  Recovery failures are logged
-        but never block the error result.
+        The default strategy transitions the task to FAILED; other
+        strategies may behave differently.  If no strategy is set or
+        no task execution exists, returns the result unchanged.
+        Recovery failures are logged but never block the error result.
         """
         if self._recovery_strategy is None:
             return execution_result
@@ -607,7 +609,7 @@ class AgentEngine:
         except MemoryError, RecursionError:
             raise
         except Exception as exc:
-            logger.warning(
+            logger.exception(
                 EXECUTION_RECOVERY_FAILED,
                 agent_id=agent_id,
                 task_id=task_id,
@@ -655,110 +657,6 @@ class AgentEngine:
             tokens_per_task=metrics.tokens_per_task,
             cost_per_task=metrics.cost_per_task,
             duration_seconds=metrics.duration_seconds,
-        )
-
-    async def _record_costs(
-        self,
-        result: ExecutionResult,
-        identity: AgentIdentity,
-        agent_id: str,
-        task_id: str,
-    ) -> None:
-        """Record per-turn costs to the CostTracker if available.
-
-        Each turn produces its own ``CostRecord``, preserving per-call
-        granularity. Turns with zero cost and zero tokens are skipped.
-
-        Recording failures for regular exceptions are logged but do not
-        affect the execution result. ``MemoryError`` and
-        ``RecursionError`` propagate unconditionally as non-recoverable
-        system errors.
-        """
-        if self._cost_tracker is None:
-            logger.debug(
-                EXECUTION_ENGINE_COST_SKIPPED,
-                agent_id=agent_id,
-                task_id=task_id,
-                reason="no cost tracker configured",
-            )
-            return
-
-        tracker = self._cost_tracker
-
-        for turn in result.turns:
-            # Skip only when provably nothing happened (zero cost and
-            # zero tokens); a turn with tokens but zero cost (e.g., a
-            # free-tier provider) is still recorded.
-            if (
-                turn.cost_usd <= 0.0
-                and turn.input_tokens == 0
-                and turn.output_tokens == 0
-            ):
-                logger.debug(
-                    EXECUTION_ENGINE_COST_SKIPPED,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    turn_number=turn.turn_number,
-                    reason="zero cost and zero tokens",
-                )
-                continue
-
-            record = CostRecord(
-                agent_id=agent_id,
-                task_id=task_id,
-                provider=identity.model.provider,
-                model=identity.model.model_id,
-                input_tokens=turn.input_tokens,
-                output_tokens=turn.output_tokens,
-                cost_usd=turn.cost_usd,
-                timestamp=datetime.now(UTC),
-            )
-            await self._submit_cost(
-                record,
-                turn,
-                agent_id,
-                task_id,
-                tracker=tracker,
-            )
-
-    async def _submit_cost(
-        self,
-        record: CostRecord,
-        turn: TurnRecord,
-        agent_id: str,
-        task_id: str,
-        *,
-        tracker: CostTracker,
-    ) -> None:
-        """Submit a cost record to the tracker, logging failures."""
-        try:
-            await tracker.record(record)
-        except MemoryError, RecursionError:
-            logger.error(
-                EXECUTION_ENGINE_COST_FAILED,
-                agent_id=agent_id,
-                task_id=task_id,
-                error="non-recoverable error in cost recording",
-                exc_info=True,
-            )
-            raise
-        except Exception as exc:
-            logger.exception(
-                EXECUTION_ENGINE_COST_FAILED,
-                agent_id=agent_id,
-                task_id=task_id,
-                error=f"{type(exc).__name__}: {exc}",
-                cost_usd=turn.cost_usd,
-                input_tokens=turn.input_tokens,
-                output_tokens=turn.output_tokens,
-            )
-            return
-
-        logger.info(
-            EXECUTION_ENGINE_COST_RECORDED,
-            agent_id=agent_id,
-            task_id=task_id,
-            cost_usd=turn.cost_usd,
         )
 
     async def _handle_fatal_error(  # noqa: PLR0913
@@ -840,7 +738,7 @@ class AgentEngine:
                 error=f"Failed to build error result: {build_exc}",
                 original_error=error_msg,
             )
-            raise exc from None
+            raise exc from build_exc
 
 
 def _make_budget_checker(task: Task) -> BudgetChecker | None:

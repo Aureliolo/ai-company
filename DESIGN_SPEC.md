@@ -693,31 +693,34 @@ structured_phases:
                  │ CREATED   │
                  └─────┬─────┘
                        │ assignment
-                 ┌─────▼─────┐
-          ┌──────│ ASSIGNED   │◀──── (reassignment)
-          │      └─────┬─────┘        │
-          │            │ agent starts  │
-          │      ┌─────▼─────┐   ┌────┴─────┐
-          │      │IN_PROGRESS │──▶│  FAILED   │
-          │      └─────┬─────┘   └──────────┘
-          │            │  ◀──── (rework)
-          │            │ agent done    │
-          │      ┌─────▼─────┐        │
-          │      │ IN_REVIEW  │───────┘
+                 ┌─────▼─────┐           ┌──────────┐
+          ┌──────│ ASSIGNED   │──────────▶│  FAILED   │
+          │      └─────┬─────┘◀───┐      └────┬─────┘
+          │            │ starts    │ reassign  │
+          │      ┌─────▼─────┐    │      ┌────▼─────┐
+          │      │IN_PROGRESS │───┼─────▶│  (retry)  │
+          │      └─────┬─────┘   │       └──────────┘
+          │            │  ◀── (rework)
+          │            │ agent done
+          │      ┌─────▼─────┐
+          │      │ IN_REVIEW  │
           │      └─────┬─────┘
           │            │ approved
           │      ┌─────▼─────┐
           │      │ COMPLETED  │
           │      └────────────┘
           │
-          │ blocked / cancelled
-    ┌─────▼─────┐
-    │ BLOCKED /  │
-    │ CANCELLED  │
-    └────────────┘
+          │ blocked          cancelled
+    ┌─────▼─────┐      ┌────────────┐
+    │  BLOCKED   │      │ CANCELLED   │
+    └─────┬─────┘      └────────────┘
+          │ unblocked        (terminal)
+          └──▶ ASSIGNED
 ```
 
 > **Non-terminal states:** BLOCKED and FAILED are non-terminal — BLOCKED returns to ASSIGNED when unblocked, FAILED returns to ASSIGNED for retry (see §6.6). COMPLETED and CANCELLED are terminal states with no outgoing transitions.
+>
+> **Transitions into FAILED:** Both `ASSIGNED → FAILED` (early setup failures) and `IN_PROGRESS → FAILED` (runtime crashes) are valid. `FAILED → ASSIGNED` enables reassignment when `retry_count < max_retries`.
 
 > **Runtime wrapper (M3):** During execution, `Task` is wrapped by `TaskExecution` (in `engine/task_execution.py`). `TaskExecution` is a frozen Pydantic model that tracks status transitions via `model_copy(update=...)`, accumulates `TokenUsage` cost, and records a `StatusTransition` audit trail. The original `Task` is preserved unchanged; `to_task_snapshot()` produces a `Task` copy with the current execution status for persistence.
 
@@ -956,6 +959,23 @@ When an agent execution fails unexpectedly (unhandled exception, OOM, process ki
 
 > **MVP: Fail-and-Reassign only (Strategy 1).** Checkpoint Recovery is M4/M5.
 
+**`RecoveryStrategy` protocol:**
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `recover` | `async def recover(*, task_execution: TaskExecution, error_message: str, context: AgentContext) -> RecoveryResult` | Apply recovery to a failed task execution |
+| `get_strategy_type` | `def get_strategy_type() -> str` | Return strategy type identifier (must not be empty) |
+
+**`RecoveryResult` model (frozen):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `task_execution` | `TaskExecution` | Updated execution after recovery (typically `FAILED`) |
+| `strategy_type` | `NotBlankStr` | Strategy identifier |
+| `context_snapshot` | `AgentContextSnapshot` | Redacted snapshot (turn count, accumulated cost, message count, max turns — no message contents) |
+| `error_message` | `NotBlankStr` | Error that triggered recovery |
+| `can_reassign` | `bool` (computed) | `retry_count < task.max_retries` |
+
 #### Strategy 1: Fail-and-Reassign (Default / MVP)
 
 The engine catches the failure at its outermost boundary, logs a redacted `AgentContext` snapshot (turn count, accumulated cost — excluding message contents to avoid leaking sensitive prompts/tool outputs), transitions the task to `FAILED`, and makes it available for reassignment (manual or automatic via the task router).
@@ -971,12 +991,12 @@ crash_recovery:
 - All progress is lost on crash — acceptable for short single-agent tasks in the MVP
 
 On crash:
-1. Catch exception at the engine boundary (outermost `try/except` in the execution loop)
-2. Log at ERROR with redacted `AgentContext` snapshot (turn count, accumulated cost — message contents excluded)
+1. Catch exception at the `AgentEngine` boundary (outermost `try/except` in `AgentEngine.run()`)
+2. Log at ERROR with redacted `AgentContextSnapshot` (turn count, accumulated cost, message count, max turns — message contents excluded)
 3. Transition `TaskExecution` → `FAILED` with the exception as the failure reason
 4. `RecoveryResult.can_reassign` reports whether `retry_count < max_retries`
 
-> **M3 limitation:** The `can_reassign` flag is computed and returned in `RecoveryResult`, but automated reassignment is not yet implemented — the task router (§6.4) will consume this in a later milestone.
+> **M3 limitation:** The `can_reassign` flag is computed and returned in `RecoveryResult`, but automated reassignment is not yet implemented — the task router (§6.4) will consume this in a later milestone. The caller (task router) is responsible for incrementing `retry_count` when creating the next `TaskExecution`.
 
 #### Strategy 2: Checkpoint Recovery (Planned — M4/M5)
 
@@ -2279,6 +2299,7 @@ ai-company/
 │       │   ├── metrics.py          # TaskCompletionMetrics proxy overhead model
 │       │   ├── react_loop.py       # ReAct loop implementation
 │       │   ├── recovery.py         # Crash recovery strategies (RecoveryStrategy protocol)
+│       │   ├── cost_recording.py   # Per-turn cost recording helpers
 │       │   ├── run_result.py       # AgentRunResult outcome model
 │       │   ├── agent_engine.py     # Agent execution engine
 │       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)

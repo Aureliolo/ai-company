@@ -484,6 +484,16 @@ class TestTaskWithTransition:
         ):
             task.with_transition(TaskStatus.ASSIGNED)
 
+    def test_valid_transition_failed_to_assigned(self) -> None:
+        """FAILED -> ASSIGNED reassignment with new assignee."""
+        task = _make_task(assigned_to="agent-1", status=TaskStatus.FAILED)
+        new_task = task.with_transition(
+            TaskStatus.ASSIGNED,
+            assigned_to="agent-2",
+        )
+        assert new_task.status is TaskStatus.ASSIGNED
+        assert new_task.assigned_to == "agent-2"
+
     def test_original_unchanged(self) -> None:
         """Ensure the original task is not modified (immutability)."""
         task = _make_task()

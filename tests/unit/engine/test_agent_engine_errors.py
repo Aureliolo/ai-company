@@ -29,6 +29,8 @@ if TYPE_CHECKING:
 
 from .conftest import make_completion_response as _make_completion_response
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestAgentEngineErrorHandling:
@@ -554,6 +556,30 @@ class TestAgentEngineRecovery:
         )
 
         with pytest.raises(MemoryError, match="OOM"):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+    async def test_recursion_error_in_recovery_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """RecursionError from recovery strategy is not swallowed."""
+        mock_strategy = MagicMock()
+        mock_strategy.recover = AsyncMock(
+            side_effect=RecursionError("max depth"),
+        )
+
+        provider = MagicMock()
+        provider.complete = AsyncMock(side_effect=RuntimeError("crash"))
+        engine = AgentEngine(
+            provider=provider,
+            recovery_strategy=mock_strategy,
+        )
+
+        with pytest.raises(RecursionError, match="max depth"):
             await engine.run(
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,

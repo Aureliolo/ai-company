@@ -12,6 +12,8 @@ from ai_company.engine.context import AgentContext
 if TYPE_CHECKING:
     from ai_company.core.agent import AgentIdentity
 
+from pydantic import ValidationError
+
 from ai_company.engine.recovery import (
     FailAndReassignStrategy,
     RecoveryResult,
@@ -193,6 +195,32 @@ class TestFailAndReassignStrategy:
         )
 
         assert result.error_message == "Specific error: connection reset"
+
+    async def test_recovery_result_frozen(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """RecoveryResult fields cannot be reassigned (frozen model)."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(
+            TaskStatus.IN_PROGRESS,
+            reason="starting",
+        )
+        assert ctx.task_execution is not None
+
+        strategy = FailAndReassignStrategy()
+        result = await strategy.recover(
+            task_execution=ctx.task_execution,
+            error_message="Crashed",
+            context=ctx,
+        )
+
+        with pytest.raises(ValidationError, match="frozen"):
+            result.error_message = "changed"  # type: ignore[misc]
 
     async def test_recovery_logs_events(
         self,

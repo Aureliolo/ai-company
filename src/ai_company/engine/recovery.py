@@ -1,14 +1,15 @@
 """Crash recovery strategy protocol and fail-and-reassign implementation.
 
 Defines the ``RecoveryStrategy`` protocol and the default
-``FailAndReassignStrategy`` that transitions a failed task execution to
-``FAILED`` status, captures a redacted context snapshot, and reports
-whether the task can be reassigned (based on retry count vs max retries).
+``FailAndReassignStrategy`` that transitions a crashed task execution
+from its current status (typically ``IN_PROGRESS``) to ``FAILED``
+status, captures a redacted context snapshot, and reports whether the
+task can be reassigned (based on retry count vs max retries).
 
 See DESIGN_SPEC Section 6.6 for the full crash recovery design.
 """
 
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -30,9 +31,12 @@ class RecoveryResult(BaseModel):
     """Frozen result of a recovery strategy invocation.
 
     Attributes:
-        task_execution: Updated execution with FAILED status.
+        task_execution: Updated execution after recovery (typically
+            ``FAILED`` for the default strategy).
         strategy_type: Identifier of the strategy used (e.g. ``"fail_reassign"``).
         can_reassign: Computed — ``True`` when retry_count < task.max_retries.
+            The caller (task router) is responsible for incrementing
+            ``retry_count`` when creating the next ``TaskExecution``.
         context_snapshot: Redacted snapshot (no message contents).
         error_message: The error that triggered recovery.
     """
@@ -48,7 +52,7 @@ class RecoveryResult(BaseModel):
     context_snapshot: AgentContextSnapshot = Field(
         description="Redacted context snapshot (no message contents)",
     )
-    error_message: str = Field(
+    error_message: NotBlankStr = Field(
         description="The error that triggered recovery",
     )
 
@@ -57,7 +61,11 @@ class RecoveryResult(BaseModel):
     )
     @property
     def can_reassign(self) -> bool:
-        """Whether the task can be reassigned for retry."""
+        """Whether the task can be reassigned for retry.
+
+        Assumes the caller (task router) will increment ``retry_count``
+        when creating the next ``TaskExecution`` for the reassigned task.
+        """
         return self.task_execution.retry_count < self.task_execution.task.max_retries
 
 
@@ -80,7 +88,9 @@ class RecoveryStrategy(Protocol):
         """Apply recovery to a failed task execution.
 
         Args:
-            task_execution: Current execution state (typically IN_PROGRESS).
+            task_execution: Current execution state (typically
+                ``IN_PROGRESS``, but may be ``ASSIGNED`` for early
+                setup failures).
             error_message: Description of the failure.
             context: Full agent context at the time of failure.
 
@@ -97,13 +107,14 @@ class RecoveryStrategy(Protocol):
 class FailAndReassignStrategy:
     """Default recovery: transition to FAILED and report reassignment eligibility.
 
-    1. Capture a redacted ``AgentContextSnapshot`` (no message contents).
+    1. Capture a redacted ``AgentContextSnapshot`` (excludes message
+       contents to prevent leaking sensitive prompts/tool outputs).
     2. Log the snapshot at ERROR level.
     3. Transition ``TaskExecution`` to ``FAILED`` with the error as reason.
     4. Report ``can_reassign = retry_count < task.max_retries``.
     """
 
-    STRATEGY_TYPE: str = "fail_reassign"
+    STRATEGY_TYPE: Final[str] = "fail_reassign"
 
     async def recover(
         self,
