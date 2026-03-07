@@ -116,6 +116,14 @@ class TestTemplateAgentConfig:
         with pytest.raises(ValidationError):
             TemplateAgentConfig(role="dev", model="   ")
 
+    def test_both_personality_and_preset_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Cannot specify both"):
+            TemplateAgentConfig(
+                role="Dev",
+                personality_preset="visionary_leader",
+                personality={"openness": 0.9},
+            )
+
 
 # ── TemplateDepartmentConfig ─────────────────────────────────────
 

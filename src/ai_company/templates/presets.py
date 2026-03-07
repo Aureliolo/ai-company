@@ -1,6 +1,6 @@
 """Personality presets and auto-name generation for templates.
 
-Provides 15 comprehensive personality presets with Big Five dimensions
+Provides comprehensive personality presets with Big Five dimensions
 and behavioral enums, plus role-aware auto-name generation.
 """
 
@@ -8,9 +8,10 @@ import random
 from types import MappingProxyType
 from typing import Any
 
+from ai_company.core.agent import PersonalityConfig
 from ai_company.observability import get_logger
 from ai_company.observability.events.template import (
-    TEMPLATE_RENDER_VARIABLE_ERROR,
+    TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
 )
 
 logger = get_logger(__name__)
@@ -305,12 +306,18 @@ def get_personality_preset(name: str) -> dict[str, Any]:
         available = sorted(PERSONALITY_PRESETS)
         msg = f"Unknown personality preset {name!r}. Available: {available}"
         logger.warning(
-            TEMPLATE_RENDER_VARIABLE_ERROR,
+            TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
             preset_name=name,
             available=available,
         )
         raise KeyError(msg)
     return dict(PERSONALITY_PRESETS[key])
+
+
+# Validate all presets at import time to catch key typos immediately.
+for _preset_name, _preset_dict in PERSONALITY_PRESETS.items():
+    PersonalityConfig(**_preset_dict)
+del _preset_name, _preset_dict
 
 
 def generate_auto_name(role: str, *, seed: int | None = None) -> str:

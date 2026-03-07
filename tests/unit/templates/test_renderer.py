@@ -299,20 +299,18 @@ class TestCollectVariables:
 
 @pytest.mark.unit
 class TestInlinePersonality:
-    def test_inline_personality_overrides_preset(self) -> None:
-        """Inline personality dict takes precedence over preset."""
+    def test_inline_personality_applied(self) -> None:
+        """Inline personality dict is applied to agent config."""
         from ai_company.templates.renderer import _expand_single_agent
 
         agent: dict[str, object] = {
             "role": "Dev",
-            "personality_preset": "visionary_leader",
             "personality": {
                 "traits": ("custom-trait",),
                 "communication_style": "custom",
             },
         }
         result = _expand_single_agent(agent, 0, set())
-        # Inline should win.
         assert result["personality"]["communication_style"] == "custom"
         assert "custom-trait" in result["personality"]["traits"]
 
@@ -382,6 +380,98 @@ class TestDepartmentPassthrough:
         result = _build_config_dict(rendered, template, {})
         assert "workflow_handoffs" in result
         assert len(result["workflow_handoffs"]) == 1
+
+
+@pytest.mark.unit
+class TestInlinePersonalityRejection:
+    def test_invalid_inline_personality_raises_template_render_error(self) -> None:
+        """Invalid inline personality dict raises TemplateRenderError."""
+        from ai_company.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Dev",
+            "personality": {"openness": 99.0},
+        }
+        with pytest.raises(TemplateRenderError, match="Invalid inline personality"):
+            _expand_single_agent(agent, 0, set())
+
+    def test_non_dict_personality_raises_template_render_error(self) -> None:
+        """Non-dict personality value raises TemplateRenderError."""
+        from ai_company.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Dev",
+            "personality": "not-a-dict",
+        }
+        with pytest.raises(TemplateRenderError, match="must be a mapping"):
+            _expand_single_agent(agent, 0, set())
+
+
+@pytest.mark.unit
+class TestMissingRoleError:
+    def test_missing_role_raises_template_render_error(self) -> None:
+        """Agent without a 'role' field raises TemplateRenderError."""
+        from ai_company.templates.renderer import _expand_single_agent
+
+        with pytest.raises(TemplateRenderError, match="missing required 'role'"):
+            _expand_single_agent({}, 0, set())
+
+
+@pytest.mark.unit
+class TestBuildDepartmentsTypeValidation:
+    def test_non_list_reporting_lines_raises(self) -> None:
+        """Non-list reporting_lines raises TemplateRenderError."""
+        from ai_company.templates.renderer import _build_departments
+
+        with pytest.raises(TemplateRenderError, match="must be a list"):
+            _build_departments(
+                [{"name": "eng", "reporting_lines": "not-a-list"}],
+            )
+
+    def test_non_dict_policies_raises(self) -> None:
+        """Non-dict policies raises TemplateRenderError."""
+        from ai_company.templates.renderer import _build_departments
+
+        with pytest.raises(TemplateRenderError, match="must be a mapping"):
+            _build_departments(
+                [{"name": "eng", "policies": ["not-a-dict"]}],
+            )
+
+
+@pytest.mark.unit
+class TestEscalationPathsPassthrough:
+    def test_escalation_paths_included_in_config_dict(self) -> None:
+        """Escalation paths pass through to config dict."""
+        from ai_company.core.enums import CompanyType
+        from ai_company.templates.renderer import _build_config_dict
+        from ai_company.templates.schema import (
+            CompanyTemplate,
+            TemplateAgentConfig,
+            TemplateMetadata,
+        )
+
+        template = CompanyTemplate(
+            metadata=TemplateMetadata(
+                name="Test",
+                company_type=CompanyType.CUSTOM,
+            ),
+            agents=(TemplateAgentConfig(role="Dev"),),
+        )
+        rendered = {
+            "company": {"type": "custom"},
+            "agents": [{"role": "Dev"}],
+            "departments": [],
+            "escalation_paths": [
+                {
+                    "from_department": "eng",
+                    "to_department": "qa",
+                    "condition": "critical bug",
+                },
+            ],
+        }
+        result = _build_config_dict(rendered, template, {})
+        assert "escalation_paths" in result
+        assert len(result["escalation_paths"]) == 1
 
 
 @pytest.mark.unit

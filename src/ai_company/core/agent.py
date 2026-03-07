@@ -47,7 +47,7 @@ class PersonalityConfig(BaseModel):
         conflict_approach: Conflict resolution approach.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     traits: tuple[NotBlankStr, ...] = Field(
         default=(),

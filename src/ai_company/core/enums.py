@@ -10,7 +10,7 @@ class SeniorityLevel(StrEnum):
     cost tier defined in ``ai_company.core.role_catalog.SENIORITY_INFO``.
     """
 
-    # DESIGN_SPEC Section 3.2 says "Intern/Junior" — collapsed to a single JUNIOR level.
+    # DESIGN_SPEC §3.2 lists "Intern/Junior" — collapsed to JUNIOR (approved deviation).
     JUNIOR = "junior"
     MID = "mid"
     SENIOR = "senior"
@@ -270,7 +270,8 @@ class ConflictApproach(StrEnum):
 class ActionType(StrEnum):
     """Convenience constants for common approval action types.
 
-    Fields use ``NotBlankStr`` for extensibility — custom values are valid.
+    Models typically use ``NotBlankStr`` for ``action_type`` fields, so these
+    are optional helper constants and custom string values remain valid.
     """
 
     CODE_MERGE = "code_merge"

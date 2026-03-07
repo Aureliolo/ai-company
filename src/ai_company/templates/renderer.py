@@ -227,6 +227,7 @@ def _parse_rendered_yaml(
 
     if not isinstance(data, dict) or "template" not in data:
         msg = f"Rendered template missing 'template' key: {source_name}"
+        logger.error(TEMPLATE_RENDER_YAML_ERROR, source_name=source_name, error=msg)
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -235,6 +236,7 @@ def _parse_rendered_yaml(
     template_data = data["template"]
     if not isinstance(template_data, dict):
         msg = f"Rendered template 'template' key must be a mapping: {source_name}"
+        logger.error(TEMPLATE_RENDER_YAML_ERROR, source_name=source_name, error=msg)
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -262,6 +264,7 @@ def _build_config_dict(
         company = {}
     if not isinstance(company, dict):
         msg = "Rendered template 'company' must be a mapping"
+        logger.error(TEMPLATE_RENDER_YAML_ERROR, error=msg)
         raise TemplateRenderError(msg)
 
     company_name = variables.get(
@@ -290,7 +293,7 @@ def _build_config_dict(
     }
 
     for key in ("workflow_handoffs", "escalation_paths"):
-        if rendered_data.get(key):
+        if key in rendered_data and rendered_data[key] is not None:
             result[key] = _validate_list(rendered_data, key)
 
     return result
@@ -363,8 +366,15 @@ def _expand_single_agent(
     idx: int,
     used_names: set[str],
 ) -> dict[str, Any]:
-    """Expand a single template agent dict."""
-    role = agent.get("role", "Agent")
+    """Expand a single template agent dict.
+
+    Steps: auto-name generation, name deduplication, personality
+    preset/inline resolution, and model tier assignment.
+    """
+    role = agent.get("role")
+    if not role:
+        msg = f"Agent at index {idx} is missing required 'role' field"
+        raise TemplateRenderError(msg)
     name = str(agent.get("name", "")).strip()
 
     if not name or name.startswith("{{"):
@@ -386,7 +396,13 @@ def _expand_single_agent(
 
     inline_personality = agent.get("personality")
     preset_name = agent.get("personality_preset")
-    if inline_personality and isinstance(inline_personality, dict):
+    if inline_personality is not None:
+        if not isinstance(inline_personality, dict):
+            msg = (
+                f"Personality for agent {name!r} must be a mapping, "
+                f"got {type(inline_personality).__name__}"
+            )
+            raise TemplateRenderError(msg)
         _validate_inline_personality(inline_personality, name)
         agent_dict["personality"] = inline_personality
     elif preset_name:
@@ -416,7 +432,12 @@ def _validate_inline_personality(
     """
     try:
         PersonalityConfig(**personality)
-    except Exception as exc:
+    except (ValidationError, TypeError) as exc:
+        logger.warning(
+            TEMPLATE_RENDER_VALIDATION_ERROR,
+            agent_name=agent_name,
+            error=str(exc),
+        )
         msg = f"Invalid inline personality for agent {agent_name!r}: {exc}"
         raise TemplateRenderError(msg) from exc
 
@@ -442,22 +463,30 @@ def _build_departments(
         except ValueError as exc:
             msg = f"Invalid department budget value: {exc}"
             raise TemplateRenderError(msg) from exc
+        dept_name = dept.get("name", "")
+        head_role = dept.get("head_role")
+        if not head_role:
+            logger.warning(
+                TEMPLATE_RENDER_VARIABLE_ERROR,
+                department=dept_name,
+                field="head_role",
+                detail="No head_role specified; using department name as placeholder",
+            )
+            head_role = dept_name or ""
         dept_dict: dict[str, Any] = {
-            "name": dept.get("name", ""),
-            "head": dept.get("head_role", dept.get("name", "")),
+            "name": dept_name,
+            "head": head_role,
             "budget_percent": budget_pct,
         }
         reporting_lines = dept.get("reporting_lines")
-        if reporting_lines:
+        if reporting_lines is not None:
             if not isinstance(reporting_lines, list):
-                dept_name = dept.get("name", "")
                 msg = f"Department {dept_name!r} 'reporting_lines' must be a list"
                 raise TemplateRenderError(msg)
             dept_dict["reporting_lines"] = reporting_lines
         policies = dept.get("policies")
-        if policies:
+        if policies is not None:
             if not isinstance(policies, dict):
-                dept_name = dept.get("name", "")
                 msg = f"Department {dept_name!r} 'policies' must be a mapping"
                 raise TemplateRenderError(msg)
             dept_dict["policies"] = policies

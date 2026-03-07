@@ -131,6 +131,16 @@ class DepartmentPolicies(BaseModel):
 # ── Cross-department workflow models ─────────────────────────────
 
 
+def _reject_same_department(from_dept: str, to_dept: str, label: str) -> None:
+    """Reject cross-department models where from and to are the same."""
+    if from_dept.strip().casefold() == to_dept.strip().casefold():
+        msg = (
+            f"{label} must be between different departments: "
+            f"{from_dept!r} == {to_dept!r}"
+        )
+        raise ValueError(msg)
+
+
 class WorkflowHandoff(BaseModel):
     """Cross-department handoff definition.
 
@@ -154,15 +164,11 @@ class WorkflowHandoff(BaseModel):
     @model_validator(mode="after")
     def _validate_different_departments(self) -> Self:
         """Reject handoffs within the same department."""
-        if (
-            self.from_department.strip().casefold()
-            == self.to_department.strip().casefold()
-        ):
-            msg = (
-                f"Handoff must be between different departments: "
-                f"{self.from_department!r} == {self.to_department!r}"
-            )
-            raise ValueError(msg)
+        _reject_same_department(
+            self.from_department,
+            self.to_department,
+            "Handoff",
+        )
         return self
 
 
@@ -191,15 +197,11 @@ class EscalationPath(BaseModel):
     @model_validator(mode="after")
     def _validate_different_departments(self) -> Self:
         """Reject escalations within the same department."""
-        if (
-            self.from_department.strip().casefold()
-            == self.to_department.strip().casefold()
-        ):
-            msg = (
-                f"Escalation must be between different departments: "
-                f"{self.from_department!r} == {self.to_department!r}"
-            )
-            raise ValueError(msg)
+        _reject_same_department(
+            self.from_department,
+            self.to_department,
+            "Escalation",
+        )
         return self
 
 

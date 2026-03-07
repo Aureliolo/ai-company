@@ -115,6 +115,17 @@ class TemplateAgentConfig(BaseModel):
         description="Department override",
     )
 
+    @model_validator(mode="after")
+    def _validate_personality_mutual_exclusion(self) -> Self:
+        """Reject specifying both personality_preset and inline personality."""
+        if self.personality_preset is not None and self.personality is not None:
+            msg = (
+                "Cannot specify both 'personality_preset' and 'personality'. "
+                "Use one or the other."
+            )
+            raise ValueError(msg)
+        return self
+
 
 class TemplateDepartmentConfig(BaseModel):
     """Department definition within a template.

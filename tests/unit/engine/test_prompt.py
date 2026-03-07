@@ -21,6 +21,7 @@ from ai_company.engine.errors import PromptBuildError
 from ai_company.engine.prompt import (
     DefaultTokenEstimator,
     SystemPrompt,
+    build_error_prompt,
     build_system_prompt,
 )
 from ai_company.engine.prompt_template import (
@@ -809,6 +810,43 @@ class TestBudgetExceeded:
                 agent=sample_agent_with_personality,
                 max_tokens=-1,
             )
+
+
+# ── TestBuildErrorPrompt ──────────────────────────────────────
+
+
+class TestBuildErrorPrompt:
+    """Tests for the build_error_prompt() fallback function."""
+
+    @pytest.mark.unit
+    def test_returns_existing_prompt_when_provided(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """When system_prompt is not None, it is returned as-is."""
+        existing = build_system_prompt(agent=sample_agent_with_personality)
+        result = build_error_prompt(
+            sample_agent_with_personality,
+            "override-id",
+            existing,
+        )
+        assert result is existing
+
+    @pytest.mark.unit
+    def test_returns_placeholder_when_no_prompt(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """When system_prompt is None, a placeholder is returned."""
+        result = build_error_prompt(
+            sample_agent_with_personality,
+            "custom-agent-id",
+            None,
+        )
+        assert result.content == ""
+        assert result.template_version == "error"
+        assert result.metadata["agent_id"] == "custom-agent-id"
+        assert result.metadata["name"] == sample_agent_with_personality.name
 
 
 # ── TestCatchAllExceptionWrapping ──────────────────────────────

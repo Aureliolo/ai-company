@@ -96,22 +96,25 @@ def compute_team_compatibility(
     Returns:
         Average pairwise score (1.0 for teams with fewer than 2 members).
     """
-    if len(members) <= 1:
+    team_size = len(members)
+    if team_size <= 1:
         logger.debug(
             PERSONALITY_TEAM_SCORE_COMPUTED,
-            team_size=len(members),
+            team_size=team_size,
             score=1.0,
         )
         return 1.0
 
-    pairs = list(itertools.combinations(members, 2))
-    total = sum(compute_compatibility(a, b) for a, b in pairs)
-    result = total / len(pairs)
+    pair_count = team_size * (team_size - 1) // 2
+    total = sum(
+        compute_compatibility(a, b) for a, b in itertools.combinations(members, 2)
+    )
+    result = total / pair_count
 
     logger.debug(
         PERSONALITY_TEAM_SCORE_COMPUTED,
-        team_size=len(members),
-        pair_count=len(pairs),
+        team_size=team_size,
+        pair_count=pair_count,
         score=result,
     )
     return result
@@ -125,7 +128,7 @@ def _big_five_score(a: PersonalityConfig, b: PersonalityConfig) -> float:
 
     Openness, conscientiousness, agreeableness, stress_response benefit
     from similarity. Extraversion benefits from moderate difference
-    (balanced teams).
+    (optimal difference: 0.3, scored via tent function).
     """
     # Similarity: 1.0 - |diff|
     openness_sim = 1.0 - abs(a.openness - b.openness)
