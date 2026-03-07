@@ -9,3 +9,7 @@ BUDGET_TOTAL_COST_QUERIED: Final[str] = "budget.total_cost.queried"
 BUDGET_AGENT_COST_QUERIED: Final[str] = "budget.agent_cost.queried"
 BUDGET_TIME_RANGE_INVALID: Final[str] = "budget.time_range.invalid"
 BUDGET_DEPARTMENT_RESOLVE_FAILED: Final[str] = "budget.department.resolve_failed"
+
+BUDGET_CATEGORY_BREAKDOWN_QUERIED: Final[str] = "budget.category_breakdown.queried"
+BUDGET_ORCHESTRATION_RATIO_QUERIED: Final[str] = "budget.orchestration_ratio.queried"
+BUDGET_ORCHESTRATION_RATIO_ALERT: Final[str] = "budget.orchestration_ratio.alert"

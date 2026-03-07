@@ -13,6 +13,13 @@ import math
 from collections import defaultdict
 from typing import TYPE_CHECKING, NamedTuple
 
+from ai_company.budget.call_category import OrchestrationAlertLevel
+from ai_company.budget.category_analytics import (
+    CategoryBreakdown,
+    OrchestrationRatio,
+    build_category_breakdown,
+    compute_orchestration_ratio,
+)
 from ai_company.budget.enums import BudgetAlertLevel
 from ai_company.budget.spending_summary import (
     AgentSpending,
@@ -24,7 +31,10 @@ from ai_company.constants import BUDGET_ROUNDING_PRECISION
 from ai_company.observability import get_logger
 from ai_company.observability.events.budget import (
     BUDGET_AGENT_COST_QUERIED,
+    BUDGET_CATEGORY_BREAKDOWN_QUERIED,
     BUDGET_DEPARTMENT_RESOLVE_FAILED,
+    BUDGET_ORCHESTRATION_RATIO_ALERT,
+    BUDGET_ORCHESTRATION_RATIO_QUERIED,
     BUDGET_RECORD_ADDED,
     BUDGET_SUMMARY_BUILT,
     BUDGET_TIME_RANGE_INVALID,
@@ -37,6 +47,9 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from ai_company.budget.config import BudgetConfig
+    from ai_company.budget.coordination_config import (
+        OrchestrationAlertThresholds,
+    )
     from ai_company.budget.cost_record import CostRecord
 
 logger = get_logger(__name__)
@@ -224,6 +237,97 @@ class CostTracker:
 
         return summary
 
+    async def get_category_breakdown(
+        self,
+        *,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> CategoryBreakdown:
+        """Build a per-category cost breakdown.
+
+        Args:
+            agent_id: Filter by agent.
+            task_id: Filter by task.
+            start: Inclusive lower bound on timestamp.
+            end: Exclusive upper bound on timestamp.
+
+        Returns:
+            Category breakdown of cost, tokens, and call counts.
+
+        Raises:
+            ValueError: If ``start >= end``.
+        """
+        _validate_time_range(start, end)
+        logger.debug(
+            BUDGET_CATEGORY_BREAKDOWN_QUERIED,
+            agent_id=agent_id,
+            task_id=task_id,
+            start=start,
+            end=end,
+        )
+        snapshot = await self._snapshot()
+        filtered = _filter_records(
+            snapshot,
+            agent_id=agent_id,
+            task_id=task_id,
+            start=start,
+            end=end,
+        )
+        return build_category_breakdown(filtered)
+
+    async def get_orchestration_ratio(
+        self,
+        *,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        thresholds: OrchestrationAlertThresholds | None = None,
+    ) -> OrchestrationRatio:
+        """Compute the orchestration overhead ratio.
+
+        Args:
+            agent_id: Filter by agent.
+            task_id: Filter by task.
+            start: Inclusive lower bound on timestamp.
+            end: Exclusive upper bound on timestamp.
+            thresholds: Optional custom alert thresholds.
+
+        Returns:
+            Orchestration ratio with alert level.
+
+        Raises:
+            ValueError: If ``start >= end``.
+        """
+        breakdown = await self.get_category_breakdown(
+            agent_id=agent_id,
+            task_id=task_id,
+            start=start,
+            end=end,
+        )
+        result = compute_orchestration_ratio(
+            breakdown,
+            thresholds=thresholds,
+        )
+        logger.debug(
+            BUDGET_ORCHESTRATION_RATIO_QUERIED,
+            agent_id=agent_id,
+            task_id=task_id,
+            ratio=result.ratio,
+            alert_level=result.alert_level.value,
+        )
+        if result.alert_level != OrchestrationAlertLevel.NORMAL:
+            logger.warning(
+                BUDGET_ORCHESTRATION_RATIO_ALERT,
+                agent_id=agent_id,
+                task_id=task_id,
+                ratio=result.ratio,
+                alert_level=result.alert_level.value,
+            )
+        return result
+
     # ── Private helpers ──────────────────────────────────────────────
 
     async def _snapshot(self) -> tuple[CostRecord, ...]:
@@ -330,10 +434,11 @@ def _filter_records(
     records: Sequence[CostRecord],
     *,
     agent_id: str | None = None,
+    task_id: str | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
 ) -> tuple[CostRecord, ...]:
-    """Filter records by agent and/or time range.
+    """Filter records by agent, task, and/or time range.
 
     Time semantics: ``start <= timestamp < end``.
     """
@@ -341,6 +446,7 @@ def _filter_records(
         r
         for r in records
         if (agent_id is None or r.agent_id == agent_id)
+        and (task_id is None or r.task_id == task_id)
         and (start is None or r.timestamp >= start)
         and (end is None or r.timestamp < end)
     )

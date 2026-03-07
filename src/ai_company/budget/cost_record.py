@@ -8,6 +8,7 @@ from typing import Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from ai_company.budget.call_category import LLMCallCategory  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
@@ -27,9 +28,11 @@ class CostRecord(BaseModel):
         output_tokens: Output token count.
         cost_usd: Cost in USD.
         timestamp: Timezone-aware timestamp of the API call.
+        call_category: Optional LLM call category for coordination
+            metrics (productive, coordination, system).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr = Field(description="Agent identifier")
     task_id: NotBlankStr = Field(description="Task identifier")
@@ -39,6 +42,10 @@ class CostRecord(BaseModel):
     output_tokens: int = Field(ge=0, description="Output token count")
     cost_usd: float = Field(ge=0.0, description="Cost in USD")
     timestamp: AwareDatetime = Field(description="Timestamp of the API call")
+    call_category: LLMCallCategory | None = Field(
+        default=None,
+        description="LLM call category (productive, coordination, system)",
+    )
 
     @model_validator(mode="after")
     def _validate_token_consistency(self) -> Self:

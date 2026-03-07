@@ -26,4 +26,5 @@ def default_config_dict() -> dict[str, Any]:
         "routing": {},
         "logging": None,
         "graceful_shutdown": {},
+        "coordination_metrics": {},
     }

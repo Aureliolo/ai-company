@@ -28,6 +28,13 @@ from ai_company.engine.loop_protocol import (
     TurnRecord,
 )
 from ai_company.engine.metrics import TaskCompletionMetrics
+from ai_company.engine.plan_execute_loop import PlanExecuteLoop
+from ai_company.engine.plan_models import (
+    ExecutionPlan,
+    PlanExecuteConfig,
+    PlanStep,
+    StepStatus,
+)
 from ai_company.engine.prompt import (
     DefaultTokenEstimator,
     PromptTokenEstimator,
@@ -65,11 +72,15 @@ __all__ = [
     "DefaultTokenEstimator",
     "EngineError",
     "ExecutionLoop",
+    "ExecutionPlan",
     "ExecutionResult",
     "ExecutionStateError",
     "FailAndReassignStrategy",
     "LoopExecutionError",
     "MaxTurnsExceededError",
+    "PlanExecuteConfig",
+    "PlanExecuteLoop",
+    "PlanStep",
     "PromptBuildError",
     "PromptTokenEstimator",
     "ReactLoop",
@@ -80,6 +91,7 @@ __all__ = [
     "ShutdownResult",
     "ShutdownStrategy",
     "StatusTransition",
+    "StepStatus",
     "SystemPrompt",
     "TaskCompletionMetrics",
     "TaskExecution",
