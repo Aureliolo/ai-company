@@ -8,7 +8,7 @@ validation shared by all tools.
 """
 
 from pathlib import Path  # noqa: TC003 — used at runtime
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from ai_company.observability import get_logger
 from ai_company.observability.events.git import (
@@ -17,6 +17,9 @@ from ai_company.observability.events.git import (
 )
 from ai_company.tools._git_base import _BaseGitTool
 from ai_company.tools.base import ToolExecutionResult
+
+if TYPE_CHECKING:
+    from ai_company.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
 
@@ -62,11 +65,17 @@ class GitStatusTool(_BaseGitTool):
     porcelain formatting.
     """
 
-    def __init__(self, *, workspace: Path) -> None:
+    def __init__(
+        self,
+        *,
+        workspace: Path,
+        sandbox: SandboxBackend | None = None,
+    ) -> None:
         """Initialize the git_status tool.
 
         Args:
             workspace: Absolute path to the workspace root.
+            sandbox: Optional sandbox backend for subprocess isolation.
         """
         super().__init__(
             name="git_status",
@@ -91,6 +100,7 @@ class GitStatusTool(_BaseGitTool):
                 "additionalProperties": False,
             },
             workspace=workspace,
+            sandbox=sandbox,
         )
 
     async def execute(
@@ -167,11 +177,17 @@ class GitLogTool(_BaseGitTool):
 
     _MAX_COUNT_LIMIT: int = 100
 
-    def __init__(self, *, workspace: Path) -> None:
+    def __init__(
+        self,
+        *,
+        workspace: Path,
+        sandbox: SandboxBackend | None = None,
+    ) -> None:
         """Initialize the git_log tool.
 
         Args:
             workspace: Absolute path to the workspace root.
+            sandbox: Optional sandbox backend for subprocess isolation.
         """
         super().__init__(
             name="git_log",
@@ -181,6 +197,7 @@ class GitLogTool(_BaseGitTool):
             ),
             parameters_schema=_GIT_LOG_SCHEMA,
             workspace=workspace,
+            sandbox=sandbox,
         )
 
     def _build_filter_args(
@@ -260,11 +277,17 @@ class GitDiffTool(_BaseGitTool):
     staged changes view, stat summary, and path filtering.
     """
 
-    def __init__(self, *, workspace: Path) -> None:
+    def __init__(
+        self,
+        *,
+        workspace: Path,
+        sandbox: SandboxBackend | None = None,
+    ) -> None:
         """Initialize the git_diff tool.
 
         Args:
             workspace: Absolute path to the workspace root.
+            sandbox: Optional sandbox backend for subprocess isolation.
         """
         super().__init__(
             name="git_diff",
@@ -303,6 +326,7 @@ class GitDiffTool(_BaseGitTool):
                 "additionalProperties": False,
             },
             workspace=workspace,
+            sandbox=sandbox,
         )
 
     async def execute(  # noqa: C901
@@ -367,11 +391,17 @@ class GitBranchTool(_BaseGitTool):
 
     _ACTIONS_REQUIRING_NAME = frozenset({"create", "switch", "delete"})
 
-    def __init__(self, *, workspace: Path) -> None:
+    def __init__(
+        self,
+        *,
+        workspace: Path,
+        sandbox: SandboxBackend | None = None,
+    ) -> None:
         """Initialize the git_branch tool.
 
         Args:
             workspace: Absolute path to the workspace root.
+            sandbox: Optional sandbox backend for subprocess isolation.
         """
         super().__init__(
             name="git_branch",
@@ -415,6 +445,7 @@ class GitBranchTool(_BaseGitTool):
                 "additionalProperties": False,
             },
             workspace=workspace,
+            sandbox=sandbox,
         )
 
     async def _list_branches(self) -> ToolExecutionResult:
@@ -494,11 +525,17 @@ class GitCommitTool(_BaseGitTool):
     creates a commit with the provided message.
     """
 
-    def __init__(self, *, workspace: Path) -> None:
+    def __init__(
+        self,
+        *,
+        workspace: Path,
+        sandbox: SandboxBackend | None = None,
+    ) -> None:
         """Initialize the git_commit tool.
 
         Args:
             workspace: Absolute path to the workspace root.
+            sandbox: Optional sandbox backend for subprocess isolation.
         """
         super().__init__(
             name="git_commit",
@@ -529,6 +566,7 @@ class GitCommitTool(_BaseGitTool):
                 "additionalProperties": False,
             },
             workspace=workspace,
+            sandbox=sandbox,
         )
 
     async def execute(
@@ -581,11 +619,17 @@ class GitCloneTool(_BaseGitTool):
     rejected.
     """
 
-    def __init__(self, *, workspace: Path) -> None:
+    def __init__(
+        self,
+        *,
+        workspace: Path,
+        sandbox: SandboxBackend | None = None,
+    ) -> None:
         """Initialize the git_clone tool.
 
         Args:
             workspace: Absolute path to the workspace root.
+            sandbox: Optional sandbox backend for subprocess isolation.
         """
         super().__init__(
             name="git_clone",
@@ -618,6 +662,7 @@ class GitCloneTool(_BaseGitTool):
                 "additionalProperties": False,
             },
             workspace=workspace,
+            sandbox=sandbox,
         )
 
     async def execute(

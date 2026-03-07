@@ -89,6 +89,7 @@ class TestEventConstants:
             "provider",
             "role",
             "routing",
+            "sandbox",
             "task",
             "template",
             "tool",
