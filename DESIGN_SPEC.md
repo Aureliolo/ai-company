@@ -2353,6 +2353,7 @@ ai-company/
 │       │   ├── channel.py          # Channel model
 │       │   ├── config.py           # Communication config
 │       │   ├── delegation/         # Hierarchical delegation subsystem
+│       │   │   ├── __init__.py   # Package exports
 │       │   │   ├── authority.py   # AuthorityValidator + AuthorityCheckResult
 │       │   │   ├── hierarchy.py   # HierarchyResolver (org hierarchy from Company)
 │       │   │   ├── models.py      # DelegationRequest, DelegationResult, DelegationRecord
@@ -2362,13 +2363,14 @@ ai-company/
 │       │   ├── errors.py           # Communication + delegation error hierarchy
 │       │   ├── handler.py          # MessageHandler protocol, FunctionHandler, HandlerRegistration
 │       │   ├── loop_prevention/    # Delegation loop prevention mechanisms
+│       │   │   ├── __init__.py   # Package exports
 │       │   │   ├── _pair_key.py   # Canonical agent-pair key utility
 │       │   │   ├── ancestry.py    # Ancestry cycle detection (pure function)
-│       │   │   ├── circuit_breaker.py # DelegationCircuitBreaker (per-pair)
+│       │   │   ├── circuit_breaker.py # DelegationCircuitBreaker, CircuitBreakerState
 │       │   │   ├── dedup.py       # DelegationDeduplicator (time-windowed)
 │       │   │   ├── depth.py       # Max delegation depth check (pure function)
 │       │   │   ├── guard.py       # DelegationGuard (orchestrates all mechanisms)
-│       │   │   ├── models.py      # GuardCheckOutcome, CircuitBreakerState
+│       │   │   ├── models.py      # GuardCheckOutcome
 │       │   │   └── rate_limit.py  # DelegationRateLimiter (per-pair)
 │       │   ├── message.py          # Message model
 │       │   ├── messenger.py        # AgentMessenger per-agent facade

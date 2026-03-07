@@ -73,6 +73,14 @@ class DelegationCircuitBreaker:
         self,
         delegator_id: str,
         delegatee_id: str,
+    ) -> _PairState | None:
+        key = pair_key(delegator_id, delegatee_id)
+        return self._pairs.get(key)
+
+    def _get_or_create_pair(
+        self,
+        delegator_id: str,
+        delegatee_id: str,
     ) -> _PairState:
         key = pair_key(delegator_id, delegatee_id)
         return self._pairs.setdefault(key, _PairState())
@@ -95,19 +103,21 @@ class DelegationCircuitBreaker:
             Current state of the circuit breaker.
         """
         pair = self._get_pair(delegator_id, delegatee_id)
+        if pair is None:
+            return CircuitBreakerState.CLOSED
         if pair.opened_at is not None:
             elapsed = self._clock() - pair.opened_at
             if elapsed < self._config.cooldown_seconds:
                 return CircuitBreakerState.OPEN
-            # Cooldown expired: reset
+            # Cooldown expired: evict the stale entry
+            key = pair_key(delegator_id, delegatee_id)
+            del self._pairs[key]
             logger.info(
                 DELEGATION_LOOP_CIRCUIT_RESET,
                 delegator=delegator_id,
                 delegatee=delegatee_id,
                 cooldown_seconds=self._config.cooldown_seconds,
             )
-            pair.bounce_count = 0
-            pair.opened_at = None
         return CircuitBreakerState.CLOSED
 
     def check(
@@ -142,17 +152,18 @@ class DelegationCircuitBreaker:
             )
         return GuardCheckOutcome(passed=True, mechanism=_MECHANISM)
 
-    def record_bounce(
+    def record_delegation(
         self,
         delegator_id: str,
         delegatee_id: str,
     ) -> None:
-        """Record a delegation bounce for the pair.
+        """Record a delegation event for the pair.
 
-        If the bounce count reaches the threshold, opens the circuit.
-        If the circuit was previously open and the cooldown has expired,
-        the bounce count is reset before recording.  If the circuit is
-        already open (cooldown not yet expired), this call is a no-op.
+        Each delegation between a pair increments the bounce counter.
+        Back-and-forth patterns trip the breaker fastest because the
+        key is direction-agnostic.  If the count reaches the threshold,
+        the circuit opens.  If the circuit is already open (cooldown not
+        yet expired), this call is a no-op.
 
         Args:
             delegator_id: First agent ID.
@@ -161,7 +172,7 @@ class DelegationCircuitBreaker:
         state = self.get_state(delegator_id, delegatee_id)
         if state is CircuitBreakerState.OPEN:
             return
-        pair = self._get_pair(delegator_id, delegatee_id)
+        pair = self._get_or_create_pair(delegator_id, delegatee_id)
         pair.bounce_count += 1
         if pair.bounce_count >= self._config.bounce_threshold:
             pair.opened_at = self._clock()

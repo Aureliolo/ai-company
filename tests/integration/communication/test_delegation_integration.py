@@ -158,7 +158,7 @@ class TestFullDelegationFlow:
         assert sub1.status is TaskStatus.CREATED
         assert "Focus on backend API" in sub1.description
 
-        # CTO → Dev (different title to avoid dedup)
+        # CTO → Dev (different task ID avoids dedup naturally)
         sub1_retitled = Task(
             id=sub1.id,
             title="Build auth API endpoints",

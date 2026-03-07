@@ -20,23 +20,23 @@ class TestCheckAncestry:
         result = check_ancestry(("a", "b", "c"), "d")
         assert result.passed is True
 
-    def test_delegatee_in_chain_fails(self) -> None:
-        result = check_ancestry(("a", "b", "c"), "b")
+    @pytest.mark.parametrize(
+        ("chain", "delegatee"),
+        [
+            (("a", "b", "c"), "b"),
+            (("root", "mid"), "root"),
+            (("a", "b"), "b"),
+            (("x",), "x"),
+        ],
+        ids=["mid-chain", "root", "last-in-chain", "single-element"],
+    )
+    def test_delegatee_in_chain_fails(
+        self, chain: tuple[str, ...], delegatee: str
+    ) -> None:
+        result = check_ancestry(chain, delegatee)
         assert result.passed is False
         assert result.mechanism == "ancestry"
-        assert "'b'" in result.message
-
-    def test_delegatee_is_root_fails(self) -> None:
-        result = check_ancestry(("root", "mid"), "root")
-        assert result.passed is False
-
-    def test_delegatee_is_last_in_chain_fails(self) -> None:
-        result = check_ancestry(("a", "b"), "b")
-        assert result.passed is False
-
-    def test_single_element_chain_match_fails(self) -> None:
-        result = check_ancestry(("x",), "x")
-        assert result.passed is False
+        assert f"'{delegatee}'" in result.message
 
     def test_single_element_chain_no_match_passes(self) -> None:
         result = check_ancestry(("x",), "y")

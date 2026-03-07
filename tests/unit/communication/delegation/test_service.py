@@ -232,7 +232,7 @@ class TestDelegationServiceAuthority:
 @pytest.mark.unit
 class TestDelegationServiceLoopPrevention:
     def test_ancestry_blocked(self) -> None:
-        service, _ = _build_service(allow_skip=True)
+        service, _ = _build_service(enforce_chain=False)
         # First delegation: ceo -> cto
         task1 = _make_task()
         ceo = _make_agent("ceo", "ceo")
@@ -257,7 +257,7 @@ class TestDelegationServiceLoopPrevention:
         r2 = service.delegate(req2, cto, dev)
         assert r2.success is True
 
-        # Third: dev tries to delegate back to ceo → blocked
+        # Third: dev tries to delegate back to ceo → blocked by ancestry
         sub2 = r2.delegated_task
         assert sub2 is not None
         req3 = DelegationRequest(
@@ -265,10 +265,9 @@ class TestDelegationServiceLoopPrevention:
             delegatee_id="ceo",
             task=sub2,
         )
-        # Chain of command won't matter here — ancestry blocks first
         r3 = service.delegate(req3, dev, ceo)
-        # Either authority or ancestry blocks it
         assert r3.success is False
+        assert r3.blocked_by == "ancestry"
 
     def test_depth_exceeded(self) -> None:
         service, _ = _build_service(max_depth=1)
@@ -297,7 +296,7 @@ class TestDelegationServiceLoopPrevention:
         # First succeeds
         r1 = service.delegate(request, delegator, delegatee)
         assert r1.success is True
-        # Second is dedup blocked (same delegator, delegatee, title)
+        # Second is dedup blocked (same delegator, delegatee, task ID)
         r2 = service.delegate(request, delegator, delegatee)
         assert r2.success is False
         assert r2.blocked_by == "dedup"
@@ -325,7 +324,7 @@ class TestDelegationServiceMultiHop:
         assert sub1 is not None
         assert sub1.delegation_chain == ("ceo",)
 
-        # CTO → Dev (using sub-task, different title to avoid dedup)
+        # CTO → Dev (using sub-task, different task ID avoids dedup)
         sub1_new_title = Task(
             id=sub1.id,
             title="Build feature X - backend",
@@ -385,6 +384,55 @@ class TestDelegationServiceMultiHop:
         assert len(trail) == 2
         assert trail[0].delegator_id == "ceo"
         assert trail[1].delegator_id == "cto"
+
+
+@pytest.mark.unit
+class TestDelegationServiceIdentityValidation:
+    def test_delegator_id_mismatch_raises(self) -> None:
+        service, _ = _build_service()
+        task = _make_task()
+        delegatee = _make_agent("cto", "cto")
+        request = DelegationRequest(
+            delegator_id="ceo",
+            delegatee_id="cto",
+            task=task,
+        )
+        wrong_delegator = _make_agent("imposter", "imposter")
+        with pytest.raises(ValueError, match="delegator_id"):
+            service.delegate(request, wrong_delegator, delegatee)
+
+    def test_delegatee_id_mismatch_raises(self) -> None:
+        service, _ = _build_service()
+        task = _make_task()
+        delegator = _make_agent("ceo", "ceo")
+        request = DelegationRequest(
+            delegator_id="ceo",
+            delegatee_id="cto",
+            task=task,
+        )
+        wrong_delegatee = _make_agent("imposter", "imposter")
+        with pytest.raises(ValueError, match="delegatee_id"):
+            service.delegate(request, delegator, wrong_delegatee)
+
+
+@pytest.mark.unit
+class TestDelegationServiceConstraints:
+    def test_constraints_appended_to_description(self) -> None:
+        service, _ = _build_service()
+        task = _make_task()
+        delegator = _make_agent("ceo", "ceo")
+        delegatee = _make_agent("cto", "cto")
+        request = DelegationRequest(
+            delegator_id="ceo",
+            delegatee_id="cto",
+            task=task,
+            constraints=("no-external-deps", "max-2-files"),
+        )
+        result = service.delegate(request, delegator, delegatee)
+        sub = result.delegated_task
+        assert sub is not None
+        assert "- no-external-deps" in sub.description
+        assert "- max-2-files" in sub.description
 
 
 @pytest.mark.unit

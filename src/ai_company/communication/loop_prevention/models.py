@@ -33,7 +33,7 @@ class GuardCheckOutcome(BaseModel):
         if self.passed and self.message:
             msg = "message must be empty when passed is True"
             raise ValueError(msg)
-        if not self.passed and not self.message:
+        if not self.passed and not self.message.strip():
             msg = "message is required when passed is False"
             raise ValueError(msg)
         return self

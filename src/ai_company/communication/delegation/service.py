@@ -3,6 +3,8 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from ai_company.communication.delegation.authority import (  # noqa: TC001
     AuthorityValidator,
 )
@@ -14,6 +16,7 @@ from ai_company.communication.delegation.models import (
     DelegationRequest,
     DelegationResult,
 )
+from ai_company.communication.errors import DelegationError
 from ai_company.communication.loop_prevention.guard import (  # noqa: TC001
     DelegationGuard,
 )
@@ -22,7 +25,9 @@ from ai_company.core.task import Task
 from ai_company.observability import get_logger
 from ai_company.observability.events.delegation import (
     DELEGATION_CREATED,
+    DELEGATION_LOOP_ESCALATED,
     DELEGATION_REQUESTED,
+    DELEGATION_RESULT_SENT,
 )
 
 logger = get_logger(__name__)
@@ -75,7 +80,25 @@ class DelegationService:
 
         Returns:
             Result indicating success or rejection with reason.
+
+        Raises:
+            ValueError: If request IDs do not match identity objects.
+            DelegationError: If sub-task construction fails.
         """
+        # 0. Identity consistency check
+        if request.delegator_id != delegator.name:
+            msg = (
+                f"request.delegator_id {request.delegator_id!r} does not "
+                f"match delegator.name {delegator.name!r}"
+            )
+            raise ValueError(msg)
+        if request.delegatee_id != delegatee.name:
+            msg = (
+                f"request.delegatee_id {request.delegatee_id!r} does not "
+                f"match delegatee.name {delegatee.name!r}"
+            )
+            raise ValueError(msg)
+
         logger.info(
             DELEGATION_REQUESTED,
             delegator=request.delegator_id,
@@ -97,9 +120,10 @@ class DelegationService:
             delegation_chain=request.task.delegation_chain,
             delegator_id=request.delegator_id,
             delegatee_id=request.delegatee_id,
-            task_title=request.task.title,
+            task_id=request.task.id,
         )
         if not guard_outcome.passed:
+            self._escalate_loop_detection(request, guard_outcome.mechanism)
             return DelegationResult(
                 success=False,
                 rejection_reason=guard_outcome.message,
@@ -113,7 +137,7 @@ class DelegationService:
         self._guard.record_delegation(
             request.delegator_id,
             request.delegatee_id,
-            request.task.title,
+            request.task.id,
         )
         record = DelegationRecord(
             delegation_id=str(uuid4()),
@@ -134,45 +158,105 @@ class DelegationService:
             delegated_task_id=sub_task.id,
         )
 
-        return DelegationResult(
+        result = DelegationResult(
             success=True,
             delegated_task=sub_task,
         )
+        logger.debug(
+            DELEGATION_RESULT_SENT,
+            delegator=request.delegator_id,
+            delegatee=request.delegatee_id,
+            success=True,
+        )
+        return result
 
     def _create_sub_task(self, request: DelegationRequest) -> Task:
         """Create a new sub-task from a delegation request.
 
         The sub-task inherits the original task's properties but gets
         a new ID, parent reference, extended delegation chain, and
-        CREATED status.
+        CREATED status.  Constraints and refinement are appended to
+        the description so the delegatee receives full context.
 
         Args:
             request: The delegation request.
 
         Returns:
             New Task with delegation metadata.
+
+        Raises:
+            DelegationError: If Task construction fails.
         """
         original = request.task
         new_chain = (*original.delegation_chain, request.delegator_id)
         description = original.description
         if request.refinement:
-            description = (
-                f"{original.description}\n\nDelegation context: {request.refinement}"
-            )
+            description = f"{description}\n\nDelegation context: {request.refinement}"
+        if request.constraints:
+            constraints_text = "\n".join(f"- {c}" for c in request.constraints)
+            description = f"{description}\n\nConstraints:\n{constraints_text}"
 
-        return Task(
-            id=f"del-{uuid4().hex[:12]}",
-            title=original.title,
-            description=description,
-            type=original.type,
-            priority=original.priority,
-            project=original.project,
-            created_by=request.delegator_id,
-            parent_task_id=original.id,
-            delegation_chain=new_chain,
-            estimated_complexity=original.estimated_complexity,
-            budget_limit=original.budget_limit,
-            deadline=original.deadline,
+        try:
+            return Task(
+                id=f"del-{uuid4().hex[:12]}",
+                title=original.title,
+                description=description,
+                type=original.type,
+                priority=original.priority,
+                project=original.project,
+                created_by=request.delegator_id,
+                parent_task_id=original.id,
+                delegation_chain=new_chain,
+                estimated_complexity=original.estimated_complexity,
+                budget_limit=original.budget_limit,
+                deadline=original.deadline,
+                max_retries=original.max_retries,
+            )
+        except ValidationError as exc:
+            logger.exception(
+                "delegation.sub_task_creation_failed",
+                delegator=request.delegator_id,
+                delegatee=request.delegatee_id,
+                original_task_id=original.id,
+                error=str(exc),
+            )
+            msg = (
+                f"Failed to create sub-task for delegation "
+                f"from {request.delegator_id!r} to "
+                f"{request.delegatee_id!r}"
+            )
+            raise DelegationError(
+                msg,
+                context={
+                    "delegator_id": request.delegator_id,
+                    "delegatee_id": request.delegatee_id,
+                    "original_task_id": original.id,
+                },
+            ) from exc
+
+    def _escalate_loop_detection(
+        self,
+        request: DelegationRequest,
+        mechanism: str,
+    ) -> None:
+        """Log escalation when a loop prevention mechanism blocks delegation.
+
+        Looks up the delegator's supervisor and logs the event so that
+        the supervisor can be notified (notification delivery is an
+        async concern handled elsewhere).
+
+        Args:
+            request: The blocked delegation request.
+            mechanism: Name of the mechanism that blocked.
+        """
+        supervisor = self._hierarchy.get_supervisor(request.delegator_id)
+        logger.warning(
+            DELEGATION_LOOP_ESCALATED,
+            delegator=request.delegator_id,
+            delegatee=request.delegatee_id,
+            task_id=request.task.id,
+            mechanism=mechanism,
+            supervisor=supervisor,
         )
 
     def get_audit_trail(self) -> tuple[DelegationRecord, ...]:

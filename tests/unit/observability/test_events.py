@@ -21,6 +21,15 @@ from ai_company.observability.events.config import (
     CONFIG_PARSE_FAILED,
     CONFIG_VALIDATION_FAILED,
 )
+from ai_company.observability.events.delegation import (
+    DELEGATION_CREATED,
+    DELEGATION_HIERARCHY_BUILT,
+    DELEGATION_HIERARCHY_CYCLE,
+    DELEGATION_LOOP_BLOCKED,
+    DELEGATION_LOOP_ESCALATED,
+    DELEGATION_REQUESTED,
+    DELEGATION_RESULT_SENT,
+)
 from ai_company.observability.events.execution import EXECUTION_TASK_CREATED
 from ai_company.observability.events.git import (
     GIT_CLONE_URL_REJECTED,
@@ -182,6 +191,15 @@ class TestEventConstants:
         assert COMM_MESSAGE_PUBLISHED == "communication.message.published"
         assert COMM_HANDLER_DEREGISTER_MISS == "communication.handler.deregister_miss"
         assert COMM_DISPATCH_NO_DISPATCHER == "communication.dispatch.no_dispatcher"
+
+    def test_delegation_events_exist(self) -> None:
+        assert DELEGATION_REQUESTED == "delegation.requested"
+        assert DELEGATION_CREATED == "delegation.created"
+        assert DELEGATION_RESULT_SENT == "delegation.result_sent"
+        assert DELEGATION_LOOP_BLOCKED == "delegation.loop.blocked"
+        assert DELEGATION_LOOP_ESCALATED == "delegation.loop.escalated"
+        assert DELEGATION_HIERARCHY_BUILT == "delegation.hierarchy.built"
+        assert DELEGATION_HIERARCHY_CYCLE == "delegation.hierarchy.cycle"
 
     def test_tool_events_exist(self) -> None:
         assert TOOL_INVOKE_START == "tool.invoke.start"

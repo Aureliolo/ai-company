@@ -84,6 +84,15 @@ class TestDelegationRequest:
                 task=task,
             )
 
+    def test_self_delegation_rejected(self) -> None:
+        task = _make_task()
+        with pytest.raises(ValidationError, match="must differ"):
+            DelegationRequest(
+                delegator_id="cto",
+                delegatee_id="cto",
+                task=task,
+            )
+
 
 @pytest.mark.unit
 class TestDelegationResult:
@@ -140,6 +149,15 @@ class TestDelegationResult:
     def test_failure_without_reason_rejected(self) -> None:
         with pytest.raises(ValidationError, match="rejection_reason is required"):
             DelegationResult(success=False)
+
+    def test_failure_with_task_rejected(self) -> None:
+        task = _make_task()
+        with pytest.raises(ValidationError, match="delegated_task must be None"):
+            DelegationResult(
+                success=False,
+                delegated_task=task,
+                rejection_reason="blocked",
+            )
 
 
 @pytest.mark.unit

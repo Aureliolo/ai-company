@@ -34,7 +34,7 @@ class TestDelegationCircuitBreaker:
 
         cb = DelegationCircuitBreaker(config, clock=clock)
         for _ in range(3):
-            cb.record_bounce("a", "b")
+            cb.record_delegation("a", "b")
         assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
 
     def test_check_fails_when_open(self) -> None:
@@ -46,7 +46,7 @@ class TestDelegationCircuitBreaker:
 
         cb = DelegationCircuitBreaker(config, clock=clock)
         for _ in range(3):
-            cb.record_bounce("a", "b")
+            cb.record_delegation("a", "b")
         result = cb.check("a", "b")
         assert result.passed is False
         assert result.mechanism == "circuit_breaker"
@@ -60,7 +60,7 @@ class TestDelegationCircuitBreaker:
 
         cb = DelegationCircuitBreaker(config, clock=clock)
         for _ in range(3):
-            cb.record_bounce("a", "b")
+            cb.record_delegation("a", "b")
         assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
 
         clock_time = 401.0  # 301s later
@@ -77,21 +77,38 @@ class TestDelegationCircuitBreaker:
             return clock_time
 
         cb = DelegationCircuitBreaker(config, clock=clock)
-        cb.record_bounce("b", "a")
-        cb.record_bounce("a", "b")
+        cb.record_delegation("b", "a")
+        cb.record_delegation("a", "b")
         assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
 
     def test_below_threshold_stays_closed(self) -> None:
         config = CircuitBreakerConfig(bounce_threshold=3, cooldown_seconds=300)
         cb = DelegationCircuitBreaker(config)
-        cb.record_bounce("a", "b")
-        cb.record_bounce("a", "b")
+        cb.record_delegation("a", "b")
+        cb.record_delegation("a", "b")
         assert cb.get_state("a", "b") is CircuitBreakerState.CLOSED
 
     def test_different_pair_independent(self) -> None:
         config = CircuitBreakerConfig(bounce_threshold=2, cooldown_seconds=60)
         cb = DelegationCircuitBreaker(config)
-        cb.record_bounce("a", "b")
-        cb.record_bounce("a", "b")
+        cb.record_delegation("a", "b")
+        cb.record_delegation("a", "b")
         assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
         assert cb.get_state("a", "c") is CircuitBreakerState.CLOSED
+
+    def test_record_delegation_noop_when_open(self) -> None:
+        """Recording while circuit is open does not affect the state."""
+        config = CircuitBreakerConfig(bounce_threshold=2, cooldown_seconds=300)
+        clock_time = 100.0
+
+        def clock() -> float:
+            return clock_time
+
+        cb = DelegationCircuitBreaker(config, clock=clock)
+        cb.record_delegation("a", "b")
+        cb.record_delegation("a", "b")
+        assert cb.get_state("a", "b") is CircuitBreakerState.OPEN
+        # Recording while open is a no-op
+        cb.record_delegation("a", "b")
+        # Should still be open, cooldown hasn't changed
+        assert cb.get_state("a", "b") is CircuitBreakerState.OPEN

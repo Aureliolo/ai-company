@@ -37,6 +37,14 @@ class DelegationRequest(BaseModel):
         description="Extra constraints for the delegatee",
     )
 
+    @model_validator(mode="after")
+    def _validate_self_delegation(self) -> Self:
+        """Reject delegation to self."""
+        if self.delegator_id == self.delegatee_id:
+            msg = "delegator_id and delegatee_id must differ"
+            raise ValueError(msg)
+        return self
+
 
 class DelegationResult(BaseModel):
     """Outcome of a delegation attempt.
@@ -77,7 +85,10 @@ class DelegationResult(BaseModel):
             if self.blocked_by is not None:
                 msg = "blocked_by must be None when success is True"
                 raise ValueError(msg)
-        elif self.rejection_reason is None:
+        elif self.delegated_task is not None:
+            msg = "delegated_task must be None when success is False"
+            raise ValueError(msg)
+        if not self.success and self.rejection_reason is None:
             msg = "rejection_reason is required when success is False"
             raise ValueError(msg)
         return self

@@ -15,15 +15,21 @@ def check_delegation_depth(
     delegation_chain: tuple[str, ...],
     max_depth: int,
 ) -> GuardCheckOutcome:
-    """Check whether the delegation chain exceeds maximum depth.
+    """Check whether the delegation chain has reached or exceeded max depth.
 
     Args:
         delegation_chain: Current chain of delegator agent IDs.
-        max_depth: Maximum allowed chain length.
+        max_depth: Maximum allowed chain length (must be positive).
 
     Returns:
         Outcome with passed=True if within limit.
+
+    Raises:
+        ValueError: If ``max_depth`` is not positive.
     """
+    if max_depth <= 0:
+        msg = f"max_depth must be greater than 0, got {max_depth}"
+        raise ValueError(msg)
     if len(delegation_chain) >= max_depth:
         logger.info(
             DELEGATION_LOOP_DEPTH_EXCEEDED,

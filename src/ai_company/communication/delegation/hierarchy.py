@@ -88,10 +88,10 @@ class HierarchyResolver:
 
     @staticmethod
     def _detect_cycles(supervisor_of: dict[str, str]) -> None:
-        """Detect cycles in the supervisor graph via single-pass DFS.
+        """Detect cycles in the supervisor graph via single-pass chain walking.
 
-        Uses a visited/in-stack colouring approach for O(n)
-        complexity instead of restarting traversal per node.
+        Uses a visited/in-stack approach for O(n) complexity — each
+        agent is processed at most once.
 
         Args:
             supervisor_of: Mapping from agent to supervisor.

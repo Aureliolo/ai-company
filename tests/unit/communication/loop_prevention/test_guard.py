@@ -36,7 +36,7 @@ class TestDelegationGuard:
             delegation_chain=("ceo",),
             delegator_id="ceo",
             delegatee_id="cto",
-            task_title="Build feature X",
+            task_id="Build feature X",
         )
         assert result.passed is True
         assert result.mechanism == "all_passed"
@@ -47,7 +47,7 @@ class TestDelegationGuard:
             delegation_chain=("ceo", "cto"),
             delegator_id="cto",
             delegatee_id="ceo",
-            task_title="Build feature X",
+            task_id="Build feature X",
         )
         assert result.passed is False
         assert result.mechanism == "ancestry"
@@ -58,7 +58,7 @@ class TestDelegationGuard:
             delegation_chain=("a", "b"),
             delegator_id="b",
             delegatee_id="c",
-            task_title="Task",
+            task_id="Task",
         )
         assert result.passed is False
         assert result.mechanism == "max_depth"

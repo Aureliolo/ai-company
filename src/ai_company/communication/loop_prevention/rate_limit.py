@@ -21,8 +21,9 @@ class DelegationRateLimiter:
     """Per-pair rate limit with burst allowance.
 
     The key is the sorted (a, b) agent pair. Counts delegations within
-    the sliding window. If the count exceeds
-    ``max_per_pair_per_minute + burst_allowance``, the check fails.
+    the sliding window. The effective limit per window is
+    ``max_per_pair_per_minute + burst_allowance``, giving additive
+    headroom above the base rate.
 
     Args:
         config: Rate limit configuration.
@@ -66,8 +67,11 @@ class DelegationRateLimiter:
         cutoff = now - self._window_seconds
         timestamps = self._timestamps.get(key, [])
         recent = [t for t in timestamps if t > cutoff]
-        # Prune expired entries on read
-        self._timestamps[key] = recent
+        # Prune expired entries on read; evict empty keys
+        if recent:
+            self._timestamps[key] = recent
+        else:
+            self._timestamps.pop(key, None)
         limit = self._config.max_per_pair_per_minute + self._config.burst_allowance
         if len(recent) >= limit:
             logger.info(
@@ -105,5 +109,7 @@ class DelegationRateLimiter:
         now = self._clock()
         cutoff = now - self._window_seconds
         timestamps = self._timestamps.get(key, [])
-        # Prune expired entries on write
-        self._timestamps[key] = [t for t in timestamps if t > cutoff] + [now]
+        # Prune expired entries on write; add new timestamp
+        recent = [t for t in timestamps if t > cutoff]
+        recent.append(now)
+        self._timestamps[key] = recent

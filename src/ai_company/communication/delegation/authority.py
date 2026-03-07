@@ -50,7 +50,8 @@ class AuthorityValidator:
         1. Hierarchy: delegatee must be a subordinate of delegator
            (direct or skip-level depending on config).
         2. Roles: if ``delegator.authority.can_delegate_to`` is
-           non-empty, ``delegatee.role`` must be in it.
+           non-empty, ``delegatee.role`` must be in it; if empty,
+           all roles are permitted.
 
     Args:
         hierarchy: Resolved org hierarchy.

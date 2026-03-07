@@ -57,7 +57,7 @@ class DelegationGuard:
         delegation_chain: tuple[str, ...],
         delegator_id: str,
         delegatee_id: str,
-        task_title: str,
+        task_id: str,
     ) -> GuardCheckOutcome:
         """Run all loop prevention checks.
 
@@ -68,33 +68,39 @@ class DelegationGuard:
             delegation_chain: Current delegation ancestry.
             delegator_id: ID of the delegating agent.
             delegatee_id: ID of the proposed delegatee.
-            task_title: Title of the task being delegated.
+            task_id: Unique ID of the task being delegated.
 
         Returns:
             First failing outcome or an all-passed success.
         """
-        # Pure (stateless) checks first
-        for outcome in (
-            check_ancestry(delegation_chain, delegatee_id),
-            check_delegation_depth(
-                delegation_chain,
-                self._config.max_delegation_depth,
-            ),
-        ):
-            if not outcome.passed:
-                return self._log_and_return(outcome, delegator_id, delegatee_id)
+        # Pure (stateless) checks first — sequential to short-circuit
+        outcome = check_ancestry(delegation_chain, delegatee_id)
+        if not outcome.passed:
+            return self._log_and_return(outcome, delegator_id, delegatee_id)
+
+        outcome = check_delegation_depth(
+            delegation_chain,
+            self._config.max_delegation_depth,
+        )
+        if not outcome.passed:
+            return self._log_and_return(outcome, delegator_id, delegatee_id)
+
         # Stateful checks — only run if pure checks passed
-        for outcome in (
-            self._deduplicator.check(
-                delegator_id,
-                delegatee_id,
-                task_title,
-            ),
-            self._rate_limiter.check(delegator_id, delegatee_id),
-            self._circuit_breaker.check(delegator_id, delegatee_id),
-        ):
-            if not outcome.passed:
-                return self._log_and_return(outcome, delegator_id, delegatee_id)
+        outcome = self._deduplicator.check(
+            delegator_id,
+            delegatee_id,
+            task_id,
+        )
+        if not outcome.passed:
+            return self._log_and_return(outcome, delegator_id, delegatee_id)
+
+        outcome = self._rate_limiter.check(delegator_id, delegatee_id)
+        if not outcome.passed:
+            return self._log_and_return(outcome, delegator_id, delegatee_id)
+
+        outcome = self._circuit_breaker.check(delegator_id, delegatee_id)
+        if not outcome.passed:
+            return self._log_and_return(outcome, delegator_id, delegatee_id)
         return GuardCheckOutcome(
             passed=True,
             mechanism=_SUCCESS_MECHANISM,
@@ -120,15 +126,20 @@ class DelegationGuard:
         self,
         delegator_id: str,
         delegatee_id: str,
-        task_title: str,
+        task_id: str,
     ) -> None:
         """Record a successful delegation in all stateful mechanisms.
+
+        Each delegation between a pair contributes to the circuit breaker
+        bounce count.  Back-and-forth patterns (A→B then B→A) both
+        increment the same counter because the pair key is direction-
+        agnostic, so repeated ping-pong will trip the breaker fastest.
 
         Args:
             delegator_id: ID of the delegating agent.
             delegatee_id: ID of the target agent.
-            task_title: Title of the delegated task.
+            task_id: Unique ID of the delegated task.
         """
-        self._deduplicator.record(delegator_id, delegatee_id, task_title)
+        self._deduplicator.record(delegator_id, delegatee_id, task_id)
         self._rate_limiter.record(delegator_id, delegatee_id)
-        self._circuit_breaker.record_bounce(delegator_id, delegatee_id)
+        self._circuit_breaker.record_delegation(delegator_id, delegatee_id)

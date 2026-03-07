@@ -42,7 +42,7 @@ class TestDelegationDeduplicator:
         result = dedup.check("a", "b", "task-1")
         assert result.passed is True
 
-    def test_different_task_title_passes(self) -> None:
+    def test_different_task_id_passes(self) -> None:
         clock_time = 100.0
 
         def clock() -> float:
@@ -104,3 +104,19 @@ class TestDelegationDeduplicator:
         clock_time = 200.0  # 100s after first, 50s after second
         result = dedup.check("a", "b", "task-1")
         assert result.passed is False  # still within window of 2nd
+
+    def test_global_purge_removes_all_expired(self) -> None:
+        """Multiple expired entries are pruned in a single sweep."""
+        clock_time = 100.0
+
+        def clock() -> float:
+            return clock_time
+
+        dedup = DelegationDeduplicator(window_seconds=60, clock=clock)
+        dedup.record("a", "b", "task-1")
+        dedup.record("c", "d", "task-2")
+        dedup.record("e", "f", "task-3")
+        clock_time = 161.0  # all expired
+        # Trigger purge via check
+        dedup.check("x", "y", "task-new")
+        assert len(dedup._records) == 0

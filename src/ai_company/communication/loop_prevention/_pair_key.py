@@ -1,8 +1,8 @@
-"""Canonical agent-pair key utility.
+"""Canonical agent-pair key utility for undirected pair tracking.
 
-Both ``DelegationCircuitBreaker`` and ``DelegationRateLimiter`` track
-state per *undirected* agent pair.  This helper normalises the key so
-that ``(a, b)`` and ``(b, a)`` map to the same entry.
+Normalises keys so that ``(a, b)`` and ``(b, a)`` map to the same
+entry.  Used by stateful loop prevention mechanisms that track
+per-pair state without direction sensitivity.
 """
 
 
@@ -18,5 +18,14 @@ def pair_key(a: str, b: str) -> tuple[str, str]:
 
     Returns:
         Lexicographically sorted ``(min, max)`` tuple.
+
+    Raises:
+        ValueError: If either agent ID is blank.
     """
+    if not a or not a.strip():
+        msg = f"pair_key received blank first agent ID: {a!r}"
+        raise ValueError(msg)
+    if not b or not b.strip():
+        msg = f"pair_key received blank second agent ID: {b!r}"
+        raise ValueError(msg)
     return (min(a, b), max(a, b))
