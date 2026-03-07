@@ -14,6 +14,7 @@ from ai_company.engine.loop_helpers import (
     check_budget,
     check_response_errors,
     check_shutdown,
+    clear_last_turn_tool_calls,
     execute_tool_calls,
     get_tool_definitions,
     make_turn_record,
@@ -203,6 +204,26 @@ class TestCheckBudget:
         result = check_budget(sample_agent_context, bad, [])
         assert result is not None
         assert result.termination_reason == TerminationReason.ERROR
+
+    def test_memory_error_propagates(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        def oom(_: AgentContext) -> bool:
+            raise MemoryError
+
+        with pytest.raises(MemoryError):
+            check_budget(sample_agent_context, oom, [])
+
+    def test_recursion_error_propagates(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        def recurse(_: AgentContext) -> bool:
+            raise RecursionError
+
+        with pytest.raises(RecursionError):
+            check_budget(sample_agent_context, recurse, [])
 
 
 # ── call_provider ───────────────────────────────────────────────────
@@ -585,3 +606,56 @@ class TestBuildResult:
             turns,
         )
         assert len(result.turns) == 1
+
+
+# ── clear_last_turn_tool_calls ─────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestClearLastTurnToolCalls:
+    def test_clears_tool_calls_on_last_turn(self) -> None:
+        turns = [
+            TurnRecord(
+                turn_number=1,
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.001,
+                tool_calls_made=("search", "read"),
+                finish_reason=FinishReason.TOOL_USE,
+            ),
+        ]
+        clear_last_turn_tool_calls(turns)
+        assert turns[-1].tool_calls_made == ()
+        # Other fields unchanged
+        assert turns[-1].turn_number == 1
+        assert turns[-1].finish_reason == FinishReason.TOOL_USE
+
+    def test_empty_turns_is_noop(self) -> None:
+        turns: list[TurnRecord] = []
+        clear_last_turn_tool_calls(turns)
+        assert turns == []
+
+    def test_preserves_earlier_turns(self) -> None:
+        turns = [
+            TurnRecord(
+                turn_number=1,
+                input_tokens=10,
+                output_tokens=5,
+                cost_usd=0.001,
+                tool_calls_made=("search",),
+                finish_reason=FinishReason.TOOL_USE,
+            ),
+            TurnRecord(
+                turn_number=2,
+                input_tokens=20,
+                output_tokens=10,
+                cost_usd=0.002,
+                tool_calls_made=("write",),
+                finish_reason=FinishReason.TOOL_USE,
+            ),
+        ]
+        clear_last_turn_tool_calls(turns)
+        # First turn unchanged
+        assert turns[0].tool_calls_made == ("search",)
+        # Last turn cleared
+        assert turns[1].tool_calls_made == ()

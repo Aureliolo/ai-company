@@ -8,6 +8,7 @@ check for LLM errors -> update context -> handle completion or
 
 from typing import TYPE_CHECKING
 
+from ai_company.budget.call_category import LLMCallCategory
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
     EXECUTION_LOOP_ERROR,
@@ -53,10 +54,11 @@ logger = get_logger(__name__)
 class ReactLoop:
     """ReAct execution loop: reason, act, observe.
 
-    The loop checks the budget, calls the LLM, checks for termination
-    conditions, executes any requested tools, feeds results back, and
-    repeats until the LLM signals completion, the turn limit is reached,
-    the budget is exhausted, or an error occurs.
+    The loop checks for shutdown, checks the budget, calls the LLM,
+    checks for termination conditions, executes any requested tools,
+    feeds results back, and repeats until the LLM signals completion,
+    the turn limit is reached, the budget is exhausted, a shutdown is
+    requested, or an error occurs.
     """
 
     def get_loop_type(self) -> str:
@@ -118,7 +120,13 @@ class ReactLoop:
             if isinstance(response, ExecutionResult):
                 return response
 
-            turns.append(make_turn_record(turn_number, response))
+            turns.append(
+                make_turn_record(
+                    turn_number,
+                    response,
+                    call_category=LLMCallCategory.PRODUCTIVE,
+                )
+            )
 
             result = await self._process_turn_response(
                 ctx,

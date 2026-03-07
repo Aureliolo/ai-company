@@ -210,6 +210,8 @@ def compute_efficiency(
 
     Raises:
         ValueError: If ``turns_sas`` is zero or negative.
+        ValidationError: If ``turns_mas`` is zero or negative
+            (enforced by ``Field(gt=0)``).
     """
     if turns_sas <= 0:
         msg = "turns_sas must be positive (cannot divide by zero)"
@@ -237,6 +239,8 @@ def compute_overhead(
 
     Raises:
         ValueError: If ``turns_sas`` is zero or negative.
+        ValidationError: If ``turns_mas`` is zero or negative
+            (enforced by ``Field(gt=0)``).
     """
     if turns_sas <= 0:
         msg = "turns_sas must be positive (cannot divide by zero)"

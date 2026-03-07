@@ -34,7 +34,7 @@ class ErrorTaxonomyConfig(BaseModel):
 
     Attributes:
         enabled: Whether error taxonomy tracking is enabled.
-        categories: Error categories to track.
+        categories: Error categories to track (must be unique).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -47,6 +47,14 @@ class ErrorTaxonomyConfig(BaseModel):
         default=tuple(ErrorCategory),
         description="Error categories to track",
     )
+
+    @model_validator(mode="after")
+    def _validate_unique_categories(self) -> Self:
+        """Ensure no duplicate categories."""
+        if len(self.categories) != len(set(self.categories)):
+            msg = "categories must not contain duplicates"
+            raise ValueError(msg)
+        return self
 
 
 class OrchestrationAlertThresholds(BaseModel):
@@ -112,7 +120,7 @@ class CoordinationMetricsConfig(BaseModel):
     )
     collect: tuple[CoordinationMetricName, ...] = Field(
         default=tuple(CoordinationMetricName),
-        description="Which metrics to collect",
+        description="Which metrics to collect (must be unique)",
     )
     baseline_window: int = Field(
         default=50,
@@ -127,3 +135,11 @@ class CoordinationMetricsConfig(BaseModel):
         default_factory=OrchestrationAlertThresholds,
         description="Orchestration overhead alert thresholds",
     )
+
+    @model_validator(mode="after")
+    def _validate_unique_collect(self) -> Self:
+        """Ensure no duplicate metric names in collect."""
+        if len(self.collect) != len(set(self.collect)):
+            msg = "collect must not contain duplicates"
+            raise ValueError(msg)
+        return self

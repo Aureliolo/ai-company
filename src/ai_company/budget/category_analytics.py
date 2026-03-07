@@ -6,9 +6,9 @@ compute orchestration overhead ratios from cost records tagged with
 """
 
 import math
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.budget.call_category import (
     LLMCallCategory,
@@ -43,7 +43,7 @@ class CategoryBreakdown(BaseModel):
         uncategorized_count: Number of uncategorized calls.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     productive_cost: float = Field(
         default=0.0,
@@ -123,7 +123,7 @@ class OrchestrationRatio(BaseModel):
         system_tokens: System category tokens.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     ratio: float = Field(ge=0.0, le=1.0, description="Orchestration ratio")
     alert_level: OrchestrationAlertLevel = Field(
@@ -133,6 +133,20 @@ class OrchestrationRatio(BaseModel):
     productive_tokens: int = Field(ge=0, description="Productive tokens")
     coordination_tokens: int = Field(ge=0, description="Coordination tokens")
     system_tokens: int = Field(ge=0, description="System tokens")
+
+    @model_validator(mode="after")
+    def _validate_token_consistency(self) -> Self:
+        """Ensure total_tokens >= sum of category tokens."""
+        category_sum = (
+            self.productive_tokens + self.coordination_tokens + self.system_tokens
+        )
+        if self.total_tokens < category_sum:
+            msg = (
+                f"total_tokens ({self.total_tokens}) must be >= "
+                f"sum of category tokens ({category_sum})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 def build_category_breakdown(

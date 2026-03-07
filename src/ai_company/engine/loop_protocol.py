@@ -6,6 +6,7 @@ run a task, along with ``ExecutionResult``, ``TurnRecord``,
 type aliases.
 """
 
+import copy
 from collections.abc import Callable
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol, Self, runtime_checkable
@@ -126,6 +127,12 @@ class ExecutionResult(BaseModel):
             msg = "error_message must be None when termination_reason is not ERROR"
             raise ValueError(msg)
         return self
+
+    def __init__(self, **data: object) -> None:
+        """Deep-copy metadata dict at construction boundary."""
+        if "metadata" in data and isinstance(data["metadata"], dict):
+            data["metadata"] = copy.deepcopy(data["metadata"])
+        super().__init__(**data)
 
 
 BudgetChecker = Callable[[AgentContext], bool]

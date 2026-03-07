@@ -4,16 +4,20 @@ import pytest
 from pydantic import ValidationError
 
 from ai_company.budget.call_category import LLMCallCategory
+from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
+from ai_company.core.task import Task
 from ai_company.engine.context import AgentContext  # noqa: TC001
 from ai_company.engine.loop_protocol import (
     ExecutionLoop,
     ExecutionResult,
     TerminationReason,
     TurnRecord,
+    make_budget_checker,
 )
 from ai_company.engine.plan_execute_loop import PlanExecuteLoop
 from ai_company.engine.react_loop import ReactLoop
-from ai_company.providers.enums import FinishReason
+from ai_company.providers.enums import FinishReason, MessageRole
+from ai_company.providers.models import ChatMessage, TokenUsage
 
 
 @pytest.mark.unit
@@ -298,3 +302,76 @@ class TestProtocolConformance:
     def test_plan_execute_loop_type(self) -> None:
         loop = PlanExecuteLoop()
         assert loop.get_loop_type() == "plan_execute"
+
+
+@pytest.mark.unit
+class TestMakeBudgetChecker:
+    """Tests for make_budget_checker factory function."""
+
+    @staticmethod
+    def _make_task(budget_limit: float) -> Task:
+        return Task(
+            id="task-budget-001",
+            title="Test task",
+            description="A task for budget checker testing.",
+            type=TaskType.DEVELOPMENT,
+            priority=Priority.MEDIUM,
+            project="proj-001",
+            created_by="tester",
+            assigned_to="test-agent",
+            estimated_complexity=Complexity.SIMPLE,
+            budget_limit=budget_limit,
+            status=TaskStatus.ASSIGNED,
+        )
+
+    def test_zero_budget_returns_none(self) -> None:
+        task = self._make_task(0.0)
+        assert make_budget_checker(task) is None
+
+    def test_positive_budget_returns_callable(self) -> None:
+        task = self._make_task(5.0)
+        checker = make_budget_checker(task)
+        assert checker is not None
+        assert callable(checker)
+
+    def test_checker_returns_false_under_limit(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        task = self._make_task(10.0)
+        checker = make_budget_checker(task)
+        assert checker is not None
+        # Default context has zero cost
+        assert checker(sample_agent_context) is False
+
+    def test_checker_returns_true_at_limit(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        task = self._make_task(0.01)
+        checker = make_budget_checker(task)
+        assert checker is not None
+        usage = TokenUsage(
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+        )
+        msg = ChatMessage(role=MessageRole.ASSISTANT, content="done")
+        ctx = sample_agent_context.with_turn_completed(usage, msg)
+        assert checker(ctx) is True
+
+    def test_checker_returns_true_over_limit(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        task = self._make_task(0.005)
+        checker = make_budget_checker(task)
+        assert checker is not None
+        usage = TokenUsage(
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=0.01,
+        )
+        msg = ChatMessage(role=MessageRole.ASSISTANT, content="done")
+        ctx = sample_agent_context.with_turn_completed(usage, msg)
+        assert checker(ctx) is True

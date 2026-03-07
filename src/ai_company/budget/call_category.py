@@ -36,10 +36,10 @@ class OrchestrationAlertLevel(StrEnum):
     """Below the info threshold."""
 
     INFO = "info"
-    """More than 30% orchestration ratio (default threshold)."""
+    """At or above 30% orchestration ratio (default threshold)."""
 
     WARNING = "warning"
-    """More than 50% orchestration ratio (default threshold)."""
+    """At or above 50% orchestration ratio (default threshold)."""
 
     CRITICAL = "critical"
-    """More than 70% orchestration ratio (default threshold)."""
+    """At or above 70% orchestration ratio (default threshold)."""
