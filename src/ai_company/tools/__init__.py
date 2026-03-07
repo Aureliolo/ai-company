@@ -29,6 +29,15 @@ from .git_tools import (
 from .invoker import ToolInvoker
 from .permissions import ToolPermissionChecker
 from .registry import ToolRegistry
+from .sandbox import (
+    SandboxBackend,
+    SandboxError,
+    SandboxResult,
+    SandboxStartError,
+    SandboxTimeoutError,
+    SubprocessSandbox,
+    SubprocessSandboxConfig,
+)
 
 __all__ = [
     "BaseFileSystemTool",
@@ -45,6 +54,13 @@ __all__ = [
     "ListDirectoryTool",
     "PathValidator",
     "ReadFileTool",
+    "SandboxBackend",
+    "SandboxError",
+    "SandboxResult",
+    "SandboxStartError",
+    "SandboxTimeoutError",
+    "SubprocessSandbox",
+    "SubprocessSandboxConfig",
     "ToolError",
     "ToolExecutionError",
     "ToolExecutionResult",
