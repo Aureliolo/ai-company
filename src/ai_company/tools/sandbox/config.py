@@ -58,3 +58,10 @@ class SubprocessSandboxConfig(BaseModel):
         "RUBYLIB",
         "PERL5LIB",
     )
+    extra_safe_path_prefixes: tuple[str, ...] = ()
+    """Additional safe PATH prefixes appended to platform defaults.
+
+    Use this to allow tool-specific directories (e.g. a custom Git
+    install location) through the PATH filter without modifying the
+    built-in platform defaults.
+    """

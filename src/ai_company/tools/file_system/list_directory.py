@@ -231,6 +231,9 @@ class ListDirectoryTool(BaseFileSystemTool):
         lines: list[str],
     ) -> tuple[str, dict[str, Any]]:
         """Build output text and metadata from listing lines."""
+        # total reflects entries scanned (capped at MAX_ENTRIES + 1 by
+        # _list_sync's islice).  When truncated, the true directory size
+        # is unknown — total only indicates "at least this many".
         total = len(lines)
         truncated = total > MAX_ENTRIES
         if truncated:

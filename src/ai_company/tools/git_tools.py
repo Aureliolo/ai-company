@@ -215,7 +215,7 @@ class GitLogTool(_BaseGitTool):
             ("until", "--until"),
         ):
             if value := arguments.get(param):
-                if err := self._check_ref(value, param=param):
+                if err := self._check_git_arg(value, param=param):
                     return err
                 filter_args.append(f"{flag}={value}")
         return filter_args
@@ -249,7 +249,7 @@ class GitLogTool(_BaseGitTool):
         args.extend(filter_args)
 
         if ref := arguments.get("ref"):
-            if err := self._check_ref(ref, param="ref"):
+            if err := self._check_git_arg(ref, param="ref"):
                 return err
             args.append(ref)
 
@@ -351,7 +351,7 @@ class GitDiffTool(_BaseGitTool):
             args.append("--stat")
 
         if ref1 := arguments.get("ref1"):
-            if err := self._check_ref(ref1, param="ref1"):
+            if err := self._check_git_arg(ref1, param="ref1"):
                 return err
             args.append(ref1)
         if ref2 := arguments.get("ref2"):
@@ -360,7 +360,7 @@ class GitDiffTool(_BaseGitTool):
                     content="ref2 requires ref1 to be specified",
                     is_error=True,
                 )
-            if err := self._check_ref(ref2, param="ref2"):
+            if err := self._check_git_arg(ref2, param="ref2"):
                 return err
             args.append(ref2)
 
@@ -462,7 +462,7 @@ class GitBranchTool(_BaseGitTool):
         """Create a branch, optionally from a start point."""
         args = ["branch", name]
         if start_point := arguments.get("start_point"):
-            if err := self._check_ref(start_point, param="start_point"):
+            if err := self._check_git_arg(start_point, param="start_point"):
                 return err
             args.append(start_point)
         return await self._run_git(args)
@@ -495,7 +495,7 @@ class GitBranchTool(_BaseGitTool):
         # Narrowing: guaranteed non-None by guard above.
         branch_name: str = name  # type: ignore[assignment]
 
-        if err := self._check_ref(branch_name, param="name"):
+        if err := self._check_git_arg(branch_name, param="name"):
             return err
 
         if action == "create":
@@ -687,7 +687,7 @@ class GitCloneTool(_BaseGitTool):
             schemes = ", ".join(_ALLOWED_CLONE_SCHEMES)
             return ToolExecutionResult(
                 content=(
-                    f"Invalid clone URL. Only {schemes}"
+                    f"Invalid clone URL. Only {schemes} "
                     "and SCP-like (user@host:path) URLs are "
                     "allowed"
                 ),
@@ -697,7 +697,7 @@ class GitCloneTool(_BaseGitTool):
         args = ["clone"]
 
         if branch := arguments.get("branch"):
-            if err := self._check_ref(branch, param="branch"):
+            if err := self._check_git_arg(branch, param="branch"):
                 return err
             args.extend(["--branch", branch])
 

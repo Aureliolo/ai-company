@@ -261,7 +261,8 @@ class TestAgentEngineFatalErrorResult:
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,
             )
-        assert exc_info.value.__cause__ is None
+        assert isinstance(exc_info.value.__cause__, ValueError)
+        assert "secondary failure" in str(exc_info.value.__cause__)
 
 
 @pytest.mark.unit

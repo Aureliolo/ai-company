@@ -185,7 +185,7 @@ class _BaseGitTool(BaseTool, ABC):
                 )
         return None
 
-    def _check_ref(
+    def _check_git_arg(
         self,
         value: str,
         *,
@@ -193,8 +193,11 @@ class _BaseGitTool(BaseTool, ABC):
     ) -> ToolExecutionResult | None:
         """Reject values starting with ``-`` to prevent flag injection.
 
+        Used for refs, branch names, author filters, date strings, and
+        any other git argument that must not be interpreted as a flag.
+
         Args:
-            value: The ref or branch name string to validate.
+            value: The argument string to validate.
             param: Parameter name for the error message.
 
         Returns:
@@ -305,8 +308,16 @@ class _BaseGitTool(BaseTool, ABC):
         except TimeoutError:
             with contextlib.suppress(ProcessLookupError):
                 proc.kill()
+            stderr_fragment = ""
             try:
-                await asyncio.wait_for(proc.communicate(), timeout=5.0)
+                _, raw_stderr = await asyncio.wait_for(
+                    proc.communicate(),
+                    timeout=5.0,
+                )
+                stderr_fragment = raw_stderr.decode(
+                    "utf-8",
+                    errors="replace",
+                ).strip()
             except TimeoutError:
                 logger.warning(
                     GIT_COMMAND_FAILED,
@@ -318,8 +329,11 @@ class _BaseGitTool(BaseTool, ABC):
                 command=_sanitize_command(["git", *args]),
                 deadline=deadline,
             )
+            msg = f"Git command timed out after {deadline}s"
+            if stderr_fragment:
+                msg += f": {stderr_fragment}"
             return ToolExecutionResult(
-                content=f"Git command timed out after {deadline}s",
+                content=msg,
                 is_error=True,
             )
 
@@ -498,18 +512,23 @@ class _BaseGitTool(BaseTool, ABC):
         if isinstance(proc_or_err, ToolExecutionResult):
             return proc_or_err
 
-        output_or_err = await self._await_git_process(
-            proc_or_err,
-            args,
-            deadline=deadline,
-        )
-        if isinstance(output_or_err, ToolExecutionResult):
-            return output_or_err
+        try:
+            output_or_err = await self._await_git_process(
+                proc_or_err,
+                args,
+                deadline=deadline,
+            )
+            if isinstance(output_or_err, ToolExecutionResult):
+                return output_or_err
 
-        stdout_bytes, stderr_bytes = output_or_err
-        return self._process_git_output(
-            args,
-            proc_or_err.returncode,
-            stdout_bytes,
-            stderr_bytes,
-        )
+            stdout_bytes, stderr_bytes = output_or_err
+            return self._process_git_output(
+                args,
+                proc_or_err.returncode,
+                stdout_bytes,
+                stderr_bytes,
+            )
+        finally:
+            transport = getattr(proc_or_err, "_transport", None)
+            if transport is not None and not transport.is_closing():
+                transport.close()

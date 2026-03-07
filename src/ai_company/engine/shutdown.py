@@ -26,6 +26,7 @@ from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
     EXECUTION_SHUTDOWN_CLEANUP,
+    EXECUTION_SHUTDOWN_CLEANUP_FAILED,
     EXECUTION_SHUTDOWN_CLEANUP_TIMEOUT,
     EXECUTION_SHUTDOWN_COMPLETE,
     EXECUTION_SHUTDOWN_FORCE_CANCEL,
@@ -279,10 +280,9 @@ class CooperativeTimeoutStrategy:
                 except Exception:
                     all_succeeded = False
                     logger.exception(
-                        EXECUTION_SHUTDOWN_CLEANUP,
+                        EXECUTION_SHUTDOWN_CLEANUP_FAILED,
                         callback_index=i,
                         callback_count=len(callbacks),
-                        error="Cleanup callback failed",
                     )
 
         try:
