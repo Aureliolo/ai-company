@@ -183,6 +183,27 @@ class GitLogTool(_BaseGitTool):
             workspace=workspace,
         )
 
+    def _build_filter_args(
+        self,
+        arguments: dict[str, Any],
+    ) -> list[str] | ToolExecutionResult:
+        """Validate and build ``--author``, ``--since``, ``--until`` args.
+
+        Returns the argument list on success, or an error result if any
+        filter value fails the flag-injection check.
+        """
+        filter_args: list[str] = []
+        for param, flag in (
+            ("author", "--author"),
+            ("since", "--since"),
+            ("until", "--until"),
+        ):
+            if value := arguments.get(param):
+                if err := self._check_ref(value, param=param):
+                    return err
+                filter_args.append(f"{flag}={value}")
+        return filter_args
+
     async def execute(
         self,
         *,
@@ -206,14 +227,10 @@ class GitLogTool(_BaseGitTool):
         if arguments.get("oneline"):
             args.append("--oneline")
 
-        if author := arguments.get("author"):
-            args.append(f"--author={author}")
-
-        if since := arguments.get("since"):
-            args.append(f"--since={since}")
-
-        if until := arguments.get("until"):
-            args.append(f"--until={until}")
+        filter_args = self._build_filter_args(arguments)
+        if isinstance(filter_args, ToolExecutionResult):
+            return filter_args
+        args.extend(filter_args)
 
         if ref := arguments.get("ref"):
             if err := self._check_ref(ref, param="ref"):

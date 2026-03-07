@@ -109,10 +109,11 @@ def list_templates() -> tuple[TemplateInfo, ...]:
                     description=meta.description,
                     source="builtin",
                 )
-            except TemplateRenderError, TemplateValidationError, OSError:
+            except (TemplateRenderError, TemplateValidationError, OSError) as exc:
                 logger.exception(
                     TEMPLATE_BUILTIN_DEFECT,
                     template_name=name,
+                    error=str(exc),
                 )
 
     return tuple(info for _, info in sorted(seen.items()))

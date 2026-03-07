@@ -217,6 +217,19 @@ class TestGitLogTool:
         )
         assert not result.is_error
 
+    @pytest.mark.parametrize(
+        ("param", "key"),
+        [("author", "author"), ("since", "since"), ("until", "until")],
+        ids=["author", "since", "until"],
+    )
+    async def test_flag_injection_in_filter_params(
+        self, log_tool: GitLogTool, param: str, key: str
+    ) -> None:
+        """Filter params starting with '-' must be rejected."""
+        result = await log_tool.execute(arguments={key: f"--evil-{param}"})
+        assert result.is_error
+        assert "must not start with '-'" in result.content
+
 
 # ── GitDiffTool ───────────────────────────────────────────────────
 

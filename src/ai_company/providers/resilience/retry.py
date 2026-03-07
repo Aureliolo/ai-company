@@ -97,7 +97,11 @@ class RetryHandler:
         self,
         exc: ProviderError,
     ) -> ProviderError | None:
-        """Check if error is retryable; return it if so, else None."""
+        """Classify a provider error for retry decisions.
+
+        Returns the error if retryable (caller should continue retrying),
+        or ``None`` if non-retryable (caller must re-raise immediately).
+        """
         if not exc.is_retryable:
             logger.warning(
                 PROVIDER_RETRY_SKIPPED,

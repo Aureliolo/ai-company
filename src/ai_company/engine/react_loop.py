@@ -74,6 +74,10 @@ class ReactLoop:
 
         Returns:
             Execution result with final context and termination info.
+
+        Raises:
+            MemoryError: Re-raised unconditionally (non-recoverable).
+            RecursionError: Re-raised unconditionally (non-recoverable).
         """
         model_id, config, tool_defs, turns = self._prepare_loop(
             context, completion_config, tool_invoker
@@ -167,16 +171,13 @@ class ReactLoop:
         if not response.tool_calls:
             return self._handle_completion(ctx, response, turns)
 
-        ctx_or_err = await self._execute_tool_calls(
+        return await self._execute_tool_calls(
             ctx,
             tool_invoker,
             response,
             turn_number,
             turns,
         )
-        if isinstance(ctx_or_err, ExecutionResult):
-            return ctx_or_err
-        return ctx_or_err
 
     def _check_budget(
         self,

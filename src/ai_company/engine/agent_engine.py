@@ -121,6 +121,8 @@ class AgentEngine:
         Raises:
             ExecutionStateError: If pre-flight validation fails.
             ValueError: If ``max_turns < 1`` or ``timeout_seconds <= 0``.
+            MemoryError: Re-raised unconditionally (non-recoverable).
+            RecursionError: Re-raised unconditionally (non-recoverable).
         """
         agent_id = str(identity.id)
         task_id = task.id

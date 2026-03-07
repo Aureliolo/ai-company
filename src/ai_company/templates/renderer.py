@@ -370,12 +370,13 @@ def _expand_single_agent(
     if preset_name:
         try:
             agent_dict["personality"] = get_personality_preset(preset_name)
-        except KeyError:
+        except KeyError as exc:
             logger.warning(
                 TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
                 preset_name=preset_name,
                 agent_name=name,
                 available=sorted(PERSONALITY_PRESETS),
+                error=str(exc),
             )
 
     model_tier = agent.get("model", "medium")

@@ -415,7 +415,8 @@ def load_config(
         Validated, frozen :class:`RootConfig`.
 
     Raises:
-        ConfigFileNotFoundError: If any config file does not exist.
+        ConfigFileNotFoundError: If any config file does not exist
+            or discovery finds nothing.
         ConfigParseError: If any file contains invalid YAML.
         ConfigValidationError: If the merged config fails validation.
     """

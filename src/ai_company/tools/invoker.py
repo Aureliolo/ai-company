@@ -443,6 +443,8 @@ class ToolInvoker:
 
         Raises:
             ValueError: If *max_concurrency* < 1.
+            MemoryError: Re-raised if a single fatal error occurred.
+            RecursionError: Re-raised if a single fatal error occurred.
             ExceptionGroup: If multiple fatal errors occurred.
         """
         if max_concurrency is not None and max_concurrency < 1:

@@ -99,7 +99,7 @@ class TemplateAgentConfig(BaseModel):
         default=SeniorityLevel.MID,
         description="Seniority level",
     )
-    model: str = Field(default="medium", description="Model tier alias")
+    model: NotBlankStr = Field(default="medium", description="Model tier alias")
     personality_preset: NotBlankStr | None = Field(
         default=None,
         description="Named personality preset",

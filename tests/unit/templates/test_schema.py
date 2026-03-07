@@ -96,6 +96,14 @@ class TestTemplateAgentConfig:
         with pytest.raises(ValidationError):
             TemplateAgentConfig(role="")
 
+    def test_blank_model_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TemplateAgentConfig(role="dev", model="")
+
+    def test_whitespace_model_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TemplateAgentConfig(role="dev", model="   ")
+
 
 # ── TemplateDepartmentConfig ─────────────────────────────────────
 

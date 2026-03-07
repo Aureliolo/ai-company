@@ -231,7 +231,8 @@ class ListDirectoryTool(BaseFileSystemTool):
         lines: list[str],
     ) -> tuple[str, dict[str, Any]]:
         """Build output text and metadata from listing lines."""
-        truncated = len(lines) > MAX_ENTRIES
+        total = len(lines)
+        truncated = total > MAX_ENTRIES
         if truncated:
             lines = lines[:MAX_ENTRIES]
         dir_count = sum(1 for ln in lines if ln.startswith("[DIR]"))
@@ -242,13 +243,14 @@ class ListDirectoryTool(BaseFileSystemTool):
             output = "\n".join(lines)
             if truncated:
                 output += (
-                    f"\n\n[Truncated: showing first {MAX_ENTRIES} of more entries]"
+                    f"\n\n[Truncated: showing first {MAX_ENTRIES} of {total} entries]"
                 )
         metadata = {
             "path": user_path,
-            "total_entries": len(lines),
+            "total_entries": total,
             "directories": dir_count,
             "files": file_count,
+            "truncated": truncated,
         }
         return output, metadata
 
