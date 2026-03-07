@@ -274,6 +274,63 @@ class TestTaskAssignmentConsistency:
         assert task.status is status
 
 
+# ── Task: Delegation Fields ─────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestTaskDelegationFields:
+    def test_delegation_defaults(self) -> None:
+        task = _make_task()
+        assert task.parent_task_id is None
+        assert task.delegation_chain == ()
+
+    def test_parent_task_id_set(self) -> None:
+        task = _make_task(parent_task_id="parent-1")
+        assert task.parent_task_id == "parent-1"
+
+    def test_parent_task_id_equals_id_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="cannot be its own parent"):
+            _make_task(parent_task_id="task-123")
+
+    def test_delegation_chain_set(self) -> None:
+        task = _make_task(delegation_chain=("a", "b", "c"))
+        assert task.delegation_chain == ("a", "b", "c")
+
+    def test_delegation_chain_duplicates_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError, match="Duplicate entries in delegation_chain"
+        ):
+            _make_task(delegation_chain=("a", "b", "a"))
+
+    def test_delegation_chain_contains_assigned_to_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError, match="must not appear in delegation_chain"
+        ):
+            _make_task(
+                assigned_to="agent-1",
+                delegation_chain=("agent-1", "agent-2"),
+                status=TaskStatus.ASSIGNED,
+            )
+
+    def test_delegation_chain_without_assigned_to_overlap_ok(self) -> None:
+        task = _make_task(
+            delegation_chain=("a", "b"),
+            assigned_to="c",
+            status=TaskStatus.ASSIGNED,
+        )
+        assert task.delegation_chain == ("a", "b")
+        assert task.assigned_to == "c"
+
+    def test_serialization_includes_delegation_fields(self) -> None:
+        task = _make_task(
+            parent_task_id="parent-1",
+            delegation_chain=("x", "y"),
+        )
+        dumped = task.model_dump()
+        assert dumped["parent_task_id"] == "parent-1"
+        assert dumped["delegation_chain"] == ("x", "y")
+
+
 # ── Task: Max Retries ───────────────────────────────────────────
 
 

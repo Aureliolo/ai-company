@@ -106,6 +106,7 @@ class TestEventConstants:
             "company",
             "config",
             "correlation",
+            "delegation",
             "execution",
             "git",
             "personality",
