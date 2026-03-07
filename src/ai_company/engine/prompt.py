@@ -625,6 +625,41 @@ def _render_and_estimate(  # noqa: PLR0913
     return content, estimator.estimate_tokens(content)
 
 
+def build_error_prompt(
+    identity: AgentIdentity,
+    agent_id: str,
+    system_prompt: SystemPrompt | None,
+) -> SystemPrompt:
+    """Return the existing system prompt or a minimal error placeholder.
+
+    Used by the engine when the execution pipeline fails and a
+    ``SystemPrompt`` was never built (or was partially built).
+
+    Args:
+        identity: Agent identity for metadata.
+        agent_id: String agent identifier.
+        system_prompt: Previously built prompt, or ``None``.
+
+    Returns:
+        The existing prompt if available, else a minimal placeholder.
+    """
+    if system_prompt is not None:
+        return system_prompt
+    return SystemPrompt(
+        content="",
+        template_version="error",
+        estimated_tokens=0,
+        sections=(),
+        metadata={
+            "agent_id": agent_id,
+            "name": identity.name,
+            "role": identity.role,
+            "department": identity.department,
+            "level": identity.level.value,
+        },
+    )
+
+
 def format_task_instruction(task: Task) -> str:
     """Format a task into a user message for the initial conversation.
 

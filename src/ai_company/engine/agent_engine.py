@@ -16,10 +16,12 @@ from ai_company.engine.errors import ExecutionStateError
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
+    make_budget_checker,
 )
 from ai_company.engine.metrics import TaskCompletionMetrics
 from ai_company.engine.prompt import (
     SystemPrompt,
+    build_error_prompt,
     build_system_prompt,
     format_task_instruction,
 )
@@ -66,8 +68,8 @@ _EXECUTABLE_STATUSES = frozenset({TaskStatus.ASSIGNED, TaskStatus.IN_PROGRESS})
 """Task statuses the engine will accept for execution.
 
 CREATED tasks lack an assignee; terminal statuses (COMPLETED, CANCELLED),
-BLOCKED, IN_REVIEW, and FAILED are not executable.  FAILED tasks must be
-reassigned (FAILED -> ASSIGNED) before re-execution.
+BLOCKED, IN_REVIEW, FAILED, and INTERRUPTED are not executable.  FAILED
+and INTERRUPTED tasks must be reassigned (-> ASSIGNED) before re-execution.
 """
 
 
@@ -215,7 +217,7 @@ class AgentEngine:
         tool_invoker: ToolInvoker | None = None,
     ) -> AgentRunResult:
         """Run execution loop, record costs, apply transitions, and build result."""
-        budget_checker = _make_budget_checker(task)
+        budget_checker = make_budget_checker(task)
 
         logger.debug(
             EXECUTION_ENGINE_PROMPT_BUILT,
@@ -740,7 +742,7 @@ class AgentEngine:
                 error_msg,
                 ctx,
             )
-            error_prompt = _build_error_prompt(
+            error_prompt = build_error_prompt(
                 identity,
                 agent_id,
                 system_prompt,
@@ -792,44 +794,3 @@ class AgentEngine:
             agent_id,
             task_id,
         )
-
-
-def _build_error_prompt(
-    identity: AgentIdentity,
-    agent_id: str,
-    system_prompt: SystemPrompt | None,
-) -> SystemPrompt:
-    """Return the existing system prompt or a minimal error placeholder."""
-    if system_prompt is not None:
-        return system_prompt
-    return SystemPrompt(
-        content="",
-        template_version="error",
-        estimated_tokens=0,
-        sections=(),
-        metadata={
-            "agent_id": agent_id,
-            "name": identity.name,
-            "role": identity.role,
-            "department": identity.department,
-            "level": identity.level.value,
-        },
-    )
-
-
-def _make_budget_checker(task: Task) -> BudgetChecker | None:
-    """Create a budget checker if the task has a positive budget limit.
-
-    The returned callable returns ``True`` when accumulated cost meets
-    or exceeds the limit (budget exhausted), ``False`` otherwise.
-    Returns ``None`` when there is no positive budget limit.
-    """
-    if task.budget_limit <= 0:
-        return None
-
-    limit = task.budget_limit
-
-    def _check(ctx: AgentContext) -> bool:
-        return ctx.accumulated_cost.cost_usd >= limit
-
-    return _check

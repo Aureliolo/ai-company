@@ -111,6 +111,7 @@ class TestEnumStringValues:
         assert TaskStatus.BLOCKED.value == "blocked"
         assert TaskStatus.FAILED.value == "failed"
         assert TaskStatus.CANCELLED.value == "cancelled"
+        assert TaskStatus.INTERRUPTED.value == "interrupted"
 
     def test_task_type_values(self) -> None:
         assert TaskType.DEVELOPMENT.value == "development"

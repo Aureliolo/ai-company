@@ -1,8 +1,9 @@
 """ReAct execution loop — think, act, observe.
 
 Implements the ``ExecutionLoop`` protocol using the ReAct pattern:
-check budget -> call LLM -> record turn -> check for LLM errors ->
-update context -> handle completion or execute tools -> repeat.
+check shutdown -> check budget -> call LLM -> record turn ->
+check for LLM errors -> update context -> handle completion or
+(check shutdown -> execute tools) -> repeat.
 """
 
 from typing import TYPE_CHECKING
@@ -204,7 +205,25 @@ class ReactLoop:
         """Return a termination result if a shutdown has been requested."""
         if shutdown_checker is None:
             return None
-        if not shutdown_checker():
+        try:
+            shutting_down = shutdown_checker()
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            error_msg = f"Shutdown checker failed: {type(exc).__name__}: {exc}"
+            logger.exception(
+                EXECUTION_LOOP_ERROR,
+                execution_id=ctx.execution_id,
+                turn=ctx.turn_count,
+                error=error_msg,
+            )
+            return _build_result(
+                ctx,
+                TerminationReason.ERROR,
+                turns,
+                error_message=error_msg,
+            )
+        if not shutting_down:
             return None
         logger.info(
             EXECUTION_LOOP_SHUTDOWN,

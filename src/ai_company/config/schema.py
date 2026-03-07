@@ -334,18 +334,20 @@ class GracefulShutdownConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    strategy: str = Field(
+    strategy: NotBlankStr = Field(
         default="cooperative_timeout",
         description="Shutdown strategy name",
     )
     grace_seconds: float = Field(
         default=30.0,
         gt=0,
+        le=300,
         description="Seconds to wait for cooperative agent exit",
     )
     cleanup_seconds: float = Field(
         default=5.0,
         gt=0,
+        le=60,
         description="Seconds allowed for cleanup callbacks",
     )
 

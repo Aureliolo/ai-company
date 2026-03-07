@@ -6,7 +6,9 @@ import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
+from ai_company.config.schema import GracefulShutdownConfig
 from ai_company.engine.shutdown import (
     CooperativeTimeoutStrategy,
     ShutdownManager,
@@ -299,9 +301,10 @@ class TestShutdownManagerSignalHandling:
         mock_loop = MagicMock()
         with patch("asyncio.get_running_loop", return_value=mock_loop):
             manager._handle_signal_threadsafe(signal.SIGINT.value, None)
-        mock_loop.call_soon_threadsafe.assert_called_once_with(
-            strategy.request_shutdown,
-        )
+        mock_loop.call_soon_threadsafe.assert_called_once()
+        # The callback is a closure (_on_loop) that logs and requests shutdown.
+        callback = mock_loop.call_soon_threadsafe.call_args[0][0]
+        assert callable(callback)
 
     def test_handle_signal_threadsafe_no_loop(self) -> None:
         strategy = CooperativeTimeoutStrategy()
@@ -312,3 +315,89 @@ class TestShutdownManagerSignalHandling:
         ):
             manager._handle_signal_threadsafe(signal.SIGINT.value, None)
         assert strategy.is_shutting_down() is True
+
+
+# ── Constructor validation ────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCooperativeTimeoutValidation:
+    """Constructor rejects non-positive timeout values."""
+
+    def test_zero_grace_seconds_rejected(self) -> None:
+        with pytest.raises(ValueError, match="grace_seconds must be positive"):
+            CooperativeTimeoutStrategy(grace_seconds=0)
+
+    def test_negative_grace_seconds_rejected(self) -> None:
+        with pytest.raises(ValueError, match="grace_seconds must be positive"):
+            CooperativeTimeoutStrategy(grace_seconds=-1.0)
+
+    def test_zero_cleanup_seconds_rejected(self) -> None:
+        with pytest.raises(ValueError, match="cleanup_seconds must be positive"):
+            CooperativeTimeoutStrategy(cleanup_seconds=0)
+
+    def test_negative_cleanup_seconds_rejected(self) -> None:
+        with pytest.raises(ValueError, match="cleanup_seconds must be positive"):
+            CooperativeTimeoutStrategy(cleanup_seconds=-5.0)
+
+
+# ── Cleanup callback exception isolation ──────────────────────────
+
+
+@pytest.mark.unit
+class TestCleanupCallbackExceptionIsolation:
+    """A failing callback doesn't prevent subsequent callbacks from running."""
+
+    async def test_failing_callback_does_not_block_others(self) -> None:
+        strategy = CooperativeTimeoutStrategy(cleanup_seconds=5.0)
+        ran = []
+
+        async def cb_ok_1() -> None:
+            ran.append("cb1")
+
+        async def cb_fail() -> None:
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        async def cb_ok_2() -> None:
+            ran.append("cb2")
+
+        result = await strategy.execute_shutdown(
+            running_tasks={},
+            cleanup_callbacks=[cb_ok_1, cb_fail, cb_ok_2],
+        )
+
+        assert "cb1" in ran
+        assert "cb2" in ran
+        # cleanup_completed is False because one callback failed
+        assert result.cleanup_completed is False
+
+
+# ── GracefulShutdownConfig validation ─────────────────────────────
+
+
+@pytest.mark.unit
+class TestGracefulShutdownConfig:
+    """Config model boundary validation."""
+
+    def test_defaults(self) -> None:
+        config = GracefulShutdownConfig()
+        assert config.strategy == "cooperative_timeout"
+        assert config.grace_seconds == 30.0
+        assert config.cleanup_seconds == 5.0
+
+    def test_grace_seconds_upper_bound(self) -> None:
+        with pytest.raises(ValidationError):
+            GracefulShutdownConfig(grace_seconds=301)
+
+    def test_cleanup_seconds_upper_bound(self) -> None:
+        with pytest.raises(ValidationError):
+            GracefulShutdownConfig(cleanup_seconds=61)
+
+    def test_zero_grace_seconds_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            GracefulShutdownConfig(grace_seconds=0)
+
+    def test_blank_strategy_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            GracefulShutdownConfig(strategy="   ")

@@ -21,6 +21,7 @@ from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
     EXECUTION_SHUTDOWN_CLEANUP,
+    EXECUTION_SHUTDOWN_CLEANUP_TIMEOUT,
     EXECUTION_SHUTDOWN_COMPLETE,
     EXECUTION_SHUTDOWN_FORCE_CANCEL,
     EXECUTION_SHUTDOWN_GRACE_START,
@@ -45,14 +46,17 @@ class ShutdownResult(BaseModel):
         duration_seconds: Wall-clock duration of the entire shutdown.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     strategy_type: NotBlankStr = Field(
         description="Name of the strategy that executed the shutdown",
     )
     tasks_interrupted: int = Field(
         ge=0,
-        description="Number of tasks that were force-cancelled",
+        description=(
+            "Number of tasks force-cancelled during shutdown "
+            "(transitioned to INTERRUPTED)"
+        ),
     )
     tasks_completed: int = Field(
         ge=0,
@@ -118,6 +122,12 @@ class CooperativeTimeoutStrategy:
         grace_seconds: float = 30.0,
         cleanup_seconds: float = 5.0,
     ) -> None:
+        if grace_seconds <= 0:
+            msg = f"grace_seconds must be positive, got {grace_seconds}"
+            raise ValueError(msg)
+        if cleanup_seconds <= 0:
+            msg = f"cleanup_seconds must be positive, got {cleanup_seconds}"
+            raise ValueError(msg)
         self._grace_seconds = grace_seconds
         self._cleanup_seconds = cleanup_seconds
         self._shutdown_event = asyncio.Event()
@@ -191,6 +201,18 @@ class CooperativeTimeoutStrategy:
             task_set,
             timeout=self._grace_seconds,
         )
+
+        # Retrieve exceptions from done tasks to prevent
+        # "Task exception was never retrieved" warnings
+        for task in done:
+            if not task.cancelled() and task.exception() is not None:
+                logger.warning(
+                    EXECUTION_SHUTDOWN_FORCE_CANCEL,
+                    error=(
+                        f"Task raised during shutdown: "
+                        f"{type(task.exception()).__name__}"
+                    ),
+                )
         tasks_completed = len(done)
 
         if pending:
@@ -200,8 +222,8 @@ class CooperativeTimeoutStrategy:
             )
             for task in pending:
                 task.cancel()
-            # Wait for cancellation to propagate
-            await asyncio.wait(pending)
+            # Wait for cancellation to propagate (bounded)
+            await asyncio.wait(pending, timeout=5.0)
 
         return tasks_completed, len(pending)
 
@@ -209,7 +231,7 @@ class CooperativeTimeoutStrategy:
         self,
         callbacks: list[CleanupCallback],
     ) -> bool:
-        """Run cleanup callbacks within the cleanup time budget."""
+        """Run cleanup callbacks sequentially within the time budget."""
         if not callbacks:
             return True
 
@@ -219,9 +241,21 @@ class CooperativeTimeoutStrategy:
             cleanup_seconds=self._cleanup_seconds,
         )
 
+        all_succeeded = True
+
         async def _run_all() -> None:
-            for callback in callbacks:
-                await callback()
+            nonlocal all_succeeded
+            for i, callback in enumerate(callbacks):
+                try:
+                    await callback()
+                except Exception:
+                    all_succeeded = False
+                    logger.exception(
+                        EXECUTION_SHUTDOWN_CLEANUP,
+                        callback_index=i,
+                        callback_count=len(callbacks),
+                        error="Cleanup callback failed",
+                    )
 
         try:
             await asyncio.wait_for(
@@ -230,12 +264,11 @@ class CooperativeTimeoutStrategy:
             )
         except TimeoutError:
             logger.warning(
-                EXECUTION_SHUTDOWN_CLEANUP,
-                cleanup_timeout=True,
+                EXECUTION_SHUTDOWN_CLEANUP_TIMEOUT,
                 cleanup_seconds=self._cleanup_seconds,
             )
             return False
-        return True
+        return all_succeeded
 
 
 class ShutdownManager:
@@ -256,6 +289,11 @@ class ShutdownManager:
         self._running_tasks: dict[str, asyncio.Task[Any]] = {}
         self._cleanup_callbacks: list[CleanupCallback] = []
         self._signals_installed = False
+        logger.debug(
+            EXECUTION_SHUTDOWN_COMPLETE,
+            strategy=self._strategy.get_strategy_type(),
+            action="manager_created",
+        )
 
     @property
     def strategy(self) -> ShutdownStrategy:
@@ -287,23 +325,42 @@ class ShutdownManager:
             EXECUTION_SHUTDOWN_SIGNAL,
             signal=sig.name,
         )
-        self._strategy.request_shutdown()
+        try:
+            self._strategy.request_shutdown()
+        except Exception:
+            logger.exception(
+                EXECUTION_SHUTDOWN_SIGNAL,
+                signal=sig.name,
+                error="request_shutdown() raised in signal handler",
+            )
 
     def _handle_signal_threadsafe(
         self,
         signum: int,
         _frame: Any,
     ) -> None:
-        """Handle signal on Windows (called from signal handler thread)."""
-        sig_name = signal.Signals(signum).name
-        logger.info(
-            EXECUTION_SHUTDOWN_SIGNAL,
-            signal=sig_name,
-        )
+        """Handle signal on Windows (called outside the event loop context).
+
+        Logging is deferred to the event loop via ``call_soon_threadsafe``
+        to avoid deadlocks (structlog acquires locks internally).
+        """
+        try:
+            sig_name = signal.Signals(signum).name
+        except ValueError:
+            sig_name = f"UNKNOWN({signum})"
+
+        def _on_loop() -> None:
+            logger.info(
+                EXECUTION_SHUTDOWN_SIGNAL,
+                signal=sig_name,
+            )
+            self._strategy.request_shutdown()
+
         try:
             loop = asyncio.get_running_loop()
-            loop.call_soon_threadsafe(self._strategy.request_shutdown)
+            loop.call_soon_threadsafe(_on_loop)
         except RuntimeError:
+            # No running event loop — call directly (best-effort).
             self._strategy.request_shutdown()
 
     def register_task(
@@ -313,13 +370,31 @@ class ShutdownManager:
     ) -> None:
         """Track a running agent task."""
         self._running_tasks[task_id] = asyncio_task
+        logger.debug(
+            EXECUTION_SHUTDOWN_GRACE_START,
+            action="task_registered",
+            task_id=task_id,
+            running_tasks=len(self._running_tasks),
+        )
 
     def unregister_task(self, task_id: str) -> None:
         """Stop tracking a completed agent task."""
         self._running_tasks.pop(task_id, None)
+        logger.debug(
+            EXECUTION_SHUTDOWN_GRACE_START,
+            action="task_unregistered",
+            task_id=task_id,
+            running_tasks=len(self._running_tasks),
+        )
 
     def register_cleanup(self, callback: CleanupCallback) -> None:
-        """Register an async cleanup callback for shutdown."""
+        """Register an async cleanup callback for shutdown.
+
+        Callbacks run sequentially in registration order during
+        shutdown.  Each callback is individually guarded against
+        exceptions — a failing callback does not prevent subsequent
+        ones from running.
+        """
         self._cleanup_callbacks.append(callback)
 
     def is_shutting_down(self) -> bool:

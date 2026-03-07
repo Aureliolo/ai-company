@@ -22,6 +22,7 @@ class TestTerminationReason:
         assert TerminationReason.COMPLETED.value == "completed"
         assert TerminationReason.MAX_TURNS.value == "max_turns"
         assert TerminationReason.BUDGET_EXHAUSTED.value == "budget_exhausted"
+        assert TerminationReason.SHUTDOWN.value == "shutdown"
         assert TerminationReason.ERROR.value == "error"
 
     def test_member_count(self) -> None:

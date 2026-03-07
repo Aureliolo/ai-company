@@ -2,7 +2,8 @@
 
 Defines the ``ExecutionLoop`` protocol that the agent engine calls to
 run a task, along with ``ExecutionResult``, ``TurnRecord``,
-``TerminationReason``, and the ``BudgetChecker`` type alias.
+``TerminationReason``, and the ``BudgetChecker`` and ``ShutdownChecker``
+type aliases.
 """
 
 from collections.abc import Callable
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from ai_company.core.task import Task  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.context import AgentContext
 from ai_company.providers.enums import FinishReason  # noqa: TC001
@@ -166,3 +168,21 @@ class ExecutionLoop(Protocol):
     def get_loop_type(self) -> str:
         """Return the loop type identifier (e.g. ``"react"``)."""
         ...
+
+
+def make_budget_checker(task: Task) -> BudgetChecker | None:
+    """Create a budget checker if the task has a positive budget limit.
+
+    The returned callable returns ``True`` when accumulated cost meets
+    or exceeds the limit (budget exhausted), ``False`` otherwise.
+    Returns ``None`` when there is no positive budget limit.
+    """
+    if task.budget_limit <= 0:
+        return None
+
+    limit = task.budget_limit
+
+    def _check(ctx: AgentContext) -> bool:
+        return ctx.accumulated_cost.cost_usd >= limit
+
+    return _check

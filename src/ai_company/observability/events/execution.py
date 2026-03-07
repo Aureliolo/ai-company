@@ -39,6 +39,7 @@ EXECUTION_SHUTDOWN_SIGNAL: Final[str] = "execution.shutdown.signal"
 EXECUTION_SHUTDOWN_GRACE_START: Final[str] = "execution.shutdown.grace_start"
 EXECUTION_SHUTDOWN_FORCE_CANCEL: Final[str] = "execution.shutdown.force_cancel"
 EXECUTION_SHUTDOWN_CLEANUP: Final[str] = "execution.shutdown.cleanup"
+EXECUTION_SHUTDOWN_CLEANUP_TIMEOUT: Final[str] = "execution.shutdown.cleanup.timeout"
 EXECUTION_SHUTDOWN_COMPLETE: Final[str] = "execution.shutdown.complete"
 EXECUTION_LOOP_SHUTDOWN: Final[str] = "execution.loop.shutdown"
 
