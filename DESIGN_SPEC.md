@@ -163,7 +163,7 @@ Every agent has a comprehensive identity. At the design level, agent data splits
   - `ConflictApproach`: `avoid`, `accommodate`, `compete`, `compromise`, `collaborate` (Thomas-Kilmann model)
 
 ```yaml
-# --- Current (M2): Config layer — AgentIdentity (frozen) ---
+# --- Current (M3): Config layer — AgentIdentity (frozen) ---
 agent:
   id: "uuid"
   name: "Sarah Chen"
@@ -2385,7 +2385,7 @@ ai-company/
 │       │   ├── parallel_models.py  # AgentAssignment, ParallelExecutionGroup, AgentOutcome, ParallelExecutionResult, ParallelProgress
 │       │   ├── resource_lock.py    # ResourceLock protocol + InMemoryResourceLock
 │       │   ├── shutdown.py        # Graceful shutdown strategy & manager
-│       │   ├── task_engine.py      # Task routing & scheduling (M3-M4)
+│       │   ├── task_engine.py      # Task routing & scheduling (M4)
 │       │   ├── workflow_engine.py  # Workflow orchestration (M4)
 │       │   ├── meeting_engine.py   # Meeting coordination (M4)
 │       │   └── hr_engine.py        # Hiring, firing, performance (M7)
@@ -2481,6 +2481,7 @@ ai-company/
 │       │   ├── permissions.py      # ToolPermissionChecker (access-level gating)
 │       │   ├── errors.py           # Tool error hierarchy (incl. ToolPermissionDeniedError)
 │       │   ├── examples/           # Example tool implementations
+│       │   │   ├── __init__.py    # Package exports
 │       │   │   └── echo.py        # Echo tool (for testing)
 │       │   ├── sandbox/            # Sandboxing backends
 │       │   │   ├── __init__.py    # Package exports
@@ -2501,8 +2502,8 @@ ai-company/
 │       │   ├── _git_base.py        # Base class for git tools (workspace, subprocess, sandbox integration)
 │       │   ├── _process_cleanup.py  # Subprocess transport cleanup utility (Windows ResourceWarning prevention)
 │       │   ├── git_tools.py        # Git operations — 6 built-in tools (sandbox-aware)
-│       │   ├── code_runner.py      # Code execution (M3)
-│       │   ├── web_tools.py        # HTTP, search (M3)
+│       │   ├── code_runner.py      # Code execution (M7)
+│       │   ├── web_tools.py        # HTTP, search (M7)
 │       │   └── mcp_bridge.py       # MCP server integration (M7)
 │       ├── security/                # Security & approval (M7, stubs only)
 │       │   ├── approval.py         # Approval workflow (M7)

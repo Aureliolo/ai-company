@@ -23,6 +23,8 @@ logger = get_logger(__name__)
 # renderer.py re-imports this value for its own use.
 DEFAULT_MERGE_DEPARTMENT = "engineering"
 
+_STRIP_KEYS: frozenset[str] = frozenset({"merge_id", "_remove"})
+
 
 @dataclass
 class _ParentEntry:
@@ -75,7 +77,7 @@ def merge_template_configs(
             child_config if isinstance(child_config, dict) else {},
         )
 
-    # Agents: merge by (role, department) key.
+    # Agents: merge by (role, department, merge_id) key.
     parent_agents = parent.get("agents", [])
     child_agents = child.get("agents", [])
     if parent_agents or child_agents:
@@ -173,7 +175,7 @@ def _apply_child_agent(
         return
 
     clean = copy.deepcopy(
-        {k: v for k, v in child_agent.items() if k not in ("_remove", "merge_id")}
+        {k: v for k, v in child_agent.items() if k not in _STRIP_KEYS}
     )
 
     if matched_entry is not None:
@@ -199,7 +201,7 @@ def _collect_merged_agents(
         (entry for entries in parent_entries.values() for entry in entries),
         key=lambda e: e.index,
     )
-    _strip_keys = {"merge_id", "_remove"}
+    _strip_keys = _STRIP_KEYS
     result: list[dict[str, Any]] = [
         {k: v for k, v in entry.agent.items() if k not in _strip_keys}
         for entry in all_entries
@@ -274,6 +276,12 @@ def _agent_key(agent: dict[str, Any]) -> tuple[str, str, str]:
     otherwise ``(role, department, "")`` for backwards compatibility.
     """
     role = str(agent.get("role", "")).lower()
+    if not role:
+        logger.warning(
+            TEMPLATE_INHERIT_MERGE_ERROR,
+            action="missing_role",
+            agent_keys=sorted(agent.keys()),
+        )
     dept = agent.get("department")
     if not dept:
         dept = DEFAULT_MERGE_DEPARTMENT

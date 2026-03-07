@@ -541,6 +541,34 @@ class TestMergeIdTargeting:
         result = _merge_agents(parent, [])
         assert "merge_id" not in result[0]
 
+    def test_remove_targets_specific_agent_by_merge_id(self) -> None:
+        """_remove with merge_id removes only the targeted agent."""
+        parent = [
+            {
+                "role": "Full-Stack Developer",
+                "department": "engineering",
+                "merge_id": "frontend",
+                "level": "mid",
+            },
+            {
+                "role": "Full-Stack Developer",
+                "department": "engineering",
+                "merge_id": "backend",
+                "level": "mid",
+            },
+        ]
+        child = [
+            {
+                "role": "Full-Stack Developer",
+                "department": "engineering",
+                "merge_id": "frontend",
+                "_remove": True,
+            },
+        ]
+        result = _merge_agents(parent, child)
+        assert len(result) == 1
+        assert result[0]["level"] == "mid"
+
 
 @pytest.mark.unit
 class TestInheritanceIntegration:

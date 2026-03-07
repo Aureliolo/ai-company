@@ -41,6 +41,7 @@ from ai_company.observability.events.communication import (
     COMM_MESSAGE_PUBLISHED,
     COMM_RECEIVE_SHUTDOWN,
     COMM_RECEIVE_TIMEOUT,
+    COMM_RECEIVE_UNSUBSCRIBED,
     COMM_SEND_DIRECT_INVALID,
     COMM_SUBSCRIPTION_CREATED,
     COMM_SUBSCRIPTION_NOT_FOUND,
@@ -95,7 +96,7 @@ class InMemoryMessageBus:
         self._config = config
         self._lock = asyncio.Lock()
         self._channels: dict[str, Channel] = {}
-        self._queues: dict[tuple[str, str], asyncio.Queue[DeliveryEnvelope]] = {}
+        self._queues: dict[tuple[str, str], asyncio.Queue[DeliveryEnvelope | None]] = {}
         self._history: dict[str, deque[Message]] = {}
         self._known_agents: set[str] = set()
         self._running = False
@@ -156,7 +157,7 @@ class InMemoryMessageBus:
         self,
         channel_name: str,
         subscriber_id: str,
-    ) -> asyncio.Queue[DeliveryEnvelope]:
+    ) -> asyncio.Queue[DeliveryEnvelope | None]:
         """Get or create a per-(channel, subscriber) queue."""
         return self._queues.setdefault(
             (channel_name, subscriber_id),
@@ -399,8 +400,15 @@ class InMemoryMessageBus:
             )
             queue = self._queues.pop((channel_name, subscriber_id), None)
             if queue is not None:
-                with contextlib.suppress(asyncio.QueueFull):
-                    queue.put_nowait(None)  # type: ignore[arg-type]
+                try:
+                    queue.put_nowait(None)
+                except asyncio.QueueFull:
+                    logger.warning(
+                        COMM_SUBSCRIPTION_REMOVED,
+                        channel=channel_name,
+                        subscriber=subscriber_id,
+                        detail="Queue full — unsubscribe sentinel not delivered",
+                    )
         logger.info(
             COMM_SUBSCRIPTION_REMOVED,
             channel=channel_name,
@@ -447,24 +455,39 @@ class InMemoryMessageBus:
             queue = self._ensure_queue(channel_name, subscriber_id)
         result = await self._await_with_shutdown(queue, timeout)
         if result is None:
-            if self._shutdown_event.is_set():
-                logger.debug(
-                    COMM_RECEIVE_SHUTDOWN,
-                    channel=channel_name,
-                    subscriber=subscriber_id,
-                )
-            else:
-                logger.debug(
-                    COMM_RECEIVE_TIMEOUT,
-                    channel=channel_name,
-                    subscriber=subscriber_id,
-                    timeout=timeout,
-                )
+            self._log_receive_null(channel_name, subscriber_id, timeout)
         return result
+
+    def _log_receive_null(
+        self,
+        channel_name: str,
+        subscriber_id: str,
+        timeout: float | None,
+    ) -> None:
+        """Log the cause when ``receive()`` returns ``None``."""
+        if self._shutdown_event.is_set():
+            logger.debug(
+                COMM_RECEIVE_SHUTDOWN,
+                channel=channel_name,
+                subscriber=subscriber_id,
+            )
+        elif (channel_name, subscriber_id) not in self._queues:
+            logger.debug(
+                COMM_RECEIVE_UNSUBSCRIBED,
+                channel=channel_name,
+                subscriber=subscriber_id,
+            )
+        else:
+            logger.debug(
+                COMM_RECEIVE_TIMEOUT,
+                channel=channel_name,
+                subscriber=subscriber_id,
+                timeout=timeout,
+            )
 
     async def _await_with_shutdown(
         self,
-        queue: asyncio.Queue[DeliveryEnvelope],
+        queue: asyncio.Queue[DeliveryEnvelope | None],
         timeout: float | None,  # noqa: ASYNC109
     ) -> DeliveryEnvelope | None:
         """Await next envelope, returning ``None`` on timeout or shutdown.
@@ -476,8 +499,8 @@ class InMemoryMessageBus:
         Returns:
             The next envelope, or ``None``.
         """
-        get_task = asyncio.ensure_future(queue.get())
-        shutdown_task = asyncio.ensure_future(
+        get_task = asyncio.create_task(queue.get())
+        shutdown_task = asyncio.create_task(
             self._shutdown_event.wait(),
         )
         try:

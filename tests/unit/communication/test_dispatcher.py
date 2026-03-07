@@ -88,6 +88,7 @@ class TestRegisterDeregister:
         ids = [dispatcher.register(_RecordingHandler()) for _ in range(5)]
         assert len(set(ids)) == 5
 
+    @pytest.mark.unit
     def test_register_sync_handler_raises(self) -> None:
         """Registering a handler with sync handle() raises TypeError."""
         dispatcher = MessageDispatcher()

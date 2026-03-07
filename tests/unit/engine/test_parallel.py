@@ -28,6 +28,7 @@ from ai_company.engine.prompt import SystemPrompt
 from ai_company.engine.resource_lock import InMemoryResourceLock
 from ai_company.engine.run_result import AgentRunResult
 from ai_company.engine.shutdown import ShutdownManager
+from ai_company.observability.events.parallel import PARALLEL_AGENT_CANCELLED
 
 
 def _make_identity(
@@ -602,7 +603,7 @@ class TestParallelExecutorFatalErrors:
 
 @pytest.mark.unit
 class TestParallelExecutorCancellation:
-    """Cancellation logging."""
+    """CancelledError logging during fail_fast cancellation."""
 
     async def test_cancelled_agent_is_logged(self) -> None:
         """CancelledError emits PARALLEL_AGENT_CANCELLED event."""
@@ -633,14 +634,14 @@ class TestParallelExecutorCancellation:
             await executor.execute_group(group)
 
         cancelled_events = [
-            e for e in cap if e.get("event") == "execution.parallel.agent_cancelled"
+            e for e in cap if e.get("event") == PARALLEL_AGENT_CANCELLED
         ]
         assert len(cancelled_events) >= 1
 
 
 @pytest.mark.unit
 class TestParallelExecutorInProgressSemantics:
-    """in_progress respects concurrency limit."""
+    """Progress callback in_progress count respects concurrency limit."""
 
     async def test_in_progress_respects_concurrency_limit(self) -> None:
         """in_progress never exceeds max_concurrency in progress callbacks."""

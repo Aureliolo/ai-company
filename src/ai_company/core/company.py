@@ -243,9 +243,10 @@ class Team(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_duplicate_members(self) -> Self:
-        """Ensure no duplicate members."""
-        if len(self.members) != len(set(self.members)):
-            dupes = sorted(m for m, c in Counter(self.members).items() if c > 1)
+        """Ensure no duplicate members (case-insensitive)."""
+        normalized = [m.strip().casefold() for m in self.members]
+        if len(normalized) != len(set(normalized)):
+            dupes = sorted(m for m, c in Counter(normalized).items() if c > 1)
             msg = f"Duplicate members in team {self.name!r}: {dupes}"
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
@@ -293,8 +294,8 @@ class Department(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_team_names(self) -> Self:
-        """Ensure no duplicate team names within a department."""
-        names = [t.name for t in self.teams]
+        """Ensure no duplicate team names within a department (case-insensitive)."""
+        names = [t.name.strip().casefold() for t in self.teams]
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate team names in department {self.name!r}: {dupes}"
@@ -379,10 +380,10 @@ class HRRegistry(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_duplicate_active_agents(self) -> Self:
-        """Ensure no duplicate entries in active_agents."""
-        agents = self.active_agents
-        if len(agents) != len(set(agents)):
-            dupes = sorted(a for a, c in Counter(agents).items() if c > 1)
+        """Ensure no duplicate entries in active_agents (case-insensitive)."""
+        normalized = [a.strip().casefold() for a in self.active_agents]
+        if len(normalized) != len(set(normalized)):
+            dupes = sorted(a for a, c in Counter(normalized).items() if c > 1)
             msg = f"Duplicate entries in active_agents: {dupes}"
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
