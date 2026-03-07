@@ -34,7 +34,9 @@ class TemplateVariable(BaseModel):
         default="str",
         description="Expected value type",
     )
-    default: Any = Field(default=None, description="Default value")
+    default: str | int | float | bool | None = Field(
+        default=None, description="Default value"
+    )
     required: bool = Field(default=False, description="Whether required")
 
     @model_validator(mode="after")
@@ -89,8 +91,14 @@ class TemplateAgentConfig(BaseModel):
         personality_preset: Named personality preset from the presets registry.
         personality: Inline personality config dict (alternative to
             ``personality_preset``).
-        department: Department override (``None`` defaults to
-            ``"engineering"`` during rendering).
+        department: Department override (``None`` uses the template
+            system default during rendering).
+        merge_id: Stable identity for inheritance merge.  When a
+            template has multiple agents with the same ``(role,
+            department)`` pair, ``merge_id`` disambiguates them so
+            child templates can target a specific agent.
+        remove: Merge directive — when ``True``, removes matching
+            parent agent during inheritance.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -113,6 +121,10 @@ class TemplateAgentConfig(BaseModel):
     department: NotBlankStr | None = Field(
         default=None,
         description="Department override",
+    )
+    merge_id: str = Field(
+        default="",
+        description="Stable identity for inheritance merge",
     )
     remove: bool = Field(
         default=False,
@@ -226,6 +238,8 @@ class CompanyTemplate(BaseModel):
             1.0 = fully autonomous).
         workflow_handoffs: Cross-department workflow handoff definitions.
         escalation_paths: Cross-department escalation path definitions.
+        extends: Parent template name for inheritance (``None`` for
+            standalone templates).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -276,10 +290,12 @@ class CompanyTemplate(BaseModel):
 
     @field_validator("extends", mode="before")
     @classmethod
-    def _normalize_extends(cls, value: str | None) -> str | None:
+    def _normalize_extends(cls, value: Any) -> Any:
         """Normalize extends to lowercase stripped form."""
         if value is None:
             return None
+        if not isinstance(value, str):
+            return value  # let Pydantic's type validation reject it
         return value.strip().lower()
 
     @model_validator(mode="after")

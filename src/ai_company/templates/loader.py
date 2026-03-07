@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal
 
 import yaml
@@ -44,16 +45,17 @@ logger = get_logger(__name__)
 
 _USER_TEMPLATES_DIR = Path.home() / ".ai-company" / "templates"
 
-# Registry of built-in template names -> resource filenames.
-BUILTIN_TEMPLATES: dict[str, str] = {
-    "solo_founder": "solo_founder.yaml",
-    "startup": "startup.yaml",
-    "dev_shop": "dev_shop.yaml",
-    "product_team": "product_team.yaml",
-    "agency": "agency.yaml",
-    "full_company": "full_company.yaml",
-    "research_lab": "research_lab.yaml",
-}
+BUILTIN_TEMPLATES: MappingProxyType[str, str] = MappingProxyType(
+    {
+        "solo_founder": "solo_founder.yaml",
+        "startup": "startup.yaml",
+        "dev_shop": "dev_shop.yaml",
+        "product_team": "product_team.yaml",
+        "agency": "agency.yaml",
+        "full_company": "full_company.yaml",
+        "research_lab": "research_lab.yaml",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -253,9 +255,17 @@ def _load_builtin(name: str) -> LoadedTemplate:
             msg,
             locations=(ConfigLocation(file_path=f"<builtin:{name}>"),),
         )
-    ref = resources.files("ai_company.templates.builtins") / filename
-    yaml_text = ref.read_text(encoding="utf-8")
     source_name = f"<builtin:{name}>"
+    try:
+        ref = resources.files("ai_company.templates.builtins") / filename
+        yaml_text = ref.read_text(encoding="utf-8")
+    except (OSError, ImportError, TypeError) as exc:
+        msg = f"Failed to read built-in template resource {filename!r}: {exc}"
+        logger.exception(TEMPLATE_LOAD_READ_ERROR, source=source_name, error=str(exc))
+        raise TemplateRenderError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        ) from exc
     template = _parse_template_yaml(yaml_text, source_name=source_name)
     return LoadedTemplate(
         template=template,
@@ -268,7 +278,8 @@ def _load_from_file(path: Path) -> LoadedTemplate:
     """Load a template from a file path.
 
     Raises:
-        TemplateRenderError: If the file cannot be read.
+        TemplateRenderError: If the file cannot be read or YAML
+            parsing fails.
         TemplateValidationError: If validation fails.
     """
     source_name = str(path)
@@ -401,8 +412,10 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Dict suitable for ``CompanyTemplate(**result)``.
     """
-    company = data.get("company") or {}
-    if not isinstance(company, dict):
+    company = data.get("company")
+    if company is None:
+        company = {}
+    elif not isinstance(company, dict):
         msg = "Template field 'template.company' must be a mapping"
         logger.warning(
             TEMPLATE_LOAD_STRUCTURE_ERROR,
@@ -433,6 +446,8 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
         "communication": data.get("communication", "hybrid"),
         "budget_monthly": _to_float(company.get("budget_monthly", 50.0)),
         "autonomy": _to_float(company.get("autonomy", 0.5)),
+        "workflow_handoffs": data.get("workflow_handoffs", ()),
+        "escalation_paths": data.get("escalation_paths", ()),
     }
     if "extends" in data:
         result["extends"] = data["extends"]

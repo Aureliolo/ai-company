@@ -18,8 +18,7 @@ from ai_company.observability.events.template import (
 
 logger = get_logger(__name__)
 
-# Preset name -> frozen dict compatible with PersonalityConfig constructor.
-# Both the outer mapping and each inner mapping are read-only.
+# Mutable construction helper; frozen into PERSONALITY_PRESETS below.
 _RAW_PRESETS: dict[str, dict[str, Any]] = {
     "visionary_leader": {
         "traits": ("strategic", "decisive", "inspiring"),
@@ -342,6 +341,7 @@ _RAW_PRESETS: dict[str, dict[str, Any]] = {
         "conflict_approach": "collaborate",
     },
 }
+# Both the outer mapping and each inner mapping are read-only.
 PERSONALITY_PRESETS: MappingProxyType[str, MappingProxyType[str, Any]] = (
     MappingProxyType({k: MappingProxyType(v) for k, v in _RAW_PRESETS.items()})
 )

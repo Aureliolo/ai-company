@@ -5,6 +5,7 @@ with a child config dict, implementing the merge semantics described in
 the template inheritance design.
 """
 
+import copy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -18,8 +19,8 @@ from ai_company.templates.errors import TemplateInheritanceError
 
 logger = get_logger(__name__)
 
-# Default department when not specified in template agent config.
-# Shared with ``renderer._DEFAULT_DEPARTMENT``; authoritative source.
+# Single source of truth for the default department.
+# renderer.py re-imports this value for its own use.
 DEFAULT_MERGE_DEPARTMENT = "engineering"
 
 
@@ -42,7 +43,7 @@ def merge_template_configs(
 
     - ``company_name``, ``company_type``: child wins if present.
     - ``config`` (dict): deep-merged; child keys override parent.
-    - ``agents`` (list): merged by ``(role, department)`` key.
+    - ``agents`` (list): merged by ``(role, department, merge_id)`` key.
     - ``departments`` (list): merged by ``name`` (case-insensitive).
     - ``workflow_handoffs``, ``escalation_paths``: child replaces
       entirely if present.
@@ -86,12 +87,12 @@ def merge_template_configs(
     if parent_depts or child_depts:
         result["departments"] = _merge_departments(parent_depts, child_depts)
 
-    # Replace-if-present fields.
+    # Replace-if-present fields (deep-copied to prevent reference sharing).
     for key in ("workflow_handoffs", "escalation_paths"):
         if key in child and child[key] is not None:
-            result[key] = child[key]
+            result[key] = copy.deepcopy(child[key])
         elif key in parent:
-            result[key] = parent[key]
+            result[key] = copy.deepcopy(parent[key])
 
     logger.debug(TEMPLATE_INHERIT_MERGE, action="done")
     return result
@@ -101,11 +102,12 @@ def _merge_agents(
     parent_agents: list[dict[str, Any]],
     child_agents: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Merge agent lists by ``(role, department)`` key.
+    """Merge agent lists by ``(role, department, merge_id)`` key.
 
     Algorithm:
-    1. Index parent agents by ``(role.lower(), department.lower())``.
-       Duplicate keys maintain an ordered list per key.
+    1. Index parent agents by ``(role.lower(), department.lower(),
+       merge_id.lower())``.  Duplicate keys maintain an ordered list
+       per key.
     2. Walk child agents:
        - ``_remove: true``: find first unmatched parent with same key,
          remove it. Child entry is discarded.
@@ -127,11 +129,11 @@ def _merge_agents(
     Raises:
         TemplateInheritanceError: If ``_remove`` has no matching parent.
     """
-    parent_entries: dict[tuple[str, str], list[_ParentEntry]] = {}
+    parent_entries: dict[tuple[str, str, str], list[_ParentEntry]] = {}
     for idx, agent in enumerate(parent_agents):
         key = _agent_key(agent)
         parent_entries.setdefault(key, []).append(
-            _ParentEntry(index=idx, agent=agent),
+            _ParentEntry(index=idx, agent=copy.deepcopy(agent)),
         )
 
     appended: list[dict[str, Any]] = []
@@ -143,7 +145,7 @@ def _merge_agents(
 
 def _apply_child_agent(
     child_agent: dict[str, Any],
-    parent_entries: dict[tuple[str, str], list[_ParentEntry]],
+    parent_entries: dict[tuple[str, str, str], list[_ParentEntry]],
     appended: list[dict[str, Any]],
 ) -> None:
     """Apply a single child agent against parent entries.
@@ -156,7 +158,9 @@ def _apply_child_agent(
     entries = parent_entries.get(key, [])
 
     matched_entry = _find_unmatched(entries)
-    clean = {k: v for k, v in child_agent.items() if k != "_remove"}
+    clean = copy.deepcopy(
+        {k: v for k, v in child_agent.items() if k not in ("_remove", "merge_id")}
+    )
 
     if is_remove:
         if matched_entry is None:
@@ -184,7 +188,7 @@ def _find_unmatched(
 
 
 def _collect_merged_agents(
-    parent_entries: dict[tuple[str, str], list[_ParentEntry]],
+    parent_entries: dict[tuple[str, str, str], list[_ParentEntry]],
     appended: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Collect surviving parent agents (in order) + appended."""
@@ -193,7 +197,9 @@ def _collect_merged_agents(
         key=lambda e: e.index,
     )
     result: list[dict[str, Any]] = [
-        entry.agent for entry in all_entries if entry.agent is not None
+        {k: v for k, v in entry.agent.items() if k != "merge_id"}
+        for entry in all_entries
+        if entry.agent is not None
     ]
     result.extend(appended)
     return result
@@ -215,8 +221,9 @@ def _merge_departments(
     Returns:
         Merged department list.
     """
-    # Build child overrides index.
+    # Build child overrides index (skip nameless departments).
     child_by_name: dict[str, dict[str, Any]] = {}
+    nameless_child: list[dict[str, Any]] = []
     for child_dept in child_depts:
         name = str(child_dept.get("name", "")).lower()
         if not name:
@@ -224,7 +231,9 @@ def _merge_departments(
                 TEMPLATE_INHERIT_MERGE,
                 action="department_no_name",
             )
-        child_by_name[name] = child_dept
+            nameless_child.append(child_dept)
+            continue
+        child_by_name[name] = copy.deepcopy(child_dept)
 
     # Walk parent depts: apply child override if it exists.
     result: list[dict[str, Any]] = []
@@ -236,26 +245,33 @@ def _merge_departments(
                 TEMPLATE_INHERIT_MERGE,
                 action="department_no_name",
             )
-        if name and name in child_by_name:
+            result.append(copy.deepcopy(dept))
+            continue
+        if name in child_by_name:
             result.append(child_by_name[name])
             seen_names.add(name)
         else:
-            result.append(dept)
-            if name:
-                seen_names.add(name)
+            result.append(copy.deepcopy(dept))
+            seen_names.add(name)
 
-    # Append unmatched child depts.
+    # Append unmatched child depts + nameless children.
     for name, child_dept in child_by_name.items():
         if name not in seen_names:
             result.append(child_dept)
+    result.extend(copy.deepcopy(nameless_child))
 
     return result
 
 
-def _agent_key(agent: dict[str, Any]) -> tuple[str, str]:
-    """Compute the merge key for an agent dict."""
+def _agent_key(agent: dict[str, Any]) -> tuple[str, str, str]:
+    """Compute the merge key for an agent dict.
+
+    Uses ``(role, department, merge_id)`` when ``merge_id`` is present,
+    otherwise ``(role, department, "")`` for backwards compatibility.
+    """
     role = str(agent.get("role", "")).lower()
     dept = agent.get("department")
     if not dept:
         dept = DEFAULT_MERGE_DEPARTMENT
-    return (role, str(dept).lower())
+    merge_id = str(agent.get("merge_id", "")).lower()
+    return (role, str(dept).lower(), merge_id)

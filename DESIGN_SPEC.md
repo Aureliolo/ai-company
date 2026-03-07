@@ -2149,37 +2149,39 @@ The human can interact as:
 Templates are YAML/JSON files defining a complete company setup:
 
 ```yaml
-# templates/startup.yaml
+# templates/startup.yaml (simplified — real templates also declare
+# variables, departments, min_agents/max_agents, and tags)
 template:
   name: "Tech Startup"
   description: "Small team for building MVPs and prototypes"
   version: "1.0"
 
   company:
-    name: "{{ company_name }}"
     type: "startup"
     budget_monthly: "{{ budget | default(50.00) }}"
-    autonomy: "semi"
+    autonomy: 0.5
 
   agents:
-    - role: "ceo"
+    - role: "CEO"
       name: "{{ ceo_name | auto }}"
       model: "large"
       personality_preset: "visionary_leader"
 
-    - role: "full_stack_developer"
+    - role: "Full-Stack Developer"
+      merge_id: "fullstack-senior"
       name: "{{ dev1_name | auto }}"
       level: "senior"
       model: "medium"
       personality_preset: "pragmatic_builder"
 
-    - role: "full_stack_developer"
+    - role: "Full-Stack Developer"
+      merge_id: "fullstack-mid"
       name: "{{ dev2_name | auto }}"
       level: "mid"
       model: "small"
       personality_preset: "eager_learner"
 
-    - role: "product_manager"
+    - role: "Product Manager"
       name: "{{ pm_name | auto }}"
       model: "medium"
       personality_preset: "strategic_planner"
@@ -2207,15 +2209,16 @@ template:
   agents:
     - role: "QA Engineer"    # appended to parent agents
       level: "mid"
-    - role: "full_stack_developer"
+    - role: "Full-Stack Developer"
+      merge_id: "fullstack-mid"
       department: "engineering"
-      _remove: true          # removes matching parent agent by (role, department)
+      _remove: true          # removes matching parent agent by key
 ```
 
 Inheritance resolves parent→child chains up to 10 levels deep. Merge semantics:
 - **Scalars** (`company_name`, `company_type`): child wins if present.
 - **`config`** dict: deep-merged (child keys override parent).
-- **`agents`** list: merged by `(role, department)` key. Child can override, append, or remove (`_remove: true`) parent agents.
+- **`agents`** list: merged by `(role, department, merge_id)` key. When `merge_id` is omitted the key is `(role, department, "")`. Child can override, append, or remove (`_remove: true`) parent agents.
 - **`departments`** list: merged by name (case-insensitive). Child dept replaces parent entirely.
 - **`workflow_handoffs`**, **`escalation_paths`**: child replaces entirely if present.
 
@@ -2367,6 +2370,7 @@ ai-company/
 │       │   ├── metrics.py          # TaskCompletionMetrics proxy overhead model
 │       │   ├── react_loop.py       # ReAct loop implementation
 │       │   ├── plan_models.py      # Plan step, plan, and plan-execute config models
+│       │   ├── plan_parsing.py     # Plan response parsing utilities
 │       │   ├── plan_execute_loop.py # Plan-and-Execute loop implementation
 │       │   ├── loop_helpers.py     # Shared stateless helpers for all loop implementations
 │       │   ├── recovery.py         # Crash recovery strategies (RecoveryStrategy protocol)
@@ -2404,6 +2408,7 @@ ai-company/
 │       │   ├── events/             # Per-domain event constants
 │       │   │   ├── __init__.py    # Package marker with usage docs; no re-exports
 │       │   │   ├── budget.py      # BUDGET_* constants
+│       │   │   ├── company.py      # COMPANY_* constants
 │       │   │   ├── communication.py # COMM_* constants
 │       │   │   ├── config.py      # CONFIG_* constants
 │       │   │   ├── correlation.py # CORRELATION_* constants

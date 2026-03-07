@@ -172,8 +172,9 @@ def _resolve_inheritance(
     Raises:
         TemplateInheritanceError: On circular chains or depth overflow.
     """
-    # extends is already normalized (lowercase/stripped) by the schema.
-    parent_name: str = loaded.template.extends  # type: ignore[assignment]
+    # Guaranteed by _render_to_dict caller.
+    assert loaded.template.extends is not None  # noqa: S101
+    parent_name: str = loaded.template.extends
     child_id = loaded.source_name
 
     logger.info(
@@ -182,6 +183,28 @@ def _resolve_inheritance(
         parent=parent_name,
     )
 
+    _validate_inheritance_chain(child_id, parent_name, _chain)
+
+    merged = _render_and_merge_parent(
+        parent_name,
+        child_config,
+        vars_dict,
+        _chain,
+    )
+    logger.info(
+        TEMPLATE_INHERIT_RESOLVE_SUCCESS,
+        child=child_id,
+        parent=parent_name,
+    )
+    return merged
+
+
+def _validate_inheritance_chain(
+    child_id: str,
+    parent_name: str,
+    _chain: frozenset[str],
+) -> None:
+    """Check for circular inheritance and depth overflow."""
     if parent_name in _chain:
         logger.error(
             TEMPLATE_INHERIT_CIRCULAR,
@@ -208,6 +231,14 @@ def _resolve_inheritance(
         )
         raise TemplateInheritanceError(msg)
 
+
+def _render_and_merge_parent(
+    parent_name: str,
+    child_config: dict[str, Any],
+    vars_dict: dict[str, Any],
+    _chain: frozenset[str],
+) -> dict[str, Any]:
+    """Load, render, and merge a parent template with a child config."""
     from ai_company.templates.loader import load_template  # noqa: PLC0415
 
     parent_loaded = load_template(parent_name)
@@ -220,14 +251,7 @@ def _resolve_inheritance(
         parent_vars,
         _chain=_chain | {parent_name},
     )
-
-    merged = merge_template_configs(parent_config, child_config)
-    logger.info(
-        TEMPLATE_INHERIT_RESOLVE_SUCCESS,
-        child=child_id,
-        parent=parent_name,
-    )
-    return merged
+    return merge_template_configs(parent_config, child_config)
 
 
 def _collect_parent_variables(
@@ -414,8 +438,10 @@ def _build_config_dict(
     Returns:
         Dict suitable for ``RootConfig(**deep_merge(defaults, result))``.
     """
-    company = rendered_data.get("company") or {}
-    if not isinstance(company, dict):
+    company = rendered_data.get("company")
+    if company is None:
+        company = {}
+    elif not isinstance(company, dict):
         msg = "Rendered template 'company' must be a mapping"
         logger.error(TEMPLATE_RENDER_YAML_ERROR, error=msg)
         raise TemplateRenderError(msg)
@@ -523,10 +549,10 @@ def _expand_agents(
         List of dicts suitable for ``AgentConfig`` construction.
     """
     used_names: set[str] = set()
-    return [
-        _expand_single_agent(agent, idx, used_names)
-        for idx, agent in enumerate(raw_agents)
-    ]
+    expanded: list[dict[str, Any]] = []
+    for idx, agent in enumerate(raw_agents):
+        expanded.append(_expand_single_agent(agent, idx, used_names))
+    return expanded
 
 
 def _expand_single_agent(

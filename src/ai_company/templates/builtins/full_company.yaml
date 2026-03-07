@@ -128,6 +128,7 @@ template:
     # Engineering — dynamic backend devs
 {% for i in range(num_backend_devs | default(3) | int) %}
     - role: "Backend Developer"
+      merge_id: "backend-{{ i }}"
 {% if i == 0 %}
       level: "senior"
       model: "medium"
@@ -142,6 +143,7 @@ template:
     # Engineering — dynamic frontend devs
 {% for i in range(num_frontend_devs | default(2) | int) %}
     - role: "Frontend Developer"
+      merge_id: "frontend-{{ i }}"
 {% if i == 0 %}
       level: "senior"
       model: "medium"
