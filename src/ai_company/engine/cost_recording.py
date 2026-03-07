@@ -74,6 +74,7 @@ async def record_execution_costs(
             output_tokens=turn.output_tokens,
             cost_usd=turn.cost_usd,
             timestamp=datetime.now(UTC),
+            call_category=turn.call_category,
         )
         await _submit_cost_record(
             record,

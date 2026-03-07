@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from ai_company.budget.call_category import LLMCallCategory
 from ai_company.engine.context import AgentContext  # noqa: TC001
 from ai_company.engine.loop_protocol import (
     ExecutionLoop,
@@ -10,6 +11,7 @@ from ai_company.engine.loop_protocol import (
     TerminationReason,
     TurnRecord,
 )
+from ai_company.engine.plan_execute_loop import PlanExecuteLoop
 from ai_company.engine.react_loop import ReactLoop
 from ai_company.providers.enums import FinishReason
 
@@ -89,6 +91,49 @@ class TestTurnRecord:
             finish_reason=FinishReason.STOP,
         )
         assert record.total_tokens == 0
+
+    def test_call_category_none_default(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            finish_reason=FinishReason.STOP,
+        )
+        assert record.call_category is None
+
+    def test_call_category_productive(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            finish_reason=FinishReason.STOP,
+            call_category=LLMCallCategory.PRODUCTIVE,
+        )
+        assert record.call_category == LLMCallCategory.PRODUCTIVE
+
+    def test_call_category_coordination(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            finish_reason=FinishReason.STOP,
+            call_category=LLMCallCategory.COORDINATION,
+        )
+        assert record.call_category == LLMCallCategory.COORDINATION
+
+    def test_call_category_system(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            finish_reason=FinishReason.STOP,
+            call_category=LLMCallCategory.SYSTEM,
+        )
+        assert record.call_category == LLMCallCategory.SYSTEM
 
     def test_turn_number_zero_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -236,7 +281,7 @@ class TestExecutionResult:
 
 @pytest.mark.unit
 class TestProtocolConformance:
-    """ReactLoop satisfies ExecutionLoop protocol."""
+    """ReactLoop and PlanExecuteLoop satisfy ExecutionLoop protocol."""
 
     def test_react_loop_is_execution_loop(self) -> None:
         loop = ReactLoop()
@@ -245,3 +290,11 @@ class TestProtocolConformance:
     def test_react_loop_type(self) -> None:
         loop = ReactLoop()
         assert loop.get_loop_type() == "react"
+
+    def test_plan_execute_loop_is_execution_loop(self) -> None:
+        loop = PlanExecuteLoop()
+        assert isinstance(loop, ExecutionLoop)
+
+    def test_plan_execute_loop_type(self) -> None:
+        loop = PlanExecuteLoop()
+        assert loop.get_loop_type() == "plan_execute"

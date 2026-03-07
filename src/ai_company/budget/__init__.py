@@ -5,10 +5,27 @@ tracking, budget hierarchy, and spending summaries as described in
 DESIGN_SPEC Section 10.
 """
 
+from ai_company.budget.call_category import LLMCallCategory, OrchestrationAlertLevel
+from ai_company.budget.category_analytics import CategoryBreakdown, OrchestrationRatio
 from ai_company.budget.config import (
     AutoDowngradeConfig,
     BudgetAlertConfig,
     BudgetConfig,
+)
+from ai_company.budget.coordination_config import (
+    CoordinationMetricName,
+    CoordinationMetricsConfig,
+    ErrorCategory,
+    ErrorTaxonomyConfig,
+    OrchestrationAlertThresholds,
+)
+from ai_company.budget.coordination_metrics import (
+    CoordinationEfficiency,
+    CoordinationMetrics,
+    CoordinationOverhead,
+    ErrorAmplification,
+    MessageDensity,
+    RedundancyRate,
 )
 from ai_company.budget.cost_record import CostRecord
 from ai_company.budget.enums import BudgetAlertLevel
@@ -32,11 +49,26 @@ __all__ = [
     "BudgetAlertLevel",
     "BudgetConfig",
     "BudgetHierarchy",
+    "CategoryBreakdown",
+    "CoordinationEfficiency",
+    "CoordinationMetricName",
+    "CoordinationMetrics",
+    "CoordinationMetricsConfig",
+    "CoordinationOverhead",
     "CostRecord",
     "CostTracker",
     "DepartmentBudget",
     "DepartmentSpending",
+    "ErrorAmplification",
+    "ErrorCategory",
+    "ErrorTaxonomyConfig",
+    "LLMCallCategory",
+    "MessageDensity",
+    "OrchestrationAlertLevel",
+    "OrchestrationAlertThresholds",
+    "OrchestrationRatio",
     "PeriodSpending",
+    "RedundancyRate",
     "SpendingSummary",
     "TeamBudget",
 ]

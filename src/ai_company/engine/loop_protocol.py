@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from ai_company.budget.call_category import LLMCallCategory  # noqa: TC001
 from ai_company.core.task import Task  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.context import AgentContext
@@ -44,6 +45,8 @@ class TurnRecord(BaseModel):
         cost_usd: Cost in USD for this turn.
         tool_calls_made: Names of tools invoked this turn.
         finish_reason: LLM finish reason for this turn.
+        call_category: Optional LLM call category for coordination
+            metrics (productive, coordination, system).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -58,6 +61,10 @@ class TurnRecord(BaseModel):
     )
     finish_reason: FinishReason = Field(
         description="LLM finish reason this turn",
+    )
+    call_category: LLMCallCategory | None = Field(
+        default=None,
+        description="LLM call category (productive, coordination, system)",
     )
 
     @computed_field(description="Total token count")  # type: ignore[prop-decorator]

@@ -47,6 +47,15 @@ EXECUTION_SHUTDOWN_CLEANUP_TIMEOUT: Final[str] = "execution.shutdown.cleanup.tim
 EXECUTION_SHUTDOWN_COMPLETE: Final[str] = "execution.shutdown.complete"
 EXECUTION_LOOP_SHUTDOWN: Final[str] = "execution.loop.shutdown"
 
+EXECUTION_PLAN_CREATED: Final[str] = "execution.plan.created"
+EXECUTION_PLAN_STEP_START: Final[str] = "execution.plan.step_start"
+EXECUTION_PLAN_STEP_COMPLETE: Final[str] = "execution.plan.step_complete"
+EXECUTION_PLAN_STEP_FAILED: Final[str] = "execution.plan.step_failed"
+EXECUTION_PLAN_REPLAN_START: Final[str] = "execution.plan.replan_start"
+EXECUTION_PLAN_REPLAN_COMPLETE: Final[str] = "execution.plan.replan_complete"
+EXECUTION_PLAN_REPLAN_EXHAUSTED: Final[str] = "execution.plan.replan_exhausted"
+EXECUTION_PLAN_PARSE_ERROR: Final[str] = "execution.plan.parse_error"
+
 EXECUTION_RECOVERY_START: Final[str] = "execution.recovery.start"
 EXECUTION_RECOVERY_COMPLETE: Final[str] = "execution.recovery.complete"
 EXECUTION_RECOVERY_FAILED: Final[str] = "execution.recovery.failed"

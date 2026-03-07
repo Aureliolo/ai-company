@@ -6,6 +6,7 @@ from typing import Any, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.budget.config import BudgetConfig
+from ai_company.budget.coordination_config import CoordinationMetricsConfig
 from ai_company.communication.config import CommunicationConfig
 from ai_company.core.company import CompanyConfig, Department
 from ai_company.core.enums import CompanyType, SeniorityLevel
@@ -421,6 +422,10 @@ class RootConfig(BaseModel):
     graceful_shutdown: GracefulShutdownConfig = Field(
         default_factory=GracefulShutdownConfig,
         description="Graceful shutdown configuration",
+    )
+    coordination_metrics: CoordinationMetricsConfig = Field(
+        default_factory=CoordinationMetricsConfig,
+        description="Coordination metrics configuration",
     )
 
     @model_validator(mode="after")
