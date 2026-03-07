@@ -291,6 +291,37 @@ class TestTaskAssignmentConsistency:
         task = _make_task(assigned_to="agent-1", status=TaskStatus.CANCELLED)
         assert task.assigned_to == "agent-1"
 
+    def test_failed_without_assigned_to_allowed(self) -> None:
+        task = _make_task(status=TaskStatus.FAILED)
+        assert task.assigned_to is None
+        assert task.status is TaskStatus.FAILED
+
+    def test_failed_with_assigned_to_allowed(self) -> None:
+        task = _make_task(assigned_to="agent-1", status=TaskStatus.FAILED)
+        assert task.assigned_to == "agent-1"
+
+
+# ── Task: Max Retries ───────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestTaskMaxRetries:
+    def test_max_retries_default(self) -> None:
+        task = _make_task()
+        assert task.max_retries == 1
+
+    def test_max_retries_custom(self) -> None:
+        task = _make_task(max_retries=3)
+        assert task.max_retries == 3
+
+    def test_max_retries_zero_allowed(self) -> None:
+        task = _make_task(max_retries=0)
+        assert task.max_retries == 0
+
+    def test_max_retries_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            _make_task(max_retries=-1)
+
 
 # ── Task: Budget ─────────────────────────────────────────────────
 
@@ -452,6 +483,16 @@ class TestTaskWithTransition:
             match="assigned_to is required",
         ):
             task.with_transition(TaskStatus.ASSIGNED)
+
+    def test_valid_transition_failed_to_assigned(self) -> None:
+        """FAILED -> ASSIGNED reassignment with new assignee."""
+        task = _make_task(assigned_to="agent-1", status=TaskStatus.FAILED)
+        new_task = task.with_transition(
+            TaskStatus.ASSIGNED,
+            assigned_to="agent-2",
+        )
+        assert new_task.status is TaskStatus.ASSIGNED
+        assert new_task.assigned_to == "agent-2"
 
     def test_original_unchanged(self) -> None:
         """Ensure the original task is not modified (immutability)."""

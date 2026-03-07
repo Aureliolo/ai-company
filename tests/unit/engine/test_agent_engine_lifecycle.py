@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 from .conftest import make_completion_response as _make_completion_response
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestAgentEnginePostExecutionTransitions:
@@ -160,7 +162,7 @@ class TestAgentEnginePostExecutionTransitions:
         assert te is not None
         assert te.status == TaskStatus.IN_PROGRESS
 
-    async def test_error_stays_in_progress(
+    async def test_error_transitions_to_failed(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
@@ -193,7 +195,7 @@ class TestAgentEnginePostExecutionTransitions:
 
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.status == TaskStatus.IN_PROGRESS
+        assert te.status == TaskStatus.FAILED
 
     async def test_no_task_execution_passes_through(
         self,

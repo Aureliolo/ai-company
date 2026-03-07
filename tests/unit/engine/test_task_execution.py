@@ -23,6 +23,8 @@ from ai_company.providers.models import (
     add_token_usage,
 )
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestStatusTransition:
@@ -80,6 +82,37 @@ class TestTaskExecutionFromTask:
     def test_not_terminal_initially(self, sample_task_with_criteria: Task) -> None:
         exe = TaskExecution.from_task(sample_task_with_criteria)
         assert exe.is_terminal is False
+
+
+@pytest.mark.unit
+class TestTaskExecutionRetryCount:
+    """TaskExecution.retry_count field."""
+
+    def test_retry_count_default_zero(self, sample_task_with_criteria: Task) -> None:
+        exe = TaskExecution.from_task(sample_task_with_criteria)
+        assert exe.retry_count == 0
+
+    def test_from_task_with_retry_count(self, sample_task_with_criteria: Task) -> None:
+        exe = TaskExecution.from_task(sample_task_with_criteria, retry_count=2)
+        assert exe.retry_count == 2
+
+    def test_retry_count_preserved_on_transition(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        exe = TaskExecution.from_task(sample_task_with_criteria, retry_count=1)
+        result = exe.with_transition(TaskStatus.IN_PROGRESS)
+        assert result.retry_count == 1
+
+    def test_failed_transition_not_terminal(
+        self, sample_task_with_criteria: Task
+    ) -> None:
+        """FAILED does not set completed_at and is_terminal is False."""
+        exe = TaskExecution.from_task(sample_task_with_criteria)
+        in_progress = exe.with_transition(TaskStatus.IN_PROGRESS)
+        failed = in_progress.with_transition(TaskStatus.FAILED, reason="crash")
+        assert failed.status is TaskStatus.FAILED
+        assert failed.completed_at is None
+        assert failed.is_terminal is False
 
 
 @pytest.mark.unit
