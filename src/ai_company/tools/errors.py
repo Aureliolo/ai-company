@@ -54,3 +54,7 @@ class ToolParameterError(ToolError):
 
 class ToolExecutionError(ToolError):
     """Tool execution raised an unexpected error."""
+
+
+class ToolPermissionDeniedError(ToolError):
+    """Tool invocation blocked by the permission checker."""

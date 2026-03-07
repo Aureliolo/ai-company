@@ -11,6 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ai_company.core.enums import ToolCategory
 from ai_company.observability import get_logger
 from ai_company.observability.events.tool import TOOL_BASE_INVALID_NAME
 from ai_company.providers.models import ToolDefinition
@@ -63,6 +64,7 @@ class BaseTool(ABC):
         parameters_schema: JSON Schema dict describing expected arguments,
             or ``None`` if no parameter schema is defined (the invoker
             skips validation).
+        category: Tool category for access-level gating.
     """
 
     def __init__(
@@ -71,13 +73,15 @@ class BaseTool(ABC):
         name: str,
         description: str = "",
         parameters_schema: dict[str, Any] | None = None,
+        category: ToolCategory = ToolCategory.OTHER,
     ) -> None:
-        """Initialize a tool with name, description, and schema.
+        """Initialize a tool with name, description, schema, and category.
 
         Args:
             name: Non-blank tool name.
             description: Human-readable description.
             parameters_schema: JSON Schema for tool parameters.
+            category: Tool category for access-level gating.
 
         Raises:
             ValueError: If name is empty or whitespace-only.
@@ -88,6 +92,7 @@ class BaseTool(ABC):
             raise ValueError(msg)
         self._name = name
         self._description = description
+        self._category = category
         self._parameters_schema: MappingProxyType[str, Any] | None = (
             MappingProxyType(copy.deepcopy(parameters_schema))
             if parameters_schema is not None
@@ -98,6 +103,11 @@ class BaseTool(ABC):
     def name(self) -> str:
         """Tool name."""
         return self._name
+
+    @property
+    def category(self) -> ToolCategory:
+        """Tool category for access-level gating."""
+        return self._category
 
     @property
     def description(self) -> str:

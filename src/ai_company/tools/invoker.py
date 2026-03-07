@@ -30,6 +30,7 @@ from ai_company.observability.events.tool import (
     TOOL_INVOKE_SUCCESS,
     TOOL_INVOKE_TOOL_ERROR,
     TOOL_INVOKE_VALIDATION_UNEXPECTED,
+    TOOL_PERMISSION_DENIED,
 )
 from ai_company.providers.models import ToolCall, ToolResult
 
@@ -38,7 +39,10 @@ from .errors import ToolExecutionError, ToolNotFoundError, ToolParameterError
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from ai_company.providers.models import ToolDefinition
+
     from .base import BaseTool, ToolExecutionResult
+    from .permissions import ToolPermissionChecker
     from .registry import ToolRegistry
 
 logger = get_logger(__name__)
@@ -76,18 +80,61 @@ class ToolInvoker:
             results = await invoker.invoke_all(tool_calls, max_concurrency=3)
     """
 
-    def __init__(self, registry: ToolRegistry) -> None:
-        """Initialize with a tool registry.
+    def __init__(
+        self,
+        registry: ToolRegistry,
+        *,
+        permission_checker: ToolPermissionChecker | None = None,
+    ) -> None:
+        """Initialize with a tool registry and optional permission checker.
 
         Args:
             registry: Registry to look up tools from.
+            permission_checker: Optional checker for access-level gating.
+                When ``None``, all registered tools are permitted.
         """
         self._registry = registry
+        self._permission_checker = permission_checker
 
     @property
     def registry(self) -> ToolRegistry:
         """Read-only access to the underlying tool registry."""
         return self._registry
+
+    def get_permitted_definitions(self) -> tuple[ToolDefinition, ...]:
+        """Return tool definitions filtered by the permission checker.
+
+        When no permission checker is set, returns all definitions.
+
+        Returns:
+            Tuple of permitted tool definitions, sorted by name.
+        """
+        if self._permission_checker is None:
+            return self._registry.to_definitions()
+        return self._permission_checker.filter_definitions(self._registry)
+
+    def _check_permission(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> ToolResult | None:
+        """Check tool permission, returning an error result if denied."""
+        if self._permission_checker is None:
+            return None
+        if self._permission_checker.is_permitted(tool.name, tool.category):
+            return None
+        reason = self._permission_checker.denial_reason(tool.name, tool.category)
+        logger.warning(
+            TOOL_PERMISSION_DENIED,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            reason=reason,
+        )
+        return ToolResult(
+            tool_call_id=tool_call.id,
+            content=f"Permission denied: {reason}",
+            is_error=True,
+        )
 
     async def invoke(self, tool_call: ToolCall) -> ToolResult:
         """Execute a single tool call.
@@ -116,6 +163,10 @@ class ToolInvoker:
         tool_or_error = self._lookup_tool(tool_call)
         if isinstance(tool_or_error, ToolResult):
             return tool_or_error
+
+        permission_error = self._check_permission(tool_or_error, tool_call)
+        if permission_error is not None:
+            return permission_error
 
         param_error = self._validate_params(tool_or_error, tool_call)
         if param_error is not None:

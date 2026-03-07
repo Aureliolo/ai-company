@@ -5,9 +5,11 @@ from typing import Any
 
 import pytest
 
+from ai_company.core.enums import ToolAccessLevel, ToolCategory
 from ai_company.providers.models import ToolCall
 from ai_company.tools.base import BaseTool, ToolExecutionResult
 from ai_company.tools.invoker import ToolInvoker
+from ai_company.tools.permissions import ToolPermissionChecker
 from ai_company.tools.registry import ToolRegistry
 
 # ── Concrete test tools (private to tests) ────────────────────────
@@ -400,3 +402,62 @@ def concurrency_invoker(
         _RecursionTool(),
     ]
     return ToolInvoker(ToolRegistry(tools))
+
+
+# ── Categorized tool for permission tests ────────────────────────
+
+
+class _CategorizedTool(BaseTool):
+    """Minimal tool with configurable name and category."""
+
+    def __init__(
+        self,
+        *,
+        name: str,
+        category: ToolCategory = ToolCategory.OTHER,
+    ) -> None:
+        super().__init__(
+            name=name,
+            description=f"Test tool: {name}",
+            category=category,
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        return ToolExecutionResult(content="ok")
+
+
+# ── Permission fixtures ──────────────────────────────────────────
+
+
+@pytest.fixture
+def permission_registry() -> ToolRegistry:
+    """Registry with tools spanning multiple categories."""
+    return ToolRegistry(
+        [
+            _CategorizedTool(name="fs_tool", category=ToolCategory.FILE_SYSTEM),
+            _CategorizedTool(name="code_tool", category=ToolCategory.CODE_EXECUTION),
+            _CategorizedTool(name="web_tool", category=ToolCategory.WEB),
+            _CategorizedTool(name="deploy_tool", category=ToolCategory.DEPLOYMENT),
+            _CategorizedTool(name="terminal_tool", category=ToolCategory.TERMINAL),
+            _CategorizedTool(name="other_tool", category=ToolCategory.OTHER),
+        ]
+    )
+
+
+@pytest.fixture
+def permission_checker() -> ToolPermissionChecker:
+    """Standard-level checker with no explicit allow/deny lists."""
+    return ToolPermissionChecker(access_level=ToolAccessLevel.STANDARD)
+
+
+@pytest.fixture
+def permission_invoker(
+    permission_registry: ToolRegistry,
+    permission_checker: ToolPermissionChecker,
+) -> ToolInvoker:
+    """Invoker with standard-level permission checker."""
+    return ToolInvoker(permission_registry, permission_checker=permission_checker)

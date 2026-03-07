@@ -12,6 +12,7 @@ from ai_company.core.enums import (
     MemoryType,
     RiskTolerance,
     SeniorityLevel,
+    ToolAccessLevel,
 )
 from ai_company.core.role import Authority
 from ai_company.core.types import NotBlankStr  # noqa: TC001
@@ -137,12 +138,18 @@ class ToolPermissions(BaseModel):
     """Tool access permissions for an agent.
 
     Attributes:
+        access_level: Tool access level controlling which categories
+            are available.
         allowed: Explicitly allowed tool names.
         denied: Explicitly denied tool names.
     """
 
     model_config = ConfigDict(frozen=True)
 
+    access_level: ToolAccessLevel = Field(
+        default=ToolAccessLevel.STANDARD,
+        description="Tool access level",
+    )
     allowed: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Explicitly allowed tools",

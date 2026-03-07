@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ai_company.tools.invoker import ToolInvoker
+    from ai_company.tools.registry import ToolRegistry
 
     from .conftest import _ConcurrencyTrackingTool
 
@@ -665,3 +666,87 @@ class TestInvokeAllEdgeCases:
         """Empty input with max_concurrency returns empty tuple."""
         results = await concurrency_invoker.invoke_all([], max_concurrency=3)
         assert results == ()
+
+
+@pytest.mark.unit
+class TestInvokerPermissionCheck:
+    """Tests for permission checking within the invoker."""
+
+    async def test_no_checker_allows_everything(
+        self,
+        sample_invoker: ToolInvoker,
+        sample_tool_call: ToolCall,
+    ) -> None:
+        """Invoker without permission checker allows all tool calls."""
+        result = await sample_invoker.invoke(sample_tool_call)
+        assert result.is_error is False
+
+    async def test_checker_denies_unpermitted_tool(
+        self,
+        permission_invoker: ToolInvoker,
+    ) -> None:
+        """Invoker with checker denies tools outside access level."""
+        call = ToolCall(
+            id="call_deploy",
+            name="deploy_tool",
+            arguments={},
+        )
+        result = await permission_invoker.invoke(call)
+        assert result.is_error is True
+        assert "Permission denied" in result.content
+
+    async def test_checker_allows_permitted_tool(
+        self,
+        permission_invoker: ToolInvoker,
+    ) -> None:
+        """Invoker with checker allows tools within access level."""
+        call = ToolCall(id="call_fs", name="fs_tool", arguments={})
+        result = await permission_invoker.invoke(call)
+        assert result.is_error is False
+
+    async def test_invoke_all_mixed_permissions(
+        self,
+        permission_invoker: ToolInvoker,
+    ) -> None:
+        """invoke_all returns mix of permitted and denied results."""
+        calls = [
+            ToolCall(id="c1", name="fs_tool", arguments={}),
+            ToolCall(id="c2", name="deploy_tool", arguments={}),
+            ToolCall(id="c3", name="web_tool", arguments={}),
+        ]
+        results = await permission_invoker.invoke_all(calls)
+        assert len(results) == 3
+        assert results[0].is_error is False  # fs_tool: STANDARD allows
+        assert results[1].is_error is True  # deploy_tool: STANDARD denies
+        assert results[2].is_error is False  # web_tool: STANDARD allows
+
+
+@pytest.mark.unit
+class TestGetPermittedDefinitions:
+    """Tests for get_permitted_definitions method."""
+
+    def test_no_checker_returns_all(
+        self,
+        sample_invoker: ToolInvoker,
+    ) -> None:
+        """Without checker, returns all tool definitions."""
+        defs = sample_invoker.get_permitted_definitions()
+        assert len(defs) == len(sample_invoker.registry)
+
+    def test_checker_filters_definitions(
+        self,
+        permission_invoker: ToolInvoker,
+        permission_registry: ToolRegistry,
+    ) -> None:
+        """With checker, returns only permitted definitions."""
+        defs = permission_invoker.get_permitted_definitions()
+        names = {d.name for d in defs}
+        # STANDARD allows: file_system, code_execution, version_control,
+        # web, terminal, analytics
+        assert "fs_tool" in names
+        assert "code_tool" in names
+        assert "web_tool" in names
+        assert "terminal_tool" in names
+        # STANDARD denies: deployment, other
+        assert "deploy_tool" not in names
+        assert "other_tool" not in names

@@ -293,6 +293,7 @@ class TestAgentEngineWithTools:
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
+        from ai_company.core.enums import ToolCategory
         from ai_company.tools.base import BaseTool, ToolExecutionResult
         from ai_company.tools.registry import ToolRegistry
 
@@ -304,7 +305,15 @@ class TestAgentEngineWithTools:
             ) -> ToolExecutionResult:
                 return ToolExecutionResult(content=str(arguments))
 
-        registry = ToolRegistry([EchoTool(name="echo", description="Echoes input.")])
+        registry = ToolRegistry(
+            [
+                EchoTool(
+                    name="echo",
+                    description="Echoes input.",
+                    category=ToolCategory.CODE_EXECUTION,
+                ),
+            ]
+        )
         response = _make_completion_response()
         provider = mock_provider_factory([response])
         engine = AgentEngine(

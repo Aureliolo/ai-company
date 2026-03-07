@@ -409,10 +409,10 @@ class ReactLoop:
 def _get_tool_definitions(
     tool_invoker: ToolInvoker | None,
 ) -> list[ToolDefinition] | None:
-    """Extract tool definitions from the invoker, or return None."""
+    """Extract permitted tool definitions from the invoker, or return None."""
     if tool_invoker is None:
         return None
-    defs = tool_invoker.registry.to_definitions()
+    defs = tool_invoker.get_permitted_definitions()
     return list(defs) if defs else None
 
 

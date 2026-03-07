@@ -6,6 +6,7 @@ and as a starting point for new tool implementations.
 
 from typing import Any
 
+from ai_company.core.enums import ToolCategory
 from ai_company.tools.base import BaseTool, ToolExecutionResult
 
 
@@ -25,6 +26,7 @@ class EchoTool(BaseTool):
         super().__init__(
             name="echo",
             description="Echoes the input message back",
+            category=ToolCategory.OTHER,
             parameters_schema={
                 "type": "object",
                 "properties": {"message": {"type": "string"}},

@@ -33,6 +33,8 @@ from ai_company.core.enums import (
     SkillCategory,
     TaskStatus,
     TaskType,
+    ToolAccessLevel,
+    ToolCategory,
 )
 from ai_company.core.project import Project
 from ai_company.core.role import (
@@ -93,6 +95,8 @@ __all__ = [
     "TaskStatus",
     "TaskType",
     "Team",
+    "ToolAccessLevel",
+    "ToolCategory",
     "ToolPermissions",
     "get_builtin_role",
     "get_seniority_info",
