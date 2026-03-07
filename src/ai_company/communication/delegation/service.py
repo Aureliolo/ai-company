@@ -28,6 +28,7 @@ from ai_company.observability.events.delegation import (
     DELEGATION_LOOP_ESCALATED,
     DELEGATION_REQUESTED,
     DELEGATION_RESULT_SENT,
+    DELEGATION_SUB_TASK_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -85,19 +86,7 @@ class DelegationService:
             ValueError: If request IDs do not match identity objects.
             DelegationError: If sub-task construction fails.
         """
-        # 0. Identity consistency check
-        if request.delegator_id != delegator.name:
-            msg = (
-                f"request.delegator_id {request.delegator_id!r} does not "
-                f"match delegator.name {delegator.name!r}"
-            )
-            raise ValueError(msg)
-        if request.delegatee_id != delegatee.name:
-            msg = (
-                f"request.delegatee_id {request.delegatee_id!r} does not "
-                f"match delegatee.name {delegatee.name!r}"
-            )
-            raise ValueError(msg)
+        self._validate_identity(request, delegator, delegatee)
 
         logger.info(
             DELEGATION_REQUESTED,
@@ -130,10 +119,52 @@ class DelegationService:
                 blocked_by=guard_outcome.mechanism,
             )
 
-        # 3. Create sub-task
+        # 3. Create sub-task and record
         sub_task = self._create_sub_task(request)
+        self._record_delegation(request, sub_task)
 
-        # 4. Record in guard and audit trail
+        return DelegationResult(success=True, delegated_task=sub_task)
+
+    @staticmethod
+    def _validate_identity(
+        request: DelegationRequest,
+        delegator: AgentIdentity,
+        delegatee: AgentIdentity,
+    ) -> None:
+        """Verify request IDs match the identity objects.
+
+        Args:
+            request: The delegation request.
+            delegator: Identity of the delegating agent.
+            delegatee: Identity of the target agent.
+
+        Raises:
+            ValueError: If IDs do not match.
+        """
+        if request.delegator_id != delegator.name:
+            msg = (
+                f"request.delegator_id {request.delegator_id!r} does not "
+                f"match delegator.name {delegator.name!r}"
+            )
+            raise ValueError(msg)
+        if request.delegatee_id != delegatee.name:
+            msg = (
+                f"request.delegatee_id {request.delegatee_id!r} does not "
+                f"match delegatee.name {delegatee.name!r}"
+            )
+            raise ValueError(msg)
+
+    def _record_delegation(
+        self,
+        request: DelegationRequest,
+        sub_task: Task,
+    ) -> None:
+        """Record delegation in guard state and audit trail.
+
+        Args:
+            request: The delegation request.
+            sub_task: The created sub-task.
+        """
         self._guard.record_delegation(
             request.delegator_id,
             request.delegatee_id,
@@ -157,18 +188,12 @@ class DelegationService:
             original_task_id=request.task.id,
             delegated_task_id=sub_task.id,
         )
-
-        result = DelegationResult(
-            success=True,
-            delegated_task=sub_task,
-        )
         logger.debug(
             DELEGATION_RESULT_SENT,
             delegator=request.delegator_id,
             delegatee=request.delegatee_id,
             success=True,
         )
-        return result
 
     def _create_sub_task(self, request: DelegationRequest) -> Task:
         """Create a new sub-task from a delegation request.
@@ -211,10 +236,14 @@ class DelegationService:
                 budget_limit=original.budget_limit,
                 deadline=original.deadline,
                 max_retries=original.max_retries,
+                reviewers=original.reviewers,
+                dependencies=original.dependencies,
+                artifacts_expected=original.artifacts_expected,
+                acceptance_criteria=original.acceptance_criteria,
             )
         except ValidationError as exc:
             logger.exception(
-                "delegation.sub_task_creation_failed",
+                DELEGATION_SUB_TASK_FAILED,
                 delegator=request.delegator_id,
                 delegatee=request.delegatee_id,
                 original_task_id=original.id,

@@ -8,6 +8,7 @@ DELEGATION_AUTHORIZED: Final[str] = "delegation.authorized"
 DELEGATION_AUTHORITY_DENIED: Final[str] = "delegation.authority_denied"
 DELEGATION_CREATED: Final[str] = "delegation.created"
 DELEGATION_RESULT_SENT: Final[str] = "delegation.result_sent"
+DELEGATION_SUB_TASK_FAILED: Final[str] = "delegation.sub_task.failed"
 
 # Loop prevention
 DELEGATION_LOOP_BLOCKED: Final[str] = "delegation.loop.blocked"

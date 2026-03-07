@@ -88,7 +88,9 @@ class DelegationResult(BaseModel):
         elif self.delegated_task is not None:
             msg = "delegated_task must be None when success is False"
             raise ValueError(msg)
-        if not self.success and self.rejection_reason is None:
+        if not self.success and (
+            self.rejection_reason is None or not self.rejection_reason.strip()
+        ):
             msg = "rejection_reason is required when success is False"
             raise ValueError(msg)
         return self

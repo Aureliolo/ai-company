@@ -292,6 +292,20 @@ class TestEdgeCases:
         assert resolver.get_supervisor("dev1") == "shared_lead"
         assert resolver.get_supervisor("dev2") == "shared_lead"
 
+    def test_dept_head_as_team_lead_no_self_cycle(self) -> None:
+        """Department head also leading a team should not create a self-cycle."""
+        dept = Department(
+            name="Engineering",
+            head="cto",
+            budget_percent=50.0,
+            teams=(Team(name="core", lead="cto", members=("dev1",)),),
+        )
+        company = _make_company(departments=(dept,))
+        resolver = HierarchyResolver(company)
+        # cto should not be their own supervisor
+        assert resolver.get_supervisor("cto") is None
+        assert resolver.get_supervisor("dev1") == "cto"
+
     def test_member_with_prior_supervisor_keeps_first(self) -> None:
         """Member already assigned to a supervisor is not re-assigned."""
         dept = Department(

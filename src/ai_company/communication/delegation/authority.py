@@ -37,7 +37,7 @@ class AuthorityCheckResult(BaseModel):
         if self.allowed and self.reason:
             msg = "reason must be empty when allowed is True"
             raise ValueError(msg)
-        if not self.allowed and not self.reason:
+        if not self.allowed and not self.reason.strip():
             msg = "reason is required when allowed is False"
             raise ValueError(msg)
         return self
@@ -91,7 +91,7 @@ class AuthorityValidator:
         if not result.allowed:
             return result
 
-        logger.debug(
+        logger.info(
             DELEGATION_AUTHORIZED,
             delegator=delegator.name,
             delegatee=delegatee.name,
