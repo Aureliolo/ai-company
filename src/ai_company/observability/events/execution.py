@@ -35,6 +35,13 @@ EXECUTION_ENGINE_COST_FAILED: Final[str] = "execution.engine.cost_failed"
 EXECUTION_ENGINE_TASK_METRICS: Final[str] = "execution.engine.task_metrics"
 EXECUTION_ENGINE_TIMEOUT: Final[str] = "execution.engine.timeout"
 
+EXECUTION_SHUTDOWN_SIGNAL: Final[str] = "execution.shutdown.signal"
+EXECUTION_SHUTDOWN_GRACE_START: Final[str] = "execution.shutdown.grace_start"
+EXECUTION_SHUTDOWN_FORCE_CANCEL: Final[str] = "execution.shutdown.force_cancel"
+EXECUTION_SHUTDOWN_CLEANUP: Final[str] = "execution.shutdown.cleanup"
+EXECUTION_SHUTDOWN_COMPLETE: Final[str] = "execution.shutdown.complete"
+EXECUTION_LOOP_SHUTDOWN: Final[str] = "execution.loop.shutdown"
+
 EXECUTION_RECOVERY_START: Final[str] = "execution.recovery.start"
 EXECUTION_RECOVERY_COMPLETE: Final[str] = "execution.recovery.complete"
 EXECUTION_RECOVERY_FAILED: Final[str] = "execution.recovery.failed"

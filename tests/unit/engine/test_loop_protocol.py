@@ -25,7 +25,7 @@ class TestTerminationReason:
         assert TerminationReason.ERROR.value == "error"
 
     def test_member_count(self) -> None:
-        assert len(TerminationReason) == 4
+        assert len(TerminationReason) == 5
 
 
 @pytest.mark.unit

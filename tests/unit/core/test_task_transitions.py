@@ -34,8 +34,11 @@ class TestValidTransitions:
             (TaskStatus.IN_REVIEW, TaskStatus.IN_PROGRESS),
             (TaskStatus.IN_REVIEW, TaskStatus.BLOCKED),
             (TaskStatus.IN_REVIEW, TaskStatus.CANCELLED),
+            (TaskStatus.ASSIGNED, TaskStatus.INTERRUPTED),
+            (TaskStatus.IN_PROGRESS, TaskStatus.INTERRUPTED),
             (TaskStatus.BLOCKED, TaskStatus.ASSIGNED),
             (TaskStatus.FAILED, TaskStatus.ASSIGNED),
+            (TaskStatus.INTERRUPTED, TaskStatus.ASSIGNED),
         ],
         ids=lambda p: p.value if isinstance(p, TaskStatus) else str(p),
     )
@@ -61,6 +64,8 @@ class TestInvalidTransitions:
             (TaskStatus.IN_PROGRESS, TaskStatus.ASSIGNED),
             (TaskStatus.FAILED, TaskStatus.COMPLETED),
             (TaskStatus.FAILED, TaskStatus.IN_PROGRESS),
+            (TaskStatus.INTERRUPTED, TaskStatus.COMPLETED),
+            (TaskStatus.INTERRUPTED, TaskStatus.IN_PROGRESS),
         ],
         ids=lambda p: p.value if isinstance(p, TaskStatus) else str(p),
     )
@@ -111,6 +116,10 @@ class TestTransitionMapCompleteness:
     def test_failed_is_non_terminal(self) -> None:
         """FAILED has outgoing transitions (reassignment)."""
         assert len(VALID_TRANSITIONS[TaskStatus.FAILED]) > 0
+
+    def test_interrupted_is_non_terminal(self) -> None:
+        """INTERRUPTED has outgoing transitions (reassignment on restart)."""
+        assert len(VALID_TRANSITIONS[TaskStatus.INTERRUPTED]) > 0
 
     def test_all_targets_are_valid_statuses(self) -> None:
         """Every target in the transition map must be a valid TaskStatus."""

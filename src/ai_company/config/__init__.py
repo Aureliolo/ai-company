@@ -10,6 +10,7 @@ Public API
     default_config_dict
     RootConfig
     AgentConfig
+    GracefulShutdownConfig
     ProviderConfig
     ProviderModelConfig
     RoutingConfig
@@ -37,6 +38,7 @@ from ai_company.config.loader import (
 )
 from ai_company.config.schema import (
     AgentConfig,
+    GracefulShutdownConfig,
     ProviderConfig,
     ProviderModelConfig,
     RootConfig,
@@ -51,6 +53,7 @@ __all__ = [
     "ConfigLocation",
     "ConfigParseError",
     "ConfigValidationError",
+    "GracefulShutdownConfig",
     "ProviderConfig",
     "ProviderModelConfig",
     "RootConfig",

@@ -5,14 +5,15 @@ DESIGN_SPEC Sections 6.1 and 6.6, extended with BLOCKED, CANCELLED, and
 FAILED transitions for completeness::
 
     CREATED -> ASSIGNED
-    ASSIGNED -> IN_PROGRESS | BLOCKED | CANCELLED | FAILED
-    IN_PROGRESS -> IN_REVIEW | BLOCKED | CANCELLED | FAILED
+    ASSIGNED -> IN_PROGRESS | BLOCKED | CANCELLED | FAILED | INTERRUPTED
+    IN_PROGRESS -> IN_REVIEW | BLOCKED | CANCELLED | FAILED | INTERRUPTED
     IN_REVIEW -> COMPLETED | IN_PROGRESS (rework) | BLOCKED | CANCELLED
     BLOCKED -> ASSIGNED (unblocked)
     FAILED -> ASSIGNED (reassignment for retry)
+    INTERRUPTED -> ASSIGNED (reassignment on restart)
 
 COMPLETED and CANCELLED are terminal states with no outgoing
-transitions.  FAILED is non-terminal (can be reassigned).
+transitions.  FAILED and INTERRUPTED are non-terminal (can be reassigned).
 """
 
 from ai_company.core.enums import TaskStatus
@@ -32,6 +33,7 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
             TaskStatus.BLOCKED,
             TaskStatus.CANCELLED,
             TaskStatus.FAILED,
+            TaskStatus.INTERRUPTED,
         }
     ),
     TaskStatus.IN_PROGRESS: frozenset(
@@ -40,6 +42,7 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
             TaskStatus.BLOCKED,
             TaskStatus.CANCELLED,
             TaskStatus.FAILED,
+            TaskStatus.INTERRUPTED,
         }
     ),
     TaskStatus.IN_REVIEW: frozenset(
@@ -52,6 +55,7 @@ VALID_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     ),
     TaskStatus.BLOCKED: frozenset({TaskStatus.ASSIGNED}),
     TaskStatus.FAILED: frozenset({TaskStatus.ASSIGNED}),  # reassignment
+    TaskStatus.INTERRUPTED: frozenset({TaskStatus.ASSIGNED}),  # reassignment on restart
     TaskStatus.COMPLETED: frozenset(),  # terminal
     TaskStatus.CANCELLED: frozenset(),  # terminal
 }

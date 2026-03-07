@@ -859,6 +859,115 @@ class TestReactLoopEmptyToolRegistry:
 
 
 @pytest.mark.unit
+class TestReactLoopShutdown:
+    """Shutdown checker triggers loop termination."""
+
+    async def test_shutdown_before_first_turn(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([])
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            shutdown_checker=lambda: True,  # shutdown immediately
+        )
+
+        assert result.termination_reason == TerminationReason.SHUTDOWN
+        assert len(result.turns) == 0
+        assert provider.call_count == 0
+
+    async def test_shutdown_after_first_turn(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        call_count = 0
+
+        def shutdown_check() -> bool:
+            nonlocal call_count
+            call_count += 1
+            # Shutdown on third check (after first turn: check at top,
+            # check before tools, check at top of next iteration)
+            return call_count > 2
+
+        provider = mock_provider_factory(
+            [
+                _tool_use_response("echo", "tc-1"),
+            ]
+        )
+        invoker = _make_invoker("echo")
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+            shutdown_checker=shutdown_check,
+        )
+
+        assert result.termination_reason == TerminationReason.SHUTDOWN
+        assert len(result.turns) == 1
+
+    async def test_shutdown_before_tool_execution(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Shutdown detected between LLM response and tool invocation."""
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        call_count = 0
+
+        def shutdown_check() -> bool:
+            nonlocal call_count
+            call_count += 1
+            # First check (top of loop) passes, second check (before
+            # tools) triggers shutdown
+            return call_count > 1
+
+        provider = mock_provider_factory(
+            [
+                _tool_use_response("echo", "tc-1"),
+            ]
+        )
+        invoker = _make_invoker("echo")
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+            shutdown_checker=shutdown_check,
+        )
+
+        assert result.termination_reason == TerminationReason.SHUTDOWN
+        # Turn was recorded (LLM was called), but tools were not executed
+        assert len(result.turns) == 1
+
+    async def test_no_shutdown_checker_runs_normally(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_stop_response("Done.")])
+        loop = ReactLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            shutdown_checker=None,
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+
+
+@pytest.mark.unit
 class TestReactLoopCostAccounting:
     """Error responses include the failing turn's cost in context."""
 

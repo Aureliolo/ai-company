@@ -1,0 +1,334 @@
+"""Graceful shutdown strategy and manager.
+
+Implements DESIGN_SPEC §6.7 — cooperative timeout strategy for clean
+process shutdown.  When SIGINT/SIGTERM is received the framework signals
+agents to exit at turn boundaries, waits a grace period, force-cancels
+stragglers, marks tasks INTERRUPTED, and runs cleanup callbacks.
+
+The ``ShutdownStrategy`` protocol is pluggable for future strategies.
+"""
+
+import asyncio
+import signal
+import sys
+import time
+from collections.abc import Callable, Coroutine
+from typing import Any, Protocol, runtime_checkable
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.execution import (
+    EXECUTION_SHUTDOWN_CLEANUP,
+    EXECUTION_SHUTDOWN_COMPLETE,
+    EXECUTION_SHUTDOWN_FORCE_CANCEL,
+    EXECUTION_SHUTDOWN_GRACE_START,
+    EXECUTION_SHUTDOWN_SIGNAL,
+)
+
+logger = get_logger(__name__)
+
+CleanupCallback = Callable[[], Coroutine[Any, Any, None]]
+"""Async callback invoked during shutdown cleanup phase."""
+
+
+class ShutdownResult(BaseModel):
+    """Outcome of a graceful shutdown sequence.
+
+    Attributes:
+        strategy_type: Name of the strategy that executed the shutdown.
+        tasks_interrupted: Number of tasks that were force-cancelled.
+        tasks_completed: Number of tasks that exited cooperatively.
+        cleanup_completed: Whether all cleanup callbacks finished
+            within the allowed time.
+        duration_seconds: Wall-clock duration of the entire shutdown.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    strategy_type: NotBlankStr = Field(
+        description="Name of the strategy that executed the shutdown",
+    )
+    tasks_interrupted: int = Field(
+        ge=0,
+        description="Number of tasks that were force-cancelled",
+    )
+    tasks_completed: int = Field(
+        ge=0,
+        description="Number of tasks that exited cooperatively",
+    )
+    cleanup_completed: bool = Field(
+        description="Whether all cleanup callbacks finished in time",
+    )
+    duration_seconds: float = Field(
+        ge=0.0,
+        description="Wall-clock duration of the shutdown sequence",
+    )
+
+
+@runtime_checkable
+class ShutdownStrategy(Protocol):
+    """Protocol for pluggable shutdown strategies."""
+
+    def request_shutdown(self) -> None:
+        """Signal that a graceful shutdown has been requested."""
+        ...
+
+    def is_shutting_down(self) -> bool:
+        """Return ``True`` when shutdown has been requested."""
+        ...
+
+    async def execute_shutdown(
+        self,
+        *,
+        running_tasks: dict[str, asyncio.Task[Any]],
+        cleanup_callbacks: list[CleanupCallback],
+    ) -> ShutdownResult:
+        """Execute the full shutdown sequence.
+
+        Args:
+            running_tasks: Map of task_id → asyncio.Task for in-flight
+                agent executions.
+            cleanup_callbacks: Ordered list of async cleanup callbacks
+                to invoke after task shutdown.
+
+        Returns:
+            Outcome of the shutdown sequence.
+        """
+        ...
+
+    def get_strategy_type(self) -> str:
+        """Return the strategy identifier (e.g. ``"cooperative_timeout"``)."""
+        ...
+
+
+class CooperativeTimeoutStrategy:
+    """Cooperative timeout shutdown strategy.
+
+    1. Set shutdown event (signal agents via turn-boundary checks).
+    2. Wait up to ``grace_seconds`` for tasks to exit cooperatively.
+    3. Force-cancel any remaining tasks.
+    4. Run cleanup callbacks within ``cleanup_seconds``.
+    """
+
+    def __init__(
+        self,
+        *,
+        grace_seconds: float = 30.0,
+        cleanup_seconds: float = 5.0,
+    ) -> None:
+        self._grace_seconds = grace_seconds
+        self._cleanup_seconds = cleanup_seconds
+        self._shutdown_event = asyncio.Event()
+
+    def request_shutdown(self) -> None:
+        """Signal that a graceful shutdown has been requested."""
+        self._shutdown_event.set()
+
+    def is_shutting_down(self) -> bool:
+        """Return ``True`` when shutdown has been requested."""
+        return self._shutdown_event.is_set()
+
+    def get_strategy_type(self) -> str:
+        """Return the strategy identifier."""
+        return "cooperative_timeout"
+
+    async def execute_shutdown(
+        self,
+        *,
+        running_tasks: dict[str, asyncio.Task[Any]],
+        cleanup_callbacks: list[CleanupCallback],
+    ) -> ShutdownResult:
+        """Execute the cooperative timeout shutdown sequence."""
+        start = time.monotonic()
+
+        self._shutdown_event.set()
+        logger.info(
+            EXECUTION_SHUTDOWN_GRACE_START,
+            grace_seconds=self._grace_seconds,
+            running_tasks=len(running_tasks),
+        )
+
+        tasks_completed, tasks_interrupted = await self._wait_and_cancel(
+            running_tasks,
+        )
+
+        cleanup_completed = await self._run_cleanup(cleanup_callbacks)
+
+        duration = time.monotonic() - start
+        result = ShutdownResult(
+            strategy_type=self.get_strategy_type(),
+            tasks_interrupted=tasks_interrupted,
+            tasks_completed=tasks_completed,
+            cleanup_completed=cleanup_completed,
+            duration_seconds=duration,
+        )
+        logger.info(
+            EXECUTION_SHUTDOWN_COMPLETE,
+            strategy=result.strategy_type,
+            tasks_interrupted=result.tasks_interrupted,
+            tasks_completed=result.tasks_completed,
+            cleanup_completed=result.cleanup_completed,
+            duration_seconds=result.duration_seconds,
+        )
+        return result
+
+    async def _wait_and_cancel(
+        self,
+        running_tasks: dict[str, asyncio.Task[Any]],
+    ) -> tuple[int, int]:
+        """Wait for cooperative exit, then force-cancel stragglers.
+
+        Returns:
+            Tuple of (tasks_completed, tasks_interrupted).
+        """
+        if not running_tasks:
+            return 0, 0
+
+        task_set = set(running_tasks.values())
+        done, pending = await asyncio.wait(
+            task_set,
+            timeout=self._grace_seconds,
+        )
+        tasks_completed = len(done)
+
+        if pending:
+            logger.warning(
+                EXECUTION_SHUTDOWN_FORCE_CANCEL,
+                pending_tasks=len(pending),
+            )
+            for task in pending:
+                task.cancel()
+            # Wait for cancellation to propagate
+            await asyncio.wait(pending)
+
+        return tasks_completed, len(pending)
+
+    async def _run_cleanup(
+        self,
+        callbacks: list[CleanupCallback],
+    ) -> bool:
+        """Run cleanup callbacks within the cleanup time budget."""
+        if not callbacks:
+            return True
+
+        logger.info(
+            EXECUTION_SHUTDOWN_CLEANUP,
+            callback_count=len(callbacks),
+            cleanup_seconds=self._cleanup_seconds,
+        )
+
+        async def _run_all() -> None:
+            for callback in callbacks:
+                await callback()
+
+        try:
+            await asyncio.wait_for(
+                _run_all(),
+                timeout=self._cleanup_seconds,
+            )
+        except TimeoutError:
+            logger.warning(
+                EXECUTION_SHUTDOWN_CLEANUP,
+                cleanup_timeout=True,
+                cleanup_seconds=self._cleanup_seconds,
+            )
+            return False
+        return True
+
+
+class ShutdownManager:
+    """Manages signal handling, task tracking, and shutdown orchestration.
+
+    Separates OS signal handling from shutdown strategy logic.
+
+    Args:
+        strategy: Shutdown strategy implementation.  Defaults to
+            ``CooperativeTimeoutStrategy()``.
+    """
+
+    def __init__(
+        self,
+        strategy: ShutdownStrategy | None = None,
+    ) -> None:
+        self._strategy: ShutdownStrategy = strategy or CooperativeTimeoutStrategy()
+        self._running_tasks: dict[str, asyncio.Task[Any]] = {}
+        self._cleanup_callbacks: list[CleanupCallback] = []
+        self._signals_installed = False
+
+    @property
+    def strategy(self) -> ShutdownStrategy:
+        """The configured shutdown strategy."""
+        return self._strategy
+
+    def install_signal_handlers(self) -> None:
+        """Install SIGINT/SIGTERM handlers.
+
+        On Unix uses ``loop.add_signal_handler``.
+        On Windows uses ``signal.signal`` with ``call_soon_threadsafe``.
+        """
+        if self._signals_installed:
+            return
+
+        if sys.platform != "win32":
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(sig, self._handle_signal, sig)
+        else:
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                signal.signal(sig, self._handle_signal_threadsafe)
+
+        self._signals_installed = True
+
+    def _handle_signal(self, sig: signal.Signals) -> None:
+        """Handle signal on Unix (called in event loop thread)."""
+        logger.info(
+            EXECUTION_SHUTDOWN_SIGNAL,
+            signal=sig.name,
+        )
+        self._strategy.request_shutdown()
+
+    def _handle_signal_threadsafe(
+        self,
+        signum: int,
+        _frame: Any,
+    ) -> None:
+        """Handle signal on Windows (called from signal handler thread)."""
+        sig_name = signal.Signals(signum).name
+        logger.info(
+            EXECUTION_SHUTDOWN_SIGNAL,
+            signal=sig_name,
+        )
+        try:
+            loop = asyncio.get_running_loop()
+            loop.call_soon_threadsafe(self._strategy.request_shutdown)
+        except RuntimeError:
+            self._strategy.request_shutdown()
+
+    def register_task(
+        self,
+        task_id: str,
+        asyncio_task: asyncio.Task[Any],
+    ) -> None:
+        """Track a running agent task."""
+        self._running_tasks[task_id] = asyncio_task
+
+    def unregister_task(self, task_id: str) -> None:
+        """Stop tracking a completed agent task."""
+        self._running_tasks.pop(task_id, None)
+
+    def register_cleanup(self, callback: CleanupCallback) -> None:
+        """Register an async cleanup callback for shutdown."""
+        self._cleanup_callbacks.append(callback)
+
+    def is_shutting_down(self) -> bool:
+        """Delegate to the strategy's shutdown check."""
+        return self._strategy.is_shutting_down()
+
+    async def initiate_shutdown(self) -> ShutdownResult:
+        """Invoke the strategy's shutdown sequence."""
+        return await self._strategy.execute_shutdown(
+            running_tasks=dict(self._running_tasks),
+            cleanup_callbacks=list(self._cleanup_callbacks),
+        )

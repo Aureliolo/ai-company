@@ -27,6 +27,7 @@ class TerminationReason(StrEnum):
     COMPLETED = "completed"
     MAX_TURNS = "max_turns"
     BUDGET_EXHAUSTED = "budget_exhausted"
+    SHUTDOWN = "shutdown"
     ERROR = "error"
 
 
@@ -121,6 +122,9 @@ class ExecutionResult(BaseModel):
 BudgetChecker = Callable[[AgentContext], bool]
 """Callback that returns ``True`` when the budget is exhausted."""
 
+ShutdownChecker = Callable[[], bool]
+"""Callback that returns ``True`` when a graceful shutdown has been requested."""
+
 
 @runtime_checkable
 class ExecutionLoop(Protocol):
@@ -131,13 +135,14 @@ class ExecutionLoop(Protocol):
     but all return an ``ExecutionResult`` with a ``TerminationReason``.
     """
 
-    async def execute(
+    async def execute(  # noqa: PLR0913
         self,
         *,
         context: AgentContext,
         provider: CompletionProvider,
         tool_invoker: ToolInvoker | None = None,
         budget_checker: BudgetChecker | None = None,
+        shutdown_checker: ShutdownChecker | None = None,
         completion_config: CompletionConfig | None = None,
     ) -> ExecutionResult:
         """Run the execution loop.
@@ -148,6 +153,8 @@ class ExecutionLoop(Protocol):
             tool_invoker: Optional tool invoker for tool execution.
             budget_checker: Optional callback; returns ``True`` when
                 budget is exhausted.
+            shutdown_checker: Optional callback; returns ``True`` when
+                a graceful shutdown has been requested.
             completion_config: Optional per-execution override for
                 temperature/max_tokens (defaults to identity's model config).
 

@@ -321,6 +321,35 @@ class AgentConfig(BaseModel):
     )
 
 
+class GracefulShutdownConfig(BaseModel):
+    """Configuration for graceful shutdown behaviour.
+
+    Attributes:
+        strategy: Shutdown strategy name (e.g. ``"cooperative_timeout"``).
+        grace_seconds: Seconds to wait for cooperative agent exit
+            before force-cancelling.
+        cleanup_seconds: Seconds allowed for cleanup callbacks
+            (persist costs, close connections, flush logs).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    strategy: str = Field(
+        default="cooperative_timeout",
+        description="Shutdown strategy name",
+    )
+    grace_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        description="Seconds to wait for cooperative agent exit",
+    )
+    cleanup_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        description="Seconds allowed for cleanup callbacks",
+    )
+
+
 class RootConfig(BaseModel):
     """Root company configuration — the top-level validation target.
 
@@ -339,6 +368,7 @@ class RootConfig(BaseModel):
         providers: LLM provider configurations keyed by provider name.
         routing: Model routing configuration.
         logging: Logging configuration (``None`` to use platform defaults).
+        graceful_shutdown: Graceful shutdown configuration.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -385,6 +415,10 @@ class RootConfig(BaseModel):
     logging: LogConfig | None = Field(
         default=None,
         description="Logging configuration",
+    )
+    graceful_shutdown: GracefulShutdownConfig = Field(
+        default_factory=GracefulShutdownConfig,
+        description="Graceful shutdown configuration",
     )
 
     @model_validator(mode="after")

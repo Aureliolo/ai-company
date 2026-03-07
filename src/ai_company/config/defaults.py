@@ -25,4 +25,5 @@ def default_config_dict() -> dict[str, Any]:
         "providers": {},
         "routing": {},
         "logging": None,
+        "graceful_shutdown": {},
     }

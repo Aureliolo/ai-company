@@ -23,6 +23,7 @@ from ai_company.engine.loop_protocol import (
     BudgetChecker,
     ExecutionLoop,
     ExecutionResult,
+    ShutdownChecker,
     TerminationReason,
     TurnRecord,
 )
@@ -40,6 +41,13 @@ from ai_company.engine.recovery import (
     RecoveryStrategy,
 )
 from ai_company.engine.run_result import AgentRunResult
+from ai_company.engine.shutdown import (
+    CleanupCallback,
+    CooperativeTimeoutStrategy,
+    ShutdownManager,
+    ShutdownResult,
+    ShutdownStrategy,
+)
 from ai_company.engine.task_execution import StatusTransition, TaskExecution
 from ai_company.providers.models import ZERO_TOKEN_USAGE, add_token_usage
 
@@ -52,6 +60,8 @@ __all__ = [
     "AgentRunResult",
     "BudgetChecker",
     "BudgetExhaustedError",
+    "CleanupCallback",
+    "CooperativeTimeoutStrategy",
     "DefaultTokenEstimator",
     "EngineError",
     "ExecutionLoop",
@@ -65,6 +75,10 @@ __all__ = [
     "ReactLoop",
     "RecoveryResult",
     "RecoveryStrategy",
+    "ShutdownChecker",
+    "ShutdownManager",
+    "ShutdownResult",
+    "ShutdownStrategy",
     "StatusTransition",
     "SystemPrompt",
     "TaskCompletionMetrics",
