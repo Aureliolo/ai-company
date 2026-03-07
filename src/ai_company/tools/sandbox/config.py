@@ -8,12 +8,15 @@ class SubprocessSandboxConfig(BaseModel):
 
     Attributes:
         timeout_seconds: Default command timeout in seconds.
-        workspace_only: Enforce cwd within the workspace boundary.
-        restricted_path: Filter PATH entries to safe directories.
+        workspace_only: When enabled, rejects commands whose working
+            directory falls outside the workspace boundary.
+        restricted_path: When enabled, filters PATH entries to retain
+            only known safe system directories.
         env_allowlist: Environment variable names allowed to pass through.
             Supports ``LC_*`` as a glob for all locale variables.
         env_denylist_patterns: fnmatch patterns to strip even if in
             the allowlist (e.g. ``*KEY*`` catches ``API_KEY``).
+            Includes secret-name heuristics and library injection vars.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -47,4 +50,11 @@ class SubprocessSandboxConfig(BaseModel):
         "*PASSWORD*",
         "*CREDENTIAL*",
         "*PRIVATE*",
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "DYLD_INSERT_LIBRARIES",
+        "PYTHONPATH",
+        "NODE_PATH",
+        "RUBYLIB",
+        "PERL5LIB",
     )

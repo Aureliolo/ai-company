@@ -10,9 +10,12 @@ execution uses ``asyncio.create_subprocess_exec`` (never
 interactive prompts and restrict config/protocol attack surfaces.
 
 When a ``SandboxBackend`` is injected, subprocess management is
-delegated to the sandbox, which provides environment filtering,
-workspace enforcement, and timeout support on top of the git
-hardening env vars.
+delegated to the sandbox — the sandbox handles environment
+filtering and workspace boundary enforcement for the ``cwd``,
+while ``_BaseGitTool._validate_path`` independently enforces
+workspace boundaries for git path arguments.  Git hardening
+env vars are passed as ``env_overrides`` to the sandbox.
+Without a sandbox, the direct-subprocess path is used.
 """
 
 import asyncio
@@ -20,6 +23,7 @@ import os
 import re
 from abc import ABC
 from pathlib import Path  # noqa: TC003 — used at runtime
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
 from ai_company.core.enums import ToolCategory
@@ -43,14 +47,27 @@ logger = get_logger(__name__)
 
 _DEFAULT_TIMEOUT: Final[float] = 30.0
 
+# Matches http(s)://user:pass@host patterns in git URLs.
 _CREDENTIAL_RE = re.compile(r"(https?://)[^@/]+@")
 
-_GIT_HARDENING_OVERRIDES: Final[dict[str, str]] = {
-    "GIT_TERMINAL_PROMPT": "0",
-    "GIT_CONFIG_NOSYSTEM": "1",
-    "GIT_CONFIG_GLOBAL": os.devnull,
-    "GIT_PROTOCOL_FROM_USER": "0",
-}
+_GIT_HARDENING_OVERRIDES: Final[MappingProxyType[str, str]] = MappingProxyType(
+    {
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_PROTOCOL_FROM_USER": "0",
+    }
+)
+
+# Substrings that indicate secret env vars (defense-in-depth for direct path).
+_SECRET_SUBSTRINGS: Final[tuple[str, ...]] = (
+    "KEY",
+    "SECRET",
+    "TOKEN",
+    "PASSWORD",
+    "CREDENTIAL",
+    "PRIVATE",
+)
 
 
 def _sanitize_command(args: list[str]) -> list[str]:
@@ -126,7 +143,7 @@ class _BaseGitTool(BaseTool, ABC):
         """
         try:
             resolved = (self._workspace / relative).resolve()
-        except OSError:
+        except OSError as exc:
             logger.warning(
                 GIT_WORKSPACE_VIOLATION,
                 path=relative,
@@ -134,17 +151,17 @@ class _BaseGitTool(BaseTool, ABC):
                 error="path resolution failed",
             )
             msg = f"Path '{relative}' could not be resolved"
-            raise ValueError(msg) from None
+            raise ValueError(msg) from exc
         try:
             resolved.relative_to(self._workspace)
-        except ValueError:
+        except ValueError as exc:
             logger.warning(
                 GIT_WORKSPACE_VIOLATION,
                 path=relative,
                 workspace=str(self._workspace),
             )
             msg = f"Path '{relative}' is outside workspace"
-            raise ValueError(msg) from None
+            raise ValueError(msg) from exc
         return resolved
 
     def _check_paths(self, paths: list[str]) -> ToolExecutionResult | None:
@@ -197,8 +214,18 @@ class _BaseGitTool(BaseTool, ABC):
 
     @staticmethod
     def _build_git_env() -> dict[str, str]:
-        """Build a hardened environment for git subprocesses."""
-        return {**os.environ, **_GIT_HARDENING_OVERRIDES}
+        """Build a hardened environment for git subprocesses.
+
+        Applies git hardening overrides and strips obvious secret
+        env vars as defense-in-depth.  For full environment filtering,
+        use a ``SandboxBackend``.
+        """
+        env = {**os.environ, **_GIT_HARDENING_OVERRIDES}
+        for key in list(env):
+            upper = key.upper()
+            if any(sub in upper for sub in _SECRET_SUBSTRINGS):
+                del env[key]
+        return env
 
     @staticmethod
     def _build_git_env_overrides() -> dict[str, str]:
@@ -216,7 +243,17 @@ class _BaseGitTool(BaseTool, ABC):
         work_dir: Path,
         env: dict[str, str],
     ) -> asyncio.subprocess.Process | ToolExecutionResult:
-        """Start the git subprocess, returning an error on failure."""
+        """Start the git subprocess, returning an error on failure.
+
+        Args:
+            args: Git command arguments.
+            work_dir: Working directory for the subprocess.
+            env: Environment variables for the subprocess.
+
+        Returns:
+            The started ``Process`` on success, or a
+            ``ToolExecutionResult`` with ``is_error=True`` on failure.
+        """
         try:
             return await asyncio.create_subprocess_exec(
                 "git",
@@ -226,15 +263,15 @@ class _BaseGitTool(BaseTool, ABC):
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
             )
-        except OSError:
+        except OSError as exc:
             logger.warning(
                 GIT_COMMAND_FAILED,
                 command=_sanitize_command(["git", *args]),
-                error="subprocess start failed",
+                error=f"subprocess start failed: {exc}",
                 exc_info=True,
             )
             return ToolExecutionResult(
-                content="Failed to start git process",
+                content=f"Failed to start git process: {exc}",
                 is_error=True,
             )
 
@@ -245,7 +282,11 @@ class _BaseGitTool(BaseTool, ABC):
         *,
         deadline: float,
     ) -> tuple[bytes, bytes] | ToolExecutionResult:
-        """Wait for the process with a timeout, returning output or error."""
+        """Wait for the process with a timeout, returning output or error.
+
+        On timeout, kills the process and waits up to 5 seconds for
+        termination before returning an error result.
+        """
         try:
             return await asyncio.wait_for(
                 proc.communicate(),
@@ -385,7 +426,9 @@ class _BaseGitTool(BaseTool, ABC):
         deadline: float,
     ) -> ToolExecutionResult:
         """Execute git through the sandbox backend."""
-        assert self._sandbox is not None  # noqa: S101
+        if self._sandbox is None:  # pragma: no cover — guarded by caller
+            msg = "_run_git_sandboxed called without sandbox"
+            raise RuntimeError(msg)
 
         try:
             result = await self._sandbox.execute(
@@ -403,6 +446,17 @@ class _BaseGitTool(BaseTool, ABC):
             )
             return ToolExecutionResult(
                 content=str(exc),
+                is_error=True,
+            )
+        except Exception as exc:
+            logger.error(
+                GIT_COMMAND_FAILED,
+                command=_sanitize_command(["git", *args]),
+                error=f"Unexpected sandbox error: {exc}",
+                exc_info=True,
+            )
+            return ToolExecutionResult(
+                content=f"Sandbox error: {exc}",
                 is_error=True,
             )
         return self._sandbox_result_to_execution_result(args, result)

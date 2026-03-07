@@ -1,6 +1,8 @@
 """Sandbox backend protocol definition."""
 
-from pathlib import Path  # noqa: TC003 — used at runtime in Protocol
+from pathlib import (
+    Path,  # noqa: TC003 — needed at runtime for @runtime_checkable Protocol
+)
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -15,7 +17,8 @@ class SandboxBackend(Protocol):
 
     Implementations execute commands in an isolated environment with
     environment filtering, workspace enforcement, and timeout support.
-    Subprocess is the M3 backend; Docker/K8s are future work.
+    Subprocess is the initial backend; Docker/K8s are planned for
+    future milestones.
     """
 
     async def execute(
@@ -39,17 +42,33 @@ class SandboxBackend(Protocol):
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
+
+        Raises:
+            SandboxStartError: If the subprocess could not be started.
+            SandboxError: If cwd is outside the workspace boundary.
         """
         ...
 
     async def cleanup(self) -> None:
-        """Release any resources held by the backend."""
+        """Release any resources held by the backend.
+
+        Returns:
+            Nothing.
+        """
         ...
 
     async def health_check(self) -> bool:
-        """Return ``True`` if the backend is operational."""
+        """Return ``True`` if the backend is operational.
+
+        Returns:
+            ``True`` if healthy, ``False`` otherwise.
+        """
         ...
 
     def get_backend_type(self) -> str:
-        """Return a short identifier for this backend type."""
+        """Return a short identifier for this backend type.
+
+        Returns:
+            A string like ``'subprocess'`` or ``'docker'``.
+        """
         ...

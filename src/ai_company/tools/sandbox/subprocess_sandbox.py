@@ -6,11 +6,11 @@ management, and PATH restriction.
 """
 
 import asyncio
-import contextlib
 import fnmatch
 import os
+import signal
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from ai_company.observability import get_logger
 from ai_company.observability.events.sandbox import (
@@ -21,6 +21,7 @@ from ai_company.observability.events.sandbox import (
     SANDBOX_EXECUTE_SUCCESS,
     SANDBOX_EXECUTE_TIMEOUT,
     SANDBOX_HEALTH_CHECK,
+    SANDBOX_PATH_FALLBACK,
     SANDBOX_SPAWN_FAILED,
     SANDBOX_WORKSPACE_VIOLATION,
 )
@@ -39,6 +40,9 @@ logger = get_logger(__name__)
 _PATH_SEP = ";" if os.name == "nt" else ":"
 
 _DEFAULT_CONFIG = SubprocessSandboxConfig()
+
+# Unix process-group support for killing child process trees.
+_HAS_PROCESS_GROUPS: Final[bool] = hasattr(os, "killpg")
 
 
 class SubprocessSandbox:
@@ -88,11 +92,17 @@ class SubprocessSandbox:
         return self._workspace
 
     def _matches_allowlist(self, name: str) -> bool:
-        """Check if an env var name matches any entry in the allowlist."""
+        """Check if an env var name matches any entry in the allowlist.
+
+        Uses case-insensitive matching on Windows where env var names
+        are case-insensitive.
+        """
+        check_name = name.upper() if os.name == "nt" else name
         for pattern in self._config.env_allowlist:
-            if pattern == name:
+            check_pattern = pattern.upper() if os.name == "nt" else pattern
+            if check_pattern == check_name:
                 return True
-            if fnmatch.fnmatch(name, pattern):
+            if fnmatch.fnmatch(check_name, check_pattern):
                 return True
         return False
 
@@ -104,7 +114,12 @@ class SubprocessSandbox:
         )
 
     def _filter_path(self, path_value: str) -> str:
-        """Filter PATH entries, keeping only safe system directories."""
+        """Filter PATH entries, keeping only safe system directories.
+
+        When no entries survive filtering, falls back to known safe
+        directories that actually exist on the system rather than
+        returning the unfiltered original PATH.
+        """
         safe_prefixes = self._get_safe_path_prefixes()
         entries = path_value.split(_PATH_SEP)
         filtered = [
@@ -112,7 +127,15 @@ class SubprocessSandbox:
             for e in entries
             if any(e.lower().startswith(prefix.lower()) for prefix in safe_prefixes)
         ]
-        return _PATH_SEP.join(filtered) if filtered else path_value
+        if filtered:
+            return _PATH_SEP.join(filtered)
+        logger.warning(
+            SANDBOX_PATH_FALLBACK,
+            reason="no PATH entries matched safe prefixes; using safe defaults",
+            original_entry_count=len(entries),
+        )
+        safe_dirs = [p for p in safe_prefixes if Path(p).is_dir()]
+        return _PATH_SEP.join(safe_dirs)
 
     @staticmethod
     def _get_safe_path_prefixes() -> tuple[str, ...]:
@@ -137,8 +160,13 @@ class SubprocessSandbox:
         process environment, strips denylist matches, optionally filters
         PATH, then applies overrides.
 
+        Note: ``env_overrides`` bypass the denylist by design — they
+        are trusted internal overrides (e.g. git hardening vars).
+        Callers must not pass untrusted user-controlled data as
+        overrides.
+
         Args:
-            env_overrides: Extra vars applied on top (always win).
+            env_overrides: Trusted internal vars applied on top.
 
         Returns:
             The filtered environment mapping.
@@ -181,14 +209,31 @@ class SubprocessSandbox:
             return
         try:
             cwd.resolve().relative_to(self._workspace)
-        except ValueError:
+        except ValueError as exc:
             logger.warning(
                 SANDBOX_WORKSPACE_VIOLATION,
                 cwd=str(cwd),
                 workspace=str(self._workspace),
             )
             msg = f"Working directory '{cwd}' is outside workspace '{self._workspace}'"
-            raise SandboxError(msg) from None
+            raise SandboxError(msg) from exc
+
+    @staticmethod
+    def _kill_process(proc: asyncio.subprocess.Process) -> None:
+        """Kill the process, targeting the process group on Unix.
+
+        On Unix with ``start_new_session=True``, kills the entire
+        process group to prevent orphaned grandchild processes.
+        Falls back to direct ``proc.kill()`` on Windows or on error.
+        """
+        if _HAS_PROCESS_GROUPS:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)  # type: ignore[attr-defined]
+            except OSError:
+                proc.kill()
+            else:
+                return
+        proc.kill()
 
     async def execute(
         self,
@@ -215,10 +260,12 @@ class SubprocessSandbox:
             SandboxStartError: If the subprocess could not be started.
             SandboxError: If cwd is outside the workspace boundary.
         """
-        work_dir = cwd or self._workspace
+        work_dir = cwd if cwd is not None else self._workspace
         self._validate_cwd(work_dir)
 
-        effective_timeout = timeout or self._config.timeout_seconds
+        effective_timeout = (
+            timeout if timeout is not None else self._config.timeout_seconds
+        )
         env = self._build_filtered_env(env_overrides)
 
         logger.debug(
@@ -237,6 +284,7 @@ class SubprocessSandbox:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
+                start_new_session=_HAS_PROCESS_GROUPS,
             )
         except OSError as exc:
             logger.warning(
@@ -257,9 +305,16 @@ class SubprocessSandbox:
                 timeout=effective_timeout,
             )
         except TimeoutError:
-            proc.kill()
-            with contextlib.suppress(TimeoutError):
+            self._kill_process(proc)
+            try:
                 await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            except TimeoutError:
+                logger.warning(
+                    SANDBOX_EXECUTE_TIMEOUT,
+                    command=command,
+                    args=args,
+                    error="process did not terminate after kill",
+                )
             logger.warning(
                 SANDBOX_EXECUTE_TIMEOUT,
                 command=command,
@@ -275,7 +330,7 @@ class SubprocessSandbox:
 
         stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
         stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
-        returncode = proc.returncode or 0
+        returncode = proc.returncode if proc.returncode is not None else -1
 
         if returncode != 0:
             logger.warning(

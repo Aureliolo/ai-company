@@ -1687,8 +1687,8 @@ Tool execution requires safety boundaries proportional to the risk of each tool 
 
 | Backend | Isolation | Latency | Dependencies | Status |
 |---------|-----------|---------|--------------|--------|
-| `SubprocessSandbox` | Process-level: timeout, restricted PATH, workspace-scoped paths | ~ms | None | M3 |
-| `DockerSandbox` | Container-level: ephemeral container, mounted workspace, no network, resource limits (CPU/memory/time) | ~1-2s cold start | Docker | M3 |
+| `SubprocessSandbox` | Process-level: env filtering (allowlist + denylist), restricted PATH, workspace-scoped cwd, timeout + process-group kill, library injection var blocking | ~ms | None | **Implemented** |
+| `DockerSandbox` | Container-level: ephemeral container, mounted workspace, no network, resource limits (CPU/memory/time) | ~1-2s cold start | Docker | Planned |
 | `K8sSandbox` | Pod-level: per-agent containers, namespace isolation, resource quotas, network policies | ~2-5s | Kubernetes | Future |
 
 #### Default Layered Configuration
@@ -2335,6 +2335,7 @@ ai-company/
 │       │   │   ├── provider.py    # PROVIDER_* constants
 │       │   │   ├── role.py        # ROLE_* constants
 │       │   │   ├── routing.py     # ROUTING_* constants
+│       │   │   ├── sandbox.py     # SANDBOX_* constants
 │       │   │   ├── task.py        # TASK_* constants
 │       │   │   ├── template.py    # TEMPLATE_* constants
 │       │   │   └── tool.py        # TOOL_* constants
@@ -2372,10 +2373,13 @@ ai-company/
 │       │   ├── errors.py           # Tool error hierarchy (incl. ToolPermissionDeniedError)
 │       │   ├── examples/           # Example tool implementations
 │       │   │   └── echo.py        # Echo tool (for testing)
-│       │   ├── sandbox/            # Sandboxing backends (M3)
+│       │   ├── sandbox/            # Sandboxing backends
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── config.py      # SubprocessSandboxConfig model
+│       │   │   ├── errors.py      # SandboxError hierarchy
 │       │   │   ├── protocol.py    # SandboxBackend protocol
-│       │   │   ├── subprocess.py  # SubprocessSandbox (default for low-risk)
-│       │   │   └── docker.py      # DockerSandbox (for code_runner, terminal)
+│       │   │   ├── result.py      # SandboxResult model
+│       │   │   └── subprocess_sandbox.py  # SubprocessSandbox (default)
 │       │   ├── file_system/        # Built-in file system tools
 │       │   │   ├── __init__.py    # Package exports
 │       │   │   ├── _base_fs_tool.py  # BaseFileSystemTool ABC
@@ -2385,8 +2389,8 @@ ai-company/
 │       │   │   ├── list_directory.py # ListDirectoryTool
 │       │   │   ├── read_file.py   # ReadFileTool
 │       │   │   └── write_file.py  # WriteFileTool
-│       │   ├── _git_base.py        # Base class for git tools (workspace, subprocess)
-│       │   ├── git_tools.py        # Git operations — 6 built-in tools
+│       │   ├── _git_base.py        # Base class for git tools (workspace, subprocess, sandbox integration)
+│       │   ├── git_tools.py        # Git operations — 6 built-in tools (sandbox-aware)
 │       │   ├── code_runner.py      # Code execution (M3)
 │       │   ├── web_tools.py        # HTTP, search (M3)
 │       │   └── mcp_bridge.py       # MCP server integration (M7)

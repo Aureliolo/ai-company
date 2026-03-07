@@ -58,3 +58,17 @@ class TestSubprocessSandboxConfig:
         assert any("KEY" in p for p in patterns)
         assert any("SECRET" in p for p in patterns)
         assert any("TOKEN" in p for p in patterns)
+
+    def test_denylist_patterns_cover_library_injection(self) -> None:
+        config = SubprocessSandboxConfig()
+        patterns = config.env_denylist_patterns
+        for var in (
+            "LD_PRELOAD",
+            "LD_LIBRARY_PATH",
+            "DYLD_INSERT_LIBRARIES",
+            "PYTHONPATH",
+            "NODE_PATH",
+            "RUBYLIB",
+            "PERL5LIB",
+        ):
+            assert var in patterns, f"{var} missing from denylist"

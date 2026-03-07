@@ -26,7 +26,6 @@ logger = get_logger(__name__)
 _CLONE_TIMEOUT: Final[float] = 120.0
 _ALLOWED_CLONE_SCHEMES: Final[tuple[str, ...]] = (
     "https://",
-    "http://",
     "ssh://",
     "git://",
 )

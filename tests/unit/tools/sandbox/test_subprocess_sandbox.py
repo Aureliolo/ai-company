@@ -254,6 +254,7 @@ class TestExecution:
         assert result.timed_out
         assert not result.success
 
+    @pytest.mark.filterwarnings("ignore::ResourceWarning")
     async def test_start_failure(
         self,
         subprocess_sandbox: SubprocessSandbox,
