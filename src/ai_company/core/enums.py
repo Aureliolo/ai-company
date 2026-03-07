@@ -198,6 +198,9 @@ class ToolAccessLevel(StrEnum):
     where each includes all categories from lower levels.
     ``CUSTOM`` uses only explicit allow/deny lists, ignoring
     the hierarchy.
+
+    The concrete category sets for each level are defined in
+    ``ToolPermissionChecker._LEVEL_CATEGORIES``.
     """
 
     SANDBOXED = "sandboxed"

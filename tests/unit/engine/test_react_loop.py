@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from ai_company.core.agent import AgentIdentity  # noqa: TC001
+from ai_company.core.enums import ToolCategory
 from ai_company.engine.context import AgentContext
 from ai_company.engine.loop_protocol import TerminationReason
 from ai_company.engine.react_loop import ReactLoop
@@ -91,6 +92,7 @@ class _StubTool(BaseTool):
         super().__init__(
             name=name,
             description="Test echo tool",
+            category=ToolCategory.CODE_EXECUTION,
         )
 
     async def execute(
@@ -633,6 +635,7 @@ class TestReactLoopToolExecutionException:
                 super().__init__(
                     name="explode",
                     description="boom",
+                    category=ToolCategory.CODE_EXECUTION,
                 )
 
             async def execute(

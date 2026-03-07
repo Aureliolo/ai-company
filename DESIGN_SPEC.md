@@ -2320,7 +2320,7 @@ ai-company/
 │       │   ├── drivers/            # Provider driver implementations
 │       │   │   ├── litellm_driver.py  # LiteLLM adapter
 │       │   │   └── mappers.py     # Request/response mappers
-│       │   ├── routing/            # Model routing (6 strategies)
+│       │   ├── routing/            # Model routing (5 strategies)
 │       │   │   ├── _strategy_helpers.py  # Shared routing helper functions
 │       │   │   ├── errors.py      # Routing errors
 │       │   │   ├── models.py      # Routing models (candidates, results)
@@ -2333,7 +2333,7 @@ ai-company/
 │       │       ├── rate_limiter.py # Token bucket rate limiter
 │       │       └── retry.py       # RetryHandler with backoff
 │       ├── tools/                   # Tool/capability system
-│       │   ├── base.py             # BaseTool ABC, ToolExecutionResult, ToolCategory
+│       │   ├── base.py             # BaseTool ABC, ToolExecutionResult
 │       │   ├── registry.py         # Immutable tool registry (MappingProxyType)
 │       │   ├── invoker.py          # Tool invocation (concurrent via TaskGroup)
 │       │   ├── permissions.py      # ToolPermissionChecker (access-level gating)

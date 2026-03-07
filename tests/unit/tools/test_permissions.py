@@ -400,6 +400,16 @@ class TestEdgeCases:
         with pytest.raises(ToolPermissionDeniedError):
             checker.check("tool", ToolCategory.DEPLOYMENT)
 
+    def test_check_error_context_dict(self) -> None:
+        """ToolPermissionDeniedError carries correct context keys."""
+        checker = ToolPermissionChecker(
+            access_level=ToolAccessLevel.SANDBOXED,
+        )
+        with pytest.raises(ToolPermissionDeniedError) as exc_info:
+            checker.check("my_tool", ToolCategory.DEPLOYMENT)
+        assert exc_info.value.context["tool"] == "my_tool"
+        assert exc_info.value.context["category"] == "deployment"
+
     def test_check_passes_on_permitted(self) -> None:
         checker = ToolPermissionChecker(
             access_level=ToolAccessLevel.SANDBOXED,

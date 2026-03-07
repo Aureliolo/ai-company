@@ -262,6 +262,8 @@ class AgentEngine:
         )
         try:
             self._log_completion(result, agent_id, task_id, duration)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 EXECUTION_ENGINE_ERROR,

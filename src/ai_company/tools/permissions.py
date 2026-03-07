@@ -8,6 +8,7 @@ Resolves tool permissions using a priority-based system:
 5. Otherwise → **DENIED**
 """
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Self
 
 from ai_company.core.enums import ToolAccessLevel, ToolCategory
@@ -21,6 +22,8 @@ from ai_company.observability.events.tool import (
 from .errors import ToolPermissionDeniedError
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ai_company.core.agent import ToolPermissions
     from ai_company.providers.models import ToolDefinition
 
@@ -48,35 +51,41 @@ class ToolPermissionChecker:
             defs = checker.filter_definitions(registry)
     """
 
-    _LEVEL_CATEGORIES: ClassVar[dict[ToolAccessLevel, frozenset[ToolCategory]]] = {
-        ToolAccessLevel.SANDBOXED: frozenset(
+    _LEVEL_CATEGORIES: ClassVar[Mapping[ToolAccessLevel, frozenset[ToolCategory]]] = (
+        MappingProxyType(
             {
-                ToolCategory.FILE_SYSTEM,
-                ToolCategory.CODE_EXECUTION,
-                ToolCategory.VERSION_CONTROL,
+                ToolAccessLevel.SANDBOXED: frozenset(
+                    {
+                        ToolCategory.FILE_SYSTEM,
+                        ToolCategory.CODE_EXECUTION,
+                        ToolCategory.VERSION_CONTROL,
+                    }
+                ),
+                ToolAccessLevel.RESTRICTED: frozenset(
+                    {
+                        ToolCategory.FILE_SYSTEM,
+                        ToolCategory.CODE_EXECUTION,
+                        ToolCategory.VERSION_CONTROL,
+                        ToolCategory.WEB,
+                    }
+                ),
+                ToolAccessLevel.STANDARD: frozenset(
+                    {
+                        ToolCategory.FILE_SYSTEM,
+                        ToolCategory.CODE_EXECUTION,
+                        ToolCategory.VERSION_CONTROL,
+                        ToolCategory.WEB,
+                        ToolCategory.TERMINAL,
+                        ToolCategory.ANALYTICS,
+                    }
+                ),
+                # all categories — new ToolCategory members are auto-included;
+                # review new categories with ELEVATED access in mind
+                ToolAccessLevel.ELEVATED: frozenset(ToolCategory),
+                ToolAccessLevel.CUSTOM: frozenset(),
             }
-        ),
-        ToolAccessLevel.RESTRICTED: frozenset(
-            {
-                ToolCategory.FILE_SYSTEM,
-                ToolCategory.CODE_EXECUTION,
-                ToolCategory.VERSION_CONTROL,
-                ToolCategory.WEB,
-            }
-        ),
-        ToolAccessLevel.STANDARD: frozenset(
-            {
-                ToolCategory.FILE_SYSTEM,
-                ToolCategory.CODE_EXECUTION,
-                ToolCategory.VERSION_CONTROL,
-                ToolCategory.WEB,
-                ToolCategory.TERMINAL,
-                ToolCategory.ANALYTICS,
-            }
-        ),
-        ToolAccessLevel.ELEVATED: frozenset(ToolCategory),
-        ToolAccessLevel.CUSTOM: frozenset(),
-    }
+        )
+    )
 
     def __init__(
         self,
@@ -165,8 +174,9 @@ class ToolPermissionChecker:
         """Return a human-readable reason why a tool would be denied.
 
         Intended for use after confirming the tool is denied via
-        ``is_permitted`` or via ``check``.  If called on a permitted
-        tool the returned message is meaningless.
+        ``is_permitted`` or via ``check``.  If the tool is actually
+        permitted, the returned string does not apply and should not
+        be shown to users.
 
         Args:
             tool_name: Name of the tool.

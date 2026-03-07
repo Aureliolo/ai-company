@@ -694,6 +694,7 @@ class TestInvokerPermissionCheck:
         result = await permission_invoker.invoke(call)
         assert result.is_error is True
         assert "Permission denied" in result.content
+        assert "deploy_tool" in result.content or "deployment" in result.content
 
     async def test_checker_allows_permitted_tool(
         self,

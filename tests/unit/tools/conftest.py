@@ -22,6 +22,7 @@ class _EchoTestTool(BaseTool):
         super().__init__(
             name="echo_test",
             description="Echoes arguments back",
+            category=ToolCategory.CODE_EXECUTION,
             parameters_schema={
                 "type": "object",
                 "properties": {"message": {"type": "string"}},
@@ -45,6 +46,7 @@ class _FailingTool(BaseTool):
         super().__init__(
             name="failing",
             description="Always fails",
+            category=ToolCategory.CODE_EXECUTION,
             parameters_schema={
                 "type": "object",
                 "properties": {"input": {"type": "string"}},
@@ -67,6 +69,7 @@ class _NoSchemaTool(BaseTool):
         super().__init__(
             name="no_schema",
             description="Accepts anything",
+            category=ToolCategory.CODE_EXECUTION,
         )
 
     async def execute(
@@ -84,6 +87,7 @@ class _StrictSchemaTool(BaseTool):
         super().__init__(
             name="strict",
             description="Strict parameters",
+            category=ToolCategory.CODE_EXECUTION,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -112,6 +116,7 @@ class _SoftErrorTool(BaseTool):
         super().__init__(
             name="soft_error",
             description="Reports a soft error",
+            category=ToolCategory.CODE_EXECUTION,
             parameters_schema={
                 "type": "object",
                 "properties": {"input": {"type": "string"}},
@@ -133,6 +138,7 @@ class _RecursionTool(BaseTool):
         super().__init__(
             name="recursion",
             description="Raises RecursionError",
+            category=ToolCategory.CODE_EXECUTION,
             parameters_schema={
                 "type": "object",
                 "properties": {"input": {"type": "string"}},
@@ -155,6 +161,7 @@ class _InvalidSchemaTool(BaseTool):
         super().__init__(
             name="invalid_schema",
             description="Has invalid schema",
+            category=ToolCategory.CODE_EXECUTION,
             parameters_schema={"type": "object", "properties": "not_a_dict"},
         )
 
@@ -173,6 +180,7 @@ class _EmptyErrorTool(BaseTool):
         super().__init__(
             name="empty_error",
             description="Raises with empty message",
+            category=ToolCategory.CODE_EXECUTION,
             parameters_schema={
                 "type": "object",
                 "properties": {"input": {"type": "string"}},
@@ -195,6 +203,7 @@ class _MutatingTool(BaseTool):
         super().__init__(
             name="mutating",
             description="Mutates args",
+            category=ToolCategory.CODE_EXECUTION,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -221,6 +230,7 @@ class _RemoteRefTool(BaseTool):
         super().__init__(
             name="remote_ref",
             description="Has remote ref in schema",
+            category=ToolCategory.CODE_EXECUTION,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -324,6 +334,7 @@ class _DelayTool(BaseTool):
         super().__init__(
             name="delay",
             description="Sleeps then returns value",
+            category=ToolCategory.CODE_EXECUTION,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -351,6 +362,7 @@ class _ConcurrencyTrackingTool(BaseTool):
         super().__init__(
             name="tracking",
             description="Tracks concurrency",
+            category=ToolCategory.CODE_EXECUTION,
             parameters_schema={
                 "type": "object",
                 "properties": {

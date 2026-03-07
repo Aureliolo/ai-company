@@ -7,12 +7,14 @@ Defines the ``BaseTool`` ABC that all concrete tools extend, and the
 import copy
 from abc import ABC, abstractmethod
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ai_company.core.enums import ToolCategory
 from ai_company.observability import get_logger
+
+if TYPE_CHECKING:
+    from ai_company.core.enums import ToolCategory
 from ai_company.observability.events.tool import TOOL_BASE_INVALID_NAME
 from ai_company.providers.models import ToolDefinition
 
@@ -73,7 +75,7 @@ class BaseTool(ABC):
         name: str,
         description: str = "",
         parameters_schema: dict[str, Any] | None = None,
-        category: ToolCategory = ToolCategory.OTHER,
+        category: ToolCategory,
     ) -> None:
         """Initialize a tool with name, description, schema, and category.
 

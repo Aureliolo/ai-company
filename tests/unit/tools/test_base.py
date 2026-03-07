@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from ai_company.core.enums import ToolCategory
 from ai_company.providers.models import ToolDefinition
 from ai_company.tools.base import BaseTool, ToolExecutionResult
 
@@ -52,11 +53,13 @@ class _ConcreteTool(BaseTool):
         name: str = "test_tool",
         description: str = "A test tool",
         parameters_schema: dict[str, Any] | None = None,
+        category: ToolCategory = ToolCategory.CODE_EXECUTION,
     ) -> None:
         super().__init__(
             name=name,
             description=description,
             parameters_schema=parameters_schema,
+            category=category,
         )
 
     async def execute(
