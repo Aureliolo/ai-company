@@ -117,6 +117,47 @@ class GitStatusTool(_BaseGitTool):
 # ── GitLogTool ────────────────────────────────────────────────────
 
 
+_GIT_LOG_SCHEMA: Final[dict[str, object]] = {
+    "type": "object",
+    "properties": {
+        "max_count": {
+            "type": "integer",
+            "description": "Max commits (default 10, max 100).",
+            "default": 10,
+            "minimum": 1,
+            "maximum": 100,
+        },
+        "oneline": {
+            "type": "boolean",
+            "description": "Use one-line format.",
+            "default": False,
+        },
+        "ref": {
+            "type": "string",
+            "description": "Branch, tag, or commit ref to start from.",
+        },
+        "author": {
+            "type": "string",
+            "description": "Filter commits by author pattern.",
+        },
+        "since": {
+            "type": "string",
+            "description": "Show commits after date (e.g. '2024-01-01').",
+        },
+        "until": {
+            "type": "string",
+            "description": "Show commits before this date.",
+        },
+        "paths": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Limit to commits touching these paths.",
+        },
+    },
+    "additionalProperties": False,
+}
+
+
 class GitLogTool(_BaseGitTool):
     """Show commit log history.
 
@@ -138,47 +179,30 @@ class GitLogTool(_BaseGitTool):
                 "Show commit log. Returns recent commits with optional "
                 "filtering by count, author, date range, ref, and paths."
             ),
-            parameters_schema={
-                "type": "object",
-                "properties": {
-                    "max_count": {
-                        "type": "integer",
-                        "description": ("Max commits (default 10, max 100)."),
-                        "default": 10,
-                        "minimum": 1,
-                        "maximum": 100,
-                    },
-                    "oneline": {
-                        "type": "boolean",
-                        "description": "Use one-line format.",
-                        "default": False,
-                    },
-                    "ref": {
-                        "type": "string",
-                        "description": ("Branch, tag, or commit ref to start from."),
-                    },
-                    "author": {
-                        "type": "string",
-                        "description": ("Filter commits by author pattern."),
-                    },
-                    "since": {
-                        "type": "string",
-                        "description": ("Show commits after date (e.g. '2024-01-01')."),
-                    },
-                    "until": {
-                        "type": "string",
-                        "description": "Show commits before this date.",
-                    },
-                    "paths": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": ("Limit to commits touching these paths."),
-                    },
-                },
-                "additionalProperties": False,
-            },
+            parameters_schema=_GIT_LOG_SCHEMA,
             workspace=workspace,
         )
+
+    def _build_filter_args(
+        self,
+        arguments: dict[str, Any],
+    ) -> list[str] | ToolExecutionResult:
+        """Validate and build ``--author``, ``--since``, ``--until`` args.
+
+        Returns the argument list on success, or an error result if any
+        filter value fails the flag-injection check.
+        """
+        filter_args: list[str] = []
+        for param, flag in (
+            ("author", "--author"),
+            ("since", "--since"),
+            ("until", "--until"),
+        ):
+            if value := arguments.get(param):
+                if err := self._check_ref(value, param=param):
+                    return err
+                filter_args.append(f"{flag}={value}")
+        return filter_args
 
     async def execute(
         self,
@@ -203,14 +227,10 @@ class GitLogTool(_BaseGitTool):
         if arguments.get("oneline"):
             args.append("--oneline")
 
-        if author := arguments.get("author"):
-            args.append(f"--author={author}")
-
-        if since := arguments.get("since"):
-            args.append(f"--since={since}")
-
-        if until := arguments.get("until"):
-            args.append(f"--until={until}")
+        filter_args = self._build_filter_args(arguments)
+        if isinstance(filter_args, ToolExecutionResult):
+            return filter_args
+        args.extend(filter_args)
 
         if ref := arguments.get("ref"):
             if err := self._check_ref(ref, param="ref"):
@@ -285,7 +305,7 @@ class GitDiffTool(_BaseGitTool):
             workspace=workspace,
         )
 
-    async def execute(
+    async def execute(  # noqa: C901
         self,
         *,
         arguments: dict[str, Any],
@@ -312,6 +332,11 @@ class GitDiffTool(_BaseGitTool):
                 return err
             args.append(ref1)
         if ref2 := arguments.get("ref2"):
+            if not ref1:
+                return ToolExecutionResult(
+                    content="ref2 requires ref1 to be specified",
+                    is_error=True,
+                )
             if err := self._check_ref(ref2, param="ref2"):
                 return err
             args.append(ref2)
@@ -412,7 +437,7 @@ class GitBranchTool(_BaseGitTool):
             args.append(start_point)
         return await self._run_git(args)
 
-    async def execute(
+    async def execute(  # noqa: PLR0911
         self,
         *,
         arguments: dict[str, Any],
@@ -449,9 +474,14 @@ class GitBranchTool(_BaseGitTool):
         if action == "switch":
             return await self._run_git(["switch", branch_name])
 
-        # action == "delete" (per schema enum constraint)
-        flag = "-D" if arguments.get("force") else "-d"
-        return await self._run_git(["branch", flag, branch_name])
+        if action == "delete":
+            flag = "-D" if arguments.get("force") else "-d"
+            return await self._run_git(["branch", flag, branch_name])
+
+        return ToolExecutionResult(
+            content=f"Unknown branch action: {action!r}",
+            is_error=True,
+        )
 
 
 # ── GitCommitTool ─────────────────────────────────────────────────

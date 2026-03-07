@@ -233,3 +233,18 @@ class TestGetSeniorityInfo:
             pytest.raises(LookupError, match="catalog may be incomplete"),
         ):
             get_seniority_info(SeniorityLevel.JUNIOR)
+
+
+# ── Import-time Guard Tests ──────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCatalogGuards:
+    """Tests for the import-time guard logic in role_catalog.py."""
+
+    def test_no_duplicate_role_names_after_case_normalization(self) -> None:
+        """Verify _BUILTIN_ROLES_BY_NAME guard: all names are unique after casefold."""
+        casefolded = [r.name.casefold() for r in BUILTIN_ROLES]
+        assert len(casefolded) == len(set(casefolded)), (
+            "Duplicate built-in role names after case-normalization"
+        )

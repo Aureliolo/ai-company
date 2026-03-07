@@ -99,7 +99,7 @@ class TemplateAgentConfig(BaseModel):
         default=SeniorityLevel.MID,
         description="Seniority level",
     )
-    model: str = Field(default="medium", description="Model tier alias")
+    model: NotBlankStr = Field(default="medium", description="Model tier alias")
     personality_preset: NotBlankStr | None = Field(
         default=None,
         description="Named personality preset",
@@ -161,7 +161,7 @@ class TemplateMetadata(BaseModel):
     )
     min_agents: int = Field(default=1, ge=1, description="Minimum agents")
     max_agents: int = Field(default=100, ge=1, description="Maximum agents")
-    tags: tuple[str, ...] = Field(default=(), description="Categorization tags")
+    tags: tuple[NotBlankStr, ...] = Field(default=(), description="Categorization tags")
 
     @model_validator(mode="after")
     def _validate_agent_range(self) -> Self:
@@ -209,11 +209,11 @@ class CompanyTemplate(BaseModel):
         default=(),
         description="Template department definitions",
     )
-    workflow: str = Field(
+    workflow: NotBlankStr = Field(
         default="agile_kanban",
         description="Workflow name",
     )
-    communication: str = Field(
+    communication: NotBlankStr = Field(
         default="hybrid",
         description="Communication pattern",
     )

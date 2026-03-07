@@ -61,19 +61,11 @@ class RetryHandler:
             try:
                 return await func()
             except ProviderError as exc:
-                if not exc.is_retryable:
-                    logger.warning(
-                        PROVIDER_RETRY_SKIPPED,
-                        error_type=type(exc).__name__,
-                        reason="non_retryable",
-                    )
+                last_error = self._handle_retryable_error(exc)
+                if last_error is None:
                     raise
-
-                last_error = exc
-
                 if attempt >= self._config.max_retries:
                     break
-
                 delay = self._compute_delay(attempt, exc)
                 logger.info(
                     PROVIDER_RETRY_ATTEMPT,
@@ -100,6 +92,24 @@ class RetryHandler:
             error_type=type(last_error).__name__,
         )
         raise RetryExhaustedError(last_error) from last_error
+
+    def _handle_retryable_error(
+        self,
+        exc: ProviderError,
+    ) -> ProviderError | None:
+        """Classify a provider error for retry decisions.
+
+        Returns the error if retryable (caller should continue retrying),
+        or ``None`` if non-retryable (caller must re-raise immediately).
+        """
+        if not exc.is_retryable:
+            logger.warning(
+                PROVIDER_RETRY_SKIPPED,
+                error_type=type(exc).__name__,
+                reason="non_retryable",
+            )
+            return None
+        return exc
 
     def _compute_delay(self, attempt: int, exc: ProviderError) -> float:
         """Compute delay for the given retry iteration.

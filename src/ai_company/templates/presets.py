@@ -7,6 +7,10 @@ preset library is planned in a follow-up issue (see GH #80).
 import random
 from typing import Any
 
+from ai_company.observability import get_logger
+
+logger = get_logger(__name__)
+
 # Preset name -> dict compatible with PersonalityConfig constructor.
 PERSONALITY_PRESETS: dict[str, dict[str, Any]] = {
     "visionary_leader": {
