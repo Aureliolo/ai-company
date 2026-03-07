@@ -60,6 +60,9 @@ class Task(BaseModel):
         deadline: Optional deadline (ISO 8601 string or ``None``).
         max_retries: Max reassignment attempts after failure (default 1).
         status: Current lifecycle status.
+        parent_task_id: Parent task ID when created via delegation
+            (``None`` for root tasks).
+        delegation_chain: Ordered agent IDs of delegators (root first).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -122,6 +125,14 @@ class Task(BaseModel):
         default=TaskStatus.CREATED,
         description="Current lifecycle status",
     )
+    parent_task_id: NotBlankStr | None = Field(
+        default=None,
+        description="Parent task ID when created via delegation",
+    )
+    delegation_chain: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Ordered agent IDs of delegators (root first)",
+    )
 
     @model_validator(mode="after")
     def _validate_deadline_format(self) -> Self:
@@ -132,9 +143,9 @@ class Task(BaseModel):
                 raise ValueError(msg)
             try:
                 datetime.fromisoformat(self.deadline)
-            except ValueError:
+            except ValueError as exc:
                 msg = f"deadline must be a valid ISO 8601 string, got {self.deadline!r}"
-                raise ValueError(msg) from None
+                raise ValueError(msg) from exc
         return self
 
     @model_validator(mode="after")
@@ -150,6 +161,25 @@ class Task(BaseModel):
         if len(self.reviewers) != len(set(self.reviewers)):
             dupes = sorted(r for r, c in Counter(self.reviewers).items() if c > 1)
             msg = f"Duplicate entries in reviewers: {dupes}"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_delegation_fields(self) -> Self:
+        """Validate delegation-related field constraints."""
+        if self.parent_task_id is not None and self.parent_task_id == self.id:
+            msg = f"Task {self.id!r} cannot be its own parent"
+            raise ValueError(msg)
+        if len(self.delegation_chain) != len(set(self.delegation_chain)):
+            dupes = sorted(
+                a for a, c in Counter(self.delegation_chain).items() if c > 1
+            )
+            msg = f"Duplicate entries in delegation_chain: {dupes}"
+            raise ValueError(msg)
+        if self.assigned_to is not None and self.assigned_to in self.delegation_chain:
+            msg = (
+                f"assigned_to {self.assigned_to!r} must not appear in delegation_chain"
+            )
             raise ValueError(msg)
         return self
 

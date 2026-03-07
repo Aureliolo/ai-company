@@ -14,6 +14,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Deep Agent Identity** - Names, personalities, skills, seniority levels, performance tracking
 - **Multi-Provider** - Any LLM via LiteLLM — cloud APIs, OpenRouter (400+ models), local Ollama, and more
 - **Smart Cost Management** - Per-agent budget tracking, auto model routing, CFO agent optimization
+- **Hierarchical Delegation** - Chain-of-command task delegation with five-mechanism loop prevention
 - **Configurable Autonomy** - From fully autonomous to human-approves-everything, with a Security Ops agent in between
 - **Persistent Memory** - Agents remember past decisions, code, relationships (memory layer TBD)
 - **HR System** - Hire, fire, promote agents. HR agent analyzes skill gaps and proposes candidates
@@ -23,7 +24,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ## Status
 
-**M3: Single Agent** in progress (M0 Tooling, M1 Config & Core, M2 Providers — all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
+**M4: Multi-Agent** in progress (M0 Tooling, M1 Config & Core, M2 Providers, M3 Single Agent — all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
 
 ## Tech Stack
 

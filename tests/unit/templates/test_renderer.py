@@ -12,7 +12,11 @@ from ai_company.observability.events.template import (
     TEMPLATE_RENDER_SUCCESS,
 )
 from ai_company.templates.errors import TemplateRenderError
-from ai_company.templates.loader import load_template, load_template_file
+from ai_company.templates.loader import (
+    BUILTIN_TEMPLATES,
+    load_template,
+    load_template_file,
+)
 from ai_company.templates.renderer import render_template
 
 from .conftest import TEMPLATE_REQUIRED_VAR_YAML, TEMPLATE_WITH_VARIABLES_YAML
@@ -42,8 +46,6 @@ class TestRenderTemplateBasic:
         assert len(config.agents) == 5
 
     def test_render_all_builtins_produce_valid_root_config(self) -> None:
-        from ai_company.templates.loader import BUILTIN_TEMPLATES
-
         for name in BUILTIN_TEMPLATES:
             loaded = load_template(name)
             config = render_template(loaded)
@@ -310,7 +312,7 @@ class TestInlinePersonality:
                 "communication_style": "custom",
             },
         }
-        result = _expand_single_agent(agent, 0, set())
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
         assert result["personality"]["communication_style"] == "custom"
         assert "custom-trait" in result["personality"]["traits"]
 
@@ -393,7 +395,7 @@ class TestInlinePersonalityRejection:
             "personality": {"openness": 99.0},
         }
         with pytest.raises(TemplateRenderError, match="Invalid inline personality"):
-            _expand_single_agent(agent, 0, set())
+            _expand_single_agent(agent, 0, set(), has_extends=False)
 
     def test_non_dict_personality_raises_template_render_error(self) -> None:
         """Non-dict personality value raises TemplateRenderError."""
@@ -404,7 +406,7 @@ class TestInlinePersonalityRejection:
             "personality": "not-a-dict",
         }
         with pytest.raises(TemplateRenderError, match="must be a mapping"):
-            _expand_single_agent(agent, 0, set())
+            _expand_single_agent(agent, 0, set(), has_extends=False)
 
 
 @pytest.mark.unit
@@ -414,7 +416,7 @@ class TestMissingRoleError:
         from ai_company.templates.renderer import _expand_single_agent
 
         with pytest.raises(TemplateRenderError, match="missing required 'role'"):
-            _expand_single_agent({}, 0, set())
+            _expand_single_agent({}, 0, set(), has_extends=False)
 
 
 @pytest.mark.unit
@@ -486,7 +488,7 @@ class TestUnknownPresetError:
             "personality_preset": "does_not_exist",
         }
         with pytest.raises(TemplateRenderError, match="Unknown personality preset"):
-            _expand_single_agent(agent, 0, set())
+            _expand_single_agent(agent, 0, set(), has_extends=False)
 
 
 @pytest.mark.unit
@@ -506,3 +508,40 @@ class TestValidateListErrors:
 
         with pytest.raises(TemplateRenderError, match="must be a mapping"):
             _validate_list({"agents": [{"role": "Dev"}, "bad"]}, "agents")
+
+
+# ── Roster count tests ──────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestRosterCounts:
+    @pytest.mark.parametrize("name", sorted(BUILTIN_TEMPLATES))
+    def test_template_agent_count_in_range(self, name: str) -> None:
+        """Each template renders agents within its declared metadata range."""
+        loaded = load_template(name)
+        config = render_template(loaded)
+        lo = loaded.template.metadata.min_agents
+        hi = loaded.template.metadata.max_agents
+        assert lo <= len(config.agents) <= hi, (
+            f"{name}: expected {lo}-{hi} agents, got {len(config.agents)}"
+        )
+        assert isinstance(config, RootConfig)
+
+    def test_full_company_variable_override(self) -> None:
+        """full_company num_backend_devs override changes agent count."""
+        loaded = load_template("full_company")
+        default_config = render_template(loaded)
+        override_config = render_template(
+            loaded,
+            variables={"num_backend_devs": 5},
+        )
+        # Default is 3 backend devs, override is 5 → +2 agents.
+        default_backend = sum(
+            1 for a in default_config.agents if a.role == "Backend Developer"
+        )
+        override_backend = sum(
+            1 for a in override_config.agents if a.role == "Backend Developer"
+        )
+        assert default_backend == 3
+        assert override_backend == 5
+        assert override_backend - default_backend == 2

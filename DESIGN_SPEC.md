@@ -578,7 +578,7 @@ When a loop is detected, the framework:
 3. Escalates to the sender's manager (or human if at top of hierarchy)
 4. Logs the loop for analytics and process improvement
 
-> **Current state (M4 in-progress):** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5), conflict resolution (§5.6), and meeting protocol (§5.7) are planned for later M4 work.
+> **Current state (M4 in-progress):** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5) is implemented: `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) with `LoopPreventionConfig`. Hierarchical delegation is implemented via `DelegationService` with `HierarchyResolver` and `AuthorityValidator`. Task model extended with `parent_task_id` and `delegation_chain` fields. Conflict resolution (§5.6) and meeting protocol (§5.7) are planned for later M4 work.
 
 ### 5.6 Conflict Resolution Protocol
 
@@ -785,6 +785,8 @@ task:
   deadline: null
   max_retries: 1                 # max reassignment attempts after failure (0 = no retry)
   status: "assigned"
+  parent_task_id: null           # parent task ID when created via delegation
+  delegation_chain: []           # ordered agent IDs of delegators (root first)
 ```
 
 ### 6.3 Workflow Types
@@ -2151,44 +2153,80 @@ The human can interact as:
 Templates are YAML/JSON files defining a complete company setup:
 
 ```yaml
-# templates/startup.yaml
+# templates/startup.yaml (simplified — real templates also declare
+# variables, departments, min_agents/max_agents, and tags)
 template:
   name: "Tech Startup"
   description: "Small team for building MVPs and prototypes"
   version: "1.0"
 
   company:
-    name: "{{ company_name }}"
     type: "startup"
     budget_monthly: "{{ budget | default(50.00) }}"
-    autonomy: "semi"
+    autonomy: 0.5
 
   agents:
-    - role: "ceo"
+    - role: "CEO"
       name: "{{ ceo_name | auto }}"
       model: "large"
       personality_preset: "visionary_leader"
 
-    - role: "full_stack_developer"
+    - role: "Full-Stack Developer"
+      merge_id: "fullstack-senior"
       name: "{{ dev1_name | auto }}"
       level: "senior"
       model: "medium"
       personality_preset: "pragmatic_builder"
 
-    - role: "full_stack_developer"
+    - role: "Full-Stack Developer"
+      merge_id: "fullstack-mid"
       name: "{{ dev2_name | auto }}"
       level: "mid"
       model: "small"
       personality_preset: "eager_learner"
 
-    - role: "product_manager"
+    - role: "Product Manager"
       name: "{{ pm_name | auto }}"
       model: "medium"
       personality_preset: "strategic_planner"
 
   workflow: "agile_kanban"
   communication: "hybrid"
+
+  workflow_handoffs:
+    - from_department: "engineering"
+      to_department: "qa"
+      trigger: "pr_ready"
+
+  escalation_paths:
+    - from_department: "engineering"
+      to_department: "security"
+      condition: "vulnerability_found"
 ```
+
+**Template Inheritance** — Templates can extend other templates using `extends`:
+
+```yaml
+template:
+  name: "Extended Startup"
+  extends: "startup"         # inherits all agents, departments, config
+  agents:
+    - role: "QA Engineer"    # appended to parent agents
+      level: "mid"
+    - role: "Full-Stack Developer"
+      merge_id: "fullstack-mid"
+      department: "engineering"
+      _remove: true          # removes matching parent agent by key
+```
+
+Inheritance resolves parent→child chains up to 10 levels deep. Merge semantics:
+- **Scalars** (`company_name`, `company_type`): child wins if present.
+- **`config`** dict: deep-merged (child keys override parent).
+- **`agents`** list: merged by `(role, department, merge_id)` key. When `merge_id` is omitted, it defaults to an empty string, making the key `(role, department, "")`. Child can override, append, or remove (`_remove: true`) parent agents.
+- **`departments`** list: merged by name (case-insensitive). Child dept replaces parent entirely.
+- **`workflow_handoffs`**, **`escalation_paths`**: child replaces entirely if present.
+
+Circular inheritance is detected via chain tracking and raises `TemplateInheritanceError`.
 
 ### 14.2 Company Builder
 
@@ -2336,6 +2374,7 @@ ai-company/
 │       │   ├── metrics.py          # TaskCompletionMetrics proxy overhead model
 │       │   ├── react_loop.py       # ReAct loop implementation
 │       │   ├── plan_models.py      # Plan step, plan, and plan-execute config models
+│       │   ├── plan_parsing.py     # Plan response parsing utilities
 │       │   ├── plan_execute_loop.py # Plan-and-Execute loop implementation
 │       │   ├── plan_parsing.py     # Plan extraction from LLM responses (JSON + text fallback)
 │       │   ├── loop_helpers.py     # Shared stateless helpers for all loop implementations
@@ -2356,10 +2395,26 @@ ai-company/
 │       │   ├── bus_protocol.py     # MessageBus protocol interface
 │       │   ├── channel.py          # Channel model
 │       │   ├── config.py           # Communication config
+│       │   ├── delegation/         # Hierarchical delegation subsystem
+│       │   │   ├── __init__.py   # Package exports
+│       │   │   ├── authority.py   # AuthorityValidator + AuthorityCheckResult
+│       │   │   ├── hierarchy.py   # HierarchyResolver (org hierarchy from Company)
+│       │   │   ├── models.py      # DelegationRequest, DelegationResult, DelegationRecord
+│       │   │   └── service.py     # DelegationService (orchestrates delegation flow)
 │       │   ├── dispatcher.py       # MessageDispatcher + DispatchResult
 │       │   ├── enums.py            # Communication enums
-│       │   ├── errors.py           # Communication error hierarchy
+│       │   ├── errors.py           # Communication + delegation error hierarchy
 │       │   ├── handler.py          # MessageHandler protocol, FunctionHandler, HandlerRegistration
+│       │   ├── loop_prevention/    # Delegation loop prevention mechanisms
+│       │   │   ├── __init__.py   # Package exports
+│       │   │   ├── _pair_key.py   # Canonical agent-pair key utility
+│       │   │   ├── ancestry.py    # Ancestry cycle detection (pure function)
+│       │   │   ├── circuit_breaker.py # DelegationCircuitBreaker, CircuitBreakerState
+│       │   │   ├── dedup.py       # DelegationDeduplicator (time-windowed)
+│       │   │   ├── depth.py       # Max delegation depth check (pure function)
+│       │   │   ├── guard.py       # DelegationGuard (orchestrates all mechanisms)
+│       │   │   ├── models.py      # GuardCheckOutcome
+│       │   │   └── rate_limit.py  # DelegationRateLimiter (per-pair)
 │       │   ├── message.py          # Message model
 │       │   ├── messenger.py        # AgentMessenger per-agent facade
 │       │   └── subscription.py     # Subscription + DeliveryEnvelope models
@@ -2377,9 +2432,10 @@ ai-company/
 │       │   ├── events/             # Per-domain event constants
 │       │   │   ├── __init__.py    # Package marker with usage docs; no re-exports
 │       │   │   ├── budget.py      # BUDGET_* constants
-│       │   │   ├── company.py     # COMPANY_* constants
+│       │   │   ├── company.py      # COMPANY_* constants
 │       │   │   ├── communication.py # COMM_* constants
 │       │   │   ├── config.py      # CONFIG_* constants
+│       │   │   ├── delegation.py  # DELEGATION_* constants
 │       │   │   ├── correlation.py # CORRELATION_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants
 │       │   │   ├── git.py         # GIT_* constants
@@ -2481,6 +2537,7 @@ ai-company/
 │           ├── schema.py           # Template schema models
 │           ├── loader.py           # Template loader
 │           ├── renderer.py         # Template renderer
+│           ├── merge.py            # Template config merging for inheritance
 │           ├── presets.py          # Personality presets + auto-name generation
 │           ├── errors.py           # Template errors
 │           └── builtins/           # Pre-built company templates
@@ -2540,7 +2597,10 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **State coordination** | Planned (M4) | Centralized single-writer: `TaskEngine` owns all task/project mutations via `asyncio.Queue`. Agents submit requests, engine applies `model_copy(update=...)` sequentially and publishes snapshots. `version: int` field on state models for future optimistic concurrency if multi-process scaling is needed. | Prevents lost updates by design. Trivial in single-threaded asyncio (no locks). Perfect audit trail. Industry consensus: MetaGPT, CrewAI, AutoGen all use prevention-by-design, not conflict resolution. See §6.8 State Coordination table. |
 | **Workspace isolation** | Planned (M4) | Pluggable `WorkspaceIsolationStrategy` protocol. Default: planner + git worktrees. Each agent works in an isolated worktree; sequential merge on completion. Textual conflicts detected by git; semantic conflicts reviewed by agent or human. | Industry standard (Codex, Cursor, Claude Code, VS Code). Maximum parallelism. Leverages mature git infrastructure. See §6.8. |
 | **Graceful shutdown** | Adopted (M3) | Pluggable `ShutdownStrategy` protocol. Default: cooperative with 30s timeout. Agents check shutdown event at turn boundaries. Force-cancel after timeout. `INTERRUPTED` status for force-cancelled tasks. M4/M5: upgrade to checkpoint-and-stop. | Cross-platform (Windows `signal.signal()` fallback). Bounded shutdown time. Mirrors cooperative shutdown in §6.7. |
+| **Template inheritance** | Adopted (M2.5) | `extends` field on `CompanyTemplate` triggers parent resolution at render time. `merge.py` merges configs by field type: scalars (child wins), config dicts (deep merge), agents (by `(role, department)` key with `_remove` support), departments (by name). `_ParentEntry` dataclass tracks merge state. `DEFAULT_MERGE_DEPARTMENT = "engineering"` shared between merge and renderer. Circular chains detected via `frozenset` tracking; max depth = 10. | Enables template composition without copy-paste. Merge-by-key preserves parent order. `_remove` directive enables clean agent removal without workarounds. |
+| **Pydantic alias for YAML directives** | Adopted (M2.5) | `Field(alias="_remove")` in `TemplateAgentConfig` — YAML uses `_remove: true`, Python accesses `agent.remove`. Keeps the YAML-facing name (underscore prefix signals internal directive) separate from the Python attribute name. | Underscore-prefixed YAML keys signal merge directives vs regular fields. Pydantic alias bridges the naming convention gap cleanly. |
 | **Communication foundation** | Adopted (M4) | `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()` with shutdown signaling via `asyncio.Event`). `MessageDispatcher` routes to concurrent handlers via `asyncio.TaskGroup` with pre-allocated error collection. `AgentMessenger` per-agent facade auto-fills sender/timestamp/ID; deterministic direct-channel naming `@{sorted_a}:{sorted_b}`. `DeliveryEnvelope` for delivery tracking. `NotBlankStr` validation on all protocol boundary identifiers. | Pull-model avoids callback complexity and enables agents to consume at their own pace. Protocol + backend split enables future persistent/distributed bus implementations. Deterministic DM channel names prevent duplicates. See §5. |
+| **Delegation & loop prevention** | Adopted (M4) | `HierarchyResolver` resolves org hierarchy from `Company` at construction (cycle-detected, `MappingProxyType`-frozen). `AuthorityValidator` checks chain-of-command + role permissions. `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) in sequence, short-circuiting on first rejection. `DelegationService` is synchronous (CPU-only); messaging integration deferred. Stateful mechanisms use injectable clock for deterministic testing. Task model extended with `parent_task_id` and `delegation_chain` fields. | Synchronous delegation avoids async complexity for CPU-only validation. Five-mechanism guard provides defence-in-depth against all loop patterns. Injectable clocks enable deterministic testing. See §5.4, §5.5. |
 
 ---
 

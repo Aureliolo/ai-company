@@ -62,3 +62,39 @@ class MessageBusNotRunningError(CommunicationError):
 
 class MessageBusAlreadyRunningError(CommunicationError):
     """start() called on a message bus that is already running."""
+
+
+class DelegationError(CommunicationError):
+    """Base exception for delegation-related errors."""
+
+
+class DelegationAuthorityError(DelegationError):
+    """Delegator lacks authority to delegate to the target agent."""
+
+
+class DelegationLoopError(DelegationError):
+    """Base for loop prevention mechanism rejections."""
+
+
+class DelegationDepthError(DelegationLoopError):
+    """Delegation chain exceeds maximum depth."""
+
+
+class DelegationAncestryError(DelegationLoopError):
+    """Delegation would create a cycle in the task ancestry."""
+
+
+class DelegationRateLimitError(DelegationLoopError):
+    """Delegation rate limit exceeded for agent pair."""
+
+
+class DelegationCircuitOpenError(DelegationLoopError):
+    """Circuit breaker is open for agent pair."""
+
+
+class DelegationDuplicateError(DelegationLoopError):
+    """Duplicate delegation detected within dedup window."""
+
+
+class HierarchyResolutionError(CommunicationError):
+    """Error resolving organizational hierarchy."""

@@ -2,6 +2,8 @@ template:
   name: "Tech Startup"
   description: "Small team for building MVPs and prototypes"
   version: "1.0.0"
+  min_agents: 3
+  max_agents: 5
   tags:
     - "startup"
     - "mvp"
@@ -45,11 +47,13 @@ template:
       personality_preset: "methodical_analyst"
       department: "executive"
     - role: "Full-Stack Developer"
+      merge_id: "fullstack-senior"
       level: "senior"
       model: "medium"
       personality_preset: "pragmatic_builder"
       department: "engineering"
     - role: "Full-Stack Developer"
+      merge_id: "fullstack-mid"
       level: "mid"
       model: "small"
       personality_preset: "eager_learner"
@@ -57,6 +61,7 @@ template:
     - role: "Product Manager"
       level: "senior"
       model: "medium"
+      personality_preset: "strategic_planner"
       department: "product"
 
   workflow: "agile_kanban"

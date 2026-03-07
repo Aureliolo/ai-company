@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal
 
 import yaml
@@ -25,7 +26,12 @@ from ai_company.observability.events.template import (
     TEMPLATE_BUILTIN_DEFECT,
     TEMPLATE_LIST_SKIP_INVALID,
     TEMPLATE_LOAD_ERROR,
+    TEMPLATE_LOAD_INVALID_NAME,
+    TEMPLATE_LOAD_NOT_FOUND,
+    TEMPLATE_LOAD_PARSE_ERROR,
+    TEMPLATE_LOAD_READ_ERROR,
     TEMPLATE_LOAD_START,
+    TEMPLATE_LOAD_STRUCTURE_ERROR,
     TEMPLATE_LOAD_SUCCESS,
     TEMPLATE_PASS1_FLOAT_FALLBACK,
 )
@@ -40,16 +46,17 @@ logger = get_logger(__name__)
 
 _USER_TEMPLATES_DIR = Path.home() / ".ai-company" / "templates"
 
-# Registry of built-in template names -> resource filenames.
-BUILTIN_TEMPLATES: dict[str, str] = {
-    "solo_founder": "solo_founder.yaml",
-    "startup": "startup.yaml",
-    "dev_shop": "dev_shop.yaml",
-    "product_team": "product_team.yaml",
-    "agency": "agency.yaml",
-    "full_company": "full_company.yaml",
-    "research_lab": "research_lab.yaml",
-}
+BUILTIN_TEMPLATES: MappingProxyType[str, str] = MappingProxyType(
+    {
+        "solo_founder": "solo_founder.yaml",
+        "startup": "startup.yaml",
+        "dev_shop": "dev_shop.yaml",
+        "product_team": "product_team.yaml",
+        "agency": "agency.yaml",
+        "full_company": "full_company.yaml",
+        "research_lab": "research_lab.yaml",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -169,6 +176,7 @@ def load_template(name: str) -> LoadedTemplate:
     # Sanitize to prevent path traversal (OS-independent).
     if "/" in name_clean or "\\" in name_clean or ".." in name_clean:
         msg = f"Invalid template name {name!r}: must not contain path separators"
+        logger.warning(TEMPLATE_LOAD_INVALID_NAME, template_name=name)
         raise TemplateNotFoundError(
             msg,
             locations=(ConfigLocation(file_path=f"<template:{name}>"),),
@@ -225,6 +233,7 @@ def load_template_file(path: Path | str) -> LoadedTemplate:
     path = Path(path)
     if not path.is_file():
         msg = f"Template file not found: {path}"
+        logger.warning(TEMPLATE_LOAD_NOT_FOUND, path=str(path))
         raise TemplateNotFoundError(
             msg,
             locations=(ConfigLocation(file_path=str(path)),),
@@ -242,13 +251,22 @@ def _load_builtin(name: str) -> LoadedTemplate:
     filename = BUILTIN_TEMPLATES.get(name)
     if filename is None:
         msg = f"Unknown built-in template: {name!r}"
+        logger.warning(TEMPLATE_LOAD_NOT_FOUND, template_name=name)
         raise TemplateNotFoundError(
             msg,
             locations=(ConfigLocation(file_path=f"<builtin:{name}>"),),
         )
-    ref = resources.files("ai_company.templates.builtins") / filename
-    yaml_text = ref.read_text(encoding="utf-8")
     source_name = f"<builtin:{name}>"
+    try:
+        ref = resources.files("ai_company.templates.builtins") / filename
+        yaml_text = ref.read_text(encoding="utf-8")
+    except (OSError, ImportError, TypeError) as exc:
+        msg = f"Failed to read built-in template resource {filename!r}: {exc}"
+        logger.exception(TEMPLATE_LOAD_READ_ERROR, source=source_name, error=str(exc))
+        raise TemplateRenderError(
+            msg,
+            locations=(ConfigLocation(file_path=source_name),),
+        ) from exc
     template = _parse_template_yaml(yaml_text, source_name=source_name)
     return LoadedTemplate(
         template=template,
@@ -261,7 +279,8 @@ def _load_from_file(path: Path) -> LoadedTemplate:
     """Load a template from a file path.
 
     Raises:
-        TemplateRenderError: If the file cannot be read.
+        TemplateRenderError: If the file cannot be read or YAML
+            parsing fails.
         TemplateValidationError: If validation fails.
     """
     source_name = str(path)
@@ -269,12 +288,14 @@ def _load_from_file(path: Path) -> LoadedTemplate:
         yaml_text = path.read_text(encoding="utf-8")
     except OSError as exc:
         msg = f"Unable to read template file: {path}"
+        logger.warning(TEMPLATE_LOAD_READ_ERROR, path=str(path), error=str(exc))
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
         ) from exc
     except UnicodeDecodeError as exc:
         msg = f"Template file is not valid UTF-8: {path}"
+        logger.warning(TEMPLATE_LOAD_READ_ERROR, path=str(path), error=str(exc))
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -334,6 +355,7 @@ def _parse_template_yaml(
         data = yaml.safe_load(safe_text)
     except yaml.YAMLError as exc:
         msg = f"Template YAML syntax error in {source_name}: {exc}"
+        logger.warning(TEMPLATE_LOAD_PARSE_ERROR, source=source_name, error=str(exc))
         raise TemplateRenderError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -343,14 +365,9 @@ def _parse_template_yaml(
     try:
         normalized = _normalize_template_data(template_data)
         return CompanyTemplate(**normalized)
-    except ValidationError as exc:
+    except (ValidationError, ValueError, TypeError) as exc:
         msg = f"Template validation failed for {source_name}: {exc}"
-        raise TemplateValidationError(
-            msg,
-            locations=(ConfigLocation(file_path=source_name),),
-        ) from exc
-    except (ValueError, TypeError) as exc:
-        msg = f"Template validation failed for {source_name}: {exc}"
+        logger.warning(TEMPLATE_LOAD_PARSE_ERROR, source=source_name, error=str(exc))
         raise TemplateValidationError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -368,6 +385,7 @@ def _validate_template_structure(
     """
     if not isinstance(data, dict) or "template" not in data:
         msg = f"Template YAML must have a top-level 'template' key in {source_name}"
+        logger.warning(TEMPLATE_LOAD_STRUCTURE_ERROR, source=source_name, error=msg)
         raise TemplateValidationError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -375,6 +393,7 @@ def _validate_template_structure(
     template_data = data["template"]
     if not isinstance(template_data, dict):
         msg = f"Template 'template' key must map to an object in {source_name}"
+        logger.warning(TEMPLATE_LOAD_STRUCTURE_ERROR, source=source_name, error=msg)
         raise TemplateValidationError(
             msg,
             locations=(ConfigLocation(file_path=source_name),),
@@ -394,13 +413,17 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Dict suitable for ``CompanyTemplate(**result)``.
     """
-    company_raw = data.get("company", {})
-    if company_raw is None:
-        company_raw = {}
-    if not isinstance(company_raw, dict):
+    company = data.get("company")
+    if company is None:
+        company = {}
+    elif not isinstance(company, dict):
         msg = "Template field 'template.company' must be a mapping"
+        logger.warning(
+            TEMPLATE_LOAD_STRUCTURE_ERROR,
+            source="template.company",
+            error=msg,
+        )
         raise TypeError(msg)
-    company: dict[str, Any] = company_raw
 
     metadata: dict[str, Any] = {
         "description": data.get("description", ""),
@@ -410,8 +433,12 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
     }
     if "name" in data:
         metadata["name"] = data["name"]
+    if "min_agents" in data:
+        metadata["min_agents"] = data["min_agents"]
+    if "max_agents" in data:
+        metadata["max_agents"] = data["max_agents"]
 
-    return {
+    result: dict[str, Any] = {
         "metadata": metadata,
         "variables": data.get("variables", ()),
         "agents": data.get("agents", ()),
@@ -420,7 +447,12 @@ def _normalize_template_data(data: dict[str, Any]) -> dict[str, Any]:
         "communication": data.get("communication", "hybrid"),
         "budget_monthly": _to_float(company.get("budget_monthly", 50.0)),
         "autonomy": _to_float(company.get("autonomy", 0.5)),
+        "workflow_handoffs": data.get("workflow_handoffs", ()),
+        "escalation_paths": data.get("escalation_paths", ()),
     }
+    if "extends" in data:
+        result["extends"] = data["extends"]
+    return result
 
 
 def _to_float(value: Any) -> float:
