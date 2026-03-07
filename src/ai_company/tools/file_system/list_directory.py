@@ -3,6 +3,7 @@
 import asyncio
 import itertools
 import re
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Final
 
 from ai_company.observability import get_logger
@@ -33,7 +34,23 @@ def _list_sync(
     *,
     recursive: bool,
 ) -> list[str]:
-    """Collect directory entries synchronously."""
+    """Collect directory entries synchronously.
+
+    Args:
+        resolved: Resolved directory path within the workspace.
+        workspace_root: Workspace root for containment checks.
+        pattern: Optional glob filter (e.g. ``"*.py"``).
+        recursive: Whether to recurse into subdirectories.
+
+    Returns:
+        A list of formatted strings with type prefixes
+        (``[DIR]``, ``[FILE]``, ``[SYMLINK]``, ``[ERROR]``).
+        Capped at ``MAX_ENTRIES + 1`` to allow truncation detection.
+
+    Raises:
+        PermissionError: If the process lacks read permission.
+        OSError: For other OS-level I/O failures.
+    """
     glob_pattern = pattern or "*"
     if recursive:
         raw_iter = resolved.rglob(glob_pattern)
@@ -51,11 +68,19 @@ def _list_sync(
         try:
             display = str(entry.relative_to(resolved)) if recursive else entry.name
 
+            # Check containment for ALL entries (not just symlinks)
+            # to prevent leaking files via symlinked directories.
+            entry_resolved = entry.resolve()
+            if not entry_resolved.is_relative_to(workspace_root):
+                if entry.is_symlink():
+                    lines.append(
+                        f"[SYMLINK] {display} -> (outside workspace)",
+                    )
+                continue
+
             if entry.is_symlink():
-                target = entry.resolve()
-                if not target.is_relative_to(workspace_root):
-                    lines.append(f"[SYMLINK] {display} -> (outside workspace)")
-                    continue
+                lines.append(f"[SYMLINK] {display}")
+                continue
 
             if entry.is_dir():
                 lines.append(f"[DIR]  {display}/")
@@ -77,7 +102,7 @@ def _list_sync(
                 path=str(entry),
                 error=str(exc),
             )
-            lines.append(f"[ERROR] {entry.name}")
+            lines.append(f"[ERROR] {entry.name} ({exc})")
 
     return lines
 
@@ -86,7 +111,8 @@ class ListDirectoryTool(BaseFileSystemTool):
     """Lists files and directories within the workspace.
 
     Supports optional glob filtering and recursive listing.  Output is
-    sorted alphabetically with type prefixes (``[DIR]`` / ``[FILE]``).
+    sorted alphabetically with type prefixes (``[DIR]`` / ``[FILE]`` /
+    ``[SYMLINK]`` / ``[ERROR]``).
     Results are capped at ``MAX_ENTRIES`` (1000) entries to prevent
     excessive output.
 
@@ -134,7 +160,7 @@ class ListDirectoryTool(BaseFileSystemTool):
             },
         )
 
-    async def execute(
+    async def execute(  # noqa: C901, PLR0911
         self,
         *,
         arguments: dict[str, Any],
@@ -163,10 +189,32 @@ class ListDirectoryTool(BaseFileSystemTool):
                 is_error=True,
             )
 
+        # Reject absolute glob patterns — they cause
+        # NotImplementedError in pathlib.
+        if pattern and (
+            PurePosixPath(pattern).is_absolute()
+            or PureWindowsPath(pattern).is_absolute()
+        ):
+            logger.warning(
+                TOOL_FS_GLOB_REJECTED,
+                pattern=pattern,
+            )
+            return ToolExecutionResult(
+                content=f"Unsafe glob pattern rejected: {pattern}",
+                is_error=True,
+            )
+
         try:
             resolved = self.path_validator.validate(user_path)
         except ValueError as exc:
             return ToolExecutionResult(content=str(exc), is_error=True)
+
+        if not resolved.exists():
+            logger.warning(TOOL_FS_ERROR, path=user_path, error="not_found")
+            return ToolExecutionResult(
+                content=f"Path not found: {user_path}",
+                is_error=True,
+            )
 
         if not resolved.is_dir():
             logger.warning(TOOL_FS_ERROR, path=user_path, error="not_a_directory")

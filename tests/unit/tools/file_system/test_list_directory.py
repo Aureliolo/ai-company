@@ -14,6 +14,8 @@ from ai_company.tools.file_system.list_directory import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+pytestmark = pytest.mark.timeout(30)
+
 _SYMLINK_SUPPORTED = not (sys.platform == "win32" and not os.environ.get("CI"))
 
 

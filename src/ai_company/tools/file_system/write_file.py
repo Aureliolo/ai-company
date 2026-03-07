@@ -1,6 +1,9 @@
 """Write file tool — creates or overwrites files in the workspace."""
 
 import asyncio
+import os
+import pathlib
+import tempfile
 from typing import TYPE_CHECKING, Any, Final
 
 from ai_company.observability import get_logger
@@ -23,14 +26,41 @@ MAX_WRITE_SIZE_BYTES: Final[int] = 10_485_760  # 10 MB
 def _write_sync(resolved: Path, content: str, *, create_dirs: bool) -> tuple[int, bool]:
     """Write content to file synchronously.
 
+    Uses an atomic write pattern (temp file + replace) so that a crash
+    or disk-full during the write does not corrupt an existing file.
+
+    Args:
+        resolved: Resolved file path within the workspace.
+        content: Text content to write.
+        create_dirs: Whether to create parent directories.
+
     Returns:
         Tuple of (bytes_written, created) where *created* is True if
         the file did not exist before the write.
+
+    Raises:
+        IsADirectoryError: If the target is a directory.
+        PermissionError: If the process lacks write permission.
+        OSError: For other OS-level I/O failures.
     """
     created = not resolved.exists()
     if create_dirs:
         resolved.parent.mkdir(parents=True, exist_ok=True)
-    resolved.write_text(content, encoding="utf-8")
+
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(resolved.parent),
+        suffix=".tmp",
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+            fh.flush()
+            os.fsync(fh.fileno())
+        pathlib.Path(tmp_path).replace(resolved)
+    except BaseException:
+        pathlib.Path(tmp_path).unlink(missing_ok=True)
+        raise
+
     return resolved.stat().st_size, created
 
 

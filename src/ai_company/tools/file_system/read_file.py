@@ -37,9 +37,22 @@ def _read_sync(
 ) -> str:
     """Read file content synchronously, with optional line slicing.
 
-    When *max_bytes* is set and no line range is requested, only the
-    first *max_bytes* bytes are read from disk (avoiding full-file
-    materialisation for oversized files).
+    Args:
+        resolved: Resolved file path within the workspace.
+        start: First line to return (1-based inclusive), or ``None``.
+        end: Last line to return (1-based inclusive), or ``None``.
+        max_bytes: When set, only the first *max_bytes* characters are
+            read via text-mode ``read()`` (approximate byte cap for
+            oversized files without a line range).
+
+    Returns:
+        The file content (possibly sliced or truncated).
+
+    Raises:
+        UnicodeDecodeError: If the file contains non-UTF-8 bytes.
+        FileNotFoundError: If the file does not exist.
+        PermissionError: If the process lacks read permission.
+        OSError: For other OS-level I/O failures.
     """
     if start is not None or end is not None:
         raw = resolved.read_text(encoding="utf-8")
@@ -106,7 +119,7 @@ class ReadFileTool(BaseFileSystemTool):
             },
         )
 
-    async def execute(
+    async def execute(  # noqa: PLR0911
         self,
         *,
         arguments: dict[str, Any],
@@ -123,6 +136,15 @@ class ReadFileTool(BaseFileSystemTool):
         user_path: str = arguments["path"]
         start_line: int | None = arguments.get("start_line")
         end_line: int | None = arguments.get("end_line")
+
+        if start_line is not None and end_line is not None and start_line > end_line:
+            return ToolExecutionResult(
+                content=(
+                    f"Invalid line range: start_line ({start_line}) "
+                    f"must be <= end_line ({end_line})"
+                ),
+                is_error=True,
+            )
 
         try:
             resolved = self.path_validator.validate(user_path)
@@ -156,10 +178,19 @@ class ReadFileTool(BaseFileSystemTool):
                 size_bytes=size_bytes,
                 max_bytes=MAX_FILE_SIZE_BYTES,
             )
+            if has_line_range:
+                return ToolExecutionResult(
+                    content=(
+                        f"File too large for line-range read: "
+                        f"{user_path} ({size_bytes:,} bytes, "
+                        f"max {MAX_FILE_SIZE_BYTES:,})"
+                    ),
+                    is_error=True,
+                )
 
-        # When oversized and no line range, read only MAX_FILE_SIZE_BYTES
-        # to avoid loading the whole file into memory.
-        max_bytes = MAX_FILE_SIZE_BYTES if oversized and not has_line_range else None
+        # When oversized, read only MAX_FILE_SIZE_BYTES to avoid
+        # loading the whole file into memory.
+        max_bytes = MAX_FILE_SIZE_BYTES if oversized else None
 
         try:
             content = await asyncio.to_thread(
@@ -180,15 +211,15 @@ class ReadFileTool(BaseFileSystemTool):
             logger.warning(TOOL_FS_ERROR, path=user_path, error=log_key)
             return ToolExecutionResult(content=msg, is_error=True)
 
-        if oversized and not has_line_range:
+        line_count = content.count("\n") + (
+            1 if content and not content.endswith("\n") else 0
+        )
+
+        if oversized:
             content += (
                 f"\n\n[Truncated: file is {size_bytes:,} bytes, "
                 f"showing first {MAX_FILE_SIZE_BYTES:,}]"
             )
-
-        line_count = content.count("\n") + (
-            1 if content and not content.endswith("\n") else 0
-        )
 
         logger.info(
             TOOL_FS_READ,

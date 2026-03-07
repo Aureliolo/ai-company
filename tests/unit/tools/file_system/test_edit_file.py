@@ -9,6 +9,8 @@ if TYPE_CHECKING:
 
     from ai_company.tools.file_system.edit_file import EditFileTool
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestEditFileExecution:
@@ -146,6 +148,18 @@ class TestEditFileExecution:
         )
         assert result.is_error
         assert "directory" in result.content.lower()
+
+    async def test_empty_old_text_rejected(self, edit_tool: EditFileTool) -> None:
+        """Empty old_text must be rejected."""
+        result = await edit_tool.execute(
+            arguments={
+                "path": "hello.txt",
+                "old_text": "",
+                "new_text": "injected",
+            }
+        )
+        assert result.is_error
+        assert "empty" in result.content.lower()
 
     async def test_edit_large_file_rejected(
         self, workspace: Path, edit_tool: EditFileTool

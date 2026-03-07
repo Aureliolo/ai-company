@@ -1,6 +1,9 @@
 """Edit file tool — search-and-replace within workspace files."""
 
 import asyncio
+import os
+import pathlib
+import tempfile
 from typing import TYPE_CHECKING, Any, Final
 
 from ai_company.observability import get_logger
@@ -28,14 +31,40 @@ MAX_EDIT_FILE_SIZE_BYTES: Final[int] = 1_048_576  # 1 MB
 def _edit_sync(resolved: Path, old_text: str, new_text: str) -> int:
     """Perform search-and-replace synchronously.
 
+    Uses an atomic write pattern (temp file + replace) so that a crash
+    or disk-full during the write does not corrupt the original file.
+
+    Args:
+        resolved: Resolved file path within the workspace.
+        old_text: Non-empty text to search for.
+        new_text: Replacement text (may be empty to delete).
+
     Returns:
         Number of occurrences of *old_text* found in the file.
+
+    Raises:
+        UnicodeDecodeError: If the file contains non-UTF-8 bytes.
+        FileNotFoundError: If the file does not exist.
+        PermissionError: If the process lacks read/write permission.
+        OSError: For other OS-level I/O failures.
     """
     content = resolved.read_text(encoding="utf-8")
     count = content.count(old_text)
     if count > 0:
         new_content = content.replace(old_text, new_text, 1)
-        resolved.write_text(new_content, encoding="utf-8")
+        fd, tmp_path = tempfile.mkstemp(
+            dir=str(resolved.parent),
+            suffix=".tmp",
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(new_content)
+                fh.flush()
+                os.fsync(fh.fileno())
+            pathlib.Path(tmp_path).replace(resolved)
+        except BaseException:
+            pathlib.Path(tmp_path).unlink(missing_ok=True)
+            raise
     return count
 
 
@@ -84,6 +113,7 @@ class EditFileTool(BaseFileSystemTool):
                     },
                     "old_text": {
                         "type": "string",
+                        "minLength": 1,
                         "description": "Exact text to find",
                     },
                     "new_text": {
@@ -96,7 +126,7 @@ class EditFileTool(BaseFileSystemTool):
             },
         )
 
-    async def execute(  # noqa: PLR0911
+    async def execute(  # noqa: C901, PLR0911
         self,
         *,
         arguments: dict[str, Any],
@@ -113,6 +143,12 @@ class EditFileTool(BaseFileSystemTool):
         user_path: str = arguments["path"]
         old_text: str = arguments["old_text"]
         new_text: str = arguments["new_text"]
+
+        if not old_text:
+            return ToolExecutionResult(
+                content="old_text cannot be empty",
+                is_error=True,
+            )
 
         if old_text == new_text:
             logger.debug(
@@ -187,10 +223,10 @@ class EditFileTool(BaseFileSystemTool):
             return ToolExecutionResult(content=msg, is_error=True)
 
         if count == 0:
-            logger.info(
+            logger.warning(
                 TOOL_FS_EDIT_NOT_FOUND,
                 path=user_path,
-                old_text_preview=old_text[:100],
+                old_text_len=len(old_text),
             )
             return ToolExecutionResult(
                 content=f"Text not found in {user_path}.",

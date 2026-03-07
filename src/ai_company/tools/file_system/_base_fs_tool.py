@@ -8,14 +8,11 @@ from abc import ABC
 from typing import TYPE_CHECKING, Any
 
 from ai_company.core.enums import ToolCategory
-from ai_company.observability import get_logger
 from ai_company.tools.base import BaseTool
 from ai_company.tools.file_system._path_validator import PathValidator
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-logger = get_logger(__name__)
 
 
 def _map_os_error(exc: OSError, user_path: str, verb: str) -> tuple[str, str]:
@@ -24,7 +21,8 @@ def _map_os_error(exc: OSError, user_path: str, verb: str) -> tuple[str, str]:
     Args:
         exc: The caught OS-level exception.
         user_path: The original user-supplied path string.
-        verb: Action verb for the fallback message (e.g. ``"reading"``).
+        verb: Action verb for the fallback message
+            (e.g. ``"reading"``, ``"editing"``).
 
     Returns:
         A two-tuple of (structured log key, human-readable message).
@@ -35,7 +33,7 @@ def _map_os_error(exc: OSError, user_path: str, verb: str) -> tuple[str, str]:
         return "is_directory", f"Path is a directory, not a file: {user_path}"
     if isinstance(exc, PermissionError):
         return "permission_denied", f"Permission denied: {user_path}"
-    return str(exc), f"OS error {verb} file: {user_path}"
+    return "os_error", f"OS error {verb} file '{user_path}': {exc}"
 
 
 class BaseFileSystemTool(BaseTool, ABC):

@@ -6,6 +6,7 @@ workspace root.  This prevents path-traversal attacks via ``../``,
 symlinks, or absolute paths outside the workspace.
 """
 
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING
 
 from ai_company.observability import get_logger
@@ -69,13 +70,29 @@ class PathValidator:
         Raises:
             ValueError: If the resolved path escapes the workspace.
         """
+        # Reject absolute paths outright — agents must use relative paths.
+        if PurePosixPath(path).is_absolute() or PureWindowsPath(path).is_absolute():
+            logger.warning(TOOL_FS_PATH_VIOLATION, user_path=path)
+            msg = f"Absolute paths not allowed: {path}"
+            raise ValueError(msg)
+
         # NOTE: There is an inherent TOCTOU gap between this validation
         # and the actual file operation (which runs in asyncio.to_thread).
         # A concurrent process could swap in a symlink between validation
         # and use.  Full mitigation requires OS-level sandboxing (e.g.
         # openat2 RESOLVE_BENEATH on Linux).  User-space path validation
         # is a best-effort defence-in-depth layer.
-        resolved = (self._workspace_root / path).resolve()
+        try:
+            resolved = (self._workspace_root / path).resolve()
+        except OSError as exc:
+            logger.warning(
+                TOOL_FS_PATH_VIOLATION,
+                user_path=path,
+                error=str(exc),
+            )
+            msg = f"Invalid path: {path} ({exc})"
+            raise ValueError(msg) from exc
+
         if not resolved.is_relative_to(self._workspace_root):
             logger.warning(
                 TOOL_FS_PATH_VIOLATION,

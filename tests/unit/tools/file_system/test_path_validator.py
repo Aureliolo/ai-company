@@ -11,6 +11,8 @@ from ai_company.tools.file_system._path_validator import PathValidator
 if TYPE_CHECKING:
     from pathlib import Path
 
+pytestmark = pytest.mark.timeout(30)
+
 _SYMLINK_SUPPORTED = not (sys.platform == "win32" and not os.environ.get("CI"))
 
 
@@ -28,7 +30,7 @@ class TestPathValidatorInit:
 
     def test_file_as_workspace_raises(self, tmp_path: Path) -> None:
         f = tmp_path / "file.txt"
-        f.write_text("x")
+        f.write_text("x", encoding="utf-8")
         with pytest.raises(ValueError, match="not an existing directory"):
             PathValidator(f)
 
@@ -38,7 +40,7 @@ class TestValidate:
     """Path validation tests."""
 
     def test_relative_path(self, tmp_path: Path) -> None:
-        (tmp_path / "a.txt").write_text("x")
+        (tmp_path / "a.txt").write_text("x", encoding="utf-8")
         pv = PathValidator(tmp_path)
         result = pv.validate("a.txt")
         assert result == (tmp_path / "a.txt").resolve()
@@ -46,7 +48,7 @@ class TestValidate:
     def test_nested_path(self, tmp_path: Path) -> None:
         sub = tmp_path / "d"
         sub.mkdir()
-        (sub / "b.txt").write_text("x")
+        (sub / "b.txt").write_text("x", encoding="utf-8")
         pv = PathValidator(tmp_path)
         result = pv.validate("d/b.txt")
         assert result == (sub / "b.txt").resolve()
@@ -58,7 +60,7 @@ class TestValidate:
 
     def test_absolute_outside_rejected(self, tmp_path: Path) -> None:
         pv = PathValidator(tmp_path)
-        with pytest.raises(ValueError, match="escapes workspace"):
+        with pytest.raises(ValueError, match="Absolute paths not allowed"):
             pv.validate("/etc/passwd")
 
     def test_dot_path(self, tmp_path: Path) -> None:

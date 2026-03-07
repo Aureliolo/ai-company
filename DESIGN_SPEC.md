@@ -1624,7 +1624,7 @@ When coordination metrics collection is enabled, the system can optionally class
 
 | Category | Tools | Typical Roles |
 |----------|-------|---------------|
-| **File System** | Read, write, edit, delete files | All developers, writers |
+| **File System** | Read, write, edit, list, delete files | All developers, writers |
 | **Code Execution** | Run code in sandboxed environments | Developers, QA |
 | **Version Control** | Git operations, PR management | Developers, DevOps |
 | **Web** | HTTP requests, web scraping, search | Researchers, analysts |

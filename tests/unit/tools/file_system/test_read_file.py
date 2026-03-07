@@ -10,6 +10,8 @@ from ai_company.tools.file_system.read_file import MAX_FILE_SIZE_BYTES, ReadFile
 if TYPE_CHECKING:
     from pathlib import Path
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestReadFileToolProperties:
@@ -71,8 +73,7 @@ class TestReadFileExecution:
             arguments={"path": "multi.txt", "start_line": 2}
         )
         assert not result.is_error
-        assert "b" in result.content
-        assert "c" in result.content
+        assert result.content == "b\nc\n"
 
     async def test_read_end_line_only(
         self, workspace: Path, read_tool: ReadFileTool
@@ -117,16 +118,26 @@ class TestReadFileExecution:
         assert "Truncated" in result.content
         assert len(result.content) < len(big_content)
 
-    async def test_large_file_not_truncated_with_line_range(
+    async def test_large_file_rejects_line_range(
         self, workspace: Path, read_tool: ReadFileTool
     ) -> None:
-        """When start_line/end_line is given, truncation is bypassed."""
+        """Oversized files with line ranges are rejected to prevent DoS."""
         lines = ["line\n"] * (MAX_FILE_SIZE_BYTES // 4)
         big_content = "".join(lines)
         (workspace / "big_lines.txt").write_text(big_content, encoding="utf-8")
         result = await read_tool.execute(
             arguments={"path": "big_lines.txt", "start_line": 1, "end_line": 5}
         )
-        assert not result.is_error
-        assert "Truncated" not in result.content
-        assert "line" in result.content
+        assert result.is_error
+        assert "too large" in result.content.lower()
+
+    async def test_start_line_greater_than_end_line(
+        self, workspace: Path, read_tool: ReadFileTool
+    ) -> None:
+        """start_line > end_line returns an error."""
+        (workspace / "multi.txt").write_text("a\nb\nc\n", encoding="utf-8")
+        result = await read_tool.execute(
+            arguments={"path": "multi.txt", "start_line": 3, "end_line": 1}
+        )
+        assert result.is_error
+        assert "start_line" in result.content

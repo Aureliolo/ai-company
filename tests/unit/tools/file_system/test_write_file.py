@@ -9,6 +9,8 @@ if TYPE_CHECKING:
 
     from ai_company.tools.file_system.write_file import WriteFileTool
 
+pytestmark = pytest.mark.timeout(30)
+
 
 @pytest.mark.unit
 class TestWriteFileExecution:
