@@ -114,6 +114,7 @@ class TestEventConstants:
             "communication",
             "company",
             "config",
+            "conflict",
             "correlation",
             "delegation",
             "execution",

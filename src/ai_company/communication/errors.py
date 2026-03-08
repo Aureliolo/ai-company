@@ -98,3 +98,15 @@ class DelegationDuplicateError(DelegationLoopError):
 
 class HierarchyResolutionError(CommunicationError):
     """Error resolving organizational hierarchy."""
+
+
+class ConflictResolutionError(CommunicationError):
+    """Base exception for conflict resolution errors."""
+
+
+class ConflictStrategyError(ConflictResolutionError):
+    """Error within a conflict resolution strategy."""
+
+
+class ConflictHierarchyError(ConflictResolutionError):
+    """No common manager found for cross-department conflict."""
