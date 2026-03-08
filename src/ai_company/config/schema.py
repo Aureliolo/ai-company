@@ -385,10 +385,9 @@ class TaskAssignmentConfig(BaseModel):
         ge=1,
         le=50,
         description=(
-            "Maximum concurrent tasks per agent. "
-            "Reserved for engine-layer enforcement — the engine "
-            "should pass this value to AssignmentRequest when "
-            "wiring up the assignment pipeline."
+            "Maximum concurrent tasks an agent is intended to handle. "
+            "Actual enforcement must be implemented by the "
+            "engine/assignment layer."
         ),
     )
 

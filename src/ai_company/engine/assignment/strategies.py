@@ -5,9 +5,12 @@ a module-level strategy registry mapping names to singletons.
 """
 
 from types import MappingProxyType
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from ai_company.core.enums import AgentStatus
+
+if TYPE_CHECKING:
+    from ai_company.core.agent import AgentIdentity
 from ai_company.engine.assignment.models import (
     AssignmentCandidate,
     AssignmentRequest,
@@ -75,6 +78,8 @@ def _score_and_filter_candidates(
     """
     candidates: list[AssignmentCandidate] = []
     for agent in request.available_agents:
+        if agent.status != AgentStatus.ACTIVE:
+            continue
         routing_candidate = scorer.score(agent, subtask)
 
         logger.debug(
@@ -104,19 +109,24 @@ class ManualAssignmentStrategy:
     the designated agent exists in the pool and is ACTIVE.
     """
 
+    __slots__ = ()
+
     @property
     def name(self) -> str:
         """Strategy name identifier."""
         return STRATEGY_NAME_MANUAL
 
-    def assign(self, request: AssignmentRequest) -> AssignmentResult:
-        """Assign to the agent specified by ``task.assigned_to``.
+    def _find_designated_agent(
+        self,
+        request: AssignmentRequest,
+    ) -> AgentIdentity:
+        """Find and validate the designated agent in the pool.
 
         Args:
             request: The assignment request.
 
         Returns:
-            Assignment result with the designated agent.
+            The validated, ACTIVE designated agent.
 
         Raises:
             TaskAssignmentError: If ``task.assigned_to`` is None.
@@ -137,7 +147,9 @@ class ManualAssignmentStrategy:
             )
             raise TaskAssignmentError(msg)
 
-        agent = None
+        # task.assigned_to stores agent ID as string; compare against
+        # UUID string form (str(uuid4()) produces lowercase hyphenated)
+        agent: AgentIdentity | None = None
         for available in request.available_agents:
             if str(available.id) == task.assigned_to:
                 agent = available
@@ -172,6 +184,25 @@ class ManualAssignmentStrategy:
                 error=msg,
             )
             raise NoEligibleAgentError(msg)
+
+        return agent
+
+    def assign(self, request: AssignmentRequest) -> AssignmentResult:
+        """Assign to the agent specified by ``task.assigned_to``.
+
+        Args:
+            request: The assignment request.
+
+        Returns:
+            Assignment result with the designated agent.
+
+        Raises:
+            TaskAssignmentError: If ``task.assigned_to`` is None.
+            NoEligibleAgentError: If the designated agent is not in
+                the pool or is not ACTIVE.
+        """
+        agent = self._find_designated_agent(request)
+        task = request.task
 
         candidate = AssignmentCandidate(
             agent_identity=agent,

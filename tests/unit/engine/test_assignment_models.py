@@ -96,6 +96,25 @@ class TestAgentWorkload:
         assert workload.active_task_count == 0
         assert workload.total_cost_usd == 0.0
 
+    def test_blank_agent_id_rejected(self) -> None:
+        """Blank agent_id raises ValidationError."""
+        with pytest.raises(ValidationError, match="agent_id"):
+            AgentWorkload(agent_id="  ", active_task_count=0)
+
+    @pytest.mark.parametrize(
+        "cost",
+        [float("nan"), float("inf"), float("-inf")],
+        ids=["nan", "inf", "neg_inf"],
+    )
+    def test_nan_inf_cost_rejected(self, cost: float) -> None:
+        """NaN and Inf total_cost_usd values are rejected."""
+        with pytest.raises(ValidationError):
+            AgentWorkload(
+                agent_id="agent-1",
+                active_task_count=0,
+                total_cost_usd=cost,
+            )
+
     def test_frozen(self) -> None:
         """Workload is immutable."""
         workload = AgentWorkload(agent_id="agent-1", active_task_count=0)
@@ -138,6 +157,16 @@ class TestAssignmentCandidate:
                 reason="Over",
             )
 
+    def test_blank_reason_rejected(self) -> None:
+        """Blank reason raises ValidationError."""
+        agent = _make_agent("dev-1")
+        with pytest.raises(ValidationError, match="reason"):
+            AssignmentCandidate(
+                agent_identity=agent,
+                score=0.5,
+                reason="  ",
+            )
+
     def test_score_boundaries(self) -> None:
         """Scores of exactly 0.0 and 1.0 are valid."""
         agent = _make_agent("dev-1")
@@ -178,13 +207,18 @@ class TestAssignmentRequest:
         )
         assert request.min_score == 0.1
 
-    def test_min_score_out_of_range(self) -> None:
+    @pytest.mark.parametrize(
+        "score",
+        [-0.1, 1.5],
+        ids=["below_zero", "above_one"],
+    )
+    def test_min_score_out_of_range(self, score: float) -> None:
         """min_score outside [0.0, 1.0] raises ValidationError."""
         with pytest.raises(ValidationError, match="min_score"):
             AssignmentRequest(
                 task=_make_task(),
                 available_agents=(_make_agent("dev-1"),),
-                min_score=1.5,
+                min_score=score,
             )
 
     def test_with_required_skills(self) -> None:
@@ -285,7 +319,7 @@ class TestAssignmentResult:
                 reason="Duplicate",
             )
 
-    def test_selected_none_with_alternatives_is_valid(self) -> None:
+    def test_selected_none_with_empty_alternatives_is_valid(self) -> None:
         """Result with selected=None and empty alternatives is valid."""
         result = AssignmentResult(
             task_id="task-001",
@@ -305,14 +339,33 @@ class TestAssignmentResult:
         with pytest.raises(ValidationError):
             result.task_id = "other"  # type: ignore[misc]
 
-
-class TestAssignmentRequestValidation:
-    """Additional AssignmentRequest validation tests."""
-
     def test_empty_available_agents_rejected(self) -> None:
         """Empty available_agents tuple raises ValidationError."""
         with pytest.raises(ValidationError, match="available_agents"):
             AssignmentRequest(
                 task=_make_task(),
                 available_agents=(),
+            )
+
+    def test_duplicate_agent_ids_rejected(self) -> None:
+        """Duplicate agent IDs in available_agents raises ValidationError."""
+        agent = _make_agent("dev-1")
+        with pytest.raises(ValidationError, match="Duplicate agent IDs"):
+            AssignmentRequest(
+                task=_make_task(),
+                available_agents=(agent, agent),
+            )
+
+    def test_duplicate_workload_agent_ids_rejected(self) -> None:
+        """Duplicate agent_id in workloads raises ValidationError."""
+        agent = _make_agent("dev-1")
+        workload = AgentWorkload(
+            agent_id=str(agent.id),
+            active_task_count=1,
+        )
+        with pytest.raises(ValidationError, match="Duplicate agent_id"):
+            AssignmentRequest(
+                task=_make_task(),
+                available_agents=(agent,),
+                workloads=(workload, workload),
             )

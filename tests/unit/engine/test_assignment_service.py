@@ -182,6 +182,33 @@ class TestTaskAssignmentService:
         with pytest.raises(TaskAssignmentError, match="assigned_to"):
             service.assign(request)
 
+    def test_unexpected_exception_propagates(self) -> None:
+        """Unexpected exceptions propagate through the service."""
+
+        class _BrokenStrategy:
+            @property
+            def name(self) -> str:
+                return "broken"
+
+            def assign(
+                self,
+                request: AssignmentRequest,
+            ) -> None:
+                msg = "unexpected boom"
+                raise RuntimeError(msg)
+
+        service = TaskAssignmentService(_BrokenStrategy())  # type: ignore[arg-type]
+
+        agent = _make_agent("dev-1")
+        task = _make_task()
+        request = AssignmentRequest(
+            task=task,
+            available_agents=(agent,),
+        )
+
+        with pytest.raises(RuntimeError, match="unexpected boom"):
+            service.assign(request)
+
     def test_result_contains_strategy_name(self) -> None:
         """Result contains the name of the strategy used."""
         scorer = AgentTaskScorer()

@@ -4,6 +4,7 @@ Frozen Pydantic models for assignment requests, results,
 agent workloads, and assignment candidates.
 """
 
+from collections import Counter
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -46,7 +47,7 @@ class AssignmentCandidate(BaseModel):
         reason: Human-readable explanation of the score.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_identity: AgentIdentity = Field(description="Candidate agent")
     score: float = Field(
@@ -70,14 +71,16 @@ class AssignmentRequest(BaseModel):
 
     Attributes:
         task: The task to assign.
-        available_agents: Pool of agents to consider (must be non-empty).
-        workloads: Current workload snapshots per agent.
+        available_agents: Pool of agents to consider (must be non-empty,
+            unique by agent id).
+        workloads: Current workload snapshots per agent (unique by
+            agent_id).
         min_score: Minimum score threshold for eligibility.
         required_skills: Skill names needed for scoring.
         required_role: Optional role name for scoring.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     task: Task = Field(description="The task to assign")
     available_agents: tuple[AgentIdentity, ...] = Field(
@@ -103,11 +106,25 @@ class AssignmentRequest(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_non_empty_agents(self) -> Self:
-        """Ensure at least one agent is available for assignment."""
+    def _validate_collections(self) -> Self:
+        """Validate that collections are non-empty and unique."""
         if not self.available_agents:
             msg = "available_agents must not be empty"
             raise ValueError(msg)
+
+        agent_ids = [a.id for a in self.available_agents]
+        if len(agent_ids) != len(set(agent_ids)):
+            dupes = sorted(str(i) for i, c in Counter(agent_ids).items() if c > 1)
+            msg = f"Duplicate agent IDs in available_agents: {dupes}"
+            raise ValueError(msg)
+
+        if self.workloads:
+            wl_ids = [w.agent_id for w in self.workloads]
+            if len(wl_ids) != len(set(wl_ids)):
+                dupes = sorted(i for i, c in Counter(wl_ids).items() if c > 1)
+                msg = f"Duplicate agent_id in workloads: {dupes}"
+                raise ValueError(msg)
+
         return self
 
 
@@ -122,7 +139,7 @@ class AssignmentResult(BaseModel):
         reason: Human-readable explanation of the assignment decision.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     task_id: NotBlankStr = Field(description="Task identifier")
     strategy_used: NotBlankStr = Field(

@@ -13,6 +13,7 @@ from ai_company.observability.events.task_assignment import (
     TASK_ASSIGNMENT_AGENT_SELECTED,
     TASK_ASSIGNMENT_COMPLETE,
     TASK_ASSIGNMENT_FAILED,
+    TASK_ASSIGNMENT_NO_ELIGIBLE,
     TASK_ASSIGNMENT_STARTED,
 )
 
@@ -25,6 +26,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Tasks in CREATED, FAILED, or INTERRUPTED can be assigned directly.
+# BLOCKED tasks must first be unblocked (transition to ASSIGNED via
+# the task lifecycle), so they are not directly assignable.
 _ASSIGNABLE_STATUSES = frozenset(
     {TaskStatus.CREATED, TaskStatus.FAILED, TaskStatus.INTERRUPTED},
 )
@@ -81,6 +85,8 @@ class TaskAssignmentService:
 
         try:
             result = self._strategy.assign(request)
+        except TaskAssignmentError:
+            raise  # already logged by the strategy
         except Exception:
             logger.exception(
                 TASK_ASSIGNMENT_FAILED,
@@ -96,6 +102,13 @@ class TaskAssignmentService:
                 agent_name=result.selected.agent_identity.name,
                 score=result.selected.score,
                 strategy=result.strategy_used,
+            )
+        else:
+            logger.warning(
+                TASK_ASSIGNMENT_NO_ELIGIBLE,
+                task_id=task.id,
+                strategy=self._strategy.name,
+                reason=result.reason,
             )
 
         logger.info(

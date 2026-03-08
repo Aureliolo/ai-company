@@ -41,9 +41,15 @@ from ai_company.core.enums import (
 from ai_company.core.role import Authority
 from ai_company.core.task import Task
 from ai_company.engine.agent_engine import AgentEngine
-from ai_company.engine.assignment.models import AssignmentRequest
+from ai_company.engine.assignment.models import (
+    AgentWorkload,
+    AssignmentRequest,
+)
 from ai_company.engine.assignment.service import TaskAssignmentService
-from ai_company.engine.assignment.strategies import RoleBasedAssignmentStrategy
+from ai_company.engine.assignment.strategies import (
+    LoadBalancedAssignmentStrategy,
+    RoleBasedAssignmentStrategy,
+)
 from ai_company.engine.decomposition.classifier import TaskStructureClassifier
 from ai_company.engine.decomposition.manual import ManualDecompositionStrategy
 from ai_company.engine.decomposition.models import (
@@ -871,3 +877,41 @@ class TestTaskAssignmentServiceIntegration:
         assert result.selected is not None
         assert result.selected.agent_identity.name == "backend"
         assert result.strategy_used == "role_based"
+
+    def test_load_balanced_prefers_least_loaded(self) -> None:
+        """LoadBalancedAssignmentStrategy picks the least-loaded agent."""
+        agents = _build_agent_pool()
+        scorer = AgentTaskScorer()
+        strategy = LoadBalancedAssignmentStrategy(scorer)
+        service = TaskAssignmentService(strategy)
+
+        task = _make_task(
+            required_skills=("python",),
+        )
+
+        # Both agents match python; backend has higher workload
+        request = AssignmentRequest(
+            task=task,
+            available_agents=(
+                agents["backend"],
+                agents["lead"],
+            ),
+            required_skills=("python",),
+            workloads=(
+                AgentWorkload(
+                    agent_id=str(agents["backend"].id),
+                    active_task_count=5,
+                ),
+                AgentWorkload(
+                    agent_id=str(agents["lead"].id),
+                    active_task_count=1,
+                ),
+            ),
+        )
+
+        result = service.assign(request)
+
+        assert result.selected is not None
+        assert result.selected.agent_identity.name == "lead"
+        assert result.strategy_used == "load_balanced"
+        assert len(result.alternatives) >= 1

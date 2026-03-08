@@ -18,7 +18,8 @@ class TaskAssignmentStrategy(Protocol):
 
     Implementations must be synchronous (pure computation, no I/O)
     and return an ``AssignmentResult`` with the selected agent and
-    ranked alternatives.
+    ranked alternatives. ``TaskAssignmentService`` calls ``assign()``
+    synchronously — async implementations will NOT work correctly.
     """
 
     @property
