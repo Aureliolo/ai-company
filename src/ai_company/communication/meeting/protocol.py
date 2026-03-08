@@ -1,0 +1,77 @@
+"""Meeting protocol interface (DESIGN_SPEC Section 5.7).
+
+Defines the ``MeetingProtocol`` protocol and the ``AgentCaller`` type
+alias used to invoke agents during a meeting without coupling to the
+engine layer.
+"""
+
+from collections.abc import Awaitable, Callable
+from typing import Protocol, runtime_checkable
+
+from ai_company.communication.meeting.enums import MeetingProtocolType  # noqa: TC001
+from ai_company.communication.meeting.models import (
+    AgentResponse,
+    MeetingAgenda,
+    MeetingMinutes,
+)
+
+AgentCaller = Callable[[str, str, int], Awaitable[AgentResponse]]
+"""Callback to invoke an agent during a meeting.
+
+Signature: ``(agent_id, prompt, max_tokens) -> AgentResponse``
+
+The orchestrator constructs this from the engine layer, decoupling
+protocol implementations from the execution engine.
+"""
+
+TaskCreator = Callable[[str, str | None, str], None]
+"""Callback to create a task from a meeting action item.
+
+Signature: ``(description, assignee_id, priority) -> None``
+
+Used by the orchestrator to optionally create tasks from extracted
+action items.
+"""
+
+
+@runtime_checkable
+class MeetingProtocol(Protocol):
+    """Strategy interface for meeting protocol implementations.
+
+    Each implementation defines a different structure for how agents
+    interact during a meeting (round-robin turns, parallel position
+    papers, structured phases with discussion).
+    """
+
+    async def run(  # noqa: PLR0913
+        self,
+        *,
+        meeting_id: str,
+        agenda: MeetingAgenda,
+        leader_id: str,
+        participant_ids: tuple[str, ...],
+        agent_caller: AgentCaller,
+        token_budget: int,
+    ) -> MeetingMinutes:
+        """Execute the meeting protocol and produce minutes.
+
+        Args:
+            meeting_id: Unique identifier for this meeting.
+            agenda: The meeting agenda.
+            leader_id: ID of the agent leading the meeting.
+            participant_ids: IDs of participating agents.
+            agent_caller: Callback to invoke agents.
+            token_budget: Maximum tokens for the entire meeting.
+
+        Returns:
+            Complete meeting minutes.
+        """
+        ...
+
+    def get_protocol_type(self) -> MeetingProtocolType:
+        """Return the protocol type this implementation handles.
+
+        Returns:
+            The meeting protocol type enum value.
+        """
+        ...

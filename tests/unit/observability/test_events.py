@@ -118,6 +118,7 @@ class TestEventConstants:
             "delegation",
             "execution",
             "git",
+            "meeting",
             "parallel",
             "personality",
             "prompt",

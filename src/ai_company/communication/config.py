@@ -9,6 +9,7 @@ from ai_company.communication.enums import (
     CommunicationPattern,
     MessageBusBackend,
 )
+from ai_company.communication.meeting.config import MeetingProtocolConfig
 from ai_company.core.types import (
     NotBlankStr,
     validate_unique_strings,
@@ -108,6 +109,10 @@ class MeetingTypeConfig(BaseModel):
         default=2000,
         gt=0,
         description="Token budget for the meeting",
+    )
+    protocol_config: MeetingProtocolConfig = Field(
+        default_factory=MeetingProtocolConfig,
+        description="Meeting protocol configuration",
     )
 
     @model_validator(mode="after")
