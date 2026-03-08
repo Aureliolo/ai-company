@@ -6,7 +6,7 @@ LLM responses into ``DecompositionPlan`` objects.
 
 import json
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from ai_company.core.enums import (
     Complexity,
@@ -18,6 +18,10 @@ from ai_company.engine.decomposition.models import (
     SubtaskDefinition,
 )
 from ai_company.engine.errors import DecompositionError
+from ai_company.observability import get_logger
+from ai_company.observability.events.decomposition import (
+    DECOMPOSITION_LLM_PARSE_ERROR,
+)
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import (
     ChatMessage,
@@ -31,13 +35,17 @@ if TYPE_CHECKING:
         DecompositionContext,
     )
 
+logger = get_logger(__name__)
+
 _TOOL_NAME = "submit_decomposition_plan"
 
-_COMPLEXITY_MAP: dict[str, Complexity] = {c.value: c for c in Complexity}
+_COMPLEXITY_MAP: Final[dict[str, Complexity]] = {c.value: c for c in Complexity}
 
-_TASK_STRUCTURE_MAP: dict[str, TaskStructure] = {s.value: s for s in TaskStructure}
+_TASK_STRUCTURE_MAP: Final[dict[str, TaskStructure]] = {
+    s.value: s for s in TaskStructure
+}
 
-_TOPOLOGY_MAP: dict[str, CoordinationTopology] = {
+_TOPOLOGY_MAP: Final[dict[str, CoordinationTopology]] = {
     t.value: t for t in CoordinationTopology
 }
 
@@ -72,7 +80,7 @@ def build_decomposition_tool() -> ToolDefinition:
             "dependencies": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": ("IDs of subtasks this depends on"),
+                "description": "IDs of subtasks this depends on",
             },
             "estimated_complexity": {
                 "type": "string",
@@ -82,11 +90,10 @@ def build_decomposition_tool() -> ToolDefinition:
             "required_skills": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": ("Skills needed for this subtask"),
+                "description": "Skills needed for this subtask",
             },
             "required_role": {
-                "type": "string",
-                "nullable": True,
+                "type": ["string", "null"],
                 "description": "Optional role for routing",
             },
         },
@@ -207,9 +214,28 @@ def _parse_subtask(raw: dict[str, Any]) -> SubtaskDefinition:
 
     Returns:
         A validated ``SubtaskDefinition``.
+
+    Raises:
+        DecompositionError: If required fields are missing.
     """
+    for field in ("id", "title", "description"):
+        if field not in raw:
+            msg = (
+                f"Subtask missing required field '{field}'. "
+                f"Available keys: {sorted(raw.keys())}"
+            )
+            raise DecompositionError(msg)
+
     complexity_str = raw.get("estimated_complexity", "medium")
-    complexity = _COMPLEXITY_MAP.get(str(complexity_str).lower(), Complexity.MEDIUM)
+    complexity = _COMPLEXITY_MAP.get(str(complexity_str).lower())
+    if complexity is None:
+        logger.warning(
+            DECOMPOSITION_LLM_PARSE_ERROR,
+            raw_value=complexity_str,
+            default="medium",
+            error=f"Unknown complexity value: {complexity_str!r}, defaulting to medium",
+        )
+        complexity = Complexity.MEDIUM
     deps = raw.get("dependencies") or []
     skills = raw.get("required_skills") or []
     return SubtaskDefinition(
@@ -247,12 +273,26 @@ def _args_to_plan(
     subtasks = tuple(_parse_subtask(s) for s in raw_subtasks)
 
     structure_str = args.get("task_structure", "sequential")
-    structure = _TASK_STRUCTURE_MAP.get(
-        str(structure_str).lower(), TaskStructure.SEQUENTIAL
-    )
+    structure = _TASK_STRUCTURE_MAP.get(str(structure_str).lower())
+    if structure is None:
+        logger.warning(
+            DECOMPOSITION_LLM_PARSE_ERROR,
+            raw_value=structure_str,
+            default="sequential",
+            error=f"Unknown task_structure: {structure_str!r}, using sequential",
+        )
+        structure = TaskStructure.SEQUENTIAL
 
     topology_str = args.get("coordination_topology", "auto")
-    topology = _TOPOLOGY_MAP.get(str(topology_str).lower(), CoordinationTopology.AUTO)
+    topology = _TOPOLOGY_MAP.get(str(topology_str).lower())
+    if topology is None:
+        logger.warning(
+            DECOMPOSITION_LLM_PARSE_ERROR,
+            raw_value=topology_str,
+            default="auto",
+            error=f"Unknown topology: {topology_str!r}, defaulting to auto",
+        )
+        topology = CoordinationTopology.AUTO
 
     return DecompositionPlan(
         parent_task_id=parent_task_id,
@@ -289,6 +329,11 @@ def parse_tool_call_response(
             except DecompositionError:
                 raise
             except Exception as exc:
+                logger.warning(
+                    DECOMPOSITION_LLM_PARSE_ERROR,
+                    error=str(exc),
+                    exc_type=type(exc).__name__,
+                )
                 msg = f"Failed to parse tool call arguments: {exc}"
                 raise DecompositionError(msg) from exc
 
@@ -322,7 +367,6 @@ def parse_content_response(
 
     text = response.content.strip()
 
-    # Try extracting from markdown fence first
     match = _MARKDOWN_FENCE_RE.search(text)
     if match:
         text = match.group(1).strip()
@@ -338,5 +382,10 @@ def parse_content_response(
     except DecompositionError:
         raise
     except Exception as exc:
+        logger.warning(
+            DECOMPOSITION_LLM_PARSE_ERROR,
+            error=str(exc),
+            exc_type=type(exc).__name__,
+        )
         msg = f"Failed to parse plan from content JSON: {exc}"
         raise DecompositionError(msg) from exc

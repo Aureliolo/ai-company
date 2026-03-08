@@ -30,6 +30,10 @@ class WorkspaceIsolationStrategy(Protocol):
 
         Returns:
             The created workspace.
+
+        Raises:
+            WorkspaceLimitError: When max concurrent worktrees reached.
+            WorkspaceSetupError: When git operations fail.
         """
         ...
 
@@ -42,6 +46,9 @@ class WorkspaceIsolationStrategy(Protocol):
 
         Args:
             workspace: The workspace to tear down.
+
+        Raises:
+            WorkspaceCleanupError: When git cleanup operations fail.
         """
         ...
 
@@ -52,11 +59,17 @@ class WorkspaceIsolationStrategy(Protocol):
     ) -> MergeResult:
         """Merge a workspace branch back into the base branch.
 
+        Merge conflicts are returned as a ``MergeResult`` with
+        ``success=False`` rather than raised as exceptions.
+
         Args:
             workspace: The workspace to merge.
 
         Returns:
             The merge result with conflict details if any.
+
+        Raises:
+            WorkspaceMergeError: When checkout or merge abort fails.
         """
         ...
 

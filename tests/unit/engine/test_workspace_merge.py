@@ -5,56 +5,17 @@ from unittest.mock import AsyncMock
 import pytest
 
 from ai_company.core.enums import ConflictEscalation, MergeOrder
+from ai_company.engine.errors import WorkspaceMergeError
 from ai_company.engine.workspace.merge import MergeOrchestrator
 from ai_company.engine.workspace.models import (
     MergeConflict,
-    MergeResult,
-    Workspace,
 )
+
+from .conftest import make_merge_result, make_workspace
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_workspace(  # noqa: PLR0913
-    *,
-    workspace_id: str = "ws-001",
-    task_id: str = "task-1",
-    agent_id: str = "agent-1",
-    branch_name: str = "workspace/task-1",
-    worktree_path: str = "fake/worktrees/ws-001",
-    base_branch: str = "main",
-    created_at: str = "2026-03-08T00:00:00+00:00",
-) -> Workspace:
-    return Workspace(
-        workspace_id=workspace_id,
-        task_id=task_id,
-        agent_id=agent_id,
-        branch_name=branch_name,
-        worktree_path=worktree_path,
-        base_branch=base_branch,
-        created_at=created_at,
-    )
-
-
-def _make_merge_result(  # noqa: PLR0913
-    *,
-    workspace_id: str = "ws-001",
-    branch_name: str = "workspace/task-1",
-    success: bool = True,
-    conflicts: tuple[MergeConflict, ...] = (),
-    duration_seconds: float = 0.5,
-    merged_commit_sha: str | None = "abc123",
-) -> MergeResult:
-    return MergeResult(
-        workspace_id=workspace_id,
-        branch_name=branch_name,
-        success=success,
-        conflicts=conflicts,
-        duration_seconds=duration_seconds,
-        merged_commit_sha=merged_commit_sha,
-    )
 
 
 def _make_conflict(
@@ -93,14 +54,14 @@ class TestCompletionOrderMerge:
     @pytest.mark.unit
     async def test_merge_all_completion_order(self) -> None:
         """Workspaces merge in completion order."""
-        ws1 = _make_workspace(workspace_id="ws-1", task_id="task-1")
-        ws2 = _make_workspace(workspace_id="ws-2", task_id="task-2")
+        ws1 = make_workspace(workspace_id="ws-1", task_id="task-1")
+        ws2 = make_workspace(workspace_id="ws-2", task_id="task-2")
 
         mock_strategy = AsyncMock()
         mock_strategy.merge_workspace = AsyncMock(
             side_effect=[
-                _make_merge_result(workspace_id="ws-1"),
-                _make_merge_result(workspace_id="ws-2"),
+                make_merge_result(workspace_id="ws-1"),
+                make_merge_result(workspace_id="ws-2"),
             ],
         )
         mock_strategy.teardown_workspace = AsyncMock()
@@ -119,10 +80,10 @@ class TestCompletionOrderMerge:
     @pytest.mark.unit
     async def test_cleanup_called_after_success(self) -> None:
         """Teardown is called after each successful merge."""
-        ws = _make_workspace(workspace_id="ws-1")
+        ws = make_workspace(workspace_id="ws-1")
         mock_strategy = AsyncMock()
         mock_strategy.merge_workspace = AsyncMock(
-            return_value=_make_merge_result(workspace_id="ws-1"),
+            return_value=make_merge_result(workspace_id="ws-1"),
         )
         mock_strategy.teardown_workspace = AsyncMock()
 
@@ -142,10 +103,10 @@ class TestCompletionOrderMerge:
     @pytest.mark.unit
     async def test_no_cleanup_when_disabled(self) -> None:
         """Teardown is not called when cleanup_on_merge is False."""
-        ws = _make_workspace(workspace_id="ws-1")
+        ws = make_workspace(workspace_id="ws-1")
         mock_strategy = AsyncMock()
         mock_strategy.merge_workspace = AsyncMock(
-            return_value=_make_merge_result(workspace_id="ws-1"),
+            return_value=make_merge_result(workspace_id="ws-1"),
         )
         mock_strategy.teardown_workspace = AsyncMock()
 
@@ -172,14 +133,14 @@ class TestPriorityOrderMerge:
     @pytest.mark.unit
     async def test_merge_all_priority_order(self) -> None:
         """Workspaces merge in priority order."""
-        ws1 = _make_workspace(workspace_id="ws-1", task_id="task-1")
-        ws2 = _make_workspace(workspace_id="ws-2", task_id="task-2")
+        ws1 = make_workspace(workspace_id="ws-1", task_id="task-1")
+        ws2 = make_workspace(workspace_id="ws-2", task_id="task-2")
 
         mock_strategy = AsyncMock()
         mock_strategy.merge_workspace = AsyncMock(
             side_effect=[
-                _make_merge_result(workspace_id="ws-2"),
-                _make_merge_result(workspace_id="ws-1"),
+                make_merge_result(workspace_id="ws-2"),
+                make_merge_result(workspace_id="ws-1"),
             ],
         )
         mock_strategy.teardown_workspace = AsyncMock()
@@ -210,20 +171,20 @@ class TestConflictEscalation:
     @pytest.mark.unit
     async def test_human_escalation_stops_on_conflict(self) -> None:
         """HUMAN escalation stops merging on first conflict."""
-        ws1 = _make_workspace(workspace_id="ws-1", task_id="task-1")
-        ws2 = _make_workspace(workspace_id="ws-2", task_id="task-2")
+        ws1 = make_workspace(workspace_id="ws-1", task_id="task-1")
+        ws2 = make_workspace(workspace_id="ws-2", task_id="task-2")
 
         conflict = _make_conflict()
         mock_strategy = AsyncMock()
         mock_strategy.merge_workspace = AsyncMock(
             side_effect=[
-                _make_merge_result(
+                make_merge_result(
                     workspace_id="ws-1",
                     success=False,
                     conflicts=(conflict,),
                     merged_commit_sha=None,
                 ),
-                _make_merge_result(workspace_id="ws-2"),
+                make_merge_result(workspace_id="ws-2"),
             ],
         )
         mock_strategy.teardown_workspace = AsyncMock()
@@ -240,25 +201,25 @@ class TestConflictEscalation:
         # Should stop after first conflict
         assert len(results) == 1
         assert results[0].success is False
-        assert results[0].escalation == "human"
+        assert results[0].escalation is ConflictEscalation.HUMAN
 
     @pytest.mark.unit
     async def test_review_agent_continues_on_conflict(self) -> None:
         """REVIEW_AGENT escalation flags conflict and continues."""
-        ws1 = _make_workspace(workspace_id="ws-1", task_id="task-1")
-        ws2 = _make_workspace(workspace_id="ws-2", task_id="task-2")
+        ws1 = make_workspace(workspace_id="ws-1", task_id="task-1")
+        ws2 = make_workspace(workspace_id="ws-2", task_id="task-2")
 
         conflict = _make_conflict()
         mock_strategy = AsyncMock()
         mock_strategy.merge_workspace = AsyncMock(
             side_effect=[
-                _make_merge_result(
+                make_merge_result(
                     workspace_id="ws-1",
                     success=False,
                     conflicts=(conflict,),
                     merged_commit_sha=None,
                 ),
-                _make_merge_result(workspace_id="ws-2"),
+                make_merge_result(workspace_id="ws-2"),
             ],
         )
         mock_strategy.teardown_workspace = AsyncMock()
@@ -275,7 +236,7 @@ class TestConflictEscalation:
         # Should continue past conflict
         assert len(results) == 2
         assert results[0].success is False
-        assert results[0].escalation == "review_agent"
+        assert results[0].escalation is ConflictEscalation.REVIEW_AGENT
         assert results[1].success is True
 
 
@@ -290,14 +251,14 @@ class TestManualOrderMerge:
     @pytest.mark.unit
     async def test_merge_all_manual_order(self) -> None:
         """Manual order uses workspaces as given."""
-        ws1 = _make_workspace(workspace_id="ws-1")
-        ws2 = _make_workspace(workspace_id="ws-2")
+        ws1 = make_workspace(workspace_id="ws-1")
+        ws2 = make_workspace(workspace_id="ws-2")
 
         mock_strategy = AsyncMock()
         mock_strategy.merge_workspace = AsyncMock(
             side_effect=[
-                _make_merge_result(workspace_id="ws-1"),
-                _make_merge_result(workspace_id="ws-2"),
+                make_merge_result(workspace_id="ws-1"),
+                make_merge_result(workspace_id="ws-2"),
             ],
         )
         mock_strategy.teardown_workspace = AsyncMock()
@@ -311,3 +272,102 @@ class TestManualOrderMerge:
         assert len(results) == 2
         assert results[0].workspace_id == "ws-1"
         assert results[1].workspace_id == "ws-2"
+
+
+# ---------------------------------------------------------------------------
+# Merge error handling
+# ---------------------------------------------------------------------------
+
+
+class TestMergeErrorHandling:
+    """Tests for error handling during merge_all."""
+
+    @pytest.mark.unit
+    async def test_merge_exception_creates_failure_result(self) -> None:
+        """WorkspaceMergeError creates a failure MergeResult."""
+        ws = make_workspace(workspace_id="ws-1")
+
+        mock_strategy = AsyncMock()
+        mock_strategy.merge_workspace = AsyncMock(
+            side_effect=WorkspaceMergeError("checkout failed"),
+        )
+        mock_strategy.teardown_workspace = AsyncMock()
+
+        orch = _make_orchestrator(
+            strategy=mock_strategy,
+            conflict_escalation=ConflictEscalation.REVIEW_AGENT,
+        )
+        results = await orch.merge_all(
+            workspaces=(ws,),
+            completion_order=("ws-1",),
+        )
+
+        assert len(results) == 1
+        assert results[0].success is False
+        assert results[0].escalation is ConflictEscalation.REVIEW_AGENT
+
+    @pytest.mark.unit
+    async def test_merge_exception_human_stops(self) -> None:
+        """WorkspaceMergeError with HUMAN escalation stops merge."""
+        ws1 = make_workspace(workspace_id="ws-1")
+        ws2 = make_workspace(workspace_id="ws-2")
+
+        mock_strategy = AsyncMock()
+        mock_strategy.merge_workspace = AsyncMock(
+            side_effect=[
+                WorkspaceMergeError("checkout failed"),
+                make_merge_result(workspace_id="ws-2"),
+            ],
+        )
+        mock_strategy.teardown_workspace = AsyncMock()
+
+        orch = _make_orchestrator(
+            strategy=mock_strategy,
+            conflict_escalation=ConflictEscalation.HUMAN,
+        )
+        results = await orch.merge_all(
+            workspaces=(ws1, ws2),
+            completion_order=("ws-1", "ws-2"),
+        )
+
+        # Should stop after exception with HUMAN escalation
+        assert len(results) == 1
+        assert results[0].success is False
+
+
+# ---------------------------------------------------------------------------
+# Workspace sorting with missing IDs
+# ---------------------------------------------------------------------------
+
+
+class TestSortWorkspaces:
+    """Tests for _sort_workspaces ordering and warning."""
+
+    @pytest.mark.unit
+    async def test_unmentioned_workspaces_appended(self) -> None:
+        """Workspaces not in ordering tuple are appended."""
+        ws1 = make_workspace(workspace_id="ws-1")
+        ws2 = make_workspace(workspace_id="ws-2")
+        ws3 = make_workspace(workspace_id="ws-3")
+
+        mock_strategy = AsyncMock()
+        mock_strategy.merge_workspace = AsyncMock(
+            side_effect=[
+                make_merge_result(workspace_id="ws-1"),
+                make_merge_result(workspace_id="ws-3"),
+                make_merge_result(workspace_id="ws-2"),
+            ],
+        )
+        mock_strategy.teardown_workspace = AsyncMock()
+
+        orch = _make_orchestrator(strategy=mock_strategy)
+        # Only mention ws-1 in completion order — ws-2 and ws-3
+        # should be appended
+        results = await orch.merge_all(
+            workspaces=(ws1, ws2, ws3),
+            completion_order=("ws-1",),
+        )
+
+        assert len(results) == 3
+        # ws-1 comes first (explicitly ordered)
+        assert results[0].workspace_id == "ws-1"

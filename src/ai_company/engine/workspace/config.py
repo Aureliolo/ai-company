@@ -9,7 +9,7 @@ from ai_company.core.types import NotBlankStr  # noqa: TC001
 class PlannerWorktreesConfig(BaseModel):
     """Configuration for the planner-worktrees isolation strategy.
 
-    Args:
+    Attributes:
         max_concurrent_worktrees: Maximum number of active worktrees.
         merge_order: Order in which branches are merged back.
         conflict_escalation: Strategy for handling merge conflicts.
@@ -33,7 +33,7 @@ class PlannerWorktreesConfig(BaseModel):
         default=ConflictEscalation.HUMAN,
         description="Strategy for handling merge conflicts",
     )
-    worktree_base_dir: str | None = Field(
+    worktree_base_dir: NotBlankStr | None = Field(
         default=None,
         description="Base directory for worktree creation",
     )
@@ -46,7 +46,7 @@ class PlannerWorktreesConfig(BaseModel):
 class WorkspaceIsolationConfig(BaseModel):
     """Top-level workspace isolation configuration.
 
-    Args:
+    Attributes:
         strategy: Name of the isolation strategy to use.
         planner_worktrees: Config for planner-worktrees strategy.
     """

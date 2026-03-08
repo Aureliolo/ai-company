@@ -102,7 +102,12 @@ from ai_company.observability.events.tool import TOOL_INVOKE_START
 from ai_company.observability.events.workspace import (
     WORKSPACE_GROUP_MERGE_COMPLETE,
     WORKSPACE_GROUP_MERGE_START,
+    WORKSPACE_GROUP_SETUP_COMPLETE,
+    WORKSPACE_GROUP_SETUP_START,
+    WORKSPACE_GROUP_TEARDOWN_COMPLETE,
+    WORKSPACE_GROUP_TEARDOWN_START,
     WORKSPACE_LIMIT_REACHED,
+    WORKSPACE_MERGE_ABORT_FAILED,
     WORKSPACE_MERGE_COMPLETE,
     WORKSPACE_MERGE_CONFLICT,
     WORKSPACE_MERGE_FAILED,
@@ -110,6 +115,7 @@ from ai_company.observability.events.workspace import (
     WORKSPACE_SETUP_COMPLETE,
     WORKSPACE_SETUP_FAILED,
     WORKSPACE_SETUP_START,
+    WORKSPACE_SORT_WORKSPACES_DROPPED,
     WORKSPACE_TEARDOWN_COMPLETE,
     WORKSPACE_TEARDOWN_FAILED,
     WORKSPACE_TEARDOWN_START,
@@ -343,9 +349,15 @@ class TestEventConstants:
         assert WORKSPACE_MERGE_COMPLETE == "workspace.merge.complete"
         assert WORKSPACE_MERGE_CONFLICT == "workspace.merge.conflict"
         assert WORKSPACE_MERGE_FAILED == "workspace.merge.failed"
+        assert WORKSPACE_MERGE_ABORT_FAILED == "workspace.merge.abort.failed"
         assert WORKSPACE_TEARDOWN_START == "workspace.teardown.start"
         assert WORKSPACE_TEARDOWN_COMPLETE == "workspace.teardown.complete"
         assert WORKSPACE_TEARDOWN_FAILED == "workspace.teardown.failed"
         assert WORKSPACE_LIMIT_REACHED == "workspace.limit.reached"
         assert WORKSPACE_GROUP_MERGE_START == "workspace.group.merge.start"
         assert WORKSPACE_GROUP_MERGE_COMPLETE == "workspace.group.merge.complete"
+        assert WORKSPACE_GROUP_SETUP_START == "workspace.group.setup.start"
+        assert WORKSPACE_GROUP_SETUP_COMPLETE == "workspace.group.setup.complete"
+        assert WORKSPACE_GROUP_TEARDOWN_START == "workspace.group.teardown.start"
+        assert WORKSPACE_GROUP_TEARDOWN_COMPLETE == "workspace.group.teardown.complete"
+        assert WORKSPACE_SORT_WORKSPACES_DROPPED == "workspace.sort.workspaces.dropped"

@@ -8,12 +8,20 @@ import time
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+from ai_company.engine.errors import WorkspaceCleanupError
 from ai_company.engine.workspace.merge import MergeOrchestrator
 from ai_company.engine.workspace.models import (
     Workspace,
     WorkspaceGroupResult,
 )
 from ai_company.observability import get_logger
+from ai_company.observability.events.workspace import (
+    WORKSPACE_GROUP_SETUP_COMPLETE,
+    WORKSPACE_GROUP_SETUP_START,
+    WORKSPACE_GROUP_TEARDOWN_COMPLETE,
+    WORKSPACE_GROUP_TEARDOWN_START,
+    WORKSPACE_TEARDOWN_FAILED,
+)
 
 if TYPE_CHECKING:
     from ai_company.engine.workspace.config import (
@@ -63,18 +71,49 @@ class WorkspaceIsolationService:
     ) -> tuple[Workspace, ...]:
         """Create workspaces for a group of agent tasks.
 
+        Rolls back all already-created workspaces if any setup fails.
+
         Args:
             requests: Workspace creation requests.
 
         Returns:
             Tuple of created workspaces.
+
+        Raises:
+            WorkspaceLimitError: When max concurrent worktrees reached.
+            WorkspaceSetupError: When git operations fail.
         """
+        logger.info(
+            WORKSPACE_GROUP_SETUP_START,
+            count=len(requests),
+        )
+
         workspaces: list[Workspace] = []
-        for request in requests:
-            ws = await self._strategy.setup_workspace(
-                request=request,
-            )
-            workspaces.append(ws)
+        try:
+            for request in requests:
+                ws = await self._strategy.setup_workspace(
+                    request=request,
+                )
+                workspaces.append(ws)
+        except Exception:
+            # Roll back already-created workspaces
+            for ws in workspaces:
+                try:
+                    await self._strategy.teardown_workspace(
+                        workspace=ws,
+                    )
+                except WorkspaceCleanupError as cleanup_exc:
+                    logger.warning(
+                        WORKSPACE_TEARDOWN_FAILED,
+                        workspace_id=ws.workspace_id,
+                        error=f"Rollback cleanup failed: {cleanup_exc}",
+                    )
+            raise
+
+        logger.info(
+            WORKSPACE_GROUP_SETUP_COMPLETE,
+            count=len(workspaces),
+        )
         return tuple(workspaces)
 
     async def merge_group(
@@ -89,6 +128,9 @@ class WorkspaceIsolationService:
 
         Returns:
             Aggregated merge result for the group.
+
+        Raises:
+            WorkspaceMergeError: When a merge operation fails fatally.
         """
         start = time.monotonic()
         merge_results = await self._merge_orchestrator.merge_all(
@@ -109,10 +151,42 @@ class WorkspaceIsolationService:
     ) -> None:
         """Tear down all workspaces in a group.
 
+        Uses best-effort teardown: attempts all workspaces even if
+        some fail, then raises a combined error.
+
         Args:
             workspaces: Workspaces to tear down.
+
+        Raises:
+            WorkspaceCleanupError: When any teardown operation fails.
         """
+        logger.info(
+            WORKSPACE_GROUP_TEARDOWN_START,
+            count=len(workspaces),
+        )
+
+        errors: list[str] = []
         for workspace in workspaces:
-            await self._strategy.teardown_workspace(
-                workspace=workspace,
-            )
+            try:
+                await self._strategy.teardown_workspace(
+                    workspace=workspace,
+                )
+            except WorkspaceCleanupError as exc:
+                errors.append(
+                    f"workspace {workspace.workspace_id}: {exc}",
+                )
+                logger.warning(
+                    WORKSPACE_TEARDOWN_FAILED,
+                    workspace_id=workspace.workspace_id,
+                    error=str(exc),
+                )
+
+        logger.info(
+            WORKSPACE_GROUP_TEARDOWN_COMPLETE,
+            count=len(workspaces),
+            failures=len(errors),
+        )
+
+        if errors:
+            msg = f"Failed to tear down {len(errors)} workspace(s): {'; '.join(errors)}"
+            raise WorkspaceCleanupError(msg)

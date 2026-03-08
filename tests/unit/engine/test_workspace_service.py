@@ -4,19 +4,21 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from ai_company.engine.errors import WorkspaceCleanupError, WorkspaceSetupError
 from ai_company.engine.workspace.config import (
     WorkspaceIsolationConfig,
 )
 from ai_company.engine.workspace.models import (
     MergeConflict,
     MergeResult,
-    Workspace,
     WorkspaceGroupResult,
     WorkspaceRequest,
 )
 from ai_company.engine.workspace.service import (
     WorkspaceIsolationService,
 )
+
+from .conftest import make_merge_result, make_workspace
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -29,43 +31,6 @@ def _make_request(
     agent_id: str = "agent-1",
 ) -> WorkspaceRequest:
     return WorkspaceRequest(task_id=task_id, agent_id=agent_id)
-
-
-def _make_workspace(  # noqa: PLR0913
-    *,
-    workspace_id: str = "ws-001",
-    task_id: str = "task-1",
-    agent_id: str = "agent-1",
-    branch_name: str = "workspace/task-1",
-    worktree_path: str = "fake/worktrees/ws-001",
-    base_branch: str = "main",
-    created_at: str = "2026-03-08T00:00:00+00:00",
-) -> Workspace:
-    return Workspace(
-        workspace_id=workspace_id,
-        task_id=task_id,
-        agent_id=agent_id,
-        branch_name=branch_name,
-        worktree_path=worktree_path,
-        base_branch=base_branch,
-        created_at=created_at,
-    )
-
-
-def _make_merge_result(
-    *,
-    workspace_id: str = "ws-001",
-    branch_name: str = "workspace/task-1",
-    success: bool = True,
-    duration_seconds: float = 0.5,
-) -> MergeResult:
-    return MergeResult(
-        workspace_id=workspace_id,
-        branch_name=branch_name,
-        success=success,
-        merged_commit_sha="abc123" if success else None,
-        duration_seconds=duration_seconds,
-    )
 
 
 def _make_service(
@@ -90,8 +55,8 @@ class TestSetupGroup:
     @pytest.mark.unit
     async def test_setup_group_creates_all(self) -> None:
         """setup_group creates workspace for each request."""
-        ws1 = _make_workspace(workspace_id="ws-1", task_id="task-1")
-        ws2 = _make_workspace(workspace_id="ws-2", task_id="task-2")
+        ws1 = make_workspace(workspace_id="ws-1", task_id="task-1")
+        ws2 = make_workspace(workspace_id="ws-2", task_id="task-2")
 
         mock_strategy = AsyncMock()
         mock_strategy.setup_workspace = AsyncMock(
@@ -118,6 +83,32 @@ class TestSetupGroup:
         result = await service.setup_group(requests=())
         assert result == ()
 
+    @pytest.mark.unit
+    async def test_setup_group_rollback_on_failure(self) -> None:
+        """setup_group rolls back created workspaces on failure."""
+        ws1 = make_workspace(workspace_id="ws-1", task_id="task-1")
+
+        mock_strategy = AsyncMock()
+        mock_strategy.setup_workspace = AsyncMock(
+            side_effect=[ws1, WorkspaceSetupError("git failed")],
+        )
+        mock_strategy.teardown_workspace = AsyncMock()
+
+        service = _make_service(strategy=mock_strategy)
+
+        with pytest.raises(WorkspaceSetupError):
+            await service.setup_group(
+                requests=(
+                    _make_request(task_id="task-1"),
+                    _make_request(task_id="task-2"),
+                ),
+            )
+
+        # ws1 should have been torn down as rollback
+        mock_strategy.teardown_workspace.assert_called_once_with(
+            workspace=ws1,
+        )
+
 
 # ---------------------------------------------------------------------------
 # merge_group
@@ -130,11 +121,11 @@ class TestMergeGroup:
     @pytest.mark.unit
     async def test_merge_group_returns_group_result(self) -> None:
         """merge_group returns WorkspaceGroupResult."""
-        ws1 = _make_workspace(workspace_id="ws-1")
-        ws2 = _make_workspace(workspace_id="ws-2")
+        ws1 = make_workspace(workspace_id="ws-1")
+        ws2 = make_workspace(workspace_id="ws-2")
 
-        mr1 = _make_merge_result(workspace_id="ws-1")
-        mr2 = _make_merge_result(workspace_id="ws-2")
+        mr1 = make_merge_result(workspace_id="ws-1")
+        mr2 = make_merge_result(workspace_id="ws-2")
 
         mock_strategy = AsyncMock()
         mock_strategy.merge_workspace = AsyncMock(
@@ -154,7 +145,7 @@ class TestMergeGroup:
     @pytest.mark.unit
     async def test_merge_group_with_conflict(self) -> None:
         """merge_group reports conflicts in result."""
-        ws = _make_workspace(workspace_id="ws-1")
+        ws = make_workspace(workspace_id="ws-1")
         conflict = MergeConflict(
             file_path="src/a.py",
             conflict_type="textual",
@@ -189,8 +180,8 @@ class TestTeardownGroup:
     @pytest.mark.unit
     async def test_teardown_group_cleans_all(self) -> None:
         """teardown_group tears down all workspaces."""
-        ws1 = _make_workspace(workspace_id="ws-1")
-        ws2 = _make_workspace(workspace_id="ws-2")
+        ws1 = make_workspace(workspace_id="ws-1")
+        ws2 = make_workspace(workspace_id="ws-2")
 
         mock_strategy = AsyncMock()
         mock_strategy.teardown_workspace = AsyncMock()
@@ -210,3 +201,25 @@ class TestTeardownGroup:
         await service.teardown_group(workspaces=())
 
         mock_strategy.teardown_workspace.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_teardown_group_best_effort(self) -> None:
+        """teardown_group continues on failure and raises combined."""
+        ws1 = make_workspace(workspace_id="ws-1")
+        ws2 = make_workspace(workspace_id="ws-2")
+
+        mock_strategy = AsyncMock()
+        mock_strategy.teardown_workspace = AsyncMock(
+            side_effect=[
+                WorkspaceCleanupError("ws-1 failed"),
+                None,  # ws-2 succeeds
+            ],
+        )
+
+        service = _make_service(strategy=mock_strategy)
+
+        with pytest.raises(WorkspaceCleanupError, match="ws-1"):
+            await service.teardown_group(workspaces=(ws1, ws2))
+
+        # Both teardowns were attempted
+        assert mock_strategy.teardown_workspace.call_count == 2

@@ -1102,7 +1102,7 @@ On shutdown signal, each agent persists its full `AgentContext` snapshot and tra
 
 ### 6.8 Concurrent Workspace Isolation (M4+)
 
-> **MVP: Not applicable.** M3 is single-agent — no concurrent file edits are possible. This section defines the M4+ strategy for multi-agent workspace coordination.
+> **Current state:** The `WorkspaceIsolationStrategy` protocol, `PlannerWorktreeStrategy` (git worktree backend), `MergeOrchestrator` (sequential merge with configurable conflict escalation), and `WorkspaceIsolationService` (lifecycle orchestrator with rollback and best-effort teardown) are implemented in `engine/workspace/`. Runtime multi-agent coordination using these components is M4+.
 
 When multiple agents work on the same codebase concurrently, they may need to edit overlapping files. The framework provides a pluggable `WorkspaceIsolationStrategy` protocol for managing concurrent file access. The default strategy combines intelligent task decomposition with git worktree isolation — the dominant industry pattern (used by OpenAI Codex, Cursor, Claude Code, VS Code background agents).
 
@@ -1161,7 +1161,7 @@ These are complementary systems handling different types of shared state:
 
 ### 6.9 Task Decomposability & Coordination Topology (M4+)
 
-> **Current state:** Task structure classification (`TaskStructureClassifier`), DAG-based decomposition (`DecompositionService`, `DependencyGraph`, `ManualDecompositionStrategy`), status rollup (`StatusRollup`), agent-task scoring (`AgentTaskScorer`), routing (`TaskRoutingService`), and auto topology selection (`TopologySelector`) are implemented in `engine/decomposition/` and `engine/routing/`. LLM-based decomposition strategies and runtime multi-agent coordination are M4+ (see #168).
+> **Current state:** Task structure classification (`TaskStructureClassifier`), DAG-based decomposition (`DecompositionService`, `DependencyGraph`, `ManualDecompositionStrategy`), LLM-based decomposition (`LlmDecompositionStrategy` with tool calling and JSON content fallback), status rollup (`StatusRollup`), agent-task scoring (`AgentTaskScorer`), routing (`TaskRoutingService`), and auto topology selection (`TopologySelector`) are implemented in `engine/decomposition/` and `engine/routing/`. Workspace isolation (`PlannerWorktreeStrategy`, `MergeOrchestrator`, `WorkspaceIsolationService`) is implemented in `engine/workspace/`. Runtime multi-agent coordination is M4+.
 
 Empirical research on agent scaling ([Kim et al., 2025](https://arxiv.org/abs/2512.08296) — 180 controlled experiments across 3 LLM families and 4 benchmarks) demonstrates that **task decomposability is the strongest predictor of multi-agent effectiveness** — stronger than team size, model capability, or coordination architecture.
 
@@ -2398,11 +2398,21 @@ ai-company/
 │       │   │   ├── __init__.py    # Package exports
 │       │   │   ├── classifier.py  # TaskStructureClassifier (sequential/parallel/mixed)
 │       │   │   ├── dag.py         # DependencyGraph (validation, topo sort, parallel groups)
+│       │   │   ├── llm.py         # LlmDecompositionStrategy (LLM-based decomposition with tool calling)
+│       │   │   ├── llm_prompt.py  # Prompt building and response parsing for LLM decomposition
 │       │   │   ├── manual.py      # ManualDecompositionStrategy
 │       │   │   ├── models.py      # SubtaskDefinition, DecompositionPlan, DecompositionResult, SubtaskStatusRollup, DecompositionContext
 │       │   │   ├── protocol.py    # DecompositionStrategy protocol
 │       │   │   ├── rollup.py      # StatusRollup (compute subtask status aggregation)
 │       │   │   └── service.py     # DecompositionService (orchestrates strategy + classifier + DAG)
+│       │   ├── workspace/          # Workspace isolation subsystem (§6.8)
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── config.py      # PlannerWorktreesConfig, WorkspaceIsolationConfig
+│       │   │   ├── git_worktree.py # PlannerWorktreeStrategy (git worktree backend)
+│       │   │   ├── merge.py       # MergeOrchestrator (sequential merge with conflict escalation)
+│       │   │   ├── models.py      # Workspace, WorkspaceRequest, MergeResult, MergeConflict, WorkspaceGroupResult
+│       │   │   ├── protocol.py    # WorkspaceIsolationStrategy protocol
+│       │   │   └── service.py     # WorkspaceIsolationService (lifecycle orchestrator)
 │       │   ├── routing/            # Task routing subsystem
 │       │   │   ├── __init__.py    # Package exports
 │       │   │   ├── models.py      # RoutingCandidate, RoutingDecision, RoutingResult, AutoTopologyConfig
@@ -2501,7 +2511,8 @@ ai-company/
 │       │   │   ├── task_assignment.py # TASK_ASSIGNMENT_* constants
 │       │   │   ├── task_routing.py # TASK_ROUTING_* constants
 │       │   │   ├── template.py    # TEMPLATE_* constants
-│       │   │   └── tool.py        # TOOL_* constants
+│       │   │   ├── tool.py        # TOOL_* constants
+│       │   │   └── workspace.py   # WORKSPACE_* constants
 │       │   ├── processors.py       # Log processors
 │       │   ├── setup.py            # Logging setup
 │       │   └── sinks.py            # Log output backends

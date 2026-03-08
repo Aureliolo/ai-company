@@ -23,6 +23,7 @@ from ai_company.engine.errors import (
 from ai_company.observability import get_logger
 from ai_company.observability.events.decomposition import (
     DECOMPOSITION_COMPLETED,
+    DECOMPOSITION_FAILED,
     DECOMPOSITION_LLM_CALL_COMPLETE,
     DECOMPOSITION_LLM_CALL_START,
     DECOMPOSITION_LLM_PARSE_ERROR,
@@ -92,6 +93,9 @@ class LlmDecompositionStrategy:
         model: str,
         config: LlmDecompositionConfig | None = None,
     ) -> None:
+        if not model or not model.strip():
+            msg = "model must be a non-blank string"
+            raise ValueError(msg)
         self._provider = provider
         self._model = model
         self._config = config or LlmDecompositionConfig()
@@ -197,7 +201,7 @@ class LlmDecompositionStrategy:
             f"{attempts} attempts for task {task.id!r}"
         )
         logger.warning(
-            DECOMPOSITION_LLM_PARSE_ERROR,
+            DECOMPOSITION_FAILED,
             task_id=task.id,
             error=msg,
         )
@@ -215,12 +219,13 @@ class LlmDecompositionStrategy:
             context: Decomposition constraints.
 
         Raises:
-            DecompositionDepthError: If depth is exceeded.
+            DecompositionDepthError: If current depth meets or
+                exceeds max depth.
         """
         if context.current_depth >= context.max_depth:
             msg = (
                 f"Decomposition depth {context.current_depth} "
-                f"exceeds max depth {context.max_depth}"
+                f"meets or exceeds max depth {context.max_depth}"
             )
             logger.warning(DECOMPOSITION_VALIDATION_ERROR, error=msg)
             raise DecompositionDepthError(msg)
@@ -287,5 +292,11 @@ class LlmDecompositionStrategy:
                 f"Plan has {len(plan.subtasks)} subtasks, "
                 f"exceeds max_subtasks of "
                 f"{context.max_subtasks}"
+            )
+            logger.warning(
+                DECOMPOSITION_VALIDATION_ERROR,
+                subtask_count=len(plan.subtasks),
+                max_subtasks=context.max_subtasks,
+                error=msg,
             )
             raise DecompositionError(msg)

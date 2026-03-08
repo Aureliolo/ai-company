@@ -12,6 +12,10 @@ from ai_company.core.enums import (
     TaskType,
 )
 from ai_company.core.task import AcceptanceCriterion, Task
+from ai_company.engine.decomposition.llm import (
+    LlmDecompositionConfig,
+    LlmDecompositionStrategy,
+)
 from ai_company.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
@@ -129,10 +133,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     async def test_happy_path_tool_call(self) -> None:
         """Tool call response produces a valid plan."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionStrategy,
-        )
-
         args = _valid_plan_args()
         response = _make_tool_call_response(args)
         provider = MockCompletionProvider([response])
@@ -152,10 +152,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     async def test_happy_path_content_fallback(self) -> None:
         """Content-only response is parsed as JSON fallback."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionStrategy,
-        )
-
         args = _valid_plan_args(subtask_count=1)
         content = json.dumps(args)
         response = _make_content_response(content)
@@ -172,16 +168,15 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     async def test_depth_exceeded_no_provider_call(self) -> None:
         """Depth exceeded raises without calling the provider."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionStrategy,
-        )
-
         provider = MockCompletionProvider([])
         strategy = LlmDecompositionStrategy(provider=provider, model="test-model-001")
         task = _make_task()
         ctx = _make_context(current_depth=3, max_depth=3)
 
-        with pytest.raises(DecompositionDepthError, match="exceeds max depth"):
+        with pytest.raises(
+            DecompositionDepthError,
+            match="meets or exceeds max depth",
+        ):
             await strategy.decompose(task, ctx)
 
         assert provider.call_count == 0
@@ -189,11 +184,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     async def test_max_subtasks_exceeded_raises(self) -> None:
         """Plan with too many subtasks exhausts retries."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionConfig,
-            LlmDecompositionStrategy,
-        )
-
         args = _valid_plan_args(subtask_count=5)
         # Provide enough responses for 1 + max_retries attempts
         responses = [_make_tool_call_response(args) for _ in range(3)]
@@ -215,10 +205,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     async def test_malformed_json_retry_success(self) -> None:
         """Malformed response triggers retry; second attempt succeeds."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionStrategy,
-        )
-
         bad_response = _make_content_response("{invalid json")
         good_args = _valid_plan_args(subtask_count=1)
         good_response = _make_tool_call_response(good_args)
@@ -235,11 +221,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     async def test_all_retries_exhausted(self) -> None:
         """All retries exhausted raises DecompositionError."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionConfig,
-            LlmDecompositionStrategy,
-        )
-
         bad_responses = [_make_content_response("{bad}") for _ in range(3)]
         provider = MockCompletionProvider(bad_responses)
         config = LlmDecompositionConfig(max_retries=2)
@@ -260,11 +241,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     async def test_empty_response_raises(self) -> None:
         """Response with no content and no tool calls raises."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionConfig,
-            LlmDecompositionStrategy,
-        )
-
         # A content_filter response has no content or tool calls
         empty_response = CompletionResponse(
             finish_reason=FinishReason.CONTENT_FILTER,
@@ -293,10 +269,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     async def test_provider_error_propagates(self) -> None:
         """Provider errors propagate without being caught."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionStrategy,
-        )
-
         provider = MockCompletionProvider([])
         strategy = LlmDecompositionStrategy(provider=provider, model="test-model-001")
         task = _make_task()
@@ -309,10 +281,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     def test_protocol_conformance(self) -> None:
         """LlmDecompositionStrategy satisfies DecompositionStrategy."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionStrategy,
-        )
-
         provider = MockCompletionProvider([])
         strategy = LlmDecompositionStrategy(provider=provider, model="test-model-001")
         assert isinstance(strategy, DecompositionStrategy)
@@ -320,10 +288,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     def test_strategy_name(self) -> None:
         """Strategy name is 'llm'."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionStrategy,
-        )
-
         provider = MockCompletionProvider([])
         strategy = LlmDecompositionStrategy(provider=provider, model="test-model-001")
         assert strategy.get_strategy_name() == "llm"
@@ -331,11 +295,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     async def test_temperature_passed_to_provider(self) -> None:
         """Temperature from config is passed to the provider."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionConfig,
-            LlmDecompositionStrategy,
-        )
-
         args = _valid_plan_args(subtask_count=1)
         response = _make_tool_call_response(args)
         provider = MockCompletionProvider([response])
@@ -358,11 +317,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     async def test_custom_config_values(self) -> None:
         """Custom config values are respected."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionConfig,
-            LlmDecompositionStrategy,
-        )
-
         args = _valid_plan_args(subtask_count=1)
         response = _make_tool_call_response(args)
         provider = MockCompletionProvider([response])
@@ -389,10 +343,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     async def test_model_passed_to_provider(self) -> None:
         """Model name is forwarded to the provider."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionStrategy,
-        )
-
         args = _valid_plan_args(subtask_count=1)
         response = _make_tool_call_response(args)
         provider = MockCompletionProvider([response])
@@ -407,10 +357,6 @@ class TestLlmDecompositionStrategy:
     @pytest.mark.unit
     async def test_tool_definition_sent_to_provider(self) -> None:
         """Tool definition is sent to the provider."""
-        from ai_company.engine.decomposition.llm import (
-            LlmDecompositionStrategy,
-        )
-
         args = _valid_plan_args(subtask_count=1)
         response = _make_tool_call_response(args)
         provider = MockCompletionProvider([response])
@@ -425,3 +371,17 @@ class TestLlmDecompositionStrategy:
         assert tools[0] is not None
         assert len(tools[0]) == 1
         assert tools[0][0].name == "submit_decomposition_plan"
+
+    @pytest.mark.unit
+    def test_blank_model_rejected(self) -> None:
+        """Blank model string raises ValueError."""
+        provider = MockCompletionProvider([])
+        with pytest.raises(ValueError, match="non-blank"):
+            LlmDecompositionStrategy(provider=provider, model="")
+
+    @pytest.mark.unit
+    def test_whitespace_model_rejected(self) -> None:
+        """Whitespace-only model string raises ValueError."""
+        provider = MockCompletionProvider([])
+        with pytest.raises(ValueError, match="non-blank"):
+            LlmDecompositionStrategy(provider=provider, model="   ")

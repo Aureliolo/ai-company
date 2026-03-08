@@ -1,14 +1,17 @@
 """Workspace isolation domain models."""
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from datetime import datetime  # noqa: TC003
 
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
+
+from ai_company.core.enums import ConflictEscalation  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
 class WorkspaceRequest(BaseModel):
     """Request to create an isolated workspace for an agent task.
 
-    Args:
+    Attributes:
         task_id: Identifier of the task requiring isolation.
         agent_id: Identifier of the agent that will work in the workspace.
         base_branch: Git branch to branch from.
@@ -32,14 +35,14 @@ class WorkspaceRequest(BaseModel):
 class Workspace(BaseModel):
     """An active isolated workspace backed by a git worktree.
 
-    Args:
+    Attributes:
         workspace_id: Unique identifier for this workspace.
         task_id: Task this workspace serves.
         agent_id: Agent operating in this workspace.
         branch_name: Git branch created for this workspace.
         worktree_path: Filesystem path to the worktree directory.
         base_branch: Branch this workspace was created from.
-        created_at: ISO 8601 timestamp of workspace creation.
+        created_at: Timestamp of workspace creation.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -58,13 +61,13 @@ class Workspace(BaseModel):
     base_branch: NotBlankStr = Field(
         description="Branch workspace was created from",
     )
-    created_at: str = Field(description="ISO 8601 creation timestamp")
+    created_at: datetime = Field(description="Workspace creation timestamp")
 
 
 class MergeConflict(BaseModel):
     """A single merge conflict detected during workspace merge.
 
-    Args:
+    Attributes:
         file_path: Path of the conflicting file.
         conflict_type: Type of conflict (e.g. textual, semantic).
         ours_content: Content from the base branch side.
@@ -90,7 +93,7 @@ class MergeConflict(BaseModel):
 class MergeResult(BaseModel):
     """Result of merging a single workspace branch back.
 
-    Args:
+    Attributes:
         workspace_id: Workspace that was merged.
         branch_name: Branch that was merged.
         success: Whether the merge completed without conflicts.
@@ -109,7 +112,7 @@ class MergeResult(BaseModel):
         default=(),
         description="Conflicts encountered",
     )
-    escalation: str | None = Field(
+    escalation: ConflictEscalation | None = Field(
         default=None,
         description="Escalation strategy applied",
     )
@@ -122,11 +125,25 @@ class MergeResult(BaseModel):
         description="Merge duration in seconds",
     )
 
+    @model_validator(mode="after")
+    def _validate_success_consistency(self) -> MergeResult:
+        """Ensure success, conflicts, and merged_commit_sha are consistent."""
+        if self.success and self.conflicts:
+            msg = "Successful merge cannot have conflicts"
+            raise ValueError(msg)
+        if self.success and self.merged_commit_sha is None:
+            msg = "Successful merge must have a commit SHA"
+            raise ValueError(msg)
+        if not self.success and self.merged_commit_sha is not None:
+            msg = "Failed merge cannot have a commit SHA"
+            raise ValueError(msg)
+        return self
+
 
 class WorkspaceGroupResult(BaseModel):
     """Aggregated result of merging a group of workspaces.
 
-    Args:
+    Attributes:
         group_id: Identifier for this merge group.
         merge_results: Individual merge results for each workspace.
         duration_seconds: Total time for the group merge operation.

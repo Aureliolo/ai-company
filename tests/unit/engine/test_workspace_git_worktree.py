@@ -1,5 +1,6 @@
 """Tests for PlannerWorktreeStrategy (git worktree backend)."""
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -20,6 +21,8 @@ from ai_company.engine.workspace.models import (
 from ai_company.engine.workspace.protocol import (
     WorkspaceIsolationStrategy,
 )
+
+from .conftest import make_workspace
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,27 +59,6 @@ def _make_request(
         task_id=task_id,
         agent_id=agent_id,
         base_branch=base_branch,
-    )
-
-
-def _make_workspace(  # noqa: PLR0913
-    *,
-    workspace_id: str = "ws-001",
-    task_id: str = "task-1",
-    agent_id: str = "agent-1",
-    branch_name: str = "workspace/task-1",
-    worktree_path: str = "fake/worktrees/ws-001",
-    base_branch: str = "main",
-    created_at: str = "2026-03-08T00:00:00+00:00",
-) -> Workspace:
-    return Workspace(
-        workspace_id=workspace_id,
-        task_id=task_id,
-        agent_id=agent_id,
-        branch_name=branch_name,
-        worktree_path=worktree_path,
-        base_branch=base_branch,
-        created_at=created_at,
     )
 
 
@@ -139,10 +121,15 @@ class TestSetupWorkspace:
         assert ws.branch_name == "workspace/task-1"
         assert ws.workspace_id  # non-empty UUID
         assert ws.worktree_path  # non-empty path
-        assert ws.created_at  # ISO 8601 string
+        assert ws.created_at is not None  # datetime
 
-        # Should have called git branch and git worktree add
+        # Verify git command arguments
         assert mock_run_git.call_count == 2
+        first_call = mock_run_git.call_args_list[0]
+        assert first_call.args == ("branch", "workspace/task-1", "main")
+        second_call = mock_run_git.call_args_list[1]
+        assert second_call.args[0] == "worktree"
+        assert second_call.args[1] == "add"
 
     @pytest.mark.unit
     async def test_setup_at_limit_raises(self) -> None:
@@ -189,14 +176,15 @@ class TestSetupWorkspace:
             )
 
     @pytest.mark.unit
-    async def test_setup_worktree_failure_raises(self) -> None:
-        """Setup raises WorkspaceSetupError on worktree add failure."""
+    async def test_setup_worktree_failure_cleans_branch(self) -> None:
+        """Worktree failure cleans up the already-created branch."""
         strategy = _make_strategy()
-        # First call (branch) succeeds, second (worktree add) fails
+        # branch succeeds, worktree fails, branch cleanup succeeds
         mock_run_git = AsyncMock(
             side_effect=[
-                (0, "", ""),
-                (1, "", "fatal: worktree path already exists"),
+                (0, "", ""),  # branch
+                (1, "", "fatal: worktree path already exists"),  # worktree
+                (0, "", ""),  # branch -D cleanup
             ],
         )
 
@@ -212,6 +200,29 @@ class TestSetupWorkspace:
                 request=_make_request(),
             )
 
+        # Verify branch cleanup was attempted
+        assert mock_run_git.call_count == 3
+        cleanup_call = mock_run_git.call_args_list[2]
+        assert cleanup_call.args == ("branch", "-D", "workspace/task-1")
+
+    @pytest.mark.unit
+    async def test_setup_rejects_unsafe_task_id(self) -> None:
+        """Setup rejects task_id starting with dash."""
+        strategy = _make_strategy()
+        with pytest.raises(WorkspaceSetupError, match="Unsafe task_id"):
+            await strategy.setup_workspace(
+                request=_make_request(task_id="--upload-pack=evil"),
+            )
+
+    @pytest.mark.unit
+    async def test_setup_rejects_unsafe_base_branch(self) -> None:
+        """Setup rejects base_branch with unsafe characters."""
+        strategy = _make_strategy()
+        with pytest.raises(WorkspaceSetupError, match="Unsafe base_branch"):
+            await strategy.setup_workspace(
+                request=_make_request(base_branch="--option"),
+            )
+
 
 # ---------------------------------------------------------------------------
 # merge_workspace
@@ -225,8 +236,7 @@ class TestMergeWorkspace:
     async def test_merge_success(self) -> None:
         """Successful merge returns MergeResult(success=True)."""
         strategy = _make_strategy()
-        ws = _make_workspace()
-        # Register workspace so merge can find it
+        ws = make_workspace()
         strategy._active_workspaces[ws.workspace_id] = ws
 
         # checkout succeeds, merge succeeds, rev-parse returns SHA
@@ -254,7 +264,7 @@ class TestMergeWorkspace:
     async def test_merge_with_conflict(self) -> None:
         """Merge conflict returns MergeResult(success=False)."""
         strategy = _make_strategy()
-        ws = _make_workspace()
+        ws = make_workspace()
         strategy._active_workspaces[ws.workspace_id] = ws
 
         mock_run_git = AsyncMock(
@@ -282,7 +292,7 @@ class TestMergeWorkspace:
     async def test_merge_checkout_failure_raises(self) -> None:
         """Merge raises WorkspaceMergeError on checkout failure."""
         strategy = _make_strategy()
-        ws = _make_workspace()
+        ws = make_workspace()
         strategy._active_workspaces[ws.workspace_id] = ws
 
         mock_run_git = AsyncMock(
@@ -299,6 +309,57 @@ class TestMergeWorkspace:
         ):
             await strategy.merge_workspace(workspace=ws)
 
+    @pytest.mark.unit
+    async def test_merge_abort_failure_raises(self) -> None:
+        """Merge raises WorkspaceMergeError when abort fails."""
+        strategy = _make_strategy()
+        ws = make_workspace()
+        strategy._active_workspaces[ws.workspace_id] = ws
+
+        mock_run_git = AsyncMock(
+            side_effect=[
+                (0, "", ""),  # checkout
+                (1, "", "CONFLICT"),  # merge fails
+                (0, "src/a.py\n", ""),  # diff --name-only
+                (1, "", "error: abort failed"),  # merge --abort fails
+            ],
+        )
+
+        with (
+            patch.object(
+                PlannerWorktreeStrategy,
+                "_run_git",
+                mock_run_git,
+            ),
+            pytest.raises(WorkspaceMergeError, match="abort"),
+        ):
+            await strategy.merge_workspace(workspace=ws)
+
+    @pytest.mark.unit
+    async def test_merge_revparse_failure_uses_unknown(self) -> None:
+        """When rev-parse fails, SHA is set to 'unknown'."""
+        strategy = _make_strategy()
+        ws = make_workspace()
+        strategy._active_workspaces[ws.workspace_id] = ws
+
+        mock_run_git = AsyncMock(
+            side_effect=[
+                (0, "", ""),  # checkout
+                (0, "", ""),  # merge
+                (1, "", "error: not a valid ref"),  # rev-parse fails
+            ],
+        )
+
+        with patch.object(
+            PlannerWorktreeStrategy,
+            "_run_git",
+            mock_run_git,
+        ):
+            result = await strategy.merge_workspace(workspace=ws)
+
+        assert result.success is True
+        assert result.merged_commit_sha == "unknown"
+
 
 # ---------------------------------------------------------------------------
 # teardown_workspace
@@ -312,7 +373,7 @@ class TestTeardownWorkspace:
     async def test_teardown_removes_worktree_and_branch(self) -> None:
         """Teardown removes worktree, deletes branch, unregisters."""
         strategy = _make_strategy()
-        ws = _make_workspace()
+        ws = make_workspace()
         strategy._active_workspaces[ws.workspace_id] = ws
 
         mock_run_git = AsyncMock(return_value=(0, "", ""))
@@ -324,19 +385,23 @@ class TestTeardownWorkspace:
         ):
             await strategy.teardown_workspace(workspace=ws)
 
-        # Should have called worktree remove and branch -d
         assert mock_run_git.call_count == 2
         assert ws.workspace_id not in strategy._active_workspaces
 
     @pytest.mark.unit
-    async def test_teardown_worktree_failure_raises(self) -> None:
-        """Teardown raises WorkspaceCleanupError on failure."""
+    async def test_teardown_worktree_failure_still_deletes_branch(
+        self,
+    ) -> None:
+        """Worktree removal failure still attempts branch deletion."""
         strategy = _make_strategy()
-        ws = _make_workspace()
+        ws = make_workspace()
         strategy._active_workspaces[ws.workspace_id] = ws
 
         mock_run_git = AsyncMock(
-            return_value=(1, "", "error: cannot remove"),
+            side_effect=[
+                (1, "", "error: cannot remove"),  # worktree fails
+                (0, "", ""),  # branch -D succeeds
+            ],
         )
 
         with (
@@ -345,9 +410,40 @@ class TestTeardownWorkspace:
                 "_run_git",
                 mock_run_git,
             ),
-            pytest.raises(WorkspaceCleanupError),
+            pytest.raises(WorkspaceCleanupError, match="worktree remove"),
         ):
             await strategy.teardown_workspace(workspace=ws)
+
+        # Both operations attempted, workspace unregistered
+        assert mock_run_git.call_count == 2
+        assert ws.workspace_id not in strategy._active_workspaces
+
+    @pytest.mark.unit
+    async def test_teardown_branch_failure_raises(self) -> None:
+        """Branch deletion failure raises after worktree succeeds."""
+        strategy = _make_strategy()
+        ws = make_workspace()
+        strategy._active_workspaces[ws.workspace_id] = ws
+
+        mock_run_git = AsyncMock(
+            side_effect=[
+                (0, "", ""),  # worktree remove succeeds
+                (1, "", "error: branch not found"),  # branch -D fails
+            ],
+        )
+
+        with (
+            patch.object(
+                PlannerWorktreeStrategy,
+                "_run_git",
+                mock_run_git,
+            ),
+            pytest.raises(WorkspaceCleanupError, match="branch delete"),
+        ):
+            await strategy.teardown_workspace(workspace=ws)
+
+        # Workspace still unregistered to prevent capacity leak
+        assert ws.workspace_id not in strategy._active_workspaces
 
 
 # ---------------------------------------------------------------------------
@@ -369,8 +465,8 @@ class TestListActiveWorkspaces:
     async def test_returns_registered_workspaces(self) -> None:
         """Returns all registered workspaces as a tuple."""
         strategy = _make_strategy()
-        ws1 = _make_workspace(workspace_id="ws-1")
-        ws2 = _make_workspace(workspace_id="ws-2")
+        ws1 = make_workspace(workspace_id="ws-1")
+        ws2 = make_workspace(workspace_id="ws-2")
         strategy._active_workspaces["ws-1"] = ws1
         strategy._active_workspaces["ws-2"] = ws2
 
@@ -391,8 +487,6 @@ class TestConcurrentSetup:
     @pytest.mark.unit
     async def test_concurrent_setup_respects_limit(self) -> None:
         """Two concurrent setups at limit=1: one succeeds, one fails."""
-        import asyncio
-
         strategy = _make_strategy(
             config=_make_config(
                 max_concurrent_worktrees=1,
@@ -412,7 +506,7 @@ class TestConcurrentSetup:
                 await asyncio.sleep(0.01)
             return (0, "", "")
 
-        results: list[Workspace | Exception] = []
+        results: list[object] = []
 
         async def setup_one(task_id: str) -> None:
             try:
@@ -437,3 +531,44 @@ class TestConcurrentSetup:
         failures = [r for r in results if isinstance(r, WorkspaceLimitError)]
         assert len(successes) == 1
         assert len(failures) == 1
+
+
+# ---------------------------------------------------------------------------
+# _collect_conflicts
+# ---------------------------------------------------------------------------
+
+
+class TestCollectConflicts:
+    """Tests for _collect_conflicts method."""
+
+    @pytest.mark.unit
+    async def test_diff_failure_returns_empty(self) -> None:
+        """When git diff fails, returns empty tuple."""
+        strategy = _make_strategy()
+        mock_run_git = AsyncMock(
+            return_value=(1, "", "error: diff failed"),
+        )
+
+        with patch.object(
+            PlannerWorktreeStrategy,
+            "_run_git",
+            mock_run_git,
+        ):
+            result = await strategy._collect_conflicts()
+
+        assert result == ()
+
+    @pytest.mark.unit
+    async def test_empty_stdout_returns_empty(self) -> None:
+        """When diff returns no files, returns empty tuple."""
+        strategy = _make_strategy()
+        mock_run_git = AsyncMock(return_value=(0, "", ""))
+
+        with patch.object(
+            PlannerWorktreeStrategy,
+            "_run_git",
+            mock_run_git,
+        ):
+            result = await strategy._collect_conflicts()
+
+        assert result == ()

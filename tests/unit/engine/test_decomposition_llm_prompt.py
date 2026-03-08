@@ -13,6 +13,14 @@ from ai_company.core.enums import (
     TaskType,
 )
 from ai_company.core.task import AcceptanceCriterion, Task
+from ai_company.engine.decomposition.llm_prompt import (
+    build_decomposition_tool,
+    build_retry_message,
+    build_system_message,
+    build_task_message,
+    parse_content_response,
+    parse_tool_call_response,
+)
 from ai_company.engine.decomposition.models import (
     DecompositionContext,
     DecompositionPlan,
@@ -129,20 +137,12 @@ class TestBuildDecompositionTool:
     @pytest.mark.unit
     def test_tool_name(self) -> None:
         """Tool definition has correct name."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            build_decomposition_tool,
-        )
-
         tool = build_decomposition_tool()
         assert tool.name == "submit_decomposition_plan"
 
     @pytest.mark.unit
     def test_tool_schema_structure(self) -> None:
         """Tool schema contains subtasks array and enum fields."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            build_decomposition_tool,
-        )
-
         tool = build_decomposition_tool()
         schema = tool.parameters_schema
         assert schema["type"] == "object"
@@ -161,10 +161,6 @@ class TestBuildSystemMessage:
     @pytest.mark.unit
     def test_system_role(self) -> None:
         """System message has SYSTEM role."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            build_system_message,
-        )
-
         msg = build_system_message()
         assert msg.role is MessageRole.SYSTEM
         assert msg.content is not None
@@ -177,10 +173,6 @@ class TestBuildTaskMessage:
     @pytest.mark.unit
     def test_includes_constraints_and_task_details(self) -> None:
         """Task message includes constraints and task details."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            build_task_message,
-        )
-
         task = _make_task(
             criteria=(
                 AcceptanceCriterion(description="Login works"),
@@ -210,10 +202,6 @@ class TestBuildRetryMessage:
     @pytest.mark.unit
     def test_retry_message_includes_error(self) -> None:
         """Retry message includes the error string."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            build_retry_message,
-        )
-
         error_text = "Invalid subtask IDs found"
         msg = build_retry_message(error_text)
         assert msg.role is MessageRole.USER
@@ -227,10 +215,6 @@ class TestParseToolCallResponse:
     @pytest.mark.unit
     def test_valid_tool_call(self) -> None:
         """Parse valid tool call arguments into DecompositionPlan."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            parse_tool_call_response,
-        )
-
         args = _valid_plan_args()
         response = _make_tool_call_response(args)
         plan = parse_tool_call_response(response, "task-llm-1")
@@ -247,10 +231,6 @@ class TestParseToolCallResponse:
     @pytest.mark.unit
     def test_no_tool_calls_raises(self) -> None:
         """Response with no tool calls raises DecompositionError."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            parse_tool_call_response,
-        )
-
         response = _make_content_response("some text")
         with pytest.raises(DecompositionError, match="No tool call"):
             parse_tool_call_response(response, "task-llm-1")
@@ -258,10 +238,6 @@ class TestParseToolCallResponse:
     @pytest.mark.unit
     def test_complexity_mapping(self) -> None:
         """String complexity values map to Complexity enum."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            parse_tool_call_response,
-        )
-
         args = _valid_plan_args(subtask_count=1)
         args["subtasks"][0]["estimated_complexity"] = "simple"
         response = _make_tool_call_response(args)
@@ -271,10 +247,6 @@ class TestParseToolCallResponse:
     @pytest.mark.unit
     def test_unrecognized_complexity_defaults_medium(self) -> None:
         """Unrecognized complexity string defaults to MEDIUM."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            parse_tool_call_response,
-        )
-
         args = _valid_plan_args(subtask_count=1)
         args["subtasks"][0]["estimated_complexity"] = "ultra-hard"
         response = _make_tool_call_response(args)
@@ -284,10 +256,6 @@ class TestParseToolCallResponse:
     @pytest.mark.unit
     def test_optional_fields_use_defaults(self) -> None:
         """Missing optional fields use sensible defaults."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            parse_tool_call_response,
-        )
-
         args: dict[str, Any] = {
             "subtasks": [
                 {
@@ -307,6 +275,21 @@ class TestParseToolCallResponse:
         assert plan.task_structure is TaskStructure.SEQUENTIAL
         assert plan.coordination_topology is CoordinationTopology.AUTO
 
+    @pytest.mark.unit
+    def test_missing_required_subtask_field_raises(self) -> None:
+        """Subtask missing a required field raises DecompositionError."""
+        args: dict[str, Any] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    # missing "title" and "description"
+                }
+            ],
+        }
+        response = _make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="missing required field"):
+            parse_tool_call_response(response, "task-1")
+
 
 class TestParseContentResponse:
     """Tests for parse_content_response."""
@@ -314,10 +297,6 @@ class TestParseContentResponse:
     @pytest.mark.unit
     def test_valid_json_content(self) -> None:
         """Parse valid JSON from content into DecompositionPlan."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            parse_content_response,
-        )
-
         args = _valid_plan_args()
         content = json.dumps(args)
         response = _make_content_response(content)
@@ -330,10 +309,6 @@ class TestParseContentResponse:
     @pytest.mark.unit
     def test_json_in_markdown_fence(self) -> None:
         """Parse JSON wrapped in markdown code fence."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            parse_content_response,
-        )
-
         args = _valid_plan_args(subtask_count=1)
         content = f"```json\n{json.dumps(args)}\n```"
         response = _make_content_response(content)
@@ -345,10 +320,6 @@ class TestParseContentResponse:
     @pytest.mark.unit
     def test_malformed_json_raises(self) -> None:
         """Malformed JSON content raises DecompositionError."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            parse_content_response,
-        )
-
         response = _make_content_response("{invalid json")
         with pytest.raises(DecompositionError, match="parse"):
             parse_content_response(response, "task-1")
@@ -356,10 +327,6 @@ class TestParseContentResponse:
     @pytest.mark.unit
     def test_no_content_raises(self) -> None:
         """Response with None content raises DecompositionError."""
-        from ai_company.engine.decomposition.llm_prompt import (
-            parse_content_response,
-        )
-
         response = CompletionResponse(
             tool_calls=(
                 ToolCall(

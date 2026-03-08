@@ -352,7 +352,11 @@ class ActionType(StrEnum):
 
 
 class MergeOrder(StrEnum):
-    """Order in which workspace branches are merged back."""
+    """Order in which workspace branches are merged back.
+
+    Determines the sequence of merge operations when multiple
+    agent workspaces are being merged into the base branch.
+    """
 
     COMPLETION = "completion"
     PRIORITY = "priority"
@@ -360,7 +364,11 @@ class MergeOrder(StrEnum):
 
 
 class ConflictEscalation(StrEnum):
-    """Strategy for handling merge conflicts."""
+    """Strategy for handling merge conflicts during workspace merges.
+
+    Controls whether merging stops for human review or continues
+    with an automated review agent flagging conflicts.
+    """
 
     HUMAN = "human"
     REVIEW_AGENT = "review_agent"

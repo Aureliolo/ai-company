@@ -1,19 +1,25 @@
 """Tests for workspace isolation domain models."""
 
+from datetime import UTC, datetime
+
 import pytest
 from pydantic import ValidationError
 
+from ai_company.core.enums import ConflictEscalation
 from ai_company.engine.workspace.models import (
     MergeConflict,
     MergeResult,
-    Workspace,
     WorkspaceGroupResult,
     WorkspaceRequest,
 )
 
+from .conftest import make_merge_result, make_workspace
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+_DEFAULT_CREATED_AT = datetime(2026, 3, 8, tzinfo=UTC)
 
 
 def _make_workspace_request(
@@ -31,27 +37,6 @@ def _make_workspace_request(
     )
 
 
-def _make_workspace(  # noqa: PLR0913
-    *,
-    workspace_id: str = "ws-001",
-    task_id: str = "task-1",
-    agent_id: str = "agent-1",
-    branch_name: str = "workspace/task-1",
-    worktree_path: str = "worktrees/ws-001",
-    base_branch: str = "main",
-    created_at: str = "2026-03-08T00:00:00+00:00",
-) -> Workspace:
-    return Workspace(
-        workspace_id=workspace_id,
-        task_id=task_id,
-        agent_id=agent_id,
-        branch_name=branch_name,
-        worktree_path=worktree_path,
-        base_branch=base_branch,
-        created_at=created_at,
-    )
-
-
 def _make_merge_conflict(
     *,
     file_path: str = "src/main.py",
@@ -64,27 +49,6 @@ def _make_merge_conflict(
         conflict_type=conflict_type,
         ours_content=ours_content,
         theirs_content=theirs_content,
-    )
-
-
-def _make_merge_result(  # noqa: PLR0913
-    *,
-    workspace_id: str = "ws-001",
-    branch_name: str = "workspace/task-1",
-    success: bool = True,
-    conflicts: tuple[MergeConflict, ...] = (),
-    escalation: str | None = None,
-    merged_commit_sha: str | None = "abc123",
-    duration_seconds: float = 1.5,
-) -> MergeResult:
-    return MergeResult(
-        workspace_id=workspace_id,
-        branch_name=branch_name,
-        success=success,
-        conflicts=conflicts,
-        escalation=escalation,
-        merged_commit_sha=merged_commit_sha,
-        duration_seconds=duration_seconds,
     )
 
 
@@ -162,19 +126,20 @@ class TestWorkspace:
     @pytest.mark.unit
     def test_all_fields(self) -> None:
         """All fields are stored correctly."""
-        ws = _make_workspace()
+        ws = make_workspace(worktree_path="worktrees/ws-001")
         assert ws.workspace_id == "ws-001"
         assert ws.task_id == "task-1"
         assert ws.agent_id == "agent-1"
         assert ws.branch_name == "workspace/task-1"
         assert ws.worktree_path == "worktrees/ws-001"
         assert ws.base_branch == "main"
-        assert ws.created_at == "2026-03-08T00:00:00+00:00"
+        assert ws.created_at == _DEFAULT_CREATED_AT
+        assert isinstance(ws.created_at, datetime)
 
     @pytest.mark.unit
     def test_frozen(self) -> None:
         """Workspace is immutable."""
-        ws = _make_workspace()
+        ws = make_workspace()
         with pytest.raises(ValidationError, match="frozen"):
             ws.workspace_id = "other"  # type: ignore[misc]
 
@@ -182,19 +147,19 @@ class TestWorkspace:
     def test_blank_workspace_id_rejected(self) -> None:
         """Empty workspace_id is rejected."""
         with pytest.raises(ValidationError):
-            _make_workspace(workspace_id="")
+            make_workspace(workspace_id="")
 
     @pytest.mark.unit
     def test_blank_branch_name_rejected(self) -> None:
         """Empty branch_name is rejected."""
         with pytest.raises(ValidationError):
-            _make_workspace(branch_name="")
+            make_workspace(branch_name="")
 
     @pytest.mark.unit
     def test_blank_worktree_path_rejected(self) -> None:
         """Empty worktree_path is rejected."""
         with pytest.raises(ValidationError):
-            _make_workspace(worktree_path="")
+            make_workspace(worktree_path="")
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +214,7 @@ class TestMergeResult:
     @pytest.mark.unit
     def test_successful_merge(self) -> None:
         """Successful merge with commit SHA."""
-        mr = _make_merge_result(success=True, merged_commit_sha="abc123")
+        mr = make_merge_result(success=True, merged_commit_sha="abc123")
         assert mr.success is True
         assert mr.merged_commit_sha == "abc123"
         assert mr.conflicts == ()
@@ -259,21 +224,21 @@ class TestMergeResult:
     def test_failed_merge_with_conflicts(self) -> None:
         """Failed merge carries conflict details."""
         conflict = _make_merge_conflict()
-        mr = _make_merge_result(
+        mr = make_merge_result(
             success=False,
             conflicts=(conflict,),
-            escalation="human",
+            escalation=ConflictEscalation.HUMAN,
             merged_commit_sha=None,
         )
         assert mr.success is False
         assert len(mr.conflicts) == 1
-        assert mr.escalation == "human"
+        assert mr.escalation is ConflictEscalation.HUMAN
         assert mr.merged_commit_sha is None
 
     @pytest.mark.unit
     def test_frozen(self) -> None:
         """MergeResult is immutable."""
-        mr = _make_merge_result()
+        mr = make_merge_result()
         with pytest.raises(ValidationError, match="frozen"):
             mr.success = False  # type: ignore[misc]
 
@@ -281,7 +246,54 @@ class TestMergeResult:
     def test_negative_duration_rejected(self) -> None:
         """Negative duration_seconds is rejected."""
         with pytest.raises(ValidationError):
-            _make_merge_result(duration_seconds=-1.0)
+            make_merge_result(duration_seconds=-1.0)
+
+    @pytest.mark.unit
+    def test_success_with_conflicts_rejected(self) -> None:
+        """Successful merge cannot have conflicts."""
+        conflict = _make_merge_conflict()
+        with pytest.raises(
+            ValidationError,
+            match="Successful merge cannot have conflicts",
+        ):
+            MergeResult(
+                workspace_id="ws-001",
+                branch_name="workspace/task-1",
+                success=True,
+                conflicts=(conflict,),
+                merged_commit_sha="abc123",
+                duration_seconds=0.5,
+            )
+
+    @pytest.mark.unit
+    def test_success_without_sha_rejected(self) -> None:
+        """Successful merge must have a commit SHA."""
+        with pytest.raises(
+            ValidationError,
+            match="Successful merge must have a commit SHA",
+        ):
+            MergeResult(
+                workspace_id="ws-001",
+                branch_name="workspace/task-1",
+                success=True,
+                merged_commit_sha=None,
+                duration_seconds=0.5,
+            )
+
+    @pytest.mark.unit
+    def test_failure_with_sha_rejected(self) -> None:
+        """Failed merge cannot have a commit SHA."""
+        with pytest.raises(
+            ValidationError,
+            match="Failed merge cannot have a commit SHA",
+        ):
+            MergeResult(
+                workspace_id="ws-001",
+                branch_name="workspace/task-1",
+                success=False,
+                merged_commit_sha="abc123",
+                duration_seconds=0.5,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -295,14 +307,8 @@ class TestWorkspaceGroupResult:
     @pytest.mark.unit
     def test_all_merged_true(self) -> None:
         """all_merged is True when all results succeed."""
-        mr1 = _make_merge_result(
-            workspace_id="ws-1",
-            success=True,
-        )
-        mr2 = _make_merge_result(
-            workspace_id="ws-2",
-            success=True,
-        )
+        mr1 = make_merge_result(workspace_id="ws-1", success=True)
+        mr2 = make_merge_result(workspace_id="ws-2", success=True)
         result = WorkspaceGroupResult(
             group_id="grp-1",
             merge_results=(mr1, mr2),
@@ -315,11 +321,12 @@ class TestWorkspaceGroupResult:
     def test_all_merged_false_when_any_fails(self) -> None:
         """all_merged is False when any result fails."""
         conflict = _make_merge_conflict()
-        mr1 = _make_merge_result(workspace_id="ws-1", success=True)
-        mr2 = _make_merge_result(
+        mr1 = make_merge_result(workspace_id="ws-1", success=True)
+        mr2 = make_merge_result(
             workspace_id="ws-2",
             success=False,
             conflicts=(conflict,),
+            merged_commit_sha=None,
         )
         result = WorkspaceGroupResult(
             group_id="grp-1",
@@ -346,15 +353,17 @@ class TestWorkspaceGroupResult:
         c1 = _make_merge_conflict(file_path="a.py")
         c2 = _make_merge_conflict(file_path="b.py")
         c3 = _make_merge_conflict(file_path="c.py")
-        mr1 = _make_merge_result(
+        mr1 = make_merge_result(
             workspace_id="ws-1",
             success=False,
             conflicts=(c1, c2),
+            merged_commit_sha=None,
         )
-        mr2 = _make_merge_result(
+        mr2 = make_merge_result(
             workspace_id="ws-2",
             success=False,
             conflicts=(c3,),
+            merged_commit_sha=None,
         )
         result = WorkspaceGroupResult(
             group_id="grp-1",

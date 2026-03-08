@@ -5,6 +5,7 @@ directory backed by its own branch.
 """
 
 import asyncio
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +27,7 @@ from ai_company.engine.workspace.models import (
 from ai_company.observability import get_logger
 from ai_company.observability.events.workspace import (
     WORKSPACE_LIMIT_REACHED,
+    WORKSPACE_MERGE_ABORT_FAILED,
     WORKSPACE_MERGE_COMPLETE,
     WORKSPACE_MERGE_CONFLICT,
     WORKSPACE_MERGE_FAILED,
@@ -40,12 +42,32 @@ from ai_company.observability.events.workspace import (
 
 logger = get_logger(__name__)
 
+_SAFE_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+
+
+def _validate_git_ref(value: str, label: str) -> None:
+    """Validate that a string is safe for use as a git ref argument.
+
+    Args:
+        value: The string to validate.
+        label: Human-readable label for error messages.
+
+    Raises:
+        WorkspaceSetupError: If the value is unsafe for git.
+    """
+    if not value or value.startswith("-") or not _SAFE_REF_RE.match(value):
+        msg = f"Unsafe {label} for git: {value!r}"
+        raise WorkspaceSetupError(msg)
+
 
 class PlannerWorktreeStrategy:
     """Git-worktree-based workspace isolation strategy.
 
     Creates a separate git worktree and branch for each agent task,
     allowing concurrent work without interference.
+
+    All mutating git operations on the main repository (setup, merge,
+    teardown) are serialized via an internal lock.
 
     Args:
         config: Planner worktrees configuration.
@@ -90,10 +112,11 @@ class PlannerWorktreeStrategy:
             stderr=asyncio.subprocess.PIPE,
         )
         stdout_bytes, stderr_bytes = await proc.communicate()
+        rc = proc.returncode if proc.returncode is not None else -1
         return (
-            proc.returncode or 0,
-            stdout_bytes.decode().strip(),
-            stderr_bytes.decode().strip(),
+            rc,
+            stdout_bytes.decode("utf-8", errors="replace").strip(),
+            stderr_bytes.decode("utf-8", errors="replace").strip(),
         )
 
     async def setup_workspace(
@@ -111,8 +134,12 @@ class PlannerWorktreeStrategy:
 
         Raises:
             WorkspaceLimitError: When max concurrent worktrees reached.
-            WorkspaceSetupError: When git operations fail.
+            WorkspaceSetupError: When git operations fail or input
+                contains unsafe characters.
         """
+        _validate_git_ref(request.task_id, "task_id")
+        _validate_git_ref(request.base_branch, "base_branch")
+
         async with self._lock:
             if len(self._active_workspaces) >= self._config.max_concurrent_worktrees:
                 logger.warning(
@@ -138,7 +165,6 @@ class PlannerWorktreeStrategy:
                 agent_id=request.agent_id,
             )
 
-            # Create branch from base
             rc, _, stderr = await self._run_git(
                 "branch",
                 branch_name,
@@ -153,7 +179,6 @@ class PlannerWorktreeStrategy:
                 msg = f"Failed to create branch '{branch_name}': {stderr}"
                 raise WorkspaceSetupError(msg)
 
-            # Create worktree
             rc, _, stderr = await self._run_git(
                 "worktree",
                 "add",
@@ -161,6 +186,8 @@ class PlannerWorktreeStrategy:
                 branch_name,
             )
             if rc != 0:
+                # Clean up the branch we just created
+                await self._run_git("branch", "-D", branch_name)
                 logger.warning(
                     WORKSPACE_SETUP_FAILED,
                     workspace_id=workspace_id,
@@ -176,7 +203,7 @@ class PlannerWorktreeStrategy:
                 branch_name=branch_name,
                 worktree_path=str(worktree_dir),
                 base_branch=request.base_branch,
-                created_at=datetime.now(UTC).isoformat(),
+                created_at=datetime.now(UTC),
             )
             self._active_workspaces[workspace_id] = workspace
 
@@ -194,6 +221,11 @@ class PlannerWorktreeStrategy:
     ) -> MergeResult:
         """Merge workspace branch into base branch.
 
+        Merge operations are serialized via an internal lock to
+        prevent concurrent git state corruption. Merge conflicts are
+        returned as a ``MergeResult`` with ``success=False`` rather
+        than raised as exceptions.
+
         Args:
             workspace: The workspace to merge.
 
@@ -201,71 +233,95 @@ class PlannerWorktreeStrategy:
             Merge result with conflict details if any.
 
         Raises:
-            WorkspaceMergeError: When checkout of base branch fails.
+            WorkspaceMergeError: When checkout of base branch fails
+                or when ``merge --abort`` fails after a conflict.
         """
-        start = time.monotonic()
-        logger.info(
-            WORKSPACE_MERGE_START,
-            workspace_id=workspace.workspace_id,
-            branch_name=workspace.branch_name,
-        )
+        async with self._lock:
+            start = time.monotonic()
+            logger.info(
+                WORKSPACE_MERGE_START,
+                workspace_id=workspace.workspace_id,
+                branch_name=workspace.branch_name,
+            )
 
-        # Checkout base branch in main repo
-        rc, _, stderr = await self._run_git(
-            "checkout",
-            workspace.base_branch,
-        )
-        if rc != 0:
+            rc, _, stderr = await self._run_git(
+                "checkout",
+                workspace.base_branch,
+            )
+            if rc != 0:
+                logger.warning(
+                    WORKSPACE_MERGE_FAILED,
+                    workspace_id=workspace.workspace_id,
+                    error=stderr,
+                )
+                msg = f"Failed to checkout '{workspace.base_branch}': {stderr}"
+                raise WorkspaceMergeError(msg)
+
+            rc, _, stderr = await self._run_git(
+                "merge",
+                "--no-ff",
+                workspace.branch_name,
+            )
+            elapsed = time.monotonic() - start
+
+            if rc == 0:
+                rc_sha, sha_out, sha_err = await self._run_git(
+                    "rev-parse",
+                    "HEAD",
+                )
+                if rc_sha != 0:
+                    logger.warning(
+                        WORKSPACE_MERGE_FAILED,
+                        workspace_id=workspace.workspace_id,
+                        error=f"Failed to get merge commit SHA: {sha_err}",
+                    )
+                    sha_out = "unknown"
+                logger.info(
+                    WORKSPACE_MERGE_COMPLETE,
+                    workspace_id=workspace.workspace_id,
+                    commit_sha=sha_out,
+                )
+                return MergeResult(
+                    workspace_id=workspace.workspace_id,
+                    branch_name=workspace.branch_name,
+                    success=True,
+                    merged_commit_sha=sha_out,
+                    duration_seconds=elapsed,
+                )
+
+            # Conflict detected — collect conflicting files
             logger.warning(
-                WORKSPACE_MERGE_FAILED,
+                WORKSPACE_MERGE_CONFLICT,
                 workspace_id=workspace.workspace_id,
                 error=stderr,
             )
-            msg = f"Failed to checkout '{workspace.base_branch}': {stderr}"
-            raise WorkspaceMergeError(msg)
+            conflicts = await self._collect_conflicts()
 
-        # Attempt merge
-        rc, _, stderr = await self._run_git(
-            "merge",
-            "--no-ff",
-            workspace.branch_name,
-        )
-        elapsed = time.monotonic() - start
-
-        if rc == 0:
-            # Get merge commit SHA
-            _, sha_out, _ = await self._run_git("rev-parse", "HEAD")
-            logger.info(
-                WORKSPACE_MERGE_COMPLETE,
-                workspace_id=workspace.workspace_id,
-                commit_sha=sha_out,
+            # Abort the failed merge
+            abort_rc, _, abort_stderr = await self._run_git(
+                "merge",
+                "--abort",
             )
+            if abort_rc != 0:
+                logger.error(
+                    WORKSPACE_MERGE_ABORT_FAILED,
+                    workspace_id=workspace.workspace_id,
+                    error=abort_stderr,
+                )
+                msg = (
+                    f"Failed to abort merge for workspace "
+                    f"'{workspace.workspace_id}': {abort_stderr}. "
+                    f"Repository may be in an inconsistent state."
+                )
+                raise WorkspaceMergeError(msg)
+
             return MergeResult(
                 workspace_id=workspace.workspace_id,
                 branch_name=workspace.branch_name,
-                success=True,
-                merged_commit_sha=sha_out,
-                duration_seconds=elapsed,
+                success=False,
+                conflicts=conflicts,
+                duration_seconds=time.monotonic() - start,
             )
-
-        # Conflict detected — collect conflicting files
-        logger.warning(
-            WORKSPACE_MERGE_CONFLICT,
-            workspace_id=workspace.workspace_id,
-            error=stderr,
-        )
-        conflicts = await self._collect_conflicts()
-
-        # Abort the failed merge
-        await self._run_git("merge", "--abort")
-
-        return MergeResult(
-            workspace_id=workspace.workspace_id,
-            branch_name=workspace.branch_name,
-            success=False,
-            conflicts=conflicts,
-            duration_seconds=time.monotonic() - start,
-        )
 
     async def teardown_workspace(
         self,
@@ -274,53 +330,69 @@ class PlannerWorktreeStrategy:
     ) -> None:
         """Remove worktree and branch, unregister workspace.
 
+        Uses best-effort cleanup: attempts both worktree removal and
+        branch deletion even if one fails. Always unregisters the
+        workspace to prevent capacity leaks.
+
         Args:
             workspace: The workspace to tear down.
 
         Raises:
-            WorkspaceCleanupError: When git operations fail.
+            WorkspaceCleanupError: When any git cleanup operation fails.
         """
-        logger.info(
-            WORKSPACE_TEARDOWN_START,
-            workspace_id=workspace.workspace_id,
-        )
-
-        # Remove worktree
-        rc, _, stderr = await self._run_git(
-            "worktree",
-            "remove",
-            workspace.worktree_path,
-            "--force",
-        )
-        if rc != 0:
-            logger.warning(
-                WORKSPACE_TEARDOWN_FAILED,
+        async with self._lock:
+            logger.info(
+                WORKSPACE_TEARDOWN_START,
                 workspace_id=workspace.workspace_id,
-                error=stderr,
             )
-            msg = f"Failed to remove worktree '{workspace.worktree_path}': {stderr}"
-            raise WorkspaceCleanupError(msg)
 
-        # Delete branch (force: branch may not be fully merged)
-        rc, _, stderr = await self._run_git(
-            "branch",
-            "-D",
-            workspace.branch_name,
-        )
-        if rc != 0:
-            logger.warning(
-                WORKSPACE_TEARDOWN_FAILED,
+            errors: list[str] = []
+
+            rc, _, stderr = await self._run_git(
+                "worktree",
+                "remove",
+                workspace.worktree_path,
+                "--force",
+            )
+            if rc != 0:
+                errors.append(
+                    f"worktree remove: {stderr}",
+                )
+                logger.warning(
+                    WORKSPACE_TEARDOWN_FAILED,
+                    workspace_id=workspace.workspace_id,
+                    error=f"worktree remove: {stderr}",
+                )
+
+            rc, _, stderr = await self._run_git(
+                "branch",
+                "-D",
+                workspace.branch_name,
+            )
+            if rc != 0:
+                errors.append(
+                    f"branch delete: {stderr}",
+                )
+                logger.warning(
+                    WORKSPACE_TEARDOWN_FAILED,
+                    workspace_id=workspace.workspace_id,
+                    error=f"branch delete: {stderr}",
+                )
+
+            # Always unregister to prevent capacity leaks
+            self._active_workspaces.pop(workspace.workspace_id, None)
+
+            if errors:
+                msg = (
+                    f"Partial cleanup failure for workspace "
+                    f"'{workspace.workspace_id}': {'; '.join(errors)}"
+                )
+                raise WorkspaceCleanupError(msg)
+
+            logger.info(
+                WORKSPACE_TEARDOWN_COMPLETE,
                 workspace_id=workspace.workspace_id,
-                error=stderr,
             )
-            msg = f"Failed to delete branch '{workspace.branch_name}': {stderr}"
-            raise WorkspaceCleanupError(msg)
-
-        self._active_workspaces.pop(workspace.workspace_id, None)
-        logger.info(
-            WORKSPACE_TEARDOWN_COMPLETE,
-            workspace_id=workspace.workspace_id,
-        )
 
     async def list_active_workspaces(self) -> tuple[Workspace, ...]:
         """Return all currently active workspaces.
@@ -359,12 +431,19 @@ class PlannerWorktreeStrategy:
         Returns:
             Tuple of MergeConflict instances for each conflict.
         """
-        rc, stdout, _ = await self._run_git(
+        rc, stdout, stderr = await self._run_git(
             "diff",
             "--name-only",
             "--diff-filter=U",
         )
-        if rc != 0 or not stdout:
+        if rc != 0:
+            logger.warning(
+                WORKSPACE_MERGE_FAILED,
+                error=f"Failed to collect conflict info: {stderr}",
+            )
+            return ()
+
+        if not stdout:
             return ()
 
         conflicts: list[MergeConflict] = []
