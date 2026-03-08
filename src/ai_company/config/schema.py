@@ -1,7 +1,7 @@
 """Root configuration schema and config-level Pydantic models."""
 
 from collections import Counter
-from typing import Any, Self
+from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -193,11 +193,21 @@ class ProviderConfig(BaseModel):
         if len(ids) != len(set(ids)):
             dupes = sorted(i for i, c in Counter(ids).items() if c > 1)
             msg = f"Duplicate model IDs: {dupes}"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="ProviderConfig",
+                error=msg,
+            )
             raise ValueError(msg)
         aliases = [m.alias for m in self.models if m.alias is not None]
         if len(aliases) != len(set(aliases)):
             dupes = sorted(a for a, c in Counter(aliases).items() if c > 1)
             msg = f"Duplicate model aliases: {dupes}"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="ProviderConfig",
+                error=msg,
+            )
             raise ValueError(msg)
         return self
 
@@ -365,10 +375,25 @@ class TaskAssignmentConfig(BaseModel):
         strategy: Assignment strategy name (e.g. ``"role_based"``).
         min_score: Minimum capability score for agent eligibility.
         max_concurrent_tasks_per_agent: Maximum tasks an agent can
-            handle concurrently.
+            handle concurrently. Enforced by scoring-based strategies
+            that filter out agents at capacity.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    # Known strategy names — must stay in sync with
+    # ``STRATEGY_NAME_*`` constants in ``engine.assignment.strategies``.
+    # ``"hierarchical"`` requires a ``HierarchyResolver`` at runtime.
+    _VALID_STRATEGIES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "manual",
+            "role_based",
+            "load_balanced",
+            "cost_optimized",
+            "hierarchical",
+            "auction",
+        },
+    )
 
     strategy: NotBlankStr = Field(
         default="role_based",
@@ -386,10 +411,28 @@ class TaskAssignmentConfig(BaseModel):
         le=50,
         description=(
             "Maximum concurrent tasks an agent is intended to handle. "
-            "Actual enforcement must be implemented by the "
-            "engine/assignment layer."
+            "Enforced by scoring-based strategies that filter out "
+            "agents at capacity."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_strategy_name(self) -> Self:
+        """Ensure strategy is a known assignment strategy name."""
+        if self.strategy not in self._VALID_STRATEGIES:
+            msg = (
+                f"Unknown assignment strategy {self.strategy!r}. "
+                f"Valid strategies: "
+                f"{sorted(self._VALID_STRATEGIES)}"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="TaskAssignmentConfig",
+                error=msg,
+                strategy=self.strategy,
+            )
+            raise ValueError(msg)
+        return self
 
 
 class RootConfig(BaseModel):
@@ -490,6 +533,11 @@ class RootConfig(BaseModel):
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate agent names: {dupes}"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="RootConfig",
+                error=msg,
+            )
             raise ValueError(msg)
         return self
 
@@ -500,6 +548,11 @@ class RootConfig(BaseModel):
         if len(names) != len(set(names)):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate department names: {dupes}"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="RootConfig",
+                error=msg,
+            )
             raise ValueError(msg)
         return self
 
@@ -517,6 +570,11 @@ class RootConfig(BaseModel):
                             f"defined in both {ref_to_provider[ref]!r} "
                             f"and {prov_name!r}"
                         )
+                        logger.warning(
+                            CONFIG_VALIDATION_FAILED,
+                            model="RootConfig",
+                            error=msg,
+                        )
                         raise ValueError(msg)
                     ref_to_provider[ref] = prov_name
         return set(ref_to_provider)
@@ -532,13 +590,28 @@ class RootConfig(BaseModel):
         for rule in self.routing.rules:
             if rule.preferred_model not in known_models:
                 msg = f"Routing rule references unknown model: {rule.preferred_model!r}"
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    model="RootConfig",
+                    error=msg,
+                )
                 raise ValueError(msg)
             if rule.fallback and rule.fallback not in known_models:
                 msg = f"Routing rule references unknown fallback: {rule.fallback!r}"
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    model="RootConfig",
+                    error=msg,
+                )
                 raise ValueError(msg)
 
         for model_ref in self.routing.fallback_chain:
             if model_ref not in known_models:
                 msg = f"Routing fallback_chain references unknown model: {model_ref!r}"
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    model="RootConfig",
+                    error=msg,
+                )
                 raise ValueError(msg)
         return self

@@ -9,6 +9,7 @@ import re
 
 from ai_company.communication.meeting.models import ActionItem
 from ai_company.observability import get_logger
+from ai_company.observability.events.meeting import MEETING_PARSING_NO_SECTION
 
 logger = get_logger(__name__)
 
@@ -36,7 +37,7 @@ _LIST_ITEM_RE = re.compile(
 # Pattern for "assignee: <name>" or "(assigned to <name>)" at end of line
 _ASSIGNEE_RE = re.compile(
     r"(?:"
-    r"\(?assigned?\s+to:?\s*(.+?)\)?"
+    r"\(?assigned\s+to:?\s*(.+?)\)?"
     r"|assignee:?\s*(.+?)"
     r")\s*$",
     re.IGNORECASE,
@@ -84,7 +85,7 @@ def parse_decisions(summary_text: str) -> tuple[str, ...]:
     section = _extract_section(summary_text, _DECISIONS_HEADER_RE)
     if not section:
         logger.debug(
-            "meeting.parsing.no_section",
+            MEETING_PARSING_NO_SECTION,
             section="decisions",
         )
         return ()
@@ -142,7 +143,7 @@ def parse_action_items(
     section = _extract_section(summary_text, _ACTION_ITEMS_HEADER_RE)
     if not section:
         logger.debug(
-            "meeting.parsing.no_section",
+            MEETING_PARSING_NO_SECTION,
             section="action_items",
         )
         return ()

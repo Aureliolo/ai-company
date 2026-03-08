@@ -20,6 +20,25 @@ class TaskAssignmentStrategy(Protocol):
     and return an ``AssignmentResult`` with the selected agent and
     ranked alternatives. ``TaskAssignmentService`` calls ``assign()``
     synchronously — async implementations will NOT work correctly.
+
+    Error signaling contract:
+
+    * **``ManualAssignmentStrategy``** raises ``NoEligibleAgentError``
+      when the designated agent is not found or not ACTIVE, and
+      ``TaskAssignmentError`` when ``task.assigned_to`` is ``None``.
+    * **Scoring-based strategies** (``RoleBasedAssignmentStrategy``,
+      ``LoadBalancedAssignmentStrategy``,
+      ``CostOptimizedAssignmentStrategy``,
+      ``HierarchicalAssignmentStrategy``,
+      ``AuctionAssignmentStrategy``) return
+      ``AssignmentResult(selected=None, ...)`` when no agent meets
+      the minimum score threshold.
+
+    ``TaskAssignmentService`` propagates both patterns: it re-raises
+    ``TaskAssignmentError`` (including its subclass
+    ``NoEligibleAgentError``) and logs a warning when
+    ``result.selected`` is ``None``, returning the result to the
+    caller for handling.
     """
 
     @property
@@ -38,5 +57,13 @@ class TaskAssignmentStrategy(Protocol):
 
         Returns:
             Assignment result with selected agent and alternatives.
+            ``selected`` may be ``None`` when no eligible agent is
+            found (scoring strategies) — callers must check this.
+
+        Raises:
+            TaskAssignmentError: When preconditions are violated
+                (e.g. missing ``assigned_to`` for manual strategy).
+            NoEligibleAgentError: When the designated agent cannot
+                be found or is not ACTIVE (manual strategy only).
         """
         ...
