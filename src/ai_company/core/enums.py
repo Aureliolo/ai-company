@@ -21,6 +21,25 @@ class SeniorityLevel(StrEnum):
     C_SUITE = "c_suite"
 
 
+_SENIORITY_ORDER: tuple[SeniorityLevel, ...] = tuple(SeniorityLevel)
+
+
+def compare_seniority(a: SeniorityLevel, b: SeniorityLevel) -> int:
+    """Compare two seniority levels.
+
+    Returns negative if *a* is junior to *b*, zero if equal,
+    positive if *a* is senior to *b*.
+
+    Args:
+        a: First seniority level.
+        b: Second seniority level.
+
+    Returns:
+        Integer indicating relative seniority.
+    """
+    return _SENIORITY_ORDER.index(a) - _SENIORITY_ORDER.index(b)
+
+
 class AgentStatus(StrEnum):
     """Lifecycle status of an agent."""
 
