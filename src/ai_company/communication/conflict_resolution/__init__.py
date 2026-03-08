@@ -1,9 +1,9 @@
 """Conflict resolution subsystem (DESIGN_SPEC §5.6).
 
 Strategy implementations (``AuthorityResolver``, ``DebateResolver``,
-``HumanEscalationResolver``, ``HybridResolver``) are NOT re-exported
-here to avoid circular imports.  Import them directly from their
-respective modules (e.g. ``conflict_resolution.authority_strategy``).
+``HumanEscalationResolver``, ``HybridResolver``) are imported directly
+from their respective modules rather than re-exported here, keeping
+this sub-package init focused on core abstractions.
 """
 
 from ai_company.communication.conflict_resolution.config import (
@@ -20,6 +20,7 @@ from ai_company.communication.conflict_resolution.models import (
 )
 from ai_company.communication.conflict_resolution.protocol import (
     ConflictResolver,
+    JudgeDecision,
     JudgeEvaluator,
 )
 from ai_company.communication.conflict_resolution.service import (
@@ -37,5 +38,6 @@ __all__ = [
     "DebateConfig",
     "DissentRecord",
     "HybridConfig",
+    "JudgeDecision",
     "JudgeEvaluator",
 ]

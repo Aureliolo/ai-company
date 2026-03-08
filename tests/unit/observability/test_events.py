@@ -38,6 +38,7 @@ from ai_company.observability.events.conflict import (
     CONFLICT_HYBRID_REVIEW,
     CONFLICT_LCM_LOOKUP,
     CONFLICT_NO_RESOLVER,
+    CONFLICT_RESOLUTION_FAILED,
     CONFLICT_RESOLUTION_STARTED,
     CONFLICT_RESOLVED,
     CONFLICT_STRATEGY_ERROR,
@@ -229,6 +230,7 @@ class TestEventConstants:
         assert CONFLICT_DETECTED == "conflict.detected"
         assert CONFLICT_RESOLUTION_STARTED == "conflict.resolution.started"
         assert CONFLICT_RESOLVED == "conflict.resolved"
+        assert CONFLICT_RESOLUTION_FAILED == "conflict.resolution.failed"
         assert CONFLICT_ESCALATED == "conflict.escalated"
         assert CONFLICT_DISSENT_RECORDED == "conflict.dissent.recorded"
         assert CONFLICT_AUTHORITY_DECIDED == "conflict.authority.decided"

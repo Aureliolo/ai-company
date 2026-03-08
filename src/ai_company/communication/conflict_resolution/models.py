@@ -201,3 +201,35 @@ class DissentRecord(BaseModel):
         default=(),
         description="Extra key-value metadata pairs",
     )
+
+    @model_validator(mode="after")
+    def _validate_dissent_consistency(self) -> Self:
+        """Validate cross-field consistency.
+
+        The dissenting agent must appear in the conflict's positions
+        and must not be the winning agent (unless escalated to human,
+        where the first position is recorded as nominal dissenter).
+        """
+        agent_ids = {p.agent_id for p in self.conflict.positions}
+        if self.dissenting_agent_id not in agent_ids:
+            msg = (
+                f"dissenting_agent_id {self.dissenting_agent_id!r} "
+                f"not found in conflict positions"
+            )
+            raise ValueError(msg)
+        if self.resolution.conflict_id != self.conflict.id:
+            msg = (
+                f"resolution.conflict_id {self.resolution.conflict_id!r} "
+                f"does not match conflict.id {self.conflict.id!r}"
+            )
+            raise ValueError(msg)
+        if (
+            self.resolution.outcome != ConflictResolutionOutcome.ESCALATED_TO_HUMAN
+            and self.dissenting_agent_id == self.resolution.winning_agent_id
+        ):
+            msg = (
+                "dissenting_agent_id must differ from winning_agent_id "
+                "for non-escalated resolutions"
+            )
+            raise ValueError(msg)
+        return self

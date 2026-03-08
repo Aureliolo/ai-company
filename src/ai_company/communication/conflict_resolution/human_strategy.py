@@ -17,6 +17,7 @@ from ai_company.communication.conflict_resolution.models import (
 from ai_company.communication.enums import ConflictResolutionStrategy
 from ai_company.observability import get_logger
 from ai_company.observability.events.conflict import (
+    CONFLICT_ESCALATED,
     CONFLICT_HUMAN_ESCALATION_STUB,
 )
 
@@ -48,6 +49,11 @@ class HumanEscalationResolver:
             conflict_id=conflict.id,
             subject=conflict.subject,
         )
+        logger.info(
+            CONFLICT_ESCALATED,
+            conflict_id=conflict.id,
+            agent_count=len(conflict.positions),
+        )
 
         return ConflictResolution(
             conflict_id=conflict.id,
@@ -63,32 +69,34 @@ class HumanEscalationResolver:
             resolved_at=datetime.now(UTC),
         )
 
-    def build_dissent_record(
+    def build_dissent_records(
         self,
         conflict: Conflict,
         resolution: ConflictResolution,
-    ) -> DissentRecord:
-        """Build dissent record for escalated conflict.
+    ) -> tuple[DissentRecord, ...]:
+        """Build dissent records for all positions in an escalated conflict.
 
         For escalated conflicts, no agent "lost" — all positions
-        are pending human review.  The first position is recorded
-        as the nominal dissenter.
+        are pending human review.  Each position gets a record to
+        ensure the audit trail captures every stance.
 
         Args:
             conflict: The original conflict.
             resolution: The resolution decision.
 
         Returns:
-            Dissent record for the escalated conflict.
+            One dissent record per position.
         """
-        first_pos = conflict.positions[0]
-        return DissentRecord(
-            id=f"dissent-{uuid4().hex[:12]}",
-            conflict=conflict,
-            resolution=resolution,
-            dissenting_agent_id=first_pos.agent_id,
-            dissenting_position=first_pos.position,
-            strategy_used=ConflictResolutionStrategy.HUMAN,
-            timestamp=datetime.now(UTC),
-            metadata=(("escalation_reason", "human_review_required"),),
+        return tuple(
+            DissentRecord(
+                id=f"dissent-{uuid4().hex[:12]}",
+                conflict=conflict,
+                resolution=resolution,
+                dissenting_agent_id=pos.agent_id,
+                dissenting_position=pos.position,
+                strategy_used=ConflictResolutionStrategy.HUMAN,
+                timestamp=datetime.now(UTC),
+                metadata=(("escalation_reason", "human_review_required"),),
+            )
+            for pos in conflict.positions
         )

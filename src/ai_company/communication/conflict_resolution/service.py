@@ -36,6 +36,7 @@ from ai_company.observability.events.conflict import (
     CONFLICT_DISSENT_QUERIED,
     CONFLICT_DISSENT_RECORDED,
     CONFLICT_NO_RESOLVER,
+    CONFLICT_RESOLUTION_FAILED,
     CONFLICT_RESOLUTION_STARTED,
     CONFLICT_RESOLVED,
     CONFLICT_VALIDATION_ERROR,
@@ -48,7 +49,8 @@ class ConflictResolutionService:
     """Orchestrates conflict detection, resolution, and audit.
 
     Selects the configured strategy, delegates to the resolver,
-    builds the dissent record, and maintains an audit trail.
+    builds dissent records for all overruled positions, and
+    maintains an audit trail.
 
     Args:
         config: Conflict resolution configuration.
@@ -137,14 +139,14 @@ class ConflictResolutionService:
     async def resolve(
         self,
         conflict: Conflict,
-    ) -> tuple[ConflictResolution, DissentRecord]:
+    ) -> tuple[ConflictResolution, tuple[DissentRecord, ...]]:
         """Resolve a conflict using the configured strategy.
 
         Args:
             conflict: The conflict to resolve.
 
         Returns:
-            Tuple of ``(resolution, dissent_record)``.
+            Tuple of ``(resolution, dissent_records)``.
 
         Raises:
             ConflictResolutionError: If the configured strategy has
@@ -170,9 +172,18 @@ class ConflictResolutionService:
             strategy=strategy,
         )
 
-        resolution = await resolver.resolve(conflict)
-        dissent_record = resolver.build_dissent_record(conflict, resolution)
-        self._audit_trail.append(dissent_record)
+        try:
+            resolution = await resolver.resolve(conflict)
+        except Exception:
+            logger.exception(
+                CONFLICT_RESOLUTION_FAILED,
+                conflict_id=conflict.id,
+                strategy=strategy,
+            )
+            raise
+
+        dissent_records = resolver.build_dissent_records(conflict, resolution)
+        self._audit_trail.extend(dissent_records)
 
         logger.info(
             CONFLICT_RESOLVED,
@@ -180,14 +191,15 @@ class ConflictResolutionService:
             outcome=resolution.outcome,
             winning_agent_id=resolution.winning_agent_id,
         )
-        logger.info(
-            CONFLICT_DISSENT_RECORDED,
-            dissent_id=dissent_record.id,
-            conflict_id=conflict.id,
-            dissenting_agent=dissent_record.dissenting_agent_id,
-        )
+        for record in dissent_records:
+            logger.info(
+                CONFLICT_DISSENT_RECORDED,
+                dissent_id=record.id,
+                conflict_id=conflict.id,
+                dissenting_agent=record.dissenting_agent_id,
+            )
 
-        return resolution, dissent_record
+        return resolution, dissent_records
 
     def get_dissent_records(self) -> tuple[DissentRecord, ...]:
         """Return all dissent records.
@@ -200,7 +212,7 @@ class ConflictResolutionService:
     def query_dissent_records(
         self,
         *,
-        agent_id: str | None = None,
+        agent_id: NotBlankStr | None = None,
         conflict_type: ConflictType | None = None,
         strategy: ConflictResolutionStrategy | None = None,
         since: AwareDatetime | None = None,
@@ -227,15 +239,11 @@ class ConflictResolutionService:
             since=str(since) if since else None,
         )
 
-        results = self._audit_trail
-
-        if agent_id is not None:
-            results = [r for r in results if r.dissenting_agent_id == agent_id]
-        if conflict_type is not None:
-            results = [r for r in results if r.conflict.type == conflict_type]
-        if strategy is not None:
-            results = [r for r in results if r.strategy_used == strategy]
-        if since is not None:
-            results = [r for r in results if r.timestamp >= since]
-
-        return tuple(results)
+        return tuple(
+            r
+            for r in self._audit_trail
+            if (agent_id is None or r.dissenting_agent_id == agent_id)
+            and (conflict_type is None or r.conflict.type == conflict_type)
+            and (strategy is None or r.strategy_used == strategy)
+            and (since is None or r.timestamp >= since)
+        )

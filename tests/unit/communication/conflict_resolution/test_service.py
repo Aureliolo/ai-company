@@ -176,10 +176,10 @@ class TestResolve:
                 ),
             ],
         )
-        resolution, record = await service.resolve(conflict)
+        resolution, records = await service.resolve(conflict)
         assert resolution.winning_agent_id == "sr_dev"
         assert resolution.outcome == ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY
-        assert record.dissenting_agent_id == "jr_dev"
+        assert records[0].dissenting_agent_id == "jr_dev"
 
     async def test_human_resolution(
         self,
@@ -194,7 +194,7 @@ class TestResolve:
                 make_position(agent_id="jr_dev", position="Other"),
             ],
         )
-        resolution, _record = await service.resolve(conflict)
+        resolution, _records = await service.resolve(conflict)
         assert resolution.outcome == ConflictResolutionOutcome.ESCALATED_TO_HUMAN
 
     async def test_unregistered_strategy_raises(

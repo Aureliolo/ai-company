@@ -42,10 +42,14 @@ class TestHumanEscalationResolver:
         resolution = await resolver.resolve(conflict)
         assert "#37" in resolution.reasoning
 
-    async def test_dissent_record_strategy(self) -> None:
+    async def test_dissent_records_strategy(self) -> None:
         resolver = HumanEscalationResolver()
         conflict = make_conflict()
         resolution = await resolver.resolve(conflict)
-        record = resolver.build_dissent_record(conflict, resolution)
-        assert record.strategy_used == ConflictResolutionStrategy.HUMAN
-        assert ("escalation_reason", "human_review_required") in record.metadata
+        records = resolver.build_dissent_records(conflict, resolution)
+        # Escalation produces one record per position
+        assert len(records) == 2
+        assert records[0].strategy_used == ConflictResolutionStrategy.HUMAN
+        assert ("escalation_reason", "human_review_required") in records[0].metadata
+        dissenter_ids = {r.dissenting_agent_id for r in records}
+        assert dissenter_ids == {"agent-a", "agent-b"}

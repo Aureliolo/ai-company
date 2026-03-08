@@ -1,11 +1,11 @@
 """Conflict resolution protocol interfaces (DESIGN_SPEC §5.6).
 
 Defines the pluggable strategy interface that varies per resolution
-approach (``resolve`` + ``build_dissent_record``).  Detection logic
+approach (``resolve`` + ``build_dissent_records``).  Detection logic
 lives on the service, not the protocol, because it is strategy-agnostic.
 """
 
-from typing import Protocol
+from typing import NamedTuple, Protocol
 
 from ai_company.communication.conflict_resolution.models import (  # noqa: TC001
     Conflict,
@@ -15,11 +15,24 @@ from ai_company.communication.conflict_resolution.models import (  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
+class JudgeDecision(NamedTuple):
+    """Result of an LLM-based judge evaluation.
+
+    Attributes:
+        winning_agent_id: Agent whose position was chosen.
+        reasoning: Explanation for the decision.
+    """
+
+    winning_agent_id: str
+    reasoning: str
+
+
 class ConflictResolver(Protocol):
     """Protocol for conflict resolution strategies.
 
     Each strategy implements ``resolve`` (async, may need LLM calls)
-    and ``build_dissent_record`` (sync, builds the audit artifact).
+    and ``build_dissent_records`` (sync, builds audit artifacts for
+    every overruled position).
     """
 
     async def resolve(self, conflict: Conflict) -> ConflictResolution:
@@ -33,19 +46,23 @@ class ConflictResolver(Protocol):
         """
         ...
 
-    def build_dissent_record(
+    def build_dissent_records(
         self,
         conflict: Conflict,
         resolution: ConflictResolution,
-    ) -> DissentRecord:
-        """Build an audit record for the losing position.
+    ) -> tuple[DissentRecord, ...]:
+        """Build audit records for all losing positions.
+
+        For N-party conflicts, produces one ``DissentRecord`` per
+        overruled agent.  For escalated conflicts, produces one
+        record per position (all are pending human review).
 
         Args:
             conflict: The original conflict.
             resolution: The resolution decision.
 
         Returns:
-            Dissent record preserving the overruled reasoning.
+            Dissent records preserving every overruled reasoning.
         """
         ...
 
@@ -61,7 +78,7 @@ class JudgeEvaluator(Protocol):
         self,
         conflict: Conflict,
         judge_agent_id: NotBlankStr,
-    ) -> tuple[str, str]:
+    ) -> JudgeDecision:
         """Evaluate conflict positions and pick a winner.
 
         Args:
@@ -69,6 +86,6 @@ class JudgeEvaluator(Protocol):
             judge_agent_id: The agent acting as judge.
 
         Returns:
-            Tuple of ``(winning_agent_id, reasoning)``.
+            Decision containing the winning agent ID and reasoning.
         """
         ...

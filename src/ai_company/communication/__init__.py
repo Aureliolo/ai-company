@@ -25,6 +25,7 @@ from ai_company.communication.conflict_resolution import (
     DebateConfig,
     DissentRecord,
     HybridConfig,
+    JudgeDecision,
     JudgeEvaluator,
 )
 from ai_company.communication.conflict_resolution.authority_strategy import (
@@ -157,6 +158,7 @@ __all__ = [
     "HybridConfig",
     "HybridResolver",
     "InMemoryMessageBus",
+    "JudgeDecision",
     "JudgeEvaluator",
     "LoopPreventionConfig",
     "MeetingTypeConfig",

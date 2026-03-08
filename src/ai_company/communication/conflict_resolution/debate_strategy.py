@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from ai_company.communication.conflict_resolution._helpers import (
-    find_loser,
+    find_losers,
     find_position_or_raise,
     pick_highest_seniority,
 )
@@ -23,7 +23,8 @@ from ai_company.communication.conflict_resolution.models import (
     ConflictResolutionOutcome,
     DissentRecord,
 )
-from ai_company.communication.conflict_resolution.protocol import (  # noqa: TC001
+from ai_company.communication.conflict_resolution.protocol import (
+    JudgeDecision,
     JudgeEvaluator,
 )
 from ai_company.communication.delegation.hierarchy import (  # noqa: TC001
@@ -38,6 +39,7 @@ from ai_company.observability.events.conflict import (
     CONFLICT_DEBATE_STARTED,
     CONFLICT_HIERARCHY_ERROR,
     CONFLICT_LCM_LOOKUP,
+    CONFLICT_STRATEGY_ERROR,
 )
 
 logger = get_logger(__name__)
@@ -92,10 +94,20 @@ class DebateResolver:
         )
 
         if self._judge_evaluator is not None:
-            winning_agent_id, reasoning = await self._judge_evaluator.evaluate(
-                conflict,
-                judge_id,
-            )
+            try:
+                winning_agent_id, reasoning = await self._judge_evaluator.evaluate(
+                    conflict,
+                    judge_id,
+                )
+            except Exception:
+                logger.exception(
+                    CONFLICT_STRATEGY_ERROR,
+                    conflict_id=conflict.id,
+                    strategy="debate",
+                    operation="judge_evaluate",
+                    judge=judge_id,
+                )
+                raise
         else:
             logger.warning(
                 CONFLICT_AUTHORITY_FALLBACK,
@@ -124,30 +136,33 @@ class DebateResolver:
             resolved_at=datetime.now(UTC),
         )
 
-    def build_dissent_record(
+    def build_dissent_records(
         self,
         conflict: Conflict,
         resolution: ConflictResolution,
-    ) -> DissentRecord:
-        """Build dissent record for the losing debater.
+    ) -> tuple[DissentRecord, ...]:
+        """Build dissent records for all overruled debaters.
 
         Args:
             conflict: The original conflict.
             resolution: The resolution decision.
 
         Returns:
-            Dissent record preserving the overruled reasoning.
+            One dissent record per overruled agent.
         """
-        loser = find_loser(conflict, resolution)
-        return DissentRecord(
-            id=f"dissent-{uuid4().hex[:12]}",
-            conflict=conflict,
-            resolution=resolution,
-            dissenting_agent_id=loser.agent_id,
-            dissenting_position=loser.position,
-            strategy_used=ConflictResolutionStrategy.DEBATE,
-            timestamp=datetime.now(UTC),
-            metadata=(("judge", resolution.decided_by),),
+        losers = find_losers(conflict, resolution)
+        return tuple(
+            DissentRecord(
+                id=f"dissent-{uuid4().hex[:12]}",
+                conflict=conflict,
+                resolution=resolution,
+                dissenting_agent_id=loser.agent_id,
+                dissenting_position=loser.position,
+                strategy_used=ConflictResolutionStrategy.DEBATE,
+                timestamp=datetime.now(UTC),
+                metadata=(("judge", resolution.decided_by),),
+            )
+            for loser in losers
         )
 
     def _determine_judge(self, conflict: Conflict) -> str:
@@ -210,28 +225,36 @@ class DebateResolver:
             )
             if ancestors:
                 return ancestors[-1]
-            # Agent has no ancestors — they are the root
-            return conflict.positions[0].agent_id
+            # Agent has no ancestors — may be the root or not in hierarchy
+            agent_id = conflict.positions[0].agent_id
+            logger.warning(
+                CONFLICT_HIERARCHY_ERROR,
+                conflict_id=conflict.id,
+                agent=agent_id,
+                error="Agent has no ancestors; using as CEO/judge",
+            )
+            return agent_id
 
-        # Named agent
+        # Named agent — not validated against hierarchy at config time;
+        # invalid names surface at evaluation time.
         return self._config.judge
 
     @staticmethod
     def _authority_fallback(
         conflict: Conflict,
-    ) -> tuple[str, str]:
+    ) -> JudgeDecision:
         """Fall back to authority when no judge evaluator is available.
 
         Args:
             conflict: The conflict to resolve.
 
         Returns:
-            Tuple of ``(winning_agent_id, reasoning)``.
+            Decision with winning agent ID and reasoning.
         """
         best = pick_highest_seniority(conflict)
-        return (
-            best.agent_id,
-            (
+        return JudgeDecision(
+            winning_agent_id=best.agent_id,
+            reasoning=(
                 f"Debate fallback: authority-based judging — "
                 f"{best.agent_id} ({best.agent_level}) has highest "
                 f"seniority"

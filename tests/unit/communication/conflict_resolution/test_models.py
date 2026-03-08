@@ -204,6 +204,73 @@ class TestDissentRecord:
 
 
 @pytest.mark.unit
+class TestDissentRecordValidation:
+    def test_dissenting_agent_not_in_positions_raises(self) -> None:
+        conflict = make_conflict()
+        resolution = make_resolution()
+        with pytest.raises(ValidationError, match="not found in conflict positions"):
+            DissentRecord(
+                id="dissent-test12345",
+                conflict=conflict,
+                resolution=resolution,
+                dissenting_agent_id="nonexistent-agent",
+                dissenting_position="Some position",
+                strategy_used=ConflictResolutionStrategy.AUTHORITY,
+                timestamp=conflict.detected_at,
+            )
+
+    def test_mismatched_conflict_id_raises(self) -> None:
+        conflict = make_conflict()
+        resolution = make_resolution(conflict_id="conflict-different")
+        with pytest.raises(ValidationError, match=r"does not match conflict\.id"):
+            DissentRecord(
+                id="dissent-test12345",
+                conflict=conflict,
+                resolution=resolution,
+                dissenting_agent_id="agent-b",
+                dissenting_position="Use monolith",
+                strategy_used=ConflictResolutionStrategy.AUTHORITY,
+                timestamp=conflict.detected_at,
+            )
+
+    def test_dissenter_equals_winner_for_non_escalated_raises(self) -> None:
+        conflict = make_conflict()
+        resolution = make_resolution(winning_agent_id="agent-a")
+        with pytest.raises(
+            ValidationError,
+            match="dissenting_agent_id must differ from winning_agent_id",
+        ):
+            DissentRecord(
+                id="dissent-test12345",
+                conflict=conflict,
+                resolution=resolution,
+                dissenting_agent_id="agent-a",
+                dissenting_position="Use microservices",
+                strategy_used=ConflictResolutionStrategy.AUTHORITY,
+                timestamp=conflict.detected_at,
+            )
+
+    def test_dissenter_equals_position_ok_for_escalated(self) -> None:
+        conflict = make_conflict()
+        resolution = make_resolution(
+            outcome=ConflictResolutionOutcome.ESCALATED_TO_HUMAN,
+            winning_agent_id=None,
+            winning_position=None,
+            decided_by="human",
+        )
+        record = DissentRecord(
+            id="dissent-test12345",
+            conflict=conflict,
+            resolution=resolution,
+            dissenting_agent_id="agent-a",
+            dissenting_position="Use microservices",
+            strategy_used=ConflictResolutionStrategy.HUMAN,
+            timestamp=conflict.detected_at,
+        )
+        assert record.dissenting_agent_id == "agent-a"
+
+
+@pytest.mark.unit
 class TestConflictResolutionOutcome:
     def test_all_outcomes_exist(self) -> None:
         assert len(ConflictResolutionOutcome) == 4

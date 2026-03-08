@@ -3,12 +3,15 @@
 Strategy 1: The agent with higher seniority wins.  For equal seniority,
 hierarchy position decides — using the lowest common manager for
 cross-department agents as the tiebreaker.
+
+For N-party conflicts, positions are compared pairwise, accumulating
+the winner across all participants.
 """
 
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from ai_company.communication.conflict_resolution._helpers import find_loser
+from ai_company.communication.conflict_resolution._helpers import find_losers
 from ai_company.communication.conflict_resolution.models import (
     Conflict,
     ConflictPosition,
@@ -79,6 +82,7 @@ class AuthorityResolver:
             losers=[p.agent_id for p in non_winners],
         )
 
+        losers_desc = ", ".join(f"{p.agent_id} ({p.agent_level})" for p in non_winners)
         return ConflictResolution(
             conflict_id=conflict.id,
             outcome=ConflictResolutionOutcome.RESOLVED_BY_AUTHORITY,
@@ -87,35 +91,37 @@ class AuthorityResolver:
             decided_by=winner.agent_id,
             reasoning=(
                 f"Authority decision: {winner.agent_id} "
-                f"({winner.agent_level}) outranks "
-                f"{non_winners[0].agent_id} ({non_winners[0].agent_level})"
+                f"({winner.agent_level}) outranks {losers_desc}"
             ),
             resolved_at=datetime.now(UTC),
         )
 
-    def build_dissent_record(
+    def build_dissent_records(
         self,
         conflict: Conflict,
         resolution: ConflictResolution,
-    ) -> DissentRecord:
-        """Build dissent record preserving the losing position.
+    ) -> tuple[DissentRecord, ...]:
+        """Build dissent records for all overruled positions.
 
         Args:
             conflict: The original conflict.
             resolution: The resolution decision.
 
         Returns:
-            Dissent record for the overruled agent.
+            One dissent record per overruled agent.
         """
-        loser = find_loser(conflict, resolution)
-        return DissentRecord(
-            id=f"dissent-{uuid4().hex[:12]}",
-            conflict=conflict,
-            resolution=resolution,
-            dissenting_agent_id=loser.agent_id,
-            dissenting_position=loser.position,
-            strategy_used=ConflictResolutionStrategy.AUTHORITY,
-            timestamp=datetime.now(UTC),
+        losers = find_losers(conflict, resolution)
+        return tuple(
+            DissentRecord(
+                id=f"dissent-{uuid4().hex[:12]}",
+                conflict=conflict,
+                resolution=resolution,
+                dissenting_agent_id=loser.agent_id,
+                dissenting_position=loser.position,
+                strategy_used=ConflictResolutionStrategy.AUTHORITY,
+                timestamp=datetime.now(UTC),
+            )
+            for loser in losers
         )
 
     def _pick_winner(

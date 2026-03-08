@@ -10,6 +10,7 @@ from ai_company.communication.conflict_resolution.models import (
     Conflict,
     ConflictResolutionOutcome,
 )
+from ai_company.communication.conflict_resolution.protocol import JudgeDecision
 from ai_company.communication.delegation.hierarchy import (
     HierarchyResolver,  # noqa: TC001
 )
@@ -37,9 +38,9 @@ class FakeJudgeEvaluator:
         self,
         conflict: Conflict,
         judge_agent_id: str,
-    ) -> tuple[str, str]:
+    ) -> JudgeDecision:
         self.calls.append((conflict, judge_agent_id))
-        return self._winner_id, self._reasoning
+        return JudgeDecision(self._winner_id, self._reasoning)
 
 
 @pytest.mark.unit
@@ -225,10 +226,11 @@ class TestDebateResolverDissentRecord:
             ),
         )
         resolution = await resolver.resolve(conflict)
-        record = resolver.build_dissent_record(conflict, resolution)
-        assert record.dissenting_agent_id == "jr_dev"
-        assert record.strategy_used == ConflictResolutionStrategy.DEBATE
-        assert ("judge", resolution.decided_by) in record.metadata
+        records = resolver.build_dissent_records(conflict, resolution)
+        assert len(records) == 1
+        assert records[0].dissenting_agent_id == "jr_dev"
+        assert records[0].strategy_used == ConflictResolutionStrategy.DEBATE
+        assert ("judge", resolution.decided_by) in records[0].metadata
 
 
 @pytest.mark.unit
@@ -255,3 +257,104 @@ class TestDebateResolverInvalidWinner:
         )
         with pytest.raises(ConflictStrategyError, match="not found"):
             await resolver.resolve(conflict)
+
+
+@pytest.mark.unit
+class TestDebateResolverThreeParty:
+    async def test_three_party_shared_manager_judge(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        """3-party conflict uses iterative LCM for judge selection."""
+        judge = FakeJudgeEvaluator(winner_id="sr_dev")
+        resolver = DebateResolver(
+            hierarchy=hierarchy,
+            config=DebateConfig(judge="shared_manager"),
+            judge_evaluator=judge,
+        )
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Approach B",
+                ),
+                make_position(
+                    agent_id="backend_lead",
+                    level=SeniorityLevel.LEAD,
+                    position="Approach C",
+                    reasoning="Lead perspective",
+                ),
+            ),
+        )
+        resolution = await resolver.resolve(conflict)
+        assert resolution.winning_agent_id == "sr_dev"
+        # Judge should be LCM of all three — cto (all are under cto)
+        _, judge_id = judge.calls[0]
+        assert judge_id == "cto"
+
+    async def test_three_party_produces_two_dissent_records(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        judge = FakeJudgeEvaluator(winner_id="sr_dev")
+        resolver = DebateResolver(
+            hierarchy=hierarchy,
+            config=DebateConfig(judge="shared_manager"),
+            judge_evaluator=judge,
+        )
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="sr_dev", level=SeniorityLevel.SENIOR),
+                make_position(
+                    agent_id="jr_dev",
+                    level=SeniorityLevel.JUNIOR,
+                    position="Approach B",
+                ),
+                make_position(
+                    agent_id="backend_lead",
+                    level=SeniorityLevel.LEAD,
+                    position="Approach C",
+                    reasoning="Lead perspective",
+                ),
+            ),
+        )
+        resolution = await resolver.resolve(conflict)
+        records = resolver.build_dissent_records(conflict, resolution)
+        assert len(records) == 2
+        dissenter_ids = {r.dissenting_agent_id for r in records}
+        assert dissenter_ids == {"jr_dev", "backend_lead"}
+
+
+@pytest.mark.unit
+class TestDebateResolverCEORootAgent:
+    async def test_ceo_judge_root_agent_no_ancestors(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        """When first position IS the hierarchy root (no ancestors), use it as judge."""
+        judge = FakeJudgeEvaluator(winner_id="cto")
+        resolver = DebateResolver(
+            hierarchy=hierarchy,
+            config=DebateConfig(judge="ceo"),
+            judge_evaluator=judge,
+        )
+        # cto is the root of the Engineering hierarchy — has no ancestors
+        conflict = make_conflict(
+            positions=(
+                make_position(
+                    agent_id="cto",
+                    level=SeniorityLevel.C_SUITE,
+                    position="Approach A",
+                ),
+                make_position(
+                    agent_id="backend_lead",
+                    level=SeniorityLevel.LEAD,
+                    position="Approach B",
+                ),
+            ),
+        )
+        await resolver.resolve(conflict)
+        _, judge_id = judge.calls[0]
+        assert judge_id == "cto"

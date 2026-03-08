@@ -6,6 +6,7 @@ from typing import Final
 CONFLICT_DETECTED: Final[str] = "conflict.detected"
 CONFLICT_RESOLUTION_STARTED: Final[str] = "conflict.resolution.started"
 CONFLICT_RESOLVED: Final[str] = "conflict.resolved"
+CONFLICT_RESOLUTION_FAILED: Final[str] = "conflict.resolution.failed"
 CONFLICT_ESCALATED: Final[str] = "conflict.escalated"
 CONFLICT_DISSENT_RECORDED: Final[str] = "conflict.dissent.recorded"
 

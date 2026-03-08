@@ -9,33 +9,48 @@ from ai_company.communication.errors import (
     ConflictStrategyError,
 )
 from ai_company.core.enums import compare_seniority
+from ai_company.observability import get_logger
+from ai_company.observability.events.conflict import CONFLICT_STRATEGY_ERROR
+
+logger = get_logger(__name__)
 
 
-def find_loser(
+def find_losers(
     conflict: Conflict,
     resolution: ConflictResolution,
-) -> ConflictPosition:
-    """Find the position of the first non-winning agent.
+) -> tuple[ConflictPosition, ...]:
+    """Find all non-winning positions in a conflict.
+
+    For N-party conflicts (3+ agents), returns every position whose
+    agent was not the winner.
 
     Args:
         conflict: The original conflict.
         resolution: The resolution decision.
 
     Returns:
-        The first losing agent's position.
+        All losing agents' positions.
 
     Raises:
         ConflictStrategyError: If no losing position is found
             (data integrity violation).
     """
-    for pos in conflict.positions:
-        if pos.agent_id != resolution.winning_agent_id:
-            return pos
-    msg = f"No losing position found for winner {resolution.winning_agent_id!r}"
-    raise ConflictStrategyError(
-        msg,
-        context={"conflict_id": conflict.id},
+    losers = tuple(
+        pos for pos in conflict.positions if pos.agent_id != resolution.winning_agent_id
     )
+    if not losers:
+        msg = f"No losing position found for winner {resolution.winning_agent_id!r}"
+        logger.warning(
+            CONFLICT_STRATEGY_ERROR,
+            conflict_id=conflict.id,
+            winning_agent_id=resolution.winning_agent_id,
+            error=msg,
+        )
+        raise ConflictStrategyError(
+            msg,
+            context={"conflict_id": conflict.id},
+        )
+    return losers
 
 
 def find_position(
@@ -77,6 +92,12 @@ def find_position_or_raise(
     if pos is not None:
         return pos
     msg = f"Agent {agent_id!r} not found in conflict positions"
+    logger.warning(
+        CONFLICT_STRATEGY_ERROR,
+        conflict_id=conflict.id,
+        agent_id=agent_id,
+        error=msg,
+    )
     raise ConflictStrategyError(
         msg,
         context={

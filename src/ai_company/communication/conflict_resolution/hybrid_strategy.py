@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from ai_company.communication.conflict_resolution._helpers import (
-    find_loser,
+    find_losers,
     find_position,
     pick_highest_seniority,
 )
@@ -27,9 +27,6 @@ from ai_company.communication.conflict_resolution.protocol import (  # noqa: TC0
     ConflictResolver,
     JudgeEvaluator,
 )
-from ai_company.communication.delegation.hierarchy import (  # noqa: TC001
-    HierarchyResolver,
-)
 from ai_company.communication.enums import ConflictResolutionStrategy
 from ai_company.observability import get_logger
 from ai_company.observability.events.conflict import (
@@ -37,6 +34,7 @@ from ai_company.observability.events.conflict import (
     CONFLICT_AUTHORITY_FALLBACK,
     CONFLICT_HYBRID_AUTO_RESOLVED,
     CONFLICT_HYBRID_REVIEW,
+    CONFLICT_STRATEGY_ERROR,
 )
 
 logger = get_logger(__name__)
@@ -55,7 +53,6 @@ class HybridResolver:
     When no evaluator is provided, falls back to authority.
 
     Args:
-        hierarchy: Resolved organizational hierarchy.
         config: Hybrid strategy configuration.
         human_resolver: Human escalation resolver for ambiguous cases.
         review_evaluator: Optional LLM-based reviewer.
@@ -63,7 +60,6 @@ class HybridResolver:
 
     __slots__ = (
         "_config",
-        "_hierarchy",
         "_human_resolver",
         "_review_evaluator",
     )
@@ -71,12 +67,10 @@ class HybridResolver:
     def __init__(
         self,
         *,
-        hierarchy: HierarchyResolver,
         config: HybridConfig,
         human_resolver: ConflictResolver,
         review_evaluator: JudgeEvaluator | None = None,
     ) -> None:
-        self._hierarchy = hierarchy
         self._config = config
         self._human_resolver = human_resolver
         self._review_evaluator = review_evaluator
@@ -97,18 +91,25 @@ class HybridResolver:
         )
 
         if self._review_evaluator is None:
-            logger.warning(
-                CONFLICT_AUTHORITY_FALLBACK,
-                conflict_id=conflict.id,
-                strategy="hybrid",
+            return self._authority_fallback(
+                conflict,
                 reason="no_review_evaluator",
             )
-            return self._authority_fallback(conflict)
 
-        winning_agent_id, reasoning = await self._review_evaluator.evaluate(
-            conflict,
-            self._config.review_agent,
-        )
+        try:
+            winning_agent_id, reasoning = await self._review_evaluator.evaluate(
+                conflict,
+                self._config.review_agent,
+            )
+        except Exception:
+            logger.exception(
+                CONFLICT_STRATEGY_ERROR,
+                conflict_id=conflict.id,
+                strategy="hybrid",
+                operation="review_evaluate",
+                review_agent=self._config.review_agent,
+            )
+            raise
 
         # Check if the winner is an actual participant
         winner_pos = find_position(conflict, winning_agent_id)
@@ -141,62 +142,80 @@ class HybridResolver:
         if self._config.escalate_on_ambiguity:
             return await self._human_resolver.resolve(conflict)
 
-        return self._authority_fallback(conflict)
+        return self._authority_fallback(
+            conflict,
+            reason="ambiguous_review_result",
+        )
 
-    def build_dissent_record(
+    def build_dissent_records(
         self,
         conflict: Conflict,
         resolution: ConflictResolution,
-    ) -> DissentRecord:
-        """Build dissent record for the hybrid resolution.
+    ) -> tuple[DissentRecord, ...]:
+        """Build dissent records for the hybrid resolution.
+
+        For escalated outcomes, produces one record per position.
+        For resolved outcomes, produces one record per overruled agent.
 
         Args:
             conflict: The original conflict.
             resolution: The resolution decision.
 
         Returns:
-            Dissent record.
+            Dissent records for all overruled positions.
         """
         if resolution.outcome == ConflictResolutionOutcome.ESCALATED_TO_HUMAN:
-            # Delegate to human resolver's dissent record logic
-            first_pos = conflict.positions[0]
-            return DissentRecord(
+            return tuple(
+                DissentRecord(
+                    id=f"dissent-{uuid4().hex[:12]}",
+                    conflict=conflict,
+                    resolution=resolution,
+                    dissenting_agent_id=pos.agent_id,
+                    dissenting_position=pos.position,
+                    strategy_used=ConflictResolutionStrategy.HYBRID,
+                    timestamp=datetime.now(UTC),
+                    metadata=(("escalation_reason", "ambiguous_review"),),
+                )
+                for pos in conflict.positions
+            )
+
+        losers = find_losers(conflict, resolution)
+        return tuple(
+            DissentRecord(
                 id=f"dissent-{uuid4().hex[:12]}",
                 conflict=conflict,
                 resolution=resolution,
-                dissenting_agent_id=first_pos.agent_id,
-                dissenting_position=first_pos.position,
+                dissenting_agent_id=loser.agent_id,
+                dissenting_position=loser.position,
                 strategy_used=ConflictResolutionStrategy.HYBRID,
                 timestamp=datetime.now(UTC),
-                metadata=(("escalation_reason", "ambiguous_review"),),
             )
-
-        loser = find_loser(conflict, resolution)
-        return DissentRecord(
-            id=f"dissent-{uuid4().hex[:12]}",
-            conflict=conflict,
-            resolution=resolution,
-            dissenting_agent_id=loser.agent_id,
-            dissenting_position=loser.position,
-            strategy_used=ConflictResolutionStrategy.HYBRID,
-            timestamp=datetime.now(UTC),
+            for loser in losers
         )
 
     def _authority_fallback(
         self,
         conflict: Conflict,
+        *,
+        reason: str,
     ) -> ConflictResolution:
         """Fall back to authority-based resolution.
 
-        Callers are responsible for logging ``CONFLICT_AUTHORITY_FALLBACK``
-        with the appropriate reason before calling this method.
+        Logs the fallback reason and resolves by highest seniority.
 
         Args:
             conflict: The conflict to resolve.
+            reason: Why authority fallback was triggered.
 
         Returns:
             Resolution with ``RESOLVED_BY_HYBRID`` outcome.
         """
+        logger.warning(
+            CONFLICT_AUTHORITY_FALLBACK,
+            conflict_id=conflict.id,
+            strategy="hybrid",
+            reason=reason,
+        )
         best = pick_highest_seniority(conflict)
 
         return ConflictResolution(
@@ -204,7 +223,7 @@ class HybridResolver:
             outcome=ConflictResolutionOutcome.RESOLVED_BY_HYBRID,
             winning_agent_id=best.agent_id,
             winning_position=best.position,
-            decided_by="authority_fallback",
+            decided_by=best.agent_id,
             reasoning=(
                 f"Hybrid fallback: authority-based — "
                 f"{best.agent_id} ({best.agent_level}) has highest "

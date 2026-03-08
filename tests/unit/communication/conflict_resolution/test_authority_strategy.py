@@ -188,7 +188,8 @@ class TestAuthorityResolverDissentRecord:
             ),
         )
         resolution = await resolver.resolve(conflict)
-        record = resolver.build_dissent_record(conflict, resolution)
+        records = resolver.build_dissent_records(conflict, resolution)
+        record = records[0]
         assert record.dissenting_agent_id == "jr_dev"
         assert record.dissenting_position == "Other approach"
         assert record.strategy_used == ConflictResolutionStrategy.AUTHORITY
@@ -200,8 +201,32 @@ class TestAuthorityResolverDissentRecord:
         resolver = AuthorityResolver(hierarchy=hierarchy)
         conflict = make_conflict()
         resolution = await resolver.resolve(conflict)
-        record = resolver.build_dissent_record(conflict, resolution)
+        records = resolver.build_dissent_records(conflict, resolution)
+        record = records[0]
         assert record.id.startswith("dissent-")
+
+    async def test_unreachable_agent_in_hierarchy_raises(
+        self,
+        hierarchy: HierarchyResolver,
+    ) -> None:
+        """Agent not in hierarchy at all raises ConflictHierarchyError."""
+        resolver = AuthorityResolver(hierarchy=hierarchy)
+        conflict = make_conflict(
+            positions=(
+                make_position(
+                    agent_id="sr_dev",
+                    level=SeniorityLevel.SENIOR,
+                    position="Approach A",
+                ),
+                make_position(
+                    agent_id="ghost_agent",
+                    level=SeniorityLevel.SENIOR,
+                    position="Approach B",
+                ),
+            ),
+        )
+        with pytest.raises(ConflictHierarchyError):
+            await resolver.resolve(conflict)
 
     async def test_cross_department_logged(
         self,
