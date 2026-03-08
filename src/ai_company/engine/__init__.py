@@ -54,6 +54,11 @@ from ai_company.engine.errors import (
     ResourceConflictError,
     TaskAssignmentError,
     TaskRoutingError,
+    WorkspaceCleanupError,
+    WorkspaceError,
+    WorkspaceLimitError,
+    WorkspaceMergeError,
+    WorkspaceSetupError,
 )
 from ai_company.engine.loop_protocol import (
     BudgetChecker,
@@ -199,6 +204,11 @@ __all__ = [
     "TerminationReason",
     "TopologySelector",
     "TurnRecord",
+    "WorkspaceCleanupError",
+    "WorkspaceError",
+    "WorkspaceLimitError",
+    "WorkspaceMergeError",
+    "WorkspaceSetupError",
     "add_token_usage",
     "build_system_prompt",
 ]

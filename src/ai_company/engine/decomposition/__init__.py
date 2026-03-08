@@ -6,6 +6,10 @@ classifies task structure, and manages status rollup.
 
 from ai_company.engine.decomposition.classifier import TaskStructureClassifier
 from ai_company.engine.decomposition.dag import DependencyGraph
+from ai_company.engine.decomposition.llm import (
+    LlmDecompositionConfig,
+    LlmDecompositionStrategy,
+)
 from ai_company.engine.decomposition.manual import ManualDecompositionStrategy
 from ai_company.engine.decomposition.models import (
     DecompositionContext,
@@ -25,6 +29,8 @@ __all__ = [
     "DecompositionService",
     "DecompositionStrategy",
     "DependencyGraph",
+    "LlmDecompositionConfig",
+    "LlmDecompositionStrategy",
     "ManualDecompositionStrategy",
     "StatusRollup",
     "SubtaskDefinition",

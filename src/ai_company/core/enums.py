@@ -349,3 +349,18 @@ class ActionType(StrEnum):
     EXTERNAL_COMMUNICATION = "external_communication"
     HIRING = "hiring"
     ARCHITECTURE_CHANGE = "architecture_change"
+
+
+class MergeOrder(StrEnum):
+    """Order in which workspace branches are merged back."""
+
+    COMPLETION = "completion"
+    PRIORITY = "priority"
+    MANUAL = "manual"
+
+
+class ConflictEscalation(StrEnum):
+    """Strategy for handling merge conflicts."""
+
+    HUMAN = "human"
+    REVIEW_AGENT = "review_agent"

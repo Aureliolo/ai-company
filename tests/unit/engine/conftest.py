@@ -189,6 +189,8 @@ class MockCompletionProvider:
         self._call_count = 0
         self._recorded_configs: list[CompletionConfig | None] = []
         self._recorded_models: list[str] = []
+        self._recorded_messages: list[list[ChatMessage]] = []
+        self._recorded_tools: list[list[ToolDefinition] | None] = []
 
     @property
     def call_count(self) -> int:
@@ -205,6 +207,16 @@ class MockCompletionProvider:
         """Models passed to each ``complete()`` call."""
         return list(self._recorded_models)
 
+    @property
+    def recorded_messages(self) -> list[list[ChatMessage]]:
+        """Messages passed to each ``complete()`` call."""
+        return [list(m) for m in self._recorded_messages]
+
+    @property
+    def recorded_tools(self) -> list[list[ToolDefinition] | None]:
+        """Tools passed to each ``complete()`` call."""
+        return [list(t) if t is not None else None for t in self._recorded_tools]
+
     async def complete(
         self,
         messages: list[ChatMessage],
@@ -220,6 +232,8 @@ class MockCompletionProvider:
         self._call_count += 1
         self._recorded_configs.append(config)
         self._recorded_models.append(model)
+        self._recorded_messages.append(list(messages))
+        self._recorded_tools.append(list(tools) if tools is not None else None)
         return self._responses.pop(0)
 
     async def stream(

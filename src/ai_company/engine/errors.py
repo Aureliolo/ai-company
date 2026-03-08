@@ -69,3 +69,23 @@ class TaskAssignmentError(EngineError):
 
 class NoEligibleAgentError(TaskAssignmentError):
     """Raised when no eligible agent is found for assignment."""
+
+
+class WorkspaceError(EngineError):
+    """Base exception for workspace isolation failures."""
+
+
+class WorkspaceSetupError(WorkspaceError):
+    """Raised when workspace creation fails."""
+
+
+class WorkspaceMergeError(WorkspaceError):
+    """Raised when workspace merge fails."""
+
+
+class WorkspaceCleanupError(WorkspaceError):
+    """Raised when workspace teardown fails."""
+
+
+class WorkspaceLimitError(WorkspaceError):
+    """Raised when maximum concurrent workspaces reached."""

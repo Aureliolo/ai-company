@@ -99,6 +99,21 @@ from ai_company.observability.events.template import (
     TEMPLATE_RENDER_SUCCESS,
 )
 from ai_company.observability.events.tool import TOOL_INVOKE_START
+from ai_company.observability.events.workspace import (
+    WORKSPACE_GROUP_MERGE_COMPLETE,
+    WORKSPACE_GROUP_MERGE_START,
+    WORKSPACE_LIMIT_REACHED,
+    WORKSPACE_MERGE_COMPLETE,
+    WORKSPACE_MERGE_CONFLICT,
+    WORKSPACE_MERGE_FAILED,
+    WORKSPACE_MERGE_START,
+    WORKSPACE_SETUP_COMPLETE,
+    WORKSPACE_SETUP_FAILED,
+    WORKSPACE_SETUP_START,
+    WORKSPACE_TEARDOWN_COMPLETE,
+    WORKSPACE_TEARDOWN_FAILED,
+    WORKSPACE_TEARDOWN_START,
+)
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -166,6 +181,7 @@ class TestEventConstants:
             "task_routing",
             "template",
             "tool",
+            "workspace",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
@@ -318,3 +334,18 @@ class TestEventConstants:
         assert MEETING_SYNTHESIS_SKIPPED == "meeting.synthesis.skipped"
         assert MEETING_SUMMARY_SKIPPED == "meeting.summary.skipped"
         assert MEETING_TOKENS_RECORDED == "meeting.tokens.recorded"
+
+    def test_workspace_events_exist(self) -> None:
+        assert WORKSPACE_SETUP_START == "workspace.setup.start"
+        assert WORKSPACE_SETUP_COMPLETE == "workspace.setup.complete"
+        assert WORKSPACE_SETUP_FAILED == "workspace.setup.failed"
+        assert WORKSPACE_MERGE_START == "workspace.merge.start"
+        assert WORKSPACE_MERGE_COMPLETE == "workspace.merge.complete"
+        assert WORKSPACE_MERGE_CONFLICT == "workspace.merge.conflict"
+        assert WORKSPACE_MERGE_FAILED == "workspace.merge.failed"
+        assert WORKSPACE_TEARDOWN_START == "workspace.teardown.start"
+        assert WORKSPACE_TEARDOWN_COMPLETE == "workspace.teardown.complete"
+        assert WORKSPACE_TEARDOWN_FAILED == "workspace.teardown.failed"
+        assert WORKSPACE_LIMIT_REACHED == "workspace.limit.reached"
+        assert WORKSPACE_GROUP_MERGE_START == "workspace.group.merge.start"
+        assert WORKSPACE_GROUP_MERGE_COMPLETE == "workspace.group.merge.complete"

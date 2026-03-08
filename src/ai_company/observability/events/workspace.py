@@ -1,0 +1,17 @@
+"""Workspace isolation event constants."""
+
+from typing import Final
+
+WORKSPACE_SETUP_START: Final[str] = "workspace.setup.start"
+WORKSPACE_SETUP_COMPLETE: Final[str] = "workspace.setup.complete"
+WORKSPACE_SETUP_FAILED: Final[str] = "workspace.setup.failed"
+WORKSPACE_MERGE_START: Final[str] = "workspace.merge.start"
+WORKSPACE_MERGE_COMPLETE: Final[str] = "workspace.merge.complete"
+WORKSPACE_MERGE_CONFLICT: Final[str] = "workspace.merge.conflict"
+WORKSPACE_MERGE_FAILED: Final[str] = "workspace.merge.failed"
+WORKSPACE_TEARDOWN_START: Final[str] = "workspace.teardown.start"
+WORKSPACE_TEARDOWN_COMPLETE: Final[str] = "workspace.teardown.complete"
+WORKSPACE_TEARDOWN_FAILED: Final[str] = "workspace.teardown.failed"
+WORKSPACE_LIMIT_REACHED: Final[str] = "workspace.limit.reached"
+WORKSPACE_GROUP_MERGE_START: Final[str] = "workspace.group.merge.start"
+WORKSPACE_GROUP_MERGE_COMPLETE: Final[str] = "workspace.group.merge.complete"
