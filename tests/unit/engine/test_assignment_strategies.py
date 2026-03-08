@@ -1,27 +1,14 @@
-"""Unit tests for task assignment strategies."""
-
-from datetime import date
+"""Unit tests for Manual, RoleBased, and LoadBalanced assignment strategies."""
 
 import pytest
 
-from ai_company.core.agent import AgentIdentity, ModelConfig, SkillSet
-from ai_company.core.enums import (
-    AgentStatus,
-    Complexity,
-    SeniorityLevel,
-    TaskType,
-)
-from ai_company.core.task import Task
+from ai_company.core.enums import AgentStatus, Complexity, SeniorityLevel
 from ai_company.engine.assignment.models import (
     AgentWorkload,
     AssignmentRequest,
 )
-from ai_company.engine.assignment.protocol import TaskAssignmentStrategy
 from ai_company.engine.assignment.strategies import (
-    STRATEGY_MAP,
-    STRATEGY_NAME_LOAD_BALANCED,
-    STRATEGY_NAME_MANUAL,
-    STRATEGY_NAME_ROLE_BASED,
+    CostOptimizedAssignmentStrategy,
     LoadBalancedAssignmentStrategy,
     ManualAssignmentStrategy,
     RoleBasedAssignmentStrategy,
@@ -29,45 +16,9 @@ from ai_company.engine.assignment.strategies import (
 from ai_company.engine.errors import NoEligibleAgentError, TaskAssignmentError
 from ai_company.engine.routing.scorer import AgentTaskScorer
 
+from .conftest import make_assignment_agent, make_assignment_task
+
 pytestmark = pytest.mark.unit
-
-
-def _model_config() -> ModelConfig:
-    return ModelConfig(provider="test-provider", model_id="test-small-001")
-
-
-def _make_agent(  # noqa: PLR0913
-    name: str,
-    *,
-    level: SeniorityLevel = SeniorityLevel.MID,
-    primary_skills: tuple[str, ...] = (),
-    secondary_skills: tuple[str, ...] = (),
-    role: str = "Developer",
-    status: AgentStatus = AgentStatus.ACTIVE,
-) -> AgentIdentity:
-    return AgentIdentity(
-        name=name,
-        role=role,
-        department="Engineering",
-        level=level,
-        model=_model_config(),
-        hiring_date=date(2026, 1, 1),
-        skills=SkillSet(primary=primary_skills, secondary=secondary_skills),
-        status=status,
-    )
-
-
-def _make_task(**overrides: object) -> Task:
-    defaults: dict[str, object] = {
-        "id": "task-001",
-        "title": "Test task",
-        "description": "A test task",
-        "type": TaskType.DEVELOPMENT,
-        "project": "proj-001",
-        "created_by": "manager",
-    }
-    defaults.update(overrides)
-    return Task(**defaults)  # type: ignore[arg-type]
 
 
 class TestManualAssignmentStrategy:
@@ -76,8 +27,8 @@ class TestManualAssignmentStrategy:
     def test_success_with_valid_assigned_to(self) -> None:
         """Manual assignment succeeds when assigned_to matches an active agent."""
         strategy = ManualAssignmentStrategy()
-        agent = _make_agent("dev-1")
-        task = _make_task(
+        agent = make_assignment_agent("dev-1")
+        task = make_assignment_task(
             assigned_to=str(agent.id),
             status="assigned",
         )
@@ -96,10 +47,10 @@ class TestManualAssignmentStrategy:
     def test_error_when_assigned_to_is_none(self) -> None:
         """Manual assignment raises TaskAssignmentError when assigned_to is None."""
         strategy = ManualAssignmentStrategy()
-        task = _make_task()
+        task = make_assignment_task()
         request = AssignmentRequest(
             task=task,
-            available_agents=(_make_agent("dev-1"),),
+            available_agents=(make_assignment_agent("dev-1"),),
         )
 
         with pytest.raises(TaskAssignmentError, match="assigned_to"):
@@ -108,8 +59,8 @@ class TestManualAssignmentStrategy:
     def test_error_when_agent_not_in_pool(self) -> None:
         """Manual assignment raises NoEligibleAgentError when agent not found."""
         strategy = ManualAssignmentStrategy()
-        agent_in_pool = _make_agent("dev-1")
-        task = _make_task(
+        agent_in_pool = make_assignment_agent("dev-1")
+        task = make_assignment_task(
             assigned_to="nonexistent-agent-id",
             status="assigned",
         )
@@ -129,8 +80,8 @@ class TestManualAssignmentStrategy:
     def test_inactive_agent_rejected(self, status: AgentStatus) -> None:
         """Manual assignment rejects agents that are not ACTIVE."""
         strategy = ManualAssignmentStrategy()
-        agent = _make_agent("dev-1", status=status)
-        task = _make_task(
+        agent = make_assignment_agent("dev-1", status=status)
+        task = make_assignment_task(
             assigned_to=str(agent.id),
             status="assigned",
         )
@@ -156,19 +107,19 @@ class TestRoleBasedAssignmentStrategy:
         strategy = RoleBasedAssignmentStrategy(scorer)
 
         # Backend dev has matching skills
-        backend = _make_agent(
+        backend = make_assignment_agent(
             "backend",
             primary_skills=("python", "api-design"),
             level=SeniorityLevel.MID,
         )
         # Frontend dev has non-matching skills
-        frontend = _make_agent(
+        frontend = make_assignment_agent(
             "frontend",
             primary_skills=("typescript", "react"),
             level=SeniorityLevel.MID,
         )
 
-        task = _make_task(estimated_complexity=Complexity.MEDIUM)
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
         request = AssignmentRequest(
             task=task,
             available_agents=(backend, frontend),
@@ -186,18 +137,18 @@ class TestRoleBasedAssignmentStrategy:
         scorer = AgentTaskScorer()
         strategy = RoleBasedAssignmentStrategy(scorer)
 
-        agent1 = _make_agent(
+        agent1 = make_assignment_agent(
             "dev-1",
             primary_skills=("python",),
             level=SeniorityLevel.MID,
         )
-        agent2 = _make_agent(
+        agent2 = make_assignment_agent(
             "dev-2",
             primary_skills=("python",),
             level=SeniorityLevel.MID,
         )
 
-        task = _make_task(estimated_complexity=Complexity.MEDIUM)
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
         request = AssignmentRequest(
             task=task,
             available_agents=(agent1, agent2),
@@ -215,13 +166,13 @@ class TestRoleBasedAssignmentStrategy:
         strategy = RoleBasedAssignmentStrategy(scorer)
 
         # Agent with completely non-matching skills
-        agent = _make_agent(
+        agent = make_assignment_agent(
             "qa",
             primary_skills=("testing",),
             level=SeniorityLevel.JUNIOR,
         )
 
-        task = _make_task(estimated_complexity=Complexity.EPIC)
+        task = make_assignment_task(estimated_complexity=Complexity.EPIC)
         request = AssignmentRequest(
             task=task,
             available_agents=(agent,),
@@ -240,8 +191,8 @@ class TestRoleBasedAssignmentStrategy:
         scorer = AgentTaskScorer()
         strategy = RoleBasedAssignmentStrategy(scorer)
 
-        agent = _make_agent("dev-1", level=SeniorityLevel.MID)
-        task = _make_task(estimated_complexity=Complexity.MEDIUM)
+        agent = make_assignment_agent("dev-1", level=SeniorityLevel.MID)
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
         request = AssignmentRequest(
             task=task,
             available_agents=(agent,),
@@ -267,18 +218,18 @@ class TestLoadBalancedAssignmentStrategy:
         scorer = AgentTaskScorer()
         strategy = LoadBalancedAssignmentStrategy(scorer)
 
-        busy = _make_agent(
+        busy = make_assignment_agent(
             "busy-dev",
             primary_skills=("python",),
             level=SeniorityLevel.MID,
         )
-        idle = _make_agent(
+        idle = make_assignment_agent(
             "idle-dev",
             primary_skills=("python",),
             level=SeniorityLevel.MID,
         )
 
-        task = _make_task(estimated_complexity=Complexity.MEDIUM)
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
         request = AssignmentRequest(
             task=task,
             available_agents=(busy, idle),
@@ -306,19 +257,19 @@ class TestLoadBalancedAssignmentStrategy:
         strategy = LoadBalancedAssignmentStrategy(scorer)
 
         # Both have same workload, but better_dev has matching skills
-        better_dev = _make_agent(
+        better_dev = make_assignment_agent(
             "better-dev",
             primary_skills=("python", "api-design"),
             role="Backend Developer",
             level=SeniorityLevel.MID,
         )
-        other_dev = _make_agent(
+        other_dev = make_assignment_agent(
             "other-dev",
             primary_skills=("testing",),
             level=SeniorityLevel.MID,
         )
 
-        task = _make_task(estimated_complexity=Complexity.MEDIUM)
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
         request = AssignmentRequest(
             task=task,
             available_agents=(better_dev, other_dev),
@@ -346,18 +297,18 @@ class TestLoadBalancedAssignmentStrategy:
         scorer = AgentTaskScorer()
         strategy = LoadBalancedAssignmentStrategy(scorer)
 
-        best = _make_agent(
+        best = make_assignment_agent(
             "best-dev",
             primary_skills=("python", "api-design"),
             level=SeniorityLevel.MID,
         )
-        other = _make_agent(
+        other = make_assignment_agent(
             "other-dev",
             primary_skills=("testing",),
             level=SeniorityLevel.MID,
         )
 
-        task = _make_task(estimated_complexity=Complexity.MEDIUM)
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
         request = AssignmentRequest(
             task=task,
             available_agents=(best, other),
@@ -368,13 +319,15 @@ class TestLoadBalancedAssignmentStrategy:
 
         assert result.selected is not None
         assert result.selected.agent_identity.name == "best-dev"
+        assert "insufficient workload data" in result.reason
 
     @pytest.mark.parametrize(
         ("workloads", "expected_winner"),
         [
             ((0, 3, 5), "dev-0"),
             ((2, 2, 0), "dev-2"),
-            ((1, 1, 1), "dev-0"),  # all equal, highest score wins
+            # all equal workload; dev-0 wins by sort stability
+            ((1, 1, 1), "dev-0"),
         ],
         ids=["first-lowest", "last-lowest", "all-equal"],
     )
@@ -388,7 +341,7 @@ class TestLoadBalancedAssignmentStrategy:
         strategy = LoadBalancedAssignmentStrategy(scorer)
 
         agents = tuple(
-            _make_agent(
+            make_assignment_agent(
                 f"dev-{i}",
                 primary_skills=("python",),
                 level=SeniorityLevel.MID,
@@ -396,7 +349,7 @@ class TestLoadBalancedAssignmentStrategy:
             for i in range(3)
         )
 
-        task = _make_task(estimated_complexity=Complexity.MEDIUM)
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
         request = AssignmentRequest(
             task=task,
             available_agents=agents,
@@ -420,13 +373,13 @@ class TestLoadBalancedAssignmentStrategy:
         scorer = AgentTaskScorer()
         strategy = LoadBalancedAssignmentStrategy(scorer)
 
-        agent = _make_agent(
+        agent = make_assignment_agent(
             "qa",
             primary_skills=("testing",),
             level=SeniorityLevel.JUNIOR,
         )
 
-        task = _make_task(estimated_complexity=Complexity.EPIC)
+        task = make_assignment_task(estimated_complexity=Complexity.EPIC)
         request = AssignmentRequest(
             task=task,
             available_agents=(agent,),
@@ -439,23 +392,23 @@ class TestLoadBalancedAssignmentStrategy:
 
         assert result.selected is None
 
-    def test_partial_workload_data(self) -> None:
-        """Agents without workload entries default to zero workload."""
+    def test_partial_workload_data_falls_back(self) -> None:
+        """Incomplete workload data falls back to score-based ranking."""
         scorer = AgentTaskScorer()
         strategy = LoadBalancedAssignmentStrategy(scorer)
 
-        known = _make_agent(
+        known = make_assignment_agent(
             "known-dev",
             primary_skills=("python",),
             level=SeniorityLevel.MID,
         )
-        unknown = _make_agent(
+        unknown = make_assignment_agent(
             "unknown-dev",
             primary_skills=("python",),
             level=SeniorityLevel.MID,
         )
 
-        task = _make_task(estimated_complexity=Complexity.MEDIUM)
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
         request = AssignmentRequest(
             task=task,
             available_agents=(known, unknown),
@@ -471,8 +424,9 @@ class TestLoadBalancedAssignmentStrategy:
         result = strategy.assign(request)
 
         assert result.selected is not None
-        # unknown-dev should win because it defaults to 0 workload
-        assert result.selected.agent_identity.name == "unknown-dev"
+        # Falls back to capability: known-dev first by sort stability
+        assert result.selected.agent_identity.name == "known-dev"
+        assert "insufficient workload data" in result.reason
 
     def test_name_property(self) -> None:
         """Strategy name is 'load_balanced'."""
@@ -480,52 +434,35 @@ class TestLoadBalancedAssignmentStrategy:
         assert LoadBalancedAssignmentStrategy(scorer).name == "load_balanced"
 
 
-class TestStrategyMap:
-    """STRATEGY_MAP registry tests."""
+class TestScorerBasedStrategies:
+    """Shared behavior tests across all scorer-based strategies."""
 
-    def test_contains_expected_keys(self) -> None:
-        """STRATEGY_MAP contains all three strategy names."""
-        expected = {
-            STRATEGY_NAME_MANUAL,
-            STRATEGY_NAME_ROLE_BASED,
-            STRATEGY_NAME_LOAD_BALANCED,
-        }
-        assert set(STRATEGY_MAP.keys()) == expected
-
-    def test_values_are_correct_types(self) -> None:
-        """Each registry value is an instance of the expected class."""
-        assert isinstance(STRATEGY_MAP["manual"], ManualAssignmentStrategy)
-        assert isinstance(
-            STRATEGY_MAP["role_based"],
-            RoleBasedAssignmentStrategy,
-        )
-        assert isinstance(
-            STRATEGY_MAP["load_balanced"],
-            LoadBalancedAssignmentStrategy,
-        )
-
-    def test_map_is_immutable(self) -> None:
-        """STRATEGY_MAP is a MappingProxyType and rejects mutation."""
-        with pytest.raises(TypeError):
-            STRATEGY_MAP["custom"] = ManualAssignmentStrategy()  # type: ignore[index]
-
-
-class TestProtocolConformance:
-    """Protocol conformance tests for strategy implementations."""
-
-    def test_manual_satisfies_protocol(self) -> None:
-        assert isinstance(ManualAssignmentStrategy(), TaskAssignmentStrategy)
-
-    def test_role_based_satisfies_protocol(self) -> None:
+    def test_inactive_agents_excluded_from_scoring(self) -> None:
+        """Scorer-based strategies exclude non-ACTIVE agents."""
         scorer = AgentTaskScorer()
-        assert isinstance(
-            RoleBasedAssignmentStrategy(scorer),
-            TaskAssignmentStrategy,
+        strategy = CostOptimizedAssignmentStrategy(scorer)
+
+        active = make_assignment_agent(
+            "active-dev",
+            primary_skills=("python",),
+            level=SeniorityLevel.MID,
+        )
+        on_leave = make_assignment_agent(
+            "leave-dev",
+            primary_skills=("python", "api-design"),
+            level=SeniorityLevel.SENIOR,
+            status=AgentStatus.ON_LEAVE,
         )
 
-    def test_load_balanced_satisfies_protocol(self) -> None:
-        scorer = AgentTaskScorer()
-        assert isinstance(
-            LoadBalancedAssignmentStrategy(scorer),
-            TaskAssignmentStrategy,
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
+        request = AssignmentRequest(
+            task=task,
+            available_agents=(active, on_leave),
+            required_skills=("python",),
         )
+
+        result = strategy.assign(request)
+
+        assert result.selected is not None
+        assert result.selected.agent_identity.name == "active-dev"
+        assert all(a.agent_identity.name != "leave-dev" for a in result.alternatives)
