@@ -1,10 +1,11 @@
 """Workspace isolation domain models."""
 
 from datetime import datetime  # noqa: TC003
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from ai_company.core.enums import ConflictEscalation  # noqa: TC001
+from ai_company.core.enums import ConflictEscalation, ConflictType  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
@@ -26,7 +27,7 @@ class WorkspaceRequest(BaseModel):
         default="main",
         description="Git branch to branch from",
     )
-    file_scope: tuple[str, ...] = Field(
+    file_scope: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Optional file path hints",
     )
@@ -77,8 +78,8 @@ class MergeConflict(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     file_path: NotBlankStr = Field(description="Conflicting file path")
-    conflict_type: NotBlankStr = Field(
-        description="Type of conflict (textual or semantic)",
+    conflict_type: ConflictType = Field(
+        description="Type of conflict detected during merge",
     )
     ours_content: str = Field(
         default="",
@@ -116,7 +117,7 @@ class MergeResult(BaseModel):
         default=None,
         description="Escalation strategy applied",
     )
-    merged_commit_sha: str | None = Field(
+    merged_commit_sha: NotBlankStr | None = Field(
         default=None,
         description="Merge commit SHA if successful",
     )
@@ -126,7 +127,7 @@ class MergeResult(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_success_consistency(self) -> MergeResult:
+    def _validate_success_consistency(self) -> Self:
         """Ensure success, conflicts, and merged_commit_sha are consistent."""
         if self.success and self.conflicts:
             msg = "Successful merge cannot have conflicts"

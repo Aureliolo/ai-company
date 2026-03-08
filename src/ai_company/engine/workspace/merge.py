@@ -4,6 +4,7 @@ Sequences workspace merges according to the configured merge order
 and handles conflict escalation.
 """
 
+import time
 from typing import TYPE_CHECKING
 
 from ai_company.core.enums import ConflictEscalation, MergeOrder
@@ -14,7 +15,8 @@ from ai_company.observability.events.workspace import (
     WORKSPACE_GROUP_MERGE_COMPLETE,
     WORKSPACE_GROUP_MERGE_START,
     WORKSPACE_MERGE_FAILED,
-    WORKSPACE_SORT_WORKSPACES_DROPPED,
+    WORKSPACE_SORT_WORKSPACES_APPENDED,
+    WORKSPACE_TEARDOWN_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -70,6 +72,9 @@ class MergeOrchestrator:
     ) -> tuple[MergeResult, ...]:
         """Merge all workspaces sequentially in configured order.
 
+        Note: Cleanup failures after successful merges are logged but
+        do not propagate.
+
         Args:
             workspaces: Workspaces to merge.
             completion_order: Workspace IDs in completion order.
@@ -92,11 +97,13 @@ class MergeOrchestrator:
 
         results: list[MergeResult] = []
         for workspace in ordered:
+            ws_start = time.monotonic()
             try:
                 result = await self._strategy.merge_workspace(
                     workspace=workspace,
                 )
             except WorkspaceMergeError as exc:
+                ws_elapsed = time.monotonic() - ws_start
                 logger.warning(
                     WORKSPACE_MERGE_FAILED,
                     workspace_id=workspace.workspace_id,
@@ -106,7 +113,7 @@ class MergeOrchestrator:
                     workspace_id=workspace.workspace_id,
                     branch_name=workspace.branch_name,
                     success=False,
-                    duration_seconds=0.0,
+                    duration_seconds=ws_elapsed,
                     escalation=self._conflict_escalation,
                 )
                 results.append(result)
@@ -125,7 +132,7 @@ class MergeOrchestrator:
                 if self._conflict_escalation == ConflictEscalation.HUMAN:
                     # Stop on conflict with HUMAN escalation
                     break
-                # REVIEW_AGENT: flag and continue
+                # REVIEW_AGENT escalation: record conflict and continue merging
                 continue
 
             results.append(result)
@@ -137,7 +144,7 @@ class MergeOrchestrator:
                     )
                 except WorkspaceCleanupError as exc:
                     logger.warning(
-                        WORKSPACE_MERGE_FAILED,
+                        WORKSPACE_TEARDOWN_FAILED,
                         workspace_id=workspace.workspace_id,
                         error=f"Post-merge cleanup failed: {exc}",
                     )
@@ -173,38 +180,58 @@ class MergeOrchestrator:
 
         if self._merge_order == MergeOrder.COMPLETION:
             if completion_order:
-                return self._apply_ordering(ws_map, completion_order)
+                return self._apply_ordering(ws_map, completion_order, workspaces)
             return workspaces
 
         if self._merge_order == MergeOrder.PRIORITY:
             if priority_order:
-                return self._apply_ordering(ws_map, priority_order)
+                return self._apply_ordering(ws_map, priority_order, workspaces)
             return workspaces
 
-        # MANUAL: as given
+        # MANUAL order: return workspaces in their original input order
         return workspaces
 
     @staticmethod
     def _apply_ordering(
         ws_map: dict[str, Workspace],
         order: tuple[str, ...],
+        workspaces: tuple[Workspace, ...],
     ) -> tuple[Workspace, ...]:
         """Apply an ordering tuple, appending unmentioned workspaces.
+
+        Deduplicates the order tuple and appends workspaces not
+        mentioned in the order in their original input order.
 
         Args:
             ws_map: Workspace ID to Workspace mapping.
             order: Ordered workspace IDs.
+            workspaces: Original workspaces tuple for fallback ordering.
 
         Returns:
             Ordered workspaces with unmentioned ones appended.
         """
-        ordered_ids = set(order)
+        seen: set[str] = set()
+        unique_order: list[str] = []
+        for wid in order:
+            if wid not in seen:
+                seen.add(wid)
+                unique_order.append(wid)
+
+        phantom = seen - set(ws_map.keys())
+        if phantom:
+            logger.warning(
+                WORKSPACE_SORT_WORKSPACES_APPENDED,
+                phantom_workspace_ids=sorted(phantom),
+            )
+
+        ordered_ids = set(unique_order)
         missing = set(ws_map.keys()) - ordered_ids
         if missing:
-            logger.warning(
-                WORKSPACE_SORT_WORKSPACES_DROPPED,
+            logger.info(
+                WORKSPACE_SORT_WORKSPACES_APPENDED,
                 missing_workspace_ids=sorted(missing),
             )
-        result = [ws_map[wid] for wid in order if wid in ws_map]
-        result.extend(ws_map[wid] for wid in sorted(missing))
+        result = [ws_map[wid] for wid in unique_order if wid in ws_map]
+        # Append missing workspaces in original input order
+        result.extend(w for w in workspaces if w.workspace_id in missing)
         return tuple(result)

@@ -30,6 +30,7 @@ from ai_company.observability.events.decomposition import (
     DECOMPOSITION_LLM_RETRY,
     DECOMPOSITION_VALIDATION_ERROR,
 )
+from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import (
     ChatMessage,
     CompletionConfig,
@@ -89,12 +90,25 @@ class LlmDecompositionStrategy:
 
     def __init__(
         self,
+        *,
         provider: CompletionProvider,
         model: str,
         config: LlmDecompositionConfig | None = None,
     ) -> None:
+        """Initialize the LLM decomposition strategy.
+
+        Args:
+            provider: LLM completion provider for making calls.
+            model: Model identifier to use for decomposition.
+            config: Optional strategy configuration. Uses defaults
+                if not provided.
+
+        Raises:
+            ValueError: If model is blank.
+        """
         if not model or not model.strip():
             msg = "model must be a non-blank string"
+            logger.warning(DECOMPOSITION_FAILED, error=msg)
             raise ValueError(msg)
         self._provider = provider
         self._model = model
@@ -130,6 +144,7 @@ class LlmDecompositionStrategy:
         )
 
         last_error: str | None = None
+        last_response: CompletionResponse | None = None
         attempts = 1 + self._config.max_retries
 
         for attempt in range(attempts):
@@ -140,8 +155,15 @@ class LlmDecompositionStrategy:
                     attempt=attempt,
                     error=last_error,
                 )
+                # Include the failed assistant response for context
+                assistant_msg = ChatMessage(
+                    role=MessageRole.ASSISTANT,
+                    content=last_response.content or "",
+                    tool_calls=last_response.tool_calls if last_response else (),
+                )
                 messages = [
                     *messages,
+                    assistant_msg,
                     build_retry_message(last_error),
                 ]
 
@@ -158,6 +180,7 @@ class LlmDecompositionStrategy:
                 tools=[tool_def],
                 config=comp_config,
             )
+            last_response = response
 
             logger.debug(
                 DECOMPOSITION_LLM_CALL_COMPLETE,
@@ -254,7 +277,7 @@ class LlmDecompositionStrategy:
         response: CompletionResponse,
         parent_task_id: str,
     ) -> DecompositionPlan:
-        """Try tool call parsing, then content fallback.
+        """Parse a plan from tool calls, content fallback, or raise.
 
         Args:
             response: The LLM completion response.
@@ -271,6 +294,7 @@ class LlmDecompositionStrategy:
         if response.content is not None:
             return parse_content_response(response, parent_task_id)
         msg = "Response has no tool calls and no content"
+        logger.warning(DECOMPOSITION_LLM_PARSE_ERROR, error=msg)
         raise DecompositionError(msg)
 
     @staticmethod

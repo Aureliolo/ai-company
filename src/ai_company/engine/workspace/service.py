@@ -8,7 +8,11 @@ import time
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from ai_company.engine.errors import WorkspaceCleanupError
+from ai_company.engine.errors import (
+    WorkspaceCleanupError,
+    WorkspaceLimitError,
+    WorkspaceSetupError,
+)
 from ai_company.engine.workspace.merge import MergeOrchestrator
 from ai_company.engine.workspace.models import (
     Workspace,
@@ -17,6 +21,7 @@ from ai_company.engine.workspace.models import (
 from ai_company.observability import get_logger
 from ai_company.observability.events.workspace import (
     WORKSPACE_GROUP_SETUP_COMPLETE,
+    WORKSPACE_GROUP_SETUP_FAILED,
     WORKSPACE_GROUP_SETUP_START,
     WORKSPACE_GROUP_TEARDOWN_COMPLETE,
     WORKSPACE_GROUP_TEARDOWN_START,
@@ -95,19 +100,14 @@ class WorkspaceIsolationService:
                     request=request,
                 )
                 workspaces.append(ws)
-        except Exception:
-            # Roll back already-created workspaces
-            for ws in workspaces:
-                try:
-                    await self._strategy.teardown_workspace(
-                        workspace=ws,
-                    )
-                except WorkspaceCleanupError as cleanup_exc:
-                    logger.warning(
-                        WORKSPACE_TEARDOWN_FAILED,
-                        workspace_id=ws.workspace_id,
-                        error=f"Rollback cleanup failed: {cleanup_exc}",
-                    )
+        except (WorkspaceLimitError, WorkspaceSetupError) as exc:
+            logger.warning(
+                WORKSPACE_GROUP_SETUP_FAILED,
+                count=len(requests),
+                created=len(workspaces),
+                error=str(exc),
+            )
+            await self._rollback_workspaces(workspaces)
             raise
 
         logger.info(
@@ -115,6 +115,29 @@ class WorkspaceIsolationService:
             count=len(workspaces),
         )
         return tuple(workspaces)
+
+    async def _rollback_workspaces(
+        self,
+        workspaces: list[Workspace],
+    ) -> None:
+        """Roll back already-created workspaces on setup failure.
+
+        Best-effort: attempts all teardowns even if some fail.
+
+        Args:
+            workspaces: Workspaces to tear down during rollback.
+        """
+        for ws in workspaces:
+            try:
+                await self._strategy.teardown_workspace(
+                    workspace=ws,
+                )
+            except Exception as exc:
+                logger.warning(
+                    WORKSPACE_TEARDOWN_FAILED,
+                    workspace_id=ws.workspace_id,
+                    error=f"Rollback cleanup failed: {exc}",
+                )
 
     async def merge_group(
         self,
@@ -171,7 +194,7 @@ class WorkspaceIsolationService:
                 await self._strategy.teardown_workspace(
                     workspace=workspace,
                 )
-            except WorkspaceCleanupError as exc:
+            except Exception as exc:
                 errors.append(
                     f"workspace {workspace.workspace_id}: {exc}",
                 )

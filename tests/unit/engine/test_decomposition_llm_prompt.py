@@ -166,6 +166,14 @@ class TestBuildSystemMessage:
         assert msg.content is not None
         assert len(msg.content) > 0
 
+    @pytest.mark.unit
+    def test_system_includes_untrusted_data_instruction(self) -> None:
+        """System message warns about untrusted task data."""
+        msg = build_system_message()
+        assert msg.content is not None
+        assert "untrusted" in msg.content.lower()
+        assert "<task-data>" in msg.content
+
 
 class TestBuildTaskMessage:
     """Tests for build_task_message."""
@@ -184,6 +192,9 @@ class TestBuildTaskMessage:
 
         assert msg.role is MessageRole.USER
         assert msg.content is not None
+        # Task data wrapped in XML tags
+        assert "<task-data>" in msg.content
+        assert "</task-data>" in msg.content
         # Task details
         assert task.title in msg.content
         assert task.description in msg.content
@@ -288,6 +299,60 @@ class TestParseToolCallResponse:
         }
         response = _make_tool_call_response(args)
         with pytest.raises(DecompositionError, match="missing required field"):
+            parse_tool_call_response(response, "task-1")
+
+    @pytest.mark.unit
+    def test_non_array_dependencies_raises(self) -> None:
+        """Non-array dependencies field raises DecompositionError."""
+        args: dict[str, Any] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Step 0",
+                    "description": "Do it",
+                    "dependencies": "sub-1",
+                },
+            ],
+        }
+        response = _make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="array"):
+            parse_tool_call_response(response, "task-1")
+
+    @pytest.mark.unit
+    def test_non_array_required_skills_raises(self) -> None:
+        """Non-array required_skills field raises DecompositionError."""
+        args: dict[str, Any] = {
+            "subtasks": [
+                {
+                    "id": "sub-0",
+                    "title": "Step 0",
+                    "description": "Do it",
+                    "required_skills": "python",
+                },
+            ],
+        }
+        response = _make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="array"):
+            parse_tool_call_response(response, "task-1")
+
+    @pytest.mark.unit
+    def test_subtasks_not_list_raises(self) -> None:
+        """Non-array subtasks field raises DecompositionError."""
+        args: dict[str, Any] = {
+            "subtasks": "not-a-list",
+        }
+        response = _make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="array"):
+            parse_tool_call_response(response, "task-1")
+
+    @pytest.mark.unit
+    def test_subtask_not_dict_raises(self) -> None:
+        """Non-object subtask entry raises DecompositionError."""
+        args: dict[str, Any] = {
+            "subtasks": ["not-a-dict"],
+        }
+        response = _make_tool_call_response(args)
+        with pytest.raises(DecompositionError, match="object"):
             parse_tool_call_response(response, "task-1")
 
 

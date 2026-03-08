@@ -1,8 +1,48 @@
 """Tests for workspace isolation protocol."""
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from ai_company.engine.workspace.protocol import WorkspaceIsolationStrategy
+
+if TYPE_CHECKING:
+    from ai_company.engine.workspace.models import (
+        MergeResult,
+        Workspace,
+        WorkspaceRequest,
+    )
+
+
+class _ConformingStub:
+    """Minimal stub implementing WorkspaceIsolationStrategy."""
+
+    async def setup_workspace(
+        self,
+        *,
+        request: WorkspaceRequest,
+    ) -> Workspace:
+        raise NotImplementedError
+
+    async def teardown_workspace(
+        self,
+        *,
+        workspace: Workspace,
+    ) -> None:
+        raise NotImplementedError
+
+    async def merge_workspace(
+        self,
+        *,
+        workspace: Workspace,
+    ) -> MergeResult:
+        raise NotImplementedError
+
+    async def list_active_workspaces(self) -> tuple[Workspace, ...]:
+        raise NotImplementedError
+
+    def get_strategy_type(self) -> str:
+        return "stub"
 
 
 class TestWorkspaceIsolationStrategy:
@@ -10,11 +50,8 @@ class TestWorkspaceIsolationStrategy:
 
     @pytest.mark.unit
     def test_protocol_is_runtime_checkable(self) -> None:
-        """Protocol can be used with isinstance checks."""
-        assert hasattr(WorkspaceIsolationStrategy, "__protocol_attrs__") or (
-            hasattr(WorkspaceIsolationStrategy, "_is_runtime_protocol")
-            and WorkspaceIsolationStrategy._is_runtime_protocol
-        )
+        """Conforming stub passes isinstance check."""
+        assert isinstance(_ConformingStub(), WorkspaceIsolationStrategy)
 
     @pytest.mark.unit
     def test_non_conforming_class_rejected(self) -> None:
@@ -35,7 +72,6 @@ class TestWorkspaceIsolationStrategy:
             "list_active_workspaces",
             "get_strategy_type",
         }
-        # Protocol methods are in __abstractmethods__ or annotations
         members = {
             name for name in dir(WorkspaceIsolationStrategy) if not name.startswith("_")
         }

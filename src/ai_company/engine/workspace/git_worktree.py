@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from ai_company.core.enums import ConflictType
 from ai_company.engine.errors import (
     WorkspaceCleanupError,
     WorkspaceLimitError,
@@ -46,7 +47,10 @@ _SAFE_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
 def _validate_git_ref(value: str, label: str) -> None:
-    """Validate that a string is safe for use as a git ref argument.
+    """Validate that a string is safe for use as a git command argument.
+
+    Prevents argument injection and path traversal. Does not fully
+    validate git ref format rules (e.g. consecutive slashes).
 
     Args:
         value: The string to validate.
@@ -55,8 +59,19 @@ def _validate_git_ref(value: str, label: str) -> None:
     Raises:
         WorkspaceSetupError: If the value is unsafe for git.
     """
-    if not value or value.startswith("-") or not _SAFE_REF_RE.match(value):
+    if (
+        not value
+        or value.startswith("-")
+        or ".." in value
+        or not _SAFE_REF_RE.match(value)
+    ):
         msg = f"Unsafe {label} for git: {value!r}"
+        logger.warning(
+            WORKSPACE_SETUP_FAILED,
+            label=label,
+            value=value,
+            error=msg,
+        )
         raise WorkspaceSetupError(msg)
 
 
@@ -95,11 +110,13 @@ class PlannerWorktreeStrategy:
     async def _run_git(
         self,
         *args: str,
+        cmd_timeout: float = 60.0,
     ) -> tuple[int, str, str]:
         """Run a git command in the repository root.
 
         Args:
             *args: Git command arguments.
+            cmd_timeout: Maximum seconds to wait for the command.
 
         Returns:
             Tuple of (return_code, stdout, stderr).
@@ -111,7 +128,21 @@ class PlannerWorktreeStrategy:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout_bytes, stderr_bytes = await proc.communicate()
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=cmd_timeout,
+            )
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            msg = f"git {args[0] if args else ''} timed out after {cmd_timeout}s"
+            logger.exception(
+                WORKSPACE_SETUP_FAILED,
+                error=msg,
+                args=args,
+            )
+            return (-1, "", msg)
         rc = proc.returncode if proc.returncode is not None else -1
         return (
             rc,
@@ -155,7 +186,7 @@ class PlannerWorktreeStrategy:
                 raise WorkspaceLimitError(msg)
 
             workspace_id = str(uuid4())
-            branch_name = f"workspace/{request.task_id}"
+            branch_name = f"workspace/{request.task_id}/{workspace_id}"
             worktree_dir = self._resolve_worktree_path(workspace_id)
 
             logger.info(
@@ -187,7 +218,18 @@ class PlannerWorktreeStrategy:
             )
             if rc != 0:
                 # Clean up the branch we just created
-                await self._run_git("branch", "-D", branch_name)
+                cleanup_rc, _, cleanup_stderr = await self._run_git(
+                    "branch",
+                    "-D",
+                    branch_name,
+                )
+                if cleanup_rc != 0:
+                    logger.warning(
+                        WORKSPACE_SETUP_FAILED,
+                        workspace_id=workspace_id,
+                        error="Branch cleanup after worktree"
+                        f" failure: {cleanup_stderr}",
+                    )
                 logger.warning(
                     WORKSPACE_SETUP_FAILED,
                     workspace_id=workspace_id,
@@ -237,6 +279,9 @@ class PlannerWorktreeStrategy:
                 or when ``merge --abort`` fails after a conflict.
         """
         async with self._lock:
+            _validate_git_ref(workspace.branch_name, "branch_name")
+            _validate_git_ref(workspace.base_branch, "base_branch")
+
             start = time.monotonic()
             logger.info(
                 WORKSPACE_MERGE_START,
@@ -270,12 +315,18 @@ class PlannerWorktreeStrategy:
                     "HEAD",
                 )
                 if rc_sha != 0:
-                    logger.warning(
+                    logger.error(
                         WORKSPACE_MERGE_FAILED,
                         workspace_id=workspace.workspace_id,
                         error=f"Failed to get merge commit SHA: {sha_err}",
                     )
-                    sha_out = "unknown"
+                    msg = (
+                        f"Merge succeeded but could not retrieve "
+                        f"commit SHA for workspace "
+                        f"'{workspace.workspace_id}': {sha_err}"
+                    )
+                    raise WorkspaceMergeError(msg)
+                sha_out = sha_out.strip()
                 logger.info(
                     WORKSPACE_MERGE_COMPLETE,
                     workspace_id=workspace.workspace_id,
@@ -341,6 +392,8 @@ class PlannerWorktreeStrategy:
             WorkspaceCleanupError: When any git cleanup operation fails.
         """
         async with self._lock:
+            _validate_git_ref(workspace.branch_name, "branch_name")
+
             logger.info(
                 WORKSPACE_TEARDOWN_START,
                 workspace_id=workspace.workspace_id,
@@ -430,6 +483,9 @@ class PlannerWorktreeStrategy:
 
         Returns:
             Tuple of MergeConflict instances for each conflict.
+
+        Raises:
+            WorkspaceMergeError: When conflict collection fails.
         """
         rc, stdout, stderr = await self._run_git(
             "diff",
@@ -437,15 +493,18 @@ class PlannerWorktreeStrategy:
             "--diff-filter=U",
         )
         if rc != 0:
-            logger.warning(
+            logger.error(
                 WORKSPACE_MERGE_FAILED,
                 error=f"Failed to collect conflict info: {stderr}",
             )
-            return ()
+            msg = f"Failed to collect merge conflict details: {stderr}"
+            raise WorkspaceMergeError(msg)
 
         if not stdout:
             return ()
 
+        # Git diff --diff-filter=U only detects textual conflicts;
+        # semantic conflict detection is not yet implemented
         conflicts: list[MergeConflict] = []
         for line in stdout.splitlines():
             file_path = line.strip()
@@ -453,7 +512,7 @@ class PlannerWorktreeStrategy:
                 conflicts.append(
                     MergeConflict(
                         file_path=file_path,
-                        conflict_type="textual",
+                        conflict_type=ConflictType.TEXTUAL,
                     ),
                 )
         return tuple(conflicts)

@@ -2367,7 +2367,7 @@ ai-company/
 │       │   ├── role.py             # Role model
 │       │   ├── role_catalog.py     # Role catalog
 │       │   └── personality.py     # Personality compatibility scoring
-│       ├── engine/                  # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, task lifecycle, recovery, and shutdown
+│       ├── engine/                  # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, task lifecycle, recovery, shutdown, and workspace isolation
 │       │   ├── errors.py           # Engine error hierarchy
 │       │   ├── prompt.py           # System prompt builder
 │       │   ├── prompt_template.py  # System prompt Jinja2 templates

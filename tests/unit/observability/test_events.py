@@ -103,6 +103,7 @@ from ai_company.observability.events.workspace import (
     WORKSPACE_GROUP_MERGE_COMPLETE,
     WORKSPACE_GROUP_MERGE_START,
     WORKSPACE_GROUP_SETUP_COMPLETE,
+    WORKSPACE_GROUP_SETUP_FAILED,
     WORKSPACE_GROUP_SETUP_START,
     WORKSPACE_GROUP_TEARDOWN_COMPLETE,
     WORKSPACE_GROUP_TEARDOWN_START,
@@ -115,7 +116,7 @@ from ai_company.observability.events.workspace import (
     WORKSPACE_SETUP_COMPLETE,
     WORKSPACE_SETUP_FAILED,
     WORKSPACE_SETUP_START,
-    WORKSPACE_SORT_WORKSPACES_DROPPED,
+    WORKSPACE_SORT_WORKSPACES_APPENDED,
     WORKSPACE_TEARDOWN_COMPLETE,
     WORKSPACE_TEARDOWN_FAILED,
     WORKSPACE_TEARDOWN_START,
@@ -360,4 +361,7 @@ class TestEventConstants:
         assert WORKSPACE_GROUP_SETUP_COMPLETE == "workspace.group.setup.complete"
         assert WORKSPACE_GROUP_TEARDOWN_START == "workspace.group.teardown.start"
         assert WORKSPACE_GROUP_TEARDOWN_COMPLETE == "workspace.group.teardown.complete"
-        assert WORKSPACE_SORT_WORKSPACES_DROPPED == "workspace.sort.workspaces.dropped"
+        assert (
+            WORKSPACE_SORT_WORKSPACES_APPENDED == "workspace.sort.workspaces.appended"
+        )
+        assert WORKSPACE_GROUP_SETUP_FAILED == "workspace.group.setup.failed"

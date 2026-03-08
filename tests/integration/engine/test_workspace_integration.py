@@ -18,6 +18,8 @@ from ai_company.engine.workspace.git_worktree import (
 )
 from ai_company.engine.workspace.models import WorkspaceRequest
 
+pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -128,7 +130,6 @@ def _make_strategy(
 class TestDifferentFilesNoConflict:
     """Two agents edit different files -> merge succeeds."""
 
-    @pytest.mark.integration
     async def test_merge_different_files(
         self,
         tmp_path: Path,
@@ -189,7 +190,6 @@ class TestDifferentFilesNoConflict:
 class TestSameFileConflict:
     """Two agents edit same file -> conflict detected."""
 
-    @pytest.mark.integration
     async def test_merge_same_file_conflict(
         self,
         tmp_path: Path,
@@ -254,7 +254,6 @@ class TestSameFileConflict:
 class TestWorktreeCleanup:
     """Worktree cleanup removes directory and branch."""
 
-    @pytest.mark.integration
     async def test_teardown_removes_directory_and_branch(
         self,
         tmp_path: Path,
@@ -298,7 +297,6 @@ class TestWorktreeCleanup:
 class TestWorktreeLimitEnforcement:
     """Worktree limit is enforced."""
 
-    @pytest.mark.integration
     async def test_limit_raises_workspace_limit_error(
         self,
         tmp_path: Path,

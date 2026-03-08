@@ -17,7 +17,7 @@ class PlannerWorktreesConfig(BaseModel):
         cleanup_on_merge: Whether to remove worktree after merge.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     max_concurrent_worktrees: int = Field(
         default=8,
@@ -51,7 +51,7 @@ class WorkspaceIsolationConfig(BaseModel):
         planner_worktrees: Config for planner-worktrees strategy.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     strategy: NotBlankStr = Field(
         default="planner_worktrees",

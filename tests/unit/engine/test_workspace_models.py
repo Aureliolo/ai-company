@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from ai_company.core.enums import ConflictEscalation
+from ai_company.core.enums import ConflictEscalation, ConflictType
 from ai_company.engine.workspace.models import (
     MergeConflict,
     MergeResult,
@@ -40,7 +40,7 @@ def _make_workspace_request(
 def _make_merge_conflict(
     *,
     file_path: str = "src/main.py",
-    conflict_type: str = "textual",
+    conflict_type: ConflictType = ConflictType.TEXTUAL,
     ours_content: str = "ours",
     theirs_content: str = "theirs",
 ) -> MergeConflict:
@@ -126,11 +126,14 @@ class TestWorkspace:
     @pytest.mark.unit
     def test_all_fields(self) -> None:
         """All fields are stored correctly."""
-        ws = make_workspace(worktree_path="worktrees/ws-001")
+        ws = make_workspace(
+            worktree_path="worktrees/ws-001",
+            branch_name="workspace/task-1/ws-001",
+        )
         assert ws.workspace_id == "ws-001"
         assert ws.task_id == "task-1"
         assert ws.agent_id == "agent-1"
-        assert ws.branch_name == "workspace/task-1"
+        assert ws.branch_name == "workspace/task-1/ws-001"
         assert ws.worktree_path == "worktrees/ws-001"
         assert ws.base_branch == "main"
         assert ws.created_at == _DEFAULT_CREATED_AT
@@ -175,7 +178,7 @@ class TestMergeConflict:
         """All fields stored correctly."""
         mc = _make_merge_conflict()
         assert mc.file_path == "src/main.py"
-        assert mc.conflict_type == "textual"
+        assert mc.conflict_type is ConflictType.TEXTUAL
         assert mc.ours_content == "ours"
         assert mc.theirs_content == "theirs"
 
@@ -197,7 +200,7 @@ class TestMergeConflict:
         """Empty content strings are valid defaults."""
         mc = MergeConflict(
             file_path="a.py",
-            conflict_type="textual",
+            conflict_type=ConflictType.TEXTUAL,
         )
         assert mc.ours_content == ""
         assert mc.theirs_content == ""

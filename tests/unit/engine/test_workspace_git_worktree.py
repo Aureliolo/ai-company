@@ -24,6 +24,9 @@ from ai_company.engine.workspace.protocol import (
 
 from .conftest import make_workspace
 
+# Branch names are now workspace/{task_id}/{workspace_id},
+# so exact branch name matching requires a pattern prefix check.
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -118,7 +121,7 @@ class TestSetupWorkspace:
         assert ws.task_id == "task-1"
         assert ws.agent_id == "agent-1"
         assert ws.base_branch == "main"
-        assert ws.branch_name == "workspace/task-1"
+        assert ws.branch_name.startswith("workspace/task-1/")
         assert ws.workspace_id  # non-empty UUID
         assert ws.worktree_path  # non-empty path
         assert ws.created_at is not None  # datetime
@@ -126,7 +129,9 @@ class TestSetupWorkspace:
         # Verify git command arguments
         assert mock_run_git.call_count == 2
         first_call = mock_run_git.call_args_list[0]
-        assert first_call.args == ("branch", "workspace/task-1", "main")
+        assert first_call.args[0] == "branch"
+        assert first_call.args[1].startswith("workspace/task-1/")
+        assert first_call.args[2] == "main"
         second_call = mock_run_git.call_args_list[1]
         assert second_call.args[0] == "worktree"
         assert second_call.args[1] == "add"
@@ -203,7 +208,9 @@ class TestSetupWorkspace:
         # Verify branch cleanup was attempted
         assert mock_run_git.call_count == 3
         cleanup_call = mock_run_git.call_args_list[2]
-        assert cleanup_call.args == ("branch", "-D", "workspace/task-1")
+        assert cleanup_call.args[0] == "branch"
+        assert cleanup_call.args[1] == "-D"
+        assert cleanup_call.args[2].startswith("workspace/task-1/")
 
     @pytest.mark.unit
     async def test_setup_rejects_unsafe_task_id(self) -> None:
@@ -222,6 +229,17 @@ class TestSetupWorkspace:
             await strategy.setup_workspace(
                 request=_make_request(base_branch="--option"),
             )
+
+    @pytest.mark.unit
+    async def test_setup_rejects_path_traversal(self) -> None:
+        """Task ID with '..' is rejected to prevent namespace escape."""
+        strategy = _make_strategy()
+        request = WorkspaceRequest(
+            task_id="../main",
+            agent_id="agent-1",
+        )
+        with pytest.raises(WorkspaceSetupError, match="Unsafe"):
+            await strategy.setup_workspace(request=request)
 
 
 # ---------------------------------------------------------------------------
@@ -336,8 +354,8 @@ class TestMergeWorkspace:
             await strategy.merge_workspace(workspace=ws)
 
     @pytest.mark.unit
-    async def test_merge_revparse_failure_uses_unknown(self) -> None:
-        """When rev-parse fails, SHA is set to 'unknown'."""
+    async def test_merge_revparse_failure_raises(self) -> None:
+        """When rev-parse fails, WorkspaceMergeError is raised."""
         strategy = _make_strategy()
         ws = make_workspace()
         strategy._active_workspaces[ws.workspace_id] = ws
@@ -350,15 +368,15 @@ class TestMergeWorkspace:
             ],
         )
 
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_run_git",
-            mock_run_git,
+        with (
+            patch.object(
+                PlannerWorktreeStrategy,
+                "_run_git",
+                mock_run_git,
+            ),
+            pytest.raises(WorkspaceMergeError, match="commit SHA"),
         ):
-            result = await strategy.merge_workspace(workspace=ws)
-
-        assert result.success is True
-        assert result.merged_commit_sha == "unknown"
+            await strategy.merge_workspace(workspace=ws)
 
 
 # ---------------------------------------------------------------------------
@@ -498,6 +516,7 @@ class TestConcurrentSetup:
         async def mock_git(
             self_: PlannerWorktreeStrategy,
             *args: str,
+            timeout: float = 60.0,  # noqa: ASYNC109
         ) -> tuple[int, str, str]:
             nonlocal call_count
             call_count += 1
@@ -542,21 +561,22 @@ class TestCollectConflicts:
     """Tests for _collect_conflicts method."""
 
     @pytest.mark.unit
-    async def test_diff_failure_returns_empty(self) -> None:
-        """When git diff fails, returns empty tuple."""
+    async def test_diff_failure_raises(self) -> None:
+        """When git diff fails, WorkspaceMergeError is raised."""
         strategy = _make_strategy()
         mock_run_git = AsyncMock(
             return_value=(1, "", "error: diff failed"),
         )
 
-        with patch.object(
-            PlannerWorktreeStrategy,
-            "_run_git",
-            mock_run_git,
+        with (
+            patch.object(
+                PlannerWorktreeStrategy,
+                "_run_git",
+                mock_run_git,
+            ),
+            pytest.raises(WorkspaceMergeError, match="conflict details"),
         ):
-            result = await strategy._collect_conflicts()
-
-        assert result == ()
+            await strategy._collect_conflicts()
 
     @pytest.mark.unit
     async def test_empty_stdout_returns_empty(self) -> None:

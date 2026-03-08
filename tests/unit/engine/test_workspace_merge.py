@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.core.enums import ConflictEscalation, MergeOrder
+from ai_company.core.enums import ConflictEscalation, ConflictType, MergeOrder
 from ai_company.engine.errors import WorkspaceMergeError
 from ai_company.engine.workspace.merge import MergeOrchestrator
 from ai_company.engine.workspace.models import (
@@ -24,7 +24,7 @@ def _make_conflict(
 ) -> MergeConflict:
     return MergeConflict(
         file_path=file_path,
-        conflict_type="textual",
+        conflict_type=ConflictType.TEXTUAL,
     )
 
 
@@ -202,6 +202,7 @@ class TestConflictEscalation:
         assert len(results) == 1
         assert results[0].success is False
         assert results[0].escalation is ConflictEscalation.HUMAN
+        assert mock_strategy.merge_workspace.await_count == 1
 
     @pytest.mark.unit
     async def test_review_agent_continues_on_conflict(self) -> None:
@@ -333,6 +334,7 @@ class TestMergeErrorHandling:
         # Should stop after exception with HUMAN escalation
         assert len(results) == 1
         assert results[0].success is False
+        assert mock_strategy.merge_workspace.await_count == 1
 
 
 # ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from ai_company.core.enums import ConflictType
 from ai_company.engine.errors import WorkspaceCleanupError, WorkspaceSetupError
 from ai_company.engine.workspace.config import (
     WorkspaceIsolationConfig,
@@ -148,7 +149,7 @@ class TestMergeGroup:
         ws = make_workspace(workspace_id="ws-1")
         conflict = MergeConflict(
             file_path="src/a.py",
-            conflict_type="textual",
+            conflict_type=ConflictType.TEXTUAL,
         )
         mr = MergeResult(
             workspace_id="ws-1",

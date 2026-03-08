@@ -70,6 +70,12 @@ class TestPlannerWorktreesConfig:
         high = PlannerWorktreesConfig(max_concurrent_worktrees=32)
         assert high.max_concurrent_worktrees == 32
 
+    @pytest.mark.unit
+    def test_extra_fields_rejected(self) -> None:
+        """Unknown fields are rejected by extra='forbid'."""
+        with pytest.raises(ValidationError, match="extra"):
+            PlannerWorktreesConfig(unknown_field="value")  # type: ignore[call-arg]
+
 
 # ---------------------------------------------------------------------------
 # WorkspaceIsolationConfig
@@ -115,3 +121,9 @@ class TestWorkspaceIsolationConfig:
         """Empty strategy is rejected by NotBlankStr."""
         with pytest.raises(ValidationError):
             WorkspaceIsolationConfig(strategy="")
+
+    @pytest.mark.unit
+    def test_extra_fields_rejected(self) -> None:
+        """Unknown fields are rejected by extra='forbid'."""
+        with pytest.raises(ValidationError, match="extra"):
+            WorkspaceIsolationConfig(unknown_field="value")  # type: ignore[call-arg]
