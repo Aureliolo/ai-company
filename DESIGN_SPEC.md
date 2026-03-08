@@ -1229,7 +1229,8 @@ The auto-selector uses task structure, artifact count, and (when available from 
 ├──────────┴──────────┴───────────┴───────────┤
 │            Storage Backend                   │
 │   SQLite / PostgreSQL / File-based           │
-│   + Memory Layer (TBD — see §15.2)           │
+│   + Mem0 (initial) / Custom Stack (future)    │
+│     See ADR-001                               │
 └─────────────────────────────────────────────┘
 ```
 
@@ -1248,7 +1249,11 @@ The auto-selector uses task structure, artifact count, and (when available from 
 ```yaml
 memory:
   level: "full"                 # none, session, project, full
-  backend: "sqlite"             # sqlite, postgresql, file (memory layer library is on top, not a backend itself — see §15.2)
+  backend: "mem0"               # mem0, custom, cognee, graphiti (future) — see ADR-001
+  storage:
+    data_dir: "/data/memory"    # mounted Docker volume path
+    vector_store: "qdrant"      # qdrant (embedded), qdrant-external, etc.
+    history_store: "sqlite"     # sqlite, postgresql
   options:
     retention_days: null         # null = forever
     max_memories_per_agent: 10000
@@ -1319,7 +1324,7 @@ org_memory:
 - Handles policy evolution naturally. Agents understand when and why things changed
 - Most complex. Potentially overkill for small companies or local-first use
 
-> **Extensibility:** All backends implement the `OrgMemoryBackend` protocol (`query(context) → list[OrgFact]`, `write(fact, author)`, `list_policies()`). The MVP ships with Backend 1; Backends 2 and 3 are research directions that may be explored if the default approach proves insufficient. The memory layer candidate (currently evaluating Mem0 and alternatives — see §15.2) may provide graph memory capabilities natively, reducing implementation effort for Backends 2-3.
+> **Extensibility:** All backends implement the `OrgMemoryBackend` protocol (`query(context) → list[OrgFact]`, `write(fact, author)`, `list_policies()`). The MVP ships with Backend 1; Backends 2 and 3 are research directions that may be explored if the default approach proves insufficient. The selected memory layer backend Mem0 (ADR-001) provides optional graph memory via Neo4j/FalkorDB, which could reduce implementation effort for Backends 2-3.
 > **Write access control:** Core policies are human-only. ADRs and procedures can be written by senior+ agents. All writes are versioned and auditable. This prevents agents from corrupting shared organizational knowledge while allowing senior agents to document decisions.
 
 ---
@@ -2319,14 +2324,14 @@ Run: ai-company start acme-corp
 └──────────────────────────────────────────────────────────────┘
 ```
 
-### 15.2 Technology Stack (Candidates - TBD After Research)
+### 15.2 Technology Stack
 
 | Component | Technology | Rationale |
 |-----------|-----------|-----------|
 | **Language** | Python 3.14+ | Best AI/ML ecosystem, all major frameworks use it, LiteLLM/MCP and memory layer candidates all Python-native. PEP 649 native lazy annotations, PEP 758 except syntax. |
 | **API Framework** | FastAPI | Async-native, WebSocket support, auto OpenAPI docs, high performance, type-safe with Pydantic |
 | **LLM Abstraction** | LiteLLM | 100+ providers, unified API, built-in cost tracking, retries/fallbacks |
-| **Agent Memory** | Mem0 (initial) → custom stack (future) + SQLite | Mem0 in-process as initial backend behind pluggable `MemoryBackend` protocol (ADR-001). Qdrant embedded + SQLite for persistence. Custom stack (Neo4j + Qdrant external) as future upgrade. Config-driven backend selection |
+| **Agent Memory** | Mem0 (Qdrant + SQLite) → custom (Neo4j + Qdrant) | Mem0 in-process as initial backend behind pluggable `MemoryBackend` protocol ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Qdrant embedded + SQLite for persistence. Custom stack (Neo4j + Qdrant external) as future upgrade. Config-driven backend selection |
 | **Message Bus** | Internal (async queues) → Redis | Start with Python asyncio queues, upgrade to Redis for multi-process/distributed |
 | **Task Queue** | Internal → Celery/Redis | Start simple, scale with Celery when needed |
 | **Database** | SQLite → PostgreSQL | Start lightweight, migrate to Postgres for production/multi-user |
@@ -2619,6 +2624,8 @@ ai-company/
 │   ├── integration/
 │   └── e2e/
 ├── docs/
+│   ├── decisions/
+│   │   └── ADR-001-memory-layer.md
 │   └── getting_started.md
 ├── DESIGN_SPEC.md                   # This document
 ├── README.md
@@ -2633,7 +2640,7 @@ ai-company/
 | Language | Python 3.14+ | TypeScript, Go, Rust | AI ecosystem, LiteLLM/MCP and memory layer candidates are Python-native, PEP 649 lazy annotations, PEP 758 except syntax |
 | API | FastAPI | Flask, Django, aiohttp | Async native, Pydantic integration, auto docs, WebSocket support |
 | LLM Layer | LiteLLM | Direct APIs, OpenRouter only | 100+ providers, cost tracking, fallbacks, load balancing built-in |
-| Memory | TBD + SQLite | Mem0, Zep, Letta, Cognee, ChromaDB, custom | Memory layer library TBD — all candidates under evaluation. Must support episodic, semantic, procedural memory types (§7.1–7.3). Org memory served via `OrgMemoryBackend` protocol (§7.4) |
+| Memory | Mem0 (initial) → custom stack (future) + SQLite | Graphiti, Letta, Cognee, custom | Mem0 in-process as initial backend behind pluggable `MemoryBackend` protocol ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Custom stack (Neo4j + Qdrant) as future upgrade. Must support episodic, semantic, procedural memory types (§7.1–7.3). Org memory served via `OrgMemoryBackend` protocol (§7.4) |
 | Message Bus | asyncio queues → Redis | Kafka, RabbitMQ, NATS | Start simple, Redis well-supported, Kafka overkill for local |
 | Config | YAML + Pydantic | JSON, TOML, Python dicts | Human-friendly, strict validation, good IDE support |
 | CLI | Typer | Click, argparse, Fire | Built on Click, auto-completion, type hints |
@@ -2692,7 +2699,7 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | Full company simulation | Partial | Partial | No | **Yes - complete** |
 | HR (hiring/firing) | No | No | No | **Yes** |
 | Budget management (CFO) | No | No | No | **Yes** |
-| Persistent agent memory | No | No | Basic | **Yes (memory layer TBD — candidates under evaluation)** |
+| Persistent agent memory | No | No | Basic | **Yes (Mem0 initial, custom stack future — ADR-001)** |
 | Agent personalities | Basic | Basic | Basic | **Deep - traits, styles, evolution** |
 | Dynamic team scaling | No | No | Manual | **Yes - auto + manual** |
 | Multiple company types | No | No | Manual | **Yes - templates + builder** |
@@ -2726,12 +2733,12 @@ Rationale:
 - No existing framework covers even 50% of our requirements
 - Our core differentiators (HR, budget, security ops, deep personalities, progressive trust) don't exist in any framework
 - Forking MetaGPT or CrewAI would mean fighting their architecture while adding our features
-- **LiteLLM**, **FastAPI**, **MCP**, and a memory layer library (TBD) give us battle-tested components for the hard parts
+- **LiteLLM**, **FastAPI**, **MCP**, and **Mem0** (memory layer — ADR-001) give us battle-tested components for the hard parts
 - The "company simulation" layer on top is our unique value and must be purpose-built
 
 What we **plan to leverage** (not fork) — subject to evaluation:
 - **LiteLLM** (candidate) - Provider abstraction
-- **Memory layer** (candidates: Mem0, Zep, Letta, Cognee, custom) - Agent memory
+- **Mem0** (selected, ADR-001) - Agent memory (initial backend; custom stack future)
 - **FastAPI** (candidate) - API layer
 - **MCP** - Tool integration standard (strong candidate, emerging industry standard)
 - **Pydantic** (candidate) - Config validation and data models
@@ -2759,7 +2766,7 @@ What we **plan to leverage** (not fork) — subject to evaluation:
 | 11 | What is the agent execution loop architecture? | High | **Resolved** | Multiple configurable loops — see §6.5 Agent Execution Loop |
 | 12 | How should shared organizational memory work? | High | **Resolved** | Modular backends behind protocol — see §7.4 Shared Organizational Memory |
 | 13 | What happens when humans don't respond to approvals? | High | **Resolved** | Configurable timeout policies with task suspension — see §12.4 Approval Timeout |
-| 14 | Which memory layer library to use? | Medium | Open | Mem0, Zep, Letta, Cognee, custom — all candidates, TBD after evaluation (see §15.2) |
+| 14 | Which memory layer library to use? | Medium | **Resolved** | Mem0 (initial) → custom stack (future) behind pluggable `MemoryBackend` protocol — see [ADR-001](docs/decisions/ADR-001-memory-layer.md) |
 | 15 | How to handle agent crashes mid-task? | High | **Resolved** | Pluggable `RecoveryStrategy` protocol — see §6.6 Agent Crash Recovery |
 | 16 | How to test non-deterministic agent behavior? | High | **Resolved** | Scripted providers for unit tests + behavioral assertions for integration — see §15.5 Engineering Conventions |
 | 17 | How to detect orchestration overhead? | Medium | **Resolved** | Incremental LLM call analytics with proxy metrics (M3) → full categorization (M4) — see §10.5 |
@@ -2772,7 +2779,7 @@ What we **plan to leverage** (not fork) — subject to evaluation:
 | Cost explosion from agent loops | High | Budget hard stops, loop detection, max iterations per task |
 | Agent quality degradation with cheap models | Medium | Quality gates, minimum model requirements per task type |
 | Third-party library breaking changes | Medium | Pin versions, integration tests, abstraction layers |
-| Memory retrieval quality | Medium | Evaluate candidates (Mem0, custom, etc.) against our use case |
+| Memory retrieval quality | Medium | Mem0 selected as initial backend (ADR-001). Protocol layer enables backend swap if retrieval quality insufficient. Pin version, test 3.14 compat in CI |
 | Agent personality inconsistency | Low | Strong system prompts, few-shot examples, personality tests |
 | WebSocket scaling | Low | Start local, add Redis pub/sub when needed |
 

@@ -20,7 +20,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Task Assignment** - Pluggable strategies (manual, role-based, load-balanced, cost-optimized, hierarchical, auction) for matching tasks to capable agents
 - **Workspace Isolation** - Git worktree-based concurrent workspace isolation with sequential merge and conflict escalation
 - **Configurable Autonomy** - From fully autonomous to human-approves-everything, with a Security Ops agent in between
-- **Persistent Memory** - Agents remember past decisions, code, relationships (memory layer TBD)
+- **Persistent Memory** - Agents remember past decisions, code, relationships (Mem0 initial, custom stack future)
 - **HR System** - Hire, fire, promote agents. HR agent analyzes skill gaps and proposes candidates
 - **Real Tool Access** - File system, git, code execution, web, databases - role-based and sandboxed
 - **API-First** - REST + WebSocket API with local web dashboard
@@ -28,7 +28,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ## Status
 
-**M3: Single Agent** and **M4: Multi-Agent** in progress (M0 Tooling, M1 Config & Core, M2 Providers — all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
+**M5: Memory & Budget** in progress (M0 Tooling, M1 Config & Core, M2 Providers, M3 Single Agent, M4 Multi-Agent — all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
 
 ## Tech Stack
 
@@ -36,7 +36,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **uv** as package manager, **Hatchling** as build backend
 - **LiteLLM** for multi-provider LLM abstraction
 - **structlog** for structured logging and observability
-- **Memory layer TBD** (candidates: Mem0, Zep, Letta, Cognee, custom) for agent memory (planned)
+- **Mem0** for agent memory (initial backend; custom stack future — see [ADR-001](docs/decisions/ADR-001-memory-layer.md))
 - **MCP** for tool integration (planned)
 - **Vue 3** for web dashboard (planned)
 - **SQLite** → PostgreSQL for data persistence (planned)

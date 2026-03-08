@@ -11,7 +11,10 @@ Accepted
 ## Context
 
 The `memory/` module in `DESIGN_SPEC.md` (sections 7.1-7.4, 15.2) lists the memory
-layer as "TBD — candidates: Mem0, Zep, Letta, Cognee, custom." This decision blocks
+layer as "TBD — candidates: Mem0, Zep, Letta, Cognee, custom." (Note: Zep pivoted to
+**Graphiti** as their open-source temporal knowledge graph offering; the standalone Zep
+product is now a cloud-only service. This evaluation covers Graphiti as Zep's
+successor.) This decision blocks
 the entire M5 milestone:
 
 - **#32** Memory interface design
@@ -22,9 +25,14 @@ the entire M5 milestone:
 
 ### Key Architecture Constraints (from user)
 
-1. Memory/storage runs in **separate container(s)** from the main Python app
+1. **Target architecture**: memory/storage runs in **separate container(s)** from the
+   main Python app. **MVP exception**: an in-process deployment (e.g., Mem0 inside the
+   `ai-company` container) is acceptable as long as it preserves the same protocol
+   boundary and can be moved out-of-process without refactors.
 2. Does NOT have to be Python — any technology, containerized
-3. Main app uses a **thin async Python client** behind a **pluggable protocol**
+3. Main app uses a **thin async Python client** behind a **pluggable protocol**, which
+   must work for both in-process libraries and remote services so storage can
+   transparently move to separate container(s) later.
 4. **Capability discovery** — protocol exposes what each backend supports
 5. Multiple containers are fine (e.g., graph DB + vector store)
 6. **Graph DB**: both Neo4j (server) and embedded options should be evaluated
@@ -92,7 +100,7 @@ projects launched or matured significantly in 2025.
 
 | Candidate | G1 | G2 | G3 | G4 | G5 | G6 | G7 | Result |
 |-----------|----|----|----|----|----|----|----|----|
-| **Mem0** | PASS | PASS (Apache 2.0) | PASS (3 containers) | PASS (v1.0.5, Mar 2026) | PASS (user/agent/app/run_id) | PASS (11+ providers) | PASS (`>=3.9,<4.0`) | **PASS** |
+| **Mem0** | PASS | PASS (Apache 2.0) | PASS (in-process or 3 containers) | PASS (v1.0.5, Mar 2026) | PASS (user/agent/app/run_id) | PASS (11+ providers) | PASS (`>=3.9,<4.0`) | **PASS** |
 | **Graphiti** | PASS | PASS (Apache 2.0) | PASS (compose) | PASS (v0.28.1, Feb 2026) | PASS (group_id) | PASS (4 providers) | PASS (`>=3.10,<4`) | **PASS** |
 | **Letta** | PASS | PASS (Apache 2.0) | PASS | PASS (v0.16.6) | PASS (inherent) | PASS | **FAIL (`<3.14`)** | **ELIMINATED** |
 | **Cognee** | PASS | PASS (Apache 2.0) | PASS (compose) | PASS (v0.5.3) | PASS (multi-tenant) | PASS (8+) | **FAIL (`<3.14`)** | **ELIMINATED** |
@@ -156,7 +164,7 @@ projects launched or matured significantly in 2025.
 | Criterion | Mem0 | Graphiti | Custom Stack |
 |-----------|------|---------|-------------|
 | **S1** Memory types (15) | **9** — episodic+semantic+procedural+short-term. No explicit social/working. Flat fact model needs wrapping | **7** — episodic+semantic+social via graph. No procedural/working | **15** — full control, maps directly to all 5 types |
-| **S2** Retrieval quality (15) | **12** — +26% vs OpenAI Memory on LOCOMO. Well benchmarked | **11** — +18.5% accuracy, 90% latency reduction. Graph traversal powerful | **10** — depends on implementation. Qdrant + Neo4j individually excellent |
+| **S2** Retrieval quality (15) | **12** — +26% vs. OpenAI Memory on LOCOMO. Well benchmarked | **11** — +18.5% accuracy, 90% latency reduction. Graph traversal powerful | **10** — depends on implementation. Qdrant + Neo4j individually excellent |
 | **S3** Graph capability (12) | **8** — graph is supplementary to vector. Neo4j/Kuzu/FalkorDB. Enriches results but doesn't drive retrieval | **12** — graph IS the primary store. Bi-temporal model. Neo4j/FalkorDB/Kuzu | **11** — Neo4j is best-in-class. Full Cypher. Must implement temporal tracking |
 | **S4** Stability (12) | **11** — v1.0+, 49k stars, YC-backed. v1.0.0 had breaking changes but migration guide exists | **7** — pre-1.0 (v0.28), fast-moving API. Docker image freshness issues. Hallucination bugs reported | **10** — each component individually very mature. No unified project risk |
 | **S5** Protocol compat (10) | **6** — factory-based, opinionated memory structure. Needs adapter layer that fights its own abstractions | **7** — GraphDriver ABC is protocol-like. Async-native. Cleaner wrapping than Mem0 | **10** — built from scratch to match our protocol pattern exactly |
@@ -164,8 +172,8 @@ projects launched or matured significantly in 2025.
 | **S7** Async support (8) | **6** — AsyncMemory added after community request (#2495). Works but secondary path | **8** — fully async throughout. Native design | **8** — Neo4j async driver + Qdrant async client both confirmed |
 | **S8** Consolidation (5) | **4** — built-in memory compression engine | **3** — community detection, entity deduplication | **1** — must implement from scratch |
 | **S9** Community/docs (5) | **5** — largest community (49k stars), good docs, YC backing | **4** — 23k stars, growing fast, good docs | **3** — components have great docs but no unified project |
-| **S10** Resource footprint (5) | **3** — 3 containers (FastAPI + PostgreSQL + Neo4j) for full graph | **3** — graph DB container + heavy LLM usage during ingestion | **3** — 2 containers (Neo4j + Qdrant) + embedded FastEmbed |
-| **S11** Operational complexity (5) | **3** — 3 containers, OpenAI defaults need reconfiguration for local | **2** — graph DB + high LLM cost per episode ingestion (1000+ API calls per 10k chars reported) | **4** — 2 well-understood containers, standard config |
+| **S10** Resource footprint (5) | **3** — full graph stack: 3 containers (FastAPI + PostgreSQL + Neo4j); in-process mode lighter (Qdrant embedded + SQLite) | **3** — graph DB container + heavy LLM usage during ingestion | **3** — 2 containers (Neo4j + Qdrant) + embedded FastEmbed |
+| **S11** Operational complexity (5) | **3** — full graph stack: 3 containers, OpenAI defaults need reconfiguration for local; in-process mode simpler | **2** — graph DB + high LLM cost per episode ingestion (1000+ API calls per 10k chars reported) | **4** — 2 well-understood containers, standard config |
 | | | | |
 | **TOTAL** | **70/100** | **66/100** | **80/100** |
 
@@ -316,7 +324,7 @@ When Mem0's limitations become blocking, swap to custom backend via config:
 │  │  │  working  → in-process                             │     │  │
 │  │  │  episodic → Qdrant (external)                      │     │  │
 │  │  │  semantic → Neo4j (external) + Qdrant              │     │  │
-│  │  │  procedur → Qdrant (external)                      │     │  │
+│  │  │  procedural → Qdrant (external)                    │     │  │
 │  │  │  social   → Neo4j (external)                       │     │  │
 │  │  └───────┬──────────────────────┬─────────────────────┘     │  │
 │  └──────────┼──────────────────────┼──────────────────────────┘  │
@@ -452,8 +460,10 @@ Configuration determines which provider to use. Set via YAML config.
 
 - **Initially**: Graph disabled by default. Enable via config when needed.
 - **When enabled**: Mem0 supports Neo4j (recommended), Memgraph, FalkorDB.
-- **Kuzu NOT recommended**: Archived October 2025. Mem0's Kuzu backend has open
-  concurrency bugs. Use Neo4j or FalkorDB instead.
+- **Kuzu NOT recommended**: Archived October 10, 2025. Its architectural
+  concurrency model (single `Database` per process with `Connection` reuse) is not
+  suited for Mem0's multi-threaded context. Use Neo4j or FalkorDB instead, both of
+  which handle concurrent access patterns out of the box.
 - **Future custom backend**: Neo4j as primary graph DB, behind a `GraphDriver`
   protocol for pluggability.
 
@@ -474,7 +484,7 @@ Configuration determines which provider to use. Set via YAML config.
 | Mem0 flat fact model limits 5-type taxonomy | Certain | Low (initial) | Acceptable for initial backend. Metadata tagging provides partial typing. Custom backend replaces when needed |
 | Mem0 API breaking changes | Possible | Medium | Pin `mem0ai` version. Adapter layer isolates changes from protocol consumers |
 | Mem0 Python 3.14 untested (range allows it) | Possible | High | `>=3.9,<4.0` allows 3.14 but no explicit classifier. Test early in CI. Fallback: custom backend |
-| Neo4j CE resource footprint (JVM, ~512MB+ RAM) | Likely | Low | Deferred to Phase 2. Not needed initially. FalkorDB as lighter alternative |
+| Neo4j CE resource footprint (JVM, ~512 MB+ RAM) | Likely | Low | Deferred to Phase 2. Not needed initially. FalkorDB as lighter alternative |
 | Kuzu ecosystem fragmentation | Likely | None | Archived Oct 2025. Not recommended. All candidates support Neo4j/FalkorDB. Not a factor |
 
 ---
@@ -501,7 +511,7 @@ Most flexible backend support (4+ graph DBs, 3+ vector stores), but:
 - **Python `<3.14` not yet supported** — conservative upper bound, no known technical
   blocker. Check future releases.
 - Early-stage maturity (v0.5.x)
-- Could become an alternative backend behind our protocol once 3.14 lands
+- Could become an alternative backend behind our protocol once 3.14 lands.
 
 ### Letta (OS-Inspired Memory)
 
@@ -509,7 +519,7 @@ Architecturally unique self-editing memory paradigm, but:
 - **Python `<3.14` not yet supported** — conservative upper bound. Check future releases.
 - Full agent platform, not a standalone memory layer
 - Cannot use memory component independently
-- Opinionated architecture conflicts with our pluggable protocol design
+- Opinionated architecture conflicts with our pluggable protocol design.
 
 ---
 
@@ -517,15 +527,15 @@ Architecturally unique self-editing memory paradigm, but:
 
 The protocol-based architecture means **the memory layer decision is never final**.
 Any backend that satisfies the `MemoryBackend` protocol can be added as an alternative
-implementation. The custom stack is the **initial backend**, not the only one.
+implementation. **Mem0 is the initial backend**, not the only one.
 
 Future backends can be added without modifying existing code:
 
-| Candidate | Trigger to Revisit | What It Would Replace |
-|-----------|-------------------|----------------------|
-| **Cognee** | Adds Python 3.14 support | Could replace custom graph+vector layer with unified cognify pipeline |
+| Candidate | Trigger to Revisit | Role in the Architecture |
+|-----------|-------------------|--------------------------|
+| **Custom Stack** | Mem0 adapter limitations become blocking | Full 5-type coverage, bi-temporal tracking, graph-native memory |
+| **Cognee** | Adds Python 3.14 support | Could provide a unified graph+vector pipeline behind the memory protocol |
 | **Letta** | Adds Python 3.14 support + standalone memory extraction | Could power self-editing memory for advanced agents |
-| **Mem0** | If 5-type taxonomy support improves | Could replace custom vector layer with managed extraction |
 | **Graphiti** | Reaches v1.0 + reduces LLM ingestion costs | Could power §7.4 Backend 3 (temporal KG) specifically |
 
 Capability discovery flags (`supports_graph`, `supports_temporal`, etc.) enable
@@ -574,7 +584,7 @@ simpler backend.
 - `memify()` self-improving memory is unique
 - 14 search modes including graph completion and temporal
 - Would be a strong contender if Python 3.14 constraint is lifted
-- **Watch**: revisit when/if 3.14 support is added — strongest alternative backend candidate
+- **Watch**: revisit when/if 3.14 support is added — strongest alternative backend candidate.
 
 ### memU — ELIMINATED (G2: AGPL-3.0)
 
