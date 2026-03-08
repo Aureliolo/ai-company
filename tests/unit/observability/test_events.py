@@ -139,6 +139,7 @@ class TestEventConstants:
             "config",
             "conflict",
             "correlation",
+            "decomposition",
             "delegation",
             "execution",
             "git",
@@ -150,6 +151,7 @@ class TestEventConstants:
             "routing",
             "sandbox",
             "task",
+            "task_routing",
             "template",
             "tool",
         }
