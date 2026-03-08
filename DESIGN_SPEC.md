@@ -780,7 +780,8 @@ task:
     - "Unit and integration tests with >80% coverage"
     - "API documentation"
   estimated_complexity: "medium"  # simple, medium, complex, epic
-  task_structure: "parallel"      # sequential, parallel, mixed (M4 — see §6.9)
+  task_structure: "parallel"      # sequential, parallel, mixed (see §6.9)
+  coordination_topology: "auto"  # auto, sas, centralized, decentralized, context_dependent (see §6.9)
   budget_limit: 2.00             # max USD for this task
   deadline: null
   max_retries: 1                 # max reassignment attempts after failure (0 = no retry)
@@ -1158,13 +1159,13 @@ These are complementary systems handling different types of shared state:
 
 ### 6.9 Task Decomposability & Coordination Topology (M4+)
 
-> **MVP: Not applicable.** M3 is single-agent. This section defines M4+ concepts for multi-agent task routing.
+> **Current state:** Task structure classification (`TaskStructureClassifier`), DAG-based decomposition (`DecompositionService`, `DependencyGraph`, `ManualDecompositionStrategy`), status rollup (`StatusRollup`), agent-task scoring (`AgentTaskScorer`), routing (`TaskRoutingService`), and auto topology selection (`TopologySelector`) are implemented in `engine/decomposition/` and `engine/routing/`. LLM-based decomposition strategies and runtime multi-agent coordination are M4+ (see #168).
 
 Empirical research on agent scaling ([Kim et al., 2025](https://arxiv.org/abs/2512.08296) — 180 controlled experiments across 3 LLM families and 4 benchmarks) demonstrates that **task decomposability is the strongest predictor of multi-agent effectiveness** — stronger than team size, model capability, or coordination architecture.
 
 #### Task Structure Classification
 
-Each task will carry a `task_structure` field (to be added to §6.2 Task Definition at M4) classifying its decomposability:
+Each task carries a `task_structure` field (see §6.2 Task Definition) classifying its decomposability:
 
 | Structure | Description | MAS Effect | Example |
 |-----------|-------------|------------|---------|
@@ -1182,7 +1183,7 @@ The communication pattern (§5.1) is configured at the company level, but **coor
 
 | Task Properties | Recommended Topology | Rationale |
 |----------------|---------------------|-----------|
-| `sequential` + few tools (≤4) | **Single-agent (SAS)** | Coordination overhead fragments reasoning capacity on sequential tasks |
+| `sequential` + few artifacts (≤4) | **Single-agent (SAS)** | Coordination overhead fragments reasoning capacity on sequential tasks |
 | `parallel` + structured domain | **Centralized** | Orchestrator decomposes, sub-agents execute in parallel, orchestrator synthesizes. Lowest error amplification (4.4×) |
 | `parallel` + exploratory/open-ended | **Decentralized** | Peer debate enables diverse exploration of high-entropy search spaces |
 | `mixed` | **Context-dependent** | Sequential backbone handled by single agent; parallel sub-tasks delegated to sub-agents |
@@ -1203,7 +1204,7 @@ coordination:
     mixed_default: "context_dependent"  # hybrid: not a single topology — engine selects per-phase
 ```
 
-The auto-selector uses task structure, tool count, and (when available from M5 memory) historical single-agent success rate as inputs. The exact selection logic is an M4 implementation detail — the spec defines the interface and the empirically-grounded heuristics above.
+The auto-selector uses task structure, artifact count, and (when available from M5 memory) historical single-agent success rate as inputs. The exact selection logic is an M4 implementation detail — the spec defines the interface and the empirically-grounded heuristics above.
 
 > **Reference:** These heuristics are derived from Kim et al. (2025), which achieved 87% accuracy predicting optimal architecture from task properties across held-out configurations. Our context differs (role-differentiated agents vs. identical agents), so thresholds should be validated empirically once multi-agent execution is implemented.
 
@@ -2364,7 +2365,7 @@ ai-company/
 │       │   ├── role.py             # Role model
 │       │   ├── role_catalog.py     # Role catalog
 │       │   └── personality.py     # Personality compatibility scoring
-│       ├── engine/                  # Agent orchestration, execution loops, and task lifecycle
+│       ├── engine/                  # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task lifecycle, recovery, and shutdown
 │       │   ├── errors.py           # Engine error hierarchy
 │       │   ├── prompt.py           # System prompt builder
 │       │   ├── prompt_template.py  # System prompt Jinja2 templates
@@ -2385,6 +2386,21 @@ ai-company/
 │       │   ├── parallel_models.py  # AgentAssignment, ParallelExecutionGroup, AgentOutcome, ParallelExecutionResult, ParallelProgress
 │       │   ├── resource_lock.py    # ResourceLock protocol + InMemoryResourceLock
 │       │   ├── shutdown.py        # Graceful shutdown strategy & manager
+│       │   ├── decomposition/      # Task decomposition subsystem
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── classifier.py  # TaskStructureClassifier (sequential/parallel/mixed)
+│       │   │   ├── dag.py         # DependencyGraph (validation, topo sort, parallel groups)
+│       │   │   ├── manual.py      # ManualDecompositionStrategy
+│       │   │   ├── models.py      # SubtaskDefinition, DecompositionPlan, DecompositionResult, SubtaskStatusRollup, DecompositionContext
+│       │   │   ├── protocol.py    # DecompositionStrategy protocol
+│       │   │   ├── rollup.py      # StatusRollup (compute subtask status aggregation)
+│       │   │   └── service.py     # DecompositionService (orchestrates strategy + classifier + DAG)
+│       │   ├── routing/            # Task routing subsystem
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── models.py      # RoutingCandidate, RoutingDecision, RoutingResult, AutoTopologyConfig
+│       │   │   ├── scorer.py      # AgentTaskScorer (skill/role/seniority matching)
+│       │   │   ├── service.py     # TaskRoutingService (routes subtasks to agents)
+│       │   │   └── topology_selector.py # TopologySelector (auto coordination topology)
 │       │   ├── task_engine.py      # Task routing & scheduling (M4)
 │       │   ├── workflow_engine.py  # Workflow orchestration (M4)
 │       │   ├── meeting_engine.py   # Meeting coordination (M4)
@@ -2436,6 +2452,7 @@ ai-company/
 │       │   │   ├── config.py      # CONFIG_* constants
 │       │   │   ├── delegation.py  # DELEGATION_* constants
 │       │   │   ├── correlation.py # CORRELATION_* constants
+│       │   │   ├── decomposition.py # DECOMPOSITION_* constants
 │       │   │   ├── execution.py   # EXECUTION_* constants
 │       │   │   ├── git.py         # GIT_* constants
 │       │   │   ├── parallel.py    # PARALLEL_* constants
@@ -2446,6 +2463,7 @@ ai-company/
 │       │   │   ├── routing.py     # ROUTING_* constants
 │       │   │   ├── sandbox.py     # SANDBOX_* constants
 │       │   │   ├── task.py        # TASK_* constants
+│       │   │   ├── task_routing.py # TASK_ROUTING_* constants
 │       │   │   ├── template.py    # TEMPLATE_* constants
 │       │   │   └── tool.py        # TOOL_* constants
 │       │   ├── processors.py       # Log processors
