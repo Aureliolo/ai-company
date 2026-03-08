@@ -1,8 +1,8 @@
 """Meeting protocol interface (DESIGN_SPEC Section 5.7).
 
-Defines the ``MeetingProtocol`` protocol and the ``AgentCaller`` type
-alias used to invoke agents during a meeting without coupling to the
-engine layer.
+Defines the ``MeetingProtocol`` protocol, the ``ConflictDetector``
+protocol, and the ``AgentCaller`` type alias used to invoke agents
+during a meeting without coupling to the engine layer.
 """
 
 from collections.abc import Awaitable, Callable
@@ -33,6 +33,28 @@ Signature: ``(description, assignee_id, priority: Priority) -> None``
 Used by the orchestrator to optionally create tasks from extracted
 action items.
 """
+
+
+@runtime_checkable
+class ConflictDetector(Protocol):
+    """Strategy for detecting conflicts in agent responses.
+
+    Used by ``StructuredPhasesProtocol`` to determine whether a
+    discussion round is needed.  The default implementation uses
+    keyword matching; alternative implementations might use
+    structured JSON output or tool calling for more robust detection.
+    """
+
+    def detect(self, response_content: str) -> bool:
+        """Determine whether the response indicates conflicts.
+
+        Args:
+            response_content: The conflict-check agent response text.
+
+        Returns:
+            True if conflicts were detected, False otherwise.
+        """
+        ...
 
 
 @runtime_checkable

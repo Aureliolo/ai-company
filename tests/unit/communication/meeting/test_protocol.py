@@ -9,6 +9,7 @@ from ai_company.communication.meeting.models import (  # noqa: TC001
 )
 from ai_company.communication.meeting.protocol import (
     AgentCaller,
+    ConflictDetector,
     MeetingProtocol,
     TaskCreator,
 )
@@ -46,6 +47,27 @@ class TestMeetingProtocolInterface:
             pass
 
         assert not isinstance(_NotAProtocol(), MeetingProtocol)
+
+
+@pytest.mark.unit
+class TestConflictDetectorInterface:
+    """Tests for ConflictDetector as a runtime-checkable protocol."""
+
+    def test_is_runtime_checkable(self) -> None:
+        assert getattr(ConflictDetector, "_is_runtime_protocol", False)
+
+    def test_conforming_class_is_instance(self) -> None:
+        class _MockDetector:
+            def detect(self, response_content: str) -> bool:
+                return False
+
+        assert isinstance(_MockDetector(), ConflictDetector)
+
+    def test_non_conforming_class_is_not_instance(self) -> None:
+        class _NotADetector:
+            pass
+
+        assert not isinstance(_NotADetector(), ConflictDetector)
 
 
 @pytest.mark.unit

@@ -650,7 +650,7 @@ conflict_resolution:
 
 Meetings (§5.1 Pattern 3) follow configurable protocols that determine how agents interact during structured multi-agent conversations. Different meeting types naturally suit different protocols. All protocols implement a `MeetingProtocol` protocol, making the system extensible — new protocols can be registered and selected per meeting type. Cost bounds are enforced by `duration_tokens` in meeting config (§5.4).
 
-> **Current state (M4 complete):** All 3 meeting protocols are implemented in `communication/meeting/`: `RoundRobinProtocol`, `PositionPapersProtocol`, and `StructuredPhasesProtocol`. The `MeetingOrchestrator` runs meetings end-to-end with token budget enforcement via `TokenBudgetTracker`. All protocols implement the `MeetingProtocol` protocol interface.
+> **Current state (M4 complete):** All 3 meeting protocols are implemented in `communication/meeting/`: `RoundRobinProtocol`, `PositionPapersProtocol`, and `StructuredPhasesProtocol`. The `MeetingOrchestrator` runs meetings end-to-end with token budget enforcement via `TokenTracker`. All protocols implement the `MeetingProtocol` protocol interface.
 
 #### Protocol 1: Round-Robin Transcript
 
@@ -2418,8 +2418,8 @@ ai-company/
 │       │   ├── meeting/             # Meeting protocol subsystem
 │       │   │   ├── __init__.py    # Package exports
 │       │   │   ├── _prompts.py    # LLM prompt templates for meeting phases
-│       │   │   ├── _token_tracker.py # TokenBudgetTracker for duration_tokens enforcement
-│       │   │   ├── config.py      # MeetingConfig, protocol-specific config models
+│       │   │   ├── _token_tracker.py # TokenTracker for duration_tokens enforcement
+│       │   │   ├── config.py      # MeetingProtocolConfig, protocol-specific config models
 │       │   │   ├── enums.py       # MeetingProtocolType, MeetingPhase enums
 │       │   │   ├── errors.py      # Meeting error hierarchy
 │       │   │   ├── models.py      # MeetingRecord, AgendaItem, ActionItem, etc.

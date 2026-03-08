@@ -7,6 +7,9 @@ from ai_company.communication.meeting.enums import (
     MeetingPhase,
     MeetingProtocolType,
 )
+from ai_company.communication.meeting.errors import (
+    MeetingBudgetExhaustedError,
+)
 from ai_company.communication.meeting.models import MeetingAgenda  # noqa: TC001
 from ai_company.communication.meeting.position_papers import (
     PositionPapersProtocol,
@@ -252,3 +255,26 @@ class TestPositionPapersExecution:
 
         # 1 paper + 1 synthesis = 2
         assert len(minutes.contributions) == 2
+
+    async def test_budget_exhaustion_before_synthesis(
+        self,
+        simple_agenda: MeetingAgenda,
+        leader_id: str,
+        meeting_id: str,
+    ) -> None:
+        """Tight budget triggers MeetingBudgetExhaustedError before synthesis."""
+        caller = make_mock_agent_caller(
+            input_tokens=30,
+            output_tokens=30,
+        )
+        protocol = PositionPapersProtocol(config=PositionPapersConfig())
+
+        with pytest.raises(MeetingBudgetExhaustedError):
+            await protocol.run(
+                meeting_id=meeting_id,
+                agenda=simple_agenda,
+                leader_id=leader_id,
+                participant_ids=("agent-a", "agent-b", "agent-c"),
+                agent_caller=caller,
+                token_budget=60,  # 3 papers x 60 tokens = 180, exceeds 60
+            )

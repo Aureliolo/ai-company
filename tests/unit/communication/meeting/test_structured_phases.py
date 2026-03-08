@@ -11,8 +11,9 @@ from ai_company.communication.meeting.errors import (
     MeetingBudgetExhaustedError,
 )
 from ai_company.communication.meeting.models import MeetingAgenda  # noqa: TC001
-from ai_company.communication.meeting.protocol import MeetingProtocol
+from ai_company.communication.meeting.protocol import ConflictDetector, MeetingProtocol
 from ai_company.communication.meeting.structured_phases import (
+    KeywordConflictDetector,
     StructuredPhasesProtocol,
 )
 from tests.unit.communication.meeting.conftest import (
@@ -346,3 +347,117 @@ class TestStructuredPhasesExecution:
 
         # 1 input + 1 conflict check + 1 synthesis = 3 contributions
         assert len(minutes.contributions) == 3
+
+
+@pytest.mark.unit
+class TestStructuredPhasesConflictDetector:
+    """Tests for pluggable conflict detector."""
+
+    def test_keyword_detector_conforms_to_protocol(self) -> None:
+        detector = KeywordConflictDetector()
+        assert isinstance(detector, ConflictDetector)
+
+    def test_keyword_detector_detects_yes(self) -> None:
+        detector = KeywordConflictDetector()
+        assert detector.detect("CONFLICTS: YES\nSome disagreement") is True
+
+    def test_keyword_detector_detects_no(self) -> None:
+        detector = KeywordConflictDetector()
+        assert detector.detect("CONFLICTS: NO\nAll agree") is False
+
+    def test_keyword_detector_case_insensitive(self) -> None:
+        detector = KeywordConflictDetector()
+        assert detector.detect("conflicts: yes") is True
+        assert detector.detect("Conflicts: Yes") is True
+
+    async def test_custom_conflict_detector(
+        self,
+        simple_agenda: MeetingAgenda,
+        leader_id: str,
+        meeting_id: str,
+    ) -> None:
+        """Custom detector overrides default keyword matching."""
+
+        class _AlwaysConflict:
+            def detect(self, response_content: str) -> bool:
+                return True
+
+        responses = {
+            "leader-agent": [
+                "CONFLICTS: NO\nAll agree.",
+                "Synthesis after discussion.",
+            ],
+        }
+        caller = make_mock_agent_caller(responses=responses)
+        config = StructuredPhasesConfig(
+            skip_discussion_if_no_conflicts=True,
+        )
+        protocol = StructuredPhasesProtocol(
+            config=config,
+            conflict_detector=_AlwaysConflict(),
+        )
+
+        minutes = await protocol.run(
+            meeting_id=meeting_id,
+            agenda=simple_agenda,
+            leader_id=leader_id,
+            participant_ids=("agent-a",),
+            agent_caller=caller,
+            token_budget=10000,
+        )
+
+        # Custom detector returns True, so discussion happens despite
+        # leader saying "CONFLICTS: NO"
+        assert minutes.conflicts_detected is True
+        discussion_contribs = [
+            c
+            for c in minutes.contributions
+            if c.phase == MeetingPhase.DISCUSSION and c.agent_id != leader_id
+        ]
+        assert len(discussion_contribs) == 1
+
+    async def test_never_conflict_detector_skips_discussion(
+        self,
+        simple_agenda: MeetingAgenda,
+        leader_id: str,
+        meeting_id: str,
+    ) -> None:
+        """Custom detector that never detects conflicts skips discussion."""
+
+        class _NeverConflict:
+            def detect(self, response_content: str) -> bool:
+                return False
+
+        responses = {
+            "leader-agent": [
+                "CONFLICTS: YES\nBig disagreement!",
+                "Synthesis.",
+            ],
+        }
+        caller = make_mock_agent_caller(responses=responses)
+        config = StructuredPhasesConfig(
+            skip_discussion_if_no_conflicts=True,
+        )
+        protocol = StructuredPhasesProtocol(
+            config=config,
+            conflict_detector=_NeverConflict(),
+        )
+
+        minutes = await protocol.run(
+            meeting_id=meeting_id,
+            agenda=simple_agenda,
+            leader_id=leader_id,
+            participant_ids=("agent-a",),
+            agent_caller=caller,
+            token_budget=10000,
+        )
+
+        # Custom detector returns False, so discussion is skipped despite
+        # leader saying "CONFLICTS: YES"
+        assert minutes.conflicts_detected is False
+        discussion_contribs = [
+            c
+            for c in minutes.contributions
+            if c.phase == MeetingPhase.DISCUSSION and c.agent_id != leader_id
+        ]
+        assert len(discussion_contribs) == 0

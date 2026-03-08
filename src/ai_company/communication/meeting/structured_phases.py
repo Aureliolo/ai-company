@@ -26,7 +26,10 @@ from ai_company.communication.meeting.models import (
     MeetingContribution,
     MeetingMinutes,
 )
-from ai_company.communication.meeting.protocol import AgentCaller  # noqa: TC001
+from ai_company.communication.meeting.protocol import (
+    AgentCaller,  # noqa: TC001
+    ConflictDetector,  # noqa: TC001
+)
 from ai_company.observability import get_logger
 from ai_company.observability.events.meeting import (
     MEETING_AGENT_CALLED,
@@ -42,6 +45,19 @@ from ai_company.observability.events.meeting import (
 )
 
 logger = get_logger(__name__)
+
+
+class KeywordConflictDetector:
+    """Default conflict detector using keyword matching.
+
+    Looks for the string ``"CONFLICTS: YES"`` (case-insensitive) in
+    the agent response.  This is the simplest approach and works well
+    when agents are prompted to include this marker.
+    """
+
+    def detect(self, response_content: str) -> bool:
+        """Detect conflicts via keyword matching."""
+        return "CONFLICTS: YES" in response_content.upper()
 
 
 def _build_input_prompt(agenda_text: str, agent_id: str) -> str:
@@ -126,12 +142,22 @@ class StructuredPhasesProtocol:
 
     Args:
         config: Structured phases protocol configuration.
+        conflict_detector: Strategy for detecting conflicts in agent
+            responses.  Defaults to ``KeywordConflictDetector``.
     """
 
-    __slots__ = ("_config",)
+    __slots__ = ("_config", "_conflict_detector")
 
-    def __init__(self, config: StructuredPhasesConfig) -> None:
+    def __init__(
+        self,
+        config: StructuredPhasesConfig,
+        *,
+        conflict_detector: ConflictDetector | None = None,
+    ) -> None:
         self._config = config
+        self._conflict_detector: ConflictDetector = (
+            conflict_detector or KeywordConflictDetector()
+        )
 
     def get_protocol_type(self) -> MeetingProtocolType:
         """Return the protocol type."""
@@ -148,6 +174,9 @@ class StructuredPhasesProtocol:
         token_budget: int,
     ) -> MeetingMinutes:
         """Execute the structured-phases meeting protocol.
+
+        Each sub-method returns its own contributions rather than
+        mutating a shared list, keeping data flow explicit.
 
         Args:
             meeting_id: Unique meeting identifier.
@@ -166,7 +195,6 @@ class StructuredPhasesProtocol:
         """
         started_at = datetime.now(UTC)
         tracker = TokenTracker(budget=token_budget)
-        contributions: list[MeetingContribution] = []
         agenda_text = build_agenda_prompt(agenda)
         turn_number = 0
         conflicts_detected = False
@@ -191,14 +219,19 @@ class StructuredPhasesProtocol:
             agent_caller=agent_caller,
             tracker=tracker,
         )
-        contributions.extend(input_contributions)
         turn_number = len(participant_ids)
 
         # Phase 3: Discussion (conditional on conflicts)
-        discussion: list[tuple[str, str]] = []
+        discussion_contributions: list[MeetingContribution] = []
+        discussion_pairs: list[tuple[str, str]] = []
 
         if not tracker.is_exhausted:
-            conflicts_detected, turn_number = await self._run_discussion(
+            (
+                conflicts_detected,
+                turn_number,
+                discussion_contributions,
+                discussion_pairs,
+            ) = await self._run_discussion(
                 meeting_id=meeting_id,
                 agenda_text=agenda_text,
                 leader_id=leader_id,
@@ -207,22 +240,33 @@ class StructuredPhasesProtocol:
                 tracker=tracker,
                 token_budget=token_budget,
                 inputs=inputs,
-                contributions=contributions,
-                discussion=discussion,
                 turn_number=turn_number,
+            )
+        else:
+            logger.warning(
+                MEETING_BUDGET_EXHAUSTED,
+                meeting_id=meeting_id,
+                tokens_used=tracker.used,
+                token_budget=token_budget,
+                skipped_phase=MeetingPhase.DISCUSSION,
             )
 
         # Phase 4: Synthesis
-        summary = await self._run_synthesis(
+        summary, synthesis_contribution = await self._run_synthesis(
             meeting_id=meeting_id,
             agenda_text=agenda_text,
             leader_id=leader_id,
             agent_caller=agent_caller,
             tracker=tracker,
             inputs=inputs,
-            discussion=discussion,
-            contributions=contributions,
+            discussion=discussion_pairs,
             turn_number=turn_number,
+        )
+
+        contributions = (
+            *input_contributions,
+            *discussion_contributions,
+            synthesis_contribution,
         )
 
         logger.debug(
@@ -241,7 +285,7 @@ class StructuredPhasesProtocol:
             leader_id=leader_id,
             participant_ids=participant_ids,
             agenda=agenda,
-            contributions=tuple(contributions),
+            contributions=contributions,
             summary=summary,
             conflicts_detected=conflicts_detected,
             total_input_tokens=tracker.input_tokens,
@@ -336,13 +380,18 @@ class StructuredPhasesProtocol:
             for idx, pid in enumerate(participant_ids):
                 tg.create_task(_collect_input(pid, idx, tokens_per_agent))
 
-        # Build final lists in deterministic order (by turn number)
-        inputs: list[tuple[str, str]] = [
-            item for item in result_inputs if item is not None
-        ]
-        input_contributions: list[MeetingContribution] = [
-            c for c in result_contributions if c is not None
-        ]
+        # All slots must be filled — TaskGroup propagates ExceptionGroup
+        # on any task failure, so reaching this point means all succeeded.
+        assert all(r is not None for r in result_inputs), (  # noqa: S101
+            f"Expected {num_participants} inputs but some slots are None"
+        )
+        assert all(c is not None for c in result_contributions), (  # noqa: S101
+            f"Expected {num_participants} contributions but some slots are None"
+        )
+        inputs: list[tuple[str, str]] = list(result_inputs)  # type: ignore[arg-type]
+        input_contributions: list[MeetingContribution] = list(
+            result_contributions,  # type: ignore[arg-type]
+        )
 
         logger.info(
             MEETING_PHASE_COMPLETED,
@@ -364,14 +413,18 @@ class StructuredPhasesProtocol:
         tracker: TokenTracker,
         token_budget: int,
         inputs: list[tuple[str, str]],
-        contributions: list[MeetingContribution],
-        discussion: list[tuple[str, str]],
         turn_number: int,
-    ) -> tuple[bool, int]:
+    ) -> tuple[
+        bool,
+        int,
+        list[MeetingContribution],
+        list[tuple[str, str]],
+    ]:
         """Run conflict detection and optional discussion phase.
 
         Returns:
-            Tuple of (conflicts_detected, updated_turn_number).
+            Tuple of (conflicts_detected, updated_turn_number,
+            contributions, discussion_pairs).
         """
         conflict_prompt = _build_conflict_check_prompt(
             agenda_text,
@@ -404,10 +457,12 @@ class StructuredPhasesProtocol:
             output_tokens=conflict_response.output_tokens,
             timestamp=datetime.now(UTC),
         )
-        contributions.append(conflict_contribution)
+        discussion_contributions = [conflict_contribution]
         turn_number += 1
 
-        conflicts_detected = "CONFLICTS: YES" in conflict_response.content.upper()
+        conflicts_detected = self._conflict_detector.detect(
+            conflict_response.content,
+        )
 
         logger.info(
             MEETING_CONFLICT_DETECTED,
@@ -420,8 +475,14 @@ class StructuredPhasesProtocol:
             not self._config.skip_discussion_if_no_conflicts
         )
 
+        discussion_pairs: list[tuple[str, str]] = []
+
         if should_discuss and not tracker.is_exhausted:
-            turn_number = await self._run_discussion_round(
+            (
+                turn_number,
+                round_contributions,
+                round_pairs,
+            ) = await self._run_discussion_round(
                 meeting_id=meeting_id,
                 agenda_text=agenda_text,
                 participant_ids=participant_ids,
@@ -430,12 +491,17 @@ class StructuredPhasesProtocol:
                 token_budget=token_budget,
                 inputs=inputs,
                 conflict_analysis=conflict_response.content,
-                contributions=contributions,
-                discussion=discussion,
                 turn_number=turn_number,
             )
+            discussion_contributions.extend(round_contributions)
+            discussion_pairs = round_pairs
 
-        return conflicts_detected, turn_number
+        return (
+            conflicts_detected,
+            turn_number,
+            discussion_contributions,
+            discussion_pairs,
+        )
 
     async def _run_discussion_round(  # noqa: PLR0913
         self,
@@ -448,14 +514,13 @@ class StructuredPhasesProtocol:
         token_budget: int,
         inputs: list[tuple[str, str]],
         conflict_analysis: str,
-        contributions: list[MeetingContribution],
-        discussion: list[tuple[str, str]],
         turn_number: int,
-    ) -> int:
+    ) -> tuple[int, list[MeetingContribution], list[tuple[str, str]]]:
         """Run the discussion round with participants.
 
         Returns:
-            Updated turn number.
+            Tuple of (updated_turn_number, contributions,
+            discussion_pairs).
         """
         logger.info(
             MEETING_PHASE_STARTED,
@@ -471,6 +536,9 @@ class StructuredPhasesProtocol:
             1,
             discussion_budget // max(1, len(participant_ids)),
         )
+
+        round_contributions: list[MeetingContribution] = []
+        round_discussion: list[tuple[str, str]] = []
 
         for pid in participant_ids:
             if tracker.is_exhausted:
@@ -515,8 +583,8 @@ class StructuredPhasesProtocol:
                 output_tokens=disc_response.output_tokens,
                 timestamp=datetime.now(UTC),
             )
-            contributions.append(disc_contribution)
-            discussion.append((pid, disc_response.content))
+            round_contributions.append(disc_contribution)
+            round_discussion.append((pid, disc_response.content))
 
             logger.debug(
                 MEETING_CONTRIBUTION_RECORDED,
@@ -529,10 +597,10 @@ class StructuredPhasesProtocol:
             MEETING_PHASE_COMPLETED,
             meeting_id=meeting_id,
             phase=MeetingPhase.DISCUSSION,
-            discussion_contributions=len(discussion),
+            discussion_contributions=len(round_discussion),
         )
 
-        return turn_number
+        return turn_number, round_contributions, round_discussion
 
     async def _run_synthesis(  # noqa: PLR0913
         self,
@@ -544,13 +612,12 @@ class StructuredPhasesProtocol:
         tracker: TokenTracker,
         inputs: list[tuple[str, str]],
         discussion: list[tuple[str, str]],
-        contributions: list[MeetingContribution],
         turn_number: int,
-    ) -> str:
+    ) -> tuple[str, MeetingContribution]:
         """Run the synthesis phase.
 
         Returns:
-            Summary text.
+            Tuple of (summary_text, synthesis_contribution).
 
         Raises:
             MeetingBudgetExhaustedError: If the token budget is
@@ -604,7 +671,6 @@ class StructuredPhasesProtocol:
             output_tokens=synthesis_response.output_tokens,
             timestamp=datetime.now(UTC),
         )
-        contributions.append(synthesis_contribution)
 
         logger.info(
             MEETING_SUMMARY_GENERATED,
@@ -617,4 +683,4 @@ class StructuredPhasesProtocol:
             phase=MeetingPhase.SYNTHESIS,
         )
 
-        return summary
+        return summary, synthesis_contribution

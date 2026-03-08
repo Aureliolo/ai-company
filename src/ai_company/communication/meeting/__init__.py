@@ -41,11 +41,13 @@ from ai_company.communication.meeting.position_papers import (
 )
 from ai_company.communication.meeting.protocol import (
     AgentCaller,
+    ConflictDetector,
     MeetingProtocol,
     TaskCreator,
 )
 from ai_company.communication.meeting.round_robin import RoundRobinProtocol
 from ai_company.communication.meeting.structured_phases import (
+    KeywordConflictDetector,
     StructuredPhasesProtocol,
 )
 
@@ -53,6 +55,8 @@ __all__ = [
     "ActionItem",
     "AgentCaller",
     "AgentResponse",
+    "ConflictDetector",
+    "KeywordConflictDetector",
     "MeetingAgenda",
     "MeetingAgendaItem",
     "MeetingAgentError",

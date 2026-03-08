@@ -139,6 +139,7 @@ class RoundRobinProtocol:
 
         # Summary phase
         summary = ""
+        all_contributions: tuple[MeetingContribution, ...] = tuple(contributions)
         if self._config.leader_summarizes and not tracker.is_exhausted:
             summary, summary_contribution = await self._run_summary(
                 meeting_id=meeting_id,
@@ -149,7 +150,7 @@ class RoundRobinProtocol:
                 transcript=transcript,
                 turn_number=turn_number,
             )
-            contributions.append(summary_contribution)
+            all_contributions = (*contributions, summary_contribution)
         elif self._config.leader_summarizes and tracker.is_exhausted:
             logger.warning(
                 MEETING_SUMMARY_SKIPPED,
@@ -187,7 +188,7 @@ class RoundRobinProtocol:
             leader_id=leader_id,
             participant_ids=participant_ids,
             agenda=agenda,
-            contributions=tuple(contributions),
+            contributions=all_contributions,
             summary=summary,
             total_input_tokens=tracker.input_tokens,
             total_output_tokens=tracker.output_tokens,

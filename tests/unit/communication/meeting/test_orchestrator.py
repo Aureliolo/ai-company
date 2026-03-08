@@ -1,6 +1,7 @@
 """Tests for meeting orchestrator."""
 
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -15,21 +16,24 @@ from ai_company.communication.meeting.errors import (
     MeetingParticipantError,
     MeetingProtocolNotFoundError,
 )
-from ai_company.communication.meeting.models import MeetingAgenda  # noqa: TC001
+from ai_company.communication.meeting.models import (
+    ActionItem,
+    MeetingAgenda,
+    MeetingMinutes,
+)
 from ai_company.communication.meeting.orchestrator import (
     MeetingOrchestrator,
+    _format_exception,
 )
 from ai_company.communication.meeting.position_papers import (
     PositionPapersProtocol,
 )
 from ai_company.communication.meeting.protocol import MeetingProtocol  # noqa: TC001
 from ai_company.communication.meeting.round_robin import RoundRobinProtocol
+from ai_company.core.enums import Priority
 from tests.unit.communication.meeting.conftest import (
     make_mock_agent_caller,
 )
-
-if TYPE_CHECKING:
-    from ai_company.core.enums import Priority
 
 
 def _make_orchestrator(
@@ -53,6 +57,35 @@ def _make_orchestrator(
         agent_caller=caller,
         task_creator=task_creator,  # type: ignore[arg-type]
     )
+
+
+@pytest.mark.unit
+class TestFormatException:
+    """Tests for _format_exception helper."""
+
+    def test_simple_exception(self) -> None:
+        exc = RuntimeError("something broke")
+        assert _format_exception(exc) == "something broke"
+
+    def test_exception_group(self) -> None:
+        group = ExceptionGroup(
+            "errors",
+            [RuntimeError("err1"), ValueError("err2")],
+        )
+        result = _format_exception(group)
+        assert "Multiple errors:" in result
+        assert "RuntimeError: err1" in result
+        assert "ValueError: err2" in result
+
+    def test_nested_exception_group(self) -> None:
+        inner = ExceptionGroup("inner", [TypeError("bad type")])
+        outer = ExceptionGroup(
+            "outer",
+            [RuntimeError("outer err"), inner],
+        )
+        result = _format_exception(outer)
+        assert "RuntimeError: outer err" in result
+        assert "TypeError: bad type" in result
 
 
 @pytest.mark.unit
@@ -303,15 +336,14 @@ class TestMeetingOrchestratorBudgetExhaustion:
             participant_ids=("agent-a",),
             token_budget=1,
         )
-        assert record.status in (
-            MeetingStatus.BUDGET_EXHAUSTED,
-            MeetingStatus.FAILED,
-        )
+        assert record.status == MeetingStatus.BUDGET_EXHAUSTED
         assert record.error_message is not None
 
-    async def test_zero_token_budget_raises(
+    @pytest.mark.parametrize("budget", [0, -1, -100])
+    async def test_non_positive_token_budget_raises(
         self,
         simple_agenda: MeetingAgenda,
+        budget: int,
     ) -> None:
         orchestrator = _make_orchestrator()
         with pytest.raises(ValueError, match="positive"):
@@ -321,28 +353,77 @@ class TestMeetingOrchestratorBudgetExhaustion:
                 agenda=simple_agenda,
                 leader_id="leader",
                 participant_ids=("agent-a",),
-                token_budget=0,
-            )
-
-    async def test_negative_token_budget_raises(
-        self,
-        simple_agenda: MeetingAgenda,
-    ) -> None:
-        orchestrator = _make_orchestrator()
-        with pytest.raises(ValueError, match="positive"):
-            await orchestrator.run_meeting(
-                meeting_type_name="standup",
-                protocol_config=MeetingProtocolConfig(),
-                agenda=simple_agenda,
-                leader_id="leader",
-                participant_ids=("agent-a",),
-                token_budget=-100,
+                token_budget=budget,
             )
 
 
 @pytest.mark.unit
 class TestMeetingOrchestratorTaskCreation:
     """Tests for task creation from action items."""
+
+    async def test_task_creator_called_with_correct_args(self) -> None:
+        """Task creator receives correct args from action items."""
+        created_tasks: list[tuple[str, str | None, Priority]] = []
+
+        def _creator(
+            desc: str,
+            assignee: str | None,
+            priority: Priority,
+        ) -> None:
+            created_tasks.append((desc, assignee, priority))
+
+        now = datetime.now(UTC)
+        agenda = MeetingAgenda(title="Test")
+        action_items = (
+            ActionItem(
+                description="Deploy API",
+                assignee_id="agent-ops",
+                priority=Priority.HIGH,
+            ),
+            ActionItem(description="Write docs"),
+        )
+        minutes = MeetingMinutes(
+            meeting_id="m-1",
+            protocol_type=MeetingProtocolType.ROUND_ROBIN,
+            leader_id="leader",
+            participant_ids=("agent-a",),
+            agenda=agenda,
+            action_items=action_items,
+            started_at=now,
+            ended_at=now,
+        )
+
+        # Use a mock protocol that returns pre-built minutes
+        mock_protocol = MagicMock()
+        mock_protocol.get_protocol_type.return_value = MeetingProtocolType.ROUND_ROBIN
+        mock_protocol.run = AsyncMock(return_value=minutes)
+
+        registry: dict[MeetingProtocolType, MeetingProtocol] = {
+            MeetingProtocolType.ROUND_ROBIN: mock_protocol,
+        }
+        orchestrator = MeetingOrchestrator(
+            protocol_registry=registry,
+            agent_caller=make_mock_agent_caller(),
+            task_creator=_creator,
+        )
+
+        record = await orchestrator.run_meeting(
+            meeting_type_name="standup",
+            protocol_config=MeetingProtocolConfig(),
+            agenda=agenda,
+            leader_id="leader",
+            participant_ids=("agent-a",),
+            token_budget=10000,
+        )
+
+        assert record.status == MeetingStatus.COMPLETED
+        assert len(created_tasks) == 2
+        assert created_tasks[0] == (
+            "Deploy API",
+            "agent-ops",
+            Priority.HIGH,
+        )
+        assert created_tasks[1] == ("Write docs", None, Priority.MEDIUM)
 
     async def test_task_creator_not_called_without_action_items(
         self,

@@ -46,11 +46,18 @@ logger = get_logger(__name__)
 def _format_exception(exc: BaseException) -> str:
     """Format an exception for error messages.
 
-    Extracts sub-exception details from ``ExceptionGroup`` for
-    better diagnostics when parallel ``TaskGroup`` tasks fail.
+    Flattens ``ExceptionGroup`` (produced by ``asyncio.TaskGroup``
+    when multiple concurrent tasks fail) into a single human-readable
+    string.  Handles nested groups recursively.  Non-group exceptions
+    are returned via ``str()``.
     """
     if isinstance(exc, ExceptionGroup):
-        parts = [f"{type(e).__name__}: {e}" for e in exc.exceptions]
+        parts: list[str] = []
+        for sub in exc.exceptions:
+            if isinstance(sub, ExceptionGroup):
+                parts.append(_format_exception(sub))
+            else:
+                parts.append(f"{type(sub).__name__}: {sub}")
         return f"Multiple errors: {'; '.join(parts)}"
     return str(exc)
 
@@ -60,7 +67,8 @@ class MeetingOrchestrator:
 
     Coordinates protocol selection, execution, task creation from
     action items, and audit trail recording.  Meeting records are
-    stored in memory (persistence is M5 scope).
+    stored in memory; see the persistence layer for durable storage
+    when available.
 
     Args:
         protocol_registry: Mapping of protocol types to implementations.
@@ -216,12 +224,19 @@ class MeetingOrchestrator:
                 exc,
             )
         except Exception as exc:
+            status = MeetingStatus.FAILED
+            if isinstance(exc, ExceptionGroup):
+                budget_group = exc.subgroup(MeetingBudgetExhaustedError)
+                if budget_group is not None and len(budget_group.exceptions) == len(
+                    exc.exceptions
+                ):
+                    status = MeetingStatus.BUDGET_EXHAUSTED
             return self._make_failure_record(
                 meeting_id,
                 meeting_type_name,
                 protocol,
                 token_budget,
-                MeetingStatus.FAILED,
+                status,
                 exc,
             )
 
@@ -252,6 +267,7 @@ class MeetingOrchestrator:
                 meeting_id=meeting_id,
                 status=status,
                 error=error_msg,
+                error_type=type(exc).__name__,
             )
         else:
             logger.error(
@@ -303,11 +319,13 @@ class MeetingOrchestrator:
         ):
             return
 
+        total = len(minutes.action_items)
         logger.info(
             MEETING_ACTION_ITEM_EXTRACTED,
             meeting_id=meeting_id,
-            action_item_count=len(minutes.action_items),
+            action_item_count=total,
         )
+        failures = 0
         for action_item in minutes.action_items:
             try:
                 self._task_creator(
@@ -322,12 +340,20 @@ class MeetingOrchestrator:
                     assignee=action_item.assignee_id,
                 )
             except Exception:
+                failures += 1
                 logger.exception(
                     MEETING_TASK_CREATION_FAILED,
                     meeting_id=meeting_id,
                     description=action_item.description,
                     assignee=action_item.assignee_id,
                 )
+        if failures:
+            logger.warning(
+                MEETING_TASK_CREATION_FAILED,
+                meeting_id=meeting_id,
+                failed_count=failures,
+                total_count=total,
+            )
 
     def _validate_inputs(
         self,
@@ -344,6 +370,11 @@ class MeetingOrchestrator:
             ValueError: If token_budget is not positive.
         """
         if token_budget <= 0:
+            logger.warning(
+                MEETING_VALIDATION_FAILED,
+                meeting_id=meeting_id,
+                error=f"token_budget must be positive, got {token_budget}",
+            )
             msg = f"token_budget must be positive, got {token_budget}"
             raise ValueError(msg)
 

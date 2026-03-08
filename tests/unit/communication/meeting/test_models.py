@@ -231,6 +231,22 @@ class TestMeetingMinutes:
         minutes = self._make_minutes(action_items=(action,))
         assert len(minutes.action_items) == 1
 
+    def test_duplicate_participant_ids_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="participant_ids"):
+            self._make_minutes(
+                participant_ids=("agent-a", "agent-b", "agent-a"),
+            )
+
+    def test_leader_in_participants_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="leader_id must not be in participant_ids",
+        ):
+            self._make_minutes(
+                leader_id="agent-a",
+                participant_ids=("agent-a", "agent-b"),
+            )
+
 
 @pytest.mark.unit
 class TestMeetingRecord:
@@ -319,6 +335,51 @@ class TestMeetingRecord:
                 protocol_type=MeetingProtocolType.ROUND_ROBIN,
                 status=MeetingStatus.SCHEDULED,
                 token_budget=0,
+            )
+
+    def test_completed_with_error_message_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="error_message must be None",
+        ):
+            MeetingRecord(
+                meeting_id="m-1",
+                meeting_type_name="standup",
+                protocol_type=MeetingProtocolType.ROUND_ROBIN,
+                status=MeetingStatus.COMPLETED,
+                minutes=self._make_minutes(),
+                error_message="Should not be here",
+                token_budget=2000,
+            )
+
+    def test_failed_with_minutes_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="minutes must be None",
+        ):
+            MeetingRecord(
+                meeting_id="m-1",
+                meeting_type_name="standup",
+                protocol_type=MeetingProtocolType.ROUND_ROBIN,
+                status=MeetingStatus.FAILED,
+                minutes=self._make_minutes(),
+                error_message="Something failed",
+                token_budget=2000,
+            )
+
+    def test_budget_exhausted_with_minutes_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="minutes must be None",
+        ):
+            MeetingRecord(
+                meeting_id="m-1",
+                meeting_type_name="standup",
+                protocol_type=MeetingProtocolType.ROUND_ROBIN,
+                status=MeetingStatus.BUDGET_EXHAUSTED,
+                minutes=self._make_minutes(),
+                error_message="Budget ran out",
+                token_budget=2000,
             )
 
     def test_frozen(self) -> None:

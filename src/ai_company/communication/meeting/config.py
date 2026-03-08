@@ -38,8 +38,9 @@ class PositionPapersConfig(BaseModel):
 
     Attributes:
         max_tokens_per_position: Token budget per position paper.
-        synthesizer: Who performs the synthesis
-            (``"meeting_leader"`` or an agent ID).
+        synthesizer: Who performs synthesis.  The sentinel
+            ``"meeting_leader"`` resolves to the meeting leader at
+            runtime; otherwise interpreted as a specific agent ID.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -62,7 +63,6 @@ class StructuredPhasesConfig(BaseModel):
         skip_discussion_if_no_conflicts: Skip discussion when no
             conflicts are detected.
         max_discussion_tokens: Token budget for the discussion round.
-        auto_create_tasks: Whether to auto-create tasks from action items.
     """
 
     model_config = ConfigDict(frozen=True)

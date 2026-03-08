@@ -274,17 +274,24 @@ class MeetingRecord(BaseModel):
     @model_validator(mode="after")
     def _validate_status_consistency(self) -> Self:
         """Enforce minutes/error field correlation with status."""
-        if self.status == MeetingStatus.COMPLETED and self.minutes is None:
-            msg = "minutes are required when status is completed"
-            raise ValueError(msg)
-        if (
-            self.status
-            in (
-                MeetingStatus.FAILED,
-                MeetingStatus.BUDGET_EXHAUSTED,
-            )
-            and self.error_message is None
+        if self.status == MeetingStatus.COMPLETED:
+            if self.minutes is None:
+                msg = "minutes are required when status is completed"
+                raise ValueError(msg)
+            if self.error_message is not None:
+                msg = "error_message must be None when status is completed"
+                raise ValueError(msg)
+        if self.status in (
+            MeetingStatus.FAILED,
+            MeetingStatus.BUDGET_EXHAUSTED,
         ):
-            msg = "error_message is required when status is failed or budget_exhausted"
-            raise ValueError(msg)
+            if self.error_message is None:
+                msg = (
+                    "error_message is required when status is "
+                    "failed or budget_exhausted"
+                )
+                raise ValueError(msg)
+            if self.minutes is not None:
+                msg = "minutes must be None when status is failed or budget_exhausted"
+                raise ValueError(msg)
         return self

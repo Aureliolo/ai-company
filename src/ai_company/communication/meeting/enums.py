@@ -22,10 +22,10 @@ class MeetingPhase(StrEnum):
 
     Phases are scoped to specific protocols:
 
-    - All protocols: ``AGENDA_BROADCAST``, ``SYNTHESIS``
-    - Round-robin only: ``ROUND_ROBIN_TURN``, ``SUMMARY``
-    - Position papers only: ``POSITION_PAPER``
-    - Structured phases only: ``INPUT_GATHERING``, ``DISCUSSION``
+    - Round-robin: ``ROUND_ROBIN_TURN``, ``SUMMARY``
+    - Position papers: ``POSITION_PAPER``, ``SYNTHESIS``
+    - Structured phases: ``AGENDA_BROADCAST``, ``INPUT_GATHERING``,
+      ``DISCUSSION``, ``SYNTHESIS``
 
     Attributes:
         AGENDA_BROADCAST: Initial agenda distribution.

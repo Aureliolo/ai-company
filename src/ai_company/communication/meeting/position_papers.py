@@ -261,9 +261,16 @@ class PositionPapersProtocol:
                     _collect_paper(pid, idx, tokens_per_agent),
                 )
 
-        # Build ordered lists from pre-allocated slots
-        papers = [r for r in results if r is not None]
-        paper_contributions = [c for c in contrib_results if c is not None]
+        # All slots must be filled — TaskGroup propagates ExceptionGroup
+        # on any task failure, so reaching this point means all succeeded.
+        assert all(r is not None for r in results), (  # noqa: S101
+            f"Expected {n} position papers but some slots are None"
+        )
+        assert all(c is not None for c in contrib_results), (  # noqa: S101
+            f"Expected {n} contributions but some slots are None"
+        )
+        papers: list[tuple[str, str]] = list(results)  # type: ignore[arg-type]
+        paper_contributions: list[MeetingContribution] = list(contrib_results)  # type: ignore[arg-type]
 
         logger.info(
             MEETING_PHASE_COMPLETED,
