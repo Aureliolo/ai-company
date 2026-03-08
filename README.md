@@ -16,8 +16,9 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Smart Cost Management** - Per-agent budget tracking, auto model routing, CFO agent optimization
 - **Hierarchical Delegation** - Chain-of-command task delegation with five-mechanism loop prevention
 - **Conflict Resolution** - Pluggable strategies for resolving agent disagreements (authority, debate, human escalation, hybrid) with dissent audit trail
-- **Task Decomposition & Routing** - DAG-based subtask decomposition, structure classification, and agent-task scoring
+- **Task Decomposition & Routing** - DAG-based and LLM-based subtask decomposition, structure classification, and agent-task scoring
 - **Task Assignment** - Pluggable strategies (manual, role-based, load-balanced) for matching tasks to capable agents
+- **Workspace Isolation** - Git worktree-based concurrent workspace isolation with sequential merge and conflict escalation
 - **Configurable Autonomy** - From fully autonomous to human-approves-everything, with a Security Ops agent in between
 - **Persistent Memory** - Agents remember past decisions, code, relationships (memory layer TBD)
 - **HR System** - Hire, fire, promote agents. HR agent analyzes skill gaps and proposes candidates

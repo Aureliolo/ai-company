@@ -1,6 +1,6 @@
 """Unit test configuration and fixtures for engine modules."""
 
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -40,6 +40,13 @@ from ai_company.providers.models import (
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+
+    from ai_company.core.enums import ConflictEscalation
+    from ai_company.engine.workspace.models import (
+        MergeConflict,
+        MergeResult,
+        Workspace,
+    )
 
 
 @pytest.fixture
@@ -189,6 +196,8 @@ class MockCompletionProvider:
         self._call_count = 0
         self._recorded_configs: list[CompletionConfig | None] = []
         self._recorded_models: list[str] = []
+        self._recorded_messages: list[list[ChatMessage]] = []
+        self._recorded_tools: list[list[ToolDefinition] | None] = []
 
     @property
     def call_count(self) -> int:
@@ -205,6 +214,16 @@ class MockCompletionProvider:
         """Models passed to each ``complete()`` call."""
         return list(self._recorded_models)
 
+    @property
+    def recorded_messages(self) -> list[list[ChatMessage]]:
+        """Messages passed to each ``complete()`` call."""
+        return [list(m) for m in self._recorded_messages]
+
+    @property
+    def recorded_tools(self) -> list[list[ToolDefinition] | None]:
+        """Tools passed to each ``complete()`` call."""
+        return [list(t) if t is not None else None for t in self._recorded_tools]
+
     async def complete(
         self,
         messages: list[ChatMessage],
@@ -220,6 +239,8 @@ class MockCompletionProvider:
         self._call_count += 1
         self._recorded_configs.append(config)
         self._recorded_models.append(model)
+        self._recorded_messages.append(list(messages))
+        self._recorded_tools.append(list(tools) if tools is not None else None)
         return self._responses.pop(0)
 
     async def stream(
@@ -272,3 +293,61 @@ def make_completion_response(
 def mock_provider_factory() -> type[MockCompletionProvider]:
     """Expose MockCompletionProvider class for test construction."""
     return MockCompletionProvider
+
+
+# ---------------------------------------------------------------------------
+# Workspace helpers (shared across workspace test files)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_CREATED_AT = datetime(2026, 3, 8, tzinfo=UTC)
+
+
+def make_workspace(  # noqa: PLR0913
+    *,
+    workspace_id: str = "ws-001",
+    task_id: str = "task-1",
+    agent_id: str = "agent-1",
+    branch_name: str = "workspace/task-1",
+    worktree_path: str = "fake/worktrees/ws-001",
+    base_branch: str = "main",
+    created_at: datetime | None = None,
+) -> Workspace:
+    """Build a ``Workspace`` with sensible defaults."""
+    from ai_company.engine.workspace.models import Workspace
+
+    return Workspace(
+        workspace_id=workspace_id,
+        task_id=task_id,
+        agent_id=agent_id,
+        branch_name=branch_name,
+        worktree_path=worktree_path,
+        base_branch=base_branch,
+        created_at=created_at or _DEFAULT_CREATED_AT,
+    )
+
+
+def make_merge_result(  # noqa: PLR0913
+    *,
+    workspace_id: str = "ws-001",
+    branch_name: str = "workspace/task-1",
+    success: bool = True,
+    conflicts: tuple[MergeConflict, ...] = (),
+    duration_seconds: float = 0.5,
+    merged_commit_sha: str | None = None,
+    escalation: ConflictEscalation | None = None,
+) -> MergeResult:
+    """Build a ``MergeResult`` with sensible defaults."""
+    from ai_company.engine.workspace.models import MergeResult
+
+    if merged_commit_sha is None and success:
+        merged_commit_sha = "abc123"
+
+    return MergeResult(
+        workspace_id=workspace_id,
+        branch_name=branch_name,
+        success=success,
+        conflicts=conflicts,
+        duration_seconds=duration_seconds,
+        merged_commit_sha=merged_commit_sha,
+        escalation=escalation,
+    )
