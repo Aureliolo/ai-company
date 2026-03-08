@@ -12,7 +12,7 @@
 4. [Company Structure](#4-company-structure)
 5. [Communication Architecture](#5-communication-architecture) — 5.6 Conflict Resolution, 5.7 Meeting Protocol
 6. [Task & Workflow Engine](#6-task--workflow-engine) — 6.5 Execution Loop, 6.6 Crash Recovery, **6.7 Graceful Shutdown**, **6.8 Workspace Isolation**, **6.9 Task Decomposability & Coordination Topology**
-7. [Memory & Persistence](#7-memory--persistence) — 7.4 Shared Org Memory (Research Directions)
+7. [Memory & Persistence](#7-memory--persistence) — 7.4 Shared Org Memory (Research Directions), **7.5 Operational Data Persistence**
 8. [HR & Workforce Management](#8-hr--workforce-management)
 9. [Model Provider Layer](#9-model-provider-layer)
 10. [Cost & Budget Management](#10-cost--budget-management)
@@ -1377,6 +1377,13 @@ class PersistenceBackend(Protocol):
     def is_connected(self) -> bool: ...
     @property
     def backend_name(self) -> str: ...
+
+    @property
+    def tasks(self) -> TaskRepository: ...
+    @property
+    def cost_records(self) -> CostRecordRepository: ...
+    @property
+    def messages(self) -> MessageRepository: ...
 ```
 
 Each entity type has its own repository protocol:
@@ -1388,7 +1395,7 @@ class TaskRepository(Protocol):
 
     async def save(self, task: Task) -> None: ...
     async def get(self, task_id: str) -> Task | None: ...
-    async def list_tasks(self, *, status: TaskStatus | None = None, assigned_to: str | None = None) -> tuple[Task, ...]: ...
+    async def list_tasks(self, *, status: TaskStatus | None = None, assigned_to: str | None = None, project: str | None = None) -> tuple[Task, ...]: ...
     async def delete(self, task_id: str) -> bool: ...
 
 @runtime_checkable
@@ -1446,6 +1453,21 @@ persistence:
 - **Adding a new backend** requires implementing `PersistenceBackend` + all repository protocols — no changes to consumers
 - **Same entity models everywhere** — repositories accept and return the existing frozen Pydantic models (Task, CostRecord, Message), no ORM models or data transfer objects
 - **Async throughout** — all repository methods are async, matching the project's concurrency model
+
+#### Multi-Tenancy
+
+Each company gets its own database. The `PersistenceConfig` embedded in a company's `RootConfig` specifies the backend type and connection details (e.g. a unique SQLite file path or PostgreSQL database URL). The `create_backend(config)` factory returns an isolated `PersistenceBackend` instance per company — no shared state, no cross-company data leakage.
+
+```python
+# One database per company — configured in each company's YAML
+company_a_backend = create_backend(company_a_config.persistence)
+company_b_backend = create_backend(company_b_config.persistence)
+# Each backend has independent lifecycle: connect → migrate → use → disconnect
+```
+
+#### Future: Runtime Backend Switching
+
+Runtime backend switching (e.g. migrating a company from SQLite to PostgreSQL during operation) is a planned future capability. The protocol-based design already supports this — the engine would disconnect the current backend, connect a new one with different config, and migrate. Implementation details (data migration tooling, zero-downtime switchover, connection draining) are deferred to the PostgreSQL backend milestone.
 
 ---
 
@@ -2454,7 +2476,7 @@ Run: ai-company start acme-corp
 | **Agent Memory** | Mem0 (Qdrant + SQLite) → custom (Neo4j + Qdrant) | Mem0 in-process as initial backend behind pluggable `MemoryBackend` protocol ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Qdrant embedded + SQLite for persistence. Custom stack (Neo4j + Qdrant external) as future upgrade. Config-driven backend selection |
 | **Message Bus** | Internal (async queues) → Redis | Start with Python asyncio queues, upgrade to Redis for multi-process/distributed |
 | **Task Queue** | Internal → Celery/Redis | Start simple, scale with Celery when needed |
-| **Database** | SQLite → PostgreSQL / MariaDB | Pluggable `PersistenceBackend` protocol (§7.5). SQLite ships first. PostgreSQL, MariaDB as future backends — swap via config, no app code changes |
+| **Database** | SQLite (aiosqlite) → PostgreSQL / MariaDB | Pluggable `PersistenceBackend` protocol (§7.5). SQLite ships first via aiosqlite async driver. PostgreSQL, MariaDB as future backends — swap via config, no app code changes |
 | **Web UI** | Vue 3 + Vite | Modern, fast, good ecosystem. Simpler than React for dashboards |
 | **Real-time** | WebSocket (FastAPI native) | Real-time agent activity, task updates, chat feed |
 | **Containerization** | Docker + Docker Compose | Isolated code execution, reproducible environments |
@@ -2610,9 +2632,10 @@ ai-company/
 │       ├── persistence/             # Operational data persistence (§7.5)
 │       │   ├── __init__.py         # Package exports
 │       │   ├── protocol.py         # PersistenceBackend protocol (M5)
-│       │   ├── repositories.py     # Repository protocols: TaskRepository, CostRecordRepository, MessageRepository, AuditRepository (M5)
+│       │   ├── repositories.py     # Repository protocols: TaskRepository, CostRecordRepository, MessageRepository (M5); AuditRepository planned (M7)
 │       │   ├── config.py           # PersistenceConfig model (M5)
 │       │   ├── errors.py           # Persistence error hierarchy (M5)
+│       │   ├── factory.py          # create_backend() factory (M5)
 │       │   └── sqlite/             # SQLite backend (M5, initial)
 │       │       ├── __init__.py    # Package exports
 │       │       ├── backend.py     # SQLitePersistenceBackend
@@ -2638,6 +2661,7 @@ ai-company/
 │       │   │   ├── git.py         # GIT_* constants
 │       │   │   ├── meeting.py    # MEETING_* constants
 │       │   │   ├── parallel.py    # PARALLEL_* constants
+│       │   │   ├── persistence.py # PERSISTENCE_* constants
 │       │   │   ├── personality.py # PERSONALITY_* constants
 │       │   │   ├── prompt.py      # PROMPT_* constants
 │       │   │   ├── provider.py    # PROVIDER_* constants
@@ -2776,6 +2800,7 @@ ai-company/
 | Config | YAML + Pydantic | JSON, TOML, Python dicts | Human-friendly, strict validation, good IDE support |
 | CLI | Typer | Click, argparse, Fire | Built on Click, auto-completion, type hints |
 | Web UI | Vue 3 | React, Svelte, HTMX | Simpler than React for dashboards, good with FastAPI |
+| Persistence | Pluggable protocol + repository protocols | ORM (SQLAlchemy), raw SQL, hybrid | Same frozen Pydantic models in and out (no DTOs), async throughout, backend-swappable via config. Repository protocols decouple app code from storage engine. See §7.5 |
 | Sandboxing | Layered: subprocess + Docker | Docker-only, subprocess-only, WASM | Risk-proportionate: fast subprocess for file/git, Docker isolation for code execution. Pluggable `SandboxBackend` protocol enables K8s migration later |
 
 ### 15.5 Engineering Conventions
