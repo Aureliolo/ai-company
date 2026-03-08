@@ -218,6 +218,20 @@ class TestDependencyGraph:
             graph.parallel_groups()
 
     @pytest.mark.unit
+    def test_topological_sort_missing_reference_raises(self) -> None:
+        """topological_sort raises DecompositionError for missing references."""
+        graph = DependencyGraph((_sub("a", ("missing",)),))
+        with pytest.raises(DecompositionError, match="unknown dependency"):
+            graph.topological_sort()
+
+    @pytest.mark.unit
+    def test_parallel_groups_missing_reference_raises(self) -> None:
+        """parallel_groups raises DecompositionError for missing references."""
+        graph = DependencyGraph((_sub("a", ("missing",)),))
+        with pytest.raises(DecompositionError, match="unknown dependency"):
+            graph.parallel_groups()
+
+    @pytest.mark.unit
     def test_single_node(self) -> None:
         """Single node graph validates and sorts correctly."""
         graph = DependencyGraph((_sub("only"),))

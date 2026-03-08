@@ -57,6 +57,11 @@ class AgentTaskScorer:
     def __init__(self, min_score: float = 0.1) -> None:
         if not 0.0 <= min_score <= 1.0:
             msg = f"min_score must be between 0.0 and 1.0, got {min_score}"
+            logger.warning(
+                "agent_task_scorer.invalid_min_score",
+                min_score=min_score,
+                error=msg,
+            )
             raise ValueError(msg)
         self._min_score = min_score
 

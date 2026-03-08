@@ -147,8 +147,12 @@ class DependencyGraph:
             Tuple of subtask IDs in execution order.
 
         Raises:
+            DecompositionError: If a dependency references an unknown
+                subtask ID.
             DecompositionCycleError: If a cycle prevents sorting.
         """
+        self._check_missing_references()
+
         in_degree: dict[str, int] = dict.fromkeys(self._subtask_ids, 0)
         for subtask in self.subtasks:
             for _dep in subtask.dependencies:
@@ -189,8 +193,12 @@ class DependencyGraph:
             Tuple of groups, each group a tuple of subtask IDs.
 
         Raises:
+            DecompositionError: If a dependency references an unknown
+                subtask ID.
             DecompositionCycleError: If a cycle prevents grouping.
         """
+        self._check_missing_references()
+
         in_degree: dict[str, int] = dict.fromkeys(self._subtask_ids, 0)
         for subtask in self.subtasks:
             for _dep in subtask.dependencies:
