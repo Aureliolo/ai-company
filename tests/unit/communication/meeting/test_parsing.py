@@ -82,6 +82,14 @@ class TestParseActionItems:
         assert result[0].description == "Implement feature"
         assert result[0].assignee_id == "alice"
 
+    def test_assign_to_not_matched_as_assignee(self) -> None:
+        """'assign to X' should NOT extract X as assignee (requires 'assigned')."""
+        text = "# Action Items\n- Please assign to bob the new module\n"
+        result = parse_action_items(text)
+        assert len(result) == 1
+        # The description should remain intact — no false assignee extraction
+        assert result[0].assignee_id is None
+
     def test_with_assignee_colon_syntax(self) -> None:
         text = "# Action Items\n- Review PR assignee: bob\n"
         result = parse_action_items(text)

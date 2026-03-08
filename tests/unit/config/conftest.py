@@ -17,6 +17,7 @@ from ai_company.config.schema import (
     RootConfig,
     RoutingConfig,
     RoutingRuleConfig,
+    TaskAssignmentConfig,
 )
 from ai_company.core.company import CompanyConfig
 
@@ -71,6 +72,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     routing = RoutingConfig()
     logging = None
     coordination_metrics = CoordinationMetricsConfig()
+    task_assignment = TaskAssignmentConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

@@ -592,3 +592,107 @@ class TestCollectConflicts:
             result = await strategy._collect_conflicts()
 
         assert result == ()
+
+
+# ---------------------------------------------------------------------------
+# Context-specific exception types for _validate_git_ref
+# ---------------------------------------------------------------------------
+
+
+class TestValidateGitRefContextExceptions:
+    """Verify _validate_git_ref raises the right exception per context."""
+
+    @pytest.mark.unit
+    async def test_merge_unsafe_ref_raises_merge_error(self) -> None:
+        """Unsafe branch_name in merge context raises WorkspaceMergeError."""
+        strategy = _make_strategy()
+        ws = make_workspace(branch_name="--malicious")
+        strategy._active_workspaces[ws.workspace_id] = ws
+
+        with pytest.raises(WorkspaceMergeError, match="Unsafe"):
+            await strategy.merge_workspace(workspace=ws)
+
+    @pytest.mark.unit
+    async def test_teardown_unsafe_ref_raises_cleanup_error(self) -> None:
+        """Unsafe branch_name in teardown context raises WorkspaceCleanupError."""
+        strategy = _make_strategy()
+        ws = make_workspace(branch_name="--malicious")
+        strategy._active_workspaces[ws.workspace_id] = ws
+
+        with pytest.raises(WorkspaceCleanupError, match="Unsafe"):
+            await strategy.teardown_workspace(workspace=ws)
+
+    @pytest.mark.unit
+    async def test_setup_unsafe_ref_raises_setup_error(self) -> None:
+        """Unsafe task_id in setup context raises WorkspaceSetupError."""
+        strategy = _make_strategy()
+        request = WorkspaceRequest(
+            task_id="--inject",
+            agent_id="agent-1",
+            base_branch="main",
+        )
+
+        with pytest.raises(WorkspaceSetupError, match="Unsafe"):
+            await strategy.setup_workspace(request=request)
+
+
+# ---------------------------------------------------------------------------
+# CancelledError subprocess cleanup
+# ---------------------------------------------------------------------------
+
+
+class TestRunGitCancelledError:
+    """Verify _run_git kills subprocess on CancelledError."""
+
+    @pytest.mark.unit
+    async def test_cancelled_error_kills_process(self) -> None:
+        """CancelledError during wait_for kills the subprocess."""
+        import warnings
+
+        strategy = _make_strategy()
+
+        kill_called = False
+        wait_called = False
+
+        class FakeProc:
+            returncode = 0
+
+            async def communicate(self) -> tuple[bytes, bytes]:
+                # This will be wrapped in wait_for; we never
+                # actually reach it because we patch wait_for
+                return (b"", b"")  # pragma: no cover
+
+            def kill(self) -> None:
+                nonlocal kill_called
+                kill_called = True
+
+            async def wait(self) -> int:
+                nonlocal wait_called
+                wait_called = True
+                return 0
+
+        async def mock_wait_for(
+            coro: object,
+            **_kwargs: object,
+        ) -> object:
+            if asyncio.iscoroutine(coro):
+                coro.close()
+            raise asyncio.CancelledError
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", pytest.PytestUnraisableExceptionWarning)
+            with (
+                patch(
+                    "asyncio.create_subprocess_exec",
+                    return_value=FakeProc(),
+                ),
+                patch(
+                    "ai_company.engine.workspace.git_worktree.asyncio.wait_for",
+                    side_effect=mock_wait_for,
+                ),
+                pytest.raises(asyncio.CancelledError),
+            ):
+                await strategy._run_git("status")
+
+        assert kill_called
+        assert wait_called

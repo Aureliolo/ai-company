@@ -365,10 +365,24 @@ class TaskAssignmentConfig(BaseModel):
         strategy: Assignment strategy name (e.g. ``"role_based"``).
         min_score: Minimum capability score for agent eligibility.
         max_concurrent_tasks_per_agent: Maximum tasks an agent can
-            handle concurrently.
+            handle concurrently. Enforced by scoring-based strategies
+            that filter out agents at capacity.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    # Known strategy names. ``"hierarchical"`` requires a
+    # ``HierarchyResolver`` at runtime so is still valid config.
+    _VALID_STRATEGIES: frozenset[str] = frozenset(
+        {
+            "manual",
+            "role_based",
+            "load_balanced",
+            "cost_optimized",
+            "hierarchical",
+            "auction",
+        },
+    )
 
     strategy: NotBlankStr = Field(
         default="role_based",
@@ -386,10 +400,28 @@ class TaskAssignmentConfig(BaseModel):
         le=50,
         description=(
             "Maximum concurrent tasks an agent is intended to handle. "
-            "Actual enforcement must be implemented by the "
-            "engine/assignment layer."
+            "Enforced by scoring-based strategies that filter out "
+            "agents at capacity."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_strategy_name(self) -> Self:
+        """Ensure strategy is a known assignment strategy name."""
+        if self.strategy not in self._VALID_STRATEGIES:
+            msg = (
+                f"Unknown assignment strategy {self.strategy!r}. "
+                f"Valid strategies: "
+                f"{sorted(self._VALID_STRATEGIES)}"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="TaskAssignmentConfig",
+                error=msg,
+                strategy=self.strategy,
+            )
+            raise ValueError(msg)
+        return self
 
 
 class RootConfig(BaseModel):

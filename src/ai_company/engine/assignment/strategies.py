@@ -79,7 +79,9 @@ def _score_and_filter_candidates(
     """Score all agents and return filtered, sorted candidates.
 
     Shared scoring logic used by all scorer-based strategies.
-    Filters out agents with non-ACTIVE status before scoring.
+    Filters out agents with non-ACTIVE status and agents at
+    capacity (when ``max_concurrent_tasks`` and workload data
+    are available) before scoring.
 
     Args:
         scorer: The agent-task scorer to use.
@@ -90,10 +92,31 @@ def _score_and_filter_candidates(
         Sorted list of candidates whose score meets or exceeds
         ``request.min_score``, ordered by score descending.
     """
+    # Build workload lookup for capacity filtering
+    workload_map: dict[str, int] | None = None
+    if request.max_concurrent_tasks is not None and request.workloads:
+        workload_map = {w.agent_id: w.active_task_count for w in request.workloads}
+
     candidates: list[AssignmentCandidate] = []
     for agent in request.available_agents:
         if agent.status != AgentStatus.ACTIVE:
             continue
+
+        # Skip agents at capacity
+        if workload_map is not None and request.max_concurrent_tasks is not None:
+            active = workload_map.get(str(agent.id), 0)
+            if active >= request.max_concurrent_tasks:
+                logger.debug(
+                    TASK_ASSIGNMENT_AGENT_SCORED,
+                    task_id=request.task.id,
+                    agent_name=agent.name,
+                    score=0.0,
+                    reason="at_capacity",
+                    active_tasks=active,
+                    max_concurrent=request.max_concurrent_tasks,
+                )
+                continue
+
         routing_candidate = scorer.score(agent, subtask)
 
         logger.debug(

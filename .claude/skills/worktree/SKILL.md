@@ -77,10 +77,20 @@ Directory suffix is auto-derived from the branch name:
 
    If dirty, warn and ask via AskUserQuestion whether to proceed or abort.
 
-   c. Ensure on main and up to date:
+   c. Ensure on main and up to date. If checkout fails due to dirty working tree, warn and ask whether to stash changes, discard, or abort:
 
    ```bash
-   git checkout main && git pull
+   git checkout main
+   ```
+
+   If this fails with "Your local changes would be overwritten", ask via AskUserQuestion:
+   - **Stash**: `git stash push -m "worktree-setup-autostash"` then `git checkout main`
+   - **Abort**: stop setup
+
+   Then pull:
+
+   ```bash
+   git pull
    ```
 
    d. For each worktree definition, verify:
@@ -100,11 +110,19 @@ Directory suffix is auto-derived from the branch name:
 
    a. Determine the directory path: `../<repo-name>-wt-<slug>` (e.g. `../ai-company-wt-delegation-loop-prevention`)
 
-   b. Create the worktree:
+   b. Create the worktree. For **new** branches:
 
    ```bash
    git worktree add -b <branch-name> <dir-path> main
    ```
+
+   For **reuse** (branch already exists from Step 1d):
+
+   ```bash
+   git worktree add <dir-path> <branch-name>
+   ```
+
+   Note: `-b` creates a new branch and fails if it already exists. The reuse path omits `-b` to attach an existing branch.
 
    c. Copy all `.claude/` local files (settings, hooks, etc.):
 
@@ -290,12 +308,13 @@ Show current worktree state and how they compare to main.
 
    Match each worktree branch to any open PR.
 
-4. **Present a summary table:**
+4. **Present a summary table** (show both ahead AND behind counts):
 
    ```
-   Worktree             | Branch                    | vs Main    | PR     | Status
-   wt-delegation        | feat/delegation-loop-prev | +5 ahead   | #142   | clean
-   wt-parallel          | feat/parallel-execution   | +3 ahead   | —      | 2 modified
+   Worktree             | Branch                    | vs Main          | PR     | Status
+   wt-delegation        | feat/delegation-loop-prev | +5 ahead         | #142   | clean
+   wt-parallel          | feat/parallel-execution   | +3 ahead -2 behind | —    | 2 modified
+   wt-memory            | feat/memory-layer         | up to date       | #155   | clean
    ```
 
 ---
@@ -331,7 +350,7 @@ If no milestone specified, try to detect from current worktree branches or ask v
    - Tier 0: issues with no open M-internal dependencies (all deps are closed or external)
    - Tier 1: depends only on Tier 0 issues
    - Tier N: depends on Tier N-1 issues
-   - Flag circular dependencies as errors
+   - Flag circular dependencies as errors. When detected, report the cycle (e.g. "#12 → #17 → #12"), render the remaining non-circular issues in their tiers, and suggest: "Break the cycle by removing one dependency edge, or implement the circular group in a single worktree."
 
 4. **Identify current active worktrees** (if any):
    ```bash
@@ -387,14 +406,17 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 
    If dirty, warn and skip immediately: "Worktree <name> has uncommitted changes — skipping rebase."
 
-3. **Then check for local commits beyond main:**
+3. **Then check ahead/behind status relative to main:**
 
    ```bash
-   git -C <path> rev-list --count main..<branch>
+   git -C <path> rev-list --left-right --count main...<branch>
    ```
 
-   - If **0 commits ahead**: already up to date with main — skip (rebase is a no-op).
-   - If **has commits**: this worktree needs rebasing. Warn the user — "Worktree <name> has N local commits. Rebase may cause conflicts." Ask via AskUserQuestion: rebase anyway / skip / abort all.
+   This outputs two numbers: `<behind>\t<ahead>` (behind = commits main has that branch doesn't, ahead = commits branch has that main doesn't).
+
+   - If **0 behind AND 0 ahead**: fully up to date — skip.
+   - If **0 behind AND N ahead**: branch is ahead but main hasn't moved — skip (rebase is a no-op, branch already contains everything from main).
+   - If **M behind** (regardless of ahead count): this worktree needs rebasing. Warn the user — "Worktree <name> is M commits behind main (and N ahead). Rebase may cause conflicts." Ask via AskUserQuestion: rebase anyway / skip / abort all.
 
 4. **For approved worktrees**, rebase:
 

@@ -46,7 +46,13 @@ logger = get_logger(__name__)
 _SAFE_REF_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
 
 
-def _validate_git_ref(value: str, label: str) -> None:
+def _validate_git_ref(
+    value: str,
+    label: str,
+    *,
+    error_cls: type[Exception] = WorkspaceSetupError,
+    event: str = WORKSPACE_SETUP_FAILED,
+) -> None:
     """Validate that a string is safe for use as a git command argument.
 
     Prevents argument injection and path traversal. Does not fully
@@ -55,9 +61,15 @@ def _validate_git_ref(value: str, label: str) -> None:
     Args:
         value: The string to validate.
         label: Human-readable label for error messages.
+        error_cls: Exception class to raise on failure. Defaults to
+            ``WorkspaceSetupError`` but callers in merge/teardown
+            contexts should pass the appropriate type.
+        event: Log event constant for the failure message.
 
     Raises:
-        WorkspaceSetupError: If the value is unsafe for git.
+        WorkspaceSetupError: By default, if the value is unsafe.
+        WorkspaceMergeError: When called from merge context.
+        WorkspaceCleanupError: When called from teardown context.
     """
     if (
         not value
@@ -67,12 +79,12 @@ def _validate_git_ref(value: str, label: str) -> None:
     ):
         msg = f"Unsafe {label} for git: {value!r}"
         logger.warning(
-            WORKSPACE_SETUP_FAILED,
+            event,
             label=label,
             value=value,
             error=msg,
         )
-        raise WorkspaceSetupError(msg)
+        raise error_cls(msg)
 
 
 class PlannerWorktreeStrategy:
@@ -143,6 +155,10 @@ class PlannerWorktreeStrategy:
                 args=args,
             )
             return (-1, "", msg)
+        except asyncio.CancelledError:
+            proc.kill()
+            await proc.wait()
+            raise
         rc = proc.returncode if proc.returncode is not None else -1
         return (
             rc,
@@ -279,8 +295,18 @@ class PlannerWorktreeStrategy:
                 or when ``merge --abort`` fails after a conflict.
         """
         async with self._lock:
-            _validate_git_ref(workspace.branch_name, "branch_name")
-            _validate_git_ref(workspace.base_branch, "base_branch")
+            _validate_git_ref(
+                workspace.branch_name,
+                "branch_name",
+                error_cls=WorkspaceMergeError,
+                event=WORKSPACE_MERGE_FAILED,
+            )
+            _validate_git_ref(
+                workspace.base_branch,
+                "base_branch",
+                error_cls=WorkspaceMergeError,
+                event=WORKSPACE_MERGE_FAILED,
+            )
 
             start = time.monotonic()
             logger.info(
@@ -392,7 +418,12 @@ class PlannerWorktreeStrategy:
             WorkspaceCleanupError: When any git cleanup operation fails.
         """
         async with self._lock:
-            _validate_git_ref(workspace.branch_name, "branch_name")
+            _validate_git_ref(
+                workspace.branch_name,
+                "branch_name",
+                error_cls=WorkspaceCleanupError,
+                event=WORKSPACE_TEARDOWN_FAILED,
+            )
 
             logger.info(
                 WORKSPACE_TEARDOWN_START,

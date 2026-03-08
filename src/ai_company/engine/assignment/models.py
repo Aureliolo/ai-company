@@ -104,6 +104,14 @@ class AssignmentRequest(BaseModel):
         default=None,
         description="Optional role name for scoring",
     )
+    max_concurrent_tasks: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Maximum concurrent tasks per agent. Agents at or above "
+            "this limit are excluded from scoring. None = no limit."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_collections(self) -> Self:

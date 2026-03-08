@@ -466,3 +466,92 @@ class TestScorerBasedStrategies:
         assert result.selected is not None
         assert result.selected.agent_identity.name == "active-dev"
         assert all(a.agent_identity.name != "leave-dev" for a in result.alternatives)
+
+
+class TestMaxConcurrentTasksEnforcement:
+    """Verify max_concurrent_tasks filters out agents at capacity."""
+
+    def test_agent_at_capacity_excluded(self) -> None:
+        """Agent at max_concurrent_tasks is not selected."""
+        scorer = AgentTaskScorer()
+        strategy = RoleBasedAssignmentStrategy(scorer)
+
+        busy = make_assignment_agent(
+            "busy-dev",
+            primary_skills=("python", "api-design"),
+            role="Backend Developer",
+            level=SeniorityLevel.SENIOR,
+        )
+        available = make_assignment_agent(
+            "free-dev",
+            primary_skills=("python",),
+            level=SeniorityLevel.MID,
+        )
+
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
+        request = AssignmentRequest(
+            task=task,
+            available_agents=(busy, available),
+            required_skills=("python",),
+            max_concurrent_tasks=3,
+            workloads=(
+                AgentWorkload(
+                    agent_id=str(busy.id),
+                    active_task_count=3,
+                    total_cost_usd=0.0,
+                ),
+                AgentWorkload(
+                    agent_id=str(available.id),
+                    active_task_count=1,
+                    total_cost_usd=0.0,
+                ),
+            ),
+        )
+
+        result = strategy.assign(request)
+
+        assert result.selected is not None
+        assert result.selected.agent_identity.name == "free-dev"
+
+    def test_no_limit_keeps_all_agents(self) -> None:
+        """Without max_concurrent_tasks, all agents are eligible."""
+        scorer = AgentTaskScorer()
+        strategy = RoleBasedAssignmentStrategy(scorer)
+
+        busy = make_assignment_agent(
+            "busy-dev",
+            primary_skills=("python", "api-design"),
+            role="Backend Developer",
+            level=SeniorityLevel.SENIOR,
+        )
+        other = make_assignment_agent(
+            "other-dev",
+            primary_skills=("python",),
+            level=SeniorityLevel.MID,
+        )
+
+        task = make_assignment_task(estimated_complexity=Complexity.MEDIUM)
+        request = AssignmentRequest(
+            task=task,
+            available_agents=(busy, other),
+            required_skills=("python",),
+            # max_concurrent_tasks is None (no limit)
+            workloads=(
+                AgentWorkload(
+                    agent_id=str(busy.id),
+                    active_task_count=99,
+                    total_cost_usd=0.0,
+                ),
+                AgentWorkload(
+                    agent_id=str(other.id),
+                    active_task_count=1,
+                    total_cost_usd=0.0,
+                ),
+            ),
+        )
+
+        result = strategy.assign(request)
+
+        assert result.selected is not None
+        # busy-dev has better matching skills so wins despite being busy
+        assert result.selected.agent_identity.name == "busy-dev"

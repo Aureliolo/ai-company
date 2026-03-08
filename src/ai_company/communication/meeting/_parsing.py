@@ -36,7 +36,7 @@ _LIST_ITEM_RE = re.compile(
 # Pattern for "assignee: <name>" or "(assigned to <name>)" at end of line
 _ASSIGNEE_RE = re.compile(
     r"(?:"
-    r"\(?assigned?\s+to:?\s*(.+?)\)?"
+    r"\(?assigned\s+to:?\s*(.+?)\)?"
     r"|assignee:?\s*(.+?)"
     r")\s*$",
     re.IGNORECASE,
