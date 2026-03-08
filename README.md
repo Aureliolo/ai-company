@@ -6,7 +6,7 @@ A framework for orchestrating autonomous AI agents as employees within a virtual
 
 ## Concept
 
-AI Company lets you spin up a virtual organization staffed entirely by AI agents. Each agent has a role (CEO, developer, designer, QA, etc.), a personality, and access to real tools, with persistent memory planned in a later milestone. Agents collaborate through structured communication, follow workflows, and produce real artifacts - code, documents, designs, and more.
+AI Company lets you spin up a virtual organization staffed entirely by AI agents. Each agent has a role (CEO, developer, designer, QA, etc.), a personality, persistent memory, and access to real tools. Agents collaborate through structured communication, follow workflows, and produce real artifacts - code, documents, designs, and more.
 
 ## Current Capability Snapshot
 

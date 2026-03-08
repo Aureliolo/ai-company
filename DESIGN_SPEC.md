@@ -80,9 +80,9 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 > **How to read this spec:** Sections describe the full vision. Each section with deferred features includes an **MVP** callout box indicating what ships in M3 and what is deferred. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that won't be built until later milestones.
 
 > **Implementation snapshot (2026-03-08):**
-> - **Done:** M0-M3 and most M4 core architecture (communication, delegation/loop prevention, conflict resolution, meetings, routing/decomposition/assignment, workspace isolation).
-> - **In progress:** M4 runtime hardening and end-to-end multi-agent orchestration workflows.
-> - **Not started (mostly placeholders):** M5 memory layer, M6 API/CLI surface, M7 security + approval system.
+> - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)).
+> - **In progress:** M5 — memory layer implementation, persistence, budget enforcement.
+> - **Not started (mostly placeholders):** M6 API/CLI surface, M7 security + approval system.
 
 ### 1.5 Configuration Philosophy
 
