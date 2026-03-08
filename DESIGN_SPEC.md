@@ -2386,6 +2386,12 @@ ai-company/
 │       │   ├── parallel_models.py  # AgentAssignment, ParallelExecutionGroup, AgentOutcome, ParallelExecutionResult, ParallelProgress
 │       │   ├── resource_lock.py    # ResourceLock protocol + InMemoryResourceLock
 │       │   ├── shutdown.py        # Graceful shutdown strategy & manager
+│       │   ├── assignment/          # Task assignment subsystem
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── models.py      # AssignmentRequest, AssignmentResult, AssignmentCandidate, AgentWorkload
+│       │   │   ├── protocol.py    # TaskAssignmentStrategy protocol
+│       │   │   ├── service.py     # TaskAssignmentService (orchestrates strategy + validation)
+│       │   │   └── strategies.py  # ManualAssignmentStrategy, RoleBasedAssignmentStrategy, LoadBalancedAssignmentStrategy
 │       │   ├── decomposition/      # Task decomposition subsystem
 │       │   │   ├── __init__.py    # Package exports
 │       │   │   ├── classifier.py  # TaskStructureClassifier (sequential/parallel/mixed)
@@ -2490,6 +2496,7 @@ ai-company/
 │       │   │   ├── routing.py     # ROUTING_* constants
 │       │   │   ├── sandbox.py     # SANDBOX_* constants
 │       │   │   ├── task.py        # TASK_* constants
+│       │   │   ├── task_assignment.py # TASK_ASSIGNMENT_* constants
 │       │   │   ├── task_routing.py # TASK_ROUTING_* constants
 │       │   │   ├── template.py    # TEMPLATE_* constants
 │       │   │   └── tool.py        # TOOL_* constants
