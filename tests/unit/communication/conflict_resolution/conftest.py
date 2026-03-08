@@ -52,7 +52,6 @@ def make_conflict(  # noqa: PLR0913
     subject: str = "Microservices vs monolith",
     positions: tuple[ConflictPosition, ...] | None = None,
     task_id: str | None = None,
-    is_cross_department: bool = False,
     detected_at: datetime | None = None,
 ) -> Conflict:
     """Create a conflict with defaults."""
@@ -73,7 +72,6 @@ def make_conflict(  # noqa: PLR0913
         subject=subject,
         positions=positions,
         detected_at=detected_at or _NOW,
-        is_cross_department=is_cross_department,
     )
 
 

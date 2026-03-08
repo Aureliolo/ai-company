@@ -7,7 +7,14 @@ following the patterns established in ``delegation/models.py``.
 from enum import StrEnum
 from typing import Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from ai_company.communication.enums import (
     ConflictResolutionStrategy,  # noqa: TC001
@@ -67,7 +74,8 @@ class Conflict(BaseModel):
         subject: Brief description of the dispute.
         positions: Agent positions (minimum 2, unique agent IDs).
         detected_at: When the conflict was detected.
-        is_cross_department: Whether agents span multiple departments.
+        is_cross_department: Whether agents span multiple departments
+            (computed from positions).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -83,9 +91,12 @@ class Conflict(BaseModel):
         description="Agent positions (min 2)",
     )
     detected_at: AwareDatetime = Field(description="Detection timestamp")
-    is_cross_department: bool = Field(
-        description="Whether conflict spans departments",
-    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def is_cross_department(self) -> bool:
+        """Whether the conflict spans multiple departments."""
+        return len({p.agent_department for p in self.positions}) > 1
 
     @model_validator(mode="after")
     def _validate_positions(self) -> Self:
@@ -186,7 +197,7 @@ class DissentRecord(BaseModel):
         description="Strategy that resolved the conflict",
     )
     timestamp: AwareDatetime = Field(description="Record creation timestamp")
-    metadata: tuple[tuple[str, str], ...] = Field(
+    metadata: tuple[tuple[NotBlankStr, NotBlankStr], ...] = Field(
         default=(),
         description="Extra key-value metadata pairs",
     )

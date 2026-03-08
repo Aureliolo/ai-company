@@ -578,13 +578,15 @@ When a loop is detected, the framework:
 3. Escalates to the sender's manager (or human if at top of hierarchy)
 4. Logs the loop for analytics and process improvement
 
-> **Current state (M4 in-progress):** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5) is implemented: `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) with `LoopPreventionConfig`. Hierarchical delegation is implemented via `DelegationService` with `HierarchyResolver` and `AuthorityValidator`. Task model extended with `parent_task_id` and `delegation_chain` fields. Conflict resolution (§5.6) and meeting protocol (§5.7) are planned for later M4 work.
+> **Current state (M4 in-progress):** The communication foundation is implemented: `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()`), `MessageDispatcher` for concurrent handler routing via `asyncio.TaskGroup`, `AgentMessenger` per-agent facade (auto-fills sender/timestamp/ID, deterministic direct-channel naming `@{sorted_a}:{sorted_b}`), and `DeliveryEnvelope` for delivery tracking. Loop prevention (§5.5) is implemented: `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) with `LoopPreventionConfig`. Hierarchical delegation is implemented via `DelegationService` with `HierarchyResolver` and `AuthorityValidator`. Task model extended with `parent_task_id` and `delegation_chain` fields. Conflict resolution (§5.6) is implemented: `ConflictResolver` protocol with four strategies (Authority, Debate, HumanEscalation, Hybrid), `ConflictResolutionService` orchestrator, `DissentRecord` audit trail, and `HierarchyResolver.get_lowest_common_manager()` for cross-department conflict escalation. Meeting protocol (§5.7) is planned for later M4 work.
 
 ### 5.6 Conflict Resolution Protocol
 
 When two or more agents disagree on an approach (architecture, implementation, priority, etc.), the framework provides multiple configurable resolution strategies behind a `ConflictResolver` protocol. New strategies can be added without modifying existing ones. The strategy is configurable per company, per department, or per conflict type.
 
 > **MVP: Not in M3.** Conflict resolution is an M4 feature (M3 is single-agent). Authority + Dissent Log (Strategy 1) is the initial default.
+>
+> **Current state (M4):** All four strategies implemented: `AuthorityResolver` (seniority + hierarchy proximity), `DebateResolver` (judge-based with `JudgeEvaluator` protocol), `HumanEscalationResolver` (stub pending approval queue #37), `HybridResolver` (automated review + escalation). `ConflictResolutionService` orchestrates strategy selection and audit trail (`DissentRecord`). Models: `Conflict`, `ConflictPosition`, `ConflictResolution` (frozen Pydantic). Config: `ConflictResolutionConfig`, `DebateConfig`, `HybridConfig`. `HierarchyResolver` extended with `get_lowest_common_manager()` and `get_delegation_depth()`. Event constants in `observability/events/conflict.py`.
 
 #### Strategy 1: Authority + Dissent Log (Default)
 
@@ -2394,6 +2396,17 @@ ai-company/
 │       │   ├── bus_protocol.py     # MessageBus protocol interface
 │       │   ├── channel.py          # Channel model
 │       │   ├── config.py           # Communication config
+│       │   ├── conflict_resolution/ # Conflict resolution subsystem (§5.6)
+│       │   │   ├── __init__.py   # Package exports
+│       │   │   ├── _helpers.py   # Shared utility (find_loser)
+│       │   │   ├── authority_strategy.py # AuthorityResolver (Strategy 1)
+│       │   │   ├── config.py     # ConflictResolutionConfig, DebateConfig, HybridConfig
+│       │   │   ├── debate_strategy.py   # DebateResolver (Strategy 2)
+│       │   │   ├── human_strategy.py    # HumanEscalationResolver (Strategy 3)
+│       │   │   ├── hybrid_strategy.py   # HybridResolver (Strategy 4)
+│       │   │   ├── models.py     # Conflict, ConflictPosition, ConflictResolution, DissentRecord
+│       │   │   ├── protocol.py   # ConflictResolver, JudgeEvaluator protocols
+│       │   │   └── service.py    # ConflictResolutionService (orchestrator)
 │       │   ├── delegation/         # Hierarchical delegation subsystem
 │       │   │   ├── __init__.py   # Package exports
 │       │   │   ├── authority.py   # AuthorityValidator + AuthorityCheckResult
@@ -2433,6 +2446,7 @@ ai-company/
 │       │   │   ├── budget.py      # BUDGET_* constants
 │       │   │   ├── company.py      # COMPANY_* constants
 │       │   │   ├── communication.py # COMM_* constants
+│       │   │   ├── conflict.py    # CONFLICT_* constants
 │       │   │   ├── config.py      # CONFIG_* constants
 │       │   │   ├── delegation.py  # DELEGATION_* constants
 │       │   │   ├── correlation.py # CORRELATION_* constants
@@ -2601,6 +2615,7 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Pydantic alias for YAML directives** | Adopted (M2.5) | `Field(alias="_remove")` in `TemplateAgentConfig` — YAML uses `_remove: true`, Python accesses `agent.remove`. Keeps the YAML-facing name (underscore prefix signals internal directive) separate from the Python attribute name. | Underscore-prefixed YAML keys signal merge directives vs regular fields. Pydantic alias bridges the naming convention gap cleanly. |
 | **Communication foundation** | Adopted (M4) | `MessageBus` protocol with `InMemoryMessageBus` backend (asyncio queues, pull-model `receive()` with shutdown signaling via `asyncio.Event`). `MessageDispatcher` routes to concurrent handlers via `asyncio.TaskGroup` with pre-allocated error collection. `AgentMessenger` per-agent facade auto-fills sender/timestamp/ID; deterministic direct-channel naming `@{sorted_a}:{sorted_b}`. `DeliveryEnvelope` for delivery tracking. `NotBlankStr` validation on all protocol boundary identifiers. | Pull-model avoids callback complexity and enables agents to consume at their own pace. Protocol + backend split enables future persistent/distributed bus implementations. Deterministic DM channel names prevent duplicates. See §5. |
 | **Delegation & loop prevention** | Adopted (M4) | `HierarchyResolver` resolves org hierarchy from `Company` at construction (cycle-detected, `MappingProxyType`-frozen). `AuthorityValidator` checks chain-of-command + role permissions. `DelegationGuard` orchestrates five mechanisms (ancestry, depth, dedup, rate limit, circuit breaker) in sequence, short-circuiting on first rejection. `DelegationService` is synchronous (CPU-only); messaging integration deferred. Stateful mechanisms use injectable clock for deterministic testing. Task model extended with `parent_task_id` and `delegation_chain` fields. | Synchronous delegation avoids async complexity for CPU-only validation. Five-mechanism guard provides defence-in-depth against all loop patterns. Injectable clocks enable deterministic testing. See §5.4, §5.5. |
+| **Conflict resolution** | Adopted (M4) | `ConflictResolver` protocol with async `resolve()` + sync `build_dissent_record()` split (resolve may call LLM, dissent record is pure construction). Four strategies: `AuthorityResolver` (seniority comparison iterating all N positions, hierarchy proximity tiebreaker via `get_lowest_common_manager`), `DebateResolver` (LLM judge via `JudgeEvaluator` protocol, authority fallback when absent), `HumanEscalationResolver` (stub, returns `ESCALATED_TO_HUMAN`), `HybridResolver` (LLM review + ambiguity escalation/authority fallback). `ConflictResolutionService` follows `DelegationService` pattern (`__slots__`, keyword-only constructor, `MappingProxyType`-wrapped resolver mapping, audit trail). `DissentRecord` preserves losing agent's reasoning. `Conflict.is_cross_department` is a `@computed_field` derived from positions. `HierarchyResolver` extended with `get_lowest_common_manager()` and `get_delegation_depth()`. | Protocol + strategy pattern enables adding new resolution approaches without modifying existing code. Async resolve accommodates LLM calls; sync dissent record avoids unnecessary async overhead. Shared `find_loser` utility prevents code duplication across strategies. See §5.6. |
 
 ---
 

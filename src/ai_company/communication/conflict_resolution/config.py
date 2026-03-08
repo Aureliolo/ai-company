@@ -11,8 +11,8 @@ class DebateConfig(BaseModel):
 
     Attributes:
         max_tokens_per_argument: Token budget per argument.
-        judge: Judge selection — ``"shared_manager"`` (LCM),
-            ``"ceo"`` (hierarchy root), or a named agent.
+        judge: Judge selection — ``"shared_manager"`` (lowest common
+            manager), ``"ceo"`` (hierarchy root), or a named agent.
     """
 
     model_config = ConfigDict(frozen=True)

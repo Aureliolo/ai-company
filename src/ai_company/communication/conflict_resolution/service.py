@@ -6,7 +6,10 @@ constructor, audit trail list, structured logging.
 
 from collections.abc import Mapping, Sequence  # noqa: TC003
 from datetime import UTC, datetime
+from types import MappingProxyType
 from uuid import uuid4
+
+from pydantic import AwareDatetime  # noqa: TC002
 
 from ai_company.communication.conflict_resolution.config import (  # noqa: TC001
     ConflictResolutionConfig,
@@ -26,13 +29,16 @@ from ai_company.communication.enums import (
     ConflictType,  # noqa: TC001
 )
 from ai_company.communication.errors import ConflictResolutionError
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.conflict import (
     CONFLICT_DETECTED,
     CONFLICT_DISSENT_QUERIED,
     CONFLICT_DISSENT_RECORDED,
+    CONFLICT_NO_RESOLVER,
     CONFLICT_RESOLUTION_STARTED,
     CONFLICT_RESOLVED,
+    CONFLICT_VALIDATION_ERROR,
 )
 
 logger = get_logger(__name__)
@@ -58,21 +64,23 @@ class ConflictResolutionService:
         resolvers: Mapping[ConflictResolutionStrategy, ConflictResolver],
     ) -> None:
         self._config = config
-        self._resolvers = resolvers
+        self._resolvers: MappingProxyType[
+            ConflictResolutionStrategy, ConflictResolver
+        ] = MappingProxyType(dict(resolvers))
         self._audit_trail: list[DissentRecord] = []
 
     def create_conflict(
         self,
         *,
         conflict_type: ConflictType,
-        subject: str,
+        subject: NotBlankStr,
         positions: Sequence[ConflictPosition],
-        task_id: str | None = None,
+        task_id: NotBlankStr | None = None,
     ) -> Conflict:
         """Create a conflict from agent positions.
 
         Validates minimum positions and unique agent IDs,
-        computes cross-department flag, and generates an ID.
+        and generates an ID.
 
         Args:
             conflict_type: Category of the conflict.
@@ -89,15 +97,22 @@ class ConflictResolutionService:
         """
         if len(positions) < _MIN_POSITIONS:
             msg = "A conflict requires at least 2 positions"
+            logger.warning(
+                CONFLICT_VALIDATION_ERROR,
+                error=msg,
+                position_count=len(positions),
+            )
             raise ConflictResolutionError(msg)
 
         agent_ids = [p.agent_id for p in positions]
         if len(agent_ids) != len(set(agent_ids)):
             msg = "Duplicate agent_id in conflict positions"
+            logger.warning(
+                CONFLICT_VALIDATION_ERROR,
+                error=msg,
+                agent_ids=agent_ids,
+            )
             raise ConflictResolutionError(msg)
-
-        departments = {p.agent_department for p in positions}
-        is_cross_department = len(departments) > 1
 
         conflict = Conflict(
             id=f"conflict-{uuid4().hex[:12]}",
@@ -106,7 +121,6 @@ class ConflictResolutionService:
             subject=subject,
             positions=tuple(positions),
             detected_at=datetime.now(UTC),
-            is_cross_department=is_cross_department,
         )
 
         logger.info(
@@ -114,7 +128,7 @@ class ConflictResolutionService:
             conflict_id=conflict.id,
             conflict_type=conflict.type,
             subject=conflict.subject,
-            is_cross_department=is_cross_department,
+            is_cross_department=conflict.is_cross_department,
             agent_count=len(positions),
         )
 
@@ -140,6 +154,11 @@ class ConflictResolutionService:
         resolver = self._resolvers.get(strategy)
         if resolver is None:
             msg = f"No resolver registered for strategy {strategy!r}"
+            logger.warning(
+                CONFLICT_NO_RESOLVER,
+                strategy=strategy,
+                error=msg,
+            )
             raise ConflictResolutionError(
                 msg,
                 context={"strategy": strategy},
@@ -183,8 +202,8 @@ class ConflictResolutionService:
         *,
         agent_id: str | None = None,
         conflict_type: ConflictType | None = None,
-        strategy: str | None = None,
-        since: datetime | None = None,
+        strategy: ConflictResolutionStrategy | None = None,
+        since: AwareDatetime | None = None,
     ) -> tuple[DissentRecord, ...]:
         """Query dissent records with optional filters.
 
@@ -194,7 +213,8 @@ class ConflictResolutionService:
             agent_id: Filter by dissenting agent ID.
             conflict_type: Filter by conflict type.
             strategy: Filter by strategy used.
-            since: Filter by records after this timestamp.
+            since: Filter by records after this timestamp
+                (must be timezone-aware).
 
         Returns:
             Matching dissent records.

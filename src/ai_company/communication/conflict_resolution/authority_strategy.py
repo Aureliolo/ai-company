@@ -1,13 +1,14 @@
 """Authority + dissent log conflict resolution strategy (DESIGN_SPEC §5.6).
 
-Strategy 1: The agent with higher seniority wins.  For same-seniority
-agents, hierarchy position decides.  Cross-department conflicts use
-the lowest common manager to determine proximity.
+Strategy 1: The agent with higher seniority wins.  For equal seniority,
+hierarchy position decides — using the lowest common manager for
+cross-department agents as the tiebreaker.
 """
 
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from ai_company.communication.conflict_resolution._helpers import find_loser
 from ai_company.communication.conflict_resolution.models import (
     Conflict,
     ConflictPosition,
@@ -25,6 +26,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.conflict import (
     CONFLICT_AUTHORITY_DECIDED,
     CONFLICT_CROSS_DEPARTMENT,
+    CONFLICT_HIERARCHY_ERROR,
     CONFLICT_LCM_LOOKUP,
 )
 
@@ -34,10 +36,10 @@ logger = get_logger(__name__)
 class AuthorityResolver:
     """Resolve conflicts by seniority and hierarchy position.
 
-    For same-department conflicts, the agent with higher seniority wins.
-    For equal seniority, the agent closer to the hierarchy root wins.
-    For cross-department conflicts, the lowest common manager is found
-    and the agent closer to the LCM wins.
+    The agent with higher seniority wins.  For equal seniority,
+    hierarchy proximity is used as a tiebreaker — the agent closer
+    to the hierarchy root (same department) or the lowest common
+    manager (cross-department) wins.
 
     Args:
         hierarchy: Resolved organizational hierarchy.
@@ -67,13 +69,14 @@ class AuthorityResolver:
                 conflict_id=conflict.id,
             )
 
-        winner, loser = self._pick_winner(conflict)
+        winner = self._pick_winner(conflict)
+        non_winners = [p for p in conflict.positions if p.agent_id != winner.agent_id]
 
         logger.info(
             CONFLICT_AUTHORITY_DECIDED,
             conflict_id=conflict.id,
             winner=winner.agent_id,
-            loser=loser.agent_id,
+            losers=[p.agent_id for p in non_winners],
         )
 
         return ConflictResolution(
@@ -85,7 +88,7 @@ class AuthorityResolver:
             reasoning=(
                 f"Authority decision: {winner.agent_id} "
                 f"({winner.agent_level}) outranks "
-                f"{loser.agent_id} ({loser.agent_level})"
+                f"{non_winners[0].agent_id} ({non_winners[0].agent_level})"
             ),
             resolved_at=datetime.now(UTC),
         )
@@ -104,7 +107,7 @@ class AuthorityResolver:
         Returns:
             Dissent record for the overruled agent.
         """
-        loser = _find_loser(conflict, resolution)
+        loser = find_loser(conflict, resolution)
         return DissentRecord(
             id=f"dissent-{uuid4().hex[:12]}",
             conflict=conflict,
@@ -118,30 +121,36 @@ class AuthorityResolver:
     def _pick_winner(
         self,
         conflict: Conflict,
-    ) -> tuple[ConflictPosition, ConflictPosition]:
-        """Determine winner and loser from conflict positions.
+    ) -> ConflictPosition:
+        """Determine the winning position from all conflict participants.
+
+        Iterates all positions, comparing seniority pairwise.  Ties
+        are broken by hierarchy proximity via ``_resolve_by_hierarchy``.
 
         Args:
             conflict: The conflict with agent positions.
 
         Returns:
-            Tuple of ``(winner, loser)``.
+            The winning position.
 
         Raises:
             ConflictHierarchyError: If no common manager exists for
-                cross-department agents.
+                cross-department agents with equal seniority.
         """
-        pos_a, pos_b = conflict.positions[0], conflict.positions[1]
-
-        # Compare seniority levels
-        cmp = compare_seniority(pos_a.agent_level, pos_b.agent_level)
-        if cmp > 0:
-            return pos_a, pos_b
-        if cmp < 0:
-            return pos_b, pos_a
-
-        # Equal seniority — use hierarchy proximity
-        return self._resolve_by_hierarchy(conflict, pos_a, pos_b)
+        best = conflict.positions[0]
+        for pos in conflict.positions[1:]:
+            cmp = compare_seniority(pos.agent_level, best.agent_level)
+            if cmp > 0:
+                best = pos
+            elif cmp == 0:
+                # Pass best as pos_a so equal depth favors incumbent
+                winner, _ = self._resolve_by_hierarchy(
+                    conflict,
+                    best,
+                    pos,
+                )
+                best = winner
+        return best
 
     def _resolve_by_hierarchy(
         self,
@@ -176,6 +185,13 @@ class AuthorityResolver:
 
         if lcm is None:
             msg = f"No common manager for {pos_a.agent_id!r} and {pos_b.agent_id!r}"
+            logger.warning(
+                CONFLICT_HIERARCHY_ERROR,
+                conflict_id=conflict.id,
+                agent_a=pos_a.agent_id,
+                agent_b=pos_b.agent_id,
+                error=msg,
+            )
             raise ConflictHierarchyError(
                 msg,
                 context={
@@ -185,36 +201,55 @@ class AuthorityResolver:
                 },
             )
 
-        # Agent closer to LCM (fewer ancestors between) wins
-        depth_a = self._hierarchy.get_delegation_depth(lcm, pos_a.agent_id)
-        depth_b = self._hierarchy.get_delegation_depth(lcm, pos_b.agent_id)
-
-        # If one agent IS the LCM, their depth is 0
-        if depth_a is None:
-            depth_a = 0
-        if depth_b is None:
-            depth_b = 0
+        # Agent closer to LCM (fewer ancestors between) wins.
+        depth_a = self._resolve_depth(conflict, lcm, pos_a)
+        depth_b = self._resolve_depth(conflict, lcm, pos_b)
 
         if depth_a <= depth_b:
             return pos_a, pos_b
         return pos_b, pos_a
 
+    def _resolve_depth(
+        self,
+        conflict: Conflict,
+        lcm: str,
+        pos: ConflictPosition,
+    ) -> int:
+        """Resolve hierarchy depth from LCM to an agent.
 
-def _find_loser(
-    conflict: Conflict,
-    resolution: ConflictResolution,
-) -> ConflictPosition:
-    """Find the position of the losing agent.
+        ``get_delegation_depth`` returns ``None`` when the agent IS the
+        LCM (it only measures downward distance).  This helper treats
+        that case as depth 0 and raises for truly unreachable agents.
 
-    Args:
-        conflict: The original conflict.
-        resolution: The resolution decision.
+        Args:
+            conflict: The conflict being resolved.
+            lcm: Lowest common manager ID.
+            pos: The position whose depth to resolve.
 
-    Returns:
-        The losing agent's position.
-    """
-    for pos in conflict.positions:
-        if pos.agent_id != resolution.winning_agent_id:
-            return pos
-    # Fallback — should never happen with valid data
-    return conflict.positions[-1]  # pragma: no cover
+        Returns:
+            Non-negative depth from LCM to the agent.
+
+        Raises:
+            ConflictHierarchyError: If the agent is unreachable.
+        """
+        depth = self._hierarchy.get_delegation_depth(lcm, pos.agent_id)
+        if depth is not None:
+            return depth
+        if pos.agent_id == lcm:
+            return 0
+        msg = f"Agent {pos.agent_id!r} unreachable from LCM {lcm!r}"
+        logger.warning(
+            CONFLICT_HIERARCHY_ERROR,
+            conflict_id=conflict.id,
+            agent=pos.agent_id,
+            lcm=lcm,
+            error=msg,
+        )
+        raise ConflictHierarchyError(
+            msg,
+            context={
+                "conflict_id": conflict.id,
+                "agent": pos.agent_id,
+                "lcm": lcm,
+            },
+        )

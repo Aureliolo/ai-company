@@ -66,9 +66,22 @@ class TestConflict:
         conflict = make_conflict(task_id="task-123")
         assert conflict.task_id == "task-123"
 
-    def test_cross_department_flag(self) -> None:
-        conflict = make_conflict(is_cross_department=True)
+    def test_cross_department_computed(self) -> None:
+        conflict = make_conflict(
+            positions=(
+                make_position(agent_id="agent-a", department="engineering"),
+                make_position(
+                    agent_id="agent-b",
+                    department="qa",
+                    position="Other view",
+                ),
+            ),
+        )
         assert conflict.is_cross_department is True
+
+    def test_same_department_not_cross(self) -> None:
+        conflict = make_conflict()
+        assert conflict.is_cross_department is False
 
     def test_three_positions_valid(self) -> None:
         pos_c = make_position(

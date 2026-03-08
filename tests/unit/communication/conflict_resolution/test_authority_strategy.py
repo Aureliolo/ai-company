@@ -115,7 +115,7 @@ class TestAuthorityResolverHierarchy:
         )
         resolution = await resolver.resolve(conflict)
         # Both are depth 1 from LCM (cto), so first position wins
-        assert resolution.winning_agent_id is not None
+        assert resolution.winning_agent_id == "backend_lead"
 
     async def test_cross_department_no_common_manager_raises(
         self,
@@ -137,7 +137,6 @@ class TestAuthorityResolverHierarchy:
                     department="qa",
                 ),
             ),
-            is_cross_department=True,
         )
         with pytest.raises(ConflictHierarchyError, match="No common manager"):
             await resolver.resolve(conflict)
@@ -225,7 +224,6 @@ class TestAuthorityResolverDissentRecord:
                     department="qa",
                 ),
             ),
-            is_cross_department=True,
         )
         resolution = await resolver.resolve(conflict)
         assert resolution.winning_agent_id == "sr_dev"

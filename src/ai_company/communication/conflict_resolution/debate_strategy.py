@@ -9,12 +9,16 @@ seniority among positions wins).
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from ai_company.communication.conflict_resolution._helpers import (
+    find_loser,
+    find_position_or_raise,
+    pick_highest_seniority,
+)
 from ai_company.communication.conflict_resolution.config import (  # noqa: TC001
     DebateConfig,
 )
 from ai_company.communication.conflict_resolution.models import (
     Conflict,
-    ConflictPosition,
     ConflictResolution,
     ConflictResolutionOutcome,
     DissentRecord,
@@ -26,15 +30,13 @@ from ai_company.communication.delegation.hierarchy import (  # noqa: TC001
     HierarchyResolver,
 )
 from ai_company.communication.enums import ConflictResolutionStrategy
-from ai_company.communication.errors import (
-    ConflictHierarchyError,
-    ConflictStrategyError,
-)
-from ai_company.core.enums import compare_seniority
+from ai_company.communication.errors import ConflictHierarchyError
 from ai_company.observability import get_logger
 from ai_company.observability.events.conflict import (
+    CONFLICT_AUTHORITY_FALLBACK,
     CONFLICT_DEBATE_JUDGE_DECIDED,
     CONFLICT_DEBATE_STARTED,
+    CONFLICT_HIERARCHY_ERROR,
     CONFLICT_LCM_LOOKUP,
 )
 
@@ -77,7 +79,8 @@ class DebateResolver:
             Resolution with ``RESOLVED_BY_DEBATE`` outcome.
 
         Raises:
-            ConflictStrategyError: If the judge evaluation fails.
+            ConflictStrategyError: If the judge returns a winning
+                agent ID not found in the conflict positions.
             ConflictHierarchyError: If LCM lookup fails when needed.
         """
         judge_id = self._determine_judge(conflict)
@@ -94,10 +97,15 @@ class DebateResolver:
                 judge_id,
             )
         else:
-            # Fallback: authority-based judging
+            logger.warning(
+                CONFLICT_AUTHORITY_FALLBACK,
+                conflict_id=conflict.id,
+                strategy="debate",
+                reason="no_judge_evaluator",
+            )
             winning_agent_id, reasoning = self._authority_fallback(conflict)
 
-        winning_pos = self._find_position(conflict, winning_agent_id)
+        winning_pos = find_position_or_raise(conflict, winning_agent_id)
 
         logger.info(
             CONFLICT_DEBATE_JUDGE_DECIDED,
@@ -130,7 +138,7 @@ class DebateResolver:
         Returns:
             Dissent record preserving the overruled reasoning.
         """
-        loser = _find_loser(conflict, resolution)
+        loser = find_loser(conflict, resolution)
         return DissentRecord(
             id=f"dissent-{uuid4().hex[:12]}",
             conflict=conflict,
@@ -145,6 +153,9 @@ class DebateResolver:
     def _determine_judge(self, conflict: Conflict) -> str:
         """Determine the judge agent for this conflict.
 
+        For N-party conflicts with ``"shared_manager"``, finds the
+        lowest common manager of all participants iteratively.
+
         Args:
             conflict: The conflict being judged.
 
@@ -156,29 +167,38 @@ class DebateResolver:
                 configured but no LCM exists.
         """
         if self._config.judge == "shared_manager":
-            pos_a, pos_b = conflict.positions[0], conflict.positions[1]
-            lcm = self._hierarchy.get_lowest_common_manager(
-                pos_a.agent_id,
-                pos_b.agent_id,
+            lcm: str | None = self._hierarchy.get_lowest_common_manager(
+                conflict.positions[0].agent_id,
+                conflict.positions[1].agent_id,
             )
+            for pos in conflict.positions[2:]:
+                if lcm is None:
+                    break
+                lcm = self._hierarchy.get_lowest_common_manager(
+                    lcm,
+                    pos.agent_id,
+                )
             logger.debug(
                 CONFLICT_LCM_LOOKUP,
                 conflict_id=conflict.id,
-                agent_a=pos_a.agent_id,
-                agent_b=pos_b.agent_id,
+                agents=[p.agent_id for p in conflict.positions],
                 lcm=lcm,
             )
             if lcm is None:
                 msg = (
-                    f"No shared manager for {pos_a.agent_id!r} and "
-                    f"{pos_b.agent_id!r} — cannot select judge"
+                    "No shared manager for conflict participants — cannot select judge"
+                )
+                logger.warning(
+                    CONFLICT_HIERARCHY_ERROR,
+                    conflict_id=conflict.id,
+                    agents=[p.agent_id for p in conflict.positions],
+                    error=msg,
                 )
                 raise ConflictHierarchyError(
                     msg,
                     context={
                         "conflict_id": conflict.id,
-                        "agent_a": pos_a.agent_id,
-                        "agent_b": pos_b.agent_id,
+                        "agents": [p.agent_id for p in conflict.positions],
                     },
                 )
             return lcm
@@ -208,10 +228,7 @@ class DebateResolver:
         Returns:
             Tuple of ``(winning_agent_id, reasoning)``.
         """
-        best = conflict.positions[0]
-        for pos in conflict.positions[1:]:
-            if compare_seniority(pos.agent_level, best.agent_level) > 0:
-                best = pos
+        best = pick_highest_seniority(conflict)
         return (
             best.agent_id,
             (
@@ -220,51 +237,3 @@ class DebateResolver:
                 f"seniority"
             ),
         )
-
-    @staticmethod
-    def _find_position(
-        conflict: Conflict,
-        agent_id: str,
-    ) -> ConflictPosition:
-        """Find a position by agent ID.
-
-        Args:
-            conflict: The conflict.
-            agent_id: Agent to find.
-
-        Returns:
-            The matching position.
-
-        Raises:
-            ConflictStrategyError: If agent is not found in positions.
-        """
-        for pos in conflict.positions:
-            if pos.agent_id == agent_id:
-                return pos
-        msg = f"Agent {agent_id!r} not found in conflict positions"
-        raise ConflictStrategyError(
-            msg,
-            context={
-                "conflict_id": conflict.id,
-                "agent_id": agent_id,
-            },
-        )
-
-
-def _find_loser(
-    conflict: Conflict,
-    resolution: ConflictResolution,
-) -> ConflictPosition:
-    """Find the position of the losing agent.
-
-    Args:
-        conflict: The original conflict.
-        resolution: The resolution decision.
-
-    Returns:
-        The losing agent's position.
-    """
-    for pos in conflict.positions:
-        if pos.agent_id != resolution.winning_agent_id:
-            return pos
-    return conflict.positions[-1]  # pragma: no cover

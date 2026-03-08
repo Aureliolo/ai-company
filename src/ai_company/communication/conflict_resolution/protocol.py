@@ -12,6 +12,7 @@ from ai_company.communication.conflict_resolution.models import (  # noqa: TC001
     ConflictResolution,
     DissentRecord,
 )
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
 class ConflictResolver(Protocol):
@@ -59,7 +60,7 @@ class JudgeEvaluator(Protocol):
     async def evaluate(
         self,
         conflict: Conflict,
-        judge_agent_id: str,
+        judge_agent_id: NotBlankStr,
     ) -> tuple[str, str]:
         """Evaluate conflict positions and pick a winner.
 
