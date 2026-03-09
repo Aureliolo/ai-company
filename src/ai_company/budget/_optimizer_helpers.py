@@ -237,20 +237,13 @@ def _compute_global_avg_cost_per_1k(
 
 
 def _find_most_used_model(
-    records: Sequence[CostRecord],
-    agent_id: str,
+    agent_records: Sequence[CostRecord],
 ) -> str | None:
-    """Find the model most frequently used by an agent."""
+    """Find the most frequently used model from pre-filtered records."""
     model_counts: dict[str, int] = defaultdict(int)
-    for r in records:
-        if r.agent_id == agent_id:
-            model_counts[r.model] += 1
+    for r in agent_records:
+        model_counts[r.model] += 1
     if not model_counts:
-        logger.debug(
-            CFO_DOWNGRADE_SKIPPED,
-            agent_id=agent_id,
-            reason="no_records_for_agent",
-        )
         return None
     return max(model_counts, key=lambda m: model_counts[m])
 
@@ -288,7 +281,11 @@ def _build_downgrade_recommendation(
         )
 
     if target_ref is None:
-        cheaper = _find_cheaper_model(current_resolved.total_cost_per_1k, resolver)
+        cheaper = _find_cheaper_model(
+            current_resolved.total_cost_per_1k,
+            resolver,
+            min_context=current_resolved.max_context,
+        )
         if cheaper is None:
             logger.debug(
                 CFO_DOWNGRADE_SKIPPED,
@@ -340,11 +337,16 @@ def _build_downgrade_recommendation(
 def _find_cheaper_model(
     current_cost_per_1k: float,
     resolver: ModelResolver,
+    *,
+    min_context: int = 0,
 ) -> ResolvedModel | None:
-    """Find the overall cheapest available model below current cost."""
+    """Find the cheapest model below current cost with sufficient context."""
     all_models = resolver.all_models_sorted_by_cost()
     for model in all_models:
-        if model.total_cost_per_1k < current_cost_per_1k:
+        if (
+            model.total_cost_per_1k < current_cost_per_1k
+            and model.max_context >= min_context
+        ):
             return model
     return None
 

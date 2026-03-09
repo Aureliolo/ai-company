@@ -1847,10 +1847,11 @@ The CFO agent (when enabled) acts as a cost management system:
 
 > **Implementation note (M5):** `CostOptimizer` service (`budget/optimizer.py`)
 > implements anomaly detection (sigma + spike factor), per-agent efficiency
-> analysis, model downgrade recommendations (via `ModelResolver`), and
-> operation approval evaluation. `ReportGenerator` service
-> (`budget/reports.py`) produces multi-dimensional spending reports with
-> task/provider/model breakdowns and period-over-period comparison.
+> analysis, model downgrade recommendations (via `ModelResolver`), routing
+> optimization suggestions (cost + context-window comparison), and operation
+> approval evaluation. `ReportGenerator` service (`budget/reports.py`)
+> produces multi-dimensional spending reports with task/provider/model
+> breakdowns and period-over-period comparison.
 
 ### 10.4 Cost Controls
 

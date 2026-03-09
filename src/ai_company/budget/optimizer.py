@@ -11,6 +11,7 @@ queries — the advisory complement to
 Service layer backing the CFO role (DESIGN_SPEC Section 10.3).
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -55,7 +56,9 @@ from ai_company.observability.events.cfo import (
 
 if TYPE_CHECKING:
     from ai_company.budget.config import BudgetConfig
+    from ai_company.budget.cost_record import CostRecord
     from ai_company.budget.tracker import CostTracker
+    from ai_company.providers.routing.models import ResolvedModel
     from ai_company.providers.routing.resolver import ModelResolver
 
 logger = get_logger(__name__)
@@ -303,15 +306,21 @@ class CostOptimizer:
                 CFO_RESOLVER_MISSING,
                 reason="no_model_resolver_configured",
             )
+            budget_pressure = await self._compute_budget_pressure()
             return DowngradeAnalysis(
                 recommendations=(),
-                budget_pressure_percent=0.0,
+                budget_pressure_percent=budget_pressure,
             )
 
-        records = await self._cost_tracker.get_records(
-            start=start,
-            end=end,
-        )
+        async with asyncio.TaskGroup() as tg:
+            records_task = tg.create_task(
+                self._cost_tracker.get_records(start=start, end=end),
+            )
+            pressure_task = tg.create_task(self._compute_budget_pressure())
+
+        records = records_task.result()
+        budget_pressure = pressure_task.result()
+
         efficiency = _build_efficiency_from_records(
             records,
             start=start,
@@ -326,39 +335,11 @@ class CostOptimizer:
             global_avg_cost_per_1k=efficiency.global_avg_cost_per_1k,
         )
 
-        downgrade_map = dict(self._budget_config.auto_downgrade.downgrade_map)
-        budget_pressure = await self._compute_budget_pressure()
-
-        recommendations: list[DowngradeRecommendation] = []
-
-        for agent in efficiency.agents:
-            if agent.efficiency_rating != EfficiencyRating.INEFFICIENT:
-                continue
-
-            most_used_model = _find_most_used_model(records, agent.agent_id)
-            if most_used_model is None:
-                logger.debug(
-                    CFO_DOWNGRADE_SKIPPED,
-                    agent_id=agent.agent_id,
-                    reason="no_most_used_model",
-                )
-                continue
-
-            recommendation = _build_downgrade_recommendation(
-                agent_id=agent.agent_id,
-                current_model=most_used_model,
-                downgrade_map=downgrade_map,
-                resolver=self._model_resolver,
-            )
-            if recommendation is not None:
-                recommendations.append(recommendation)
-                logger.info(
-                    CFO_DOWNGRADE_RECOMMENDED,
-                    agent_id=agent.agent_id,
-                    current_model=most_used_model,
-                    recommended_model=recommendation.recommended_model,
-                    estimated_savings=recommendation.estimated_savings_per_1k,
-                )
+        by_agent = _group_records_by_agent(records)
+        recommendations = self._build_recommendations(
+            efficiency=efficiency,
+            by_agent=by_agent,
+        )
 
         return DowngradeAnalysis(
             recommendations=tuple(recommendations),
@@ -375,7 +356,7 @@ class CostOptimizer:
 
         Analyzes each agent's most-used model and suggests cheaper
         alternatives available through the model resolver, comparing by
-        cost, context window, and latency.
+        cost and context window size.
 
         Unlike ``recommend_downgrades`` which only targets INEFFICIENT
         agents, this method analyzes all agents and suggests cheaper
@@ -422,49 +403,7 @@ class CostOptimizer:
 
         by_agent = _group_records_by_agent(records)
         all_models = self._model_resolver.all_models_sorted_by_cost()
-        suggestions: list[RoutingSuggestion] = []
-
-        for agent_id in sorted(by_agent):
-            most_used = _find_most_used_model(records, agent_id)
-            if most_used is None:
-                continue
-
-            current_resolved = self._model_resolver.resolve_safe(most_used)
-            if current_resolved is None:
-                continue
-
-            # Find cheapest model with sufficient context window
-            for candidate in all_models:
-                if candidate.model_id == current_resolved.model_id:
-                    continue
-                if candidate.total_cost_per_1k >= current_resolved.total_cost_per_1k:
-                    continue
-                if candidate.max_context < current_resolved.max_context:
-                    continue
-
-                suggestions.append(
-                    RoutingSuggestion(
-                        agent_id=agent_id,
-                        current_model=most_used,
-                        suggested_model=candidate.model_id,
-                        current_cost_per_1k=round(
-                            current_resolved.total_cost_per_1k,
-                            BUDGET_ROUNDING_PRECISION,
-                        ),
-                        suggested_cost_per_1k=round(
-                            candidate.total_cost_per_1k,
-                            BUDGET_ROUNDING_PRECISION,
-                        ),
-                        reason=(
-                            f"Switch from {most_used!r} "
-                            f"(${current_resolved.total_cost_per_1k:.4f}/1k) "
-                            f"to {candidate.model_id!r} "
-                            f"(${candidate.total_cost_per_1k:.4f}/1k) "
-                            f"— same context window, lower cost"
-                        ),
-                    ),
-                )
-                break  # Take first (cheapest) match per agent
+        suggestions = self._find_routing_suggestions(by_agent, all_models)
 
         result = RoutingOptimizationAnalysis(
             suggestions=tuple(suggestions),
@@ -564,69 +503,23 @@ class CostOptimizer:
         )
         projected_alert = _compute_alert_level(projected_pct, cfg)
 
-        auto_deny_level = self._config.approval_auto_deny_alert_level
-
-        if _ALERT_LEVEL_ORDER[projected_alert] >= _ALERT_LEVEL_ORDER[auto_deny_level]:
-            decision = ApprovalDecision(
-                approved=False,
-                reason=(
-                    f"Denied: projected alert level {projected_alert.value} "
-                    f"meets or exceeds auto-deny threshold "
-                    f"{auto_deny_level.value}"
-                ),
-                budget_remaining_usd=remaining,
-                budget_used_percent=used_pct,
-                alert_level=alert_level,
-                conditions=(),
-            )
-            logger.warning(
-                CFO_OPERATION_DENIED,
-                agent_id=agent_id,
-                estimated_cost=estimated_cost_usd,
-                alert_level=alert_level.value,
-                projected_alert_level=projected_alert.value,
-                reason="alert_level_exceeded",
-            )
-            return decision
-
-        hard_stop_limit = round(
-            cfg.total_monthly * cfg.alerts.hard_stop_at / 100,
-            BUDGET_ROUNDING_PRECISION,
+        denial = self._check_denial(
+            agent_id=agent_id,
+            estimated_cost_usd=estimated_cost_usd,
+            remaining=remaining,
+            used_pct=used_pct,
+            alert_level=alert_level,
+            projected_cost=projected_cost,
+            projected_alert=projected_alert,
         )
-        if projected_cost >= hard_stop_limit:
-            decision = ApprovalDecision(
-                approved=False,
-                reason=(
-                    f"Denied: projected cost ${projected_cost:.2f} "
-                    f"would exceed hard stop ${hard_stop_limit:.2f}"
-                ),
-                budget_remaining_usd=remaining,
-                budget_used_percent=used_pct,
-                alert_level=alert_level,
-                conditions=(),
-            )
-            logger.warning(
-                CFO_OPERATION_DENIED,
-                agent_id=agent_id,
-                estimated_cost=estimated_cost_usd,
-                projected_cost=projected_cost,
-                hard_stop_limit=hard_stop_limit,
-                reason="would_exceed_hard_stop",
-            )
-            return decision
+        if denial is not None:
+            return denial
 
-        conditions: list[str] = []
-        warn_threshold = self._config.approval_warn_threshold_usd
-        if estimated_cost_usd >= warn_threshold:
-            conditions.append(
-                f"High-cost operation: ${estimated_cost_usd:.2f} "
-                f"(threshold: ${warn_threshold:.2f})"
-            )
-
-        if alert_level in (BudgetAlertLevel.WARNING, BudgetAlertLevel.CRITICAL):
-            conditions.append(
-                f"Budget alert level is {alert_level.value} ({used_pct:.1f}% used)"
-            )
+        conditions = self._build_approval_conditions(
+            estimated_cost_usd=estimated_cost_usd,
+            projected_alert=projected_alert,
+            projected_pct=projected_pct,
+        )
 
         decision = ApprovalDecision(
             approved=True,
@@ -634,7 +527,7 @@ class CostOptimizer:
             budget_remaining_usd=remaining,
             budget_used_percent=used_pct,
             alert_level=alert_level,
-            conditions=tuple(conditions),
+            conditions=conditions,
         )
 
         logger.info(
@@ -649,6 +542,194 @@ class CostOptimizer:
         return decision
 
     # ── Private helpers ──────────────────────────────────────────
+
+    def _build_recommendations(
+        self,
+        *,
+        efficiency: EfficiencyAnalysis,
+        by_agent: dict[str, list[CostRecord]],
+    ) -> list[DowngradeRecommendation]:
+        """Build downgrade recommendations for inefficient agents."""
+        assert self._model_resolver is not None  # noqa: S101
+        downgrade_map = dict(self._budget_config.auto_downgrade.downgrade_map)
+        recommendations: list[DowngradeRecommendation] = []
+
+        for agent in efficiency.agents:
+            if agent.efficiency_rating != EfficiencyRating.INEFFICIENT:
+                continue
+
+            agent_records = by_agent.get(agent.agent_id, [])
+            most_used_model = _find_most_used_model(agent_records)
+            if most_used_model is None:
+                logger.debug(
+                    CFO_DOWNGRADE_SKIPPED,
+                    agent_id=agent.agent_id,
+                    reason="no_most_used_model",
+                )
+                continue
+
+            recommendation = _build_downgrade_recommendation(
+                agent_id=agent.agent_id,
+                current_model=most_used_model,
+                downgrade_map=downgrade_map,
+                resolver=self._model_resolver,
+            )
+            if recommendation is not None:
+                recommendations.append(recommendation)
+                logger.info(
+                    CFO_DOWNGRADE_RECOMMENDED,
+                    agent_id=agent.agent_id,
+                    current_model=most_used_model,
+                    recommended_model=recommendation.recommended_model,
+                    estimated_savings=recommendation.estimated_savings_per_1k,
+                )
+
+        return recommendations
+
+    def _find_routing_suggestions(
+        self,
+        by_agent: dict[str, list[CostRecord]],
+        all_models: tuple[ResolvedModel, ...],
+    ) -> list[RoutingSuggestion]:
+        """Find routing suggestions for all agents."""
+        assert self._model_resolver is not None  # noqa: S101
+        suggestions: list[RoutingSuggestion] = []
+
+        for agent_id in sorted(by_agent):
+            agent_records = by_agent[agent_id]
+            most_used = _find_most_used_model(agent_records)
+            if most_used is None:
+                continue
+
+            current_resolved = self._model_resolver.resolve_safe(most_used)
+            if current_resolved is None:
+                continue
+
+            # Find cheapest model with sufficient context window
+            for candidate in all_models:
+                if candidate.model_id == current_resolved.model_id:
+                    continue
+                if candidate.total_cost_per_1k >= current_resolved.total_cost_per_1k:
+                    continue
+                if candidate.max_context < current_resolved.max_context:
+                    continue
+
+                suggestions.append(
+                    RoutingSuggestion(
+                        agent_id=agent_id,
+                        current_model=most_used,
+                        suggested_model=candidate.model_id,
+                        current_cost_per_1k=round(
+                            current_resolved.total_cost_per_1k,
+                            BUDGET_ROUNDING_PRECISION,
+                        ),
+                        suggested_cost_per_1k=round(
+                            candidate.total_cost_per_1k,
+                            BUDGET_ROUNDING_PRECISION,
+                        ),
+                        reason=(
+                            f"Switch from {most_used!r} "
+                            f"(${current_resolved.total_cost_per_1k:.4f}/1k) "
+                            f"to {candidate.model_id!r} "
+                            f"(${candidate.total_cost_per_1k:.4f}/1k) "
+                            f"— same context window, lower cost"
+                        ),
+                    ),
+                )
+                break  # Take first (cheapest) match per agent
+
+        return suggestions
+
+    def _check_denial(  # noqa: PLR0913
+        self,
+        *,
+        agent_id: str,
+        estimated_cost_usd: float,
+        remaining: float,
+        used_pct: float,
+        alert_level: BudgetAlertLevel,
+        projected_cost: float,
+        projected_alert: BudgetAlertLevel,
+    ) -> ApprovalDecision | None:
+        """Check if the operation should be denied.
+
+        Returns the denial decision, or ``None`` if not denied.
+        """
+        auto_deny_level = self._config.approval_auto_deny_alert_level
+
+        if _ALERT_LEVEL_ORDER[projected_alert] >= _ALERT_LEVEL_ORDER[auto_deny_level]:
+            logger.warning(
+                CFO_OPERATION_DENIED,
+                agent_id=agent_id,
+                estimated_cost=estimated_cost_usd,
+                alert_level=alert_level.value,
+                projected_alert_level=projected_alert.value,
+                reason="alert_level_exceeded",
+            )
+            return ApprovalDecision(
+                approved=False,
+                reason=(
+                    f"Denied: projected alert level {projected_alert.value} "
+                    f"meets or exceeds auto-deny threshold "
+                    f"{auto_deny_level.value}"
+                ),
+                budget_remaining_usd=remaining,
+                budget_used_percent=used_pct,
+                alert_level=alert_level,
+                conditions=(),
+            )
+
+        hard_stop_limit = round(
+            self._budget_config.total_monthly
+            * self._budget_config.alerts.hard_stop_at
+            / 100,
+            BUDGET_ROUNDING_PRECISION,
+        )
+        if projected_cost >= hard_stop_limit:
+            logger.warning(
+                CFO_OPERATION_DENIED,
+                agent_id=agent_id,
+                estimated_cost=estimated_cost_usd,
+                projected_cost=projected_cost,
+                hard_stop_limit=hard_stop_limit,
+                reason="would_exceed_hard_stop",
+            )
+            return ApprovalDecision(
+                approved=False,
+                reason=(
+                    f"Denied: projected cost ${projected_cost:.2f} "
+                    f"would exceed hard stop ${hard_stop_limit:.2f}"
+                ),
+                budget_remaining_usd=remaining,
+                budget_used_percent=used_pct,
+                alert_level=alert_level,
+                conditions=(),
+            )
+
+        return None
+
+    def _build_approval_conditions(
+        self,
+        *,
+        estimated_cost_usd: float,
+        projected_alert: BudgetAlertLevel,
+        projected_pct: float,
+    ) -> tuple[str, ...]:
+        """Build warning conditions for an approved operation."""
+        conditions: list[str] = []
+        warn_threshold = self._config.approval_warn_threshold_usd
+        if estimated_cost_usd >= warn_threshold:
+            conditions.append(
+                f"High-cost operation: ${estimated_cost_usd:.2f} "
+                f"(threshold: ${warn_threshold:.2f})"
+            )
+
+        if projected_alert in (BudgetAlertLevel.WARNING, BudgetAlertLevel.CRITICAL):
+            conditions.append(
+                f"Budget alert level is {projected_alert.value} "
+                f"({projected_pct:.1f}% projected)"
+            )
+        return tuple(conditions)
 
     async def _compute_budget_pressure(self) -> float:
         """Compute current budget utilization percentage."""

@@ -22,6 +22,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.cfo import (
     CFO_REPORT_GENERATED,
     CFO_REPORT_GENERATOR_CREATED,
+    CFO_REPORT_VALIDATION_ERROR,
 )
 
 if TYPE_CHECKING:
@@ -243,9 +244,9 @@ class ReportGenerator:
     ) -> SpendingReport:
         """Generate a spending report for the given period.
 
-        Uses a single ``get_records`` snapshot and derives the summary
-        from the same data to avoid race conditions between separate
-        ``build_summary`` and ``get_records`` calls.
+        Fetches records and summary concurrently; derives ``total_cost``
+        from the records snapshot for consistent distribution
+        percentages.
 
         Args:
             start: Inclusive period start.
@@ -261,15 +262,25 @@ class ReportGenerator:
             ValueError: If ``start >= end`` or ``top_n < 1``.
         """
         if start >= end:
+            logger.warning(
+                CFO_REPORT_VALIDATION_ERROR,
+                error="start_after_end",
+                start=start.isoformat(),
+                end=end.isoformat(),
+            )
             msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
             raise ValueError(msg)
         if top_n < 1:
+            logger.warning(
+                CFO_REPORT_VALIDATION_ERROR,
+                error="top_n_below_minimum",
+                top_n=top_n,
+            )
             msg = f"top_n must be >= 1, got {top_n}"
             raise ValueError(msg)
 
         now = datetime.now(UTC)
 
-        # Single snapshot to avoid double-fetch race condition (#3)
         records = await self._cost_tracker.get_records(
             start=start,
             end=end,
@@ -279,7 +290,11 @@ class ReportGenerator:
             end=end,
         )
 
-        total_cost = summary.period.total_cost_usd
+        # Derive total_cost from records for consistent percentages
+        total_cost = round(
+            math.fsum(r.cost_usd for r in records),
+            BUDGET_ROUNDING_PRECISION,
+        )
         by_task = _build_task_spendings(records)
         by_provider = _build_provider_distribution(records, total_cost)
         by_model = _build_model_distribution(records, total_cost)
