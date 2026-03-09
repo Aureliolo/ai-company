@@ -10,7 +10,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ## Current Capability Snapshot
 
-### Implemented (M0–M4 complete, M5 in progress)
+### Implemented (M0–M6 complete)
 
 - **Company Config + Core Models** - Strong Pydantic validation, immutable config models, runtime state models
 - **Provider Layer** - LiteLLM-based provider abstraction with routing, retry, and rate limiting
@@ -24,22 +24,25 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Memory Interface (M5)** - Pluggable `MemoryBackend` protocol with capability discovery, shared knowledge protocol, domain models, config, factory, and context injection retrieval pipeline (ranking, token-budget formatting). Shared organizational memory via `OrgMemoryBackend` protocol with hybrid prompt+retrieval backend. Memory consolidation/archival with pluggable strategies and retention enforcement
 - **Coordination Error Taxonomy (M5)** - Post-execution classification pipeline detecting logical contradictions, numerical drift, context omissions, and coordination failures
 - **Budget Enforcement (M5)** - `BudgetEnforcer` service with pre-flight checks, in-flight budget checking, auto-downgrade, configurable cost tiers, and quota/subscription tracking; `CostOptimizer` CFO service with anomaly detection, efficiency analysis, downgrade recommendations, and approval decisions; `ReportGenerator` for multi-dimensional spending reports
+- **Litestar REST API (M6)** - 13 controllers + WebSocket handler covering company, agents, tasks, budget, approvals, analytics, messages, meetings, projects, departments, artifacts, providers, health, and WebSocket real-time feed
+- **Human Approval Queue (M6)** - Approval submission, approve/reject with reason, list/filter by status, WebSocket notifications for approval events
+- **WebSocket Real-Time Feed (M6)** - Channel-based subscriptions (tasks, agents, budget, messages, system, approvals), per-channel payload filters, message-bus bridge
+- **Route Guards (M6)** - Role-based read/write access control (stub auth for M6; real JWT/OAuth planned for M7)
 
 ### Not implemented yet (planned milestones)
 
 - **Memory Backends (M5)** - Initial Mem0 adapter backend ([ADR-001](docs/decisions/ADR-001-memory-layer.md)) pending; research backends (GraphRAG, Temporal KG) planned
-- **API Layer (M6)** - `api/` package and route modules are placeholders
-- **CLI Surface (M6)** - `cli/` package is placeholder-only
-- **Security/Approval System (M7)** - `security/` package is placeholder-only
-- **Advanced Product Surface** - web dashboard, HR workflows, progressive trust, and external integrations
+- **CLI Surface** - `cli/` package is placeholder-only
+- **Security/Approval System (M7)** - `security/` package is placeholder-only; real authentication (JWT/OAuth), progressive trust, SecOps agent
+- **Advanced Product Surface** - web dashboard, HR workflows, and external integrations
 
 ## Status
 
-**M5: Memory & Budget** in progress (M0 Tooling, M1 Config & Core, M2 Providers, M3 Single Agent, M4 Multi-Agent — all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
+**M7: Security & HR** next (M0–M6 all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
 
 ## Tech Stack
 
-- **Python 3.14+** with FastAPI, Pydantic, Typer
+- **Python 3.14+** with Litestar, Pydantic
 - **uv** as package manager, **Hatchling** as build backend
 - **LiteLLM** for multi-provider LLM abstraction
 - **structlog** for structured logging and observability
