@@ -1824,7 +1824,7 @@ budget:
 
 ### 10.5 LLM Call Analytics
 
-> **Current state:** Proxy metrics (M3) and call categorization + coordination metric data models (M4 models, brought forward) are implemented. Runtime collection pipeline and full analytics layer are M5+.
+> **Current state:** Proxy metrics (M3), call categorization + coordination metric data models (M4 models, brought forward), and error taxonomy classification pipeline (M5) are implemented. Runtime collection pipeline for coordination metrics and full analytics layer are M5+.
 
 Every LLM provider call is tracked with comprehensive metadata for financial reporting, debugging, and orchestration overhead analysis. The analytics system builds incrementally across milestones.
 
@@ -1919,6 +1919,8 @@ call_analytics:
 > **Design principle:** Analytics metadata is append-only and never blocks execution. Failed analytics writes are logged and skipped — the agent's task is never delayed by telemetry. All analytics data flows through the existing `CostRecord` and structured logging infrastructure.
 
 #### M4/M5: Coordination Error Taxonomy
+
+> **Current state:** Error taxonomy classification pipeline is implemented in `engine/classification/`. Four heuristic-based detectors (logical contradiction, numerical drift, context omission, coordination failure) run post-execution when enabled via `error_taxonomy_config`. Integrated into `AgentEngine`. Classification results are log-only; programmatic access is planned for a future milestone. Full semantic analysis detectors are planned for future milestones.
 
 When coordination metrics collection is enabled, the system can optionally classify coordination errors into structured categories. This enables targeted diagnosis — e.g., if coordination failures spike, the topology may be too complex; if context omissions spike, the orchestrator's synthesis is insufficient.
 
@@ -2619,7 +2621,7 @@ ai-company/
 │       │   ├── role.py             # Role model
 │       │   ├── role_catalog.py     # Role catalog
 │       │   └── personality.py     # Personality compatibility scoring
-│       ├── engine/                  # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, task lifecycle, recovery, shutdown, and workspace isolation
+│       ├── engine/                  # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, task lifecycle, recovery, shutdown, workspace isolation, and coordination error classification
 │       │   ├── errors.py           # Engine error hierarchy
 │       │   ├── prompt.py           # System prompt builder
 │       │   ├── prompt_template.py  # System prompt Jinja2 templates
@@ -2640,6 +2642,11 @@ ai-company/
 │       │   ├── parallel_models.py  # AgentAssignment, ParallelExecutionGroup, AgentOutcome, ParallelExecutionResult, ParallelProgress
 │       │   ├── resource_lock.py    # ResourceLock protocol + InMemoryResourceLock
 │       │   ├── shutdown.py        # Graceful shutdown strategy & manager
+│       │   ├── classification/      # Coordination error taxonomy classification (§10.5)
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── models.py      # ErrorSeverity, ErrorFinding, ClassificationResult
+│       │   │   ├── detectors.py   # Per-category detection heuristics
+│       │   │   └── pipeline.py    # classify_execution_errors orchestrator
 │       │   ├── assignment/          # Task assignment subsystem
 │       │   │   ├── __init__.py    # Package exports
 │       │   │   ├── models.py      # AssignmentRequest, AssignmentResult, AssignmentCandidate, AgentWorkload

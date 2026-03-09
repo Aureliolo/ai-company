@@ -23,16 +23,19 @@ from ai_company.engine.classification.models import (
     ErrorFinding,
 )
 from ai_company.observability import get_logger
-
-if TYPE_CHECKING:
-    from ai_company.engine.loop_protocol import ExecutionResult
 from ai_company.observability.events.classification import (
     CLASSIFICATION_COMPLETE,
     CLASSIFICATION_ERROR,
     CLASSIFICATION_FINDING,
     CLASSIFICATION_SKIPPED,
     CLASSIFICATION_START,
+    DETECTOR_ERROR,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ai_company.engine.loop_protocol import ExecutionResult
 
 logger = get_logger(__name__)
 
@@ -112,7 +115,11 @@ def _run_detectors(
     execution_id: str,
     config: ErrorTaxonomyConfig,
 ) -> ClassificationResult:
-    """Run enabled detectors and collect findings."""
+    """Run enabled detectors and collect findings.
+
+    Each detector is invoked in its own try/except so that a failure
+    in one detector does not prevent the others from running.
+    """
     conversation = execution_result.context.conversation
     turns = execution_result.turns
     categories = config.categories
@@ -120,16 +127,51 @@ def _run_detectors(
     all_findings: list[ErrorFinding] = []
 
     if ErrorCategory.LOGICAL_CONTRADICTION in categories:
-        all_findings.extend(detect_logical_contradictions(conversation))
+        all_findings.extend(
+            _safe_detect(
+                lambda: detect_logical_contradictions(conversation),
+                "logical_contradictions",
+                agent_id,
+                task_id,
+                execution_id,
+            ),
+        )
 
     if ErrorCategory.NUMERICAL_DRIFT in categories:
-        all_findings.extend(detect_numerical_drift(conversation))
+        all_findings.extend(
+            _safe_detect(
+                lambda: detect_numerical_drift(conversation),
+                "numerical_drift",
+                agent_id,
+                task_id,
+                execution_id,
+            ),
+        )
 
     if ErrorCategory.CONTEXT_OMISSION in categories:
-        all_findings.extend(detect_context_omissions(conversation))
+        all_findings.extend(
+            _safe_detect(
+                lambda: detect_context_omissions(conversation),
+                "context_omissions",
+                agent_id,
+                task_id,
+                execution_id,
+            ),
+        )
 
     if ErrorCategory.COORDINATION_FAILURE in categories:
-        all_findings.extend(detect_coordination_failures(conversation, turns))
+        all_findings.extend(
+            _safe_detect(
+                lambda: detect_coordination_failures(
+                    conversation,
+                    turns,
+                ),
+                "coordination_failures",
+                agent_id,
+                task_id,
+                execution_id,
+            ),
+        )
 
     for finding in all_findings:
         logger.info(
@@ -159,3 +201,41 @@ def _run_detectors(
     )
 
     return result
+
+
+def _safe_detect(
+    detector_fn: Callable[[], tuple[ErrorFinding, ...]],
+    detector_name: str,
+    agent_id: str,
+    task_id: str,
+    execution_id: str,
+) -> tuple[ErrorFinding, ...]:
+    """Run a single detector with isolation.
+
+    Catches all exceptions except ``MemoryError`` and
+    ``RecursionError``, logging failures without stopping the
+    pipeline.
+
+    Args:
+        detector_fn: Zero-arg callable that returns findings.
+        detector_name: Name for logging.
+        agent_id: Agent identifier.
+        task_id: Task identifier.
+        execution_id: Execution run identifier.
+
+    Returns:
+        Detector findings, or empty tuple on failure.
+    """
+    try:
+        return detector_fn()
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.exception(
+            DETECTOR_ERROR,
+            agent_id=agent_id,
+            task_id=task_id,
+            execution_id=execution_id,
+            detector=detector_name,
+        )
+        return ()

@@ -127,6 +127,22 @@ class TestDetectLogicalContradictions:
         result = detect_logical_contradictions(conversation)
         assert result == ()
 
+    def test_multiple_contradictions_detected(self) -> None:
+        """Multiple distinct contradictions produce multiple findings."""
+        conversation = (
+            _assistant(
+                "The cache is enabled for production. "
+                "The service should retry on failure."
+            ),
+            _user("Are you sure?"),
+            _assistant(
+                "The cache is not enabled for production. "
+                "The service should not retry on failure."
+            ),
+        )
+        result = detect_logical_contradictions(conversation)
+        assert len(result) >= 2
+
 
 @pytest.mark.unit
 class TestDetectNumericalDrift:
@@ -199,6 +215,28 @@ class TestDetectNumericalDrift:
         high_findings = [f for f in result if f.severity == ErrorSeverity.HIGH]
         assert len(high_findings) >= 1
 
+    def test_zero_to_nonzero_detects_drift(self) -> None:
+        """Zero baseline to non-zero value should detect drift."""
+        conversation = (
+            _assistant("The error count is 0 tokens."),
+            _user("And now?"),
+            _assistant("The error count is 5 tokens."),
+        )
+        result = detect_numerical_drift(conversation)
+        drift_findings = [f for f in result if "count" in f.description.lower()]
+        assert len(drift_findings) >= 1
+
+    def test_zero_to_zero_no_drift(self) -> None:
+        """Both zero values should not detect drift."""
+        conversation = (
+            _assistant("The error count is 0 tokens."),
+            _user("And now?"),
+            _assistant("The error count is 0 tokens."),
+        )
+        result = detect_numerical_drift(conversation)
+        count_findings = [f for f in result if "count" in f.description.lower()]
+        assert len(count_findings) == 0
+
 
 @pytest.mark.unit
 class TestDetectContextOmissions:
@@ -255,6 +293,23 @@ class TestDetectContextOmissions:
         result = detect_context_omissions(conversation)
         assert result == ()
 
+    def test_common_capitalised_words_not_flagged(self) -> None:
+        """Words like 'True', 'None', 'Each' should be filtered out."""
+        conversation = (
+            _assistant("True enough. None of these apply. Each step matters."),
+            _user("Continue."),
+            _assistant("True again. None remain. Each is handled."),
+            _user("More."),
+            _assistant("The system works perfectly."),
+            _user("And?"),
+            _assistant("All done now."),
+        )
+        result = detect_context_omissions(conversation)
+        flagged_descriptions = " ".join(f.description for f in result)
+        assert "True" not in flagged_descriptions
+        assert "None" not in flagged_descriptions
+        assert "Each" not in flagged_descriptions
+
     def test_findings_have_correct_category(self) -> None:
         conversation = (
             _assistant("The PaymentGateway processes transactions."),
@@ -310,6 +365,16 @@ class TestDetectCoordinationFailures:
         result = detect_coordination_failures(conversation, turns)
         assert result == ()
 
+    def test_combined_tool_errors_and_error_finish_reasons(self) -> None:
+        """Both tool errors and error finish reasons contribute findings."""
+        conversation = (
+            _assistant("Running."),
+            _tool_msg(content="err", is_error=True),
+        )
+        turns = (_turn(finish_reason=FinishReason.ERROR),)
+        result = detect_coordination_failures(conversation, turns)
+        assert len(result) >= 2
+
     def test_multiple_tool_errors(self) -> None:
         conversation = (
             _assistant("Step 1."),
@@ -328,3 +393,20 @@ class TestDetectCoordinationFailures:
         turns = (_turn(), _turn(turn_number=2))
         result = detect_coordination_failures(conversation, turns)
         assert len(result) >= 2
+
+
+@pytest.mark.unit
+class TestDetectorsEmptyConversation:
+    """All detectors handle empty conversation gracefully."""
+
+    def test_logical_contradictions_empty(self) -> None:
+        assert detect_logical_contradictions(()) == ()
+
+    def test_numerical_drift_empty(self) -> None:
+        assert detect_numerical_drift(()) == ()
+
+    def test_context_omissions_empty(self) -> None:
+        assert detect_context_omissions(()) == ()
+
+    def test_coordination_failures_empty(self) -> None:
+        assert detect_coordination_failures((), ()) == ()

@@ -30,9 +30,6 @@ from ai_company.engine.react_loop import ReactLoop
 from ai_company.engine.recovery import FailAndReassignStrategy, RecoveryStrategy
 from ai_company.engine.run_result import AgentRunResult
 from ai_company.observability import get_logger
-from ai_company.observability.events.classification import (
-    CLASSIFICATION_ERROR as _CLASSIFICATION_ERROR,
-)
 from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_COMPLETE,
     EXECUTION_ENGINE_CREATED,
@@ -285,44 +282,16 @@ class AgentEngine:
                 agent_id,
                 task_id,
             )
-        await self._classify_errors(execution_result, agent_id, task_id)
-        return execution_result
-
-    async def _classify_errors(
-        self,
-        execution_result: ExecutionResult,
-        agent_id: str,
-        task_id: str,
-    ) -> None:
-        """Run error taxonomy classification if configured.
-
-        Never raises — all exceptions are caught and logged.
-        """
-        if self._error_taxonomy_config is None:
-            return
-        try:
+        # Classification is log-only for now; classify_execution_errors
+        # never raises regular exceptions.
+        if self._error_taxonomy_config is not None:
             await classify_execution_errors(
                 execution_result,
                 agent_id,
                 task_id,
                 config=self._error_taxonomy_config,
             )
-        except MemoryError, RecursionError:
-            logger.error(
-                _CLASSIFICATION_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                error="non-recoverable error in error classification",
-                exc_info=True,
-            )
-            raise
-        except Exception as exc:
-            logger.exception(
-                _CLASSIFICATION_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                error=f"{type(exc).__name__}: {exc}",
-            )
+        return execution_result
 
     def _build_and_log_result(
         self,

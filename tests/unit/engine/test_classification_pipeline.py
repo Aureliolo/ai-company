@@ -155,10 +155,27 @@ class TestClassifyExecutionErrors:
                 config=config,
             )
 
-    async def test_findings_logged_as_events(
-        self, caplog: pytest.LogCaptureFixture
+    async def test_recursion_error_propagates(self) -> None:
+        """RecursionError propagates unconditionally."""
+        config = ErrorTaxonomyConfig(enabled=True)
+        with (
+            patch(
+                "ai_company.engine.classification.pipeline._run_detectors",
+                side_effect=RecursionError,
+            ),
+            pytest.raises(RecursionError),
+        ):
+            await classify_execution_errors(
+                _execution_result(),
+                "agent-1",
+                "task-1",
+                config=config,
+            )
+
+    async def test_coordination_failure_findings_are_high_severity(
+        self,
     ) -> None:
-        """Each finding is logged via CLASSIFICATION_FINDING event."""
+        """Coordination failure findings should all be HIGH severity."""
         config = ErrorTaxonomyConfig(
             enabled=True,
             categories=(ErrorCategory.COORDINATION_FAILURE,),

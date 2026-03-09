@@ -2,10 +2,11 @@
 
 import copy
 from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from ai_company.budget.coordination_config import ErrorTaxonomyConfig
 from ai_company.budget.tracker import CostTracker
 from ai_company.core.agent import AgentIdentity  # noqa: TC001
 from ai_company.core.enums import AgentStatus, Priority, TaskStatus, TaskType
@@ -767,3 +768,89 @@ class TestAgentEngineImmutability:
         # Original task status should still be ASSIGNED
         assert sample_task_with_criteria.status == TaskStatus.ASSIGNED
         assert sample_task_with_criteria == task_before
+
+
+@pytest.mark.unit
+class TestAgentEngineClassification:
+    """Error taxonomy classification integration."""
+
+    async def test_no_config_skips_classification(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """With error_taxonomy_config=None, classification is not called."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(
+            provider=provider,
+            error_taxonomy_config=None,
+        )
+
+        with patch(
+            "ai_company.engine.agent_engine.classify_execution_errors",
+        ) as mock_classify:
+            result = await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+        mock_classify.assert_not_called()
+        assert result.is_success is True
+
+    async def test_enabled_config_calls_classification(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """With a config, classify_execution_errors is invoked."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        config = ErrorTaxonomyConfig(enabled=True)
+        engine = AgentEngine(
+            provider=provider,
+            error_taxonomy_config=config,
+        )
+
+        with patch(
+            "ai_company.engine.agent_engine.classify_execution_errors",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock_classify:
+            result = await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+        mock_classify.assert_called_once()
+        assert result.is_success is True
+
+    async def test_classification_memory_error_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """MemoryError from classification propagates unconditionally."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        config = ErrorTaxonomyConfig(enabled=True)
+        engine = AgentEngine(
+            provider=provider,
+            error_taxonomy_config=config,
+        )
+
+        with (
+            patch(
+                "ai_company.engine.agent_engine.classify_execution_errors",
+                new_callable=AsyncMock,
+                side_effect=MemoryError,
+            ),
+            pytest.raises(MemoryError),
+        ):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )

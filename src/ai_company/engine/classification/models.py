@@ -6,8 +6,16 @@ classification results produced by the detection pipeline.
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from ai_company.budget.coordination_config import ErrorCategory  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
@@ -47,6 +55,18 @@ class ErrorFinding(BaseModel):
         description="Turn index range (start, end) where error observed",
     )
 
+    @model_validator(mode="after")
+    def _validate_turn_range(self) -> Self:
+        if self.turn_range is not None:
+            start, end = self.turn_range
+            if start < 0 or end < 0:
+                msg = "turn_range indices must be non-negative"
+                raise ValueError(msg)
+            if start > end:
+                msg = f"turn_range start ({start}) must not exceed end ({end})"
+                raise ValueError(msg)
+        return self
+
 
 class ClassificationResult(BaseModel):
     """Aggregated result from the error classification pipeline.
@@ -72,7 +92,7 @@ class ClassificationResult(BaseModel):
         default=(),
         description="Detected error findings",
     )
-    classified_at: datetime = Field(
+    classified_at: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
         description="Classification timestamp",
     )
@@ -87,4 +107,4 @@ class ClassificationResult(BaseModel):
     @property
     def has_findings(self) -> bool:
         """Whether any error findings were detected."""
-        return len(self.findings) > 0
+        return bool(self.findings)

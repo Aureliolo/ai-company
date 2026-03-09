@@ -74,6 +74,33 @@ class TestErrorFinding:
         assert isinstance(finding.evidence, tuple)
         assert len(finding.evidence) == 1
 
+    def test_turn_range_negative_start_rejected(self) -> None:
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            ErrorFinding(
+                category=ErrorCategory.LOGICAL_CONTRADICTION,
+                severity=ErrorSeverity.HIGH,
+                description="Bad range",
+                turn_range=(-1, 5),
+            )
+
+    def test_turn_range_inverted_rejected(self) -> None:
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            ErrorFinding(
+                category=ErrorCategory.LOGICAL_CONTRADICTION,
+                severity=ErrorSeverity.HIGH,
+                description="Bad range",
+                turn_range=(5, 1),
+            )
+
+    def test_turn_range_valid(self) -> None:
+        finding = ErrorFinding(
+            category=ErrorCategory.LOGICAL_CONTRADICTION,
+            severity=ErrorSeverity.HIGH,
+            description="Valid range",
+            turn_range=(0, 0),
+        )
+        assert finding.turn_range == (0, 0)
+
 
 @pytest.mark.unit
 class TestClassificationResult:
