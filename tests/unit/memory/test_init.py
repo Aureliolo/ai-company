@@ -14,4 +14,4 @@ class TestMemoryExports:
             assert hasattr(memory_module, name), f"{name} in __all__ but not importable"
 
     def test_all_has_expected_count(self) -> None:
-        assert len(memory_module.__all__) == 18
+        assert len(memory_module.__all__) == 26

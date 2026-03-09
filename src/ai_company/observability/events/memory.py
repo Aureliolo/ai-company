@@ -50,3 +50,13 @@ MEMORY_MODEL_INVALID: Final[str] = "memory.model.invalid"
 # ── Capability checks ────────────────────────────────────────────
 
 MEMORY_CAPABILITY_UNSUPPORTED: Final[str] = "memory.capability.unsupported"
+
+# ── Retrieval pipeline ──────────────────────────────────────────
+
+MEMORY_RETRIEVAL_START: Final[str] = "memory.retrieval.start"
+MEMORY_RETRIEVAL_COMPLETE: Final[str] = "memory.retrieval.complete"
+MEMORY_RETRIEVAL_DEGRADED: Final[str] = "memory.retrieval.degraded"
+MEMORY_RETRIEVAL_SKIPPED: Final[str] = "memory.retrieval.skipped"
+MEMORY_RANKING_COMPLETE: Final[str] = "memory.ranking.complete"
+MEMORY_FORMAT_COMPLETE: Final[str] = "memory.format.complete"
+MEMORY_TOKEN_BUDGET_EXCEEDED: Final[str] = "memory.token_budget.exceeded"  # noqa: S105

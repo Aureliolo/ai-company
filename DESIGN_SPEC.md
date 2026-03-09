@@ -1575,6 +1575,58 @@ company_b_backend = create_backend(company_b_config.persistence)
 
 Runtime backend switching (e.g. migrating a company from SQLite to PostgreSQL during operation) is a planned future capability. The protocol-based design already supports this — the engine would disconnect the current backend, connect a new one with different config, and migrate. Implementation details (data migration tooling, zero-downtime switchover, connection draining) are deferred to the PostgreSQL backend milestone.
 
+### 7.7 Memory Injection Strategies
+
+Agent memory reaches agents through pluggable injection strategies behind
+the `MemoryInjectionStrategy` protocol. The strategy determines *how*
+memories are surfaced to the agent during execution.
+
+#### Strategy 1: Context Injection (Default / MVP)
+
+Pre-retrieves relevant memories before execution, ranks by
+relevance+recency, enforces token budget, formats as ChatMessage(s)
+injected between system prompt and task instruction. Agent passively
+receives memories.
+
+Pipeline: `MemoryBackend.retrieve()` -> rank by relevance+recency ->
+filter by min_relevance -> greedy token-budget packing -> format as
+SYSTEM message with delimiters.
+
+Ranking algorithm:
+1. `relevance = entry.relevance_score ?? config.default_relevance`
+2. Personal entries: `relevance = min(relevance + personal_boost, 1.0)`
+3. `recency = exp(-decay_rate * age_hours)`
+4. `combined = relevance_weight * relevance + recency_weight * recency`
+5. Filter: `combined >= min_relevance`
+6. Sort descending by `combined_score`
+
+Shared memories (from `SharedKnowledgeStore`) are fetched in parallel,
+merged with personal memories (no personal_boost for shared), and
+ranked together.
+
+#### Strategy 2: Tool-Based Retrieval (Future)
+
+Agent has `recall_memory` / `search_memory` tools it calls on-demand
+during execution. Agent actively decides when and what to remember.
+More token-efficient (only retrieves when needed) but consumes
+tool-call turns and requires agent discipline to invoke.
+
+#### Strategy 3: Self-Editing Memory (Future)
+
+Agent has structured memory blocks (core, archival, recall) it reads
+AND writes during execution via dedicated tools. Core memory always
+in context, archival/recall searched via tools. Most sophisticated
+(Letta/MemGPT-inspired) but highest complexity and LLM overhead.
+
+#### Protocol
+
+All strategies implement `MemoryInjectionStrategy`:
+- `prepare_messages(agent_id, query, budget) -> tuple[ChatMessage, ...]`
+- `get_tool_definitions() -> tuple[ToolDefinition, ...]`
+- `strategy_name -> str`
+
+Strategy selection via config: `memory.retrieval.strategy: context | tool_based | self_editing`
+
 ---
 
 ## 8. HR & Workforce Management

@@ -1,0 +1,124 @@
+"""Memory context formatter — converts ranked memories to ChatMessages.
+
+Handles token budget enforcement via greedy packing: iterate by rank,
+include memories until the budget is exhausted.
+"""
+
+from ai_company.memory.injection import (
+    InjectionPoint,
+    TokenEstimator,
+)
+from ai_company.memory.ranking import ScoredMemory  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.memory import (
+    MEMORY_FORMAT_COMPLETE,
+    MEMORY_TOKEN_BUDGET_EXCEEDED,
+)
+from ai_company.providers.enums import MessageRole
+from ai_company.providers.models import ChatMessage
+
+logger = get_logger(__name__)
+
+MEMORY_BLOCK_START = "--- AGENT MEMORY ---"
+"""Delimiter marking the start of memory context."""
+
+MEMORY_BLOCK_END = "--- END MEMORY ---"
+"""Delimiter marking the end of memory context."""
+
+_INJECTION_POINT_TO_ROLE: dict[InjectionPoint, MessageRole] = {
+    InjectionPoint.SYSTEM: MessageRole.SYSTEM,
+    InjectionPoint.USER: MessageRole.USER,
+}
+
+
+def _format_line(memory: ScoredMemory) -> str:
+    """Format a single memory entry as a display line.
+
+    Format: ``[{category} | score: {score:.2f}] {content}``
+    Shared entries are prefixed with ``[shared]``.
+
+    Args:
+        memory: Scored memory entry.
+
+    Returns:
+        Formatted line string.
+    """
+    shared_prefix = "[shared] " if memory.is_shared else ""
+    category = memory.entry.category.value
+    score = memory.combined_score
+    content = memory.entry.content
+    return f"{shared_prefix}[{category} | score: {score:.2f}] {content}"
+
+
+def format_memory_context(
+    memories: tuple[ScoredMemory, ...],
+    *,
+    estimator: TokenEstimator,
+    token_budget: int,
+    injection_point: InjectionPoint = InjectionPoint.SYSTEM,
+) -> tuple[ChatMessage, ...]:
+    """Format ranked memories into ChatMessage(s), respecting token budget.
+
+    Uses greedy packing: iterates memories by rank order and includes
+    each one if it fits within the remaining budget.
+
+    Args:
+        memories: Pre-ranked memories (highest score first).
+        estimator: Token estimation implementation.
+        token_budget: Maximum tokens for the memory block.
+        injection_point: Role for the output message.
+
+    Returns:
+        Tuple containing a single ``ChatMessage`` with formatted
+        memories, or empty tuple if no memories fit or input is empty.
+    """
+    if not memories or token_budget <= 0:
+        return ()
+
+    delimiter_text = f"{MEMORY_BLOCK_START}\n{MEMORY_BLOCK_END}"
+    delimiter_tokens = estimator.estimate_tokens(delimiter_text)
+
+    remaining = token_budget - delimiter_tokens
+    if remaining <= 0:
+        logger.debug(
+            MEMORY_TOKEN_BUDGET_EXCEEDED,
+            budget=token_budget,
+            delimiter_tokens=delimiter_tokens,
+            reason="budget exhausted by delimiters",
+        )
+        return ()
+
+    included_lines: list[str] = []
+    for memory in memories:
+        line = _format_line(memory)
+        line_tokens = estimator.estimate_tokens(line)
+        if line_tokens <= remaining:
+            included_lines.append(line)
+            remaining -= line_tokens
+        else:
+            logger.debug(
+                MEMORY_TOKEN_BUDGET_EXCEEDED,
+                budget=token_budget,
+                remaining=remaining,
+                line_tokens=line_tokens,
+                skipped_memory_id=memory.entry.id,
+            )
+
+    if not included_lines:
+        return ()
+
+    body = "\n".join(included_lines)
+    block = f"{MEMORY_BLOCK_START}\n{body}\n{MEMORY_BLOCK_END}"
+
+    role = _INJECTION_POINT_TO_ROLE[injection_point]
+    message = ChatMessage(role=role, content=block)
+
+    logger.debug(
+        MEMORY_FORMAT_COMPLETE,
+        included_count=len(included_lines),
+        total_candidates=len(memories),
+        token_budget=token_budget,
+        injection_point=injection_point.value,
+    )
+
+    return (message,)
