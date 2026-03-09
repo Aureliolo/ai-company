@@ -168,6 +168,8 @@ class ProviderConfig(BaseModel):
         models: Available models for this provider.
         retry: Retry configuration for transient errors.
         rate_limiter: Client-side rate limiting configuration.
+        subscription: Subscription and quota configuration.
+        degradation: Degradation strategy when quota exhausted.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -480,6 +482,7 @@ class RootConfig(BaseModel):
         task_assignment: Task assignment configuration.
         memory: Memory backend configuration.
         persistence: Persistence backend configuration.
+        cost_tiers: Cost tier definitions.
     """
 
     model_config = ConfigDict(frozen=True)

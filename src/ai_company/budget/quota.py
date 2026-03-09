@@ -69,7 +69,7 @@ class ProviderCostModel(StrEnum):
         LOCAL: Zero monetary cost; only hardware constraints.
     """
 
-    PER_TOKEN = "per_token"  # noqa: S105
+    PER_TOKEN = "per_token"  # noqa: S105 — billing concept, not a secret
     SUBSCRIPTION = "subscription"
     LOCAL = "local"
 
@@ -112,15 +112,14 @@ class SubscriptionConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_quotas_unique_windows(self) -> Self:
         """Ensure quota windows are unique."""
-        windows = [q.window for q in self.quotas]
-        if len(windows) != len(set(windows)):
-            seen: set[QuotaWindow] = set()
-            dupes: list[str] = []
-            for w in windows:
-                if w in seen:
-                    dupes.append(w.value)
-                seen.add(w)
-            msg = f"Duplicate quota windows: {sorted(set(dupes))}"
+        seen: set[QuotaWindow] = set()
+        dupes: set[str] = set()
+        for q in self.quotas:
+            if q.window in seen:
+                dupes.add(q.window.value)
+            seen.add(q.window)
+        if dupes:
+            msg = f"Duplicate quota windows: {sorted(dupes)}"
             raise ValueError(msg)
         return self
 
@@ -241,7 +240,11 @@ class QuotaSnapshot(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def requests_remaining(self) -> int:
-        """Remaining requests in this window (0 if unlimited)."""
+        """Remaining requests in this window.
+
+        Returns 0 when the limit is not enforced (unlimited) or when
+        fully consumed.  Use ``is_exhausted`` to distinguish.
+        """
         if self.requests_limit == 0:
             return 0
         return max(0, self.requests_limit - self.requests_used)
@@ -249,7 +252,11 @@ class QuotaSnapshot(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def tokens_remaining(self) -> int:
-        """Remaining tokens in this window (0 if unlimited)."""
+        """Remaining tokens in this window.
+
+        Returns 0 when the limit is not enforced (unlimited) or when
+        fully consumed.  Use ``is_exhausted`` to distinguish.
+        """
         if self.tokens_limit == 0:
             return 0
         return max(0, self.tokens_limit - self.tokens_used)
@@ -282,6 +289,17 @@ class QuotaCheckResult(BaseModel):
         default=(),
         description="Exhausted windows",
     )
+
+    @model_validator(mode="after")
+    def _validate_denied_has_reason(self) -> Self:
+        """Ensure denied results have a non-empty reason."""
+        if not self.allowed and not self.reason:
+            msg = "Denied QuotaCheckResult must have a non-empty reason"
+            raise ValueError(msg)
+        if self.allowed and self.exhausted_windows:
+            msg = "Allowed QuotaCheckResult must not have exhausted_windows"
+            raise ValueError(msg)
+        return self
 
 
 def window_start(

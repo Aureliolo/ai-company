@@ -30,10 +30,10 @@ class TestQuotaWindow:
 
     def test_values(self) -> None:
         """All expected windows exist."""
-        assert QuotaWindow.PER_MINUTE == "per_minute"
-        assert QuotaWindow.PER_HOUR == "per_hour"
-        assert QuotaWindow.PER_DAY == "per_day"
-        assert QuotaWindow.PER_MONTH == "per_month"
+        assert QuotaWindow.PER_MINUTE.value == "per_minute"
+        assert QuotaWindow.PER_HOUR.value == "per_hour"
+        assert QuotaWindow.PER_DAY.value == "per_day"
+        assert QuotaWindow.PER_MONTH.value == "per_month"
 
     def test_member_count(self) -> None:
         """Exactly 4 windows."""
@@ -106,9 +106,9 @@ class TestProviderCostModel:
 
     def test_values(self) -> None:
         """All expected cost models exist."""
-        assert ProviderCostModel.PER_TOKEN == "per_token"
-        assert ProviderCostModel.SUBSCRIPTION == "subscription"
-        assert ProviderCostModel.LOCAL == "local"
+        assert ProviderCostModel.PER_TOKEN.value == "per_token"
+        assert ProviderCostModel.SUBSCRIPTION.value == "subscription"
+        assert ProviderCostModel.LOCAL.value == "local"
 
 
 # ── SubscriptionConfig ─────────────────────────────────────────────
@@ -214,9 +214,9 @@ class TestDegradationAction:
 
     def test_values(self) -> None:
         """All expected actions exist."""
-        assert DegradationAction.FALLBACK == "fallback"
-        assert DegradationAction.QUEUE == "queue"
-        assert DegradationAction.ALERT == "alert"
+        assert DegradationAction.FALLBACK.value == "fallback"
+        assert DegradationAction.QUEUE.value == "queue"
+        assert DegradationAction.ALERT.value == "alert"
 
 
 # ── DegradationConfig ─────────────────────────────────────────────
@@ -461,3 +461,74 @@ class TestEffectiveCostPer1k:
         """PER_TOKEN with zero costs returns 0.0."""
         result = effective_cost_per_1k(0.0, 0.0, ProviderCostModel.PER_TOKEN)
         assert result == 0.0
+
+    def test_per_token_negative_inputs(self) -> None:
+        """PER_TOKEN with negative inputs returns the sum as-is."""
+        result = effective_cost_per_1k(-0.001, 0.005, ProviderCostModel.PER_TOKEN)
+        assert result == pytest.approx(0.004)
+
+
+# ── SubscriptionConfig nan/inf rejection ──────────────────────────
+
+
+@pytest.mark.unit
+class TestSubscriptionConfigNanInf:
+    """Tests that SubscriptionConfig rejects nan/inf values."""
+
+    def test_rejects_nan_monthly_cost(self) -> None:
+        """NaN monthly_cost is rejected."""
+        with pytest.raises(ValidationError):
+            SubscriptionConfig(monthly_cost=float("nan"))
+
+    def test_rejects_inf_monthly_cost(self) -> None:
+        """Inf monthly_cost is rejected."""
+        with pytest.raises(ValidationError):
+            SubscriptionConfig(monthly_cost=float("inf"))
+
+
+# ── QuotaSnapshot over-limit ─────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestQuotaSnapshotOverLimit:
+    """Tests for QuotaSnapshot with usage exceeding limits."""
+
+    def test_is_exhausted_over_limit(self) -> None:
+        """is_exhausted returns True when usage exceeds limit."""
+        snap = QuotaSnapshot(
+            provider_name="test-provider",
+            window=QuotaWindow.PER_MINUTE,
+            requests_used=150,
+            requests_limit=100,
+            captured_at=datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC),
+        )
+        assert snap.is_exhausted is True
+        assert snap.requests_remaining == 0
+
+
+# ── QuotaCheckResult cross-field validation ───────────────────────
+
+
+@pytest.mark.unit
+class TestQuotaCheckResultValidation:
+    """Tests for QuotaCheckResult cross-field validation."""
+
+    def test_denied_without_reason_rejected(self) -> None:
+        """Denied result with empty reason is rejected."""
+        with pytest.raises(ValidationError, match="non-empty reason"):
+            QuotaCheckResult(
+                allowed=False,
+                provider_name="test-provider",
+            )
+
+    def test_allowed_with_exhausted_windows_rejected(self) -> None:
+        """Allowed result with exhausted_windows is rejected."""
+        with pytest.raises(
+            ValidationError,
+            match="must not have exhausted_windows",
+        ):
+            QuotaCheckResult(
+                allowed=True,
+                provider_name="test-provider",
+                exhausted_windows=(QuotaWindow.PER_MINUTE,),
+            )

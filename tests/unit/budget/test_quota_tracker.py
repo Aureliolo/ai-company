@@ -361,3 +361,166 @@ class TestGetAllSnapshots:
         tracker = QuotaTracker(subscriptions={})
         all_snapshots = await tracker.get_all_snapshots()
         assert all_snapshots == {}
+
+
+# ── Deep copy isolation ───────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDeepCopyIsolation:
+    """Tests that QuotaTracker defensively copies subscriptions."""
+
+    async def test_external_mutation_does_not_affect_tracker(self) -> None:
+        """Mutating the original dict after construction has no effect."""
+        sub = SubscriptionConfig(
+            quotas=(
+                QuotaLimit(
+                    window=QuotaWindow.PER_MINUTE,
+                    max_requests=10,
+                ),
+            ),
+        )
+        subs: dict[str, SubscriptionConfig] = {"test-provider": sub}
+        tracker = QuotaTracker(subscriptions=subs)
+
+        # Mutate original dict
+        subs["new-provider"] = sub
+        del subs["test-provider"]
+
+        # Tracker should still work with original provider
+        result = await tracker.check_quota("test-provider")
+        assert result.allowed is True
+
+        # New provider should not be tracked
+        result = await tracker.check_quota("new-provider")
+        assert result.allowed is True  # unknown = always allowed
+
+
+# ── Exhaustion reason with estimated_tokens ───────────────────────
+
+
+@pytest.mark.unit
+class TestExhaustionReasonWithEstimatedTokens:
+    """Tests for exhaustion reason when triggered by projected tokens."""
+
+    async def test_reason_includes_projected_tokens(self) -> None:
+        """Reason string mentions projected tokens when denial is
+        triggered by estimated_tokens projection."""
+        sub = SubscriptionConfig(
+            quotas=(
+                QuotaLimit(
+                    window=QuotaWindow.PER_DAY,
+                    max_tokens=1000,
+                ),
+            ),
+        )
+        tracker = QuotaTracker(subscriptions={"test-provider": sub})
+
+        # Record 800 tokens (under limit)
+        await tracker.record_usage("test-provider", requests=0, tokens=800)
+
+        # Check with estimated_tokens=300 → projected 1100 >= 1000
+        result = await tracker.check_quota(
+            "test-provider",
+            estimated_tokens=300,
+        )
+        assert result.allowed is False
+        assert "tokens" in result.reason
+        assert "1100" in result.reason  # projected total
+        assert "1000" in result.reason  # limit
+
+
+# ── Multiple exhausted windows ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestMultipleExhaustedWindows:
+    """Tests for simultaneous exhaustion across multiple windows."""
+
+    async def test_both_windows_exhausted(self) -> None:
+        """Both windows appear in result when both are exhausted."""
+        sub = SubscriptionConfig(
+            quotas=(
+                QuotaLimit(
+                    window=QuotaWindow.PER_MINUTE,
+                    max_requests=5,
+                ),
+                QuotaLimit(
+                    window=QuotaWindow.PER_DAY,
+                    max_tokens=100,
+                ),
+            ),
+        )
+        tracker = QuotaTracker(subscriptions={"test-provider": sub})
+
+        # Exhaust both
+        await tracker.record_usage(
+            "test-provider",
+            requests=5,
+            tokens=100,
+        )
+
+        result = await tracker.check_quota("test-provider")
+        assert result.allowed is False
+        assert len(result.exhausted_windows) == 2
+        assert QuotaWindow.PER_MINUTE in result.exhausted_windows
+        assert QuotaWindow.PER_DAY in result.exhausted_windows
+        # Reason should have both, joined by "; "
+        assert "; " in result.reason
+
+    async def test_record_usage_updates_all_windows(self) -> None:
+        """Recording usage updates counters for all configured windows."""
+        sub = SubscriptionConfig(
+            quotas=(
+                QuotaLimit(
+                    window=QuotaWindow.PER_MINUTE,
+                    max_requests=100,
+                ),
+                QuotaLimit(
+                    window=QuotaWindow.PER_DAY,
+                    max_requests=1000,
+                    max_tokens=50_000,
+                ),
+            ),
+        )
+        tracker = QuotaTracker(subscriptions={"test-provider": sub})
+
+        await tracker.record_usage(
+            "test-provider",
+            requests=3,
+            tokens=500,
+        )
+
+        snapshots = await tracker.get_snapshot("test-provider")
+        assert len(snapshots) == 2
+
+        by_window = {s.window: s for s in snapshots}
+        assert by_window[QuotaWindow.PER_MINUTE].requests_used == 3
+        assert by_window[QuotaWindow.PER_DAY].requests_used == 3
+        assert by_window[QuotaWindow.PER_DAY].tokens_used == 500
+
+
+# ── Input validation ──────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestInputValidation:
+    """Tests for negative input rejection."""
+
+    async def test_record_usage_rejects_negative_requests(self) -> None:
+        """Negative requests raise ValueError."""
+        tracker = QuotaTracker(subscriptions={})
+        with pytest.raises(ValueError, match="non-negative"):
+            await tracker.record_usage("test-provider", requests=-1)
+
+    async def test_record_usage_rejects_negative_tokens(self) -> None:
+        """Negative tokens raise ValueError."""
+        tracker = QuotaTracker(subscriptions={})
+        with pytest.raises(ValueError, match="non-negative"):
+            await tracker.record_usage("test-provider", tokens=-1)
+
+    async def test_check_quota_rejects_negative_estimated(self) -> None:
+        """Negative estimated_tokens raises ValueError."""
+        tracker = QuotaTracker(subscriptions={})
+        with pytest.raises(ValueError, match="non-negative"):
+            await tracker.check_quota("p", estimated_tokens=-1)

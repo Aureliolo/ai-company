@@ -90,7 +90,7 @@ class CostTiersConfig(BaseModel):
         include_builtin: Whether to merge built-in default tiers.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     tiers: tuple[CostTierDefinition, ...] = Field(
         default=(),
@@ -104,15 +104,14 @@ class CostTiersConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_unique_ids(self) -> Self:
         """Ensure tier IDs are unique within user-defined tiers."""
-        ids = [t.id for t in self.tiers]
-        if len(ids) != len(set(ids)):
-            seen: set[str] = set()
-            dupes: list[str] = []
-            for tid in ids:
-                if tid in seen:
-                    dupes.append(tid)
-                seen.add(tid)
-            msg = f"Duplicate tier IDs: {sorted(set(dupes))}"
+        seen: set[str] = set()
+        dupes: set[str] = set()
+        for t in self.tiers:
+            if t.id in seen:
+                dupes.add(t.id)
+            seen.add(t.id)
+        if dupes:
+            msg = f"Duplicate tier IDs: {sorted(dupes)}"
             raise ValueError(msg)
         return self
 
@@ -208,7 +207,9 @@ def classify_model_tier(
 
     Matches the first tier whose price range contains the given cost.
     Range check: ``min <= cost < max`` (or ``min <= cost`` if max is
-    ``None``).
+    ``None``).  If tiers have overlapping ranges, the first match in
+    iteration order wins — callers should ensure tiers are sorted by
+    ``sort_order``.
 
     Args:
         cost_per_1k_total: Combined ``cost_per_1k_input +
@@ -219,6 +220,15 @@ def classify_model_tier(
     Returns:
         Tier ID of the matching tier, or ``None`` if no tier matches.
     """
+    if cost_per_1k_total < 0:
+        logger.warning(
+            BUDGET_TIER_CLASSIFY_MISS,
+            cost_per_1k_total=cost_per_1k_total,
+            tier_count=len(tiers),
+            reason="negative_cost",
+        )
+        return None
+
     for tier in tiers:
         if tier.price_range_max is None:
             if cost_per_1k_total >= tier.price_range_min:

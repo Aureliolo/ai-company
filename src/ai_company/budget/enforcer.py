@@ -108,8 +108,9 @@ class BudgetEnforcer:
             BudgetExhaustedError: Monthly hard stop exceeded.
             DailyLimitExceededError: Agent daily limit exceeded
                 (subclass of ``BudgetExhaustedError``).
-            QuotaExhaustedError: Provider quota exhausted and
-                degradation strategy is ALERT.
+            QuotaExhaustedError: Provider quota exhausted.
+                Degradation routing (FALLBACK/QUEUE) is not yet
+                implemented; currently always raises.
         """
         cfg = self._budget_config
 

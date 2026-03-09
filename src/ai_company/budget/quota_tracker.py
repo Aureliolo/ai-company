@@ -10,7 +10,7 @@ Concurrency-safe via ``asyncio.Lock`` (same pattern as
 
 import asyncio
 import copy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
@@ -31,6 +31,7 @@ from ai_company.observability.events.quota import (
     QUOTA_SNAPSHOT_QUERIED,
     QUOTA_TRACKER_CREATED,
     QUOTA_USAGE_RECORDED,
+    QUOTA_USAGE_SKIPPED,
     QUOTA_WINDOW_ROTATED,
 )
 
@@ -38,7 +39,7 @@ logger = get_logger(__name__)
 
 
 class _WindowUsage(NamedTuple):
-    """Mutable-via-replace usage counters for a single window."""
+    """Immutable usage counters for a single window (replaced on update)."""
 
     requests: int
     tokens: int
@@ -60,8 +61,8 @@ class QuotaTracker:
         *,
         subscriptions: Mapping[str, SubscriptionConfig],
     ) -> None:
-        self._subscriptions: dict[str, SubscriptionConfig] = dict(
-            copy.deepcopy(dict(subscriptions)),
+        self._subscriptions: dict[str, SubscriptionConfig] = copy.deepcopy(
+            dict(subscriptions),
         )
         self._lock = asyncio.Lock()
         self._usage: dict[str, dict[QuotaWindow, _WindowUsage]] = {}
@@ -94,14 +95,29 @@ class QuotaTracker:
         """Record usage against all configured windows for a provider.
 
         Rotates window counters if a window boundary has been crossed.
-        Providers with no subscription config are silently ignored.
+        Providers with no subscription config are skipped with a DEBUG log.
 
         Args:
             provider_name: Provider to record usage for.
-            requests: Number of requests to record.
-            tokens: Number of tokens to record.
+            requests: Number of requests to record (must be >= 0).
+            tokens: Number of tokens to record (must be >= 0).
+
+        Raises:
+            ValueError: If requests or tokens is negative.
         """
+        if requests < 0:
+            msg = f"requests must be non-negative, got {requests}"
+            raise ValueError(msg)
+        if tokens < 0:
+            msg = f"tokens must be non-negative, got {tokens}"
+            raise ValueError(msg)
+
         if provider_name not in self._usage:
+            logger.debug(
+                QUOTA_USAGE_SKIPPED,
+                provider=provider_name,
+                reason="no_subscription_config",
+            )
             return
 
         async with self._lock:
@@ -152,12 +168,24 @@ class QuotaTracker:
 
         Args:
             provider_name: Provider to check.
-            estimated_tokens: Estimated tokens for the request.
+            estimated_tokens: Estimated tokens for the request (must be >= 0).
 
         Returns:
             Check result with allowed status and reason.
+
+        Raises:
+            ValueError: If estimated_tokens is negative.
         """
+        if estimated_tokens < 0:
+            msg = f"estimated_tokens must be non-negative, got {estimated_tokens}"
+            raise ValueError(msg)
+
         if provider_name not in self._usage:
+            logger.debug(
+                QUOTA_CHECK_ALLOWED,
+                provider=provider_name,
+                reason="no_subscription_config",
+            )
             return QuotaCheckResult(
                 allowed=True,
                 provider_name=provider_name,
@@ -195,6 +223,7 @@ class QuotaTracker:
                             window_type,
                             usage,
                             quota,
+                            estimated_tokens,
                         ),
                     )
 
@@ -238,6 +267,12 @@ class QuotaTracker:
             Tuple of quota snapshots.
         """
         if provider_name not in self._usage:
+            logger.debug(
+                QUOTA_SNAPSHOT_QUERIED,
+                provider=provider_name,
+                snapshot_count=0,
+                reason="no_subscription_config",
+            )
             return ()
 
         sub_config = self._subscriptions[provider_name]
@@ -273,7 +308,10 @@ class QuotaTracker:
                         requests_limit=quota.max_requests,
                         tokens_used=tok_used,
                         tokens_limit=quota.max_tokens,
-                        window_resets_at=None,
+                        window_resets_at=_window_end(
+                            window_type,
+                            expected_start,
+                        ),
                         captured_at=now,
                     ),
                 )
@@ -289,6 +327,11 @@ class QuotaTracker:
         self,
     ) -> dict[str, tuple[QuotaSnapshot, ...]]:
         """Get usage snapshots for all tracked providers.
+
+        Note:
+            Snapshots are collected per-provider with separate lock
+            acquisitions, so cross-provider consistency is not guaranteed
+            under concurrent writes.
 
         Returns:
             Dict mapping provider name to tuple of snapshots.
@@ -307,11 +350,7 @@ def _is_window_exhausted(
     """Check if a window's quota is exhausted."""
     if quota.max_requests > 0 and usage.requests >= quota.max_requests:
         return True
-    if quota.max_tokens > 0:
-        projected = usage.tokens + estimated_tokens
-        if projected >= quota.max_tokens:
-            return True
-    return False
+    return quota.max_tokens > 0 and usage.tokens + estimated_tokens >= quota.max_tokens
 
 
 def _build_exhaustion_reason(
@@ -319,15 +358,33 @@ def _build_exhaustion_reason(
     window: QuotaWindow,
     usage: _WindowUsage,
     quota: QuotaLimit,
+    estimated_tokens: int = 0,
 ) -> str:
     """Build a human-readable exhaustion reason."""
     parts: list[str] = [f"{provider_name} {window.value}:"]
     if quota.max_requests > 0 and usage.requests >= quota.max_requests:
-        parts.append(
-            f"requests {usage.requests}/{quota.max_requests}",
-        )
-    if quota.max_tokens > 0 and usage.tokens >= quota.max_tokens:
-        parts.append(
-            f"tokens {usage.tokens}/{quota.max_tokens}",
-        )
+        parts.append(f"requests {usage.requests}/{quota.max_requests}")
+    projected = usage.tokens + estimated_tokens
+    if quota.max_tokens > 0 and projected >= quota.max_tokens:
+        parts.append(f"tokens {projected}/{quota.max_tokens}")
     return " ".join(parts)
+
+
+_MONTHS_PER_YEAR = 12
+
+_WINDOW_DELTAS: dict[QuotaWindow, timedelta] = {
+    QuotaWindow.PER_MINUTE: timedelta(minutes=1),
+    QuotaWindow.PER_HOUR: timedelta(hours=1),
+    QuotaWindow.PER_DAY: timedelta(days=1),
+}
+
+
+def _window_end(window: QuotaWindow, start: datetime) -> datetime:
+    """Compute end of a quota window from its start."""
+    delta = _WINDOW_DELTAS.get(window)
+    if delta is not None:
+        return start + delta
+    # PER_MONTH — advance to first of next month
+    month = start.month % _MONTHS_PER_YEAR + 1
+    year = start.year + (1 if start.month == _MONTHS_PER_YEAR else 0)
+    return start.replace(year=year, month=month)

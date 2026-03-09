@@ -1,7 +1,11 @@
 """Tests for BudgetEnforcer quota integration."""
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
+
+if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
 
 import pytest
 
@@ -54,7 +58,10 @@ def _make_quota_tracker(
     return QuotaTracker(subscriptions={provider: sub})
 
 
-def _patch_periods():
+def _patch_periods() -> tuple[
+    AbstractContextManager[Any],
+    AbstractContextManager[Any],
+]:
     """Patch billing and daily period starts."""
     return (
         patch(
@@ -87,7 +94,8 @@ class TestCheckCanExecuteWithQuota:
             quota_tracker=quota_tracker,
         )
 
-        with _patch_periods()[0], _patch_periods()[1]:
+        billing_patch, daily_patch = _patch_periods()
+        with billing_patch, daily_patch:
             await enforcer.check_can_execute(
                 "alice",
                 provider_name="test-provider",
@@ -109,9 +117,10 @@ class TestCheckCanExecuteWithQuota:
             quota_tracker=quota_tracker,
         )
 
+        billing_patch, daily_patch = _patch_periods()
         with (
-            _patch_periods()[0],
-            _patch_periods()[1],
+            billing_patch,
+            daily_patch,
             pytest.raises(
                 QuotaExhaustedError,
                 match="quota exhausted",
@@ -138,7 +147,8 @@ class TestCheckCanExecuteWithQuota:
             quota_tracker=quota_tracker,
         )
 
-        with _patch_periods()[0], _patch_periods()[1]:
+        billing_patch, daily_patch = _patch_periods()
+        with billing_patch, daily_patch:
             # No provider_name → skip quota check, even though exhausted
             await enforcer.check_can_execute("alice")
 
@@ -153,7 +163,8 @@ class TestCheckCanExecuteWithQuota:
             quota_tracker=None,
         )
 
-        with _patch_periods()[0], _patch_periods()[1]:
+        billing_patch, daily_patch = _patch_periods()
+        with billing_patch, daily_patch:
             await enforcer.check_can_execute(
                 "alice",
                 provider_name="test-provider",
@@ -245,3 +256,28 @@ class TestCheckQuota:
         result = await enforcer.check_quota("test-provider")
         assert result.allowed is False
         assert result.provider_name == "test-provider"
+
+    async def test_graceful_degradation_on_generic_exception(self) -> None:
+        """Falls back to allow when quota_tracker raises unexpectedly."""
+        cfg = _make_budget_config()
+        tracker = CostTracker(budget_config=cfg)
+        quota_tracker = _make_quota_tracker()
+
+        # Mock check_quota to raise a generic error
+        quota_tracker.check_quota = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("unexpected"),
+        )
+
+        enforcer = BudgetEnforcer(
+            budget_config=cfg,
+            cost_tracker=tracker,
+            quota_tracker=quota_tracker,
+        )
+
+        billing_patch, daily_patch = _patch_periods()
+        with billing_patch, daily_patch:
+            # Should not raise — graceful degradation
+            await enforcer.check_can_execute(
+                "alice",
+                provider_name="test-provider",
+            )
