@@ -1,8 +1,9 @@
 """Agent memory system — protocols, models, config, and factory.
 
-Re-exports the protocol, capability protocol, shared knowledge
-protocol, config models, factory, and error hierarchy so consumers
-can import from ``ai_company.memory`` directly.
+Re-exports the protocols (``MemoryBackend``, ``MemoryCapabilities``,
+``SharedKnowledgeStore``), domain models, config models, factory,
+and error hierarchy so consumers can import from
+``ai_company.memory`` directly.
 """
 
 from ai_company.memory.capabilities import MemoryCapabilities

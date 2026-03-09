@@ -304,6 +304,43 @@ class TestMemoryEntry:
         assert e.updated_at is not None
         assert e.updated_at > e.created_at
 
+    def test_expires_at_before_created_at_rejected(self) -> None:
+        now = datetime.now(tz=UTC)
+        with pytest.raises(ValidationError, match="expires_at"):
+            MemoryEntry(
+                id="m",
+                agent_id="a",
+                category=MemoryCategory.WORKING,
+                content="c",
+                created_at=now,
+                expires_at=now - timedelta(hours=1),
+            )
+
+    def test_expires_at_equal_created_at_accepted(self) -> None:
+        now = datetime.now(tz=UTC)
+        e = MemoryEntry(
+            id="m",
+            agent_id="a",
+            category=MemoryCategory.WORKING,
+            content="c",
+            created_at=now,
+            expires_at=now,
+        )
+        assert e.expires_at == e.created_at
+
+    def test_expires_at_after_created_at_accepted(self) -> None:
+        now = datetime.now(tz=UTC)
+        e = MemoryEntry(
+            id="m",
+            agent_id="a",
+            category=MemoryCategory.WORKING,
+            content="c",
+            created_at=now,
+            expires_at=now + timedelta(days=30),
+        )
+        assert e.expires_at is not None
+        assert e.expires_at > e.created_at
+
     def test_json_roundtrip(self) -> None:
         now = datetime.now(tz=UTC)
         e = MemoryEntry(
@@ -404,6 +441,14 @@ class TestMemoryQuery:
     def test_min_relevance_nan_rejected(self) -> None:
         with pytest.raises(ValidationError):
             MemoryQuery(min_relevance=float("nan"))
+
+    def test_duplicate_tags_deduplicated(self) -> None:
+        q = MemoryQuery(tags=("important", "reviewed", "important"))
+        assert q.tags == ("important", "reviewed")
+
+    def test_duplicate_tags_preserves_order(self) -> None:
+        q = MemoryQuery(tags=("b", "a", "b", "c", "a"))
+        assert q.tags == ("b", "a", "c")
 
     def test_json_roundtrip(self) -> None:
         now = datetime.now(tz=UTC)

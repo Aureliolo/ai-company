@@ -48,7 +48,7 @@ class TestEnumMemberCounts:
     def test_creativity_level_has_3_members(self) -> None:
         assert len(CreativityLevel) == 3
 
-    def test_memory_type_has_4_members(self) -> None:
+    def test_memory_level_has_4_members(self) -> None:
         assert len(MemoryLevel) == 4
 
     def test_cost_tier_has_4_members(self) -> None:

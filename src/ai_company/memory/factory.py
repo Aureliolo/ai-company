@@ -8,7 +8,10 @@ from ai_company.memory.config import CompanyMemoryConfig  # noqa: TC001
 from ai_company.memory.errors import MemoryConfigError
 from ai_company.memory.protocol import MemoryBackend  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events.memory import MEMORY_BACKEND_UNKNOWN
+from ai_company.observability.events.memory import (
+    MEMORY_BACKEND_NOT_IMPLEMENTED,
+    MEMORY_BACKEND_UNKNOWN,
+)
 
 logger = get_logger(__name__)
 
@@ -35,7 +38,7 @@ def create_memory_backend(config: CompanyMemoryConfig) -> MemoryBackend:
     if config.backend == "mem0":
         msg = "mem0 backend not yet implemented"
         logger.warning(
-            MEMORY_BACKEND_UNKNOWN,
+            MEMORY_BACKEND_NOT_IMPLEMENTED,
             backend="mem0",
             reason=msg,
         )

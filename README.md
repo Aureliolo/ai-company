@@ -21,10 +21,11 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Task Intelligence (M4)** - Task decomposition, routing, assignment strategies, workspace isolation via git worktrees
 - **Templates** - Built-in templates, inheritance/merge, rendering, personality presets
 - **Persistence Layer (M5)** - Pluggable `PersistenceBackend` protocol with SQLite backend (aiosqlite), repository protocols, schema migrations
+- **Memory Interface (M5)** - Pluggable `MemoryBackend` protocol with capability discovery, shared knowledge protocol, domain models, config, and factory
 
 ### Not implemented yet (planned milestones)
 
-- **Memory Layer (M5)** - Mem0 selected as initial backend ([ADR-001](docs/decisions/ADR-001-memory-layer.md)); `memory/` package implementation in progress
+- **Memory Backends (M5)** - Mem0 adapter ([ADR-001](docs/decisions/ADR-001-memory-layer.md), #41) pending; shared knowledge store backends planned
 - **Budget Controls (M5)** - Per-agent spending limits, budget hierarchy enforcement
 - **API Layer (M6)** - `api/` package and route modules are placeholders
 - **CLI Surface (M6)** - `cli/` package is placeholder-only

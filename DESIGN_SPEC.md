@@ -1253,7 +1253,7 @@ The auto-selector uses task structure, artifact count, and (when available from 
 
 ```yaml
 memory:
-  level: "persistent"            # none, session, project, persistent
+  level: "persistent"            # none, session, project, persistent (default: session)
   backend: "mem0"               # mem0, custom, cognee, graphiti (future) — see ADR-001
   storage:
     data_dir: "/data/memory"    # mounted Docker volume path
@@ -1423,7 +1423,7 @@ All memory errors inherit from `MemoryError` so callers can catch the entire fam
 ```yaml
 memory:
   backend: "mem0"
-  level: "persistent"              # none, session, project, persistent
+  level: "persistent"              # none, session, project, persistent (default: session)
   storage:
     data_dir: "/data/memory"
     vector_store: "qdrant"

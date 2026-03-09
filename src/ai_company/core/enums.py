@@ -89,11 +89,7 @@ class CreativityLevel(StrEnum):
 
 
 class MemoryLevel(StrEnum):
-    """Memory persistence level for an agent (§7.3).
-
-    Note: DESIGN_SPEC §7.3 uses ``"full"`` — renamed to ``PERSISTENT``
-    for clarity (approved deviation).
-    """
+    """Memory persistence level for an agent (§7.3)."""
 
     PERSISTENT = "persistent"
     PROJECT = "project"

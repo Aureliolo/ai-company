@@ -47,14 +47,9 @@ class MemoryMetadata(BaseModel):
     @model_validator(mode="after")
     def _deduplicate_tags(self) -> Self:
         """Remove duplicate tags while preserving order."""
-        seen: set[str] = set()
-        deduped: list[str] = []
-        for tag in self.tags:
-            if tag not in seen:
-                seen.add(tag)
-                deduped.append(tag)
-        if len(deduped) != len(self.tags):
-            object.__setattr__(self, "tags", tuple(deduped))
+        unique = tuple(dict.fromkeys(self.tags))
+        if len(unique) != len(self.tags):
+            object.__setattr__(self, "tags", unique)
         return self
 
 
@@ -128,7 +123,7 @@ class MemoryEntry(BaseModel):
 
     @model_validator(mode="after")
     def _validate_timestamps(self) -> Self:
-        """Ensure ``updated_at >= created_at`` when both are set."""
+        """Ensure ``updated_at >= created_at`` and ``expires_at >= created_at``."""
         if self.updated_at is not None and self.updated_at < self.created_at:
             msg = (
                 f"updated_at ({self.updated_at}) must be "
@@ -138,6 +133,18 @@ class MemoryEntry(BaseModel):
                 CONFIG_VALIDATION_FAILED,
                 model="MemoryEntry",
                 field="updated_at",
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if self.expires_at is not None and self.expires_at < self.created_at:
+            msg = (
+                f"expires_at ({self.expires_at}) must be "
+                f">= created_at ({self.created_at})"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="MemoryEntry",
+                field="expires_at",
                 reason=msg,
             )
             raise ValueError(msg)
@@ -196,8 +203,16 @@ class MemoryQuery(BaseModel):
     )
 
     @model_validator(mode="after")
+    def _deduplicate_tags(self) -> Self:
+        """Remove duplicate tags while preserving order."""
+        unique = tuple(dict.fromkeys(self.tags))
+        if len(unique) != len(self.tags):
+            object.__setattr__(self, "tags", unique)
+        return self
+
+    @model_validator(mode="after")
     def _validate_time_range(self) -> Self:
-        """Ensure ``since`` is before ``until`` when both are set."""
+        """Ensure ``since`` is strictly before ``until`` when both are set."""
         if (
             self.since is not None
             and self.until is not None

@@ -378,6 +378,7 @@ class TestEventConstants:
             ("MEMORY_BACKEND_DISCONNECTED", "memory.backend.disconnected"),
             ("MEMORY_BACKEND_HEALTH_CHECK", "memory.backend.health_check"),
             ("MEMORY_BACKEND_CREATED", "memory.backend.created"),
+            ("MEMORY_BACKEND_NOT_IMPLEMENTED", "memory.backend.not_implemented"),
             ("MEMORY_BACKEND_UNKNOWN", "memory.backend.unknown"),
             ("MEMORY_BACKEND_NOT_CONNECTED", "memory.backend.not_connected"),
             ("MEMORY_ENTRY_STORED", "memory.entry.stored"),

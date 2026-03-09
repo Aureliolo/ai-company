@@ -23,6 +23,10 @@ class MemoryBackend(Protocol):
     Concrete backends implement this protocol to provide per-agent
     memory storage, retrieval, and lifecycle management.
 
+    All CRUD operations (``store``, ``retrieve``, ``get``, ``delete``,
+    ``count``) require a connected backend and raise
+    ``MemoryConnectionError`` if called before ``connect()``.
+
     Attributes:
         is_connected: Whether the backend has an active connection.
         backend_name: Human-readable backend identifier.
@@ -52,9 +56,11 @@ class MemoryBackend(Protocol):
             ``False`` if unreachable or unhealthy.
 
         Note:
-            Implementations should catch connection-level errors and
-            return ``False`` rather than raising.  Only raise for
-            programming errors (e.g. backend not initialized).
+            Implementations should catch connection-level errors,
+            log them at WARNING level with full exception context,
+            and return ``False``.  The caught exception must never be
+            silently discarded.  Only raise for programming errors
+            (e.g. backend not initialized).
         """
         ...
 
@@ -83,6 +89,7 @@ class MemoryBackend(Protocol):
             The backend-assigned memory ID.
 
         Raises:
+            MemoryConnectionError: If the backend is not connected.
             MemoryStoreError: If the store operation fails.
         """
         ...
@@ -105,6 +112,7 @@ class MemoryBackend(Protocol):
             Matching memory entries ordered by relevance.
 
         Raises:
+            MemoryConnectionError: If the backend is not connected.
             MemoryRetrievalError: If the retrieval fails.
         """
         ...
@@ -127,6 +135,7 @@ class MemoryBackend(Protocol):
             The memory entry, or ``None`` if not found.
 
         Raises:
+            MemoryConnectionError: If the backend is not connected.
             MemoryRetrievalError: If the backend query fails.
         """
         ...
@@ -146,6 +155,7 @@ class MemoryBackend(Protocol):
             ``True`` if the entry was deleted, ``False`` if not found.
 
         Raises:
+            MemoryConnectionError: If the backend is not connected.
             MemoryStoreError: If the delete operation fails.
         """
         ...
@@ -166,6 +176,7 @@ class MemoryBackend(Protocol):
             Number of matching entries.
 
         Raises:
+            MemoryConnectionError: If the backend is not connected.
             MemoryRetrievalError: If the count query fails.
         """
         ...
