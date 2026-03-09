@@ -1778,7 +1778,7 @@ Every API call is tracked (illustrative schema):
 
 ### 10.3 CFO Agent Responsibilities
 
-> **MVP: Not in M3.** Budget tracking and per-task cost recording exist (M2), but the CFO agent is M5+. Cost controls (§10.4) are enforced by the engine, not by an agent.
+> **MVP: Not in M3.** Budget tracking and per-task cost recording exist (M2); cost controls (§10.4) are now enforced by `BudgetEnforcer` (a service the engine composes, not an agent — M5). The CFO agent is M5+.
 
 The CFO agent (when enabled) acts as a cost management system:
 
@@ -1804,6 +1804,7 @@ The CFO agent (when enabled) acts as a cost management system:
 ```yaml
 budget:
   total_monthly: 100.00
+  reset_day: 1
   alerts:
     warn_at: 75               # percent
     critical_at: 90
@@ -1821,6 +1822,15 @@ budget:
 ```
 
 > **Auto-downgrade boundary:** Model downgrades apply only at **task assignment time**, never mid-execution. An agent halfway through an architecture review cannot be switched to a cheaper model — the task completes on its assigned model. The next task assignment respects the downgrade threshold. This prevents quality degradation from mid-thought model switches.
+
+> **Implementation note (M5):** `BudgetEnforcer` composes `CostTracker` +
+> `BudgetConfig` to provide three enforcement layers: (1) pre-flight checks
+> via `check_can_execute` (monthly hard stop + per-agent daily limit), (2)
+> in-flight budget checking via a sync `BudgetChecker` closure with
+> pre-computed baselines (task + monthly + daily limits, alert deduplication),
+> and (3) task-boundary auto-downgrade via `resolve_model`. Billing periods
+> are scoped by `billing_period_start(reset_day)`. `DailyLimitExceededError`
+> is a subclass of `BudgetExhaustedError` for granular error handling.
 
 ### 10.5 LLM Call Analytics
 
@@ -2864,7 +2874,8 @@ ai-company/
 │       │   ├── spending_summary.py # _SpendingTotals base + spending summary models
 │       │   ├── hierarchy.py        # BudgetHierarchy, BudgetConfig
 │       │   ├── enums.py            # Budget-related enums
-│       │   ├── limits.py           # Budget enforcement (M5)
+│       │   ├── billing.py          # Billing period computation utilities
+│       │   ├── enforcer.py         # BudgetEnforcer service (pre-flight, in-flight, auto-downgrade)
 │       │   ├── optimizer.py        # Cost optimization / CFO logic (M5)
 │       │   └── reports.py          # Spending reports (M5)
 │       ├── api/                     # REST + WebSocket API (M6, stubs only)

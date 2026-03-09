@@ -44,7 +44,7 @@ uv run pre-commit run --all-files          # all pre-commit hooks
 ```text
 src/ai_company/
   api/            # FastAPI REST + WebSocket routes
-  budget/         # Per-agent cost tracking and spending controls
+  budget/         # Cost tracking, budget enforcement (pre-flight/in-flight checks, auto-downgrade), billing periods
   cli/            # Typer CLI commands
   communication/  # Message bus, dispatcher, messenger, channels, delegation, loop prevention, conflict resolution, meeting protocol
   config/         # YAML company config loading and validation

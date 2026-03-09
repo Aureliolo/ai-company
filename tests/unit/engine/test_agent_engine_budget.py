@@ -12,7 +12,7 @@ from ai_company.budget.config import (
 from ai_company.budget.enforcer import BudgetEnforcer
 from ai_company.budget.tracker import CostTracker
 from ai_company.engine.agent_engine import AgentEngine
-from ai_company.engine.errors import BudgetExhaustedError
+from ai_company.engine.errors import BudgetExhaustedError, DailyLimitExceededError
 from ai_company.engine.loop_protocol import TerminationReason
 
 if TYPE_CHECKING:
@@ -76,8 +76,40 @@ class TestEngineWithEnforcer:
                 task=sample_task_with_criteria,
             )
 
-        assert result.termination_reason == TerminationReason.ERROR
-        assert "BudgetExhaustedError" in (result.execution_result.error_message or "")
+        assert result.termination_reason == TerminationReason.BUDGET_EXHAUSTED
+        assert provider.call_count == 0
+
+    async def test_preflight_daily_limit_returns_budget_exhausted(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Pre-flight DailyLimitExceededError uses BUDGET_EXHAUSTED reason."""
+        cfg = _make_budget_config(total_monthly=100.0)
+        tracker = CostTracker(budget_config=cfg)
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+
+        provider = MockCompletionProvider(
+            [make_completion_response(content="Done.")],
+        )
+        engine = AgentEngine(
+            provider=provider,
+            budget_enforcer=enforcer,
+        )
+
+        with patch.object(
+            enforcer,
+            "check_can_execute",
+            new=AsyncMock(
+                side_effect=DailyLimitExceededError("Daily limit exceeded"),
+            ),
+        ):
+            result = await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+        assert result.termination_reason == TerminationReason.BUDGET_EXHAUSTED
         assert provider.call_count == 0
 
     async def test_model_downgrade_applied(

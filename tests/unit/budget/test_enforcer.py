@@ -23,6 +23,7 @@ from ai_company.core.enums import TaskStatus, TaskType
 from ai_company.core.task import Task
 from ai_company.engine.context import AgentContext
 from ai_company.engine.errors import BudgetExhaustedError, DailyLimitExceededError
+from ai_company.observability.events.budget import BUDGET_ALERT_THRESHOLD_CROSSED
 from ai_company.providers.models import TokenUsage
 from ai_company.providers.routing.models import ResolvedModel
 from ai_company.providers.routing.resolver import ModelResolver
@@ -472,6 +473,136 @@ class TestResolveModel:
         result = await enforcer.resolve_model(identity)
         assert result.model.model_id == "test-large-001"
 
+    async def test_at_exact_threshold_applies_downgrade(self) -> None:
+        """Budget at exactly the threshold applies downgrade."""
+        cfg = _make_budget_config(
+            auto_downgrade=AutoDowngradeConfig(
+                enabled=True,
+                threshold=85,
+                downgrade_map=(("large", "medium"),),
+            ),
+        )
+        tracker = CostTracker(budget_config=cfg)
+        # Exactly 85% usage
+        await tracker.record(
+            make_cost_record(
+                cost_usd=85.0,
+                input_tokens=100,
+                output_tokens=50,
+                timestamp=_RECORD_TS,
+            ),
+        )
+        resolver = _make_resolver(
+            {
+                "test-large-001": _resolved(
+                    model_id="test-large-001",
+                    alias="large",
+                ),
+                "large": _resolved(
+                    model_id="test-large-001",
+                    alias="large",
+                ),
+                "medium": _resolved(
+                    model_id="test-medium-001",
+                    alias="medium",
+                ),
+            }
+        )
+        enforcer = BudgetEnforcer(
+            budget_config=cfg,
+            cost_tracker=tracker,
+            model_resolver=resolver,
+        )
+        identity = _make_identity(model_id="test-large-001")
+
+        with _patch_periods():
+            result = await enforcer.resolve_model(identity)
+
+        # At exactly threshold → downgrade applies (< is strict)
+        assert result.model.model_id == "test-medium-001"
+
+    async def test_resolved_model_has_no_alias_unchanged(self) -> None:
+        """Model in resolver but with no alias returns unchanged."""
+        cfg = _make_budget_config(
+            auto_downgrade=AutoDowngradeConfig(
+                enabled=True,
+                threshold=85,
+                downgrade_map=(("large", "medium"),),
+            ),
+        )
+        tracker = CostTracker(budget_config=cfg)
+        await tracker.record(
+            make_cost_record(
+                cost_usd=90.0,
+                input_tokens=100,
+                output_tokens=50,
+                timestamp=_RECORD_TS,
+            ),
+        )
+        # Model registered without an alias
+        resolver = _make_resolver(
+            {
+                "test-large-001": _resolved(
+                    model_id="test-large-001",
+                    alias=None,
+                ),
+            }
+        )
+        enforcer = BudgetEnforcer(
+            budget_config=cfg,
+            cost_tracker=tracker,
+            model_resolver=resolver,
+        )
+        identity = _make_identity()
+
+        with _patch_periods():
+            result = await enforcer.resolve_model(identity)
+
+        assert result.model.model_id == "test-large-001"
+
+    async def test_target_alias_not_resolvable_unchanged(self) -> None:
+        """Target alias in downgrade map but not in resolver skips."""
+        cfg = _make_budget_config(
+            auto_downgrade=AutoDowngradeConfig(
+                enabled=True,
+                threshold=85,
+                downgrade_map=(("large", "nonexistent"),),
+            ),
+        )
+        tracker = CostTracker(budget_config=cfg)
+        await tracker.record(
+            make_cost_record(
+                cost_usd=90.0,
+                input_tokens=100,
+                output_tokens=50,
+                timestamp=_RECORD_TS,
+            ),
+        )
+        resolver = _make_resolver(
+            {
+                "test-large-001": _resolved(
+                    model_id="test-large-001",
+                    alias="large",
+                ),
+                "large": _resolved(
+                    model_id="test-large-001",
+                    alias="large",
+                ),
+                # "nonexistent" is NOT registered
+            }
+        )
+        enforcer = BudgetEnforcer(
+            budget_config=cfg,
+            cost_tracker=tracker,
+            model_resolver=resolver,
+        )
+        identity = _make_identity()
+
+        with _patch_periods():
+            result = await enforcer.resolve_model(identity)
+
+        assert result.model.model_id == "test-large-001"
+
     async def test_chain_downgrade_applies_first_match_only(self) -> None:
         """Only the first matching downgrade_map entry applies."""
         cfg = _make_budget_config(
@@ -544,6 +675,31 @@ class TestMakeBudgetChecker:
 
         checker = await enforcer.make_budget_checker(task, str(identity.id))
         assert checker is None
+
+    async def test_returns_checker_when_only_task_limit_active(self) -> None:
+        """Returns a checker (not None) when only task_limit is set."""
+        cfg = _make_budget_config(
+            total_monthly=0.0,
+            per_agent_daily_limit=0.0,
+        )
+        tracker = CostTracker(budget_config=cfg)
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+        identity = _make_identity()
+        task = _make_task(
+            agent_id=str(identity.id),
+            budget_limit=5.0,
+        )
+
+        checker = await enforcer.make_budget_checker(task, str(identity.id))
+        assert checker is not None
+
+        # Under limit → not exhausted
+        ctx_under = _ctx_with_cost(identity, task, 4.99)
+        assert checker(ctx_under) is False
+
+        # At limit → exhausted
+        ctx_at = _ctx_with_cost(identity, task, 5.0)
+        assert checker(ctx_at) is True
 
     async def test_task_budget_exhaustion(self) -> None:
         """Checker detects task budget exhaustion at exact limit."""
@@ -720,7 +876,7 @@ class TestMakeBudgetChecker:
             warn_calls = [
                 c
                 for c in mock_logger.warning.call_args_list
-                if c[0][0] == "budget.alert.threshold_crossed"
+                if c[0][0] == BUDGET_ALERT_THRESHOLD_CROSSED
             ]
             assert len(warn_calls) == 1
 
@@ -732,7 +888,7 @@ class TestMakeBudgetChecker:
             warn_calls2 = [
                 c
                 for c in mock_logger2.warning.call_args_list
-                if c[0][0] == "budget.alert.threshold_crossed"
+                if c[0][0] == BUDGET_ALERT_THRESHOLD_CROSSED
             ]
             assert len(warn_calls2) == 0
 

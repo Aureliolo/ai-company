@@ -6,7 +6,7 @@ checks, in-flight budget checking, and task-boundary auto-downgrade
 as described in DESIGN_SPEC Section 10.4.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from ai_company.budget.billing import billing_period_start, daily_period_start
 from ai_company.budget.enums import BudgetAlertLevel
@@ -15,11 +15,15 @@ from ai_company.engine.errors import BudgetExhaustedError, DailyLimitExceededErr
 from ai_company.observability import get_logger
 from ai_company.observability.events.budget import (
     BUDGET_ALERT_THRESHOLD_CROSSED,
+    BUDGET_BASELINE_ERROR,
     BUDGET_DAILY_LIMIT_EXCEEDED,
+    BUDGET_DAILY_LIMIT_HIT,
     BUDGET_DOWNGRADE_APPLIED,
     BUDGET_DOWNGRADE_SKIPPED,
     BUDGET_ENFORCEMENT_CHECK,
     BUDGET_HARD_STOP_TRIGGERED,
+    BUDGET_RESOLVE_MODEL_ERROR,
+    BUDGET_TASK_LIMIT_HIT,
 )
 
 if TYPE_CHECKING:
@@ -40,11 +44,13 @@ class BudgetEnforcer:
 
     Provides pre-flight checks (can this agent start?), in-flight budget
     checking (monthly + daily + task limits with alert emission), and
-    task-boundary auto-downgrade.  Thread-safe via CostTracker's
+    task-boundary auto-downgrade.  Concurrency-safe via CostTracker's
     asyncio.Lock.
 
     Note: Pre-flight checks are best-effort under concurrency (TOCTOU).
-    The in-flight checker is the true safety net.
+    The in-flight checker is the true safety net, though it also uses
+    pre-computed baselines that are snapshot-in-time and will not
+    reflect concurrent spend by other agents.
 
     Args:
         budget_config: Budget configuration for limits and thresholds.
@@ -88,7 +94,21 @@ class BudgetEnforcer:
             )
             return
 
-        # Monthly hard stop check
+        await self._check_monthly_hard_stop(cfg, agent_id)
+        await self._check_daily_limit(cfg, agent_id)
+
+        logger.debug(
+            BUDGET_ENFORCEMENT_CHECK,
+            agent_id=agent_id,
+            result="pass",
+        )
+
+    async def _check_monthly_hard_stop(
+        self,
+        cfg: BudgetConfig,
+        agent_id: str,
+    ) -> None:
+        """Check monthly hard stop and raise if exceeded."""
         period_start = billing_period_start(cfg.reset_day)
         monthly_cost = await self._cost_tracker.get_total_cost(
             start=period_start,
@@ -108,38 +128,38 @@ class BudgetEnforcer:
             msg = (
                 f"Monthly budget exhausted: ${monthly_cost:.2f} >= "
                 f"${hard_stop_limit:.2f} "
-                f"({cfg.alerts.hard_stop_at}% of ${cfg.total_monthly:.2f})"
+                f"({cfg.alerts.hard_stop_at}% of "
+                f"${cfg.total_monthly:.2f})"
             )
             raise BudgetExhaustedError(msg)
 
-        # Daily limit check
-        if cfg.per_agent_daily_limit > 0:
-            day_start = daily_period_start()
-            daily_cost = await self._cost_tracker.get_agent_cost(
-                agent_id,
-                start=day_start,
-            )
-            if daily_cost >= cfg.per_agent_daily_limit:
-                logger.warning(
-                    BUDGET_DAILY_LIMIT_EXCEEDED,
-                    agent_id=agent_id,
-                    daily_cost=daily_cost,
-                    daily_limit=cfg.per_agent_daily_limit,
-                )
-                msg = (
-                    f"Agent {agent_id!r} daily limit exceeded: "
-                    f"${daily_cost:.2f} >= "
-                    f"${cfg.per_agent_daily_limit:.2f}"
-                )
-                raise DailyLimitExceededError(msg)
+    async def _check_daily_limit(
+        self,
+        cfg: BudgetConfig,
+        agent_id: str,
+    ) -> None:
+        """Check per-agent daily limit and raise if exceeded."""
+        if cfg.per_agent_daily_limit <= 0:
+            return
 
-        logger.debug(
-            BUDGET_ENFORCEMENT_CHECK,
-            agent_id=agent_id,
-            result="pass",
-            monthly_cost=monthly_cost,
-            hard_stop_limit=hard_stop_limit,
+        day_start = daily_period_start()
+        daily_cost = await self._cost_tracker.get_agent_cost(
+            agent_id,
+            start=day_start,
         )
+        if daily_cost >= cfg.per_agent_daily_limit:
+            logger.warning(
+                BUDGET_DAILY_LIMIT_EXCEEDED,
+                agent_id=agent_id,
+                daily_cost=daily_cost,
+                daily_limit=cfg.per_agent_daily_limit,
+            )
+            msg = (
+                f"Agent {agent_id!r} daily limit exceeded: "
+                f"${daily_cost:.2f} >= "
+                f"${cfg.per_agent_daily_limit:.2f}"
+            )
+            raise DailyLimitExceededError(msg)
 
     async def resolve_model(
         self,
@@ -149,11 +169,13 @@ class BudgetEnforcer:
 
         Returns identity unchanged when:
         - ``auto_downgrade.enabled`` is ``False``
-        - budget usage below threshold
+        - ``total_monthly`` is zero or negative (enforcement disabled)
         - no ``model_resolver`` provided
+        - budget usage below threshold
         - ``model_id`` not found in resolver
         - model alias not in ``downgrade_map``
         - target alias not resolvable
+        - CostTracker query fails (graceful degradation)
 
         Returns new ``AgentIdentity`` with downgraded ``ModelConfig``
         otherwise.
@@ -168,11 +190,21 @@ class BudgetEnforcer:
         ):
             return identity
 
-        # Check budget usage against downgrade threshold
-        period_start = billing_period_start(cfg.reset_day)
-        monthly_cost = await self._cost_tracker.get_total_cost(
-            start=period_start,
-        )
+        try:
+            period_start = billing_period_start(cfg.reset_day)
+            monthly_cost = await self._cost_tracker.get_total_cost(
+                start=period_start,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                BUDGET_RESOLVE_MODEL_ERROR,
+                agent_id=str(identity.id),
+                reason="cost_tracker_query_failed",
+            )
+            return identity
+
         used_pct = round(
             monthly_cost / cfg.total_monthly * 100,
             BUDGET_ROUNDING_PRECISION,
@@ -181,7 +213,7 @@ class BudgetEnforcer:
         if used_pct < downgrade.threshold:
             return identity
 
-        return self._apply_downgrade(
+        return _apply_downgrade(
             identity,
             self._model_resolver,
             downgrade.downgrade_map,
@@ -199,9 +231,17 @@ class BudgetEnforcer:
         Queries CostTracker once for monthly and daily baselines, then
         returns a sync closure that checks:
 
-        1. Task budget limit (``ctx.accumulated_cost >= task.budget_limit``)
-        2. Monthly total (baseline + ctx cost >= total_monthly * hard_stop_at/100)
-        3. Agent daily (baseline + ctx cost >= per_agent_daily_limit)
+        1. Task budget limit
+           (``ctx.accumulated_cost.cost_usd >= task.budget_limit``)
+        2. Monthly total
+           (baseline + running cost >= hard_stop threshold)
+        3. Agent daily
+           (baseline + running cost >= per_agent_daily_limit)
+
+        Baselines are snapshot-in-time: they will not reflect
+        concurrent spend by other agents during this task's execution.
+        The pre-flight check (``check_can_execute``) is the
+        authoritative gate.
 
         Alert deduplication: the closure tracks the last emitted alert
         level and only logs upward transitions
@@ -219,12 +259,14 @@ class BudgetEnforcer:
         if monthly_budget <= 0 and task_limit <= 0 and daily_limit <= 0:
             return None
 
-        baselines = await self._compute_baselines(
+        baselines = await self._compute_baselines_safe(
             cfg,
             monthly_budget,
             daily_limit,
             agent_id,
         )
+        if baselines is None:
+            return None
 
         thresholds = _compute_thresholds(cfg, monthly_budget)
 
@@ -239,6 +281,31 @@ class BudgetEnforcer:
         )
 
     # ── Private helpers ──────────────────────────────────────────
+
+    async def _compute_baselines_safe(
+        self,
+        cfg: BudgetConfig,
+        monthly_budget: float,
+        daily_limit: float,
+        agent_id: str,
+    ) -> tuple[float, float] | None:
+        """Compute baselines, falling back to simple checker on error."""
+        try:
+            return await self._compute_baselines(
+                cfg,
+                monthly_budget,
+                daily_limit,
+                agent_id,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                BUDGET_BASELINE_ERROR,
+                agent_id=agent_id,
+                reason="falling_back_to_task_only_checker",
+            )
+            return None
 
     async def _compute_baselines(
         self,
@@ -266,73 +333,80 @@ class BudgetEnforcer:
 
         return monthly_baseline, daily_baseline
 
-    @staticmethod
-    def _apply_downgrade(
-        identity: AgentIdentity,
-        resolver: ModelResolver,
-        downgrade_map: tuple[tuple[str, str], ...],
-        used_pct: float,
-        threshold: int,
-    ) -> AgentIdentity:
-        """Attempt model downgrade, returning identity unchanged on skip."""
-        current_model_id = identity.model.model_id
-        agent_id_str = str(identity.id)
-
-        resolved = resolver.resolve_safe(current_model_id)
-        source_alias = resolved.alias if resolved else None
-
-        if source_alias is None:
-            reason = "model_not_in_resolver" if resolved is None else "no_alias"
-            logger.debug(
-                BUDGET_DOWNGRADE_SKIPPED,
-                agent_id=agent_id_str,
-                model_id=current_model_id,
-                reason=reason,
-            )
-            return identity
-
-        target_alias = _find_downgrade_target(source_alias, downgrade_map)
-        if target_alias is None:
-            logger.debug(
-                BUDGET_DOWNGRADE_SKIPPED,
-                agent_id=agent_id_str,
-                model_id=current_model_id,
-                source_alias=source_alias,
-                reason="no_mapping",
-            )
-            return identity
-
-        target_resolved = resolver.resolve_safe(target_alias)
-        if target_resolved is None:
-            logger.warning(
-                BUDGET_DOWNGRADE_SKIPPED,
-                agent_id=agent_id_str,
-                source_alias=source_alias,
-                target_alias=target_alias,
-                reason="target_not_resolvable",
-            )
-            return identity
-
-        new_model = _build_downgraded_model_config(
-            identity.model,
-            target_resolved,
-        )
-
-        logger.info(
-            BUDGET_DOWNGRADE_APPLIED,
-            agent_id=agent_id_str,
-            from_model=current_model_id,
-            from_alias=source_alias,
-            to_model=target_resolved.model_id,
-            to_alias=target_alias,
-            used_pct=used_pct,
-            threshold=threshold,
-        )
-
-        return identity.model_copy(update={"model": new_model})
-
 
 # ── Module-level pure helpers ────────────────────────────────────
+
+
+def _apply_downgrade(
+    identity: AgentIdentity,
+    resolver: ModelResolver,
+    downgrade_map: tuple[tuple[str, str], ...],
+    used_pct: float,
+    threshold: int,
+) -> AgentIdentity:
+    """Attempt model downgrade, returning identity unchanged on skip."""
+    current_model_id = identity.model.model_id
+    agent_id_str = str(identity.id)
+
+    resolved = resolver.resolve_safe(current_model_id)
+    if resolved is None:
+        logger.debug(
+            BUDGET_DOWNGRADE_SKIPPED,
+            agent_id=agent_id_str,
+            model_id=current_model_id,
+            reason="model_not_in_resolver",
+        )
+        return identity
+
+    source_alias = resolved.alias
+    if source_alias is None:
+        logger.debug(
+            BUDGET_DOWNGRADE_SKIPPED,
+            agent_id=agent_id_str,
+            model_id=current_model_id,
+            reason="no_alias",
+        )
+        return identity
+
+    target_alias = _find_downgrade_target(source_alias, downgrade_map)
+    if target_alias is None:
+        logger.debug(
+            BUDGET_DOWNGRADE_SKIPPED,
+            agent_id=agent_id_str,
+            model_id=current_model_id,
+            source_alias=source_alias,
+            reason="no_mapping",
+        )
+        return identity
+
+    target_resolved = resolver.resolve_safe(target_alias)
+    if target_resolved is None:
+        logger.warning(
+            BUDGET_DOWNGRADE_SKIPPED,
+            agent_id=agent_id_str,
+            source_alias=source_alias,
+            target_alias=target_alias,
+            reason="target_not_resolvable",
+        )
+        return identity
+
+    new_model = _build_downgraded_model_config(
+        identity.model,
+        target_resolved,
+    )
+
+    logger.info(
+        BUDGET_DOWNGRADE_APPLIED,
+        agent_id=agent_id_str,
+        from_model=current_model_id,
+        from_alias=source_alias,
+        to_model=target_resolved.model_id,
+        to_alias=target_alias,
+        used_pct=used_pct,
+        threshold=threshold,
+    )
+
+    return identity.model_copy(update={"model": new_model})
 
 
 def _find_downgrade_target(
@@ -374,7 +448,11 @@ def _emit_alert(
     total_cost: float,
     monthly_budget: float,
 ) -> None:
-    """Log an alert if the level is higher than the last emitted."""
+    """Log an alert if the level is higher than the last emitted.
+
+    ``last_alert`` is a single-element list used as a mutable cell
+    to track state across closure invocations.
+    """
     if _ALERT_LEVEL_ORDER[level] <= _ALERT_LEVEL_ORDER[last_alert[0]]:
         return
 
@@ -397,24 +475,32 @@ def _emit_alert(
         )
 
 
+class _AlertThresholds(NamedTuple):
+    """Pre-computed alert thresholds in ascending order."""
+
+    warn: float
+    critical: float
+    hard_stop: float
+
+
 def _compute_thresholds(
     cfg: BudgetConfig,
     monthly_budget: float,
-) -> tuple[float, float, float]:
-    """Pre-compute hard_stop, warn, and critical limits."""
+) -> _AlertThresholds:
+    """Pre-compute warn, critical, and hard_stop limits."""
     if monthly_budget <= 0:
-        return 0.0, 0.0, 0.0
-    return (
-        round(
-            monthly_budget * cfg.alerts.hard_stop_at / 100,
-            BUDGET_ROUNDING_PRECISION,
-        ),
-        round(
+        return _AlertThresholds(0.0, 0.0, 0.0)
+    return _AlertThresholds(
+        warn=round(
             monthly_budget * cfg.alerts.warn_at / 100,
             BUDGET_ROUNDING_PRECISION,
         ),
-        round(
+        critical=round(
             monthly_budget * cfg.alerts.critical_at / 100,
+            BUDGET_ROUNDING_PRECISION,
+        ),
+        hard_stop=round(
+            monthly_budget * cfg.alerts.hard_stop_at / 100,
             BUDGET_ROUNDING_PRECISION,
         ),
     )
@@ -427,11 +513,23 @@ def _build_checker_closure(  # noqa: PLR0913
     daily_limit: float,
     monthly_baseline: float,
     daily_baseline: float,
-    thresholds: tuple[float, float, float],
+    thresholds: _AlertThresholds,
     agent_id: str,
 ) -> BudgetChecker:
-    """Build the sync budget checker closure."""
-    hard_stop_limit, warn_limit, critical_limit = thresholds
+    """Build the sync budget checker closure.
+
+    Args:
+        task_limit: Per-task cost limit (0 = disabled).
+        monthly_budget: Total monthly budget (0 = disabled).
+        daily_limit: Per-agent daily limit (0 = disabled).
+        monthly_baseline: Pre-computed monthly spend at task start.
+        daily_baseline: Pre-computed daily spend at task start.
+        thresholds: Pre-computed alert thresholds.
+        agent_id: Agent identifier for logging.
+
+    Returns:
+        Sync callable returning ``True`` when budget is exhausted.
+    """
     last_alert: list[BudgetAlertLevel] = [BudgetAlertLevel.NORMAL]
 
     def _check(ctx: AgentContext) -> bool:
@@ -439,6 +537,12 @@ def _build_checker_closure(  # noqa: PLR0913
 
         # 1. Task budget limit
         if task_limit > 0 and running_cost >= task_limit:
+            logger.warning(
+                BUDGET_TASK_LIMIT_HIT,
+                agent_id=agent_id,
+                running_cost=running_cost,
+                task_limit=task_limit,
+            )
             return True
 
         # 2. Monthly hard stop + alerts
@@ -447,7 +551,7 @@ def _build_checker_closure(  # noqa: PLR0913
                 monthly_baseline + running_cost,
                 BUDGET_ROUNDING_PRECISION,
             )
-            if total_monthly >= hard_stop_limit:
+            if total_monthly >= thresholds.hard_stop:
                 _emit_alert(
                     BudgetAlertLevel.HARD_STOP,
                     last_alert,
@@ -456,7 +560,7 @@ def _build_checker_closure(  # noqa: PLR0913
                     monthly_budget,
                 )
                 return True
-            if total_monthly >= critical_limit:
+            if total_monthly >= thresholds.critical:
                 _emit_alert(
                     BudgetAlertLevel.CRITICAL,
                     last_alert,
@@ -464,7 +568,7 @@ def _build_checker_closure(  # noqa: PLR0913
                     total_monthly,
                     monthly_budget,
                 )
-            elif total_monthly >= warn_limit:
+            elif total_monthly >= thresholds.warn:
                 _emit_alert(
                     BudgetAlertLevel.WARNING,
                     last_alert,
@@ -480,6 +584,12 @@ def _build_checker_closure(  # noqa: PLR0913
                 BUDGET_ROUNDING_PRECISION,
             )
             if total_daily >= daily_limit:
+                logger.warning(
+                    BUDGET_DAILY_LIMIT_HIT,
+                    agent_id=agent_id,
+                    total_daily=total_daily,
+                    daily_limit=daily_limit,
+                )
                 return True
 
         return False

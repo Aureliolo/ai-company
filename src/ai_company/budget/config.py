@@ -164,7 +164,7 @@ class BudgetConfig(BaseModel):
             month-length issues).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     total_monthly: float = Field(
         default=100.0,

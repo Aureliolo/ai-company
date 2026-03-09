@@ -25,7 +25,14 @@ def billing_period_start(
 
     Returns:
         UTC-aware datetime at midnight on the billing period start day.
+
+    Raises:
+        ValueError: If ``reset_day`` is not in ``[1, 28]``.
     """
+    if not 1 <= reset_day <= 28:  # noqa: PLR2004
+        msg = f"reset_day must be 1-28, got {reset_day}"
+        raise ValueError(msg)
+
     if now is None:
         now = datetime.now(UTC)
 

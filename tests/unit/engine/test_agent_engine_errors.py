@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from .conftest import MockCompletionProvider
 
-from .conftest import make_completion_response as _make_completion_response
+from .conftest import make_completion_response
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -173,7 +173,7 @@ class TestAgentEngineCostRecordingNonRecoverable:
         """MemoryError from CostTracker.record() is not swallowed."""
         tracker = MagicMock()
         tracker.record = AsyncMock(side_effect=MemoryError("OOM in tracker"))
-        response = _make_completion_response(cost_usd=0.05)
+        response = make_completion_response(cost_usd=0.05)
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider, cost_tracker=tracker)
 
@@ -194,7 +194,7 @@ class TestAgentEngineCostRecordingNonRecoverable:
         tracker.record = AsyncMock(
             side_effect=RecursionError("infinite in tracker"),
         )
-        response = _make_completion_response(cost_usd=0.05)
+        response = make_completion_response(cost_usd=0.05)
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider, cost_tracker=tracker)
 
@@ -261,8 +261,9 @@ class TestAgentEngineFatalErrorResult:
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,
             )
-        assert isinstance(exc_info.value.__cause__, ValueError)
-        assert "secondary failure" in str(exc_info.value.__cause__)
+        # raise exc from None suppresses the secondary error chain
+        # so the original exception propagates cleanly
+        assert exc_info.value.__cause__ is None
 
 
 @pytest.mark.unit

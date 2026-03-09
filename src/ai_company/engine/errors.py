@@ -24,9 +24,13 @@ class MaxTurnsExceededError(EngineError):
 class BudgetExhaustedError(EngineError):
     """Budget exhaustion signal for the engine layer.
 
-    The execution loop returns ``TerminationReason.BUDGET_EXHAUSTED``
-    internally.  This exception is available for the engine layer above
-    the loop to convert that result into a raised error when appropriate.
+    Used in two contexts:
+
+    1. Raised directly by :meth:`BudgetEnforcer.check_can_execute`
+       when pre-flight budget checks fail (monthly hard stop or daily
+       limit exceeded).
+    2. Available for converting ``TerminationReason.BUDGET_EXHAUSTED``
+       loop results into a raised error at the engine layer.
     """
 
 
