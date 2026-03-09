@@ -227,9 +227,9 @@ class TestDegradationConfig:
     """Tests for DegradationConfig model."""
 
     def test_defaults(self) -> None:
-        """Default is FALLBACK with no fallback providers."""
+        """Default is ALERT with no fallback providers."""
         dc = DegradationConfig()
-        assert dc.strategy == DegradationAction.FALLBACK
+        assert dc.strategy == DegradationAction.ALERT
         assert dc.fallback_providers == ()
         assert dc.queue_max_wait_seconds == 300
 
@@ -307,12 +307,12 @@ class TestQuotaSnapshot:
         assert snap.requests_remaining == 0
 
     def test_requests_remaining_unlimited(self) -> None:
-        """Remaining is 0 when limit is unlimited (0)."""
+        """Remaining is None when limit is unlimited (0)."""
         snap = self._make_snapshot(
             requests_used=50,
             requests_limit=0,
         )
-        assert snap.requests_remaining == 0
+        assert snap.requests_remaining is None
 
     def test_tokens_remaining(self) -> None:
         """Computes remaining tokens correctly."""
@@ -323,12 +323,12 @@ class TestQuotaSnapshot:
         assert snap.tokens_remaining == 500
 
     def test_tokens_remaining_unlimited(self) -> None:
-        """Remaining is 0 when tokens unlimited."""
+        """Remaining is None when tokens unlimited."""
         snap = self._make_snapshot(
             tokens_used=500,
             tokens_limit=0,
         )
-        assert snap.tokens_remaining == 0
+        assert snap.tokens_remaining is None
 
     def test_is_exhausted_requests(self) -> None:
         """Exhausted when requests at limit."""
@@ -428,11 +428,22 @@ class TestWindowStart:
         result = window_start(QuotaWindow.PER_MONTH, now=now)
         assert result == datetime(2026, 3, 1, tzinfo=UTC)
 
+    def test_naive_datetime_rejected(self) -> None:
+        """Naive datetime raises ValueError."""
+        naive = datetime(2026, 3, 15, 14, 30, 0)  # noqa: DTZ001
+        with pytest.raises(ValueError, match="timezone-aware"):
+            window_start(QuotaWindow.PER_HOUR, now=naive)
+
     def test_defaults_to_now(self) -> None:
         """Uses current time when now is not provided."""
-        result = window_start(QuotaWindow.PER_DAY)
-        now = datetime.now(UTC)
-        assert result.day == now.day
+        before = datetime.now(UTC)
+        result = window_start(QuotaWindow.PER_MONTH)
+        after = datetime.now(UTC)
+        # PER_MONTH truncates to 1st of month — stable within a month
+        assert result.year == before.year
+        assert result.month == before.month
+        assert result.day == 1
+        assert before <= after  # sanity
 
 
 # ── effective_cost_per_1k ──────────────────────────────────────────

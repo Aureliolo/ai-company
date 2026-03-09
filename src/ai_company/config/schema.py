@@ -652,3 +652,23 @@ class RootConfig(BaseModel):
                 )
                 raise ValueError(msg)
         return self
+
+    @model_validator(mode="after")
+    def _validate_degradation_fallback_providers(self) -> Self:
+        """Ensure degradation fallback_providers reference known providers."""
+        known_providers = set(self.providers)
+        for prov_name, prov_config in self.providers.items():
+            for fb in prov_config.degradation.fallback_providers:
+                if fb not in known_providers:
+                    msg = (
+                        f"Provider {prov_name!r} degradation "
+                        f"fallback_providers references unknown "
+                        f"provider: {fb!r}"
+                    )
+                    logger.warning(
+                        CONFIG_VALIDATION_FAILED,
+                        model="RootConfig",
+                        error=msg,
+                    )
+                    raise ValueError(msg)
+        return self

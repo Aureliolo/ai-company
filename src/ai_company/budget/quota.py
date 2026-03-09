@@ -55,6 +55,12 @@ class QuotaLimit(BaseModel):
         """Ensure at least one of max_requests or max_tokens is set."""
         if self.max_requests == 0 and self.max_tokens == 0:
             msg = "At least one of max_requests or max_tokens must be > 0"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="QuotaLimit",
+                field="max_requests/max_tokens",
+                reason=msg,
+            )
             raise ValueError(msg)
         return self
 
@@ -62,7 +68,7 @@ class QuotaLimit(BaseModel):
 class ProviderCostModel(StrEnum):
     """How a provider charges for usage.
 
-    Attributes:
+    Members:
         PER_TOKEN: Standard pay-as-you-go; cost computed from
             cost_per_1k_input/output.
         SUBSCRIPTION: Monthly flat fee; individual calls are pre-paid.
@@ -120,6 +126,12 @@ class SubscriptionConfig(BaseModel):
             seen.add(q.window)
         if dupes:
             msg = f"Duplicate quota windows: {sorted(dupes)}"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="SubscriptionConfig",
+                field="quotas",
+                reason=msg,
+            )
             raise ValueError(msg)
         return self
 
@@ -149,7 +161,7 @@ class SubscriptionConfig(BaseModel):
 class DegradationAction(StrEnum):
     """Action to take when a provider's quota is exhausted.
 
-    Attributes:
+    Members:
         FALLBACK: Route to a fallback provider.
         QUEUE: Queue for later (not implemented in M5).
         ALERT: Raise error and alert user.
@@ -172,7 +184,7 @@ class DegradationConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     strategy: DegradationAction = Field(
-        default=DegradationAction.FALLBACK,
+        default=DegradationAction.ALERT,
         description="Degradation strategy when quota exhausted",
     )
     fallback_providers: tuple[NotBlankStr, ...] = Field(
@@ -239,26 +251,26 @@ class QuotaSnapshot(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def requests_remaining(self) -> int:
+    def requests_remaining(self) -> int | None:
         """Remaining requests in this window.
 
-        Returns 0 when the limit is not enforced (unlimited) or when
-        fully consumed.  Use ``is_exhausted`` to distinguish.
+        Returns ``None`` when the limit is not enforced (unlimited).
+        Returns 0 when fully consumed.
         """
         if self.requests_limit == 0:
-            return 0
+            return None
         return max(0, self.requests_limit - self.requests_used)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
-    def tokens_remaining(self) -> int:
+    def tokens_remaining(self) -> int | None:
         """Remaining tokens in this window.
 
-        Returns 0 when the limit is not enforced (unlimited) or when
-        fully consumed.  Use ``is_exhausted`` to distinguish.
+        Returns ``None`` when the limit is not enforced (unlimited).
+        Returns 0 when fully consumed.
         """
         if self.tokens_limit == 0:
-            return 0
+            return None
         return max(0, self.tokens_limit - self.tokens_used)
 
     @computed_field  # type: ignore[prop-decorator]
@@ -280,7 +292,7 @@ class QuotaCheckResult(BaseModel):
         exhausted_windows: Which windows are exhausted (if any).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     allowed: bool = Field(description="Whether the request is allowed")
     provider_name: NotBlankStr = Field(description="Provider checked")
@@ -312,12 +324,27 @@ def window_start(
     Args:
         window: Which time window to compute.
         now: Reference timestamp. Defaults to ``datetime.now(UTC)``.
+            Must be timezone-aware; naive datetimes are rejected.
 
     Returns:
         UTC-aware datetime at the start of the current window.
+
+    Raises:
+        ValueError: If *now* is a naive (timezone-unaware) datetime.
     """
     if now is None:
         now = datetime.now(UTC)
+    elif now.tzinfo is None:
+        msg = "now must be timezone-aware, got naive datetime"
+        logger.warning(
+            CONFIG_VALIDATION_FAILED,
+            model="window_start",
+            field="now",
+            reason=msg,
+        )
+        raise ValueError(msg)
+    else:
+        now = now.astimezone(UTC)
 
     if window == QuotaWindow.PER_MINUTE:
         return datetime(

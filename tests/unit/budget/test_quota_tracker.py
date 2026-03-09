@@ -36,8 +36,8 @@ def _make_tracker(
     return QuotaTracker(subscriptions={provider: sub})
 
 
-def _minute_quota(max_requests: int = 60) -> QuotaLimit:
-    return QuotaLimit(window=QuotaWindow.PER_MINUTE, max_requests=max_requests)
+def _hour_quota(max_requests: int = 60) -> QuotaLimit:
+    return QuotaLimit(window=QuotaWindow.PER_HOUR, max_requests=max_requests)
 
 
 def _day_token_quota(max_tokens: int = 1_000_000) -> QuotaLimit:
@@ -59,16 +59,25 @@ class TestQuotaTrackerConstruction:
     def test_creates_with_provider(self) -> None:
         """Tracker with provider subscription creates successfully."""
         tracker = _make_tracker(
-            quotas=(_minute_quota(),),
+            quotas=(_hour_quota(),),
         )
         assert tracker is not None
 
-    def test_provider_without_quotas_not_tracked(self) -> None:
+    async def test_provider_without_quotas_not_tracked(self) -> None:
         """Provider with no quotas is not actively tracked."""
         sub = SubscriptionConfig()  # No quotas
         tracker = QuotaTracker(subscriptions={"test-provider": sub})
-        # Should not raise or track
-        assert tracker is not None
+
+        # Provider is known but has no quotas — should still be allowed
+        result = await tracker.check_quota("test-provider")
+        assert result.allowed is True
+
+        # Recording usage is a no-op (no crash)
+        await tracker.record_usage("test-provider")
+
+        # Snapshot returns empty (no windows tracked)
+        snapshots = await tracker.get_snapshot("test-provider")
+        assert snapshots == ()
 
 
 # ── record_usage ───────────────────────────────────────────────────
@@ -80,7 +89,7 @@ class TestRecordUsage:
 
     async def test_records_request(self) -> None:
         """Records a single request."""
-        tracker = _make_tracker(quotas=(_minute_quota(60),))
+        tracker = _make_tracker(quotas=(_hour_quota(60),))
 
         await tracker.record_usage("test-provider")
 
@@ -100,7 +109,7 @@ class TestRecordUsage:
 
     async def test_accumulates_usage(self) -> None:
         """Multiple records accumulate within same window."""
-        tracker = _make_tracker(quotas=(_minute_quota(60),))
+        tracker = _make_tracker(quotas=(_hour_quota(60),))
 
         await tracker.record_usage("test-provider", requests=3)
         await tracker.record_usage("test-provider", requests=2)
@@ -110,7 +119,7 @@ class TestRecordUsage:
 
     async def test_unknown_provider_is_noop(self) -> None:
         """Recording for unknown provider does nothing."""
-        tracker = _make_tracker(quotas=(_minute_quota(),))
+        tracker = _make_tracker(quotas=(_hour_quota(),))
 
         # Should not raise
         await tracker.record_usage("unknown-provider")
@@ -162,7 +171,7 @@ class TestCheckQuota:
 
     async def test_allowed_when_under_limit(self) -> None:
         """Check passes when under quota limit."""
-        tracker = _make_tracker(quotas=(_minute_quota(60),))
+        tracker = _make_tracker(quotas=(_hour_quota(60),))
 
         await tracker.record_usage("test-provider", requests=30)
 
@@ -171,18 +180,18 @@ class TestCheckQuota:
 
     async def test_denied_when_at_limit(self) -> None:
         """Check denied when at quota limit."""
-        tracker = _make_tracker(quotas=(_minute_quota(10),))
+        tracker = _make_tracker(quotas=(_hour_quota(10),))
 
         await tracker.record_usage("test-provider", requests=10)
 
         result = await tracker.check_quota("test-provider")
         assert result.allowed is False
-        assert QuotaWindow.PER_MINUTE in result.exhausted_windows
+        assert QuotaWindow.PER_HOUR in result.exhausted_windows
         assert "requests" in result.reason
 
     async def test_denied_when_over_limit(self) -> None:
         """Check denied when over quota limit."""
-        tracker = _make_tracker(quotas=(_minute_quota(10),))
+        tracker = _make_tracker(quotas=(_hour_quota(10),))
 
         await tracker.record_usage("test-provider", requests=15)
 
@@ -191,7 +200,7 @@ class TestCheckQuota:
 
     async def test_unknown_provider_always_allowed(self) -> None:
         """Unknown providers are always allowed."""
-        tracker = _make_tracker(quotas=(_minute_quota(),))
+        tracker = _make_tracker(quotas=(_hour_quota(),))
 
         result = await tracker.check_quota("unknown-provider")
         assert result.allowed is True
@@ -202,7 +211,7 @@ class TestCheckQuota:
 
         await tracker.record_usage("test-provider", tokens=800)
 
-        # 800 used + 300 estimated = 1100 >= 1000
+        # 800 used + 300 estimated = 1100 > 1000
         result = await tracker.check_quota(
             "test-provider",
             estimated_tokens=300,
@@ -226,13 +235,13 @@ class TestCheckQuota:
         """All configured windows are checked."""
         tracker = _make_tracker(
             quotas=(
-                _minute_quota(100),
+                _hour_quota(100),
                 _day_token_quota(10_000),
             ),
         )
 
-        # Exhaust daily tokens
-        await tracker.record_usage("test-provider", requests=5, tokens=10_000)
+        # Exhaust daily tokens (exceed limit — tokens use > semantics)
+        await tracker.record_usage("test-provider", requests=5, tokens=10_001)
 
         result = await tracker.check_quota("test-provider")
         assert result.allowed is False
@@ -275,20 +284,20 @@ class TestGetSnapshot:
 
     async def test_returns_snapshots_for_tracked_provider(self) -> None:
         """Returns snapshots for tracked provider."""
-        tracker = _make_tracker(quotas=(_minute_quota(60),))
+        tracker = _make_tracker(quotas=(_hour_quota(60),))
 
         await tracker.record_usage("test-provider", requests=5)
 
         snapshots = await tracker.get_snapshot("test-provider")
         assert len(snapshots) == 1
         assert snapshots[0].provider_name == "test-provider"
-        assert snapshots[0].window == QuotaWindow.PER_MINUTE
+        assert snapshots[0].window == QuotaWindow.PER_HOUR
         assert snapshots[0].requests_used == 5
         assert snapshots[0].requests_limit == 60
 
     async def test_returns_empty_for_unknown_provider(self) -> None:
         """Returns empty tuple for unknown provider."""
-        tracker = _make_tracker(quotas=(_minute_quota(),))
+        tracker = _make_tracker(quotas=(_hour_quota(),))
 
         snapshots = await tracker.get_snapshot("unknown")
         assert snapshots == ()
@@ -297,17 +306,17 @@ class TestGetSnapshot:
         """Can filter snapshots by specific window."""
         tracker = _make_tracker(
             quotas=(
-                _minute_quota(60),
+                _hour_quota(60),
                 _day_token_quota(1_000_000),
             ),
         )
 
         snapshots = await tracker.get_snapshot(
             "test-provider",
-            window=QuotaWindow.PER_MINUTE,
+            window=QuotaWindow.PER_HOUR,
         )
         assert len(snapshots) == 1
-        assert snapshots[0].window == QuotaWindow.PER_MINUTE
+        assert snapshots[0].window == QuotaWindow.PER_HOUR
 
     async def test_rotated_window_shows_zero(self) -> None:
         """Rotated window shows zero usage in snapshot."""
@@ -343,7 +352,7 @@ class TestGetAllSnapshots:
     async def test_returns_all_providers(self) -> None:
         """Returns snapshots for all tracked providers."""
         sub_a = SubscriptionConfig(
-            quotas=(_minute_quota(60),),
+            quotas=(_hour_quota(60),),
         )
         sub_b = SubscriptionConfig(
             quotas=(_day_token_quota(1_000_000),),
@@ -375,7 +384,7 @@ class TestDeepCopyIsolation:
         sub = SubscriptionConfig(
             quotas=(
                 QuotaLimit(
-                    window=QuotaWindow.PER_MINUTE,
+                    window=QuotaWindow.PER_HOUR,
                     max_requests=10,
                 ),
             ),
@@ -419,7 +428,7 @@ class TestExhaustionReasonWithEstimatedTokens:
         # Record 800 tokens (under limit)
         await tracker.record_usage("test-provider", requests=0, tokens=800)
 
-        # Check with estimated_tokens=300 → projected 1100 >= 1000
+        # Check with estimated_tokens=300 → projected 1100 > 1000
         result = await tracker.check_quota(
             "test-provider",
             estimated_tokens=300,
@@ -442,7 +451,7 @@ class TestMultipleExhaustedWindows:
         sub = SubscriptionConfig(
             quotas=(
                 QuotaLimit(
-                    window=QuotaWindow.PER_MINUTE,
+                    window=QuotaWindow.PER_HOUR,
                     max_requests=5,
                 ),
                 QuotaLimit(
@@ -453,17 +462,17 @@ class TestMultipleExhaustedWindows:
         )
         tracker = QuotaTracker(subscriptions={"test-provider": sub})
 
-        # Exhaust both
+        # Exhaust both (tokens=101 to exceed > threshold)
         await tracker.record_usage(
             "test-provider",
             requests=5,
-            tokens=100,
+            tokens=101,
         )
 
         result = await tracker.check_quota("test-provider")
         assert result.allowed is False
         assert len(result.exhausted_windows) == 2
-        assert QuotaWindow.PER_MINUTE in result.exhausted_windows
+        assert QuotaWindow.PER_HOUR in result.exhausted_windows
         assert QuotaWindow.PER_DAY in result.exhausted_windows
         # Reason should have both, joined by "; "
         assert "; " in result.reason
@@ -473,7 +482,7 @@ class TestMultipleExhaustedWindows:
         sub = SubscriptionConfig(
             quotas=(
                 QuotaLimit(
-                    window=QuotaWindow.PER_MINUTE,
+                    window=QuotaWindow.PER_HOUR,
                     max_requests=100,
                 ),
                 QuotaLimit(
@@ -495,7 +504,7 @@ class TestMultipleExhaustedWindows:
         assert len(snapshots) == 2
 
         by_window = {s.window: s for s in snapshots}
-        assert by_window[QuotaWindow.PER_MINUTE].requests_used == 3
+        assert by_window[QuotaWindow.PER_HOUR].requests_used == 3
         assert by_window[QuotaWindow.PER_DAY].requests_used == 3
         assert by_window[QuotaWindow.PER_DAY].tokens_used == 500
 

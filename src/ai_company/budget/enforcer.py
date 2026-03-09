@@ -96,6 +96,7 @@ class BudgetEnforcer:
         agent_id: str,
         *,
         provider_name: str | None = None,
+        estimated_tokens: int = 0,
     ) -> None:
         """Pre-flight: verify monthly + daily + quota limits allow execution.
 
@@ -103,6 +104,8 @@ class BudgetEnforcer:
             agent_id: Agent requesting execution.
             provider_name: Optional provider name for quota checks.
                 When ``None``, quota check is skipped.
+            estimated_tokens: Estimated tokens for the upcoming request.
+                Forwarded to the quota tracker for token-based checks.
 
         Raises:
             BudgetExhaustedError: Monthly hard stop exceeded.
@@ -120,7 +123,11 @@ class BudgetEnforcer:
             await self._check_daily_limit(cfg, agent_id)
 
             if provider_name is not None:
-                await self._check_provider_quota(agent_id, provider_name)
+                await self._check_provider_quota(
+                    agent_id,
+                    provider_name,
+                    estimated_tokens=estimated_tokens,
+                )
         except BudgetExhaustedError:
             raise
         except MemoryError, RecursionError:  # builtin MemoryError (OOM)
@@ -149,6 +156,14 @@ class BudgetEnforcer:
 
         Returns always-allowed when no quota tracker is configured.
 
+        Note:
+            Unlike ``check_can_execute``, this method does **not** catch
+            unexpected exceptions from the underlying ``QuotaTracker``.
+            ``check_can_execute`` wraps quota checks in a try/except
+            that falls back to allowing execution on unexpected errors
+            (graceful degradation), but direct callers of ``check_quota``
+            are responsible for their own error handling.
+
         Args:
             provider_name: Provider to check.
             estimated_tokens: Estimated tokens for the request.
@@ -173,9 +188,14 @@ class BudgetEnforcer:
         self,
         agent_id: str,
         provider_name: str,
+        *,
+        estimated_tokens: int = 0,
     ) -> None:
         """Check provider quota, raising on exhaustion."""
-        quota_result = await self.check_quota(provider_name)
+        quota_result = await self.check_quota(
+            provider_name,
+            estimated_tokens=estimated_tokens,
+        )
         if not quota_result.allowed:
             logger.warning(
                 QUOTA_CHECK_DENIED,

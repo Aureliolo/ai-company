@@ -50,7 +50,7 @@ def _make_quota_tracker(
     sub = SubscriptionConfig(
         quotas=(
             QuotaLimit(
-                window=QuotaWindow.PER_MINUTE,
+                window=QuotaWindow.PER_HOUR,
                 max_requests=max_requests,
             ),
         ),

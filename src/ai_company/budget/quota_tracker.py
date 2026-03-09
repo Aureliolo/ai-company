@@ -52,6 +52,15 @@ class QuotaTracker:
     Providers without a subscription config are silently ignored (no-op
     on record, always allowed on check).
 
+    Note:
+        ``check_quota`` followed by ``record_usage`` is subject to a
+        TOCTOU gap: another coroutine could record usage between the
+        check and the record, pushing the counter past the limit.
+        This is by-design for the single-loop ``asyncio`` concurrency
+        model — the gap only exists across ``await`` points and is
+        acceptable for quota enforcement (the in-flight budget checker
+        is the true safety net).
+
     Args:
         subscriptions: Mapping of provider name to subscription config.
     """
@@ -107,16 +116,31 @@ class QuotaTracker:
         """
         if requests < 0:
             msg = f"requests must be non-negative, got {requests}"
+            logger.warning(
+                QUOTA_USAGE_SKIPPED,
+                provider=provider_name,
+                reason=msg,
+            )
             raise ValueError(msg)
         if tokens < 0:
             msg = f"tokens must be non-negative, got {tokens}"
+            logger.warning(
+                QUOTA_USAGE_SKIPPED,
+                provider=provider_name,
+                reason=msg,
+            )
             raise ValueError(msg)
 
         if provider_name not in self._usage:
+            reason = (
+                "no_quotas_configured"
+                if provider_name in self._subscriptions
+                else "unknown_provider"
+            )
             logger.debug(
                 QUOTA_USAGE_SKIPPED,
                 provider=provider_name,
-                reason="no_subscription_config",
+                reason=reason,
             )
             return
 
@@ -178,13 +202,23 @@ class QuotaTracker:
         """
         if estimated_tokens < 0:
             msg = f"estimated_tokens must be non-negative, got {estimated_tokens}"
+            logger.warning(
+                QUOTA_CHECK_DENIED,
+                provider=provider_name,
+                reason=msg,
+            )
             raise ValueError(msg)
 
         if provider_name not in self._usage:
+            reason = (
+                "no_quotas_configured"
+                if provider_name in self._subscriptions
+                else "unknown_provider"
+            )
             logger.debug(
                 QUOTA_CHECK_ALLOWED,
                 provider=provider_name,
-                reason="no_subscription_config",
+                reason=reason,
             )
             return QuotaCheckResult(
                 allowed=True,
@@ -267,11 +301,16 @@ class QuotaTracker:
             Tuple of quota snapshots.
         """
         if provider_name not in self._usage:
+            reason = (
+                "no_quotas_configured"
+                if provider_name in self._subscriptions
+                else "unknown_provider"
+            )
             logger.debug(
                 QUOTA_SNAPSHOT_QUERIED,
                 provider=provider_name,
                 snapshot_count=0,
-                reason="no_subscription_config",
+                reason=reason,
             )
             return ()
 
@@ -347,10 +386,17 @@ def _is_window_exhausted(
     quota: QuotaLimit,
     estimated_tokens: int,
 ) -> bool:
-    """Check if a window's quota is exhausted."""
+    """Check if a window's quota is exhausted.
+
+    Request check uses ``>=`` (hard limit — *at* the limit means
+    exhausted because the next request would exceed it).  Token check
+    uses ``>`` for projected tokens (``usage + estimated``), allowing
+    exact-fill: a request whose projected total exactly matches the
+    limit is still permitted.
+    """
     if quota.max_requests > 0 and usage.requests >= quota.max_requests:
         return True
-    return quota.max_tokens > 0 and usage.tokens + estimated_tokens >= quota.max_tokens
+    return quota.max_tokens > 0 and usage.tokens + estimated_tokens > quota.max_tokens
 
 
 def _build_exhaustion_reason(
@@ -365,7 +411,7 @@ def _build_exhaustion_reason(
     if quota.max_requests > 0 and usage.requests >= quota.max_requests:
         parts.append(f"requests {usage.requests}/{quota.max_requests}")
     projected = usage.tokens + estimated_tokens
-    if quota.max_tokens > 0 and projected >= quota.max_tokens:
+    if quota.max_tokens > 0 and projected > quota.max_tokens:
         parts.append(f"tokens {projected}/{quota.max_tokens}")
     return " ".join(parts)
 

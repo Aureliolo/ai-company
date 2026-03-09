@@ -61,15 +61,15 @@ class TestCostTierDefinition:
         )
         assert tier.price_range_max is None
 
-    def test_equal_min_max_allowed(self) -> None:
-        """price_range_max == price_range_min is valid."""
-        tier = CostTierDefinition(
-            id="exact",
-            display_name="Exact",
-            price_range_min=0.01,
-            price_range_max=0.01,
-        )
-        assert tier.price_range_min == tier.price_range_max
+    def test_equal_min_max_rejected(self) -> None:
+        """price_range_max == price_range_min is rejected (zero-width)."""
+        with pytest.raises(ValidationError, match="zero-width"):
+            CostTierDefinition(
+                id="exact",
+                display_name="Exact",
+                price_range_min=0.01,
+                price_range_max=0.01,
+            )
 
     def test_max_less_than_min_rejected(self) -> None:
         """price_range_max < price_range_min raises ValueError."""
@@ -299,55 +299,6 @@ class TestClassifyModelTier:
         """Resolved default tiers."""
         return resolve_tiers(CostTiersConfig())
 
-    def test_zero_cost_is_low(
-        self,
-        default_tiers: tuple[CostTierDefinition, ...],
-    ) -> None:
-        """Zero cost classifies as low tier."""
-        assert classify_model_tier(0.0, default_tiers) == "low"
-
-    def test_boundary_low_medium(
-        self,
-        default_tiers: tuple[CostTierDefinition, ...],
-    ) -> None:
-        """At exactly 0.002, classifies as medium (exclusive upper bound)."""
-        assert classify_model_tier(0.002, default_tiers) == "medium"
-
-    def test_within_medium(
-        self,
-        default_tiers: tuple[CostTierDefinition, ...],
-    ) -> None:
-        """Cost within medium range classifies correctly."""
-        assert classify_model_tier(0.005, default_tiers) == "medium"
-
-    def test_boundary_medium_high(
-        self,
-        default_tiers: tuple[CostTierDefinition, ...],
-    ) -> None:
-        """At exactly 0.01, classifies as high."""
-        assert classify_model_tier(0.01, default_tiers) == "high"
-
-    def test_within_high(
-        self,
-        default_tiers: tuple[CostTierDefinition, ...],
-    ) -> None:
-        """Cost within high range classifies correctly."""
-        assert classify_model_tier(0.02, default_tiers) == "high"
-
-    def test_boundary_high_premium(
-        self,
-        default_tiers: tuple[CostTierDefinition, ...],
-    ) -> None:
-        """At exactly 0.03, classifies as premium."""
-        assert classify_model_tier(0.03, default_tiers) == "premium"
-
-    def test_very_high_cost_is_premium(
-        self,
-        default_tiers: tuple[CostTierDefinition, ...],
-    ) -> None:
-        """Very high cost classifies as premium (unbounded)."""
-        assert classify_model_tier(1.0, default_tiers) == "premium"
-
     def test_no_matching_tier_returns_none(self) -> None:
         """Returns None when no tier matches."""
         # Tier with range [0.01, 0.02) — cost of 0.0 won't match
@@ -365,6 +316,13 @@ class TestClassifyModelTier:
         """Empty tiers always returns None."""
         assert classify_model_tier(0.01, ()) is None
 
+    def test_negative_cost_returns_none(
+        self,
+        default_tiers: tuple[CostTierDefinition, ...],
+    ) -> None:
+        """Negative cost returns None (logged as warning)."""
+        assert classify_model_tier(-0.01, default_tiers) is None
+
     @pytest.mark.parametrize(
         ("cost", "expected"),
         [
@@ -372,22 +330,28 @@ class TestClassifyModelTier:
             (0.001, "low"),
             (0.0019, "low"),
             (0.002, "medium"),
+            (0.005, "medium"),
             (0.009, "medium"),
             (0.01, "high"),
+            (0.02, "high"),
             (0.029, "high"),
             (0.03, "premium"),
             (0.1, "premium"),
+            (1.0, "premium"),
         ],
         ids=[
             "0.000_low",
             "0.001_low",
             "0.0019_low",
-            "0.002_medium",
-            "0.009_medium",
-            "0.01_high",
-            "0.029_high",
-            "0.03_premium",
-            "0.1_premium",
+            "0.002_medium_boundary",
+            "0.005_medium_mid",
+            "0.009_medium_near_top",
+            "0.01_high_boundary",
+            "0.02_high_mid",
+            "0.029_high_near_top",
+            "0.03_premium_boundary",
+            "0.1_premium_mid",
+            "1.0_premium_very_high",
         ],
     )
     def test_classification_boundaries(

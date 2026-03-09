@@ -2,8 +2,8 @@
 
 Provides configurable metadata for cost tiers: price ranges, display
 properties, and model-to-tier classification.  The built-in ``CostTier``
-enum (``core.enums``) remains for backward compatibility; this module
-adds a configurable layer on top.
+enum (``ai_company.core.enums``) remains for backward compatibility;
+this module adds a configurable layer on top.
 """
 
 from typing import Self
@@ -69,16 +69,27 @@ class CostTierDefinition(BaseModel):
 
     @model_validator(mode="after")
     def _validate_price_range(self) -> Self:
-        """Ensure max >= min when both are set."""
-        if (
-            self.price_range_max is not None
-            and self.price_range_max < self.price_range_min
-        ):
-            msg = (
-                f"price_range_max ({self.price_range_max}) must be "
-                f">= price_range_min ({self.price_range_min})"
-            )
-            raise ValueError(msg)
+        """Ensure max > min when both are set.
+
+        A zero-width range (min == max) with a finite max can never
+        match any cost because classification uses ``[min, max)``
+        semantics.
+        """
+        if self.price_range_max is not None:
+            if self.price_range_max < self.price_range_min:
+                msg = (
+                    f"price_range_max ({self.price_range_max}) must be "
+                    f"> price_range_min ({self.price_range_min})"
+                )
+                raise ValueError(msg)
+            if self.price_range_max == self.price_range_min:
+                msg = (
+                    f"price_range_max ({self.price_range_max}) must be "
+                    f"> price_range_min ({self.price_range_min}); "
+                    f"zero-width range can never match with [min, max) "
+                    f"semantics"
+                )
+                raise ValueError(msg)
         return self
 
 
