@@ -10,16 +10,21 @@ from datetime import datetime  # noqa: TC003 — required at runtime by Pydantic
 from enum import StrEnum
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from ai_company.budget.enums import BudgetAlertLevel
+from ai_company.constants import BUDGET_ROUNDING_PRECISION
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 # ── Enums ─────────────────────────────────────────────────────────
 
 
 class AnomalyType(StrEnum):
-    """Type of spending anomaly detected."""
+    """Type of spending anomaly detected.
+
+    ``SUSTAINED_HIGH`` and ``RATE_INCREASE`` are reserved for future
+    detection algorithms; only ``SPIKE`` is currently produced.
+    """
 
     SPIKE = "spike"
     SUSTAINED_HIGH = "sustained_high"
@@ -56,6 +61,7 @@ class SpendingAnomaly(BaseModel):
         current_value: Spending in the most recent window.
         baseline_value: Mean spending across historical windows.
         deviation_factor: How many standard deviations above baseline.
+            Set to 0.0 when the baseline is zero (no historical spending).
         detected_at: Timestamp when the anomaly was detected.
         period_start: Start of the window that triggered the anomaly.
         period_end: End of the window that triggered the anomaly.
@@ -106,7 +112,7 @@ class AnomalyDetectionResult(BaseModel):
         scan_timestamp: When the scan was performed.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     anomalies: tuple[SpendingAnomaly, ...] = Field(
         default=(),
@@ -140,7 +146,7 @@ class AgentEfficiency(BaseModel):
         agent_id: Agent identifier.
         total_cost_usd: Total cost in the analysis period.
         total_tokens: Total tokens consumed (input + output).
-        cost_per_1k_tokens: Cost per 1000 tokens.
+        cost_per_1k_tokens: Cost per 1000 tokens (computed).
         record_count: Number of cost records.
         efficiency_rating: Efficiency classification.
     """
@@ -153,14 +159,21 @@ class AgentEfficiency(BaseModel):
         description="Total cost in the analysis period",
     )
     total_tokens: int = Field(ge=0, description="Total tokens consumed")
-    cost_per_1k_tokens: float = Field(
-        ge=0.0,
-        description="Cost per 1000 tokens",
-    )
     record_count: int = Field(ge=0, description="Number of cost records")
     efficiency_rating: EfficiencyRating = Field(
         description="Efficiency classification",
     )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def cost_per_1k_tokens(self) -> float:
+        """Cost per 1000 tokens, derived from total_cost and total_tokens."""
+        if self.total_tokens == 0:
+            return 0.0
+        return round(
+            self.total_cost_usd / self.total_tokens * 1000,
+            BUDGET_ROUNDING_PRECISION,
+        )
 
 
 class EfficiencyAnalysis(BaseModel):
@@ -171,7 +184,8 @@ class EfficiencyAnalysis(BaseModel):
         global_avg_cost_per_1k: Global average cost per 1000 tokens.
         analysis_period_start: Start of the analysis period.
         analysis_period_end: End of the analysis period.
-        inefficient_agent_count: Number of agents rated INEFFICIENT.
+        inefficient_agent_count: Number of agents rated INEFFICIENT
+            (computed).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -186,10 +200,16 @@ class EfficiencyAnalysis(BaseModel):
     )
     analysis_period_start: datetime = Field(description="Analysis period start")
     analysis_period_end: datetime = Field(description="Analysis period end")
-    inefficient_agent_count: int = Field(
-        ge=0,
-        description="Number of inefficient agents",
-    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def inefficient_agent_count(self) -> int:
+        """Number of agents rated INEFFICIENT."""
+        return sum(
+            1
+            for a in self.agents
+            if a.efficiency_rating == EfficiencyRating.INEFFICIENT
+        )
 
     @model_validator(mode="after")
     def _validate_period_ordering(self) -> Self:
@@ -227,10 +247,21 @@ class DowngradeRecommendation(BaseModel):
         description="Recommended cheaper model",
     )
     estimated_savings_per_1k: float = Field(
-        ge=0.0,
+        gt=0.0,
         description="Estimated savings per 1000 tokens",
     )
     reason: NotBlankStr = Field(description="Human-readable explanation")
+
+    @model_validator(mode="after")
+    def _validate_different_models(self) -> Self:
+        """Ensure current and recommended models differ."""
+        if self.current_model == self.recommended_model:
+            msg = (
+                f"current_model and recommended_model must differ, "
+                f"both are {self.current_model!r}"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class DowngradeAnalysis(BaseModel):
@@ -238,7 +269,8 @@ class DowngradeAnalysis(BaseModel):
 
     Attributes:
         recommendations: Per-agent downgrade recommendations.
-        total_estimated_monthly_savings: Aggregate estimated monthly savings.
+        total_estimated_savings_per_1k: Aggregate estimated savings per 1000
+            tokens across all recommendations.
         budget_pressure_percent: Current budget utilization percentage.
     """
 
@@ -248,9 +280,9 @@ class DowngradeAnalysis(BaseModel):
         default=(),
         description="Per-agent downgrade recommendations",
     )
-    total_estimated_monthly_savings: float = Field(
+    total_estimated_savings_per_1k: float = Field(
         ge=0.0,
-        description="Aggregate estimated monthly savings",
+        description="Aggregate estimated savings per 1000 tokens",
     )
     budget_pressure_percent: float = Field(
         ge=0.0,
@@ -267,7 +299,8 @@ class ApprovalDecision(BaseModel):
     Attributes:
         approved: Whether the operation is approved.
         reason: Explanation for the decision.
-        budget_remaining_usd: Remaining budget in USD.
+        budget_remaining_usd: Remaining budget in USD (may be negative
+            if over budget).
         budget_used_percent: Percentage of budget consumed.
         alert_level: Current budget alert level.
         conditions: Any conditions attached to approval.
@@ -278,7 +311,7 @@ class ApprovalDecision(BaseModel):
     approved: bool = Field(description="Whether the operation is approved")
     reason: NotBlankStr = Field(description="Explanation for the decision")
     budget_remaining_usd: float = Field(
-        description="Remaining budget in USD",
+        description="Remaining budget in USD (negative when over budget)",
     )
     budget_used_percent: float = Field(
         ge=0.0,
@@ -287,7 +320,7 @@ class ApprovalDecision(BaseModel):
     alert_level: BudgetAlertLevel = Field(
         description="Current budget alert level",
     )
-    conditions: tuple[str, ...] = Field(
+    conditions: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Conditions attached to approval",
     )

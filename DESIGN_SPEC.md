@@ -1845,6 +1845,13 @@ The CFO agent (when enabled) acts as a cost management system:
 - Blocks tasks that would exceed remaining budget
 - Optimizes model routing for cost/quality balance
 
+> **Implementation note (M5):** `CostOptimizer` service (`budget/optimizer.py`)
+> implements anomaly detection (sigma + spike factor), per-agent efficiency
+> analysis, model downgrade recommendations (via `ModelResolver`), and
+> operation approval evaluation. `ReportGenerator` service
+> (`budget/reports.py`) produces multi-dimensional spending reports with
+> task/provider/model breakdowns and period-over-period comparison.
+
 ### 10.4 Cost Controls
 
 > **Minimal config:**
@@ -2839,6 +2846,7 @@ ai-company/
 │       │   ├── events/             # Per-domain event constants
 │       │   │   ├── __init__.py    # Package marker with usage docs; no re-exports
 │       │   │   ├── budget.py      # BUDGET_* constants
+│       │   │   ├── cfo.py         # CFO_* constants
 │       │   │   ├── classification.py # CLASSIFICATION_* constants
 │       │   │   ├── company.py      # COMPANY_* constants
 │       │   │   ├── communication.py # COMM_* constants
@@ -2942,7 +2950,8 @@ ai-company/
 │       │   ├── enums.py            # Budget-related enums
 │       │   ├── billing.py          # Billing period computation utilities
 │       │   ├── enforcer.py         # BudgetEnforcer service (pre-flight, in-flight, auto-downgrade)
-│       │   ├── optimizer.py        # Cost optimization / CFO logic (M5)
+│       │   ├── optimizer.py        # CostOptimizer service — anomaly detection, efficiency analysis, downgrade recommendations, approval decisions (M5)
+│       │   ├── optimizer_models.py # CostOptimizer domain models — anomaly, efficiency, downgrade, approval, config (M5)
 │       │   ├── quota.py            # Quota/subscription models, degradation config, quota snapshots
 │       │   ├── quota_tracker.py    # QuotaTracker service: per-provider request/token quota enforcement
 │       │   └── reports.py          # Spending reports (M5)

@@ -4,8 +4,8 @@ Provides an append-only in-memory store for :class:`CostRecord` entries and
 aggregation queries consumed by the CFO agent and budget monitoring.
 
 Service layer for the cost tracking schema defined in DESIGN_SPEC Section 10.2.
-Persistence (SQLite) is deferred to M5; the current implementation is purely
-in-memory.
+The current implementation is purely in-memory; persistence integration is
+planned as part of M5.
 """
 
 import asyncio
@@ -36,12 +36,12 @@ from ai_company.observability.events.budget import (
     BUDGET_ORCHESTRATION_RATIO_ALERT,
     BUDGET_ORCHESTRATION_RATIO_QUERIED,
     BUDGET_RECORD_ADDED,
+    BUDGET_RECORDS_QUERIED,
     BUDGET_SUMMARY_BUILT,
     BUDGET_TIME_RANGE_INVALID,
     BUDGET_TOTAL_COST_QUERIED,
     BUDGET_TRACKER_CREATED,
 )
-from ai_company.observability.events.cfo import CFO_RECORDS_QUERIED
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -209,7 +209,7 @@ class CostTracker:
         """
         _validate_time_range(start, end)
         logger.debug(
-            CFO_RECORDS_QUERIED,
+            BUDGET_RECORDS_QUERIED,
             agent_id=agent_id,
             task_id=task_id,
             start=start,

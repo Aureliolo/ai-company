@@ -10,8 +10,10 @@ from ai_company.budget.reports import (
     PeriodComparison,
     ProviderDistribution,
     ReportGenerator,
+    SpendingReport,
     TaskSpending,
 )
+from ai_company.budget.spending_summary import SpendingSummary
 from ai_company.budget.tracker import CostTracker
 from tests.unit.budget.conftest import make_cost_record
 
@@ -86,34 +88,37 @@ class TestModelDistribution:
 
 @pytest.mark.unit
 class TestPeriodComparison:
-    def test_construction(self) -> None:
+    def test_cost_increase(self) -> None:
         pc = PeriodComparison(
             current_period_cost=100.0,
             previous_period_cost=80.0,
-            cost_change_usd=20.0,
-            cost_change_percent=25.0,
         )
         assert pc.cost_change_usd == 20.0
         assert pc.cost_change_percent == 25.0
 
-    def test_negative_change(self) -> None:
+    def test_cost_decrease(self) -> None:
         pc = PeriodComparison(
             current_period_cost=60.0,
             previous_period_cost=80.0,
-            cost_change_usd=-20.0,
-            cost_change_percent=-25.0,
         )
         assert pc.cost_change_usd == -20.0
         assert pc.cost_change_percent == -25.0
 
-    def test_no_previous_data(self) -> None:
+    def test_no_previous_data_percent_is_none(self) -> None:
         pc = PeriodComparison(
             current_period_cost=50.0,
             previous_period_cost=0.0,
-            cost_change_usd=50.0,
-            cost_change_percent=None,
         )
+        assert pc.cost_change_usd == 50.0
         assert pc.cost_change_percent is None
+
+    def test_equal_periods(self) -> None:
+        pc = PeriodComparison(
+            current_period_cost=50.0,
+            previous_period_cost=50.0,
+        )
+        assert pc.cost_change_usd == 0.0
+        assert pc.cost_change_percent == 0.0
 
 
 # ── ReportGenerator Tests ─────────────────────────────────────────
@@ -335,3 +340,59 @@ class TestReportGenerator:
             include_period_comparison=False,
         )
         assert report.period_comparison is None
+
+    async def test_start_after_end_rejected(self) -> None:
+        gen, _ = _make_report_generator()
+        with pytest.raises(ValueError, match=r"start .* must be before end"):
+            await gen.generate_report(start=_END, end=_START)
+
+
+# ── SpendingReport Validator Tests ───────────────────────────────
+
+
+def _make_summary() -> SpendingSummary:
+    """Build a minimal SpendingSummary for validator tests."""
+    from ai_company.budget.spending_summary import PeriodSpending
+
+    return SpendingSummary(
+        period=PeriodSpending(
+            start=_START,
+            end=_END,
+            total_cost_usd=0.0,
+        ),
+    )
+
+
+@pytest.mark.unit
+class TestSpendingReportValidators:
+    def test_agents_sorted_descending_accepted(self) -> None:
+        report = SpendingReport(
+            summary=_make_summary(),
+            top_agents_by_cost=(("eve", 5.0), ("bob", 3.0), ("alice", 1.0)),
+            generated_at=_START,
+        )
+        assert len(report.top_agents_by_cost) == 3
+
+    def test_agents_unsorted_rejected(self) -> None:
+        with pytest.raises(ValueError, match="top_agents_by_cost must be sorted"):
+            SpendingReport(
+                summary=_make_summary(),
+                top_agents_by_cost=(("alice", 1.0), ("bob", 5.0)),
+                generated_at=_START,
+            )
+
+    def test_tasks_sorted_descending_accepted(self) -> None:
+        report = SpendingReport(
+            summary=_make_summary(),
+            top_tasks_by_cost=(("t2", 8.0), ("t1", 2.0)),
+            generated_at=_START,
+        )
+        assert len(report.top_tasks_by_cost) == 2
+
+    def test_tasks_unsorted_rejected(self) -> None:
+        with pytest.raises(ValueError, match="top_tasks_by_cost must be sorted"):
+            SpendingReport(
+                summary=_make_summary(),
+                top_tasks_by_cost=(("t1", 2.0), ("t2", 8.0)),
+                generated_at=_START,
+            )

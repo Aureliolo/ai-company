@@ -145,13 +145,13 @@ class TestAgentEfficiency:
             agent_id="alice",
             total_cost_usd=5.0,
             total_tokens=100000,
-            cost_per_1k_tokens=0.05,
             record_count=50,
             efficiency_rating=EfficiencyRating.NORMAL,
         )
         assert eff.agent_id == "alice"
         assert eff.total_cost_usd == 5.0
         assert eff.efficiency_rating == EfficiencyRating.NORMAL
+        assert eff.cost_per_1k_tokens == 0.05
 
     @pytest.mark.unit
     def test_zero_tokens(self) -> None:
@@ -159,12 +159,22 @@ class TestAgentEfficiency:
             agent_id="alice",
             total_cost_usd=0.0,
             total_tokens=0,
-            cost_per_1k_tokens=0.0,
             record_count=0,
             efficiency_rating=EfficiencyRating.NORMAL,
         )
         assert eff.total_tokens == 0
         assert eff.cost_per_1k_tokens == 0.0
+
+    @pytest.mark.unit
+    def test_cost_per_1k_is_computed(self) -> None:
+        eff = AgentEfficiency(
+            agent_id="alice",
+            total_cost_usd=10.0,
+            total_tokens=5000,
+            record_count=10,
+            efficiency_rating=EfficiencyRating.NORMAL,
+        )
+        assert eff.cost_per_1k_tokens == 2.0
 
 
 # ── EfficiencyAnalysis Tests ─────────────────────────────────────
@@ -178,10 +188,34 @@ class TestEfficiencyAnalysis:
             global_avg_cost_per_1k=0.0,
             analysis_period_start=datetime(2026, 2, 1, tzinfo=UTC),
             analysis_period_end=datetime(2026, 3, 1, tzinfo=UTC),
-            inefficient_agent_count=0,
         )
         assert analysis.agents == ()
         assert analysis.inefficient_agent_count == 0
+
+    @pytest.mark.unit
+    def test_inefficient_count_is_computed(self) -> None:
+        analysis = EfficiencyAnalysis(
+            agents=(
+                AgentEfficiency(
+                    agent_id="alice",
+                    total_cost_usd=10.0,
+                    total_tokens=1000,
+                    record_count=5,
+                    efficiency_rating=EfficiencyRating.INEFFICIENT,
+                ),
+                AgentEfficiency(
+                    agent_id="bob",
+                    total_cost_usd=1.0,
+                    total_tokens=1000,
+                    record_count=5,
+                    efficiency_rating=EfficiencyRating.NORMAL,
+                ),
+            ),
+            global_avg_cost_per_1k=5.0,
+            analysis_period_start=datetime(2026, 2, 1, tzinfo=UTC),
+            analysis_period_end=datetime(2026, 3, 1, tzinfo=UTC),
+        )
+        assert analysis.inefficient_agent_count == 1
 
     @pytest.mark.unit
     def test_period_ordering_invalid(self) -> None:
@@ -191,7 +225,6 @@ class TestEfficiencyAnalysis:
                 global_avg_cost_per_1k=0.0,
                 analysis_period_start=datetime(2026, 3, 1, tzinfo=UTC),
                 analysis_period_end=datetime(2026, 2, 1, tzinfo=UTC),
-                inefficient_agent_count=0,
             )
 
 
@@ -232,11 +265,11 @@ class TestDowngradeAnalysis:
     def test_empty_analysis(self) -> None:
         analysis = DowngradeAnalysis(
             recommendations=(),
-            total_estimated_monthly_savings=0.0,
+            total_estimated_savings_per_1k=0.0,
             budget_pressure_percent=0.0,
         )
         assert analysis.recommendations == ()
-        assert analysis.total_estimated_monthly_savings == 0.0
+        assert analysis.total_estimated_savings_per_1k == 0.0
 
 
 # ── ApprovalDecision Tests ────────────────────────────────────────
@@ -333,3 +366,30 @@ class TestCostOptimizerConfig:
         config = CostOptimizerConfig()
         with pytest.raises(Exception):  # noqa: B017, PT011
             config.anomaly_sigma_threshold = 5.0  # type: ignore[misc]
+
+
+# ── DowngradeRecommendation validator tests ─────────────────────
+
+
+class TestDowngradeRecommendationValidator:
+    @pytest.mark.unit
+    def test_same_model_rejected(self) -> None:
+        with pytest.raises(ValueError, match="must differ"):
+            DowngradeRecommendation(
+                agent_id="alice",
+                current_model="test-large-001",
+                recommended_model="test-large-001",
+                estimated_savings_per_1k=0.05,
+                reason="No actual downgrade",
+            )
+
+    @pytest.mark.unit
+    def test_zero_savings_rejected(self) -> None:
+        with pytest.raises(ValueError, match="greater than 0"):
+            DowngradeRecommendation(
+                agent_id="alice",
+                current_model="test-large-001",
+                recommended_model="test-small-001",
+                estimated_savings_per_1k=0.0,
+                reason="Zero savings",
+            )

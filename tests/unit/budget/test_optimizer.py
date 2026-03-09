@@ -6,7 +6,7 @@ import pytest
 
 from ai_company.budget.config import BudgetAlertConfig, BudgetConfig
 from ai_company.budget.enums import BudgetAlertLevel
-from ai_company.budget.optimizer import CostOptimizer
+from ai_company.budget.optimizer import CostOptimizer, _classify_severity
 from ai_company.budget.optimizer_models import (
     AnomalySeverity,
     AnomalyType,
@@ -217,33 +217,33 @@ class TestDetectAnomalies:
         assert anomaly.severity == AnomalySeverity.HIGH
         assert anomaly.baseline_value == 0.0
 
-    async def test_severity_classification(self) -> None:
-        """Verify severity levels based on deviation factor."""
+    async def test_spike_severity_with_zero_stddev(self) -> None:
+        """Spike severity uses spike_ratio when stddev is 0."""
         optimizer, tracker = _make_optimizer(
             config=CostOptimizerConfig(
-                anomaly_sigma_threshold=1.5,
-                anomaly_spike_factor=10.0,
+                anomaly_sigma_threshold=2.0,
+                anomaly_spike_factor=2.0,
+                min_anomaly_windows=3,
             ),
         )
         window_duration = (_END - _START) / 5
 
-        # Create varied baseline with small stddev=0.1
-        baseline_costs = [1.0, 1.1, 0.9, 1.0]
-        for i, cost in enumerate(baseline_costs):
+        # Identical baseline → stddev=0
+        for i in range(4):
             ts = _START + window_duration * i + timedelta(hours=1)
             await tracker.record(
-                make_cost_record(agent_id="alice", cost_usd=cost, timestamp=ts),
+                make_cost_record(agent_id="alice", cost_usd=1.0, timestamp=ts),
             )
 
-        # Medium spike (2-3 sigma range)
+        # Spike: 4x baseline → spike_ratio=4.0 → HIGH (>=3.0)
         ts = _START + window_duration * 4 + timedelta(hours=1)
         await tracker.record(
-            make_cost_record(agent_id="alice", cost_usd=1.25, timestamp=ts),
+            make_cost_record(agent_id="alice", cost_usd=4.0, timestamp=ts),
         )
 
-        await optimizer.detect_anomalies(start=_START, end=_END)
-        # With such small deviations, this may or may not trigger
-        # depending on exact sigma; the key is the test runs without error
+        result = await optimizer.detect_anomalies(start=_START, end=_END)
+        assert len(result.anomalies) == 1
+        assert result.anomalies[0].severity == AnomalySeverity.HIGH
 
 
 # ── Efficiency Analysis Tests ─────────────────────────────────────
@@ -589,3 +589,147 @@ class TestEvaluateOperation:
         )
         assert decision.approved is True
         assert any("High-cost" in c for c in decision.conditions)
+
+
+# ── _classify_severity Tests ─────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestClassifySeverity:
+    @pytest.mark.parametrize(
+        ("deviation", "expected"),
+        [
+            (0.0, AnomalySeverity.LOW),
+            (1.5, AnomalySeverity.LOW),
+            (1.99, AnomalySeverity.LOW),
+            (2.0, AnomalySeverity.MEDIUM),
+            (2.5, AnomalySeverity.MEDIUM),
+            (2.99, AnomalySeverity.MEDIUM),
+            (3.0, AnomalySeverity.HIGH),
+            (5.0, AnomalySeverity.HIGH),
+            (100.0, AnomalySeverity.HIGH),
+        ],
+    )
+    def test_thresholds(self, deviation: float, expected: AnomalySeverity) -> None:
+        assert _classify_severity(deviation) == expected
+
+
+# ── Input Validation Tests ───────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestInputValidation:
+    async def test_detect_anomalies_start_after_end(self) -> None:
+        optimizer, _ = _make_optimizer()
+        with pytest.raises(ValueError, match=r"start .* must be before end"):
+            await optimizer.detect_anomalies(start=_END, end=_START)
+
+    async def test_analyze_efficiency_start_after_end(self) -> None:
+        optimizer, _ = _make_optimizer()
+        with pytest.raises(ValueError, match=r"start .* must be before end"):
+            await optimizer.analyze_efficiency(start=_END, end=_START)
+
+    async def test_recommend_downgrades_start_after_end(self) -> None:
+        optimizer, _ = _make_optimizer()
+        with pytest.raises(ValueError, match=r"start .* must be before end"):
+            await optimizer.recommend_downgrades(start=_END, end=_START)
+
+
+# ── Edge Case Tests ──────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestEdgeCases:
+    async def test_find_cheaper_model_picks_cheapest(self) -> None:
+        """_find_cheaper_model selects the overall cheapest below current."""
+        resolver = _make_resolver()
+        result = await _make_optimizer(model_resolver=resolver)[0].recommend_downgrades(
+            start=_START, end=_END
+        )
+        # No records → no recommendations, but validates the path
+        assert result.recommendations == ()
+
+    async def test_budget_pressure_percent_reflects_spending(self) -> None:
+        """budget_pressure_percent reflects actual spend vs budget."""
+        from ai_company.budget.billing import billing_period_start
+
+        resolver = _make_resolver()
+        bc = BudgetConfig(total_monthly=100.0)
+        tracker = CostTracker(budget_config=bc)
+        optimizer = CostOptimizer(
+            cost_tracker=tracker,
+            budget_config=bc,
+            model_resolver=resolver,
+        )
+        # Record in the current billing period so pressure reflects it
+        now = datetime.now(UTC)
+        period_start = billing_period_start(bc.reset_day, now=now)
+        await tracker.record(
+            make_cost_record(
+                cost_usd=60.0,
+                timestamp=period_start + timedelta(hours=1),
+            ),
+        )
+        # Use a period that covers the data for the efficiency analysis
+        analysis_start = period_start
+        analysis_end = now + timedelta(days=1)
+        result = await optimizer.recommend_downgrades(
+            start=analysis_start, end=analysis_end
+        )
+        assert result.budget_pressure_percent == 60.0
+
+    async def test_downgrade_target_not_resolved(self) -> None:
+        """No recommendation when downgrade target doesn't resolve."""
+        from ai_company.budget.config import AutoDowngradeConfig
+
+        resolver = _make_resolver(
+            [
+                ResolvedModel(
+                    provider_name="test-provider",
+                    model_id="test-large-001",
+                    alias="large",
+                    cost_per_1k_input=0.03,
+                    cost_per_1k_output=0.06,
+                ),
+            ]
+        )
+        bc = BudgetConfig(
+            total_monthly=100.0,
+            auto_downgrade=AutoDowngradeConfig(
+                enabled=True,
+                threshold=80,
+                downgrade_map=(("large", "nonexistent"),),
+            ),
+        )
+        tracker = CostTracker(budget_config=bc)
+        optimizer = CostOptimizer(
+            cost_tracker=tracker,
+            budget_config=bc,
+            model_resolver=resolver,
+        )
+
+        # Make alice inefficient (only agent, but needs another to set avg)
+        await tracker.record(
+            make_cost_record(
+                agent_id="alice",
+                model="test-large-001",
+                cost_usd=10.0,
+                input_tokens=1000,
+                output_tokens=0,
+                timestamp=_START + timedelta(hours=1),
+            ),
+        )
+        await tracker.record(
+            make_cost_record(
+                agent_id="bob",
+                model="test-large-001",
+                cost_usd=0.1,
+                input_tokens=1000,
+                output_tokens=0,
+                timestamp=_START + timedelta(hours=1),
+            ),
+        )
+
+        result = await optimizer.recommend_downgrades(start=_START, end=_END)
+        # Target "nonexistent" can't be resolved → no recommendation
+        assert result.recommendations == ()

@@ -38,9 +38,12 @@ from ai_company.observability.events.cfo import (
     CFO_ANOMALY_SCAN_COMPLETE,
     CFO_APPROVAL_EVALUATED,
     CFO_DOWNGRADE_RECOMMENDED,
+    CFO_DOWNGRADE_SKIPPED,
     CFO_EFFICIENCY_ANALYSIS_COMPLETE,
+    CFO_INSUFFICIENT_WINDOWS,
     CFO_OPERATION_DENIED,
     CFO_OPTIMIZER_CREATED,
+    CFO_RESOLVER_MISSING,
 )
 
 if TYPE_CHECKING:
@@ -54,8 +57,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# ── Alert level ordering (reused from enforcer pattern) ──────────
+# Agents spending below this fraction of global average are rated EFFICIENT
+_EFFICIENCY_LOWER_BOUND = 0.8
 
+# Same ordering as BudgetEnforcer._ALERT_ORDER
 _ALERT_LEVEL_ORDER: dict[BudgetAlertLevel, int] = {
     BudgetAlertLevel.NORMAL: 0,
     BudgetAlertLevel.WARNING: 1,
@@ -123,6 +128,9 @@ class CostOptimizer:
         Raises:
             ValueError: If ``start >= end`` or ``window_count < 2``.
         """
+        if start >= end:
+            msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
+            raise ValueError(msg)
         if window_count < 2:  # noqa: PLR2004
             msg = f"window_count must be >= 2, got {window_count}"
             raise ValueError(msg)
@@ -202,64 +210,27 @@ class CostOptimizer:
         Raises:
             ValueError: If ``start >= end``.
         """
+        if start >= end:
+            msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
+            raise ValueError(msg)
+
         records = await self._cost_tracker.get_records(
             start=start,
             end=end,
         )
 
-        by_agent: dict[str, list[CostRecord]] = defaultdict(list)
-        for r in records:
-            by_agent[r.agent_id].append(r)
-
-        global_avg = _compute_global_avg_cost_per_1k(records)
-        threshold_factor = self._config.inefficiency_threshold_factor
-
-        agent_efficiencies: list[AgentEfficiency] = []
-        inefficient_count = 0
-
-        for agent_id in sorted(by_agent):
-            agent_records = by_agent[agent_id]
-            total_cost = round(
-                math.fsum(r.cost_usd for r in agent_records),
-                BUDGET_ROUNDING_PRECISION,
-            )
-            total_tokens = sum(r.input_tokens + r.output_tokens for r in agent_records)
-            cost_per_1k = _compute_cost_per_1k(total_cost, total_tokens)
-            rating = _rate_efficiency(cost_per_1k, global_avg, threshold_factor)
-
-            if rating == EfficiencyRating.INEFFICIENT:
-                inefficient_count += 1
-
-            agent_efficiencies.append(
-                AgentEfficiency(
-                    agent_id=agent_id,
-                    total_cost_usd=total_cost,
-                    total_tokens=total_tokens,
-                    cost_per_1k_tokens=cost_per_1k,
-                    record_count=len(agent_records),
-                    efficiency_rating=rating,
-                ),
-            )
-
-        # Sort by cost_per_1k descending (most expensive first)
-        agent_efficiencies.sort(
-            key=lambda a: a.cost_per_1k_tokens,
-            reverse=True,
-        )
-
-        result = EfficiencyAnalysis(
-            agents=tuple(agent_efficiencies),
-            global_avg_cost_per_1k=global_avg,
-            analysis_period_start=start,
-            analysis_period_end=end,
-            inefficient_agent_count=inefficient_count,
+        result = _build_efficiency_from_records(
+            records,
+            start=start,
+            end=end,
+            threshold_factor=self._config.inefficiency_threshold_factor,
         )
 
         logger.info(
             CFO_EFFICIENCY_ANALYSIS_COMPLETE,
-            agent_count=len(agent_efficiencies),
-            inefficient_count=inefficient_count,
-            global_avg_cost_per_1k=global_avg,
+            agent_count=len(result.agents),
+            inefficient_count=result.inefficient_agent_count,
+            global_avg_cost_per_1k=result.global_avg_cost_per_1k,
         )
 
         return result
@@ -286,17 +257,37 @@ class CostOptimizer:
         Raises:
             ValueError: If ``start >= end``.
         """
+        if start >= end:
+            msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
+            raise ValueError(msg)
+
         if self._model_resolver is None:
+            logger.warning(
+                CFO_RESOLVER_MISSING,
+                reason="no_model_resolver_configured",
+            )
             return DowngradeAnalysis(
                 recommendations=(),
-                total_estimated_monthly_savings=0.0,
+                total_estimated_savings_per_1k=0.0,
                 budget_pressure_percent=0.0,
             )
 
-        efficiency = await self.analyze_efficiency(start=start, end=end)
         records = await self._cost_tracker.get_records(
             start=start,
             end=end,
+        )
+        efficiency = _build_efficiency_from_records(
+            records,
+            start=start,
+            end=end,
+            threshold_factor=self._config.inefficiency_threshold_factor,
+        )
+
+        logger.info(
+            CFO_EFFICIENCY_ANALYSIS_COMPLETE,
+            agent_count=len(efficiency.agents),
+            inefficient_count=efficiency.inefficient_agent_count,
+            global_avg_cost_per_1k=efficiency.global_avg_cost_per_1k,
         )
 
         downgrade_map = dict(self._budget_config.auto_downgrade.downgrade_map)
@@ -332,7 +323,7 @@ class CostOptimizer:
 
         return DowngradeAnalysis(
             recommendations=tuple(recommendations),
-            total_estimated_monthly_savings=round(
+            total_estimated_savings_per_1k=round(
                 total_savings,
                 BUDGET_ROUNDING_PRECISION,
             ),
@@ -348,8 +339,14 @@ class CostOptimizer:
     ) -> ApprovalDecision:
         """Evaluate whether an operation should proceed.
 
-        Checks current budget utilization and determines if the
-        estimated cost is acceptable.
+        Evaluates three criteria in order:
+
+        1. Denies if the current alert level meets or exceeds the
+           auto-deny threshold (configurable).
+        2. Denies if the projected cost would exceed the hard-stop
+           limit.
+        3. Approves with optional warning conditions for high-cost
+           operations or elevated alert levels.
 
         Args:
             agent_id: Agent requesting the operation.
@@ -388,7 +385,6 @@ class CostOptimizer:
 
         auto_deny_level = self._config.approval_auto_deny_alert_level
 
-        # Auto-deny if at or above auto-deny alert level
         if _ALERT_LEVEL_ORDER[alert_level] >= _ALERT_LEVEL_ORDER[auto_deny_level]:
             logger.warning(
                 CFO_OPERATION_DENIED,
@@ -410,7 +406,6 @@ class CostOptimizer:
                 conditions=(),
             )
 
-        # Auto-deny if estimated cost would push past hard stop
         hard_stop_limit = round(
             cfg.total_monthly * cfg.alerts.hard_stop_at / 100,
             BUDGET_ROUNDING_PRECISION,
@@ -440,7 +435,6 @@ class CostOptimizer:
                 conditions=(),
             )
 
-        # Approve with conditions if cost is high
         conditions: list[str] = []
         warn_threshold = self._config.approval_warn_threshold_usd
         if estimated_cost_usd >= warn_threshold:
@@ -492,6 +486,54 @@ class CostOptimizer:
 # ── Module-level pure helpers ────────────────────────────────────
 
 
+def _build_efficiency_from_records(
+    records: Sequence[CostRecord],
+    *,
+    start: datetime,
+    end: datetime,
+    threshold_factor: float,
+) -> EfficiencyAnalysis:
+    """Build an EfficiencyAnalysis from pre-fetched records."""
+    by_agent: dict[str, list[CostRecord]] = defaultdict(list)
+    for r in records:
+        by_agent[r.agent_id].append(r)
+
+    global_avg = _compute_global_avg_cost_per_1k(records)
+
+    agent_efficiencies: list[AgentEfficiency] = []
+    for agent_id in sorted(by_agent):
+        agent_records = by_agent[agent_id]
+        total_cost = round(
+            math.fsum(r.cost_usd for r in agent_records),
+            BUDGET_ROUNDING_PRECISION,
+        )
+        total_tokens = sum(r.input_tokens + r.output_tokens for r in agent_records)
+        cost_per_1k = _compute_cost_per_1k(total_cost, total_tokens)
+        rating = _rate_efficiency(cost_per_1k, global_avg, threshold_factor)
+
+        agent_efficiencies.append(
+            AgentEfficiency(
+                agent_id=agent_id,
+                total_cost_usd=total_cost,
+                total_tokens=total_tokens,
+                record_count=len(agent_records),
+                efficiency_rating=rating,
+            ),
+        )
+
+    agent_efficiencies.sort(
+        key=lambda a: a.cost_per_1k_tokens,
+        reverse=True,
+    )
+
+    return EfficiencyAnalysis(
+        agents=tuple(agent_efficiencies),
+        global_avg_cost_per_1k=global_avg,
+        analysis_period_start=start,
+        analysis_period_end=end,
+    )
+
+
 def _compute_window_costs(
     records: Sequence[CostRecord],
     agent_id: str,
@@ -505,7 +547,7 @@ def _compute_window_costs(
         window_cost = math.fsum(
             r.cost_usd
             for r in records
-            if r.agent_id == agent_id and r.timestamp >= ws and r.timestamp < window_end
+            if r.agent_id == agent_id and ws <= r.timestamp < window_end
         )
         costs.append(round(window_cost, BUDGET_ROUNDING_PRECISION))
     return tuple(costs)
@@ -524,6 +566,12 @@ def _detect_spike_anomaly(  # noqa: PLR0913
     Returns ``None`` if no anomaly is detected or insufficient data.
     """
     if len(window_costs) < config.min_anomaly_windows:
+        logger.debug(
+            CFO_INSUFFICIENT_WINDOWS,
+            agent_id=agent_id,
+            window_count=len(window_costs),
+            min_required=config.min_anomaly_windows,
+        )
         return None
 
     historical = window_costs[:-1]
@@ -535,27 +583,26 @@ def _detect_spike_anomaly(  # noqa: PLR0913
     mean = statistics.mean(historical)
 
     if mean == 0.0:
-        # No historical spending — a spike from zero is always flagged
-        if current > 0:
-            return SpendingAnomaly(
-                agent_id=agent_id,
-                anomaly_type=AnomalyType.SPIKE,
-                severity=AnomalySeverity.HIGH,
-                description=(
-                    f"Agent {agent_id!r} went from $0.00 baseline "
-                    f"to ${current:.2f} in the latest window"
-                ),
-                current_value=current,
-                baseline_value=0.0,
-                deviation_factor=0.0,
-                detected_at=now,
-                period_start=window_starts[-1],
-                period_end=window_starts[-1] + window_duration,
-            )
-        return None
+        # No historical spending — spike from zero (current > 0 per guard above)
+        return SpendingAnomaly(
+            agent_id=agent_id,
+            anomaly_type=AnomalyType.SPIKE,
+            severity=AnomalySeverity.HIGH,
+            description=(
+                f"Agent {agent_id!r} went from $0.00 baseline "
+                f"to ${current:.2f} in the latest window"
+            ),
+            current_value=current,
+            baseline_value=0.0,
+            deviation_factor=0.0,
+            detected_at=now,
+            period_start=window_starts[-1],
+            period_end=window_starts[-1] + window_duration,
+        )
 
     # Check spike factor (independent of stddev)
-    is_spike = current > config.anomaly_spike_factor * mean
+    spike_ratio = current / mean
+    is_spike = spike_ratio > config.anomaly_spike_factor
 
     # Check sigma threshold
     stddev = statistics.stdev(historical) if len(historical) > 1 else 0.0
@@ -565,7 +612,12 @@ def _detect_spike_anomaly(  # noqa: PLR0913
     if not is_spike and not is_sigma_anomaly:
         return None
 
-    severity = _classify_severity(deviation)
+    # When stddev is zero, use the spike ratio for severity classification
+    severity = (
+        _classify_severity(spike_ratio)
+        if is_spike and stddev == 0.0
+        else _classify_severity(deviation)
+    )
 
     return SpendingAnomaly(
         agent_id=agent_id,
@@ -610,7 +662,7 @@ def _rate_efficiency(
         return EfficiencyRating.NORMAL
     if cost_per_1k > threshold_factor * global_avg:
         return EfficiencyRating.INEFFICIENT
-    if cost_per_1k < 0.8 * global_avg:
+    if cost_per_1k < _EFFICIENCY_LOWER_BOUND * global_avg:
         return EfficiencyRating.EFFICIENT
     return EfficiencyRating.NORMAL
 
@@ -648,24 +700,48 @@ def _build_downgrade_recommendation(
     """Build a downgrade recommendation for a single agent."""
     current_resolved = resolver.resolve_safe(current_model)
     if current_resolved is None:
+        logger.debug(
+            CFO_DOWNGRADE_SKIPPED,
+            agent_id=agent_id,
+            reason="current_model_not_resolved",
+            model=current_model,
+        )
         return None
 
-    # Check downgrade map for known path
+    # Check downgrade map for known path (alias-based lookup)
     source_alias = current_resolved.alias
     target_ref: str | None = None
 
     if source_alias is not None:
         target_ref = downgrade_map.get(source_alias)
+    else:
+        logger.debug(
+            CFO_DOWNGRADE_SKIPPED,
+            agent_id=agent_id,
+            reason="no_alias_for_downgrade_map",
+            model=current_model,
+        )
 
     if target_ref is None:
-        # Try to find any cheaper model
         cheaper = _find_cheaper_model(current_resolved.total_cost_per_1k, resolver)
         if cheaper is None:
+            logger.debug(
+                CFO_DOWNGRADE_SKIPPED,
+                agent_id=agent_id,
+                reason="no_cheaper_model_available",
+                model=current_model,
+            )
             return None
         target_ref = cheaper.model_id
 
     target_resolved = resolver.resolve_safe(target_ref)
     if target_resolved is None:
+        logger.debug(
+            CFO_DOWNGRADE_SKIPPED,
+            agent_id=agent_id,
+            reason="target_model_not_resolved",
+            target=target_ref,
+        )
         return None
 
     savings = round(
@@ -673,6 +749,13 @@ def _build_downgrade_recommendation(
         BUDGET_ROUNDING_PRECISION,
     )
     if savings <= 0:
+        logger.debug(
+            CFO_DOWNGRADE_SKIPPED,
+            agent_id=agent_id,
+            reason="no_savings",
+            current_cost=current_resolved.total_cost_per_1k,
+            target_cost=target_resolved.total_cost_per_1k,
+        )
         return None
 
     return DowngradeRecommendation(
@@ -693,7 +776,7 @@ def _find_cheaper_model(
     current_cost_per_1k: float,
     resolver: ModelResolver,
 ) -> ResolvedModel | None:
-    """Find the cheapest model that costs less than the current one."""
+    """Find the overall cheapest available model below current cost."""
     all_models = resolver.all_models_sorted_by_cost()
     for model in all_models:
         if model.total_cost_per_1k < current_cost_per_1k:

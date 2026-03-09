@@ -44,7 +44,7 @@ uv run pre-commit run --all-files          # all pre-commit hooks
 ```text
 src/ai_company/
   api/            # FastAPI REST + WebSocket routes
-  budget/         # Cost tracking, budget enforcement (pre-flight/in-flight checks, auto-downgrade), billing periods, cost tiers, quota/subscription tracking
+  budget/         # Cost tracking, budget enforcement (pre-flight/in-flight checks, auto-downgrade), billing periods, cost tiers, quota/subscription tracking, CFO cost optimization (anomaly detection, efficiency analysis, downgrade recommendations, approval decisions), spending reports
   cli/            # Typer CLI commands
   communication/  # Message bus, dispatcher, messenger, channels, delegation, loop prevention, conflict resolution, meeting protocol
   config/         # YAML company config loading and validation
@@ -83,7 +83,7 @@ src/ai_company/
 - **Every module** with business logic MUST have: `from ai_company.observability import get_logger` then `logger = get_logger(__name__)`
 - **Never** use `import logging` / `logging.getLogger()` / `print()` in application code
 - **Variable name**: always `logger` (not `_logger`, not `log`)
-- **Event names**: always use constants from the domain-specific module under `ai_company.observability.events` (e.g. `PROVIDER_CALL_START` from `events.provider`, `BUDGET_RECORD_ADDED` from `events.budget`, `CONFLICT_DETECTED` from `events.conflict`, `MEETING_STARTED` from `events.meeting`, `CLASSIFICATION_START` from `events.classification`). Import directly: `from ai_company.observability.events.<domain> import EVENT_CONSTANT`
+- **Event names**: always use constants from the domain-specific module under `ai_company.observability.events` (e.g. `PROVIDER_CALL_START` from `events.provider`, `BUDGET_RECORD_ADDED` from `events.budget`, `CFO_ANOMALY_DETECTED` from `events.cfo`, `CONFLICT_DETECTED` from `events.conflict`, `MEETING_STARTED` from `events.meeting`, `CLASSIFICATION_START` from `events.classification`). Import directly: `from ai_company.observability.events.<domain> import EVENT_CONSTANT`
 - **Structured kwargs**: always `logger.info(EVENT, key=value)` — never `logger.info("msg %s", val)`
 - **All error paths** must log at WARNING or ERROR with context before raising
 - **All state transitions** must log at INFO

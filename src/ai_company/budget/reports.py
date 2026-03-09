@@ -10,10 +10,10 @@ Service layer backing CFO reporting (DESIGN_SPEC Section 10.3).
 
 import math
 from collections import defaultdict
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from ai_company.budget.spending_summary import SpendingSummary  # noqa: TC001
 from ai_company.constants import BUDGET_ROUNDING_PRECISION
@@ -104,9 +104,9 @@ class PeriodComparison(BaseModel):
     Attributes:
         current_period_cost: Cost in the current period.
         previous_period_cost: Cost in the previous period.
-        cost_change_usd: Absolute change in cost.
-        cost_change_percent: Percentage change in cost. None when
-            previous period cost is zero.
+        cost_change_usd: Absolute change in cost (computed).
+        cost_change_percent: Percentage change in cost (computed).
+            None when previous period cost is zero.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -119,11 +119,26 @@ class PeriodComparison(BaseModel):
         ge=0.0,
         description="Previous period cost",
     )
-    cost_change_usd: float = Field(description="Absolute cost change")
-    cost_change_percent: float | None = Field(
-        default=None,
-        description="Percentage cost change",
-    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def cost_change_usd(self) -> float:
+        """Absolute cost change (current - previous)."""
+        return round(
+            self.current_period_cost - self.previous_period_cost,
+            BUDGET_ROUNDING_PRECISION,
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def cost_change_percent(self) -> float | None:
+        """Percentage cost change. None when previous period cost is zero."""
+        if self.previous_period_cost <= 0:
+            return None
+        return round(
+            self.cost_change_usd / self.previous_period_cost * 100,
+            BUDGET_ROUNDING_PRECISION,
+        )
 
 
 class SpendingReport(BaseModel):
@@ -140,7 +155,7 @@ class SpendingReport(BaseModel):
         generated_at: When the report was generated.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     summary: SpendingSummary = Field(description="Overall spending summary")
     by_task: tuple[TaskSpending, ...] = Field(
@@ -234,11 +249,12 @@ class ReportGenerator:
         Raises:
             ValueError: If ``start >= end`` or ``top_n < 1``.
         """
+        if start >= end:
+            msg = f"start ({start.isoformat()}) must be before end ({end.isoformat()})"
+            raise ValueError(msg)
         if top_n < 1:
             msg = f"top_n must be >= 1, got {top_n}"
             raise ValueError(msg)
-
-        from datetime import UTC  # noqa: PLC0415
 
         now = datetime.now(UTC)
 
@@ -309,7 +325,10 @@ class ReportGenerator:
         if prev_cost == 0.0 and current_cost == 0.0:
             return None
 
-        return _compute_period_comparison(current_cost, prev_cost)
+        return PeriodComparison(
+            current_period_cost=current_cost,
+            previous_period_cost=prev_cost,
+        )
 
 
 # ── Module-level pure helpers ────────────────────────────────────
@@ -405,30 +424,6 @@ def _build_model_distribution(
             ),
         )
     return tuple(distributions)
-
-
-def _compute_period_comparison(
-    current_cost: float,
-    previous_cost: float,
-) -> PeriodComparison:
-    """Compute the delta between current and previous period costs."""
-    change_usd = round(
-        current_cost - previous_cost,
-        BUDGET_ROUNDING_PRECISION,
-    )
-    change_pct: float | None = None
-    if previous_cost > 0:
-        change_pct = round(
-            change_usd / previous_cost * 100,
-            BUDGET_ROUNDING_PRECISION,
-        )
-
-    return PeriodComparison(
-        current_period_cost=current_cost,
-        previous_period_cost=previous_cost,
-        cost_change_usd=change_usd,
-        cost_change_percent=change_pct,
-    )
 
 
 def _build_top_agents(
