@@ -15,7 +15,11 @@ class TestMemoryExports:
 
     def test_all_has_expected_names(self) -> None:
         expected = {
+            "ArchivalStore",
             "CompanyMemoryConfig",
+            "ConsolidationConfig",
+            "ConsolidationResult",
+            "ConsolidationStrategy",
             "ContextInjectionStrategy",
             "DefaultTokenEstimator",
             "InjectionPoint",
@@ -25,6 +29,7 @@ class TestMemoryExports:
             "MemoryCapabilityError",
             "MemoryConfigError",
             "MemoryConnectionError",
+            "MemoryConsolidationService",
             "MemoryEntry",
             "MemoryError",
             "MemoryInjectionStrategy",
@@ -37,9 +42,21 @@ class TestMemoryExports:
             "MemoryStorageConfig",
             "MemoryStoreError",
             "MemoryStoreRequest",
+            "OrgFact",
+            "OrgFactAuthor",
+            "OrgFactStore",
+            "OrgFactWriteRequest",
+            "OrgMemoryBackend",
+            "OrgMemoryConfig",
+            "OrgMemoryError",
+            "OrgMemoryQuery",
+            "RetentionEnforcer",
+            "SQLiteOrgFactStore",
             "ScoredMemory",
             "SharedKnowledgeStore",
+            "SimpleConsolidationStrategy",
             "TokenEstimator",
             "create_memory_backend",
+            "create_org_memory_backend",
         }
         assert set(memory_module.__all__) == expected

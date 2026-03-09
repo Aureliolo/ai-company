@@ -1,0 +1,29 @@
+"""Tests for org memory backend factory."""
+
+import pytest
+
+from ai_company.memory.org.config import OrgMemoryConfig
+from ai_company.memory.org.factory import create_org_memory_backend
+from ai_company.memory.org.hybrid_backend import HybridPromptRetrievalBackend
+from ai_company.memory.org.store import SQLiteOrgFactStore
+
+pytestmark = pytest.mark.timeout(30)
+
+
+@pytest.mark.unit
+class TestCreateOrgMemoryBackend:
+    """Factory dispatch tests."""
+
+    def test_creates_hybrid_backend(self) -> None:
+        config = OrgMemoryConfig()
+        store = SQLiteOrgFactStore(":memory:")
+        backend = create_org_memory_backend(config, store)
+        assert isinstance(backend, HybridPromptRetrievalBackend)
+
+    def test_creates_hybrid_with_policies(self) -> None:
+        config = OrgMemoryConfig(
+            core_policies=("Policy A", "Policy B"),
+        )
+        store = SQLiteOrgFactStore(":memory:")
+        backend = create_org_memory_backend(config, store)
+        assert isinstance(backend, HybridPromptRetrievalBackend)

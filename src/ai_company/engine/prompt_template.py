@@ -10,7 +10,7 @@ from typing import Final
 
 from ai_company.core.enums import SeniorityLevel
 
-PROMPT_TEMPLATE_VERSION: Final[str] = "1.1.0"
+PROMPT_TEMPLATE_VERSION: Final[str] = "1.2.0"
 
 # ── Autonomy instructions by seniority level ─────────────────────
 
@@ -122,6 +122,15 @@ in the {{ agent_department }} department.
 ## Autonomy
 
 {{ autonomy_instructions }}
+{% if org_policies %}
+
+## Organizational Policies
+
+These are company-wide rules that must always be followed:
+{% for policy in org_policies %}
+- {{ policy }}
+{% endfor %}
+{% endif %}
 {% if task %}
 
 ## Current Task

@@ -23,6 +23,7 @@ from ai_company.config.schema import (
 )
 from ai_company.core.company import CompanyConfig
 from ai_company.memory.config import CompanyMemoryConfig
+from ai_company.memory.org.config import OrgMemoryConfig
 from ai_company.persistence.config import PersistenceConfig
 
 if TYPE_CHECKING:
@@ -82,6 +83,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     memory = CompanyMemoryConfig()
     persistence = PersistenceConfig()
     cost_tiers = CostTiersConfig()
+    org_memory = OrgMemoryConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

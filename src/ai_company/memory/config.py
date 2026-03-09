@@ -14,6 +14,7 @@ from ai_company.core.enums import (
     MemoryLevel,
 )
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.memory.consolidation.config import ConsolidationConfig
 from ai_company.memory.retrieval_config import MemoryRetrievalConfig
 from ai_company.observability import get_logger
 from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -169,6 +170,10 @@ class CompanyMemoryConfig(BaseModel):
     retrieval: MemoryRetrievalConfig = Field(
         default_factory=MemoryRetrievalConfig,
         description="Memory retrieval pipeline settings",
+    )
+    consolidation: ConsolidationConfig = Field(
+        default_factory=ConsolidationConfig,
+        description="Memory consolidation settings",
     )
 
     @model_validator(mode="after")

@@ -1,0 +1,229 @@
+"""Memory consolidation service.
+
+Orchestrates retention cleanup, consolidation, archival, and
+max-memories enforcement into a single maintenance entry point.
+"""
+
+from datetime import UTC, datetime
+
+from ai_company.core.types import NotBlankStr
+from ai_company.memory.consolidation.archival import ArchivalStore  # noqa: TC001
+from ai_company.memory.consolidation.config import ConsolidationConfig  # noqa: TC001
+from ai_company.memory.consolidation.models import ArchivalEntry, ConsolidationResult
+from ai_company.memory.consolidation.retention import RetentionEnforcer
+from ai_company.memory.consolidation.strategy import (
+    ConsolidationStrategy,  # noqa: TC001
+)
+from ai_company.memory.models import MemoryEntry, MemoryQuery
+from ai_company.memory.protocol import MemoryBackend  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.consolidation import (
+    ARCHIVAL_ENTRY_STORED,
+    CONSOLIDATION_COMPLETE,
+    CONSOLIDATION_FAILED,
+    CONSOLIDATION_START,
+    MAX_MEMORIES_ENFORCED,
+)
+
+logger = get_logger(__name__)
+
+
+class MemoryConsolidationService:
+    """Orchestrates memory consolidation, retention, and archival.
+
+    Args:
+        backend: Memory backend for CRUD operations.
+        config: Consolidation configuration.
+        strategy: Optional consolidation strategy (skips consolidation
+            step if ``None``).
+        archival_store: Optional archival store (skips archival if
+            ``None`` or disabled in config).
+    """
+
+    def __init__(
+        self,
+        *,
+        backend: MemoryBackend,
+        config: ConsolidationConfig,
+        strategy: ConsolidationStrategy | None = None,
+        archival_store: ArchivalStore | None = None,
+    ) -> None:
+        self._backend = backend
+        self._config = config
+        self._strategy = strategy
+        self._archival_store = archival_store
+        self._retention = RetentionEnforcer(
+            config=config.retention,
+            backend=backend,
+        )
+
+    async def run_consolidation(
+        self,
+        agent_id: NotBlankStr,
+    ) -> ConsolidationResult:
+        """Run memory consolidation for an agent.
+
+        Retrieves old memories and applies the consolidation strategy.
+
+        Args:
+            agent_id: Agent whose memories to consolidate.
+
+        Returns:
+            Consolidation result.
+        """
+        if self._strategy is None:
+            return ConsolidationResult(consolidated_count=0)
+
+        logger.info(CONSOLIDATION_START, agent_id=agent_id)
+
+        try:
+            query = MemoryQuery(limit=1000)
+            entries = await self._backend.retrieve(agent_id, query)
+
+            result = await self._strategy.consolidate(
+                entries,
+                agent_id=agent_id,
+            )
+
+            if self._archival_store is not None and self._config.archival.enabled:
+                archived = await self._archive_entries(
+                    agent_id,
+                    entries,
+                    result.removed_ids,
+                )
+                result = ConsolidationResult(
+                    consolidated_count=result.consolidated_count,
+                    removed_ids=result.removed_ids,
+                    summary_id=result.summary_id,
+                    archived_count=archived,
+                )
+        except Exception as exc:
+            logger.exception(
+                CONSOLIDATION_FAILED,
+                agent_id=agent_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            raise
+        else:
+            logger.info(
+                CONSOLIDATION_COMPLETE,
+                agent_id=agent_id,
+                consolidated_count=result.consolidated_count,
+                archived_count=result.archived_count,
+            )
+            return result
+
+    async def enforce_max_memories(
+        self,
+        agent_id: NotBlankStr,
+    ) -> int:
+        """Enforce the maximum memories limit for an agent.
+
+        Deletes the oldest/least relevant entries if the agent has
+        exceeded ``max_memories_per_agent``.
+
+        Args:
+            agent_id: Agent to check.
+
+        Returns:
+            Number of entries deleted.
+        """
+        total = await self._backend.count(agent_id)
+        excess = total - self._config.max_memories_per_agent
+
+        if excess <= 0:
+            return 0
+
+        query = MemoryQuery(limit=excess)
+        oldest = await self._backend.retrieve(agent_id, query)
+
+        deleted = 0
+        for entry in oldest:
+            if await self._backend.delete(agent_id, entry.id):
+                deleted += 1
+
+        logger.info(
+            MAX_MEMORIES_ENFORCED,
+            agent_id=agent_id,
+            total_before=total,
+            deleted=deleted,
+        )
+        return deleted
+
+    async def cleanup_retention(
+        self,
+        agent_id: NotBlankStr,
+    ) -> int:
+        """Run retention cleanup for an agent.
+
+        Args:
+            agent_id: Agent whose expired memories to clean up.
+
+        Returns:
+            Number of expired memories deleted.
+        """
+        return await self._retention.cleanup_expired(agent_id)
+
+    async def run_maintenance(
+        self,
+        agent_id: NotBlankStr,
+    ) -> ConsolidationResult:
+        """Run full maintenance cycle for an agent.
+
+        Orchestrates: retention cleanup → consolidation → max enforcement.
+
+        Args:
+            agent_id: Agent to maintain.
+
+        Returns:
+            Consolidation result from the consolidation step.
+        """
+        await self.cleanup_retention(agent_id)
+        result = await self.run_consolidation(agent_id)
+        await self.enforce_max_memories(agent_id)
+        return result
+
+    async def _archive_entries(
+        self,
+        agent_id: NotBlankStr,
+        all_entries: tuple[MemoryEntry, ...],
+        removed_ids: tuple[NotBlankStr, ...],
+    ) -> int:
+        """Archive removed entries to cold storage.
+
+        Args:
+            agent_id: Agent identifier.
+            all_entries: All retrieved entries (to find removed ones).
+            removed_ids: IDs of entries that were removed.
+
+        Returns:
+            Number of entries archived.
+        """
+        assert self._archival_store is not None  # noqa: S101
+        removed_set = set(removed_ids)
+        now = datetime.now(UTC)
+        archived = 0
+
+        for entry in all_entries:
+            if entry.id not in removed_set:
+                continue
+
+            archival_entry = ArchivalEntry(
+                original_id=NotBlankStr(entry.id),
+                agent_id=NotBlankStr(entry.agent_id),
+                content=NotBlankStr(entry.content),
+                category=entry.category,
+                metadata=entry.metadata,
+                created_at=entry.created_at,
+                archived_at=now,
+            )
+            await self._archival_store.archive(archival_entry)
+            archived += 1
+            logger.debug(
+                ARCHIVAL_ENTRY_STORED,
+                original_id=entry.id,
+                agent_id=agent_id,
+            )
+
+        return archived

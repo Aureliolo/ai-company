@@ -116,6 +116,19 @@ class ConsolidationInterval(StrEnum):
     NEVER = "never"
 
 
+class OrgFactCategory(StrEnum):
+    """Category of organizational fact (§7.4).
+
+    Categorizes shared organizational knowledge entries by their nature
+    and purpose within the company.
+    """
+
+    CORE_POLICY = "core_policy"
+    ADR = "adr"
+    PROCEDURE = "procedure"
+    CONVENTION = "convention"
+
+
 class CostTier(StrEnum):
     """Built-in cost tier identifiers.
 

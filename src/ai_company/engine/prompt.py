@@ -129,13 +129,19 @@ _SECTION_IDENTITY = "identity"
 _SECTION_PERSONALITY = "personality"
 _SECTION_SKILLS = "skills"
 _SECTION_AUTHORITY = "authority"
+_SECTION_ORG_POLICIES = "org_policies"
 _SECTION_AUTONOMY = "autonomy"
 _SECTION_TASK = "task"
 _SECTION_TOOLS = "tools"
 _SECTION_COMPANY = "company"
 
 # Sections trimmed when over token budget, least critical first.
-_TRIMMABLE_SECTIONS = (_SECTION_COMPANY, _SECTION_TOOLS, _SECTION_TASK)
+_TRIMMABLE_SECTIONS = (
+    _SECTION_COMPANY,
+    _SECTION_ORG_POLICIES,
+    _SECTION_TOOLS,
+    _SECTION_TASK,
+)
 
 
 # ── Public API ───────────────────────────────────────────────────
@@ -148,6 +154,7 @@ def build_system_prompt(  # noqa: PLR0913
     task: Task | None = None,
     available_tools: tuple[ToolDefinition, ...] = (),
     company: Company | None = None,
+    org_policies: tuple[str, ...] = (),
     max_tokens: int | None = None,
     custom_template: str | None = None,
     token_estimator: PromptTokenEstimator | None = None,
@@ -163,6 +170,7 @@ def build_system_prompt(  # noqa: PLR0913
         task: Optional task context injected into the prompt.
         available_tools: Tool definitions available to the agent.
         company: Optional company context (name, departments).
+        org_policies: Company-wide policy texts to inject into prompt.
         max_tokens: Token budget; sections are trimmed if exceeded.
         custom_template: Optional Jinja2 template string override.
         token_estimator: Custom token estimator (defaults to char/4).
@@ -196,6 +204,7 @@ def build_system_prompt(  # noqa: PLR0913
             task=task,
             available_tools=available_tools,
             company=company,
+            org_policies=org_policies,
             max_tokens=max_tokens,
             estimator=estimator,
         )
@@ -330,13 +339,14 @@ def _build_core_context(
     }
 
 
-def _build_template_context(
+def _build_template_context(  # noqa: PLR0913
     *,
     agent: AgentIdentity,
     role: Role | None,
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
     company: Company | None,
+    org_policies: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Assemble the full Jinja2 template context from agent and optional inputs.
 
@@ -346,11 +356,14 @@ def _build_template_context(
         task: Optional task context.
         available_tools: Tool definitions.
         company: Optional company context.
+        org_policies: Company-wide policy texts.
 
     Returns:
         Dict of template variables.
     """
     context = _build_core_context(agent, role)
+
+    context["org_policies"] = org_policies or None
 
     context["task"] = (
         {
@@ -387,6 +400,7 @@ def _compute_sections(
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
     company: Company | None,
+    org_policies: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
     """Determine which sections are present in the rendered prompt.
 
@@ -394,6 +408,7 @@ def _compute_sections(
         task: Optional task context.
         available_tools: Tool definitions.
         company: Optional company context.
+        org_policies: Company-wide policy texts.
 
     Returns:
         Tuple of section names that are included.
@@ -403,8 +418,10 @@ def _compute_sections(
         _SECTION_PERSONALITY,
         _SECTION_SKILLS,
         _SECTION_AUTHORITY,
-        _SECTION_AUTONOMY,
     ]
+    if org_policies:
+        sections.append(_SECTION_ORG_POLICIES)
+    sections.append(_SECTION_AUTONOMY)
     if task is not None:
         sections.append(_SECTION_TASK)
     if available_tools:
@@ -462,12 +479,19 @@ def _trim_sections(  # noqa: PLR0913
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
     company: Company | None,
+    org_policies: tuple[str, ...],
     max_tokens: int,
     estimator: PromptTokenEstimator,
-) -> tuple[Task | None, tuple[ToolDefinition, ...], Company | None]:
+) -> tuple[
+    Task | None,
+    tuple[ToolDefinition, ...],
+    Company | None,
+    tuple[str, ...],
+]:
     """Progressively remove optional sections until under token budget.
 
-    Returns the (possibly cleared) task, available_tools, and company.
+    Returns the (possibly cleared) task, available_tools, company,
+    and org_policies.
     """
     trimmed_sections: list[str] = []
 
@@ -479,6 +503,7 @@ def _trim_sections(  # noqa: PLR0913
             task,
             available_tools,
             company,
+            org_policies,
             estimator,
         )
         if estimated <= max_tokens:
@@ -486,6 +511,8 @@ def _trim_sections(  # noqa: PLR0913
 
         if section == _SECTION_COMPANY and company is not None:
             company = None
+        elif section == _SECTION_ORG_POLICIES and org_policies:
+            org_policies = ()
         elif section == _SECTION_TOOLS and available_tools:
             available_tools = ()
         elif section == _SECTION_TASK and task is not None:
@@ -502,11 +529,12 @@ def _trim_sections(  # noqa: PLR0913
         task,
         available_tools,
         company,
+        org_policies,
         estimator,
     )
     _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
 
-    return task, available_tools, company
+    return task, available_tools, company, org_policies
 
 
 def _log_trim_results(
@@ -541,6 +569,7 @@ def _render_with_trimming(  # noqa: PLR0913
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
     company: Company | None,
+    org_policies: tuple[str, ...] = (),
     max_tokens: int | None,
     estimator: PromptTokenEstimator,
 ) -> SystemPrompt:
@@ -552,17 +581,19 @@ def _render_with_trimming(  # noqa: PLR0913
         task,
         available_tools,
         company,
+        org_policies,
         estimator,
     )
 
     if max_tokens is not None and estimated > max_tokens:
-        task, available_tools, company = _trim_sections(
+        task, available_tools, company, org_policies = _trim_sections(
             template_str=template_str,
             agent=agent,
             role=role,
             task=task,
             available_tools=available_tools,
             company=company,
+            org_policies=org_policies,
             max_tokens=max_tokens,
             estimator=estimator,
         )
@@ -573,6 +604,7 @@ def _render_with_trimming(  # noqa: PLR0913
             task,
             available_tools,
             company,
+            org_policies,
             estimator,
         )
 
@@ -582,6 +614,7 @@ def _render_with_trimming(  # noqa: PLR0913
         task,
         available_tools,
         company,
+        org_policies,
         agent,
     )
 
@@ -592,6 +625,7 @@ def _build_prompt_result(  # noqa: PLR0913
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
     company: Company | None,
+    org_policies: tuple[str, ...],
     agent: AgentIdentity,
 ) -> SystemPrompt:
     """Assemble the final ``SystemPrompt`` from rendered content."""
@@ -599,6 +633,7 @@ def _build_prompt_result(  # noqa: PLR0913
         task=task,
         available_tools=available_tools,
         company=company,
+        org_policies=org_policies,
     )
     return SystemPrompt(
         content=content,
@@ -616,6 +651,7 @@ def _render_and_estimate(  # noqa: PLR0913
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...],
     company: Company | None,
+    org_policies: tuple[str, ...],
     estimator: PromptTokenEstimator,
 ) -> tuple[str, int]:
     """Render the template and estimate its token count.
@@ -627,6 +663,7 @@ def _render_and_estimate(  # noqa: PLR0913
         task: Optional task context.
         available_tools: Tool definitions.
         company: Optional company context.
+        org_policies: Company-wide policy texts.
         estimator: Token estimator.
 
     Returns:
@@ -638,6 +675,7 @@ def _render_and_estimate(  # noqa: PLR0913
         task=task,
         available_tools=available_tools,
         company=company,
+        org_policies=org_policies,
     )
     content = _render_template(template_str, context)
     return content, estimator.estimate_tokens(content)

@@ -12,6 +12,15 @@ from ai_company.memory.config import (
     MemoryOptionsConfig,
     MemoryStorageConfig,
 )
+from ai_company.memory.consolidation import (
+    ArchivalStore,
+    ConsolidationConfig,
+    ConsolidationResult,
+    ConsolidationStrategy,
+    MemoryConsolidationService,
+    RetentionEnforcer,
+    SimpleConsolidationStrategy,
+)
 from ai_company.memory.errors import (
     MemoryCapabilityError,
     MemoryConfigError,
@@ -35,6 +44,18 @@ from ai_company.memory.models import (
     MemoryQuery,
     MemoryStoreRequest,
 )
+from ai_company.memory.org import (
+    OrgFact,
+    OrgFactAuthor,
+    OrgFactStore,
+    OrgFactWriteRequest,
+    OrgMemoryBackend,
+    OrgMemoryConfig,
+    OrgMemoryError,
+    OrgMemoryQuery,
+    SQLiteOrgFactStore,
+    create_org_memory_backend,
+)
 from ai_company.memory.protocol import MemoryBackend
 from ai_company.memory.ranking import ScoredMemory
 from ai_company.memory.retrieval_config import MemoryRetrievalConfig
@@ -42,7 +63,11 @@ from ai_company.memory.retriever import ContextInjectionStrategy
 from ai_company.memory.shared import SharedKnowledgeStore
 
 __all__ = [
+    "ArchivalStore",
     "CompanyMemoryConfig",
+    "ConsolidationConfig",
+    "ConsolidationResult",
+    "ConsolidationStrategy",
     "ContextInjectionStrategy",
     "DefaultTokenEstimator",
     "InjectionPoint",
@@ -52,6 +77,7 @@ __all__ = [
     "MemoryCapabilityError",
     "MemoryConfigError",
     "MemoryConnectionError",
+    "MemoryConsolidationService",
     "MemoryEntry",
     "MemoryError",
     "MemoryInjectionStrategy",
@@ -64,8 +90,20 @@ __all__ = [
     "MemoryStorageConfig",
     "MemoryStoreError",
     "MemoryStoreRequest",
+    "OrgFact",
+    "OrgFactAuthor",
+    "OrgFactStore",
+    "OrgFactWriteRequest",
+    "OrgMemoryBackend",
+    "OrgMemoryConfig",
+    "OrgMemoryError",
+    "OrgMemoryQuery",
+    "RetentionEnforcer",
+    "SQLiteOrgFactStore",
     "ScoredMemory",
     "SharedKnowledgeStore",
+    "SimpleConsolidationStrategy",
     "TokenEstimator",
     "create_memory_backend",
+    "create_org_memory_backend",
 ]

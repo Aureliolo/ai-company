@@ -1,0 +1,140 @@
+"""Write access control for organizational memory.
+
+Pure-function access checks that enforce seniority-based and
+human-based write restrictions per fact category.
+"""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from ai_company.core.enums import (
+    OrgFactCategory,
+    SeniorityLevel,
+    compare_seniority,
+)
+from ai_company.memory.org.errors import OrgMemoryAccessDeniedError
+from ai_company.memory.org.models import OrgFactAuthor  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.org_memory import ORG_MEMORY_WRITE_DENIED
+
+logger = get_logger(__name__)
+
+
+class CategoryWriteRule(BaseModel):
+    """Write permission rule for a single fact category.
+
+    Attributes:
+        allowed_seniority: Minimum seniority level for agent writes
+            (``None`` means only humans can write).
+        human_allowed: Whether human operators can write.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    allowed_seniority: SeniorityLevel | None = Field(
+        default=None,
+        description=("Minimum seniority level for agent writes (None = human-only)"),
+    )
+    human_allowed: bool = Field(
+        default=True,
+        description="Whether human operators can write",
+    )
+
+
+class WriteAccessConfig(BaseModel):
+    """Write access configuration for all fact categories.
+
+    Attributes:
+        rules: Per-category write rules.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    rules: dict[OrgFactCategory, CategoryWriteRule] = Field(
+        default_factory=lambda: {
+            OrgFactCategory.CORE_POLICY: CategoryWriteRule(
+                allowed_seniority=None,
+                human_allowed=True,
+            ),
+            OrgFactCategory.ADR: CategoryWriteRule(
+                allowed_seniority=SeniorityLevel.SENIOR,
+                human_allowed=True,
+            ),
+            OrgFactCategory.PROCEDURE: CategoryWriteRule(
+                allowed_seniority=SeniorityLevel.SENIOR,
+                human_allowed=True,
+            ),
+            OrgFactCategory.CONVENTION: CategoryWriteRule(
+                allowed_seniority=SeniorityLevel.SENIOR,
+                human_allowed=True,
+            ),
+        },
+        description="Per-category write rules",
+    )
+
+
+def check_write_access(
+    config: WriteAccessConfig,
+    category: OrgFactCategory,
+    author: OrgFactAuthor,
+) -> bool:
+    """Check whether the given author may write to the given category.
+
+    Args:
+        config: Write access configuration.
+        category: Target fact category.
+        author: The author attempting the write.
+
+    Returns:
+        ``True`` if write is permitted, ``False`` otherwise.
+    """
+    rule = config.rules.get(
+        category,
+        CategoryWriteRule(allowed_seniority=None, human_allowed=True),
+    )
+
+    if author.is_human:
+        return rule.human_allowed
+
+    if rule.allowed_seniority is None:
+        return False
+
+    if author.seniority is None:
+        return False
+
+    return compare_seniority(author.seniority, rule.allowed_seniority) >= 0
+
+
+def require_write_access(
+    config: WriteAccessConfig,
+    category: OrgFactCategory,
+    author: OrgFactAuthor,
+) -> None:
+    """Check write access and raise if denied.
+
+    Args:
+        config: Write access configuration.
+        category: Target fact category.
+        author: The author attempting the write.
+
+    Raises:
+        OrgMemoryAccessDeniedError: If write is not permitted.
+    """
+    if not check_write_access(config, category, author):
+        author_desc = (
+            "human"
+            if author.is_human
+            else f"agent {author.agent_id} ({author.seniority})"
+        )
+        msg = (
+            f"Write access denied: {author_desc} cannot write "
+            f"to category {category.value!r}"
+        )
+        logger.warning(
+            ORG_MEMORY_WRITE_DENIED,
+            category=category.value,
+            author_is_human=author.is_human,
+            author_agent_id=author.agent_id,
+            author_seniority=str(author.seniority) if author.seniority else None,
+            reason=msg,
+        )
+        raise OrgMemoryAccessDeniedError(msg)
