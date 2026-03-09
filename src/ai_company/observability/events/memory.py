@@ -43,6 +43,10 @@ MEMORY_SHARED_SEARCH_FAILED: Final[str] = "memory.shared.search_failed"
 MEMORY_SHARED_RETRACTED: Final[str] = "memory.shared.retracted"
 MEMORY_SHARED_RETRACT_FAILED: Final[str] = "memory.shared.retract_failed"
 
+# ── Validation ──────────────────────────────────────────────────
+
+MEMORY_MODEL_INVALID: Final[str] = "memory.model.invalid"
+
 # ── Capability checks ────────────────────────────────────────────
 
 MEMORY_CAPABILITY_UNSUPPORTED: Final[str] = "memory.capability.unsupported"

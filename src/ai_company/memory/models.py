@@ -5,15 +5,14 @@ queries.  ``MemoryStoreRequest`` is what callers pass to ``store()``;
 ``MemoryEntry`` is what comes back from ``retrieve()``.
 """
 
-from datetime import datetime  # noqa: TC003 — required at runtime by Pydantic
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import MemoryCategory  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
+from ai_company.observability.events.memory import MEMORY_MODEL_INVALID
 
 logger = get_logger(__name__)
 
@@ -74,7 +73,7 @@ class MemoryStoreRequest(BaseModel):
         default_factory=MemoryMetadata,
         description="Associated metadata",
     )
-    expires_at: datetime | None = Field(
+    expires_at: AwareDatetime | None = Field(
         default=None,
         description="Optional expiration timestamp",
     )
@@ -105,12 +104,12 @@ class MemoryEntry(BaseModel):
         default_factory=MemoryMetadata,
         description="Associated metadata",
     )
-    created_at: datetime = Field(description="Creation timestamp")
-    updated_at: datetime | None = Field(
+    created_at: AwareDatetime = Field(description="Creation timestamp")
+    updated_at: AwareDatetime | None = Field(
         default=None,
         description="Last update timestamp",
     )
-    expires_at: datetime | None = Field(
+    expires_at: AwareDatetime | None = Field(
         default=None,
         description="Optional expiration timestamp",
     )
@@ -130,7 +129,7 @@ class MemoryEntry(BaseModel):
                 f">= created_at ({self.created_at})"
             )
             logger.warning(
-                CONFIG_VALIDATION_FAILED,
+                MEMORY_MODEL_INVALID,
                 model="MemoryEntry",
                 field="updated_at",
                 reason=msg,
@@ -142,7 +141,7 @@ class MemoryEntry(BaseModel):
                 f">= created_at ({self.created_at})"
             )
             logger.warning(
-                CONFIG_VALIDATION_FAILED,
+                MEMORY_MODEL_INVALID,
                 model="MemoryEntry",
                 field="expires_at",
                 reason=msg,
@@ -193,11 +192,11 @@ class MemoryQuery(BaseModel):
         le=1000,
         description="Maximum number of results",
     )
-    since: datetime | None = Field(
+    since: AwareDatetime | None = Field(
         default=None,
         description="Only memories created after this timestamp",
     )
-    until: datetime | None = Field(
+    until: AwareDatetime | None = Field(
         default=None,
         description="Only memories created before this timestamp",
     )
@@ -220,7 +219,7 @@ class MemoryQuery(BaseModel):
         ):
             msg = "since must be before until"
             logger.warning(
-                CONFIG_VALIDATION_FAILED,
+                MEMORY_MODEL_INVALID,
                 model="MemoryQuery",
                 field="since/until",
                 since=str(self.since),

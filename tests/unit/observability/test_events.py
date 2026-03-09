@@ -397,6 +397,7 @@ class TestEventConstants:
             ("MEMORY_SHARED_SEARCH_FAILED", "memory.shared.search_failed"),
             ("MEMORY_SHARED_RETRACTED", "memory.shared.retracted"),
             ("MEMORY_SHARED_RETRACT_FAILED", "memory.shared.retract_failed"),
+            ("MEMORY_MODEL_INVALID", "memory.model.invalid"),
             ("MEMORY_CAPABILITY_UNSUPPORTED", "memory.capability.unsupported"),
         ],
     )

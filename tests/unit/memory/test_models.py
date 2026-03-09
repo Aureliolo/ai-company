@@ -341,6 +341,24 @@ class TestMemoryEntry:
         assert e.expires_at is not None
         assert e.expires_at > e.created_at
 
+    def test_naive_created_at_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="timezone"):
+            MemoryEntry(
+                id="m",
+                agent_id="a",
+                category=MemoryCategory.WORKING,
+                content="c",
+                created_at=datetime(2025, 1, 1),  # noqa: DTZ001
+            )
+
+    def test_naive_expires_at_on_store_request_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="timezone"):
+            MemoryStoreRequest(
+                category=MemoryCategory.WORKING,
+                content="c",
+                expires_at=datetime(2025, 1, 1),  # noqa: DTZ001
+            )
+
     def test_json_roundtrip(self) -> None:
         now = datetime.now(tz=UTC)
         e = MemoryEntry(
@@ -441,6 +459,10 @@ class TestMemoryQuery:
     def test_min_relevance_nan_rejected(self) -> None:
         with pytest.raises(ValidationError):
             MemoryQuery(min_relevance=float("nan"))
+
+    def test_naive_since_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="timezone"):
+            MemoryQuery(since=datetime(2025, 1, 1))  # noqa: DTZ001
 
     def test_duplicate_tags_deduplicated(self) -> None:
         q = MemoryQuery(tags=("important", "reviewed", "important"))
