@@ -82,7 +82,8 @@ class BudgetEnforcer:
 
         Raises:
             BudgetExhaustedError: Monthly hard stop exceeded.
-            DailyLimitExceededError: Agent daily limit exceeded.
+            DailyLimitExceededError: Agent daily limit exceeded
+                (subclass of ``BudgetExhaustedError``).
         """
         cfg = self._budget_config
 
@@ -454,6 +455,12 @@ if set(_ALERT_LEVEL_ORDER) != set(BudgetAlertLevel):
     msg = (
         f"_ALERT_LEVEL_ORDER keys {set(_ALERT_LEVEL_ORDER)} do not match "
         f"BudgetAlertLevel members {set(BudgetAlertLevel)}"
+    )
+    raise RuntimeError(msg)
+if len(set(_ALERT_LEVEL_ORDER.values())) != len(BudgetAlertLevel):
+    msg = (
+        f"_ALERT_LEVEL_ORDER values must be unique, "
+        f"got: {sorted(_ALERT_LEVEL_ORDER.values())}"
     )
     raise RuntimeError(msg)
 

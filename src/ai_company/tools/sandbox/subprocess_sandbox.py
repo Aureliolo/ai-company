@@ -14,6 +14,7 @@ import signal
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
+from ai_company.core.types import NotBlankStr
 from ai_company.observability import get_logger
 from ai_company.observability.events.sandbox import (
     SANDBOX_CLEANUP,
@@ -528,6 +529,6 @@ class SubprocessSandbox:
         )
         return healthy
 
-    def get_backend_type(self) -> str:
+    def get_backend_type(self) -> NotBlankStr:
         """Return ``'subprocess'``."""
-        return "subprocess"
+        return NotBlankStr("subprocess")

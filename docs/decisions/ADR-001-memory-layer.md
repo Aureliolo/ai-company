@@ -345,16 +345,15 @@ YAML loading patterns. Per-agent overrides via `AgentConfig.memory` (already exi
 as a raw dict field). When the dynamic config system is built, memory config
 participates like every other config section.
 
-> **Note:** The `RootConfig.memory` field is not yet implemented — it will be added
-> when the Mem0 adapter (#41) integrates with the config loading pipeline.  The
-> `CompanyMemoryConfig` model already exists in `memory/config.py` and is ready to
-> be wired in.
+> **Note:** The `RootConfig.memory` field exists with `CompanyMemoryConfig`
+> defaults (see `config/schema.py`).  The Mem0 adapter (#41) will connect the
+> config values to an actual backend instance during startup.
 
 ```yaml
 # Company-wide defaults (in RootConfig)
 memory:
   backend: "mem0"              # mem0, custom, cognee, graphiti (future)
-  level: "full"                # none, session, project, full
+  level: "persistent"           # none, session, project, persistent
   storage:
     data_dir: "/data/memory"   # mounted Docker volume path
     vector_store: "qdrant"     # qdrant (embedded), qdrant-external, etc.
@@ -375,7 +374,7 @@ memory:
 agents:
   - name: "senior_dev"
     memory:
-      level: "full"
+      level: "persistent"
       graph:
         enabled: true          # this agent gets graph memory
   - name: "intern"

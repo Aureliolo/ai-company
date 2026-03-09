@@ -5,6 +5,8 @@ from pathlib import (
 )
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from ai_company.core.types import NotBlankStr  # noqa: TC001
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -65,7 +67,7 @@ class SandboxBackend(Protocol):
         """
         ...
 
-    def get_backend_type(self) -> str:
+    def get_backend_type(self) -> NotBlankStr:
         """Return a short identifier for this backend type.
 
         Returns:

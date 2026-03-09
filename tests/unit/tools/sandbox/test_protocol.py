@@ -5,6 +5,7 @@ from pathlib import Path  # noqa: TC003 — used at runtime
 
 import pytest
 
+from ai_company.core.types import NotBlankStr
 from ai_company.tools.sandbox.protocol import SandboxBackend
 from ai_company.tools.sandbox.result import SandboxResult
 from ai_company.tools.sandbox.subprocess_sandbox import SubprocessSandbox  # noqa: TC001
@@ -36,8 +37,8 @@ class _FakeSandbox:
     async def health_check(self) -> bool:
         return True
 
-    def get_backend_type(self) -> str:
-        return "fake"
+    def get_backend_type(self) -> NotBlankStr:
+        return NotBlankStr("fake")
 
 
 class TestSandboxBackendProtocol:

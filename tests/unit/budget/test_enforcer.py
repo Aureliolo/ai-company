@@ -267,8 +267,8 @@ class TestCheckCanExecute:
         with _patch_periods():
             await enforcer.check_can_execute("alice")
 
-    async def test_enforcement_disabled_always_passes(self) -> None:
-        """Budget disabled (total_monthly=0) always passes."""
+    async def test_monthly_disabled_passes_without_daily_spend(self) -> None:
+        """Monthly disabled (total_monthly=0) passes when no daily spend."""
         cfg = _make_budget_config(total_monthly=0.0)
         tracker = CostTracker(budget_config=cfg)
         enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)

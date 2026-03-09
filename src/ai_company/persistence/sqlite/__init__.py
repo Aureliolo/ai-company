@@ -1,4 +1,4 @@
-"""SQLite persistence backend (DESIGN_SPEC §7.5 — initial backend)."""
+"""SQLite persistence backend (DESIGN_SPEC §7.6 — initial backend)."""
 
 from ai_company.persistence.sqlite.backend import SQLitePersistenceBackend
 from ai_company.persistence.sqlite.migrations import (
