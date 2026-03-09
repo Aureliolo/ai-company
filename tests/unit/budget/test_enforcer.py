@@ -893,6 +893,165 @@ class TestMakeBudgetChecker:
             assert len(warn_calls2) == 0
 
 
+# ── Graceful degradation ─────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestGracefulDegradation:
+    """Tests for CostTracker failure fallback paths."""
+
+    async def test_resolve_model_returns_unchanged_on_tracker_error(
+        self,
+    ) -> None:
+        """CostTracker failure in resolve_model returns identity unchanged."""
+        cfg = _make_budget_config(
+            auto_downgrade=AutoDowngradeConfig(
+                enabled=True,
+                threshold=85,
+                downgrade_map=(("large", "medium"),),
+            ),
+        )
+        tracker = CostTracker(budget_config=cfg)
+        resolver = _make_resolver(
+            {
+                "test-large-001": _resolved(
+                    model_id="test-large-001",
+                    alias="large",
+                ),
+            }
+        )
+        enforcer = BudgetEnforcer(
+            budget_config=cfg,
+            cost_tracker=tracker,
+            model_resolver=resolver,
+        )
+        identity = _make_identity()
+
+        with patch.object(
+            tracker,
+            "get_total_cost",
+            side_effect=RuntimeError("db connection failed"),
+        ):
+            result = await enforcer.resolve_model(identity)
+
+        assert result.model.model_id == "test-large-001"
+
+    async def test_resolve_model_propagates_memory_error(self) -> None:
+        """MemoryError from CostTracker in resolve_model is re-raised."""
+        cfg = _make_budget_config(
+            auto_downgrade=AutoDowngradeConfig(
+                enabled=True,
+                threshold=85,
+                downgrade_map=(("large", "medium"),),
+            ),
+        )
+        tracker = CostTracker(budget_config=cfg)
+        resolver = _make_resolver(
+            {
+                "test-large-001": _resolved(
+                    model_id="test-large-001",
+                    alias="large",
+                ),
+            }
+        )
+        enforcer = BudgetEnforcer(
+            budget_config=cfg,
+            cost_tracker=tracker,
+            model_resolver=resolver,
+        )
+        identity = _make_identity()
+
+        with (
+            patch.object(
+                tracker,
+                "get_total_cost",
+                side_effect=MemoryError("OOM"),
+            ),
+            pytest.raises(MemoryError, match="OOM"),
+        ):
+            await enforcer.resolve_model(identity)
+
+    async def test_make_budget_checker_falls_back_on_tracker_error(
+        self,
+    ) -> None:
+        """CostTracker failure in make_budget_checker still returns a checker."""
+        cfg = _make_budget_config(
+            total_monthly=100.0,
+            per_agent_daily_limit=10.0,
+        )
+        tracker = CostTracker(budget_config=cfg)
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+        identity = _make_identity()
+        task = _make_task(
+            agent_id=str(identity.id),
+            budget_limit=5.0,
+        )
+
+        with patch.object(
+            tracker,
+            "get_total_cost",
+            side_effect=RuntimeError("db connection failed"),
+        ):
+            checker = await enforcer.make_budget_checker(
+                task,
+                str(identity.id),
+            )
+
+        # Checker should still be returned (not None)
+        assert checker is not None
+
+        # Task limit should still be enforced
+        ctx_at = _ctx_with_cost(identity, task, 5.0)
+        assert checker(ctx_at) is True
+
+    async def test_make_budget_checker_propagates_memory_error(
+        self,
+    ) -> None:
+        """MemoryError from CostTracker in make_budget_checker is re-raised."""
+        cfg = _make_budget_config(total_monthly=100.0)
+        tracker = CostTracker(budget_config=cfg)
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+        identity = _make_identity()
+        task = _make_task(agent_id=str(identity.id))
+
+        with (
+            patch.object(
+                tracker,
+                "get_total_cost",
+                side_effect=MemoryError("OOM"),
+            ),
+            pytest.raises(MemoryError, match="OOM"),
+        ):
+            await enforcer.make_budget_checker(task, str(identity.id))
+
+    async def test_checker_task_limit_zero_does_not_trigger(self) -> None:
+        """Checker with task_limit=0 but monthly active ignores task limit."""
+        cfg = _make_budget_config(
+            total_monthly=100.0,
+            per_agent_daily_limit=0.0,
+        )
+        tracker = CostTracker(budget_config=cfg)
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+        identity = _make_identity()
+        task = _make_task(
+            agent_id=str(identity.id),
+            budget_limit=0.0,
+        )
+
+        with _patch_periods():
+            checker = await enforcer.make_budget_checker(
+                task,
+                str(identity.id),
+            )
+
+        assert checker is not None
+
+        # High running cost should not trigger task limit (disabled)
+        # but should not hit monthly hard stop either (no baseline spend)
+        ctx = _ctx_with_cost(identity, task, 50.0)
+        assert checker(ctx) is False
+
+
 # ── cost_tracker property ────────────────────────────────────────────
 
 

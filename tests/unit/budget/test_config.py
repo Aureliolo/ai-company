@@ -292,6 +292,16 @@ class TestBudgetConfig:
         with pytest.raises(ValidationError):
             BudgetConfig(reset_day=15.0)  # type: ignore[arg-type]
 
+    @pytest.mark.parametrize(
+        "value",
+        [float("inf"), float("-inf"), float("nan")],
+        ids=["inf", "neg_inf", "nan"],
+    )
+    def test_inf_nan_rejected(self, value: float) -> None:
+        """Reject inf and NaN values for float fields."""
+        with pytest.raises(ValidationError):
+            BudgetConfig(total_monthly=value)
+
     def test_frozen(self) -> None:
         """Ensure BudgetConfig is immutable."""
         cfg = BudgetConfig()

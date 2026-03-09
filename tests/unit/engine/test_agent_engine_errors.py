@@ -161,6 +161,34 @@ class TestAgentEngineMaxTurnsValidation:
 
 
 @pytest.mark.unit
+class TestAgentEngineTimeoutValidation:
+    """timeout_seconds <= 0 raises ValueError at the engine boundary."""
+
+    @pytest.mark.parametrize(
+        "timeout_val",
+        [0, -1.0, -0.001],
+        ids=["zero", "negative", "small_negative"],
+    )
+    async def test_invalid_timeout_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+        timeout_val: float,
+    ) -> None:
+        """Invalid timeout_seconds raises ValueError."""
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider)
+
+        with pytest.raises(ValueError, match="timeout_seconds must be > 0"):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+                timeout_seconds=timeout_val,
+            )
+
+
+@pytest.mark.unit
 class TestAgentEngineCostRecordingNonRecoverable:
     """MemoryError/RecursionError in _record_costs propagate unconditionally."""
 

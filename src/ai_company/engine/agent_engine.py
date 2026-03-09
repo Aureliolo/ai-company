@@ -20,7 +20,6 @@ from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.cost_recording import record_execution_costs
 from ai_company.engine.errors import (
     BudgetExhaustedError,
-    DailyLimitExceededError,
     ExecutionStateError,
 )
 from ai_company.engine.loop_protocol import (
@@ -45,6 +44,7 @@ from ai_company.engine.validation import (
 )
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
+    EXECUTION_ENGINE_BUDGET_STOPPED,
     EXECUTION_ENGINE_COMPLETE,
     EXECUTION_ENGINE_CREATED,
     EXECUTION_ENGINE_ERROR,
@@ -217,7 +217,7 @@ class AgentEngine:
                 error="non-recoverable error in run()",
             )
             raise
-        except (BudgetExhaustedError, DailyLimitExceededError) as exc:
+        except BudgetExhaustedError as exc:
             return self._handle_budget_error(
                 exc=exc,
                 identity=identity,
@@ -711,31 +711,44 @@ class AgentEngine:
 
         Unlike ``_handle_fatal_error``, this uses
         ``TerminationReason.BUDGET_EXHAUSTED`` so the orchestration
-        layer can distinguish budget stops from crashes.
+        layer can distinguish budget stops from crashes.  Recovery is
+        skipped because budget exhaustion is a controlled stop, not a
+        crash — the task may be resumable after a budget reset.
         """
         logger.warning(
-            EXECUTION_ENGINE_ERROR,
+            EXECUTION_ENGINE_BUDGET_STOPPED,
             agent_id=agent_id,
             task_id=task_id,
             error=f"{type(exc).__name__}: {exc}",
         )
-        error_ctx = ctx or AgentContext.from_identity(identity, task=task)
-        budget_result = ExecutionResult(
-            context=error_ctx,
-            termination_reason=TerminationReason.BUDGET_EXHAUSTED,
-        )
-        error_prompt = build_error_prompt(
-            identity,
-            agent_id,
-            system_prompt,
-        )
-        return AgentRunResult(
-            execution_result=budget_result,
-            system_prompt=error_prompt,
-            duration_seconds=duration_seconds,
-            agent_id=agent_id,
-            task_id=task_id,
-        )
+        try:
+            error_ctx = ctx or AgentContext.from_identity(identity, task=task)
+            budget_result = ExecutionResult(
+                context=error_ctx,
+                termination_reason=TerminationReason.BUDGET_EXHAUSTED,
+            )
+            error_prompt = build_error_prompt(
+                identity,
+                agent_id,
+                system_prompt,
+            )
+            return AgentRunResult(
+                execution_result=budget_result,
+                system_prompt=error_prompt,
+                duration_seconds=duration_seconds,
+                agent_id=agent_id,
+                task_id=task_id,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as build_exc:
+            logger.exception(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error=f"Failed to build budget-exhausted result: {build_exc}",
+            )
+            raise exc from build_exc
 
     async def _handle_fatal_error(  # noqa: PLR0913
         self,

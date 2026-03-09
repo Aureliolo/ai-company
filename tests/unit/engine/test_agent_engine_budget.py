@@ -201,5 +201,30 @@ class TestEngineWithEnforcer:
             budget_enforcer=enforcer,
         )
 
-        # Engine should use enforcer's tracker for cost recording
-        assert engine._cost_tracker is tracker
+        # Run a task and verify costs were recorded to the enforcer's tracker
+        with (
+            patch.object(
+                enforcer,
+                "check_can_execute",
+                new=AsyncMock(),
+            ),
+            patch.object(
+                enforcer,
+                "resolve_model",
+                new=AsyncMock(return_value=sample_agent_with_personality),
+            ),
+            patch.object(
+                enforcer,
+                "make_budget_checker",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            result = await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        # Verify cost was recorded to the enforcer's tracker
+        total = await tracker.get_total_cost()
+        assert total > 0

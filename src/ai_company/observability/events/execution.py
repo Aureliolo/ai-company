@@ -34,6 +34,7 @@ EXECUTION_ENGINE_COST_SKIPPED: Final[str] = "execution.engine.cost_skipped"
 EXECUTION_ENGINE_COST_FAILED: Final[str] = "execution.engine.cost_failed"
 EXECUTION_ENGINE_TASK_METRICS: Final[str] = "execution.engine.task_metrics"
 EXECUTION_ENGINE_TIMEOUT: Final[str] = "execution.engine.timeout"
+EXECUTION_ENGINE_BUDGET_STOPPED: Final[str] = "execution.engine.budget_stopped"
 
 EXECUTION_SHUTDOWN_SIGNAL: Final[str] = "execution.shutdown.signal"
 EXECUTION_SHUTDOWN_MANAGER_CREATED: Final[str] = "execution.shutdown.manager_created"

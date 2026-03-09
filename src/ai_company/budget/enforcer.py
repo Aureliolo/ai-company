@@ -259,14 +259,12 @@ class BudgetEnforcer:
         if monthly_budget <= 0 and task_limit <= 0 and daily_limit <= 0:
             return None
 
-        baselines = await self._compute_baselines_safe(
+        monthly_baseline, daily_baseline = await self._compute_baselines_safe(
             cfg,
             monthly_budget,
             daily_limit,
             agent_id,
         )
-        if baselines is None:
-            return None
 
         thresholds = _compute_thresholds(cfg, monthly_budget)
 
@@ -274,8 +272,8 @@ class BudgetEnforcer:
             task_limit=task_limit,
             monthly_budget=monthly_budget,
             daily_limit=daily_limit,
-            monthly_baseline=baselines[0],
-            daily_baseline=baselines[1],
+            monthly_baseline=monthly_baseline,
+            daily_baseline=daily_baseline,
             thresholds=thresholds,
             agent_id=agent_id,
         )
@@ -288,8 +286,14 @@ class BudgetEnforcer:
         monthly_budget: float,
         daily_limit: float,
         agent_id: str,
-    ) -> tuple[float, float] | None:
-        """Compute baselines, falling back to simple checker on error."""
+    ) -> tuple[float, float]:
+        """Compute baselines, falling back to zero baselines on error.
+
+        When CostTracker queries fail, returns ``(0.0, 0.0)`` so the
+        caller can still build a checker that enforces task-level
+        limits.  Monthly/daily enforcement uses zero baselines, meaning
+        only the running task cost is tracked (no historical context).
+        """
         try:
             return await self._compute_baselines(
                 cfg,
@@ -303,9 +307,9 @@ class BudgetEnforcer:
             logger.exception(
                 BUDGET_BASELINE_ERROR,
                 agent_id=agent_id,
-                reason="falling_back_to_task_only_checker",
+                reason="falling_back_to_zero_baselines",
             )
-            return None
+            return 0.0, 0.0
 
     async def _compute_baselines(
         self,
@@ -439,6 +443,11 @@ _ALERT_LEVEL_ORDER: dict[BudgetAlertLevel, int] = {
     BudgetAlertLevel.CRITICAL: 2,
     BudgetAlertLevel.HARD_STOP: 3,
 }
+
+assert set(_ALERT_LEVEL_ORDER) == set(BudgetAlertLevel), (  # noqa: S101
+    f"_ALERT_LEVEL_ORDER keys {set(_ALERT_LEVEL_ORDER)} do not match "
+    f"BudgetAlertLevel members {set(BudgetAlertLevel)}"
+)
 
 
 def _emit_alert(

@@ -106,6 +106,16 @@ class TestBillingPeriodStart:
         )
         assert result.tzinfo is UTC
 
+    @pytest.mark.parametrize(
+        "invalid_day",
+        [0, -1, 29, 31, 100],
+        ids=["zero", "negative", "29", "31", "100"],
+    )
+    def test_invalid_reset_day_raises(self, invalid_day: int) -> None:
+        """Invalid reset_day raises ValueError."""
+        with pytest.raises(ValueError, match="reset_day must be 1-28"):
+            billing_period_start(invalid_day)
+
 
 @pytest.mark.unit
 class TestDailyPeriodStart:
