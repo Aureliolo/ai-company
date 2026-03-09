@@ -13,13 +13,17 @@ from ai_company.core.enums import (
     ConflictApproach,
     CreativityLevel,
     DecisionMakingStyle,
-    MemoryType,
+    MemoryLevel,
     RiskTolerance,
     SeniorityLevel,
     ToolAccessLevel,
 )
 from ai_company.core.role import Authority
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
+
+logger = get_logger(__name__)
 
 
 class PersonalityConfig(BaseModel):
@@ -184,8 +188,8 @@ class MemoryConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    type: MemoryType = Field(
-        default=MemoryType.SESSION,
+    type: MemoryLevel = Field(
+        default=MemoryLevel.SESSION,
         description="Memory persistence type",
     )
     retention_days: int | None = Field(
@@ -196,9 +200,17 @@ class MemoryConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_retention_consistency(self) -> Self:
-        """Ensure retention_days is None when memory type is MemoryType.NONE."""
-        if self.type is MemoryType.NONE and self.retention_days is not None:
+        """Ensure retention_days is None when memory type is MemoryLevel.NONE."""
+        if self.type is MemoryLevel.NONE and self.retention_days is not None:
             msg = "retention_days must be None when memory type is 'none'"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="MemoryConfig",
+                field="retention_days",
+                memory_type=str(self.type),
+                retention_days=self.retention_days,
+                reason=msg,
+            )
             raise ValueError(msg)
         return self
 
@@ -239,6 +251,13 @@ class ToolPermissions(BaseModel):
         overlap = allowed_normalized & denied_normalized
         if overlap:
             msg = f"Tools appear in both allowed and denied lists: {sorted(overlap)}"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="ToolPermissions",
+                field="allowed/denied",
+                overlap=sorted(overlap),
+                reason=msg,
+            )
             raise ValueError(msg)
         return self
 
