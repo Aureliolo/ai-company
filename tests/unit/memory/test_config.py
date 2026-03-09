@@ -49,6 +49,8 @@ class TestMemoryStorageConfig:
             "/data/..",
             "..",
             "data/../secret",
+            "C:\\data\\..\\secret",
+            "data\\..\\..\\etc",
         ],
     )
     def test_path_traversal_variants_rejected(self, bad_path: str) -> None:
@@ -71,6 +73,30 @@ class TestMemoryStorageConfig:
     def test_whitespace_data_dir_rejected(self) -> None:
         with pytest.raises(ValidationError, match="whitespace-only"):
             MemoryStorageConfig(data_dir="   ")
+
+    @pytest.mark.parametrize(
+        "store",
+        ["qdrant", "qdrant-external"],
+    )
+    def test_valid_vector_stores_accepted(self, store: str) -> None:
+        c = MemoryStorageConfig(vector_store=store)
+        assert c.vector_store == store
+
+    def test_unknown_vector_store_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Unknown vector_store"):
+            MemoryStorageConfig(vector_store="invalid-store")
+
+    @pytest.mark.parametrize(
+        "store",
+        ["sqlite", "postgresql"],
+    )
+    def test_valid_history_stores_accepted(self, store: str) -> None:
+        c = MemoryStorageConfig(history_store=store)
+        assert c.history_store == store
+
+    def test_unknown_history_store_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Unknown history_store"):
+            MemoryStorageConfig(history_store="invalid-store")
 
 
 # ── MemoryOptionsConfig ─────────────────────────────────────────

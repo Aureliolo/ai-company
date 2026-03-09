@@ -70,7 +70,7 @@ class MemoryBackend(Protocol):
         ...
 
     @property
-    def backend_name(self) -> str:
+    def backend_name(self) -> NotBlankStr:
         """Human-readable backend identifier (e.g. ``"mem0"``)."""
         ...
 

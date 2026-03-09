@@ -31,6 +31,13 @@ class MemoryStorageConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
+    _VALID_VECTOR_STORES: ClassVar[frozenset[str]] = frozenset(
+        {"qdrant", "qdrant-external"},
+    )
+    _VALID_HISTORY_STORES: ClassVar[frozenset[str]] = frozenset(
+        {"sqlite", "postgresql"},
+    )
+
     data_dir: NotBlankStr = Field(
         default="/data/memory",
         description=(
@@ -47,6 +54,35 @@ class MemoryStorageConfig(BaseModel):
         default="sqlite",
         description="History store backend name",
     )
+
+    @model_validator(mode="after")
+    def _validate_store_names(self) -> Self:
+        """Ensure vector_store and history_store are recognized values."""
+        if self.vector_store not in self._VALID_VECTOR_STORES:
+            msg = (
+                f"Unknown vector_store {self.vector_store!r}. "
+                f"Valid stores: {sorted(self._VALID_VECTOR_STORES)}"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="vector_store",
+                value=self.vector_store,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        if self.history_store not in self._VALID_HISTORY_STORES:
+            msg = (
+                f"Unknown history_store {self.history_store!r}. "
+                f"Valid stores: {sorted(self._VALID_HISTORY_STORES)}"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="history_store",
+                value=self.history_store,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _reject_traversal(self) -> Self:

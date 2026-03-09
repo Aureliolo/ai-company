@@ -86,20 +86,11 @@ class BudgetEnforcer:
         """
         cfg = self._budget_config
 
-        # Skip if enforcement disabled (total_monthly <= 0)
-        if cfg.total_monthly <= 0:
-            logger.debug(
-                BUDGET_ENFORCEMENT_CHECK,
-                agent_id=agent_id,
-                result="pass",
-                reason="enforcement_disabled",
-            )
-            return
-
         try:
-            await self._check_monthly_hard_stop(cfg, agent_id)
+            if cfg.total_monthly > 0:
+                await self._check_monthly_hard_stop(cfg, agent_id)
             await self._check_daily_limit(cfg, agent_id)
-        except BudgetExhaustedError, DailyLimitExceededError:
+        except BudgetExhaustedError:
             raise
         except MemoryError, RecursionError:
             raise
@@ -461,10 +452,12 @@ _ALERT_LEVEL_ORDER: dict[BudgetAlertLevel, int] = {
     BudgetAlertLevel.HARD_STOP: 3,
 }
 
-assert set(_ALERT_LEVEL_ORDER) == set(BudgetAlertLevel), (  # noqa: S101
-    f"_ALERT_LEVEL_ORDER keys {set(_ALERT_LEVEL_ORDER)} do not match "
-    f"BudgetAlertLevel members {set(BudgetAlertLevel)}"
-)
+if set(_ALERT_LEVEL_ORDER) != set(BudgetAlertLevel):
+    msg = (
+        f"_ALERT_LEVEL_ORDER keys {set(_ALERT_LEVEL_ORDER)} do not match "
+        f"BudgetAlertLevel members {set(BudgetAlertLevel)}"
+    )
+    raise RuntimeError(msg)
 
 
 def _emit_alert(

@@ -450,20 +450,19 @@ def detect_coordination_failures(
                 )
             )
 
-    for turn_idx, turn in enumerate(turns):
-        if turn.finish_reason == FinishReason.ERROR:
-            findings.append(
-                ErrorFinding(
-                    category=ErrorCategory.COORDINATION_FAILURE,
-                    severity=ErrorSeverity.HIGH,
-                    description="Error finish reason in turn record",
-                    evidence=(
-                        f"Turn {turn.turn_number} (index {turn_idx}): "
-                        f"finish_reason={turn.finish_reason.value}",
-                    ),
-                    turn_range=(turn_idx, turn_idx),
-                )
-            )
+    findings.extend(
+        ErrorFinding(
+            category=ErrorCategory.COORDINATION_FAILURE,
+            severity=ErrorSeverity.HIGH,
+            description="Error finish reason in turn record",
+            evidence=(
+                f"Turn {turn.turn_number}: finish_reason={turn.finish_reason.value}",
+            ),
+            turn_range=(turn.turn_number, turn.turn_number),
+        )
+        for turn in turns
+        if turn.finish_reason == FinishReason.ERROR
+    )
 
     result = tuple(findings)
     logger.debug(

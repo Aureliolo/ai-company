@@ -27,7 +27,14 @@ class MemoryRetrievalError(MemoryError):
 
 
 class MemoryNotFoundError(MemoryError):
-    """Raised when a specific memory ID is not found."""
+    """Raised when a specific memory ID is not found.
+
+    Note: The ``MemoryBackend.get()`` protocol method returns ``None``
+    for missing entries rather than raising this error.  This exception
+    is available for concrete backend implementations that need to
+    signal "not found" in non-protocol internal methods or batch
+    operations.
+    """
 
 
 class MemoryConfigError(MemoryError):

@@ -1,7 +1,7 @@
 """Integration tests for the error taxonomy pipeline.
 
 Verifies end-to-end classification with realistic conversation
-patterns and validates structured log events are emitted.
+patterns across all error categories.
 """
 
 from datetime import date

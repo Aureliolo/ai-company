@@ -172,3 +172,35 @@ class TestClassificationResult:
         )
         with pytest.raises(Exception):  # noqa: B017, PT011
             result.findings = ()  # type: ignore[misc]
+
+    def test_findings_with_unchecked_category_rejected(self) -> None:
+        """Findings containing categories not in categories_checked are rejected."""
+        finding = ErrorFinding(
+            category=ErrorCategory.NUMERICAL_DRIFT,
+            severity=ErrorSeverity.MEDIUM,
+            description="Number drifted beyond threshold",
+        )
+        with pytest.raises(ValueError, match="unchecked categories"):
+            ClassificationResult(
+                execution_id="exec-006",
+                agent_id="agent-1",
+                task_id="task-1",
+                categories_checked=(ErrorCategory.LOGICAL_CONTRADICTION,),
+                findings=(finding,),
+            )
+
+    def test_findings_matching_checked_categories_accepted(self) -> None:
+        """Findings whose categories are in categories_checked pass validation."""
+        finding = ErrorFinding(
+            category=ErrorCategory.LOGICAL_CONTRADICTION,
+            severity=ErrorSeverity.HIGH,
+            description="Contradiction found",
+        )
+        result = ClassificationResult(
+            execution_id="exec-007",
+            agent_id="agent-1",
+            task_id="task-1",
+            categories_checked=(ErrorCategory.LOGICAL_CONTRADICTION,),
+            findings=(finding,),
+        )
+        assert result.finding_count == 1

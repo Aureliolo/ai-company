@@ -345,6 +345,11 @@ YAML loading patterns. Per-agent overrides via `AgentConfig.memory` (already exi
 as a raw dict field). When the dynamic config system is built, memory config
 participates like every other config section.
 
+> **Note:** The `RootConfig.memory` field is not yet implemented — it will be added
+> when the Mem0 adapter (#41) integrates with the config loading pipeline.  The
+> `CompanyMemoryConfig` model already exists in `memory/config.py` and is ready to
+> be wired in.
+
 ```yaml
 # Company-wide defaults (in RootConfig)
 memory:
@@ -366,14 +371,14 @@ memory:
     max_memories_per_agent: 10000
     consolidation_interval: "daily"
 
-# Per-agent overrides (in AgentConfig)
+# Per-agent overrides (in AgentConfig — list of agent objects)
 agents:
-  senior_dev:
+  - name: "senior_dev"
     memory:
       level: "full"
       graph:
         enabled: true          # this agent gets graph memory
-  intern:
+  - name: "intern"
     memory:
       level: "session"         # this agent only keeps session memory
 ```
@@ -575,6 +580,7 @@ simpler backend.
 | Qdrant | 1.13.x | `qdrant/qdrant` (Docker) | N/A (Rust) |
 | qdrant-client | 1.17.0 | `qdrant-client` (PyPI) | Confirmed (classifier) |
 | FastEmbed | 0.7.4 | `fastembed` (PyPI) | Confirmed (classifier) |
+| mem0ai | 1.0.5 | `mem0ai` (PyPI) | PASS (`>=3.9,<4.0`) |
 | LiteLLM | (existing dep) | `litellm` (PyPI) | In use |
 | SQLite | (stdlib) | Built-in | Yes |
 
@@ -626,6 +632,6 @@ simpler backend.
 
 ### Other Tier 2-3 candidates
 
-OpenMemory, Memari, A-MEM, SimpleMem, LangMem, memsearch — all interesting but
+OpenMemory, Memary, A-MEM, SimpleMem, LangMem, memsearch — all interesting but
 either too small/immature, research-oriented, or missing critical features (Docker
 support, multi-tenancy, graph capabilities) for our requirements.
