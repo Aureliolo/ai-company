@@ -197,6 +197,7 @@ class TestEventConstants:
             "role",
             "routing",
             "sandbox",
+            "api",
             "task",
             "task_assignment",
             "task_routing",
