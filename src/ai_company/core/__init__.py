@@ -8,6 +8,7 @@ from ai_company.core.agent import (
     SkillSet,
     ToolPermissions,
 )
+from ai_company.core.approval import ApprovalItem
 from ai_company.core.artifact import Artifact, ExpectedArtifact
 from ai_company.core.company import (
     ApprovalChain,
@@ -25,6 +26,8 @@ from ai_company.core.company import (
 from ai_company.core.enums import (
     ActionType,
     AgentStatus,
+    ApprovalRiskLevel,
+    ApprovalStatus,
     ArtifactType,
     CollaborationPreference,
     CommunicationVerbosity,
@@ -78,6 +81,9 @@ __all__ = [
     "AgentIdentity",
     "AgentStatus",
     "ApprovalChain",
+    "ApprovalItem",
+    "ApprovalRiskLevel",
+    "ApprovalStatus",
     "Artifact",
     "ArtifactType",
     "Authority",

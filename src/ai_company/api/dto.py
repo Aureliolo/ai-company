@@ -10,6 +10,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import (
+    ApprovalRiskLevel,
     Complexity,
     Priority,
     TaskStatus,
@@ -154,3 +155,56 @@ class TransitionTaskRequest(BaseModel):
 
     target_status: TaskStatus
     assigned_to: NotBlankStr | None = None
+
+
+# ── Approval request DTOs ──────────────────────────────────────
+
+
+class CreateApprovalRequest(BaseModel):
+    """Payload for creating a new approval item.
+
+    Attributes:
+        action_type: Kind of action requiring approval.
+        title: Short summary.
+        description: Detailed explanation.
+        requested_by: Agent or system requesting approval.
+        risk_level: Assessed risk level.
+        ttl_seconds: Optional time-to-live in seconds (min 60).
+        task_id: Optional associated task.
+        metadata: Additional key-value pairs.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    action_type: NotBlankStr
+    title: NotBlankStr
+    description: NotBlankStr
+    requested_by: NotBlankStr
+    risk_level: ApprovalRiskLevel
+    ttl_seconds: int | None = Field(default=None, ge=60)
+    task_id: NotBlankStr | None = None
+    metadata: dict[str, str] = Field(default_factory=dict)
+
+
+class ApproveRequest(BaseModel):
+    """Payload for approving an approval item.
+
+    Attributes:
+        comment: Optional comment explaining the approval.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    comment: str | None = None
+
+
+class RejectRequest(BaseModel):
+    """Payload for rejecting an approval item.
+
+    Attributes:
+        reason: Mandatory reason for rejection.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    reason: NotBlankStr

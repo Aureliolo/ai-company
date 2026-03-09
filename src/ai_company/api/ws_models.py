@@ -38,6 +38,11 @@ class WsEventType(StrEnum):
     SYSTEM_STARTUP = "system.startup"
     SYSTEM_SHUTDOWN = "system.shutdown"
 
+    APPROVAL_SUBMITTED = "approval.submitted"
+    APPROVAL_APPROVED = "approval.approved"
+    APPROVAL_REJECTED = "approval.rejected"
+    APPROVAL_EXPIRED = "approval.expired"
+
 
 class WsEvent(BaseModel):
     """A real-time event pushed over WebSocket.

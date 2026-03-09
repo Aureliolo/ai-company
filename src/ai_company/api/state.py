@@ -7,6 +7,7 @@ Holds typed references to core services, injected into
 
 from dataclasses import dataclass
 
+from ai_company.api.approval_store import ApprovalStore  # noqa: TC001
 from ai_company.budget.tracker import CostTracker  # noqa: TC001
 from ai_company.communication.bus_protocol import MessageBus  # noqa: TC001
 from ai_company.config.schema import RootConfig  # noqa: TC001
@@ -28,6 +29,7 @@ class AppState:
         persistence: Persistence backend for data access.
         message_bus: Internal message bus.
         cost_tracker: Cost tracking service.
+        approval_store: In-memory approval queue store.
         startup_time: ``time.monotonic()`` snapshot at app creation.
     """
 
@@ -35,4 +37,5 @@ class AppState:
     persistence: PersistenceBackend
     message_bus: MessageBus
     cost_tracker: CostTracker
+    approval_store: ApprovalStore
     startup_time: float = 0.0

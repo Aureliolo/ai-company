@@ -12,6 +12,7 @@ CHANNEL_AGENTS: str = "agents"
 CHANNEL_BUDGET: str = "budget"
 CHANNEL_MESSAGES: str = "messages"
 CHANNEL_SYSTEM: str = "system"
+CHANNEL_APPROVALS: str = "approvals"
 
 ALL_CHANNELS: tuple[str, ...] = (
     CHANNEL_TASKS,
@@ -19,6 +20,7 @@ ALL_CHANNELS: tuple[str, ...] = (
     CHANNEL_BUDGET,
     CHANNEL_MESSAGES,
     CHANNEL_SYSTEM,
+    CHANNEL_APPROVALS,
 )
 
 

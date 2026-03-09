@@ -5,6 +5,7 @@ import pytest
 from ai_company.api.channels import (
     ALL_CHANNELS,
     CHANNEL_AGENTS,
+    CHANNEL_APPROVALS,
     CHANNEL_BUDGET,
     CHANNEL_MESSAGES,
     CHANNEL_SYSTEM,
@@ -21,9 +22,10 @@ class TestChannels:
         assert CHANNEL_BUDGET in ALL_CHANNELS
         assert CHANNEL_MESSAGES in ALL_CHANNELS
         assert CHANNEL_SYSTEM in ALL_CHANNELS
+        assert CHANNEL_APPROVALS in ALL_CHANNELS
 
-    def test_all_channels_has_five_entries(self) -> None:
-        assert len(ALL_CHANNELS) == 5
+    def test_all_channels_has_six_entries(self) -> None:
+        assert len(ALL_CHANNELS) == 6
 
     def test_create_channels_plugin(self) -> None:
         plugin = create_channels_plugin()

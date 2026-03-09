@@ -406,6 +406,24 @@ class ConflictEscalation(StrEnum):
     REVIEW_AGENT = "review_agent"
 
 
+class ApprovalStatus(StrEnum):
+    """Status of a human approval item."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+
+
+class ApprovalRiskLevel(StrEnum):
+    """Risk level assigned to an approval item."""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
 class ConflictType(StrEnum):
     """Type of merge conflict detected during workspace merges."""
 

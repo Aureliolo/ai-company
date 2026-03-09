@@ -13,12 +13,10 @@ from litestar.config.cors import CORSConfig
 from litestar.datastructures import ResponseHeader, State
 from litestar.middleware.rate_limit import RateLimitConfig as LitestarRateLimitConfig
 from litestar.openapi import OpenAPIConfig
-from litestar.openapi.plugins import (
-    RedocRenderPlugin,
-    ScalarRenderPlugin,
-)
+from litestar.openapi.plugins import ScalarRenderPlugin
 
 from ai_company import __version__
+from ai_company.api.approval_store import ApprovalStore
 from ai_company.api.bus_bridge import MessageBusBridge
 from ai_company.api.channels import create_channels_plugin
 from ai_company.api.controllers import ALL_CONTROLLERS
@@ -195,6 +193,7 @@ def create_app(
     persistence: PersistenceBackend | None = None,
     message_bus: MessageBus | None = None,
     cost_tracker: CostTracker | None = None,
+    approval_store: ApprovalStore | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -206,6 +205,7 @@ def create_app(
         persistence: Persistence backend.
         message_bus: Internal message bus.
         cost_tracker: Cost tracking service.
+        approval_store: Approval queue store.
 
     Returns:
         Configured Litestar application.
@@ -221,11 +221,14 @@ def create_app(
         )
         logger.warning(API_APP_STARTUP, note=msg)
 
+    effective_approval_store = approval_store or ApprovalStore()
+
     app_state = AppState(
         config=effective_config,
         persistence=persistence,  # type: ignore[arg-type]
         message_bus=message_bus,  # type: ignore[arg-type]
         cost_tracker=cost_tracker,  # type: ignore[arg-type]
+        approval_store=effective_approval_store,
         startup_time=time.monotonic(),
     )
 
@@ -278,9 +281,9 @@ def create_app(
         openapi_config=OpenAPIConfig(
             title="AI Company API",
             version=__version__,
+            path="/docs",
             render_plugins=[
-                ScalarRenderPlugin(path="/docs"),
-                RedocRenderPlugin(path="/redoc"),
+                ScalarRenderPlugin(path="/api"),
             ],
         ),
         on_startup=startup,

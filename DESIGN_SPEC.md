@@ -2448,7 +2448,7 @@ The REST/WebSocket API is the **primary interface** for all consumers. The Web U
       └──────────┘  └────────────┘
 ```
 
-> **CLI Tool (Future):** If needed, a thin CLI utility wrapping the REST API with terminal formatting (Typer + Rich or similar). Not a priority — the API is fully self-sufficient. To be determined whether a dedicated CLI is warranted or whether `curl`/`httpie` and the OpenAPI docs at `/docs` suffice.
+> **CLI Tool (Future):** If needed, a thin CLI utility wrapping the REST API with terminal formatting (Typer + Rich or similar). Not a priority — the API is fully self-sufficient. To be determined whether a dedicated CLI is warranted or whether `curl`/`httpie` and the interactive Scalar docs at `/docs/api` suffice.
 
 ### 13.2 API Surface
 
@@ -2650,7 +2650,7 @@ Circular inheritance is detected via chain tracking and raises `TemplateInherita
 | **Tool Integration** | MCP (Model Context Protocol) | Industry standard for LLM-to-tool integration |
 | **Agent Comms** | A2A Protocol compatible | Future-proof inter-agent communication |
 | **Config Format** | YAML + Pydantic validation | Human-readable config with strict validation |
-| **CLI** | TBD (future, if needed) | Thin wrapper around the REST API for terminal use. May not be needed — OpenAPI docs at `/docs` and `curl`/`httpie` may suffice |
+| **CLI** | TBD (future, if needed) | Thin wrapper around the REST API for terminal use. May not be needed — interactive Scalar docs at `/docs/api` and `curl`/`httpie` may suffice |
 
 ### 15.3 Project Structure
 
@@ -3008,7 +3008,7 @@ ai-company/
 | Memory | Mem0 (initial) → custom stack (future) + SQLite | Graphiti, Letta, Cognee, custom | Mem0 in-process as initial backend behind pluggable `MemoryBackend` protocol ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Custom stack (Neo4j + Qdrant) as future upgrade. Must support episodic, semantic, procedural memory types (§7.1–7.3). Org memory served via `OrgMemoryBackend` protocol (§7.4) |
 | Message Bus | asyncio queues → Redis | Kafka, RabbitMQ, NATS | Start simple, Redis well-supported, Kafka overkill for local |
 | Config | YAML + Pydantic | JSON, TOML, Python dicts | Human-friendly, strict validation, good IDE support |
-| CLI | Deferred (TBD) | Typer, Click, argparse | Thin API wrapper if needed. OpenAPI docs + `curl`/`httpie` may suffice |
+| CLI | Deferred (TBD) | Typer, Click, argparse | Thin API wrapper if needed. Scalar interactive docs at `/docs/api` + `curl`/`httpie` may suffice |
 | Web UI | Vue 3 | React, Svelte, HTMX | Simpler than React for dashboards |
 | Persistence | Pluggable protocol + repository protocols | ORM (SQLAlchemy), raw SQL, hybrid | Same frozen Pydantic models in and out (no DTOs), async throughout, backend-swappable via config. Repository protocols decouple app code from storage engine. See §7.6 |
 | Sandboxing | Layered: subprocess + Docker | Docker-only, subprocess-only, WASM | Risk-proportionate: fast subprocess for file/git, Docker isolation for code execution. Pluggable `SandboxBackend` protocol enables K8s migration later |

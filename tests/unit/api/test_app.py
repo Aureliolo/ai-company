@@ -27,7 +27,7 @@ class TestCreateApp:
         assert isinstance(app, Litestar)
 
     def test_openapi_schema_accessible(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get("/schema/openapi.json")
+        response = test_client.get("/docs/openapi.json")
         assert response.status_code == 200
         data = response.json()
         assert data["info"]["title"] == "AI Company API"

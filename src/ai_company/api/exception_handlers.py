@@ -8,7 +8,10 @@ message.  Detailed error context is logged server-side only.
 from typing import Any, Final
 
 from litestar import Request, Response
-from litestar.exceptions import PermissionDeniedException
+from litestar.exceptions import (
+    PermissionDeniedException,
+    ValidationException,
+)
 
 from ai_company.api.dto import ApiResponse
 from ai_company.api.errors import ApiError
@@ -138,11 +141,27 @@ def handle_permission_denied(
     )
 
 
+def handle_validation_error(
+    request: Request[Any, Any, Any],
+    exc: ValidationException,
+) -> Response[ApiResponse[None]]:
+    """Map ``ValidationException`` to 400."""
+    _log_error(request, exc, status=400)
+    return Response(
+        content=ApiResponse[None](
+            success=False,
+            error="Validation error",
+        ),
+        status_code=400,
+    )
+
+
 EXCEPTION_HANDLERS: dict[type[Exception], object] = {
     RecordNotFoundError: handle_record_not_found,
     DuplicateRecordError: handle_duplicate_record,
     PersistenceError: handle_persistence_error,
     PermissionDeniedException: handle_permission_denied,
+    ValidationException: handle_validation_error,
     ApiError: handle_api_error,
     Exception: handle_unexpected,
 }

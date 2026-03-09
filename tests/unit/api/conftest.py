@@ -1,17 +1,24 @@
 """Shared fixtures for API unit tests."""
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 from litestar.testing import TestClient
 
 from ai_company.api.app import create_app
+from ai_company.api.approval_store import ApprovalStore
 from ai_company.budget.cost_record import CostRecord  # noqa: TC001
 from ai_company.budget.tracker import CostTracker
 from ai_company.communication.channel import Channel  # noqa: TC001
 from ai_company.communication.message import Message  # noqa: TC001
 from ai_company.config.schema import RootConfig
-from ai_company.core.enums import TaskStatus
+from ai_company.core.approval import ApprovalItem
+from ai_company.core.enums import (
+    ApprovalRiskLevel,
+    ApprovalStatus,
+    TaskStatus,
+)
 from ai_company.core.task import Task
 
 # ── Fake Repositories ────────────────────────────────────────────
@@ -239,6 +246,11 @@ def cost_tracker() -> CostTracker:
 
 
 @pytest.fixture
+def approval_store() -> ApprovalStore:
+    return ApprovalStore()
+
+
+@pytest.fixture
 def root_config() -> RootConfig:
     return RootConfig(company_name="test-company")
 
@@ -248,6 +260,7 @@ def test_client(
     fake_persistence: FakePersistenceBackend,
     fake_message_bus: FakeMessageBus,
     cost_tracker: CostTracker,
+    approval_store: ApprovalStore,
     root_config: RootConfig,
 ) -> TestClient[Any]:
     app = create_app(
@@ -255,6 +268,7 @@ def test_client(
         persistence=fake_persistence,
         message_bus=fake_message_bus,
         cost_tracker=cost_tracker,
+        approval_store=approval_store,
     )
     return TestClient(app)
 
@@ -288,4 +302,35 @@ def make_task(  # noqa: PLR0913
         created_by=created_by,
         status=status,
         assigned_to=assigned_to,
+    )
+
+
+def make_approval(  # noqa: PLR0913
+    *,
+    approval_id: str = "approval-001",
+    action_type: str = "code_merge",
+    title: str = "Test approval",
+    description: str = "A test approval item",
+    requested_by: str = "agent-dev",
+    risk_level: ApprovalRiskLevel = ApprovalRiskLevel.MEDIUM,
+    status: ApprovalStatus = ApprovalStatus.PENDING,
+    ttl_seconds: int | None = None,
+    task_id: str | None = None,
+) -> ApprovalItem:
+    """Build an ApprovalItem with sensible defaults."""
+    now = datetime.now(UTC)
+    expires_at = None
+    if ttl_seconds is not None:
+        expires_at = now + timedelta(seconds=ttl_seconds)
+    return ApprovalItem(
+        id=approval_id,
+        action_type=action_type,
+        title=title,
+        description=description,
+        requested_by=requested_by,
+        risk_level=risk_level,
+        status=status,
+        created_at=now,
+        expires_at=expires_at,
+        task_id=task_id,
     )
