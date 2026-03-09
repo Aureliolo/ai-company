@@ -80,8 +80,8 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 > **How to read this spec:** Sections describe the full vision. Each section with deferred features includes an **MVP** callout box indicating what ships in M3 and what is deferred. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that won't be built until later milestones.
 
 > **Implementation snapshot (2026-03-09):**
-> - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed.
-> - **In progress:** M5 — memory interface protocol complete (MemoryBackend, MemoryCapabilities, SharedKnowledgeStore protocols, models, config, factory), budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking), CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) in progress. Mem0 adapter backend pending.
+> - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete.
+> - **In progress:** M5 — Mem0 adapter backend pending. Remaining M5 issues (#46 advanced engine+budget features).
 > - **Not started (mostly placeholders):** M6 API/CLI surface, M7 security + approval system.
 
 ### 1.5 Configuration Philosophy
@@ -1330,7 +1330,7 @@ org_memory:
 - Handles policy evolution naturally. Agents understand when and why things changed
 - Most complex. Potentially overkill for small companies or local-first use
 
-> **Extensibility:** All backends implement the `OrgMemoryBackend` protocol (`query(context) → list[OrgFact]`, `write(fact, author)`, `list_policies()`). The MVP ships with Backend 1; Backends 2 and 3 are research directions that may be explored if the default approach proves insufficient. The selected memory layer backend Mem0 (ADR-001) provides optional graph memory via Neo4j/FalkorDB, which could reduce implementation effort for Backends 2-3.
+> **Extensibility:** All backends implement the `OrgMemoryBackend` protocol (`query(OrgMemoryQuery) → tuple[OrgFact, ...]`, `write(OrgFactWriteRequest, *, author: OrgFactAuthor) → NotBlankStr`, `list_policies() → tuple[OrgFact, ...]`, plus `connect`/`disconnect`/`health_check`/`is_connected`/`backend_name` lifecycle). The MVP ships with Backend 1; Backends 2 and 3 are research directions that may be explored if the default approach proves insufficient. The selected memory layer backend Mem0 (ADR-001) provides optional graph memory via Neo4j/FalkorDB, which could reduce implementation effort for Backends 2-3.
 > **Write access control:** Core policies are human-only. ADRs and procedures can be written by senior+ agents. All writes are versioned and auditable. This prevents agents from corrupting shared organizational knowledge while allowing senior agents to document decisions.
 
 ### 7.5 Memory Backend Protocol
@@ -1437,6 +1437,18 @@ memory:
 ```
 
 Configuration is modeled by `CompanyMemoryConfig` (top-level), `MemoryStorageConfig` (storage paths/backends), and `MemoryOptionsConfig` (behaviour tuning). All are frozen Pydantic models. The `create_memory_backend(config)` factory returns an isolated `MemoryBackend` instance per company.
+
+#### Consolidation & Retention Configuration
+
+Memory consolidation, retention enforcement, and archival are configured via frozen Pydantic models in `memory/consolidation/config.py`:
+
+| Config | Purpose |
+|--------|---------|
+| `ConsolidationConfig` | Top-level: `max_memories_per_agent` limit, nested `retention` and `archival` sub-configs |
+| `RetentionConfig` | Per-category `RetentionRule` tuples (category + retention_days), optional `default_retention_days` fallback |
+| `ArchivalConfig` | Enables/disables archival of consolidated entries to `ArchivalStore` |
+
+Note: Retention is currently per-category, not per-agent. Per-agent retention overrides are a scope gap to be addressed in a future iteration.
 
 ### 7.6 Operational Data Persistence
 
@@ -2825,7 +2837,26 @@ ai-company/
 │       │   ├── ranking.py          # ScoredMemory model, rank_memories(), scoring functions
 │       │   ├── retrieval_config.py # MemoryRetrievalConfig (weights, thresholds, strategy selection)
 │       │   ├── retriever.py        # ContextInjectionStrategy (full retrieval → rank → format pipeline)
-│       │   └── shared.py           # SharedKnowledgeStore protocol
+│       │   ├── shared.py           # SharedKnowledgeStore protocol
+│       │   ├── consolidation/    # Memory consolidation — strategies, retention, archival
+│       │   │   ├── __init__.py
+│       │   │   ├── archival.py   # ArchivalStore protocol
+│       │   │   ├── config.py     # ConsolidationConfig, ArchivalConfig, RetentionConfig
+│       │   │   ├── models.py     # ConsolidationResult, ArchivalEntry, RetentionRule
+│       │   │   ├── retention.py  # RetentionEnforcer
+│       │   │   ├── service.py    # MemoryConsolidationService
+│       │   │   ├── simple_strategy.py # SimpleConsolidationStrategy
+│       │   │   └── strategy.py   # ConsolidationStrategy protocol
+│       │   └── org/              # Shared organizational memory (§7.4)
+│       │       ├── __init__.py
+│       │       ├── access_control.py # Write access control
+│       │       ├── config.py     # OrgMemoryConfig
+│       │       ├── errors.py     # OrgMemory error hierarchy
+│       │       ├── factory.py    # create_org_memory_backend()
+│       │       ├── hybrid_backend.py # HybridPromptRetrievalBackend
+│       │       ├── models.py     # OrgFact, OrgFactAuthor, OrgMemoryQuery
+│       │       ├── protocol.py   # OrgMemoryBackend protocol
+│       │       └── store.py      # OrgFactStore protocol, SQLiteOrgFactStore
 │       ├── persistence/             # Operational data persistence (§7.6)
 │       │   ├── __init__.py         # Package exports
 │       │   ├── protocol.py         # PersistenceBackend protocol (M5)
@@ -2849,6 +2880,7 @@ ai-company/
 │       │   │   ├── budget.py      # BUDGET_* constants
 │       │   │   ├── cfo.py         # CFO_* constants
 │       │   │   ├── classification.py # CLASSIFICATION_* constants
+│       │   │   ├── consolidation.py # CONSOLIDATION_* and RETENTION_* constants
 │       │   │   ├── company.py      # COMPANY_* constants
 │       │   │   ├── communication.py # COMM_* constants
 │       │   │   ├── conflict.py    # CONFLICT_* constants
@@ -2860,6 +2892,7 @@ ai-company/
 │       │   │   ├── git.py         # GIT_* constants
 │       │   │   ├── meeting.py    # MEETING_* constants
 │       │   │   ├── memory.py     # MEMORY_* constants
+│       │   │   ├── org_memory.py # ORG_MEMORY_* constants
 │       │   │   ├── parallel.py    # PARALLEL_* constants
 │       │   │   ├── persistence.py # PERSISTENCE_* constants
 │       │   │   ├── personality.py # PERSONALITY_* constants
@@ -3030,6 +3063,8 @@ These conventions were established during the M0–M2+ review cycle. **Adopted**
 | **Agent behavior testing** | Planned (M3) | Scripted `FakeProvider` for unit tests (deterministic turn sequences); behavioral outcome assertions for integration tests (task completed, tools called, cost within budget). | Leverages existing `FakeProvider` and `CompletionResponseFactory` fixtures. Precise engine testing without brittle response-matching at integration level. |
 | **LLM call analytics** | Adopted (incremental) | M3: proxy metrics (`turns_per_task`, `tokens_per_task`) — adopted. M4 data models: call categorization (`productive`, `coordination`, `system`), category analytics, coordination metrics, orchestration ratio — adopted. M4 runtime collection pipeline and M5+ full analytics: planned. | Append-only, never blocks execution. Builds on existing `CostRecord` infrastructure. Detects orchestration overhead early. See §10.5. |
 | **Cost tiers & quota tracking** | Adopted (M5) | Configurable `CostTierDefinition` definitions with merge/override semantics via `resolve_tiers(config: CostTiersConfig)`. `SubscriptionConfig` + `QuotaLimit` model per-provider subscription plans. `QuotaTracker` enforces per-provider request/token quotas with window-based rotation. `DegradationConfig` controls behavior when quotas are exhausted (default: `ALERT` — raise error; `FALLBACK` and `QUEUE` strategies defined but not yet implemented). | Enables cost classification without hardcoding vendor tiers. Quota tracking prevents surprise overages at the provider level. Window-based rotation aligns quota resets with billing periods. See §10.4. |
+| **Shared org memory** | Adopted (M5) | `OrgMemoryBackend` protocol (pluggable) with `HybridPromptRetrievalBackend` (Backend 1). `OrgFactStore` protocol with `SQLiteOrgFactStore` for persistent fact storage. Seniority-based write access control via `CategoryWriteRule`. Core policies injected into system prompts; extended facts retrieved on demand via `OrgMemoryQuery`. `OrgFact` model with `OrgFactAuthor` provenance tracking. Config-driven via `OrgMemoryConfig`. | Pluggable backend mirrors `MemoryBackend` pattern. Hybrid prompt+retrieval balances always-available core policies with on-demand extended knowledge. Seniority-based access control prevents junior agents from overwriting organizational knowledge. See §7.4. |
+| **Memory consolidation** | Adopted (M5) | `ConsolidationStrategy` protocol with `SimpleConsolidationStrategy` (deduplication + summarization). `RetentionEnforcer` for per-category age-based cleanup via `RetentionRule` policies. `ArchivalStore` protocol for cold storage before deletion. `MemoryConsolidationService` orchestrates retention → consolidation → max-memories enforcement pipeline. `ConsolidationResult` tracks statistics. Config-driven via `ConsolidationConfig` + `RetentionConfig` + `ArchivalConfig`. | Prevents unbounded memory growth. Pluggable strategy enables different consolidation approaches (simple dedup now, LLM-based summarization later). Retention + archival ensures compliance with data lifecycle policies. See §7.4. |
 | **State coordination** | Planned (M4) | Centralized single-writer: `TaskEngine` owns all task/project mutations via `asyncio.Queue`. Agents submit requests, engine applies `model_copy(update=...)` sequentially and publishes snapshots. `version: int` field on state models for future optimistic concurrency if multi-process scaling is needed. | Prevents lost updates by design. Trivial in single-threaded asyncio (no locks). Perfect audit trail. Industry consensus: MetaGPT, CrewAI, AutoGen all use prevention-by-design, not conflict resolution. See §6.8 State Coordination table. |
 | **Workspace isolation** | Adopted (M4 core) | Pluggable `WorkspaceIsolationStrategy` protocol. Default: planner + git worktrees. Each agent works in an isolated worktree; sequential merge on completion. Textual conflicts detected by git; semantic conflicts reviewed by agent or human. Runtime multi-agent coordination wiring remains M4 hardening work. | Industry standard (Codex, Cursor, Claude Code, VS Code). Maximum parallelism. Leverages mature git infrastructure. See §6.8. |
 | **Graceful shutdown** | Adopted (M3) | Pluggable `ShutdownStrategy` protocol. Default: cooperative with 30s timeout. Agents check shutdown event at turn boundaries. Force-cancel after timeout. `INTERRUPTED` status for force-cancelled tasks. M4/M5: upgrade to checkpoint-and-stop. | Cross-platform (Windows `signal.signal()` fallback). Bounded shutdown time. Mirrors cooperative shutdown in §6.7. |

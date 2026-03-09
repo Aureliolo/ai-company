@@ -20,6 +20,7 @@ from ai_company.core.enums import CompanyType, SeniorityLevel
 from ai_company.core.role import CustomRole  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.memory.config import CompanyMemoryConfig
+from ai_company.memory.org.config import OrgMemoryConfig
 from ai_company.observability import get_logger
 from ai_company.observability.config import LogConfig  # noqa: TC001
 from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -483,6 +484,7 @@ class RootConfig(BaseModel):
         memory: Memory backend configuration.
         persistence: Persistence backend configuration.
         cost_tiers: Cost tier definitions.
+        org_memory: Organizational memory configuration.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -561,6 +563,10 @@ class RootConfig(BaseModel):
     cost_tiers: CostTiersConfig = Field(
         default_factory=CostTiersConfig,
         description="Cost tier definitions",
+    )
+    org_memory: OrgMemoryConfig = Field(
+        default_factory=OrgMemoryConfig,
+        description="Organizational memory configuration",
     )
 
     @model_validator(mode="after")

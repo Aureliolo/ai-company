@@ -14,6 +14,7 @@ from ai_company.core.enums import (
     MemoryLevel,
 )
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.memory.consolidation.config import ConsolidationConfig
 from ai_company.memory.retrieval_config import MemoryRetrievalConfig
 from ai_company.observability import get_logger
 from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
@@ -30,7 +31,7 @@ class MemoryStorageConfig(BaseModel):
         history_store: History store backend name.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     _VALID_VECTOR_STORES: ClassVar[frozenset[str]] = frozenset(
         {"qdrant", "qdrant-external"},
@@ -139,14 +140,15 @@ class CompanyMemoryConfig(BaseModel):
     """Top-level company-wide memory configuration.
 
     Attributes:
-        backend: Memory backend name (currently only ``"mem0"``).
+        backend: Memory backend name (validated against ``_VALID_BACKENDS``).
         level: Default memory persistence level.
         storage: Storage-specific settings.
         options: Memory behaviour options.
         retrieval: Memory retrieval pipeline settings.
+        consolidation: Memory consolidation settings.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     _VALID_BACKENDS: ClassVar[frozenset[str]] = frozenset({"mem0"})
 
@@ -169,6 +171,10 @@ class CompanyMemoryConfig(BaseModel):
     retrieval: MemoryRetrievalConfig = Field(
         default_factory=MemoryRetrievalConfig,
         description="Memory retrieval pipeline settings",
+    )
+    consolidation: ConsolidationConfig = Field(
+        default_factory=ConsolidationConfig,
+        description="Memory consolidation settings",
     )
 
     @model_validator(mode="after")

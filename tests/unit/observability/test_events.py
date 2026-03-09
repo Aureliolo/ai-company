@@ -204,6 +204,8 @@ class TestEventConstants:
             "tool",
             "persistence",
             "workspace",
+            "consolidation",
+            "org_memory",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}
         assert discovered == expected
@@ -380,6 +382,76 @@ class TestEventConstants:
             WORKSPACE_SORT_WORKSPACES_APPENDED == "workspace.sort.workspaces.appended"
         )
         assert WORKSPACE_GROUP_SETUP_FAILED == "workspace.group.setup.failed"
+
+    @pytest.mark.parametrize(
+        ("constant_name", "expected"),
+        [
+            ("MAINTENANCE_START", "consolidation.maintenance.start"),
+            ("MAINTENANCE_COMPLETE", "consolidation.maintenance.complete"),
+            ("MAINTENANCE_FAILED", "consolidation.maintenance.failed"),
+            ("CONSOLIDATION_START", "consolidation.run.start"),
+            ("CONSOLIDATION_COMPLETE", "consolidation.run.complete"),
+            ("CONSOLIDATION_FAILED", "consolidation.run.failed"),
+            ("CONSOLIDATION_SKIPPED", "consolidation.run.skipped"),
+            ("STRATEGY_START", "consolidation.strategy.start"),
+            ("STRATEGY_COMPLETE", "consolidation.strategy.complete"),
+            ("RETENTION_CLEANUP_START", "consolidation.retention.start"),
+            ("RETENTION_CLEANUP_COMPLETE", "consolidation.retention.complete"),
+            ("RETENTION_CLEANUP_FAILED", "consolidation.retention.failed"),
+            ("RETENTION_DELETE_SKIPPED", "consolidation.retention.delete_skipped"),
+            ("ARCHIVAL_ENTRY_STORED", "consolidation.archival.stored"),
+            ("ARCHIVAL_SEARCH_COMPLETE", "consolidation.archival.search_complete"),
+            ("ARCHIVAL_FAILED", "consolidation.archival.failed"),
+            ("MAX_MEMORIES_ENFORCED", "consolidation.max_memories.enforced"),
+            (
+                "MAX_MEMORIES_ENFORCE_FAILED",
+                "consolidation.max_memories.failed",
+            ),
+        ],
+    )
+    def test_consolidation_events_exist(
+        self,
+        constant_name: str,
+        expected: str,
+    ) -> None:
+        from ai_company.observability.events import consolidation as mod
+
+        assert getattr(mod, constant_name) == expected
+
+    @pytest.mark.parametrize(
+        ("constant_name", "expected"),
+        [
+            ("ORG_MEMORY_QUERY_START", "org_memory.query.start"),
+            ("ORG_MEMORY_QUERY_COMPLETE", "org_memory.query.complete"),
+            ("ORG_MEMORY_QUERY_FAILED", "org_memory.query.failed"),
+            ("ORG_MEMORY_WRITE_START", "org_memory.write.start"),
+            ("ORG_MEMORY_WRITE_COMPLETE", "org_memory.write.complete"),
+            ("ORG_MEMORY_WRITE_DENIED", "org_memory.write.denied"),
+            ("ORG_MEMORY_WRITE_FAILED", "org_memory.write.failed"),
+            ("ORG_MEMORY_POLICIES_LISTED", "org_memory.policies.listed"),
+            ("ORG_MEMORY_BACKEND_CREATED", "org_memory.backend.created"),
+            ("ORG_MEMORY_CONNECT_FAILED", "org_memory.store.connect_failed"),
+            (
+                "ORG_MEMORY_DISCONNECT_FAILED",
+                "org_memory.store.disconnect_failed",
+            ),
+            ("ORG_MEMORY_NOT_CONNECTED", "org_memory.store.not_connected"),
+            (
+                "ORG_MEMORY_ROW_PARSE_FAILED",
+                "org_memory.store.row_parse_failed",
+            ),
+            ("ORG_MEMORY_CONFIG_INVALID", "org_memory.config.invalid"),
+            ("ORG_MEMORY_MODEL_INVALID", "org_memory.model.invalid"),
+        ],
+    )
+    def test_org_memory_events_exist(
+        self,
+        constant_name: str,
+        expected: str,
+    ) -> None:
+        from ai_company.observability.events import org_memory as mod
+
+        assert getattr(mod, constant_name) == expected
 
     @pytest.mark.parametrize(
         ("constant_name", "expected"),

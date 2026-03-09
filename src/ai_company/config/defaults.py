@@ -33,4 +33,5 @@ def default_config_dict() -> dict[str, Any]:
         "memory": {},
         "persistence": {},
         "cost_tiers": {},
+        "org_memory": {},
     }
