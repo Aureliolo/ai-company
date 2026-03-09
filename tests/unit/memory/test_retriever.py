@@ -303,6 +303,69 @@ class TestGracefulDegradation:
                 token_budget=1000,
             )
 
+    async def test_shared_builtin_memory_error_propagates(self) -> None:
+        """builtins.MemoryError from shared store propagates (not swallowed)."""
+        personal = _make_entry(content="personal data")
+        shared_store = _make_shared_store()
+        shared_store.search_shared = AsyncMock(
+            side_effect=MemoryError("out of memory"),
+        )
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((personal,)),
+            config=MemoryRetrievalConfig(include_shared=True),
+            shared_store=shared_store,
+        )
+        with pytest.raises(MemoryError, match="out of memory"):
+            await strategy.prepare_messages(
+                agent_id="agent-1",
+                query_text="query",
+                token_budget=1000,
+            )
+
+    async def test_shared_recursion_error_propagates(self) -> None:
+        """RecursionError from shared store propagates (not swallowed)."""
+        personal = _make_entry(content="personal data")
+        shared_store = _make_shared_store()
+        shared_store.search_shared = AsyncMock(
+            side_effect=RecursionError(),
+        )
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((personal,)),
+            config=MemoryRetrievalConfig(include_shared=True),
+            shared_store=shared_store,
+        )
+        with pytest.raises(RecursionError):
+            await strategy.prepare_messages(
+                agent_id="agent-1",
+                query_text="query",
+                token_budget=1000,
+            )
+
+    async def test_shared_generic_exception_returns_personal_only(self) -> None:
+        """Generic exception from shared store degrades gracefully."""
+        personal = _make_entry(content="personal survives generic")
+        shared_store = _make_shared_store()
+        shared_store.search_shared = AsyncMock(
+            side_effect=RuntimeError("unexpected shared failure"),
+        )
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((personal,)),
+            config=MemoryRetrievalConfig(
+                include_shared=True,
+                min_relevance=0.0,
+            ),
+            shared_store=shared_store,
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=1000,
+        )
+        assert len(result) == 1
+        content = result[0].content
+        assert content is not None
+        assert "personal survives generic" in content
+
 
 # ── Token budget ─────────────────────────────────────────────────
 

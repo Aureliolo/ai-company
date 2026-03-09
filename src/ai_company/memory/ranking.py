@@ -1,6 +1,7 @@
-"""Memory ranking — pure scoring and sorting functions.
+"""Memory ranking — scoring and sorting functions.
 
-All functions are pure (no I/O, no side effects).  They take
+All functions are functionally pure (deterministic given the same
+inputs).  Logging calls are the only side effect.  They take
 ``MemoryEntry`` tuples and a ``MemoryRetrievalConfig`` and return
 ``ScoredMemory`` tuples sorted by combined relevance+recency score.
 """
@@ -11,13 +12,13 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field
 
 from ai_company.memory.models import MemoryEntry  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.memory import MEMORY_RANKING_COMPLETE
 
 if TYPE_CHECKING:
     from datetime import datetime
 
     from ai_company.memory.retrieval_config import MemoryRetrievalConfig
-from ai_company.observability import get_logger
-from ai_company.observability.events.memory import MEMORY_RANKING_COMPLETE
 
 logger = get_logger(__name__)
 
@@ -27,7 +28,7 @@ class ScoredMemory(BaseModel):
 
     Attributes:
         entry: The original memory entry.
-        relevance_score: Original or default relevance (after boost).
+        relevance_score: Relevance after personal boost (personal) or raw (shared).
         recency_score: Exponential decay based on age.
         combined_score: Weighted combination of relevance and recency.
         is_shared: Whether this came from SharedKnowledgeStore.
@@ -112,6 +113,10 @@ def _score_entry(
 ) -> ScoredMemory:
     """Score a single entry using config weights and decay.
 
+    Personal entries receive ``config.personal_boost`` added to their
+    relevance (clamped to 1.0).  Shared entries use raw relevance
+    without boost.
+
     Args:
         entry: The memory entry to score.
         config: Retrieval configuration.
@@ -160,13 +165,14 @@ def rank_memories(
     now: datetime,
     shared_entries: tuple[MemoryEntry, ...] = (),
 ) -> tuple[ScoredMemory, ...]:
-    """Score, merge, sort, and filter memory entries.
+    """Score, merge, sort, filter, and truncate memory entries.
 
     1. Score personal entries (with ``personal_boost``).
     2. Score shared entries (no boost).
     3. Merge both sets.
-    4. Filter by ``min_relevance``.
+    4. Filter by ``min_relevance`` threshold on ``combined_score``.
     5. Sort descending by ``combined_score``.
+    6. Truncate to ``max_memories``.
 
     Args:
         entries: Personal memory entries.
@@ -189,7 +195,7 @@ def rank_memories(
     filtered = [s for s in scored if s.combined_score >= config.min_relevance]
     filtered.sort(key=lambda s: s.combined_score, reverse=True)
 
-    result = tuple(filtered)
+    result = tuple(filtered[: config.max_memories])
 
     logger.debug(
         MEMORY_RANKING_COMPLETE,

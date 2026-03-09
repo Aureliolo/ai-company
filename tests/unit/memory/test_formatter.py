@@ -148,17 +148,17 @@ class TestFormatMemoryContext:
             estimator=DefaultTokenEstimator(),
             token_budget=80,
         )
-        if result:
-            content = result[0].content
-            assert content is not None
-            lines = [
-                ln
-                for ln in content.split("\n")
-                if ln.strip()
-                and ln.strip() != MEMORY_BLOCK_START
-                and ln.strip() != MEMORY_BLOCK_END
-            ]
-            assert len(lines) < 10
+        assert len(result) == 1, "Expected at least some memories to fit"
+        content = result[0].content
+        assert content is not None
+        lines = [
+            ln
+            for ln in content.split("\n")
+            if ln.strip()
+            and ln.strip() != MEMORY_BLOCK_START
+            and ln.strip() != MEMORY_BLOCK_END
+        ]
+        assert 0 < len(lines) < 10
 
     def test_zero_budget_returns_empty(self) -> None:
         memories = (_make_scored(content="some content"),)
@@ -198,6 +198,31 @@ class TestFormatMemoryContext:
             token_budget=1000,
         )
         assert result[0].role is MessageRole.SYSTEM
+
+    def test_negative_budget_returns_empty(self) -> None:
+        memories = (_make_scored(content="some content"),)
+        result = format_memory_context(
+            memories,
+            estimator=DefaultTokenEstimator(),
+            token_budget=-1,
+        )
+        assert result == ()
+
+    def test_greedy_packing_skips_large_includes_small(self) -> None:
+        """Greedy packing skips entries too large but includes smaller ones."""
+        large = _make_scored(content="x" * 400, combined_score=0.95)
+        small = _make_scored(content="short", combined_score=0.50)
+        # Budget enough for delimiters + small but not large
+        result = format_memory_context(
+            (large, small),
+            estimator=DefaultTokenEstimator(),
+            token_budget=30,
+        )
+        assert len(result) == 1
+        content = result[0].content
+        assert content is not None
+        assert "short" in content
+        assert "x" * 400 not in content
 
     def test_delimiters_wrap_content(self) -> None:
         memories = (_make_scored(content="wrapped content"),)

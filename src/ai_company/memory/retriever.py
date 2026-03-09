@@ -25,6 +25,8 @@ from ai_company.observability.events.memory import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable
+
     from ai_company.core.enums import MemoryCategory
     from ai_company.core.types import NotBlankStr
     from ai_company.memory.models import MemoryEntry
@@ -35,95 +37,57 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-
-async def _safe_retrieve_personal(
-    backend: MemoryBackend,
-    agent_id: NotBlankStr,
-    query: MemoryQuery,
-) -> tuple[MemoryEntry, ...]:
-    """Retrieve personal memories, returning ``()`` on failure.
-
-    Catches ``memory_errors.MemoryError`` (domain base) and logs
-    a degradation warning.  Re-raises ``builtins.MemoryError`` and
-    ``RecursionError``.
-
-    Args:
-        backend: Memory backend to query.
-        agent_id: Agent identifier.
-        query: Retrieval query.
-
-    Returns:
-        Tuple of retrieved entries, or empty on failure.
-    """
-    try:
-        return await backend.retrieve(agent_id, query)
-    except builtins_MemoryError:
-        raise
-    except RecursionError:
-        raise
-    except memory_errors.MemoryError:
-        logger.warning(
-            MEMORY_RETRIEVAL_DEGRADED,
-            source="personal",
-            agent_id=agent_id,
-            exc_info=True,
-        )
-        return ()
-    except Exception:
-        logger.error(
-            MEMORY_RETRIEVAL_DEGRADED,
-            source="personal",
-            agent_id=agent_id,
-            exc_info=True,
-        )
-        return ()
-
-
-async def _safe_retrieve_shared(
-    shared_store: SharedKnowledgeStore,
-    query: MemoryQuery,
-    *,
-    exclude_agent: NotBlankStr,
-) -> tuple[MemoryEntry, ...]:
-    """Retrieve shared memories, returning ``()`` on failure.
-
-    Args:
-        shared_store: Shared knowledge store to query.
-        query: Retrieval query.
-        exclude_agent: Agent ID to exclude from results.
-
-    Returns:
-        Tuple of shared entries, or empty on failure.
-    """
-    try:
-        return await shared_store.search_shared(
-            query,
-            exclude_agent=exclude_agent,
-        )
-    except builtins_MemoryError:
-        raise
-    except RecursionError:
-        raise
-    except memory_errors.MemoryError:
-        logger.warning(
-            MEMORY_RETRIEVAL_DEGRADED,
-            source="shared",
-            agent_id=exclude_agent,
-            exc_info=True,
-        )
-        return ()
-    except Exception:
-        logger.error(
-            MEMORY_RETRIEVAL_DEGRADED,
-            source="shared",
-            agent_id=exclude_agent,
-            exc_info=True,
-        )
-        return ()
-
-
 # Alias to disambiguate from domain MemoryError
 builtins_MemoryError = MemoryError  # noqa: N816
+
+
+async def _safe_call(
+    coro: Awaitable[tuple[MemoryEntry, ...]],
+    *,
+    source: str,
+    agent_id: NotBlankStr,
+) -> tuple[MemoryEntry, ...]:
+    """Await *coro* and return ``()`` on domain/generic failure.
+
+    Re-raises ``builtins.MemoryError`` and ``RecursionError``
+    (system-level).  Catches ``memory_errors.MemoryError`` (domain
+    base) as a warning and any other ``Exception`` as an error.
+
+    Args:
+        coro: Awaitable returning a tuple of memory entries.
+        source: Label for log messages (e.g. ``"personal"``).
+        agent_id: Agent identifier for log context.
+
+    Returns:
+        Tuple of entries, or empty on failure.
+
+    Raises:
+        builtins.MemoryError: Re-raised (system-level).
+        RecursionError: Re-raised (system-level).
+    """
+    try:
+        return await coro
+    except builtins_MemoryError:
+        raise
+    except RecursionError:
+        raise
+    except memory_errors.MemoryError:
+        logger.warning(
+            MEMORY_RETRIEVAL_DEGRADED,
+            source=source,
+            agent_id=agent_id,
+            exc_info=True,
+        )
+        return ()
+    except Exception as exc:
+        logger.error(
+            MEMORY_RETRIEVAL_DEGRADED,
+            source=source,
+            agent_id=agent_id,
+            error_type=type(exc).__qualname__,
+            exc_info=True,
+        )
+        return ()
 
 
 class ContextInjectionStrategy:
@@ -200,11 +164,12 @@ class ContextInjectionStrategy:
                 exc_info=True,
             )
             return ()
-        except Exception:
+        except Exception as exc:
             logger.error(
                 MEMORY_RETRIEVAL_DEGRADED,
                 source="pipeline",
                 agent_id=agent_id,
+                error_type=type(exc).__qualname__,
                 exc_info=True,
             )
             return ()
@@ -234,7 +199,6 @@ class ContextInjectionStrategy:
             limit=self._config.max_memories,
         )
 
-        # Parallel fetch with error isolation
         personal_entries, shared_entries = await self._fetch_memories(
             agent_id=agent_id,
             query=query,
@@ -291,7 +255,9 @@ class ContextInjectionStrategy:
         """Fetch personal and shared memories in parallel.
 
         Each fetch is wrapped in error isolation so one failure
-        doesn't cancel the other.
+        doesn't cancel the other.  ``builtins.MemoryError`` and
+        ``RecursionError`` are unwrapped from ``ExceptionGroup``
+        and re-raised as bare exceptions.
 
         Args:
             agent_id: Agent identifier.
@@ -299,34 +265,45 @@ class ContextInjectionStrategy:
 
         Returns:
             Tuple of (personal_entries, shared_entries).
+
+        Raises:
+            builtins.MemoryError: Unwrapped from TaskGroup.
+            RecursionError: Unwrapped from TaskGroup.
         """
         should_fetch_shared = (
             self._config.include_shared and self._shared_store is not None
         )
 
+        personal_coro = _safe_call(
+            self._backend.retrieve(agent_id, query),
+            source="personal",
+            agent_id=agent_id,
+        )
+
         if should_fetch_shared:
-            async with asyncio.TaskGroup() as tg:
-                personal_task = tg.create_task(
-                    _safe_retrieve_personal(
-                        self._backend,
-                        agent_id,
-                        query,
-                    ),
-                )
-                shared_task = tg.create_task(
-                    _safe_retrieve_shared(
-                        self._shared_store,  # type: ignore[arg-type]
-                        query,
-                        exclude_agent=agent_id,
-                    ),
-                )
+            shared_coro = _safe_call(
+                self._shared_store.search_shared(  # type: ignore[union-attr]
+                    query,
+                    exclude_agent=agent_id,
+                ),
+                source="shared",
+                agent_id=agent_id,
+            )
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    personal_task = tg.create_task(
+                        personal_coro,
+                    )
+                    shared_task = tg.create_task(
+                        shared_coro,
+                    )
+            except* builtins_MemoryError as eg:
+                raise eg.exceptions[0] from eg
+            except* RecursionError as eg:
+                raise eg.exceptions[0] from eg
             return personal_task.result(), shared_task.result()
 
-        personal = await _safe_retrieve_personal(
-            self._backend,
-            agent_id,
-            query,
-        )
+        personal = await personal_coro
         return personal, ()
 
     def get_tool_definitions(self) -> tuple[ToolDefinition, ...]:

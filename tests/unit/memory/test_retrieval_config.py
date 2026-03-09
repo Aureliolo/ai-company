@@ -97,6 +97,23 @@ class TestMemoryRetrievalConfigValidation:
         c2 = MemoryRetrievalConfig(default_relevance=1.0)
         assert c2.default_relevance == 1.0
 
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("relevance_weight", float("nan")),
+            ("relevance_weight", float("inf")),
+            ("recency_weight", float("nan")),
+            ("recency_weight", float("-inf")),
+            ("personal_boost", float("nan")),
+            ("min_relevance", float("inf")),
+            ("default_relevance", float("nan")),
+            ("recency_decay_rate", float("inf")),
+        ],
+    )
+    def test_nan_inf_rejected(self, field: str, value: float) -> None:
+        with pytest.raises(ValidationError):
+            MemoryRetrievalConfig(**{field: value})  # type: ignore[arg-type]
+
 
 @pytest.mark.unit
 class TestMemoryRetrievalConfigStrategy:

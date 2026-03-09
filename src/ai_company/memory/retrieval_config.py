@@ -26,7 +26,7 @@ class MemoryRetrievalConfig(BaseModel):
         recency_weight: Weight for recency decay score (0.0-1.0).
         recency_decay_rate: Exponential decay rate per hour.
         personal_boost: Boost applied to personal over shared (0.0-1.0).
-        min_relevance: Minimum combined score to include (0.0-1.0).
+        min_relevance: Minimum combined (relevance + recency) score to include.
         max_memories: Maximum candidates to retrieve (1-100).
         include_shared: Whether to query SharedKnowledgeStore.
         default_relevance: Score for entries missing relevance_score.
@@ -66,7 +66,7 @@ class MemoryRetrievalConfig(BaseModel):
         default=0.3,
         ge=0.0,
         le=1.0,
-        description="Minimum combined score to include",
+        description="Minimum combined (relevance + recency) score to include",
     )
     max_memories: int = Field(
         default=20,

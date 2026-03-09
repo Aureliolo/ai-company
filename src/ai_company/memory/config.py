@@ -143,6 +143,7 @@ class CompanyMemoryConfig(BaseModel):
         level: Default memory persistence level.
         storage: Storage-specific settings.
         options: Memory behaviour options.
+        retrieval: Memory retrieval pipeline settings.
     """
 
     model_config = ConfigDict(frozen=True)

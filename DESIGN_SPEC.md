@@ -1621,7 +1621,7 @@ in context, archival/recall searched via tools. Most sophisticated
 #### Protocol
 
 All strategies implement `MemoryInjectionStrategy`:
-- `prepare_messages(agent_id, query, budget) -> tuple[ChatMessage, ...]`
+- `prepare_messages(agent_id, query_text, token_budget) -> tuple[ChatMessage, ...]`
 - `get_tool_definitions() -> tuple[ToolDefinition, ...]`
 - `strategy_name -> str`
 
@@ -2804,14 +2804,19 @@ ai-company/
 │       │   │   └── structured_phases.py # StructuredPhasesProtocol implementation
 │       │   ├── messenger.py        # AgentMessenger per-agent facade
 │       │   └── subscription.py     # Subscription + DeliveryEnvelope models
-│       ├── memory/                  # Agent memory system — protocols, models, config, factory (M5)
+│       ├── memory/                  # Agent memory system — protocols, models, config, factory, retrieval pipeline (M5)
 │       │   ├── __init__.py         # Re-exports
 │       │   ├── capabilities.py     # MemoryCapabilities protocol
 │       │   ├── config.py           # CompanyMemoryConfig, MemoryStorageConfig, MemoryOptionsConfig
 │       │   ├── errors.py           # Memory error hierarchy (MemoryError and subclasses)
 │       │   ├── factory.py          # create_memory_backend() factory
+│       │   ├── formatter.py        # format_memory_context() — ranked memories to ChatMessage(s)
+│       │   ├── injection.py        # MemoryInjectionStrategy protocol, InjectionStrategy enum, TokenEstimator
 │       │   ├── models.py           # MemoryEntry, MemoryMetadata, MemoryQuery, MemoryStoreRequest
 │       │   ├── protocol.py         # MemoryBackend protocol
+│       │   ├── ranking.py          # ScoredMemory model, rank_memories(), scoring functions
+│       │   ├── retrieval_config.py # MemoryRetrievalConfig (weights, thresholds, strategy selection)
+│       │   ├── retriever.py        # ContextInjectionStrategy (full retrieval → rank → format pipeline)
 │       │   └── shared.py           # SharedKnowledgeStore protocol
 │       ├── persistence/             # Operational data persistence (§7.6)
 │       │   ├── __init__.py         # Package exports

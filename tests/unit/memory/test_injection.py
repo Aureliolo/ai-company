@@ -77,7 +77,7 @@ class TestDefaultTokenEstimator:
 
     def test_short_string(self) -> None:
         est = DefaultTokenEstimator()
-        assert est.estimate_tokens("abc") == 0  # 3 // 4 == 0
+        assert est.estimate_tokens("abc") == 1  # min 1 for non-empty
 
     def test_four_chars(self) -> None:
         est = DefaultTokenEstimator()

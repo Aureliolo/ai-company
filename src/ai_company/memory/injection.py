@@ -57,11 +57,13 @@ class TokenEstimator(Protocol):
     def estimate_tokens(self, text: str) -> int:
         """Estimate the number of tokens in *text*.
 
+        Implementations must return non-negative values.
+
         Args:
             text: The text to estimate tokens for.
 
         Returns:
-            Estimated token count.
+            Estimated token count (non-negative).
         """
         ...
 
@@ -74,15 +76,19 @@ class DefaultTokenEstimator:
     """
 
     def estimate_tokens(self, text: str) -> int:
-        """Estimate tokens as ``len(text) // 4``.
+        """Estimate tokens as ``max(1, len(text) // 4)`` for non-empty text.
+
+        Returns 0 for empty text, at least 1 for any non-empty text.
 
         Args:
             text: The text to estimate tokens for.
 
         Returns:
-            Estimated token count (integer division by 4).
+            Estimated token count (non-negative).
         """
-        return len(text) // 4
+        if not text:
+            return 0
+        return max(1, len(text) // 4)
 
 
 @runtime_checkable

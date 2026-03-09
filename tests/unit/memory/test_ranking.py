@@ -151,6 +151,52 @@ class TestScoredMemory:
         )
         assert sm.is_shared is True
 
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("relevance_score", 1.5),
+            ("relevance_score", -0.1),
+            ("recency_score", 1.5),
+            ("recency_score", -0.1),
+            ("combined_score", 1.5),
+            ("combined_score", -0.1),
+        ],
+    )
+    def test_out_of_range_score_rejected(self, field: str, value: float) -> None:
+        entry = _make_entry()
+        kwargs = {
+            "entry": entry,
+            "relevance_score": 0.5,
+            "recency_score": 0.5,
+            "combined_score": 0.5,
+            field: value,
+        }
+        with pytest.raises(ValidationError):
+            ScoredMemory(**kwargs)  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("relevance_score", float("nan")),
+            ("relevance_score", float("inf")),
+            ("recency_score", float("nan")),
+            ("recency_score", float("-inf")),
+            ("combined_score", float("nan")),
+            ("combined_score", float("inf")),
+        ],
+    )
+    def test_inf_nan_score_rejected(self, field: str, value: float) -> None:
+        entry = _make_entry()
+        kwargs = {
+            "entry": entry,
+            "relevance_score": 0.5,
+            "recency_score": 0.5,
+            "combined_score": 0.5,
+            field: value,
+        }
+        with pytest.raises(ValidationError):
+            ScoredMemory(**kwargs)  # type: ignore[arg-type]
+
 
 # ── rank_memories ────────────────────────────────────────────────
 
@@ -307,6 +353,38 @@ class TestRankMemories:
         )
         # Recent entry should rank higher due to recency weighting
         assert result[0].entry.id == "recent"
+
+    def test_max_memories_truncates_merged_result(self) -> None:
+        """After merging personal + shared, result is capped at max_memories."""
+        now = datetime.now(UTC)
+        personal = tuple(
+            _make_entry(
+                entry_id=f"p{i}",
+                relevance_score=0.8,
+                created_at=now,
+            )
+            for i in range(5)
+        )
+        shared = tuple(
+            _make_entry(
+                entry_id=f"s{i}",
+                relevance_score=0.7,
+                created_at=now,
+            )
+            for i in range(5)
+        )
+        config = MemoryRetrievalConfig(
+            max_memories=3,
+            min_relevance=0.0,
+            personal_boost=0.0,
+        )
+        result = rank_memories(
+            personal,
+            config=config,
+            now=now,
+            shared_entries=shared,
+        )
+        assert len(result) == 3
 
     def test_both_empty_returns_empty(self) -> None:
         config = MemoryRetrievalConfig()

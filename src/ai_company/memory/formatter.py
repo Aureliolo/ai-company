@@ -88,6 +88,10 @@ def format_memory_context(
         )
         return ()
 
+    # Greedy packing: iterate by rank, include memories that fit.
+    # Entries too large for the remaining budget are skipped (not
+    # stopping), allowing shorter lower-ranked entries to fill the
+    # remaining space.
     included_lines: list[str] = []
     for memory in memories:
         line = _format_line(memory)
@@ -105,12 +109,22 @@ def format_memory_context(
             )
 
     if not included_lines:
+        logger.debug(
+            MEMORY_TOKEN_BUDGET_EXCEEDED,
+            budget=token_budget,
+            total_candidates=len(memories),
+            reason="no memories fit within budget",
+        )
         return ()
 
     body = "\n".join(included_lines)
     block = f"{MEMORY_BLOCK_START}\n{body}\n{MEMORY_BLOCK_END}"
 
-    role = _INJECTION_POINT_TO_ROLE[injection_point]
+    try:
+        role = _INJECTION_POINT_TO_ROLE[injection_point]
+    except KeyError:
+        msg = f"Unsupported injection point: {injection_point!r}"
+        raise ValueError(msg) from None
     message = ChatMessage(role=role, content=block)
 
     logger.debug(
