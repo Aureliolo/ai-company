@@ -65,10 +65,19 @@ class RequestLoggingMiddleware:
             await self.app(scope, receive, capture_send)
         finally:
             duration_ms = round((time.perf_counter() - start) * 1000, 2)
-            logger.info(
-                API_REQUEST_COMPLETED,
-                method=method,
-                path=path,
-                status_code=status_code if status_code is not None else 0,
-                duration_ms=duration_ms,
-            )
+            if status_code is None:
+                logger.warning(
+                    API_REQUEST_COMPLETED,
+                    method=method,
+                    path=path,
+                    status_code="unknown",
+                    duration_ms=duration_ms,
+                )
+            else:
+                logger.info(
+                    API_REQUEST_COMPLETED,
+                    method=method,
+                    path=path,
+                    status_code=status_code,
+                    duration_ms=duration_ms,
+                )

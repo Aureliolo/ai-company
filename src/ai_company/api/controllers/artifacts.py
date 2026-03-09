@@ -6,6 +6,9 @@ from litestar.datastructures import State  # noqa: TC002
 from ai_company.api.dto import ApiResponse, PaginatedResponse
 from ai_company.api.guards import require_read_access
 from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginate
+from ai_company.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 class ArtifactController(Controller):
@@ -57,7 +60,6 @@ class ArtifactController(Controller):
         """
         return Response(
             content=ApiResponse[None](
-                success=False,
                 error="Artifact persistence not implemented yet",
             ),
             status_code=501,

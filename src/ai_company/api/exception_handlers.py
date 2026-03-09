@@ -1,6 +1,6 @@
 """Exception handlers mapping domain errors to HTTP responses.
 
-Each handler returns an ``ApiResponse(success=False)`` with the
+Each handler returns an ``ApiResponse(error=...)`` with the
 appropriate HTTP status code and a **scrubbed** user-facing error
 message.  Detailed error context is logged server-side only.
 """
@@ -59,7 +59,6 @@ def handle_record_not_found(
     _log_error(request, exc, status=404)
     return Response(
         content=ApiResponse[None](
-            success=False,
             error="Resource not found",
         ),
         status_code=404,
@@ -74,7 +73,6 @@ def handle_duplicate_record(
     _log_error(request, exc, status=409)
     return Response(
         content=ApiResponse[None](
-            success=False,
             error="Resource already exists",
         ),
         status_code=409,
@@ -89,7 +87,6 @@ def handle_persistence_error(
     _log_error(request, exc, status=500)
     return Response(
         content=ApiResponse[None](
-            success=False,
             error="Internal persistence error",
         ),
         status_code=500,
@@ -107,7 +104,7 @@ def handle_api_error(
     exc_cls = type(exc)
     default_msg = getattr(exc_cls, "default_message", "Internal server error")
     return Response(
-        content=ApiResponse[None](success=False, error=default_msg),
+        content=ApiResponse[None](error=default_msg),
         status_code=exc.status_code,
     )
 
@@ -120,7 +117,6 @@ def handle_unexpected(
     _log_error(request, exc, status=500)
     return Response(
         content=ApiResponse[None](
-            success=False,
             error="Internal server error",
         ),
         status_code=500,
@@ -134,7 +130,7 @@ def handle_permission_denied(
     """Map ``PermissionDeniedException`` to 403."""
     _log_error(request, exc, status=403)
     return Response(
-        content=ApiResponse[None](success=False, error="Forbidden"),
+        content=ApiResponse[None](error="Forbidden"),
         status_code=403,
     )
 
@@ -147,7 +143,6 @@ def handle_validation_error(
     _log_error(request, exc, status=400)
     return Response(
         content=ApiResponse[None](
-            success=False,
             error="Validation error",
         ),
         status_code=400,

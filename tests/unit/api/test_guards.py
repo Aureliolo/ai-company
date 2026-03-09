@@ -50,3 +50,45 @@ class TestGuards:
             },
         )
         assert response.status_code == 403
+
+    def test_case_insensitive_role(self, test_client: TestClient[Any]) -> None:
+        response = test_client.get(
+            "/api/v1/tasks",
+            headers={"X-Human-Role": "CEO"},
+        )
+        assert response.status_code == 200
+
+    def test_whitespace_padded_role(self, test_client: TestClient[Any]) -> None:
+        response = test_client.get(
+            "/api/v1/tasks",
+            headers={"X-Human-Role": " ceo "},
+        )
+        assert response.status_code == 200
+
+    def test_read_guard_allows_observer(self, test_client: TestClient[Any]) -> None:
+        response = test_client.get(
+            "/api/v1/tasks",
+            headers={"X-Human-Role": "observer"},
+        )
+        assert response.status_code == 200
+
+    def test_read_guard_blocks_missing_role(self, test_client: TestClient[Any]) -> None:
+        response = test_client.get(
+            "/api/v1/tasks",
+            headers={"X-Human-Role": "invalid"},
+        )
+        assert response.status_code == 403
+
+    def test_write_guard_allows_manager(self, test_client: TestClient[Any]) -> None:
+        response = test_client.post(
+            "/api/v1/tasks",
+            json={
+                "title": "Test",
+                "description": "Test desc",
+                "type": "development",
+                "project": "proj",
+                "created_by": "alice",
+            },
+            headers={"X-Human-Role": "manager"},
+        )
+        assert response.status_code == 201

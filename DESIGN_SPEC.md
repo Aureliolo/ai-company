@@ -80,9 +80,8 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 > **How to read this spec:** Sections describe the full vision. Each section with deferred features includes an **MVP** callout box indicating what ships in M3 and what is deferred. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that won't be built until later milestones.
 
 > **Implementation snapshot (2026-03-09):**
-> - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete.
-> - **In progress:** M5 — Mem0 adapter backend pending. Remaining M5 issues (#46 advanced engine+budget features).
-> - **Not started (mostly placeholders):** M6 API/CLI surface, M7 security + approval system.
+> - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete.
+> - **Not started (mostly placeholders):** M7 security + approval system.
 
 ### 1.5 Configuration Philosophy
 
@@ -2454,6 +2453,7 @@ The REST/WebSocket API is the **primary interface** for all consumers. The Web U
 
 ```text
 /api/v1/
+  ├── /health           # Health check, readiness
   ├── /company          # CRUD company config
   ├── /agents           # List, hire, fire, modify agents
   ├── /departments      # Department management
@@ -2673,6 +2673,7 @@ ai-company/
 │       │   ├── agent.py            # AgentIdentity (frozen)
 │       │   ├── types.py            # Shared validated types (NotBlankStr, etc.)
 │       │   ├── company.py          # Company structure
+│       │   ├── approval.py         # ApprovalItem domain model (approval queue)
 │       │   ├── enums.py            # Core enumerations
 │       │   ├── task.py             # Task model & state machine
 │       │   ├── task_transitions.py # Task state transitions
@@ -2740,9 +2741,6 @@ ai-company/
 │       │   │   ├── scorer.py      # AgentTaskScorer (skill/role/seniority matching)
 │       │   │   ├── service.py     # TaskRoutingService (routes subtasks to agents)
 │       │   │   └── topology_selector.py # TopologySelector (auto coordination topology)
-│       │   ├── task_engine.py      # Task routing & scheduling (M4)
-│       │   ├── workflow_engine.py  # Workflow orchestration (M4)
-│       │   ├── meeting_engine.py   # Meeting coordination (M4)
 │       │   └── hr_engine.py        # Hiring, firing, performance (M7)
 │       ├── communication/           # Inter-agent communication
 │       │   ├── bus_memory.py       # InMemoryMessageBus implementation
@@ -2850,6 +2848,7 @@ ai-company/
 │       │   ├── enums.py            # Log-related enums
 │       │   ├── events/             # Per-domain event constants
 │       │   │   ├── __init__.py    # Package marker with usage docs; no re-exports
+│       │   │   ├── api.py            # API_* event constants
 │       │   │   ├── budget.py      # BUDGET_* constants
 │       │   │   ├── cfo.py         # CFO_* constants
 │       │   │   ├── classification.py # CLASSIFICATION_* constants
@@ -2939,11 +2938,12 @@ ai-company/
 │       │   ├── web_tools.py        # HTTP, search (M7)
 │       │   └── mcp_bridge.py       # MCP server integration (M7)
 │       ├── security/                # Security & approval (M7, stubs only)
-│       │   ├── approval.py         # Approval workflow (M7)
+│       │   ├── approval.py         # Approval workflow gates (M7) — domain model is in core/approval.py
 │       │   ├── secops_agent.py     # Security operations agent (M7)
 │       │   ├── audit.py            # Audit logging (M7)
 │       │   └── permissions.py      # Permission checking (M7)
 │       ├── budget/                  # Cost management
+│       │   ├── _optimizer_helpers.py # CostOptimizer shared helper functions
 │       │   ├── config.py           # Budget configuration models
 │       │   ├── cost_record.py      # CostRecord model (frozen)
 │       │   ├── cost_tiers.py      # Cost tier definitions, classification, and built-in tiers
@@ -2968,7 +2968,7 @@ ai-company/
 │       │   ├── bus_bridge.py       # Message-bus → WebSocket bridge
 │       │   ├── channels.py         # WebSocket channel definitions
 │       │   ├── config.py           # API configuration models (ServerConfig, CorsConfig)
-│       │   ├── controllers/        # Class-based route controllers (14 controllers)
+│       │   ├── controllers/        # 13 class-based controllers + 1 WebSocket handler (14 route modules)
 │       │   ├── dto.py              # Request/response DTOs and envelopes
 │       │   ├── errors.py           # API error hierarchy (ApiError, NotFoundError, etc.)
 │       │   ├── exception_handlers.py # Litestar exception handler registration
@@ -2979,7 +2979,9 @@ ai-company/
 │       │   ├── state.py            # Typed AppState container with service access
 │       │   └── ws_models.py        # WebSocket event models (WsEvent, WsEventType)
 │       ├── cli/                     # CLI interface (future, if needed)
-│       │   └── (thin API wrapper — deferred, TBD)
+│       │   ├── __init__.py
+│       │   └── commands/
+│       │       └── __init__.py
 │       └── templates/               # Company templates
 │           ├── schema.py           # Template schema models
 │           ├── loader.py           # Template loader

@@ -87,6 +87,15 @@ class MessageBusBridge:
             )
             self._tasks.append(task)
 
+        if not self._tasks:
+            self._running = False
+            logger.error(
+                API_APP_STARTUP,
+                error="bus bridge started with zero active channels",
+            )
+            msg = "MessageBusBridge failed to subscribe to any channels"
+            raise RuntimeError(msg)
+
     async def stop(self) -> None:
         """Cancel all polling tasks."""
         if not self._running:
@@ -124,7 +133,7 @@ class MessageBusBridge:
                 consecutive_errors = 0
             except asyncio.CancelledError:
                 break
-            except Exception:
+            except OSError, ConnectionError, TimeoutError:
                 consecutive_errors += 1
                 if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
                     logger.error(
@@ -141,6 +150,13 @@ class MessageBusBridge:
                     exc_info=True,
                 )
                 await asyncio.sleep(_POLL_TIMEOUT)
+            except Exception:
+                logger.error(
+                    API_BRIDGE_CHANNEL_DEAD,
+                    channel=channel_name,
+                    exc_info=True,
+                )
+                break
 
     @staticmethod
     def _to_ws_event(message: Message, channel_name: str) -> WsEvent:

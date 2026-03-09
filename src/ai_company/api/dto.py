@@ -7,7 +7,7 @@ models because they omit server-generated fields).
 
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from ai_company.core.enums import (
     ApprovalRiskLevel,
@@ -32,31 +32,21 @@ class ApiResponse[T](BaseModel):
     """Standard API response envelope.
 
     Attributes:
-        success: Whether the request succeeded.
         data: Response payload (``None`` on error).
         error: Error message (``None`` on success).
+        success: Whether the request succeeded (computed from ``error``).
     """
 
     model_config = ConfigDict(frozen=True)
 
-    success: bool = True
     data: T | None = None
     error: str | None = None
 
-    @model_validator(mode="after")
-    def _validate_success_consistency(self) -> Self:
-        """Enforce envelope invariant.
-
-        ``success=False`` requires a non-None ``error``.
-        ``success=True`` requires ``error`` to be ``None``.
-        """
-        if not self.success and self.error is None:
-            msg = "error must be set when success is False"
-            raise ValueError(msg)
-        if self.success and self.error is not None:
-            msg = "error must be None when success is True"
-            raise ValueError(msg)
-        return self
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def success(self) -> bool:
+        """Whether the request succeeded (derived from ``error``)."""
+        return self.error is None
 
 
 class PaginationMeta(BaseModel):
@@ -79,33 +69,23 @@ class PaginatedResponse[T](BaseModel):
     """Paginated API response envelope.
 
     Attributes:
-        success: Whether the request succeeded.
         data: Page of items.
         error: Error message (``None`` on success).
         pagination: Pagination metadata.
+        success: Whether the request succeeded (computed from ``error``).
     """
 
     model_config = ConfigDict(frozen=True)
 
-    success: bool = True
     data: tuple[T, ...] = ()
     error: str | None = None
     pagination: PaginationMeta
 
-    @model_validator(mode="after")
-    def _validate_success_consistency(self) -> Self:
-        """Enforce envelope invariant.
-
-        ``success=False`` requires a non-None ``error``.
-        ``success=True`` requires ``error`` to be ``None``.
-        """
-        if not self.success and self.error is None:
-            msg = "error must be set when success is False"
-            raise ValueError(msg)
-        if self.success and self.error is not None:
-            msg = "error must be None when success is True"
-            raise ValueError(msg)
-        return self
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def success(self) -> bool:
+        """Whether the request succeeded (derived from ``error``)."""
+        return self.error is None
 
 
 # ── Task request DTOs ───────────────────────────────────────────
@@ -207,14 +187,16 @@ class CreateApprovalRequest(BaseModel):
     def _validate_metadata_bounds(self) -> Self:
         """Limit metadata size to prevent memory abuse."""
         if len(self.metadata) > _MAX_METADATA_KEYS:
-            msg = "metadata must have at most 20 keys"
+            msg = f"metadata must have at most {_MAX_METADATA_KEYS} keys"
             raise ValueError(msg)
         for k, v in self.metadata.items():
             if len(k) > _MAX_METADATA_STR_LEN:
-                msg = "metadata key must be at most 256 characters"
+                msg = f"metadata key must be at most {_MAX_METADATA_STR_LEN} characters"
                 raise ValueError(msg)
             if len(v) > _MAX_METADATA_STR_LEN:
-                msg = "metadata value must be at most 256 characters"
+                msg = (
+                    f"metadata value must be at most {_MAX_METADATA_STR_LEN} characters"
+                )
                 raise ValueError(msg)
         return self
 
@@ -228,7 +210,7 @@ class ApproveRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    comment: str | None = None
+    comment: NotBlankStr | None = None
 
 
 class RejectRequest(BaseModel):

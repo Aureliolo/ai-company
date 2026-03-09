@@ -54,7 +54,7 @@ class ApprovalItem(BaseModel):
     expires_at: AwareDatetime | None = None
     decided_at: AwareDatetime | None = None
     decided_by: NotBlankStr | None = None
-    decision_reason: str | None = None
+    decision_reason: NotBlankStr | None = None
     task_id: NotBlankStr | None = None
     metadata: dict[str, str] = Field(default_factory=dict)
 

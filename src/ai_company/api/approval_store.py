@@ -6,15 +6,23 @@ persistence-backed implementation in M7.
 """
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from ai_company.api.errors import ConflictError
 from ai_company.core.approval import ApprovalItem  # noqa: TC001
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 from ai_company.core.enums import (
     ApprovalRiskLevel,
     ApprovalStatus,
 )
 from ai_company.observability import get_logger
-from ai_company.observability.events.api import API_APPROVAL_EXPIRED
+from ai_company.observability.events.api import (
+    API_APPROVAL_CONFLICT,
+    API_APPROVAL_EXPIRED,
+    API_RESOURCE_NOT_FOUND,
+)
 
 logger = get_logger(__name__)
 
@@ -26,8 +34,13 @@ class ApprovalStore:
     not needed because Litestar runs on a single event loop.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        on_expire: Callable[[ApprovalItem], None] | None = None,
+    ) -> None:
         self._items: dict[str, ApprovalItem] = {}
+        self._on_expire = on_expire
 
     async def add(self, item: ApprovalItem) -> None:
         """Add a new approval item.
@@ -41,7 +54,7 @@ class ApprovalStore:
         if item.id in self._items:
             msg = f"Approval {item.id!r} already exists"
             logger.warning(
-                API_APPROVAL_EXPIRED,
+                API_APPROVAL_CONFLICT,
                 error="duplicate",
                 approval_id=item.id,
             )
@@ -82,7 +95,7 @@ class ApprovalStore:
             Tuple of matching approval items.
         """
         result: list[ApprovalItem] = []
-        for stored in self._items.values():
+        for stored in list(self._items.values()):
             checked = self._check_expiration(stored)
             if status is not None and checked.status != status:
                 continue
@@ -103,6 +116,11 @@ class ApprovalStore:
             The saved item, or ``None`` if the ID was not found.
         """
         if item.id not in self._items:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="approval",
+                approval_id=item.id,
+            )
             return None
         self._items[item.id] = item
         return item
@@ -132,5 +150,7 @@ class ApprovalStore:
                 API_APPROVAL_EXPIRED,
                 approval_id=item.id,
             )
+            if self._on_expire is not None:
+                self._on_expire(expired)
             return expired
         return item

@@ -205,6 +205,11 @@ class TaskController(Controller):
         try:
             new_task = task.with_transition(data.target_status, **overrides)
         except ValueError as exc:
+            logger.warning(
+                TASK_STATUS_CHANGED,
+                task_id=task_id,
+                error=str(exc),
+            )
             raise ApiValidationError(str(exc)) from exc
         await app_state.persistence.tasks.save(new_task)
         logger.info(

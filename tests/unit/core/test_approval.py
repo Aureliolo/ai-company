@@ -75,7 +75,7 @@ class TestApprovalItem:
 
     def test_rejected_requires_decision_reason(self) -> None:
         now = _now()
-        with pytest.raises(ValueError, match="decision_reason is required"):
+        with pytest.raises(ValueError, match="at least 1 character"):
             ApprovalItem(
                 id="approval-abc",
                 action_type="budget_spend",

@@ -71,6 +71,14 @@ async def ws_handler(
             )
             return
 
+        if not isinstance(event, dict):
+            logger.warning(
+                API_WS_INVALID_MESSAGE,
+                data_preview=str(event_data)[:100],
+                reason="not_a_dict",
+            )
+            return
+
         channel = event.get("channel", "")
         if channel not in subscribed:
             return
@@ -120,7 +128,7 @@ async def _receive_loop(
         raise
 
 
-def _handle_message(
+def _handle_message(  # noqa: C901, PLR0911
     data: str,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
@@ -135,7 +143,7 @@ def _handle_message(
     Returns:
         JSON acknowledgement or error string.
     """
-    if len(data) > _MAX_WS_MESSAGE_BYTES:
+    if len(data.encode()) > _MAX_WS_MESSAGE_BYTES:
         return json.dumps({"error": "Message too large"})
 
     try:
@@ -147,9 +155,17 @@ def _handle_message(
         )
         return json.dumps({"error": "Invalid JSON"})
 
+    if not isinstance(msg, dict):
+        return json.dumps({"error": "Expected JSON object"})
+
     action = msg.get("action")
-    channels: list[str] = msg.get("channels", [])
-    client_filters: dict[str, str] = msg.get("filters", {})
+    channels = msg.get("channels", [])
+    client_filters = msg.get("filters", {})
+
+    if not isinstance(channels, list) or not all(isinstance(c, str) for c in channels):
+        return json.dumps({"error": "channels must be a list of strings"})
+    if not isinstance(client_filters, dict):
+        return json.dumps({"error": "filters must be an object"})
 
     if action == "subscribe":
         # Validate filter bounds to prevent memory abuse.

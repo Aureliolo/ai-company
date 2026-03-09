@@ -6,6 +6,8 @@ lifecycle hooks (startup/shutdown).
 """
 
 import time
+from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from litestar import Litestar, Router
@@ -19,19 +21,22 @@ from litestar.openapi.plugins import ScalarRenderPlugin
 from ai_company import __version__
 from ai_company.api.approval_store import ApprovalStore
 from ai_company.api.bus_bridge import MessageBusBridge
-from ai_company.api.channels import create_channels_plugin
+from ai_company.api.channels import CHANNEL_APPROVALS, create_channels_plugin
 from ai_company.api.controllers import ALL_CONTROLLERS
 from ai_company.api.controllers.ws import ws_handler
 from ai_company.api.exception_handlers import EXCEPTION_HANDLERS
 from ai_company.api.middleware import RequestLoggingMiddleware
 from ai_company.api.state import AppState
+from ai_company.api.ws_models import WsEvent, WsEventType
 from ai_company.budget.tracker import CostTracker  # noqa: TC001
 from ai_company.communication.bus_protocol import MessageBus  # noqa: TC001
 from ai_company.config.schema import RootConfig
+from ai_company.core.approval import ApprovalItem  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
+    API_APPROVAL_PUBLISH_FAILED,
 )
 from ai_company.persistence.protocol import PersistenceBackend  # noqa: TC001
 
@@ -43,6 +48,50 @@ if TYPE_CHECKING:
     from ai_company.api.config import ApiConfig
 
 logger = get_logger(__name__)
+
+
+def _make_expire_callback(
+    channels_plugin: ChannelsPlugin,
+) -> Callable[[ApprovalItem], None]:
+    """Create a sync callback that publishes APPROVAL_EXPIRED events.
+
+    The callback is invoked by ``ApprovalStore._check_expiration``
+    when lazy expiry transitions an item to EXPIRED.  Best-effort:
+    publish errors are logged and swallowed.
+
+    Args:
+        channels_plugin: Litestar channels plugin for WebSocket delivery.
+
+    Returns:
+        Sync callback accepting an expired ``ApprovalItem``.
+    """
+
+    def _on_expire(item: ApprovalItem) -> None:
+        event = WsEvent(
+            event_type=WsEventType.APPROVAL_EXPIRED,
+            channel=CHANNEL_APPROVALS,
+            timestamp=datetime.now(UTC),
+            payload={
+                "approval_id": item.id,
+                "status": item.status.value,
+                "action_type": item.action_type,
+                "risk_level": item.risk_level.value,
+            },
+        )
+        try:
+            channels_plugin.publish(
+                event.model_dump_json(),
+                channels=[CHANNEL_APPROVALS],
+            )
+        except RuntimeError, OSError:
+            logger.warning(
+                API_APPROVAL_PUBLISH_FAILED,
+                approval_id=item.id,
+                event_type=WsEventType.APPROVAL_EXPIRED.value,
+                exc_info=True,
+            )
+
+    return _on_expire
 
 
 def _build_lifecycle(
@@ -77,7 +126,7 @@ async def _cleanup_on_failure(
     message_bus: MessageBus | None,
     started_bus: bool,
 ) -> None:
-    """Reverse cleanup of already-started components on failure."""
+    """Reverse cleanup of persistence and message bus on startup failure."""
     if started_bus and message_bus is not None:
         try:
             await message_bus.stop()
@@ -218,11 +267,15 @@ def create_app(
         msg = (
             "create_app called without persistence, message_bus, "
             "and/or cost_tracker — controllers accessing missing "
-            "services will return 500.  Use test fakes for testing."
+            "services will return 503.  Use test fakes for testing."
         )
         logger.warning(API_APP_STARTUP, note=msg)
 
-    effective_approval_store = approval_store or ApprovalStore()
+    channels_plugin = create_channels_plugin()
+    expire_callback = _make_expire_callback(channels_plugin)
+    effective_approval_store = approval_store or ApprovalStore(
+        on_expire=expire_callback,
+    )
 
     app_state = AppState(
         config=effective_config,
@@ -233,7 +286,6 @@ def create_app(
         startup_time=time.monotonic(),
     )
 
-    channels_plugin = create_channels_plugin()
     bridge = _build_bridge(message_bus, channels_plugin)
     plugins: list[ChannelsPlugin] = [channels_plugin]
     middleware = _build_middleware(api_config)
@@ -285,7 +337,7 @@ def create_app(
             ),
             ResponseHeader(
                 name="Content-Security-Policy",
-                value="default-src 'self'; script-src 'self' 'unsafe-inline'",
+                value="default-src 'self'; script-src 'self'",
             ),
         ],
         middleware=middleware,  # type: ignore[arg-type]

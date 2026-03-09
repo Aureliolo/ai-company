@@ -19,12 +19,11 @@ logger = get_logger(__name__)
 
 
 def run_server(config: RootConfig) -> None:
-    """Start the API server via uvicorn.
+    """Create and run the Litestar app via uvicorn.
 
-    Creates the Litestar app with ``config`` and runs it.
     Backend services (persistence, message bus, cost tracker) are
-    **not** initialised here — pass them via ``create_app`` for
-    a fully functional server.
+    not passed — intended for development/demo use.  For production,
+    call ``create_app()`` directly with all services.
 
     Args:
         config: Root company configuration containing server
@@ -53,6 +52,7 @@ def run_server(config: RootConfig) -> None:
         host=server.host,
         port=server.port,
         workers=server.workers,
+        reload=server.reload,
         ws_ping_interval=ws_ping,
         ws_ping_timeout=ws_timeout,
     )

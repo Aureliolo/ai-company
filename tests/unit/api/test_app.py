@@ -31,3 +31,44 @@ class TestCreateApp:
         assert response.status_code == 200
         data = response.json()
         assert data["info"]["title"] == "AI Company API"
+
+
+@pytest.mark.unit
+class TestAppLifecycle:
+    async def test_startup_partial_failure_cleanup(self) -> None:
+        """Persistence ok, bus fails → persistence cleaned up."""
+        from ai_company.api.app import _safe_startup
+        from tests.unit.api.conftest import (
+            FakeMessageBus,
+            FakePersistenceBackend,
+        )
+
+        persistence = FakePersistenceBackend()
+        bus = FakeMessageBus()
+
+        async def failing_start() -> None:
+            msg = "bus boom"
+            raise RuntimeError(msg)
+
+        bus.start = failing_start  # type: ignore[method-assign]
+
+        with pytest.raises(RuntimeError, match="bus boom"):
+            await _safe_startup(persistence, bus, None)
+        # Persistence should have been disconnected during cleanup
+        assert not persistence.is_connected
+
+    async def test_shutdown_error_handling(self) -> None:
+        """Shutdown errors are logged but don't propagate."""
+        from ai_company.api.app import _safe_shutdown
+        from tests.unit.api.conftest import FakePersistenceBackend
+
+        persistence = FakePersistenceBackend()
+
+        async def failing_disconnect() -> None:
+            msg = "disconnect boom"
+            raise RuntimeError(msg)
+
+        persistence.disconnect = failing_disconnect  # type: ignore[method-assign]
+
+        # Should not raise even when disconnect fails
+        await _safe_shutdown(None, None, persistence)

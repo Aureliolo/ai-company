@@ -22,3 +22,21 @@ class TestProviderController:
     def test_list_models_not_found(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/providers/nonexistent/models")
         assert resp.status_code == 404
+
+
+@pytest.mark.unit
+class TestProviderApiKeySecurity:
+    def test_provider_api_key_stripped(
+        self,
+        root_config: Any,
+    ) -> None:
+        """Verify api_key is stripped from provider responses."""
+        from ai_company.api.controllers.providers import _safe_provider
+        from ai_company.config.schema import ProviderConfig
+
+        provider = ProviderConfig(
+            driver="test-driver",
+            api_key="test-placeholder",
+        )
+        safe = _safe_provider(provider)
+        assert safe.api_key is None

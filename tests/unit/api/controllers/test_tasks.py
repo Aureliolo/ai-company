@@ -103,3 +103,88 @@ class TestTaskController:
             headers={"X-Human-Role": "ceo"},
         )
         assert resp.status_code == 404
+
+
+@pytest.mark.unit
+class TestUpdateTask:
+    def test_update_task(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        task = make_task()
+        fake_persistence.tasks._tasks[task.id] = task
+        resp = test_client.patch(
+            "/api/v1/tasks/task-001",
+            json={"title": "Updated title"},
+            headers={"X-Human-Role": "ceo"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["data"]["title"] == "Updated title"
+
+    def test_update_not_found(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.patch(
+            "/api/v1/tasks/nonexistent",
+            json={"title": "Nope"},
+            headers={"X-Human-Role": "ceo"},
+        )
+        assert resp.status_code == 404
+
+    def test_update_requires_write_role(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.patch(
+            "/api/v1/tasks/task-001",
+            json={"title": "Nope"},
+            headers={"X-Human-Role": "observer"},
+        )
+        assert resp.status_code == 403
+
+
+@pytest.mark.unit
+class TestTransitionTask:
+    def test_transition_task(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        task = make_task()
+        fake_persistence.tasks._tasks[task.id] = task
+        resp = test_client.post(
+            "/api/v1/tasks/task-001/transition",
+            json={
+                "target_status": "assigned",
+                "assigned_to": "bob",
+            },
+            headers={"X-Human-Role": "ceo"},
+        )
+        assert resp.status_code == 201
+        assert resp.json()["data"]["status"] == "assigned"
+
+    def test_transition_invalid(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        task = make_task()
+        fake_persistence.tasks._tasks[task.id] = task
+        resp = test_client.post(
+            "/api/v1/tasks/task-001/transition",
+            json={"target_status": "completed"},
+            headers={"X-Human-Role": "ceo"},
+        )
+        assert resp.status_code == 422
+
+    def test_transition_not_found(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.post(
+            "/api/v1/tasks/nonexistent/transition",
+            json={"target_status": "assigned"},
+            headers={"X-Human-Role": "ceo"},
+        )
+        assert resp.status_code == 404
+
+    def test_transition_requires_write_role(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.post(
+            "/api/v1/tasks/task-001/transition",
+            json={"target_status": "assigned"},
+            headers={"X-Human-Role": "observer"},
+        )
+        assert resp.status_code == 403

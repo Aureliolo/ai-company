@@ -151,3 +151,50 @@ class TestWsHandleMessage:
         data = json.loads(result)
         assert data["error"] == "Filter bounds exceeded"
         assert "tasks" not in subscribed
+
+    def test_message_size_limit_boundary(self) -> None:
+        subscribed: set[str] = set()
+        filters: dict[str, dict[str, str]] = {}
+
+        # 4096 bytes should pass (valid JSON that fits)
+        small_msg = json.dumps({"action": "subscribe", "channels": ["tasks"]})
+        result = _handle_message(small_msg, subscribed, filters)
+        data = json.loads(result)
+        assert "error" not in data or data.get("action") == "subscribed"
+
+        # Message whose encoded bytes exceed 4096 should fail
+        big_msg = json.dumps({"action": "subscribe", "data": "x" * 4096})
+        result = _handle_message(big_msg, subscribed, filters)
+        data = json.loads(result)
+        assert data["error"] == "Message too large"
+
+    def test_non_dict_json_returns_error(self) -> None:
+        subscribed: set[str] = set()
+        filters: dict[str, dict[str, str]] = {}
+
+        # JSON array
+        result = _handle_message(
+            json.dumps([1, 2, 3]),
+            subscribed,
+            filters,
+        )
+        data = json.loads(result)
+        assert "error" in data
+
+        # JSON string
+        result = _handle_message(
+            json.dumps("hello"),
+            subscribed,
+            filters,
+        )
+        data = json.loads(result)
+        assert "error" in data
+
+        # JSON number
+        result = _handle_message(
+            json.dumps(42),
+            subscribed,
+            filters,
+        )
+        data = json.loads(result)
+        assert "error" in data
