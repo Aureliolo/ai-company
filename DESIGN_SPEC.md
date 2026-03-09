@@ -81,7 +81,7 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 
 > **Implementation snapshot (2026-03-09):**
 > - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed.
-> - **In progress:** M5 — memory interface protocol complete (MemoryBackend, MemoryCapabilities, SharedKnowledgeStore protocols, models, config, factory), budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) in progress. Mem0 adapter backend pending.
+> - **In progress:** M5 — memory interface protocol complete (MemoryBackend, MemoryCapabilities, SharedKnowledgeStore protocols, models, config, factory), budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking), CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) in progress. Mem0 adapter backend pending.
 > - **Not started (mostly placeholders):** M6 API/CLI surface, M7 security + approval system.
 
 ### 1.5 Configuration Philosophy

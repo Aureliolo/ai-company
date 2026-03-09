@@ -4,9 +4,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from ai_company.budget._optimizer_helpers import _classify_severity
 from ai_company.budget.config import BudgetAlertConfig, BudgetConfig
 from ai_company.budget.enums import BudgetAlertLevel
-from ai_company.budget.optimizer import CostOptimizer, _classify_severity
+from ai_company.budget.optimizer import CostOptimizer
 from ai_company.budget.optimizer_models import (
     AnomalySeverity,
     AnomalyType,
@@ -508,7 +509,7 @@ class TestEvaluateOperation:
         )
         optimizer, tracker = _make_optimizer(budget_config=bc)
 
-        # Spend 95% and request 10 more
+        # Spend 95% and request 10 more → projected 105% → HARD_STOP
         await tracker.record(
             make_cost_record(cost_usd=95.0, timestamp=_START + timedelta(hours=1)),
         )
@@ -519,7 +520,8 @@ class TestEvaluateOperation:
             now=_START + timedelta(days=15),
         )
         assert decision.approved is False
-        assert "would exceed" in decision.reason
+        # With projected alert level, this now triggers auto-deny
+        assert "denied" in decision.reason.lower()
 
     async def test_warning_level_approved_with_conditions(self) -> None:
         bc = BudgetConfig(
@@ -733,3 +735,166 @@ class TestEdgeCases:
         result = await optimizer.recommend_downgrades(start=_START, end=_END)
         # Target "nonexistent" can't be resolved → no recommendation
         assert result.recommendations == ()
+
+    async def test_negative_estimated_cost_rejected(self) -> None:
+        """Negative estimated_cost_usd raises ValueError."""
+        optimizer, _ = _make_optimizer()
+        with pytest.raises(ValueError, match="estimated_cost_usd must be >= 0"):
+            await optimizer.evaluate_operation(
+                agent_id="alice",
+                estimated_cost_usd=-1.0,
+            )
+
+    async def test_window_count_upper_bound(self) -> None:
+        """window_count > 1000 raises ValueError."""
+        optimizer, _ = _make_optimizer()
+        with pytest.raises(ValueError, match="window_count must be <= 1000"):
+            await optimizer.detect_anomalies(
+                start=_START,
+                end=_END,
+                window_count=1001,
+            )
+
+    async def test_projected_alert_level_used_for_auto_deny(self) -> None:
+        """Auto-deny uses projected alert level, not current."""
+        bc = BudgetConfig(
+            total_monthly=100.0,
+            alerts=BudgetAlertConfig(warn_at=75, critical_at=90, hard_stop_at=100),
+        )
+        config = CostOptimizerConfig(
+            approval_auto_deny_alert_level=BudgetAlertLevel.HARD_STOP,
+        )
+        optimizer, tracker = _make_optimizer(budget_config=bc, config=config)
+
+        # Spend 95% — current alert is CRITICAL, but requesting 10
+        # would push to 105% → projected HARD_STOP → denied
+        await tracker.record(
+            make_cost_record(cost_usd=95.0, timestamp=_START + timedelta(hours=1)),
+        )
+
+        decision = await optimizer.evaluate_operation(
+            agent_id="alice",
+            estimated_cost_usd=10.0,
+            now=_START + timedelta(days=15),
+        )
+        assert decision.approved is False
+        assert "projected" in decision.reason.lower()
+
+
+# ── Routing Optimization Tests ──────────────────────────────────
+
+
+@pytest.mark.unit
+class TestSuggestRoutingOptimizations:
+    async def test_no_resolver_empty_result(self) -> None:
+        optimizer, _ = _make_optimizer()
+        result = await optimizer.suggest_routing_optimizations(
+            start=_START,
+            end=_END,
+        )
+        assert result.suggestions == ()
+        assert result.agents_analyzed == 0
+
+    async def test_no_records_empty_suggestions(self) -> None:
+        resolver = _make_resolver()
+        optimizer, _ = _make_optimizer(model_resolver=resolver)
+        result = await optimizer.suggest_routing_optimizations(
+            start=_START,
+            end=_END,
+        )
+        assert result.suggestions == ()
+        assert result.agents_analyzed == 0
+
+    async def test_suggests_cheaper_model(self) -> None:
+        resolver = _make_resolver()
+        optimizer, tracker = _make_optimizer(model_resolver=resolver)
+
+        # Alice uses the expensive large model
+        await tracker.record(
+            make_cost_record(
+                agent_id="alice",
+                model="test-large-001",
+                cost_usd=5.0,
+                input_tokens=1000,
+                output_tokens=500,
+                timestamp=_START + timedelta(hours=1),
+            ),
+        )
+
+        result = await optimizer.suggest_routing_optimizations(
+            start=_START,
+            end=_END,
+        )
+        assert len(result.suggestions) == 1
+        suggestion = result.suggestions[0]
+        assert suggestion.agent_id == "alice"
+        assert suggestion.current_model == "test-large-001"
+        assert suggestion.estimated_savings_per_1k > 0
+        assert result.total_estimated_savings_per_1k > 0
+
+    async def test_no_suggestion_for_cheapest_model(self) -> None:
+        resolver = _make_resolver()
+        optimizer, tracker = _make_optimizer(model_resolver=resolver)
+
+        # Alice already uses the cheapest model
+        await tracker.record(
+            make_cost_record(
+                agent_id="alice",
+                model="test-small-001",
+                cost_usd=0.1,
+                input_tokens=1000,
+                output_tokens=500,
+                timestamp=_START + timedelta(hours=1),
+            ),
+        )
+
+        result = await optimizer.suggest_routing_optimizations(
+            start=_START,
+            end=_END,
+        )
+        assert result.suggestions == ()
+        assert result.agents_analyzed == 1
+
+    async def test_start_after_end_rejected(self) -> None:
+        optimizer, _ = _make_optimizer()
+        with pytest.raises(ValueError, match=r"start .* must be before end"):
+            await optimizer.suggest_routing_optimizations(start=_END, end=_START)
+
+    async def test_context_window_respected(self) -> None:
+        """Suggestions only include models with sufficient context window."""
+        models = [
+            ResolvedModel(
+                provider_name="test-provider",
+                model_id="test-large-001",
+                alias="large",
+                cost_per_1k_input=0.03,
+                cost_per_1k_output=0.06,
+                max_context=200000,
+            ),
+            ResolvedModel(
+                provider_name="test-provider",
+                model_id="test-small-001",
+                alias="small",
+                cost_per_1k_input=0.001,
+                cost_per_1k_output=0.002,
+                max_context=50000,  # Smaller context than large
+            ),
+        ]
+        resolver = _make_resolver(models)
+        optimizer, tracker = _make_optimizer(model_resolver=resolver)
+
+        await tracker.record(
+            make_cost_record(
+                agent_id="alice",
+                model="test-large-001",
+                cost_usd=5.0,
+                timestamp=_START + timedelta(hours=1),
+            ),
+        )
+
+        result = await optimizer.suggest_routing_optimizations(
+            start=_START,
+            end=_END,
+        )
+        # small has insufficient context window → no suggestion
+        assert result.suggestions == ()

@@ -224,6 +224,15 @@ class EfficiencyAnalysis(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _validate_agents_sort_order(self) -> Self:
+        """Ensure agents are sorted by cost_per_1k_tokens descending."""
+        costs = [a.cost_per_1k_tokens for a in self.agents]
+        if costs != sorted(costs, reverse=True):
+            msg = "agents must be sorted by cost_per_1k_tokens descending"
+            raise ValueError(msg)
+        return self
+
 
 # ── Downgrade Recommendations ─────────────────────────────────────
 
@@ -270,7 +279,7 @@ class DowngradeAnalysis(BaseModel):
     Attributes:
         recommendations: Per-agent downgrade recommendations.
         total_estimated_savings_per_1k: Aggregate estimated savings per 1000
-            tokens across all recommendations.
+            tokens across all recommendations (computed).
         budget_pressure_percent: Current budget utilization percentage.
     """
 
@@ -280,14 +289,19 @@ class DowngradeAnalysis(BaseModel):
         default=(),
         description="Per-agent downgrade recommendations",
     )
-    total_estimated_savings_per_1k: float = Field(
-        ge=0.0,
-        description="Aggregate estimated savings per 1000 tokens",
-    )
     budget_pressure_percent: float = Field(
         ge=0.0,
         description="Current budget utilization percentage",
     )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_estimated_savings_per_1k(self) -> float:
+        """Aggregate estimated savings per 1000 tokens."""
+        return round(
+            sum(r.estimated_savings_per_1k for r in self.recommendations),
+            BUDGET_ROUNDING_PRECISION,
+        )
 
 
 # ── Approval Decision ─────────────────────────────────────────────
@@ -342,7 +356,9 @@ class CostOptimizerConfig(BaseModel):
         approval_auto_deny_alert_level: Alert level at or above which
             operations are automatically denied.
         approval_warn_threshold_usd: Cost threshold for adding a
-            warning condition to approval.
+            warning condition to approval.  When set to ``0.0``, every
+            approved operation receives a "High-cost operation" condition
+            (effectively "always warn").
         min_anomaly_windows: Minimum number of historical windows
             required before anomaly detection activates.
     """
@@ -379,3 +395,115 @@ class CostOptimizerConfig(BaseModel):
         strict=True,
         description="Minimum historical windows for anomaly detection",
     )
+
+
+# ── Routing Optimization ────────────────────────────────────────
+
+
+class RoutingSuggestion(BaseModel):
+    """A routing optimization suggestion for a single agent.
+
+    Suggests switching an agent's most-used model to a cheaper
+    alternative that provides sufficient context window size.
+
+    Attributes:
+        agent_id: Agent identifier.
+        current_model: Currently most-used model identifier.
+        suggested_model: Suggested cheaper alternative.
+        current_cost_per_1k: Current model's total cost per 1k tokens.
+        suggested_cost_per_1k: Suggested model's total cost per 1k tokens.
+        estimated_savings_per_1k: Estimated savings per 1k tokens (computed).
+        reason: Human-readable explanation.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    agent_id: NotBlankStr = Field(description="Agent identifier")
+    current_model: NotBlankStr = Field(description="Current most-used model")
+    suggested_model: NotBlankStr = Field(description="Suggested cheaper model")
+    current_cost_per_1k: float = Field(
+        ge=0.0,
+        description="Current model total cost per 1k tokens",
+    )
+    suggested_cost_per_1k: float = Field(
+        ge=0.0,
+        description="Suggested model total cost per 1k tokens",
+    )
+    reason: NotBlankStr = Field(description="Human-readable explanation")
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def estimated_savings_per_1k(self) -> float:
+        """Estimated savings per 1k tokens."""
+        return round(
+            self.current_cost_per_1k - self.suggested_cost_per_1k,
+            BUDGET_ROUNDING_PRECISION,
+        )
+
+    @model_validator(mode="after")
+    def _validate_different_models(self) -> Self:
+        """Ensure current and suggested models differ."""
+        if self.current_model == self.suggested_model:
+            msg = (
+                f"current_model and suggested_model must differ, "
+                f"both are {self.current_model!r}"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_savings_positive(self) -> Self:
+        """Ensure suggested model is actually cheaper."""
+        if self.suggested_cost_per_1k >= self.current_cost_per_1k:
+            msg = (
+                f"suggested_cost_per_1k ({self.suggested_cost_per_1k}) "
+                f"must be less than current_cost_per_1k "
+                f"({self.current_cost_per_1k})"
+            )
+            raise ValueError(msg)
+        return self
+
+
+class RoutingOptimizationAnalysis(BaseModel):
+    """Result of a routing optimization analysis.
+
+    Attributes:
+        suggestions: Per-agent routing optimization suggestions.
+        total_estimated_savings_per_1k: Aggregate estimated savings per 1k
+            tokens across all suggestions (computed).
+        analysis_period_start: Start of the analysis period.
+        analysis_period_end: End of the analysis period.
+        agents_analyzed: Number of agents analyzed.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    suggestions: tuple[RoutingSuggestion, ...] = Field(
+        default=(),
+        description="Per-agent routing optimization suggestions",
+    )
+    analysis_period_start: datetime = Field(description="Analysis period start")
+    analysis_period_end: datetime = Field(description="Analysis period end")
+    agents_analyzed: int = Field(ge=0, description="Number of agents analyzed")
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def total_estimated_savings_per_1k(self) -> float:
+        """Aggregate estimated savings per 1k tokens."""
+        return round(
+            sum(s.estimated_savings_per_1k for s in self.suggestions),
+            BUDGET_ROUNDING_PRECISION,
+        )
+
+    @model_validator(mode="after")
+    def _validate_period_ordering(self) -> Self:
+        """Ensure analysis_period_start is before analysis_period_end."""
+        if self.analysis_period_start >= self.analysis_period_end:
+            msg = (
+                f"analysis_period_start "
+                f"({self.analysis_period_start.isoformat()}) "
+                f"must be before analysis_period_end "
+                f"({self.analysis_period_end.isoformat()})"
+            )
+            raise ValueError(msg)
+        return self

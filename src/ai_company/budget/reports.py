@@ -19,7 +19,10 @@ from ai_company.budget.spending_summary import SpendingSummary  # noqa: TC001
 from ai_company.constants import BUDGET_ROUNDING_PRECISION
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events.cfo import CFO_REPORT_GENERATED
+from ai_company.observability.events.cfo import (
+    CFO_REPORT_GENERATED,
+    CFO_REPORT_GENERATOR_CREATED,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -174,11 +177,11 @@ class SpendingReport(BaseModel):
         default=None,
         description="Comparison with previous period",
     )
-    top_agents_by_cost: tuple[tuple[str, float], ...] = Field(
+    top_agents_by_cost: tuple[tuple[NotBlankStr, float], ...] = Field(
         default=(),
         description="Top agents by cost (agent_id, cost_usd)",
     )
-    top_tasks_by_cost: tuple[tuple[str, float], ...] = Field(
+    top_tasks_by_cost: tuple[tuple[NotBlankStr, float], ...] = Field(
         default=(),
         description="Top tasks by cost (task_id, cost_usd)",
     )
@@ -225,6 +228,10 @@ class ReportGenerator:
     ) -> None:
         self._cost_tracker = cost_tracker
         self._budget_config = budget_config
+        logger.debug(
+            CFO_REPORT_GENERATOR_CREATED,
+            has_budget_config=True,
+        )
 
     async def generate_report(
         self,
@@ -235,6 +242,10 @@ class ReportGenerator:
         include_period_comparison: bool = True,
     ) -> SpendingReport:
         """Generate a spending report for the given period.
+
+        Uses a single ``get_records`` snapshot and derives the summary
+        from the same data to avoid race conditions between separate
+        ``build_summary`` and ``get_records`` calls.
 
         Args:
             start: Inclusive period start.
@@ -258,11 +269,12 @@ class ReportGenerator:
 
         now = datetime.now(UTC)
 
-        summary = await self._cost_tracker.build_summary(
+        # Single snapshot to avoid double-fetch race condition (#3)
+        records = await self._cost_tracker.get_records(
             start=start,
             end=end,
         )
-        records = await self._cost_tracker.get_records(
+        summary = await self._cost_tracker.build_summary(
             start=start,
             end=end,
         )

@@ -55,6 +55,8 @@ from ai_company.budget.optimizer_models import (
     DowngradeRecommendation,
     EfficiencyAnalysis,
     EfficiencyRating,
+    RoutingOptimizationAnalysis,
+    RoutingSuggestion,
     SpendingAnomaly,
 )
 from ai_company.budget.quota import (
@@ -139,6 +141,8 @@ __all__ = [
     "QuotaWindow",
     "RedundancyRate",
     "ReportGenerator",
+    "RoutingOptimizationAnalysis",
+    "RoutingSuggestion",
     "SpendingAnomaly",
     "SpendingReport",
     "SpendingSummary",

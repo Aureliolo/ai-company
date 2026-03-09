@@ -16,6 +16,8 @@ from ai_company.budget.optimizer_models import (
     DowngradeRecommendation,
     EfficiencyAnalysis,
     EfficiencyRating,
+    RoutingOptimizationAnalysis,
+    RoutingSuggestion,
     SpendingAnomaly,
 )
 
@@ -265,11 +267,33 @@ class TestDowngradeAnalysis:
     def test_empty_analysis(self) -> None:
         analysis = DowngradeAnalysis(
             recommendations=(),
-            total_estimated_savings_per_1k=0.0,
             budget_pressure_percent=0.0,
         )
         assert analysis.recommendations == ()
         assert analysis.total_estimated_savings_per_1k == 0.0
+
+    @pytest.mark.unit
+    def test_total_savings_is_computed(self) -> None:
+        analysis = DowngradeAnalysis(
+            recommendations=(
+                DowngradeRecommendation(
+                    agent_id="alice",
+                    current_model="test-large-001",
+                    recommended_model="test-small-001",
+                    estimated_savings_per_1k=0.05,
+                    reason="Switch to cheaper model",
+                ),
+                DowngradeRecommendation(
+                    agent_id="bob",
+                    current_model="test-large-001",
+                    recommended_model="test-small-001",
+                    estimated_savings_per_1k=0.03,
+                    reason="Switch to cheaper model",
+                ),
+            ),
+            budget_pressure_percent=50.0,
+        )
+        assert analysis.total_estimated_savings_per_1k == 0.08
 
 
 # ── ApprovalDecision Tests ────────────────────────────────────────
@@ -392,4 +416,167 @@ class TestDowngradeRecommendationValidator:
                 recommended_model="test-small-001",
                 estimated_savings_per_1k=0.0,
                 reason="Zero savings",
+            )
+
+
+# ── EfficiencyAnalysis sort-order validator tests ────────────────
+
+
+class TestEfficiencyAnalysisSortOrder:
+    @pytest.mark.unit
+    def test_sorted_agents_accepted(self) -> None:
+        analysis = EfficiencyAnalysis(
+            agents=(
+                AgentEfficiency(
+                    agent_id="bob",
+                    total_cost_usd=10.0,
+                    total_tokens=1000,
+                    record_count=5,
+                    efficiency_rating=EfficiencyRating.INEFFICIENT,
+                ),
+                AgentEfficiency(
+                    agent_id="alice",
+                    total_cost_usd=1.0,
+                    total_tokens=1000,
+                    record_count=5,
+                    efficiency_rating=EfficiencyRating.NORMAL,
+                ),
+            ),
+            global_avg_cost_per_1k=5.0,
+            analysis_period_start=datetime(2026, 2, 1, tzinfo=UTC),
+            analysis_period_end=datetime(2026, 3, 1, tzinfo=UTC),
+        )
+        assert len(analysis.agents) == 2
+
+    @pytest.mark.unit
+    def test_unsorted_agents_rejected(self) -> None:
+        with pytest.raises(ValueError, match="agents must be sorted"):
+            EfficiencyAnalysis(
+                agents=(
+                    AgentEfficiency(
+                        agent_id="alice",
+                        total_cost_usd=1.0,
+                        total_tokens=1000,
+                        record_count=5,
+                        efficiency_rating=EfficiencyRating.NORMAL,
+                    ),
+                    AgentEfficiency(
+                        agent_id="bob",
+                        total_cost_usd=10.0,
+                        total_tokens=1000,
+                        record_count=5,
+                        efficiency_rating=EfficiencyRating.INEFFICIENT,
+                    ),
+                ),
+                global_avg_cost_per_1k=5.0,
+                analysis_period_start=datetime(2026, 2, 1, tzinfo=UTC),
+                analysis_period_end=datetime(2026, 3, 1, tzinfo=UTC),
+            )
+
+
+# ── RoutingSuggestion Tests ──────────────────────────────────────
+
+
+class TestRoutingSuggestion:
+    @pytest.mark.unit
+    def test_construction(self) -> None:
+        suggestion = RoutingSuggestion(
+            agent_id="alice",
+            current_model="test-large-001",
+            suggested_model="test-small-001",
+            current_cost_per_1k=0.09,
+            suggested_cost_per_1k=0.003,
+            reason="Switch to cheaper model",
+        )
+        assert suggestion.agent_id == "alice"
+        assert suggestion.estimated_savings_per_1k == 0.087
+
+    @pytest.mark.unit
+    def test_frozen(self) -> None:
+        suggestion = RoutingSuggestion(
+            agent_id="alice",
+            current_model="test-large-001",
+            suggested_model="test-small-001",
+            current_cost_per_1k=0.09,
+            suggested_cost_per_1k=0.003,
+            reason="Switch to cheaper model",
+        )
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            suggestion.agent_id = "bob"  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_same_model_rejected(self) -> None:
+        with pytest.raises(ValueError, match="must differ"):
+            RoutingSuggestion(
+                agent_id="alice",
+                current_model="test-large-001",
+                suggested_model="test-large-001",
+                current_cost_per_1k=0.09,
+                suggested_cost_per_1k=0.003,
+                reason="No actual suggestion",
+            )
+
+    @pytest.mark.unit
+    def test_no_savings_rejected(self) -> None:
+        with pytest.raises(ValueError, match="must be less than"):
+            RoutingSuggestion(
+                agent_id="alice",
+                current_model="test-large-001",
+                suggested_model="test-small-001",
+                current_cost_per_1k=0.003,
+                suggested_cost_per_1k=0.09,
+                reason="More expensive",
+            )
+
+
+# ── RoutingOptimizationAnalysis Tests ────────────────────────────
+
+
+class TestRoutingOptimizationAnalysis:
+    @pytest.mark.unit
+    def test_empty_analysis(self) -> None:
+        analysis = RoutingOptimizationAnalysis(
+            suggestions=(),
+            analysis_period_start=datetime(2026, 2, 1, tzinfo=UTC),
+            analysis_period_end=datetime(2026, 3, 1, tzinfo=UTC),
+            agents_analyzed=0,
+        )
+        assert analysis.suggestions == ()
+        assert analysis.total_estimated_savings_per_1k == 0.0
+
+    @pytest.mark.unit
+    def test_total_savings_is_computed(self) -> None:
+        analysis = RoutingOptimizationAnalysis(
+            suggestions=(
+                RoutingSuggestion(
+                    agent_id="alice",
+                    current_model="test-large-001",
+                    suggested_model="test-small-001",
+                    current_cost_per_1k=0.09,
+                    suggested_cost_per_1k=0.003,
+                    reason="Switch to cheaper",
+                ),
+                RoutingSuggestion(
+                    agent_id="bob",
+                    current_model="test-medium-001",
+                    suggested_model="test-small-001",
+                    current_cost_per_1k=0.03,
+                    suggested_cost_per_1k=0.003,
+                    reason="Switch to cheaper",
+                ),
+            ),
+            analysis_period_start=datetime(2026, 2, 1, tzinfo=UTC),
+            analysis_period_end=datetime(2026, 3, 1, tzinfo=UTC),
+            agents_analyzed=2,
+        )
+        assert analysis.total_estimated_savings_per_1k == 0.114
+
+    @pytest.mark.unit
+    def test_period_ordering_invalid(self) -> None:
+        with pytest.raises(ValueError, match="analysis_period_start"):
+            RoutingOptimizationAnalysis(
+                suggestions=(),
+                analysis_period_start=datetime(2026, 3, 1, tzinfo=UTC),
+                analysis_period_end=datetime(2026, 2, 1, tzinfo=UTC),
+                agents_analyzed=0,
             )
