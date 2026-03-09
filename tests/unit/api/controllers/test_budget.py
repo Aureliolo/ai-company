@@ -9,18 +9,20 @@ from litestar.testing import TestClient  # noqa: TC002
 from ai_company.budget.cost_record import CostRecord
 from ai_company.budget.tracker import CostTracker  # noqa: TC001
 
+_HEADERS = {"X-Human-Role": "ceo"}
+
 
 @pytest.mark.unit
 class TestBudgetController:
     def test_get_budget_config(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/budget/config")
+        resp = test_client.get("/api/v1/budget/config", headers=_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         assert "total_monthly" in body["data"]
 
     def test_list_cost_records_empty(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get("/api/v1/budget/records")
+        resp = test_client.get("/api/v1/budget/records", headers=_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"] == []
@@ -42,7 +44,7 @@ class TestBudgetController:
             timestamp=datetime(2026, 3, 1, tzinfo=UTC),
         )
         await cost_tracker.record(record)
-        resp = test_client.get("/api/v1/budget/records")
+        resp = test_client.get("/api/v1/budget/records", headers=_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["pagination"]["total"] == 1
@@ -63,8 +65,12 @@ class TestBudgetController:
             timestamp=datetime(2026, 3, 1, tzinfo=UTC),
         )
         await cost_tracker.record(record)
-        resp = test_client.get("/api/v1/budget/agents/bob")
+        resp = test_client.get("/api/v1/budget/agents/bob", headers=_HEADERS)
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"]["agent_id"] == "bob"
         assert body["data"]["total_cost_usd"] == 0.05
+
+    def test_budget_requires_read_access(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.get("/api/v1/budget/config")
+        assert resp.status_code == 403

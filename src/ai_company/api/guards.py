@@ -1,8 +1,19 @@
 """Route guards for access control.
 
-Stub guards that check the ``X-Human-Role`` header.  Real
-authentication and authorization is implemented in M7.
+.. warning:: **Security Stub (M6)**
+
+   These guards check the ``X-Human-Role`` header, which is
+   **self-asserted by the caller** — there is no signature
+   verification, session token, or JWT.  This is intentional for
+   the M6 milestone scope.  **Real authentication and authorization
+   (pre-shared API key, JWT, or OAuth) will be implemented in M7
+   (issue scope: security & HR).**
+
+   Until M7, the API should only be exposed on trusted networks or
+   behind a reverse proxy that enforces authentication.
 """
+
+from enum import StrEnum
 
 from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.exceptions import PermissionDeniedException
@@ -12,10 +23,26 @@ from ai_company.observability.events.api import API_GUARD_DENIED
 
 logger = get_logger(__name__)
 
+
+class HumanRole(StrEnum):
+    """Recognised human roles for access control."""
+
+    CEO = "ceo"
+    MANAGER = "manager"
+    BOARD_MEMBER = "board_member"
+    PAIR_PROGRAMMER = "pair_programmer"
+    OBSERVER = "observer"
+
+
 _WRITE_ROLES: frozenset[str] = frozenset(
-    {"ceo", "manager", "board_member", "pair_programmer"}
+    {
+        HumanRole.CEO,
+        HumanRole.MANAGER,
+        HumanRole.BOARD_MEMBER,
+        HumanRole.PAIR_PROGRAMMER,
+    }
 )
-_READ_ROLES: frozenset[str] = _WRITE_ROLES | frozenset({"observer"})
+_READ_ROLES: frozenset[str] = _WRITE_ROLES | frozenset({HumanRole.OBSERVER})
 
 
 def _get_role(connection: ASGIConnection) -> str | None:  # type: ignore[type-arg]

@@ -35,7 +35,8 @@ class TestExceptionHandlers:
             assert resp.status_code == 404
             body = resp.json()
             assert body["success"] is False
-            assert "gone" in body["error"]
+            # Error message is scrubbed — internal details not exposed.
+            assert body["error"] == "Resource not found"
 
     def test_duplicate_record_maps_to_409(self) -> None:
         @get("/test")
@@ -46,6 +47,8 @@ class TestExceptionHandlers:
         with TestClient(_make_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 409
+            body = resp.json()
+            assert body["error"] == "Resource already exists"
 
     def test_persistence_error_maps_to_500(self) -> None:
         @get("/test")
@@ -58,6 +61,7 @@ class TestExceptionHandlers:
             assert resp.status_code == 500
             body = resp.json()
             assert body["success"] is False
+            assert body["error"] == "Internal persistence error"
 
     def test_api_not_found_error_maps_to_404(self) -> None:
         @get("/test")
@@ -68,6 +72,9 @@ class TestExceptionHandlers:
         with TestClient(_make_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 404
+            body = resp.json()
+            # handle_api_error returns the default class message.
+            assert body["error"] == "Resource not found"
 
     def test_api_conflict_error_maps_to_409(self) -> None:
         @get("/test")
@@ -78,6 +85,8 @@ class TestExceptionHandlers:
         with TestClient(_make_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 409
+            body = resp.json()
+            assert body["error"] == "Resource conflict"
 
     def test_api_forbidden_error_maps_to_403(self) -> None:
         @get("/test")
@@ -88,6 +97,8 @@ class TestExceptionHandlers:
         with TestClient(_make_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 403
+            body = resp.json()
+            assert body["error"] == "Forbidden"
 
     def test_value_error_falls_through_to_catch_all(self) -> None:
         @get("/test")

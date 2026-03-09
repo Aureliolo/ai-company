@@ -1,5 +1,7 @@
 """API controllers for all resource groups."""
 
+from litestar import Controller
+
 from ai_company.api.controllers.agents import AgentController
 from ai_company.api.controllers.analytics import AnalyticsController
 from ai_company.api.controllers.approvals import ApprovalsController
@@ -13,12 +15,9 @@ from ai_company.api.controllers.messages import MessageController
 from ai_company.api.controllers.projects import ProjectController
 from ai_company.api.controllers.providers import ProviderController
 from ai_company.api.controllers.tasks import TaskController
-from ai_company.api.controllers.ws import WsHandler
+from ai_company.api.controllers.ws import ws_handler
 
-# WsHandler is NOT in ALL_CONTROLLERS because it requires
-# ChannelsPlugin injection and must be registered separately
-# when the channels plugin is wired into create_app().
-ALL_CONTROLLERS: tuple[type, ...] = (
+ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     HealthController,
     CompanyController,
     AgentController,
@@ -42,6 +41,7 @@ __all__ = [
     "ArtifactController",
     "BudgetController",
     "CompanyController",
+    "Controller",
     "DepartmentController",
     "HealthController",
     "MeetingController",
@@ -49,5 +49,5 @@ __all__ = [
     "ProjectController",
     "ProviderController",
     "TaskController",
-    "WsHandler",
+    "ws_handler",
 ]

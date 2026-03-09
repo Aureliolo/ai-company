@@ -17,14 +17,22 @@ from ai_company.persistence.protocol import PersistenceBackend  # noqa: TC001
 class AppState:
     """Typed application state container.
 
+    Service fields are typed as non-optional to keep controller code
+    clean.  ``create_app()`` may pass ``None`` in dev/test mode
+    (with ``type: ignore``); controllers accessing missing services
+    will raise ``AttributeError``, caught by the global exception
+    handler and returned as a 500 response.
+
     Attributes:
         config: Root company configuration.
         persistence: Persistence backend for data access.
         message_bus: Internal message bus.
         cost_tracker: Cost tracking service.
+        startup_time: ``time.monotonic()`` snapshot at app creation.
     """
 
     config: RootConfig
     persistence: PersistenceBackend
     message_bus: MessageBus
     cost_tracker: CostTracker
+    startup_time: float = 0.0

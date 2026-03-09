@@ -6,6 +6,7 @@ from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
 
 from ai_company.api.dto import ApiResponse
+from ai_company.api.guards import require_read_access
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.core.company import Department  # noqa: TC001
 from ai_company.observability import get_logger
@@ -18,17 +19,17 @@ class CompanyController(Controller):
 
     path = "/company"
     tags = ("company",)
+    guards = [require_read_access]  # noqa: RUF012
 
     @get()
     async def get_company(
         self,
         state: State,
     ) -> ApiResponse[dict[str, Any]]:
-        """Return the current company configuration.
+        """Return a curated subset of company configuration.
 
-        Returns an explicit field dict because ``RootConfig`` contains
-        ``MappingProxyType`` fields that Pydantic/Litestar cannot
-        serialise directly.
+        Returns an explicit field dict to control the response
+        shape and avoid exposing internal configuration details.
 
         Args:
             state: Application state.

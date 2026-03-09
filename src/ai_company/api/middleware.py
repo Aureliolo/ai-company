@@ -68,6 +68,6 @@ class RequestLoggingMiddleware:
                 API_REQUEST_COMPLETED,
                 method=method,
                 path=path,
-                status_code=status_code or 500,
+                status_code=status_code if status_code is not None else 0,
                 duration_ms=duration_ms,
             )

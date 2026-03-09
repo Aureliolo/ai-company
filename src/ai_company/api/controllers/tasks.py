@@ -121,6 +121,7 @@ class TaskController(Controller):
             priority=data.priority,
             project=data.project,
             created_by=data.created_by,
+            assigned_to=data.assigned_to,
             estimated_complexity=data.estimated_complexity,
             budget_limit=data.budget_limit,
         )

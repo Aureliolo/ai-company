@@ -14,6 +14,8 @@ from pydantic import (
     Field,
 )
 
+from ai_company.core.types import NotBlankStr  # noqa: TC001
+
 
 class WsEventType(StrEnum):
     """Types of real-time WebSocket events."""
@@ -52,7 +54,7 @@ class WsEvent(BaseModel):
     event_type: WsEventType = Field(
         description="Event classification",
     )
-    channel: str = Field(min_length=1, description="Target channel name")
+    channel: NotBlankStr = Field(description="Target channel name")
     timestamp: AwareDatetime = Field(
         description="When the event occurred",
     )

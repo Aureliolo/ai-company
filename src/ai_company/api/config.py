@@ -4,7 +4,12 @@ Frozen Pydantic models for CORS, rate limiting, server, and the
 top-level ``ApiConfig`` that aggregates them all.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from enum import StrEnum
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
 class CorsConfig(BaseModel):
@@ -37,20 +42,53 @@ class CorsConfig(BaseModel):
         description="Whether credentials are allowed",
     )
 
+    @model_validator(mode="after")
+    def _validate_wildcard_credentials(self) -> Self:
+        """Reject ``*`` origin with ``allow_credentials=True``.
+
+        Browsers reject ``Access-Control-Allow-Origin: *`` combined
+        with ``Access-Control-Allow-Credentials: true``.
+        """
+        if self.allow_credentials and "*" in self.allowed_origins:
+            msg = (
+                "allow_credentials=True is incompatible with "
+                "allowed_origins containing '*'"
+            )
+            raise ValueError(msg)
+        return self
+
+
+class RateLimitTimeUnit(StrEnum):
+    """Valid time windows for rate limiting."""
+
+    SECOND = "second"
+    MINUTE = "minute"
+    HOUR = "hour"
+    DAY = "day"
+
 
 class RateLimitConfig(BaseModel):
     """API rate limiting configuration.
 
+    Maps to Litestar's built-in ``RateLimitConfig`` middleware.
+
     Attributes:
-        rate_limit: Rate limit rules (e.g. ``("100/minute",)``).
+        max_requests: Maximum requests per time window.
+        time_unit: Time window (``second``, ``minute``, ``hour``,
+            ``day``).
         exclude_paths: Paths excluded from rate limiting.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    rate_limit: tuple[str, ...] = Field(
-        default=("100/minute",),
-        description="Rate limit rules",
+    max_requests: int = Field(
+        default=100,
+        ge=1,
+        description="Maximum requests per time window",
+    )
+    time_unit: RateLimitTimeUnit = Field(
+        default=RateLimitTimeUnit.MINUTE,
+        description="Time window (second, minute, hour, day)",
     )
     exclude_paths: tuple[str, ...] = Field(
         default=("/api/v1/health",),
@@ -66,6 +104,9 @@ class ServerConfig(BaseModel):
         port: Bind port.
         reload: Enable auto-reload for development.
         workers: Number of worker processes.
+        ws_ping_interval: WebSocket ping interval in seconds
+            (0 to disable).
+        ws_ping_timeout: WebSocket pong timeout in seconds.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -89,6 +130,16 @@ class ServerConfig(BaseModel):
         ge=1,
         le=32,
         description="Number of worker processes",
+    )
+    ws_ping_interval: float = Field(
+        default=20.0,
+        ge=0,
+        description="WebSocket ping interval in seconds (0 to disable)",
+    )
+    ws_ping_timeout: float = Field(
+        default=20.0,
+        ge=0,
+        description="WebSocket pong timeout in seconds",
     )
 
 
@@ -116,7 +167,7 @@ class ApiConfig(BaseModel):
         default_factory=ServerConfig,
         description="Uvicorn server configuration",
     )
-    api_prefix: str = Field(
+    api_prefix: NotBlankStr = Field(
         default="/api/v1",
         description="URL prefix for all API routes",
     )

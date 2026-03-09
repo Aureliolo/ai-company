@@ -7,6 +7,7 @@ from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
 from ai_company.api.dto import ApiResponse
+from ai_company.api.guards import require_read_access
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.core.enums import TaskStatus
 from ai_company.observability import get_logger
@@ -40,7 +41,7 @@ class AnalyticsController(Controller):
     path = "/analytics"
     tags = ("analytics",)
 
-    @get("/overview")
+    @get("/overview", guards=[require_read_access])
     async def get_overview(
         self,
         state: State,
@@ -57,9 +58,7 @@ class AnalyticsController(Controller):
 
         all_tasks = await app_state.persistence.tasks.list_tasks()
         counts = Counter(t.status.value for t in all_tasks)
-        by_status = {
-            s.value: counts[s.value] for s in TaskStatus if counts[s.value] > 0
-        }
+        by_status = {s.value: counts.get(s.value, 0) for s in TaskStatus}
 
         total_cost = await app_state.cost_tracker.get_total_cost()
 

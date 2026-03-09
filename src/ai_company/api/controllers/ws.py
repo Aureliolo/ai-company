@@ -1,8 +1,8 @@
 """WebSocket handler for real-time event feeds.
 
 Clients connect to ``/api/v1/ws`` and send JSON messages to
-subscribe/unsubscribe from named channels. The server pushes
-``WsEvent`` JSON on subscribed channels.
+subscribe/unsubscribe from named channels with optional payload
+filters.  The server pushes ``WsEvent`` JSON on subscribed channels.
 """
 
 import json
@@ -10,9 +10,11 @@ from typing import Any
 
 from litestar import WebSocket  # noqa: TC002
 from litestar.channels import ChannelsPlugin  # noqa: TC002
-from litestar.handlers import WebsocketListener
+from litestar.exceptions import WebSocketDisconnect
+from litestar.handlers import websocket
 
 from ai_company.api.channels import ALL_CHANNELS
+from ai_company.api.guards import require_read_access
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_WS_CONNECTED,
@@ -25,91 +27,140 @@ from ai_company.observability.events.api import (
 
 logger = get_logger(__name__)
 
+_ALL_CHANNELS_SET: frozenset[str] = frozenset(ALL_CHANNELS)
+_MAX_FILTER_KEYS: int = 10
+_MAX_FILTER_VALUE_LEN: int = 256
 
-class WsHandler(WebsocketListener):
-    """WebSocket handler for channel subscriptions.
 
-    Litestar's ``WebsocketListener`` creates a new handler instance
-    per connection, so ``_subscribed`` is safe per-connection state.
+@websocket("/ws", guards=[require_read_access])
+async def ws_handler(
+    socket: WebSocket[Any, Any, Any],
+    channels_plugin: ChannelsPlugin,
+) -> None:
+    """Handle WebSocket connections with channel subscriptions.
 
-    Protocol (JSON):
-    - ``{"action": "subscribe", "channels": ["tasks"]}``
-    - ``{"action": "unsubscribe", "channels": ["tasks"]}``
+    Clients subscribe to named channels with optional payload
+    filters.  The server pushes ``WsEvent`` JSON for matching
+    events only.
 
-    Server pushes ``WsEvent`` JSON on subscribed channels.
+    Protocol (JSON from client):
+        ``{"action": "subscribe", "channels": ["tasks"],
+          "filters": {"agent_id": "...", "project": "..."}}``
+        ``{"action": "unsubscribe", "channels": ["tasks"]}``
     """
+    await socket.accept()
+    logger.info(API_WS_CONNECTED, client=str(socket.client))
 
-    path = "/ws"
+    subscribed: set[str] = set()
+    filters: dict[str, dict[str, str]] = {}
 
-    def __init__(self, channels_plugin: ChannelsPlugin, **kwargs: object) -> None:
-        super().__init__(**kwargs)  # type: ignore[arg-type]
-        self._plugin = channels_plugin
-        self._subscribed: set[str] = set()
+    subscriber = await channels_plugin.subscribe(list(ALL_CHANNELS))
 
-    def on_accept(self, socket: WebSocket[Any, Any, Any]) -> None:
-        """Log connection accepted."""
-        logger.info(
-            API_WS_CONNECTED,
-            client=str(socket.client),
-        )
-
-    def on_disconnect(self, socket: WebSocket[Any, Any, Any]) -> None:
-        """Log disconnection and clean up subscriptions."""
-        logger.info(
-            API_WS_DISCONNECTED,
-            client=str(socket.client),
-        )
-        self._subscribed.clear()
-
-    def on_receive(self, data: str) -> str | None:
-        """Handle subscribe/unsubscribe messages.
-
-        Args:
-            data: Raw JSON string from the client.
-
-        Returns:
-            JSON acknowledgement or error, or ``None``.
-        """
+    async def _on_event(event_data: bytes) -> None:
+        """Filter and forward events to the client."""
         try:
-            msg = json.loads(data)
+            event = json.loads(event_data)
         except json.JSONDecodeError, TypeError:
             logger.warning(
                 API_WS_INVALID_MESSAGE,
-                data_preview=str(data)[:100],
+                data_preview=str(event_data)[:100],
+                source="channels_backend",
             )
-            return json.dumps({"error": "Invalid JSON"})
+            return
 
-        action = msg.get("action")
-        channels = msg.get("channels", [])
+        channel = event.get("channel", "")
+        if channel not in subscribed:
+            return
 
-        if action == "subscribe":
-            valid = [c for c in channels if c in ALL_CHANNELS]
-            self._subscribed.update(valid)
-            logger.debug(
-                API_WS_SUBSCRIBE,
-                channels=valid,
-                active=sorted(self._subscribed),
-            )
-            return json.dumps(
-                {
-                    "action": "subscribed",
-                    "channels": sorted(self._subscribed),
-                }
-            )
+        channel_filters = filters.get(channel)
+        if channel_filters:
+            payload = event.get("payload", {})
+            if not all(payload.get(k) == v for k, v in channel_filters.items()):
+                return
 
-        if action == "unsubscribe":
-            self._subscribed -= set(channels)
-            logger.debug(
-                API_WS_UNSUBSCRIBE,
-                channels=channels,
-                active=sorted(self._subscribed),
-            )
-            return json.dumps(
-                {
-                    "action": "unsubscribed",
-                    "channels": sorted(self._subscribed),
-                }
-            )
+        await socket.send_text(event_data.decode("utf-8"))
 
-        logger.warning(API_WS_UNKNOWN_ACTION, action=str(action)[:64])
-        return json.dumps({"error": "Unknown action"})
+    try:
+        async with subscriber.run_in_background(_on_event):
+            await _receive_loop(socket, subscribed, filters)
+    finally:
+        await channels_plugin.unsubscribe(subscriber)
+        logger.info(API_WS_DISCONNECTED, client=str(socket.client))
+
+
+async def _receive_loop(
+    socket: WebSocket[Any, Any, Any],
+    subscribed: set[str],
+    filters: dict[str, dict[str, str]],
+) -> None:
+    """Process client subscribe/unsubscribe commands."""
+    try:
+        while True:
+            data = await socket.receive_text()
+            response = _handle_message(data, subscribed, filters)
+            if response is not None:
+                await socket.send_text(response)
+    except WebSocketDisconnect:
+        logger.debug(API_WS_DISCONNECTED, reason="client_disconnect")
+
+
+def _handle_message(
+    data: str,
+    subscribed: set[str],
+    filters: dict[str, dict[str, str]],
+) -> str:
+    """Parse and handle a single client message.
+
+    Args:
+        data: Raw JSON string from the client.
+        subscribed: Mutable set of subscribed channel names.
+        filters: Mutable per-channel payload filters.
+
+    Returns:
+        JSON acknowledgement or error string.
+    """
+    try:
+        msg = json.loads(data)
+    except json.JSONDecodeError, TypeError:
+        logger.warning(
+            API_WS_INVALID_MESSAGE,
+            data_preview=str(data)[:100],
+        )
+        return json.dumps({"error": "Invalid JSON"})
+
+    action = msg.get("action")
+    channels: list[str] = msg.get("channels", [])
+    client_filters: dict[str, str] = msg.get("filters", {})
+
+    if action == "subscribe":
+        # Validate filter bounds to prevent memory abuse.
+        if len(client_filters) > _MAX_FILTER_KEYS:
+            return json.dumps({"error": "Too many filter keys"})
+        if any(len(str(v)) > _MAX_FILTER_VALUE_LEN for v in client_filters.values()):
+            return json.dumps({"error": "Filter value too long"})
+
+        valid = [c for c in channels if c in _ALL_CHANNELS_SET]
+        subscribed.update(valid)
+        for c in valid:
+            if client_filters:
+                filters[c] = dict(client_filters)
+        logger.debug(
+            API_WS_SUBSCRIBE,
+            channels=valid,
+            active=sorted(subscribed),
+        )
+        return json.dumps({"action": "subscribed", "channels": sorted(subscribed)})
+
+    if action == "unsubscribe":
+        subscribed -= set(channels)
+        for c in channels:
+            filters.pop(c, None)
+        logger.debug(
+            API_WS_UNSUBSCRIBE,
+            channels=channels,
+            active=sorted(subscribed),
+        )
+        return json.dumps({"action": "unsubscribed", "channels": sorted(subscribed)})
+
+    logger.warning(API_WS_UNKNOWN_ACTION, action=str(action)[:64])
+    return json.dumps({"error": "Unknown action"})

@@ -46,7 +46,7 @@ class MessageController(Controller):
         if channel is not None:
             messages = await app_state.persistence.messages.get_history(
                 channel,
-                limit=None,
+                limit=offset + limit,
             )
         else:
             messages = ()

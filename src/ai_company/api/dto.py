@@ -5,7 +5,9 @@ Request DTOs define write-operation payloads (separate from domain
 models because they omit server-generated fields).
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import (
     Complexity,
@@ -36,6 +38,21 @@ class ApiResponse[T](BaseModel):
     success: bool = True
     data: T | None = None
     error: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_success_consistency(self) -> Self:
+        """Enforce envelope invariant.
+
+        ``success=False`` requires a non-None ``error``.
+        ``success=True`` requires ``error`` to be ``None``.
+        """
+        if not self.success and self.error is None:
+            msg = "error must be set when success is False"
+            raise ValueError(msg)
+        if self.success and self.error is not None:
+            msg = "error must be None when success is True"
+            raise ValueError(msg)
+        return self
 
 
 class PaginationMeta(BaseModel):

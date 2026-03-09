@@ -1,10 +1,11 @@
 """Exception handlers mapping domain errors to HTTP responses.
 
 Each handler returns an ``ApiResponse(success=False)`` with the
-appropriate HTTP status code and a user-facing error message.
+appropriate HTTP status code and a **scrubbed** user-facing error
+message.  Detailed error context is logged server-side only.
 """
 
-from typing import Any
+from typing import Any, Final
 
 from litestar import Request, Response
 from litestar.exceptions import PermissionDeniedException
@@ -21,6 +22,8 @@ from ai_company.persistence.errors import (
 
 logger = get_logger(__name__)
 
+_SERVER_ERROR_THRESHOLD: Final[int] = 500
+
 
 def _log_error(
     request: Request[Any, Any, Any],
@@ -30,11 +33,10 @@ def _log_error(
 ) -> None:
     """Log an API error with request context.
 
-    Uses ERROR level for 5xx (server errors) and WARNING for 4xx
-    (client errors).
+    Uses ERROR level (with traceback) for 5xx server errors and
+    WARNING for 4xx client errors.
     """
-    _server_error_threshold = 500
-    log = logger.error if status >= _server_error_threshold else logger.warning
+    log = logger.error if status >= _SERVER_ERROR_THRESHOLD else logger.warning
     log(
         API_REQUEST_ERROR,
         method=request.method,
@@ -42,6 +44,7 @@ def _log_error(
         status_code=status,
         error_type=type(exc).__qualname__,
         error=str(exc),
+        exc_info=status >= _SERVER_ERROR_THRESHOLD,
     )
 
 
@@ -52,7 +55,10 @@ def handle_record_not_found(
     """Map ``RecordNotFoundError`` to 404."""
     _log_error(request, exc, status=404)
     return Response(
-        content=ApiResponse[None](success=False, error=str(exc)),
+        content=ApiResponse[None](
+            success=False,
+            error="Resource not found",
+        ),
         status_code=404,
     )
 
@@ -64,7 +70,10 @@ def handle_duplicate_record(
     """Map ``DuplicateRecordError`` to 409."""
     _log_error(request, exc, status=409)
     return Response(
-        content=ApiResponse[None](success=False, error=str(exc)),
+        content=ApiResponse[None](
+            success=False,
+            error="Resource already exists",
+        ),
         status_code=409,
     )
 
@@ -90,8 +99,14 @@ def handle_api_error(
 ) -> Response[ApiResponse[None]]:
     """Map ``ApiError`` subclasses to their declared status code."""
     _log_error(request, exc, status=exc.status_code)
+    # Return the default message for the error class, not the
+    # caller-interpolated string (which may contain internal IDs).
+    exc_cls = type(exc)
+    default_msg = (
+        exc_cls().args[0] if exc_cls is not ApiError else "Internal server error"
+    )
     return Response(
-        content=ApiResponse[None](success=False, error=str(exc)),
+        content=ApiResponse[None](success=False, error=default_msg),
         status_code=exc.status_code,
     )
 
@@ -118,7 +133,7 @@ def handle_permission_denied(
     """Map ``PermissionDeniedException`` to 403."""
     _log_error(request, exc, status=403)
     return Response(
-        content=ApiResponse[None](success=False, error=str(exc)),
+        content=ApiResponse[None](success=False, error="Forbidden"),
         status_code=403,
     )
 

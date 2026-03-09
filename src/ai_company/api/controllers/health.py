@@ -8,7 +8,6 @@ from litestar.datastructures import State  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 
 from ai_company import __version__
-from ai_company.api import app as _app_module
 from ai_company.api.dto import ApiResponse
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.observability import get_logger
@@ -83,7 +82,9 @@ class HealthController(Controller):
             persistence_ok = False
 
         try:
-            bus_ok = app_state.message_bus.is_running
+            bus_ok = (
+                app_state.message_bus is not None and app_state.message_bus.is_running
+            )
         except Exception:
             logger.warning(
                 API_HEALTH_CHECK,
@@ -99,7 +100,7 @@ class HealthController(Controller):
         else:
             status = ServiceStatus.DOWN
 
-        uptime = round(time.monotonic() - _app_module._startup_time, 2)  # noqa: SLF001
+        uptime = round(time.monotonic() - app_state.startup_time, 2)
 
         logger.debug(
             API_HEALTH_CHECK,

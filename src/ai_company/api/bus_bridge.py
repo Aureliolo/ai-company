@@ -1,12 +1,12 @@
 """Message bus → Litestar channels bridge.
 
-Polls internal ``MessageBus`` channels and publishes events
-to Litestar's ``ChannelsPlugin`` for WebSocket delivery.
+Subscribes to internal ``MessageBus`` channels and forwards
+events to Litestar's ``ChannelsPlugin`` for WebSocket delivery.
 """
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Final
 
 from litestar.channels import ChannelsPlugin  # noqa: TC002
 
@@ -26,6 +26,7 @@ logger = get_logger(__name__)
 
 _SUBSCRIBER_ID: str = "__api_bridge__"
 _POLL_TIMEOUT: float = 1.0
+_MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 
 
 class MessageBusBridge:
@@ -66,7 +67,7 @@ class MessageBusBridge:
         for channel_name in ALL_CHANNELS:
             try:
                 await self._bus.subscribe(channel_name, _SUBSCRIBER_ID)
-            except Exception:
+            except OSError, RuntimeError, ConnectionError:
                 logger.warning(
                     API_BUS_BRIDGE_SUBSCRIBE_FAILED,
                     channel=channel_name,
@@ -94,7 +95,12 @@ class MessageBusBridge:
         self._running = False
 
     async def _poll_channel(self, channel_name: str) -> None:
-        """Poll a single channel and publish to Litestar."""
+        """Poll a single channel and publish to Litestar.
+
+        Stops polling after ``_MAX_CONSECUTIVE_ERRORS`` failures
+        in a row to avoid infinite log spam on broken channels.
+        """
+        consecutive_errors = 0
         while True:
             try:
                 envelope = await self._bus.receive(
@@ -109,12 +115,24 @@ class MessageBusBridge:
                     ws_event.model_dump_json(),
                     channels=[channel_name],
                 )
+                consecutive_errors = 0
             except asyncio.CancelledError:
                 break
             except Exception:
+                consecutive_errors += 1
+                if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                    logger.error(
+                        API_BUS_BRIDGE_POLL_ERROR,
+                        channel=channel_name,
+                        consecutive_errors=consecutive_errors,
+                        note="max consecutive errors reached, stopping poll",
+                        exc_info=True,
+                    )
+                    break
                 logger.warning(
                     API_BUS_BRIDGE_POLL_ERROR,
                     channel=channel_name,
+                    consecutive_errors=consecutive_errors,
                     exc_info=True,
                 )
                 await asyncio.sleep(_POLL_TIMEOUT)
