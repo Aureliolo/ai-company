@@ -9,6 +9,7 @@ from ai_company.memory.config import (
     MemoryOptionsConfig,
     MemoryStorageConfig,
 )
+from ai_company.memory.retrieval_config import MemoryRetrievalConfig
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -165,6 +166,7 @@ class TestCompanyMemoryConfig:
         assert c.level is MemoryLevel.SESSION
         assert isinstance(c.storage, MemoryStorageConfig)
         assert isinstance(c.options, MemoryOptionsConfig)
+        assert isinstance(c.retrieval, MemoryRetrievalConfig)
 
     def test_valid_backend_accepted(self) -> None:
         c = CompanyMemoryConfig(backend="mem0")
@@ -203,3 +205,14 @@ class TestCompanyMemoryConfig:
         json_str = c.model_dump_json()
         restored = CompanyMemoryConfig.model_validate_json(json_str)
         assert restored == c
+
+    def test_custom_retrieval_config(self) -> None:
+        c = CompanyMemoryConfig(
+            retrieval=MemoryRetrievalConfig(
+                relevance_weight=0.6,
+                recency_weight=0.4,
+                max_memories=50,
+            ),
+        )
+        assert c.retrieval.relevance_weight == 0.6
+        assert c.retrieval.max_memories == 50

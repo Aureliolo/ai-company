@@ -21,13 +21,13 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Task Intelligence (M4)** - Task decomposition, routing, assignment strategies, workspace isolation via git worktrees
 - **Templates** - Built-in templates, inheritance/merge, rendering, personality presets
 - **Persistence Layer (M5)** - Pluggable `PersistenceBackend` protocol with SQLite backend (aiosqlite), repository protocols, schema migrations
-- **Memory Interface (M5)** - Pluggable `MemoryBackend` protocol with capability discovery, shared knowledge protocol, domain models, config, and factory
+- **Memory Interface (M5)** - Pluggable `MemoryBackend` protocol with capability discovery, shared knowledge protocol, domain models, config, factory, and context injection retrieval pipeline (ranking, token-budget formatting)
 - **Coordination Error Taxonomy (M5)** - Post-execution classification pipeline detecting logical contradictions, numerical drift, context omissions, and coordination failures
 - **Budget Enforcement (M5)** - `BudgetEnforcer` service with pre-flight checks, in-flight budget checking, auto-downgrade, configurable cost tiers, and quota/subscription tracking; CFO agent and advanced reporting pending
 
 ### Not implemented yet (planned milestones)
 
-- **Memory Backends (M5)** - Mem0 adapter ([ADR-001](docs/decisions/ADR-001-memory-layer.md), #41) pending; shared knowledge store backends planned
+- **Memory Backends (M5)** - Initial adapter backend ([ADR-001](docs/decisions/ADR-001-memory-layer.md)) pending; shared knowledge store backends planned
 - **API Layer (M6)** - `api/` package and route modules are placeholders
 - **CLI Surface (M6)** - `cli/` package is placeholder-only
 - **Security/Approval System (M7)** - `security/` package is placeholder-only

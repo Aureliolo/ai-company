@@ -81,7 +81,7 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 
 > **Implementation snapshot (2026-03-09):**
 > - **Done:** M0–M4 (tooling, config/core, providers, single-agent engine, multi-agent orchestration). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed.
-> - **In progress:** M5 — memory interface protocol complete (MemoryBackend, MemoryCapabilities, SharedKnowledgeStore protocols, models, config, factory), budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking), Mem0 adapter (#41) pending.
+> - **In progress:** M5 — memory interface protocol complete (MemoryBackend, MemoryCapabilities, SharedKnowledgeStore protocols, models, config, factory), budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) in progress. Mem0 adapter backend pending.
 > - **Not started (mostly placeholders):** M6 API/CLI surface, M7 security + approval system.
 
 ### 1.5 Configuration Philosophy
@@ -1575,6 +1575,58 @@ company_b_backend = create_backend(company_b_config.persistence)
 
 Runtime backend switching (e.g. migrating a company from SQLite to PostgreSQL during operation) is a planned future capability. The protocol-based design already supports this — the engine would disconnect the current backend, connect a new one with different config, and migrate. Implementation details (data migration tooling, zero-downtime switchover, connection draining) are deferred to the PostgreSQL backend milestone.
 
+### 7.7 Memory Injection Strategies
+
+Agent memory reaches agents through pluggable injection strategies behind
+the `MemoryInjectionStrategy` protocol. The strategy determines *how*
+memories are surfaced to the agent during execution.
+
+#### Strategy 1: Context Injection (Default / MVP)
+
+Pre-retrieves relevant memories before execution, ranks by
+relevance+recency, enforces token budget, formats as ChatMessage(s)
+injected between system prompt and task instruction. Agent passively
+receives memories.
+
+Pipeline: `MemoryBackend.retrieve()` -> rank by relevance+recency ->
+filter by min_relevance -> greedy token-budget packing -> format as
+ChatMessage (configured role: SYSTEM or USER) with delimiters.
+
+Ranking algorithm:
+1. `relevance = entry.relevance_score ?? config.default_relevance`
+2. Personal entries: `relevance = min(relevance + personal_boost, 1.0)`
+3. `recency = exp(-decay_rate * age_hours)`
+4. `combined = relevance_weight * relevance + recency_weight * recency`
+5. Filter: `combined >= min_relevance`
+6. Sort descending by `combined_score`
+
+Shared memories (from `SharedKnowledgeStore`) are fetched in parallel,
+merged with personal memories (no personal_boost for shared), and
+ranked together.
+
+#### Strategy 2: Tool-Based Retrieval (Future)
+
+Agent has `recall_memory` / `search_memory` tools it calls on-demand
+during execution. Agent actively decides when and what to remember.
+More token-efficient (only retrieves when needed) but consumes
+tool-call turns and requires agent discipline to invoke.
+
+#### Strategy 3: Self-Editing Memory (Future)
+
+Agent has structured memory blocks (core, archival, recall) it reads
+AND writes during execution via dedicated tools. Core memory always
+in context, archival/recall searched via tools. Most sophisticated
+(Letta/MemGPT-inspired) but highest complexity and LLM overhead.
+
+#### Protocol
+
+All strategies implement `MemoryInjectionStrategy`:
+- `prepare_messages(agent_id, query_text, token_budget) -> tuple[ChatMessage, ...]`
+- `get_tool_definitions() -> tuple[ToolDefinition, ...]`
+- `strategy_name -> str`
+
+Strategy selection via config: `memory.retrieval.strategy: context | tool_based | self_editing`
+
 ---
 
 ## 8. HR & Workforce Management
@@ -2752,14 +2804,19 @@ ai-company/
 │       │   │   └── structured_phases.py # StructuredPhasesProtocol implementation
 │       │   ├── messenger.py        # AgentMessenger per-agent facade
 │       │   └── subscription.py     # Subscription + DeliveryEnvelope models
-│       ├── memory/                  # Agent memory system — protocols, models, config, factory (M5)
+│       ├── memory/                  # Agent memory system — protocols, models, config, factory, retrieval pipeline (M5)
 │       │   ├── __init__.py         # Re-exports
 │       │   ├── capabilities.py     # MemoryCapabilities protocol
 │       │   ├── config.py           # CompanyMemoryConfig, MemoryStorageConfig, MemoryOptionsConfig
 │       │   ├── errors.py           # Memory error hierarchy (MemoryError and subclasses)
 │       │   ├── factory.py          # create_memory_backend() factory
+│       │   ├── formatter.py        # format_memory_context() — ranked memories to ChatMessage(s)
+│       │   ├── injection.py        # MemoryInjectionStrategy protocol, InjectionStrategy enum, TokenEstimator
 │       │   ├── models.py           # MemoryEntry, MemoryMetadata, MemoryQuery, MemoryStoreRequest
 │       │   ├── protocol.py         # MemoryBackend protocol
+│       │   ├── ranking.py          # ScoredMemory model, rank_memories(), scoring functions
+│       │   ├── retrieval_config.py # MemoryRetrievalConfig (weights, thresholds, strategy selection)
+│       │   ├── retriever.py        # ContextInjectionStrategy (full retrieval → rank → format pipeline)
 │       │   └── shared.py           # SharedKnowledgeStore protocol
 │       ├── persistence/             # Operational data persistence (§7.6)
 │       │   ├── __init__.py         # Package exports
