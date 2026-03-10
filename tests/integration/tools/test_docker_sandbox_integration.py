@@ -24,14 +24,17 @@ def _docker_available() -> bool:
         import aiodocker
 
         async def _check() -> bool:
+            client = None
             try:
                 client = aiodocker.Docker()
                 await client.version()
             except Exception:
                 return False
             else:
-                await client.close()
                 return True
+            finally:
+                if client is not None:
+                    await client.close()
 
         return asyncio.run(_check())
     except Exception:
@@ -51,7 +54,7 @@ class TestDockerSandboxRealExecution:
     async def test_run_python_code(self, tmp_path: Path) -> None:
         """Execute Python code in a real Docker container."""
         config = DockerSandboxConfig(
-            image="python:3.14-slim",
+            image="python:3.12-slim",
             timeout_seconds=30,
         )
         sandbox = DockerSandbox(
@@ -71,7 +74,7 @@ class TestDockerSandboxRealExecution:
     async def test_run_with_timeout(self, tmp_path: Path) -> None:
         """Timeout kills the container."""
         config = DockerSandboxConfig(
-            image="python:3.14-slim",
+            image="python:3.12-slim",
             timeout_seconds=120,
         )
         sandbox = DockerSandbox(

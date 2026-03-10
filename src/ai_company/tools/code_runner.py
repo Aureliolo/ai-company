@@ -14,6 +14,7 @@ from ai_company.observability.events.code_runner import (
     CODE_RUNNER_INVALID_LANGUAGE,
 )
 from ai_company.tools.base import BaseTool, ToolExecutionResult
+from ai_company.tools.sandbox.errors import SandboxError
 
 if TYPE_CHECKING:
     from ai_company.tools.sandbox.protocol import SandboxBackend
@@ -112,11 +113,23 @@ class CodeRunnerTool(BaseTool):
             code_length=len(code),
         )
 
-        result = await self._sandbox.execute(
-            command=command,
-            args=(flag, code),
-            timeout=timeout,
-        )
+        try:
+            result = await self._sandbox.execute(
+                command=command,
+                args=(flag, code),
+                timeout=timeout,
+            )
+        except SandboxError as exc:
+            logger.warning(
+                CODE_RUNNER_EXECUTE_FAILED,
+                language=language,
+                error=str(exc),
+            )
+            return ToolExecutionResult(
+                content=f"Sandbox error: {exc}",
+                is_error=True,
+                metadata={"language": language},
+            )
 
         if result.success:
             logger.debug(

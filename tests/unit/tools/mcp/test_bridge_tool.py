@@ -10,6 +10,7 @@ from ai_company.tools.base import ToolExecutionResult
 from ai_company.tools.mcp.bridge_tool import MCPBridgeTool
 from ai_company.tools.mcp.client import MCPClient
 from ai_company.tools.mcp.config import MCPServerConfig
+from ai_company.tools.mcp.errors import MCPInvocationError
 from ai_company.tools.mcp.models import MCPToolInfo
 
 if TYPE_CHECKING:
@@ -119,8 +120,9 @@ class TestBridgeToolExecute:
         bridge_tool: MCPBridgeTool,
         mock_client: MCPClient,
     ) -> None:
-        mock_client._session.call_tool.side_effect = RuntimeError(  # type: ignore[union-attr]
+        mock_client._session.call_tool.side_effect = MCPInvocationError(  # type: ignore[union-attr]
             "invocation error",
+            context={"server": "test", "tool": "test"},
         )
         result = await bridge_tool.execute(arguments={})
         assert result.is_error
@@ -169,3 +171,46 @@ class TestBridgeToolWithCache:
 
         await bridge_tool_with_cache.execute(arguments={"q": "b"})
         mock_client._session.call_tool.assert_called_once()  # type: ignore[union-attr]
+
+    async def test_unhashable_arguments_bypass_cache(
+        self,
+        sample_tool_info: MCPToolInfo,
+        mock_client: MCPClient,
+        result_cache: MCPResultCache,
+    ) -> None:
+        """Unhashable args (e.g. custom objects) don't crash execution."""
+
+        class Unhashable:
+            __hash__ = None  # type: ignore[assignment]
+
+        bridge = MCPBridgeTool(
+            tool_info=sample_tool_info,
+            client=mock_client,
+            cache=result_cache,
+        )
+        result = await bridge.execute(
+            arguments={"obj": Unhashable()},
+        )
+        assert isinstance(result, ToolExecutionResult)
+        assert not result.is_error
+
+    async def test_error_results_not_cached(
+        self,
+        sample_tool_info: MCPToolInfo,
+        mock_client: MCPClient,
+        result_cache: MCPResultCache,
+    ) -> None:
+        """Error results should not be stored in the cache."""
+        mock_client._session.call_tool.side_effect = MCPInvocationError(  # type: ignore[union-attr]
+            "transient error",
+            context={"server": "test", "tool": "test"},
+        )
+        bridge = MCPBridgeTool(
+            tool_info=sample_tool_info,
+            client=mock_client,
+            cache=result_cache,
+        )
+        result = await bridge.execute(arguments={"q": "fail"})
+        assert result.is_error
+        # Cache should be empty — error not cached
+        assert result_cache.get("test-tool", {"q": "fail"}) is None

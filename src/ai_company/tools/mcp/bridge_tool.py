@@ -12,6 +12,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.mcp import (
     MCP_CACHE_HIT,
     MCP_CACHE_MISS,
+    MCP_CACHE_STORE_FAILED,
     MCP_INVOKE_FAILED,
     MCP_INVOKE_START,
 )
@@ -78,19 +79,61 @@ class MCPBridgeTool(BaseTool):
         Returns:
             Mapped ``ToolExecutionResult``.
         """
-        if self._cache is not None:
+        cached = self._check_cache(arguments)
+        if cached is not None:
+            return cached
+
+        result = await self._invoke(arguments)
+        self._store_in_cache(arguments, result)
+        return result
+
+    def _check_cache(
+        self,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult | None:
+        """Look up the cache, returning the result on hit.
+
+        Args:
+            arguments: Tool invocation arguments.
+
+        Returns:
+            Cached result or ``None``.
+        """
+        if self._cache is None:
+            return None
+        try:
             cached = self._cache.get(
                 self._tool_info.name,
                 arguments,
             )
-            if cached is not None:
-                logger.debug(
-                    MCP_CACHE_HIT,
-                    tool_name=self._tool_info.name,
-                    server=self._tool_info.server_name,
-                )
-                return cached
+        except TypeError:
+            logger.debug(
+                MCP_CACHE_MISS,
+                tool_name=self._tool_info.name,
+                server=self._tool_info.server_name,
+                reason="unhashable arguments",
+            )
+            return None
+        if cached is not None:
+            logger.debug(
+                MCP_CACHE_HIT,
+                tool_name=self._tool_info.name,
+                server=self._tool_info.server_name,
+            )
+        return cached
 
+    async def _invoke(
+        self,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        """Call the remote MCP tool and map the result.
+
+        Args:
+            arguments: Tool invocation arguments.
+
+        Returns:
+            Mapped ``ToolExecutionResult``.
+        """
         logger.debug(
             MCP_INVOKE_START,
             tool=self._tool_info.name,
@@ -112,22 +155,34 @@ class MCPBridgeTool(BaseTool):
                 content=str(exc),
                 is_error=True,
             )
+        return map_call_tool_result(raw)
 
-        result = map_call_tool_result(raw)
+    def _store_in_cache(
+        self,
+        arguments: dict[str, Any],
+        result: ToolExecutionResult,
+    ) -> None:
+        """Store a successful result in the cache.
 
-        if self._cache is not None:
-            try:
-                self._cache.put(
-                    self._tool_info.name,
-                    arguments,
-                    result,
-                )
-            except TypeError:
-                logger.debug(
-                    MCP_CACHE_MISS,
-                    tool_name=self._tool_info.name,
-                    server=self._tool_info.server_name,
-                    reason="unhashable arguments",
-                )
+        Skips caching for error results (to avoid replaying
+        transient failures) and unhashable arguments.
 
-        return result
+        Args:
+            arguments: Tool invocation arguments.
+            result: The result to cache.
+        """
+        if self._cache is None or result.is_error:
+            return
+        try:
+            self._cache.put(
+                self._tool_info.name,
+                arguments,
+                result,
+            )
+        except TypeError:
+            logger.debug(
+                MCP_CACHE_STORE_FAILED,
+                tool_name=self._tool_info.name,
+                server=self._tool_info.server_name,
+                reason="unhashable arguments",
+            )

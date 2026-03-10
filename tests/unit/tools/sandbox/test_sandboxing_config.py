@@ -42,9 +42,9 @@ class TestSandboxingConfigCustomValues:
         assert config.overrides == overrides
 
     def test_invalid_override_backend_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="Invalid backend"):
+        with pytest.raises(ValidationError, match="literal_error"):
             SandboxingConfig(
-                overrides={"code_execution": "kubernetes"},
+                overrides={"code_execution": "kubernetes"},  # type: ignore[dict-item]
             )
 
     def test_custom_docker_config(self) -> None:

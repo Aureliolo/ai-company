@@ -150,7 +150,7 @@ class TestDockerSandboxExecute:
             )
 
         assert result.success
-        assert result.stdout == "output line"
+        assert result.stdout == "output line\n"
         assert result.returncode == 0
         assert not result.timed_out
 
@@ -261,6 +261,7 @@ class TestDockerSandboxExecute:
         mock_client.version = AsyncMock(
             side_effect=ConnectionError("refused"),
         )
+        mock_client.close = AsyncMock()
         mock_module = MagicMock()
         mock_module.Docker = MagicMock(return_value=mock_client)
 
@@ -458,6 +459,7 @@ class TestDockerSandboxHealthCheck:
         mock_client.version = AsyncMock(
             side_effect=ConnectionError("refused"),
         )
+        mock_client.close = AsyncMock()
         mock_module = MagicMock()
         mock_module.Docker = MagicMock(return_value=mock_client)
 

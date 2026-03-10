@@ -1,5 +1,6 @@
 """Tests for MCPClient."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -67,6 +68,28 @@ class TestMCPClientConnection:
             await client.connect()
 
         assert client.is_connected
+
+    async def test_connect_timeout_raises_mcp_connection_error(self) -> None:
+        config = MCPServerConfig(
+            name="slow-server",
+            transport="stdio",
+            command="echo",
+            connect_timeout_seconds=0.01,
+        )
+        client = MCPClient(config)
+
+        async def hang_forever(*_a: object, **_kw: object) -> None:
+            await asyncio.sleep(100)
+
+        with (
+            patch.object(
+                client,
+                "_connect_with_stack",
+                side_effect=hang_forever,
+            ),
+            pytest.raises(MCPConnectionError, match="timed out"),
+        ):
+            await client.connect()
 
     async def test_connect_failure_raises_mcp_connection_error(
         self,

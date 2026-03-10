@@ -24,7 +24,7 @@ class SandboxingConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     default_backend: _BackendName = "subprocess"
-    overrides: dict[str, str] = Field(default_factory=dict)
+    overrides: dict[str, _BackendName] = Field(default_factory=dict)
     subprocess: SubprocessSandboxConfig = Field(
         default_factory=SubprocessSandboxConfig,
     )
@@ -53,5 +53,4 @@ class SandboxingConfig(BaseModel):
         Returns:
             The backend name (``"subprocess"`` or ``"docker"``).
         """
-        # Validator guarantees overrides contain only valid backend names
-        return self.overrides.get(category, self.default_backend)  # type: ignore[return-value]
+        return self.overrides.get(category, self.default_backend)

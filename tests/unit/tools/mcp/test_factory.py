@@ -217,6 +217,87 @@ class TestFactoryShutdown:
         assert factory._clients == []
 
 
+class TestFactoryReuseGuard:
+    """Cannot call create_tools twice."""
+
+    async def test_create_tools_twice_raises(self) -> None:
+        config = MCPConfig()
+        factory = MCPToolFactory(config)
+        await factory.create_tools()
+        with pytest.raises(RuntimeError, match="must not be called more than once"):
+            await factory.create_tools()
+
+
+class TestFactoryPartialFailureCleanup:
+    """Partial failure in TaskGroup cleans up connected clients."""
+
+    async def test_connected_clients_disconnected_on_partial_failure(
+        self,
+    ) -> None:
+        config = MCPConfig(
+            servers=(
+                MCPServerConfig(
+                    name="ok-srv",
+                    transport="stdio",
+                    command="echo",
+                ),
+                MCPServerConfig(
+                    name="bad-srv",
+                    transport="stdio",
+                    command="echo",
+                ),
+            ),
+        )
+        factory = MCPToolFactory(config)
+        ok_client = _make_mock_client("ok-srv", ())
+        ok_client.disconnect = AsyncMock()  # type: ignore[method-assign]
+
+        msg = "server down"
+
+        async def mock_connect_discover(
+            cfg: MCPServerConfig,
+        ) -> tuple[MCPClient, tuple[MCPToolInfo, ...]]:
+            if cfg.name == "ok-srv":
+                return (ok_client, ())
+            raise ConnectionError(msg)
+
+        with (
+            patch.object(
+                MCPToolFactory,
+                "_connect_and_discover",
+                side_effect=mock_connect_discover,
+            ),
+            pytest.raises(ExceptionGroup, match="unhandled"),
+        ):
+            await factory.create_tools()
+
+        ok_client.disconnect.assert_called_once()
+
+
+class TestFactoryShutdownSwallowsErrors:
+    """Shutdown continues when one client fails to disconnect."""
+
+    async def test_shutdown_continues_after_disconnect_error(self) -> None:
+        config = MCPConfig()
+        factory = MCPToolFactory(config)
+
+        client1 = MagicMock()
+        client1.disconnect = AsyncMock(
+            side_effect=RuntimeError("disconnect broke"),
+        )
+        client1.server_name = "client1"
+        client2 = MagicMock()
+        client2.disconnect = AsyncMock()
+        client2.server_name = "client2"
+
+        factory._clients = [client1, client2]
+        await factory.shutdown()
+
+        client1.disconnect.assert_called_once()
+        client2.disconnect.assert_called_once()
+        assert factory._clients == []
+
+
 class TestFactoryMakeCache:
     """Cache creation logic."""
 

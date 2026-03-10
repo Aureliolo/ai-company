@@ -81,7 +81,7 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 
 > **Implementation snapshot (2026-03-09):**
 > - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete.
-> - **Not started (mostly placeholders):** M7 security + approval system.
+> - **In progress:** M7 — Docker sandbox (#50), MCP bridge (#53), code runner implemented. Security + approval system not started.
 
 ### 1.5 Configuration Philosophy
 
@@ -2130,7 +2130,7 @@ sandboxing:
     memory_limit: "512m"
     cpu_limit: "1.0"
     timeout_seconds: 120
-    mount_mode: "rw"                   # rw for workspace dir, nothing else mounted
+    mount_mode: "ro"                   # read-only by default; workspace mounted separately
     auto_remove: true                  # ephemeral — container removed after execution
   k8s:                                 # future — per-agent pod isolation
     namespace: "ai-company-agents"
@@ -2151,7 +2151,7 @@ sandboxing:
 
 > **Decisions ([ADR-002](docs/decisions/ADR-002-design-decisions-batch-1.md) D17, D18):**
 >
-> - **D17 — MCP SDK:** Official `mcp` Python SDK, pinned `>=1.25,<2`. Thin `MCPBridgeTool` adapter layer isolates the rest of the codebase from SDK API changes. Support **stdio** (local/dev) and **Streamable HTTP** (remote/production) transports. Skip deprecated SSE. v2 migration planned — pin range prevents accidental breaking upgrade.
+> - **D17 — MCP SDK:** Official `mcp` Python SDK, pinned `==1.26.0`. Thin `MCPBridgeTool` adapter layer isolates the rest of the codebase from SDK API changes. Support **stdio** (local/dev) and **Streamable HTTP** (remote/production) transports. Skip deprecated SSE. v2 migration planned — pin range prevents accidental breaking upgrade.
 > - **D18 — MCP Result Mapping:** Adapter in `MCPBridgeTool` keeps `ToolResult` as-is. Mapping: text blocks → concatenate to `content: str`; image/audio → `[image: {mimeType}]` placeholder + base64 in `metadata["attachments"]`; `structuredContent` → `metadata["structured_content"]`; `isError` → `is_error` (1:1). Future: extend `ToolResult` with optional `attachments` when multi-modal LLM tool results are needed.
 
 ### 11.1.4 Action Type System
@@ -3019,19 +3019,26 @@ ai-company/
 │       │   ├── _git_base.py        # Base class for git tools (workspace, subprocess, sandbox integration)
 │       │   ├── _process_cleanup.py  # Subprocess transport cleanup utility (Windows ResourceWarning prevention)
 │       │   ├── git_tools.py        # Git operations — 6 built-in tools (sandbox-aware)
-│       │   ├── docker_config.py    # Docker sandbox configuration
-│       │   ├── docker_sandbox.py   # DockerSandbox backend (aiodocker)
-│       │   ├── sandboxing_config.py # Top-level sandboxing config (backend selection)
 │       │   ├── code_runner.py      # Code execution tool
 │       │   ├── web_tools.py        # HTTP, search (M7)
+│       │   ├── sandbox/             # Sandbox backends subpackage
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── config.py      # Subprocess sandbox configuration
+│       │   │   ├── docker_config.py # Docker sandbox configuration
+│       │   │   ├── docker_sandbox.py # DockerSandbox backend (aiodocker)
+│       │   │   ├── errors.py      # Sandbox error hierarchy
+│       │   │   ├── protocol.py    # SandboxBackend protocol
+│       │   │   ├── result.py      # SandboxResult model
+│       │   │   ├── sandboxing_config.py # Top-level sandboxing config
+│       │   │   └── subprocess_sandbox.py # SubprocessSandbox backend
 │       │   └── mcp/                # MCP bridge subpackage
 │       │       ├── __init__.py    # Package exports
-│       │       ├── bridge_tool.py # McpBridgeTool (BaseTool integration)
-│       │       ├── cache.py       # Tool schema caching
+│       │       ├── bridge_tool.py # MCPBridgeTool (BaseTool integration)
+│       │       ├── cache.py       # MCP result cache (TTL + LRU)
 │       │       ├── client.py      # MCP client wrapper
 │       │       ├── config.py      # MCP server/bridge config models
 │       │       ├── errors.py      # MCP error hierarchy
-│       │       ├── factory.py     # McpBridgeTool factory
+│       │       ├── factory.py     # MCPToolFactory (parallel connect)
 │       │       ├── models.py      # MCP domain models
 │       │       └── result_mapper.py # MCP result → ToolExecutionResult mapping
 │       ├── security/                # Security & approval (M7, stubs only)

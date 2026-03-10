@@ -158,6 +158,20 @@ class TestEmptyContent:
         assert not result.is_error
 
 
+class TestUnknownContentBlock:
+    """Unknown content block types produce placeholders."""
+
+    def test_unknown_block_produces_placeholder(self) -> None:
+        from unittest.mock import MagicMock
+
+        unknown = MagicMock()
+        type(unknown).__name__ = "MysteryBlock"
+        raw = MCPRawResult(content=(unknown,))
+        result = map_call_tool_result(raw)
+        assert "[unknown: MysteryBlock]" in result.content
+        assert "attachments" not in result.metadata
+
+
 class TestMixedContent:
     """Mixed content types in a single result."""
 

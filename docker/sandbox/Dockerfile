@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /workspace \
-    && useradd --uid 65534 --gid 65534 --no-create-home --shell /usr/sbin/nologin sandbox
+    && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sandbox
 
 WORKDIR /workspace
 

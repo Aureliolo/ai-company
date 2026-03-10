@@ -4,6 +4,7 @@ Provides an in-memory cache for MCP tool invocation results to
 reduce redundant calls to external MCP servers.
 """
 
+import copy
 import time
 from collections import OrderedDict
 from typing import Any
@@ -78,7 +79,7 @@ class MCPResultCache:
 
         self._cache.move_to_end(key)
         logger.debug(MCP_CACHE_HIT, tool_name=tool_name)
-        return result
+        return copy.deepcopy(result)
 
     def put(
         self,
@@ -111,7 +112,7 @@ class MCPResultCache:
             )
 
         if self._max_size > 0:
-            self._cache[key] = (time.monotonic(), result)
+            self._cache[key] = (time.monotonic(), copy.deepcopy(result))
 
     def invalidate(
         self,

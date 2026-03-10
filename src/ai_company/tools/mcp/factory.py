@@ -5,10 +5,13 @@ tools, and wraps each as an ``MCPBridgeTool``.
 """
 
 import asyncio
+import contextlib
 from typing import TYPE_CHECKING
 
 from ai_company.observability import get_logger
 from ai_company.observability.events.mcp import (
+    MCP_CLIENT_DISCONNECT_FAILED,
+    MCP_FACTORY_CLEANUP,
     MCP_FACTORY_COMPLETE,
     MCP_FACTORY_SERVER_SKIPPED,
     MCP_FACTORY_START,
@@ -37,6 +40,7 @@ class MCPToolFactory:
     def __init__(self, config: MCPConfig) -> None:
         self._config = config
         self._clients: list[MCPClient] = []
+        self._created = False
 
     async def create_tools(self) -> tuple[MCPBridgeTool, ...]:
         """Connect to all enabled servers and create bridge tools.
@@ -48,9 +52,15 @@ class MCPToolFactory:
             Tuple of all discovered and wrapped bridge tools.
 
         Raises:
+            RuntimeError: If called more than once.
             MCPConnectionError: If a server connection fails.
             MCPDiscoveryError: If tool discovery fails.
         """
+        if self._created:
+            msg = "create_tools() must not be called more than once"
+            raise RuntimeError(msg)
+        self._created = True
+
         enabled = [s for s in self._config.servers if s.enabled]
         skipped = len(self._config.servers) - len(enabled)
 
@@ -70,32 +80,14 @@ class MCPToolFactory:
                 )
 
         if not enabled:
-            logger.info(
-                MCP_FACTORY_COMPLETE,
-                tool_count=0,
-            )
+            logger.info(MCP_FACTORY_COMPLETE, tool_count=0)
             return ()
 
         results = await self._connect_all(enabled)
+        bridge_tools = self._build_bridge_tools(results)
 
-        # Create bridge tools
-        all_tools: list[MCPBridgeTool] = []
-        for client, tools in results:
-            cache = self._make_cache(client)
-            for tool_info in tools:
-                bridge = MCPBridgeTool(
-                    tool_info=tool_info,
-                    client=client,
-                    cache=cache,
-                )
-                all_tools.append(bridge)
-
-        result = tuple(all_tools)
-        logger.info(
-            MCP_FACTORY_COMPLETE,
-            tool_count=len(result),
-        )
-        return result
+        logger.info(MCP_FACTORY_COMPLETE, tool_count=len(bridge_tools))
+        return bridge_tools
 
     async def _connect_all(
         self,
@@ -109,6 +101,7 @@ class MCPToolFactory:
         Returns:
             List of (client, tools) tuples.
         """
+        tasks: list[asyncio.Task[tuple[MCPClient, tuple[MCPToolInfo, ...]]]] = []
         try:
             async with asyncio.TaskGroup() as tg:
                 tasks = [
@@ -119,12 +112,17 @@ class MCPToolFactory:
                 ]
         except BaseException:
             # Clean up any clients that connected before the failure
+            logger.warning(
+                MCP_FACTORY_CLEANUP,
+                reason="partial failure during parallel connect",
+            )
             for task in tasks:
                 if task.done() and not task.cancelled():
                     exc = task.exception()
                     if exc is None:
                         client, _ = task.result()
-                        await client.disconnect()
+                        with contextlib.suppress(Exception):
+                            await client.disconnect()
             raise
 
         results: list[tuple[MCPClient, tuple[MCPToolInfo, ...]]] = []
@@ -142,9 +140,9 @@ class MCPToolFactory:
                     await client.disconnect()
                 except Exception as exc:
                     logger.warning(
-                        MCP_FACTORY_SERVER_SKIPPED,
+                        MCP_CLIENT_DISCONNECT_FAILED,
                         server=client.server_name,
-                        reason=f"disconnect failed: {exc}",
+                        error=f"disconnect failed: {exc}",
                     )
         finally:
             self._clients.clear()
@@ -157,6 +155,9 @@ class MCPToolFactory:
     ) -> tuple[MCPClient, tuple[MCPToolInfo, ...]]:
         """Connect to a server and discover its tools.
 
+        Disconnects the client if discovery fails after a
+        successful connection.
+
         Args:
             config: Server configuration.
 
@@ -165,8 +166,36 @@ class MCPToolFactory:
         """
         client = MCPClient(config)
         await client.connect()
-        tools = await client.list_tools()
+        try:
+            tools = await client.list_tools()
+        except BaseException:
+            await client.disconnect()
+            raise
         return (client, tools)
+
+    def _build_bridge_tools(
+        self,
+        results: list[tuple[MCPClient, tuple[MCPToolInfo, ...]]],
+    ) -> tuple[MCPBridgeTool, ...]:
+        """Create bridge tools from connected clients.
+
+        Args:
+            results: List of (client, tools) pairs.
+
+        Returns:
+            Tuple of ``MCPBridgeTool`` instances.
+        """
+        all_tools: list[MCPBridgeTool] = []
+        for client, tools in results:
+            cache = self._make_cache(client)
+            for tool_info in tools:
+                bridge = MCPBridgeTool(
+                    tool_info=tool_info,
+                    client=client,
+                    cache=cache,
+                )
+                all_tools.append(bridge)
+        return tuple(all_tools)
 
     @staticmethod
     def _make_cache(

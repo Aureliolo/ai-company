@@ -63,6 +63,25 @@ class DockerSandboxConfig(BaseModel):
     )
 
     @model_validator(mode="after")
+    def _validate_memory_limit(self) -> Self:
+        """Validate that memory_limit is a parseable Docker memory value."""
+        limit = self.memory_limit.strip().lower()
+        if not limit:
+            msg = "Memory limit must not be empty"
+            raise ValueError(msg)
+        multipliers = {"k", "m", "g"}
+        numeric_part = limit[:-1] if limit[-1] in multipliers else limit
+        try:
+            value = int(numeric_part)
+        except ValueError:
+            msg = f"Invalid memory_limit format: {self.memory_limit!r}"
+            raise ValueError(msg) from None
+        if value <= 0:
+            msg = f"Memory limit must be positive, got: {self.memory_limit!r}"
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _validate_network_overrides(self) -> Self:
         """Ensure network override values are valid network modes."""
         for category, mode in self.network_overrides.items():

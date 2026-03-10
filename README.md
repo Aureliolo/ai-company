@@ -56,6 +56,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Python 3.14+**
 - **uv** — package manager ([install](https://docs.astral.sh/uv/getting-started/installation/))
 - **Git 2.x+** — required at runtime for built-in git tools (subprocess-based, not a Python binding)
+- **Docker** (optional) — required for code execution sandbox and Docker-backed tool isolation. Install [Docker Desktop](https://docs.docker.com/get-docker/) or Docker Engine. File system and git tools work without Docker via subprocess isolation.
 
 ## Getting Started
 

@@ -5,6 +5,7 @@ tool discovery and invocation through the MCP protocol.
 """
 
 import asyncio
+import copy
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Any, Self
 
@@ -47,8 +48,8 @@ class MCPClient:
     """Async client for a single MCP server.
 
     Wraps the MCP SDK's ``ClientSession`` to provide connection
-    management, tool discovery, and tool invocation. MCP sessions
-    are sequential, so a lock serializes ``call_tool`` requests.
+    management, tool discovery, and tool invocation. A lock
+    serializes all session access to prevent interleaving.
 
     Args:
         config: Server connection configuration.
@@ -81,61 +82,62 @@ class MCPClient:
         Raises:
             MCPConnectionError: If the connection fails.
         """
-        logger.info(
-            MCP_CLIENT_CONNECTING,
-            server=self._config.name,
-            transport=self._config.transport,
-        )
-        stack = AsyncExitStack()
-        await stack.__aenter__()
-        try:
-            coro = self._connect_with_stack(stack)
-            session = await asyncio.wait_for(
-                coro,
-                timeout=self._config.connect_timeout_seconds,
-            )
-            self._session = session
-            self._exit_stack = stack
+        async with self._lock:
             logger.info(
-                MCP_CLIENT_CONNECTED,
+                MCP_CLIENT_CONNECTING,
                 server=self._config.name,
+                transport=self._config.transport,
             )
-        except TimeoutError as exc:
-            await stack.aclose()
-            msg = (
-                f"Connection to {self._config.name!r} timed out "
-                f"after {self._config.connect_timeout_seconds}s"
-            )
-            logger.warning(
-                MCP_CLIENT_CONNECTION_FAILED,
-                server=self._config.name,
-                error=msg,
-            )
-            raise MCPConnectionError(
-                msg,
-                context={
-                    "server": self._config.name,
-                    "transport": self._config.transport,
-                },
-            ) from exc
-        except MCPConnectionError:
-            await stack.aclose()
-            raise
-        except Exception as exc:
-            await stack.aclose()
-            logger.exception(
-                MCP_CLIENT_CONNECTION_FAILED,
-                server=self._config.name,
-                error=str(exc),
-            )
-            msg = f"Failed to connect to {self._config.name!r}: {exc}"
-            raise MCPConnectionError(
-                msg,
-                context={
-                    "server": self._config.name,
-                    "transport": self._config.transport,
-                },
-            ) from exc
+            stack = AsyncExitStack()
+            await stack.__aenter__()
+            try:
+                coro = self._connect_with_stack(stack)
+                session = await asyncio.wait_for(
+                    coro,
+                    timeout=self._config.connect_timeout_seconds,
+                )
+                self._session = session
+                self._exit_stack = stack
+                logger.info(
+                    MCP_CLIENT_CONNECTED,
+                    server=self._config.name,
+                )
+            except TimeoutError as exc:
+                await stack.aclose()
+                msg = (
+                    f"Connection to {self._config.name!r} timed out "
+                    f"after {self._config.connect_timeout_seconds}s"
+                )
+                logger.warning(
+                    MCP_CLIENT_CONNECTION_FAILED,
+                    server=self._config.name,
+                    error=msg,
+                )
+                raise MCPConnectionError(
+                    msg,
+                    context={
+                        "server": self._config.name,
+                        "transport": self._config.transport,
+                    },
+                ) from exc
+            except MCPConnectionError:
+                await stack.aclose()
+                raise
+            except Exception as exc:
+                await stack.aclose()
+                logger.exception(
+                    MCP_CLIENT_CONNECTION_FAILED,
+                    server=self._config.name,
+                    error=str(exc),
+                )
+                msg = f"Failed to connect to {self._config.name!r}: {exc}"
+                raise MCPConnectionError(
+                    msg,
+                    context={
+                        "server": self._config.name,
+                        "transport": self._config.transport,
+                    },
+                ) from exc
 
     async def _connect_with_stack(
         self,
@@ -147,7 +149,7 @@ class MCPClient:
             stack: Exit stack for resource management.
 
         Returns:
-            Initialized ``ClientSession``.
+            Connected and initialized ``ClientSession``.
         """
         if self._config.transport == "stdio":
             session = await self._connect_stdio(stack)
@@ -158,23 +160,24 @@ class MCPClient:
 
     async def disconnect(self) -> None:
         """Close the connection and release resources."""
-        if self._exit_stack is not None:
-            try:
-                await self._exit_stack.aclose()
-            except Exception as exc:
-                logger.warning(
-                    MCP_CLIENT_DISCONNECT_FAILED,
-                    server=self._config.name,
-                    error=str(exc),
-                )
-            else:
-                logger.info(
-                    MCP_CLIENT_DISCONNECTED,
-                    server=self._config.name,
-                )
-            finally:
-                self._session = None
-                self._exit_stack = None
+        async with self._lock:
+            if self._exit_stack is not None:
+                try:
+                    await self._exit_stack.aclose()
+                except Exception as exc:
+                    logger.warning(
+                        MCP_CLIENT_DISCONNECT_FAILED,
+                        server=self._config.name,
+                        error=str(exc),
+                    )
+                else:
+                    logger.info(
+                        MCP_CLIENT_DISCONNECTED,
+                        server=self._config.name,
+                    )
+                finally:
+                    self._session = None
+                    self._exit_stack = None
 
     async def list_tools(self) -> tuple[MCPToolInfo, ...]:
         """Discover tools from the connected server.
@@ -188,30 +191,31 @@ class MCPClient:
         Raises:
             MCPDiscoveryError: If discovery fails.
         """
-        session = self._require_session()
-        logger.info(
-            MCP_DISCOVERY_START,
-            server=self._config.name,
-        )
-        try:
-            result = await session.list_tools()
-        except Exception as exc:
-            logger.exception(
-                MCP_DISCOVERY_FAILED,
+        async with self._lock:
+            session = self._require_session()
+            logger.info(
+                MCP_DISCOVERY_START,
                 server=self._config.name,
-                error=str(exc),
             )
-            msg = f"Tool discovery failed for {self._config.name!r}: {exc}"
-            raise MCPDiscoveryError(
-                msg,
-                context={"server": self._config.name},
-            ) from exc
+            try:
+                result = await session.list_tools()
+            except Exception as exc:
+                logger.exception(
+                    MCP_DISCOVERY_FAILED,
+                    server=self._config.name,
+                    error=str(exc),
+                )
+                msg = f"Tool discovery failed for {self._config.name!r}: {exc}"
+                raise MCPDiscoveryError(
+                    msg,
+                    context={"server": self._config.name},
+                ) from exc
 
         tools = tuple(
             MCPToolInfo(
                 name=t.name,
                 description=t.description or "",
-                input_schema=(dict(t.inputSchema) if t.inputSchema else {}),
+                input_schema=(copy.deepcopy(t.inputSchema) if t.inputSchema else {}),
                 server_name=self._config.name,
             )
             for t in result.tools
@@ -299,7 +303,11 @@ class MCPClient:
         return MCPRawResult(
             content=tuple(result.content),
             is_error=result.isError or False,
-            structured_content=result.structuredContent,
+            structured_content=(
+                copy.deepcopy(result.structuredContent)
+                if result.structuredContent is not None
+                else None
+            ),
         )
 
     async def reconnect(self) -> None:
@@ -363,10 +371,15 @@ class MCPClient:
             stack: Exit stack for resource management.
 
         Returns:
-            Initialized ``ClientSession``.
+            Connected ``ClientSession`` (not yet initialized).
         """
         if self._config.command is None:
             msg = f"Server {self._config.name!r}: stdio transport requires 'command'"
+            logger.warning(
+                MCP_CLIENT_CONNECTION_FAILED,
+                server=self._config.name,
+                error=msg,
+            )
             raise MCPConnectionError(
                 msg,
                 context={"server": self._config.name},
@@ -393,10 +406,15 @@ class MCPClient:
             stack: Exit stack for resource management.
 
         Returns:
-            Initialized ``ClientSession``.
+            Connected ``ClientSession`` (not yet initialized).
         """
         if self._config.url is None:
             msg = f"Server {self._config.name!r}: streamable_http requires 'url'"
+            logger.warning(
+                MCP_CLIENT_CONNECTION_FAILED,
+                server=self._config.name,
+                error=msg,
+            )
             raise MCPConnectionError(
                 msg,
                 context={"server": self._config.name},

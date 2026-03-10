@@ -148,7 +148,6 @@ def mock_session() -> AsyncMock:
 @pytest.fixture
 def mock_client(
     stdio_server_config: MCPServerConfig,
-    sample_tool_info: MCPToolInfo,
 ) -> MCPClient:
     """MCPClient with mocked internals for unit testing."""
     client = MCPClient(stdio_server_config)

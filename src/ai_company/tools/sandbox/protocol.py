@@ -37,7 +37,7 @@ class SandboxBackend(Protocol):
             command: Executable name or path.
             args: Command arguments.
             cwd: Working directory (defaults to sandbox workspace root).
-            env_overrides: Extra env vars applied on top of filtered env.
+            env_overrides: Extra environment variables for the sandbox.
             timeout: Seconds before the process is killed. Falls back
                 to the backend's default timeout if ``None``.
 

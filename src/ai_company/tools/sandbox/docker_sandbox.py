@@ -129,19 +129,19 @@ class DockerSandbox:
         """
         if self._docker is not None:
             return self._docker
+        client = aiodocker.Docker()
         try:
-            client = aiodocker.Docker()
             await client.version()
         except Exception as exc:
+            await client.close()
             logger.exception(
                 DOCKER_DAEMON_UNAVAILABLE,
                 error=str(exc),
             )
             msg = f"Docker daemon unavailable: {exc}"
             raise SandboxStartError(msg) from exc
-        else:
-            self._docker = client
-            return client
+        self._docker = client
+        return client
 
     def _validate_cwd(self, cwd: Path) -> None:
         """Validate that *cwd* is within the workspace boundary.
@@ -222,6 +222,8 @@ class DockerSandbox:
         }
         if self._config.runtime is not None:
             host_config["Runtime"] = self._config.runtime
+        # TODO(#50): allowed_hosts is not yet enforced at runtime;
+        # needs iptables/nftables rules or Docker network plugin.
 
         return {
             "Image": self._config.image,
@@ -278,7 +280,8 @@ class DockerSandbox:
             args: Command arguments.
             cwd: Working directory (defaults to workspace root).
             env_overrides: Extra env vars (only these — no host leakage).
-            timeout: Seconds before the container is killed.
+            timeout: Seconds before the container is killed. Clamped
+                to ``config.timeout_seconds`` if larger.
 
         Returns:
             A ``SandboxResult`` with captured output and exit status.
@@ -496,8 +499,8 @@ class DockerSandbox:
             stdout=False,
             stderr=True,
         )
-        stdout = "".join(stdout_logs).strip()
-        stderr = "".join(stderr_logs).strip()
+        stdout = "".join(stdout_logs)
+        stderr = "".join(stderr_logs)
         return stdout, stderr
 
     @staticmethod
@@ -553,7 +556,7 @@ class DockerSandbox:
             )
 
     async def cleanup(self) -> None:
-        """Stop tracked containers and close the Docker session."""
+        """Stop and remove tracked containers, then close the Docker session."""
         logger.debug(
             DOCKER_CLEANUP,
             tracked_count=len(self._tracked_containers),
@@ -562,11 +565,18 @@ class DockerSandbox:
             try:
                 for cid in self._tracked_containers:
                     await self._stop_container(self._docker, cid)
+                    await self._remove_container(self._docker, cid)
+            except Exception as exc:
+                logger.warning(
+                    DOCKER_CLEANUP,
+                    error=f"Container cleanup failed: {exc}",
+                )
+            try:
                 await self._docker.close()
             except Exception as exc:
                 logger.warning(
                     DOCKER_CLEANUP,
-                    error=f"Cleanup failed: {exc}",
+                    error=f"Docker client close failed: {exc}",
                 )
             finally:
                 self._docker = None
