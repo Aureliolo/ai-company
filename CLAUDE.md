@@ -159,12 +159,13 @@ src/ai_company/
 ## CI
 
 - **Jobs**: lint (ruff) + type-check (mypy src/ tests/) + test (pytest + coverage) run in parallel → ci-pass (gate)
-- **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, runs Trivy + Grype scans, signs with cosign. Triggers on push to main and version tags (`v*`).
+- **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.trivyignore.yaml` and `.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
 - **Dependabot**: daily uv + github-actions + docker updates, grouped minor/patch, no auto-merge
 - **Secret scanning**: gitleaks workflow on push/PR + weekly schedule
 - **Dependency review**: license allow-list (permissive only), PR comment summaries
 - **Coverage**: Codecov integration (replaces artifact-only uploads)
+- **Release**: `.github/workflows/release.yml` — Release Please (Google) auto-creates a release PR on every push to main. Merging the release PR creates a git tag (`vX.Y.Z`) + GitHub Release with changelog. Tag push triggers the Docker workflow to build version-tagged images. Uses `RELEASE_PLEASE_TOKEN` secret (PAT/GitHub App token) so tag creation triggers downstream workflows (GITHUB_TOKEN cannot). Config in `.github/release-please-config.json` and `.github/.release-please-manifest.json`.
 
 ## Dependencies
 
