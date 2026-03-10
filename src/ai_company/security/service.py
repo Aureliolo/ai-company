@@ -16,6 +16,7 @@ from ai_company.core.enums import ApprovalRiskLevel, ApprovalStatus
 from ai_company.observability import get_logger
 from ai_company.observability.events.security import (
     SECURITY_AUDIT_RECORD_ERROR,
+    SECURITY_CONFIG_LOADED,
     SECURITY_DISABLED,
     SECURITY_ESCALATION_CREATED,
     SECURITY_ESCALATION_STORE_ERROR,
@@ -29,6 +30,7 @@ from ai_company.observability.events.security import (
 from ai_company.security.audit import AuditLog  # noqa: TC001
 from ai_company.security.config import SecurityConfig  # noqa: TC001
 from ai_company.security.models import (
+    OUTPUT_SCAN_VERDICT,
     AuditEntry,
     OutputScanResult,
     SecurityContext,
@@ -93,7 +95,7 @@ class SecOpsService:
 
         if config.custom_policies:
             logger.warning(
-                SECURITY_EVALUATE_START,
+                SECURITY_CONFIG_LOADED,
                 note=(
                     "custom_policies configured but not yet "
                     "evaluated — enforcement is not implemented"
@@ -135,6 +137,8 @@ class SecOpsService:
 
         try:
             verdict = self._rule_engine.evaluate(context)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 SECURITY_INTERCEPTOR_ERROR,
@@ -202,7 +206,7 @@ class SecOpsService:
                 tool_category=context.tool_category,
                 action_type=context.action_type,
                 arguments_hash=_hash_arguments(context.arguments),
-                verdict="output_scan",
+                verdict=OUTPUT_SCAN_VERDICT,
                 risk_level=ApprovalRiskLevel.HIGH,
                 reason=("Sensitive data in output: " + ", ".join(result.findings)),
                 evaluation_duration_ms=0.0,

@@ -55,12 +55,12 @@ _extracted_categories = frozenset(_CATEGORY_MAP.keys())
 _enum_categories = frozenset(member.value for member in ActionTypeCategory)
 _missing_in_enum = _extracted_categories - _enum_categories
 _missing_in_map = _enum_categories - _extracted_categories
-assert not _missing_in_enum, (  # noqa: S101
-    f"ActionType categories missing from ActionTypeCategory: {_missing_in_enum}"
-)
-assert not _missing_in_map, (  # noqa: S101
-    f"ActionTypeCategory members missing from ActionType: {_missing_in_map}"
-)
+if _missing_in_enum:
+    msg = f"ActionType categories missing from ActionTypeCategory: {_missing_in_enum}"
+    raise RuntimeError(msg)
+if _missing_in_map:
+    msg = f"ActionTypeCategory members missing from ActionType: {_missing_in_map}"
+    raise RuntimeError(msg)
 
 
 class ActionTypeRegistry:

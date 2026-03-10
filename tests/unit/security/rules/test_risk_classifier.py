@@ -184,18 +184,15 @@ class TestRiskClassifierCompleteness:
     """Every ActionType member has a risk mapping in the default map."""
 
     def test_all_action_types_are_mapped(self) -> None:
-        """Every ActionType enum member resolves without falling back to HIGH."""
+        """Every ActionType enum member has an explicit risk mapping."""
         classifier = RiskClassifier()
         for action_type in ActionType:
-            risk = classifier.classify(action_type)
-            # All built-in types should have an explicit mapping,
-            # so none should silently fall back to HIGH (the unknown default).
-            assert isinstance(risk, ApprovalRiskLevel), (
-                f"{action_type} not mapped in default risk map"
+            # Verify the action type is in the explicit map
+            # (not just falling back to HIGH).
+            assert action_type.value in classifier._risk_map, (
+                f"{action_type} missing from explicit risk map"
             )
-            # Verify that the mapping is explicit (not the unknown fallback).
-            # We don't assert risk != HIGH since some types (DB_MUTATE etc.)
-            # are legitimately HIGH — just verify it's a valid ApprovalRiskLevel.
-            assert risk in ApprovalRiskLevel, (
+            risk = classifier.classify(action_type)
+            assert isinstance(risk, ApprovalRiskLevel), (
                 f"{action_type} returned invalid risk level"
             )

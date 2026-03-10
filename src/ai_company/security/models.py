@@ -105,6 +105,9 @@ _HEX_SHA256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 # Verdict values that appear in audit entries.
 AuditVerdictStr = Literal["allow", "deny", "escalate", "output_scan"]
 
+# Audit-only verdict for post-tool output scan entries.
+OUTPUT_SCAN_VERDICT: AuditVerdictStr = "output_scan"
+
 
 class AuditEntry(BaseModel):
     """Immutable record of a security evaluation for the audit log.

@@ -377,12 +377,12 @@ class TestOutputScanRedaction:
         await invoker.invoke(tool_call)
         interceptor.scan_output.assert_awaited_once()
 
-    async def test_sensitive_but_no_redacted_content_passes_through(
+    async def test_sensitive_but_no_redacted_content_fails_closed(
         self,
         security_registry: ToolRegistry,
         tool_call: ToolCall,
     ) -> None:
-        """If has_sensitive_data=True but redacted_content is None, original passes."""
+        """If has_sensitive_data=True but redacted_content is None, fail-closed."""
         interceptor = _make_interceptor(
             pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
             scan_result=OutputScanResult(
@@ -396,8 +396,9 @@ class TestOutputScanRedaction:
             security_interceptor=interceptor,
         )
         result = await invoker.invoke(tool_call)
-        # Condition requires BOTH has_sensitive_data AND redacted_content
-        assert result.content == "executed: ls"
+        assert result.is_error is True
+        assert "fail-closed" in result.content.lower()
+        assert "executed:" not in result.content
 
 
 # ── SecurityContext construction ─────────────────────────────────

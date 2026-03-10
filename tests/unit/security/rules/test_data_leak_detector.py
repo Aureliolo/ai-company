@@ -151,6 +151,8 @@ class TestDataLeakDetectorPassThrough:
             {"path": "/home/user/project/config.toml"},
             {"data": ["item1", "item2"]},
             {"content": "phone: 555-1234"},
+            {"path": "/home/user/.ssh/id_rsa.pub"},
+            {"path": "/home/user/.ssh/id_ed25519.pub"},
         ],
         ids=[
             "empty",
@@ -159,6 +161,8 @@ class TestDataLeakDetectorPassThrough:
             "safe_config_path",
             "safe_list",
             "non_ssn_digits",
+            "public_rsa_key",
+            "public_ed25519_key",
         ],
     )
     def test_returns_none_for_clean_input(

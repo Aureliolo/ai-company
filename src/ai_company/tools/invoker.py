@@ -176,18 +176,21 @@ class ToolInvoker:
 
     async def _check_security(
         self,
+        tool: BaseTool,
         tool_call: ToolCall,
-        context: SecurityContext | None,
-    ) -> ToolResult | None:
+    ) -> tuple[SecurityContext | None, ToolResult | None]:
         """Run the security interceptor (if any) before execution.
 
-        Returns ``None`` if allowed, or a ``ToolResult(is_error=True)``
-        if denied or escalated.  Exceptions from the interceptor are
-        caught and converted to error results (fail-closed).
+        Builds the ``SecurityContext`` inside the fail-closed handler so
+        construction errors are also caught.
+
+        Returns ``(context, None)`` if allowed, or ``(context, ToolResult)``
+        if denied/escalated.  Returns ``(None, None)`` when no interceptor.
         """
-        if self._security_interceptor is None or context is None:
-            return None
+        if self._security_interceptor is None:
+            return None, None
         try:
+            context = self._build_security_context(tool, tool_call)
             verdict = await self._security_interceptor.evaluate_pre_tool(
                 context,
             )
@@ -199,7 +202,7 @@ class ToolInvoker:
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
             )
-            return ToolResult(
+            return None, ToolResult(
                 tool_call_id=tool_call.id,
                 content=(
                     "Security evaluation failed (fail-closed). Tool execution blocked."
@@ -207,7 +210,7 @@ class ToolInvoker:
                 is_error=True,
             )
         if verdict.verdict == SecurityVerdictType.ALLOW:
-            return None
+            return context, None
         if verdict.verdict == SecurityVerdictType.ESCALATE:
             logger.warning(
                 TOOL_SECURITY_ESCALATED,
@@ -220,7 +223,7 @@ class ToolInvoker:
                 f"Security escalation: {verdict.reason}. "
                 f"Approval required (id={verdict.approval_id})"
             )
-            return ToolResult(
+            return context, ToolResult(
                 tool_call_id=tool_call.id,
                 content=msg,
                 is_error=True,
@@ -232,7 +235,7 @@ class ToolInvoker:
             tool_name=tool_call.name,
             reason=verdict.reason,
         )
-        return ToolResult(
+        return context, ToolResult(
             tool_call_id=tool_call.id,
             content=f"Security denied: {verdict.reason}",
             is_error=True,
@@ -253,8 +256,6 @@ class ToolInvoker:
         """
         if self._security_interceptor is None:
             return result
-        if result.is_error:
-            return result
 
         try:
             scan_result = await self._security_interceptor.scan_output(
@@ -270,26 +271,42 @@ class ToolInvoker:
                 tool_name=tool_call.name,
             )
             return ToolExecutionResult(
-                content="Output scan failed (fail-closed). Tool output withheld.",
+                content=("Output scan failed (fail-closed). Tool output withheld."),
                 is_error=True,
                 metadata={"output_scan_failed": True},
             )
 
-        if scan_result.has_sensitive_data and scan_result.redacted_content is not None:
+        if scan_result.has_sensitive_data:
+            if scan_result.redacted_content is not None:
+                logger.warning(
+                    TOOL_OUTPUT_REDACTED,
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    findings=scan_result.findings,
+                )
+                return ToolExecutionResult(
+                    content=scan_result.redacted_content,
+                    is_error=result.is_error,
+                    metadata={
+                        **result.metadata,
+                        "output_redacted": True,
+                        "redaction_findings": list(scan_result.findings),
+                    },
+                )
+            # Sensitive data found but no redaction available — fail closed.
             logger.warning(
                 TOOL_OUTPUT_REDACTED,
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
                 findings=scan_result.findings,
+                note="no redacted content available — withholding output",
             )
             return ToolExecutionResult(
-                content=scan_result.redacted_content,
-                is_error=result.is_error,
-                metadata={
-                    **result.metadata,
-                    "output_redacted": True,
-                    "redaction_findings": list(scan_result.findings),
-                },
+                content=(
+                    "Sensitive data detected (fail-closed). Tool output withheld."
+                ),
+                is_error=True,
+                metadata={"output_scan_failed": True},
             )
         return result
 
@@ -332,16 +349,10 @@ class ToolInvoker:
         if param_error is not None:
             return param_error
 
-        # Build security context once, reuse for both pre-check and output scan.
-        security_context = (
-            self._build_security_context(tool_or_error, tool_call)
-            if self._security_interceptor is not None
-            else None
-        )
-
-        security_error = await self._check_security(
+        # Build security context inside fail-closed handling.
+        security_context, security_error = await self._check_security(
+            tool_or_error,
             tool_call,
-            security_context,
         )
         if security_error is not None:
             return security_error

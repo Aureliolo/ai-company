@@ -76,12 +76,30 @@ class TestWalkStringValuesNested:
 class TestWalkStringValuesDepthLimit:
     """Depth limit prevents infinite recursion."""
 
-    def test_stops_at_max_depth(self) -> None:
-        """Build a structure deeper than 20 levels — no crash."""
+    def test_stops_at_max_depth(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Build a structure deeper than 20 levels — truncated with warning."""
         data: dict[str, object] = {"val": "leaf"}
         for _ in range(25):
             data = {"nested": data}
 
-        # Should not raise; values beyond max depth are silently skipped.
         result = list(walk_string_values(data))
-        assert isinstance(result, list)
+
+        # "leaf" is beyond depth limit and should be skipped.
+        assert result == []
+        captured = capsys.readouterr()
+        assert "depth" in captured.out.lower()
+
+    def test_list_recursion_respects_depth_limit(self) -> None:
+        """Deeply nested lists stop at max depth without RecursionError."""
+        # Build a 25-level nested list structure (no dicts).
+        inner: object = "leaf"
+        for _ in range(25):
+            inner = [inner]
+        data: dict[str, object] = {"items": inner}
+
+        result = list(walk_string_values(data))
+        # "leaf" is beyond depth limit and should be skipped.
+        assert result == []

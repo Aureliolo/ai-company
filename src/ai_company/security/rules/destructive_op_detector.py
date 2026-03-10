@@ -68,15 +68,18 @@ _DESTRUCTIVE_PATTERNS: Final[
 )
 
 
-def _scan_value(value: str) -> tuple[str, SecurityVerdictType] | None:
-    """Scan a single string for destructive patterns.
+def _scan_value(
+    value: str,
+) -> list[tuple[str, SecurityVerdictType]]:
+    """Scan a single string for all destructive patterns.
 
-    Returns (pattern_name, verdict) or None.
+    Returns list of (pattern_name, verdict) for every match.
     """
+    matches: list[tuple[str, SecurityVerdictType]] = []
     for pattern_name, pattern, verdict in _DESTRUCTIVE_PATTERNS:
         if pattern.search(value):
-            return pattern_name, verdict
-    return None
+            matches.append((pattern_name, verdict))
+    return matches
 
 
 class DestructiveOpDetector:
@@ -100,11 +103,9 @@ class DestructiveOpDetector:
 
         Returns the most severe verdict found (DENY > ESCALATE).
         """
-        findings = [
-            match
-            for value in walk_string_values(context.arguments)
-            if (match := _scan_value(value))
-        ]
+        findings: list[tuple[str, SecurityVerdictType]] = []
+        for value in walk_string_values(context.arguments):
+            findings.extend(_scan_value(value))
 
         if not findings:
             return None

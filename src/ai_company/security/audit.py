@@ -104,6 +104,10 @@ class AuditLog:
         """
         if limit < 1:
             msg = f"limit must be >= 1, got {limit}"
+            logger.warning(
+                SECURITY_AUDIT_CONFIG_ERROR,
+                error=msg,
+            )
             raise ValueError(msg)
         results: list[AuditEntry] = []
         for entry in reversed(self._entries):

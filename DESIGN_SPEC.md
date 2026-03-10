@@ -3040,16 +3040,18 @@ ai-company/
 │       │   ├── audit.py            # Append-only AuditLog with configurable eviction
 │       │   ├── config.py           # SecurityConfig, SecurityPolicyRule, RuleEngineConfig
 │       │   ├── models.py           # SecurityVerdict, SecurityContext, AuditEntry, OutputScanResult
-│       │   ├── output_scanner.py   # Post-tool output scanning (credential/secret detection)
+│       │   ├── output_scanner.py   # Post-tool output scanning (regex-based redaction)
 │       │   ├── protocol.py         # SecurityInterceptionStrategy protocol
 │       │   ├── service.py          # SecOpsService — meta-agent coordinating security
 │       │   └── rules/              # Rule engine and detectors
 │       │       ├── engine.py       # RuleEngine (soft-allow + hard-deny, fail-closed)
 │       │       ├── protocol.py     # SecurityRule protocol
-│       │       ├── policy_validator.py   # Policy list validation rule
-│       │       ├── risk_classifier.py    # RiskClassifier (ActionType → ApprovalRiskLevel)
-│       │       ├── destructive_op_detector.py  # Destructive operation detection
-│       │       ├── data_leak_detector.py       # Credential/secret pattern detection
+│       │       ├── policy_validator.py        # Policy list validation rule (hard-deny/auto-approve)
+│       │       ├── risk_classifier.py         # RiskClassifier (ActionType → ApprovalRiskLevel)
+│       │       ├── credential_detector.py     # Credential/secret pattern detection (API keys, tokens)
+│       │       ├── data_leak_detector.py      # Data leak detection (PII, sensitive file paths)
+│       │       ├── destructive_op_detector.py # Destructive operation detection (rm -rf, DROP TABLE)
+│       │       ├── path_traversal_detector.py # Path traversal attack detection (../, null bytes)
 │       │       └── _utils.py       # walk_string_values utility (recursive argument scanning)
 │       ├── budget/                  # Cost management
 │       │   ├── _optimizer_helpers.py # CostOptimizer shared helper functions

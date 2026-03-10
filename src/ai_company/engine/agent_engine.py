@@ -153,6 +153,7 @@ class AgentEngine:
         self._recovery_strategy = recovery_strategy
         self._shutdown_checker = shutdown_checker
         self._error_taxonomy_config = error_taxonomy_config
+        self._audit_log = AuditLog()
         logger.debug(
             EXECUTION_ENGINE_CREATED,
             loop_type=self._loop.get_loop_type(),
@@ -703,7 +704,7 @@ class AgentEngine:
         return SecOpsService(
             config=cfg,
             rule_engine=rule_engine,
-            audit_log=AuditLog(),
+            audit_log=self._audit_log,
             output_scanner=OutputScanner(),
             approval_store=self._approval_store,
         )

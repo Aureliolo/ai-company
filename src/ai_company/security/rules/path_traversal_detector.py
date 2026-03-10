@@ -25,10 +25,6 @@ _TRAVERSAL_PATTERNS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
         re.compile(r"(?:^|[/\\])\.\.(?:[/\\]|$)"),
     ),
     (
-        "directory traversal (..\\)",
-        re.compile(r"^\.\.[\\/]"),
-    ),
-    (
         "null byte injection",
         re.compile(r"\x00"),
     ),

@@ -330,7 +330,7 @@ class TestSecOpsScanOutput:
     async def test_scan_delegates_to_scanner(self) -> None:
         finding_result = OutputScanResult(
             has_sensitive_data=True,
-            findings=("AWS access key",),
+            findings=("provider access key",),
             redacted_content="[REDACTED]",
         )
         service = _make_service(scan_result=finding_result)
@@ -340,7 +340,7 @@ class TestSecOpsScanOutput:
 
         service._test_output_scanner.scan.assert_called_once_with("some output")  # type: ignore[attr-defined]
         assert result.has_sensitive_data is True
-        assert "AWS access key" in result.findings
+        assert "provider access key" in result.findings
 
     async def test_scan_clean_output(self) -> None:
         service = _make_service(scan_result=OutputScanResult())

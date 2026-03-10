@@ -36,6 +36,13 @@ def walk_string_values(
 
 def _walk_value(value: object, *, _depth: int) -> Iterator[str]:
     """Yield strings from a single value, recursing into dicts and lists."""
+    if _depth >= _MAX_RECURSION_DEPTH:
+        logger.warning(
+            SECURITY_SCAN_DEPTH_EXCEEDED,
+            depth=_depth,
+            max_depth=_MAX_RECURSION_DEPTH,
+        )
+        return
     if isinstance(value, str):
         yield value
     elif isinstance(value, dict):

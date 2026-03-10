@@ -15,7 +15,6 @@ from ai_company.observability import get_logger
 
 if TYPE_CHECKING:
     from ai_company.core.enums import ToolCategory
-from ai_company.core.enums import ActionType
 from ai_company.observability.events.tool import TOOL_BASE_INVALID_NAME
 from ai_company.providers.models import ToolDefinition
 from ai_company.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
@@ -103,17 +102,17 @@ class BaseTool(ABC):
         self._description = description
         self._category = category
         if action_type is not None:
-            if ":" not in action_type:
+            parts = action_type.split(":")
+            if len(parts) != 2 or not parts[0] or not parts[1]:  # noqa: PLR2004
                 msg = f"action_type {action_type!r} must use 'category:action' format"
+                logger.warning(TOOL_BASE_INVALID_NAME, name=repr(action_type))
                 raise ValueError(msg)
             self._action_type = action_type
         else:
-            self._action_type = str(
-                DEFAULT_CATEGORY_ACTION_MAP.get(
-                    category,
-                    ActionType.CODE_READ,
-                ),
-            )
+            if category not in DEFAULT_CATEGORY_ACTION_MAP:
+                msg = f"No default action_type mapping for ToolCategory.{category.name}"
+                raise ValueError(msg)
+            self._action_type = str(DEFAULT_CATEGORY_ACTION_MAP[category])
         self._parameters_schema: MappingProxyType[str, Any] | None = (
             MappingProxyType(copy.deepcopy(parameters_schema))
             if parameters_schema is not None
