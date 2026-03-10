@@ -4,17 +4,18 @@
 # AI Company Backend — Multi-stage, CIS-hardened container
 # =============================================================================
 # Three stages: builder → setup → runtime (distroless).
-# Chainguard Python distroless: zero CVEs, no shell, no package manager,
-# non-root by default (UID 65532). CIS Docker Benchmark v1.6.0 compliant.
+# Chainguard Python distroless: minimal attack surface (no shell, no package
+# manager), non-root by default (UID 65532), continuously rebuilt by Chainguard.
+# CIS Docker Benchmark v1.6.0 compliant.
 # All base images pinned by version or digest (Dependabot auto-updates).
 # =============================================================================
 
 # ---------------------------------------------------------------------------
 # Stage 1 — Builder (ephemeral: compiles deps + project wheel)
 # ---------------------------------------------------------------------------
-FROM python:3.14.3-slim AS builder
+FROM python:3.14.3-slim@sha256:6a27522252aef8432841f224d9baaa6e9fce07b07584154fa0b9a96603af7456 AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:0.10.9 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea099626a4adb02acbac4c69920fe9d278f82 /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
@@ -26,7 +27,9 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project
 
-# Copy source and install project (dummy README satisfies hatchling metadata)
+# Copy source and install project.
+# touch README.md: hatchling requires README.md for package metadata but
+# .dockerignore excludes it — create an empty file to satisfy the build.
 RUN touch README.md
 COPY src/ src/
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -62,7 +65,7 @@ RUN chown -R 65532:65532 /app
 # ---------------------------------------------------------------------------
 # Stage 3 — Runtime (distroless: no shell, no uv, no package manager)
 # ---------------------------------------------------------------------------
-# Chainguard Python distroless — zero CVEs, minimal attack surface.
+# Chainguard Python distroless — minimal attack surface, continuously scanned.
 # Pinned by digest — free tier only exposes latest/latest-dev tags.
 # To update: docker buildx imagetools inspect cgr.dev/chainguard/python:latest
 FROM cgr.dev/chainguard/python@sha256:308d2fda1d9ad9620454de97cb84fa407bd20e24dd66902909f4b3b44b310836 AS runtime
@@ -95,10 +98,10 @@ EXPOSE 8000
 
 # Healthcheck — exec form (no shell needed, works with distroless)
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=15s \
-    CMD ["/usr/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+    CMD ["/usr/bin/python", "-c", "import json,urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000/api/v1/health'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='healthy' else 1)"]
 
-# Reset Chainguard base entrypoint (/usr/bin/python) so CMD specifies the full
-# uvicorn command path directly — required for distroless images without shell.
+# Reset Chainguard base entrypoint (/usr/bin/python) so CMD runs uvicorn
+# directly instead of being passed as Python arguments.
 ENTRYPOINT []
 CMD ["/app/.venv/bin/uvicorn", "ai_company.api.app:create_app", "--factory", \
      "--host", "0.0.0.0", "--port", "8000"]

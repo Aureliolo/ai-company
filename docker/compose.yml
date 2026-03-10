@@ -13,7 +13,7 @@ services:
       AI_COMPANY_PORT: "8000"
       AI_COMPANY_DB_PATH: "/data/ai-company.db"
       AI_COMPANY_MEMORY_DIR: "/data/memory"
-    # CIS 5.25 — restrict container capabilities
+    # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25)
     security_opt:
       - no-new-privileges:true
     cap_drop:

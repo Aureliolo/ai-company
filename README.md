@@ -84,12 +84,12 @@ docker compose -f docker/compose.yml build
 docker compose -f docker/compose.yml up -d
 ```
 
-Services:
-- **Backend API**: http://localhost:8000 — Litestar REST + WebSocket
-- **Web Dashboard**: http://localhost:3000 — placeholder (proxies `/api/` and `/ws` to backend)
+Services (default ports, configurable via `BACKEND_PORT` / `WEB_PORT` in `docker/.env`):
+- **Backend API**: `http://localhost:8000` — Litestar REST + WebSocket
+- **Web Dashboard**: `http://localhost:3000` — placeholder (proxies `/api/` and `/ws` to backend)
 
 ```bash
-curl http://localhost:8000/api/v1/health   # backend health check
+curl http://localhost:8000/api/v1/health   # health check (default port)
 docker compose -f docker/compose.yml down  # stop services
 ```
 

@@ -82,7 +82,7 @@ uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 
 # Type check
-uv run mypy src/
+uv run mypy src/ tests/
 
 # Tests with coverage
 uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80

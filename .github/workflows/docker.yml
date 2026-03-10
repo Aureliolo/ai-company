@@ -33,7 +33,8 @@ jobs:
           import tomllib
           import sys
           try:
-              data = tomllib.load(open('pyproject.toml', 'rb'))
+              with open('pyproject.toml', 'rb') as f:
+                  data = tomllib.load(f)
               print(data['tool']['commitizen']['version'])
           except (KeyError, FileNotFoundError) as e:
               print(f'::error::Failed to extract version: {e}', file=sys.stderr)
@@ -71,10 +72,10 @@ jobs:
         with:
           images: ghcr.io/aureliolo/ai-company-backend
           tags: |
-            type=raw,value=${{ needs.version.outputs.app_version }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=
+            type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,prefix=sha-
 
       # Build locally first, scan, then push only if scans pass
       - name: Build image
@@ -105,7 +106,10 @@ jobs:
           fail-build: true
           severity-cutoff: high
 
-      # Push only after both scans pass — prevents publishing vulnerable images
+      # Push only after both scans pass — prevents publishing vulnerable images.
+      # NOTE: This is a separate build invocation from the scan step. GHA cache
+      # ensures deterministic layer content, but the manifest digest differs due
+      # to SBOM + provenance attestation layers added only on push.
       - name: Push image
         id: push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
@@ -125,13 +129,13 @@ jobs:
 
       - name: Sign image
         env:
-          DIGEST: ${{ steps.push.outputs.digest || '' }}
+          DIGEST: ${{ steps.push.outputs.digest }}
         run: |
-          if [ -n "$DIGEST" ]; then
-            cosign sign --yes ghcr.io/aureliolo/ai-company-backend@${DIGEST}
-          else
-            echo "No digest available, skipping signing"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Push step did not produce a digest — cannot sign image"
+            exit 1
           fi
+          cosign sign --yes ghcr.io/aureliolo/ai-company-backend@${DIGEST}
 
   build-web:
     name: Build Web
@@ -162,10 +166,10 @@ jobs:
         with:
           images: ghcr.io/aureliolo/ai-company-web
           tags: |
-            type=raw,value=${{ needs.version.outputs.app_version }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=
+            type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,prefix=sha-
 
       # Build locally first, scan, then push only if scans pass
       - name: Build image
@@ -196,7 +200,9 @@ jobs:
           fail-build: true
           severity-cutoff: high
 
-      # Push only after both scans pass — prevents publishing vulnerable images
+      # Push only after both scans pass — prevents publishing vulnerable images.
+      # NOTE: Separate build invocation; GHA cache ensures deterministic layers,
+      # but manifest digest differs due to SBOM + provenance attestation layers.
       - name: Push image
         id: push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
@@ -216,10 +222,10 @@ jobs:
 
       - name: Sign image
         env:
-          DIGEST: ${{ steps.push.outputs.digest || '' }}
+          DIGEST: ${{ steps.push.outputs.digest }}
         run: |
-          if [ -n "$DIGEST" ]; then
-            cosign sign --yes ghcr.io/aureliolo/ai-company-web@${DIGEST}
-          else
-            echo "No digest available, skipping signing"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Push step did not produce a digest — cannot sign image"
+            exit 1
           fi
+          cosign sign --yes ghcr.io/aureliolo/ai-company-web@${DIGEST}

@@ -5,7 +5,7 @@ Content-Security-Policy headers.
 """
 
 import time
-from typing import Any
+from typing import Any, Final
 
 from litestar import Request
 from litestar.enums import ScopeType
@@ -20,12 +20,13 @@ from ai_company.observability.events.api import (
 logger = get_logger(__name__)
 
 # Strict CSP for API routes — no inline scripts, self-origin only.
-_API_CSP = "default-src 'self'; script-src 'self'"
+_API_CSP: Final[str] = "default-src 'self'; script-src 'self'"
 
 # Relaxed CSP for /docs/ — Scalar UI loads resources from external origins.
 # cdn.jsdelivr.net: JS bundle, CSS, fonts, source maps
+# fonts.scalar.com: Scalar-hosted font files
 # proxy.scalar.com: API proxy and registry features
-_DOCS_CSP = (
+_DOCS_CSP: Final[str] = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
@@ -40,7 +41,8 @@ class CSPMiddleware:
 
     API routes get a strict policy (self-origin only). The ``/docs/``
     path gets a relaxed policy that allows Scalar UI resources from
-    ``cdn.jsdelivr.net``.
+    ``cdn.jsdelivr.net``, ``fonts.scalar.com``, and
+    ``proxy.scalar.com``.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -58,7 +60,7 @@ class CSPMiddleware:
             return
 
         path: str = scope.get("path", "")
-        is_docs = path.startswith("/docs")
+        is_docs = path == "/docs" or path.startswith("/docs/")
         csp_value = _DOCS_CSP if is_docs else _API_CSP
 
         async def inject_csp(message: Any) -> None:

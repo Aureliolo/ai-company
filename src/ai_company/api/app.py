@@ -6,7 +6,6 @@ lifecycle hooks (startup/shutdown).
 """
 
 import time
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -44,6 +43,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
 
     from litestar.channels import ChannelsPlugin
+    from litestar.types import Middleware
 
     from ai_company.api.config import ApiConfig
 
@@ -336,7 +336,7 @@ def create_app(
                 value="geolocation=(), camera=(), microphone=()",
             ),
         ],
-        middleware=middleware,  # type: ignore[arg-type]
+        middleware=middleware,
         plugins=plugins,
         exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
         openapi_config=OpenAPIConfig(
@@ -362,7 +362,7 @@ def _build_bridge(
     return MessageBusBridge(message_bus, channels_plugin)
 
 
-def _build_middleware(api_config: ApiConfig) -> list[object]:
+def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
     """Build the middleware stack from configuration."""
     rl = api_config.rate_limit
     rate_limit = LitestarRateLimitConfig(

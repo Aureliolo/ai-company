@@ -2739,7 +2739,7 @@ Circular inheritance is detected via chain tracking and raises `TemplateInherita
 | **Database** | SQLite (aiosqlite) → PostgreSQL / MariaDB | Pluggable `PersistenceBackend` protocol (§7.6). SQLite ships first via aiosqlite async driver. PostgreSQL, MariaDB as future backends — swap via config, no app code changes |
 | **Web UI** | Vue 3 + Vite | Modern, fast, good ecosystem. Simpler than React for dashboards |
 | **Real-time** | WebSocket (Litestar channels plugin) | Built-in pub/sub broadcasting, per-channel history, backpressure management. Real-time agent activity, task updates, chat feed |
-| **Containerization** | Docker + Docker Compose | Production container packaging: Chainguard Python distroless runtime (zero CVEs, non-root UID 65532, CIS Docker Benchmark v1.6.0 hardened), `nginxinc/nginx-unprivileged` web tier, GHCR registry, cosign image signing, Trivy + Grype vulnerability scanning, SBOM + SLSA provenance. Also used for isolated code execution sandboxing |
+| **Containerization** | Docker + Docker Compose | Production container packaging: Chainguard Python distroless runtime (non-root UID 65532, CIS Docker Benchmark v1.6.0 hardened, minimal attack surface, continuously scanned in CI), `nginxinc/nginx-unprivileged` web tier, GHCR registry, cosign image signing, Trivy + Grype vulnerability scanning, SBOM + SLSA provenance. Also used for isolated code execution sandboxing |
 | **Docker API** | aiodocker | Async-native Docker API client for `DockerSandbox` backend |
 | **Tool Integration** | MCP SDK (`mcp`) | Industry standard for LLM-to-tool integration |
 | **Agent Comms** | A2A Protocol compatible | Future-proof inter-agent communication |
@@ -3209,6 +3209,8 @@ ai-company/
 ├── docker/
 │   ├── backend/
 │   │   └── Dockerfile              # 3-stage: python:3.14-slim → chainguard/python-dev → chainguard/python (distroless)
+│   ├── sandbox/
+│   │   └── Dockerfile              # Code execution sandbox (Python + Node.js, non-root)
 │   ├── web/
 │   │   └── Dockerfile              # nginxinc/nginx-unprivileged (non-root)
 │   ├── compose.yml                 # CIS-hardened orchestration
@@ -3228,6 +3230,7 @@ ai-company/
 │   ├── dependabot.yml              # uv + github-actions + docker updates
 │   ├── CONTRIBUTING.md
 │   └── SECURITY.md
+├── .dockerignore                    # Consolidated Docker build context exclusions
 ├── DESIGN_SPEC.md                   # This document
 ├── README.md
 ├── pyproject.toml
@@ -3248,7 +3251,7 @@ ai-company/
 | Web UI | Vue 3 | React, Svelte, HTMX | Simpler than React for dashboards |
 | Persistence | Pluggable protocol + repository protocols | ORM (SQLAlchemy), raw SQL, hybrid | Same frozen Pydantic models in and out (no DTOs), async throughout, backend-swappable via config. Repository protocols decouple app code from storage engine. See §7.6 |
 | Sandboxing | Layered: subprocess + Docker | Docker-only, subprocess-only, WASM | Risk-proportionate: fast subprocess for file/git, Docker isolation for code execution. Pluggable `SandboxBackend` protocol enables K8s migration later |
-| Container Packaging | Chainguard distroless + GHCR | Alpine, Debian-slim, scratch, Docker Hub | Chainguard Python distroless: zero CVEs, no shell/package-manager (minimal attack surface), non-root by default. GHCR over Docker Hub: tighter GitHub integration, no rate limits for public images, native OIDC token auth. cosign keyless signing for supply-chain integrity. Trivy + Grype dual scanning for comprehensive CVE coverage |
+| Container Packaging | Chainguard distroless + GHCR | Alpine, Debian-slim, scratch, Docker Hub | Chainguard Python distroless: no shell/package-manager (minimal attack surface), non-root by default, continuously scanned in CI. GHCR over Docker Hub: tighter GitHub integration, no rate limits for public images, native OIDC token auth. cosign keyless signing for supply-chain integrity. Trivy + Grype dual scanning for comprehensive CVE coverage |
 
 ### 15.5 Engineering Conventions
 
