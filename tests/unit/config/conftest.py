@@ -25,6 +25,8 @@ from ai_company.core.company import CompanyConfig
 from ai_company.memory.config import CompanyMemoryConfig
 from ai_company.memory.org.config import OrgMemoryConfig
 from ai_company.persistence.config import PersistenceConfig
+from ai_company.tools.mcp.config import MCPConfig
+from ai_company.tools.sandbox.sandboxing_config import SandboxingConfig
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -84,6 +86,8 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     persistence = PersistenceConfig()
     cost_tiers = CostTiersConfig()
     org_memory = OrgMemoryConfig()
+    sandboxing = SandboxingConfig()
+    mcp = MCPConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

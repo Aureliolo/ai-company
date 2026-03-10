@@ -35,4 +35,6 @@ def default_config_dict() -> dict[str, Any]:
         "cost_tiers": {},
         "org_memory": {},
         "api": {},
+        "sandboxing": {},
+        "mcp": {},
     }

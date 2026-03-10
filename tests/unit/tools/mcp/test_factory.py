@@ -1,0 +1,217 @@
+"""Tests for MCPToolFactory."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from ai_company.tools.mcp.bridge_tool import MCPBridgeTool
+from ai_company.tools.mcp.client import MCPClient
+from ai_company.tools.mcp.config import MCPConfig, MCPServerConfig
+from ai_company.tools.mcp.factory import MCPToolFactory
+from ai_company.tools.mcp.models import MCPToolInfo
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+def _make_mock_client(
+    server_name: str,
+    tools: tuple[MCPToolInfo, ...],
+    config: MCPServerConfig | None = None,
+) -> MCPClient:
+    """Create a mock MCPClient that returns given tools."""
+    if config is None:
+        config = MCPServerConfig(
+            name=server_name,
+            transport="stdio",
+            command="echo",
+        )
+    client = MCPClient(config)
+    client._session = AsyncMock()
+    return client
+
+
+class TestFactoryCreateTools:
+    """Tool discovery and creation."""
+
+    async def test_create_tools_from_single_server(self) -> None:
+        config = MCPConfig(
+            servers=(
+                MCPServerConfig(
+                    name="srv1",
+                    transport="stdio",
+                    command="echo",
+                ),
+            ),
+        )
+        factory = MCPToolFactory(config)
+
+        mock_tools = (
+            MCPToolInfo(
+                name="tool-a",
+                description="Tool A",
+                server_name="srv1",
+            ),
+        )
+
+        with patch.object(
+            MCPToolFactory,
+            "_connect_and_discover",
+            new_callable=AsyncMock,
+        ) as mock_cad:
+            mock_client = _make_mock_client("srv1", mock_tools)
+            mock_cad.return_value = (mock_client, mock_tools)
+            tools = await factory.create_tools()
+
+        assert len(tools) == 1
+        assert isinstance(tools[0], MCPBridgeTool)
+        assert tools[0].name == "mcp_srv1_tool-a"
+
+    async def test_create_tools_from_multiple_servers(self) -> None:
+        config = MCPConfig(
+            servers=(
+                MCPServerConfig(
+                    name="srv1",
+                    transport="stdio",
+                    command="echo",
+                ),
+                MCPServerConfig(
+                    name="srv2",
+                    transport="streamable_http",
+                    url="http://localhost",
+                ),
+            ),
+        )
+        factory = MCPToolFactory(config)
+
+        tools1 = (
+            MCPToolInfo(
+                name="tool-a",
+                description="A",
+                server_name="srv1",
+            ),
+        )
+        tools2 = (
+            MCPToolInfo(
+                name="tool-b",
+                description="B",
+                server_name="srv2",
+            ),
+            MCPToolInfo(
+                name="tool-c",
+                description="C",
+                server_name="srv2",
+            ),
+        )
+
+        call_count = 0
+
+        async def mock_connect_discover(
+            cfg: MCPServerConfig,
+        ) -> tuple[MCPClient, tuple[MCPToolInfo, ...]]:
+            nonlocal call_count
+            call_count += 1
+            if cfg.name == "srv1":
+                return (_make_mock_client("srv1", tools1), tools1)
+            return (_make_mock_client("srv2", tools2, cfg), tools2)
+
+        with patch.object(
+            MCPToolFactory,
+            "_connect_and_discover",
+            side_effect=mock_connect_discover,
+        ):
+            tools = await factory.create_tools()
+
+        assert len(tools) == 3
+        assert call_count == 2
+
+    async def test_skip_disabled_servers(self) -> None:
+        config = MCPConfig(
+            servers=(
+                MCPServerConfig(
+                    name="enabled",
+                    transport="stdio",
+                    command="echo",
+                ),
+                MCPServerConfig(
+                    name="disabled",
+                    transport="stdio",
+                    command="echo",
+                    enabled=False,
+                ),
+            ),
+        )
+        factory = MCPToolFactory(config)
+
+        tools1 = (
+            MCPToolInfo(
+                name="tool-a",
+                description="A",
+                server_name="enabled",
+            ),
+        )
+
+        with patch.object(
+            MCPToolFactory,
+            "_connect_and_discover",
+            new_callable=AsyncMock,
+        ) as mock_cad:
+            mock_client = _make_mock_client("enabled", tools1)
+            mock_cad.return_value = (mock_client, tools1)
+            tools = await factory.create_tools()
+
+        assert len(tools) == 1
+        # Only called once (disabled server skipped)
+        mock_cad.assert_called_once()
+
+    async def test_empty_config_returns_empty(self) -> None:
+        config = MCPConfig()
+        factory = MCPToolFactory(config)
+        tools = await factory.create_tools()
+        assert tools == ()
+
+
+class TestFactoryShutdown:
+    """Client lifecycle management."""
+
+    async def test_shutdown_disconnects_all_clients(self) -> None:
+        config = MCPConfig(
+            servers=(
+                MCPServerConfig(
+                    name="srv1",
+                    transport="stdio",
+                    command="echo",
+                ),
+            ),
+        )
+        factory = MCPToolFactory(config)
+
+        tools1 = (
+            MCPToolInfo(
+                name="tool-a",
+                description="A",
+                server_name="srv1",
+            ),
+        )
+
+        mock_client = _make_mock_client("srv1", tools1)
+        mock_client.disconnect = AsyncMock()  # type: ignore[method-assign]
+
+        with patch.object(
+            MCPToolFactory,
+            "_connect_and_discover",
+            new_callable=AsyncMock,
+            return_value=(mock_client, tools1),
+        ):
+            await factory.create_tools()
+
+        await factory.shutdown()
+        mock_client.disconnect.assert_called_once()
+
+    async def test_shutdown_clears_client_list(self) -> None:
+        config = MCPConfig()
+        factory = MCPToolFactory(config)
+        factory._clients = [MagicMock()]
+        factory._clients[0].disconnect = AsyncMock()  # type: ignore[method-assign]
+
+        await factory.shutdown()
+        assert factory._clients == []

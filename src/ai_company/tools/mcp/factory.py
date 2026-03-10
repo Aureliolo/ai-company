@@ -1,0 +1,157 @@
+"""MCP tool factory — discovers and creates bridge tools.
+
+Connects to all enabled MCP servers in parallel, discovers their
+tools, and wraps each as an ``MCPBridgeTool``.
+"""
+
+import asyncio
+from typing import TYPE_CHECKING
+
+from ai_company.observability import get_logger
+from ai_company.observability.events.mcp import (
+    MCP_FACTORY_COMPLETE,
+    MCP_FACTORY_SERVER_SKIPPED,
+    MCP_FACTORY_START,
+)
+from ai_company.tools.mcp.bridge_tool import MCPBridgeTool
+from ai_company.tools.mcp.cache import MCPResultCache
+from ai_company.tools.mcp.client import MCPClient
+
+if TYPE_CHECKING:
+    from ai_company.tools.mcp.config import MCPConfig, MCPServerConfig
+    from ai_company.tools.mcp.models import MCPToolInfo
+
+logger = get_logger(__name__)
+
+
+class MCPToolFactory:
+    """Factory that connects to MCP servers and creates bridge tools.
+
+    Manages the lifecycle of MCP clients and creates
+    ``MCPBridgeTool`` instances for all discovered tools.
+
+    Args:
+        config: MCP bridge configuration.
+    """
+
+    def __init__(self, config: MCPConfig) -> None:
+        self._config = config
+        self._clients: list[MCPClient] = []
+
+    async def create_tools(self) -> tuple[MCPBridgeTool, ...]:
+        """Connect to all enabled servers and create bridge tools.
+
+        Uses ``asyncio.TaskGroup`` for parallel server connections.
+        Disabled servers are skipped with a log message.
+
+        Returns:
+            Tuple of all discovered and wrapped bridge tools.
+
+        Raises:
+            MCPConnectionError: If a server connection fails.
+            MCPDiscoveryError: If tool discovery fails.
+        """
+        enabled = [s for s in self._config.servers if s.enabled]
+        skipped = len(self._config.servers) - len(enabled)
+
+        logger.info(
+            MCP_FACTORY_START,
+            total_servers=len(self._config.servers),
+            enabled_servers=len(enabled),
+            skipped_servers=skipped,
+        )
+
+        for server in self._config.servers:
+            if not server.enabled:
+                logger.info(
+                    MCP_FACTORY_SERVER_SKIPPED,
+                    server=server.name,
+                    reason="disabled",
+                )
+
+        if not enabled:
+            logger.info(
+                MCP_FACTORY_COMPLETE,
+                tool_count=0,
+            )
+            return ()
+
+        # Connect to all servers in parallel
+        results: list[tuple[MCPClient, tuple[MCPToolInfo, ...]]] = []
+
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(
+                    self._connect_and_discover(cfg),
+                )
+                for cfg in enabled
+            ]
+
+        for task in tasks:
+            client, tools = task.result()
+            self._clients.append(client)
+            results.append((client, tools))
+
+        # Create bridge tools
+        all_tools: list[MCPBridgeTool] = []
+        for client, tools in results:
+            cache = self._make_cache(client)
+            for tool_info in tools:
+                bridge = MCPBridgeTool(
+                    tool_info=tool_info,
+                    client=client,
+                    cache=cache,
+                )
+                all_tools.append(bridge)
+
+        result = tuple(all_tools)
+        logger.info(
+            MCP_FACTORY_COMPLETE,
+            tool_count=len(result),
+        )
+        return result
+
+    async def shutdown(self) -> None:
+        """Disconnect all managed MCP clients."""
+        for client in self._clients:
+            await client.disconnect()
+        self._clients = []
+
+    # ── Private helpers ──────────────────────────────────────────
+
+    @staticmethod
+    async def _connect_and_discover(
+        config: MCPServerConfig,
+    ) -> tuple[MCPClient, tuple[MCPToolInfo, ...]]:
+        """Connect to a server and discover its tools.
+
+        Args:
+            config: Server configuration.
+
+        Returns:
+            Tuple of (connected client, discovered tools).
+        """
+        client = MCPClient(config)
+        await client.connect()
+        tools = await client.list_tools()
+        return (client, tools)
+
+    @staticmethod
+    def _make_cache(
+        client: MCPClient,
+    ) -> MCPResultCache | None:
+        """Create a result cache if configured.
+
+        Args:
+            client: Connected MCP client.
+
+        Returns:
+            ``MCPResultCache`` or ``None`` if disabled.
+        """
+        config = client._config  # noqa: SLF001
+        if config.result_cache_max_size <= 0:
+            return None
+        return MCPResultCache(
+            max_size=config.result_cache_max_size,
+            ttl_seconds=config.result_cache_ttl_seconds,
+        )

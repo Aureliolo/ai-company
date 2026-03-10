@@ -1,6 +1,7 @@
 """Tool system — base abstraction, registry, invoker, permissions, and errors."""
 
 from .base import BaseTool, ToolExecutionResult
+from .code_runner import CodeRunnerTool
 from .errors import (
     ToolError,
     ToolExecutionError,
@@ -30,8 +31,11 @@ from .invoker import ToolInvoker
 from .permissions import ToolPermissionChecker
 from .registry import ToolRegistry
 from .sandbox import (
+    DockerSandbox,
+    DockerSandboxConfig,
     SandboxBackend,
     SandboxError,
+    SandboxingConfig,
     SandboxResult,
     SandboxStartError,
     SandboxTimeoutError,
@@ -39,10 +43,16 @@ from .sandbox import (
     SubprocessSandboxConfig,
 )
 
+# MCP types are re-exported from ai_company.tools.mcp to avoid
+# circular imports (config.schema -> tools.mcp -> tools.base).
+
 __all__ = [
     "BaseFileSystemTool",
     "BaseTool",
+    "CodeRunnerTool",
     "DeleteFileTool",
+    "DockerSandbox",
+    "DockerSandboxConfig",
     "EchoTool",
     "EditFileTool",
     "GitBranchTool",
@@ -59,6 +69,7 @@ __all__ = [
     "SandboxResult",
     "SandboxStartError",
     "SandboxTimeoutError",
+    "SandboxingConfig",
     "SubprocessSandbox",
     "SubprocessSandboxConfig",
     "ToolError",

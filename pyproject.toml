@@ -13,11 +13,13 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "aiodocker==0.26.0",
     "aiosqlite==0.21.0",
     "jinja2==3.1.6",
     "jsonschema==4.26.0",
     "litellm==1.82.0",
     "litestar[standard,structlog,pydantic,brotli,prometheus]==2.21.1",
+    "mcp==1.26.0",
     "pydantic==2.12.5",
     "pyyaml==6.0.3",
     "structlog==25.5.0",
@@ -158,7 +160,15 @@ module = "jsonschema.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = "aiodocker.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "aiosqlite.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "mcp.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
