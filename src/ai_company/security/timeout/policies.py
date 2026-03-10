@@ -1,7 +1,7 @@
 """Timeout policy implementations — wait, deny, tiered, escalation chain."""
 
 from ai_company.core.approval import ApprovalItem  # noqa: TC001
-from ai_company.core.enums import TimeoutActionType
+from ai_company.core.enums import ApprovalRiskLevel, TimeoutActionType
 from ai_company.observability import get_logger
 from ai_company.observability.events.timeout import (
     TIMEOUT_AUTO_DENIED,
@@ -61,6 +61,9 @@ class DenyOnTimeoutPolicy:
     """
 
     def __init__(self, *, timeout_seconds: float) -> None:
+        if timeout_seconds <= 0:
+            msg = f"timeout_seconds must be positive, got {timeout_seconds}"
+            raise ValueError(msg)
         self._timeout_seconds = timeout_seconds
 
     async def determine_action(
@@ -147,11 +150,12 @@ class TieredTimeoutPolicy:
 
         if tier_config is None:
             # No tier configured for this risk level — wait (safe default).
-            logger.debug(
+            logger.warning(
                 TIMEOUT_WAITING,
                 approval_id=item.id,
                 risk_level=risk_level.value,
-                note="no tier config — defaulting to wait",
+                available_tiers=sorted(self._tiers.keys()),
+                note="no tier config for this risk level — defaulting to wait",
             )
             return TimeoutAction(
                 action=TimeoutActionType.WAIT,
@@ -178,18 +182,37 @@ class TieredTimeoutPolicy:
                 ),
             )
 
+        effective_action = tier_config.on_timeout
+
+        # Guard: never auto-approve HIGH or CRITICAL actions.
+        _approve_forbidden = {ApprovalRiskLevel.HIGH, ApprovalRiskLevel.CRITICAL}
+        if (
+            effective_action == TimeoutActionType.APPROVE
+            and risk_level in _approve_forbidden
+        ):
+            logger.warning(
+                TIMEOUT_POLICY_EVALUATED,
+                approval_id=item.id,
+                risk_level=risk_level.value,
+                configured_action=effective_action.value,
+                note=(
+                    "auto-approve blocked for high/critical risk — overriding to DENY"
+                ),
+            )
+            effective_action = TimeoutActionType.DENY
+
         logger.info(
             TIMEOUT_POLICY_EVALUATED,
             approval_id=item.id,
             risk_level=risk_level.value,
-            on_timeout=tier_config.on_timeout.value,
+            on_timeout=effective_action.value,
             elapsed_seconds=elapsed_seconds,
         )
         return TimeoutAction(
-            action=tier_config.on_timeout,
+            action=effective_action,
             reason=(
                 f"Tier {risk_level.value} timeout: auto-"
-                f"{tier_config.on_timeout.value} after "
+                f"{effective_action.value} after "
                 f"{elapsed_seconds:.0f}s"
             ),
         )
@@ -230,9 +253,16 @@ class EscalationChainPolicy:
             elapsed_seconds: Seconds since creation.
 
         Returns:
-            WAIT, ESCALATE, or the chain-exhausted action.
+            ESCALATE (to the current step's role) or the
+            chain-exhausted action.
         """
         if not self._chain:
+            logger.warning(
+                TIMEOUT_ESCALATED,
+                approval_id=item.id,
+                on_exhausted=self._on_chain_exhausted.value,
+                note="empty escalation chain — likely a configuration error",
+            )
             return TimeoutAction(
                 action=self._on_chain_exhausted,
                 reason="Empty escalation chain — applying exhausted action",
@@ -242,10 +272,6 @@ class EscalationChainPolicy:
         for step in self._chain:
             step_timeout = step.timeout_minutes * _SECONDS_PER_MINUTE
             if elapsed_seconds < cumulative_seconds + step_timeout:
-                # Still within this step's window.
-                if elapsed_seconds < cumulative_seconds:
-                    # Before this step — shouldn't happen but safe.
-                    break
                 logger.debug(
                     TIMEOUT_WAITING,
                     approval_id=item.id,

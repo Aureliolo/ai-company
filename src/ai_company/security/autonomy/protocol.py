@@ -35,12 +35,15 @@ class AutonomyChangeStrategy(Protocol):
         self,
         agent_id: NotBlankStr,
         reason: DowngradeReason,
+        current_level: AutonomyLevel | None = None,
     ) -> AutonomyLevel:
         """Automatically downgrade an agent's autonomy level.
 
         Args:
             agent_id: The agent to downgrade.
             reason: Why the downgrade is happening.
+            current_level: The agent's current effective autonomy level.
+                Used as ``original_level`` when no prior override exists.
 
         Returns:
             The new (lower) autonomy level.

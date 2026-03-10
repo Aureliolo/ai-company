@@ -33,11 +33,11 @@ class AutonomyPreset(BaseModel):
 
     level: AutonomyLevel = Field(description="Autonomy level")
     description: NotBlankStr = Field(description="Human-readable description")
-    auto_approve: tuple[str, ...] = Field(
+    auto_approve: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Action patterns that are auto-approved",
     )
-    human_approval: tuple[str, ...] = Field(
+    human_approval: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Action patterns requiring human approval",
     )
@@ -172,6 +172,18 @@ class EffectiveAutonomy(BaseModel):
     security_agent: bool = Field(
         description="Whether security agent reviews escalations",
     )
+
+    @model_validator(mode="after")
+    def _validate_disjoint(self) -> Self:
+        """Ensure expanded action sets are disjoint."""
+        overlap = self.auto_approve_actions & self.human_approval_actions
+        if overlap:
+            msg = (
+                f"auto_approve_actions and human_approval_actions must be "
+                f"disjoint, overlapping: {sorted(overlap)}"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class AutonomyOverride(BaseModel):

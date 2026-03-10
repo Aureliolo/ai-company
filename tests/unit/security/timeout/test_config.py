@@ -13,6 +13,7 @@ from ai_company.security.timeout.config import (
     TieredTimeoutConfig,
     WaitForeverConfig,
 )
+from ai_company.security.timeout.models import TimeoutAction
 
 _adapter: TypeAdapter[ApprovalTimeoutConfig] = TypeAdapter(ApprovalTimeoutConfig)
 
@@ -123,3 +124,24 @@ class TestEscalationChainConfig:
         )
         assert isinstance(result, EscalationChainConfig)
         assert len(result.chain) == 1
+
+
+class TestTimeoutAction:
+    """TimeoutAction escalate_to validator tests."""
+
+    @pytest.mark.unit
+    def test_escalate_without_target_raises(self) -> None:
+        with pytest.raises(ValidationError, match="escalate_to is required"):
+            TimeoutAction(
+                action=TimeoutActionType.ESCALATE,
+                reason="test",
+            )
+
+    @pytest.mark.unit
+    def test_non_escalate_with_target_raises(self) -> None:
+        with pytest.raises(ValidationError, match="escalate_to must be None"):
+            TimeoutAction(
+                action=TimeoutActionType.DENY,
+                reason="test",
+                escalate_to="lead",
+            )

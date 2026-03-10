@@ -66,7 +66,9 @@ INSERT OR REPLACE INTO parked_contexts (
         """Retrieve a parked context by ID."""
         try:
             cursor = await self._db.execute(
-                "SELECT * FROM parked_contexts WHERE id = ?",
+                "SELECT id, execution_id, agent_id, task_id, approval_id, "
+                "parked_at, context_json, metadata "
+                "FROM parked_contexts WHERE id = ?",
                 (parked_id,),
             )
             row = await cursor.fetchone()
@@ -92,7 +94,9 @@ INSERT OR REPLACE INTO parked_contexts (
         """Retrieve a parked context by approval ID."""
         try:
             cursor = await self._db.execute(
-                "SELECT * FROM parked_contexts WHERE approval_id = ?",
+                "SELECT id, execution_id, agent_id, task_id, approval_id, "
+                "parked_at, context_json, metadata "
+                "FROM parked_contexts WHERE approval_id = ?",
                 (approval_id,),
             )
             row = await cursor.fetchone()
@@ -114,7 +118,9 @@ INSERT OR REPLACE INTO parked_contexts (
         """Retrieve all parked contexts for an agent."""
         try:
             cursor = await self._db.execute(
-                "SELECT * FROM parked_contexts WHERE agent_id = ? "
+                "SELECT id, execution_id, agent_id, task_id, approval_id, "
+                "parked_at, context_json, metadata "
+                "FROM parked_contexts WHERE agent_id = ? "
                 "ORDER BY parked_at DESC",
                 (agent_id,),
             )
@@ -128,18 +134,14 @@ INSERT OR REPLACE INTO parked_contexts (
             )
             raise QueryError(msg) from exc
 
-        results: list[ParkedContext] = []
-        for row in rows:
-            model = self._row_to_model(dict(row))
-            if model is not None:
-                results.append(model)
+        results = tuple(self._row_to_model(dict(row)) for row in rows)
 
         logger.debug(
             PERSISTENCE_PARKED_CONTEXT_QUERIED,
             agent_id=agent_id,
             count=len(results),
         )
-        return tuple(results)
+        return results
 
     async def delete(self, parked_id: str) -> bool:
         """Delete a parked context by ID."""
@@ -166,17 +168,22 @@ INSERT OR REPLACE INTO parked_contexts (
             )
         return deleted
 
-    def _row_to_model(self, row: dict[str, object]) -> ParkedContext | None:
-        """Convert a database row to a ``ParkedContext`` model."""
+    def _row_to_model(self, row: dict[str, object]) -> ParkedContext:
+        """Convert a database row to a ``ParkedContext`` model.
+
+        Raises:
+            QueryError: If the row cannot be deserialized.
+        """
         try:
             raw_meta = row.get("metadata")
             if isinstance(raw_meta, str):
-                row["metadata"] = json.loads(raw_meta)
+                row = {**row, "metadata": json.loads(raw_meta)}
             return ParkedContext.model_validate(row)
         except (ValidationError, json.JSONDecodeError) as exc:
-            logger.warning(
+            msg = f"Failed to deserialize parked context {row.get('id')!r}"
+            logger.exception(
                 PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
                 parked_id=row.get("id"),
                 error=str(exc),
             )
-            return None
+            raise QueryError(msg) from exc

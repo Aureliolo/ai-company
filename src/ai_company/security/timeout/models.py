@@ -1,8 +1,10 @@
 """Timeout action model — the result of evaluating a timeout policy."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
 
-from ai_company.core.enums import TimeoutActionType  # noqa: TC001
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from ai_company.core.enums import TimeoutActionType
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
@@ -24,3 +26,17 @@ class TimeoutAction(BaseModel):
         default=None,
         description="Escalation target (when action is ESCALATE)",
     )
+
+    @model_validator(mode="after")
+    def _validate_escalate_to(self) -> Self:
+        """Enforce ``escalate_to`` consistency with action type."""
+        if self.action == TimeoutActionType.ESCALATE and self.escalate_to is None:
+            msg = "escalate_to is required when action is ESCALATE"
+            raise ValueError(msg)
+        if self.action != TimeoutActionType.ESCALATE and self.escalate_to is not None:
+            msg = (
+                f"escalate_to must be None when action is "
+                f"{self.action.value!r}, got {self.escalate_to!r}"
+            )
+            raise ValueError(msg)
+        return self

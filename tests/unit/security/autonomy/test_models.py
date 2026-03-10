@@ -151,6 +151,16 @@ class TestEffectiveAutonomy:
         with pytest.raises(ValidationError):
             effective.level = AutonomyLevel.LOCKED  # type: ignore[misc]
 
+    @pytest.mark.unit
+    def test_disjoint_overlap_raises(self) -> None:
+        with pytest.raises(ValidationError, match="disjoint"):
+            EffectiveAutonomy(
+                level=AutonomyLevel.SEMI,
+                auto_approve_actions=frozenset({"code:read", "code:write"}),
+                human_approval_actions=frozenset({"code:write", "deploy:prod"}),
+                security_agent=True,
+            )
+
 
 class TestAutonomyOverride:
     """AutonomyOverride model tests."""

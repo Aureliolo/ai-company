@@ -379,7 +379,7 @@ class CompanyConfig(BaseModel):
         raw = data.get("autonomy")
         if isinstance(raw, (int, float)) and not isinstance(raw, bool):
             level = _float_to_autonomy_level(float(raw))
-            data["autonomy"] = {"level": level.value}
+            return {**data, "autonomy": {"level": level.value}}
         return data
 
     budget_monthly: float = Field(

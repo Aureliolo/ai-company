@@ -229,6 +229,8 @@ class SecOpsService:
             )
             try:
                 self._audit_log.record(entry)
+            except MemoryError, RecursionError:
+                raise
             except Exception:
                 logger.exception(
                     SECURITY_AUDIT_RECORD_ERROR,
@@ -345,6 +347,8 @@ class SecOpsService:
                 approval_id=verdict.approval_id,
             )
             self._audit_log.record(entry)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 SECURITY_AUDIT_RECORD_ERROR,
@@ -395,6 +399,8 @@ class SecOpsService:
         )
         try:
             await self._approval_store.add(item)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 SECURITY_ESCALATION_STORE_ERROR,

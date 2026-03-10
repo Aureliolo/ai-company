@@ -102,29 +102,32 @@ class AutonomyController(Controller):
         Returns:
             Updated autonomy level info.
         """
-        app_state: AppState = state.app_state  # noqa: F841
+        app_state: AppState = state.app_state
+        config = app_state.config.config
+        current_level = config.autonomy.level
         requested_level = data.level
 
         logger.info(
             AUTONOMY_PROMOTION_REQUESTED,
             agent_id=agent_id,
             requested_level=requested_level.value,
+            current_level=current_level.value,
         )
 
-        # Promotions require human approval — return pending status.
-        # The actual change would be applied via the AutonomyChangeStrategy
-        # when the approval system is wired up.
+        # All changes route through human approval — return current
+        # level with pending status.  The AutonomyChangeStrategy will
+        # apply the change when the approval system is wired up.
         logger.info(
             AUTONOMY_PROMOTION_DENIED,
             agent_id=agent_id,
             requested_level=requested_level.value,
-            reason="Autonomy promotions require human approval",
+            reason="Autonomy level changes require human approval",
         )
 
         return ApiResponse(
             data=AutonomyLevelResponse(
                 agent_id=agent_id,
-                level=requested_level,
+                level=current_level,
                 promotion_pending=True,
             ),
         )

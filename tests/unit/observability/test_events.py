@@ -552,6 +552,85 @@ class TestEventConstants:
 
         assert getattr(mod, constant_name) == expected
 
+    def test_autonomy_events_exist(self) -> None:
+        from ai_company.observability.events.autonomy import (
+            AUTONOMY_ACTION_AUTO_APPROVED,
+            AUTONOMY_ACTION_HUMAN_REQUIRED,
+            AUTONOMY_DOWNGRADE_TRIGGERED,
+            AUTONOMY_PRESET_EXPANDED,
+            AUTONOMY_PROMOTION_DENIED,
+            AUTONOMY_PROMOTION_REQUESTED,
+            AUTONOMY_RECOVERY_REQUESTED,
+            AUTONOMY_RESOLVED,
+            AUTONOMY_SENIORITY_VIOLATION,
+        )
+
+        assert AUTONOMY_RESOLVED == "autonomy.resolved"
+        assert AUTONOMY_PROMOTION_REQUESTED == "autonomy.promotion.requested"
+        assert AUTONOMY_PROMOTION_DENIED == "autonomy.promotion.denied"
+        assert AUTONOMY_DOWNGRADE_TRIGGERED == "autonomy.downgrade.triggered"
+        assert AUTONOMY_RECOVERY_REQUESTED == "autonomy.recovery.requested"
+        assert AUTONOMY_SENIORITY_VIOLATION == "autonomy.seniority.violation"
+        assert AUTONOMY_PRESET_EXPANDED == "autonomy.preset.expanded"
+        assert AUTONOMY_ACTION_AUTO_APPROVED == "autonomy.action.auto_approved"
+        assert AUTONOMY_ACTION_HUMAN_REQUIRED == "autonomy.action.human_required"
+
+    def test_timeout_events_exist(self) -> None:
+        from ai_company.observability.events.timeout import (
+            TIMEOUT_AUTO_APPROVED,
+            TIMEOUT_AUTO_DENIED,
+            TIMEOUT_CONTEXT_PARKED,
+            TIMEOUT_CONTEXT_RESUMED,
+            TIMEOUT_ESCALATED,
+            TIMEOUT_POLICY_EVALUATED,
+            TIMEOUT_UNKNOWN_ACTION_TYPE,
+            TIMEOUT_WAITING,
+        )
+
+        assert TIMEOUT_POLICY_EVALUATED == "timeout.policy.evaluated"
+        assert TIMEOUT_AUTO_APPROVED == "timeout.auto_approved"
+        assert TIMEOUT_AUTO_DENIED == "timeout.auto_denied"
+        assert TIMEOUT_ESCALATED == "timeout.escalated"
+        assert TIMEOUT_WAITING == "timeout.waiting"
+        assert TIMEOUT_CONTEXT_PARKED == "timeout.context.parked"
+        assert TIMEOUT_CONTEXT_RESUMED == "timeout.context.resumed"
+        assert TIMEOUT_UNKNOWN_ACTION_TYPE == "timeout.unknown_action_type"
+
+    def test_parked_context_persistence_events_exist(self) -> None:
+        from ai_company.observability.events.persistence import (
+            PERSISTENCE_PARKED_CONTEXT_DELETED,
+            PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED,
+            PERSISTENCE_PARKED_CONTEXT_NOT_FOUND,
+            PERSISTENCE_PARKED_CONTEXT_QUERIED,
+            PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED,
+            PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED,
+            PERSISTENCE_PARKED_CONTEXT_SAVED,
+        )
+
+        assert PERSISTENCE_PARKED_CONTEXT_SAVED == "persistence.parked_context.saved"
+        assert (
+            PERSISTENCE_PARKED_CONTEXT_SAVE_FAILED
+            == "persistence.parked_context.save_failed"
+        )
+        assert (
+            PERSISTENCE_PARKED_CONTEXT_QUERIED == "persistence.parked_context.queried"
+        )
+        assert (
+            PERSISTENCE_PARKED_CONTEXT_QUERY_FAILED
+            == "persistence.parked_context.query_failed"
+        )
+        assert (
+            PERSISTENCE_PARKED_CONTEXT_NOT_FOUND
+            == "persistence.parked_context.not_found"
+        )
+        assert (
+            PERSISTENCE_PARKED_CONTEXT_DELETED == "persistence.parked_context.deleted"
+        )
+        assert (
+            PERSISTENCE_PARKED_CONTEXT_DESERIALIZE_FAILED
+            == "persistence.parked_context.deserialize_failed"
+        )
+
     def test_classification_events_exist(self) -> None:
         assert CLASSIFICATION_START == "classification.start"
         assert CLASSIFICATION_COMPLETE == "classification.complete"

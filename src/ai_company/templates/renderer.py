@@ -65,6 +65,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Module-level Jinja2 environment — stateless and safe to reuse.
+_JINJA_ENV = SandboxedEnvironment(keep_trailing_newline=True)
+_JINJA_ENV.filters["auto"] = lambda value: value or ""
+
 
 def render_template(
     loaded: LoadedTemplate,
@@ -322,22 +326,6 @@ def _collect_variables(
     return result
 
 
-def _create_jinja_env() -> SandboxedEnvironment:
-    """Create a sandboxed Jinja2 environment with custom filters.
-
-    Returns:
-        Configured :class:`SandboxedEnvironment`.
-    """
-    env = SandboxedEnvironment(
-        keep_trailing_newline=True,
-    )
-    # ``auto`` filter: converts falsy values to empty string, which
-    # triggers auto-name generation downstream (empty names are
-    # detected by ``_expand_agents``).
-    env.filters["auto"] = lambda value: value or ""
-    return env
-
-
 def _render_jinja2(
     raw_yaml: str,
     variables: dict[str, Any],
@@ -357,9 +345,8 @@ def _render_jinja2(
     Raises:
         TemplateRenderError: If Jinja2 rendering fails.
     """
-    env = _create_jinja_env()
     try:
-        jinja_template = env.from_string(raw_yaml)
+        jinja_template = _JINJA_ENV.from_string(raw_yaml)
         return jinja_template.render(**variables)
     except Jinja2TemplateError as exc:
         logger.exception(
@@ -620,7 +607,9 @@ def _expand_single_agent(
         "level": agent.get("level", "mid"),
     }
 
-    _resolve_agent_personality(agent, name, agent_dict)
+    personality = _resolve_agent_personality(agent, name)
+    if personality is not None:
+        agent_dict["personality"] = personality
 
     model_tier = agent.get("model", "medium")
     agent_dict["model"] = {"provider": _DEFAULT_PROVIDER, "model_id": model_tier}
@@ -652,16 +641,15 @@ def _expand_single_agent(
 def _resolve_agent_personality(
     agent: dict[str, Any],
     name: str,
-    agent_dict: dict[str, Any],
-) -> None:
+) -> dict[str, Any] | None:
     """Resolve personality from inline config or named preset.
-
-    Mutates *agent_dict* to add the ``personality`` key when resolved.
 
     Args:
         agent: Raw agent dict from rendered YAML.
         name: Resolved agent name for error context.
-        agent_dict: Partially-built agent dict (mutated in place).
+
+    Returns:
+        Personality dict, or ``None`` if no personality configured.
 
     Raises:
         TemplateRenderError: If personality config is invalid or preset
@@ -683,10 +671,10 @@ def _resolve_agent_personality(
             )
             raise TemplateRenderError(msg)
         _validate_inline_personality(inline_personality, name)
-        agent_dict["personality"] = inline_personality
-    elif preset_name:
+        return dict(inline_personality)
+    if preset_name:
         try:
-            agent_dict["personality"] = get_personality_preset(preset_name)
+            return get_personality_preset(preset_name)
         except KeyError as exc:
             msg = f"Unknown personality preset {preset_name!r} for agent {name!r}"
             logger.warning(
@@ -695,6 +683,7 @@ def _resolve_agent_personality(
                 preset=preset_name,
             )
             raise TemplateRenderError(msg) from exc
+    return None
 
 
 def _validate_inline_personality(

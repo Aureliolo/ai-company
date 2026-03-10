@@ -34,12 +34,14 @@ def _make_mock_policy(
     *,
     action: TimeoutActionType = TimeoutActionType.WAIT,
     reason: str = "test reason",
+    escalate_to: str | None = None,
 ) -> AsyncMock:
     """Create a mock TimeoutPolicy returning the given action."""
     mock_policy = AsyncMock()
     mock_policy.determine_action.return_value = TimeoutAction(
         action=action,
         reason=reason,
+        escalate_to=escalate_to,
     )
     return mock_policy
 
@@ -119,6 +121,7 @@ class TestTimeoutCheckerCheckAndResolve:
         mock_policy = _make_mock_policy(
             action=TimeoutActionType.ESCALATE,
             reason="Escalating to manager",
+            escalate_to="manager",
         )
         checker = TimeoutChecker(policy=mock_policy)
         item = _make_approval_item()

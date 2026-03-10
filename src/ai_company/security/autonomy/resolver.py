@@ -30,10 +30,6 @@ class AutonomyResolver:
     After resolution, category shortcuts (e.g. ``"code"``) are expanded
     into concrete action types via the ``ActionTypeRegistry``, and the
     ``"all"`` shortcut is expanded to every registered action type.
-
-    Args:
-        registry: Action type registry for category expansion.
-        config: Company-level autonomy configuration with presets.
     """
 
     def __init__(
@@ -42,6 +38,12 @@ class AutonomyResolver:
         registry: ActionTypeRegistry,
         config: AutonomyConfig,
     ) -> None:
+        """Initialize the resolver.
+
+        Args:
+            registry: Action type registry for category expansion.
+            config: Company-level autonomy configuration with presets.
+        """
         self._registry = registry
         self._config = config
 
@@ -49,25 +51,40 @@ class AutonomyResolver:
         self,
         agent_level: AutonomyLevel | None = None,
         department_level: AutonomyLevel | None = None,
+        seniority: SeniorityLevel | None = None,
     ) -> EffectiveAutonomy:
         """Resolve effective autonomy from the three-level chain.
+
+        When ``seniority`` is provided, the JUNIOR/FULL constraint
+        (D6) is enforced automatically.
 
         Args:
             agent_level: Per-agent override (highest priority).
             department_level: Per-department override.
+            seniority: Agent seniority level for constraint checks.
 
         Returns:
             Fully expanded :class:`EffectiveAutonomy`.
 
         Raises:
-            ValueError: If the resolved level has no matching preset.
+            ValueError: If the resolved level has no matching preset
+                or seniority constraints are violated.
         """
         level = agent_level or department_level or self._config.level
+
+        if seniority is not None:
+            self.validate_seniority(seniority, level)
+
         preset = self._config.presets.get(level)
         if preset is None:
             msg = (
                 f"No preset found for autonomy level {level!r} "
                 f"(available: {sorted(self._config.presets)})"
+            )
+            logger.warning(
+                AUTONOMY_RESOLVED,
+                resolved_level=level.value if hasattr(level, "value") else str(level),
+                error=msg,
             )
             raise ValueError(msg)
 
@@ -165,9 +182,14 @@ class AutonomyResolver:
             if self._registry.is_registered(pattern):
                 result.add(pattern)
             else:
-                # Unknown pattern — still include it so the security
-                # layer can match it.  Custom action types registered
-                # later may use this pattern.
+                logger.warning(
+                    AUTONOMY_PRESET_EXPANDED,
+                    pattern=pattern,
+                    note=(
+                        "pattern not currently registered — included for "
+                        "forward compatibility, verify this is not a typo"
+                    ),
+                )
                 result.add(pattern)
 
         return frozenset(result)

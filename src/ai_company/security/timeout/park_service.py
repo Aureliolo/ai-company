@@ -1,19 +1,25 @@
 """Park/resume service for agent execution contexts.
 
-Serializes an ``AgentContext`` into a ``ParkedContext`` for persistence
-when an agent is parked awaiting approval, and deserializes it back
-when the approval decision arrives.
+Creates ``ParkedContext`` objects by serializing an ``AgentContext`` to
+JSON, and restores them by deserializing.  Actual persistence (store /
+delete) is the responsibility of the calling code via the
+``ParkedContextRepository``.
 """
 
+import copy
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 
 if TYPE_CHECKING:
     from ai_company.engine.context import AgentContext
 from ai_company.observability.events.timeout import (
-    TIMEOUT_WAITING,
+    TIMEOUT_CONTEXT_PARKED,
+    TIMEOUT_CONTEXT_RESUMED,
 )
 from ai_company.security.timeout.parked_context import ParkedContext
 
@@ -21,20 +27,20 @@ logger = get_logger(__name__)
 
 
 class ParkService:
-    """Handles parking and resuming agent execution contexts.
+    """Handles creating and deserializing parked agent execution contexts.
 
-    Parking serializes the full ``AgentContext`` as JSON and stores it
-    via the ``ParkedContextRepository``.  Resuming deserializes and
-    deletes the parked record.
+    The ``park`` method serializes an ``AgentContext`` into a
+    ``ParkedContext`` for the caller to persist.  The ``resume`` method
+    deserializes a ``ParkedContext`` back into an ``AgentContext``.
     """
 
     def park(
         self,
         *,
         context: AgentContext,
-        approval_id: str,
-        agent_id: str,
-        task_id: str,
+        approval_id: NotBlankStr,
+        agent_id: NotBlankStr,
+        task_id: NotBlankStr,
         metadata: dict[str, str] | None = None,
     ) -> ParkedContext:
         """Serialize and create a ``ParkedContext`` from an agent context.
@@ -48,8 +54,23 @@ class ParkService:
 
         Returns:
             A ``ParkedContext`` ready for persistence.
+
+        Raises:
+            ValueError: If the agent context cannot be serialized.
         """
-        context_json = context.model_dump_json()
+        try:
+            context_json = context.model_dump_json()
+        except (ValueError, TypeError) as exc:
+            logger.exception(
+                TIMEOUT_CONTEXT_PARKED,
+                agent_id=agent_id,
+                task_id=task_id,
+                approval_id=approval_id,
+                error=str(exc),
+                note="Failed to serialize agent context",
+            )
+            msg = f"Failed to serialize agent context for agent {agent_id!r}"
+            raise ValueError(msg) from exc
 
         parked = ParkedContext(
             execution_id=str(context.execution_id),
@@ -58,11 +79,11 @@ class ParkService:
             approval_id=approval_id,
             parked_at=datetime.now(UTC),
             context_json=context_json,
-            metadata=metadata or {},
+            metadata=copy.deepcopy(metadata) if metadata else {},
         )
 
         logger.info(
-            TIMEOUT_WAITING,
+            TIMEOUT_CONTEXT_PARKED,
             parked_id=parked.id,
             agent_id=agent_id,
             task_id=task_id,
@@ -78,7 +99,32 @@ class ParkService:
 
         Returns:
             The restored ``AgentContext``.
+
+        Raises:
+            ValueError: If the parked context cannot be deserialized.
         """
         from ai_company.engine.context import AgentContext  # noqa: PLC0415
 
-        return AgentContext.model_validate_json(parked.context_json)
+        try:
+            context = AgentContext.model_validate_json(parked.context_json)
+        except (ValidationError, ValueError) as exc:
+            logger.exception(
+                TIMEOUT_CONTEXT_RESUMED,
+                parked_id=parked.id,
+                agent_id=parked.agent_id,
+                approval_id=parked.approval_id,
+                error=str(exc),
+                note="Failed to deserialize parked agent context",
+            )
+            msg = (
+                f"Failed to resume parked context {parked.id!r} "
+                f"for agent {parked.agent_id!r}"
+            )
+            raise ValueError(msg) from exc
+
+        logger.info(
+            TIMEOUT_CONTEXT_RESUMED,
+            parked_id=parked.id,
+            agent_id=parked.agent_id,
+        )
+        return context

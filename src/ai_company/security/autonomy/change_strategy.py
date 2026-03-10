@@ -22,6 +22,12 @@ _DOWNGRADE_MAP: dict[DowngradeReason, AutonomyLevel] = {
     DowngradeReason.SECURITY_INCIDENT: AutonomyLevel.LOCKED,
 }
 
+# Validate exhaustiveness at module load time.
+_missing_reasons = set(DowngradeReason) - set(_DOWNGRADE_MAP)
+if _missing_reasons:
+    _msg = f"_DOWNGRADE_MAP missing entries for: {_missing_reasons}"
+    raise RuntimeError(_msg)
+
 
 class HumanOnlyPromotionStrategy:
     """Default strategy: promotions and recovery always require human approval.
@@ -69,19 +75,27 @@ class HumanOnlyPromotionStrategy:
         self,
         agent_id: NotBlankStr,
         reason: DowngradeReason,
+        current_level: AutonomyLevel | None = None,
     ) -> AutonomyLevel:
         """Immediately downgrade to a level determined by the reason.
 
         Args:
             agent_id: The agent to downgrade.
             reason: Why the downgrade is happening.
+            current_level: The agent's current effective autonomy level.
+                Used as ``original_level`` when no prior override exists.
+                Defaults to the company default (SEMI) if not provided.
 
         Returns:
             The new autonomy level after downgrade.
         """
         new_level = _DOWNGRADE_MAP[reason]
         existing = self._overrides.get(agent_id)
-        original = existing.original_level if existing else AutonomyLevel.SEMI
+        original = (
+            existing.original_level
+            if existing
+            else (current_level or AutonomyLevel.SEMI)
+        )
 
         override = AutonomyOverride(
             agent_id=agent_id,
@@ -120,7 +134,7 @@ class HumanOnlyPromotionStrategy:
         )
         return False
 
-    def get_override(self, agent_id: str) -> AutonomyOverride | None:
+    def get_override(self, agent_id: NotBlankStr) -> AutonomyOverride | None:
         """Return the active override for an agent, if any.
 
         Args:
@@ -131,7 +145,7 @@ class HumanOnlyPromotionStrategy:
         """
         return self._overrides.get(agent_id)
 
-    def clear_override(self, agent_id: str) -> bool:
+    def clear_override(self, agent_id: NotBlankStr) -> bool:
         """Remove an override (used after human recovery approval).
 
         Args:

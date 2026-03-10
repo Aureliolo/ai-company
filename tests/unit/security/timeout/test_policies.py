@@ -13,7 +13,7 @@ from ai_company.security.timeout.policies import (
     TieredTimeoutPolicy,
     WaitForeverPolicy,
 )
-from ai_company.security.timeout.risk_tier_classifier import YamlRiskTierClassifier
+from ai_company.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 
 
 def _make_item(
@@ -75,6 +75,16 @@ class TestDenyOnTimeoutPolicy:
         result = await policy.determine_action(item, 7200.0)
         assert result.action == TimeoutActionType.DENY
 
+    @pytest.mark.unit
+    async def test_negative_timeout_raises(self) -> None:
+        with pytest.raises(ValueError, match="timeout_seconds must be positive"):
+            DenyOnTimeoutPolicy(timeout_seconds=-1.0)
+
+    @pytest.mark.unit
+    async def test_zero_timeout_raises(self) -> None:
+        with pytest.raises(ValueError, match="timeout_seconds must be positive"):
+            DenyOnTimeoutPolicy(timeout_seconds=0.0)
+
 
 class TestTieredTimeoutPolicy:
     """TieredTimeoutPolicy: per-risk-tier timeout behavior."""
@@ -86,7 +96,7 @@ class TestTieredTimeoutPolicy:
         }
         policy = TieredTimeoutPolicy(
             tiers=tiers,
-            classifier=YamlRiskTierClassifier(),
+            classifier=DefaultRiskTierClassifier(),
         )
         item = _make_item(action_type="code:write")  # MEDIUM risk
         result = await policy.determine_action(item, 1800.0)  # 30 min
@@ -99,7 +109,7 @@ class TestTieredTimeoutPolicy:
         }
         policy = TieredTimeoutPolicy(
             tiers=tiers,
-            classifier=YamlRiskTierClassifier(),
+            classifier=DefaultRiskTierClassifier(),
         )
         item = _make_item(action_type="code:write")  # MEDIUM risk
         result = await policy.determine_action(item, 3601.0)  # > 60 min
@@ -114,7 +124,7 @@ class TestTieredTimeoutPolicy:
         }
         policy = TieredTimeoutPolicy(
             tiers=tiers,
-            classifier=YamlRiskTierClassifier(),
+            classifier=DefaultRiskTierClassifier(),
         )
         item = _make_item(action_type="code:read")  # LOW risk
         result = await policy.determine_action(item, 30000.0)  # > 480 min
@@ -124,7 +134,7 @@ class TestTieredTimeoutPolicy:
     async def test_no_tier_config_waits(self) -> None:
         policy = TieredTimeoutPolicy(
             tiers={},
-            classifier=YamlRiskTierClassifier(),
+            classifier=DefaultRiskTierClassifier(),
         )
         item = _make_item()
         result = await policy.determine_action(item, 999999.0)
@@ -179,6 +189,17 @@ class TestEscalationChainPolicy:
         # 100 min = past both steps (30+60=90min)
         result = await policy.determine_action(item, 6000.0)
         assert result.action == TimeoutActionType.DENY
+
+    @pytest.mark.unit
+    async def test_chain_exhausted_approve(self) -> None:
+        chain = (EscalationStep(role="lead", timeout_minutes=30),)
+        policy = EscalationChainPolicy(
+            chain=chain,
+            on_chain_exhausted=TimeoutActionType.APPROVE,
+        )
+        item = _make_item()
+        result = await policy.determine_action(item, 3600.0)
+        assert result.action == TimeoutActionType.APPROVE
 
     @pytest.mark.unit
     async def test_empty_chain_exhausted_immediately(self) -> None:

@@ -1,11 +1,11 @@
-"""YAML-configurable risk tier classifier for timeout policies."""
+"""Configurable risk tier classifier for timeout policies."""
 
 from types import MappingProxyType
 from typing import Final
 
 from ai_company.core.enums import ActionType, ApprovalRiskLevel
 from ai_company.observability import get_logger
-from ai_company.observability.events.timeout import TIMEOUT_POLICY_EVALUATED
+from ai_company.observability.events.timeout import TIMEOUT_UNKNOWN_ACTION_TYPE
 
 logger = get_logger(__name__)
 
@@ -45,7 +45,7 @@ _DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProx
 )
 
 
-class YamlRiskTierClassifier:
+class DefaultRiskTierClassifier:
     """Maps action types to risk tiers for tiered timeout policies.
 
     Unknown action types default to HIGH (fail-safe per D19).
@@ -77,11 +77,11 @@ class YamlRiskTierClassifier:
         """
         result = self._risk_map.get(action_type)
         if result is None:
-            logger.debug(
-                TIMEOUT_POLICY_EVALUATED,
+            logger.warning(
+                TIMEOUT_UNKNOWN_ACTION_TYPE,
                 action_type=action_type,
-                risk_tier="high",
-                note="unknown action type — defaulting to HIGH",
+                default_tier="high",
+                note="unknown action type — defaulting to HIGH (D19)",
             )
             return ApprovalRiskLevel.HIGH
         return result

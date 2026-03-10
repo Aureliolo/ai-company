@@ -67,8 +67,10 @@ class TierConfig(BaseModel):
 class TieredTimeoutConfig(BaseModel):
     """Per-risk-tier timeout policy.
 
-    Each tier defines its own timeout and action. Unknown risk
-    tiers fall back to HIGH (fail-safe per D19).
+    Each tier defines its own timeout and action. Unknown *action types*
+    are classified as HIGH risk by the ``RiskTierClassifier`` (D19).  If
+    a risk level has no tier configuration entry, the policy defaults to
+    WAIT (safe fallback).
 
     Attributes:
         policy: Discriminator tag.
@@ -129,10 +131,15 @@ class EscalationChainConfig(BaseModel):
 
 
 def _timeout_discriminator(value: object) -> str:
-    """Extract the ``policy`` discriminator from raw or model data."""
+    """Extract the ``policy`` discriminator from raw or model data.
+
+    Returns the raw ``policy`` value without a default so Pydantic
+    produces a clear "no match in discriminated union" error for
+    invalid or missing policy fields.
+    """
     if isinstance(value, dict):
-        return str(value.get("policy", "wait"))
-    return getattr(value, "policy", "wait")
+        return str(value.get("policy", ""))
+    return getattr(value, "policy", "")
 
 
 ApprovalTimeoutConfig = Annotated[

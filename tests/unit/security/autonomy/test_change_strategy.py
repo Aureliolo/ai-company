@@ -58,6 +58,17 @@ class TestAutoDowngrade:
         strategy = HumanOnlyPromotionStrategy()
         assert strategy.get_override("agent-1") is None
 
+    @pytest.mark.unit
+    def test_double_downgrade_preserves_original(self) -> None:
+        strategy = HumanOnlyPromotionStrategy()
+        strategy.auto_downgrade("agent-1", DowngradeReason.HIGH_ERROR_RATE)
+        strategy.auto_downgrade("agent-1", DowngradeReason.SECURITY_INCIDENT)
+        override = strategy.get_override("agent-1")
+        assert override is not None
+        # Second downgrade replaces the first
+        assert override.current_level == AutonomyLevel.LOCKED
+        assert override.reason == DowngradeReason.SECURITY_INCIDENT
+
 
 class TestRecovery:
     """Recovery is always denied in human-only strategy."""

@@ -91,6 +91,29 @@ class TestRunMigrations:
         await run_migrations(migrated_db)
         assert await get_user_version(migrated_db) == version_before
 
+    async def test_v3_creates_parked_contexts_table(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        await run_migrations(memory_db)
+        cursor = await memory_db.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type='table' AND name='parked_contexts'"
+        )
+        row = await cursor.fetchone()
+        assert row is not None
+
+    async def test_v3_creates_parked_context_indexes(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        await run_migrations(memory_db)
+        cursor = await memory_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name LIKE 'idx_pc_%' ORDER BY name"
+        )
+        indexes = {row[0] for row in await cursor.fetchall()}
+        assert "idx_pc_agent_id" in indexes
+        assert "idx_pc_approval_id" in indexes
+
     async def test_migration_failure_raises_migration_error(
         self, memory_db: aiosqlite.Connection
     ) -> None:

@@ -1,5 +1,6 @@
 """Factory for creating timeout policy instances from configuration."""
 
+from ai_company.observability import get_logger
 from ai_company.security.timeout.config import (
     ApprovalTimeoutConfig,
     DenyOnTimeoutConfig,
@@ -14,7 +15,9 @@ from ai_company.security.timeout.policies import (
     WaitForeverPolicy,
 )
 from ai_company.security.timeout.protocol import TimeoutPolicy  # noqa: TC001
-from ai_company.security.timeout.risk_tier_classifier import YamlRiskTierClassifier
+from ai_company.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
+
+logger = get_logger(__name__)
 
 _SECONDS_PER_MINUTE = 60.0
 
@@ -44,7 +47,7 @@ def create_timeout_policy(
     if isinstance(config, TieredTimeoutConfig):
         return TieredTimeoutPolicy(
             tiers=config.tiers,
-            classifier=YamlRiskTierClassifier(),
+            classifier=DefaultRiskTierClassifier(),
         )
 
     if isinstance(config, EscalationChainConfig):
@@ -54,4 +57,8 @@ def create_timeout_policy(
         )
 
     msg = f"Unknown timeout policy config type: {type(config).__name__}"  # type: ignore[unreachable]
+    logger.warning(
+        "timeout.factory.unknown_config",
+        config_type=type(config).__name__,
+    )
     raise TypeError(msg)
