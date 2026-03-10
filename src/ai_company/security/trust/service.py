@@ -13,8 +13,10 @@ from ai_company.core.types import NotBlankStr
 from ai_company.observability import get_logger
 from ai_company.observability.events.trust import (
     TRUST_APPROVAL_REQUIRED,
+    TRUST_APPROVAL_STORE_MISSING,
     TRUST_ELEVATED_GATE_ENFORCED,
     TRUST_EVALUATE_COMPLETE,
+    TRUST_EVALUATE_FAILED,
     TRUST_EVALUATE_START,
     TRUST_INITIALIZED,
     TRUST_LEVEL_CHANGED,
@@ -105,7 +107,7 @@ class TrustService:
         if state is None:
             msg = f"Agent {agent_id!r} not initialized for trust tracking"
             logger.warning(
-                TRUST_EVALUATE_START,
+                TRUST_EVALUATE_FAILED,
                 agent_id=agent_id,
                 error=msg,
             )
@@ -168,6 +170,11 @@ class TrustService:
         state = self._trust_states.get(key)
         if state is None:
             msg = f"Agent {agent_id!r} not initialized for trust tracking"
+            logger.warning(
+                TRUST_EVALUATE_FAILED,
+                agent_id=agent_id,
+                error=msg,
+            )
             raise TrustEvaluationError(msg)
 
         if result.requires_human_approval:
@@ -294,13 +301,17 @@ class TrustService:
     ) -> None:
         """Create an approval item for trust level promotion."""
         if self._approval_store is None:
+            msg = (
+                f"Cannot create trust approval for agent {agent_id!r}: "
+                f"no approval store configured"
+            )
             logger.warning(
-                TRUST_APPROVAL_REQUIRED,
+                TRUST_APPROVAL_STORE_MISSING,
                 agent_id=agent_id,
                 recommended=result.recommended_level.value,
-                error="no approval store configured",
+                error=msg,
             )
-            return
+            raise TrustEvaluationError(msg)
 
         from ai_company.core.approval import ApprovalItem  # noqa: PLC0415
 
@@ -340,5 +351,7 @@ class TrustService:
         if strategy == "milestone":
             return TrustChangeReason.MILESTONE_ACHIEVED
         if strategy == "weighted" and result.score is not None:
+            return TrustChangeReason.SCORE_THRESHOLD
+        if strategy == "per_category":
             return TrustChangeReason.SCORE_THRESHOLD
         return TrustChangeReason.MANUAL

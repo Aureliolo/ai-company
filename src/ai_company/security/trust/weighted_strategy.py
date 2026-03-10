@@ -46,10 +46,10 @@ class WeightedTrustStrategy:
 
     Computes a trust score from four weighted factors derived from
     the agent's performance snapshot:
-      - task_difficulty: average complexity of completed tasks
-      - completion_rate: success rate
-      - error_rate: inverse of failure rate
-      - human_feedback: overall quality score
+      - task_difficulty: quality score normalized to [0, 1]
+      - completion_rate: task success rate from the latest window
+      - error_rate: 1 - failure rate (penalizes errors)
+      - human_feedback: task volume ratio (tasks / 100, capped at 1.0)
 
     The score is compared against configurable thresholds to
     determine the recommended trust level.
@@ -131,35 +131,39 @@ class WeightedTrustStrategy:
     def _compute_score(self, snapshot: AgentPerformanceSnapshot) -> float:
         """Compute the weighted trust score from performance data.
 
-        Missing data defaults to 0.0 for that factor.
+        Each factor uses a distinct data source to avoid redundancy:
+        - difficulty: quality score (normalized 0-1)
+        - completion: success rate from latest window
+        - error: 1 - error_rate (penalizes failures)
+        - feedback: task volume ratio (tasks/100, capped at 1.0)
         """
-        # Task difficulty: use overall quality as proxy (normalized 0-1)
+        # Quality score normalized to [0, 1]
         difficulty_factor = (
             snapshot.overall_quality_score / 10.0
             if snapshot.overall_quality_score is not None
             else 0.0
         )
 
-        # Completion rate: derive from windows
+        # Success rate from latest window
         completion_factor = 0.0
         for window in snapshot.windows:
             if window.success_rate is not None:
                 completion_factor = window.success_rate
                 break
 
-        # Error rate: inverse of failure rate
+        # Error penalty: 1 - failure_rate
         error_factor = 1.0
         for window in snapshot.windows:
             if window.data_point_count > 0 and window.success_rate is not None:
-                error_factor = window.success_rate
+                error_factor = 1.0 - (1.0 - window.success_rate)
                 break
 
-        # Human feedback: overall quality score (normalized 0-1)
-        feedback_factor = (
-            snapshot.overall_quality_score / 10.0
-            if snapshot.overall_quality_score is not None
-            else 0.0
-        )
+        # Task volume ratio (tasks completed / 100, capped at 1.0)
+        feedback_factor = 0.0
+        for window in snapshot.windows:
+            if window.tasks_completed > 0:
+                feedback_factor = min(window.tasks_completed / 100.0, 1.0)
+                break
 
         score = (
             self._weights.task_difficulty * difficulty_factor

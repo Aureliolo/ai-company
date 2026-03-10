@@ -1,5 +1,7 @@
 """Tests for trust configuration models."""
 
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
@@ -178,6 +180,7 @@ class TestElevatedGateInvariant:
             milestones={
                 "standard_to_elevated": MilestoneCriteria(
                     tasks_completed=30,
+                    auto_promote=False,
                     requires_human_approval=True,
                 ),
             },
@@ -277,7 +280,7 @@ class TestStrategyParametrize:
     def test_strategy_config_creation(
         self,
         strategy: TrustStrategyType,
-        extra_kwargs: dict,
+        extra_kwargs: dict[str, Any],
     ) -> None:
         config = TrustConfig(strategy=strategy, **extra_kwargs)
         assert config.strategy == strategy

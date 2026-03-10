@@ -7,11 +7,18 @@ with no automated trust evolution.
 from typing import TYPE_CHECKING
 
 from ai_company.core.enums import ToolAccessLevel
+from ai_company.observability import get_logger
+from ai_company.observability.events.trust import (
+    TRUST_EVALUATE_COMPLETE,
+    TRUST_EVALUATE_START,
+)
 from ai_company.security.trust.models import TrustEvaluationResult, TrustState
 
 if TYPE_CHECKING:
     from ai_company.core.types import NotBlankStr
     from ai_company.hr.performance.models import AgentPerformanceSnapshot
+
+logger = get_logger(__name__)
 
 
 class DisabledTrustStrategy:
@@ -50,7 +57,13 @@ class DisabledTrustStrategy:
         Returns:
             Evaluation result recommending no change.
         """
-        return TrustEvaluationResult(
+        logger.debug(
+            TRUST_EVALUATE_START,
+            agent_id=agent_id,
+            strategy="disabled",
+        )
+
+        result = TrustEvaluationResult(
             agent_id=agent_id,
             recommended_level=current_state.global_level,
             current_level=current_state.global_level,
@@ -58,6 +71,13 @@ class DisabledTrustStrategy:
             details="Trust is disabled; access level is static",
             strategy_name="disabled",
         )
+
+        logger.debug(
+            TRUST_EVALUATE_COMPLETE,
+            agent_id=agent_id,
+            recommended=current_state.global_level.value,
+        )
+        return result
 
     def initial_state(self, *, agent_id: NotBlankStr) -> TrustState:
         """Create initial trust state with the configured level.

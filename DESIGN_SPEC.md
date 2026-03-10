@@ -2861,6 +2861,16 @@ ai-company/
 │       │       ├── theil_sen_strategy.py # TheilSenTrendDetector (robust trend detection)
 │       │       ├── window_protocol.py # WindowAggregator protocol
 │       │       └── multi_window_strategy.py # MultiWindowAggregator (multi-window rolling metrics)
+│       │   └── promotion/         # Promotion/demotion subsystem (D14)
+│       │       ├── config.py      # PromotionConfig, PromotionCriteriaConfig, PromotionApprovalConfig, ModelMappingConfig
+│       │       ├── models.py      # CriterionResult, PromotionEvaluation, PromotionApprovalDecision, PromotionRecord, PromotionRequest
+│       │       ├── criteria_protocol.py    # PromotionCriteriaStrategy protocol
+│       │       ├── approval_protocol.py    # PromotionApprovalStrategy protocol
+│       │       ├── model_mapping_protocol.py # ModelMappingStrategy protocol
+│       │       ├── threshold_evaluator.py  # ThresholdEvaluator (criteria evaluation)
+│       │       ├── seniority_approval_strategy.py # SeniorityApprovalStrategy (approval decisions)
+│       │       ├── seniority_model_mapping.py # SeniorityModelMapping (model resolution)
+│       │       └── service.py     # PromotionService orchestrator (evaluate, request, apply)
 │       ├── communication/           # Inter-agent communication
 │       │   ├── bus_memory.py       # InMemoryMessageBus implementation
 │       │   ├── bus_protocol.py     # MessageBus protocol interface
@@ -3096,6 +3106,17 @@ ai-company/
 │       │       ├── destructive_op_detector.py # Destructive operation detection (rm -rf, DROP TABLE)
 │       │       ├── path_traversal_detector.py # Path traversal attack detection (../, null bytes)
 │       │       └── _utils.py       # walk_string_values utility (recursive argument scanning)
+│       │   └── trust/              # Progressive trust subsystem (§11.3)
+│       │       ├── config.py       # TrustConfig, strategy-specific sub-configs
+│       │       ├── enums.py        # TrustStrategyType, TrustChangeReason
+│       │       ├── errors.py       # TrustEvaluationError
+│       │       ├── models.py       # TrustState, TrustEvaluationResult, TrustChangeRecord
+│       │       ├── protocol.py     # TrustStrategy protocol
+│       │       ├── service.py      # TrustService orchestrator (state, evaluation, decay, approval)
+│       │       ├── disabled_strategy.py    # DisabledTrustStrategy (passthrough)
+│       │       ├── weighted_strategy.py    # WeightedTrustStrategy (weighted score → thresholds)
+│       │       ├── per_category_strategy.py # PerCategoryTrustStrategy (per-tool-category tracks)
+│       │       └── milestone_strategy.py   # MilestoneTrustStrategy (milestone gates + decay)
 │       ├── budget/                  # Cost management
 │       │   ├── _optimizer_helpers.py # CostOptimizer shared helper functions
 │       │   ├── config.py           # Budget configuration models

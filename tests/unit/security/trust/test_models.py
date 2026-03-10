@@ -113,15 +113,20 @@ class TestTrustChangeRecord:
         assert len(record.id) > 0
 
     def test_two_records_have_distinct_ids(self) -> None:
-        kwargs = {
-            "agent_id": NotBlankStr("agent-001"),
-            "old_level": ToolAccessLevel.SANDBOXED,
-            "new_level": ToolAccessLevel.RESTRICTED,
-            "reason": TrustChangeReason.SCORE_THRESHOLD,
-            "timestamp": _NOW,
-        }
-        r1 = TrustChangeRecord(**kwargs)
-        r2 = TrustChangeRecord(**kwargs)
+        r1 = TrustChangeRecord(
+            agent_id=NotBlankStr("agent-001"),
+            old_level=ToolAccessLevel.SANDBOXED,
+            new_level=ToolAccessLevel.RESTRICTED,
+            reason=TrustChangeReason.SCORE_THRESHOLD,
+            timestamp=_NOW,
+        )
+        r2 = TrustChangeRecord(
+            agent_id=NotBlankStr("agent-001"),
+            old_level=ToolAccessLevel.SANDBOXED,
+            new_level=ToolAccessLevel.RESTRICTED,
+            reason=TrustChangeReason.SCORE_THRESHOLD,
+            timestamp=_NOW,
+        )
         assert r1.id != r2.id
 
     def test_default_optional_fields(self) -> None:

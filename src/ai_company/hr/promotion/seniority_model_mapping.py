@@ -56,7 +56,6 @@ class SeniorityModelMapping:
 
         current_model = str(agent_identity.model.model_id)
 
-        # Check explicit override first
         level_key = new_level.value
         if level_key in self._config.seniority_model_map:
             new_model = str(self._config.seniority_model_map[level_key])

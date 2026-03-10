@@ -35,6 +35,10 @@ HR_REGISTRY_AGENT_REGISTERED: Final[str] = "hr.registry.agent_registered"
 HR_REGISTRY_AGENT_REMOVED: Final[str] = "hr.registry.agent_removed"
 HR_REGISTRY_STATUS_UPDATED: Final[str] = "hr.registry.status_updated"
 
+# ── Registry ─────────────────────────────────────────────────────
+
+HR_REGISTRY_IDENTITY_UPDATED: Final[str] = "hr.registry.identity_updated"
+
 # ── Error-path events ───────────────────────────────────────────
 
 HR_HIRING_INSTANTIATION_FAILED: Final[str] = "hr.hiring.instantiation_failed"
@@ -42,7 +46,3 @@ HR_FIRING_REASSIGNMENT_FAILED: Final[str] = "hr.firing.reassignment_failed"
 HR_FIRING_ARCHIVAL_FAILED: Final[str] = "hr.firing.archival_failed"
 HR_FIRING_NOTIFICATION_FAILED: Final[str] = "hr.firing.notification_failed"
 HR_ARCHIVAL_ENTRY_FAILED: Final[str] = "hr.archival.entry_failed"
-
-# ── Registry ─────────────────────────────────────────────────────
-
-HR_REGISTRY_IDENTITY_UPDATED: Final[str] = "hr.registry.identity_updated"

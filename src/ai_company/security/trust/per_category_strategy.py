@@ -11,6 +11,7 @@ from ai_company.core.enums import ToolAccessLevel
 from ai_company.observability import get_logger
 from ai_company.observability.events.trust import (
     TRUST_EVALUATE_COMPLETE,
+    TRUST_EVALUATE_FAILED,
     TRUST_EVALUATE_START,
 )
 from ai_company.security.trust.models import TrustEvaluationResult, TrustState
@@ -18,9 +19,21 @@ from ai_company.security.trust.models import TrustEvaluationResult, TrustState
 if TYPE_CHECKING:
     from ai_company.core.types import NotBlankStr
     from ai_company.hr.performance.models import AgentPerformanceSnapshot
-    from ai_company.security.trust.config import TrustConfig
+    from ai_company.security.trust.config import CategoryTrustCriteria, TrustConfig
 
 logger = get_logger(__name__)
+
+# Ordered trust levels for category-based evaluation.
+_TRUST_LEVEL_ORDER: tuple[ToolAccessLevel, ...] = (
+    ToolAccessLevel.SANDBOXED,
+    ToolAccessLevel.RESTRICTED,
+    ToolAccessLevel.STANDARD,
+    ToolAccessLevel.ELEVATED,
+)
+
+_TRUST_LEVEL_RANK: dict[ToolAccessLevel, int] = {
+    level: idx for idx, level in enumerate(_TRUST_LEVEL_ORDER)
+}
 
 
 class PerCategoryTrustStrategy:
@@ -79,7 +92,6 @@ class PerCategoryTrustStrategy:
                 if current_level.value != from_str:
                     continue
 
-                # Check if criteria are met
                 if self._check_category_criteria(
                     criteria_config=criteria,
                     snapshot=snapshot,
@@ -87,24 +99,29 @@ class PerCategoryTrustStrategy:
                     try:
                         new_level = ToolAccessLevel(to_str)
                     except ValueError:
+                        logger.warning(
+                            TRUST_EVALUATE_FAILED,
+                            agent_id=agent_id,
+                            category=category,
+                            transition_key=transition_key,
+                            invalid_level=to_str,
+                        )
                         continue
 
                     if criteria.requires_human_approval:
                         requires_human = True
 
+                    # Per-category ELEVATED always requires human approval
+                    if new_level == ToolAccessLevel.ELEVATED:
+                        requires_human = True
+
             category_updates[category] = new_level
 
-        # Global level = minimum across all categories
         if category_updates:
-            level_order = [
-                ToolAccessLevel.SANDBOXED,
-                ToolAccessLevel.RESTRICTED,
-                ToolAccessLevel.STANDARD,
-                ToolAccessLevel.ELEVATED,
-            ]
-            rank = {lv: i for i, lv in enumerate(level_order)}
-            min_rank = min(rank.get(lv, 0) for lv in category_updates.values())
-            recommended = level_order[min_rank]
+            min_rank = min(
+                _TRUST_LEVEL_RANK.get(lv, 0) for lv in category_updates.values()
+            )
+            recommended = _TRUST_LEVEL_ORDER[min_rank]
         else:
             recommended = current_state.global_level
 
@@ -144,26 +161,28 @@ class PerCategoryTrustStrategy:
     @staticmethod
     def _check_category_criteria(
         *,
-        criteria_config: object,
+        criteria_config: CategoryTrustCriteria,
         snapshot: AgentPerformanceSnapshot,
     ) -> bool:
         """Check whether performance snapshot meets category criteria.
 
-        Uses duck typing on the criteria_config which has
-        tasks_completed and quality_score_min attributes.
-        """
-        tasks_completed = getattr(criteria_config, "tasks_completed", 0)
-        quality_min = getattr(criteria_config, "quality_score_min", 0.0)
+        Args:
+            criteria_config: Category-specific trust criteria.
+            snapshot: Agent performance snapshot.
 
-        # Count total completed tasks from windows
+        Returns:
+            True if the criteria are met.
+        """
         total_tasks = 0
         for window in snapshot.windows:
             total_tasks = max(total_tasks, window.tasks_completed)
 
-        if total_tasks < tasks_completed:
+        if total_tasks < criteria_config.tasks_completed:
             return False
 
-        return not (
-            snapshot.overall_quality_score is not None
-            and snapshot.overall_quality_score < quality_min
-        )
+        quality = snapshot.overall_quality_score
+        quality_min = criteria_config.quality_score_min
+        if quality is not None and quality < quality_min:
+            return False
+
+        return not (quality is None and quality_min > 0.0)

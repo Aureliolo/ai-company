@@ -20,6 +20,14 @@ pytestmark = pytest.mark.timeout(30)
 
 _NOW = datetime(2026, 3, 10, 12, 0, 0, tzinfo=UTC)
 
+# Minimal milestone to satisfy non-empty milestones validation
+_MINIMAL_MILESTONES = {
+    "sandboxed_to_restricted": MilestoneCriteria(
+        tasks_completed=100,
+        quality_score_min=9.0,
+    ),
+}
+
 
 @pytest.mark.unit
 class TestMilestoneTrustStrategy:
@@ -101,7 +109,7 @@ class TestMilestoneTrustStrategy:
         config = TrustConfig(
             strategy=TrustStrategyType.MILESTONE,
             initial_level=ToolAccessLevel.SANDBOXED,
-            milestones={},
+            milestones=_MINIMAL_MILESTONES,
             re_verification=ReVerificationConfig(
                 enabled=True,
                 interval_days=90,
@@ -139,7 +147,7 @@ class TestMilestoneTrustStrategy:
         config = TrustConfig(
             strategy=TrustStrategyType.MILESTONE,
             initial_level=ToolAccessLevel.SANDBOXED,
-            milestones={},
+            milestones=_MINIMAL_MILESTONES,
             re_verification=ReVerificationConfig(
                 enabled=True,
                 interval_days=90,
@@ -176,7 +184,7 @@ class TestMilestoneTrustStrategy:
         config = TrustConfig(
             strategy=TrustStrategyType.MILESTONE,
             initial_level=ToolAccessLevel.SANDBOXED,
-            milestones={},
+            milestones=_MINIMAL_MILESTONES,
             re_verification=ReVerificationConfig(
                 enabled=False,
             ),
@@ -209,7 +217,12 @@ class TestMilestoneTrustStrategy:
         config = TrustConfig(
             strategy=TrustStrategyType.MILESTONE,
             initial_level=ToolAccessLevel.SANDBOXED,
-            milestones={},
+            milestones={
+                "sandboxed_to_restricted": MilestoneCriteria(
+                    tasks_completed=100,
+                    quality_score_min=9.0,
+                ),
+            },
             re_verification=ReVerificationConfig(
                 enabled=True,
                 decay_on_idle_days=1,
@@ -298,3 +311,148 @@ class TestMilestoneTrustStrategy:
 
         assert result.recommended_level == ToolAccessLevel.SANDBOXED
         assert result.should_change is False
+
+    async def test_time_active_days_not_met_blocks_promotion(self) -> None:
+        """Milestone requires time_active_days, agent not active long enough."""
+        config = TrustConfig(
+            strategy=TrustStrategyType.MILESTONE,
+            initial_level=ToolAccessLevel.SANDBOXED,
+            milestones={
+                "sandboxed_to_restricted": MilestoneCriteria(
+                    tasks_completed=5,
+                    quality_score_min=6.0,
+                    time_active_days=30,
+                ),
+            },
+        )
+        strategy = MilestoneTrustStrategy(config=config)
+
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.SANDBOXED,
+            last_evaluated_at=_NOW - timedelta(days=5),
+        )
+        snapshot = make_performance_snapshot(
+            "agent-001",
+            quality=9.0,
+            success_rate=0.99,
+            tasks_completed=100,
+        )
+
+        result = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=snapshot,
+        )
+
+        assert result.recommended_level == ToolAccessLevel.SANDBOXED
+        assert result.should_change is False
+
+    async def test_time_active_days_none_last_evaluated_blocks(self) -> None:
+        """time_active_days > 0 with last_evaluated_at=None blocks."""
+        config = TrustConfig(
+            strategy=TrustStrategyType.MILESTONE,
+            initial_level=ToolAccessLevel.SANDBOXED,
+            milestones={
+                "sandboxed_to_restricted": MilestoneCriteria(
+                    tasks_completed=5,
+                    quality_score_min=6.0,
+                    time_active_days=7,
+                ),
+            },
+        )
+        strategy = MilestoneTrustStrategy(config=config)
+
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.SANDBOXED,
+            last_evaluated_at=None,
+        )
+        snapshot = make_performance_snapshot(
+            "agent-001",
+            quality=9.0,
+            success_rate=0.99,
+            tasks_completed=100,
+        )
+
+        result = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=snapshot,
+        )
+
+        assert result.recommended_level == ToolAccessLevel.SANDBOXED
+        assert result.should_change is False
+
+    async def test_clean_history_days_blocks_with_failures(self) -> None:
+        """clean_history_days > 0 blocks promotion if success_rate < 1.0."""
+        config = TrustConfig(
+            strategy=TrustStrategyType.MILESTONE,
+            initial_level=ToolAccessLevel.SANDBOXED,
+            milestones={
+                "sandboxed_to_restricted": MilestoneCriteria(
+                    tasks_completed=5,
+                    quality_score_min=6.0,
+                    clean_history_days=7,
+                ),
+            },
+        )
+        strategy = MilestoneTrustStrategy(config=config)
+
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.SANDBOXED,
+        )
+        snapshot = make_performance_snapshot(
+            "agent-001",
+            quality=9.0,
+            success_rate=0.9,
+            tasks_completed=10,
+        )
+
+        result = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=snapshot,
+        )
+
+        assert result.recommended_level == ToolAccessLevel.SANDBOXED
+        assert result.should_change is False
+
+    async def test_re_verification_interval_decay(self) -> None:
+        """Re-verification interval decay when quality is low."""
+        config = TrustConfig(
+            strategy=TrustStrategyType.MILESTONE,
+            initial_level=ToolAccessLevel.SANDBOXED,
+            milestones=_MINIMAL_MILESTONES,
+            re_verification=ReVerificationConfig(
+                enabled=True,
+                interval_days=30,
+                decay_on_idle_days=365,
+                decay_on_error_rate=0.99,
+            ),
+        )
+        strategy = MilestoneTrustStrategy(config=config)
+
+        # last_decay_check_at was 60 days ago (>30), quality below 7.0
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.RESTRICTED,
+            last_evaluated_at=_NOW - timedelta(days=1),
+            last_decay_check_at=_NOW - timedelta(days=60),
+        )
+        snapshot = make_performance_snapshot(
+            "agent-001",
+            quality=5.0,
+            success_rate=0.95,
+            tasks_completed=20,
+        )
+
+        result = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=snapshot,
+        )
+
+        assert result.recommended_level == ToolAccessLevel.SANDBOXED
+        assert result.should_change is True

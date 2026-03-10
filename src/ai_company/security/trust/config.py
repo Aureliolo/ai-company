@@ -4,7 +4,7 @@ Defines ``TrustConfig`` and strategy-specific sub-configs for
 progressive trust evaluation.
 """
 
-from typing import Self
+from typing import Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -14,6 +14,8 @@ from ai_company.observability.events.config import CONFIG_VALIDATION_FAILED
 from ai_company.security.trust.enums import TrustStrategyType
 
 logger = get_logger(__name__)
+
+_WEIGHTS_SUM_TOLERANCE: Final[float] = 0.01
 
 
 class TrustThreshold(BaseModel):
@@ -81,7 +83,7 @@ class WeightedTrustWeights(BaseModel):
             + self.error_rate
             + self.human_feedback
         )
-        tolerance = 0.01
+        tolerance = _WEIGHTS_SUM_TOLERANCE
         if abs(total - 1.0) > tolerance:
             msg = f"Trust weights must sum to 1.0, got {total:.4f}"
             logger.warning(
@@ -138,7 +140,7 @@ class MilestoneCriteria(BaseModel):
 
     tasks_completed: int = Field(
         default=5,
-        ge=0,
+        ge=1,
         description="Minimum tasks completed",
     )
     quality_score_min: float = Field(
@@ -165,6 +167,14 @@ class MilestoneCriteria(BaseModel):
         default=False,
         description="Whether human approval is required",
     )
+
+    @model_validator(mode="after")
+    def _validate_approval_flags(self) -> Self:
+        """Enforce mutual exclusivity of auto_promote and requires_human."""
+        if self.auto_promote and self.requires_human_approval:
+            msg = "auto_promote and requires_human_approval are mutually exclusive"
+            raise ValueError(msg)
+        return self
 
 
 class ReVerificationConfig(BaseModel):
@@ -211,8 +221,8 @@ class TrustConfig(BaseModel):
         promotion_thresholds: Thresholds for trust level transitions.
         initial_category_levels: Initial per-category levels (per_category).
         category_criteria: Per-category promotion criteria (per_category).
-        milestones: Milestone criteria (milestone strategy).
-        re_verification: Re-verification configuration (milestone).
+        milestones: Milestone criteria (used by milestone strategy).
+        re_verification: Re-verification configuration (used by milestone strategy).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -319,7 +329,7 @@ class TrustConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_strategy_specific_fields(self) -> Self:
-        """Warn when strategy-specific fields are set for wrong strategy."""
+        """Validate that active strategy has its required configuration."""
         if (
             self.strategy == TrustStrategyType.PER_CATEGORY
             and not self.initial_category_levels
@@ -332,4 +342,28 @@ class TrustConfig(BaseModel):
                 reason=msg,
             )
             raise ValueError(msg)
+
+        if (
+            self.strategy == TrustStrategyType.WEIGHTED
+            and not self.promotion_thresholds
+        ):
+            msg = "weighted strategy requires at least one promotion_thresholds entry"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="TrustConfig",
+                field="promotion_thresholds",
+                reason=msg,
+            )
+            raise ValueError(msg)
+
+        if self.strategy == TrustStrategyType.MILESTONE and not self.milestones:
+            msg = "milestone strategy requires at least one milestones entry"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="TrustConfig",
+                field="milestones",
+                reason=msg,
+            )
+            raise ValueError(msg)
+
         return self

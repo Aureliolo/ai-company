@@ -1,12 +1,12 @@
 """Milestone trust strategy.
 
 Implements explicit capability milestones aligned with the Cloud
-Security Alliance Agentic Trust Framework. Supports time-bound trust,
-periodic re-verification, and trust decay on idle/error conditions.
+Security Alliance Agentic Trust Framework. Supports periodic
+re-verification and trust decay on idle/error conditions.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from ai_company.core.enums import ToolAccessLevel
 from ai_company.observability import get_logger
@@ -25,6 +25,8 @@ if TYPE_CHECKING:
     from ai_company.security.trust.config import MilestoneCriteria, TrustConfig
 
 logger = get_logger(__name__)
+
+_RE_VERIFY_QUALITY_MIN: Final[float] = 7.0
 
 # Ordered trust levels for milestone transitions.
 _LEVEL_ORDER: tuple[ToolAccessLevel, ...] = (
@@ -271,13 +273,12 @@ class MilestoneTrustStrategy:
                 break
 
         # Re-verification interval
-        re_verify_quality_min = 7.0
         if (
             state.last_decay_check_at is not None
             and (now - state.last_decay_check_at)
             >= timedelta(days=self._re_verification.interval_days)
             and snapshot.overall_quality_score is not None
-            and snapshot.overall_quality_score < re_verify_quality_min
+            and snapshot.overall_quality_score < _RE_VERIFY_QUALITY_MIN
         ):
             demoted = _LEVEL_ORDER[current_rank - 1]
             logger.info(

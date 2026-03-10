@@ -179,3 +179,24 @@ class TestSeniorityApprovalDemotion:
         assert decision.auto_approve is False
         assert decision.requires_human is True
         assert "authority-reducing" in decision.reason
+
+    async def test_demotion_below_senior_auto_applies_authority(self) -> None:
+        """Below-Senior demotion auto-applies even with authority flag."""
+        config = PromotionApprovalConfig(
+            auto_demote_cost_saving=False,
+            human_demote_authority=True,
+        )
+        strategy = SeniorityApprovalStrategy(config=config)
+        evaluation = _make_evaluation(
+            current_level=SeniorityLevel.MID,
+            target_level=SeniorityLevel.JUNIOR,
+            direction=PromotionDirection.DEMOTION,
+        )
+        identity = make_agent_identity(level=SeniorityLevel.MID)
+
+        decision = await strategy.decide(
+            evaluation=evaluation,
+            agent_identity=identity,
+        )
+        assert decision.auto_approve is True
+        assert decision.requires_human is False

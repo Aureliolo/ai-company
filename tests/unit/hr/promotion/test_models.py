@@ -147,18 +147,29 @@ class TestPromotionApprovalDecision:
         """PromotionApprovalDecision can be created."""
         decision = PromotionApprovalDecision(
             auto_approve=True,
-            requires_human=False,
             reason="Below threshold",
         )
         assert decision.auto_approve is True
         assert decision.requires_human is False
         assert decision.reason == "Below threshold"
 
+    def test_requires_human_is_inverse_of_auto_approve(self) -> None:
+        """requires_human is a computed inverse of auto_approve."""
+        auto = PromotionApprovalDecision(
+            auto_approve=True,
+            reason="Auto",
+        )
+        assert auto.requires_human is False
+        manual = PromotionApprovalDecision(
+            auto_approve=False,
+            reason="Manual",
+        )
+        assert manual.requires_human is True
+
     def test_frozen(self) -> None:
         """PromotionApprovalDecision is immutable."""
         decision = PromotionApprovalDecision(
             auto_approve=True,
-            requires_human=False,
             reason="Auto-approved",
         )
         with pytest.raises(ValidationError):

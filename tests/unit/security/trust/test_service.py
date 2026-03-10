@@ -222,10 +222,11 @@ class TestApplyTrustChange:
 
         assert record is None
 
-    async def test_returns_none_when_human_approval_required(
+    async def test_raises_when_human_approval_required_without_store(
         self,
         weighted_config: TrustConfig,
     ) -> None:
+        """No approval store → TrustEvaluationError on human-approval path."""
         strategy = WeightedTrustStrategy(config=weighted_config)
         service = TrustService(
             strategy=strategy,
@@ -241,12 +242,14 @@ class TestApplyTrustChange:
             strategy_name=NotBlankStr("weighted"),
         )
 
-        record = await service.apply_trust_change(
-            NotBlankStr("agent-001"),
-            result,
-        )
-
-        assert record is None
+        with pytest.raises(
+            TrustEvaluationError,
+            match="no approval store",
+        ):
+            await service.apply_trust_change(
+                NotBlankStr("agent-001"),
+                result,
+            )
 
     async def test_updates_state_after_change(
         self,
@@ -444,3 +447,135 @@ class TestStateAndHistory:
 
         history = service.get_change_history(NotBlankStr("nonexistent"))
         assert history == ()
+
+
+# ── check_decay ──────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCheckDecay:
+    """Tests for TrustService.check_decay."""
+
+    async def test_check_decay_updates_timestamp(
+        self,
+        trust_config: TrustConfig,
+    ) -> None:
+        """check_decay updates last_decay_check_at before evaluating."""
+        strategy = DisabledTrustStrategy(
+            initial_level=trust_config.initial_level,
+        )
+        service = TrustService(
+            strategy=strategy,
+            config=trust_config,
+        )
+        service.initialize_agent(NotBlankStr("agent-001"))
+        snapshot = make_performance_snapshot("agent-001")
+
+        result = await service.check_decay(
+            NotBlankStr("agent-001"),
+            snapshot,
+        )
+
+        state = service.get_trust_state(NotBlankStr("agent-001"))
+        assert state is not None
+        assert state.last_decay_check_at is not None
+        assert result.strategy_name == "disabled"
+
+    async def test_check_decay_unknown_agent_raises(
+        self,
+        trust_config: TrustConfig,
+    ) -> None:
+        """check_decay raises for unknown agent (via evaluate_agent)."""
+        strategy = DisabledTrustStrategy(
+            initial_level=trust_config.initial_level,
+        )
+        service = TrustService(
+            strategy=strategy,
+            config=trust_config,
+        )
+        snapshot = make_performance_snapshot("unknown")
+
+        with pytest.raises(TrustEvaluationError, match="not initialized"):
+            await service.check_decay(
+                NotBlankStr("unknown"),
+                snapshot,
+            )
+
+
+# ── apply_trust_change error paths ───────────────────────────────
+
+
+@pytest.mark.unit
+class TestApplyTrustChangeErrorPaths:
+    """Tests for apply_trust_change edge cases."""
+
+    async def test_raises_for_uninitialized_agent(
+        self,
+        weighted_config: TrustConfig,
+    ) -> None:
+        """apply_trust_change raises for unknown agent."""
+        strategy = WeightedTrustStrategy(config=weighted_config)
+        service = TrustService(
+            strategy=strategy,
+            config=weighted_config,
+        )
+
+        result = TrustEvaluationResult(
+            agent_id=NotBlankStr("unknown"),
+            recommended_level=ToolAccessLevel.RESTRICTED,
+            current_level=ToolAccessLevel.SANDBOXED,
+            strategy_name=NotBlankStr("weighted"),
+        )
+
+        with pytest.raises(TrustEvaluationError, match="not initialized"):
+            await service.apply_trust_change(
+                NotBlankStr("unknown"),
+                result,
+            )
+
+
+# ── _infer_reason ────────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestInferReason:
+    """Tests for TrustService._infer_reason static method."""
+
+    def test_milestone_strategy_returns_milestone_achieved(self) -> None:
+        result = TrustEvaluationResult(
+            agent_id=NotBlankStr("agent-001"),
+            recommended_level=ToolAccessLevel.RESTRICTED,
+            current_level=ToolAccessLevel.SANDBOXED,
+            strategy_name=NotBlankStr("milestone"),
+        )
+        assert (
+            TrustService._infer_reason(result) == TrustChangeReason.MILESTONE_ACHIEVED
+        )
+
+    def test_weighted_with_score_returns_score_threshold(self) -> None:
+        result = TrustEvaluationResult(
+            agent_id=NotBlankStr("agent-001"),
+            recommended_level=ToolAccessLevel.RESTRICTED,
+            current_level=ToolAccessLevel.SANDBOXED,
+            score=0.6,
+            strategy_name=NotBlankStr("weighted"),
+        )
+        assert TrustService._infer_reason(result) == TrustChangeReason.SCORE_THRESHOLD
+
+    def test_per_category_returns_score_threshold(self) -> None:
+        result = TrustEvaluationResult(
+            agent_id=NotBlankStr("agent-001"),
+            recommended_level=ToolAccessLevel.RESTRICTED,
+            current_level=ToolAccessLevel.SANDBOXED,
+            strategy_name=NotBlankStr("per_category"),
+        )
+        assert TrustService._infer_reason(result) == TrustChangeReason.SCORE_THRESHOLD
+
+    def test_unknown_strategy_returns_manual(self) -> None:
+        result = TrustEvaluationResult(
+            agent_id=NotBlankStr("agent-001"),
+            recommended_level=ToolAccessLevel.RESTRICTED,
+            current_level=ToolAccessLevel.SANDBOXED,
+            strategy_name=NotBlankStr("unknown"),
+        )
+        assert TrustService._infer_reason(result) == TrustChangeReason.MANUAL

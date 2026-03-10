@@ -4,7 +4,9 @@ Defines ``PromotionConfig`` and sub-configs for controlling
 promotion/demotion behavior.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import SeniorityLevel
 from ai_company.core.types import NotBlankStr  # noqa: TC001
@@ -76,6 +78,16 @@ class ModelMappingConfig(BaseModel):
         default_factory=dict,
         description="Explicit seniority level to model ID overrides",
     )
+
+    @model_validator(mode="after")
+    def _validate_model_map_keys(self) -> Self:
+        """Validate seniority_model_map keys are valid SeniorityLevel values."""
+        valid_values = {level.value for level in SeniorityLevel}
+        for key in self.seniority_model_map:
+            if key not in valid_values:
+                msg = f"Unknown seniority level in model map: {key!r}"
+                raise ValueError(msg)
+        return self
 
 
 class PromotionConfig(BaseModel):

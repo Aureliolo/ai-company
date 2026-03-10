@@ -107,6 +107,7 @@ def milestone_config() -> TrustConfig:
             "standard_to_elevated": MilestoneCriteria(
                 tasks_completed=30,
                 quality_score_min=8.0,
+                auto_promote=False,
                 requires_human_approval=True,
             ),
         },

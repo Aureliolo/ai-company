@@ -1,5 +1,6 @@
 """Tests for the weighted trust strategy."""
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
@@ -171,3 +172,72 @@ class TestWeightedTrustStrategy:
         )
 
         assert result.current_level == ToolAccessLevel.RESTRICTED
+
+    async def test_evaluate_none_quality_score(
+        self,
+        weighted_config: TrustConfig,
+    ) -> None:
+        """Agent with no quality score (None) gets 0.0 difficulty factor."""
+        from ai_company.hr.performance.models import (
+            AgentPerformanceSnapshot,
+            WindowMetrics,
+        )
+
+        strategy = WeightedTrustStrategy(config=weighted_config)
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.SANDBOXED,
+        )
+        window = WindowMetrics(
+            window_size="30d",
+            data_point_count=10,
+            tasks_completed=10,
+            tasks_failed=0,
+            avg_quality_score=None,
+            success_rate=1.0,
+        )
+        snapshot = AgentPerformanceSnapshot(
+            agent_id="agent-001",
+            computed_at=datetime.now(UTC),
+            windows=(window,),
+            overall_quality_score=None,
+        )
+
+        result = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=snapshot,
+        )
+
+        assert result.score is not None
+        # Score should be lower without quality contribution
+        assert result.score < 0.8
+
+    async def test_evaluate_empty_windows(
+        self,
+        weighted_config: TrustConfig,
+    ) -> None:
+        """Snapshot with no windows produces minimal score."""
+        from ai_company.hr.performance.models import AgentPerformanceSnapshot
+
+        strategy = WeightedTrustStrategy(config=weighted_config)
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.SANDBOXED,
+        )
+        snapshot = AgentPerformanceSnapshot(
+            agent_id="agent-001",
+            computed_at=datetime.now(UTC),
+            windows=(),
+            overall_quality_score=None,
+        )
+
+        result = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=snapshot,
+        )
+
+        # Only error_factor contributes (defaults to 1.0 when no windows)
+        assert result.score is not None
+        assert result.score <= 0.3

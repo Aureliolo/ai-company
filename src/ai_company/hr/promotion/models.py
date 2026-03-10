@@ -4,6 +4,7 @@ Frozen Pydantic models for promotion criteria results, evaluations,
 approval decisions, records, and requests.
 """
 
+from typing import Self
 from uuid import uuid4
 
 from pydantic import (
@@ -12,6 +13,7 @@ from pydantic import (
     ConfigDict,
     Field,
     computed_field,
+    model_validator,
 )
 
 from ai_company.core.enums import ApprovalStatus, SeniorityLevel
@@ -96,15 +98,19 @@ class PromotionApprovalDecision(BaseModel):
 
     Attributes:
         auto_approve: Whether the promotion can be auto-approved.
-        requires_human: Whether human approval is required.
         reason: Explanation for the decision.
     """
 
     model_config = ConfigDict(frozen=True)
 
     auto_approve: bool = Field(description="Whether auto-approved")
-    requires_human: bool = Field(description="Whether human approval needed")
     reason: NotBlankStr = Field(description="Explanation for the decision")
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def requires_human(self) -> bool:
+        """Whether human approval is required (inverse of auto_approve)."""
+        return not self.auto_approve
 
 
 class PromotionRecord(BaseModel):
@@ -118,7 +124,8 @@ class PromotionRecord(BaseModel):
         new_level: New seniority level.
         direction: Whether this was a promotion or demotion.
         evaluation: The evaluation that led to this change.
-        approved_by: Who approved the change (None if auto-approved).
+        approved_by: Who approved the change ("auto" if auto-approved,
+            "human" if human-approved via approval_id).
         approval_id: Approval item ID if human-approved.
         effective_at: When the change took effect.
         initiated_by: Who initiated the promotion process.
@@ -169,6 +176,21 @@ class PromotionRecord(BaseModel):
         default=None,
         description="New model ID",
     )
+
+    @model_validator(mode="after")
+    def _validate_model_fields(self) -> Self:
+        """Validate model_changed consistency with model ID fields."""
+        if self.model_changed and (
+            self.old_model_id is None or self.new_model_id is None
+        ):
+            msg = "model_changed=True requires both old_model_id and new_model_id"
+            raise ValueError(msg)
+        if not self.model_changed and (
+            self.old_model_id is not None or self.new_model_id is not None
+        ):
+            msg = "model_changed=False requires both model IDs to be None"
+            raise ValueError(msg)
+        return self
 
 
 class PromotionRequest(BaseModel):

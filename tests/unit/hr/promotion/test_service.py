@@ -348,3 +348,70 @@ class TestGetPromotionHistory:
         service = _make_service(registry=registry, tracker=tracker)
         history = service.get_promotion_history(NotBlankStr("unknown-agent"))
         assert history == ()
+
+
+# ── _next_level / _prev_level helpers ────────────────────────────
+
+
+@pytest.mark.unit
+class TestLevelHelpers:
+    """Tests for _next_level and _prev_level edge cases."""
+
+    def test_next_level_at_c_suite_returns_none(self) -> None:
+        """C_SUITE is the maximum level — _next_level returns None."""
+        from ai_company.hr.promotion.service import _next_level
+
+        assert _next_level(SeniorityLevel.C_SUITE) is None
+
+    def test_next_level_junior_returns_mid(self) -> None:
+        from ai_company.hr.promotion.service import _next_level
+
+        assert _next_level(SeniorityLevel.JUNIOR) == SeniorityLevel.MID
+
+    def test_prev_level_at_junior_returns_none(self) -> None:
+        """JUNIOR is the minimum level — _prev_level returns None."""
+        from ai_company.hr.promotion.service import _prev_level
+
+        assert _prev_level(SeniorityLevel.JUNIOR) is None
+
+    def test_prev_level_mid_returns_junior(self) -> None:
+        from ai_company.hr.promotion.service import _prev_level
+
+        assert _prev_level(SeniorityLevel.MID) == SeniorityLevel.JUNIOR
+
+
+# ── evaluate_demotion edge cases ──────────────────────────────────
+
+
+@pytest.mark.unit
+class TestEvaluateDemotionEdgeCases:
+    """Additional demotion edge cases."""
+
+    async def test_raises_for_minimum_seniority(
+        self,
+        registry: AgentRegistryService,
+        tracker: PerformanceTracker,
+    ) -> None:
+        """Raises PromotionError when agent is at minimum seniority."""
+        identity = make_agent_identity(
+            name="junior-agent",
+            level=SeniorityLevel.JUNIOR,
+        )
+        await registry.register(identity)
+        agent_id = NotBlankStr(str(identity.id))
+
+        service = _make_service(registry=registry, tracker=tracker)
+        with pytest.raises(PromotionError, match="minimum seniority"):
+            await service.evaluate_demotion(agent_id)
+
+    async def test_raises_for_unknown_agent(
+        self,
+        registry: AgentRegistryService,
+        tracker: PerformanceTracker,
+    ) -> None:
+        """Raises PromotionError for unknown agent ID."""
+        service = _make_service(registry=registry, tracker=tracker)
+        with pytest.raises(PromotionError, match="not found"):
+            await service.evaluate_demotion(
+                NotBlankStr("nonexistent-agent"),
+            )

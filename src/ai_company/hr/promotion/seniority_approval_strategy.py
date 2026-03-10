@@ -1,7 +1,9 @@
 """Seniority-based promotion approval strategy.
 
-Implements D14: Junior to Mid auto-promotes, Senior+ requires human,
-demotions auto-apply for cost-saving, human for authority-reducing.
+Implements D14: Junior to Mid auto-promotes, Senior+ requires human.
+Demotions auto-apply when cost-saving mode is enabled (default);
+when disabled, authority-reducing demotions from Senior+ require
+human approval.
 """
 
 from typing import TYPE_CHECKING
@@ -12,10 +14,14 @@ from ai_company.hr.promotion.models import (
     PromotionApprovalDecision,
     PromotionEvaluation,
 )
+from ai_company.observability import get_logger
+from ai_company.observability.events.promotion import PROMOTION_APPROVAL_DECIDED
 
 if TYPE_CHECKING:
     from ai_company.core.agent import AgentIdentity
     from ai_company.hr.promotion.config import PromotionApprovalConfig
+
+logger = get_logger(__name__)
 
 
 class SeniorityApprovalStrategy:
@@ -51,8 +57,17 @@ class SeniorityApprovalStrategy:
             Approval decision.
         """
         if evaluation.direction == PromotionDirection.PROMOTION:
-            return self._decide_promotion(evaluation)
-        return self._decide_demotion(evaluation)
+            decision = self._decide_promotion(evaluation)
+        else:
+            decision = self._decide_demotion(evaluation)
+
+        logger.info(
+            PROMOTION_APPROVAL_DECIDED,
+            agent_id=evaluation.agent_id,
+            direction=evaluation.direction.value,
+            auto_approve=decision.auto_approve,
+        )
+        return decision
 
     def _decide_promotion(
         self,
@@ -67,7 +82,6 @@ class SeniorityApprovalStrategy:
         if needs_human:
             return PromotionApprovalDecision(
                 auto_approve=False,
-                requires_human=True,
                 reason=(
                     f"Promotion to {target.value} requires human "
                     f"approval (threshold: {threshold.value})"
@@ -76,7 +90,6 @@ class SeniorityApprovalStrategy:
 
         return PromotionApprovalDecision(
             auto_approve=True,
-            requires_human=False,
             reason=(
                 f"Promotion to {target.value} auto-approved "
                 f"(below {threshold.value} threshold)"
@@ -92,7 +105,6 @@ class SeniorityApprovalStrategy:
         if self._config.auto_demote_cost_saving:
             return PromotionApprovalDecision(
                 auto_approve=True,
-                requires_human=False,
                 reason=(
                     f"Demotion to {evaluation.target_level.value} "
                     f"auto-applied (cost-saving)"
@@ -105,7 +117,6 @@ class SeniorityApprovalStrategy:
             if compare_seniority(current, SeniorityLevel.SENIOR) >= 0:
                 return PromotionApprovalDecision(
                     auto_approve=False,
-                    requires_human=True,
                     reason=(
                         f"Demotion from {current.value} requires "
                         f"human approval (authority-reducing)"
@@ -114,6 +125,5 @@ class SeniorityApprovalStrategy:
 
         return PromotionApprovalDecision(
             auto_approve=True,
-            requires_human=False,
             reason=(f"Demotion to {evaluation.target_level.value} auto-applied"),
         )

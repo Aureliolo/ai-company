@@ -92,7 +92,7 @@ class TrustChangeRecord(BaseModel):
     agent_id: NotBlankStr = Field(description="Agent whose trust changed")
     old_level: ToolAccessLevel = Field(description="Previous trust level")
     new_level: ToolAccessLevel = Field(description="New trust level")
-    category: str | None = Field(
+    category: NotBlankStr | None = Field(
         default=None,
         description="Tool category (None for global changes)",
     )

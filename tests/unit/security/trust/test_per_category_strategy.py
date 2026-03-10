@@ -183,3 +183,137 @@ class TestPerCategoryTrustStrategy:
         )
 
         assert result.recommended_level == ToolAccessLevel.RESTRICTED
+
+    async def test_elevated_category_requires_human_approval(self) -> None:
+        """Promotion to ELEVATED forces requires_human even without criteria flag."""
+        # Use restricted_to_elevated (not checked by config elevated gate)
+        config = _make_per_category_config(
+            initial_levels={
+                "file_system": ToolAccessLevel.RESTRICTED,
+            },
+            criteria={
+                "file_system": {
+                    "restricted_to_elevated": CategoryTrustCriteria(
+                        tasks_completed=5,
+                        quality_score_min=6.0,
+                        requires_human_approval=False,
+                    ),
+                },
+            },
+        )
+        strategy = PerCategoryTrustStrategy(config=config)
+
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.RESTRICTED,
+            category_levels={
+                "file_system": ToolAccessLevel.RESTRICTED,
+            },
+        )
+        snapshot = make_performance_snapshot(
+            "agent-001",
+            quality=9.0,
+            tasks_completed=20,
+        )
+
+        result = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=snapshot,
+        )
+
+        # Runtime defense-in-depth: ELEVATED always forces human approval
+        assert result.requires_human_approval is True
+
+    async def test_quality_none_with_min_zero_passes(self) -> None:
+        """quality=None is accepted when quality_score_min is 0.0."""
+        from datetime import UTC, datetime
+
+        from ai_company.hr.performance.models import (
+            AgentPerformanceSnapshot,
+            WindowMetrics,
+        )
+
+        config = _make_per_category_config(
+            initial_levels={
+                "file_system": ToolAccessLevel.SANDBOXED,
+            },
+            criteria={
+                "file_system": {
+                    "sandboxed_to_restricted": CategoryTrustCriteria(
+                        tasks_completed=5,
+                        quality_score_min=0.0,
+                    ),
+                },
+            },
+        )
+        strategy = PerCategoryTrustStrategy(config=config)
+
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.SANDBOXED,
+            category_levels={
+                "file_system": ToolAccessLevel.SANDBOXED,
+            },
+        )
+        window = WindowMetrics(
+            window_size="30d",
+            data_point_count=10,
+            tasks_completed=10,
+            tasks_failed=0,
+            avg_quality_score=None,
+            success_rate=1.0,
+        )
+        snapshot = AgentPerformanceSnapshot(
+            agent_id="agent-001",
+            computed_at=datetime.now(UTC),
+            windows=(window,),
+            overall_quality_score=None,
+        )
+
+        result = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=snapshot,
+        )
+
+        assert result.recommended_level == ToolAccessLevel.RESTRICTED
+
+    async def test_criteria_not_met_stays_at_current(self) -> None:
+        """Insufficient tasks keeps category at current level."""
+        config = _make_per_category_config(
+            initial_levels={
+                "file_system": ToolAccessLevel.SANDBOXED,
+            },
+            criteria={
+                "file_system": {
+                    "sandboxed_to_restricted": CategoryTrustCriteria(
+                        tasks_completed=50,
+                        quality_score_min=9.0,
+                    ),
+                },
+            },
+        )
+        strategy = PerCategoryTrustStrategy(config=config)
+
+        state = TrustState(
+            agent_id=NotBlankStr("agent-001"),
+            global_level=ToolAccessLevel.SANDBOXED,
+            category_levels={
+                "file_system": ToolAccessLevel.SANDBOXED,
+            },
+        )
+        snapshot = make_performance_snapshot(
+            "agent-001",
+            quality=5.0,
+            tasks_completed=3,
+        )
+
+        result = await strategy.evaluate(
+            agent_id=NotBlankStr("agent-001"),
+            current_state=state,
+            snapshot=snapshot,
+        )
+
+        assert result.recommended_level == ToolAccessLevel.SANDBOXED
+        assert result.should_change is False

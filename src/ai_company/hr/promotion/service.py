@@ -30,7 +30,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.promotion import (
     DEMOTION_APPLIED,
     PROMOTION_APPLIED,
-    PROMOTION_APPROVED,
+    PROMOTION_APPROVAL_SUBMITTED,
     PROMOTION_COOLDOWN_ACTIVE,
     PROMOTION_EVALUATE_COMPLETE,
     PROMOTION_EVALUATE_START,
@@ -85,7 +85,7 @@ class PromotionService:
     """Orchestrates agent promotions and demotions.
 
     Coordinates criteria evaluation, approval decisions, model
-    mapping, registry updates, and trust re-evaluation.
+    mapping, registry updates, and optional trust re-evaluation.
 
     Args:
         criteria_strategy: Strategy for evaluating promotion criteria.
@@ -139,11 +139,22 @@ class PromotionService:
         identity = await self._registry.get(agent_id)
         if identity is None:
             msg = f"Agent {agent_id!r} not found"
+            logger.warning(
+                PROMOTION_EVALUATE_START,
+                agent_id=agent_id,
+                error=msg,
+            )
             raise PromotionError(msg)
 
         target = _next_level(identity.level)
         if target is None:
             msg = f"Agent {agent_id!r} is already at maximum seniority"
+            logger.warning(
+                PROMOTION_EVALUATE_START,
+                agent_id=agent_id,
+                current_level=identity.level.value,
+                error=msg,
+            )
             raise PromotionError(msg)
 
         logger.debug(
@@ -187,11 +198,22 @@ class PromotionService:
         identity = await self._registry.get(agent_id)
         if identity is None:
             msg = f"Agent {agent_id!r} not found"
+            logger.warning(
+                PROMOTION_EVALUATE_START,
+                agent_id=agent_id,
+                error=msg,
+            )
             raise PromotionError(msg)
 
         target = _prev_level(identity.level)
         if target is None:
             msg = f"Agent {agent_id!r} is already at minimum seniority"
+            logger.warning(
+                PROMOTION_EVALUATE_START,
+                agent_id=agent_id,
+                current_level=identity.level.value,
+                error=msg,
+            )
             raise PromotionError(msg)
 
         snapshot = await self._tracker.get_snapshot(agent_id)
@@ -240,6 +262,11 @@ class PromotionService:
         identity = await self._registry.get(agent_id)
         if identity is None:
             msg = f"Agent {agent_id!r} not found"
+            logger.warning(
+                PROMOTION_REQUESTED,
+                agent_id=agent_id,
+                error=msg,
+            )
             raise PromotionError(msg)
 
         decision = await self._approval.decide(
@@ -319,6 +346,11 @@ class PromotionService:
         identity = await self._registry.get(request.agent_id)
         if identity is None:
             msg = f"Agent {request.agent_id!r} not found"
+            logger.warning(
+                PROMOTION_APPLIED,
+                agent_id=request.agent_id,
+                error=msg,
+            )
             raise PromotionError(msg)
 
         # Resolve model mapping
@@ -327,7 +359,6 @@ class PromotionService:
             new_level=request.target_level,
         )
 
-        # Build update dict
         updates: dict[str, object] = {"level": request.target_level}
         if new_model_id is not None:
             updates["model"] = identity.model.model_copy(
@@ -340,13 +371,11 @@ class PromotionService:
                 new_model=new_model_id,
             )
 
-        # Update identity in registry
         await self._registry.update_identity(
             request.agent_id,
             **updates,
         )
 
-        # Record the promotion
         now = datetime.now(UTC)
         record = PromotionRecord(
             agent_id=request.agent_id,
@@ -355,7 +384,11 @@ class PromotionService:
             new_level=request.target_level,
             direction=request.direction,
             evaluation=request.evaluation,
-            approved_by=(NotBlankStr("auto") if request.approval_id is None else None),
+            approved_by=(
+                NotBlankStr("auto")
+                if request.approval_id is None
+                else NotBlankStr("human")
+            ),
             approval_id=request.approval_id,
             effective_at=now,
             initiated_by=initiated_by,
@@ -373,13 +406,11 @@ class PromotionService:
             [],
         ).append(record)
 
-        # Set cooldown
         if self._config.cooldown_hours > 0:
             self._cooldown_until[str(request.agent_id)] = now + timedelta(
                 hours=self._config.cooldown_hours
             )
 
-        # Trigger trust re-evaluation if available
         if self._trust_service is not None:
             snapshot = await self._tracker.get_snapshot(request.agent_id)
             await self._trust_service.evaluate_agent(
@@ -467,11 +498,18 @@ class PromotionService:
             },
         )
 
-        assert self._approval_store is not None  # noqa: S101
+        if self._approval_store is None:
+            msg = "Cannot create approval: no approval store configured"
+            logger.warning(
+                PROMOTION_APPROVAL_SUBMITTED,
+                agent_id=agent_id,
+                error=msg,
+            )
+            raise PromotionError(msg)
         await self._approval_store.add(approval)
 
         logger.info(
-            PROMOTION_APPROVED,
+            PROMOTION_APPROVAL_SUBMITTED,
             agent_id=agent_id,
             approval_id=approval_id,
         )
