@@ -1,14 +1,37 @@
 """Security configuration models.
 
 Defines ``SecurityConfig`` (the top-level security configuration),
-``RuleEngineConfig``, and ``SecurityPolicyRule`` for custom policies.
+``RuleEngineConfig``, ``SecurityPolicyRule``, and
+``OutputScanPolicyType`` for custom policies.
 """
+
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import ActionType, ApprovalRiskLevel
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.security.models import SecurityVerdictType
+
+
+class OutputScanPolicyType(StrEnum):
+    """Declarative output scan policy selection.
+
+    Used in ``SecurityConfig`` to select the output scan response
+    policy at config time.  Runtime constructor injection is also
+    supported for full flexibility.
+
+    Members:
+        REDACT: Return redacted content (default — current behavior).
+        WITHHOLD: Clear redacted content, forcing fail-closed.
+        LOG_ONLY: Log findings but pass output through.
+        AUTONOMY_TIERED: Delegate based on effective autonomy level.
+    """
+
+    REDACT = "redact"
+    WITHHOLD = "withhold"
+    LOG_ONLY = "log_only"
+    AUTONOMY_TIERED = "autonomy_tiered"
 
 
 class SecurityPolicyRule(BaseModel):
@@ -95,6 +118,7 @@ class SecurityConfig(BaseModel):
         ActionType.CODE_READ,
         ActionType.DOCS_WRITE,
     )
+    output_scan_policy_type: OutputScanPolicyType = OutputScanPolicyType.REDACT
     custom_policies: tuple[SecurityPolicyRule, ...] = ()
 
     @model_validator(mode="after")

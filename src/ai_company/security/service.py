@@ -42,6 +42,9 @@ from ai_company.security.models import (
     SecurityVerdict,
     SecurityVerdictType,
 )
+from ai_company.security.output_scan_policy import (
+    OutputScanResponsePolicy,  # noqa: TC001
+)
 from ai_company.security.output_scanner import OutputScanner  # noqa: TC001
 from ai_company.security.rules.engine import RuleEngine  # noqa: TC001
 from ai_company.security.timeout.protocol import RiskTierClassifier  # noqa: TC001
@@ -85,6 +88,7 @@ class SecOpsService:
         approval_store: ApprovalStore | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
         risk_classifier: RiskTierClassifier | None = None,
+        output_scan_policy: OutputScanResponsePolicy | None = None,
     ) -> None:
         """Initialize the SecOps service.
 
@@ -100,6 +104,9 @@ class SecOpsService:
             risk_classifier: Optional classifier for determining action
                 risk levels in autonomy escalations.  Defaults to HIGH
                 when absent (fail-safe).
+            output_scan_policy: Optional policy applied to scan results
+                before returning.  When ``None``, raw scanner output is
+                returned unchanged.
         """
         self._config = config
         self._rule_engine = rule_engine
@@ -108,6 +115,7 @@ class SecOpsService:
         self._approval_store = approval_store
         self._effective_autonomy = effective_autonomy
         self._risk_classifier = risk_classifier
+        self._output_scan_policy = output_scan_policy
 
         if config.custom_policies:
             logger.warning(
@@ -244,6 +252,9 @@ class SecOpsService:
                     tool_name=context.tool_name,
                     note="Output scan audit recording failed",
                 )
+
+        if self._output_scan_policy is not None:
+            result = self._output_scan_policy.apply(result, context)
 
         return result
 

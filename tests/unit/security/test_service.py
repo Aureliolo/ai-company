@@ -1,6 +1,7 @@
 """Tests for the SecOps service."""
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -23,6 +24,9 @@ from ai_company.security.models import (
 from ai_company.security.output_scanner import OutputScanner
 from ai_company.security.rules.engine import RuleEngine
 from ai_company.security.service import SecOpsService
+
+if TYPE_CHECKING:
+    from ai_company.security.output_scan_policy import OutputScanResponsePolicy
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -602,3 +606,147 @@ class TestAutonomyPrecheck:
 
         assert verdict.verdict == SecurityVerdictType.ALLOW
         service._test_rule_engine.evaluate.assert_called_once()  # type: ignore[attr-defined]
+
+
+# ── Tests: scan_output audit failure (Gap 6) ─────────────────────
+
+
+@pytest.mark.unit
+class TestSecOpsScanOutputAuditFailure:
+    """When audit recording fails during scan_output, result is still returned."""
+
+    @staticmethod
+    def _make_service_with_failing_audit(
+        scan_result: OutputScanResult,
+    ) -> SecOpsService:
+        """Build a service whose audit_log.record raises."""
+        cfg = SecurityConfig()
+        rule_engine = MagicMock(spec=RuleEngine)
+        rule_engine.evaluate.return_value = _make_allow_verdict()
+        audit_log = MagicMock(spec=AuditLog)
+        audit_log.record.side_effect = RuntimeError("disk full")
+        output_scanner = MagicMock(spec=OutputScanner)
+        output_scanner.scan.return_value = scan_result
+        return SecOpsService(
+            config=cfg,
+            rule_engine=rule_engine,
+            audit_log=audit_log,
+            output_scanner=output_scanner,
+        )
+
+    async def test_scan_audit_failure_still_returns_result(self) -> None:
+        """Scan result is returned even when audit recording fails."""
+        finding = OutputScanResult(
+            has_sensitive_data=True,
+            findings=("API key detected",),
+            redacted_content="[REDACTED]",
+        )
+        service = self._make_service_with_failing_audit(finding)
+        ctx = _make_context()
+
+        result = await service.scan_output(ctx, "AKIAIOSFODNN7EXAMPLE")
+
+        assert result.has_sensitive_data is True
+        assert result.redacted_content == "[REDACTED]"
+
+    async def test_scan_audit_failure_does_not_propagate(self) -> None:
+        """RuntimeError from audit_log.record does not propagate."""
+        finding = OutputScanResult(
+            has_sensitive_data=True,
+            findings=("secret",),
+            redacted_content="[REDACTED]",
+        )
+        service = self._make_service_with_failing_audit(finding)
+        ctx = _make_context()
+
+        # Should not raise.
+        result = await service.scan_output(ctx, "secret data")
+        assert result is not None
+
+
+# ── Tests: scan_output policy integration ─────────────────────────
+
+
+@pytest.mark.unit
+class TestSecOpsScanOutputPolicy:
+    """Output scan policy is applied after scanning."""
+
+    @staticmethod
+    def _make_service_with_policy(
+        *,
+        scan_result: OutputScanResult,
+        policy: OutputScanResponsePolicy | None = None,
+    ) -> SecOpsService:
+        cfg = SecurityConfig()
+        rule_engine = MagicMock(spec=RuleEngine)
+        rule_engine.evaluate.return_value = _make_allow_verdict()
+        audit_log = AuditLog()
+        output_scanner = MagicMock(spec=OutputScanner)
+        output_scanner.scan.return_value = scan_result
+        return SecOpsService(
+            config=cfg,
+            rule_engine=rule_engine,
+            audit_log=audit_log,
+            output_scanner=output_scanner,
+            output_scan_policy=policy,
+        )
+
+    async def test_policy_applied_after_scan(self) -> None:
+        """Policy's apply method is called with the scan result."""
+        mock_policy = MagicMock()
+        mock_policy.apply.return_value = OutputScanResult()
+        finding = OutputScanResult(
+            has_sensitive_data=True,
+            findings=("token",),
+            redacted_content="[REDACTED]",
+        )
+        service = self._make_service_with_policy(
+            scan_result=finding,
+            policy=mock_policy,
+        )
+        ctx = _make_context()
+
+        await service.scan_output(ctx, "Bearer eyJ...")
+
+        mock_policy.apply.assert_called_once()
+        call_args = mock_policy.apply.call_args[0]
+        assert call_args[0] == finding  # scan result
+        assert call_args[1] == ctx  # context
+
+    async def test_policy_transforms_result(self) -> None:
+        """The result from policy.apply is what's returned."""
+        from ai_company.security.output_scan_policy import WithholdPolicy
+
+        finding = OutputScanResult(
+            has_sensitive_data=True,
+            findings=("key",),
+            redacted_content="redacted output",
+        )
+        service = self._make_service_with_policy(
+            scan_result=finding,
+            policy=WithholdPolicy(),
+        )
+        ctx = _make_context()
+
+        result = await service.scan_output(ctx, "API_KEY=abc123")
+
+        # WithholdPolicy clears redacted_content.
+        assert result.has_sensitive_data is True
+        assert result.redacted_content is None
+
+    async def test_no_policy_returns_raw_result(self) -> None:
+        """When policy=None, raw scanner result is returned."""
+        finding = OutputScanResult(
+            has_sensitive_data=True,
+            findings=("secret",),
+            redacted_content="[REDACTED]",
+        )
+        service = self._make_service_with_policy(
+            scan_result=finding,
+            policy=None,
+        )
+        ctx = _make_context()
+
+        result = await service.scan_output(ctx, "secret data")
+
+        assert result == finding
