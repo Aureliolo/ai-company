@@ -16,10 +16,13 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.hr import (
     HR_REGISTRY_AGENT_REGISTERED,
     HR_REGISTRY_AGENT_REMOVED,
+    HR_REGISTRY_IDENTITY_UPDATED,
     HR_REGISTRY_STATUS_UPDATED,
 )
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from ai_company.core.agent import AgentIdentity
     from ai_company.core.types import NotBlankStr
 
@@ -189,6 +192,47 @@ class AgentRegistryService:
             HR_REGISTRY_STATUS_UPDATED,
             agent_id=key,
             status=status.value,
+        )
+        return updated
+
+    async def update_identity(
+        self,
+        agent_id: NotBlankStr,
+        **updates: Any,
+    ) -> AgentIdentity:
+        """Update agent identity fields via model_copy(update=...).
+
+        Used by TrustService (tools.access_level) and PromotionService
+        (level, model) to update agent identity in a single mutation point.
+
+        Args:
+            agent_id: The agent identifier.
+            **updates: Fields to update on the AgentIdentity.
+
+        Returns:
+            Updated agent identity.
+
+        Raises:
+            AgentNotFoundError: If the agent is not found.
+        """
+        key = str(agent_id)
+        async with self._lock:
+            identity = self._agents.get(key)
+            if identity is None:
+                msg = f"Agent {agent_id!r} not found in registry"
+                logger.warning(
+                    HR_REGISTRY_IDENTITY_UPDATED,
+                    agent_id=key,
+                    error=msg,
+                )
+                raise AgentNotFoundError(msg)
+            updated = identity.model_copy(update=updates)
+            self._agents[key] = updated
+
+        logger.info(
+            HR_REGISTRY_IDENTITY_UPDATED,
+            agent_id=key,
+            updated_fields=sorted(updates.keys()),
         )
         return updated
 

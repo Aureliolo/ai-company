@@ -42,3 +42,7 @@ HR_FIRING_REASSIGNMENT_FAILED: Final[str] = "hr.firing.reassignment_failed"
 HR_FIRING_ARCHIVAL_FAILED: Final[str] = "hr.firing.archival_failed"
 HR_FIRING_NOTIFICATION_FAILED: Final[str] = "hr.firing.notification_failed"
 HR_ARCHIVAL_ENTRY_FAILED: Final[str] = "hr.archival.entry_failed"
+
+# ── Registry ─────────────────────────────────────────────────────
+
+HR_REGISTRY_IDENTITY_UPDATED: Final[str] = "hr.registry.identity_updated"
