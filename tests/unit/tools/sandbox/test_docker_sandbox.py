@@ -336,7 +336,6 @@ class TestDockerSandboxContainerConfig:
             args=("hi",),
             container_cwd="/workspace",
             env_overrides=None,
-            auto_remove=False,
         )
         bind = result["HostConfig"]["Binds"][0]
         assert bind.endswith(":rw")
@@ -349,7 +348,6 @@ class TestDockerSandboxContainerConfig:
             args=("hi",),
             container_cwd="/workspace",
             env_overrides=None,
-            auto_remove=False,
         )
         bind = result["HostConfig"]["Binds"][0]
         assert bind.endswith(":ro")
@@ -362,7 +360,6 @@ class TestDockerSandboxContainerConfig:
             args=(),
             container_cwd="/workspace",
             env_overrides=None,
-            auto_remove=False,
         )
         assert result["HostConfig"]["Runtime"] == "runsc"
 
@@ -377,7 +374,6 @@ class TestDockerSandboxContainerConfig:
             args=(),
             container_cwd="/workspace",
             env_overrides=None,
-            auto_remove=False,
         )
         assert "Runtime" not in result["HostConfig"]
 
@@ -389,7 +385,6 @@ class TestDockerSandboxContainerConfig:
             args=(),
             container_cwd="/workspace",
             env_overrides=None,
-            auto_remove=False,
         )
         assert result["HostConfig"]["NetworkMode"] == "bridge"
 
@@ -432,7 +427,9 @@ class TestDockerSandboxCleanup:
 
         await sandbox.cleanup()
 
-        assert mock_docker.containers.container.call_count >= 2
+        container_obj = mock_docker.containers.container.return_value
+        assert container_obj.stop.await_count == 2
+        assert container_obj.delete.await_count == 2
         assert sandbox._tracked_containers == []
 
 
@@ -556,6 +553,16 @@ class TestMemoryLimitParsing:
 class TestDockerSandboxHardening:
     """Security hardening in container config."""
 
+    def test_tmpfs_mount_for_tmp(self, tmp_path: Path) -> None:
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = sandbox._build_container_config(
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+        assert "/tmp" in config["HostConfig"]["Tmpfs"]  # noqa: S108
+
     def test_pids_limit_set(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox(workspace=tmp_path)
         config = sandbox._build_container_config(
@@ -563,7 +570,6 @@ class TestDockerSandboxHardening:
             args=(),
             container_cwd="/workspace",
             env_overrides=None,
-            auto_remove=False,
         )
         assert config["HostConfig"]["PidsLimit"] == 64
 
@@ -574,7 +580,6 @@ class TestDockerSandboxHardening:
             args=(),
             container_cwd="/workspace",
             env_overrides=None,
-            auto_remove=False,
         )
         assert config["HostConfig"]["ReadonlyRootfs"] is True
 
@@ -585,7 +590,6 @@ class TestDockerSandboxHardening:
             args=(),
             container_cwd="/workspace",
             env_overrides=None,
-            auto_remove=False,
         )
         assert config["HostConfig"]["CapDrop"] == ["ALL"]
 

@@ -21,7 +21,6 @@ class TestDockerSandboxConfigDefaults:
         assert config.cpu_limit == 1.0
         assert config.timeout_seconds == 120.0
         assert config.mount_mode == "ro"
-        assert config.auto_remove is True
         assert config.runtime is None
 
     def test_frozen(self) -> None:
@@ -68,10 +67,6 @@ class TestDockerSandboxConfigCustomValues:
     def test_runtime_gvisor(self) -> None:
         config = DockerSandboxConfig(runtime="runsc")
         assert config.runtime == "runsc"
-
-    def test_auto_remove_disabled(self) -> None:
-        config = DockerSandboxConfig(auto_remove=False)
-        assert config.auto_remove is False
 
 
 class TestDockerSandboxConfigBounds:

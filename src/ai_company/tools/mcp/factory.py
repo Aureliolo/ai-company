@@ -13,6 +13,7 @@ from ai_company.observability.events.mcp import (
     MCP_CLIENT_DISCONNECT_FAILED,
     MCP_FACTORY_CLEANUP,
     MCP_FACTORY_COMPLETE,
+    MCP_FACTORY_REUSE_REJECTED,
     MCP_FACTORY_SERVER_SKIPPED,
     MCP_FACTORY_START,
 )
@@ -58,6 +59,7 @@ class MCPToolFactory:
         """
         if self._created:
             msg = "create_tools() must not be called more than once"
+            logger.warning(MCP_FACTORY_REUSE_REJECTED, reason=msg)
             raise RuntimeError(msg)
         self._created = True
 

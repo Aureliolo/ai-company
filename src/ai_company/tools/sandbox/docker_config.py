@@ -21,7 +21,6 @@ class DockerSandboxConfig(BaseModel):
         cpu_limit: CPU core limit for the container.
         timeout_seconds: Default command timeout in seconds.
         mount_mode: Workspace mount mode (read-write or read-only).
-        auto_remove: Whether to auto-remove containers on exit.
         runtime: Optional container runtime (e.g. ``"runsc"`` for gVisor).
     """
 
@@ -53,10 +52,6 @@ class DockerSandboxConfig(BaseModel):
         default="ro",
         description="Workspace mount mode (read-only by default)",
     )
-    auto_remove: bool = Field(
-        default=True,
-        description="Whether to auto-remove containers on exit",
-    )
     runtime: NotBlankStr | None = Field(
         default=None,
         description="Optional container runtime (e.g. 'runsc' for gVisor)",
@@ -73,9 +68,9 @@ class DockerSandboxConfig(BaseModel):
         numeric_part = limit[:-1] if limit[-1] in multipliers else limit
         try:
             value = int(numeric_part)
-        except ValueError:
+        except ValueError as exc:
             msg = f"Invalid memory_limit format: {self.memory_limit!r}"
-            raise ValueError(msg) from None
+            raise ValueError(msg) from exc
         if value <= 0:
             msg = f"Memory limit must be positive, got: {self.memory_limit!r}"
             raise ValueError(msg)

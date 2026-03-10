@@ -107,6 +107,7 @@ class DockerSandbox:
         self._workspace = resolved
         self._docker: aiodocker.Docker | None = None
         self._tracked_containers: list[str] = []
+        self._lock = asyncio.Lock()
 
     @property
     def config(self) -> DockerSandboxConfig:
@@ -121,27 +122,31 @@ class DockerSandbox:
     async def _ensure_docker(self) -> aiodocker.Docker:
         """Lazily connect to the Docker daemon.
 
+        Serialized with ``_lock`` to prevent duplicate client creation
+        from concurrent calls.
+
         Returns:
             An ``aiodocker.Docker`` client instance.
 
         Raises:
             SandboxStartError: If the Docker daemon is unavailable.
         """
-        if self._docker is not None:
-            return self._docker
-        client = aiodocker.Docker()
-        try:
-            await client.version()
-        except Exception as exc:
-            await client.close()
-            logger.exception(
-                DOCKER_DAEMON_UNAVAILABLE,
-                error=str(exc),
-            )
-            msg = f"Docker daemon unavailable: {exc}"
-            raise SandboxStartError(msg) from exc
-        self._docker = client
-        return client
+        async with self._lock:
+            if self._docker is not None:
+                return self._docker
+            client = aiodocker.Docker()
+            try:
+                await client.version()
+            except Exception as exc:
+                await client.close()
+                logger.exception(
+                    DOCKER_DAEMON_UNAVAILABLE,
+                    error=str(exc),
+                )
+                msg = f"Docker daemon unavailable: {exc}"
+                raise SandboxStartError(msg) from exc
+            self._docker = client
+            return client
 
     def _validate_cwd(self, cwd: Path) -> None:
         """Validate that *cwd* is within the workspace boundary.
@@ -185,7 +190,6 @@ class DockerSandbox:
         args: tuple[str, ...],
         container_cwd: str,
         env_overrides: Mapping[str, str] | None,
-        auto_remove: bool,
     ) -> dict[str, Any]:
         """Build the Docker container creation config.
 
@@ -194,7 +198,6 @@ class DockerSandbox:
             args: Command arguments.
             container_cwd: Working directory inside the container.
             env_overrides: Environment variables for the container.
-            auto_remove: Whether Docker should auto-remove the container.
 
         Returns:
             A dict suitable for ``aiodocker`` container creation.
@@ -212,10 +215,11 @@ class DockerSandbox:
 
         host_config: dict[str, Any] = {
             "Binds": [bind_str],
+            "Tmpfs": {"/tmp": "size=64m,noexec,nosuid"},  # noqa: S108
             "Memory": memory_bytes,
             "NanoCpus": nano_cpus,
             "NetworkMode": self._config.network,
-            "AutoRemove": auto_remove,
+            "AutoRemove": False,
             "PidsLimit": 64,
             "ReadonlyRootfs": True,
             "CapDrop": ["ALL"],
@@ -341,14 +345,11 @@ class DockerSandbox:
         Returns:
             A ``SandboxResult`` with captured output and exit status.
         """
-        # Always disable auto_remove: we need container access for
-        # log collection and explicit stop on timeout.
         config = self._build_container_config(
             command=command,
             args=args,
             container_cwd=container_cwd,
             env_overrides=env_overrides,
-            auto_remove=False,
         )
 
         try:
@@ -420,35 +421,23 @@ class DockerSandbox:
             )
             raise SandboxStartError(msg) from exc
 
-        timed_out = False
-        try:
-            response = await asyncio.wait_for(
-                container_obj.wait(),
-                timeout=timeout,
-            )
-            returncode = response.get("StatusCode", -1)
-        except TimeoutError:
-            timed_out = True
-            logger.warning(
-                DOCKER_EXECUTE_TIMEOUT,
-                container_id=container_id[:12],
-                command=command,
-                args=args,
-                timeout=timeout,
-            )
-            await self._stop_container(docker, container_id)
-            returncode = -1
-
-        try:
-            stdout, stderr = await self._collect_logs(container_obj)
-        except Exception as exc:
-            logger.warning(
-                DOCKER_EXECUTE_FAILED,
-                container_id=container_id[:12],
-                error=f"Log collection failed: {exc}",
-            )
-            stdout, stderr = "", ""
-
+        timed_out, returncode = await self._wait_for_exit(
+            docker=docker,
+            container_obj=container_obj,
+            container_id=container_id,
+            timeout=timeout,
+        )
+        stdout, stderr = await self._safe_collect_logs(
+            container_obj,
+            container_id,
+        )
+        self._log_execution_outcome(
+            command,
+            args,
+            container_id,
+            returncode,
+            stderr,
+        )
         if timed_out:
             return SandboxResult(
                 stdout=stdout,
@@ -456,14 +445,74 @@ class DockerSandbox:
                 returncode=returncode,
                 timed_out=True,
             )
+        return SandboxResult(
+            stdout=stdout,
+            stderr=stderr,
+            returncode=returncode,
+        )
 
+    async def _wait_for_exit(
+        self,
+        *,
+        docker: aiodocker.Docker,
+        container_obj: aiodocker.containers.DockerContainer,
+        container_id: str,
+        timeout: float,  # noqa: ASYNC109
+    ) -> tuple[bool, int]:
+        """Wait for the container to exit or timeout.
+
+        Returns:
+            Tuple of (timed_out, returncode).
+        """
+        try:
+            response = await asyncio.wait_for(
+                container_obj.wait(),
+                timeout=timeout,
+            )
+            return (False, response.get("StatusCode", -1))
+        except TimeoutError:
+            logger.warning(
+                DOCKER_EXECUTE_TIMEOUT,
+                container_id=container_id[:12],
+                timeout=timeout,
+            )
+            await self._stop_container(docker, container_id)
+            return (True, -1)
+
+    async def _safe_collect_logs(
+        self,
+        container_obj: aiodocker.containers.DockerContainer,
+        container_id: str,
+    ) -> tuple[str, str]:
+        """Collect logs, returning empty strings on failure."""
+        try:
+            return await self._collect_logs(container_obj)
+        except Exception as exc:
+            logger.warning(
+                DOCKER_EXECUTE_FAILED,
+                container_id=container_id[:12],
+                error=f"Log collection failed: {exc}",
+            )
+            return ("", "")
+
+    @staticmethod
+    def _log_execution_outcome(
+        command: str,
+        args: tuple[str, ...],
+        container_id: str,
+        returncode: int,
+        stderr: str,
+    ) -> None:
+        """Log the execution outcome at the appropriate level."""
+        max_stderr_log = 200
         if returncode != 0:
             logger.warning(
                 DOCKER_EXECUTE_FAILED,
                 command=command,
                 args=args,
                 returncode=returncode,
-                stderr=stderr,
+                stderr_length=len(stderr),
+                stderr_head=stderr[:max_stderr_log],
             )
         else:
             logger.debug(
@@ -472,12 +521,6 @@ class DockerSandbox:
                 args=args,
                 container_id=container_id[:12],
             )
-
-        return SandboxResult(
-            stdout=stdout,
-            stderr=stderr,
-            returncode=returncode,
-        )
 
     @staticmethod
     async def _collect_logs(
@@ -562,15 +605,9 @@ class DockerSandbox:
             tracked_count=len(self._tracked_containers),
         )
         if self._docker is not None:
-            try:
-                for cid in self._tracked_containers:
-                    await self._stop_container(self._docker, cid)
-                    await self._remove_container(self._docker, cid)
-            except Exception as exc:
-                logger.warning(
-                    DOCKER_CLEANUP,
-                    error=f"Container cleanup failed: {exc}",
-                )
+            for cid in self._tracked_containers:
+                await self._stop_container(self._docker, cid)
+                await self._remove_container(self._docker, cid)
             try:
                 await self._docker.close()
             except Exception as exc:

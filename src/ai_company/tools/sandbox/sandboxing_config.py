@@ -4,8 +4,11 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ai_company.observability import get_logger
 from ai_company.tools.sandbox.config import SubprocessSandboxConfig
 from ai_company.tools.sandbox.docker_config import DockerSandboxConfig
+
+logger = get_logger(__name__)
 
 _VALID_BACKENDS = frozenset({"subprocess", "docker"})
 _BackendName = Literal["subprocess", "docker"]

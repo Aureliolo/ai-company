@@ -3000,13 +3000,6 @@ ai-company/
 │       │   ├── examples/           # Example tool implementations
 │       │   │   ├── __init__.py    # Package exports
 │       │   │   └── echo.py        # Echo tool (for testing)
-│       │   ├── sandbox/            # Sandboxing backends
-│       │   │   ├── __init__.py    # Package exports
-│       │   │   ├── config.py      # SubprocessSandboxConfig model
-│       │   │   ├── errors.py      # SandboxError hierarchy
-│       │   │   ├── protocol.py    # SandboxBackend protocol
-│       │   │   ├── result.py      # SandboxResult model
-│       │   │   └── subprocess_sandbox.py  # SubprocessSandbox (default)
 │       │   ├── file_system/        # Built-in file system tools
 │       │   │   ├── __init__.py    # Package exports
 │       │   │   ├── _base_fs_tool.py  # BaseFileSystemTool ABC

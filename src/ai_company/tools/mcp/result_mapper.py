@@ -17,6 +17,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.mcp import (
     MCP_RESULT_ATTACHMENT,
     MCP_RESULT_MAPPED,
+    MCP_RESULT_UNKNOWN_BLOCK,
 )
 from ai_company.tools.base import ToolExecutionResult
 
@@ -75,7 +76,7 @@ def map_call_tool_result(raw: MCPRawResult) -> ToolExecutionResult:
         else:
             block_type = type(block).__name__
             logger.warning(
-                MCP_RESULT_MAPPED,
+                MCP_RESULT_UNKNOWN_BLOCK,
                 unknown_block_type=block_type,
             )
             parts.append(f"[unknown: {block_type}]")

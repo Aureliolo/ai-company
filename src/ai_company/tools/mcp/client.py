@@ -81,8 +81,17 @@ class MCPClient:
 
         Raises:
             MCPConnectionError: If the connection fails.
+            RuntimeError: If already connected.
         """
         async with self._lock:
+            if self._session is not None:
+                msg = f"Already connected to {self._config.name!r}"
+                logger.warning(
+                    MCP_CLIENT_CONNECTION_FAILED,
+                    server=self._config.name,
+                    error=msg,
+                )
+                raise RuntimeError(msg)
             logger.info(
                 MCP_CLIENT_CONNECTING,
                 server=self._config.name,
@@ -138,6 +147,10 @@ class MCPClient:
                         "transport": self._config.transport,
                     },
                 ) from exc
+            except BaseException:
+                # CancelledError, KeyboardInterrupt — still close the stack
+                await stack.aclose()
+                raise
 
     async def _connect_with_stack(
         self,
@@ -251,13 +264,13 @@ class MCPClient:
             MCPTimeoutError: If the invocation times out.
             MCPInvocationError: If the invocation fails.
         """
-        session = self._require_session()
         logger.debug(
             MCP_INVOKE_START,
             server=self._config.name,
             tool=tool_name,
         )
         async with self._lock:
+            session = self._require_session()
             try:
                 result = await asyncio.wait_for(
                     session.call_tool(tool_name, arguments),
