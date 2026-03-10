@@ -7,6 +7,11 @@ import pytest
 
 from ai_company.core.enums import MemoryCategory
 from ai_company.memory.errors import MemoryRetrievalError
+from ai_company.memory.filter import (
+    NON_INFERABLE_TAG,
+    PassthroughMemoryFilter,
+    TagBasedMemoryFilter,
+)
 from ai_company.memory.formatter import MEMORY_BLOCK_START
 from ai_company.memory.injection import (
     DefaultTokenEstimator,
@@ -420,3 +425,94 @@ class TestTokenBudget:
             token_budget=0,
         )
         assert result == ()
+
+
+# ── Memory filter integration ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestMemoryFilterIntegration:
+    async def test_filter_applied_after_ranking(self) -> None:
+        """TagBasedMemoryFilter excludes untagged memories after ranking."""
+        tagged = _make_entry(
+            entry_id="tagged",
+            content="tagged memory",
+            relevance_score=0.9,
+        )
+        # Manually set the non-inferable tag on metadata.
+        tagged = tagged.model_copy(
+            update={
+                "metadata": MemoryMetadata(tags=(NON_INFERABLE_TAG,)),
+            },
+        )
+        untagged = _make_entry(
+            entry_id="untagged",
+            content="untagged memory",
+            relevance_score=0.9,
+        )
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((tagged, untagged)),
+            config=MemoryRetrievalConfig(min_relevance=0.0),
+            memory_filter=TagBasedMemoryFilter(),
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=5000,
+        )
+        assert len(result) == 1
+        content = result[0].content
+        assert content is not None
+        assert "tagged memory" in content
+        assert "untagged memory" not in content
+
+    async def test_filter_skipped_when_none(self) -> None:
+        """When memory_filter is None, all ranked memories are injected."""
+        entry = _make_entry(content="all memories pass")
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((entry,)),
+            config=MemoryRetrievalConfig(min_relevance=0.0),
+            memory_filter=None,
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=5000,
+        )
+        assert len(result) == 1
+        content = result[0].content
+        assert content is not None
+        assert "all memories pass" in content
+
+    async def test_filter_reduces_output(self) -> None:
+        """Filter that excludes everything returns empty result."""
+        entry = _make_entry(content="will be filtered out")
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((entry,)),
+            config=MemoryRetrievalConfig(min_relevance=0.0),
+            memory_filter=TagBasedMemoryFilter(),
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=5000,
+        )
+        assert result == ()
+
+    async def test_passthrough_filter_keeps_all(self) -> None:
+        """PassthroughMemoryFilter returns all memories unchanged."""
+        entry = _make_entry(content="passthrough content")
+        strategy = ContextInjectionStrategy(
+            backend=_make_backend((entry,)),
+            config=MemoryRetrievalConfig(min_relevance=0.0),
+            memory_filter=PassthroughMemoryFilter(),
+        )
+        result = await strategy.prepare_messages(
+            agent_id="agent-1",
+            query_text="query",
+            token_budget=5000,
+        )
+        assert len(result) == 1
+        content = result[0].content
+        assert content is not None
+        assert "passthrough content" in content

@@ -1,0 +1,35 @@
+"""Store-boundary tag enforcement for non-inferable principle.
+
+Advisory guard that warns when memories are stored without the
+``"non-inferable"`` tag.  Never blocks — the store always succeeds.
+"""
+
+from typing import TYPE_CHECKING
+
+from ai_company.memory.filter import NON_INFERABLE_TAG
+from ai_company.observability import get_logger
+
+if TYPE_CHECKING:
+    from ai_company.memory.models import MemoryStoreRequest
+from ai_company.observability.events.memory import (
+    MEMORY_FILTER_STORE_MISSING_TAG,
+)
+
+logger = get_logger(__name__)
+
+
+def validate_memory_tags(request: MemoryStoreRequest) -> None:
+    """Log a warning when the non-inferable tag is missing.
+
+    This is advisory only — the store operation is never blocked.
+
+    Args:
+        request: The memory store request to validate.
+    """
+    if NON_INFERABLE_TAG not in request.metadata.tags:
+        logger.warning(
+            MEMORY_FILTER_STORE_MISSING_TAG,
+            category=request.category.value,
+            content_preview=request.content[:80],
+            tags=request.metadata.tags,
+        )

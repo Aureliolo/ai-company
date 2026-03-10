@@ -28,6 +28,8 @@ class TestTaskCompletionMetricsConstruction:
             tokens_per_task=1500,
             cost_per_task=0.05,
             duration_seconds=12.5,
+            prompt_tokens=150,
+            prompt_cost_ratio=0.1,
         )
         assert metrics.task_id == "task-001"
         assert metrics.agent_id == "agent-001"
@@ -35,6 +37,41 @@ class TestTaskCompletionMetricsConstruction:
         assert metrics.tokens_per_task == 1500
         assert metrics.cost_per_task == 0.05
         assert metrics.duration_seconds == 12.5
+        assert metrics.prompt_tokens == 150
+        assert metrics.prompt_cost_ratio == 0.1
+
+    def test_prompt_fields_default_to_zero(self) -> None:
+        metrics = TaskCompletionMetrics(
+            agent_id="agent-001",
+            turns_per_task=0,
+            tokens_per_task=0,
+            cost_per_task=0.0,
+            duration_seconds=0.0,
+        )
+        assert metrics.prompt_tokens == 0
+        assert metrics.prompt_cost_ratio == 0.0
+
+    def test_negative_prompt_tokens_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="prompt_tokens"):
+            TaskCompletionMetrics(
+                agent_id="agent-001",
+                turns_per_task=0,
+                tokens_per_task=0,
+                cost_per_task=0.0,
+                duration_seconds=0.0,
+                prompt_tokens=-1,
+            )
+
+    def test_negative_prompt_cost_ratio_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="prompt_cost_ratio"):
+            TaskCompletionMetrics(
+                agent_id="agent-001",
+                turns_per_task=0,
+                tokens_per_task=0,
+                cost_per_task=0.0,
+                duration_seconds=0.0,
+                prompt_cost_ratio=-0.1,
+            )
 
     def test_task_id_none(self) -> None:
         metrics = TaskCompletionMetrics(
@@ -212,6 +249,10 @@ class TestTaskCompletionMetricsFromRunResult:
         assert metrics.tokens_per_task == 430  # 300 + 130
         assert metrics.cost_per_task == 0.03
         assert metrics.duration_seconds == 5.0
+        # Prompt tokens come from the SystemPrompt estimated_tokens (10).
+        assert metrics.prompt_tokens == 10
+        # 10 / 430 ≈ 0.0232...
+        assert 0.02 < metrics.prompt_cost_ratio < 0.03
 
     def test_from_run_result_zero_turns(
         self,
@@ -223,3 +264,6 @@ class TestTaskCompletionMetricsFromRunResult:
         assert metrics.turns_per_task == 0
         assert metrics.tokens_per_task == 0
         assert metrics.cost_per_task == 0.0
+        # Zero total tokens → 0.0 ratio (no divide-by-zero).
+        assert metrics.prompt_cost_ratio == 0.0
+        assert metrics.prompt_tokens == 10

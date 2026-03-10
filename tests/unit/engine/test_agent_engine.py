@@ -355,8 +355,8 @@ class TestAgentEngineWithTools:
         )
 
         assert result.is_success is True
-        # System prompt should include tools section
-        assert "tools" in result.system_prompt.sections
+        # D22: tools section is no longer in the default template.
+        assert "tools" not in result.system_prompt.sections
 
 
 @pytest.mark.unit

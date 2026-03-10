@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
     from ai_company.core.enums import MemoryCategory
     from ai_company.core.types import NotBlankStr
+    from ai_company.memory.filter import MemoryFilterStrategy
     from ai_company.memory.models import MemoryEntry
     from ai_company.memory.protocol import MemoryBackend
     from ai_company.memory.retrieval_config import MemoryRetrievalConfig
@@ -105,6 +106,7 @@ class ContextInjectionStrategy:
         config: MemoryRetrievalConfig,
         shared_store: SharedKnowledgeStore | None = None,
         token_estimator: TokenEstimator | None = None,
+        memory_filter: MemoryFilterStrategy | None = None,
     ) -> None:
         """Initialise the context injection strategy.
 
@@ -113,10 +115,14 @@ class ContextInjectionStrategy:
             config: Retrieval pipeline configuration.
             shared_store: Optional shared knowledge store.
             token_estimator: Optional custom token estimator.
+            memory_filter: Optional filter applied after ranking,
+                before formatting.  When ``None``, all ranked memories
+                are injected (backward-compatible default).
         """
         self._backend = backend
         self._config = config
         self._shared_store = shared_store
+        self._memory_filter = memory_filter
         self._estimator = (
             token_estimator if token_estimator is not None else DefaultTokenEstimator()
         )
@@ -260,6 +266,16 @@ class ContextInjectionStrategy:
                 reason="all below min_relevance",
             )
             return ()
+
+        if self._memory_filter is not None:
+            ranked = self._memory_filter.filter_for_injection(ranked)
+            if not ranked:
+                logger.info(
+                    MEMORY_RETRIEVAL_SKIPPED,
+                    agent_id=agent_id,
+                    reason="all filtered by memory filter",
+                )
+                return ()
 
         result = format_memory_context(
             ranked,

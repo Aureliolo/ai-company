@@ -88,6 +88,10 @@ class MemoryRetrievalConfig(BaseModel):
         default=InjectionPoint.SYSTEM,
         description="Message role for context injection",
     )
+    non_inferable_only: bool = Field(
+        default=False,
+        description=("When True, only inject memories tagged as non-inferable"),
+    )
 
     @model_validator(mode="after")
     def _validate_weight_sum(self) -> Self:
