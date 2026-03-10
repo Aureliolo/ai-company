@@ -137,7 +137,7 @@ class TestSQLitePersistenceBackend:
         await backend.disconnect()
         assert backend.is_connected is False
         # Restore original close so __del__ can clean up properly.
-        backend._db = None  # type: ignore[assignment]
+        backend._db = None
 
     async def test_connect_pragma_failure_cleans_up(self) -> None:
         """If PRAGMA fails after connect, backend cleans up and raises."""
