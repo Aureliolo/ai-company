@@ -1,0 +1,11 @@
+# Trivy CVE ignore list — structured YAML format
+
+vulnerabilities:
+  - id: CVE-2026-22184
+    statement: >-
+      Disputed zlib vulnerability affecting only the untgz demo utility
+      in contrib/, not core zlib compression. Our images do not ship or
+      invoke untgz. Upstream disputes CVE validity:
+      https://github.com/madler/zlib/issues/1148
+      nginx-unprivileged maintainer closed as not-zlib:
+      https://github.com/nginx/docker-nginx-unprivileged/issues/381
