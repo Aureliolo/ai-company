@@ -535,3 +535,120 @@ class TestMemoryLimitParsing:
         expected: int,
     ) -> None:
         assert DockerSandbox._parse_memory_limit(limit) == expected
+
+    @pytest.mark.parametrize(
+        "invalid_limit",
+        ["", "   ", "abc", "512x", "0m", "-1g"],
+    )
+    def test_parse_memory_limit_invalid(
+        self,
+        invalid_limit: str,
+    ) -> None:
+        with pytest.raises(ValueError, match=r"[Mm]emory|invalid literal"):
+            DockerSandbox._parse_memory_limit(invalid_limit)
+
+
+# ── Container hardening ────────────────────────────────────────
+
+
+class TestDockerSandboxHardening:
+    """Security hardening in container config."""
+
+    def test_pids_limit_set(self, tmp_path: Path) -> None:
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = sandbox._build_container_config(
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+            auto_remove=False,
+        )
+        assert config["HostConfig"]["PidsLimit"] == 64
+
+    def test_readonly_rootfs_set(self, tmp_path: Path) -> None:
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = sandbox._build_container_config(
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+            auto_remove=False,
+        )
+        assert config["HostConfig"]["ReadonlyRootfs"] is True
+
+    def test_cap_drop_all(self, tmp_path: Path) -> None:
+        sandbox = DockerSandbox(workspace=tmp_path)
+        config = sandbox._build_container_config(
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+            auto_remove=False,
+        )
+        assert config["HostConfig"]["CapDrop"] == ["ALL"]
+
+
+# ── Stop/remove exception handling ─────────────────────────────
+
+
+class TestDockerSandboxContainerErrorHandling:
+    """Container stop/remove error paths."""
+
+    async def test_stop_container_swallows_exception(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        container_obj = mock_docker.containers.container()
+        container_obj.stop = AsyncMock(
+            side_effect=RuntimeError("already stopped"),
+        )
+        sandbox = DockerSandbox(workspace=tmp_path)
+        # Should not raise
+        await sandbox._stop_container(mock_docker, "abc123def456")
+
+    async def test_remove_container_swallows_exception(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        container_obj = mock_docker.containers.container()
+        container_obj.delete = AsyncMock(
+            side_effect=RuntimeError("already removed"),
+        )
+        sandbox = DockerSandbox(workspace=tmp_path)
+        # Should not raise
+        await sandbox._remove_container(mock_docker, "abc123def456")
+
+    async def test_tracked_containers_pruned_after_execute(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        sandbox = DockerSandbox(workspace=tmp_path)
+
+        with _patch_aiodocker(mock_docker):
+            await sandbox.execute(command="echo", args=("hi",))
+
+        # Container should be removed from tracking after execute
+        assert sandbox._tracked_containers == []
+
+    async def test_start_failure_raises_sandbox_start_error(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        mock_docker = _make_mock_docker()
+        container_obj = mock_docker.containers.container()
+        container_obj.start = AsyncMock(
+            side_effect=RuntimeError("OOM at start"),
+        )
+        sandbox = DockerSandbox(workspace=tmp_path)
+
+        with (
+            _patch_aiodocker(mock_docker),
+            pytest.raises(
+                SandboxStartError,
+                match="Failed to start container",
+            ),
+        ):
+            await sandbox.execute(command="echo", args=("test",))

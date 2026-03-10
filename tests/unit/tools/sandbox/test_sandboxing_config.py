@@ -41,6 +41,12 @@ class TestSandboxingConfigCustomValues:
         config = SandboxingConfig(overrides=overrides)
         assert config.overrides == overrides
 
+    def test_invalid_override_backend_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Invalid backend"):
+            SandboxingConfig(
+                overrides={"code_execution": "kubernetes"},
+            )
+
     def test_custom_docker_config(self) -> None:
         docker = DockerSandboxConfig(image="custom:v2", cpu_limit=4.0)
         config = SandboxingConfig(docker=docker)

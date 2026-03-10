@@ -17,6 +17,7 @@ from ai_company.observability.events.mcp import (
     MCP_CLIENT_CONNECTED,
     MCP_CLIENT_CONNECTING,
     MCP_CLIENT_CONNECTION_FAILED,
+    MCP_CLIENT_DISCONNECT_FAILED,
     MCP_CLIENT_DISCONNECTED,
     MCP_CLIENT_RECONNECTING,
     MCP_DISCOVERY_COMPLETE,
@@ -60,6 +61,11 @@ class MCPClient:
         self._lock = asyncio.Lock()
 
     @property
+    def config(self) -> MCPServerConfig:
+        """Server connection configuration (read-only)."""
+        return self._config
+
+    @property
     def is_connected(self) -> bool:
         """Whether the client has an active session."""
         return self._session is not None
@@ -80,25 +86,43 @@ class MCPClient:
             server=self._config.name,
             transport=self._config.transport,
         )
+        stack = AsyncExitStack()
+        await stack.__aenter__()
         try:
-            stack = AsyncExitStack()
-            await stack.__aenter__()
-
-            if self._config.transport == "stdio":
-                session = await self._connect_stdio(stack)
-            else:
-                session = await self._connect_http(stack)
-
-            await session.initialize()
+            coro = self._connect_with_stack(stack)
+            session = await asyncio.wait_for(
+                coro,
+                timeout=self._config.connect_timeout_seconds,
+            )
             self._session = session
             self._exit_stack = stack
             logger.info(
                 MCP_CLIENT_CONNECTED,
                 server=self._config.name,
             )
+        except TimeoutError as exc:
+            await stack.aclose()
+            msg = (
+                f"Connection to {self._config.name!r} timed out "
+                f"after {self._config.connect_timeout_seconds}s"
+            )
+            logger.warning(
+                MCP_CLIENT_CONNECTION_FAILED,
+                server=self._config.name,
+                error=msg,
+            )
+            raise MCPConnectionError(
+                msg,
+                context={
+                    "server": self._config.name,
+                    "transport": self._config.transport,
+                },
+            ) from exc
         except MCPConnectionError:
+            await stack.aclose()
             raise
         except Exception as exc:
+            await stack.aclose()
             logger.exception(
                 MCP_CLIENT_CONNECTION_FAILED,
                 server=self._config.name,
@@ -113,6 +137,25 @@ class MCPClient:
                 },
             ) from exc
 
+    async def _connect_with_stack(
+        self,
+        stack: AsyncExitStack,
+    ) -> ClientSession:
+        """Connect via the appropriate transport and initialize.
+
+        Args:
+            stack: Exit stack for resource management.
+
+        Returns:
+            Initialized ``ClientSession``.
+        """
+        if self._config.transport == "stdio":
+            session = await self._connect_stdio(stack)
+        else:
+            session = await self._connect_http(stack)
+        await session.initialize()
+        return session
+
     async def disconnect(self) -> None:
         """Close the connection and release resources."""
         if self._exit_stack is not None:
@@ -120,17 +163,18 @@ class MCPClient:
                 await self._exit_stack.aclose()
             except Exception as exc:
                 logger.warning(
-                    MCP_CLIENT_DISCONNECTED,
+                    MCP_CLIENT_DISCONNECT_FAILED,
                     server=self._config.name,
                     error=str(exc),
+                )
+            else:
+                logger.info(
+                    MCP_CLIENT_DISCONNECTED,
+                    server=self._config.name,
                 )
             finally:
                 self._session = None
                 self._exit_stack = None
-        logger.info(
-            MCP_CLIENT_DISCONNECTED,
-            server=self._config.name,
-        )
 
     async def list_tools(self) -> tuple[MCPToolInfo, ...]:
         """Discover tools from the connected server.
@@ -204,7 +248,7 @@ class MCPClient:
             MCPInvocationError: If the invocation fails.
         """
         session = self._require_session()
-        logger.info(
+        logger.debug(
             MCP_INVOKE_START,
             server=self._config.name,
             tool=tool_name,
@@ -216,7 +260,7 @@ class MCPClient:
                     timeout=self._config.timeout_seconds,
                 )
             except TimeoutError as exc:
-                logger.exception(
+                logger.warning(
                     MCP_INVOKE_TIMEOUT,
                     server=self._config.name,
                     tool=tool_name,
@@ -298,6 +342,11 @@ class MCPClient:
         """
         if self._session is None:
             msg = f"Not connected to {self._config.name!r}"
+            logger.warning(
+                MCP_CLIENT_CONNECTION_FAILED,
+                server=self._config.name,
+                error=msg,
+            )
             raise MCPConnectionError(
                 msg,
                 context={"server": self._config.name},
@@ -316,7 +365,12 @@ class MCPClient:
         Returns:
             Initialized ``ClientSession``.
         """
-        assert self._config.command is not None  # noqa: S101
+        if self._config.command is None:
+            msg = f"Server {self._config.name!r}: stdio transport requires 'command'"
+            raise MCPConnectionError(
+                msg,
+                context={"server": self._config.name},
+            )
         params = StdioServerParameters(
             command=self._config.command,
             args=list(self._config.args),
@@ -341,7 +395,12 @@ class MCPClient:
         Returns:
             Initialized ``ClientSession``.
         """
-        assert self._config.url is not None  # noqa: S101
+        if self._config.url is None:
+            msg = f"Server {self._config.name!r}: streamable_http requires 'url'"
+            raise MCPConnectionError(
+                msg,
+                context={"server": self._config.name},
+            )
         read_stream, write_stream, _ = await stack.enter_async_context(
             streamablehttp_client(
                 url=self._config.url,

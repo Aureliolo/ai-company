@@ -33,7 +33,7 @@ def _docker_available() -> bool:
                 await client.close()
                 return True
 
-        return asyncio.get_event_loop().run_until_complete(_check())
+        return asyncio.run(_check())
     except Exception:
         return False
 

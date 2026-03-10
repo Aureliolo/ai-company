@@ -12,12 +12,13 @@ from typing import TYPE_CHECKING, Any, Final
 
 import aiodocker
 
-from ai_company.core.types import NotBlankStr
 from ai_company.observability import get_logger
 from ai_company.observability.events.docker import (
     DOCKER_CLEANUP,
     DOCKER_CONTAINER_CREATED,
+    DOCKER_CONTAINER_REMOVE_FAILED,
     DOCKER_CONTAINER_REMOVED,
+    DOCKER_CONTAINER_STOP_FAILED,
     DOCKER_CONTAINER_STOPPED,
     DOCKER_DAEMON_UNAVAILABLE,
     DOCKER_EXECUTE_FAILED,
@@ -32,6 +33,8 @@ from ai_company.tools.sandbox.result import SandboxResult
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    from ai_company.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 
@@ -93,10 +96,12 @@ class DockerSandbox:
         """
         if not workspace.is_absolute():
             msg = f"workspace must be an absolute path, got: {workspace}"
+            logger.warning(DOCKER_EXECUTE_FAILED, error=msg)
             raise ValueError(msg)
         resolved = workspace.resolve()
         if not resolved.is_dir():
             msg = f"workspace directory does not exist: {resolved}"
+            logger.warning(DOCKER_EXECUTE_FAILED, error=msg)
             raise ValueError(msg)
         self._config = config or _DEFAULT_CONFIG
         self._workspace = resolved
@@ -151,6 +156,12 @@ class DockerSandbox:
             cwd.resolve().relative_to(self._workspace)
         except ValueError as exc:
             msg = f"Working directory '{cwd}' is outside workspace '{self._workspace}'"
+            logger.warning(
+                DOCKER_EXECUTE_FAILED,
+                error=msg,
+                cwd=str(cwd),
+                workspace=str(self._workspace),
+            )
             raise SandboxError(msg) from exc
 
     def _resolve_cwd_in_container(self, cwd: Path | None) -> str:
@@ -205,6 +216,9 @@ class DockerSandbox:
             "NanoCpus": nano_cpus,
             "NetworkMode": self._config.network,
             "AutoRemove": auto_remove,
+            "PidsLimit": 64,
+            "ReadonlyRootfs": True,
+            "CapDrop": ["ALL"],
         }
         if self._config.runtime is not None:
             host_config["Runtime"] = self._config.runtime
@@ -235,10 +249,18 @@ class DockerSandbox:
             ValueError: If the format is invalid.
         """
         limit_lower = limit.strip().lower()
+        if not limit_lower:
+            msg = "Memory limit must not be empty"
+            raise ValueError(msg)
         multipliers = {"k": 1024, "m": 1024**2, "g": 1024**3}
         if limit_lower[-1] in multipliers:
-            return int(limit_lower[:-1]) * multipliers[limit_lower[-1]]
-        return int(limit_lower)
+            result = int(limit_lower[:-1]) * multipliers[limit_lower[-1]]
+        else:
+            result = int(limit_lower)
+        if result <= 0:
+            msg = f"Memory limit must be positive, got: {limit!r}"
+            raise ValueError(msg)
+        return result
 
     async def execute(
         self,
@@ -268,8 +290,9 @@ class DockerSandbox:
         work_dir = cwd if cwd is not None else self._workspace
         self._validate_cwd(work_dir)
 
-        effective_timeout = (
-            timeout if timeout is not None else self._config.timeout_seconds
+        effective_timeout = min(
+            timeout if timeout is not None else self._config.timeout_seconds,
+            self._config.timeout_seconds,
         )
         container_cwd = self._resolve_cwd_in_container(cwd)
 
@@ -315,7 +338,8 @@ class DockerSandbox:
         Returns:
             A ``SandboxResult`` with captured output and exit status.
         """
-        # Disable auto_remove when we might need to stop on timeout
+        # Always disable auto_remove: we need container access for
+        # log collection and explicit stop on timeout.
         config = self._build_container_config(
             command=command,
             args=args,
@@ -325,9 +349,7 @@ class DockerSandbox:
         )
 
         try:
-            container = await docker.containers.create(
-                config,
-            )
+            container = await docker.containers.create(config)
         except Exception as exc:
             msg = f"Failed to create container: {exc}"
             logger.exception(
@@ -358,6 +380,9 @@ class DockerSandbox:
             )
         finally:
             await self._remove_container(docker, container_id)
+            self._tracked_containers = [
+                c for c in self._tracked_containers if c != container_id
+            ]
 
     async def _start_and_wait(
         self,
@@ -381,7 +406,16 @@ class DockerSandbox:
             A ``SandboxResult``.
         """
         container_obj = docker.containers.container(container_id)
-        await container_obj.start()
+        try:
+            await container_obj.start()
+        except Exception as exc:
+            msg = f"Failed to start container {container_id[:12]}: {exc}"
+            logger.exception(
+                DOCKER_EXECUTE_FAILED,
+                container_id=container_id[:12],
+                error=msg,
+            )
+            raise SandboxStartError(msg) from exc
 
         timed_out = False
         try:
@@ -402,7 +436,15 @@ class DockerSandbox:
             await self._stop_container(docker, container_id)
             returncode = -1
 
-        stdout, stderr = await self._collect_logs(container_obj)
+        try:
+            stdout, stderr = await self._collect_logs(container_obj)
+        except Exception as exc:
+            logger.warning(
+                DOCKER_EXECUTE_FAILED,
+                container_id=container_id[:12],
+                error=f"Log collection failed: {exc}",
+            )
+            stdout, stderr = "", ""
 
         if timed_out:
             return SandboxResult(
@@ -480,7 +522,7 @@ class DockerSandbox:
             )
         except Exception as exc:
             logger.warning(
-                DOCKER_CONTAINER_STOPPED,
+                DOCKER_CONTAINER_STOP_FAILED,
                 container_id=container_id[:12],
                 error=str(exc),
             )
@@ -505,7 +547,7 @@ class DockerSandbox:
             )
         except Exception as exc:
             logger.warning(
-                DOCKER_CONTAINER_REMOVED,
+                DOCKER_CONTAINER_REMOVE_FAILED,
                 container_id=container_id[:12],
                 error=str(exc),
             )
@@ -517,10 +559,17 @@ class DockerSandbox:
             tracked_count=len(self._tracked_containers),
         )
         if self._docker is not None:
-            for cid in self._tracked_containers:
-                await self._stop_container(self._docker, cid)
-            await self._docker.close()
-            self._docker = None
+            try:
+                for cid in self._tracked_containers:
+                    await self._stop_container(self._docker, cid)
+                await self._docker.close()
+            except Exception as exc:
+                logger.warning(
+                    DOCKER_CLEANUP,
+                    error=f"Cleanup failed: {exc}",
+                )
+            finally:
+                self._docker = None
         self._tracked_containers = []
 
     async def health_check(self) -> bool:
@@ -532,10 +581,11 @@ class DockerSandbox:
         try:
             docker = await self._ensure_docker()
             await docker.version()
-        except Exception:
-            logger.debug(
+        except Exception as exc:
+            logger.warning(
                 DOCKER_HEALTH_CHECK,
                 healthy=False,
+                error=str(exc),
             )
             return False
         else:
@@ -547,4 +597,4 @@ class DockerSandbox:
 
     def get_backend_type(self) -> NotBlankStr:
         """Return ``'docker'``."""
-        return NotBlankStr("docker")
+        return "docker"

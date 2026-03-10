@@ -1,11 +1,14 @@
 """Top-level sandboxing configuration model."""
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.tools.sandbox.config import SubprocessSandboxConfig
 from ai_company.tools.sandbox.docker_config import DockerSandboxConfig
+
+_VALID_BACKENDS = frozenset({"subprocess", "docker"})
+_BackendName = Literal["subprocess", "docker"]
 
 
 class SandboxingConfig(BaseModel):
@@ -20,7 +23,7 @@ class SandboxingConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    default_backend: Literal["subprocess", "docker"] = "subprocess"
+    default_backend: _BackendName = "subprocess"
     overrides: dict[str, str] = Field(default_factory=dict)
     subprocess: SubprocessSandboxConfig = Field(
         default_factory=SubprocessSandboxConfig,
@@ -29,7 +32,19 @@ class SandboxingConfig(BaseModel):
         default_factory=DockerSandboxConfig,
     )
 
-    def backend_for_category(self, category: str) -> str:
+    @model_validator(mode="after")
+    def _validate_override_backends(self) -> Self:
+        """Ensure override values are valid backend names."""
+        for category, backend in self.overrides.items():
+            if backend not in _VALID_BACKENDS:
+                msg = (
+                    f"Invalid backend {backend!r} for category "
+                    f"{category!r}; must be one of {sorted(_VALID_BACKENDS)}"
+                )
+                raise ValueError(msg)
+        return self
+
+    def backend_for_category(self, category: str) -> _BackendName:
         """Return the backend name for a given tool category.
 
         Args:
@@ -38,4 +53,5 @@ class SandboxingConfig(BaseModel):
         Returns:
             The backend name (``"subprocess"`` or ``"docker"``).
         """
-        return self.overrides.get(category, self.default_backend)
+        # Validator guarantees overrides contain only valid backend names
+        return self.overrides.get(category, self.default_backend)  # type: ignore[return-value]

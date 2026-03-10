@@ -215,3 +215,30 @@ class TestFactoryShutdown:
 
         await factory.shutdown()
         assert factory._clients == []
+
+
+class TestFactoryMakeCache:
+    """Cache creation logic."""
+
+    def test_make_cache_returns_none_when_disabled(self) -> None:
+        config = MCPServerConfig(
+            name="no-cache",
+            transport="stdio",
+            command="echo",
+            result_cache_max_size=0,
+        )
+        client = MCPClient(config)
+        cache = MCPToolFactory._make_cache(client)
+        assert cache is None
+
+    def test_make_cache_returns_cache_when_enabled(self) -> None:
+        config = MCPServerConfig(
+            name="cached",
+            transport="stdio",
+            command="echo",
+            result_cache_max_size=128,
+            result_cache_ttl_seconds=30.0,
+        )
+        client = MCPClient(config)
+        cache = MCPToolFactory._make_cache(client)
+        assert cache is not None

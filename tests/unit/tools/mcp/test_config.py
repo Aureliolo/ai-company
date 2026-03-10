@@ -122,7 +122,6 @@ class TestMCPServerConfigDefaults:
         )
         assert cfg.timeout_seconds == 30.0
         assert cfg.connect_timeout_seconds == 10.0
-        assert cfg.cache_ttl_seconds == 300.0
         assert cfg.result_cache_ttl_seconds == 60.0
         assert cfg.result_cache_max_size == 256
         assert cfg.enabled is True
@@ -211,3 +210,34 @@ class TestMCPConfig:
         cfg = MCPConfig()
         with pytest.raises(ValidationError):
             cfg.servers = ()  # type: ignore[misc]
+
+
+class TestMCPServerConfigBounds:
+    """Additional field boundary tests."""
+
+    def test_connect_timeout_exceeds_max_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="echo",
+                connect_timeout_seconds=121,
+            )
+
+    def test_result_cache_ttl_negative_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MCPServerConfig(
+                name="s1",
+                transport="stdio",
+                command="echo",
+                result_cache_ttl_seconds=-1,
+            )
+
+    def test_result_cache_ttl_zero_accepted(self) -> None:
+        cfg = MCPServerConfig(
+            name="s1",
+            transport="stdio",
+            command="echo",
+            result_cache_ttl_seconds=0,
+        )
+        assert cfg.result_cache_ttl_seconds == 0

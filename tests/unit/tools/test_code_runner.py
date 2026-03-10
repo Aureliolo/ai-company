@@ -217,26 +217,22 @@ class TestCodeRunnerTimeout:
 
 
 class TestCodeRunnerMissingParams:
-    """Behavior with missing parameters."""
+    """Behavior with missing required parameters."""
 
-    async def test_missing_code_sends_empty(self) -> None:
+    async def test_missing_code_raises(self) -> None:
         sandbox = _make_mock_sandbox()
         tool = CodeRunnerTool(sandbox=sandbox)
 
-        await tool.execute(
-            arguments={"language": "python"},
-        )
+        with pytest.raises(KeyError, match="code"):
+            await tool.execute(
+                arguments={"language": "python"},
+            )
 
-        call_kwargs = sandbox.execute.call_args.kwargs
-        assert call_kwargs["args"] == ("-c", "")
-
-    async def test_missing_language_returns_error(self) -> None:
+    async def test_missing_language_raises(self) -> None:
         sandbox = _make_mock_sandbox()
         tool = CodeRunnerTool(sandbox=sandbox)
 
-        result = await tool.execute(
-            arguments={"code": "print(1)"},
-        )
-
-        assert result.is_error
-        assert "Unsupported language" in result.content
+        with pytest.raises(KeyError, match="language"):
+            await tool.execute(
+                arguments={"code": "print(1)"},
+            )

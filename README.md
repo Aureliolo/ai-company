@@ -15,7 +15,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **Company Config + Core Models** - Strong Pydantic validation, immutable config models, runtime state models
 - **Provider Layer** - LiteLLM-based provider abstraction with routing, retry, and rate limiting
 - **Budget Tracking** - Cost records, summaries, and coordination analytics models
-- **Tool System** - File system tools, git tools, sandbox abstraction, permission gating
+- **Tool System** - File system tools, git tools, sandbox abstraction (subprocess + Docker), code runner, MCP bridge, permission gating
 - **Single-Agent Engine (M3)** - ReAct/Plan-Execute loops, fail-and-reassign recovery, graceful shutdown
 - **Multi-Agent Core (M4)** - Message bus, delegation with loop prevention, conflict resolution, meeting protocols
 - **Task Intelligence (M4)** - Task decomposition, routing, assignment strategies, workspace isolation via git worktrees
@@ -38,7 +38,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 
 ## Status
 
-**M7: Security & HR** next (M0–M6 all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
+**M7: Security & HR** in progress (M0–M6 all done). See [DESIGN_SPEC.md](DESIGN_SPEC.md) for the full high-level specification.
 
 ## Tech Stack
 
@@ -47,7 +47,7 @@ AI Company lets you spin up a virtual organization staffed entirely by AI agents
 - **LiteLLM** for multi-provider LLM abstraction
 - **structlog** for structured logging and observability
 - **Mem0** for agent memory (initial backend; custom stack future — see [ADR-001](docs/decisions/ADR-001-memory-layer.md))
-- **MCP** for tool integration (planned)
+- **MCP** for tool integration
 - **Vue 3** for web dashboard (planned)
 - **SQLite** (aiosqlite) → PostgreSQL for operational data persistence
 

@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.mcp import (
-    MCP_DISCOVERY_FILTERED,
+    MCP_CONFIG_VALIDATION_FAILED,
 )
 
 logger = get_logger(__name__)
@@ -34,7 +34,6 @@ class MCPServerConfig(BaseModel):
         disabled_tools: Denylist of tool names.
         timeout_seconds: Timeout for tool invocations.
         connect_timeout_seconds: Timeout for initial connection.
-        cache_ttl_seconds: TTL for tool discovery cache.
         result_cache_ttl_seconds: TTL for result cache entries.
         result_cache_max_size: Maximum result cache entries.
         enabled: Whether the server is active.
@@ -86,14 +85,12 @@ class MCPServerConfig(BaseModel):
     connect_timeout_seconds: float = Field(
         default=10.0,
         gt=0,
+        le=120,
         description="Timeout for initial connection in seconds",
-    )
-    cache_ttl_seconds: float = Field(
-        default=300.0,
-        description="TTL for tool discovery cache in seconds",
     )
     result_cache_ttl_seconds: float = Field(
         default=60.0,
+        ge=0,
         description="TTL for result cache entries in seconds",
     )
     result_cache_max_size: int = Field(
@@ -116,7 +113,7 @@ class MCPServerConfig(BaseModel):
         if self.transport == "stdio" and self.command is None:
             msg = f"Server {self.name!r}: stdio transport requires 'command'"
             logger.warning(
-                MCP_DISCOVERY_FILTERED,
+                MCP_CONFIG_VALIDATION_FAILED,
                 server=self.name,
                 reason=msg,
             )
@@ -124,7 +121,7 @@ class MCPServerConfig(BaseModel):
         if self.transport == "streamable_http" and self.url is None:
             msg = f"Server {self.name!r}: streamable_http transport requires 'url'"
             logger.warning(
-                MCP_DISCOVERY_FILTERED,
+                MCP_CONFIG_VALIDATION_FAILED,
                 server=self.name,
                 reason=msg,
             )
@@ -142,7 +139,7 @@ class MCPServerConfig(BaseModel):
                     f"disabled_tools overlap: {sorted(overlap)}"
                 )
                 logger.warning(
-                    MCP_DISCOVERY_FILTERED,
+                    MCP_CONFIG_VALIDATION_FAILED,
                     server=self.name,
                     reason=msg,
                 )
@@ -172,7 +169,7 @@ class MCPConfig(BaseModel):
             dupes = sorted(n for n, c in Counter(names).items() if c > 1)
             msg = f"Duplicate MCP server names: {dupes}"
             logger.warning(
-                MCP_DISCOVERY_FILTERED,
+                MCP_CONFIG_VALIDATION_FAILED,
                 reason=msg,
             )
             raise ValueError(msg)

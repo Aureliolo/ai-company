@@ -1,9 +1,8 @@
 """MCP bridge — connects external MCP servers as internal tools.
 
-Re-exports from submodules use lazy ``__getattr__`` to avoid
-circular imports (``config.schema`` -> ``tools.mcp.config`` ->
-``tools.base`` -> ``providers`` -> ``config.schema``).  Config
-models are imported eagerly since they have no such dependency.
+Re-exports from submodules use lazy ``__getattr__`` to avoid circular
+imports. Config models and errors are imported eagerly since they have
+no dependency on the tool base classes.
 """
 
 from .config import MCPConfig, MCPServerConfig

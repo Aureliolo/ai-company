@@ -11,9 +11,12 @@ from ai_company.core.enums import ToolCategory
 from ai_company.observability import get_logger
 from ai_company.observability.events.mcp import (
     MCP_CACHE_HIT,
+    MCP_CACHE_MISS,
+    MCP_INVOKE_FAILED,
     MCP_INVOKE_START,
 )
 from ai_company.tools.base import BaseTool, ToolExecutionResult
+from ai_company.tools.mcp.errors import MCPError
 from ai_company.tools.mcp.result_mapper import map_call_tool_result
 
 if TYPE_CHECKING:
@@ -93,17 +96,38 @@ class MCPBridgeTool(BaseTool):
             tool=self._tool_info.name,
             server=self._tool_info.server_name,
         )
-        raw = await self._client.call_tool(
-            self._tool_info.name,
-            arguments,
-        )
+        try:
+            raw = await self._client.call_tool(
+                self._tool_info.name,
+                arguments,
+            )
+        except MCPError as exc:
+            logger.warning(
+                MCP_INVOKE_FAILED,
+                tool=self._tool_info.name,
+                server=self._tool_info.server_name,
+                error=str(exc),
+            )
+            return ToolExecutionResult(
+                content=str(exc),
+                is_error=True,
+            )
+
         result = map_call_tool_result(raw)
 
         if self._cache is not None:
-            self._cache.put(
-                self._tool_info.name,
-                arguments,
-                result,
-            )
+            try:
+                self._cache.put(
+                    self._tool_info.name,
+                    arguments,
+                    result,
+                )
+            except TypeError:
+                logger.debug(
+                    MCP_CACHE_MISS,
+                    tool_name=self._tool_info.name,
+                    server=self._tool_info.server_name,
+                    reason="unhashable arguments",
+                )
 
         return result

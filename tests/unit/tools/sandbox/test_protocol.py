@@ -1,11 +1,12 @@
 """Tests for SandboxBackend protocol."""
 
 from collections.abc import Mapping  # noqa: TC003 — used at runtime
-from pathlib import Path  # noqa: TC003 — used at runtime
+from pathlib import Path  # noqa: TC003 — used at runtime by DockerSandbox
 
 import pytest
 
 from ai_company.core.types import NotBlankStr
+from ai_company.tools.sandbox.docker_sandbox import DockerSandbox
 from ai_company.tools.sandbox.protocol import SandboxBackend
 from ai_company.tools.sandbox.result import SandboxResult
 from ai_company.tools.sandbox.subprocess_sandbox import SubprocessSandbox  # noqa: TC001
@@ -52,6 +53,13 @@ class TestSandboxBackendProtocol:
         subprocess_sandbox: SubprocessSandbox,
     ) -> None:
         assert isinstance(subprocess_sandbox, SandboxBackend)
+
+    def test_docker_sandbox_satisfies_protocol(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        sandbox = DockerSandbox(workspace=tmp_path)
+        assert isinstance(sandbox, SandboxBackend)
 
     def test_arbitrary_object_does_not_satisfy(self) -> None:
         assert not isinstance(object(), SandboxBackend)

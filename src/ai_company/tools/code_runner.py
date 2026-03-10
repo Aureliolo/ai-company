@@ -42,6 +42,7 @@ _PARAMETERS_SCHEMA: Final[dict[str, Any]] = {
             "type": "number",
             "description": "Optional timeout in seconds",
             "minimum": 0,
+            "maximum": 600,
         },
     },
     "required": ["code", "language"],
@@ -87,8 +88,8 @@ class CodeRunnerTool(BaseTool):
         Returns:
             A ``ToolExecutionResult`` with execution output.
         """
-        code: str = arguments.get("code", "")
-        language: str = arguments.get("language", "")
+        code: str = arguments["code"]
+        language: str = arguments["language"]
         timeout: float | None = arguments.get("timeout")
 
         if language not in _LANGUAGE_COMMANDS:

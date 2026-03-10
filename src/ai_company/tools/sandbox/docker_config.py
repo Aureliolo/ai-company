@@ -1,10 +1,12 @@
 """Docker sandbox configuration model."""
 
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+
+_VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
 
 
 class DockerSandboxConfig(BaseModel):
@@ -25,13 +27,49 @@ class DockerSandboxConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    image: NotBlankStr = "ai-company-sandbox:latest"
-    network: Literal["none", "bridge", "host"] = "none"
-    network_overrides: dict[str, str] = Field(default_factory=dict)
-    allowed_hosts: tuple[str, ...] = ()
-    memory_limit: NotBlankStr = "512m"
+    image: NotBlankStr = Field(
+        default="ai-company-sandbox:latest",
+        description="Docker image to use for sandbox containers",
+    )
+    network: Literal["none", "bridge", "host"] = Field(
+        default="none",
+        description="Default Docker network mode",
+    )
+    network_overrides: dict[NotBlankStr, NotBlankStr] = Field(
+        default_factory=dict,
+        description="Per-category network mode overrides",
+    )
+    allowed_hosts: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Host:port allowlist for network filtering",
+    )
+    memory_limit: NotBlankStr = Field(
+        default="512m",
+        description="Container memory limit (Docker format, e.g. '512m')",
+    )
     cpu_limit: float = Field(default=1.0, gt=0, le=16)
     timeout_seconds: float = Field(default=120.0, gt=0, le=600)
-    mount_mode: Literal["rw", "ro"] = "rw"
-    auto_remove: bool = True
-    runtime: NotBlankStr | None = None
+    mount_mode: Literal["rw", "ro"] = Field(
+        default="ro",
+        description="Workspace mount mode (read-only by default)",
+    )
+    auto_remove: bool = Field(
+        default=True,
+        description="Whether to auto-remove containers on exit",
+    )
+    runtime: NotBlankStr | None = Field(
+        default=None,
+        description="Optional container runtime (e.g. 'runsc' for gVisor)",
+    )
+
+    @model_validator(mode="after")
+    def _validate_network_overrides(self) -> Self:
+        """Ensure network override values are valid network modes."""
+        for category, mode in self.network_overrides.items():
+            if mode not in _VALID_NETWORK_MODES:
+                msg = (
+                    f"Invalid network mode {mode!r} for category "
+                    f"{category!r}; must be one of {sorted(_VALID_NETWORK_MODES)}"
+                )
+                raise ValueError(msg)
+        return self

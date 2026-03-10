@@ -20,7 +20,7 @@ class TestDockerSandboxConfigDefaults:
         assert config.memory_limit == "512m"
         assert config.cpu_limit == 1.0
         assert config.timeout_seconds == 120.0
-        assert config.mount_mode == "rw"
+        assert config.mount_mode == "ro"
         assert config.auto_remove is True
         assert config.runtime is None
 
@@ -112,3 +112,9 @@ class TestDockerSandboxConfigBounds:
     def test_blank_memory_limit_rejected(self) -> None:
         with pytest.raises(ValidationError):
             DockerSandboxConfig(memory_limit="")
+
+    def test_invalid_network_override_value_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Invalid network mode"):
+            DockerSandboxConfig(
+                network_overrides={"web": "overlay"},
+            )

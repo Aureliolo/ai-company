@@ -10,7 +10,6 @@ from ai_company.tools.base import ToolExecutionResult
 from ai_company.tools.mcp.bridge_tool import MCPBridgeTool
 from ai_company.tools.mcp.client import MCPClient
 from ai_company.tools.mcp.config import MCPServerConfig
-from ai_company.tools.mcp.errors import MCPInvocationError
 from ai_company.tools.mcp.models import MCPToolInfo
 
 if TYPE_CHECKING:
@@ -115,7 +114,7 @@ class TestBridgeToolExecute:
         assert isinstance(result, ToolExecutionResult)
         assert result.content == "result text"
 
-    async def test_execute_propagates_error(
+    async def test_execute_returns_error_on_mcp_failure(
         self,
         bridge_tool: MCPBridgeTool,
         mock_client: MCPClient,
@@ -123,8 +122,9 @@ class TestBridgeToolExecute:
         mock_client._session.call_tool.side_effect = RuntimeError(  # type: ignore[union-attr]
             "invocation error",
         )
-        with pytest.raises(MCPInvocationError):
-            await bridge_tool.execute(arguments={})
+        result = await bridge_tool.execute(arguments={})
+        assert result.is_error
+        assert "invocation error" in result.content
 
 
 class TestBridgeToolWithCache:

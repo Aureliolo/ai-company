@@ -101,6 +101,26 @@ class TestMCPClientConnection:
         await client.disconnect()
         assert not client.is_connected
 
+    async def test_disconnect_clears_state_on_aclose_error(
+        self,
+        mock_client: MCPClient,
+    ) -> None:
+        mock_client._exit_stack = AsyncMock()
+        mock_client._exit_stack.aclose = AsyncMock(
+            side_effect=RuntimeError("cleanup failed"),
+        )
+        # Should not raise — error is logged and swallowed
+        await mock_client.disconnect()
+        assert not mock_client.is_connected
+        assert mock_client._exit_stack is None
+
+    def test_config_property(
+        self,
+        stdio_server_config: MCPServerConfig,
+    ) -> None:
+        client = MCPClient(stdio_server_config)
+        assert client.config is stdio_server_config
+
 
 class TestMCPClientListTools:
     """Tool discovery tests."""
@@ -284,3 +304,43 @@ class TestMCPClientContextManager:
                 assert c is client
                 mock_connect.assert_called_once()
             mock_disconnect.assert_called_once()
+
+
+class TestMCPClientHTTPTransport:
+    """HTTP transport connection path."""
+
+    async def test_connect_http_sets_session(self) -> None:
+        config = MCPServerConfig(
+            name="test-http",
+            transport="streamable_http",
+            url="http://localhost:8080/mcp",
+        )
+        client = MCPClient(config)
+        mock_session = AsyncMock()
+        mock_session.initialize = AsyncMock()
+
+        with (
+            patch(
+                "ai_company.tools.mcp.client.streamablehttp_client",
+            ) as mock_http,
+            patch(
+                "ai_company.tools.mcp.client.ClientSession",
+            ) as mock_cls,
+        ):
+            mock_cm = AsyncMock()
+            mock_cm.__aenter__ = AsyncMock(
+                return_value=(AsyncMock(), AsyncMock(), AsyncMock()),
+            )
+            mock_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_http.return_value = mock_cm
+
+            session_cm = AsyncMock()
+            session_cm.__aenter__ = AsyncMock(
+                return_value=mock_session,
+            )
+            session_cm.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = session_cm
+
+            await client.connect()
+
+        assert client.is_connected

@@ -19,8 +19,7 @@ class SandboxBackend(Protocol):
 
     Implementations execute commands in an isolated environment with
     environment filtering, workspace enforcement, and timeout support.
-    Subprocess is the initial backend; Docker/K8s are planned for
-    future milestones.
+    Subprocess and Docker are built-in backends.
     """
 
     async def execute(

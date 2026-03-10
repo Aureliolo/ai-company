@@ -14,13 +14,11 @@ class SandboxError(ToolError):
 class SandboxTimeoutError(SandboxError):
     """Execution was killed because it exceeded the timeout.
 
-    Note: ``SubprocessSandbox`` signals timeouts via
-    ``SandboxResult.timed_out`` rather than raising this exception,
-    so callers can access partial output.  This class exists for
-    future sandbox backends (e.g. Docker) that may raise on timeout
-    instead of returning a result.
+    Reserved for sandbox backends that need to signal timeout as an
+    exception rather than a result flag. Currently unused — both
+    subprocess and Docker return ``SandboxResult.timed_out`` instead.
     """
 
 
 class SandboxStartError(SandboxError):
-    """Failed to start the sandboxed subprocess."""
+    """Failed to start the sandbox execution environment."""

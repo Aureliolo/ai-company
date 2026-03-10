@@ -72,6 +72,13 @@ def map_call_tool_result(raw: MCPRawResult) -> ToolExecutionResult:
         elif isinstance(block, EmbeddedResource):
             uri = _extract_resource_uri(block)
             parts.append(f"[resource: {uri}]")
+        else:
+            block_type = type(block).__name__
+            logger.warning(
+                MCP_RESULT_MAPPED,
+                unknown_block_type=block_type,
+            )
+            parts.append(f"[unknown: {block_type}]")
 
     content = "\n".join(parts) if parts else ""
     metadata: dict[str, Any] = {}

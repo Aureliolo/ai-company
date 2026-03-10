@@ -2101,7 +2101,7 @@ Tool execution requires safety boundaries proportional to the risk of each tool 
 | Backend | Isolation | Latency | Dependencies | Status |
 |---------|-----------|---------|--------------|--------|
 | `SubprocessSandbox` | Process-level: env filtering (allowlist + denylist), restricted PATH (configurable via `extra_safe_path_prefixes`), workspace-scoped cwd, timeout + process-group kill, library injection var blocking, explicit transport cleanup on Windows | ~ms | None | **Implemented** |
-| `DockerSandbox` | Container-level: ephemeral container, mounted workspace, no network, resource limits (CPU/memory/time) | ~1-2s cold start | Docker | Planned |
+| `DockerSandbox` | Container-level: ephemeral container, mounted workspace, no network, resource limits (CPU/memory/time) | ~1-2s cold start | Docker | **Implemented** |
 | `K8sSandbox` | Pod-level: per-agent containers, namespace isolation, resource quotas, network policies | ~2-5s | Kubernetes | Future |
 
 #### Default Layered Configuration
@@ -2728,7 +2728,8 @@ Circular inheritance is detected via chain tracking and raises `TemplateInherita
 | **Web UI** | Vue 3 + Vite | Modern, fast, good ecosystem. Simpler than React for dashboards |
 | **Real-time** | WebSocket (Litestar channels plugin) | Built-in pub/sub broadcasting, per-channel history, backpressure management. Real-time agent activity, task updates, chat feed |
 | **Containerization** | Docker + Docker Compose | Isolated code execution, reproducible environments |
-| **Tool Integration** | MCP (Model Context Protocol) | Industry standard for LLM-to-tool integration |
+| **Docker API** | aiodocker | Async-native Docker API client for `DockerSandbox` backend |
+| **Tool Integration** | MCP SDK (`mcp`) | Industry standard for LLM-to-tool integration |
 | **Agent Comms** | A2A Protocol compatible | Future-proof inter-agent communication |
 | **Config Format** | YAML + Pydantic validation | Human-readable config with strict validation |
 | **CLI** | TBD (future, if needed) | Thin wrapper around the REST API for terminal use. May not be needed — interactive Scalar docs at `/docs/api` and `curl`/`httpie` may suffice |
@@ -2960,7 +2961,10 @@ ai-company/
 │       │   │   ├── task_routing.py # TASK_ROUTING_* constants
 │       │   │   ├── template.py    # TEMPLATE_* constants
 │       │   │   ├── tool.py        # TOOL_* constants
-│       │   │   └── workspace.py   # WORKSPACE_* constants
+│       │   │   ├── workspace.py   # WORKSPACE_* constants
+│       │   │   ├── code_runner.py # CODE_RUNNER_* constants
+│       │   │   ├── docker.py      # DOCKER_* constants
+│       │   │   └── mcp.py         # MCP_* constants
 │       │   ├── processors.py       # Log processors
 │       │   ├── setup.py            # Logging setup
 │       │   └── sinks.py            # Log output backends
@@ -3015,9 +3019,21 @@ ai-company/
 │       │   ├── _git_base.py        # Base class for git tools (workspace, subprocess, sandbox integration)
 │       │   ├── _process_cleanup.py  # Subprocess transport cleanup utility (Windows ResourceWarning prevention)
 │       │   ├── git_tools.py        # Git operations — 6 built-in tools (sandbox-aware)
-│       │   ├── code_runner.py      # Code execution (M7)
+│       │   ├── docker_config.py    # Docker sandbox configuration
+│       │   ├── docker_sandbox.py   # DockerSandbox backend (aiodocker)
+│       │   ├── sandboxing_config.py # Top-level sandboxing config (backend selection)
+│       │   ├── code_runner.py      # Code execution tool
 │       │   ├── web_tools.py        # HTTP, search (M7)
-│       │   └── mcp_bridge.py       # MCP server integration (M7)
+│       │   └── mcp/                # MCP bridge subpackage
+│       │       ├── __init__.py    # Package exports
+│       │       ├── bridge_tool.py # McpBridgeTool (BaseTool integration)
+│       │       ├── cache.py       # Tool schema caching
+│       │       ├── client.py      # MCP client wrapper
+│       │       ├── config.py      # MCP server/bridge config models
+│       │       ├── errors.py      # MCP error hierarchy
+│       │       ├── factory.py     # McpBridgeTool factory
+│       │       ├── models.py      # MCP domain models
+│       │       └── result_mapper.py # MCP result → ToolExecutionResult mapping
 │       ├── security/                # Security & approval (M7, stubs only)
 │       │   ├── approval.py         # Approval workflow gates (M7) — domain model is in core/approval.py
 │       │   ├── secops_agent.py     # Security operations agent (M7)

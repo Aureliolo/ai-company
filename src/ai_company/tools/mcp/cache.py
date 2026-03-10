@@ -22,8 +22,9 @@ logger = get_logger(__name__)
 class MCPResultCache:
     """TTL + LRU-bounded cache for MCP tool results.
 
-    Thread-safe within a single asyncio event loop (no concurrent
-    mutations). Keys are derived from tool name and arguments.
+    Safe for use within a single asyncio event loop, where coroutine
+    interleaving cannot cause concurrent mutations to the cache dict.
+    Keys are derived from tool name and arguments.
 
     Args:
         max_size: Maximum number of cached entries.
@@ -161,6 +162,8 @@ def _make_hashable(obj: Any) -> Any:
     """
     if isinstance(obj, dict):
         return frozenset((k, _make_hashable(v)) for k, v in sorted(obj.items()))
-    if isinstance(obj, (list, tuple)):
+    if isinstance(obj, list | tuple):
         return tuple(_make_hashable(item) for item in obj)
+    if isinstance(obj, set):
+        return frozenset(_make_hashable(item) for item in obj)
     return obj

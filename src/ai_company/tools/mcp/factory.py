@@ -76,21 +76,7 @@ class MCPToolFactory:
             )
             return ()
 
-        # Connect to all servers in parallel
-        results: list[tuple[MCPClient, tuple[MCPToolInfo, ...]]] = []
-
-        async with asyncio.TaskGroup() as tg:
-            tasks = [
-                tg.create_task(
-                    self._connect_and_discover(cfg),
-                )
-                for cfg in enabled
-            ]
-
-        for task in tasks:
-            client, tools = task.result()
-            self._clients.append(client)
-            results.append((client, tools))
+        results = await self._connect_all(enabled)
 
         # Create bridge tools
         all_tools: list[MCPBridgeTool] = []
@@ -111,11 +97,57 @@ class MCPToolFactory:
         )
         return result
 
+    async def _connect_all(
+        self,
+        servers: list[MCPServerConfig],
+    ) -> list[tuple[MCPClient, tuple[MCPToolInfo, ...]]]:
+        """Connect to servers in parallel and collect results.
+
+        Args:
+            servers: Enabled server configurations.
+
+        Returns:
+            List of (client, tools) tuples.
+        """
+        try:
+            async with asyncio.TaskGroup() as tg:
+                tasks = [
+                    tg.create_task(
+                        self._connect_and_discover(cfg),
+                    )
+                    for cfg in servers
+                ]
+        except BaseException:
+            # Clean up any clients that connected before the failure
+            for task in tasks:
+                if task.done() and not task.cancelled():
+                    exc = task.exception()
+                    if exc is None:
+                        client, _ = task.result()
+                        await client.disconnect()
+            raise
+
+        results: list[tuple[MCPClient, tuple[MCPToolInfo, ...]]] = []
+        for task in tasks:
+            client, tools = task.result()
+            self._clients.append(client)
+            results.append((client, tools))
+        return results
+
     async def shutdown(self) -> None:
         """Disconnect all managed MCP clients."""
-        for client in self._clients:
-            await client.disconnect()
-        self._clients = []
+        try:
+            for client in self._clients:
+                try:
+                    await client.disconnect()
+                except Exception as exc:
+                    logger.warning(
+                        MCP_FACTORY_SERVER_SKIPPED,
+                        server=client.server_name,
+                        reason=f"disconnect failed: {exc}",
+                    )
+        finally:
+            self._clients.clear()
 
     # ── Private helpers ──────────────────────────────────────────
 
@@ -148,7 +180,7 @@ class MCPToolFactory:
         Returns:
             ``MCPResultCache`` or ``None`` if disabled.
         """
-        config = client._config  # noqa: SLF001
+        config = client.config
         if config.result_cache_max_size <= 0:
             return None
         return MCPResultCache(
