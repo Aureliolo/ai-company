@@ -1,6 +1,6 @@
 """Multi-window rolling metrics strategy (D11).
 
-Computes aggregate metrics across 7d, 30d, 90d windows simultaneously.
+Computes aggregate metrics across configurable time windows simultaneously.
 Returns None for aggregate values when data points < min_data_points.
 """
 
@@ -126,13 +126,12 @@ class MultiWindowStrategy:
                 tasks_failed=0,
             )
 
-        success_rate = completed / count if count > 0 else None
-
-        # Compute averages only if sufficient data.
+        # Compute averages and success_rate only if sufficient data.
         avg_quality = None
         avg_cost = None
         avg_time = None
         avg_tokens = None
+        success_rate = None
 
         if has_enough:
             scored = [r.quality_score for r in records if r.quality_score is not None]
@@ -140,6 +139,7 @@ class MultiWindowStrategy:
             avg_cost = sum(r.cost_usd for r in records) / count
             avg_time = sum(r.duration_seconds for r in records) / count
             avg_tokens = sum(r.tokens_used for r in records) / count
+            success_rate = completed / count
 
         return WindowMetrics(
             window_size=NotBlankStr(window_label),

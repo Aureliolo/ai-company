@@ -138,6 +138,14 @@ class HiringRequest(BaseModel):
         if self.status in needs_candidate and self.selected_candidate_id is None:
             msg = f"{self.status.value} requests must have a selected_candidate_id"
             raise ValueError(msg)
+        if self.selected_candidate_id is not None:
+            candidate_ids = {str(c.id) for c in self.candidates}
+            if self.selected_candidate_id not in candidate_ids:
+                msg = (
+                    f"selected_candidate_id {self.selected_candidate_id!r} "
+                    f"not found in candidates"
+                )
+                raise ValueError(msg)
         return self
 
 
@@ -246,6 +254,24 @@ class OnboardingChecklist(BaseModel):
         """Whether all onboarding steps are completed."""
         return all(s.completed for s in self.steps)
 
+    @model_validator(mode="after")
+    def _validate_completion_consistency(self) -> Self:
+        """Ensure completed_at and step completion status are consistent."""
+        all_done = all(s.completed for s in self.steps)
+        if all_done and self.completed_at is None:
+            msg = "completed_at must be set when all steps are completed"
+            raise ValueError(msg)
+        if not all_done and self.completed_at is not None:
+            msg = "completed_at must be None when not all steps are completed"
+            raise ValueError(msg)
+        if self.completed_at is not None and self.completed_at < self.started_at:
+            msg = (
+                f"completed_at ({self.completed_at}) must be >= "
+                f"started_at ({self.started_at})"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class OffboardingRecord(BaseModel):
     """Record of a completed offboarding process.
@@ -267,7 +293,7 @@ class OffboardingRecord(BaseModel):
     agent_id: NotBlankStr = Field(description="Agent who was offboarded")
     agent_name: NotBlankStr = Field(description="Agent display name")
     firing_request_id: NotBlankStr = Field(description="Associated firing request")
-    tasks_reassigned: tuple[str, ...] = Field(
+    tasks_reassigned: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="IDs of reassigned tasks",
     )

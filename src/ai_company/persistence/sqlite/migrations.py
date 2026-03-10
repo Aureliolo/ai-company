@@ -138,6 +138,11 @@ CREATE TABLE IF NOT EXISTS collaboration_metrics (
     "CREATE INDEX IF NOT EXISTS idx_cm_agent_id ON collaboration_metrics(agent_id)",
     "CREATE INDEX IF NOT EXISTS idx_cm_recorded_at"
     " ON collaboration_metrics(recorded_at)",
+    # ── Composite indexes for query performance ───────────
+    "CREATE INDEX IF NOT EXISTS idx_tm_agent_completed"
+    " ON task_metrics(agent_id, completed_at)",
+    "CREATE INDEX IF NOT EXISTS idx_cm_agent_recorded"
+    " ON collaboration_metrics(agent_id, recorded_at)",
 )
 
 _MigrateFn = Callable[[aiosqlite.Connection], Coroutine[Any, Any, None]]

@@ -79,7 +79,7 @@ class TestBehavioralTelemetryStrategy:
         assert "meeting_contribution" not in component_names
 
     async def test_all_components_none(self) -> None:
-        """All optional components None -> neutral 5.0, confidence 0.0."""
+        """Only loop_prevention available -> max score 10.0 on single component."""
         strategy = self._make_strategy()
         # Record with no optional components set (only loop_triggered=False)
         # But loop_prevention always returns a value if there are records

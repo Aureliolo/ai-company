@@ -5,6 +5,11 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ai_company.core.types import NotBlankStr
+from ai_company.hr.persistence_protocol import (
+    CollaborationMetricRepository,
+    LifecycleEventRepository,
+    TaskMetricRepository,
+)
 from ai_company.persistence.protocol import PersistenceBackend
 from ai_company.persistence.repositories import (
     CostRecordRepository,
@@ -176,3 +181,17 @@ class TestProtocolCompliance:
 
     def test_fake_message_repo_is_message_repository(self) -> None:
         assert isinstance(_FakeMessageRepository(), MessageRepository)
+
+    def test_fake_lifecycle_repo_is_lifecycle_event_repository(self) -> None:
+        assert isinstance(_FakeLifecycleEventRepository(), LifecycleEventRepository)
+
+    def test_fake_task_metric_repo_is_task_metric_repository(self) -> None:
+        assert isinstance(_FakeTaskMetricRepository(), TaskMetricRepository)
+
+    def test_fake_collab_metric_repo_is_collaboration_metric_repository(
+        self,
+    ) -> None:
+        assert isinstance(
+            _FakeCollaborationMetricRepository(),
+            CollaborationMetricRepository,
+        )

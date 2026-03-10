@@ -142,7 +142,7 @@ class TestAgentRegistryService:
         self,
         registry: AgentRegistryService,
     ) -> None:
-        assert registry.agent_count == 0
+        assert await registry.agent_count() == 0
 
     async def test_agent_count_tracks_registrations(
         self,
@@ -151,8 +151,8 @@ class TestAgentRegistryService:
         a = make_agent_identity(name="alice")
         b = make_agent_identity(name="bob")
         await registry.register(a)
-        assert registry.agent_count == 1
+        assert await registry.agent_count() == 1
         await registry.register(b)
-        assert registry.agent_count == 2
+        assert await registry.agent_count() == 2
         await registry.unregister(str(a.id))
-        assert registry.agent_count == 1
+        assert await registry.agent_count() == 1

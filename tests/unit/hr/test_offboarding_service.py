@@ -11,7 +11,13 @@ from ai_company.core.enums import AgentStatus, TaskStatus
 from ai_company.core.task import Task  # noqa: TC001
 from ai_company.core.types import NotBlankStr
 from ai_company.hr.archival_protocol import ArchivalResult
-from ai_company.hr.errors import AgentNotFoundError
+from ai_company.hr.errors import (
+    AgentNotFoundError,
+    MemoryArchivalError,
+    OffboardingError,
+    TaskReassignmentError,
+)
+from ai_company.hr.models import OffboardingRecord
 from ai_company.hr.offboarding_service import OffboardingService
 from ai_company.hr.registry import AgentRegistryService  # noqa: TC001
 from tests.unit.hr.conftest import (
@@ -93,6 +99,7 @@ class FakeArchivalStrategy:
         memory_backend: Any,
         archival_store: Any,
         org_memory_backend: Any = None,
+        agent_seniority: Any = None,
     ) -> ArchivalResult:
         return ArchivalResult(
             agent_id=agent_id,
@@ -326,3 +333,121 @@ class TestOffboardingServiceFullPipeline:
         )
         record = await service.offboard(request)
         assert record.tasks_reassigned == ()
+
+    async def test_reassignment_failure_propagates(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """TaskReassignmentError from strategy -> OffboardingError."""
+        identity = make_agent_identity(name="fail-reassign-agent")
+        await registry.register(identity)
+        agent_id = str(identity.id)
+
+        class FailingReassignmentStrategy:
+            @property
+            def name(self) -> str:
+                return "failing"
+
+            async def reassign(
+                self,
+                *,
+                agent_id: NotBlankStr,
+                active_tasks: tuple[Task, ...],
+            ) -> tuple[Task, ...]:
+                msg = "reassignment boom"
+                raise TaskReassignmentError(msg)
+
+        task_repo = FakeTaskRepository()
+        task = make_task(
+            task_id="task-fail",
+            status=TaskStatus.ASSIGNED,
+            assigned_to=agent_id,
+        )
+        await task_repo.save(task)
+
+        service = OffboardingService(
+            registry=registry,
+            reassignment_strategy=FailingReassignmentStrategy(),
+            archival_strategy=FakeArchivalStrategy(),
+            task_repository=task_repo,
+        )
+
+        request = make_firing_request(
+            agent_id=agent_id,
+            agent_name=str(identity.name),
+        )
+        with pytest.raises(OffboardingError, match="reassignment"):
+            await service.offboard(request)
+
+    async def test_archival_failure_is_non_fatal(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """MemoryArchivalError from archival strategy is non-fatal."""
+        identity = make_agent_identity(name="fail-archival-agent")
+        await registry.register(identity)
+        agent_id = str(identity.id)
+
+        class FailingArchivalStrategy:
+            @property
+            def name(self) -> str:
+                return "failing_archival"
+
+            async def archive(
+                self,
+                *,
+                agent_id: NotBlankStr,
+                memory_backend: Any,
+                archival_store: Any,
+                org_memory_backend: Any = None,
+                agent_seniority: Any = None,
+            ) -> ArchivalResult:
+                msg = "archival boom"
+                raise MemoryArchivalError(msg)
+
+        service = OffboardingService(
+            registry=registry,
+            reassignment_strategy=FakeReassignmentStrategy(),
+            archival_strategy=FailingArchivalStrategy(),
+            memory_backend=object(),  # type: ignore[arg-type]
+            archival_store=object(),  # type: ignore[arg-type]
+        )
+
+        request = make_firing_request(
+            agent_id=agent_id,
+            agent_name=str(identity.name),
+        )
+        record = await service.offboard(request)
+        assert isinstance(record, OffboardingRecord)
+        assert record.org_memories_promoted == 0
+
+    async def test_notification_failure_is_non_fatal(
+        self,
+        registry: AgentRegistryService,
+    ) -> None:
+        """Message bus publish failure -> team_notification_sent=False."""
+        identity = make_agent_identity(name="fail-notify-agent")
+        await registry.register(identity)
+        agent_id = str(identity.id)
+
+        class FailingMessageBus(FakeMessageBus):
+            async def publish(self, message: Message) -> None:
+                msg = "publish boom"
+                raise OSError(msg)
+
+        bus = FailingMessageBus()
+        await bus.start()
+
+        service = OffboardingService(
+            registry=registry,
+            reassignment_strategy=FakeReassignmentStrategy(),
+            archival_strategy=FakeArchivalStrategy(),
+            message_bus=bus,
+        )
+
+        request = make_firing_request(
+            agent_id=agent_id,
+            agent_name=str(identity.name),
+        )
+        record = await service.offboard(request)
+        assert record.team_notification_sent is False

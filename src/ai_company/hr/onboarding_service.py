@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ai_company.core.enums import AgentStatus
+from ai_company.core.types import NotBlankStr
 from ai_company.hr.enums import OnboardingStep
 from ai_company.hr.errors import OnboardingError
 from ai_company.hr.models import OnboardingChecklist, OnboardingStepRecord
@@ -57,6 +58,12 @@ class OnboardingService:
         Raises:
             OnboardingError: If a checklist already exists.
         """
+        agent = await self._registry.get(NotBlankStr(agent_id))
+        if agent is None:
+            msg = f"Agent {agent_id!r} not found in registry"
+            logger.warning(HR_ONBOARDING_STARTED, agent_id=agent_id, error=msg)
+            raise OnboardingError(msg)
+
         if agent_id in self._checklists:
             msg = f"Onboarding checklist already exists for agent {agent_id!r}"
             logger.warning(HR_ONBOARDING_STARTED, agent_id=agent_id, error=msg)
@@ -113,7 +120,7 @@ class OnboardingService:
         now = datetime.now(UTC)
         step_found = any(s.step == step and not s.completed for s in checklist.steps)
         if not step_found:
-            logger.debug(
+            logger.warning(
                 HR_ONBOARDING_STEP_COMPLETE,
                 agent_id=agent_id,
                 step=step.value,

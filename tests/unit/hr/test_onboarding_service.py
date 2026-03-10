@@ -16,30 +16,54 @@ class TestOnboardingServiceStartOnboarding:
 
     async def test_start_creates_checklist(
         self,
+        registry: AgentRegistryService,
         onboarding_service: OnboardingService,
     ) -> None:
-        checklist = await onboarding_service.start_onboarding("agent-001")
-        assert checklist.agent_id == "agent-001"
+        identity = make_agent_identity(
+            name="onboard-target",
+            status=AgentStatus.ONBOARDING,
+        )
+        await registry.register(identity)
+        agent_id = str(identity.id)
+
+        checklist = await onboarding_service.start_onboarding(agent_id)
+        assert checklist.agent_id == agent_id
         assert len(checklist.steps) == len(OnboardingStep)
         assert checklist.is_complete is False
         assert checklist.completed_at is None
 
     async def test_start_all_steps_incomplete(
         self,
+        registry: AgentRegistryService,
         onboarding_service: OnboardingService,
     ) -> None:
-        checklist = await onboarding_service.start_onboarding("agent-001")
+        identity = make_agent_identity(
+            name="onboard-incomplete",
+            status=AgentStatus.ONBOARDING,
+        )
+        await registry.register(identity)
+        agent_id = str(identity.id)
+
+        checklist = await onboarding_service.start_onboarding(agent_id)
         for step_rec in checklist.steps:
             assert step_rec.completed is False
             assert step_rec.completed_at is None
 
     async def test_start_duplicate_raises(
         self,
+        registry: AgentRegistryService,
         onboarding_service: OnboardingService,
     ) -> None:
-        await onboarding_service.start_onboarding("agent-001")
+        identity = make_agent_identity(
+            name="onboard-dup",
+            status=AgentStatus.ONBOARDING,
+        )
+        await registry.register(identity)
+        agent_id = str(identity.id)
+
+        await onboarding_service.start_onboarding(agent_id)
         with pytest.raises(OnboardingError, match="already exists"):
-            await onboarding_service.start_onboarding("agent-001")
+            await onboarding_service.start_onboarding(agent_id)
 
 
 @pytest.mark.unit
@@ -48,11 +72,19 @@ class TestOnboardingServiceCompleteStep:
 
     async def test_complete_single_step(
         self,
+        registry: AgentRegistryService,
         onboarding_service: OnboardingService,
     ) -> None:
-        await onboarding_service.start_onboarding("agent-001")
+        identity = make_agent_identity(
+            name="step-agent",
+            status=AgentStatus.ONBOARDING,
+        )
+        await registry.register(identity)
+        agent_id = str(identity.id)
+
+        await onboarding_service.start_onboarding(agent_id)
         updated = await onboarding_service.complete_step(
-            "agent-001",
+            agent_id,
             OnboardingStep.COMPANY_CONTEXT,
             notes="Context loaded",
         )
@@ -109,12 +141,20 @@ class TestOnboardingServiceGetChecklist:
 
     async def test_get_existing_checklist(
         self,
+        registry: AgentRegistryService,
         onboarding_service: OnboardingService,
     ) -> None:
-        await onboarding_service.start_onboarding("agent-001")
-        checklist = await onboarding_service.get_checklist("agent-001")
+        identity = make_agent_identity(
+            name="get-checklist-agent",
+            status=AgentStatus.ONBOARDING,
+        )
+        await registry.register(identity)
+        agent_id = str(identity.id)
+
+        await onboarding_service.start_onboarding(agent_id)
+        checklist = await onboarding_service.get_checklist(agent_id)
         assert checklist is not None
-        assert checklist.agent_id == "agent-001"
+        assert checklist.agent_id == agent_id
 
     async def test_get_nonexistent_returns_none(
         self,

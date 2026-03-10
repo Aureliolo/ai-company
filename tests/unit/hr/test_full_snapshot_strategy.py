@@ -48,7 +48,7 @@ class FakeFailingMemoryBackend:
         query: MemoryQuery,
     ) -> tuple[MemoryEntry, ...]:
         msg = "Connection lost"
-        raise RuntimeError(msg)
+        raise OSError(msg)
 
     async def delete(
         self,
@@ -165,6 +165,7 @@ class TestFullSnapshotStrategy:
                 memory_backend=memory_backend,  # type: ignore[arg-type]
                 archival_store=archival_store,  # type: ignore[arg-type]
                 org_memory_backend=org_backend,  # type: ignore[arg-type]
+                agent_seniority=SeniorityLevel.MID,
             )
 
         assert result.total_archived == 3
@@ -236,6 +237,39 @@ class TestFullSnapshotStrategy:
                 memory_backend=failing_backend,  # type: ignore[arg-type]
                 archival_store=archival_store,  # type: ignore[arg-type]
             )
+
+    async def test_delete_failure_results_in_hot_store_not_cleaned(self) -> None:
+        """Memory backend delete failure -> hot_store_cleaned=False."""
+        entry = _make_memory_entry(entry_id="mem-del-fail")
+
+        class FailingDeleteBackend:
+            async def retrieve(
+                self,
+                agent_id: NotBlankStr,
+                query: MemoryQuery,
+            ) -> tuple[MemoryEntry, ...]:
+                return (entry,)
+
+            async def delete(
+                self,
+                agent_id: NotBlankStr,
+                memory_id: NotBlankStr,
+            ) -> bool:
+                msg = "disk error during delete"
+                raise OSError(msg)
+
+        backend = FailingDeleteBackend()
+        archival_store = FakeArchivalStore()
+
+        strategy = FullSnapshotStrategy()
+        result = await strategy.archive(
+            agent_id=NotBlankStr("agent-001"),
+            memory_backend=backend,  # type: ignore[arg-type]
+            archival_store=archival_store,  # type: ignore[arg-type]
+        )
+
+        assert result.total_archived > 0
+        assert result.hot_store_cleaned is False
 
     async def test_non_promotable_categories_not_promoted(self) -> None:
         working = _make_memory_entry(

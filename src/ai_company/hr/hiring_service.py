@@ -8,7 +8,9 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from ai_company.core.agent import AgentIdentity, ModelConfig
+from pydantic import ValidationError
+
+from ai_company.core.agent import AgentIdentity, ModelConfig, SkillSet
 from ai_company.core.approval import ApprovalItem
 from ai_company.core.enums import (
     ActionType,
@@ -19,10 +21,12 @@ from ai_company.core.enums import (
 from ai_company.core.types import NotBlankStr
 from ai_company.hr.enums import HiringRequestStatus
 from ai_company.hr.errors import (
+    AgentAlreadyRegisteredError,
     HiringApprovalRequiredError,
     HiringError,
     HiringRejectedError,
     InvalidCandidateError,
+    OnboardingError,
 )
 from ai_company.hr.models import CandidateCard, HiringRequest
 from ai_company.hr.registry import AgentRegistryService  # noqa: TC001
@@ -53,6 +57,9 @@ class HiringService:
         approval_store: Optional approval store for human approval.
         onboarding_service: Optional onboarding service to start
             onboarding after instantiation.
+        default_model_config: Optional default model configuration
+            for newly created agents. Falls back to generic defaults
+            if not provided.
     """
 
     def __init__(
@@ -61,11 +68,36 @@ class HiringService:
         registry: AgentRegistryService,
         approval_store: ApprovalStore | None = None,
         onboarding_service: OnboardingService | None = None,
+        default_model_config: ModelConfig | None = None,
     ) -> None:
         self._registry = registry
         self._approval_store = approval_store
         self._onboarding_service = onboarding_service
+        self._default_model_config = default_model_config
         self._requests: dict[str, HiringRequest] = {}
+
+    def _get_request(self, request_id: str) -> HiringRequest:
+        """Look up a hiring request by ID.
+
+        Args:
+            request_id: The request ID to look up.
+
+        Returns:
+            The current hiring request.
+
+        Raises:
+            HiringError: If the request is not found.
+        """
+        request = self._requests.get(request_id)
+        if request is None:
+            msg = f"Hiring request {request_id!r} not found"
+            logger.warning(
+                HR_HIRING_REQUEST_CREATED,
+                request_id=request_id,
+                error=msg,
+            )
+            raise HiringError(msg)
+        return request
 
     async def create_request(  # noqa: PLR0913
         self,
@@ -142,6 +174,8 @@ class HiringService:
         Returns:
             Updated request with the new candidate appended.
         """
+        request = self._get_request(str(request.id))
+
         candidate = CandidateCard(
             name=NotBlankStr(f"{request.role}-{request.department}-agent"),
             role=request.role,
@@ -151,7 +185,11 @@ class HiringService:
             rationale=NotBlankStr(
                 f"Generated for: {request.reason}",
             ),
-            estimated_monthly_cost=request.budget_limit_monthly or 50.0,
+            estimated_monthly_cost=(
+                request.budget_limit_monthly
+                if request.budget_limit_monthly is not None
+                else 50.0
+            ),
             template_source=request.template_name,
         )
 
@@ -186,6 +224,8 @@ class HiringService:
         Raises:
             InvalidCandidateError: If the candidate ID is not found.
         """
+        request = self._get_request(str(request.id))
+
         candidate = next(
             (c for c in request.candidates if str(c.id) == candidate_id),
             None,
@@ -209,29 +249,7 @@ class HiringService:
             )
         else:
             # Create an approval item.
-            approval_id = str(uuid4())
-            approval_item = ApprovalItem(
-                id=NotBlankStr(approval_id),
-                action_type=NotBlankStr(ActionType.HIRING),
-                title=NotBlankStr(
-                    f"Hire {candidate.name} as {candidate.role}",
-                ),
-                description=NotBlankStr(request.reason),
-                requested_by=request.requested_by,
-                risk_level=ApprovalRiskLevel.HIGH,
-                created_at=datetime.now(UTC),
-                metadata={
-                    "request_id": str(request.id),
-                    "candidate_id": candidate_id,
-                },
-            )
-            await self._approval_store.add(approval_item)
-            updated = request.model_copy(
-                update={
-                    "selected_candidate_id": candidate_id,
-                    "approval_id": approval_id,
-                },
-            )
+            updated = await self._submit_approval_item(request, candidate, candidate_id)
 
         self._requests[str(updated.id)] = updated
 
@@ -242,6 +260,47 @@ class HiringService:
             auto_approved=self._approval_store is None,
         )
         return updated
+
+    async def _submit_approval_item(
+        self,
+        request: HiringRequest,
+        candidate: CandidateCard,
+        candidate_id: str,
+    ) -> HiringRequest:
+        """Create and store an approval item for a candidate.
+
+        Args:
+            request: The hiring request.
+            candidate: The candidate to approve.
+            candidate_id: ID of the candidate.
+
+        Returns:
+            Updated request with approval metadata.
+        """
+        assert self._approval_store is not None  # noqa: S101
+        approval_id = str(uuid4())
+        approval_item = ApprovalItem(
+            id=NotBlankStr(approval_id),
+            action_type=NotBlankStr(ActionType.ORG_HIRE),
+            title=NotBlankStr(
+                f"Hire {candidate.name} as {candidate.role}",
+            ),
+            description=NotBlankStr(request.reason),
+            requested_by=request.requested_by,
+            risk_level=ApprovalRiskLevel.HIGH,
+            created_at=datetime.now(UTC),
+            metadata={
+                "request_id": str(request.id),
+                "candidate_id": candidate_id,
+            },
+        )
+        await self._approval_store.add(approval_item)
+        return request.model_copy(
+            update={
+                "selected_candidate_id": candidate_id,
+                "approval_id": approval_id,
+            },
+        )
 
     async def instantiate_agent(
         self,
@@ -260,6 +319,42 @@ class HiringService:
             HiringRejectedError: If request was rejected.
             InvalidCandidateError: If no candidate is selected.
             HiringError: If instantiation fails.
+        """
+        request = self._get_request(str(request.id))
+        self._validate_instantiation_status(request)
+        candidate = self._find_selected_candidate(request)
+
+        identity = self._build_agent_identity(candidate)
+        await self._register_agent(identity, request)
+
+        # Update request status.
+        updated = request.model_copy(
+            update={"status": HiringRequestStatus.INSTANTIATED},
+        )
+        self._requests[str(updated.id)] = updated
+
+        # Start onboarding if service is available.
+        await self._try_onboard(identity)
+
+        logger.info(
+            HR_HIRING_INSTANTIATED,
+            request_id=str(request.id),
+            agent_id=str(identity.id),
+            agent_name=str(identity.name),
+        )
+        return identity
+
+    def _validate_instantiation_status(self, request: HiringRequest) -> None:
+        """Validate that the request is in a valid state for instantiation.
+
+        Args:
+            request: The hiring request to validate.
+
+        Raises:
+            HiringError: If already instantiated.
+            HiringRejectedError: If request was rejected.
+            HiringApprovalRequiredError: If request needs approval.
+            InvalidCandidateError: If no candidate selected.
         """
         if request.status == HiringRequestStatus.INSTANTIATED:
             msg = f"Hiring request {request.id!r} is already instantiated"
@@ -294,6 +389,18 @@ class HiringService:
             )
             raise InvalidCandidateError(msg)
 
+    def _find_selected_candidate(self, request: HiringRequest) -> CandidateCard:
+        """Find the selected candidate on a hiring request.
+
+        Args:
+            request: The hiring request.
+
+        Returns:
+            The selected candidate card.
+
+        Raises:
+            InvalidCandidateError: If the selected candidate is not found.
+        """
         candidate = next(
             (
                 c
@@ -313,23 +420,67 @@ class HiringService:
                 error=msg,
             )
             raise InvalidCandidateError(msg)
+        return candidate
 
+    def _build_agent_identity(self, candidate: CandidateCard) -> AgentIdentity:
+        """Build an AgentIdentity from a candidate card.
+
+        Args:
+            candidate: The candidate to convert.
+
+        Returns:
+            A new agent identity.
+
+        Raises:
+            HiringError: If the identity cannot be constructed.
+        """
+        model = self._default_model_config or ModelConfig(
+            provider=NotBlankStr("default-provider"),
+            model_id=NotBlankStr("default-model-001"),
+        )
+        status = (
+            AgentStatus.ONBOARDING
+            if self._onboarding_service is not None
+            else AgentStatus.ACTIVE
+        )
         try:
-            identity = AgentIdentity(
+            return AgentIdentity(
                 name=candidate.name,
                 role=candidate.role,
                 department=candidate.department,
                 level=candidate.level,
-                model=ModelConfig(
-                    provider=NotBlankStr("default-provider"),
-                    model_id=NotBlankStr("default-model-001"),
-                ),
-                status=AgentStatus.ONBOARDING,
+                skills=SkillSet(primary=candidate.skills),
+                model=model,
+                status=status,
                 hiring_date=datetime.now(UTC).date(),
             )
+        except (ValidationError, ValueError) as exc:
+            msg = f"Failed to construct AgentIdentity for candidate {candidate.id!r}"
+            logger.exception(
+                HR_HIRING_INSTANTIATION_FAILED,
+                candidate_id=str(candidate.id),
+                error=str(exc),
+            )
+            raise HiringError(msg) from exc
+
+    async def _register_agent(
+        self,
+        identity: AgentIdentity,
+        request: HiringRequest,
+    ) -> None:
+        """Register a new agent identity in the registry.
+
+        Args:
+            identity: The agent identity to register.
+            request: The associated hiring request (for error context).
+
+        Raises:
+            HiringError: If registration fails.
+        """
+        try:
             await self._registry.register(identity)
-        except Exception as exc:
-            msg = f"Failed to instantiate agent for request {request.id!r}"
+        except AgentAlreadyRegisteredError as exc:
+            msg = f"Agent already registered for request {request.id!r}"
             logger.exception(
                 HR_HIRING_INSTANTIATION_FAILED,
                 request_id=str(request.id),
@@ -337,20 +488,23 @@ class HiringService:
             )
             raise HiringError(msg) from exc
 
-        # Update request status.
-        updated = request.model_copy(
-            update={"status": HiringRequestStatus.INSTANTIATED},
-        )
-        self._requests[str(updated.id)] = updated
+    async def _try_onboard(self, identity: AgentIdentity) -> None:
+        """Attempt onboarding if the service is available.
 
-        # Start onboarding if service is available.
-        if self._onboarding_service is not None:
+        Onboarding failure is non-fatal: the agent is already
+        registered and can be onboarded later.
+
+        Args:
+            identity: The newly created agent identity.
+        """
+        if self._onboarding_service is None:
+            return
+        try:
             await self._onboarding_service.start_onboarding(str(identity.id))
-
-        logger.info(
-            HR_HIRING_INSTANTIATED,
-            request_id=str(request.id),
-            agent_id=str(identity.id),
-            agent_name=str(identity.name),
-        )
-        return identity
+        except OnboardingError as exc:
+            logger.warning(
+                HR_HIRING_INSTANTIATED,
+                agent_id=str(identity.id),
+                warning="onboarding_failed",
+                error=str(exc),
+            )

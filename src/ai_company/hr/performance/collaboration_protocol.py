@@ -38,7 +38,7 @@ class CollaborationScoringStrategy(Protocol):
         Args:
             agent_id: Agent being evaluated.
             records: Collaboration metric records to evaluate.
-            role_weights: Optional per-role weight overrides.
+            role_weights: Optional per-component weight overrides.
 
         Returns:
             Collaboration score result with component scores.

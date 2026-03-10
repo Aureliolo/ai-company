@@ -190,6 +190,25 @@ class TestSQLiteLifecycleEventRepository:
         events = await repo.list_events()
         assert events == ()
 
+    async def test_list_filter_by_since(self, db: aiosqlite.Connection) -> None:
+        """Events before 'since' are excluded."""
+        repo = SQLiteLifecycleEventRepository(db)
+        old_event = _make_lifecycle_event(
+            agent_id="agent-001",
+            timestamp=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
+        )
+        new_event = _make_lifecycle_event(
+            agent_id="agent-001",
+            timestamp=datetime(2026, 3, 10, 12, 0, 0, tzinfo=UTC),
+        )
+        await repo.save(old_event)
+        await repo.save(new_event)
+
+        cutoff = datetime(2026, 2, 1, 0, 0, 0, tzinfo=UTC)
+        events = await repo.list_events(since=cutoff)
+        assert len(events) == 1
+        assert events[0].timestamp >= cutoff
+
 
 # ── SQLiteTaskMetricRepository ────────────────────────────────────
 
@@ -245,6 +264,33 @@ class TestSQLiteTaskMetricRepository:
         records = await repo.query()
         assert records[0].task_type == TaskType.RESEARCH
         assert records[0].complexity == Complexity.COMPLEX
+
+    async def test_query_filter_by_since_and_until(
+        self, db: aiosqlite.Connection
+    ) -> None:
+        """Records outside the since/until range are excluded."""
+        repo = SQLiteTaskMetricRepository(db)
+        early = _make_task_metric(
+            task_id="task-early",
+            completed_at=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
+        )
+        mid = _make_task_metric(
+            task_id="task-mid",
+            completed_at=datetime(2026, 2, 15, 12, 0, 0, tzinfo=UTC),
+        )
+        late = _make_task_metric(
+            task_id="task-late",
+            completed_at=datetime(2026, 3, 10, 12, 0, 0, tzinfo=UTC),
+        )
+        await repo.save(early)
+        await repo.save(mid)
+        await repo.save(late)
+
+        since = datetime(2026, 2, 1, 0, 0, 0, tzinfo=UTC)
+        until = datetime(2026, 3, 1, 0, 0, 0, tzinfo=UTC)
+        records = await repo.query(since=since, until=until)
+        assert len(records) == 1
+        assert records[0].task_id == "task-mid"
 
 
 # ── SQLiteCollaborationMetricRepository ───────────────────────────
@@ -306,3 +352,20 @@ class TestSQLiteCollaborationMetricRepository:
 
         records = await repo.query()
         assert records[0].loop_triggered is True
+
+    async def test_query_filter_by_since(self, db: aiosqlite.Connection) -> None:
+        """Records before 'since' are excluded."""
+        repo = SQLiteCollaborationMetricRepository(db)
+        old_record = _make_collab_metric(
+            recorded_at=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
+        )
+        new_record = _make_collab_metric(
+            recorded_at=datetime(2026, 3, 10, 12, 0, 0, tzinfo=UTC),
+        )
+        await repo.save(old_record)
+        await repo.save(new_record)
+
+        cutoff = datetime(2026, 2, 1, 0, 0, 0, tzinfo=UTC)
+        records = await repo.query(since=cutoff)
+        assert len(records) == 1
+        assert records[0].recorded_at >= cutoff

@@ -8,6 +8,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ai_company.core.enums import SeniorityLevel  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.memory.consolidation.archival import ArchivalStore  # noqa: TC001
 from ai_company.memory.org.protocol import OrgMemoryBackend  # noqa: TC001
@@ -55,6 +56,7 @@ class MemoryArchivalStrategy(Protocol):
         memory_backend: MemoryBackend,
         archival_store: ArchivalStore,
         org_memory_backend: OrgMemoryBackend | None = None,
+        agent_seniority: SeniorityLevel | None = None,
     ) -> ArchivalResult:
         """Archive all memories for a departing agent.
 
@@ -63,8 +65,13 @@ class MemoryArchivalStrategy(Protocol):
             memory_backend: Hot memory store.
             archival_store: Cold archival storage.
             org_memory_backend: Optional org memory for promotion.
+            agent_seniority: Seniority level of the departing agent.
+                Required for org memory promotion (skipped if None).
 
         Returns:
             Result of the archival operation.
+
+        Raises:
+            MemoryArchivalError: If retrieval from hot store fails.
         """
         ...

@@ -77,7 +77,7 @@ class TestMultiWindowStrategy:
         assert result[2].data_point_count == 3  # 90d (same records)
 
     def test_insufficient_data_none_averages(self) -> None:
-        """Below min_data_points -> None for averages."""
+        """Below min_data_points -> None for averages and success_rate."""
         strategy = self._make_strategy(min_data_points=5)
         records = tuple(
             make_task_metric(
@@ -98,8 +98,7 @@ class TestMultiWindowStrategy:
             assert window.avg_cost_per_task is None
             assert window.avg_completion_time_seconds is None
             assert window.avg_tokens_per_task is None
-            # success_rate is always computed when count > 0
-            assert window.success_rate is not None
+            assert window.success_rate is None
 
     def test_empty_records(self) -> None:
         """No records -> zero counts, None aggregates."""

@@ -9,7 +9,10 @@ from typing import TYPE_CHECKING
 from ai_company.core.enums import TaskStatus
 from ai_company.hr.errors import TaskReassignmentError
 from ai_company.observability import get_logger
-from ai_company.observability.events.hr import HR_FIRING_TASKS_REASSIGNED
+from ai_company.observability.events.hr import (
+    HR_FIRING_REASSIGNMENT_FAILED,
+    HR_FIRING_TASKS_REASSIGNED,
+)
 
 if TYPE_CHECKING:
     from ai_company.core.task import Task
@@ -73,7 +76,7 @@ class QueueReturnStrategy:
                     f"(status={task.status.value}): {exc}"
                 )
                 logger.warning(
-                    HR_FIRING_TASKS_REASSIGNED,
+                    HR_FIRING_REASSIGNMENT_FAILED,
                     agent_id=agent_id,
                     task_id=task.id,
                     error=msg,

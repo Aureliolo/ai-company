@@ -30,6 +30,7 @@ def _median(values: list[float]) -> float:
     """Compute the median of a pre-sorted list of values.
 
     Caller must sort the list before calling this function.
+    Returns 0.0 for an empty list (sentinel for no-slope cases).
     """
     n = len(values)
     if n == 0:

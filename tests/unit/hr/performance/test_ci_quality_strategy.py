@@ -40,13 +40,13 @@ class TestCISignalQualityStrategy:
         assert len(result.breakdown) == 3
 
     async def test_no_criteria_met_failure(self) -> None:
-        """No criteria met + failure -> low score."""
+        """No criteria met + failure + cost exceeding budget -> zero score."""
         strategy = self._make_strategy()
         criteria = (
             make_acceptance_criterion(description="Tests pass", met=False),
             make_acceptance_criterion(description="Lint clean", met=False),
         )
-        task_result = make_task_metric(is_success=False, cost_usd=10.0)
+        task_result = make_task_metric(is_success=False, cost_usd=1000.0)
 
         result = await strategy.score(
             agent_id=NotBlankStr("agent-001"),
@@ -142,9 +142,9 @@ class TestCISignalQualityStrategy:
         assert breakdown_dict["cost_efficiency"] == 10.0
 
     async def test_cost_efficiency_high_cost(self) -> None:
-        """Cost >= 10 -> zero cost efficiency score."""
+        """Cost exceeding budget by 10x -> zero cost efficiency score."""
         strategy = self._make_strategy()
-        task_result = make_task_metric(cost_usd=15.0)
+        task_result = make_task_metric(cost_usd=1000.0)
 
         result = await strategy.score(
             agent_id=NotBlankStr("agent-001"),
@@ -160,11 +160,11 @@ class TestCISignalQualityStrategy:
         ("cost_usd", "expected_cost_score"),
         [
             (0.0, 10.0),
-            (5.0, 5.0),
-            (10.0, 0.0),
-            (20.0, 0.0),
+            (5.0, 10.0),
+            (100.0, 10.0),
+            (1000.0, 0.0),
         ],
-        ids=["zero", "half", "full", "over"],
+        ids=["zero", "within_budget", "at_budget", "10x_over"],
     )
     async def test_cost_efficiency_parametrized(
         self,

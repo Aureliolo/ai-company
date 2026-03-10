@@ -8,13 +8,17 @@ from datetime import UTC, datetime
 
 from pydantic import ValidationError
 
-from ai_company.core.enums import MemoryCategory, OrgFactCategory
+from ai_company.core.enums import (
+    MemoryCategory,
+    OrgFactCategory,
+    SeniorityLevel,
+)
 from ai_company.core.types import NotBlankStr
 from ai_company.hr.archival_protocol import ArchivalResult
 from ai_company.hr.errors import MemoryArchivalError
 from ai_company.memory.consolidation.archival import ArchivalStore  # noqa: TC001
 from ai_company.memory.consolidation.models import ArchivalEntry
-from ai_company.memory.models import MemoryQuery
+from ai_company.memory.models import MemoryEntry, MemoryQuery
 from ai_company.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
 from ai_company.memory.org.protocol import OrgMemoryBackend  # noqa: TC001
 from ai_company.memory.protocol import MemoryBackend  # noqa: TC001
@@ -69,6 +73,7 @@ class FullSnapshotStrategy:
         memory_backend: MemoryBackend,
         archival_store: ArchivalStore,
         org_memory_backend: OrgMemoryBackend | None = None,
+        agent_seniority: SeniorityLevel | None = None,
     ) -> ArchivalResult:
         """Archive all memories for a departing agent.
 
@@ -77,6 +82,8 @@ class FullSnapshotStrategy:
             memory_backend: Hot memory store.
             archival_store: Cold archival storage.
             org_memory_backend: Optional org memory for promotion.
+            agent_seniority: Seniority level of the departing agent.
+                Required for org memory promotion (skipped if None).
 
         Returns:
             Result of the archival operation.
@@ -89,7 +96,7 @@ class FullSnapshotStrategy:
                 agent_id,
                 MemoryQuery(limit=_MAX_MEMORIES_PER_ARCHIVAL),
             )
-        except Exception as exc:
+        except (OSError, ValueError, MemoryArchivalError) as exc:
             msg = f"Failed to retrieve memories for agent {agent_id!r}"
             logger.error(  # noqa: TRY400
                 HR_ARCHIVAL_ENTRY_FAILED,
@@ -101,12 +108,58 @@ class FullSnapshotStrategy:
             raise MemoryArchivalError(msg) from exc
 
         now = datetime.now(UTC)
+
+        archived_count, deleted_ids = await self._archive_entries(
+            entries, archival_store, agent_id, now
+        )
+
+        promoted_count = await self._promote_to_org(
+            entries, org_memory_backend, agent_id, agent_seniority
+        )
+
+        hot_store_cleaned = await self._clean_hot_store(
+            memory_backend, agent_id, deleted_ids
+        )
+
+        result = ArchivalResult(
+            agent_id=agent_id,
+            total_archived=archived_count,
+            promoted_to_org=promoted_count,
+            hot_store_cleaned=hot_store_cleaned,
+            strategy_name=NotBlankStr(self.name),
+        )
+
+        logger.info(
+            HR_FIRING_MEMORY_ARCHIVED,
+            agent_id=agent_id,
+            archived=archived_count,
+            promoted=promoted_count,
+            cleaned=hot_store_cleaned,
+        )
+        return result
+
+    async def _archive_entries(
+        self,
+        entries: tuple[MemoryEntry, ...],
+        archival_store: ArchivalStore,
+        agent_id: NotBlankStr,
+        now: datetime,
+    ) -> tuple[int, list[str]]:
+        """Archive memory entries to cold storage.
+
+        Args:
+            entries: Memory entries to archive.
+            archival_store: Cold archival storage.
+            agent_id: The departing agent's ID.
+            now: Timestamp for archival records.
+
+        Returns:
+            Tuple of (archived count, list of deleted IDs).
+        """
         archived_count = 0
-        promoted_count = 0
         deleted_ids: list[str] = []
 
         for entry in entries:
-            # Archive to cold storage.
             try:
                 archival_entry = ArchivalEntry(
                     original_id=entry.id,
@@ -130,30 +183,74 @@ class FullSnapshotStrategy:
                 )
                 continue
 
-            # Promote to org memory if eligible.
-            if (
-                org_memory_backend is not None
-                and entry.category in _PROMOTABLE_CATEGORIES
-            ):
-                try:
-                    org_category = _CATEGORY_MAP[entry.category]
-                    author = OrgFactAuthor(agent_id=agent_id)
-                    write_req = OrgFactWriteRequest(
-                        content=NotBlankStr(entry.content),
-                        category=org_category,
-                    )
-                    await org_memory_backend.write(write_req, author=author)
-                    promoted_count += 1
-                except (OSError, ValueError, KeyError) as exc:
-                    logger.warning(
-                        HR_ARCHIVAL_ENTRY_FAILED,
-                        agent_id=agent_id,
-                        memory_id=str(entry.id),
-                        phase="promote",
-                        error=str(exc),
-                    )
+        return archived_count, deleted_ids
 
-        # Clean hot store.
+    async def _promote_to_org(
+        self,
+        entries: tuple[MemoryEntry, ...],
+        org_memory_backend: OrgMemoryBackend | None,
+        agent_id: NotBlankStr,
+        agent_seniority: SeniorityLevel | None,
+    ) -> int:
+        """Promote eligible memories to org memory.
+
+        Skipped entirely if no org backend or seniority is provided.
+
+        Args:
+            entries: Memory entries to consider for promotion.
+            org_memory_backend: Org memory backend.
+            agent_id: The departing agent's ID.
+            agent_seniority: Agent seniority for authorship.
+
+        Returns:
+            Number of entries promoted.
+        """
+        if org_memory_backend is None or agent_seniority is None:
+            return 0
+
+        promoted_count = 0
+        for entry in entries:
+            if entry.category not in _PROMOTABLE_CATEGORIES:
+                continue
+            try:
+                org_category = _CATEGORY_MAP[entry.category]
+                author = OrgFactAuthor(
+                    agent_id=agent_id,
+                    seniority=agent_seniority,
+                )
+                write_req = OrgFactWriteRequest(
+                    content=NotBlankStr(entry.content),
+                    category=org_category,
+                )
+                await org_memory_backend.write(write_req, author=author)
+                promoted_count += 1
+            except (OSError, ValueError, KeyError) as exc:
+                logger.warning(
+                    HR_ARCHIVAL_ENTRY_FAILED,
+                    agent_id=agent_id,
+                    memory_id=str(entry.id),
+                    phase="promote",
+                    error=str(exc),
+                )
+
+        return promoted_count
+
+    async def _clean_hot_store(
+        self,
+        memory_backend: MemoryBackend,
+        agent_id: NotBlankStr,
+        deleted_ids: list[str],
+    ) -> bool:
+        """Delete archived entries from the hot store.
+
+        Args:
+            memory_backend: Hot memory store.
+            agent_id: The departing agent's ID.
+            deleted_ids: IDs of entries to delete.
+
+        Returns:
+            Whether all deletions succeeded.
+        """
         hot_store_cleaned = True
         for memory_id in deleted_ids:
             try:
@@ -167,20 +264,4 @@ class FullSnapshotStrategy:
                     phase="delete",
                     error=str(exc),
                 )
-
-        result = ArchivalResult(
-            agent_id=agent_id,
-            total_archived=archived_count,
-            promoted_to_org=promoted_count,
-            hot_store_cleaned=hot_store_cleaned,
-            strategy_name=NotBlankStr(self.name),
-        )
-
-        logger.info(
-            HR_FIRING_MEMORY_ARCHIVED,
-            agent_id=agent_id,
-            archived=archived_count,
-            promoted=promoted_count,
-            cleaned=hot_store_cleaned,
-        )
-        return result
+        return hot_store_cleaned

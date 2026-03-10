@@ -38,5 +38,8 @@ class TaskReassignmentStrategy(Protocol):
 
         Returns:
             Tasks transitioned to INTERRUPTED (cleared assigned_to).
+
+        Raises:
+            TaskReassignmentError: If task transition fails.
         """
         ...

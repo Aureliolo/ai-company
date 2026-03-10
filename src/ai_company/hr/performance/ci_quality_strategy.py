@@ -4,6 +4,7 @@ Scores task quality based on acceptance criteria met ratio,
 task success, and cost efficiency. Pure computation, no I/O.
 """
 
+import math
 from typing import TYPE_CHECKING
 
 from ai_company.core.types import NotBlankStr
@@ -31,11 +32,23 @@ class CISignalQualityStrategy:
     Scoring breakdown:
         - Acceptance criteria met ratio: 70% weight.
         - Task success: 20% weight (10.0 if success, 0.0 if failure).
-        - Cost efficiency vs budget: 10% weight (capped at 10.0).
+        - Cost efficiency vs budget: 10% weight (log-scaled, configurable).
 
     When no acceptance criteria are provided, the criteria component
     scores 10.0 (all criteria trivially met) with lower confidence.
+
+    Args:
+        cost_budget: Reference budget for cost efficiency scoring.
+            Tasks at or below this cost get full marks; tasks above
+            are penalized on a log scale. Defaults to 100.0 USD.
     """
+
+    def __init__(
+        self,
+        *,
+        cost_budget: float = 100.0,
+    ) -> None:
+        self._cost_budget = max(cost_budget, 0.01)
 
     @property
     def name(self) -> str:
@@ -75,10 +88,15 @@ class CISignalQualityStrategy:
         # Task success bonus.
         success_score = _MAX_SCORE if task_result.is_success else 0.0
 
-        # Cost efficiency: lower cost = higher score.
-        # We use a simple inverse: score = max(0, 10 - cost_usd).
-        # Capped at 10.0 for zero cost, floors at 0.0.
-        cost_score = max(0.0, min(_MAX_SCORE, _MAX_SCORE - task_result.cost_usd))
+        # Cost efficiency: log-scaled relative to budget.
+        # Tasks at or below budget get full marks; above budget the
+        # score decays logarithmically so high-cost tasks still
+        # differentiate instead of all collapsing to 0.
+        ratio = task_result.cost_usd / self._cost_budget
+        if ratio <= 1.0:
+            cost_score = _MAX_SCORE
+        else:
+            cost_score = max(0.0, _MAX_SCORE * (1.0 - math.log10(ratio)))
 
         # Weighted total.
         total = (

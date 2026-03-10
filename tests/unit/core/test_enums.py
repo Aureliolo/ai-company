@@ -119,6 +119,7 @@ class TestEnumStringValues:
         assert AgentStatus.ACTIVE.value == "active"
         assert AgentStatus.ON_LEAVE.value == "on_leave"
         assert AgentStatus.TERMINATED.value == "terminated"
+        assert AgentStatus.ONBOARDING.value == "onboarding"
 
     def test_cost_tier_values(self) -> None:
         assert CostTier.LOW.value == "low"

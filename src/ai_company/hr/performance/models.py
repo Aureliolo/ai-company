@@ -5,6 +5,7 @@ quality/collaboration scoring results, trend detection, and
 rolling-window aggregates.
 """
 
+from typing import Self
 from uuid import uuid4
 
 from pydantic import (
@@ -12,6 +13,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    model_validator,
 )
 
 from ai_company.core.enums import Complexity, TaskType  # noqa: TC001
@@ -247,6 +249,18 @@ class WindowMetrics(BaseModel):
         le=10.0,
         description="Collaboration score",
     )
+
+    @model_validator(mode="after")
+    def _validate_task_counts(self) -> Self:
+        """Ensure tasks_completed + tasks_failed == data_point_count."""
+        if self.tasks_completed + self.tasks_failed != self.data_point_count:
+            msg = (
+                f"tasks_completed ({self.tasks_completed}) + tasks_failed "
+                f"({self.tasks_failed}) must equal data_point_count "
+                f"({self.data_point_count})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class AgentPerformanceSnapshot(BaseModel):

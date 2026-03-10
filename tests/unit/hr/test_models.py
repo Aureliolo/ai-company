@@ -185,6 +185,22 @@ class TestFiringRequest:
         req = make_firing_request(reason=reason)
         assert req.reason == reason
 
+    def test_completed_at_before_created_at_raises(self) -> None:
+        """completed_at before created_at is rejected."""
+        now = datetime.now(UTC)
+        before = now - timedelta(hours=1)
+        from ai_company.hr.models import FiringRequest
+
+        with pytest.raises(ValidationError, match="completed_at"):
+            FiringRequest(
+                agent_id="agent-001",
+                agent_name="test-agent",
+                reason=FiringReason.MANUAL,
+                requested_by="cto",
+                created_at=now,
+                completed_at=before,
+            )
+
 
 # ── OnboardingStepRecord ───────────────────────────────────────
 
@@ -215,6 +231,25 @@ class TestOnboardingStepRecord:
         rec = OnboardingStepRecord(step=OnboardingStep.TEAM_INTRODUCTIONS)
         with pytest.raises(ValidationError):
             rec.completed = True  # type: ignore[misc]
+
+    def test_completed_true_without_completed_at_raises(self) -> None:
+        """completed=True with completed_at=None is rejected."""
+        with pytest.raises(ValidationError, match="completed_at"):
+            OnboardingStepRecord(
+                step=OnboardingStep.COMPANY_CONTEXT,
+                completed=True,
+                completed_at=None,
+            )
+
+    def test_completed_false_with_completed_at_raises(self) -> None:
+        """completed=False with a non-None completed_at is rejected."""
+        now = datetime.now(UTC)
+        with pytest.raises(ValidationError, match="completed_at"):
+            OnboardingStepRecord(
+                step=OnboardingStep.COMPANY_CONTEXT,
+                completed=False,
+                completed_at=now,
+            )
 
 
 # ── OnboardingChecklist ────────────────────────────────────────

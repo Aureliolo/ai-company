@@ -7,6 +7,7 @@ from ai_company.core.enums import AgentStatus
 from ai_company.hr.enums import HiringRequestStatus
 from ai_company.hr.errors import (
     HiringApprovalRequiredError,
+    HiringError,
     HiringRejectedError,
     InvalidCandidateError,
 )
@@ -63,6 +64,20 @@ class TestHiringServiceCreateRequest:
             budget_limit_monthly=100.0,
         )
         assert req.budget_limit_monthly == 100.0
+
+    async def test_create_request_invalid_seniority_raises(
+        self,
+        hiring_service: HiringService,
+    ) -> None:
+        """Invalid seniority level string raises HiringError."""
+        with pytest.raises(HiringError, match="Invalid seniority level"):
+            await hiring_service.create_request(
+                requested_by="cto",
+                department="engineering",
+                role="developer",
+                level="invalid_level",
+                reason="Invalid level test",
+            )
 
 
 @pytest.mark.unit
@@ -183,7 +198,8 @@ class TestHiringServiceInstantiateAgent:
         candidate_id = str(updated.candidates[0].id)
         approved = await hiring_service.submit_for_approval(updated, candidate_id)
         identity = await hiring_service.instantiate_agent(approved)
-        assert identity.status == AgentStatus.ONBOARDING
+        # Without onboarding_service, agent starts as ACTIVE.
+        assert identity.status == AgentStatus.ACTIVE
         assert identity.role == "developer"
         assert identity.department == "engineering"
         # Agent should be in registry.
@@ -200,6 +216,8 @@ class TestHiringServiceInstantiateAgent:
             selected_candidate_id="cand-001",
             candidates=(card,),
         )
+        # Register request in service's internal store so _get_request finds it.
+        hiring_service._requests[str(req.id)] = req
         with pytest.raises(HiringRejectedError, match="rejected"):
             await hiring_service.instantiate_agent(req)
 
@@ -213,7 +231,12 @@ class TestHiringServiceInstantiateAgent:
             selected_candidate_id="cand-001",
             candidates=(card,),
         )
-        with pytest.raises(HiringApprovalRequiredError, match="requires approval"):
+        # Register request in service's internal store so _get_request finds it.
+        hiring_service._requests[str(req.id)] = req
+        with pytest.raises(
+            HiringApprovalRequiredError,
+            match="requires approval",
+        ):
             await hiring_service.instantiate_agent(req)
 
     async def test_approved_without_candidate_rejected_by_model(
@@ -229,6 +252,26 @@ class TestHiringServiceInstantiateAgent:
                 status=HiringRequestStatus.APPROVED,
                 selected_candidate_id=None,
             )
+
+    async def test_instantiate_already_instantiated_raises(
+        self,
+        hiring_service: HiringService,
+    ) -> None:
+        """Re-instantiation of an already INSTANTIATED request raises HiringError."""
+        req = await hiring_service.create_request(
+            requested_by="cto",
+            department="engineering",
+            role="developer",
+            level="mid",
+            reason="Re-instantiation guard test",
+        )
+        updated = await hiring_service.generate_candidate(req)
+        candidate_id = str(updated.candidates[0].id)
+        approved = await hiring_service.submit_for_approval(updated, candidate_id)
+        await hiring_service.instantiate_agent(approved)
+        # Fetch the now-INSTANTIATED request and try again.
+        with pytest.raises(HiringError, match="already instantiated"):
+            await hiring_service.instantiate_agent(approved)
 
     async def test_instantiate_triggers_onboarding(
         self,

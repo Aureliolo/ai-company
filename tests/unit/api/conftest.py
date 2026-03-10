@@ -134,6 +134,8 @@ class FakeLifecycleEventRepository:
             result = [e for e in result if e.agent_id == agent_id]
         if event_type is not None:
             result = [e for e in result if e.event_type == event_type]
+        if since is not None:
+            result = [e for e in result if e.timestamp >= since]
         return tuple(result)
 
 
@@ -156,6 +158,10 @@ class FakeTaskMetricRepository:
         result = self._records
         if agent_id is not None:
             result = [r for r in result if r.agent_id == agent_id]
+        if since is not None:
+            result = [r for r in result if r.completed_at >= since]
+        if until is not None:
+            result = [r for r in result if r.completed_at <= until]
         return tuple(result)
 
 
@@ -177,6 +183,8 @@ class FakeCollaborationMetricRepository:
         result = self._records
         if agent_id is not None:
             result = [r for r in result if r.agent_id == agent_id]
+        if since is not None:
+            result = [r for r in result if r.recorded_at >= since]
         return tuple(result)
 
 

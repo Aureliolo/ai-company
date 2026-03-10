@@ -87,12 +87,7 @@ INSERT INTO lifecycle_events (
             data = dict(row)
             data["metadata"] = json.loads(data["metadata"])
             return AgentLifecycleEvent.model_validate(data)
-        except (
-            json.JSONDecodeError,
-            ValidationError,
-            KeyError,
-            TypeError,
-        ) as exc:
+        except (json.JSONDecodeError, ValidationError, KeyError, TypeError) as exc:
             event_id = row["id"] if row else "unknown"
             msg = f"Failed to deserialize lifecycle event {event_id!r}"
             logger.exception(
@@ -228,6 +223,7 @@ SELECT id, agent_id, task_id, task_type, completed_at,
 FROM task_metrics"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY completed_at DESC"
 
         try:
             cursor = await self._db.execute(sql, params)
@@ -327,6 +323,7 @@ SELECT id, agent_id, recorded_at, delegation_success,
 FROM collaboration_metrics"""
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY recorded_at DESC"
 
         try:
             cursor = await self._db.execute(sql, params)
