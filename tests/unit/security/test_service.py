@@ -844,7 +844,7 @@ class TestSecOpsScanOutputPolicy:
         assert result.findings == ()
 
         # But the audit entry (recorded before policy) has the originals.
-        audit_log = service._audit_log  # type: ignore[attr-defined]
+        audit_log = service._audit_log
         assert audit_log.count() == 1
         entry = audit_log.entries[0]
         assert "Bearer token" in entry.reason
