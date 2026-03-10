@@ -569,3 +569,240 @@ class TestSecurityContextConstruction:
         assert pre_ctx.action_type == scan_ctx.action_type
         assert pre_ctx.agent_id == scan_ctx.agent_id
         assert pre_ctx.task_id == scan_ctx.task_id
+
+
+# ── Helper tools for gap tests ───────────────────────────────────
+
+
+class _SecurityFailingTool(BaseTool):
+    """Tool that raises RuntimeError from execute."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="failing_tool",
+            description="Tool that always fails",
+            category=ToolCategory.FILE_SYSTEM,
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        msg = "intentional failure"
+        raise RuntimeError(msg)
+
+
+class _SecuritySoftErrorTool(BaseTool):
+    """Tool that returns is_error=True with sensitive content."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="soft_error_tool",
+            description="Tool returning soft error",
+            category=ToolCategory.FILE_SYSTEM,
+        )
+
+    async def execute(
+        self,
+        *,
+        arguments: dict[str, Any],
+    ) -> ToolExecutionResult:
+        return ToolExecutionResult(
+            is_error=True,
+            content="error: API_KEY=AKIA1234567890EXAMPLE",
+        )
+
+
+# ── Gap 1: Non-recoverable errors from scan propagate ────────────
+
+
+@pytest.mark.unit
+class TestOutputScanNonRecoverableErrors:
+    """MemoryError/RecursionError from scan_output propagate."""
+
+    @pytest.mark.parametrize(
+        ("exc", "exc_cls"),
+        [
+            (MemoryError("oom"), MemoryError),
+            (RecursionError("max depth"), RecursionError),
+        ],
+    )
+    async def test_non_recoverable_scan_errors_propagate(
+        self,
+        security_registry: ToolRegistry,
+        tool_call: ToolCall,
+        exc: BaseException,
+        exc_cls: type[BaseException],
+    ) -> None:
+        """Non-recoverable errors from scan_output propagate."""
+        interceptor = _make_interceptor(
+            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
+        )
+        interceptor.scan_output = AsyncMock(side_effect=exc)
+        invoker = ToolInvoker(
+            security_registry,
+            security_interceptor=interceptor,
+        )
+        with pytest.raises(exc_cls):
+            await invoker.invoke(tool_call)
+
+
+# ── Gap 2: Tool execution error skips output scan ────────────────
+
+
+@pytest.mark.unit
+class TestOutputScanSkippedOnToolError:
+    """When tool.execute() raises, scan_output is not called."""
+
+    async def test_tool_execution_error_skips_output_scan(self) -> None:
+        failing_tool = _SecurityFailingTool()
+        registry = ToolRegistry([failing_tool])
+        interceptor = _make_interceptor(
+            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
+        )
+        invoker = ToolInvoker(
+            registry,
+            security_interceptor=interceptor,
+        )
+        call = ToolCall(id="call_fail", name="failing_tool", arguments={})
+
+        result = await invoker.invoke(call)
+
+        assert result.is_error is True
+        interceptor.scan_output.assert_not_awaited()
+
+
+# ── Gap 3: scan_output receives tool result content ──────────────
+
+
+@pytest.mark.unit
+class TestOutputScanContentPassing:
+    """Verify scan_output receives the tool's actual output string."""
+
+    async def test_scan_output_receives_tool_result_content(
+        self,
+        security_registry: ToolRegistry,
+        tool_call: ToolCall,
+    ) -> None:
+        interceptor = _make_interceptor(
+            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
+        )
+        invoker = ToolInvoker(
+            security_registry,
+            security_interceptor=interceptor,
+            agent_id="agent-1",
+        )
+        await invoker.invoke(tool_call)
+
+        # Second positional arg to scan_output is the output string.
+        scan_call_args = interceptor.scan_output.call_args[0]
+        assert scan_call_args[1] == "executed: ls"
+
+
+# ── Gap 4: invoke_all output scanning ────────────────────────────
+
+
+@pytest.mark.unit
+class TestInvokeAllOutputScanning:
+    """Output scanning in invoke_all with multiple tool calls."""
+
+    async def test_invoke_all_scans_each_tool_output(
+        self,
+        security_registry: ToolRegistry,
+    ) -> None:
+        """scan_output is called once per tool call."""
+        interceptor = _make_interceptor(
+            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
+        )
+        invoker = ToolInvoker(
+            security_registry,
+            security_interceptor=interceptor,
+        )
+        calls = [
+            ToolCall(id="call_a", name="secure_tool", arguments={"cmd": "a"}),
+            ToolCall(id="call_b", name="secure_tool", arguments={"cmd": "b"}),
+        ]
+
+        results = await invoker.invoke_all(calls)
+
+        assert len(results) == 2
+        assert interceptor.scan_output.await_count == 2
+
+    async def test_invoke_all_with_redaction(
+        self,
+        security_registry: ToolRegistry,
+    ) -> None:
+        """Redaction applies to each tool result in invoke_all."""
+        interceptor = _make_interceptor(
+            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
+            scan_result=OutputScanResult(
+                has_sensitive_data=True,
+                findings=("secret",),
+                redacted_content="[REDACTED]",
+            ),
+        )
+        invoker = ToolInvoker(
+            security_registry,
+            security_interceptor=interceptor,
+        )
+        calls = [
+            ToolCall(id="call_1", name="secure_tool", arguments={"cmd": "x"}),
+            ToolCall(id="call_2", name="secure_tool", arguments={"cmd": "y"}),
+        ]
+
+        results = await invoker.invoke_all(calls)
+
+        assert all(r.content == "[REDACTED]" for r in results)
+        assert all(r.is_error is False for r in results)
+
+
+# ── Gap 5: Soft error content is scanned ─────────────────────────
+
+
+@pytest.mark.unit
+class TestOutputScanOnSoftError:
+    """Tool returning is_error=True still gets output scanned."""
+
+    async def test_soft_error_content_is_scanned(self) -> None:
+        """When tool returns is_error=True, scan_output is still called."""
+        soft_tool = _SecuritySoftErrorTool()
+        registry = ToolRegistry([soft_tool])
+        scan_result = OutputScanResult(
+            has_sensitive_data=True,
+            findings=("API key",),
+            redacted_content="error: [REDACTED]",
+        )
+        interceptor = _make_interceptor(
+            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
+            scan_result=scan_result,
+        )
+        invoker = ToolInvoker(
+            registry,
+            security_interceptor=interceptor,
+        )
+        call = ToolCall(id="call_soft", name="soft_error_tool", arguments={})
+
+        result = await invoker.invoke(call)
+
+        interceptor.scan_output.assert_awaited_once()
+        assert result.is_error is True
+        assert result.content == "error: [REDACTED]"
+
+    async def test_soft_error_scan_receives_error_content(self) -> None:
+        """Verify scan_output receives the error content string."""
+        soft_tool = _SecuritySoftErrorTool()
+        registry = ToolRegistry([soft_tool])
+        interceptor = _make_interceptor(
+            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
+        )
+        invoker = ToolInvoker(
+            registry,
+            security_interceptor=interceptor,
+        )
+        call = ToolCall(id="call_soft2", name="soft_error_tool", arguments={})
+
+        await invoker.invoke(call)
+
+        scan_args = interceptor.scan_output.call_args[0]
+        assert scan_args[1] == "error: API_KEY=AKIA1234567890EXAMPLE"
