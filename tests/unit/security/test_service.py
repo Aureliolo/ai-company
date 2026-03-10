@@ -127,8 +127,19 @@ class TestSecOpsDisabled:
 
         service._test_rule_engine.evaluate.assert_not_called()  # type: ignore[attr-defined]
 
-    async def test_disabled_does_not_record_audit(self) -> None:
+    async def test_disabled_records_audit_when_audit_enabled(self) -> None:
         config = SecurityConfig(enabled=False)
+        service = _make_service(config=config)
+        ctx = _make_context()
+
+        await service.evaluate_pre_tool(ctx)
+
+        # Even when security is disabled, audit entries are recorded
+        # for auditability (when audit_enabled=True, the default).
+        assert service._test_audit_log.count() == 1  # type: ignore[attr-defined]
+
+    async def test_disabled_no_audit_when_audit_disabled(self) -> None:
+        config = SecurityConfig(enabled=False, audit_enabled=False)
         service = _make_service(config=config)
         ctx = _make_context()
 
@@ -386,3 +397,49 @@ class TestSecOpsScanOutputDisabled:
         await service.scan_output(ctx, "secret data")
 
         service._test_output_scanner.scan.assert_not_called()  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+class TestSecOpsFailClosed:
+    """When the rule engine raises, service returns DENY (fail-closed)."""
+
+    async def test_rule_engine_exception_returns_deny(self) -> None:
+        service = _make_service()
+        service._test_rule_engine.evaluate.side_effect = RuntimeError("boom")  # type: ignore[attr-defined]
+        ctx = _make_context()
+
+        verdict = await service.evaluate_pre_tool(ctx)
+
+        assert verdict.verdict == SecurityVerdictType.DENY
+        assert verdict.risk_level == ApprovalRiskLevel.CRITICAL
+        assert "fail-closed" in verdict.reason.lower()
+
+    async def test_rule_engine_exception_still_records_audit(self) -> None:
+        service = _make_service()
+        service._test_rule_engine.evaluate.side_effect = RuntimeError("boom")  # type: ignore[attr-defined]
+        ctx = _make_context()
+
+        await service.evaluate_pre_tool(ctx)
+
+        assert service._test_audit_log.count() == 1  # type: ignore[attr-defined]
+        entry = service._test_audit_log.entries[0]  # type: ignore[attr-defined]
+        assert entry.verdict == SecurityVerdictType.DENY
+
+
+@pytest.mark.unit
+class TestSecOpsEscalateStoreFailure:
+    """When the approval store raises, escalation converts to DENY."""
+
+    async def test_store_failure_converts_to_deny(self) -> None:
+        store = AsyncMock()
+        store.add = AsyncMock(side_effect=RuntimeError("store down"))
+        service = _make_service(
+            engine_verdict=_make_escalate_verdict(),
+            approval_store=store,
+        )
+        ctx = _make_context()
+
+        verdict = await service.evaluate_pre_tool(ctx)
+
+        assert verdict.verdict == SecurityVerdictType.DENY
+        assert "store error" in verdict.reason.lower()

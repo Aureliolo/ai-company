@@ -176,8 +176,8 @@ class ToolInvoker:
 
     async def _check_security(
         self,
-        tool: BaseTool,
         tool_call: ToolCall,
+        context: SecurityContext | None,
     ) -> ToolResult | None:
         """Run the security interceptor (if any) before execution.
 
@@ -185,9 +185,8 @@ class ToolInvoker:
         if denied or escalated.  Exceptions from the interceptor are
         caught and converted to error results (fail-closed).
         """
-        if self._security_interceptor is None:
+        if self._security_interceptor is None or context is None:
             return None
-        context = self._build_security_context(tool, tool_call)
         try:
             verdict = await self._security_interceptor.evaluate_pre_tool(
                 context,
@@ -270,7 +269,11 @@ class ToolInvoker:
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
             )
-            return result
+            return ToolExecutionResult(
+                content="Output scan failed (fail-closed). Tool output withheld.",
+                is_error=True,
+                metadata={"output_scan_failed": True},
+            )
 
         if scan_result.has_sensitive_data and scan_result.redacted_content is not None:
             logger.warning(
@@ -329,16 +332,19 @@ class ToolInvoker:
         if param_error is not None:
             return param_error
 
-        security_error = await self._check_security(tool_or_error, tool_call)
-        if security_error is not None:
-            return security_error
-
-        # Build context once for output scanning (reuse same context).
+        # Build security context once, reuse for both pre-check and output scan.
         security_context = (
             self._build_security_context(tool_or_error, tool_call)
             if self._security_interceptor is not None
             else None
         )
+
+        security_error = await self._check_security(
+            tool_call,
+            security_context,
+        )
+        if security_error is not None:
+            return security_error
 
         exec_result = await self._execute_tool(tool_or_error, tool_call)
         if isinstance(exec_result, ToolResult):

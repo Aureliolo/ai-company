@@ -50,6 +50,7 @@ from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_RECOVERY_FAILED,
 )
+from ai_company.observability.events.security import SECURITY_DISABLED
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import ChatMessage
 from ai_company.security.audit import AuditLog
@@ -207,7 +208,7 @@ class AgentEngine:
                 await self._budget_enforcer.check_can_execute(agent_id)
                 identity = await self._budget_enforcer.resolve_model(identity)
 
-            tool_invoker = self._make_tool_invoker(identity)
+            tool_invoker = self._make_tool_invoker(identity, task_id=task_id)
             ctx, system_prompt = self._prepare_context(
                 identity=identity,
                 task=task,
@@ -668,7 +669,13 @@ class AgentEngine:
         self,
     ) -> SecurityInterceptionStrategy | None:
         """Build the SecOps security interceptor if configured."""
-        if self._security_config is None or not self._security_config.enabled:
+        if self._security_config is None:
+            logger.warning(
+                SECURITY_DISABLED,
+                note="No SecurityConfig provided — all security checks skipped",
+            )
+            return None
+        if not self._security_config.enabled:
             return None
 
         cfg = self._security_config
@@ -704,6 +711,7 @@ class AgentEngine:
     def _make_tool_invoker(
         self,
         identity: AgentIdentity,
+        task_id: str | None = None,
     ) -> ToolInvoker | None:
         """Create a ToolInvoker with permission checking and security.
 
@@ -718,6 +726,7 @@ class AgentEngine:
             permission_checker=checker,
             security_interceptor=interceptor,
             agent_id=str(identity.id),
+            task_id=task_id,
         )
 
     def _log_completion(

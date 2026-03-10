@@ -18,18 +18,18 @@ logger = get_logger(__name__)
 
 _RULE_NAME: Final[str] = "data_leak_detector"
 
-# Sensitive file path patterns (case-insensitive).
+# Sensitive file path patterns.
 _SENSITIVE_PATHS: Final[tuple[tuple[str, re.Pattern[str]], ...]] = (
     ("environment file", re.compile(r"\.env(?:\.[a-z]+)?$", re.IGNORECASE)),
-    ("RSA key file", re.compile(r"id_rsa(?:\.pub)?$")),
-    ("Ed25519 key file", re.compile(r"id_ed25519(?:\.pub)?$")),
-    ("ECDSA key file", re.compile(r"id_ecdsa(?:\.pub)?$")),
-    ("DSA key file", re.compile(r"id_dsa(?:\.pub)?$")),
+    ("RSA private key file", re.compile(r"id_rsa$")),
+    ("Ed25519 private key file", re.compile(r"id_ed25519$")),
+    ("ECDSA private key file", re.compile(r"id_ecdsa$")),
+    ("DSA private key file", re.compile(r"id_dsa$")),
     ("PEM certificate", re.compile(r"\.pem$", re.IGNORECASE)),
     ("PKCS#12 file", re.compile(r"\.p12$", re.IGNORECASE)),
     ("PFX file", re.compile(r"\.pfx$", re.IGNORECASE)),
     ("key file", re.compile(r"\.key$", re.IGNORECASE)),
-    ("AWS credentials", re.compile(r"\.aws[/\\]credentials$")),
+    ("cloud credentials file", re.compile(r"\.aws[/\\]credentials$")),
     ("SSH config", re.compile(r"\.ssh[/\\]config$")),
     ("netrc file", re.compile(r"\.netrc$")),
     ("pgpass file", re.compile(r"\.pgpass$")),

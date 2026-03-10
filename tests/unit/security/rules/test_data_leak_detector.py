@@ -37,7 +37,6 @@ class TestDataLeakDetectorSensitivePaths:
             (".env.local", "/app/.env.local"),
             (".env.production", "/app/.env.production"),
             ("id_rsa", "/home/user/.ssh/id_rsa"),
-            ("id_rsa.pub", "/home/user/.ssh/id_rsa.pub"),
             ("id_ed25519", "/home/user/.ssh/id_ed25519"),
             ("id_ecdsa", "/home/user/.ssh/id_ecdsa"),
             ("id_dsa", "/home/user/.ssh/id_dsa"),

@@ -11,7 +11,10 @@ from typing import Final
 
 from ai_company.core.enums import ActionType
 from ai_company.observability import get_logger
-from ai_company.observability.events.security import SECURITY_CONFIG_LOADED
+from ai_company.observability.events.security import (
+    SECURITY_ACTION_TYPE_INVALID,
+    SECURITY_CONFIG_LOADED,
+)
 
 logger = get_logger(__name__)
 
@@ -45,6 +48,20 @@ _CATEGORY_MAP: Final[MappingProxyType[str, frozenset[str]]] = MappingProxyType(
     _build_category_map()
 )
 
+# Verify that every category extracted from ActionType has a matching
+# ActionTypeCategory member, and vice versa.  This module-level check
+# prevents silent drift between the enum and the category map.
+_extracted_categories = frozenset(_CATEGORY_MAP.keys())
+_enum_categories = frozenset(member.value for member in ActionTypeCategory)
+_missing_in_enum = _extracted_categories - _enum_categories
+_missing_in_map = _enum_categories - _extracted_categories
+assert not _missing_in_enum, (  # noqa: S101
+    f"ActionType categories missing from ActionTypeCategory: {_missing_in_enum}"
+)
+assert not _missing_in_map, (  # noqa: S101
+    f"ActionTypeCategory members missing from ActionType: {_missing_in_map}"
+)
+
 
 class ActionTypeRegistry:
     """Validates built-in and custom action types.
@@ -69,9 +86,12 @@ class ActionTypeRegistry:
             ValueError: If any custom type lacks a ``category:action`` format.
         """
         for ct in custom_types:
-            if ":" not in ct or ct.startswith(":") or ct.endswith(":"):
-                msg = f"Custom action type {ct!r} must use 'category:action' format"
-                logger.warning(SECURITY_CONFIG_LOADED, error=msg)
+            if ct.count(":") != 1 or ct.startswith(":") or ct.endswith(":"):
+                msg = (
+                    f"Custom action type {ct!r} must use "
+                    "'category:action' format (exactly one ':')"
+                )
+                logger.warning(SECURITY_ACTION_TYPE_INVALID, error=msg)
                 raise ValueError(msg)
         self._custom_types = custom_types
         self._all_types = _BUILTIN_TYPES | custom_types
@@ -96,7 +116,7 @@ class ActionTypeRegistry:
         """
         if not self.is_registered(action_type):
             msg = f"Unknown action type: {action_type!r}"
-            logger.warning(SECURITY_CONFIG_LOADED, error=msg)
+            logger.warning(SECURITY_ACTION_TYPE_INVALID, error=msg)
             raise ValueError(msg)
 
     def expand_category(self, category: str) -> frozenset[str]:
@@ -129,10 +149,20 @@ class ActionTypeRegistry:
         Raises:
             ValueError: If the string does not contain ``:``.
         """
-        if ":" not in action_type:
-            msg = f"Action type {action_type!r} must use 'category:action' format"
+        if action_type.count(":") != 1:
+            msg = (
+                f"Action type {action_type!r} must use 'category:action' "
+                "format (exactly one ':')"
+            )
             raise ValueError(msg)
-        return action_type.split(":", maxsplit=1)[0]
+        category, action = action_type.split(":")
+        if not category or not action:
+            msg = (
+                f"Action type {action_type!r} must have non-empty "
+                "category and action parts"
+            )
+            raise ValueError(msg)
+        return category
 
     def all_types(self) -> frozenset[str]:
         """Return all registered action types (built-in + custom)."""

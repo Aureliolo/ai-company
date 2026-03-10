@@ -151,6 +151,30 @@ class TestSecurityVerdict:
                 approval_id="   ",
             )
 
+    def test_approval_id_on_deny_rejected(self) -> None:
+        """approval_id is only allowed on ESCALATE verdicts."""
+        with pytest.raises(ValidationError, match="approval_id"):
+            SecurityVerdict(
+                verdict=SecurityVerdictType.DENY,
+                reason="Blocked",
+                risk_level=ApprovalRiskLevel.HIGH,
+                evaluated_at=_NOW,
+                evaluation_duration_ms=0.0,
+                approval_id="apr-invalid",
+            )
+
+    def test_approval_id_on_allow_rejected(self) -> None:
+        """approval_id is only allowed on ESCALATE verdicts."""
+        with pytest.raises(ValidationError, match="approval_id"):
+            SecurityVerdict(
+                verdict=SecurityVerdictType.ALLOW,
+                reason="Safe",
+                risk_level=ApprovalRiskLevel.LOW,
+                evaluated_at=_NOW,
+                evaluation_duration_ms=0.0,
+                approval_id="apr-also-invalid",
+            )
+
     def test_json_roundtrip(self) -> None:
         verdict = SecurityVerdict(
             verdict=SecurityVerdictType.ESCALATE,
@@ -245,6 +269,15 @@ class TestSecurityContext:
                 task_id="",
             )
 
+    def test_action_type_without_colon_rejected(self) -> None:
+        """action_type must use 'category:action' format."""
+        with pytest.raises(ValidationError, match="category:action"):
+            SecurityContext(
+                tool_name="some_tool",
+                tool_category=ToolCategory.FILE_SYSTEM,
+                action_type="nocolon",
+            )
+
     def test_json_roundtrip(self) -> None:
         ctx = SecurityContext(
             tool_name="db_query",
@@ -273,8 +306,8 @@ class TestAuditEntry:
             tool_name="git_push",
             tool_category=ToolCategory.VERSION_CONTROL,
             action_type="vcs:push",
-            arguments_hash="abc123",
-            verdict=SecurityVerdictType.ALLOW,
+            arguments_hash="a" * 64,
+            verdict="allow",
             risk_level=ApprovalRiskLevel.LOW,
             reason="Auto-approved",
             evaluation_duration_ms=5.0,
@@ -286,7 +319,7 @@ class TestAuditEntry:
         assert entry.tool_name == "git_push"
         assert entry.tool_category is ToolCategory.VERSION_CONTROL
         assert entry.action_type == "vcs:push"
-        assert entry.arguments_hash == "abc123"
+        assert entry.arguments_hash == "a" * 64
         assert entry.verdict == "allow"
         assert entry.risk_level is ApprovalRiskLevel.LOW
         assert entry.reason == "Auto-approved"
@@ -303,8 +336,8 @@ class TestAuditEntry:
             tool_name="deploy_prod",
             tool_category=ToolCategory.DEPLOYMENT,
             action_type="deploy:production",
-            arguments_hash="def456",
-            verdict=SecurityVerdictType.DENY,
+            arguments_hash="b" * 64,
+            verdict="deny",
             risk_level=ApprovalRiskLevel.CRITICAL,
             reason="Production deploy blocked",
             matched_rules=("hard-deny-prod",),
@@ -323,8 +356,8 @@ class TestAuditEntry:
             tool_name="read_file",
             tool_category=ToolCategory.FILE_SYSTEM,
             action_type="code:read",
-            arguments_hash="ghi789",
-            verdict=SecurityVerdictType.ALLOW,
+            arguments_hash="c" * 64,
+            verdict="allow",
             risk_level=ApprovalRiskLevel.LOW,
             reason="Read allowed",
             evaluation_duration_ms=0.1,
@@ -340,8 +373,8 @@ class TestAuditEntry:
                 tool_name="test",
                 tool_category=ToolCategory.OTHER,
                 action_type="test:run",
-                arguments_hash="hash",
-                verdict=SecurityVerdictType.ALLOW,
+                arguments_hash="d" * 64,
+                verdict="allow",
                 risk_level=ApprovalRiskLevel.LOW,
                 reason="ok",
                 evaluation_duration_ms=0.0,
@@ -355,8 +388,8 @@ class TestAuditEntry:
                 tool_name="",
                 tool_category=ToolCategory.OTHER,
                 action_type="test:run",
-                arguments_hash="hash",
-                verdict=SecurityVerdictType.ALLOW,
+                arguments_hash="d" * 64,
+                verdict="allow",
                 risk_level=ApprovalRiskLevel.LOW,
                 reason="ok",
                 evaluation_duration_ms=0.0,
@@ -370,8 +403,8 @@ class TestAuditEntry:
                 tool_name="test",
                 tool_category=ToolCategory.OTHER,
                 action_type="test:run",
-                arguments_hash="hash",
-                verdict=SecurityVerdictType.ALLOW,
+                arguments_hash="d" * 64,
+                verdict="allow",
                 risk_level=ApprovalRiskLevel.LOW,
                 reason="",
                 evaluation_duration_ms=0.0,
@@ -385,8 +418,8 @@ class TestAuditEntry:
                 tool_name="test",
                 tool_category=ToolCategory.OTHER,
                 action_type="test:run",
-                arguments_hash="hash",
-                verdict=SecurityVerdictType.ALLOW,
+                arguments_hash="d" * 64,
+                verdict="allow",
                 risk_level=ApprovalRiskLevel.LOW,
                 reason="ok",
                 evaluation_duration_ms=-0.1,
@@ -401,8 +434,8 @@ class TestAuditEntry:
             tool_name="write_file",
             tool_category=ToolCategory.FILE_SYSTEM,
             action_type="code:write",
-            arguments_hash="roundtrip_hash",
-            verdict=SecurityVerdictType.ESCALATE,
+            arguments_hash="e" * 64,
+            verdict="escalate",
             risk_level=ApprovalRiskLevel.MEDIUM,
             reason="Needs review",
             matched_rules=("rule-x",),
@@ -456,6 +489,22 @@ class TestOutputScanResult:
             OutputScanResult(
                 has_sensitive_data=True,
                 findings=("   ",),
+            )
+
+    def test_findings_rejected_when_not_sensitive(self) -> None:
+        """findings must be empty when has_sensitive_data is False."""
+        with pytest.raises(ValidationError, match="findings"):
+            OutputScanResult(
+                has_sensitive_data=False,
+                findings=("unexpected",),
+            )
+
+    def test_redacted_content_rejected_when_not_sensitive(self) -> None:
+        """redacted_content must be None when has_sensitive_data is False."""
+        with pytest.raises(ValidationError, match="redacted_content"):
+            OutputScanResult(
+                has_sensitive_data=False,
+                redacted_content="should not be set",
             )
 
     def test_json_roundtrip(self) -> None:

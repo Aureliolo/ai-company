@@ -6,7 +6,7 @@ import pytest
 
 from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
 from ai_company.security.audit import AuditLog
-from ai_company.security.models import AuditEntry, SecurityVerdictType
+from ai_company.security.models import AuditEntry, AuditVerdictStr
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -19,7 +19,7 @@ def _make_entry(  # noqa: PLR0913
     entry_id: str = "entry-1",
     agent_id: str | None = "agent-a",
     tool_name: str = "test-tool",
-    verdict: str = SecurityVerdictType.ALLOW,
+    verdict: AuditVerdictStr = "allow",
     risk_level: ApprovalRiskLevel = ApprovalRiskLevel.LOW,
     timestamp: datetime | None = None,
     action_type: str = "code:read",
@@ -31,7 +31,7 @@ def _make_entry(  # noqa: PLR0913
         tool_name=tool_name,
         tool_category=ToolCategory.FILE_SYSTEM,
         action_type=action_type,
-        arguments_hash="abc123",
+        arguments_hash="a" * 64,
         verdict=verdict,
         risk_level=risk_level,
         reason="Test entry",
@@ -163,7 +163,7 @@ class TestAuditLogQueryFilters:
                 entry_id="e1",
                 agent_id="agent-a",
                 tool_name="tool-x",
-                verdict=SecurityVerdictType.ALLOW,
+                verdict="allow",
                 risk_level=ApprovalRiskLevel.LOW,
                 timestamp=now - timedelta(hours=3),
             ),
@@ -173,7 +173,7 @@ class TestAuditLogQueryFilters:
                 entry_id="e2",
                 agent_id="agent-b",
                 tool_name="tool-y",
-                verdict=SecurityVerdictType.DENY,
+                verdict="deny",
                 risk_level=ApprovalRiskLevel.HIGH,
                 timestamp=now - timedelta(hours=2),
             ),
@@ -183,7 +183,7 @@ class TestAuditLogQueryFilters:
                 entry_id="e3",
                 agent_id="agent-a",
                 tool_name="tool-x",
-                verdict=SecurityVerdictType.DENY,
+                verdict="deny",
                 risk_level=ApprovalRiskLevel.CRITICAL,
                 timestamp=now - timedelta(hours=1),
             ),
@@ -193,7 +193,7 @@ class TestAuditLogQueryFilters:
                 entry_id="e4",
                 agent_id="agent-c",
                 tool_name="tool-z",
-                verdict=SecurityVerdictType.ESCALATE,
+                verdict="escalate",
                 risk_level=ApprovalRiskLevel.HIGH,
                 timestamp=now,
             ),
@@ -221,7 +221,7 @@ class TestAuditLogQueryFilters:
         log = AuditLog()
         self._populate(log)
 
-        results = log.query(verdict=SecurityVerdictType.DENY)
+        results = log.query(verdict="deny")
 
         ids = [e.id for e in results]
         assert set(ids) == {"e2", "e3"}
@@ -251,7 +251,7 @@ class TestAuditLogQueryFilters:
 
         results = log.query(
             agent_id="agent-a",
-            verdict=SecurityVerdictType.DENY,
+            verdict="deny",
         )
 
         assert len(results) == 1
@@ -281,3 +281,35 @@ class TestAuditLogQueryFilters:
         results = log.query(agent_id="nonexistent")
 
         assert results == ()
+
+    def test_query_limit_zero_raises_value_error(self) -> None:
+        log = AuditLog()
+        self._populate(log)
+
+        with pytest.raises(ValueError, match="limit must be >= 1"):
+            log.query(limit=0)
+
+
+@pytest.mark.unit
+class TestAuditLogTotalRecorded:
+    """Total recorded count tracks all entries, including evicted."""
+
+    def test_total_recorded_equals_count_without_eviction(self) -> None:
+        log = AuditLog()
+        for i in range(5):
+            log.record(_make_entry(entry_id=f"e{i}"))
+
+        assert log.total_recorded == 5
+        assert log.count() == 5
+
+    def test_total_recorded_exceeds_count_after_eviction(self) -> None:
+        log = AuditLog(max_entries=3)
+        for i in range(10):
+            log.record(_make_entry(entry_id=f"e{i}"))
+
+        assert log.total_recorded == 10
+        assert log.count() == 3
+
+    def test_total_recorded_zero_initially(self) -> None:
+        log = AuditLog()
+        assert log.total_recorded == 0

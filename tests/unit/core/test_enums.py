@@ -102,8 +102,8 @@ class TestEnumMemberCounts:
     def test_consolidation_interval_has_4_members(self) -> None:
         assert len(ConsolidationInterval) == 4
 
-    def test_action_type_has_24_members(self) -> None:
-        assert len(ActionType) == 24
+    def test_action_type_has_25_members(self) -> None:
+        assert len(ActionType) == 25
 
 
 # ── String Values ──────────────────────────────────────────────────

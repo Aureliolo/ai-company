@@ -2,6 +2,11 @@
 
 from collections.abc import Iterator  # noqa: TC003
 
+from ai_company.observability import get_logger
+from ai_company.observability.events.security import SECURITY_SCAN_DEPTH_EXCEEDED
+
+logger = get_logger(__name__)
+
 _MAX_RECURSION_DEPTH: int = 20
 
 
@@ -10,23 +15,31 @@ def walk_string_values(
     *,
     _depth: int = 0,
 ) -> Iterator[str]:
-    """Yield all string values in a nested dict structure.
+    """Yield all string values in a nested dict/list structure.
 
-    Recurses into nested dicts and lists up to a maximum depth.
+    Recurses into nested dicts and lists up to a maximum depth of 20.
+    Non-string, non-dict, non-list values are silently skipped.
 
     Args:
         arguments: The dict to scan.
     """
     if _depth >= _MAX_RECURSION_DEPTH:
+        logger.warning(
+            SECURITY_SCAN_DEPTH_EXCEEDED,
+            depth=_depth,
+            max_depth=_MAX_RECURSION_DEPTH,
+        )
         return
     for value in arguments.values():
-        if isinstance(value, str):
-            yield value
-        elif isinstance(value, dict):
-            yield from walk_string_values(value, _depth=_depth + 1)
-        elif isinstance(value, list):
-            for item in value:
-                if isinstance(item, str):
-                    yield item
-                elif isinstance(item, dict):
-                    yield from walk_string_values(item, _depth=_depth + 1)
+        yield from _walk_value(value, _depth=_depth)
+
+
+def _walk_value(value: object, *, _depth: int) -> Iterator[str]:
+    """Yield strings from a single value, recursing into dicts and lists."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        yield from walk_string_values(value, _depth=_depth + 1)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk_value(item, _depth=_depth + 1)

@@ -522,6 +522,28 @@ class TestSecurityContextConstruction:
         context: SecurityContext = interceptor.evaluate_pre_tool.call_args[0][0]
         assert context.action_type == "deploy:production"
 
+    async def test_scan_exception_returns_error_result(
+        self,
+        security_registry: ToolRegistry,
+        tool_call: ToolCall,
+    ) -> None:
+        """When scan_output raises, fail-closed returns an error result."""
+        interceptor = _make_interceptor(
+            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
+        )
+        interceptor.scan_output = AsyncMock(
+            side_effect=RuntimeError("scan crashed"),
+        )
+        invoker = ToolInvoker(
+            security_registry,
+            security_interceptor=interceptor,
+        )
+        result = await invoker.invoke(tool_call)
+        assert result.is_error is True
+        assert "fail-closed" in result.content.lower()
+        # Original tool output should NOT be returned.
+        assert "executed:" not in result.content
+
     async def test_scan_output_context_matches_pre_tool_context(
         self,
         security_registry: ToolRegistry,

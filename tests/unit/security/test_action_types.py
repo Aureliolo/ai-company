@@ -116,7 +116,7 @@ class TestRegistryExpandCategory:
             ("code", 5),
             ("test", 2),
             ("docs", 1),
-            ("vcs", 3),
+            ("vcs", 4),
             ("deploy", 2),
             ("comms", 2),
             ("budget", 2),
@@ -199,8 +199,17 @@ class TestRegistryGetCategory:
         with pytest.raises(ValueError, match="category:action"):
             ActionTypeRegistry.get_category("")
 
-    def test_multiple_colons_uses_first(self) -> None:
-        assert ActionTypeRegistry.get_category("a:b:c") == "a"
+    def test_multiple_colons_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="category:action"):
+            ActionTypeRegistry.get_category("a:b:c")
+
+    def test_leading_colon_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            ActionTypeRegistry.get_category(":action")
+
+    def test_trailing_colon_raises_value_error(self) -> None:
+        with pytest.raises(ValueError, match="non-empty"):
+            ActionTypeRegistry.get_category("category:")
 
 
 # -- ActionTypeRegistry: all_types ---------------------------------------------

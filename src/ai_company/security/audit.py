@@ -1,11 +1,13 @@
 """Append-only in-memory audit log for security evaluations."""
 
 from collections import deque
-from datetime import datetime  # noqa: TC003
+
+from pydantic import AwareDatetime  # noqa: TC002
 
 from ai_company.core.enums import ApprovalRiskLevel  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.security import (
+    SECURITY_AUDIT_CONFIG_ERROR,
     SECURITY_AUDIT_EVICTION,
     SECURITY_AUDIT_RECORDED,
 )
@@ -36,7 +38,7 @@ class AuditLog:
         if max_entries < 1:
             msg = f"max_entries must be >= 1, got {max_entries}"
             logger.warning(
-                SECURITY_AUDIT_EVICTION,
+                SECURITY_AUDIT_CONFIG_ERROR,
                 error=msg,
             )
             raise ValueError(msg)
@@ -78,7 +80,7 @@ class AuditLog:
         tool_name: str | None = None,
         verdict: str | None = None,
         risk_level: ApprovalRiskLevel | None = None,
-        since: datetime | None = None,
+        since: AwareDatetime | None = None,
         limit: int = 100,
     ) -> tuple[AuditEntry, ...]:
         """Query audit entries with optional filters.
@@ -92,11 +94,17 @@ class AuditLog:
             verdict: Filter by verdict string.
             risk_level: Filter by risk level.
             since: Entries before this datetime are excluded.
-            limit: Maximum results to return.
+            limit: Maximum results to return (must be >= 1).
 
         Returns:
             Tuple of matching entries, newest first.
+
+        Raises:
+            ValueError: If *limit* < 1.
         """
+        if limit < 1:
+            msg = f"limit must be >= 1, got {limit}"
+            raise ValueError(msg)
         results: list[AuditEntry] = []
         for entry in reversed(self._entries):
             if agent_id is not None and entry.agent_id != agent_id:

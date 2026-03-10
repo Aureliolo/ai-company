@@ -115,13 +115,13 @@ class TestExplicitActionTypeOverride:
         )
         assert tool.action_type == "deploy:production"
 
-    def test_explicit_empty_string_is_accepted(self) -> None:
-        """Empty string is a valid explicit override (not None)."""
-        tool = _ActionTypeTool(
-            category=ToolCategory.FILE_SYSTEM,
-            action_type="",
-        )
-        assert tool.action_type == ""
+    def test_explicit_empty_string_is_rejected(self) -> None:
+        """Empty string fails the 'category:action' format validation."""
+        with pytest.raises(ValueError, match="category:action"):
+            _ActionTypeTool(
+                category=ToolCategory.FILE_SYSTEM,
+                action_type="",
+            )
 
     def test_none_falls_back_to_default(self) -> None:
         """action_type=None (default) resolves from category map."""

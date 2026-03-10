@@ -100,7 +100,7 @@ class GitStatusTool(_BaseGitTool):
             },
             workspace=workspace,
             sandbox=sandbox,
-            action_type=ActionType.CODE_READ,
+            action_type=ActionType.VCS_READ,
         )
 
     async def execute(
@@ -198,7 +198,7 @@ class GitLogTool(_BaseGitTool):
             parameters_schema=_GIT_LOG_SCHEMA,
             workspace=workspace,
             sandbox=sandbox,
-            action_type=ActionType.CODE_READ,
+            action_type=ActionType.VCS_READ,
         )
 
     def _build_filter_args(
@@ -297,7 +297,7 @@ class GitDiffTool(_BaseGitTool):
                 "Supports staged changes, ref comparison, and path "
                 "filtering."
             ),
-            action_type=ActionType.CODE_READ,
+            action_type=ActionType.VCS_READ,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -637,7 +637,7 @@ class GitCloneTool(_BaseGitTool):
         """
         super().__init__(
             name="git_clone",
-            action_type=ActionType.VCS_COMMIT,
+            action_type=ActionType.VCS_READ,
             description=(
                 "Clone a git repository into a directory within the "
                 "workspace. Supports branch selection and shallow clones."

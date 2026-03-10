@@ -40,7 +40,7 @@ _DESTRUCTIVE_PATTERNS: Final[
     (
         "DELETE without WHERE",
         re.compile(
-            r"\bDELETE\s+FROM\s+\w+\s*;",
+            r"\bDELETE\s+FROM\s+\w+(?:\s*;|\s*$)(?!\s*WHERE)",
             re.IGNORECASE,
         ),
         SecurityVerdictType.ESCALATE,
@@ -52,7 +52,7 @@ _DESTRUCTIVE_PATTERNS: Final[
     ),
     (
         "git push --force",
-        re.compile(r"\bgit\s+push\s+.*--force\b"),
+        re.compile(r"\bgit\s+push\s+.*(?:--force|-f)\b"),
         SecurityVerdictType.ESCALATE,
     ),
     (
@@ -62,7 +62,7 @@ _DESTRUCTIVE_PATTERNS: Final[
     ),
     (
         "format/mkfs",
-        re.compile(r"\b(?:mkfs|format)\b", re.IGNORECASE),
+        re.compile(r"\b(?:mkfs\b|format\s+[A-Za-z]:)", re.IGNORECASE),
         SecurityVerdictType.DENY,
     ),
 )

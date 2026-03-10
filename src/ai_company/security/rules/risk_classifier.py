@@ -33,6 +33,7 @@ _DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProx
         ActionType.BUDGET_SPEND: ApprovalRiskLevel.MEDIUM,
         # LOW
         ActionType.CODE_READ: ApprovalRiskLevel.LOW,
+        ActionType.VCS_READ: ApprovalRiskLevel.LOW,
         ActionType.TEST_RUN: ApprovalRiskLevel.LOW,
         ActionType.TEST_WRITE: ApprovalRiskLevel.LOW,
         ActionType.DOCS_WRITE: ApprovalRiskLevel.LOW,
@@ -70,7 +71,8 @@ class RiskClassifier:
     def classify(self, action_type: str) -> ApprovalRiskLevel:
         """Return the risk level for an action type.
 
-        Falls back to ``MEDIUM`` for unknown action types.
+        Falls back to ``HIGH`` for unknown action types (fail-safe per
+        DESIGN_SPEC D19).
 
         Args:
             action_type: The ``category:action`` string.
@@ -80,10 +82,10 @@ class RiskClassifier:
         """
         result = self._risk_map.get(action_type)
         if result is None:
-            logger.debug(
+            logger.warning(
                 SECURITY_RISK_FALLBACK,
                 action_type=action_type,
-                fallback="MEDIUM",
+                fallback="HIGH",
             )
-            return ApprovalRiskLevel.MEDIUM
+            return ApprovalRiskLevel.HIGH
         return result

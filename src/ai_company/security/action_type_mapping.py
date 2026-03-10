@@ -2,7 +2,8 @@
 
 Provides the ``DEFAULT_CATEGORY_ACTION_MAP`` used by ``BaseTool`` to
 derive a default ``action_type`` from its ``category`` when none is
-explicitly set.
+explicitly set.  Categories not present in the map fall back to
+``ActionType.CODE_READ`` at the point of use in ``BaseTool``.
 """
 
 from types import MappingProxyType

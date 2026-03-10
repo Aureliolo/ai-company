@@ -5,9 +5,16 @@ verdicts, evaluation contexts, audit entries, and output scan results.
 """
 
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from ai_company.core.enums import ApprovalRiskLevel, ToolCategory  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
@@ -35,7 +42,7 @@ class SecurityVerdict(BaseModel):
         matched_rules: Names of rules that triggered.
         evaluated_at: Timestamp of evaluation.
         evaluation_duration_ms: How long the evaluation took.
-        approval_id: Set when verdict is ``escalate``.
+        approval_id: Set only when verdict is ``escalate``.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -47,6 +54,17 @@ class SecurityVerdict(BaseModel):
     evaluated_at: AwareDatetime
     evaluation_duration_ms: float = Field(ge=0.0)
     approval_id: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _check_approval_id(self) -> SecurityVerdict:
+        """Enforce that approval_id is only set on ESCALATE verdicts."""
+        if (
+            self.verdict != SecurityVerdictType.ESCALATE
+            and self.approval_id is not None
+        ):
+            msg = "approval_id must be None when verdict is not ESCALATE"
+            raise ValueError(msg)
+        return self
 
 
 class SecurityContext(BaseModel):
@@ -70,6 +88,23 @@ class SecurityContext(BaseModel):
     agent_id: NotBlankStr | None = None
     task_id: NotBlankStr | None = None
 
+    @model_validator(mode="after")
+    def _check_action_type_format(self) -> SecurityContext:
+        """Validate that action_type uses ``category:action`` format."""
+        if ":" not in self.action_type:
+            msg = (
+                f"action_type {self.action_type!r} must use "
+                "'category:action' format (missing ':')"
+            )
+            raise ValueError(msg)
+        return self
+
+
+_HEX_SHA256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+
+# Verdict values that appear in audit entries.
+AuditVerdictStr = Literal["allow", "deny", "escalate", "output_scan"]
+
 
 class AuditEntry(BaseModel):
     """Immutable record of a security evaluation for the audit log.
@@ -82,8 +117,10 @@ class AuditEntry(BaseModel):
         tool_name: Tool that was evaluated.
         tool_category: Tool category.
         action_type: Action type string.
-        arguments_hash: SHA-256 of serialized arguments (never raw).
-        verdict: Allow / deny / escalate / output_scan.
+        arguments_hash: SHA-256 hex digest of serialized arguments.
+        verdict: One of ``SecurityVerdictType`` values (allow/deny/
+            escalate) for pre-tool evaluations, or ``'output_scan'``
+            for post-tool output scan entries.
         risk_level: Assessed risk level.
         reason: Explanation of the verdict.
         matched_rules: Rules that triggered.
@@ -100,8 +137,8 @@ class AuditEntry(BaseModel):
     tool_name: NotBlankStr
     tool_category: ToolCategory
     action_type: str
-    arguments_hash: str
-    verdict: str
+    arguments_hash: _HEX_SHA256
+    verdict: AuditVerdictStr
     risk_level: ApprovalRiskLevel
     reason: NotBlankStr
     matched_rules: tuple[NotBlankStr, ...] = ()

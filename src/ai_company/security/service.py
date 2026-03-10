@@ -15,11 +15,13 @@ from ai_company.core.approval import ApprovalItem
 from ai_company.core.enums import ApprovalRiskLevel, ApprovalStatus
 from ai_company.observability import get_logger
 from ai_company.observability.events.security import (
+    SECURITY_AUDIT_RECORD_ERROR,
     SECURITY_DISABLED,
     SECURITY_ESCALATION_CREATED,
     SECURITY_ESCALATION_STORE_ERROR,
     SECURITY_EVALUATE_COMPLETE,
     SECURITY_EVALUATE_START,
+    SECURITY_INTERCEPTOR_ERROR,
     SECURITY_VERDICT_ALLOW,
     SECURITY_VERDICT_DENY,
     SECURITY_VERDICT_ESCALATE,
@@ -89,6 +91,16 @@ class SecOpsService:
         self._output_scanner = output_scanner
         self._approval_store = approval_store
 
+        if config.custom_policies:
+            logger.warning(
+                SECURITY_EVALUATE_START,
+                note=(
+                    "custom_policies configured but not yet "
+                    "evaluated — enforcement is not implemented"
+                ),
+                policy_count=len(config.custom_policies),
+            )
+
     async def evaluate_pre_tool(
         self,
         context: SecurityContext,
@@ -103,13 +115,16 @@ class SecOpsService:
         """
         if not self._config.enabled:
             logger.warning(SECURITY_DISABLED, tool_name=context.tool_name)
-            return SecurityVerdict(
+            verdict = SecurityVerdict(
                 verdict=SecurityVerdictType.ALLOW,
                 reason="Security subsystem disabled",
                 risk_level=ApprovalRiskLevel.LOW,
                 evaluated_at=datetime.now(UTC),
                 evaluation_duration_ms=0.0,
             )
+            if self._config.audit_enabled:
+                self._record_audit(context, verdict)
+            return verdict
 
         logger.info(
             SECURITY_EVALUATE_START,
@@ -118,7 +133,21 @@ class SecOpsService:
             agent_id=context.agent_id,
         )
 
-        verdict = self._rule_engine.evaluate(context)
+        try:
+            verdict = self._rule_engine.evaluate(context)
+        except Exception:
+            logger.exception(
+                SECURITY_INTERCEPTOR_ERROR,
+                tool_name=context.tool_name,
+                note="Rule engine evaluation failed (fail-closed)",
+            )
+            verdict = SecurityVerdict(
+                verdict=SecurityVerdictType.DENY,
+                reason="Rule engine evaluation failed (fail-closed)",
+                risk_level=ApprovalRiskLevel.CRITICAL,
+                evaluated_at=datetime.now(UTC),
+                evaluation_duration_ms=0.0,
+            )
 
         # Handle escalation.
         if verdict.verdict == SecurityVerdictType.ESCALATE:
@@ -154,6 +183,11 @@ class SecOpsService:
         if sensitive data is found and audit is enabled.
         """
         if not self._config.post_tool_scanning_enabled:
+            logger.debug(
+                SECURITY_EVALUATE_COMPLETE,
+                note="output scanning disabled",
+                tool_name=context.tool_name,
+            )
             return OutputScanResult()
 
         result = self._output_scanner.scan(output)
@@ -173,7 +207,14 @@ class SecOpsService:
                 reason=("Sensitive data in output: " + ", ".join(result.findings)),
                 evaluation_duration_ms=0.0,
             )
-            self._audit_log.record(entry)
+            try:
+                self._audit_log.record(entry)
+            except Exception:
+                logger.exception(
+                    SECURITY_AUDIT_RECORD_ERROR,
+                    tool_name=context.tool_name,
+                    note="Output scan audit recording failed",
+                )
 
         return result
 
@@ -182,31 +223,46 @@ class SecOpsService:
         context: SecurityContext,
         verdict: SecurityVerdict,
     ) -> None:
-        """Record an audit entry for a pre-tool evaluation."""
-        entry = AuditEntry(
-            id=str(uuid.uuid4()),
-            timestamp=verdict.evaluated_at,
-            agent_id=context.agent_id,
-            task_id=context.task_id,
-            tool_name=context.tool_name,
-            tool_category=context.tool_category,
-            action_type=context.action_type,
-            arguments_hash=_hash_arguments(context.arguments),
-            verdict=verdict.verdict.value,
-            risk_level=verdict.risk_level,
-            reason=verdict.reason,
-            matched_rules=verdict.matched_rules,
-            evaluation_duration_ms=verdict.evaluation_duration_ms,
-            approval_id=verdict.approval_id,
-        )
-        self._audit_log.record(entry)
+        """Record an audit entry for a pre-tool evaluation.
+
+        Audit recording failures are caught and logged — they must
+        never prevent the verdict from being returned.
+        """
+        try:
+            entry = AuditEntry(
+                id=str(uuid.uuid4()),
+                timestamp=verdict.evaluated_at,
+                agent_id=context.agent_id,
+                task_id=context.task_id,
+                tool_name=context.tool_name,
+                tool_category=context.tool_category,
+                action_type=context.action_type,
+                arguments_hash=_hash_arguments(context.arguments),
+                verdict=verdict.verdict.value,
+                risk_level=verdict.risk_level,
+                reason=verdict.reason,
+                matched_rules=verdict.matched_rules,
+                evaluation_duration_ms=verdict.evaluation_duration_ms,
+                approval_id=verdict.approval_id,
+            )
+            self._audit_log.record(entry)
+        except Exception:
+            logger.exception(
+                SECURITY_AUDIT_RECORD_ERROR,
+                tool_name=context.tool_name,
+                note="Audit recording failed — verdict still returned",
+            )
 
     async def _handle_escalation(
         self,
         context: SecurityContext,
         verdict: SecurityVerdict,
     ) -> SecurityVerdict:
-        """Create an approval item and update the verdict."""
+        """Create an approval item in the approval store.
+
+        Falls back to DENY if no approval store is configured or if
+        the store raises an exception.
+        """
         if self._approval_store is None:
             logger.warning(
                 SECURITY_VERDICT_DENY,

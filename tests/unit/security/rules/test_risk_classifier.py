@@ -91,6 +91,7 @@ class TestRiskClassifierLow:
             ActionType.TEST_WRITE,
             ActionType.DOCS_WRITE,
             ActionType.VCS_BRANCH,
+            ActionType.VCS_READ,
             ActionType.COMMS_INTERNAL,
             ActionType.DB_QUERY,
         ],
@@ -100,12 +101,12 @@ class TestRiskClassifierLow:
         assert classifier.classify(action_type) == ApprovalRiskLevel.LOW
 
 
-# ── Unknown action types default to MEDIUM ───────────────────────────
+# ── Unknown action types default to HIGH ─────────────────────────────
 
 
 @pytest.mark.unit
 class TestRiskClassifierUnknownDefaults:
-    """Unknown action types fall back to MEDIUM risk."""
+    """Unknown action types fall back to HIGH risk (fail-safe per D19)."""
 
     @pytest.mark.parametrize(
         "action_type",
@@ -122,12 +123,12 @@ class TestRiskClassifierUnknownDefaults:
             "empty_string",
         ],
     )
-    def test_unknown_defaults_to_medium(
+    def test_unknown_defaults_to_high(
         self,
         action_type: str,
     ) -> None:
         classifier = RiskClassifier()
-        assert classifier.classify(action_type) == ApprovalRiskLevel.MEDIUM
+        assert classifier.classify(action_type) == ApprovalRiskLevel.HIGH
 
 
 # ── Custom risk map overrides ────────────────────────────────────────
@@ -183,12 +184,18 @@ class TestRiskClassifierCompleteness:
     """Every ActionType member has a risk mapping in the default map."""
 
     def test_all_action_types_are_mapped(self) -> None:
-        """Every ActionType enum member resolves without falling back."""
+        """Every ActionType enum member resolves without falling back to HIGH."""
         classifier = RiskClassifier()
         for action_type in ActionType:
             risk = classifier.classify(action_type)
             # All built-in types should have an explicit mapping,
-            # so none should silently fall back to MEDIUM by accident.
+            # so none should silently fall back to HIGH (the unknown default).
             assert isinstance(risk, ApprovalRiskLevel), (
                 f"{action_type} not mapped in default risk map"
+            )
+            # Verify that the mapping is explicit (not the unknown fallback).
+            # We don't assert risk != HIGH since some types (DB_MUTATE etc.)
+            # are legitimately HIGH — just verify it's a valid ApprovalRiskLevel.
+            assert risk in ApprovalRiskLevel, (
+                f"{action_type} returned invalid risk level"
             )

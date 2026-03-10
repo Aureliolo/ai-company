@@ -1,8 +1,8 @@
 """Output scanner — post-tool output scanning for sensitive data.
 
-Shares credential patterns from ``credential_detector`` and PII
-patterns from ``data_leak_detector`` to scan tool output.
-Never silently suppresses — always logs findings at WARNING.
+Reuses credential patterns from ``credential_detector`` and PII
+patterns from ``data_leak_detector`` to scan tool output for
+sensitive data.  Always logs findings at WARNING.
 """
 
 import re  # noqa: TC003

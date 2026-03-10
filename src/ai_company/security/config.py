@@ -4,9 +4,9 @@ Defines ``SecurityConfig`` (the top-level security configuration),
 ``RuleEngineConfig``, and ``SecurityPolicyRule`` for custom policies.
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ai_company.core.enums import ApprovalRiskLevel
+from ai_company.core.enums import ActionType, ApprovalRiskLevel
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.security.models import SecurityVerdictType
 
@@ -17,7 +17,7 @@ class SecurityPolicyRule(BaseModel):
     Attributes:
         name: Rule name (used in matched_rules lists).
         description: Human-readable description.
-        action_types: Action types this rule applies to.
+        action_types: Action types this rule applies to (``category:action``).
         verdict: Verdict to return when rule matches.
         risk_level: Risk level to assign.
         enabled: Whether this rule is active.
@@ -32,6 +32,18 @@ class SecurityPolicyRule(BaseModel):
     risk_level: ApprovalRiskLevel = ApprovalRiskLevel.MEDIUM
     enabled: bool = True
 
+    @model_validator(mode="after")
+    def _check_action_type_format(self) -> SecurityPolicyRule:
+        """Validate that action_types entries use ``category:action`` format."""
+        for at in self.action_types:
+            if ":" not in at:
+                msg = (
+                    f"action_type {at!r} in policy {self.name!r} must use "
+                    "'category:action' format"
+                )
+                raise ValueError(msg)
+        return self
+
 
 class RuleEngineConfig(BaseModel):
     """Configuration for the synchronous rule engine.
@@ -41,7 +53,7 @@ class RuleEngineConfig(BaseModel):
         data_leak_detection_enabled: Detect sensitive file paths / PII.
         destructive_op_detection_enabled: Detect destructive operations.
         path_traversal_detection_enabled: Detect path traversal attacks.
-        max_argument_length: Reserved for future use — not yet enforced.
+        max_argument_length: Maximum argument string length for scanning.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -75,12 +87,26 @@ class SecurityConfig(BaseModel):
     audit_enabled: bool = True
     post_tool_scanning_enabled: bool = True
     hard_deny_action_types: tuple[str, ...] = (
-        "deploy:production",
-        "db:admin",
-        "org:fire",
+        ActionType.DEPLOY_PRODUCTION,
+        ActionType.DB_ADMIN,
+        ActionType.ORG_FIRE,
     )
     auto_approve_action_types: tuple[str, ...] = (
-        "code:read",
-        "docs:write",
+        ActionType.CODE_READ,
+        ActionType.DOCS_WRITE,
     )
     custom_policies: tuple[SecurityPolicyRule, ...] = ()
+
+    @model_validator(mode="after")
+    def _check_disjoint_action_types(self) -> SecurityConfig:
+        """Reject overlapping hard-deny and auto-approve action types."""
+        deny_set = set(self.hard_deny_action_types)
+        approve_set = set(self.auto_approve_action_types)
+        overlap = deny_set & approve_set
+        if overlap:
+            msg = (
+                f"hard_deny_action_types and auto_approve_action_types "
+                f"must not overlap: {sorted(overlap)}"
+            )
+            raise ValueError(msg)
+        return self

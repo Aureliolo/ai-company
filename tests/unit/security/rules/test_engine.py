@@ -147,13 +147,13 @@ class TestRuleEngineNoMatch:
 
         assert verdict.risk_level == expected_risk
 
-    def test_unknown_action_type_defaults_to_medium(self) -> None:
+    def test_unknown_action_type_defaults_to_high(self) -> None:
         engine = _make_engine(rules=())
         ctx = _make_context(action_type="custom:unknown")
 
         verdict = engine.evaluate(ctx)
 
-        assert verdict.risk_level == ApprovalRiskLevel.MEDIUM
+        assert verdict.risk_level == ApprovalRiskLevel.HIGH
 
     def test_reason_indicates_no_rule_triggered(self) -> None:
         engine = _make_engine(rules=())
@@ -260,3 +260,110 @@ class TestRuleEngineDuration:
 
         assert isinstance(verdict.evaluation_duration_ms, float)
         assert verdict.evaluation_duration_ms >= 0.0
+
+
+@pytest.mark.unit
+class TestRuleEngineFailClosed:
+    """When a rule raises an exception, engine returns DENY (fail-closed)."""
+
+    def test_exception_in_rule_returns_deny(self) -> None:
+        class _ExplodingRule:
+            @property
+            def name(self) -> str:
+                return "exploding"
+
+            def evaluate(
+                self,
+                context: SecurityContext,
+            ) -> SecurityVerdict | None:
+                msg = "kaboom"
+                raise RuntimeError(msg)
+
+        engine = _make_engine(rules=(_ExplodingRule(),))  # type: ignore[arg-type]
+        ctx = _make_context()
+
+        verdict = engine.evaluate(ctx)
+
+        assert verdict.verdict == SecurityVerdictType.DENY
+        assert verdict.risk_level == ApprovalRiskLevel.CRITICAL
+        assert "fail-closed" in verdict.reason
+
+    def test_exception_does_not_stop_subsequent_rules(self) -> None:
+        """A failing rule produces DENY, short-circuiting remaining rules."""
+
+        class _ExplodingRule:
+            @property
+            def name(self) -> str:
+                return "exploding"
+
+            def evaluate(
+                self,
+                context: SecurityContext,
+            ) -> SecurityVerdict | None:
+                msg = "kaboom"
+                raise RuntimeError(msg)
+
+        second_rule = _StubRule("second", verdict=None)
+        engine = _make_engine(
+            rules=(_ExplodingRule(), second_rule),  # type: ignore[arg-type]
+        )
+        ctx = _make_context()
+
+        verdict = engine.evaluate(ctx)
+
+        # The failing rule returns DENY which short-circuits.
+        assert verdict.verdict == SecurityVerdictType.DENY
+        assert not second_rule.called
+
+
+@pytest.mark.unit
+class TestRuleEngineSoftAllow:
+    """Soft-allow from policy_validator does not short-circuit."""
+
+    def test_soft_allow_continues_to_next_rule(self) -> None:
+        from ai_company.security.rules.policy_validator import (
+            _RULE_NAME as POLICY_VALIDATOR_NAME,
+        )
+
+        allow_verdict = SecurityVerdict(
+            verdict=SecurityVerdictType.ALLOW,
+            reason="Auto-approved by policy",
+            risk_level=ApprovalRiskLevel.LOW,
+            evaluated_at=datetime.now(UTC),
+            evaluation_duration_ms=0.0,
+        )
+        soft_rule = _StubRule(POLICY_VALIDATOR_NAME, verdict=allow_verdict)
+        deny_rule = _StubRule("deny-rule", verdict=_make_deny_verdict("blocked"))
+        engine = _make_engine(rules=(soft_rule, deny_rule))
+        ctx = _make_context()
+
+        verdict = engine.evaluate(ctx)
+
+        # Soft-allow should NOT prevent DENY from subsequent rule.
+        assert verdict.verdict == SecurityVerdictType.DENY
+        assert soft_rule.called
+        assert deny_rule.called
+
+    def test_soft_allow_used_when_no_deny(self) -> None:
+        from ai_company.security.rules.policy_validator import (
+            _RULE_NAME as POLICY_VALIDATOR_NAME,
+        )
+
+        allow_verdict = SecurityVerdict(
+            verdict=SecurityVerdictType.ALLOW,
+            reason="Auto-approved by policy",
+            risk_level=ApprovalRiskLevel.LOW,
+            evaluated_at=datetime.now(UTC),
+            evaluation_duration_ms=0.0,
+        )
+        soft_rule = _StubRule(POLICY_VALIDATOR_NAME, verdict=allow_verdict)
+        pass_rule = _StubRule("pass", verdict=None)
+        engine = _make_engine(rules=(soft_rule, pass_rule))
+        ctx = _make_context()
+
+        verdict = engine.evaluate(ctx)
+
+        assert verdict.verdict == SecurityVerdictType.ALLOW
+        assert "Auto-approved by policy" in verdict.reason
+        assert soft_rule.called
+        assert pass_rule.called

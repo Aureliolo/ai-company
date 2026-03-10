@@ -102,16 +102,18 @@ class BaseTool(ABC):
         self._name = name
         self._description = description
         self._category = category
-        self._action_type = (
-            action_type
-            if action_type is not None
-            else str(
+        if action_type is not None:
+            if ":" not in action_type:
+                msg = f"action_type {action_type!r} must use 'category:action' format"
+                raise ValueError(msg)
+            self._action_type = action_type
+        else:
+            self._action_type = str(
                 DEFAULT_CATEGORY_ACTION_MAP.get(
                     category,
                     ActionType.CODE_READ,
                 ),
             )
-        )
         self._parameters_schema: MappingProxyType[str, Any] | None = (
             MappingProxyType(copy.deepcopy(parameters_schema))
             if parameters_schema is not None

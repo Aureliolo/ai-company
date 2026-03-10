@@ -3,6 +3,7 @@
 import time
 from datetime import UTC, datetime
 
+from ai_company.core.enums import ApprovalRiskLevel
 from ai_company.observability import get_logger
 from ai_company.observability.events.security import (
     SECURITY_EVALUATE_COMPLETE,
@@ -16,13 +17,16 @@ from ai_company.security.models import (
     SecurityVerdict,
     SecurityVerdictType,
 )
+from ai_company.security.rules.policy_validator import (
+    _RULE_NAME as _POLICY_VALIDATOR_RULE_NAME,
+)
 from ai_company.security.rules.protocol import SecurityRule  # noqa: TC001
 from ai_company.security.rules.risk_classifier import RiskClassifier  # noqa: TC001
 
 logger = get_logger(__name__)
 
 # Rules whose ALLOW verdict should not short-circuit remaining rules.
-_SOFT_ALLOW_RULES: frozenset[str] = frozenset({"policy_validator"})
+_SOFT_ALLOW_RULES: frozenset[str] = frozenset({_POLICY_VALIDATOR_RULE_NAME})
 
 
 class RuleEngine:
@@ -32,8 +36,8 @@ class RuleEngine:
     wins.  If no rule triggers, the engine returns ALLOW with a risk
     level from the ``RiskClassifier``.
 
-    The evaluation order is determined by the ``rules`` tuple passed
-    at construction.  Recommended order:
+    The evaluation order is determined solely by the ``rules`` tuple
+    passed at construction.  The recommended (but not enforced) order is:
         1. Policy validator (fast path: hard deny / auto approve)
         2. Credential detector
         3. Path traversal detector
@@ -163,9 +167,7 @@ class RuleEngine:
             return SecurityVerdict(
                 verdict=SecurityVerdictType.DENY,
                 reason=f"Security rule {rule.name!r} failed (fail-closed)",
-                risk_level=self._risk_classifier.classify(
-                    context.action_type,
-                ),
+                risk_level=ApprovalRiskLevel.CRITICAL,
                 matched_rules=(rule.name,),
                 evaluated_at=datetime.now(UTC),
                 evaluation_duration_ms=0.0,
