@@ -6,7 +6,6 @@ sensitive data — redact, withhold, log-only, or delegate based on
 autonomy level.
 """
 
-import copy
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -32,6 +31,10 @@ class OutputScanResponsePolicy(Protocol):
 
     Implementations decide how to transform an ``OutputScanResult``
     before it is returned to the invoker.
+
+    Implementations are expected to be stateless / immutable — the
+    ``AutonomyTieredPolicy`` stores policy instances by reference
+    (shallow copy) and wraps the mapping as read-only.
     """
 
     @property
@@ -191,6 +194,11 @@ _DEFAULT_AUTONOMY_POLICY_MAP: Mapping[AutonomyLevel, OutputScanResponsePolicy] =
 )
 
 
+# Intentional import-time validation: ensures the default policy map
+# covers every AutonomyLevel member.  If a new level is added to the
+# enum without updating the map, this fails loudly at module load
+# rather than silently falling back at runtime.  A companion unit test
+# (test_default_map_covers_all_autonomy_levels) also asserts this in CI.
 _expected_levels = set(AutonomyLevel)
 _mapped_levels = set(_DEFAULT_AUTONOMY_POLICY_MAP.keys())
 if _mapped_levels != _expected_levels:
@@ -226,8 +234,12 @@ class AutonomyTieredPolicy:
         """
         self._effective_autonomy = effective_autonomy
         raw = policy_map if policy_map is not None else _DEFAULT_AUTONOMY_POLICY_MAP
+        # Shallow copy decouples from the caller's mapping; MappingProxyType
+        # prevents mutation.  Policy instances are treated as immutable /
+        # stateless, so deep-copying is unnecessary and would break callers
+        # passing non-copyable policies (mocks, policies with resources).
         self._policy_map: Mapping[AutonomyLevel, OutputScanResponsePolicy] = (
-            MappingProxyType(copy.deepcopy(dict(raw)))
+            MappingProxyType(dict(raw))
         )
         self._fallback: OutputScanResponsePolicy = RedactPolicy()
 
@@ -264,11 +276,8 @@ class AutonomyTieredPolicy:
                     SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
                     policy="autonomy_tiered",
                     autonomy_level=autonomy_level.value,
-                    note=(
-                        f"No policy mapped for autonomy level "
-                        f"'{autonomy_level.value}' — falling back to "
-                        f"'{self._fallback.name}'"
-                    ),
+                    fallback_to=self._fallback.name,
+                    note="No policy mapped for autonomy level — falling back",
                 )
 
         logger.debug(

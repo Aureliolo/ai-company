@@ -22,10 +22,12 @@ class OutputScanPolicyType(StrEnum):
     supported for full flexibility.
 
     Members:
-        REDACT: Return redacted content (default — current behavior).
+        REDACT: Return redacted content (scanner-level redaction).
         WITHHOLD: Clear redacted content, forcing fail-closed.
         LOG_ONLY: Log findings but pass output through.
-        AUTONOMY_TIERED: Delegate based on effective autonomy level.
+        AUTONOMY_TIERED: Delegate based on effective autonomy level
+            (default — falls back to ``REDACT`` when no autonomy
+            is configured).
     """
 
     REDACT = "redact"
@@ -99,7 +101,7 @@ class SecurityConfig(BaseModel):
         hard_deny_action_types: Action types always denied.
         auto_approve_action_types: Action types always approved.
         output_scan_policy_type: Output scan response policy
-            (default: ``REDACT``).
+            (default: ``AUTONOMY_TIERED``).
         custom_policies: User-defined policy rules.
     """
 
@@ -120,7 +122,7 @@ class SecurityConfig(BaseModel):
         ActionType.CODE_READ,
         ActionType.DOCS_WRITE,
     )
-    output_scan_policy_type: OutputScanPolicyType = OutputScanPolicyType.REDACT
+    output_scan_policy_type: OutputScanPolicyType = OutputScanPolicyType.AUTONOMY_TIERED
     custom_policies: tuple[SecurityPolicyRule, ...] = ()
 
     @model_validator(mode="after")

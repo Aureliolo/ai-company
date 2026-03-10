@@ -170,7 +170,7 @@ class TestSecurityConfig:
             "code:read",
             "docs:write",
         )
-        assert cfg.output_scan_policy_type == OutputScanPolicyType.REDACT
+        assert cfg.output_scan_policy_type == OutputScanPolicyType.AUTONOMY_TIERED
         assert cfg.custom_policies == ()
 
     def test_disabled_state(self) -> None:

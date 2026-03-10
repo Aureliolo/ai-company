@@ -21,7 +21,7 @@ from ai_company.security.models import (
     SecurityVerdict,
     SecurityVerdictType,
 )
-from ai_company.security.output_scan_policy import WithholdPolicy
+from ai_company.security.output_scan_policy import LogOnlyPolicy, WithholdPolicy
 from ai_company.security.output_scanner import OutputScanner
 from ai_company.security.rules.engine import RuleEngine
 from ai_company.security.service import SecOpsService
@@ -684,13 +684,15 @@ class TestSecOpsScanOutputPolicy:
         audit_log = AuditLog()
         output_scanner = MagicMock(spec=OutputScanner)
         output_scanner.scan.return_value = scan_result
-        return SecOpsService(
+        service = SecOpsService(
             config=cfg,
             rule_engine=rule_engine,
             audit_log=audit_log,
             output_scanner=output_scanner,
             output_scan_policy=policy,
         )
+        service._test_audit_log = audit_log  # type: ignore[attr-defined]
+        return service
 
     async def test_policy_applied_after_scan(self) -> None:
         """Policy's apply method is called with the scan result."""
@@ -824,8 +826,6 @@ class TestSecOpsScanOutputPolicy:
         self,
     ) -> None:
         """Audit entry records original findings even when policy clears."""
-        from ai_company.security.output_scan_policy import LogOnlyPolicy
-
         finding = OutputScanResult(
             has_sensitive_data=True,
             findings=("Bearer token",),
@@ -844,7 +844,7 @@ class TestSecOpsScanOutputPolicy:
         assert result.findings == ()
 
         # But the audit entry (recorded before policy) has the originals.
-        audit_log = service._audit_log
+        audit_log = service._test_audit_log  # type: ignore[attr-defined]
         assert audit_log.count() == 1
         entry = audit_log.entries[0]
         assert "Bearer token" in entry.reason

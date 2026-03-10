@@ -6,6 +6,7 @@ from ai_company.core.enums import AutonomyLevel, ToolCategory
 from ai_company.security.autonomy.models import EffectiveAutonomy
 from ai_company.security.models import OutputScanResult, SecurityContext
 from ai_company.security.output_scan_policy import (
+    _DEFAULT_AUTONOMY_POLICY_MAP,
     AutonomyTieredPolicy,
     LogOnlyPolicy,
     OutputScanResponsePolicy,
@@ -254,3 +255,15 @@ class TestProtocolCompliance:
     def test_autonomy_tiered_satisfies_protocol(self) -> None:
         instance = AutonomyTieredPolicy(effective_autonomy=None)
         assert isinstance(instance, OutputScanResponsePolicy)
+
+
+# ── Default map integrity ─────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDefaultAutonomyPolicyMap:
+    """Verify _DEFAULT_AUTONOMY_POLICY_MAP stays in sync with AutonomyLevel."""
+
+    def test_default_map_covers_all_autonomy_levels(self) -> None:
+        """Every AutonomyLevel member has an entry in the default map."""
+        assert set(_DEFAULT_AUTONOMY_POLICY_MAP.keys()) == set(AutonomyLevel)
