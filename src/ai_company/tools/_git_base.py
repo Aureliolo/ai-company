@@ -108,7 +108,7 @@ class _BaseGitTool(BaseTool, ABC):
         workspace: Absolute path to the agent's workspace directory.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         name: str,
@@ -116,6 +116,7 @@ class _BaseGitTool(BaseTool, ABC):
         parameters_schema: dict[str, Any],
         workspace: Path,
         sandbox: SandboxBackend | None = None,
+        action_type: str | None = None,
     ) -> None:
         """Initialize a git tool bound to a workspace.
 
@@ -125,6 +126,7 @@ class _BaseGitTool(BaseTool, ABC):
             parameters_schema: JSON Schema for tool parameters.
             workspace: Absolute path to the workspace root.
             sandbox: Optional sandbox backend for subprocess isolation.
+            action_type: Security action type override.
 
         Raises:
             ValueError: If *workspace* is not an absolute path.
@@ -137,6 +139,7 @@ class _BaseGitTool(BaseTool, ABC):
             description=description,
             parameters_schema=parameters_schema,
             category=ToolCategory.VERSION_CONTROL,
+            action_type=action_type,
         )
         self._workspace = workspace.resolve()
         self._sandbox = sandbox

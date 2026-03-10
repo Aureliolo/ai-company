@@ -10,6 +10,7 @@ validation shared by all tools.
 from pathlib import Path  # noqa: TC003 — used at runtime
 from typing import TYPE_CHECKING, Any, Final
 
+from ai_company.core.enums import ActionType
 from ai_company.observability import get_logger
 from ai_company.observability.events.git import (
     GIT_CLONE_URL_REJECTED,
@@ -100,6 +101,7 @@ class GitStatusTool(_BaseGitTool):
             },
             workspace=workspace,
             sandbox=sandbox,
+            action_type=ActionType.CODE_READ,
         )
 
     async def execute(
@@ -197,6 +199,7 @@ class GitLogTool(_BaseGitTool):
             parameters_schema=_GIT_LOG_SCHEMA,
             workspace=workspace,
             sandbox=sandbox,
+            action_type=ActionType.CODE_READ,
         )
 
     def _build_filter_args(
@@ -295,6 +298,7 @@ class GitDiffTool(_BaseGitTool):
                 "Supports staged changes, ref comparison, and path "
                 "filtering."
             ),
+            action_type=ActionType.CODE_READ,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -408,6 +412,7 @@ class GitBranchTool(_BaseGitTool):
                 "Manage branches: list, create, switch, or delete. "
                 "Provide an action and branch name as needed."
             ),
+            action_type=ActionType.VCS_BRANCH,
             parameters_schema={
                 "type": "object",
                 "properties": {
@@ -538,6 +543,7 @@ class GitCommitTool(_BaseGitTool):
         """
         super().__init__(
             name="git_commit",
+            action_type=ActionType.VCS_COMMIT,
             description=(
                 "Stage and commit changes. Provide a commit message and "
                 "optionally specify paths to stage or use 'all' to stage "
@@ -632,6 +638,7 @@ class GitCloneTool(_BaseGitTool):
         """
         super().__init__(
             name="git_clone",
+            action_type=ActionType.VCS_BRANCH,
             description=(
                 "Clone a git repository into a directory within the "
                 "workspace. Supports branch selection and shallow clones."

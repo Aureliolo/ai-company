@@ -58,3 +58,7 @@ class ToolExecutionError(ToolError):
 
 class ToolPermissionDeniedError(ToolError):
     """Tool invocation blocked by the permission checker."""
+
+
+class ToolSecurityDeniedError(ToolError):
+    """Tool invocation blocked by the security interceptor."""

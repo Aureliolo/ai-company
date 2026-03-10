@@ -30,18 +30,24 @@ from ai_company.observability.events.tool import (
     TOOL_INVOKE_SUCCESS,
     TOOL_INVOKE_TOOL_ERROR,
     TOOL_INVOKE_VALIDATION_UNEXPECTED,
+    TOOL_OUTPUT_REDACTED,
     TOOL_PERMISSION_DENIED,
+    TOOL_SECURITY_DENIED,
+    TOOL_SECURITY_ESCALATED,
 )
 from ai_company.providers.models import ToolCall, ToolResult
+from ai_company.security.models import SecurityContext, SecurityVerdictType
 
+from .base import ToolExecutionResult
 from .errors import ToolExecutionError, ToolNotFoundError, ToolParameterError
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from ai_company.providers.models import ToolDefinition
+    from ai_company.security.protocol import SecurityInterceptionStrategy
 
-    from .base import BaseTool, ToolExecutionResult
+    from .base import BaseTool
     from .permissions import ToolPermissionChecker
     from .registry import ToolRegistry
 
@@ -85,16 +91,25 @@ class ToolInvoker:
         registry: ToolRegistry,
         *,
         permission_checker: ToolPermissionChecker | None = None,
+        security_interceptor: SecurityInterceptionStrategy | None = None,
+        agent_id: str | None = None,
+        task_id: str | None = None,
     ) -> None:
-        """Initialize with a tool registry and optional permission checker.
+        """Initialize with a tool registry and optional checkers.
 
         Args:
             registry: Registry to look up tools from.
             permission_checker: Optional checker for access-level gating.
                 When ``None``, all registered tools are permitted.
+            security_interceptor: Optional pre/post-tool security layer.
+            agent_id: Agent ID for security context.
+            task_id: Task ID for security context.
         """
         self._registry = registry
         self._permission_checker = permission_checker
+        self._security_interceptor = security_interceptor
+        self._agent_id = agent_id
+        self._task_id = task_id
 
     @property
     def registry(self) -> ToolRegistry:
@@ -140,6 +155,105 @@ class ToolInvoker:
             is_error=True,
         )
 
+    async def _check_security(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+    ) -> ToolResult | None:
+        """Run the security interceptor (if any) before execution.
+
+        Returns ``None`` if allowed, or a ``ToolResult(is_error=True)``
+        if denied or escalated.
+        """
+        if self._security_interceptor is None:
+            return None
+        context = SecurityContext(
+            tool_name=tool.name,
+            tool_category=tool.category,
+            action_type=tool.action_type,
+            arguments=dict(tool_call.arguments),
+            agent_id=self._agent_id,
+            task_id=self._task_id,
+        )
+        verdict = await self._security_interceptor.evaluate_pre_tool(context)
+        if verdict.verdict == SecurityVerdictType.ALLOW:
+            return None
+        if verdict.verdict == SecurityVerdictType.ESCALATE:
+            logger.warning(
+                TOOL_SECURITY_ESCALATED,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                reason=verdict.reason,
+                approval_id=verdict.approval_id,
+            )
+            msg = (
+                f"Security escalation: {verdict.reason}. "
+                f"Approval required (id={verdict.approval_id})"
+            )
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content=msg,
+                is_error=True,
+            )
+        # DENY
+        logger.warning(
+            TOOL_SECURITY_DENIED,
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            reason=verdict.reason,
+        )
+        return ToolResult(
+            tool_call_id=tool_call.id,
+            content=f"Security denied: {verdict.reason}",
+            is_error=True,
+        )
+
+    async def _scan_output(
+        self,
+        tool: BaseTool,
+        tool_call: ToolCall,
+        result: ToolExecutionResult,
+    ) -> ToolExecutionResult:
+        """Scan tool output for sensitive data (if interceptor is set).
+
+        If sensitive data is found and redacted, returns a new
+        ``ToolExecutionResult`` with the redacted content.
+        """
+        if self._security_interceptor is None:
+            return result
+        if result.is_error:
+            return result
+
+        context = SecurityContext(
+            tool_name=tool.name,
+            tool_category=tool.category,
+            action_type=tool.action_type,
+            arguments=dict(tool_call.arguments),
+            agent_id=self._agent_id,
+            task_id=self._task_id,
+        )
+        scan_result = await self._security_interceptor.scan_output(
+            context,
+            result.content,
+        )
+        if scan_result.has_sensitive_data and scan_result.redacted_content is not None:
+            logger.warning(
+                TOOL_OUTPUT_REDACTED,
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                findings=scan_result.findings,
+            )
+            return ToolExecutionResult(
+                content=scan_result.redacted_content,
+                is_error=result.is_error,
+                metadata={
+                    **result.metadata,
+                    "output_redacted": True,
+                    "redaction_findings": list(scan_result.findings),
+                },
+            )
+        return result
+
     async def invoke(self, tool_call: ToolCall) -> ToolResult:
         """Execute a single tool call.
 
@@ -177,9 +291,19 @@ class ToolInvoker:
         if param_error is not None:
             return param_error
 
+        security_error = await self._check_security(tool_or_error, tool_call)
+        if security_error is not None:
+            return security_error
+
         exec_result = await self._execute_tool(tool_or_error, tool_call)
         if isinstance(exec_result, ToolResult):
             return exec_result
+
+        exec_result = await self._scan_output(
+            tool_or_error,
+            tool_call,
+            exec_result,
+        )
 
         return self._build_result(tool_call, exec_result)
 
