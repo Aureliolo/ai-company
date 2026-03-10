@@ -5,6 +5,7 @@ criteria evaluation (DESIGN_SPEC D13).
 """
 
 from datetime import UTC, datetime
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from ai_company.core.enums import SeniorityLevel, compare_seniority
@@ -17,6 +18,8 @@ from ai_company.observability.events.promotion import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ai_company.core.types import NotBlankStr
     from ai_company.hr.performance.models import AgentPerformanceSnapshot
     from ai_company.hr.promotion.config import PromotionCriteriaConfig
@@ -24,17 +27,21 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 # Default thresholds per criterion, keyed by criterion name.
-_DEFAULT_THRESHOLDS: dict[str, float] = {
-    "quality_score": 7.0,
-    "success_rate": 0.8,
-    "tasks_completed": 10.0,
-}
+_DEFAULT_THRESHOLDS: MappingProxyType[str, float] = MappingProxyType(
+    {
+        "quality_score": 7.0,
+        "success_rate": 0.8,
+        "tasks_completed": 10.0,
+    }
+)
 
-_DEMOTION_THRESHOLDS: dict[str, float] = {
-    "quality_score": 4.0,
-    "success_rate": 0.5,
-    "tasks_completed": 0.0,
-}
+_DEMOTION_THRESHOLDS: MappingProxyType[str, float] = MappingProxyType(
+    {
+        "quality_score": 4.0,
+        "success_rate": 0.5,
+        "tasks_completed": 0.0,
+    }
+)
 
 
 class ThresholdEvaluator:
@@ -129,7 +136,7 @@ class ThresholdEvaluator:
     def _evaluate_criteria(
         *,
         snapshot: AgentPerformanceSnapshot,
-        thresholds: dict[str, float],
+        thresholds: Mapping[str, float],
         direction: PromotionDirection,
     ) -> list[CriterionResult]:
         """Evaluate individual criteria against thresholds."""
@@ -151,7 +158,7 @@ class ThresholdEvaluator:
             )
         )
 
-        # Success rate criterion
+        # Success rate criterion — use most recent window value
         success_rate = 0.0
         for window in snapshot.windows:
             if window.success_rate is not None:
@@ -171,7 +178,7 @@ class ThresholdEvaluator:
             )
         )
 
-        # Tasks completed criterion
+        # Tasks completed criterion — use peak value across windows
         total_tasks = 0.0
         for window in snapshot.windows:
             total_tasks = max(total_tasks, float(window.tasks_completed))

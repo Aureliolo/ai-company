@@ -255,7 +255,14 @@ class TestMilestoneTrustStrategy:
         self,
         milestone_config: TrustConfig,
     ) -> None:
-        """standard_to_elevated milestone has requires_human_approval=True."""
+        """standard_to_elevated milestone has requires_human_approval=True.
+
+        The agent is at STANDARD level. The milestone_config defines
+        standard_to_elevated with tasks_completed=30, quality_score_min=8.0,
+        and requires_human_approval=True. With 50 tasks and quality 9.0,
+        the criteria are met and the strategy should recommend ELEVATED
+        with human approval required.
+        """
         strategy = MilestoneTrustStrategy(config=milestone_config)
         state = TrustState(
             agent_id=NotBlankStr("agent-001"),
@@ -274,8 +281,8 @@ class TestMilestoneTrustStrategy:
             snapshot=snapshot,
         )
 
-        if result.recommended_level == ToolAccessLevel.ELEVATED:
-            assert result.requires_human_approval is True
+        assert result.recommended_level == ToolAccessLevel.ELEVATED
+        assert result.requires_human_approval is True
 
     async def test_milestone_quality_below_threshold_no_promote(
         self,

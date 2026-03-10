@@ -71,9 +71,11 @@ class TrustService:
             agent_id: Agent identifier.
 
         Returns:
-            Initial trust state.
+            Initial trust state with created_at timestamp.
         """
+        now = datetime.now(UTC)
         state = self._strategy.initial_state(agent_id=agent_id)
+        state = state.model_copy(update={"created_at": now})
         self._trust_states[str(agent_id)] = state
         self._change_history.setdefault(str(agent_id), [])
 
@@ -194,14 +196,21 @@ class TrustService:
             details=result.details,
         )
 
-        # Update state
-        updated = state.model_copy(
-            update={
-                "global_level": result.recommended_level,
-                "last_promoted_at": now,
-                "trust_score": result.score,
-            },
+        # Update state — only set last_promoted_at on actual promotions
+        from ai_company.security.trust.levels import (  # noqa: PLC0415
+            TRUST_LEVEL_RANK,
         )
+
+        is_promotion = TRUST_LEVEL_RANK.get(
+            result.recommended_level, 0
+        ) > TRUST_LEVEL_RANK.get(state.global_level, 0)
+        state_update: dict[str, object] = {
+            "global_level": result.recommended_level,
+            "trust_score": result.score,
+        }
+        if is_promotion:
+            state_update["last_promoted_at"] = now
+        updated = state.model_copy(update=state_update)
         self._trust_states[key] = updated
         self._change_history.setdefault(key, []).append(record)
 
@@ -249,8 +258,10 @@ class TrustService:
     ) -> TrustEvaluationResult:
         """Check for trust decay conditions.
 
-        This is a convenience wrapper around evaluate_agent that
-        also updates the decay check timestamp.
+        Delegates to evaluate_agent first, then updates the decay
+        check timestamp.  The ordering ensures that the strategy's
+        decay logic sees the *previous* last_decay_check_at value,
+        not a freshly-updated one.
 
         Args:
             agent_id: Agent to check.
@@ -259,6 +270,9 @@ class TrustService:
         Returns:
             Evaluation result (may recommend demotion on decay).
         """
+        result = await self.evaluate_agent(agent_id, snapshot)
+
+        # Update decay check timestamp *after* evaluation
         key = str(agent_id)
         state = self._trust_states.get(key)
         if state is not None:
@@ -268,7 +282,7 @@ class TrustService:
             )
             self._trust_states[key] = updated
 
-        return await self.evaluate_agent(agent_id, snapshot)
+        return result
 
     def _enforce_elevated_gate(
         self,
@@ -346,7 +360,21 @@ class TrustService:
     def _infer_reason(
         result: TrustEvaluationResult,
     ) -> TrustChangeReason:
-        """Infer the change reason from the evaluation result."""
+        """Infer the change reason from the evaluation result.
+
+        Distinguishes promotions from demotions: demotions use
+        TRUST_DECAY, promotions use strategy-specific reasons.
+        """
+        from ai_company.security.trust.levels import (  # noqa: PLC0415
+            TRUST_LEVEL_RANK,
+        )
+
+        is_demotion = TRUST_LEVEL_RANK.get(
+            result.recommended_level, 0
+        ) < TRUST_LEVEL_RANK.get(result.current_level, 0)
+        if is_demotion:
+            return TrustChangeReason.TRUST_DECAY
+
         strategy = result.strategy_name
         if strategy == "milestone":
             return TrustChangeReason.MILESTONE_ACHIEVED

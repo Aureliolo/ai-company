@@ -35,12 +35,22 @@ def make_performance_snapshot(
     The WindowMetrics validator requires
     ``tasks_completed + tasks_failed == data_point_count``,
     so we compute ``tasks_failed`` from the success rate.
+
+    When ``success_rate == 0`` and ``tasks_completed > 0``, all tasks
+    are treated as failed (total = tasks_completed, tasks_failed = total,
+    tasks_completed = 0) to keep the metrics self-consistent.
     """
     if success_rate > 0:
         total = max(1, int(tasks_completed / success_rate))
-    else:
+        tasks_failed = total - tasks_completed
+    elif tasks_completed > 0:
+        # 0% success: every task is a failure
         total = tasks_completed
-    tasks_failed = total - tasks_completed
+        tasks_failed = total
+        tasks_completed = 0
+    else:
+        total = 0
+        tasks_failed = 0
 
     window = WindowMetrics(
         window_size="30d",

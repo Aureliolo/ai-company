@@ -14,6 +14,7 @@ from ai_company.observability.events.trust import (
     TRUST_EVALUATE_FAILED,
     TRUST_EVALUATE_START,
 )
+from ai_company.security.trust.levels import TRUST_LEVEL_ORDER, TRUST_LEVEL_RANK
 from ai_company.security.trust.models import TrustEvaluationResult, TrustState
 
 if TYPE_CHECKING:
@@ -22,18 +23,6 @@ if TYPE_CHECKING:
     from ai_company.security.trust.config import CategoryTrustCriteria, TrustConfig
 
 logger = get_logger(__name__)
-
-# Ordered trust levels for category-based evaluation.
-_TRUST_LEVEL_ORDER: tuple[ToolAccessLevel, ...] = (
-    ToolAccessLevel.SANDBOXED,
-    ToolAccessLevel.RESTRICTED,
-    ToolAccessLevel.STANDARD,
-    ToolAccessLevel.ELEVATED,
-)
-
-_TRUST_LEVEL_RANK: dict[ToolAccessLevel, int] = {
-    level: idx for idx, level in enumerate(_TRUST_LEVEL_ORDER)
-}
 
 
 class PerCategoryTrustStrategy:
@@ -84,7 +73,7 @@ class PerCategoryTrustStrategy:
             new_level = current_level
 
             for transition_key, criteria in cat_criteria.items():
-                from_to = transition_key.split("_to_")
+                from_to = transition_key.split("_to_", maxsplit=1)
                 if len(from_to) != 2:  # noqa: PLR2004
                     continue
                 from_str, to_str = from_to
@@ -119,9 +108,9 @@ class PerCategoryTrustStrategy:
 
         if category_updates:
             min_rank = min(
-                _TRUST_LEVEL_RANK.get(lv, 0) for lv in category_updates.values()
+                TRUST_LEVEL_RANK.get(lv, 0) for lv in category_updates.values()
             )
-            recommended = _TRUST_LEVEL_ORDER[min_rank]
+            recommended = TRUST_LEVEL_ORDER[min_rank]
         else:
             recommended = current_state.global_level
 
@@ -173,11 +162,12 @@ class PerCategoryTrustStrategy:
         Returns:
             True if the criteria are met.
         """
-        total_tasks = 0
+        # Best single-window task count (not cumulative total)
+        max_tasks_completed = 0
         for window in snapshot.windows:
-            total_tasks = max(total_tasks, window.tasks_completed)
+            max_tasks_completed = max(max_tasks_completed, window.tasks_completed)
 
-        if total_tasks < criteria_config.tasks_completed:
+        if max_tasks_completed < criteria_config.tasks_completed:
             return False
 
         quality = snapshot.overall_quality_score

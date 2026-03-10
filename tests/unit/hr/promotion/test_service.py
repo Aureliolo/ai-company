@@ -2,10 +2,17 @@
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 
 import pytest
 
-from ai_company.core.enums import Complexity, SeniorityLevel, TaskType
+from ai_company.api.approval_store import ApprovalStore
+from ai_company.core.enums import (
+    ApprovalStatus,
+    Complexity,
+    SeniorityLevel,
+    TaskType,
+)
 from ai_company.core.types import NotBlankStr
 from ai_company.hr.errors import (
     PromotionApprovalRequiredError,
@@ -39,6 +46,7 @@ def _make_service(
     registry: AgentRegistryService,
     tracker: PerformanceTracker,
     config: PromotionConfig | None = None,
+    approval_store: ApprovalStore | None = None,
 ) -> PromotionService:
     """Build a PromotionService with real strategy implementations."""
     cfg = config or PromotionConfig()
@@ -51,6 +59,7 @@ def _make_service(
         registry=registry,
         tracker=tracker,
         config=cfg,
+        approval_store=approval_store,
     )
 
 
@@ -221,6 +230,69 @@ class TestRequestPromotion:
 
 
 @pytest.mark.unit
+class TestRequestPromotionWithApprovalStore:
+    """Tests for request_promotion with human approval + approval store."""
+
+    async def test_human_approval_with_store_returns_pending(
+        self,
+        registry: AgentRegistryService,
+        tracker: PerformanceTracker,
+    ) -> None:
+        """Request requiring human approval with store returns PENDING."""
+        mock_store = AsyncMock(spec=ApprovalStore)
+
+        # Mid -> Senior requires human approval by default
+        identity = make_agent_identity(
+            name="needs-approval-agent",
+            level=SeniorityLevel.MID,
+        )
+        await registry.register(identity)
+        agent_id = NotBlankStr(str(identity.id))
+        await _seed_metrics(tracker, str(agent_id), quality=8.0)
+
+        service = _make_service(
+            registry=registry,
+            tracker=tracker,
+            approval_store=mock_store,
+        )
+        evaluation = await service.evaluate_promotion(agent_id)
+        request = await service.request_promotion(agent_id, evaluation)
+
+        assert request.status == ApprovalStatus.PENDING
+        assert request.approval_id is not None
+        mock_store.add.assert_awaited_once()
+
+    async def test_ineligible_evaluation_raises(
+        self,
+        registry: AgentRegistryService,
+        tracker: PerformanceTracker,
+    ) -> None:
+        """request_promotion with eligible=False raises PromotionError."""
+        identity = make_agent_identity(
+            name="ineligible-agent",
+            level=SeniorityLevel.JUNIOR,
+        )
+        await registry.register(identity)
+        agent_id = NotBlankStr(str(identity.id))
+        # Seed poor metrics so evaluation yields eligible=False
+        await _seed_metrics(
+            tracker,
+            str(agent_id),
+            quality=2.0,
+            is_success=False,
+            count=3,
+        )
+
+        service = _make_service(registry=registry, tracker=tracker)
+        evaluation = await service.evaluate_promotion(agent_id)
+
+        assert evaluation.eligible is False
+
+        with pytest.raises(PromotionError, match="not eligible"):
+            await service.request_promotion(agent_id, evaluation)
+
+
+@pytest.mark.unit
 class TestApplyPromotion:
     """Tests for apply_promotion method."""
 
@@ -257,6 +329,7 @@ class TestApplyPromotion:
         tracker: PerformanceTracker,
     ) -> None:
         """apply_promotion raises for non-approved request."""
+        mock_store = AsyncMock(spec=ApprovalStore)
         identity = make_agent_identity(
             name="pending-agent",
             level=SeniorityLevel.MID,
@@ -266,7 +339,11 @@ class TestApplyPromotion:
         await _seed_metrics(tracker, str(agent_id), quality=8.0)
 
         # Use config where Mid->Senior requires human approval
-        service = _make_service(registry=registry, tracker=tracker)
+        service = _make_service(
+            registry=registry,
+            tracker=tracker,
+            approval_store=mock_store,
+        )
         evaluation = await service.evaluate_promotion(agent_id)
         request = await service.request_promotion(agent_id, evaluation)
 

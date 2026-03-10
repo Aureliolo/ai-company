@@ -5,6 +5,7 @@ including criteria evaluation, approval decisions, model mapping,
 and trust integration.
 """
 
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -33,8 +34,10 @@ from ai_company.observability.events.promotion import (
     PROMOTION_APPROVAL_SUBMITTED,
     PROMOTION_COOLDOWN_ACTIVE,
     PROMOTION_EVALUATE_COMPLETE,
+    PROMOTION_EVALUATE_FAILED,
     PROMOTION_EVALUATE_START,
     PROMOTION_MODEL_CHANGED,
+    PROMOTION_NOTIFICATION_SENT,
     PROMOTION_REJECTED,
     PROMOTION_REQUESTED,
 )
@@ -61,6 +64,14 @@ logger = get_logger(__name__)
 
 
 _SYSTEM_INITIATOR = NotBlankStr("system")
+
+# Callback type for promotion/demotion notifications.
+# The communication layer can supply a concrete callback
+# (e.g. via MessageBus.publish) to notify agents and teams.
+PromotionNotificationCallback = Callable[
+    ["PromotionRecord"],
+    "Awaitable[None]",
+]
 
 
 def _next_level(level: SeniorityLevel) -> SeniorityLevel | None:
@@ -96,6 +107,9 @@ class PromotionService:
         config: Promotion configuration.
         approval_store: Optional approval store for human approval.
         trust_service: Optional trust service for re-evaluation.
+        on_notification: Optional callback to notify agents/teams of
+            promotion or demotion events. Wired by the communication
+            layer when available.
     """
 
     def __init__(  # noqa: PLR0913
@@ -109,6 +123,7 @@ class PromotionService:
         config: PromotionConfig,
         approval_store: ApprovalStore | None = None,
         trust_service: TrustService | None = None,
+        on_notification: PromotionNotificationCallback | None = None,
     ) -> None:
         self._criteria = criteria_strategy
         self._approval = approval_strategy
@@ -118,6 +133,7 @@ class PromotionService:
         self._config = config
         self._approval_store = approval_store
         self._trust_service = trust_service
+        self._on_notification = on_notification
         self._promotion_history: dict[str, list[PromotionRecord]] = {}
         self._cooldown_until: dict[str, AwareDatetime] = {}
 
@@ -140,7 +156,7 @@ class PromotionService:
         if identity is None:
             msg = f"Agent {agent_id!r} not found"
             logger.warning(
-                PROMOTION_EVALUATE_START,
+                PROMOTION_EVALUATE_FAILED,
                 agent_id=agent_id,
                 error=msg,
             )
@@ -150,7 +166,7 @@ class PromotionService:
         if target is None:
             msg = f"Agent {agent_id!r} is already at maximum seniority"
             logger.warning(
-                PROMOTION_EVALUATE_START,
+                PROMOTION_EVALUATE_FAILED,
                 agent_id=agent_id,
                 current_level=identity.level.value,
                 error=msg,
@@ -199,7 +215,7 @@ class PromotionService:
         if identity is None:
             msg = f"Agent {agent_id!r} not found"
             logger.warning(
-                PROMOTION_EVALUATE_START,
+                PROMOTION_EVALUATE_FAILED,
                 agent_id=agent_id,
                 error=msg,
             )
@@ -209,12 +225,20 @@ class PromotionService:
         if target is None:
             msg = f"Agent {agent_id!r} is already at minimum seniority"
             logger.warning(
-                PROMOTION_EVALUATE_START,
+                PROMOTION_EVALUATE_FAILED,
                 agent_id=agent_id,
                 current_level=identity.level.value,
                 error=msg,
             )
             raise PromotionError(msg)
+
+        logger.debug(
+            PROMOTION_EVALUATE_START,
+            agent_id=agent_id,
+            current_level=identity.level.value,
+            target_level=target.value,
+            direction="demotion",
+        )
 
         snapshot = await self._tracker.get_snapshot(agent_id)
 
@@ -249,6 +273,15 @@ class PromotionService:
             PromotionCooldownError: If in cooldown period.
             PromotionError: If agent not found.
         """
+        if not evaluation.eligible:
+            msg = f"Agent {agent_id!r} is not eligible for {evaluation.direction.value}"
+            logger.warning(
+                PROMOTION_EVALUATE_FAILED,
+                agent_id=agent_id,
+                error=msg,
+            )
+            raise PromotionError(msg)
+
         if self.is_in_cooldown(agent_id):
             until = self._cooldown_until.get(str(agent_id))
             msg = f"Agent {agent_id!r} is in cooldown until {until}"
@@ -280,7 +313,18 @@ class PromotionService:
 
         if decision.auto_approve:
             status = ApprovalStatus.APPROVED
-        elif decision.requires_human and self._approval_store is not None:
+        elif decision.requires_human:
+            if self._approval_store is None:
+                msg = (
+                    f"Promotion for agent {agent_id!r} requires human "
+                    f"approval but no approval store is configured"
+                )
+                logger.warning(
+                    PROMOTION_REQUESTED,
+                    agent_id=agent_id,
+                    error=msg,
+                )
+                raise PromotionError(msg)
             approval_id = await self._create_approval(
                 agent_id=agent_id,
                 evaluation=evaluation,
@@ -411,12 +455,22 @@ class PromotionService:
                 hours=self._config.cooldown_hours
             )
 
+        # Best-effort trust re-evaluation — promotion is already applied,
+        # so failures here must not prevent the record from being returned.
         if self._trust_service is not None:
-            snapshot = await self._tracker.get_snapshot(request.agent_id)
-            await self._trust_service.evaluate_agent(
-                request.agent_id,
-                snapshot,
-            )
+            try:
+                snapshot = await self._tracker.get_snapshot(request.agent_id)
+                await self._trust_service.evaluate_agent(
+                    request.agent_id,
+                    snapshot,
+                )
+            except Exception:
+                logger.warning(
+                    PROMOTION_APPLIED,
+                    agent_id=request.agent_id,
+                    error="Trust re-evaluation failed after promotion; "
+                    "promotion still applied",
+                )
 
         event = (
             PROMOTION_APPLIED
@@ -430,6 +484,23 @@ class PromotionService:
             new_level=record.new_level.value,
             model_changed=record.model_changed,
         )
+
+        # Notify agent and team — best-effort, must not block the record.
+        if self._on_notification is not None:
+            try:
+                await self._on_notification(record)
+                logger.debug(
+                    PROMOTION_NOTIFICATION_SENT,
+                    agent_id=request.agent_id,
+                    direction=request.direction.value,
+                )
+            except Exception:
+                logger.warning(
+                    PROMOTION_NOTIFICATION_SENT,
+                    agent_id=request.agent_id,
+                    error="Notification callback failed; promotion still applied",
+                )
+
         return record
 
     def get_promotion_history(
@@ -468,6 +539,17 @@ class PromotionService:
         initiated_by: NotBlankStr,
     ) -> NotBlankStr:
         """Create an approval item for a promotion requiring human review."""
+        # Defense-in-depth: caller already checks, but guard against
+        # direct invocation without an approval store.
+        if self._approval_store is None:
+            msg = "Cannot create approval: no approval store configured"
+            logger.warning(
+                PROMOTION_APPROVAL_SUBMITTED,
+                agent_id=agent_id,
+                error=msg,
+            )
+            raise PromotionError(msg)
+
         from ai_company.core.approval import ApprovalItem  # noqa: PLC0415
 
         approval_id = NotBlankStr(str(uuid4()))
@@ -497,15 +579,6 @@ class PromotionService:
                 "target_level": evaluation.target_level.value,
             },
         )
-
-        if self._approval_store is None:
-            msg = "Cannot create approval: no approval store configured"
-            logger.warning(
-                PROMOTION_APPROVAL_SUBMITTED,
-                agent_id=agent_id,
-                error=msg,
-            )
-            raise PromotionError(msg)
         await self._approval_store.add(approval)
 
         logger.info(

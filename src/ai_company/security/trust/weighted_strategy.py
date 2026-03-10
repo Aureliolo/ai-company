@@ -6,12 +6,13 @@ and promotes/demotes based on configurable thresholds.
 
 from typing import TYPE_CHECKING
 
-from ai_company.core.enums import ToolAccessLevel
+from ai_company.core.enums import ToolAccessLevel  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.trust import (
     TRUST_EVALUATE_COMPLETE,
     TRUST_EVALUATE_START,
 )
+from ai_company.security.trust.levels import TRANSITION_KEYS
 from ai_company.security.trust.models import TrustEvaluationResult, TrustState
 
 if TYPE_CHECKING:
@@ -21,25 +22,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Ordered trust levels for threshold-based promotion.
-_TRUST_LEVEL_ORDER: tuple[ToolAccessLevel, ...] = (
-    ToolAccessLevel.SANDBOXED,
-    ToolAccessLevel.RESTRICTED,
-    ToolAccessLevel.STANDARD,
-    ToolAccessLevel.ELEVATED,
-)
-
-_TRUST_LEVEL_RANK: dict[ToolAccessLevel, int] = {
-    level: idx for idx, level in enumerate(_TRUST_LEVEL_ORDER)
-}
-
-# Transition key convention: "{from_level}_to_{to_level}"
-_TRANSITION_KEYS: tuple[tuple[str, ToolAccessLevel, ToolAccessLevel], ...] = (
-    ("sandboxed_to_restricted", ToolAccessLevel.SANDBOXED, ToolAccessLevel.RESTRICTED),
-    ("restricted_to_standard", ToolAccessLevel.RESTRICTED, ToolAccessLevel.STANDARD),
-    ("standard_to_elevated", ToolAccessLevel.STANDARD, ToolAccessLevel.ELEVATED),
-)
-
 
 class WeightedTrustStrategy:
     """Trust strategy using a single weighted score.
@@ -48,11 +30,13 @@ class WeightedTrustStrategy:
     the agent's performance snapshot:
       - task_difficulty: quality score normalized to [0, 1]
       - completion_rate: task success rate from the latest window
-      - error_rate: 1 - failure rate (penalizes errors)
-      - human_feedback: task volume ratio (tasks / 100, capped at 1.0)
+      - error_rate: failure penalty (tasks_failed / data_point_count)
+      - human_feedback: task volume proxy (tasks / 100, capped at 1.0)
+        — placeholder until actual human feedback signals are available
 
     The score is compared against configurable thresholds to
-    determine the recommended trust level.
+    determine the recommended trust level.  Trust changes are
+    restricted to one adjacent level per evaluation.
     """
 
     def __init__(self, *, config: TrustConfig) -> None:
@@ -131,11 +115,13 @@ class WeightedTrustStrategy:
     def _compute_score(self, snapshot: AgentPerformanceSnapshot) -> float:
         """Compute the weighted trust score from performance data.
 
-        Each factor uses a distinct data source to avoid redundancy:
+        Each factor uses a distinct data source:
         - difficulty: quality score (normalized 0-1)
         - completion: success rate from latest window
-        - error: 1 - error_rate (penalizes failures)
+        - error: 1 - (tasks_failed / data_point_count), distinct from
+          success_rate because data_point_count includes non-task events
         - feedback: task volume ratio (tasks/100, capped at 1.0)
+          — placeholder for human feedback signals
         """
         # Quality score normalized to [0, 1]
         difficulty_factor = (
@@ -151,14 +137,15 @@ class WeightedTrustStrategy:
                 completion_factor = window.success_rate
                 break
 
-        # Error penalty: 1 - failure_rate
+        # Error penalty: 1 - (tasks_failed / data_point_count)
         error_factor = 1.0
         for window in snapshot.windows:
-            if window.data_point_count > 0 and window.success_rate is not None:
-                error_factor = 1.0 - (1.0 - window.success_rate)
+            if window.data_point_count > 0:
+                error_factor = 1.0 - (window.tasks_failed / window.data_point_count)
                 break
 
         # Task volume ratio (tasks completed / 100, capped at 1.0)
+        # — placeholder for human feedback until that signal is available
         feedback_factor = 0.0
         for window in snapshot.windows:
             if window.tasks_completed > 0:
@@ -178,26 +165,23 @@ class WeightedTrustStrategy:
         score: float,
         current_level: ToolAccessLevel,
     ) -> ToolAccessLevel:
-        """Determine the appropriate trust level from score.
+        """Determine the next adjacent trust level from score.
 
-        Walks through transitions in order; the highest level whose
-        threshold is met becomes the recommendation.
+        Only considers the immediate next transition from the current
+        level — trust changes are restricted to one level per evaluation.
         """
-        recommended = current_level
+        for key, from_level, to_level in TRANSITION_KEYS:
+            if from_level != current_level:
+                continue
 
-        for key, from_level, to_level in _TRANSITION_KEYS:
             threshold = self._thresholds.get(key)
             if threshold is None:
                 continue
 
-            current_rank = _TRUST_LEVEL_RANK.get(current_level, 0)
-            from_rank = _TRUST_LEVEL_RANK.get(from_level, 0)
+            if score >= threshold.score:
+                return to_level
 
-            # Only consider transitions from the current or lower level
-            if current_rank <= from_rank and score >= threshold.score:
-                recommended = to_level
-
-        return recommended
+        return current_level
 
     def _check_human_approval(
         self,
@@ -208,7 +192,7 @@ class WeightedTrustStrategy:
         if current == recommended:
             return False
 
-        for key, from_level, to_level in _TRANSITION_KEYS:
+        for key, from_level, to_level in TRANSITION_KEYS:
             if from_level == current and to_level == recommended:
                 threshold: TrustThreshold | None = self._thresholds.get(key)
                 if threshold is not None:

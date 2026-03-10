@@ -10,6 +10,8 @@ from ai_company.hr.promotion.seniority_model_mapping import (
 
 from .conftest import make_agent_identity
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 class TestSeniorityModelMappingName:

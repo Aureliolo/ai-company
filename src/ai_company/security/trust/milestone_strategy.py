@@ -8,12 +8,17 @@ re-verification and trust decay on idle/error conditions.
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Final
 
-from ai_company.core.enums import ToolAccessLevel
+from ai_company.core.enums import ToolAccessLevel  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.trust import (
     TRUST_DECAY_DETECTED,
     TRUST_EVALUATE_COMPLETE,
     TRUST_EVALUATE_START,
+)
+from ai_company.security.trust.levels import (
+    TRANSITION_KEYS,
+    TRUST_LEVEL_ORDER,
+    TRUST_LEVEL_RANK,
 )
 from ai_company.security.trust.models import TrustEvaluationResult, TrustState
 
@@ -27,24 +32,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _RE_VERIFY_QUALITY_MIN: Final[float] = 7.0
-
-# Ordered trust levels for milestone transitions.
-_LEVEL_ORDER: tuple[ToolAccessLevel, ...] = (
-    ToolAccessLevel.SANDBOXED,
-    ToolAccessLevel.RESTRICTED,
-    ToolAccessLevel.STANDARD,
-    ToolAccessLevel.ELEVATED,
-)
-
-_LEVEL_RANK: dict[ToolAccessLevel, int] = {
-    level: idx for idx, level in enumerate(_LEVEL_ORDER)
-}
-
-_TRANSITION_KEYS: tuple[tuple[str, ToolAccessLevel, ToolAccessLevel], ...] = (
-    ("sandboxed_to_restricted", ToolAccessLevel.SANDBOXED, ToolAccessLevel.RESTRICTED),
-    ("restricted_to_standard", ToolAccessLevel.RESTRICTED, ToolAccessLevel.STANDARD),
-    ("standard_to_elevated", ToolAccessLevel.STANDARD, ToolAccessLevel.ELEVATED),
-)
 
 
 class MilestoneTrustStrategy:
@@ -94,7 +81,7 @@ class MilestoneTrustStrategy:
         details_parts: list[str] = []
 
         # Check for promotion through milestones
-        for key, from_level, to_level in _TRANSITION_KEYS:
+        for key, from_level, to_level in TRANSITION_KEYS:
             if current_state.global_level != from_level:
                 continue
 
@@ -116,7 +103,7 @@ class MilestoneTrustStrategy:
         # Check for decay (only if at RESTRICTED or above)
         if (
             self._re_verification.enabled
-            and _LEVEL_RANK.get(current_state.global_level, 0) > 0
+            and TRUST_LEVEL_RANK.get(current_state.global_level, 0) > 0
         ):
             decay_level = self._check_decay(
                 state=current_state,
@@ -187,11 +174,12 @@ class MilestoneTrustStrategy:
         snapshot: AgentPerformanceSnapshot,
     ) -> bool:
         """Check task count and quality criteria."""
-        total_tasks = 0
+        # Best single-window task count (not cumulative total)
+        max_tasks_completed = 0
         for window in snapshot.windows:
-            total_tasks = max(total_tasks, window.tasks_completed)
+            max_tasks_completed = max(max_tasks_completed, window.tasks_completed)
 
-        if total_tasks < milestone.tasks_completed:
+        if max_tasks_completed < milestone.tasks_completed:
             return False
 
         quality = snapshot.overall_quality_score
@@ -209,9 +197,10 @@ class MilestoneTrustStrategy:
     ) -> bool:
         """Check time active and clean history criteria."""
         if milestone.time_active_days > 0:
-            if state.last_evaluated_at is None:
+            # Use created_at (agent tenure) rather than last_evaluated_at
+            if state.created_at is None:
                 return False
-            days_active = (now - state.last_evaluated_at).days
+            days_active = (now - state.created_at).days
             if days_active < milestone.time_active_days:
                 return False
 
@@ -237,7 +226,7 @@ class MilestoneTrustStrategy:
 
         Returns the demoted level if decay should occur, else None.
         """
-        current_rank = _LEVEL_RANK.get(state.global_level, 0)
+        current_rank = TRUST_LEVEL_RANK.get(state.global_level, 0)
         if current_rank <= 0:
             return None
 
@@ -246,7 +235,7 @@ class MilestoneTrustStrategy:
         if last_eval is not None:
             idle_days = (now - last_eval).days
             if idle_days >= self._re_verification.decay_on_idle_days:
-                demoted = _LEVEL_ORDER[current_rank - 1]
+                demoted = TRUST_LEVEL_ORDER[current_rank - 1]
                 logger.info(
                     TRUST_DECAY_DETECTED,
                     agent_id=state.agent_id,
@@ -261,7 +250,7 @@ class MilestoneTrustStrategy:
             if window.data_point_count > 0 and window.success_rate is not None:
                 error_rate = 1.0 - window.success_rate
                 if error_rate > self._re_verification.decay_on_error_rate:
-                    demoted = _LEVEL_ORDER[current_rank - 1]
+                    demoted = TRUST_LEVEL_ORDER[current_rank - 1]
                     logger.info(
                         TRUST_DECAY_DETECTED,
                         agent_id=state.agent_id,
@@ -280,7 +269,7 @@ class MilestoneTrustStrategy:
             and snapshot.overall_quality_score is not None
             and snapshot.overall_quality_score < _RE_VERIFY_QUALITY_MIN
         ):
-            demoted = _LEVEL_ORDER[current_rank - 1]
+            demoted = TRUST_LEVEL_ORDER[current_rank - 1]
             logger.info(
                 TRUST_DECAY_DETECTED,
                 agent_id=state.agent_id,

@@ -9,6 +9,7 @@ from ai_company.core.enums import ToolAccessLevel
 from ai_company.security.trust.config import (
     CategoryTrustCriteria,
     MilestoneCriteria,
+    ReVerificationConfig,
     TrustConfig,
     TrustThreshold,
     WeightedTrustWeights,
@@ -284,3 +285,37 @@ class TestStrategyParametrize:
     ) -> None:
         config = TrustConfig(strategy=strategy, **extra_kwargs)
         assert config.strategy == strategy
+
+
+# ── MilestoneCriteria Mutual Exclusivity ─────────────────────────
+
+
+@pytest.mark.unit
+class TestMilestoneCriteriaApprovalFlags:
+    """Tests for MilestoneCriteria._validate_approval_flags."""
+
+    def test_auto_promote_and_requires_human_raises(self) -> None:
+        """auto_promote=True with requires_human_approval=True raises."""
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            MilestoneCriteria(
+                auto_promote=True,
+                requires_human_approval=True,
+            )
+
+
+# ── ReVerificationConfig Constraints ─────────────────────────────
+
+
+@pytest.mark.unit
+class TestReVerificationConfigConstraints:
+    """Tests for ReVerificationConfig field constraints."""
+
+    def test_interval_days_zero_raises(self) -> None:
+        """interval_days=0 violates ge=1 constraint."""
+        with pytest.raises(ValidationError):
+            ReVerificationConfig(interval_days=0)
+
+    def test_decay_on_error_rate_above_one_raises(self) -> None:
+        """decay_on_error_rate=1.5 violates le=1.0 constraint."""
+        with pytest.raises(ValidationError):
+            ReVerificationConfig(decay_on_error_rate=1.5)

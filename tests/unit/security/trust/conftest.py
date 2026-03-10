@@ -36,13 +36,21 @@ def make_performance_snapshot(
 
     Returns:
         A frozen performance snapshot.
+
+    When ``success_rate == 0`` and ``tasks_completed > 0``, all tasks
+    are treated as failed to keep metrics self-consistent.
     """
-    total = (
-        max(1, int(tasks_completed / success_rate))
-        if success_rate > 0
-        else tasks_completed
-    )
-    tasks_failed = total - tasks_completed
+    if success_rate > 0:
+        total = max(1, int(tasks_completed / success_rate))
+        tasks_failed = total - tasks_completed
+    elif tasks_completed > 0:
+        # 0% success: every task is a failure
+        total = tasks_completed
+        tasks_failed = total
+        tasks_completed = 0
+    else:
+        total = 0
+        tasks_failed = 0
 
     window = WindowMetrics(
         window_size="30d",

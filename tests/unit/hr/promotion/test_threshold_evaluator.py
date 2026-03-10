@@ -14,6 +14,8 @@ from .conftest import make_performance_snapshot
 if TYPE_CHECKING:
     from ai_company.hr.promotion.config import PromotionCriteriaConfig
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 class TestThresholdEvaluatorName:

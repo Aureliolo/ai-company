@@ -11,6 +11,8 @@ from ai_company.hr.promotion.config import (
     PromotionCriteriaConfig,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 class TestPromotionConfig:
@@ -109,3 +111,21 @@ class TestModelMappingConfig:
         )
         assert config.seniority_model_map["senior"] == "test-large-001"
         assert config.seniority_model_map["lead"] == "test-large-002"
+
+    def test_nonexistent_level_in_model_map_raises(self) -> None:
+        """Unknown seniority level key in seniority_model_map raises."""
+        with pytest.raises(ValueError, match="Unknown seniority level"):
+            ModelMappingConfig(
+                seniority_model_map={"nonexistent_level": "model-x"},
+            )
+
+
+@pytest.mark.unit
+class TestPromotionCriteriaConfigFrozen:
+    """Tests for PromotionCriteriaConfig immutability."""
+
+    def test_frozen(self) -> None:
+        """PromotionCriteriaConfig is immutable."""
+        config = PromotionCriteriaConfig()
+        with pytest.raises(ValidationError):
+            config.min_criteria_met = 5  # type: ignore[misc]

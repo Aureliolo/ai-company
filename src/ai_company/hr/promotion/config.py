@@ -4,7 +4,9 @@ Defines ``PromotionConfig`` and sub-configs for controlling
 promotion/demotion behavior.
 """
 
-from typing import Self
+import copy
+from types import MappingProxyType
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -25,7 +27,8 @@ class PromotionCriteriaConfig(BaseModel):
     min_criteria_met: int = Field(
         default=2,
         ge=1,
-        description="Minimum number of criteria that must be met",
+        le=3,
+        description="Minimum number of criteria that must be met (max 3)",
     )
     required_criteria: tuple[NotBlankStr, ...] = Field(
         default=(),
@@ -74,19 +77,29 @@ class ModelMappingConfig(BaseModel):
         default=True,
         description="Whether model follows seniority level",
     )
-    seniority_model_map: dict[str, NotBlankStr] = Field(
+    seniority_model_map: Any = Field(
         default_factory=dict,
-        description="Explicit seniority level to model ID overrides",
+        description="Explicit seniority level to model ID overrides "
+        "(wrapped as MappingProxyType after validation)",
     )
 
     @model_validator(mode="after")
     def _validate_model_map_keys(self) -> Self:
-        """Validate seniority_model_map keys are valid SeniorityLevel values."""
+        """Validate keys and wrap in MappingProxyType for immutability."""
+        raw_map = self.seniority_model_map
+        if isinstance(raw_map, MappingProxyType):
+            raw_map = dict(raw_map)
         valid_values = {level.value for level in SeniorityLevel}
-        for key in self.seniority_model_map:
+        for key in raw_map:
             if key not in valid_values:
                 msg = f"Unknown seniority level in model map: {key!r}"
                 raise ValueError(msg)
+        # Wrap in MappingProxyType for read-only enforcement
+        object.__setattr__(
+            self,
+            "seniority_model_map",
+            MappingProxyType(copy.deepcopy(raw_map)),
+        )
         return self
 
 

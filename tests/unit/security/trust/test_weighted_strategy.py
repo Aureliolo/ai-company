@@ -103,7 +103,18 @@ class TestWeightedTrustStrategy:
         self,
         weighted_config: TrustConfig,
     ) -> None:
-        """Standard-to-elevated threshold requires human approval."""
+        """Standard-to-elevated threshold requires human approval.
+
+        The agent starts at STANDARD with a high trust_score. The
+        snapshot produces a score exceeding the standard_to_elevated
+        threshold (0.9), so _score_to_level moves one level up to
+        ELEVATED and _check_human_approval returns True.
+
+        Score calculation with quality=9.5, success_rate=0.99,
+        tasks_completed=100:
+          difficulty = 0.95, completion = 0.99, error = 1.0,
+          feedback = 1.0 → score ≈ 0.9825, above the 0.9 threshold.
+        """
         strategy = WeightedTrustStrategy(config=weighted_config)
         state = TrustState(
             agent_id=NotBlankStr("agent-001"),
@@ -114,7 +125,7 @@ class TestWeightedTrustStrategy:
             "agent-001",
             quality=9.5,
             success_rate=0.99,
-            tasks_completed=50,
+            tasks_completed=100,
         )
 
         result = await strategy.evaluate(
@@ -123,8 +134,8 @@ class TestWeightedTrustStrategy:
             snapshot=snapshot,
         )
 
-        if result.recommended_level == ToolAccessLevel.ELEVATED:
-            assert result.requires_human_approval is True
+        assert result.recommended_level == ToolAccessLevel.ELEVATED
+        assert result.requires_human_approval is True
 
     async def test_evaluate_returns_score_in_range(
         self,

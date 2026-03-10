@@ -173,6 +173,13 @@ class MilestoneCriteria(BaseModel):
         """Enforce mutual exclusivity of auto_promote and requires_human."""
         if self.auto_promote and self.requires_human_approval:
             msg = "auto_promote and requires_human_approval are mutually exclusive"
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                model="MilestoneCriteria",
+                auto_promote=self.auto_promote,
+                requires_human_approval=self.requires_human_approval,
+                reason=msg,
+            )
             raise ValueError(msg)
         return self
 

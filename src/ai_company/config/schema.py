@@ -495,6 +495,8 @@ class RootConfig(BaseModel):
         sandboxing: Sandboxing backend configuration.
         mcp: MCP bridge configuration.
         security: Security subsystem configuration.
+        trust: Progressive trust configuration.
+        promotion: Promotion/demotion configuration.
     """
 
     model_config = ConfigDict(frozen=True)

@@ -14,6 +14,8 @@ from ai_company.hr.promotion.seniority_approval_strategy import (
 
 from .conftest import make_agent_identity
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _make_evaluation(
     *,

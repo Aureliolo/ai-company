@@ -25,6 +25,7 @@ class TrustState(BaseModel):
     Attributes:
         agent_id: The agent this trust state belongs to.
         global_level: Current global trust/access level.
+        created_at: When trust tracking was initialized for this agent.
         category_levels: Per-category trust levels (per_category strategy).
         trust_score: Weighted trust score (weighted strategy).
         last_evaluated_at: When trust was last evaluated.
@@ -39,6 +40,10 @@ class TrustState(BaseModel):
     global_level: ToolAccessLevel = Field(
         default=ToolAccessLevel.SANDBOXED,
         description="Current global trust level",
+    )
+    created_at: AwareDatetime | None = Field(
+        default=None,
+        description="When trust tracking was initialized for this agent",
     )
     category_levels: dict[str, ToolAccessLevel] = Field(
         default_factory=dict,

@@ -1,9 +1,11 @@
 """Tests for the trust service orchestrator."""
 
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 
 import pytest
 
+from ai_company.api.approval_store import ApprovalStore
 from ai_company.core.enums import ToolAccessLevel
 from ai_company.core.types import NotBlankStr
 from ai_company.security.trust.disabled_strategy import DisabledTrustStrategy
@@ -250,6 +252,40 @@ class TestApplyTrustChange:
                 NotBlankStr("agent-001"),
                 result,
             )
+
+    async def test_returns_none_when_human_approval_with_store(
+        self,
+        weighted_config: TrustConfig,
+    ) -> None:
+        """With an approval store, ELEVATED promotion returns None (awaiting)."""
+        mock_store = AsyncMock(spec=ApprovalStore)
+        strategy = WeightedTrustStrategy(config=weighted_config)
+        service = TrustService(
+            strategy=strategy,
+            config=weighted_config,
+            approval_store=mock_store,
+        )
+        service.initialize_agent(NotBlankStr("agent-001"))
+
+        result = TrustEvaluationResult(
+            agent_id=NotBlankStr("agent-001"),
+            recommended_level=ToolAccessLevel.ELEVATED,
+            current_level=ToolAccessLevel.STANDARD,
+            requires_human_approval=True,
+            strategy_name=NotBlankStr("weighted"),
+        )
+
+        record = await service.apply_trust_change(
+            NotBlankStr("agent-001"),
+            result,
+        )
+
+        assert record is None
+        mock_store.add.assert_awaited_once()
+        approval_item = mock_store.add.call_args[0][0]
+        assert approval_item.action_type == "trust:promote"
+        assert approval_item.metadata["agent_id"] == "agent-001"
+        assert approval_item.metadata["recommended_level"] == "elevated"
 
     async def test_updates_state_after_change(
         self,

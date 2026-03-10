@@ -15,6 +15,8 @@ from ai_company.hr.promotion.models import (
     PromotionRequest,
 )
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.mark.unit
 class TestCriterionResult:
@@ -235,6 +237,191 @@ class TestPromotionRecord:
         )
         with pytest.raises(ValidationError):
             record.model_changed = True  # type: ignore[misc]
+
+    def test_model_changed_true_missing_old_model_id_raises(self) -> None:
+        """model_changed=True with old_model_id=None raises ValidationError."""
+        evaluation = PromotionEvaluation(
+            agent_id="agent-001",
+            current_level=SeniorityLevel.JUNIOR,
+            target_level=SeniorityLevel.MID,
+            direction=PromotionDirection.PROMOTION,
+            criteria_results=(),
+            required_criteria_met=True,
+            eligible=True,
+            evaluated_at=datetime.now(UTC),
+            strategy_name="threshold_evaluator",
+        )
+        with pytest.raises(ValidationError, match="old_model_id and new_model_id"):
+            PromotionRecord(
+                agent_id="agent-001",
+                agent_name="test-agent",
+                old_level=SeniorityLevel.JUNIOR,
+                new_level=SeniorityLevel.MID,
+                direction=PromotionDirection.PROMOTION,
+                evaluation=evaluation,
+                effective_at=datetime.now(UTC),
+                initiated_by="system",
+                model_changed=True,
+                old_model_id=None,
+                new_model_id="test-large-001",
+            )
+
+    def test_model_changed_true_missing_new_model_id_raises(self) -> None:
+        """model_changed=True with new_model_id=None raises ValidationError."""
+        evaluation = PromotionEvaluation(
+            agent_id="agent-001",
+            current_level=SeniorityLevel.JUNIOR,
+            target_level=SeniorityLevel.MID,
+            direction=PromotionDirection.PROMOTION,
+            criteria_results=(),
+            required_criteria_met=True,
+            eligible=True,
+            evaluated_at=datetime.now(UTC),
+            strategy_name="threshold_evaluator",
+        )
+        with pytest.raises(ValidationError, match="old_model_id and new_model_id"):
+            PromotionRecord(
+                agent_id="agent-001",
+                agent_name="test-agent",
+                old_level=SeniorityLevel.JUNIOR,
+                new_level=SeniorityLevel.MID,
+                direction=PromotionDirection.PROMOTION,
+                evaluation=evaluation,
+                effective_at=datetime.now(UTC),
+                initiated_by="system",
+                model_changed=True,
+                old_model_id="test-small-001",
+                new_model_id=None,
+            )
+
+    def test_model_changed_false_with_old_model_id_raises(self) -> None:
+        """model_changed=False with old_model_id set raises ValidationError."""
+        evaluation = PromotionEvaluation(
+            agent_id="agent-001",
+            current_level=SeniorityLevel.JUNIOR,
+            target_level=SeniorityLevel.MID,
+            direction=PromotionDirection.PROMOTION,
+            criteria_results=(),
+            required_criteria_met=True,
+            eligible=True,
+            evaluated_at=datetime.now(UTC),
+            strategy_name="threshold_evaluator",
+        )
+        with pytest.raises(ValidationError, match="model IDs to be None"):
+            PromotionRecord(
+                agent_id="agent-001",
+                agent_name="test-agent",
+                old_level=SeniorityLevel.JUNIOR,
+                new_level=SeniorityLevel.MID,
+                direction=PromotionDirection.PROMOTION,
+                evaluation=evaluation,
+                effective_at=datetime.now(UTC),
+                initiated_by="system",
+                model_changed=False,
+                old_model_id="test-small-001",
+            )
+
+    def test_model_changed_true_same_model_ids_raises(self) -> None:
+        """model_changed=True with identical model IDs raises ValidationError."""
+        evaluation = PromotionEvaluation(
+            agent_id="agent-001",
+            current_level=SeniorityLevel.JUNIOR,
+            target_level=SeniorityLevel.MID,
+            direction=PromotionDirection.PROMOTION,
+            criteria_results=(),
+            required_criteria_met=True,
+            eligible=True,
+            evaluated_at=datetime.now(UTC),
+            strategy_name="threshold_evaluator",
+        )
+        with pytest.raises(
+            ValidationError,
+            match="old_model_id and new_model_id to differ",
+        ):
+            PromotionRecord(
+                agent_id="agent-001",
+                agent_name="test-agent",
+                old_level=SeniorityLevel.JUNIOR,
+                new_level=SeniorityLevel.MID,
+                direction=PromotionDirection.PROMOTION,
+                evaluation=evaluation,
+                effective_at=datetime.now(UTC),
+                initiated_by="system",
+                model_changed=True,
+                old_model_id="test-small-001",
+                new_model_id="test-small-001",
+            )
+
+    def test_model_changed_true_different_ids_succeeds(self) -> None:
+        """model_changed=True with different model IDs succeeds."""
+        evaluation = PromotionEvaluation(
+            agent_id="agent-001",
+            current_level=SeniorityLevel.JUNIOR,
+            target_level=SeniorityLevel.MID,
+            direction=PromotionDirection.PROMOTION,
+            criteria_results=(),
+            required_criteria_met=True,
+            eligible=True,
+            evaluated_at=datetime.now(UTC),
+            strategy_name="threshold_evaluator",
+        )
+        record = PromotionRecord(
+            agent_id="agent-001",
+            agent_name="test-agent",
+            old_level=SeniorityLevel.JUNIOR,
+            new_level=SeniorityLevel.MID,
+            direction=PromotionDirection.PROMOTION,
+            evaluation=evaluation,
+            effective_at=datetime.now(UTC),
+            initiated_by="system",
+            model_changed=True,
+            old_model_id="test-small-001",
+            new_model_id="test-large-001",
+        )
+        assert record.model_changed is True
+        assert record.old_model_id == "test-small-001"
+        assert record.new_model_id == "test-large-001"
+
+
+@pytest.mark.unit
+class TestPromotionEvaluationDirectionConsistency:
+    """Tests for PromotionEvaluation._validate_direction_consistency."""
+
+    def test_promotion_with_lower_target_raises(self) -> None:
+        """direction=PROMOTION with target_level < current_level raises."""
+        with pytest.raises(
+            ValidationError,
+            match="target_level > current_level",
+        ):
+            PromotionEvaluation(
+                agent_id="agent-001",
+                current_level=SeniorityLevel.SENIOR,
+                target_level=SeniorityLevel.JUNIOR,
+                direction=PromotionDirection.PROMOTION,
+                criteria_results=(),
+                required_criteria_met=True,
+                eligible=True,
+                evaluated_at=datetime.now(UTC),
+                strategy_name="threshold_evaluator",
+            )
+
+    def test_demotion_with_higher_target_raises(self) -> None:
+        """direction=DEMOTION with target_level > current_level raises."""
+        with pytest.raises(
+            ValidationError,
+            match="target_level < current_level",
+        ):
+            PromotionEvaluation(
+                agent_id="agent-001",
+                current_level=SeniorityLevel.JUNIOR,
+                target_level=SeniorityLevel.SENIOR,
+                direction=PromotionDirection.DEMOTION,
+                criteria_results=(),
+                required_criteria_met=True,
+                eligible=True,
+                evaluated_at=datetime.now(UTC),
+                strategy_name="threshold_evaluator",
+            )
 
 
 @pytest.mark.unit

@@ -16,9 +16,9 @@ from pydantic import (
     model_validator,
 )
 
-from ai_company.core.enums import ApprovalStatus, SeniorityLevel
+from ai_company.core.enums import ApprovalStatus, SeniorityLevel, compare_seniority
 from ai_company.core.types import NotBlankStr
-from ai_company.hr.enums import PromotionDirection  # noqa: TC001
+from ai_company.hr.enums import PromotionDirection
 
 
 class CriterionResult(BaseModel):
@@ -85,6 +85,18 @@ class PromotionEvaluation(BaseModel):
     strategy_name: NotBlankStr = Field(
         description="Strategy that performed the evaluation",
     )
+
+    @model_validator(mode="after")
+    def _validate_direction_consistency(self) -> Self:
+        """Validate direction matches level ordering."""
+        cmp = compare_seniority(self.target_level, self.current_level)
+        if self.direction == PromotionDirection.PROMOTION and cmp <= 0:
+            msg = "direction=PROMOTION requires target_level > current_level"
+            raise ValueError(msg)
+        if self.direction == PromotionDirection.DEMOTION and cmp >= 0:
+            msg = "direction=DEMOTION requires target_level < current_level"
+            raise ValueError(msg)
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -184,6 +196,9 @@ class PromotionRecord(BaseModel):
             self.old_model_id is None or self.new_model_id is None
         ):
             msg = "model_changed=True requires both old_model_id and new_model_id"
+            raise ValueError(msg)
+        if self.model_changed and self.old_model_id == self.new_model_id:
+            msg = "model_changed=True requires old_model_id and new_model_id to differ"
             raise ValueError(msg)
         if not self.model_changed and (
             self.old_model_id is not None or self.new_model_id is not None
