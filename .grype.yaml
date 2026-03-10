@@ -1,0 +1,8 @@
+# Grype configuration — CVE ignore list
+# Kept in sync with .trivyignore.yaml.
+
+ignore:
+  - vulnerability: CVE-2026-22184
+    reason: >-
+      Disputed zlib vulnerability affecting only the untgz demo utility
+      in contrib/, not core zlib. Upstream disputes CVE validity.
