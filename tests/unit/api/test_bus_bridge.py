@@ -136,6 +136,7 @@ class TestBridgeLifecycle:
 class TestPollChannel:
     async def test_circuit_breaker_after_max_errors(self) -> None:
         """Polling stops after _MAX_CONSECUTIVE_ERRORS failures."""
+        from unittest.mock import patch
 
         from litestar.channels import ChannelsPlugin
         from litestar.channels.backends.memory import MemoryChannelsBackend
@@ -167,6 +168,7 @@ class TestPollChannel:
             channels=ALL_CHANNELS,
         )
         bridge = MessageBusBridge(bus, plugin)
-        # Run _poll_channel directly
-        await bridge._poll_channel("tasks")
+        # Patch _POLL_TIMEOUT to 0 so sleeps between errors are instant
+        with patch("ai_company.api.bus_bridge._POLL_TIMEOUT", 0.0):
+            await bridge._poll_channel("tasks")
         assert call_count >= _MAX_CONSECUTIVE_ERRORS
