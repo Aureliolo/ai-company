@@ -9,10 +9,9 @@ from ai_company.engine.policy_validation import (
 )
 from ai_company.observability.events.prompt import PROMPT_POLICY_QUALITY_ISSUE
 
-pytestmark = pytest.mark.timeout(30)
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
-@pytest.mark.unit
 class TestPolicyQualityIssueModel:
     """Tests for the PolicyQualityIssue frozen model."""
 
@@ -34,7 +33,6 @@ class TestPolicyQualityIssueModel:
         assert issue.severity == "error"
 
 
-@pytest.mark.unit
 class TestGoodPolicies:
     """Good policies should produce no issues."""
 
@@ -53,7 +51,6 @@ class TestGoodPolicies:
         assert result == ()
 
 
-@pytest.mark.unit
 class TestTooShort:
     """Policies shorter than 10 chars should produce a warning."""
 
@@ -66,7 +63,6 @@ class TestTooShort:
         assert short_issues[0].severity == "warning"
 
 
-@pytest.mark.unit
 class TestTooLong:
     """Policies longer than 500 chars should produce a warning."""
 
@@ -78,7 +74,6 @@ class TestTooLong:
         assert long_issues[0].severity == "warning"
 
 
-@pytest.mark.unit
 class TestCodePatterns:
     """Policies containing code patterns should produce a warning."""
 
@@ -99,7 +94,6 @@ class TestCodePatterns:
         assert code_issues[0].severity == "warning"
 
 
-@pytest.mark.unit
 class TestMissingActionVerbs:
     """Policies without action verbs should produce a warning."""
 
@@ -118,7 +112,6 @@ class TestMissingActionVerbs:
         assert verb_issues[0].severity == "warning"
 
 
-@pytest.mark.unit
 class TestEdgeCases:
     """Edge cases for policy validation."""
 
@@ -149,3 +142,22 @@ class TestEdgeCases:
 
         events = [e for e in logs if e["event"] == PROMPT_POLICY_QUALITY_ISSUE]
         assert len(events) >= 1
+
+    def test_multiple_code_patterns_produce_one_issue(self) -> None:
+        """A policy with multiple code patterns produces exactly one issue."""
+        policy = (
+            "The file src/api/views.py has from os import path "
+            "and also import json for parsing"
+        )
+        result = validate_policy_quality((policy,))
+        code_issues = [i for i in result if "code patterns" in i.issue]
+        assert len(code_issues) == 1
+
+    def test_action_verb_word_boundary(self) -> None:
+        """Noun forms of action verbs (e.g. 'requirement') don't match."""
+        policy = (
+            "The database has a strict isolation requirement and a validation framework"
+        )
+        result = validate_policy_quality((policy,))
+        verb_issues = [i for i in result if "action verbs" in i.issue]
+        assert len(verb_issues) == 1

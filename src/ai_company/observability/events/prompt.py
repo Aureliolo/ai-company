@@ -10,4 +10,4 @@ PROMPT_BUILD_BUDGET_EXCEEDED: Final[str] = "prompt.build.budget_exceeded"
 PROMPT_CUSTOM_TEMPLATE_LOADED: Final[str] = "prompt.custom_template.loaded"
 PROMPT_CUSTOM_TEMPLATE_FAILED: Final[str] = "prompt.custom_template.failed"
 PROMPT_POLICY_QUALITY_ISSUE: Final[str] = "prompt.policy.quality_issue"
-PROMPT_COST_RATIO_HIGH: Final[str] = "prompt.cost_ratio.high"
+PROMPT_TOKEN_RATIO_HIGH: Final[str] = "prompt.token_ratio.high"  # noqa: S105 — event name, not a credential

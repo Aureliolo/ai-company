@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ai_company.memory import errors as memory_errors
+from ai_company.memory.filter import TagBasedMemoryFilter
 from ai_company.memory.formatter import format_memory_context
 from ai_company.memory.injection import (
     DefaultTokenEstimator,
@@ -122,6 +123,8 @@ class ContextInjectionStrategy:
         self._backend = backend
         self._config = config
         self._shared_store = shared_store
+        if memory_filter is None and config.non_inferable_only:
+            memory_filter = TagBasedMemoryFilter()
         self._memory_filter = memory_filter
         self._estimator = (
             token_estimator if token_estimator is not None else DefaultTokenEstimator()
@@ -268,7 +271,21 @@ class ContextInjectionStrategy:
             return ()
 
         if self._memory_filter is not None:
-            ranked = self._memory_filter.filter_for_injection(ranked)
+            try:
+                ranked = self._memory_filter.filter_for_injection(ranked)
+            except builtins_MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.warning(
+                    MEMORY_RETRIEVAL_DEGRADED,
+                    source="memory_filter",
+                    agent_id=agent_id,
+                    filter_strategy=getattr(
+                        self._memory_filter, "strategy_name", "unknown"
+                    ),
+                    exc_info=True,
+                )
+                # Graceful degradation: use unfiltered ranked memories.
             if not ranked:
                 logger.info(
                     MEMORY_RETRIEVAL_SKIPPED,

@@ -78,7 +78,7 @@ class PolicyQualityIssue(BaseModel):
     policy: str = Field(description="The policy text that triggered the issue")
     issue: str = Field(description="Human-readable description of the problem")
     severity: Literal["warning", "error"] = Field(
-        description="Issue severity",
+        description="Issue severity (``'error'`` reserved for future stricter checks)",
     )
 
 
@@ -96,6 +96,11 @@ def validate_policy_quality(
     Returns:
         Tuple of quality issues found (empty if all policies pass).
     """
+    logger.debug(
+        PROMPT_POLICY_QUALITY_ISSUE,
+        phase="start",
+        policy_count=len(policies),
+    )
     issues: list[PolicyQualityIssue] = []
     for policy in policies:
         issues.extend(_check_single_policy(policy))
@@ -111,8 +116,20 @@ def validate_policy_quality(
     return tuple(issues)
 
 
+_ACTION_VERB_RE: re.Pattern[str] = re.compile(
+    r"\b(?:" + "|".join(_ACTION_VERBS) + r")\b",
+)
+
+
 def _check_single_policy(policy: str) -> list[PolicyQualityIssue]:
-    """Run all heuristic checks on a single policy string."""
+    """Run all heuristic checks on a single policy string.
+
+    Args:
+        policy: The policy text to validate.
+
+    Returns:
+        List of quality issues found (empty if the policy passes all checks).
+    """
     found: list[PolicyQualityIssue] = []
 
     if len(policy) < _MIN_POLICY_LENGTH:
@@ -153,7 +170,7 @@ def _check_single_policy(policy: str) -> list[PolicyQualityIssue]:
             break  # One code-pattern match is sufficient.
 
     policy_lower = policy.lower()
-    if not any(verb in policy_lower for verb in _ACTION_VERBS):
+    if not _ACTION_VERB_RE.search(policy_lower):
         found.append(
             PolicyQualityIssue(
                 policy=policy,

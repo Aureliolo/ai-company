@@ -31,6 +31,8 @@ class MemoryRetrievalConfig(BaseModel):
         include_shared: Whether to query SharedKnowledgeStore.
         default_relevance: Score for entries missing relevance_score.
         injection_point: Message role for context injection.
+        non_inferable_only: When True, auto-creates a ``TagBasedMemoryFilter``
+            in ``ContextInjectionStrategy`` if no explicit filter is provided.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -90,7 +92,7 @@ class MemoryRetrievalConfig(BaseModel):
     )
     non_inferable_only: bool = Field(
         default=False,
-        description=("When True, only inject memories tagged as non-inferable"),
+        description="When True, only inject memories tagged as non-inferable",
     )
 
     @model_validator(mode="after")

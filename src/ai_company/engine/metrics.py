@@ -6,7 +6,7 @@ Proxy overhead metrics for an agent run, computed from
 
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
@@ -27,6 +27,9 @@ class TaskCompletionMetrics(BaseModel):
         tokens_per_task: Total tokens consumed (input + output).
         cost_per_task: Total USD cost for the task.
         duration_seconds: Wall-clock execution time in seconds.
+        prompt_tokens: Estimated system prompt tokens.
+        prompt_token_ratio: Ratio of prompt tokens to total tokens
+            (overhead indicator, derived via ``@computed_field``).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -57,11 +60,14 @@ class TaskCompletionMetrics(BaseModel):
         ge=0,
         description="Estimated system prompt tokens",
     )
-    prompt_cost_ratio: float = Field(
-        default=0.0,
-        ge=0.0,
-        description=("Ratio of prompt tokens to total tokens (overhead indicator)"),
-    )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def prompt_token_ratio(self) -> float:
+        """Ratio of prompt tokens to total tokens (overhead indicator)."""
+        if self.tokens_per_task > 0:
+            return self.prompt_tokens / self.tokens_per_task
+        return 0.0
 
     @classmethod
     def from_run_result(cls, result: AgentRunResult) -> TaskCompletionMetrics:
@@ -75,16 +81,12 @@ class TaskCompletionMetrics(BaseModel):
             the result's execution context and metadata.
         """
         accumulated = result.execution_result.context.accumulated_cost
-        prompt_tokens = result.system_prompt.estimated_tokens
-        total_tokens = accumulated.total_tokens
-        prompt_cost_ratio = prompt_tokens / total_tokens if total_tokens > 0 else 0.0
         return cls(
             task_id=result.task_id,
             agent_id=result.agent_id,
             turns_per_task=result.total_turns,
-            tokens_per_task=total_tokens,
+            tokens_per_task=accumulated.total_tokens,
             cost_per_task=result.total_cost_usd,
             duration_seconds=result.duration_seconds,
-            prompt_tokens=prompt_tokens,
-            prompt_cost_ratio=prompt_cost_ratio,
+            prompt_tokens=result.system_prompt.estimated_tokens,
         )

@@ -195,8 +195,19 @@ def build_system_prompt(  # noqa: PLR0913
     """
     _validate_max_tokens(agent, max_tokens)
 
+    # Advisory only — issues are logged but never block prompt construction.
     if org_policies:
-        validate_policy_quality(org_policies)
+        try:
+            validate_policy_quality(org_policies)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                PROMPT_BUILD_ERROR,
+                agent_id=str(agent.id),
+                error="Policy quality validation failed (advisory, continuing)",
+                exc_info=True,
+            )
 
     logger.info(
         PROMPT_BUILD_START,

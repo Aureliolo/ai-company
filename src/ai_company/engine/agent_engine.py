@@ -50,7 +50,7 @@ from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_RECOVERY_FAILED,
 )
-from ai_company.observability.events.prompt import PROMPT_COST_RATIO_HIGH
+from ai_company.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from ai_company.observability.events.security import SECURITY_DISABLED
 from ai_company.providers.enums import MessageRole
 from ai_company.providers.models import ChatMessage
@@ -92,7 +92,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_PROMPT_COST_RATIO_THRESHOLD: float = 0.3
+_PROMPT_TOKEN_RATIO_THRESHOLD: float = 0.3
 """Prompt-to-total token ratio above which a warning is emitted."""
 
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
@@ -765,15 +765,15 @@ class AgentEngine:
             cost_per_task=metrics.cost_per_task,
             duration_seconds=metrics.duration_seconds,
             prompt_tokens=metrics.prompt_tokens,
-            prompt_cost_ratio=metrics.prompt_cost_ratio,
+            prompt_token_ratio=metrics.prompt_token_ratio,
         )
 
-        if metrics.prompt_cost_ratio > _PROMPT_COST_RATIO_THRESHOLD:
+        if metrics.prompt_token_ratio > _PROMPT_TOKEN_RATIO_THRESHOLD:
             logger.warning(
-                PROMPT_COST_RATIO_HIGH,
+                PROMPT_TOKEN_RATIO_HIGH,
                 agent_id=agent_id,
                 task_id=task_id,
-                prompt_cost_ratio=metrics.prompt_cost_ratio,
+                prompt_token_ratio=metrics.prompt_token_ratio,
                 prompt_tokens=metrics.prompt_tokens,
                 total_tokens=metrics.tokens_per_task,
             )

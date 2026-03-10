@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING
 
 from ai_company.memory.filter import NON_INFERABLE_TAG
 from ai_company.observability import get_logger
-
-if TYPE_CHECKING:
-    from ai_company.memory.models import MemoryStoreRequest
 from ai_company.observability.events.memory import (
     MEMORY_FILTER_STORE_MISSING_TAG,
 )
+
+if TYPE_CHECKING:
+    from ai_company.memory.models import MemoryStoreRequest
 
 logger = get_logger(__name__)
 
@@ -22,6 +22,7 @@ def validate_memory_tags(request: MemoryStoreRequest) -> None:
     """Log a warning when the non-inferable tag is missing.
 
     This is advisory only — the store operation is never blocked.
+    Wire into ``MemoryBackend.store()`` callers to activate enforcement.
 
     Args:
         request: The memory store request to validate.
