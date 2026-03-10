@@ -5,9 +5,13 @@ full ``AgentContext`` is serialized and stored as a ``ParkedContext``
 so it can be resumed when the approval decision arrives.
 """
 
+import copy
+import json
+from types import MappingProxyType
+from typing import Self
 from uuid import uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
@@ -42,3 +46,19 @@ class ParkedContext(BaseModel):
         default_factory=dict,
         description="Additional metadata",
     )
+
+    @model_validator(mode="after")
+    def _validate_and_protect(self) -> Self:
+        """Validate context_json and deep-copy metadata."""
+        try:
+            json.loads(self.context_json)
+        except (json.JSONDecodeError, TypeError) as exc:
+            msg = f"context_json must be valid JSON: {exc}"
+            raise ValueError(msg) from exc
+        object.__setattr__(self, "metadata", copy.deepcopy(self.metadata))
+        return self
+
+    @property
+    def metadata_view(self) -> MappingProxyType[str, str]:
+        """Read-only view of metadata."""
+        return MappingProxyType(self.metadata)

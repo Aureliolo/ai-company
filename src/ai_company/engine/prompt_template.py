@@ -17,7 +17,7 @@ from typing import Final
 
 from ai_company.core.enums import SeniorityLevel
 
-PROMPT_TEMPLATE_VERSION: Final[str] = "1.3.0"
+PROMPT_TEMPLATE_VERSION: Final[str] = "1.4.0"
 
 # ── Autonomy instructions by seniority level ─────────────────────
 

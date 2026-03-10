@@ -162,6 +162,20 @@ class TestEffectiveAutonomy:
             )
 
 
+class TestBuiltinPresetsImmutability:
+    """BUILTIN_PRESETS should be a read-only mapping."""
+
+    @pytest.mark.unit
+    def test_cannot_assign_new_key(self) -> None:
+        with pytest.raises(TypeError):
+            BUILTIN_PRESETS["new"] = BUILTIN_PRESETS[AutonomyLevel.FULL]  # type: ignore[index]
+
+    @pytest.mark.unit
+    def test_cannot_delete_key(self) -> None:
+        with pytest.raises(TypeError):
+            del BUILTIN_PRESETS[AutonomyLevel.FULL]  # type: ignore[attr-defined]
+
+
 class TestAutonomyOverride:
     """AutonomyOverride model tests."""
 
@@ -190,3 +204,16 @@ class TestAutonomyOverride:
         )
         with pytest.raises(ValidationError):
             override.current_level = AutonomyLevel.FULL  # type: ignore[misc]
+
+    @pytest.mark.unit
+    def test_current_above_original_rejected(self) -> None:
+        """Downgrade validator rejects current_level > original_level."""
+        now = datetime.now(UTC)
+        with pytest.raises(ValidationError, match="higher than"):
+            AutonomyOverride(
+                agent_id="agent-1",
+                original_level=AutonomyLevel.SUPERVISED,
+                current_level=AutonomyLevel.FULL,
+                reason=DowngradeReason.HIGH_ERROR_RATE,
+                downgraded_at=now,
+            )

@@ -44,6 +44,7 @@ from ai_company.security.models import (
 )
 from ai_company.security.output_scanner import OutputScanner  # noqa: TC001
 from ai_company.security.rules.engine import RuleEngine  # noqa: TC001
+from ai_company.security.timeout.protocol import RiskTierClassifier  # noqa: TC001
 
 if TYPE_CHECKING:
     from ai_company.api.approval_store import ApprovalStore
@@ -83,6 +84,7 @@ class SecOpsService:
         output_scanner: OutputScanner,
         approval_store: ApprovalStore | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
+        risk_classifier: RiskTierClassifier | None = None,
     ) -> None:
         """Initialize the SecOps service.
 
@@ -93,8 +95,11 @@ class SecOpsService:
             output_scanner: Post-tool output scanner.
             approval_store: Optional store for escalation items.
             effective_autonomy: Resolved autonomy for the current run.
-                When provided, actions are routed based on autonomy
-                level before the rule engine is consulted.
+                When provided, autonomy routing is applied *after*
+                the rule engine — never bypassing security detectors.
+            risk_classifier: Optional classifier for determining action
+                risk levels in autonomy escalations.  Defaults to HIGH
+                when absent (fail-safe).
         """
         self._config = config
         self._rule_engine = rule_engine
@@ -102,6 +107,7 @@ class SecOpsService:
         self._output_scanner = output_scanner
         self._approval_store = approval_store
         self._effective_autonomy = effective_autonomy
+        self._risk_classifier = risk_classifier
 
         if config.custom_policies:
             logger.warning(
@@ -145,12 +151,8 @@ class SecOpsService:
             agent_id=context.agent_id,
         )
 
-        # Autonomy pre-check: route based on effective autonomy before
-        # the full rule engine.  Hard-deny is always checked first.
-        autonomy_result = await self._apply_autonomy_precheck(context)
-        if autonomy_result is not None:
-            return autonomy_result
-
+        # Always run the rule engine first — security detectors must
+        # never be bypassed, regardless of autonomy configuration.
         try:
             verdict = self._rule_engine.evaluate(context)
         except MemoryError, RecursionError:
@@ -168,6 +170,11 @@ class SecOpsService:
                 evaluated_at=datetime.now(UTC),
                 evaluation_duration_ms=0.0,
             )
+
+        # Apply autonomy augmentation *after* the rule engine.
+        # Autonomy can only add stricter requirements (ALLOW → ESCALATE),
+        # never weaken a DENY or ESCALATE from security detectors.
+        verdict = self._apply_autonomy_augmentation(context, verdict)
 
         # Handle escalation.
         if verdict.verdict == SecurityVerdictType.ESCALATE:
@@ -240,48 +247,28 @@ class SecOpsService:
 
         return result
 
-    async def _apply_autonomy_precheck(
+    def _apply_autonomy_augmentation(
         self,
         context: SecurityContext,
-    ) -> SecurityVerdict | None:
-        """Apply autonomy-based routing and finalize the verdict.
+        verdict: SecurityVerdict,
+    ) -> SecurityVerdict:
+        """Augment the rule engine verdict with autonomy routing.
 
-        Returns a complete verdict (with escalation/audit handled) if
-        autonomy routing applies, or ``None`` to fall through.
+        Autonomy can only *tighten* a verdict (ALLOW → ESCALATE), never
+        weaken one.  DENY and ESCALATE from the rule engine are always
+        preserved — security detectors take precedence over autonomy.
+
+        Returns the (possibly upgraded) verdict.
         """
         if self._effective_autonomy is None:
-            return None
-        verdict = self._check_autonomy(context)
-        if verdict is None:
-            return None
-        if verdict.verdict == SecurityVerdictType.ESCALATE:
-            verdict = await self._handle_escalation(context, verdict)
-        if self._config.audit_enabled:
-            self._record_audit(context, verdict)
-        return verdict
+            return verdict
 
-    def _check_autonomy(
-        self,
-        context: SecurityContext,
-    ) -> SecurityVerdict | None:
-        """Check autonomy routing for an action type.
+        # Security DENY/ESCALATE always takes precedence.
+        if verdict.verdict != SecurityVerdictType.ALLOW:
+            return verdict
 
-        Returns a verdict if the action is routed by autonomy config,
-        or ``None`` to fall through to the rule engine.
-
-        Hard-deny actions always fall through so the rule engine
-        produces its standard DENY verdict.
-        """
         action = context.action_type
-
-        # Hard-deny always bypasses autonomy — let the rule engine deny it.
-        if action in self._config.hard_deny_action_types:
-            return None
-
         autonomy = self._effective_autonomy
-        assert autonomy is not None  # noqa: S101 — guarded by caller
-
-        now = datetime.now(UTC)
 
         if action in autonomy.auto_approve_actions:
             logger.info(
@@ -290,34 +277,34 @@ class SecOpsService:
                 action_type=action,
                 autonomy_level=autonomy.level.value,
             )
-            return SecurityVerdict(
-                verdict=SecurityVerdictType.ALLOW,
-                reason=f"Auto-approved by autonomy level '{autonomy.level.value}'",
-                risk_level=ApprovalRiskLevel.LOW,
-                evaluated_at=now,
-                evaluation_duration_ms=0.0,
-            )
+            return verdict
 
         if action in autonomy.human_approval_actions:
+            risk_level = (
+                self._risk_classifier.classify(action)
+                if self._risk_classifier
+                else ApprovalRiskLevel.HIGH
+            )
             logger.info(
                 AUTONOMY_ACTION_HUMAN_REQUIRED,
                 tool_name=context.tool_name,
                 action_type=action,
                 autonomy_level=autonomy.level.value,
+                risk_level=risk_level.value,
             )
-            return SecurityVerdict(
-                verdict=SecurityVerdictType.ESCALATE,
-                reason=(
-                    f"Human approval required by autonomy level "
-                    f"'{autonomy.level.value}'"
-                ),
-                risk_level=ApprovalRiskLevel.MEDIUM,
-                evaluated_at=now,
-                evaluation_duration_ms=0.0,
+            return verdict.model_copy(
+                update={
+                    "verdict": SecurityVerdictType.ESCALATE,
+                    "reason": (
+                        f"Human approval required by autonomy level "
+                        f"'{autonomy.level.value}'"
+                    ),
+                    "risk_level": risk_level,
+                },
             )
 
-        # Action not classified by autonomy — fall through to rule engine.
-        return None
+        # Not classified by autonomy — keep rule engine's verdict.
+        return verdict
 
     def _record_audit(
         self,
@@ -326,26 +313,27 @@ class SecOpsService:
     ) -> None:
         """Record an audit entry for a pre-tool evaluation.
 
-        Audit recording failures are caught and logged — they must
-        never prevent the verdict from being returned.
+        Model construction errors propagate (they indicate programming
+        bugs).  Storage errors are caught and logged — they must never
+        prevent the verdict from being returned.
         """
+        entry = AuditEntry(
+            id=str(uuid.uuid4()),
+            timestamp=verdict.evaluated_at,
+            agent_id=context.agent_id,
+            task_id=context.task_id,
+            tool_name=context.tool_name,
+            tool_category=context.tool_category,
+            action_type=context.action_type,
+            arguments_hash=_hash_arguments(context.arguments),
+            verdict=verdict.verdict.value,
+            risk_level=verdict.risk_level,
+            reason=verdict.reason,
+            matched_rules=verdict.matched_rules,
+            evaluation_duration_ms=verdict.evaluation_duration_ms,
+            approval_id=verdict.approval_id,
+        )
         try:
-            entry = AuditEntry(
-                id=str(uuid.uuid4()),
-                timestamp=verdict.evaluated_at,
-                agent_id=context.agent_id,
-                task_id=context.task_id,
-                tool_name=context.tool_name,
-                tool_category=context.tool_category,
-                action_type=context.action_type,
-                arguments_hash=_hash_arguments(context.arguments),
-                verdict=verdict.verdict.value,
-                risk_level=verdict.risk_level,
-                reason=verdict.reason,
-                matched_rules=verdict.matched_rules,
-                evaluation_duration_ms=verdict.evaluation_duration_ms,
-                approval_id=verdict.approval_id,
-            )
             self._audit_log.record(entry)
         except MemoryError, RecursionError:
             raise

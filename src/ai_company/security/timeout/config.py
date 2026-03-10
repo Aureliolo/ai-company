@@ -1,10 +1,10 @@
 """Timeout policy configuration models — discriminated union of 4 policies."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_validator
 
-from ai_company.core.enums import TimeoutActionType
+from ai_company.core.enums import ApprovalRiskLevel, TimeoutActionType
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
@@ -63,6 +63,17 @@ class TierConfig(BaseModel):
         description="Specific action types in this tier",
     )
 
+    @model_validator(mode="after")
+    def _validate_no_escalate(self) -> Self:
+        """Reject ESCALATE — tier configs cannot provide a target."""
+        if self.on_timeout == TimeoutActionType.ESCALATE:
+            msg = (
+                "on_timeout cannot be ESCALATE (no escalation target "
+                "available — use the escalation chain policy instead)"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class TieredTimeoutConfig(BaseModel):
     """Per-risk-tier timeout policy.
@@ -84,6 +95,19 @@ class TieredTimeoutConfig(BaseModel):
         default_factory=dict,
         description="Tier configs keyed by risk level (low/medium/high/critical)",
     )
+
+    @model_validator(mode="after")
+    def _validate_tier_keys(self) -> Self:
+        """Ensure tier keys are valid ApprovalRiskLevel values."""
+        valid_keys = {level.value for level in ApprovalRiskLevel}
+        invalid = set(self.tiers) - valid_keys
+        if invalid:
+            msg = (
+                f"Invalid tier keys: {sorted(invalid)} "
+                f"(must be one of {sorted(valid_keys)})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class EscalationStep(BaseModel):
@@ -128,6 +152,20 @@ class EscalationChainConfig(BaseModel):
         default=TimeoutActionType.DENY,
         description="Action when the entire chain is exhausted",
     )
+
+    @model_validator(mode="after")
+    def _validate_chain(self) -> Self:
+        """Validate chain constraints."""
+        if not self.chain:
+            msg = "escalation chain must have at least one step"
+            raise ValueError(msg)
+        if self.on_chain_exhausted == TimeoutActionType.ESCALATE:
+            msg = (
+                "on_chain_exhausted cannot be ESCALATE "
+                "(no escalation target after chain is exhausted)"
+            )
+            raise ValueError(msg)
+        return self
 
 
 def _timeout_discriminator(value: object) -> str:

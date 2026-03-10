@@ -215,8 +215,6 @@ class TestEventConstants:
             "timeout",
             "tool",
             "workspace",
-            "hr",
-            "performance",
             "trust",
             "promotion",
         }

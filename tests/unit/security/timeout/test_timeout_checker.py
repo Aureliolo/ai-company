@@ -130,3 +130,26 @@ class TestTimeoutCheckerCheckAndResolve:
 
         assert action.action == TimeoutActionType.ESCALATE
         assert updated_item.status == ApprovalStatus.PENDING
+
+    async def test_non_pending_item_raises(self) -> None:
+        """Checking a non-PENDING item raises ValueError."""
+        mock_policy = _make_mock_policy()
+        checker = TimeoutChecker(policy=mock_policy)
+        item = _make_approval_item(
+            status=ApprovalStatus.APPROVED,
+            decided_at=datetime.now(UTC),
+            decided_by="human-1",
+        )
+
+        with pytest.raises(ValueError, match="non-PENDING"):
+            await checker.check(item)
+
+    async def test_policy_error_defaults_to_wait(self) -> None:
+        """When policy.determine_action raises, checker defaults to WAIT."""
+        mock_policy = AsyncMock()
+        mock_policy.determine_action.side_effect = RuntimeError("boom")
+        checker = TimeoutChecker(policy=mock_policy)
+        item = _make_approval_item()
+
+        result = await checker.check(item)
+        assert result.action == TimeoutActionType.WAIT

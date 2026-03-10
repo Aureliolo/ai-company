@@ -17,10 +17,12 @@ from ai_company.observability.events.timeout import (
     TIMEOUT_POLICY_EVALUATED,
     TIMEOUT_WAITING,
 )
-from ai_company.security.timeout.models import TimeoutAction  # noqa: TC001
+from ai_company.security.timeout.models import TimeoutAction
 from ai_company.security.timeout.protocol import TimeoutPolicy  # noqa: TC001
 
 logger = get_logger(__name__)
+
+_TIMEOUT_POLICY_DECIDER: str = "timeout_policy"
 
 
 class TimeoutChecker:
@@ -44,11 +46,35 @@ class TimeoutChecker:
 
         Returns:
             The ``TimeoutAction`` determined by the policy.
+
+        Raises:
+            ValueError: If the item is not in PENDING status.
         """
+        if item.status != ApprovalStatus.PENDING:
+            msg = (
+                f"Cannot check timeout for non-PENDING item "
+                f"{item.id!r} (status: {item.status.value!r})"
+            )
+            raise ValueError(msg)
+
         now = datetime.now(UTC)
         elapsed = (now - item.created_at).total_seconds()
 
-        action = await self._policy.determine_action(item, elapsed)
+        try:
+            action = await self._policy.determine_action(item, elapsed)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                TIMEOUT_POLICY_EVALUATED,
+                approval_id=item.id,
+                elapsed_seconds=elapsed,
+                note="policy.determine_action failed — defaulting to WAIT",
+            )
+            action = TimeoutAction(
+                action=TimeoutActionType.WAIT,
+                reason="Policy evaluation error — defaulting to WAIT",
+            )
 
         event = {
             TimeoutActionType.WAIT: TIMEOUT_WAITING,
@@ -90,7 +116,7 @@ class TimeoutChecker:
                 update={
                     "status": ApprovalStatus.APPROVED,
                     "decided_at": datetime.now(UTC),
-                    "decided_by": "timeout_policy",
+                    "decided_by": _TIMEOUT_POLICY_DECIDER,
                     "decision_reason": action.reason,
                 },
             )
@@ -101,7 +127,7 @@ class TimeoutChecker:
                 update={
                     "status": ApprovalStatus.REJECTED,
                     "decided_at": datetime.now(UTC),
-                    "decided_by": "timeout_policy",
+                    "decided_by": _TIMEOUT_POLICY_DECIDER,
                     "decision_reason": action.reason,
                 },
             )

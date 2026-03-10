@@ -80,7 +80,7 @@ The MVP validates the core hypothesis: **a single agent can complete a real task
 > **How to read this spec:** Sections describe the full vision. Each section with deferred features includes an **MVP** callout box indicating what ships in M3 and what is deferred. The full design is documented upfront to inform architecture decisions — protocol interfaces are designed even for features that won't be built until later milestones.
 
 > **Implementation snapshot (2026-03-10):**
-> - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface) + Docker sandbox (#50), MCP bridge (#53), code runner + HR engine (hiring/firing/onboarding/offboarding/registry) + performance tracking (task metrics, quality scoring, collaboration scoring, trend detection, rolling windows). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection, non-inferable filtering) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete. SecOps agent (rule engine, audit log, output scanner, risk classifier, ToolInvoker integration), progressive trust (4 strategies: disabled/weighted/per-category/milestone behind TrustStrategy protocol), promotion/demotion (criteria evaluation, approval strategies, model mapping).
+> - **Done:** M0–M6 (tooling, config/core, providers, single-agent engine, multi-agent orchestration, API/CLI surface) + Docker sandbox (#50), MCP bridge (#53), code runner + HR engine (hiring/firing/onboarding/offboarding/registry) + performance tracking (task metrics, quality scoring, collaboration scoring, trend detection, rolling windows). Memory layer backend selected ([ADR-001](docs/decisions/ADR-001-memory-layer.md)). Persistence backend (§7.6) completed. Memory retrieval pipeline (#41: ranking, token-budget formatting, context injection, non-inferable filtering) complete. Budget enforcement complete (BudgetEnforcer + configurable cost tiers + quota/subscription tracking). CFO cost optimization complete (CostOptimizer: anomaly detection, efficiency analysis, downgrade recommendations, routing optimization, approval decisions; ReportGenerator: multi-dimensional spending reports). Shared org memory (#125: HybridPromptRetrievalBackend, OrgFactStore, access control, factory) complete. Memory consolidation/archival (#48: ConsolidationService, SimpleConsolidationStrategy, RetentionEnforcer, ArchivalStore protocol) complete. SecOps agent (rule engine, audit log, output scanner, risk classifier, ToolInvoker integration), progressive trust (4 strategies: disabled/weighted/per-category/milestone behind TrustStrategy protocol), promotion/demotion (criteria evaluation, approval strategies, model mapping). Autonomy levels (#42: AutonomyLevel enum, presets, 3-level resolver, rule-based auto-downgrade/human-only promotion change strategy) + approval timeout policies (#126: 4 timeout policies, park/resume service, risk tier classifier, timeout checker) complete.
 > - **Remaining:** JWT/OAuth auth, approval workflow gates.
 
 ### 1.5 Configuration Philosophy
@@ -232,6 +232,7 @@ agent:
     reports_to: "engineering_lead"
     can_delegate_to: ["junior_developers"]
     budget_limit: 5.00          # max USD per task
+  autonomy_level: null           # optional: full, semi, supervised, locked (overrides department/company default, §12.2)
   hiring_date: "2026-02-27"
   status: "active"              # active, on_leave, terminated (on config model today)
 
@@ -1558,7 +1559,7 @@ persistence:
 | `CostRecord` | `budget/cost_record.py` | `CostRecordRepository` | by agent, by task, aggregations |
 | `Message` | `communication/message.py` | `MessageRepository` | by channel |
 | Audit entries (planned — M7) | `security/` | `AuditRepository` (planned) | by agent, by action type, time range |
-| `ParkedContext` (planned — M7) | `engine/` | `ParkedContextRepository` (planned) | by execution_id, by agent_id, by task_id |
+| `ParkedContext` | `security/timeout/parked_context.py` | `ParkedContextRepository` | by execution_id, by agent_id, by task_id |
 | Agent runtime state (planned — M7) | `engine/` | `AgentStateRepository` (planned) | by agent_id, active agents |
 
 #### Migration Strategy
@@ -2963,7 +2964,7 @@ ai-company/
 │       ├── persistence/             # Operational data persistence (§7.6)
 │       │   ├── __init__.py         # Package exports
 │       │   ├── protocol.py         # PersistenceBackend protocol (M5)
-│       │   ├── repositories.py     # Repository protocols: TaskRepository, CostRecordRepository, MessageRepository (M5); AuditRepository planned (M7)
+│       │   ├── repositories.py     # Repository protocols: TaskRepository, CostRecordRepository, MessageRepository, ParkedContextRepository (M5); AuditRepository planned (M7)
 │       │   ├── config.py           # PersistenceConfig model (M5)
 │       │   ├── errors.py           # Persistence error hierarchy (M5)
 │       │   ├── factory.py          # create_backend() factory (M5)
@@ -2972,6 +2973,7 @@ ai-company/
 │       │       ├── backend.py     # SQLitePersistenceBackend
 │       │       ├── repositories.py # SQLite repository implementations
 │       │       ├── hr_repositories.py # SQLite HR repositories (LifecycleEvent, TaskMetricRecord, CollaborationMetricRecord)
+│       │       ├── parked_context_repo.py # SQLiteParkedContextRepository (park/resume serialized agent state)
 │       │       └── migrations.py  # Schema migrations (user_version pragma)
 │       ├── observability/           # Structured logging & correlation
 │       │   ├── __init__.py         # get_logger() entry point
@@ -2982,6 +2984,7 @@ ai-company/
 │       │   ├── events/             # Per-domain event constants
 │       │   │   ├── __init__.py    # Package marker with usage docs; no re-exports
 │       │   │   ├── api.py            # API_* event constants
+│       │   │   ├── autonomy.py    # AUTONOMY_* constants
 │       │   │   ├── budget.py      # BUDGET_* constants
 │       │   │   ├── cfo.py         # CFO_* constants
 │       │   │   ├── classification.py # CLASSIFICATION_* constants
@@ -3014,6 +3017,7 @@ ai-company/
 │       │   │   ├── task_assignment.py # TASK_ASSIGNMENT_* constants
 │       │   │   ├── task_routing.py # TASK_ROUTING_* constants
 │       │   │   ├── template.py    # TEMPLATE_* constants
+│       │   │   ├── timeout.py     # TIMEOUT_* constants
 │       │   │   ├── tool.py        # TOOL_* constants
 │       │   │   ├── workspace.py   # WORKSPACE_* constants
 │       │   │   ├── code_runner.py # CODE_RUNNER_* constants
@@ -3100,6 +3104,23 @@ ai-company/
 │       │   ├── output_scanner.py   # Post-tool output scanning (regex-based redaction)
 │       │   ├── protocol.py         # SecurityInterceptionStrategy protocol
 │       │   ├── service.py          # SecOpsService — meta-agent coordinating security
+│       │   ├── autonomy/           # Autonomy levels, presets, resolver, change strategy (§12.2)
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── models.py      # AutonomyLevel enum, AutonomyPreset, AutonomyConfig, AutonomyChangeEvent
+│       │   │   ├── protocol.py    # AutonomyChangeStrategy protocol
+│       │   │   ├── change_strategy.py # Rule-based auto-downgrade + human-only promotion strategy
+│       │   │   └── resolver.py    # AutonomyResolver (agent → department → company chain)
+│       │   ├── timeout/            # Approval timeout policies, park/resume, risk tier classifier (§12.4)
+│       │   │   ├── __init__.py    # Package exports
+│       │   │   ├── config.py      # TimeoutPolicyConfig
+│       │   │   ├── factory.py     # build_timeout_policy() factory
+│       │   │   ├── models.py      # TimeoutDecision, RiskTier
+│       │   │   ├── park_service.py # ParkResumeService (park/resume blocked tasks)
+│       │   │   ├── parked_context.py # ParkedContext model (serialized agent state)
+│       │   │   ├── policies.py    # WaitForeverPolicy, AutoDenyPolicy, TieredPolicy, EscalationChainPolicy
+│       │   │   ├── protocol.py    # TimeoutPolicy protocol
+│       │   │   ├── risk_tier_classifier.py # RiskTierClassifier (ActionType → RiskTier)
+│       │   │   └── timeout_checker.py # TimeoutChecker (polls pending approvals)
 │       │   └── rules/              # Rule engine and detectors
 │       │       ├── engine.py       # RuleEngine (soft-allow + hard-deny, fail-closed)
 │       │       ├── protocol.py     # SecurityRule protocol
@@ -3147,7 +3168,7 @@ ai-company/
 │       │   ├── bus_bridge.py       # Message-bus → WebSocket bridge
 │       │   ├── channels.py         # WebSocket channel definitions
 │       │   ├── config.py           # API configuration models (ServerConfig, CorsConfig)
-│       │   ├── controllers/        # 13 class-based controllers + 1 WebSocket handler (14 route modules)
+│       │   ├── controllers/        # 14 class-based controllers + 1 WebSocket handler (15 route modules)
 │       │   ├── dto.py              # Request/response DTOs and envelopes
 │       │   ├── errors.py           # API error hierarchy (ApiError, NotFoundError, etc.)
 │       │   ├── exception_handlers.py # Litestar exception handler registration

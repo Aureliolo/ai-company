@@ -140,12 +140,64 @@ class TestTieredTimeoutPolicy:
         result = await policy.determine_action(item, 999999.0)
         assert result.action == TimeoutActionType.WAIT
 
+    @pytest.mark.unit
+    async def test_high_risk_auto_approve_blocked(self) -> None:
+        """HIGH risk tier with on_timeout=APPROVE should be overridden to DENY."""
+        tiers = {
+            "high": TierConfig(
+                timeout_minutes=60, on_timeout=TimeoutActionType.APPROVE
+            ),
+        }
+        policy = TieredTimeoutPolicy(
+            tiers=tiers,
+            classifier=DefaultRiskTierClassifier(),
+        )
+        item = _make_item(action_type="deploy:staging")  # HIGH risk
+        result = await policy.determine_action(item, 3601.0)
+        assert result.action == TimeoutActionType.DENY
+
+    @pytest.mark.unit
+    async def test_critical_risk_auto_approve_blocked(self) -> None:
+        """CRITICAL risk tier with on_timeout=APPROVE should be overridden to DENY."""
+        tiers = {
+            "critical": TierConfig(
+                timeout_minutes=60, on_timeout=TimeoutActionType.APPROVE
+            ),
+        }
+        policy = TieredTimeoutPolicy(
+            tiers=tiers,
+            classifier=DefaultRiskTierClassifier(),
+        )
+        item = _make_item(action_type="deploy:production")  # CRITICAL risk
+        result = await policy.determine_action(item, 3601.0)
+        assert result.action == TimeoutActionType.DENY
+
+    @pytest.mark.unit
+    async def test_action_type_based_tier_lookup(self) -> None:
+        """TierConfig.actions tuple overrides risk-level-based lookup."""
+        tiers = {
+            "low": TierConfig(
+                timeout_minutes=10,
+                on_timeout=TimeoutActionType.APPROVE,
+                actions=("deploy:staging",),  # normally HIGH
+            ),
+        }
+        policy = TieredTimeoutPolicy(
+            tiers=tiers,
+            classifier=DefaultRiskTierClassifier(),
+        )
+        item = _make_item(action_type="deploy:staging")
+        result = await policy.determine_action(item, 601.0)  # > 10 min
+        # Despite deploy:staging being HIGH risk, the actions tuple
+        # places it in the LOW tier, so APPROVE is allowed.
+        assert result.action == TimeoutActionType.APPROVE
+
 
 class TestEscalationChainPolicy:
     """EscalationChainPolicy: chain of escalation steps."""
 
     @pytest.mark.unit
-    async def test_first_step_escalation(self) -> None:
+    async def test_first_step_waits(self) -> None:
         chain = (
             EscalationStep(role="lead", timeout_minutes=30),
             EscalationStep(role="director", timeout_minutes=60),
@@ -155,9 +207,9 @@ class TestEscalationChainPolicy:
             on_chain_exhausted=TimeoutActionType.DENY,
         )
         item = _make_item()
-        result = await policy.determine_action(item, 600.0)  # 10 min
-        assert result.action == TimeoutActionType.ESCALATE
-        assert result.escalate_to == "lead"
+        # 10 min — still within first step, should WAIT (not ESCALATE)
+        result = await policy.determine_action(item, 600.0)
+        assert result.action == TimeoutActionType.WAIT
 
     @pytest.mark.unit
     async def test_second_step_escalation(self) -> None:
@@ -203,6 +255,7 @@ class TestEscalationChainPolicy:
 
     @pytest.mark.unit
     async def test_empty_chain_exhausted_immediately(self) -> None:
+        # Bypass config validation to test policy behavior directly.
         policy = EscalationChainPolicy(
             chain=(),
             on_chain_exhausted=TimeoutActionType.DENY,

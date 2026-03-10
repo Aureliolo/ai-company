@@ -540,7 +540,7 @@ class TestPromptVersioning:
     @pytest.mark.unit
     def test_template_version_is_1_3_0(self) -> None:
         """PROMPT_TEMPLATE_VERSION is '1.3.0' (D22 tools removal)."""
-        assert PROMPT_TEMPLATE_VERSION == "1.3.0"
+        assert PROMPT_TEMPLATE_VERSION == "1.4.0"
 
     @pytest.mark.unit
     def test_template_version_in_result(

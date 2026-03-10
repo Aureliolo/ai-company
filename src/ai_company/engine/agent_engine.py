@@ -70,6 +70,7 @@ from ai_company.security.rules.policy_validator import PolicyValidator
 from ai_company.security.rules.protocol import SecurityRule  # noqa: TC001
 from ai_company.security.rules.risk_classifier import RiskClassifier
 from ai_company.security.service import SecOpsService
+from ai_company.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 from ai_company.tools.invoker import ToolInvoker
 from ai_company.tools.permissions import ToolPermissionChecker
 
@@ -684,14 +685,31 @@ class AgentEngine:
         self,
         effective_autonomy: EffectiveAutonomy | None = None,
     ) -> SecurityInterceptionStrategy | None:
-        """Build the SecOps security interceptor if configured."""
+        """Build the SecOps security interceptor if configured.
+
+        Raises:
+            ExecutionStateError: If effective_autonomy is provided but
+                no SecurityConfig is configured — autonomy cannot be
+                enforced without the security subsystem.
+        """
         if self._security_config is None:
+            if effective_autonomy is not None:
+                msg = (
+                    "effective_autonomy cannot be enforced without "
+                    "SecurityConfig — configure security or remove autonomy"
+                )
+                logger.error(SECURITY_DISABLED, note=msg)
+                raise ExecutionStateError(msg)
             logger.warning(
                 SECURITY_DISABLED,
                 note="No SecurityConfig provided — all security checks skipped",
             )
             return None
         if not self._security_config.enabled:
+            if effective_autonomy is not None:
+                msg = "effective_autonomy cannot be enforced when security is disabled"
+                logger.error(SECURITY_DISABLED, note=msg)
+                raise ExecutionStateError(msg)
             return None
 
         cfg = self._security_config
@@ -723,6 +741,7 @@ class AgentEngine:
             output_scanner=OutputScanner(),
             approval_store=self._approval_store,
             effective_autonomy=effective_autonomy,
+            risk_classifier=DefaultRiskTierClassifier(),
         )
 
     def _make_tool_invoker(

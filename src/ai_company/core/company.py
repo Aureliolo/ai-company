@@ -378,7 +378,11 @@ class CompanyConfig(BaseModel):
             return data
         raw = data.get("autonomy")
         if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-            level = _float_to_autonomy_level(float(raw))
+            value = float(raw)
+            if not (0.0 <= value <= 1.0):
+                msg = f"autonomy float must be 0.0-1.0, got {value}"
+                raise ValueError(msg)
+            level = _float_to_autonomy_level(value)
             return {**data, "autonomy": {"level": level.value}}
         return data
 

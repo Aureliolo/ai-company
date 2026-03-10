@@ -14,6 +14,7 @@ from ai_company.persistence.protocol import PersistenceBackend
 from ai_company.persistence.repositories import (
     CostRecordRepository,
     MessageRepository,
+    ParkedContextRepository,
     TaskRepository,
 )
 
@@ -216,4 +217,12 @@ class TestProtocolCompliance:
         assert isinstance(
             _FakeCollaborationMetricRepository(),
             CollaborationMetricRepository,
+        )
+
+    def test_fake_parked_context_repo_is_parked_context_repository(
+        self,
+    ) -> None:
+        assert isinstance(
+            _FakeParkedContextRepository(),
+            ParkedContextRepository,
         )

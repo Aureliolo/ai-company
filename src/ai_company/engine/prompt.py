@@ -401,6 +401,7 @@ def _build_core_context(
             "level": effective_autonomy.level.value,
             "auto_approve_actions": sorted(effective_autonomy.auto_approve_actions),
             "human_approval_actions": sorted(effective_autonomy.human_approval_actions),
+            "security_agent": effective_autonomy.security_agent,
         }
     else:
         ctx["effective_autonomy"] = None

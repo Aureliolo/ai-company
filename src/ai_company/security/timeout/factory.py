@@ -1,6 +1,7 @@
 """Factory for creating timeout policy instances from configuration."""
 
 from ai_company.observability import get_logger
+from ai_company.observability.events.timeout import TIMEOUT_FACTORY_UNKNOWN_CONFIG
 from ai_company.security.timeout.config import (
     ApprovalTimeoutConfig,
     DenyOnTimeoutConfig,
@@ -58,7 +59,7 @@ def create_timeout_policy(
 
     msg = f"Unknown timeout policy config type: {type(config).__name__}"  # type: ignore[unreachable]
     logger.warning(
-        "timeout.factory.unknown_config",
+        TIMEOUT_FACTORY_UNKNOWN_CONFIG,
         config_type=type(config).__name__,
     )
     raise TypeError(msg)

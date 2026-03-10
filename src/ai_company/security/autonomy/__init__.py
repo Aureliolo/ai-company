@@ -1,6 +1,12 @@
-"""Autonomy level management — presets, resolution, and runtime changes."""
+"""Autonomy level management — presets, resolution, and runtime changes.
 
-from ai_company.security.autonomy.change_strategy import HumanOnlyPromotionStrategy
+Note: ``AutonomyResolver`` and ``HumanOnlyPromotionStrategy`` are **not**
+re-exported here to avoid a circular import chain
+(``core.company`` → ``security.autonomy.models`` → this ``__init__`` →
+``resolver`` → ``security.action_types`` → ``core.enums`` → ``core``).
+Import them directly from their modules when needed.
+"""
+
 from ai_company.security.autonomy.models import (
     BUILTIN_PRESETS,
     AutonomyConfig,
@@ -9,7 +15,6 @@ from ai_company.security.autonomy.models import (
     EffectiveAutonomy,
 )
 from ai_company.security.autonomy.protocol import AutonomyChangeStrategy
-from ai_company.security.autonomy.resolver import AutonomyResolver
 
 __all__ = [
     "BUILTIN_PRESETS",
@@ -17,7 +22,5 @@ __all__ = [
     "AutonomyConfig",
     "AutonomyOverride",
     "AutonomyPreset",
-    "AutonomyResolver",
     "EffectiveAutonomy",
-    "HumanOnlyPromotionStrategy",
 ]

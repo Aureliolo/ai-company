@@ -82,6 +82,20 @@ class ParkService:
             metadata=copy.deepcopy(metadata) if metadata else {},
         )
 
+        # Validate that metadata IDs match serialized context IDs.
+        if parked.agent_id != agent_id:
+            msg = (
+                f"ParkedContext agent_id {parked.agent_id!r} does not "
+                f"match provided agent_id {agent_id!r}"
+            )
+            raise ValueError(msg)
+        if parked.task_id != task_id:
+            msg = (
+                f"ParkedContext task_id {parked.task_id!r} does not "
+                f"match provided task_id {task_id!r}"
+            )
+            raise ValueError(msg)
+
         logger.info(
             TIMEOUT_CONTEXT_PARKED,
             parked_id=parked.id,

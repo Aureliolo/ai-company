@@ -94,10 +94,9 @@ class TestEscalationChainConfig:
     """EscalationChainConfig tests."""
 
     @pytest.mark.unit
-    def test_empty_chain(self) -> None:
-        config = EscalationChainConfig()
-        assert config.chain == ()
-        assert config.on_chain_exhausted == TimeoutActionType.DENY
+    def test_empty_chain_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="at least one step"):
+            EscalationChainConfig()
 
     @pytest.mark.unit
     def test_chain_steps(self) -> None:
@@ -124,6 +123,46 @@ class TestEscalationChainConfig:
         )
         assert isinstance(result, EscalationChainConfig)
         assert len(result.chain) == 1
+
+
+class TestTierConfigValidation:
+    """TierConfig validator tests."""
+
+    @pytest.mark.unit
+    def test_escalate_on_timeout_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="ESCALATE"):
+            TierConfig(
+                timeout_minutes=60,
+                on_timeout=TimeoutActionType.ESCALATE,
+            )
+
+
+class TestTieredTimeoutConfigValidation:
+    """TieredTimeoutConfig validator tests."""
+
+    @pytest.mark.unit
+    def test_invalid_tier_key_rejected(self) -> None:
+        tier = TierConfig(timeout_minutes=60, on_timeout=TimeoutActionType.DENY)
+        with pytest.raises(ValidationError, match="Invalid tier keys"):
+            TieredTimeoutConfig(tiers={"invalid_key": tier})
+
+    @pytest.mark.unit
+    def test_valid_tier_keys_accepted(self) -> None:
+        tier = TierConfig(timeout_minutes=60, on_timeout=TimeoutActionType.DENY)
+        config = TieredTimeoutConfig(tiers={"low": tier, "high": tier})
+        assert len(config.tiers) == 2
+
+
+class TestEscalationChainConfigValidation:
+    """EscalationChainConfig validator tests."""
+
+    @pytest.mark.unit
+    def test_escalate_on_chain_exhausted_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="ESCALATE"):
+            EscalationChainConfig(
+                chain=(EscalationStep(role="lead", timeout_minutes=30),),
+                on_chain_exhausted=TimeoutActionType.ESCALATE,
+            )
 
 
 class TestTimeoutAction:

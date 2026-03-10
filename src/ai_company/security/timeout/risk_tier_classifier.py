@@ -44,6 +44,20 @@ _DEFAULT_RISK_MAP: Final[MappingProxyType[str, ApprovalRiskLevel]] = MappingProx
     }
 )
 
+# Validate exhaustiveness at module load time — log a warning for any
+# ActionType members missing from the default map.
+_missing_action_types = {m.value for m in ActionType} - set(_DEFAULT_RISK_MAP)
+if _missing_action_types:
+    logger.warning(
+        TIMEOUT_UNKNOWN_ACTION_TYPE,
+        missing_types=sorted(_missing_action_types),
+        note=(
+            "ActionType members missing from _DEFAULT_RISK_MAP — "
+            "they will default to HIGH at classify() time"
+        ),
+    )
+del _missing_action_types
+
 
 class DefaultRiskTierClassifier:
     """Maps action types to risk tiers for tiered timeout policies.

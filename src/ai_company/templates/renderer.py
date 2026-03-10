@@ -524,8 +524,9 @@ def _extract_numeric_config(
     raw_autonomy = company.get("autonomy", template.autonomy)
     try:
         if isinstance(raw_autonomy, dict):
-            # Already an AutonomyConfig-like dict — pass through.
-            autonomy: float | dict[str, Any] = raw_autonomy
+            # Already an AutonomyConfig-like dict — deep-copy to prevent
+            # mutation of the original rendered data.
+            autonomy: float | dict[str, Any] = dict(raw_autonomy)
         else:
             autonomy = to_float(raw_autonomy, field_name="autonomy")
         budget_monthly = to_float(

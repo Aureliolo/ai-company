@@ -486,8 +486,8 @@ class TestAutonomyPrecheck:
         service._test_audit_log = audit_log  # type: ignore[attr-defined]
         return service
 
-    async def test_auto_approve_returns_allow(self) -> None:
-        """When action is in auto_approve_actions, returns ALLOW without rule engine."""
+    async def test_auto_approve_keeps_allow(self) -> None:
+        """When rule engine ALLOWs and action is auto-approved, stays ALLOW."""
         autonomy = EffectiveAutonomy(
             level=AutonomyLevel.SEMI,
             auto_approve_actions=frozenset({"code:read"}),
@@ -500,11 +500,35 @@ class TestAutonomyPrecheck:
         verdict = await service.evaluate_pre_tool(ctx)
 
         assert verdict.verdict == SecurityVerdictType.ALLOW
-        assert "auto-approved" in verdict.reason.lower()
-        service._test_rule_engine.evaluate.assert_not_called()  # type: ignore[attr-defined]
+        # Rule engine always runs first — even for auto-approved actions.
+        service._test_rule_engine.evaluate.assert_called_once()  # type: ignore[attr-defined]
 
-    async def test_human_approval_returns_escalate_as_deny(self) -> None:
-        """Human approval with no store converts ESCALATE to DENY."""
+    async def test_human_approval_escalates_with_store(self) -> None:
+        """Human-approval action with store → ESCALATE after rule engine ALLOW."""
+        autonomy = EffectiveAutonomy(
+            level=AutonomyLevel.SEMI,
+            auto_approve_actions=frozenset({"code:read"}),
+            human_approval_actions=frozenset({"infra:deploy"}),
+            security_agent=False,
+        )
+        store = AsyncMock()
+        store.add = AsyncMock()
+        service = self._make_service_with_autonomy(
+            effective_autonomy=autonomy,
+            approval_store=store,
+        )
+        ctx = _make_context(action_type="infra:deploy")
+
+        verdict = await service.evaluate_pre_tool(ctx)
+
+        assert verdict.verdict == SecurityVerdictType.ESCALATE
+        assert verdict.approval_id is not None
+        store.add.assert_called_once()
+        # Rule engine always runs first.
+        service._test_rule_engine.evaluate.assert_called_once()  # type: ignore[attr-defined]
+
+    async def test_human_approval_without_store_becomes_deny(self) -> None:
+        """Human-approval action without store → DENY."""
         autonomy = EffectiveAutonomy(
             level=AutonomyLevel.SEMI,
             auto_approve_actions=frozenset({"code:read"}),
@@ -521,10 +545,11 @@ class TestAutonomyPrecheck:
 
         assert verdict.verdict == SecurityVerdictType.DENY
         assert "escalation unavailable" in verdict.reason.lower()
-        service._test_rule_engine.evaluate.assert_not_called()  # type: ignore[attr-defined]
+        # Rule engine always runs first — even when escalation fails.
+        service._test_rule_engine.evaluate.assert_called_once()  # type: ignore[attr-defined]
 
-    async def test_hard_deny_falls_through_to_rule_engine(self) -> None:
-        """When action is in hard_deny_action_types, autonomy is skipped."""
+    async def test_rule_engine_deny_overrides_auto_approve(self) -> None:
+        """Rule engine DENY takes precedence over autonomy auto-approve."""
         autonomy = EffectiveAutonomy(
             level=AutonomyLevel.SEMI,
             auto_approve_actions=frozenset({"deploy:production"}),
@@ -536,16 +561,16 @@ class TestAutonomyPrecheck:
             effective_autonomy=autonomy,
             engine_verdict=deny_verdict,
         )
-        # deploy:production is in the default SecurityConfig.hard_deny_action_types
         ctx = _make_context(action_type="deploy:production")
 
         verdict = await service.evaluate_pre_tool(ctx)
 
+        # Security detectors take precedence over autonomy.
         assert verdict.verdict == SecurityVerdictType.DENY
         service._test_rule_engine.evaluate.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_unknown_action_falls_through(self) -> None:
-        """When action is not in any autonomy set, falls through to rule engine."""
+        """When action is not in any autonomy set, rule engine verdict used."""
         autonomy = EffectiveAutonomy(
             level=AutonomyLevel.SEMI,
             auto_approve_actions=frozenset({"code:read"}),

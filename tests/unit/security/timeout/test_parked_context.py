@@ -81,3 +81,22 @@ class TestParkedContext:
 
         with pytest.raises(ValidationError):
             _make_parked_context(agent_id="   ")
+
+    def test_metadata_deep_copied(self) -> None:
+        """Metadata dict is deep-copied — mutations don't affect the model."""
+        original = {"key": "value"}
+        parked = _make_parked_context(metadata=original)
+        original["key"] = "mutated"
+        assert parked.metadata["key"] == "value"
+
+    def test_metadata_view_read_only(self) -> None:
+        """metadata_view returns a read-only MappingProxyType."""
+        parked = _make_parked_context(metadata={"key": "value"})
+        view = parked.metadata_view
+        with pytest.raises(TypeError):
+            view["new_key"] = "fail"  # type: ignore[index]
+
+    def test_invalid_context_json_rejected(self) -> None:
+        """context_json must be valid JSON."""
+        with pytest.raises(ValidationError, match="valid JSON"):
+            _make_parked_context(context_json="not-valid-json{{")

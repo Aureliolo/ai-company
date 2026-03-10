@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from ai_company.core.enums import AutonomyLevel, DowngradeReason
+from ai_company.core.enums import AutonomyLevel, DowngradeReason, compare_autonomy
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.autonomy import (
@@ -33,9 +33,12 @@ class HumanOnlyPromotionStrategy:
     """Default strategy: promotions and recovery always require human approval.
 
     Downgrades are applied immediately based on the reason:
-    - ``HIGH_ERROR_RATE`` → SUPERVISED
-    - ``BUDGET_EXHAUSTED`` → SUPERVISED
+    - ``HIGH_ERROR_RATE`` → SUPERVISED (or current level if already more restrictive)
+    - ``BUDGET_EXHAUSTED`` → SUPERVISED (or current level if already more restrictive)
     - ``SECURITY_INCIDENT`` → LOCKED
+
+    Downgrades never *increase* autonomy: if the agent is already at
+    LOCKED, a HIGH_ERROR_RATE event keeps it at LOCKED (not SUPERVISED).
 
     This strategy tracks active overrides in memory. In production,
     overrides should be persisted to the persistence backend.
@@ -89,12 +92,21 @@ class HumanOnlyPromotionStrategy:
         Returns:
             The new autonomy level after downgrade.
         """
-        new_level = _DOWNGRADE_MAP[reason]
+        target_level = _DOWNGRADE_MAP[reason]
         existing = self._overrides.get(agent_id)
         original = (
             existing.original_level
             if existing
             else (current_level or AutonomyLevel.SEMI)
+        )
+
+        # Never increase autonomy — if the agent is already at or below
+        # the target level, keep the current (more restrictive) level.
+        effective_current = existing.current_level if existing else original
+        new_level = (
+            effective_current
+            if compare_autonomy(effective_current, target_level) <= 0
+            else target_level
         )
 
         override = AutonomyOverride(

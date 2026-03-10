@@ -145,8 +145,18 @@ class TieredTimeoutPolicy:
         Returns:
             WAIT, DENY, APPROVE, or ESCALATE based on tier config.
         """
+        # Default: classify by risk level, then check explicit tier overrides.
         risk_level = self._classifier.classify(item.action_type)
-        tier_config = self._tiers.get(risk_level.value)
+        tier_config = None
+        for tier_key, cfg in self._tiers.items():
+            if cfg.actions and item.action_type in cfg.actions:
+                tier_config = cfg
+                risk_level = ApprovalRiskLevel(tier_key)
+                break
+
+        # Fall back to risk-level-based tier lookup.
+        if tier_config is None:
+            tier_config = self._tiers.get(risk_level.value)
 
         if tier_config is None:
             # No tier configured for this risk level — wait (safe default).
@@ -269,11 +279,29 @@ class EscalationChainPolicy:
             )
 
         cumulative_seconds = 0.0
-        for step in self._chain:
+        for idx, step in enumerate(self._chain):
             step_timeout = step.timeout_minutes * _SECONDS_PER_MINUTE
-            if elapsed_seconds < cumulative_seconds + step_timeout:
-                logger.debug(
-                    TIMEOUT_WAITING,
+            step_end = cumulative_seconds + step_timeout
+            if elapsed_seconds < step_end:
+                if idx == 0:
+                    # First step hasn't timed out yet — WAIT.
+                    logger.debug(
+                        TIMEOUT_WAITING,
+                        approval_id=item.id,
+                        escalation_role=step.role,
+                        elapsed_seconds=elapsed_seconds,
+                    )
+                    return TimeoutAction(
+                        action=TimeoutActionType.WAIT,
+                        reason=(
+                            f"Waiting at {step.role!r} — "
+                            f"{elapsed_seconds:.0f}s of "
+                            f"{step_end:.0f}s elapsed"
+                        ),
+                    )
+                # Previous step timed out — escalate to this step's role.
+                logger.info(
+                    TIMEOUT_ESCALATED,
                     approval_id=item.id,
                     escalation_role=step.role,
                     elapsed_seconds=elapsed_seconds,

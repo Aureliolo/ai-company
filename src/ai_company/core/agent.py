@@ -326,3 +326,17 @@ class AgentIdentity(BaseModel):
         default=AgentStatus.ACTIVE,
         description="Current lifecycle status",
     )
+
+    @model_validator(mode="after")
+    def _validate_seniority_autonomy(self) -> Self:
+        """Reject JUNIOR agents with FULL autonomy (D6)."""
+        if (
+            self.autonomy_level == AutonomyLevel.FULL
+            and self.level == SeniorityLevel.JUNIOR
+        ):
+            msg = (
+                "JUNIOR agents cannot have FULL autonomy — "
+                "maximum is SEMI (DESIGN_SPEC D6)"
+            )
+            raise ValueError(msg)
+        return self

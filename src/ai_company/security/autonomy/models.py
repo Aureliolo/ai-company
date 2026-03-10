@@ -1,10 +1,11 @@
 """Autonomy data models — presets, config, effective resolution, overrides."""
 
+from types import MappingProxyType
 from typing import Final, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from ai_company.core.enums import AutonomyLevel, DowngradeReason
+from ai_company.core.enums import AutonomyLevel, DowngradeReason, compare_autonomy
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
@@ -59,59 +60,63 @@ class AutonomyPreset(BaseModel):
         return self
 
 
-BUILTIN_PRESETS: Final[dict[str, AutonomyPreset]] = {
-    AutonomyLevel.FULL: AutonomyPreset(
-        level=AutonomyLevel.FULL,
-        description="Fully autonomous — all actions auto-approved",
-        auto_approve=("all",),
-        human_approval=(),
-        security_agent=False,
-    ),
-    AutonomyLevel.SEMI: AutonomyPreset(
-        level=AutonomyLevel.SEMI,
-        description=(
-            "Semi-autonomous — code, test, docs auto-approved; "
-            "deploy, org, budget require human approval"
+BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType(
+    {
+        AutonomyLevel.FULL: AutonomyPreset(
+            level=AutonomyLevel.FULL,
+            description="Fully autonomous — all actions auto-approved",
+            auto_approve=("all",),
+            human_approval=(),
+            security_agent=False,
         ),
-        auto_approve=("code", "test", "docs", "vcs", "db:query"),
-        human_approval=("deploy", "org", "budget", "comms:external"),
-        security_agent=True,
-    ),
-    AutonomyLevel.SUPERVISED: AutonomyPreset(
-        level=AutonomyLevel.SUPERVISED,
-        description=(
-            "Supervised — read-only and test actions auto-approved; "
-            "all mutations require human approval"
+        # SEMI extends DESIGN_SPEC §12.2 with vcs and db:query auto-approve
+        # (safe read/commit operations) and broader human_approval categories.
+        AutonomyLevel.SEMI: AutonomyPreset(
+            level=AutonomyLevel.SEMI,
+            description=(
+                "Semi-autonomous — code, test, docs, vcs auto-approved; "
+                "deploy, org, budget require human approval"
+            ),
+            auto_approve=("code", "test", "docs", "vcs", "comms:internal", "db:query"),
+            human_approval=("deploy", "org", "budget", "comms:external"),
+            security_agent=True,
         ),
-        auto_approve=("code:read", "vcs:read", "test:run", "db:query"),
-        human_approval=(
-            "code:write",
-            "code:create",
-            "code:delete",
-            "code:refactor",
-            "test:write",
-            "docs:write",
-            "vcs:commit",
-            "vcs:push",
-            "vcs:branch",
-            "deploy",
-            "comms",
-            "budget",
-            "org",
-            "db:mutate",
-            "db:admin",
-            "arch:decide",
+        AutonomyLevel.SUPERVISED: AutonomyPreset(
+            level=AutonomyLevel.SUPERVISED,
+            description=(
+                "Supervised — read-only and test actions auto-approved; "
+                "all mutations require human approval"
+            ),
+            auto_approve=("code:read", "vcs:read", "test:run", "db:query"),
+            human_approval=(
+                "code:write",
+                "code:create",
+                "code:delete",
+                "code:refactor",
+                "test:write",
+                "docs:write",
+                "vcs:commit",
+                "vcs:push",
+                "vcs:branch",
+                "deploy",
+                "comms",
+                "budget",
+                "org",
+                "db:mutate",
+                "db:admin",
+                "arch:decide",
+            ),
+            security_agent=True,
         ),
-        security_agent=True,
-    ),
-    AutonomyLevel.LOCKED: AutonomyPreset(
-        level=AutonomyLevel.LOCKED,
-        description="Locked — all actions require human approval",
-        auto_approve=(),
-        human_approval=("all",),
-        security_agent=True,
-    ),
-}
+        AutonomyLevel.LOCKED: AutonomyPreset(
+            level=AutonomyLevel.LOCKED,
+            description="Locked — all actions require human approval",
+            auto_approve=(),
+            human_approval=("all",),
+            security_agent=True,
+        ),
+    }
+)
 
 
 class AutonomyConfig(BaseModel):
@@ -209,3 +214,15 @@ class AutonomyOverride(BaseModel):
         default=True,
         description="Whether human approval is needed to restore level",
     )
+
+    @model_validator(mode="after")
+    def _validate_downgrade(self) -> Self:
+        """Ensure current_level is not higher than original_level."""
+        if compare_autonomy(self.current_level, self.original_level) > 0:
+            msg = (
+                f"current_level {self.current_level.value!r} is higher than "
+                f"original_level {self.original_level.value!r} — "
+                f"downgrades must not increase autonomy"
+            )
+            raise ValueError(msg)
+        return self
