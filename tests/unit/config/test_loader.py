@@ -471,7 +471,7 @@ class TestDiscoverConfig:
     def test_finds_cwd_config(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        config_file = tmp_path / "ai-company.yaml"
+        config_file = tmp_path / "synthorg.yaml"
         config_file.write_text("company_name: Test\n", encoding="utf-8")
         monkeypatch.chdir(tmp_path)
         result = discover_config()
@@ -482,7 +482,7 @@ class TestDiscoverConfig:
     ) -> None:
         config_dir = tmp_path / "config"
         config_dir.mkdir()
-        config_file = config_dir / "ai-company.yaml"
+        config_file = config_dir / "synthorg.yaml"
         config_file.write_text("company_name: Test\n", encoding="utf-8")
         monkeypatch.chdir(tmp_path)
         result = discover_config()
@@ -495,7 +495,7 @@ class TestDiscoverConfig:
         monkeypatch.chdir(tmp_path)
         # Home dir has config
         fake_home = tmp_path / "fakehome"
-        config_dir = fake_home / ".ai-company"
+        config_dir = fake_home / ".synthorg"
         config_dir.mkdir(parents=True)
         config_file = config_dir / "config.yaml"
         config_file.write_text("company_name: Test\n", encoding="utf-8")
@@ -507,11 +507,11 @@ class TestDiscoverConfig:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Both CWD and config/ have files
-        cwd_file = tmp_path / "ai-company.yaml"
+        cwd_file = tmp_path / "synthorg.yaml"
         cwd_file.write_text("company_name: CWD\n", encoding="utf-8")
         config_dir = tmp_path / "config"
         config_dir.mkdir()
-        subdir_file = config_dir / "ai-company.yaml"
+        subdir_file = config_dir / "synthorg.yaml"
         subdir_file.write_text("company_name: SubDir\n", encoding="utf-8")
         monkeypatch.chdir(tmp_path)
         result = discover_config()
@@ -524,11 +524,11 @@ class TestDiscoverConfig:
         # config/ subdir has file
         config_dir = tmp_path / "config"
         config_dir.mkdir()
-        subdir_file = config_dir / "ai-company.yaml"
+        subdir_file = config_dir / "synthorg.yaml"
         subdir_file.write_text("company_name: SubDir\n", encoding="utf-8")
         # Home dir has file
         fake_home = tmp_path / "fakehome"
-        home_config_dir = fake_home / ".ai-company"
+        home_config_dir = fake_home / ".synthorg"
         home_config_dir.mkdir(parents=True)
         home_file = home_config_dir / "config.yaml"
         home_file.write_text("company_name: Home\n", encoding="utf-8")
@@ -553,7 +553,7 @@ class TestDiscoverConfig:
     def test_returns_resolved_path(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        config_file = tmp_path / "ai-company.yaml"
+        config_file = tmp_path / "synthorg.yaml"
         config_file.write_text("company_name: Test\n", encoding="utf-8")
         monkeypatch.chdir(tmp_path)
         result = discover_config()
@@ -635,7 +635,7 @@ class TestLoadConfigDiscovery:
     def test_load_config_none_uses_discovery(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        config_file = tmp_path / "ai-company.yaml"
+        config_file = tmp_path / "synthorg.yaml"
         config_file.write_text(MINIMAL_VALID_YAML, encoding="utf-8")
         monkeypatch.chdir(tmp_path)
         cfg = load_config(None)

@@ -31,7 +31,7 @@ class SQLiteConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     path: NotBlankStr = Field(
-        default="ai-company.db",
+        default="synthorg.db",
         description="Database file path",
     )
     wal_mode: bool = Field(

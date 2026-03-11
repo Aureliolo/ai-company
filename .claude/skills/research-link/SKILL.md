@@ -16,7 +16,7 @@ allowed-tools:
 
 # Research Link
 
-Research any external content — URL, tool, concept, pasted article, code snippet — and evaluate what it means for the ai-company project. Produces a decision-oriented assessment with concrete verdicts and next-step options.
+Research any external content — URL, tool, concept, pasted article, code snippet — and evaluate what it means for the SynthOrg project. Produces a decision-oriented assessment with concrete verdicts and next-step options.
 
 **Arguments:** "$ARGUMENTS"
 
@@ -86,7 +86,7 @@ For each tool/library/framework mentioned:
 
 ## Phase 3: Map to Project
 
-Cross-reference findings against the ai-company project. Search these in parallel:
+Cross-reference findings against the SynthOrg project. Search these in parallel:
 
 1. **DESIGN_SPEC.md** — Grep for related sections (memory, providers, communication, agents, etc.)
 2. **Source code** — Grep `src/ai_company/` for overlapping implementations or modules

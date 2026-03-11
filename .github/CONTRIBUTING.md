@@ -3,8 +3,8 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/Aureliolo/ai-company.git
-cd ai-company
+git clone https://github.com/Aureliolo/synthorg.git
+cd synthorg
 uv sync
 ```
 

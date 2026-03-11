@@ -3,7 +3,7 @@
   "packages": {
     ".": {
       "release-type": "python",
-      "package-name": "ai-company",
+      "package-name": "synthorg",
       "include-component-in-tag": false,
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,

@@ -330,7 +330,7 @@ class TestRootConfig:
     def test_persistence_defaults(self) -> None:
         cfg = RootConfig(company_name="X")
         assert cfg.persistence.backend == "sqlite"
-        assert cfg.persistence.sqlite.path == "ai-company.db"
+        assert cfg.persistence.sqlite.path == "synthorg.db"
         assert cfg.persistence.sqlite.wal_mode is True
 
     def test_persistence_custom_path(self) -> None:

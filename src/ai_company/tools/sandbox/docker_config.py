@@ -27,7 +27,7 @@ class DockerSandboxConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     image: NotBlankStr = Field(
-        default="ai-company-sandbox:latest",
+        default="synthorg-sandbox:latest",
         description="Docker image to use for sandbox containers",
     )
     network: Literal["none", "bridge", "host"] = Field(

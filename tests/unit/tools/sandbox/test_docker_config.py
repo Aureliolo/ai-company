@@ -13,7 +13,7 @@ class TestDockerSandboxConfigDefaults:
 
     def test_defaults(self) -> None:
         config = DockerSandboxConfig()
-        assert config.image == "ai-company-sandbox:latest"
+        assert config.image == "synthorg-sandbox:latest"
         assert config.network == "none"
         assert config.network_overrides == {}
         assert config.allowed_hosts == ()

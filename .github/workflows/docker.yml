@@ -70,7 +70,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
-          images: ghcr.io/aureliolo/ai-company-backend
+          images: ghcr.io/aureliolo/synthorg-backend
           tags: |
             type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -94,7 +94,7 @@ jobs:
       # SHA tag always exists (version/semver tags only on v* tags)
       - name: Compute scan image ref
         id: scan-ref
-        run: echo "ref=ghcr.io/aureliolo/ai-company-backend:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        run: echo "ref=ghcr.io/aureliolo/synthorg-backend:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Trivy scan (critical — hard fail)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
@@ -152,7 +152,7 @@ jobs:
             echo "::error::Push step did not produce a digest — cannot sign image"
             exit 1
           fi
-          cosign sign --yes ghcr.io/aureliolo/ai-company-backend@${DIGEST}
+          cosign sign --yes ghcr.io/aureliolo/synthorg-backend@${DIGEST}
 
   build-web:
     name: Build Web
@@ -181,7 +181,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
         with:
-          images: ghcr.io/aureliolo/ai-company-web
+          images: ghcr.io/aureliolo/synthorg-web
           tags: |
             type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -205,7 +205,7 @@ jobs:
       # SHA tag always exists (version/semver tags only on v* tags)
       - name: Compute scan image ref
         id: scan-ref
-        run: echo "ref=ghcr.io/aureliolo/ai-company-web:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        run: echo "ref=ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Trivy scan (critical — hard fail)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
@@ -262,4 +262,4 @@ jobs:
             echo "::error::Push step did not produce a digest — cannot sign image"
             exit 1
           fi
-          cosign sign --yes ghcr.io/aureliolo/ai-company-web@${DIGEST}
+          cosign sign --yes ghcr.io/aureliolo/synthorg-web@${DIGEST}

@@ -35,11 +35,11 @@ logger = get_logger(__name__)
 _ENV_VAR_PATTERN = re.compile(r"\$\{([^}:]+?)(?::-([^}]*))?\}")
 
 _CWD_CONFIG_LOCATIONS: tuple[Path, ...] = (
-    Path("ai-company.yaml"),
-    Path("config/ai-company.yaml"),
+    Path("synthorg.yaml"),
+    Path("config/synthorg.yaml"),
 )
 
-_HOME_CONFIG_RELATIVE = Path(".ai-company") / "config.yaml"
+_HOME_CONFIG_RELATIVE = Path(".synthorg") / "config.yaml"
 
 # ---------------------------------------------------------------------------
 # Private helpers
@@ -364,9 +364,9 @@ def discover_config() -> Path:
 
     Search order:
 
-    1. ``./ai-company.yaml``
-    2. ``./config/ai-company.yaml``
-    3. ``~/.ai-company/config.yaml``
+    1. ``./synthorg.yaml``
+    2. ``./config/synthorg.yaml``
+    3. ``~/.synthorg/config.yaml``
 
     Returns:
         Resolved absolute :class:`~pathlib.Path` to the first file found.

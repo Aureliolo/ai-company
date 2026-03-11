@@ -92,7 +92,7 @@ class TestDockerSandboxInit:
 
     def test_default_config(self, tmp_path: Path) -> None:
         sandbox = DockerSandbox(workspace=tmp_path)
-        assert sandbox.config.image == "ai-company-sandbox:latest"
+        assert sandbox.config.image == "synthorg-sandbox:latest"
         assert sandbox.config.timeout_seconds == 120.0
 
     def test_custom_config(self, tmp_path: Path) -> None:

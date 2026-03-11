@@ -1529,7 +1529,7 @@ class MessageRepository(Protocol):
 persistence:
   backend: "sqlite"                   # sqlite, postgresql, mariadb (future)
   sqlite:
-    path: "/data/ai-company.db"       # database file path (mounted volume in Docker)
+    path: "/data/synthorg.db"       # database file path (mounted volume in Docker)
     wal_mode: true                    # WAL for concurrent read performance
     journal_size_limit: 67108864      # 64 MB WAL journal limit
   # postgresql:                       # future
@@ -2120,7 +2120,7 @@ sandboxing:
     workspace_only: true               # restrict filesystem access to project dir
     restricted_path: true              # strip dangerous binaries from PATH
   docker:
-    image: "ai-company-sandbox:latest" # pre-built image with common runtimes
+    image: "synthorg-sandbox:latest" # pre-built image with common runtimes
     network: "none"                    # no network by default; per-category overrides below
     network_overrides:                 # category-specific network policies
       database: "bridge"               # database tools need TCP access to DB host
@@ -2132,7 +2132,7 @@ sandboxing:
     mount_mode: "ro"                   # read-only by default; workspace mounted separately
     auto_remove: true                  # ephemeral — container removed after execution
   k8s:                                 # future — per-agent pod isolation
-    namespace: "ai-company-agents"
+    namespace: "synthorg-agents"
     resource_requests:
       cpu: "250m"
       memory: "256Mi"
@@ -2722,7 +2722,7 @@ Circular inheritance is detected via chain tracking and raises `TemplateInherita
 │                                                               │
 │  ┌──────────────────────┐  ┌─────────────────────────────┐  │
 │  │     Web UI (Local)    │  │         CLI Tool            │  │
-│  │     Web Dashboard      │  │    ai-company <command>     │  │
+│  │     Web Dashboard      │  │    synthorg <command>     │  │
 │  └──────────────────────┘  └─────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -2753,7 +2753,7 @@ Circular inheritance is detected via chain tracking and raises `TemplateInherita
 Files marked with `(planned)` do not exist yet — only stub `__init__.py` files are present. All other files listed below exist in the codebase.
 
 ```text
-ai-company/
+synthorg/
 ├── src/
 │   └── ai_company/
 │       ├── __init__.py

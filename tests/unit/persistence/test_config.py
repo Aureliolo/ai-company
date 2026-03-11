@@ -10,7 +10,7 @@ from ai_company.persistence.config import PersistenceConfig, SQLiteConfig
 class TestSQLiteConfig:
     def test_defaults(self) -> None:
         cfg = SQLiteConfig()
-        assert cfg.path == "ai-company.db"
+        assert cfg.path == "synthorg.db"
         assert cfg.wal_mode is True
         assert cfg.journal_size_limit == 67_108_864
 

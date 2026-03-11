@@ -25,8 +25,8 @@ Required for cloning the repository and commit hooks. Install from [git-scm.com]
 ## Clone and Install
 
 ```bash
-git clone https://github.com/Aureliolo/ai-company.git
-cd ai-company
+git clone https://github.com/Aureliolo/synthorg.git
+cd synthorg
 uv sync
 ```
 
@@ -98,7 +98,7 @@ uv run ruff format src/ tests/
 ## Project Layout
 
 ```text
-ai-company/
+synthorg/
   src/ai_company/       # Main package (src layout)
     api/                # Litestar REST + WebSocket routes
     budget/             # Cost tracking and spending controls

@@ -14,7 +14,7 @@ If you discover a security vulnerability, please report it responsibly.
 
 **Do not open a public GitHub issue.**
 
-Instead, use [GitHub's private vulnerability reporting](https://github.com/Aureliolo/ai-company/security/advisories/new) to submit your report.
+Instead, use [GitHub's private vulnerability reporting](https://github.com/Aureliolo/synthorg/security/advisories/new) to submit your report.
 
 You should receive a response within 72 hours. If the vulnerability is confirmed, we aim to provide a fix within 90 days for non-critical issues, and as quickly as possible for actively exploited vulnerabilities.
 

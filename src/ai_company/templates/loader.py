@@ -44,7 +44,7 @@ from ai_company.templates.schema import CompanyTemplate
 
 logger = get_logger(__name__)
 
-_USER_TEMPLATES_DIR = Path.home() / ".ai-company" / "templates"
+_USER_TEMPLATES_DIR = Path.home() / ".synthorg" / "templates"
 
 BUILTIN_TEMPLATES: MappingProxyType[str, str] = MappingProxyType(
     {

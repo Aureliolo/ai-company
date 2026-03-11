@@ -1,6 +1,6 @@
 # SynthOrg
 
-[![CI](https://github.com/Aureliolo/ai-company/actions/workflows/ci.yml/badge.svg)](https://github.com/Aureliolo/ai-company/actions/workflows/ci.yml)
+[![CI](https://github.com/Aureliolo/synthorg/actions/workflows/ci.yml/badge.svg)](https://github.com/Aureliolo/synthorg/actions/workflows/ci.yml)
 
 A framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company.
 
@@ -99,8 +99,8 @@ Core framework complete — agent engine, multi-agent coordination, API, securit
 ### Development (local Python)
 
 ```bash
-git clone https://github.com/Aureliolo/ai-company.git
-cd ai-company
+git clone https://github.com/Aureliolo/synthorg.git
+cd synthorg
 uv sync
 ```
 

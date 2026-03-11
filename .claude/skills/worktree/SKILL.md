@@ -53,7 +53,7 @@ If no definitions are provided at all, ask the user via AskUserQuestion for:
 ### Directory naming
 
 Directory suffix is auto-derived from the branch name:
-- `feat/delegation-loop-prevention` → `../ai-company-wt-delegation-loop-prevention`
+- `feat/delegation-loop-prevention` → `../synthorg-wt-delegation-loop-prevention`
 - Strip everything up to and including the first `/` in the branch name (covers `feat/`, `fix/`, `refactor/`, `chore/`, `docs/`, `test/`, `perf/`, `ci/`), then prepend `wt-`
 - Repo name extracted from the current working directory basename
 
@@ -108,7 +108,7 @@ Directory suffix is auto-derived from the branch name:
 
 3. **For each worktree definition**, run in sequence:
 
-   a. Determine the directory path: `../<repo-name>-wt-<slug>` (e.g. `../ai-company-wt-delegation-loop-prevention`)
+   a. Determine the directory path: `../<repo-name>-wt-<slug>` (e.g. `../synthorg-wt-delegation-loop-prevention`)
 
    b. Create the worktree. For **new** branches:
 
@@ -201,7 +201,7 @@ Directory suffix is auto-derived from the branch name:
    If there are multiple issues in one worktree that have a natural ordering (from dependency parsing or logical sequence), add an `## Implementation order` section.
 
 6. **Present the output** to the user:
-   - For each worktree: show the **absolute path** to the worktree directory and a separate `claude` invocation command, followed by the prompt in a code block. Derive the absolute path dynamically by resolving the worktree directory (e.g., using `realpath <dir-path>` or `pwd` from within the worktree) and converting to the platform's native format. On Windows, use backslash paths (e.g., `C:\Users\Aurelio\ai-company-wt-delegation-loop-prevention`).
+   - For each worktree: show the **absolute path** to the worktree directory and a separate `claude` invocation command, followed by the prompt in a code block. Derive the absolute path dynamically by resolving the worktree directory (e.g., using `realpath <dir-path>` or `pwd` from within the worktree) and converting to the platform's native format. On Windows, use backslash paths (e.g., `C:\Users\Aurelio\synthorg-wt-delegation-loop-prevention`).
    - **Note:** The `cd <path> && claude` instruction is for the **user's own terminal** (they will paste it into a new shell). This is NOT a Bash tool invocation — do not confuse with CLAUDE.md's "never use cd in Bash commands" rule, which applies to Bash tool calls within the skill.
    - End with a count: "N worktrees ready. Go."
 
@@ -435,7 +435,7 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 - **Never force-remove** a worktree without asking the user first.
 - **Never delete branches** without checking PR merge status first.
 - **Always check `.claude/` local files exist** before copying — warn if missing.
-- **Repo name detection**: extract from the current directory basename (e.g. `ai-company`).
+- **Repo name detection**: extract from the current directory basename (e.g. `synthorg`).
 - **Owner/repo detection**: extract from `git remote get-url origin`.
 - **Platform-aware paths**: derive worktree absolute paths dynamically at runtime. On Windows, convert to backslash paths for user-facing output. The `cd <path> && claude` instructions are for the user's own terminal, not Bash tool invocations.
 - Worktree directories are always siblings of the main repo directory (`../`).
