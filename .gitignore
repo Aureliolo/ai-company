@@ -50,5 +50,13 @@ Thumbs.db
 web/node_modules/
 web/dist/
 
+# Documentation build output
+docs/_build/
+
+# Astro / Node.js (landing page)
+site/node_modules/
+site/dist/
+site/.astro/
+
 # uv
 .python-version

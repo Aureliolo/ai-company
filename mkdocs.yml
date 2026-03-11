@@ -1,0 +1,126 @@
+site_name: SynthOrg Documentation
+site_description: Framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company
+site_url: https://synthorg.io/docs
+repo_url: https://github.com/Aureliolo/synthorg
+repo_name: Aureliolo/synthorg
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  features:
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - navigation.expand
+    - navigation.indexes
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            merge_init_into_class: true
+            show_if_no_docstring: false
+            signature_crossrefs: true
+            separate_signature: true
+            line_length: 88
+            extensions:
+              - griffe_pydantic
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+nav:
+  - Home: index.md
+  - Getting Started: getting_started.md
+  - Architecture:
+      - architecture/index.md
+      - Design Decisions: architecture/decisions.md
+  - API Reference:
+      - api/index.md
+      - Core: api/core.md
+      - Engine: api/engine.md
+      - Providers: api/providers.md
+      - Communication: api/communication.md
+      - Memory: api/memory.md
+      - Security: api/security.md
+      - Budget: api/budget.md
+      - HR: api/hr.md
+      - Tools: api/tools.md
+      - API Layer: api/api.md
+      - Config: api/config.md
+      - Templates: api/templates.md
+      - Persistence: api/persistence.md
+      - Observability: api/observability.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Aureliolo/synthorg

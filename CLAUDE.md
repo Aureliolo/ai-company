@@ -37,7 +37,19 @@ uv run pytest tests/ -m integration -n auto # integration tests only
 uv run pytest tests/ -m e2e -n auto         # e2e tests only
 uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite + coverage
 uv run pre-commit run --all-files          # all pre-commit hooks
+uv run mkdocs build --strict               # build docs (output: site/)
+uv run mkdocs serve                        # local docs preview (http://127.0.0.1:8000)
 ```
+
+## Documentation
+
+- **Docs source**: `docs/` (MkDocs markdown + mkdocstrings auto-generated API reference)
+- **Landing page**: `site/` (Astro, Concept C hybrid design)
+- **Config**: `mkdocs.yml` at repo root
+- **API reference**: auto-generated from docstrings via mkdocstrings + Griffe (AST-based, no imports)
+- **CI**: `.github/workflows/pages.yml` — builds Astro landing + MkDocs docs, merges, deploys to GitHub Pages
+- **Architecture decision**: `docs/decisions/ADR-003-documentation-architecture.md`
+- **Dependencies**: `docs` group in `pyproject.toml` (`mkdocs-material`, `mkdocstrings[python]`, `griffe-pydantic`)
 
 ## Docker
 
