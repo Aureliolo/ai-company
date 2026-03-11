@@ -5,7 +5,32 @@ How to install and run SynthOrg.
 !!! warning "Under Construction"
     SynthOrg is under active development. Some features described here may not be available yet.
 
-## Install
+## Quick Start with Docker
+
+The fastest way to get running. Save a template config and start the containers:
+
+```bash
+git clone https://github.com/Aureliolo/synthorg.git
+cd synthorg
+cp docker/.env.example docker/.env   # add your LLM API keys here
+docker compose -f docker/compose.yml up -d
+```
+
+Verify it's running:
+
+```bash
+curl http://localhost:8000/api/v1/health
+```
+
+To stop:
+
+```bash
+docker compose -f docker/compose.yml down
+```
+
+## Install as a Python Package
+
+For programmatic use or integration into your own project:
 
 ```bash
 pip install synthorg
@@ -64,17 +89,6 @@ async def main():
     print(result)
 
 asyncio.run(main())
-```
-
-## Run with Docker
-
-```bash
-cp docker/.env.example docker/.env   # configure env vars
-docker compose -f docker/compose.yml up -d
-```
-
-```bash
-curl http://localhost:8000/api/v1/health
 ```
 
 ## Next Steps
