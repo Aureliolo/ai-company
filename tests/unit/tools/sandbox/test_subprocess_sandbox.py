@@ -544,10 +544,14 @@ class TestExtraSafePathPrefixes:
     def test_fallback_uses_platform_defaults_only(
         self,
         sandbox_workspace: Path,
+        tmp_path: Path,
     ) -> None:
         """PATH fallback excludes user-provided extra prefixes."""
         extra = (r"C:\UserExtra",) if os.name == "nt" else ("/opt/user-extra",)
-        sentinel = "/test/sentinel/bin"
+        # Use a real temporary directory as sentinel so Path.is_dir()
+        # succeeds without mocking the entire Path class.
+        sentinel = str(tmp_path / "sentinel-bin")
+        Path(sentinel).mkdir()
         config = SubprocessSandboxConfig(
             restricted_path=True,
             extra_safe_path_prefixes=extra,
@@ -569,9 +573,7 @@ class TestExtraSafePathPrefixes:
                 "_get_hardcoded_fallback_dirs",
                 return_value=(sentinel,),
             ),
-            patch("ai_company.tools.sandbox.subprocess_sandbox.Path") as mock_path,
         ):
-            mock_path.return_value.is_dir.return_value = True
             env = sandbox._build_filtered_env()
             path_val = env.get("PATH", "")
             assert sentinel in path_val

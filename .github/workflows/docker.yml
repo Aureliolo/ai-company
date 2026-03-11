@@ -314,6 +314,10 @@ jobs:
           cosign verify ghcr.io/aureliolo/synthorg-backend@BACKEND_DIGEST_PH \
             --certificate-identity-regexp='github\.com/Aureliolo/synthorg' \
             --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+
+          cosign verify ghcr.io/aureliolo/synthorg-web@WEB_DIGEST_PH \
+            --certificate-identity-regexp='github\.com/Aureliolo/synthorg' \
+            --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
           ```
           BLOCK
           )
