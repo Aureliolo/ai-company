@@ -13,6 +13,7 @@ from litestar.middleware import (
 )
 
 from ai_company.api.auth.models import AuthenticatedUser, AuthMethod
+from ai_company.api.auth.service import SecretNotConfiguredError
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_AUTH_FAILED,
@@ -23,12 +24,48 @@ if TYPE_CHECKING:
     from litestar.connection import ASGIConnection
 
     from ai_company.api.auth.config import AuthConfig
+    from ai_company.api.auth.models import ApiKey
     from ai_company.api.auth.service import AuthService
     from ai_company.api.state import AppState
 
 logger = get_logger(__name__)
 
 _BEARER_PARTS = 2
+
+
+def _validate_auth_header(
+    connection: ASGIConnection[Any, Any, Any, Any],
+) -> str:
+    """Extract and validate the bearer token from the request.
+
+    Returns:
+        The bearer token string.
+
+    Raises:
+        NotAuthorizedException: On missing or invalid header.
+    """
+    path = str(connection.url.path)
+    auth_header = connection.headers.get("authorization")
+    if not auth_header:
+        logger.warning(
+            API_AUTH_FAILED,
+            reason="missing_header",
+            path=path,
+        )
+        raise NotAuthorizedException(
+            detail="Missing Authorization header",
+        )
+    token = _extract_bearer_token(auth_header)
+    if token is None:
+        logger.warning(
+            API_AUTH_FAILED,
+            reason="invalid_scheme",
+            path=path,
+        )
+        raise NotAuthorizedException(
+            detail="Invalid authorization scheme",
+        )
+    return token
 
 
 class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
@@ -58,44 +95,30 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
         Raises:
             NotAuthorizedException: If authentication fails.
         """
-        auth_header = connection.headers.get("authorization")
-        if not auth_header:
-            logger.warning(
-                API_AUTH_FAILED,
-                reason="missing_header",
-                path=str(connection.url.path),
-            )
-            raise NotAuthorizedException(detail="Missing Authorization header")
-
-        token = _extract_bearer_token(auth_header)
-        if token is None:
-            logger.warning(
-                API_AUTH_FAILED,
-                reason="invalid_scheme",
-                path=str(connection.url.path),
-            )
-            raise NotAuthorizedException(detail="Invalid authorization scheme")
-
+        token = _validate_auth_header(connection)
         app_state = connection.app.state["app_state"]
         auth_service: AuthService = app_state.auth_service
+        path = str(connection.url.path)
 
-        # Try JWT for tokens with dots; API key otherwise
         if "." in token:
-            user = await _try_jwt_auth(token, auth_service, app_state, connection)
+            user = await _try_jwt_auth(
+                token,
+                auth_service,
+                app_state,
+                path,
+            )
             if user is not None:
                 return AuthenticationResult(user=user, auth=token)
             raise NotAuthorizedException(detail="Invalid JWT token")
 
-        # API key (no dots in token)
-        user = await _try_api_key_auth(token, auth_service, app_state, connection)
+        user = await _try_api_key_auth(
+            token,
+            auth_service,
+            app_state,
+            path,
+        )
         if user is not None:
             return AuthenticationResult(user=user, auth=token)
-
-        logger.warning(
-            API_AUTH_FAILED,
-            reason="invalid_credentials",
-            path=str(connection.url.path),
-        )
         raise NotAuthorizedException(detail="Invalid credentials")
 
 
@@ -111,19 +134,16 @@ async def _try_jwt_auth(
     token: str,
     auth_service: AuthService,
     app_state: AppState,
-    connection: ASGIConnection[Any, Any, Any, Any],
+    path: str,
 ) -> AuthenticatedUser | None:
     """Attempt JWT authentication.
 
-    Validates the token signature, expiry, required claims, and the
-    ``pwd_sig`` fingerprint (a truncated SHA-256 of the stored
-    password hash).  Tokens issued before a password change are
-    automatically rejected via the ``pwd_sig`` mismatch.
+    Validates the token signature, expiry, and required claims.
+    Delegates user resolution and ``pwd_sig`` validation to
+    :func:`_resolve_jwt_user`.
 
     Returns:
-        Authenticated user on success, or ``None`` if the token is
-        invalid, the ``sub`` claim is missing, or the user no longer
-        exists in the database.
+        Authenticated user on success, or ``None`` on failure.
     """
     try:
         claims = auth_service.decode_token(token)
@@ -133,107 +153,118 @@ async def _try_jwt_auth(
             reason="jwt_invalid",
             error_type=type(exc).__qualname__,
             error=str(exc),
-            path=str(connection.url.path),
+            path=path,
         )
         return None
-    except RuntimeError:
+    except SecretNotConfiguredError:
         logger.exception(
             API_AUTH_FAILED,
             reason="jwt_secret_not_configured",
-            path=str(connection.url.path),
+            path=path,
         )
         return None
+    return await _resolve_jwt_user(claims, app_state, path)
 
+
+async def _resolve_jwt_user(
+    claims: dict[str, Any],
+    app_state: AppState,
+    path: str,
+) -> AuthenticatedUser | None:
+    """Resolve user from JWT claims and validate ``pwd_sig``.
+
+    The ``pwd_sig`` is a plain SHA-256 truncation (not HMAC) of
+    the stored password hash, protected by the JWT signature.
+    """
     user_id = claims.get("sub")
     if not user_id:
-        logger.warning(
-            API_AUTH_FAILED,
-            reason="jwt_missing_sub",
-            path=str(connection.url.path),
-        )
+        logger.warning(API_AUTH_FAILED, reason="jwt_missing_sub", path=path)
         return None
 
-    persistence = app_state.persistence
-    db_user = await persistence.users.get(user_id)
+    db_user = await app_state.persistence.users.get(user_id)
     if db_user is None:
         logger.warning(
             API_AUTH_FAILED,
             reason="jwt_user_not_found",
             user_id=user_id,
-            path=str(connection.url.path),
+            path=path,
         )
         return None
 
-    expected_sig = hashlib.sha256(
-        db_user.password_hash.encode(),
-    ).hexdigest()[:16]
+    expected_sig = hashlib.sha256(db_user.password_hash.encode()).hexdigest()[:16]
     if not _hmac.compare_digest(claims.get("pwd_sig", ""), expected_sig):
         logger.warning(
             API_AUTH_FAILED,
             reason="password_changed_since_token_issued",
             user_id=user_id,
-            path=str(connection.url.path),
+            path=path,
         )
         return None
 
-    authenticated = AuthenticatedUser(
+    logger.info(
+        API_AUTH_SUCCESS,
+        user_id=db_user.id,
+        username=db_user.username,
+        auth_method="jwt",
+        path=path,
+    )
+    return AuthenticatedUser(
         user_id=db_user.id,
         username=db_user.username,
         role=db_user.role,
         auth_method=AuthMethod.JWT,
         must_change_password=db_user.must_change_password,
     )
-    logger.info(
-        API_AUTH_SUCCESS,
-        user_id=db_user.id,
-        username=db_user.username,
-        auth_method="jwt",
-        path=str(connection.url.path),
-    )
-    return authenticated
 
 
 async def _try_api_key_auth(
     token: str,
     auth_service: AuthService,
     app_state: AppState,
-    connection: ASGIConnection[Any, Any, Any, Any],
+    path: str,
 ) -> AuthenticatedUser | None:
     """Attempt API key authentication.
 
-    Assumes the JWT secret is configured (used as the HMAC key for
-    hashing).  Returns ``None`` gracefully if the secret is missing.
+    Requires the JWT secret to be configured (used as the HMAC
+    key for hashing).  Returns ``None`` gracefully if the secret
+    is missing.
 
     Returns:
-        Authenticated user on success, or ``None`` if the key hash
-        is not found, the key is revoked or expired, or the owning
-        user no longer exists.
+        Authenticated user on success, or ``None`` on failure.
     """
     try:
         key_hash = auth_service.hash_api_key(token)
-    except RuntimeError:
+    except SecretNotConfiguredError:
         logger.exception(
             API_AUTH_FAILED,
             reason="api_key_hash_failed_secret_not_configured",
-            path=str(connection.url.path),
+            path=path,
         )
         return None
-    persistence = app_state.persistence
-    api_key = await persistence.api_keys.get_by_hash(key_hash)
+
+    api_key = await app_state.persistence.api_keys.get_by_hash(key_hash)
     if api_key is None:
         logger.warning(
             API_AUTH_FAILED,
             reason="api_key_not_found",
-            path=str(connection.url.path),
+            path=path,
         )
         return None
+    return await _resolve_api_key_user(api_key, app_state, path)
 
+
+async def _resolve_api_key_user(
+    api_key: ApiKey,
+    app_state: AppState,
+    path: str,
+) -> AuthenticatedUser | None:
+    """Validate an API key (revocation, expiry) and resolve its owner."""
     if api_key.revoked:
         logger.warning(
             API_AUTH_FAILED,
             reason="api_key_revoked",
             key_name=api_key.name,
-            path=str(connection.url.path),
+            path=path,
         )
         return None
     if api_key.expires_at is not None and api_key.expires_at < datetime.now(UTC):
@@ -241,37 +272,36 @@ async def _try_api_key_auth(
             API_AUTH_FAILED,
             reason="api_key_expired",
             key_name=api_key.name,
-            path=str(connection.url.path),
+            path=path,
         )
         return None
 
-    db_user = await persistence.users.get(api_key.user_id)
+    db_user = await app_state.persistence.users.get(api_key.user_id)
     if db_user is None:
         logger.error(
             API_AUTH_FAILED,
             reason="api_key_orphaned",
             key_name=api_key.name,
             user_id=api_key.user_id,
-            path=str(connection.url.path),
+            path=path,
         )
         return None
 
-    authenticated = AuthenticatedUser(
-        user_id=db_user.id,
-        username=db_user.username,
-        role=api_key.role,
-        auth_method=AuthMethod.API_KEY,
-        must_change_password=db_user.must_change_password,
-    )
     logger.info(
         API_AUTH_SUCCESS,
         user_id=db_user.id,
         username=db_user.username,
         auth_method="api_key",
         key_name=api_key.name,
-        path=str(connection.url.path),
+        path=path,
     )
-    return authenticated
+    return AuthenticatedUser(
+        user_id=db_user.id,
+        username=db_user.username,
+        role=api_key.role,
+        auth_method=AuthMethod.API_KEY,
+        must_change_password=db_user.must_change_password,
+    )
 
 
 def create_auth_middleware_class(

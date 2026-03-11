@@ -40,7 +40,9 @@ class AuthConfig(BaseModel):
     before the first request is served.
 
     Attributes:
-        jwt_secret: HMAC signing key (resolved at startup, repr-hidden).
+        jwt_secret: HMAC signing key for JWT tokens and API key
+            hashing (resolved at startup, repr-hidden).  Rotating
+            this invalidates all stored API key hashes.
         jwt_algorithm: JWT signing algorithm (HMAC family only).
         jwt_expiry_minutes: Token lifetime in minutes.
         min_password_length: Minimum password length for setup/change.

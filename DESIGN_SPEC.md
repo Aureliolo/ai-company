@@ -3172,7 +3172,7 @@ synthorg/
 │       │   ├── app.py              # Litestar application factory, lifecycle hooks
 │       │   ├── approval_store.py   # In-memory approval queue storage
 │       │   ├── auth/               # JWT + API key authentication subsystem
-│       │   │   ├── config.py      # AuthConfig (frozen Pydantic, HMAC algorithm, exclude paths)
+│       │   │   ├── config.py      # AuthConfig (frozen Pydantic, JWT HMAC algorithm, exclude paths)
 │       │   │   ├── controller.py  # AuthController (setup, login, change-password, me)
 │       │   │   ├── middleware.py  # ApiAuthMiddleware (JWT-first, API key fallback)
 │       │   │   ├── models.py     # User, ApiKey, AuthenticatedUser, AuthMethod

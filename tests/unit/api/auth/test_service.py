@@ -7,7 +7,7 @@ import pytest
 
 from ai_company.api.auth.config import AuthConfig
 from ai_company.api.auth.models import User
-from ai_company.api.auth.service import AuthService
+from ai_company.api.auth.service import AuthService, SecretNotConfiguredError
 from ai_company.api.guards import HumanRole
 from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 
@@ -59,13 +59,19 @@ class TestPasswordHashing:
         # Different salts produce different hashes
         assert h1 != h2
 
-    def test_verify_password_with_corrupted_hash(self) -> None:
-        svc = _make_service()
-        assert not svc.verify_password("my-password", "not-a-valid-argon2-hash")
+    def test_verify_password_with_corrupted_hash_raises(self) -> None:
+        import argon2.exceptions
 
-    def test_verify_password_with_empty_hash(self) -> None:
         svc = _make_service()
-        assert not svc.verify_password("my-password", "")
+        with pytest.raises(argon2.exceptions.InvalidHashError):
+            svc.verify_password("my-password", "not-a-valid-argon2-hash")
+
+    def test_verify_password_with_empty_hash_raises(self) -> None:
+        import argon2.exceptions
+
+        svc = _make_service()
+        with pytest.raises(argon2.exceptions.InvalidHashError):
+            svc.verify_password("my-password", "")
 
 
 @pytest.mark.unit
@@ -135,12 +141,12 @@ class TestJWT:
     def test_create_token_empty_secret_raises(self) -> None:
         svc = AuthService(AuthConfig())
         user = _make_user()
-        with pytest.raises(RuntimeError, match="JWT secret not configured"):
+        with pytest.raises(SecretNotConfiguredError, match="JWT secret not configured"):
             svc.create_token(user)
 
     def test_decode_token_empty_secret_raises(self) -> None:
         svc = AuthService(AuthConfig())
-        with pytest.raises(RuntimeError, match="JWT secret not configured"):
+        with pytest.raises(SecretNotConfiguredError, match="JWT secret not configured"):
             svc.decode_token("any.token.here")
 
 
@@ -160,7 +166,7 @@ class TestApiKeyHashing:
 
     def test_hash_requires_secret(self) -> None:
         svc = AuthService(AuthConfig())
-        with pytest.raises(RuntimeError, match="JWT secret not configured"):
+        with pytest.raises(SecretNotConfiguredError, match="JWT secret not configured"):
             svc.hash_api_key("some-key")
 
     def test_different_secrets_produce_different_hashes(self) -> None:

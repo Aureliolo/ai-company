@@ -122,6 +122,52 @@ class TestAuthMiddlewareJWT:
             )
             assert resp.status_code == 401
 
+    async def test_jwt_after_password_change_returns_401(self) -> None:
+        """Token issued before password change is rejected via pwd_sig."""
+        svc = _make_auth_service()
+        user = _make_user(svc)
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        await persistence.users.save(user)
+
+        token, _ = svc.create_token(user)
+
+        # Change password — new hash means different pwd_sig
+        updated_user = User(
+            id=user.id,
+            username=user.username,
+            password_hash=svc.hash_password("new-password-12chars"),
+            role=user.role,
+            must_change_password=False,
+            created_at=user.created_at,
+            updated_at=user.updated_at,
+        )
+        await persistence.users.save(updated_user)
+
+        app = _build_app(auth_service=svc, persistence=persistence)
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 401
+
+    async def test_jwt_auth_with_unconfigured_secret_returns_401(
+        self,
+    ) -> None:
+        """JWT auth degrades to 401 when secret is unconfigured."""
+        empty_svc = AuthService(AuthConfig())
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        app = _build_app(auth_service=empty_svc, persistence=persistence)
+
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": "Bearer some.jwt.token"},
+            )
+            assert resp.status_code == 401
+
     async def test_jwt_for_deleted_user_returns_401(self) -> None:
         svc = _make_auth_service()
         user = _make_user(svc)
@@ -286,7 +332,7 @@ class TestAuthMiddlewareApiKeyEdgeCases:
         await persistence.connect()
         app = _build_app(auth_service=empty_svc, persistence=persistence)
 
-        # hash_api_key raises RuntimeError; middleware should handle it
+        # hash_api_key raises SecretNotConfiguredError; middleware handles it
         with TestClient(app) as client:
             resp = client.get(
                 "/protected",
