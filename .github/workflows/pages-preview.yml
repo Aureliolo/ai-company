@@ -22,6 +22,7 @@ jobs:
     name: Build Preview
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -84,7 +85,8 @@ jobs:
 
           pr_number = os.environ["PR_NUMBER"]
           short_sha = os.environ["HEAD_SHA"][:7]
-          build_iso = datetime.now(timezone.utc).isoformat()
+          # Truncate to milliseconds — Safari rejects microsecond-precision ISO timestamps
+          build_iso = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
           style = (
               "background:linear-gradient(90deg,#f59e0b,#d97706);"
@@ -138,6 +140,7 @@ jobs:
     needs: build
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: write
@@ -214,6 +217,7 @@ jobs:
       github.event.action == 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: write
