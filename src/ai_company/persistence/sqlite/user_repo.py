@@ -1,7 +1,7 @@
 """SQLite repository implementations for User and ApiKey."""
 
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime
 
 import aiosqlite
 from pydantic import ValidationError
@@ -86,8 +86,8 @@ ON CONFLICT(id) DO UPDATE SET
                     user.password_hash,
                     user.role.value,
                     int(user.must_change_password),
-                    user.created_at.isoformat(),
-                    user.updated_at.isoformat(),
+                    user.created_at.astimezone(UTC).isoformat(),
+                    user.updated_at.astimezone(UTC).isoformat(),
                 ),
             )
             await self._db.commit()
@@ -242,8 +242,12 @@ ON CONFLICT(id) DO UPDATE SET
                     key.name,
                     key.role.value,
                     key.user_id,
-                    key.created_at.isoformat(),
-                    key.expires_at.isoformat() if key.expires_at else None,
+                    key.created_at.astimezone(UTC).isoformat(),
+                    (
+                        key.expires_at.astimezone(UTC).isoformat()
+                        if key.expires_at
+                        else None
+                    ),
                     int(key.revoked),
                 ),
             )

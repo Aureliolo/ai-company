@@ -641,9 +641,11 @@ def _seed_test_users(
     that tests might use.  Uses cached password hashes to ensure
     ``pwd_sig`` claims match between seeded users and tokens
     produced by ``make_auth_headers``.
-    """
-    import asyncio
 
+    Assigns directly to the fake repository's internal dict
+    (avoiding async) so this helper works in both sync fixtures
+    and sync test functions.
+    """
     now = datetime.now(UTC)
     for role in HumanRole:
         user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"test-{role.value}"))
@@ -659,9 +661,7 @@ def _seed_test_users(
             created_at=now,
             updated_at=now,
         )
-        # Save synchronously via event loop
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(backend.users.save(user))
+        backend._users._users[user.id] = user
 
 
 def make_task(  # noqa: PLR0913

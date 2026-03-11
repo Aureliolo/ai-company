@@ -35,9 +35,11 @@ class TestSetup:
         assert data["must_change_password"] is True
         assert data["expires_in"] > 0
 
-    def test_setup_409_when_users_exist(self, bare_client: TestClient[Any]) -> None:
+    def test_setup_409_when_users_exist(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
         # Re-seed a user so the check fails
-        import asyncio
         import uuid
         from datetime import UTC, datetime
 
@@ -57,8 +59,7 @@ class TestSetup:
             created_at=now,
             updated_at=now,
         )
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(app_state.persistence.users.save(user))
+        app_state.persistence._users._users[user.id] = user
 
         response = bare_client.post(
             "/api/v1/auth/setup",

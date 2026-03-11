@@ -311,7 +311,10 @@ class AuthController(Controller):
         request: Request[Any, Any, Any],
     ) -> Response[ApiResponse[UserInfoResponse]]:
         """Validate current password and set new one."""
-        auth_user: AuthenticatedUser = request.scope["user"]
+        auth_user = request.scope.get("user")
+        if not isinstance(auth_user, AuthenticatedUser):
+            msg = "Authentication required"
+            raise UnauthorizedError(msg)
         app_state = request.app.state["app_state"]
         auth_service: AuthService = app_state.auth_service
         persistence = app_state.persistence
@@ -374,7 +377,10 @@ class AuthController(Controller):
         request: Request[Any, Any, Any],
     ) -> Response[ApiResponse[UserInfoResponse]]:
         """Return information about the authenticated user."""
-        auth_user: AuthenticatedUser = request.scope["user"]
+        auth_user = request.scope.get("user")
+        if not isinstance(auth_user, AuthenticatedUser):
+            msg = "Authentication required"
+            raise UnauthorizedError(msg)
 
         return Response(
             content=ApiResponse(
