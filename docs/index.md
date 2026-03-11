@@ -9,17 +9,21 @@ SynthOrg lets you define agents with roles, hierarchy, budgets, and tools, then 
 ## Quick Start
 
 ```bash
-pip install synthorg
+git clone https://github.com/Aureliolo/synthorg.git
+cd synthorg
+uv sync
 ```
 
 ```python
-from ai_company.config import load_company
-from ai_company.engine import AgentEngine
+from ai_company.config.loader import load_config
+from ai_company.engine.agent_engine import AgentEngine
 
-company = load_company("company.yaml")
-engine = AgentEngine(company)
+config = load_config("company.yaml")
+engine = AgentEngine(config)
 result = await engine.run("Build a REST API for user management")
 ```
+
+*API shown is illustrative — see [Getting Started](getting_started.md) for full setup.*
 
 ---
 

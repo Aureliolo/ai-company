@@ -50,8 +50,8 @@ Thumbs.db
 web/node_modules/
 web/dist/
 
-# Documentation build output
-docs/_build/
+# Documentation build output (MkDocs)
+_site/
 
 # Astro / Node.js (landing page)
 site/node_modules/

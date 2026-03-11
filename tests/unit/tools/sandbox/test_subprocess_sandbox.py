@@ -522,9 +522,7 @@ class TestExtraSafePathPrefixes:
             )
 
     def test_rejects_null_bytes(self) -> None:
-        prefix = (
-            "C:\\evil\x00\\bin" if os.name == "nt" else "/opt/evil\x00/bin"
-        )
+        prefix = "C:\\evil\x00\\bin" if os.name == "nt" else "/opt/evil\x00/bin"
         with pytest.raises(ValidationError, match="null bytes"):
             SubprocessSandboxConfig(
                 extra_safe_path_prefixes=(prefix,),
@@ -549,6 +547,7 @@ class TestExtraSafePathPrefixes:
     ) -> None:
         """PATH fallback excludes user-provided extra prefixes."""
         extra = (r"C:\UserExtra",) if os.name == "nt" else ("/opt/user-extra",)
+        sentinel = "/test/sentinel/bin"
         config = SubprocessSandboxConfig(
             restricted_path=True,
             extra_safe_path_prefixes=extra,
@@ -557,13 +556,35 @@ class TestExtraSafePathPrefixes:
             config=config,
             workspace=sandbox_workspace,
         )
-        # All PATH entries are fake so fallback triggers
-        with patch.dict(
-            os.environ,
-            {"PATH": "/totally/fake/dir"},
-            clear=True,
+        # Fake PATH triggers fallback; mock platform defaults with a
+        # sentinel to verify the fallback path is actually taken.
+        with (
+            patch.dict(
+                os.environ,
+                {"PATH": "/totally/fake/dir"},
+                clear=True,
+            ),
+            patch.object(
+                SubprocessSandbox,
+                "_get_platform_default_dirs",
+                return_value=(sentinel,),
+            ),
+            patch("ai_company.tools.sandbox.subprocess_sandbox.Path") as mock_path,
         ):
+            mock_path.return_value.is_dir.return_value = True
             env = sandbox._build_filtered_env()
             path_val = env.get("PATH", "")
+            assert sentinel in path_val
+            # User-extra must be excluded from fallback
+            # (covers both Windows "C:\UserExtra" and Linux
+            # "/opt/user-extra" casing).
             assert "user-extra" not in path_val.lower()
             assert "userextra" not in path_val.lower()
+
+    def test_rejects_mixed_valid_and_invalid_prefixes(self) -> None:
+        """Validation fails on first invalid entry even if others are valid."""
+        valid = r"C:\ValidDir" if os.name == "nt" else "/opt/valid"
+        with pytest.raises(ValidationError, match="non-empty absolute"):
+            SubprocessSandboxConfig(
+                extra_safe_path_prefixes=(valid, "relative/bad"),
+            )

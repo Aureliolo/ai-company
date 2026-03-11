@@ -76,21 +76,23 @@ class SubprocessSandboxConfig(BaseModel):
     def _validate_prefixes(cls, v: tuple[str, ...]) -> tuple[str, ...]:
         sanitized: list[str] = []
         for prefix in v:
-            if not prefix or not PurePath(prefix).is_absolute():
-                msg = (
-                    "extra_safe_path_prefixes entries must be "
-                    f"non-empty absolute paths, got: {prefix!r}"
-                )
-                raise ValueError(msg)
+            # Null bytes confuse OS-level path APIs that treat
+            # \x00 as a string terminator.
             if "\x00" in prefix:
                 msg = (
                     "extra_safe_path_prefixes entries must not "
                     f"contain null bytes, got: {prefix!r}"
                 )
                 raise ValueError(msg)
-            # Normalize to canonical form — collapses '..',
-            # redundant separators, and platform-specific quirks.
+            if not prefix or not PurePath(prefix).is_absolute():
+                msg = (
+                    "extra_safe_path_prefixes entries must be "
+                    f"non-empty absolute paths, got: {prefix!r}"
+                )
+                raise ValueError(msg)
             normalized = os.path.normpath(prefix)
+            # Defense-in-depth: normpath should preserve
+            # absoluteness, but verify for safety.
             if not PurePath(normalized).is_absolute():
                 msg = (
                     "extra_safe_path_prefixes entries must resolve "

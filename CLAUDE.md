@@ -37,7 +37,7 @@ uv run pytest tests/ -m integration -n auto # integration tests only
 uv run pytest tests/ -m e2e -n auto         # e2e tests only
 uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80  # full suite + coverage
 uv run pre-commit run --all-files          # all pre-commit hooks
-uv run mkdocs build --strict               # build docs (output: site/)
+uv run mkdocs build --strict               # build docs (output: _site/)
 uv run mkdocs serve                        # local docs preview (http://127.0.0.1:8000)
 ```
 
@@ -171,7 +171,8 @@ src/ai_company/
 ## CI
 
 - **Jobs**: lint (ruff) + type-check (mypy src/ tests/) + test (pytest + coverage) run in parallel → ci-pass (gate)
-- **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.trivyignore.yaml` and `.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
+- **Pages**: `.github/workflows/pages.yml` — builds Astro landing + MkDocs docs, merges, deploys to GitHub Pages on push to main
+- **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
 - **Dependabot**: daily uv + github-actions + docker updates, grouped minor/patch, no auto-merge
 - **Secret scanning**: gitleaks workflow on push/PR + weekly schedule

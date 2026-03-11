@@ -1,5 +1,5 @@
 # Grype configuration — CVE ignore list
-# Kept in sync with .trivyignore.yaml.
+# Kept in sync with .github/.trivyignore.yaml.
 
 ignore:
   - vulnerability: CVE-2026-22184

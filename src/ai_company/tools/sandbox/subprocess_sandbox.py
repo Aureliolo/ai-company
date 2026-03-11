@@ -169,10 +169,13 @@ class SubprocessSandbox:
         if not safe_dirs:
             logger.error(
                 SANDBOX_PATH_FALLBACK,
-                reason=(
-                    "no safe PATH directories exist on system — PATH will be empty"
-                ),
+                reason="no safe PATH directories exist on system",
             )
+            msg = (
+                "No safe PATH directories found on system; "
+                "cannot create safe sandbox environment"
+            )
+            raise SandboxError(msg)
         return _PATH_SEP.join(safe_dirs)
 
     @staticmethod
@@ -182,10 +185,12 @@ class SubprocessSandbox:
     ) -> bool:
         """Check if a PATH entry falls within a safe prefix directory.
 
-        Normalizes both the entry and prefix, then checks for exact
-        match or directory boundary containment (prevents
-        ``/usr/bin-malicious`` from matching ``/usr/bin``).
+        Rejects null-byte entries, then uses directory-boundary
+        matching to prevent prefix spoofing (e.g. ``/usr/bin-malicious``
+        does not match ``/usr/bin``).
         """
+        if "\x00" in entry:
+            return False
         entry_norm = os.path.normcase(os.path.normpath(entry))
         for prefix in safe_prefixes:
             prefix_norm = os.path.normcase(os.path.normpath(prefix))
@@ -199,8 +204,10 @@ class SubprocessSandbox:
     def _get_platform_default_dirs() -> tuple[str, ...]:
         """Return built-in safe PATH directories for the current platform.
 
-        These are hardcoded system directories — not influenced by
-        user-provided configuration.
+        These are built-in system directories — not influenced by
+        ``SubprocessSandboxConfig`` user configuration.  On Windows,
+        ``SYSTEMROOT`` is read from the process environment at call
+        time (with a safe default fallback).
         """
         if os.name == "nt":
             system_root = os.environ.get("SYSTEMROOT", r"C:\WINDOWS")
@@ -245,9 +252,9 @@ class SubprocessSandbox:
         filtered_count = 0
 
         for name, value in os.environ.items():
-            if self._matches_allowlist(name) and not self._matches_denylist(
-                name,
-            ):
+            allowed = self._matches_allowlist(name)
+            denied = self._matches_denylist(name)
+            if allowed and not denied:
                 env[name] = value
             else:
                 filtered_count += 1
@@ -257,6 +264,10 @@ class SubprocessSandbox:
 
         if env_overrides:
             env.update(env_overrides)
+            # Re-filter PATH if overrides injected one — prevents
+            # bypassing the restricted-path guard via env_overrides.
+            if self._config.restricted_path and "PATH" in env_overrides:
+                env["PATH"] = self._filter_path(env["PATH"])
 
         logger.debug(
             SANDBOX_ENV_FILTERED,
