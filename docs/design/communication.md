@@ -192,8 +192,9 @@ critical risk. The framework enforces multiple safeguards:
       circuit_breaker:
         bounce_threshold: 3
         cooldown_seconds: 300
-      ancestry_tracking: true       # always on, not configurable
     ```
+
+    Ancestry tracking is always enabled and is not user-configurable.
 
 When a loop is detected, the framework:
 

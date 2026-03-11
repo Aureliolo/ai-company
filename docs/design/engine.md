@@ -330,7 +330,7 @@ async run(
 3. **Build system prompt** -- calls `build_system_prompt()` with agent identity
    and task. Tool definitions are NOT included in the prompt; they are supplied
    via the API's `tools` parameter
-   ([ADR-002](../architecture/decisions.md) D22).
+   ([Decision Log](../architecture/decisions.md) D22).
    Follows the **non-inferable-only principle**: system prompts include only
    information the agent cannot discover by reading the codebase or environment
    (role constraints, custom conventions, organizational policies).

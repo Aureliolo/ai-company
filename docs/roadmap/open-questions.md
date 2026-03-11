@@ -25,7 +25,7 @@ Numbers are stable identifiers — resolved questions are removed without renumb
 | Cost explosion from agent loops | High | Budget hard stops, loop detection, max iterations per task. |
 | Agent quality degradation with cheap models | Medium | Quality gates, minimum model requirements per task type. |
 | Third-party library breaking changes | Medium | Pin versions, integration tests, abstraction layers. |
-| Memory retrieval quality | Medium | Mem0 selected as initial backend (ADR-001). Protocol layer enables backend swap if retrieval quality is insufficient. Pin version, test Python 3.14 compatibility in CI. |
+| Memory retrieval quality | Medium | Mem0 selected as initial backend (see [Decision Log](../architecture/decisions.md)). Protocol layer enables backend swap if retrieval quality is insufficient. Pin version, test Python 3.14 compatibility in CI. |
 | Agent personality inconsistency | Low | Strong system prompts, few-shot examples, personality tests. |
 | WebSocket scaling | Low | Start local, add Redis pub/sub when needed. |
 

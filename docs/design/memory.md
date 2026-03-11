@@ -31,7 +31,7 @@ configuration without modifying application code.
 |            Storage Backend                      |
 |   SQLite / PostgreSQL / File-based              |
 |   + Mem0 (initial) / Custom Stack (future)      |
-|     See ADR-001                                 |
+|     See Decision Log                             |
 +-------------------------------------------------+
 ```
 
@@ -61,7 +61,7 @@ Memory persistence is configurable per agent, from no persistence to fully persi
     ```yaml
     memory:
       level: "persistent"            # none, session, project, persistent (default: session)
-      backend: "mem0"               # mem0, custom, cognee, graphiti (future) -- see ADR-001
+      backend: "mem0"               # mem0, custom, cognee, graphiti (future) -- see Decision Log
       storage:
         data_dir: "/data/memory"    # mounted Docker volume path
         vector_store: "qdrant"      # qdrant (embedded), qdrant-external, etc.
@@ -165,7 +165,7 @@ All backends implement the `OrgMemoryBackend` protocol:
 - Lifecycle methods: `connect`, `disconnect`, `health_check`, `is_connected`, `backend_name`
 
 The MVP ships with Backend 1 (Hybrid Prompt + Retrieval). The selected memory layer backend
-Mem0 (ADR-001) provides optional graph memory via Neo4j/FalkorDB, which could reduce
+Mem0 ([Decision Log](../architecture/decisions.md)) provides optional graph memory via Neo4j/FalkorDB, which could reduce
 implementation effort for the research direction backends.
 
 !!! tip "Write Access Control"
@@ -179,7 +179,7 @@ implementation effort for the research direction backends.
 ## Memory Backend Protocol
 
 Agent memory is implemented behind a pluggable `MemoryBackend` protocol (Mem0 initial, custom
-stack future -- ADR-001). Application code depends only on the protocol; the storage engine is an
+stack future -- see [Decision Log](../architecture/decisions.md)). Application code depends only on the protocol; the storage engine is an
 implementation detail swappable via config.
 
 ### Enums
@@ -311,7 +311,7 @@ models in `memory/consolidation/config.py`:
 ## Operational Data Persistence
 
 Agent memory is handled by the `MemoryBackend` protocol (Mem0 initial, custom stack future --
-ADR-001). **Operational data** -- tasks, cost records, messages, audit logs -- is a separate
+see [Decision Log](../architecture/decisions.md)). **Operational data** -- tasks, cost records, messages, audit logs -- is a separate
 concern managed by a pluggable `PersistenceBackend` protocol. Application code depends only on
 repository protocols; the storage engine is an implementation detail swappable via config.
 
@@ -487,7 +487,7 @@ the agent during execution.
     1. `MemoryBackend.retrieve()` -- fetch candidate memories
     2. Rank by relevance + recency (algorithm below)
     3. Filter by `min_relevance` threshold
-    4. Apply `MemoryFilterStrategy` (ADR-002 D23, optional) -- exclude inferable content
+    4. Apply `MemoryFilterStrategy` ([Decision Log](../architecture/decisions.md) D23, optional) -- exclude inferable content
     5. Greedy token-budget packing
     6. Format as `ChatMessage` (configured role: SYSTEM or USER) with delimiters
 
@@ -512,7 +512,7 @@ the agent during execution.
         cost 20%+ with minimal success improvement; LLM-generated context can actually reduce
         success rates.
 
-        **Filter strategy (ADR-002 D23):** Pluggable `MemoryFilterStrategy` protocol. Initial
+        **Filter strategy ([Decision Log](../architecture/decisions.md) D23):** Pluggable `MemoryFilterStrategy` protocol. Initial
         implementation uses tag-based filtering at write time. A `non-inferable` tag convention
         with advisory validation at the `MemoryBackend.store()` boundary warns on missing tags
         but never blocks. The system prompt instructs agents what qualifies as non-inferable:

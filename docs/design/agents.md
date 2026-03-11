@@ -251,7 +251,7 @@ The HR system manages the agent workforce dynamically:
 4. Approved candidates are instantiated and onboarded
 5. Onboarding includes: company context, project briefing, team introductions
 
-!!! info "Design decisions ([ADR-002](../architecture/decisions.md) D8)"
+!!! info "Design decisions ([Decision Log](../architecture/decisions.md) D8)"
 
     - **D8.1 -- Source:** Templates + LLM customization. Templates for common roles
       (reuses existing [template system](organization.md#template-system)). LLM generates
@@ -275,7 +275,7 @@ human decision.
 2. Active tasks are reassigned
 3. Team is notified
 
-!!! info "Design decisions ([ADR-002](../architecture/decisions.md) D9, D10)"
+!!! info "Design decisions ([Decision Log](../architecture/decisions.md) D9, D10)"
 
     - **D9 -- Task Reassignment:** Pluggable `TaskReassignmentStrategy` protocol. Initial
       strategy: queue-return -- tasks return to unassigned queue, existing `TaskRoutingService`
@@ -305,7 +305,7 @@ agent_metrics:
   last_review_date: "2026-02-20"
 ```
 
-???+ note "Design decisions ([ADR-002](../architecture/decisions.md) D2, D3, D11, D12)"
+???+ note "Design decisions ([Decision Log](../architecture/decisions.md) D2, D3, D11, D12)"
 
     **D2 -- Quality Scoring:** Pluggable `QualityScoringStrategy` protocol. Initial
     strategy: layered combination --
@@ -369,7 +369,7 @@ Agents can move between seniority levels based on performance:
 - Promotions can unlock higher [tool access levels](operations.md#tool-access-levels)
 - Model upgrades/downgrades may accompany level changes (configurable, see [auto-downgrade](operations.md#cost-controls))
 
-!!! info "Design decisions ([ADR-002](../architecture/decisions.md) D13, D14, D15)"
+!!! info "Design decisions ([Decision Log](../architecture/decisions.md) D13, D14, D15)"
 
     - **D13 -- Promotion Criteria:** Pluggable `PromotionCriteriaStrategy` protocol. Initial
       strategy: configurable threshold gates. `ThresholdEvaluator` with

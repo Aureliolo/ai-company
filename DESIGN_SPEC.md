@@ -28,11 +28,3 @@ The design specification has been split into focused documentation pages for bet
 | [Industry Standards](docs/reference/standards.md) | MCP, A2A, and other standards |
 | [Open Questions & Risks](docs/roadmap/open-questions.md) | Unresolved questions and risk mitigations |
 | [Future Vision](docs/roadmap/future-vision.md) | Backlog features and scaling path |
-
-## Architecture Decision Records
-
-Detailed ADR files with full analysis (options, precedents, trade-offs):
-
-- [ADR-001: Memory Layer Selection](docs/decisions/ADR-001-memory-layer.md)
-- [ADR-002: Design Decisions Batch 1 (D1-D23)](docs/decisions/ADR-002-design-decisions-batch-1.md)
-- [ADR-003: Documentation & Site Architecture](docs/decisions/ADR-003-documentation-architecture.md)

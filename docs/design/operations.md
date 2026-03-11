@@ -467,10 +467,10 @@ Docker is optional -- only required when code execution, terminal, web, or datab
 enabled. File system and git tools work out of the box with subprocess isolation. This keeps
 the local-first experience lightweight while providing strong isolation where it matters.
 
-Docker MVP uses `aiodocker` (async-native, Python 3.14 support) with a pre-built image
+Docker MVP uses `aiodocker` (async-native) with a pre-built image
 (Python 3.14 + Node.js LTS + basic utils, <500MB). If Docker is unavailable, the framework
 fails with a clear error -- no unsafe subprocess fallback for code execution
-([ADR-002](../decisions/ADR-002-design-decisions-batch-1.md) D16).
+([Decision Log](../architecture/decisions.md) D16).
 
 !!! info "Scaling Path"
 
@@ -485,13 +485,13 @@ External tools are integrated via the **Model Context Protocol** (MCP).
 
 - **SDK:** Official `mcp` Python SDK, pinned version. A thin `MCPBridgeTool` adapter layer
   isolates the rest of the codebase from SDK API changes
-  ([ADR-002](../decisions/ADR-002-design-decisions-batch-1.md) D17)
+  ([Decision Log](../architecture/decisions.md) D17)
 - **Transports:** stdio (local/dev) and Streamable HTTP (remote/production). Deprecated SSE
   is skipped.
 - **Result mapping:** Text blocks concatenate to `content: str`; image/audio use placeholders
   with base64 in metadata; `structuredContent` maps to `metadata["structured_content"]`;
   `isError` maps 1:1 to `is_error`
-  ([ADR-002](../decisions/ADR-002-design-decisions-batch-1.md) D18)
+  ([Decision Log](../architecture/decisions.md) D18)
 
 ### Action Type System
 
@@ -499,7 +499,7 @@ Action types classify agent actions for use by [autonomy presets](#autonomy-leve
 [SecOps validation](#security-operations-agent),
 [tiered timeout policies](#approval-timeout-policy), and
 [progressive trust](#progressive-trust)
-([ADR-002](../decisions/ADR-002-design-decisions-batch-1.md) D1).
+([Decision Log](../architecture/decisions.md) D1).
 
 **Registry:** `StrEnum` for ~25 built-in action types (type safety, autocomplete, typos caught
 at compile time) + `ActionTypeRegistry` for custom types via explicit registration. Unknown
@@ -562,7 +562,7 @@ triggered by engine-level operations. No LLM in the security classification path
         elevated:
           description: "Full access for senior/trusted agents."
           file_system: "full"
-          code_execution: "host"
+          code_execution: "containerized"
           network: "open"
           git: "full"
           terminal: "full"
@@ -753,11 +753,11 @@ autonomy:
       security_agent: true        # still runs for audit logging
 ```
 
-**Autonomy scope** ([ADR-002](../decisions/ADR-002-design-decisions-batch-1.md) D6): Three-level
+**Autonomy scope** ([Decision Log](../architecture/decisions.md) D6): Three-level
 resolution chain: per-agent > per-department > company default. Seniority validation prevents
 Juniors/Interns from being set to `full`.
 
-**Runtime changes** ([ADR-002](../decisions/ADR-002-design-decisions-batch-1.md) D7): Human-only
+**Runtime changes** ([Decision Log](../architecture/decisions.md) D7): Human-only
 promotion via REST API (no agent, including CEO, can escalate privileges). Automatic downgrade
 on: high error rate (one level down), budget exhausted (supervised), security incident (locked).
 Recovery from auto-downgrade is human-only.
@@ -773,13 +773,13 @@ A special meta-agent that reviews all actions before execution:
 - Escalates uncertain cases to human queue with explanation
 - **Cannot be overridden by other agents** (only human can override)
 
-**Rule engine** ([ADR-002](../decisions/ADR-002-design-decisions-batch-1.md) D4): Hybrid
+**Rule engine** ([Decision Log](../architecture/decisions.md) D4): Hybrid
 approach. Rule engine for known patterns (credentials, path traversal, destructive ops) --
 sub-ms, covers ~95% of cases. LLM fallback only for uncertain cases (~5%). Full autonomy mode:
 rules + audit logging only, no LLM path. Hard safety rules (credential exposure, data
 destruction) **never bypass** regardless of autonomy level.
 
-**Integration point** ([ADR-002](../decisions/ADR-002-design-decisions-batch-1.md) D5):
+**Integration point** ([Decision Log](../architecture/decisions.md) D5):
 Pluggable `SecurityInterceptionStrategy` protocol. Initial strategy intercepts before every
 tool invocation -- slots into existing `ToolInvoker` between permission check and tool
 execution. Post-tool-call scanning detects sensitive data in outputs.
@@ -899,7 +899,7 @@ feedback arrives.
     execution from the exact point of suspension. This works naturally with the
     `model_copy(update=...)` immutability pattern.
 
-    **Design decisions** ([ADR-002](../decisions/ADR-002-design-decisions-batch-1.md)):
+    **Design decisions** ([Decision Log](../architecture/decisions.md)):
 
     - **D19 -- Risk Tier Classification:** Pluggable `RiskTierClassifier` protocol. Configurable
       YAML mapping with sensible defaults. Unknown action types default to HIGH (fail-safe).

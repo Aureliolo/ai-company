@@ -93,5 +93,5 @@ Rather than forking a framework, SynthOrg builds on battle-tested libraries:
 - [Microsoft Multi-Agent Reference Architecture](https://microsoft.github.io/multi-agent-reference-architecture/) -- Enterprise patterns
 - [OpenRouter](https://openrouter.ai/) -- Multi-model API gateway
 - [Kim et al., "Towards a Science of Scaling Agent Systems" (2025)](https://arxiv.org/abs/2512.08296) -- Empirical agent scaling research (180 experiments, 3 LLM families)
-- [Cemri et al., "Multi-Agent System Failure Taxonomy (MAST)" (2025)] -- MAS coordination error classification
+- Cemri et al., "Multi-Agent System Failure Taxonomy (MAST)" (2025) -- MAS coordination error classification
 - [Gloaguen et al., "Evaluating AGENTS.md" (2026)](https://arxiv.org/abs/2602.11988) -- Context files reduce success rates; non-inferable-only principle for system prompts

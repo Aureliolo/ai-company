@@ -221,8 +221,8 @@ Scalars (`company_name`, `company_type`)
     defaults to an empty string, making the key `(role, department, "")`. The child template
     can override, append, or remove (`_remove: true`) parent agents.
 
-`departments` list
-:   Merged by name (case-insensitive). A child department replaces the parent entry entirely.
+`departments` mapping
+:   Merged by key (case-insensitive). A child department replaces the parent entry entirely.
 
 `workflow_handoffs` and `escalation_paths`
 :   Child replaces entirely if present.

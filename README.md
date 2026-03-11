@@ -80,15 +80,17 @@ Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for exte
 ```bash
 git clone https://github.com/Aureliolo/synthorg.git
 cd synthorg
-uv sync
+uv sync                  # install dev + test deps
+uv sync --group docs     # install docs toolchain (mkdocs)
 ```
 
 ### Docker Compose
 
 ```bash
-cp docker/.env.example docker/.env        # configure LLM_API_KEY
+cp docker/.env.example docker/.env
 docker compose -f docker/compose.yml up -d
 curl http://localhost:8000/api/v1/health   # verify
+docker compose -f docker/compose.yml down  # stop
 ```
 
 ## Architecture
@@ -114,11 +116,13 @@ graph TB
 
 | Section | Description |
 |---------|-------------|
-| [Design Specification](https://synthorg.io/docs/design/) | Vision, agents, communication, engine, memory, operations |
-| [Architecture](https://synthorg.io/docs/architecture/) | System overview, tech stack, decision log |
-| [API Reference](https://synthorg.io/docs/api/) | Auto-generated from docstrings |
+| [Design Specification](docs/design/index.md) | Vision, agents, communication, engine, memory, operations |
+| [Architecture](docs/architecture/index.md) | System overview, tech stack, decision log |
+| [API Reference](docs/api/index.md) | Auto-generated from docstrings |
 | [Developer Setup](docs/getting_started.md) | Clone, test, lint, contribute |
 | [User Guide](docs/user_guide.md) | Install, configure, run via Docker |
+
+> **Contributors:** Read [`DESIGN_SPEC.md`](DESIGN_SPEC.md) before implementing any feature — it is the mandatory starting point for architecture, data models, and behavior.
 
 ## Status
 

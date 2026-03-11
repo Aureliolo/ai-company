@@ -91,7 +91,8 @@ within the framework's architecture.
 
     Sections describe the full vision. The full design is documented upfront to inform
     architecture decisions -- protocol interfaces are designed even for features that are
-    not yet implemented.
+    not yet implemented. For current implementation status, see the
+    [Roadmap](../roadmap/index.md).
 
 ## Configuration Philosophy
 

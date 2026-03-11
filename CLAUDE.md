@@ -14,8 +14,8 @@
 - The design spec is the **starting point** for architecture, data models, and behavior
 - If implementation deviates from the spec (better approach found, scope evolved, etc.), **alert the user and explain why** — user decides whether to proceed or update the spec
 - Do NOT silently diverge — every deviation needs explicit user approval
-- When a spec section is referenced (e.g. "Section 10.2"), read that section verbatim before coding
-- When approved deviations occur, update `DESIGN_SPEC.md` to reflect the new reality
+- When a spec topic is referenced (e.g. "the Agents page" or "the Engine page's Crash Recovery section"), read the relevant `docs/design/` page before coding
+- When approved deviations occur, update the relevant `docs/design/` page to reflect the new reality
 
 ## Planning (MANDATORY)
 
@@ -53,7 +53,7 @@ uv run mkdocs serve                        # local docs preview (http://127.0.0.
 - **Config**: `mkdocs.yml` at repo root
 - **API reference**: auto-generated from docstrings via mkdocstrings + Griffe (AST-based, no imports)
 - **CI**: `.github/workflows/pages.yml` — builds Astro landing + MkDocs docs, merges, deploys to GitHub Pages
-- **Architecture decisions**: `docs/decisions/` (ADR files) + `docs/architecture/decisions.md` (decision log)
+- **Architecture decisions**: `docs/architecture/decisions.md` (decision log)
 - **Dependencies**: `docs` group in `pyproject.toml` (`mkdocs-material`, `mkdocstrings[python]`, `griffe-pydantic`)
 
 ## Docker
@@ -90,8 +90,8 @@ src/ai_company/
   core/           # Shared domain models, base classes, and resilience config (RetryConfig, RateLimiterConfig)
   engine/         # Agent orchestration, execution loops, parallel execution, task decomposition, routing, task assignment, task lifecycle, recovery, shutdown, workspace isolation, coordination error classification, and prompt policy validation
   hr/             # HR engine: hiring, firing, onboarding, offboarding, agent registry, performance tracking (task metrics, collaboration scoring, trend detection), promotion/demotion (criteria evaluation, approval strategies, model mapping)
-  memory/         # Persistent agent memory (Mem0 initial, custom stack future — ADR-001), retrieval pipeline (ranking, injection, context formatting, non-inferable filtering), shared org memory (org/), consolidation/archival (consolidation/)
-  persistence/    # Operational data persistence — pluggable PersistenceBackend protocol, SQLite initial (§7.6)
+  memory/         # Persistent agent memory (Mem0 initial, custom stack future — see Decision Log), retrieval pipeline (ranking, injection, context formatting, non-inferable filtering), shared org memory (org/), consolidation/archival (consolidation/)
+  persistence/    # Operational data persistence — pluggable PersistenceBackend protocol, SQLite initial (see Memory & Persistence design page)
   observability/  # Structured logging, correlation tracking, log sinks
   providers/      # LLM provider abstraction (LiteLLM adapter)
   security/       # SecOps agent, rule engine (soft-allow/hard-deny, fail-closed), audit log, output scanner, output scan response policies (redact/withhold/log-only/autonomy-tiered), risk classifier, risk tier classifier, action type registry, ToolInvoker security integration, progressive trust (4 strategies: disabled/weighted/per-category/milestone), autonomy levels (presets, resolver, change strategy), timeout policies (park/resume)
