@@ -129,7 +129,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # Branch-scoped preview URL (each branch gets a unique Cloudflare Pages subdomain)
-          command: pages deploy _site --project-name=synthorg-preview --branch="${BRANCH_NAME}"
+          command: pages deploy _site --project-name=preview --branch="${BRANCH_NAME}"
 
       - name: Comment preview URL
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
