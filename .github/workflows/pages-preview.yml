@@ -162,7 +162,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          npm i --no-save wrangler@3.114.17 > /dev/null
+          npm i --no-save wrangler@3.114.17
           npx wrangler pages deploy _site --project-name=synthorg-pr-preview --branch="pr-${PR_NUMBER}"
 
       - name: Comment preview URL
@@ -223,6 +223,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Delete preview comment
+        continue-on-error: true  # Don't block deployment cleanup if comment deletion fails
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
@@ -259,25 +260,51 @@ jobs:
           BRANCH="pr-${PR_NUMBER}"
           API_BASE="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/synthorg-pr-preview/deployments"
 
-          # List deployments for this branch (per_page=100 to cover busy PRs)
+          # Paginate through all deployments for this branch
           # Note: Cloudflare prevents deleting the most recent deployment per project — that one will remain
           echo "Fetching deployments for branch ${BRANCH}..."
-          RESPONSE=$(curl -s -w "\n%{http_code}" \
-            "${API_BASE}?per_page=100" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
+          PAGE=1
+          DEPLOYMENTS=""
+          while :; do
+            CURL_EXIT=0
+            RESPONSE=$(curl -s -w "\n%{http_code}" \
+              "${API_BASE}?per_page=100&page=${PAGE}" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}") || CURL_EXIT=$?
+            HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+            BODY=$(echo "$RESPONSE" | sed '$d')
 
-          if [ "$HTTP_CODE" -ge 400 ]; then
-            echo "::warning::Failed to list deployments (HTTP ${HTTP_CODE})"
-            echo "$BODY" | jq -r '.errors[]?.message // empty' 2>/dev/null || true
-            exit 0
-          fi
+            # Fix: detect curl transport failures (DNS, timeout, connection refused → HTTP code 000)
+            if [ "$CURL_EXIT" -ne 0 ] || [ "$HTTP_CODE" = "000" ]; then
+              echo "::error::Failed to reach Cloudflare API (curl exit code ${CURL_EXIT}, HTTP ${HTTP_CODE})"
+              exit 1
+            fi
 
-          # Wrangler direct-upload deployments store branch in deployment_trigger.metadata.branch
-          DEPLOYMENTS=$(echo "$BODY" | jq -r \
-            --arg branch "$BRANCH" \
-            '.result[] | select(.deployment_trigger.metadata.branch == $branch) | .id' 2>/dev/null) || true
+            # exit 1: if we can't list deployments, the token/account is likely misconfigured — that warrants attention
+            if [ "$HTTP_CODE" -ge 400 ]; then
+              echo "::error::Failed to list deployments (HTTP ${HTTP_CODE})"
+              echo "$BODY" | jq -r '.errors[]?.message // empty' 2>/dev/null || echo "$BODY" | head -c 500
+              exit 1
+            fi
+
+            # Validate response structure before filtering
+            if ! echo "$BODY" | jq -e '.result' > /dev/null 2>&1; then
+              echo "::warning::Unexpected API response structure — .result field missing"
+              echo "$BODY" | head -c 500
+              exit 0
+            fi
+
+            # Wrangler direct-upload deployments store branch in deployment_trigger.metadata.branch
+            PAGE_IDS=$(echo "$BODY" | jq -r \
+              --arg branch "$BRANCH" \
+              '.result[] | select(.deployment_trigger.metadata.branch == $branch) | .id')
+            if [ -n "$PAGE_IDS" ]; then
+              DEPLOYMENTS="${DEPLOYMENTS}${DEPLOYMENTS:+$'\n'}${PAGE_IDS}"
+            fi
+
+            PAGE_COUNT=$(echo "$BODY" | jq -r '.result | length')
+            [ "$PAGE_COUNT" -lt 100 ] && break
+            PAGE=$((PAGE + 1))
+          done
 
           if [ -z "$DEPLOYMENTS" ]; then
             echo "No deployments found for branch ${BRANCH}"
@@ -289,11 +316,15 @@ jobs:
           COUNT=0
           for DEPLOY_ID in $DEPLOYMENTS; do
             echo "Deleting deployment ${DEPLOY_ID}..."
+            DEL_CURL_EXIT=0
             DEL_RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
               "${API_BASE}/${DEPLOY_ID}?force=true" \
-              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}") || DEL_CURL_EXIT=$?
             DEL_CODE=$(echo "$DEL_RESPONSE" | tail -1)
-            if [ "$DEL_CODE" -ge 400 ]; then
+
+            if [ "$DEL_CURL_EXIT" -ne 0 ] || [ "$DEL_CODE" = "000" ]; then
+              echo "::warning::Failed to reach Cloudflare API for deletion of ${DEPLOY_ID} (curl transport error)"
+            elif [ "$DEL_CODE" -ge 400 ]; then
               echo "::warning::Failed to delete deployment ${DEPLOY_ID} (HTTP ${DEL_CODE}) — may be the most recent deployment (Cloudflare restriction)"
             else
               COUNT=$((COUNT + 1))
