@@ -291,7 +291,7 @@ class AgentMessenger:
             - *timeout* expires without a message arriving.
             - The bus is shut down while waiting.
             - The subscription is cancelled via :meth:`unsubscribe`
-              while a ``receive()`` call is in flight.
+                while a ``receive()`` call is in flight.
         """
         return await self._bus.receive(
             channel_name,
