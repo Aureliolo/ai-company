@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -173,17 +174,30 @@ class AuthService:
             options={"require": ["exp", "iat", "sub"]},
         )
 
-    @staticmethod
-    def hash_api_key(raw_key: str) -> str:
-        """Compute SHA-256 hex digest of a raw API key.
+    def hash_api_key(self, raw_key: str) -> str:
+        """Compute HMAC-SHA256 hex digest of a raw API key.
+
+        Uses the server-side JWT secret as the HMAC key so that
+        an attacker with read access to stored hashes cannot
+        brute-force API keys offline.
 
         Args:
             raw_key: The plaintext API key.
 
         Returns:
             Lowercase hex digest.
+
+        Raises:
+            RuntimeError: If the JWT secret is empty.
         """
-        return hashlib.sha256(raw_key.encode()).hexdigest()
+        if not self._config.jwt_secret:
+            msg = "JWT secret not configured — cannot hash API key"
+            raise RuntimeError(msg)
+        return hmac.new(
+            self._config.jwt_secret.encode(),
+            raw_key.encode(),
+            hashlib.sha256,
+        ).hexdigest()
 
     @staticmethod
     def generate_api_key() -> str:

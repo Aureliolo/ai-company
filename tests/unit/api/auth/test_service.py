@@ -153,14 +153,32 @@ class TestJWT:
 @pytest.mark.unit
 class TestApiKeyHashing:
     def test_hash_deterministic(self) -> None:
-        h1 = AuthService.hash_api_key("my-key")
-        h2 = AuthService.hash_api_key("my-key")
+        svc = _make_service()
+        h1 = svc.hash_api_key("my-key")
+        h2 = svc.hash_api_key("my-key")
         assert h1 == h2
 
     def test_different_keys_different_hashes(self) -> None:
-        h1 = AuthService.hash_api_key("key-one")
-        h2 = AuthService.hash_api_key("key-two")
+        svc = _make_service()
+        h1 = svc.hash_api_key("key-one")
+        h2 = svc.hash_api_key("key-two")
         assert h1 != h2
+
+    def test_hash_requires_secret(self) -> None:
+        svc = AuthService(AuthConfig())
+        with pytest.raises(RuntimeError, match="JWT secret not configured"):
+            svc.hash_api_key("some-key")
+
+    def test_different_secrets_produce_different_hashes(self) -> None:
+        svc_a = AuthService(
+            AuthConfig(jwt_secret="secret-a-that-is-at-least-32-characters!")
+        )
+        svc_b = AuthService(
+            AuthConfig(jwt_secret="secret-b-that-is-at-least-32-characters!")
+        )
+        h_a = svc_a.hash_api_key("same-key")
+        h_b = svc_b.hash_api_key("same-key")
+        assert h_a != h_b
 
     def test_generate_key_unique(self) -> None:
         k1 = AuthService.generate_api_key()

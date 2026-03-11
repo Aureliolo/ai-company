@@ -44,7 +44,7 @@ class ApiKey(BaseModel):
 
     Attributes:
         id: Unique key identifier (UUID).
-        key_hash: SHA-256 hex digest of the raw key.
+        key_hash: HMAC-SHA256 hex digest of the raw key.
         name: Human-readable label.
         role: Access control role.
         user_id: Owner user ID.

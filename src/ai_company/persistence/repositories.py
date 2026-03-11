@@ -436,7 +436,7 @@ class ApiKeyRepository(Protocol):
         """Retrieve an API key by its hash.
 
         Args:
-            key_hash: SHA-256 hex digest.
+            key_hash: HMAC-SHA256 hex digest.
 
         Returns:
             The API key, or ``None`` if not found.

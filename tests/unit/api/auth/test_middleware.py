@@ -150,7 +150,7 @@ class TestAuthMiddlewareApiKey:
         await persistence.users.save(user)
 
         raw_key = AuthService.generate_api_key()
-        key_hash = AuthService.hash_api_key(raw_key)
+        key_hash = svc.hash_api_key(raw_key)
         now = datetime.now(UTC)
         api_key = ApiKey(
             id="key-001",
@@ -179,7 +179,7 @@ class TestAuthMiddlewareApiKey:
         await persistence.users.save(user)
 
         raw_key = AuthService.generate_api_key()
-        key_hash = AuthService.hash_api_key(raw_key)
+        key_hash = svc.hash_api_key(raw_key)
         now = datetime.now(UTC)
         api_key = ApiKey(
             id="key-002",
@@ -211,7 +211,7 @@ class TestAuthMiddlewareApiKey:
         await persistence.users.save(user)
 
         raw_key = AuthService.generate_api_key()
-        key_hash = AuthService.hash_api_key(raw_key)
+        key_hash = svc.hash_api_key(raw_key)
         now = datetime.now(UTC)
         api_key = ApiKey(
             id="key-003",
@@ -245,7 +245,7 @@ class TestAuthMiddlewareApiKeyEdgeCases:
         await persistence.users.save(user)
 
         raw_key = AuthService.generate_api_key()
-        key_hash = AuthService.hash_api_key(raw_key)
+        key_hash = svc.hash_api_key(raw_key)
         now = datetime.now(UTC)
         api_key = ApiKey(
             id="key-orphan",

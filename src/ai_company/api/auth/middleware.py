@@ -12,7 +12,6 @@ from litestar.middleware import (
 )
 
 from ai_company.api.auth.models import AuthenticatedUser, AuthMethod
-from ai_company.api.auth.service import AuthService
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_AUTH_FAILED,
@@ -23,6 +22,7 @@ if TYPE_CHECKING:
     from litestar.connection import ASGIConnection
 
     from ai_company.api.auth.config import AuthConfig
+    from ai_company.api.auth.service import AuthService
     from ai_company.api.state import AppState
 
 logger = get_logger(__name__)
@@ -35,8 +35,8 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
 
     Reads ``Authorization: Bearer <token>`` from the request.
     Tokens containing ``.`` are treated exclusively as JWTs.
-    Tokens without dots are tried as API keys via SHA-256 hash
-    lookup.
+    Tokens without dots are tried as API keys via HMAC-SHA256
+    hash lookup.
 
     Requires ``auth_service``, persistence backend on
     ``app.state["app_state"]``.
@@ -86,7 +86,9 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
             raise NotAuthorizedException(detail="Invalid JWT token")
 
         # API key (no dots in token)
-        user = await _try_api_key_auth(token, app_state, connection)
+        user = await _try_api_key_auth(
+            token, auth_service, app_state, connection
+        )
         if user is not None:
             return AuthenticationResult(user=user, auth=token)
 
@@ -182,6 +184,7 @@ async def _try_jwt_auth(
 
 async def _try_api_key_auth(
     token: str,
+    auth_service: AuthService,
     app_state: AppState,
     connection: ASGIConnection[Any, Any, Any, Any],
 ) -> AuthenticatedUser | None:
@@ -192,7 +195,7 @@ async def _try_api_key_auth(
         is not found, the key is revoked or expired, or the owning
         user no longer exists.
     """
-    key_hash = AuthService.hash_api_key(token)
+    key_hash = auth_service.hash_api_key(token)
     persistence = app_state.persistence
     api_key = await persistence.api_keys.get_by_hash(key_hash)
     if api_key is None:
