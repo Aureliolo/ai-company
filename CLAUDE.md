@@ -156,7 +156,7 @@ src/ai_company/
 - **Enforced by**: commitizen (commit-msg hook)
 - **Branches**: `<type>/<slug>` from main
 - **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks
-- **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) — MCP `list_issues` returns `null` for milestone data
+- **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) — MCP `list_issues` has unreliable field data
 - **PR issue references**: preserve existing `Closes #NNN` references — never remove unless explicitly asked
 
 ## Post-Implementation (MANDATORY)

@@ -29,7 +29,7 @@ The SynthOrg core framework is complete. The following subsystems are built and 
 
 ## Tracking
 
-Implementation issues are tracked on the [GitHub project board](https://github.com/users/Aureliolo/projects/4). Issues are organized into milestones (M0--M7) and prioritized by dependency order.
+Implementation issues are tracked on the [GitHub issue tracker](https://github.com/Aureliolo/synthorg/issues) and prioritized by dependency order.
 
 ## Further Reading
 
