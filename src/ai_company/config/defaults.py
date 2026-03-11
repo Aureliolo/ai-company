@@ -14,7 +14,7 @@ def default_config_dict() -> dict[str, Any]:
         Base-layer configuration dictionary.
     """
     return {
-        "company_name": "AI Company",
+        "company_name": "SynthOrg",
         "company_type": "custom",
         "departments": [],
         "agents": [],

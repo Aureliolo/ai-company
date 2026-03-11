@@ -16,13 +16,13 @@ class TestDefaultConfigDict:
         result = default_config_dict()
         assert "company_name" in result
         assert "company_type" in result
-        assert result["company_name"] == "AI Company"
+        assert result["company_name"] == "SynthOrg"
         assert result["company_type"] == "custom"
 
     def test_constructs_valid_root_config(self) -> None:
         data = default_config_dict()
         cfg = RootConfig(**data)
-        assert cfg.company_name == "AI Company"
+        assert cfg.company_name == "SynthOrg"
         assert cfg.company_type.value == "custom"
 
     def test_returns_fresh_dict_each_call(self) -> None:

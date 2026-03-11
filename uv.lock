@@ -3,96 +3,6 @@ revision = 3
 requires-python = ">=3.14"
 
 [[package]]
-name = "ai-company"
-source = { editable = "." }
-dependencies = [
-    { name = "aiodocker" },
-    { name = "aiosqlite" },
-    { name = "argon2-cffi" },
-    { name = "jinja2" },
-    { name = "jsonschema" },
-    { name = "litellm" },
-    { name = "litestar", extra = ["brotli", "prometheus", "pydantic", "standard", "structlog"] },
-    { name = "mcp" },
-    { name = "pydantic" },
-    { name = "pyjwt", extra = ["crypto"] },
-    { name = "pyyaml" },
-    { name = "structlog" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "commitizen" },
-    { name = "mypy" },
-    { name = "polyfactory" },
-    { name = "pre-commit" },
-    { name = "pre-commit-uv" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-mock" },
-    { name = "pytest-timeout" },
-    { name = "pytest-xdist" },
-    { name = "respx" },
-    { name = "ruff" },
-    { name = "types-pyyaml" },
-]
-test = [
-    { name = "polyfactory" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-mock" },
-    { name = "pytest-timeout" },
-    { name = "pytest-xdist" },
-    { name = "respx" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiodocker", specifier = "==0.26.0" },
-    { name = "aiosqlite", specifier = "==0.22.1" },
-    { name = "argon2-cffi", specifier = "==25.1.0" },
-    { name = "jinja2", specifier = "==3.1.6" },
-    { name = "jsonschema", specifier = "==4.26.0" },
-    { name = "litellm", specifier = "==1.82.1" },
-    { name = "litestar", extras = ["brotli", "prometheus", "pydantic", "standard", "structlog"], specifier = "==2.21.1" },
-    { name = "mcp", specifier = "==1.26.0" },
-    { name = "pydantic", specifier = "==2.12.5" },
-    { name = "pyjwt", extras = ["crypto"], specifier = "==2.11.0" },
-    { name = "pyyaml", specifier = "==6.0.3" },
-    { name = "structlog", specifier = "==25.5.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "commitizen", specifier = "==4.13.9" },
-    { name = "mypy", specifier = "==1.19.1" },
-    { name = "polyfactory", specifier = "==3.3.0" },
-    { name = "pre-commit", specifier = "==4.5.1" },
-    { name = "pre-commit-uv", specifier = "==4.2.1" },
-    { name = "pytest", specifier = "==9.0.2" },
-    { name = "pytest-asyncio", specifier = "==1.3.0" },
-    { name = "pytest-cov", specifier = "==7.0.0" },
-    { name = "pytest-mock", specifier = "==3.15.1" },
-    { name = "pytest-timeout", specifier = "==2.4.0" },
-    { name = "pytest-xdist", specifier = "==3.8.0" },
-    { name = "respx", specifier = "==0.22.0" },
-    { name = "ruff", specifier = "==0.15.5" },
-    { name = "types-pyyaml", specifier = "==6.0.12.20250915" },
-]
-test = [
-    { name = "polyfactory", specifier = "==3.3.0" },
-    { name = "pytest", specifier = "==9.0.2" },
-    { name = "pytest-asyncio", specifier = "==1.3.0" },
-    { name = "pytest-cov", specifier = "==7.0.0" },
-    { name = "pytest-mock", specifier = "==3.15.1" },
-    { name = "pytest-timeout", specifier = "==2.4.0" },
-    { name = "pytest-xdist", specifier = "==3.8.0" },
-    { name = "respx", specifier = "==0.22.0" },
-]
-
-[[package]]
 name = "aiodocker"
 version = "0.26.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1864,6 +1774,96 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ef/52/9ba0f43b686e7f3ddfeaa78ac3af750292662284b3661e91ad5494f21dbc/structlog-25.5.0.tar.gz", hash = "sha256:098522a3bebed9153d4570c6d0288abf80a031dfdb2048d59a49e9dc2190fc98", size = 1460830, upload-time = "2025-10-27T08:28:23.028Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a8/45/a132b9074aa18e799b891b91ad72133c98d8042c70f6240e4c5f9dabee2f/structlog-25.5.0-py3-none-any.whl", hash = "sha256:a8453e9b9e636ec59bd9e79bbd4a72f025981b3ba0f5837aebf48f02f37a7f9f", size = 72510, upload-time = "2025-10-27T08:28:21.535Z" },
+]
+
+[[package]]
+name = "synthorg"
+source = { editable = "." }
+dependencies = [
+    { name = "aiodocker" },
+    { name = "aiosqlite" },
+    { name = "argon2-cffi" },
+    { name = "jinja2" },
+    { name = "jsonschema" },
+    { name = "litellm" },
+    { name = "litestar", extra = ["brotli", "prometheus", "pydantic", "standard", "structlog"] },
+    { name = "mcp" },
+    { name = "pydantic" },
+    { name = "pyjwt", extra = ["crypto"] },
+    { name = "pyyaml" },
+    { name = "structlog" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "commitizen" },
+    { name = "mypy" },
+    { name = "polyfactory" },
+    { name = "pre-commit" },
+    { name = "pre-commit-uv" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-mock" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
+    { name = "respx" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+]
+test = [
+    { name = "polyfactory" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-mock" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
+    { name = "respx" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiodocker", specifier = "==0.26.0" },
+    { name = "aiosqlite", specifier = "==0.22.1" },
+    { name = "argon2-cffi", specifier = "==25.1.0" },
+    { name = "jinja2", specifier = "==3.1.6" },
+    { name = "jsonschema", specifier = "==4.26.0" },
+    { name = "litellm", specifier = "==1.82.1" },
+    { name = "litestar", extras = ["brotli", "prometheus", "pydantic", "standard", "structlog"], specifier = "==2.21.1" },
+    { name = "mcp", specifier = "==1.26.0" },
+    { name = "pydantic", specifier = "==2.12.5" },
+    { name = "pyjwt", extras = ["crypto"], specifier = "==2.11.0" },
+    { name = "pyyaml", specifier = "==6.0.3" },
+    { name = "structlog", specifier = "==25.5.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "commitizen", specifier = "==4.13.9" },
+    { name = "mypy", specifier = "==1.19.1" },
+    { name = "polyfactory", specifier = "==3.3.0" },
+    { name = "pre-commit", specifier = "==4.5.1" },
+    { name = "pre-commit-uv", specifier = "==4.2.1" },
+    { name = "pytest", specifier = "==9.0.2" },
+    { name = "pytest-asyncio", specifier = "==1.3.0" },
+    { name = "pytest-cov", specifier = "==7.0.0" },
+    { name = "pytest-mock", specifier = "==3.15.1" },
+    { name = "pytest-timeout", specifier = "==2.4.0" },
+    { name = "pytest-xdist", specifier = "==3.8.0" },
+    { name = "respx", specifier = "==0.22.0" },
+    { name = "ruff", specifier = "==0.15.5" },
+    { name = "types-pyyaml", specifier = "==6.0.12.20250915" },
+]
+test = [
+    { name = "polyfactory", specifier = "==3.3.0" },
+    { name = "pytest", specifier = "==9.0.2" },
+    { name = "pytest-asyncio", specifier = "==1.3.0" },
+    { name = "pytest-cov", specifier = "==7.0.0" },
+    { name = "pytest-mock", specifier = "==3.15.1" },
+    { name = "pytest-timeout", specifier = "==2.4.0" },
+    { name = "pytest-xdist", specifier = "==3.8.0" },
+    { name = "respx", specifier = "==0.22.0" },
 ]
 
 [[package]]

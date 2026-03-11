@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # =============================================================================
-# AI Company Backend — Multi-stage, CIS-hardened container
+# SynthOrg Backend — Multi-stage, CIS-hardened container
 # =============================================================================
 # Three stages: builder → setup → runtime (distroless).
 # Chainguard Python distroless: minimal attack surface (no shell, no package
@@ -71,8 +71,8 @@ RUN chown -R 65532:65532 /app
 FROM cgr.dev/chainguard/python@sha256:308d2fda1d9ad9620454de97cb84fa407bd20e24dd66902909f4b3b44b310836 AS runtime
 
 # OCI image labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
-LABEL org.opencontainers.image.title="ai-company-backend" \
-      org.opencontainers.image.description="AI Company orchestration backend" \
+LABEL org.opencontainers.image.title="synthorg-backend" \
+      org.opencontainers.image.description="SynthOrg orchestration backend" \
       org.opencontainers.image.url="https://github.com/Aureliolo/ai-company" \
       org.opencontainers.image.source="https://github.com/Aureliolo/ai-company" \
       org.opencontainers.image.licenses="BUSL-1.1" \

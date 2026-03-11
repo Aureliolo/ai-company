@@ -389,7 +389,7 @@ def create_app(  # noqa: PLR0913
         plugins=plugins,
         exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
         openapi_config=OpenAPIConfig(
-            title="AI Company API",
+            title="SynthOrg API",
             version=__version__,
             path="/docs",
             render_plugins=[

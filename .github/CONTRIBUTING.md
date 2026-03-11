@@ -1,4 +1,4 @@
-# Contributing to AI Company
+# Contributing to SynthOrg
 
 ## Quick Start
 

@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 
 # =============================================================================
-# AI Company Web — Non-root nginx container (CIS hardening applied via compose.yml)
+# SynthOrg Web — Non-root nginx container (CIS hardening applied via compose.yml)
 # =============================================================================
 
 FROM nginxinc/nginx-unprivileged:1.29.5-alpine@sha256:aec540f08f99df3c830549d5dd7bfaf63e01cbbb499e37400c5af9f8e8554e9f
 
-LABEL org.opencontainers.image.title="ai-company-web" \
-      org.opencontainers.image.description="AI Company web dashboard" \
+LABEL org.opencontainers.image.title="synthorg-web" \
+      org.opencontainers.image.description="SynthOrg web dashboard" \
       org.opencontainers.image.url="https://github.com/Aureliolo/ai-company" \
       org.opencontainers.image.source="https://github.com/Aureliolo/ai-company" \
       org.opencontainers.image.licenses="BUSL-1.1" \

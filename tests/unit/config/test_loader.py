@@ -355,7 +355,7 @@ class TestLoadConfigFromString:
 
     def test_empty_string_uses_defaults(self) -> None:
         cfg = load_config_from_string("")
-        assert cfg.company_name == "AI Company"
+        assert cfg.company_name == "SynthOrg"
 
 
 # ── _substitute_env_vars ────────────────────────────────────────

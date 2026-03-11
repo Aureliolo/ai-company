@@ -1,8 +1,8 @@
-# CLAUDE.md — AI Company
+# CLAUDE.md — SynthOrg
 
 ## Project
 
-- **What**: Framework for orchestrating autonomous AI agents within a virtual company structure
+- **What**: Framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company
 - **Python**: 3.14+ (PEP 649 native lazy annotations)
 - **License**: BUSL-1.1 (converts to Apache 2.0 on 2030-02-27)
 - **Layout**: `src/ai_company/` (src layout), `tests/` (unit/integration/e2e)

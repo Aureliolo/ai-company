@@ -1,6 +1,6 @@
 # Getting Started
 
-Step-by-step guide to set up a development environment for AI Company.
+Step-by-step guide to set up a development environment for SynthOrg.
 
 ## Prerequisites
 

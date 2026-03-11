@@ -1,12 +1,12 @@
 [project]
-name = "ai-company"
+name = "synthorg"
 dynamic = ["version"]
-description = "Framework for orchestrating autonomous AI agents within a virtual company structure"
+description = "Framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company"
 readme = "README.md"
 license = "BUSL-1.1"
 requires-python = ">=3.14"
 authors = [{ name = "Aurelio" }]
-keywords = ["ai", "agents", "llm", "orchestration", "company"]
+keywords = ["ai", "agents", "llm", "orchestration", "synthetic-organization", "synthorg"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Programming Language :: Python :: 3.14",

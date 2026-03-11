@@ -1,6 +1,6 @@
-# AI Company - High-Level Design Specification
+# SynthOrg - High-Level Design Specification
 
-> A framework for orchestrating autonomous AI agents within a virtual company structure, with configurable roles, hierarchies, communication patterns, and tool access.
+> A framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company, with configurable roles, hierarchies, communication patterns, and tool access.
 
 ---
 
@@ -2525,7 +2525,7 @@ The REST/WebSocket API is the **primary interface** for all consumers. The Web U
 
 ```text
 ┌─────────────────────────────────────────────┐
-│               AI Company Engine              │
+│               SynthOrg Engine              │
 │  (Core Logic, Agent Orchestration, Tasks)    │
 └──────────────────┬──────────────────────────┘
                    │
@@ -2692,7 +2692,7 @@ Circular inheritance is detected via chain tracking and raises `TemplateInherita
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
-│                        AI Company Engine                      │
+│                        SynthOrg Engine                      │
 │                                                               │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │
 │  │ Company Mgr  │  │ Agent Engine  │  │ Task/Workflow Eng. │  │
@@ -3318,7 +3318,7 @@ These conventions are used throughout the codebase. **Adopted** conventions are 
 
 ### 16.2 What Exists vs What We Need
 
-| Feature | MetaGPT | ChatDev | CrewAI | **AI Company (Ours)** |
+| Feature | MetaGPT | ChatDev | CrewAI | **SynthOrg (Ours)** |
 |---------|---------|---------|--------|----------------------|
 | Full company simulation | Partial | Partial | No | **Yes - complete** |
 | HR (hiring/firing) | No | No | No | **Yes** |

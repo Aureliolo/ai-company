@@ -1,12 +1,12 @@
-# AI Company
+# SynthOrg
 
 [![CI](https://github.com/Aureliolo/ai-company/actions/workflows/ci.yml/badge.svg)](https://github.com/Aureliolo/ai-company/actions/workflows/ci.yml)
 
-A framework for orchestrating autonomous AI agents as employees within a virtual company structure.
+A framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company.
 
 ## Concept
 
-AI Company lets you spin up a virtual organization staffed entirely by AI agents. Each agent has a role (CEO, developer, designer, QA, etc.), a personality, persistent memory, and access to real tools. Agents collaborate through structured communication, follow workflows, and produce real artifacts - code, documents, designs, and more.
+SynthOrg lets you spin up a synthetic organization staffed entirely by AI agents. Each agent has a role (CEO, developer, designer, QA, etc.), a personality, persistent memory, and access to real tools. Agents collaborate through structured communication, follow workflows, and produce real artifacts - code, documents, designs, and more.
 
 ## What's Built
 

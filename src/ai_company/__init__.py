@@ -1,3 +1,3 @@
-"""AI Company - Framework for orchestrating autonomous AI agents."""
+"""SynthOrg - Framework for building synthetic organizations."""
 
 __version__ = "0.1.0"  # x-release-please-version

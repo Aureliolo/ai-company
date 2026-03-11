@@ -30,7 +30,7 @@ class TestCreateApp:
         response = test_client.get("/docs/openapi.json")
         assert response.status_code == 200
         data = response.json()
-        assert data["info"]["title"] == "AI Company API"
+        assert data["info"]["title"] == "SynthOrg API"
 
 
 @pytest.mark.unit
