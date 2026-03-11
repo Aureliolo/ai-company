@@ -31,7 +31,7 @@ Choose a pre-built organization template to get started quickly:
 | `agency` | Project manager + specialists |
 | `research-lab` | Lead researcher + research assistants |
 
-Templates are selected through the dashboard. See [Templates](#) for the full list (coming soon).
+Templates are selected through the dashboard. Full list coming soon.
 
 ## Stop
 
@@ -41,6 +41,6 @@ docker compose -f docker/compose.yml down
 
 ## Next Steps
 
-- [Templates](#) — Full list of pre-built configurations (coming soon)
-- [REST API](#) — Interact with your org via the API (coming soon)
+- Templates — Full list of pre-built configurations (coming soon)
+- REST API — Interact with your org via the API (coming soon)
 - [Design Specification](https://github.com/Aureliolo/synthorg/blob/main/DESIGN_SPEC.md) — Full architecture details
