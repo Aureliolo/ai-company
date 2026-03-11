@@ -150,6 +150,6 @@ VS Code should auto-detect the `.venv` directory. If not, use **Python: Select I
 
 ## Next Steps
 
-- [CONTRIBUTING.md](../.github/CONTRIBUTING.md) — branch, commit, and PR workflow
-- [CLAUDE.md](../CLAUDE.md) — code conventions and quick command reference
-- [DESIGN_SPEC.md](../DESIGN_SPEC.md) — full high-level design specification
+- [CONTRIBUTING.md](https://github.com/Aureliolo/synthorg/blob/main/.github/CONTRIBUTING.md) — branch, commit, and PR workflow
+- [CLAUDE.md](https://github.com/Aureliolo/synthorg/blob/main/CLAUDE.md) — code conventions and quick command reference
+- [DESIGN_SPEC.md](https://github.com/Aureliolo/synthorg/blob/main/DESIGN_SPEC.md) — full high-level design specification
