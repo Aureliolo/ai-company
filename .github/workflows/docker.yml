@@ -296,13 +296,19 @@ jobs:
 
           # Bounded retry — Release Please may still be creating the release
           EXISTING=""
+          FOUND=0
           for i in $(seq 1 6); do
             if EXISTING=$(gh release view "$TAG" --json body -q '.body // ""' 2>/dev/null); then
+              FOUND=1
               break
             fi
             echo "Release '$TAG' not available yet (attempt $i/6), retrying in 10s..."
             sleep 10
           done
+          if [ "$FOUND" -ne 1 ]; then
+            echo "::error::GitHub release '$TAG' not available after 6 attempts"
+            exit 1
+          fi
 
           IMAGES=$(cat <<'BLOCK'
 
