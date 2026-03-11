@@ -175,15 +175,15 @@ class AuthService:
 
     @staticmethod
     def hash_api_key(raw_key: str) -> str:
-        """Compute SHA-256 hex digest of a raw API key.
+        """Hash an API key using Argon2id.
 
         Args:
             raw_key: The plaintext API key.
 
         Returns:
-            Lowercase hex digest.
+            Argon2id hash string.
         """
-        return hashlib.sha256(raw_key.encode()).hexdigest()
+        return _hasher.hash(raw_key)
 
     @staticmethod
     def generate_api_key() -> str:
