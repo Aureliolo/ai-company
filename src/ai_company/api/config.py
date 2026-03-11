@@ -1,7 +1,8 @@
 """API configuration models.
 
-Frozen Pydantic models for CORS, rate limiting, server, and the
-top-level ``ApiConfig`` that aggregates them all.
+Frozen Pydantic models for CORS, rate limiting, server,
+authentication, and the top-level ``ApiConfig`` that aggregates
+them all.
 """
 
 from enum import StrEnum
@@ -151,6 +152,7 @@ class ApiConfig(BaseModel):
         cors: CORS configuration.
         rate_limit: Rate limiting configuration.
         server: Uvicorn server configuration.
+        auth: Authentication configuration.
         api_prefix: URL prefix for all API routes.
     """
 

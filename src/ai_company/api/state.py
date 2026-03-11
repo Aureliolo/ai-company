@@ -12,7 +12,7 @@ from ai_company.budget.tracker import CostTracker  # noqa: TC001
 from ai_company.communication.bus_protocol import MessageBus  # noqa: TC001
 from ai_company.config.schema import RootConfig  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events.api import API_SERVICE_UNAVAILABLE
+from ai_company.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
 from ai_company.persistence.protocol import PersistenceBackend  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -21,8 +21,9 @@ logger = get_logger(__name__)
 class AppState:
     """Typed application state container.
 
-    Service fields (``persistence``, ``message_bus``, ``cost_tracker``)
-    accept ``None`` at construction time for dev/test mode.  Property
+    Service fields (``persistence``, ``message_bus``, ``cost_tracker``,
+    ``auth_service``) accept ``None`` at construction time for dev/test
+    mode.  Property
     accessors raise ``ServiceUnavailableError`` (HTTP 503) when the
     service is not configured, producing a clear error instead of an
     opaque ``AttributeError``.
@@ -98,6 +99,11 @@ class AppState:
         """Return auth service or raise 503."""
         return self._require_service(self._auth_service, "auth_service")
 
+    @property
+    def has_auth_service(self) -> bool:
+        """Check whether the auth service is already configured."""
+        return self._auth_service is not None
+
     def set_auth_service(self, service: AuthService) -> None:
         """Set the auth service (deferred initialisation).
 
@@ -111,5 +117,6 @@ class AppState:
         """
         if self._auth_service is not None:
             msg = "Auth service already configured"
+            logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._auth_service = service

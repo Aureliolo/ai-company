@@ -1,5 +1,6 @@
 """Authentication service — password hashing, JWT ops, API key hashing."""
 
+import asyncio
 import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -69,12 +70,49 @@ class AuthService:
             )
             return False
         except argon2.exceptions.InvalidHashError:
-            logger.warning(
+            logger.error(
                 API_AUTH_FAILED,
-                reason="invalid_hash_format",
+                reason="invalid_hash_data_corruption",
                 exc_info=True,
             )
             return False
+
+    async def hash_password_async(self, password: str) -> str:
+        """Hash a password with Argon2id in a thread executor.
+
+        Offloads the CPU-intensive hashing to avoid blocking the
+        event loop.
+
+        Args:
+            password: Plaintext password.
+
+        Returns:
+            Argon2id hash string.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self.hash_password, password)
+
+    async def verify_password_async(
+        self,
+        password: str,
+        password_hash: str,
+    ) -> bool:
+        """Verify a password against an Argon2id hash in a thread executor.
+
+        Offloads the CPU-intensive verification to avoid blocking the
+        event loop.
+
+        Args:
+            password: Plaintext password to check.
+            password_hash: Stored Argon2id hash.
+
+        Returns:
+            ``True`` if the password matches.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, self.verify_password, password, password_hash
+        )
 
     def create_token(self, user: User) -> tuple[str, int]:
         """Create a JWT for the given user.
@@ -84,14 +122,24 @@ class AuthService:
 
         Returns:
             Tuple of (encoded JWT string, expiry seconds).
+
+        Raises:
+            RuntimeError: If the JWT secret is empty.
         """
+        if not self._config.jwt_secret:
+            msg = "JWT secret not configured"
+            raise RuntimeError(msg)
         now = datetime.now(UTC)
         expiry_seconds = self._config.jwt_expiry_minutes * 60
+        pwd_sig = hashlib.sha256(
+            user.password_hash.encode(),
+        ).hexdigest()[:16]
         payload: dict[str, Any] = {
             "sub": user.id,
             "username": user.username,
             "role": user.role.value,
             "must_change_password": user.must_change_password,
+            "pwd_sig": pwd_sig,
             "iat": now,
             "exp": now + timedelta(seconds=expiry_seconds),
         }
@@ -112,12 +160,17 @@ class AuthService:
             Decoded claims dictionary.
 
         Raises:
+            RuntimeError: If the JWT secret is empty.
             jwt.InvalidTokenError: If the token is invalid or expired.
         """
+        if not self._config.jwt_secret:
+            msg = "JWT secret not configured"
+            raise RuntimeError(msg)
         return jwt.decode(
             token,
             self._config.jwt_secret,
             algorithms=[self._config.jwt_algorithm],
+            options={"require": ["exp", "iat", "sub"]},
         )
 
     @staticmethod

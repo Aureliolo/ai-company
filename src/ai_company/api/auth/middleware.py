@@ -1,5 +1,6 @@
 """JWT + API key authentication middleware."""
 
+import hashlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -33,9 +34,9 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
     """Authenticate requests via JWT or API key.
 
     Reads ``Authorization: Bearer <token>`` from the request.
-    Tokens containing ``.`` are tried as JWTs first; if that fails
-    (or the token has no dots), it is tried as an API key via
-    SHA-256 hash lookup.
+    Tokens containing ``.`` are treated exclusively as JWTs.
+    Tokens without dots are tried as API keys via SHA-256 hash
+    lookup.
 
     Requires ``auth_service``, persistence backend on
     ``app.state["app_state"]``.
@@ -77,13 +78,14 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
         app_state = connection.app.state["app_state"]
         auth_service: AuthService = app_state.auth_service
 
-        # Try JWT first (tokens with dots are likely JWTs)
+        # Try JWT for tokens with dots; API key otherwise
         if "." in token:
             user = await _try_jwt_auth(token, auth_service, app_state, connection)
             if user is not None:
                 return AuthenticationResult(user=user, auth=token)
+            raise NotAuthorizedException(detail="Invalid JWT token")
 
-        # Fall back to API key
+        # API key (no dots in token)
         user = await _try_api_key_auth(token, app_state, connection)
         if user is not None:
             return AuthenticationResult(user=user, auth=token)
@@ -149,6 +151,18 @@ async def _try_jwt_auth(
         )
         return None
 
+    expected_sig = hashlib.sha256(
+        db_user.password_hash.encode(),
+    ).hexdigest()[:16]
+    if claims.get("pwd_sig") != expected_sig:
+        logger.warning(
+            API_AUTH_FAILED,
+            reason="password_changed_since_token_issued",
+            user_id=user_id,
+            path=str(connection.url.path),
+        )
+        return None
+
     authenticated = AuthenticatedUser(
         user_id=db_user.id,
         username=db_user.username,
@@ -182,6 +196,11 @@ async def _try_api_key_auth(
     persistence = app_state.persistence
     api_key = await persistence.api_keys.get_by_hash(key_hash)
     if api_key is None:
+        logger.debug(
+            API_AUTH_FAILED,
+            reason="api_key_not_found",
+            path=str(connection.url.path),
+        )
         return None
 
     if api_key.revoked:

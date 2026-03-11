@@ -272,8 +272,8 @@ class ApprovalsController(Controller):
             )
             raise ConflictError(msg)
 
-        auth_user = request.scope.get("user")
-        role = auth_user.role.value if auth_user is not None else "unknown"
+        auth_user = request.scope["user"]
+        role = auth_user.role.value
         now = datetime.now(UTC)
         updated = item.model_copy(
             update={
@@ -356,8 +356,8 @@ class ApprovalsController(Controller):
             )
             raise ConflictError(msg)
 
-        auth_user = request.scope.get("user")
-        role = auth_user.role.value if auth_user is not None else "unknown"
+        auth_user = request.scope["user"]
+        role = auth_user.role.value
         now = datetime.now(UTC)
         updated = item.model_copy(
             update={

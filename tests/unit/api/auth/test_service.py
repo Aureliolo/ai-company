@@ -59,6 +59,14 @@ class TestPasswordHashing:
         # Different salts produce different hashes
         assert h1 != h2
 
+    def test_verify_password_with_corrupted_hash(self) -> None:
+        svc = _make_service()
+        assert not svc.verify_password("my-password", "not-a-valid-argon2-hash")
+
+    def test_verify_password_with_empty_hash(self) -> None:
+        svc = _make_service()
+        assert not svc.verify_password("my-password", "")
+
 
 @pytest.mark.unit
 class TestJWT:
@@ -117,6 +125,33 @@ class TestJWT:
         token, _ = svc.create_token(user)
         claims = svc.decode_token(token)
         assert claims["must_change_password"] is True
+
+    def test_decode_token_missing_sub_claim(self) -> None:
+        from datetime import UTC, datetime, timedelta
+
+        import jwt as pyjwt
+
+        svc = _make_service()
+        payload = {
+            "username": "admin",
+            "role": "ceo",
+            "iat": datetime.now(UTC),
+            "exp": datetime.now(UTC) + timedelta(hours=1),
+        }
+        token = pyjwt.encode(payload, _SECRET, algorithm="HS256")
+        with pytest.raises(pyjwt.MissingRequiredClaimError):
+            svc.decode_token(token)
+
+    def test_create_token_empty_secret_raises(self) -> None:
+        svc = AuthService(AuthConfig())
+        user = _make_user()
+        with pytest.raises(RuntimeError, match="JWT secret not configured"):
+            svc.create_token(user)
+
+    def test_decode_token_empty_secret_raises(self) -> None:
+        svc = AuthService(AuthConfig())
+        with pytest.raises(RuntimeError, match="JWT secret not configured"):
+            svc.decode_token("any.token.here")
 
 
 @pytest.mark.unit

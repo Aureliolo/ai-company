@@ -42,6 +42,8 @@ class PersistenceBackend(Protocol):
         collaboration_metrics: Repository for CollaborationMetricRecord persistence.
         parked_contexts: Repository for ParkedContext persistence.
         audit_entries: Repository for AuditEntry persistence.
+        users: Repository for User persistence.
+        api_keys: Repository for ApiKey persistence.
     """
 
     async def connect(self) -> None:
@@ -136,7 +138,7 @@ class PersistenceBackend(Protocol):
         """Repository for ApiKey persistence."""
         ...
 
-    async def get_setting(self, key: str) -> str | None:
+    async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key.
 
         Args:
@@ -150,7 +152,7 @@ class PersistenceBackend(Protocol):
         """
         ...
 
-    async def set_setting(self, key: str, value: str) -> None:
+    async def set_setting(self, key: NotBlankStr, value: str) -> None:
         """Store a setting value.
 
         Upserts — creates or updates the key.

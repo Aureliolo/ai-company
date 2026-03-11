@@ -1,9 +1,8 @@
 """Authentication domain models."""
 
-from datetime import datetime  # noqa: TC003
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 from ai_company.api.guards import HumanRole  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
@@ -36,8 +35,8 @@ class User(BaseModel):
     password_hash: str = Field(repr=False)
     role: HumanRole
     must_change_password: bool = True
-    created_at: datetime
-    updated_at: datetime
+    created_at: AwareDatetime
+    updated_at: AwareDatetime
 
 
 class ApiKey(BaseModel):
@@ -49,8 +48,8 @@ class ApiKey(BaseModel):
         name: Human-readable label.
         role: Access control role.
         user_id: Owner user ID.
-        created_at: Key creation timestamp.
-        expires_at: Optional expiry timestamp.
+        created_at: Key creation timestamp (timezone-aware).
+        expires_at: Optional expiry timestamp (timezone-aware).
         revoked: Whether the key has been revoked.
     """
 
@@ -61,8 +60,8 @@ class ApiKey(BaseModel):
     name: NotBlankStr
     role: HumanRole
     user_id: NotBlankStr
-    created_at: datetime
-    expires_at: datetime | None = None
+    created_at: AwareDatetime
+    expires_at: AwareDatetime | None = None
     revoked: bool = False
 
 

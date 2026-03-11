@@ -12,9 +12,12 @@ class TestAuthConfig:
         assert config.jwt_secret == ""
         assert config.jwt_algorithm == "HS256"
         assert config.jwt_expiry_minutes == 1440
-        assert "^/api/v1/health$" in config.exclude_paths
-        assert "^/api/v1/auth/setup$" in config.exclude_paths
-        assert "^/api/v1/auth/login$" in config.exclude_paths
+        assert config.exclude_paths is None
+
+    def test_explicit_exclude_paths(self) -> None:
+        paths = ("^/health$", "^/docs")
+        config = AuthConfig(exclude_paths=paths)
+        assert config.exclude_paths == paths
 
     def test_with_secret_sets_secret(self) -> None:
         config = AuthConfig()

@@ -175,6 +175,32 @@ class TestChangePassword:
         )
         assert response.status_code == 401
 
+    def test_change_password_short_new_password(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        app_state = bare_client.app.state["app_state"]
+        app_state.persistence._users._users.clear()
+
+        setup_resp = bare_client.post(
+            "/api/v1/auth/setup",
+            json={
+                "username": "shortpw",
+                "password": "old-password-12chars",
+            },
+        )
+        token = setup_resp.json()["data"]["token"]
+
+        response = bare_client.post(
+            "/api/v1/auth/change-password",
+            json={
+                "current_password": "old-password-12chars",
+                "new_password": "short",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 400
+
 
 @pytest.mark.unit
 class TestMe:
@@ -214,6 +240,7 @@ class TestRequirePasswordChanged:
         )
         connection = MagicMock()
         connection.scope = {"user": user}
+        connection.url.path = "/api/v1/health"
 
         with pytest.raises(PermissionDeniedException):
             require_password_changed(connection, None)
@@ -234,6 +261,7 @@ class TestRequirePasswordChanged:
         )
         connection = MagicMock()
         connection.scope = {"user": user}
+        connection.url.path = "/api/v1/health"
 
         # Should not raise
         require_password_changed(connection, None)
@@ -246,6 +274,53 @@ class TestRequirePasswordChanged:
 
         connection = MagicMock()
         connection.scope = {}
+        connection.url.path = "/api/v1/health"
 
         # Should not raise
         require_password_changed(connection, None)
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            pytest.param("/api/v1/auth/change-password", id="change-password"),
+            pytest.param("/api/v1/auth/me", id="me"),
+        ],
+    )
+    def test_exempts_paths_for_must_change_password_users(
+        self,
+        path: str,
+    ) -> None:
+        """Guard allows must_change_password users on exempt paths."""
+        from unittest.mock import MagicMock
+
+        from ai_company.api.auth.controller import require_password_changed
+        from ai_company.api.auth.models import AuthenticatedUser, AuthMethod
+
+        user = AuthenticatedUser(
+            user_id="u1",
+            username="admin",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.JWT,
+            must_change_password=True,
+        )
+        connection = MagicMock()
+        connection.scope = {"user": user}
+        connection.url.path = path
+
+        # Should not raise — exempt path
+        require_password_changed(connection, None)
+
+    def test_rejects_unknown_user_type(self) -> None:
+        """Guard raises PermissionDeniedException for non-AuthenticatedUser."""
+        from unittest.mock import MagicMock
+
+        from litestar.exceptions import PermissionDeniedException
+
+        from ai_company.api.auth.controller import require_password_changed
+
+        connection = MagicMock()
+        connection.scope = {"user": "not-an-auth-user"}
+        connection.url.path = "/api/v1/health"
+
+        with pytest.raises(PermissionDeniedException):
+            require_password_changed(connection, None)

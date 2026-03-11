@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from ai_company.api.auth.models import ApiKey, User
 from ai_company.api.guards import HumanRole
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.persistence import (
     PERSISTENCE_API_KEY_DELETE_FAILED,
@@ -100,7 +101,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_USER_SAVED, user_id=user.id)
 
-    async def get(self, user_id: str) -> User | None:
+    async def get(self, user_id: NotBlankStr) -> User | None:
         """Retrieve a user by ID."""
         try:
             cursor = await self._db.execute(
@@ -131,7 +132,7 @@ ON CONFLICT(id) DO UPDATE SET
         logger.debug(PERSISTENCE_USER_FETCHED, user_id=user_id, found=True)
         return user
 
-    async def get_by_username(self, username: str) -> User | None:
+    async def get_by_username(self, username: NotBlankStr) -> User | None:
         """Retrieve a user by username."""
         try:
             cursor = await self._db.execute(
@@ -190,7 +191,7 @@ ON CONFLICT(id) DO UPDATE SET
         logger.debug(PERSISTENCE_USER_COUNTED, count=result)
         return result
 
-    async def delete(self, user_id: str) -> bool:
+    async def delete(self, user_id: NotBlankStr) -> bool:
         """Delete a user by ID."""
         try:
             cursor = await self._db.execute(
@@ -257,7 +258,7 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         logger.debug(PERSISTENCE_API_KEY_SAVED, key_id=key.id)
 
-    async def get(self, key_id: str) -> ApiKey | None:
+    async def get(self, key_id: NotBlankStr) -> ApiKey | None:
         """Retrieve an API key by ID."""
         try:
             cursor = await self._db.execute(
@@ -288,7 +289,7 @@ ON CONFLICT(id) DO UPDATE SET
         logger.debug(PERSISTENCE_API_KEY_FETCHED, key_id=key_id, found=True)
         return key
 
-    async def get_by_hash(self, key_hash: str) -> ApiKey | None:
+    async def get_by_hash(self, key_hash: NotBlankStr) -> ApiKey | None:
         """Retrieve an API key by its hash."""
         try:
             cursor = await self._db.execute(
@@ -309,7 +310,7 @@ ON CONFLICT(id) DO UPDATE SET
             logger.exception(PERSISTENCE_API_KEY_FETCH_FAILED, error=str(exc))
             raise QueryError(msg) from exc
 
-    async def list_by_user(self, user_id: str) -> tuple[ApiKey, ...]:
+    async def list_by_user(self, user_id: NotBlankStr) -> tuple[ApiKey, ...]:
         """List API keys belonging to a user."""
         try:
             cursor = await self._db.execute(
@@ -325,7 +326,16 @@ ON CONFLICT(id) DO UPDATE SET
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        keys = tuple(_row_to_api_key(row) for row in rows)
+        try:
+            keys = tuple(_row_to_api_key(row) for row in rows)
+        except (ValueError, ValidationError) as exc:
+            msg = f"Failed to deserialize API keys for user {user_id!r}"
+            logger.exception(
+                PERSISTENCE_API_KEY_LIST_FAILED,
+                user_id=user_id,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
         logger.debug(
             PERSISTENCE_API_KEY_LISTED,
             user_id=user_id,
@@ -333,7 +343,7 @@ ON CONFLICT(id) DO UPDATE SET
         )
         return keys
 
-    async def delete(self, key_id: str) -> bool:
+    async def delete(self, key_id: NotBlankStr) -> bool:
         """Delete an API key by ID."""
         try:
             cursor = await self._db.execute(

@@ -144,5 +144,7 @@ PERSISTENCE_API_KEY_LIST_FAILED: Final[str] = "persistence.api_key.list_failed"
 PERSISTENCE_API_KEY_DELETED: Final[str] = "persistence.api_key.deleted"
 PERSISTENCE_API_KEY_DELETE_FAILED: Final[str] = "persistence.api_key.delete_failed"
 
+PERSISTENCE_SETTING_FETCHED: Final[str] = "persistence.setting.fetched"
 PERSISTENCE_SETTING_FETCH_FAILED: Final[str] = "persistence.setting.fetch_failed"
+PERSISTENCE_SETTING_SAVED: Final[str] = "persistence.setting.saved"
 PERSISTENCE_SETTING_SAVE_FAILED: Final[str] = "persistence.setting.save_failed"

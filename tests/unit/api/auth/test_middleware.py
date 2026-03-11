@@ -269,6 +269,34 @@ class TestAuthMiddlewareApiKeyEdgeCases:
 
 
 @pytest.mark.unit
+class TestExtractBearerToken:
+    @pytest.mark.parametrize(
+        ("header", "expected"),
+        [
+            pytest.param("Bearer mytoken123", "mytoken123", id="valid"),
+            pytest.param("bearer mytoken123", "mytoken123", id="lowercase"),
+            pytest.param("BEARER mytoken123", "mytoken123", id="uppercase"),
+            pytest.param("", None, id="empty"),
+            pytest.param("Bearer", None, id="no-token"),
+            pytest.param("Basic dXNlcjpwYXNz", None, id="wrong-scheme"),
+            pytest.param(
+                "Bearer token with spaces",
+                "token with spaces",
+                id="token-with-spaces",
+            ),
+        ],
+    )
+    def test_extract_bearer_token(
+        self,
+        header: str,
+        expected: str | None,
+    ) -> None:
+        from ai_company.api.auth.middleware import _extract_bearer_token
+
+        assert _extract_bearer_token(header) == expected
+
+
+@pytest.mark.unit
 class TestAuthMiddlewareExcludePaths:
     async def test_excluded_path_skips_auth(self) -> None:
         svc = _make_auth_service()

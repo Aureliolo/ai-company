@@ -2,9 +2,9 @@
 
 import uuid
 from datetime import UTC, datetime
-from typing import Self
+from typing import Any, Self
 
-from litestar import Controller, Response, get, post
+from litestar import Controller, Request, Response, get, post
 from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.exceptions import PermissionDeniedException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -117,8 +117,8 @@ class TokenResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    token: str
-    expires_in: int
+    token: NotBlankStr
+    expires_in: int = Field(gt=0)
     must_change_password: bool
 
 
@@ -140,6 +140,8 @@ class UserInfoResponse(BaseModel):
     must_change_password: bool
 
 
+_PWD_CHANGE_EXEMPT_SUFFIXES = ("/auth/change-password", "/auth/me")
+
 # ── Guards ────────────────────────────────────────────────────
 
 
@@ -149,19 +151,33 @@ def require_password_changed(
 ) -> None:
     """Guard that blocks users who must change their password.
 
-    Applied to all routes except ``/auth/change-password`` and
-    ``/auth/me``.
+    Paths ending with ``/auth/change-password`` or ``/auth/me``
+    are exempt so the user can actually change the password or
+    inspect their own profile.
 
     Args:
         connection: The incoming connection.
         _: Route handler (unused).
 
     Raises:
-        PermissionDeniedException: If password change is required.
+        PermissionDeniedException: If password change is required
+            or the user object is present but not an
+            ``AuthenticatedUser``.
     """
-    user = connection.scope.get("user")
-    if not isinstance(user, AuthenticatedUser):
+    path = str(connection.url.path)
+    if any(path.endswith(s) for s in _PWD_CHANGE_EXEMPT_SUFFIXES):
         return
+    user = connection.scope.get("user")
+    if user is None:
+        return
+    if not isinstance(user, AuthenticatedUser):
+        logger.warning(
+            API_AUTH_FAILED,
+            reason="unexpected_user_type",
+            user_type=type(user).__qualname__,
+            path=path,
+        )
+        raise PermissionDeniedException(detail="Invalid user session")
     if user.must_change_password:
         raise PermissionDeniedException(detail="Password change required")
 
@@ -183,7 +199,7 @@ class AuthController(Controller):
     async def setup(
         self,
         data: SetupRequest,
-        request: ASGIConnection,  # type: ignore[type-arg]
+        request: Request[Any, Any, Any],
     ) -> Response[ApiResponse[TokenResponse]]:
         """Create the first admin account (CEO).
 
@@ -196,20 +212,30 @@ class AuthController(Controller):
 
         user_count = await persistence.users.count()
         if user_count > 0:
+            logger.warning(API_AUTH_FAILED, reason="setup_already_completed")
             msg = "Setup already completed"
             raise ConflictError(msg)
 
         now = datetime.now(UTC)
+        password_hash = await auth_service.hash_password_async(data.password)
         user = User(
             id=str(uuid.uuid4()),
             username=data.username,
-            password_hash=auth_service.hash_password(data.password),
+            password_hash=password_hash,
             role=HumanRole.CEO,
             must_change_password=True,
             created_at=now,
             updated_at=now,
         )
         await persistence.users.save(user)
+
+        # Race guard: undo if another setup completed concurrently
+        post_count = await persistence.users.count()
+        if post_count > 1:
+            await persistence.users.delete(user.id)
+            logger.warning(API_AUTH_FAILED, reason="setup_race_detected")
+            msg = "Setup already completed"
+            raise ConflictError(msg)
 
         token, expires_in = auth_service.create_token(user)
 
@@ -238,7 +264,7 @@ class AuthController(Controller):
     async def login(
         self,
         data: LoginRequest,
-        request: ASGIConnection,  # type: ignore[type-arg]
+        request: Request[Any, Any, Any],
     ) -> Response[ApiResponse[TokenResponse]]:
         """Validate credentials and return a JWT."""
         app_state = request.app.state["app_state"]
@@ -246,7 +272,7 @@ class AuthController(Controller):
         persistence = app_state.persistence
 
         user = await persistence.users.get_by_username(data.username)
-        if user is None or not auth_service.verify_password(
+        if user is None or not await auth_service.verify_password_async(
             data.password, user.password_hash
         ):
             logger.warning(
@@ -282,7 +308,7 @@ class AuthController(Controller):
     async def change_password(
         self,
         data: ChangePasswordRequest,
-        request: ASGIConnection,  # type: ignore[type-arg]
+        request: Request[Any, Any, Any],
     ) -> Response[ApiResponse[UserInfoResponse]]:
         """Validate current password and set new one."""
         auth_user: AuthenticatedUser = request.scope["user"]
@@ -292,10 +318,17 @@ class AuthController(Controller):
 
         user = await persistence.users.get(auth_user.user_id)
         if user is None:
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="user_not_found_for_password_change",
+                user_id=auth_user.user_id,
+            )
             msg = "User not found"
             raise UnauthorizedError(msg)
 
-        if not auth_service.verify_password(data.current_password, user.password_hash):
+        if not await auth_service.verify_password_async(
+            data.current_password, user.password_hash
+        ):
             logger.warning(
                 API_AUTH_FAILED,
                 reason="invalid_current_password",
@@ -305,9 +338,10 @@ class AuthController(Controller):
             raise UnauthorizedError(msg)
 
         now = datetime.now(UTC)
+        new_hash = await auth_service.hash_password_async(data.new_password)
         updated_user = user.model_copy(
             update={
-                "password_hash": auth_service.hash_password(data.new_password),
+                "password_hash": new_hash,
                 "must_change_password": False,
                 "updated_at": now,
             }
@@ -337,7 +371,7 @@ class AuthController(Controller):
     )
     async def me(
         self,
-        request: ASGIConnection,  # type: ignore[type-arg]
+        request: Request[Any, Any, Any],
     ) -> Response[ApiResponse[UserInfoResponse]]:
         """Return information about the authenticated user."""
         auth_user: AuthenticatedUser = request.scope["user"]

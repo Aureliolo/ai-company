@@ -4,7 +4,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-_MIN_SECRET_LENGTH = 32
+MIN_SECRET_LENGTH = 32
 
 
 def _require_valid_secret(secret: str) -> None:
@@ -14,11 +14,12 @@ def _require_valid_secret(secret: str) -> None:
         secret: JWT signing secret to validate.
 
     Raises:
-        ValueError: If *secret* is shorter than ``_MIN_SECRET_LENGTH``.
+        ValueError: If *secret* is non-empty and shorter than
+            ``MIN_SECRET_LENGTH``.
     """
-    if secret and len(secret) < _MIN_SECRET_LENGTH:
+    if secret and len(secret) < MIN_SECRET_LENGTH:
         msg = (
-            f"jwt_secret must be at least {_MIN_SECRET_LENGTH} "
+            f"jwt_secret must be at least {MIN_SECRET_LENGTH} "
             f"characters (got {len(secret)})"
         )
         raise ValueError(msg)
@@ -42,6 +43,7 @@ class AuthConfig(BaseModel):
         jwt_secret: HMAC signing key (resolved at startup, repr-hidden).
         jwt_algorithm: JWT signing algorithm (HMAC family only).
         jwt_expiry_minutes: Token lifetime in minutes.
+        min_password_length: Minimum password length for setup/change.
         exclude_paths: URL paths excluded from auth middleware.
     """
 
@@ -62,17 +64,21 @@ class AuthConfig(BaseModel):
         le=43200,
         description="Token lifetime in minutes (default 24h)",
     )
-    exclude_paths: tuple[str, ...] = Field(
-        default=(
-            "^/api/v1/health$",
-            "^/docs",
-            "^/api$",
-            "^/api/v1/auth/setup$",
-            "^/api/v1/auth/login$",
-        ),
+    min_password_length: int = Field(
+        default=12,
+        ge=8,
+        le=128,
+        description="Minimum password length for setup and password change",
+    )
+    exclude_paths: tuple[str, ...] | None = Field(
+        default=None,
         description=(
             "Regex patterns for paths excluded from authentication. "
-            "Anchor with ^ and $ to avoid substring matches."
+            "When None (default), paths are auto-derived from the "
+            "API prefix (health, auth/setup, auth/login, docs, "
+            "scalar UI). "
+            "Use ^ to anchor at the start of the path and add $ when "
+            "an exact match (rather than a prefix match) is required."
         ),
     )
 

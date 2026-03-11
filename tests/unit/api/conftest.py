@@ -479,6 +479,10 @@ class FakeMessageBus:
 
 # ── Auth helpers ────────────────────────────────────────────────
 
+# Cache password hashes by role so that make_auth_headers and
+# _seed_test_users produce identical pwd_sig claims.
+_TEST_PASSWORD_HASHES: dict[str, str] = {}
+
 
 def _make_test_auth_config() -> AuthConfig:
     """Create an AuthConfig with a test JWT secret."""
@@ -488,6 +492,24 @@ def _make_test_auth_config() -> AuthConfig:
 def _make_test_auth_service() -> AuthService:
     """Create an AuthService backed by test config."""
     return AuthService(_make_test_auth_config())
+
+
+def _get_test_password_hash(
+    role: str,
+    auth_service: AuthService,
+) -> str:
+    """Return a cached password hash for the given role.
+
+    On the first call for a role, hashes the test password and
+    caches the result so that ``make_auth_headers`` and
+    ``_seed_test_users`` produce tokens with matching ``pwd_sig``
+    claims.
+    """
+    if role not in _TEST_PASSWORD_HASHES:
+        _TEST_PASSWORD_HASHES[role] = auth_service.hash_password(
+            "test-password-12chars",
+        )
+    return _TEST_PASSWORD_HASHES[role]
 
 
 def _make_test_user(
@@ -503,7 +525,7 @@ def _make_test_user(
     return User(
         id=user_id,
         username=username,
-        password_hash=auth_service.hash_password("test-password-12chars"),
+        password_hash=_get_test_password_hash(role.value, auth_service),
         role=role,
         must_change_password=must_change_password,
         created_at=now,
@@ -519,7 +541,9 @@ def make_auth_headers(
     """Build an Authorization header with a JWT for the given role.
 
     Uses deterministic user IDs matching ``_seed_test_users`` so
-    middleware user lookups succeed.
+    middleware user lookups succeed.  The password hash is cached
+    per role to ensure the ``pwd_sig`` claim matches the seeded
+    user in persistence.
     """
     auth_service = _make_test_auth_service()
     # Must match the ID pattern in _seed_test_users
@@ -528,7 +552,7 @@ def make_auth_headers(
     user = User(
         id=user_id,
         username=f"test-{role}",
-        password_hash=auth_service.hash_password("test-password-12chars"),
+        password_hash=_get_test_password_hash(role, auth_service),
         role=HumanRole(role),
         must_change_password=must_change_password,
         created_at=now,
@@ -614,7 +638,9 @@ def _seed_test_users(
 
     The middleware looks up the user by ``sub`` claim, so we
     need matching users in the fake persistence for every role
-    that tests might use.
+    that tests might use.  Uses cached password hashes to ensure
+    ``pwd_sig`` claims match between seeded users and tokens
+    produced by ``make_auth_headers``.
     """
     import asyncio
 
@@ -624,7 +650,10 @@ def _seed_test_users(
         user = User(
             id=user_id,
             username=f"test-{role.value}",
-            password_hash=auth_service.hash_password("test-password-12chars"),
+            password_hash=_get_test_password_hash(
+                role.value,
+                auth_service,
+            ),
             role=role,
             must_change_password=False,
             created_at=now,
