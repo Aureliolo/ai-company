@@ -1,6 +1,7 @@
 """JWT + API key authentication middleware."""
 
 import hashlib
+import hmac as _hmac
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -86,9 +87,7 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
             raise NotAuthorizedException(detail="Invalid JWT token")
 
         # API key (no dots in token)
-        user = await _try_api_key_auth(
-            token, auth_service, app_state, connection
-        )
+        user = await _try_api_key_auth(token, auth_service, app_state, connection)
         if user is not None:
             return AuthenticationResult(user=user, auth=token)
 
@@ -116,6 +115,11 @@ async def _try_jwt_auth(
 ) -> AuthenticatedUser | None:
     """Attempt JWT authentication.
 
+    Validates the token signature, expiry, required claims, and the
+    ``pwd_sig`` fingerprint (a truncated SHA-256 of the stored
+    password hash).  Tokens issued before a password change are
+    automatically rejected via the ``pwd_sig`` mismatch.
+
     Returns:
         Authenticated user on success, or ``None`` if the token is
         invalid, the ``sub`` claim is missing, or the user no longer
@@ -129,6 +133,13 @@ async def _try_jwt_auth(
             reason="jwt_invalid",
             error_type=type(exc).__qualname__,
             error=str(exc),
+            path=str(connection.url.path),
+        )
+        return None
+    except RuntimeError:
+        logger.exception(
+            API_AUTH_FAILED,
+            reason="jwt_secret_not_configured",
             path=str(connection.url.path),
         )
         return None
@@ -156,7 +167,7 @@ async def _try_jwt_auth(
     expected_sig = hashlib.sha256(
         db_user.password_hash.encode(),
     ).hexdigest()[:16]
-    if claims.get("pwd_sig") != expected_sig:
+    if not _hmac.compare_digest(claims.get("pwd_sig", ""), expected_sig):
         logger.warning(
             API_AUTH_FAILED,
             reason="password_changed_since_token_issued",
@@ -190,16 +201,27 @@ async def _try_api_key_auth(
 ) -> AuthenticatedUser | None:
     """Attempt API key authentication.
 
+    Assumes the JWT secret is configured (used as the HMAC key for
+    hashing).  Returns ``None`` gracefully if the secret is missing.
+
     Returns:
         Authenticated user on success, or ``None`` if the key hash
         is not found, the key is revoked or expired, or the owning
         user no longer exists.
     """
-    key_hash = auth_service.hash_api_key(token)
+    try:
+        key_hash = auth_service.hash_api_key(token)
+    except RuntimeError:
+        logger.exception(
+            API_AUTH_FAILED,
+            reason="api_key_hash_failed_secret_not_configured",
+            path=str(connection.url.path),
+        )
+        return None
     persistence = app_state.persistence
     api_key = await persistence.api_keys.get_by_hash(key_hash)
     if api_key is None:
-        logger.debug(
+        logger.warning(
             API_AUTH_FAILED,
             reason="api_key_not_found",
             path=str(connection.url.path),

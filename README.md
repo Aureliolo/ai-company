@@ -59,7 +59,7 @@ SynthOrg lets you spin up a synthetic organization staffed entirely by AI agents
 
 ### Security
 
-- Authentication — JWT + API key, Argon2id hashing, first-run admin setup
+- Authentication — JWT + API key, Argon2id password hashing, HMAC-SHA256 API key hashing, first-run admin setup
 - SecOps agent — rule engine (soft-allow/hard-deny, fail-closed), audit log, output scanner, risk classifier
 - Progressive trust — 4 strategies behind `TrustStrategy` protocol
 - Autonomy levels — 5 tiers, presets, resolver, change strategies

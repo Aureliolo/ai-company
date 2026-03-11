@@ -397,10 +397,10 @@ ON CONFLICT(id) DO UPDATE SET
         return key
 
     async def get_by_hash(self, key_hash: NotBlankStr) -> ApiKey | None:
-        """Retrieve an API key by its SHA-256 hash.
+        """Retrieve an API key by its HMAC-SHA256 hash.
 
         Args:
-            key_hash: Hex-encoded SHA-256 digest of the raw key.
+            key_hash: Hex-encoded HMAC-SHA256 digest of the raw key.
 
         Returns:
             The matching ``ApiKey``, or ``None`` if not found.

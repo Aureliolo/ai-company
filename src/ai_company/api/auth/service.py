@@ -38,6 +38,29 @@ class AuthService:
     def __init__(self, config: AuthConfig) -> None:
         self._config = config
 
+    def _require_secret(self, operation: str) -> str:
+        """Return the JWT secret or raise if unconfigured.
+
+        Args:
+            operation: Name of the calling operation (for logging).
+
+        Returns:
+            The JWT secret string.
+
+        Raises:
+            RuntimeError: If the JWT secret is empty.
+        """
+        secret = self._config.jwt_secret
+        if not secret:
+            msg = "JWT secret not configured"
+            logger.error(
+                API_AUTH_FAILED,
+                reason="jwt_secret_missing",
+                operation=operation,
+            )
+            raise RuntimeError(msg)
+        return secret
+
     def hash_password(self, password: str) -> str:
         """Hash a password with Argon2id.
 
@@ -118,6 +141,12 @@ class AuthService:
     def create_token(self, user: User) -> tuple[str, int]:
         """Create a JWT for the given user.
 
+        The token includes a ``pwd_sig`` claim — a 16-character
+        truncated SHA-256 of the stored password hash.  The auth
+        middleware validates this claim on every request so that
+        tokens issued before a password change are automatically
+        rejected.
+
         Args:
             user: Authenticated user.
 
@@ -127,9 +156,7 @@ class AuthService:
         Raises:
             RuntimeError: If the JWT secret is empty.
         """
-        if not self._config.jwt_secret:
-            msg = "JWT secret not configured"
-            raise RuntimeError(msg)
+        self._require_secret("create_token")
         now = datetime.now(UTC)
         expiry_seconds = self._config.jwt_expiry_minutes * 60
         pwd_sig = hashlib.sha256(
@@ -164,9 +191,7 @@ class AuthService:
             RuntimeError: If the JWT secret is empty.
             jwt.InvalidTokenError: If the token is invalid or expired.
         """
-        if not self._config.jwt_secret:
-            msg = "JWT secret not configured"
-            raise RuntimeError(msg)
+        self._require_secret("decode_token")
         return jwt.decode(
             token,
             self._config.jwt_secret,
@@ -190,14 +215,12 @@ class AuthService:
         Raises:
             RuntimeError: If the JWT secret is empty.
         """
-        if not self._config.jwt_secret:
-            msg = "JWT secret not configured — cannot hash API key"
-            raise RuntimeError(msg)
-        return hmac.new(
+        self._require_secret("hash_api_key")
+        return hmac.digest(
             self._config.jwt_secret.encode(),
             raw_key.encode(),
-            hashlib.sha256,
-        ).hexdigest()
+            "sha256",
+        ).hex()
 
     @staticmethod
     def generate_api_key() -> str:

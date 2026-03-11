@@ -2,14 +2,14 @@
 
 from datetime import UTC, datetime, timedelta
 
+import jwt
 import pytest
 
 from ai_company.api.auth.config import AuthConfig
 from ai_company.api.auth.models import User
 from ai_company.api.auth.service import AuthService
 from ai_company.api.guards import HumanRole
-
-_SECRET = "test-secret-that-is-at-least-32-characters-long"
+from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 
 
 def _make_service() -> AuthService:
@@ -83,8 +83,6 @@ class TestJWT:
         assert claims["role"] == "ceo"
 
     def test_expired_token_raises(self) -> None:
-        import jwt
-
         config = AuthConfig(jwt_secret=_SECRET, jwt_expiry_minutes=1)
         svc = AuthService(config)
         user = _make_user()
@@ -104,8 +102,6 @@ class TestJWT:
             svc.decode_token(expired_token)
 
     def test_invalid_signature_raises(self) -> None:
-        import jwt
-
         svc = _make_service()
         user = _make_user()
         token, _ = svc.create_token(user)
@@ -125,8 +121,6 @@ class TestJWT:
         assert claims["must_change_password"] is True
 
     def test_decode_token_missing_sub_claim(self) -> None:
-        import jwt as pyjwt
-
         svc = _make_service()
         payload = {
             "username": "admin",
@@ -134,8 +128,8 @@ class TestJWT:
             "iat": datetime.now(UTC),
             "exp": datetime.now(UTC) + timedelta(hours=1),
         }
-        token = pyjwt.encode(payload, _SECRET, algorithm="HS256")
-        with pytest.raises(pyjwt.MissingRequiredClaimError):
+        token = jwt.encode(payload, _SECRET, algorithm="HS256")
+        with pytest.raises(jwt.MissingRequiredClaimError):
             svc.decode_token(token)
 
     def test_create_token_empty_secret_raises(self) -> None:
@@ -179,6 +173,12 @@ class TestApiKeyHashing:
         h_a = svc_a.hash_api_key("same-key")
         h_b = svc_b.hash_api_key("same-key")
         assert h_a != h_b
+
+    def test_hash_output_is_64_char_hex(self) -> None:
+        svc = _make_service()
+        result = svc.hash_api_key("test-key")
+        assert len(result) == 64
+        assert all(c in "0123456789abcdef" for c in result)
 
     def test_generate_key_unique(self) -> None:
         k1 = AuthService.generate_api_key()

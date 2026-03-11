@@ -56,7 +56,7 @@ class ApiKey(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     id: NotBlankStr
-    key_hash: str = Field(repr=False)
+    key_hash: NotBlankStr = Field(repr=False)
     name: NotBlankStr
     role: HumanRole
     user_id: NotBlankStr

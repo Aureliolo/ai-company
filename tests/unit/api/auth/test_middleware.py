@@ -1,6 +1,6 @@
 """Tests for ApiAuthMiddleware."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from litestar import Litestar, get
@@ -11,9 +11,8 @@ from ai_company.api.auth.middleware import create_auth_middleware_class
 from ai_company.api.auth.models import ApiKey, User
 from ai_company.api.auth.service import AuthService
 from ai_company.api.guards import HumanRole
+from tests.unit.api.conftest import _TEST_JWT_SECRET as _SECRET
 from tests.unit.api.conftest import FakePersistenceBackend
-
-_SECRET = "test-secret-that-is-at-least-32-characters-long"
 
 
 def _make_auth_service() -> AuthService:
@@ -202,8 +201,6 @@ class TestAuthMiddlewareApiKey:
             assert resp.status_code == 401
 
     async def test_expired_api_key_returns_401(self) -> None:
-        from datetime import timedelta
-
         svc = _make_auth_service()
         user = _make_user(svc)
         persistence = FakePersistenceBackend()
@@ -264,6 +261,36 @@ class TestAuthMiddlewareApiKeyEdgeCases:
             resp = client.get(
                 "/protected",
                 headers={"Authorization": f"Bearer {raw_key}"},
+            )
+            assert resp.status_code == 401
+
+    async def test_unknown_api_key_returns_401(self) -> None:
+        svc = _make_auth_service()
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        app = _build_app(auth_service=svc, persistence=persistence)
+
+        # Send a token without dots (API key path) that is not registered
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": "Bearer unknownkey123456"},
+            )
+            assert resp.status_code == 401
+
+    async def test_api_key_auth_with_unconfigured_secret_returns_401(
+        self,
+    ) -> None:
+        empty_svc = AuthService(AuthConfig())
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        app = _build_app(auth_service=empty_svc, persistence=persistence)
+
+        # hash_api_key raises RuntimeError; middleware should handle it
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": "Bearer sometokenwithnodots"},
             )
             assert resp.status_code == 401
 

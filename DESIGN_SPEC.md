@@ -2744,7 +2744,7 @@ Circular inheritance is detected via chain tracking and raises `TemplateInherita
 | **Docker API** | aiodocker | Async-native Docker API client for `DockerSandbox` backend |
 | **Tool Integration** | MCP SDK (`mcp`) | Industry standard for LLM-to-tool integration |
 | **Agent Comms** | A2A Protocol compatible | Future-proof inter-agent communication |
-| **Authentication** | PyJWT + argon2-cffi | JWT (HMAC HS256/384/512) for session tokens, Argon2id for password hashing, SHA-256 for API key storage |
+| **Authentication** | PyJWT + argon2-cffi | JWT (HMAC HS256/384/512) for session tokens, Argon2id for password hashing, HMAC-SHA256 for API key storage (keyed with server secret) |
 | **Config Format** | YAML + Pydantic validation | Human-readable config with strict validation |
 | **CLI** | TBD (future, if needed) | Thin wrapper around the REST API for terminal use. May not be needed — interactive Scalar docs at `/docs/api` and `curl`/`httpie` may suffice |
 
@@ -3177,7 +3177,7 @@ synthorg/
 │       │   │   ├── middleware.py  # ApiAuthMiddleware (JWT-first, API key fallback)
 │       │   │   ├── models.py     # User, ApiKey, AuthenticatedUser, AuthMethod
 │       │   │   ├── secret.py     # JWT secret resolution (env var → persistence → auto-generate)
-│       │   │   └── service.py    # AuthService (Argon2id password hashing, JWT ops, API key hashing)
+│       │   │   └── service.py    # AuthService (Argon2id password hashing, JWT ops, HMAC-SHA256 API key hashing)
 │       │   ├── bus_bridge.py       # Message-bus → WebSocket bridge
 │       │   ├── channels.py         # WebSocket channel definitions
 │       │   ├── config.py           # API configuration models (ServerConfig, CorsConfig)
@@ -3237,6 +3237,7 @@ synthorg/
 │   │   ├── ci.yml                  # Lint + type-check + test (parallel)
 │   │   ├── docker.yml              # Build → scan → push → sign (GHCR)
 │   │   ├── dependency-review.yml   # License allow-list on PRs
+│   │   ├── release.yml             # Release Please (automated versioning + GitHub Releases)
 │   │   └── secret-scan.yml         # Gitleaks on push/PR + weekly
 │   ├── actions/
 │   │   └── setup-python-uv/        # Composite action: Python + uv install

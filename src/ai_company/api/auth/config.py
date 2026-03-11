@@ -52,7 +52,11 @@ class AuthConfig(BaseModel):
     jwt_secret: str = Field(
         default="",
         repr=False,
-        description="JWT signing secret (resolved at startup)",
+        description=(
+            "JWT signing secret (resolved at startup). "
+            "Also used as the HMAC key for API key hash computation — "
+            "rotating this secret invalidates all stored API key hashes."
+        ),
     )
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = Field(
         default="HS256",
