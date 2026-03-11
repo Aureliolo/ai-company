@@ -76,11 +76,16 @@ jobs:
       - name: Inject preview banner
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           python3 << 'PYEOF'
           import os, pathlib, re
+          from datetime import datetime, timezone
 
           pr_number = os.environ["PR_NUMBER"]
+          short_sha = os.environ["HEAD_SHA"][:7]
+          build_iso = datetime.now(timezone.utc).isoformat()
+
           style = (
               "background:linear-gradient(90deg,#f59e0b,#d97706);"
               "color:#000;text-align:center;padding:10px 16px;"
@@ -88,11 +93,28 @@ jobs:
               "top:0;z-index:9999;"
               "box-shadow:0 2px 4px rgba(0,0,0,0.15)"
           )
+          time_ago_js = (
+              "<script>"
+              "(function(){"
+              f"var t=new Date('{build_iso}').getTime();"
+              "function u(){"
+              "var d=Math.floor((Date.now()-t)/1e3),"
+              "s=d<60?d+'s ago':d<3600?Math.floor(d/60)+'m ago':"
+              "d<86400?Math.floor(d/3600)+'h ago':Math.floor(d/86400)+'d ago';"
+              "document.getElementById('preview-age').textContent=s}"
+              "u();setInterval(u,30000)"
+              "})()"
+              "</script>"
+          )
           banner = (
               f'<div style="{style}">'
               f"Development Preview &mdash; PR #{pr_number}"
-              f" &mdash; Not a release version"
+              f' &mdash; <code style="background:rgba(0,0,0,0.1);'
+              f'padding:2px 6px;border-radius:3px;font-size:12px">'
+              f"{short_sha}</code>"
+              f' &mdash; built <span id="preview-age"></span>'
               f"</div>"
+              f"{time_ago_js}"
           )
           count = 0
           for f in pathlib.Path("_site").rglob("*.html"):
