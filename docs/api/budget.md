@@ -6,10 +6,6 @@ Cost tracking, budget enforcement, auto-downgrade, quota management, and CFO opt
 
 ::: ai_company.budget.config
 
-## Models
-
-::: ai_company.budget.models
-
 ## Cost Record
 
 ::: ai_company.budget.cost_record

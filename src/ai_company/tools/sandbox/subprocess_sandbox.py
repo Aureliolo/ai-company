@@ -287,8 +287,20 @@ class SubprocessSandbox:
             env.update(env_overrides)
             # Re-filter PATH if overrides injected one — prevents
             # bypassing the restricted-path guard via env_overrides.
-            if self._config.restricted_path and "PATH" in env_overrides:
-                env["PATH"] = self._filter_path(env["PATH"])
+            # Case-insensitive key check on Windows where env var
+            # names are case-insensitive (e.g. "Path" vs "PATH").
+            if self._config.restricted_path and any(
+                k.upper() == "PATH" for k in env_overrides
+            ):
+                # Consolidate to a canonical PATH key.
+                path_keys = [k for k in env if k.upper() == "PATH"]
+                path_val = next(
+                    (env[k] for k in reversed(path_keys)),
+                    "",
+                )
+                for k in path_keys:
+                    del env[k]
+                env["PATH"] = self._filter_path(path_val)
 
         logger.debug(
             SANDBOX_ENV_FILTERED,
@@ -450,7 +462,7 @@ class SubprocessSandbox:
 
         Waits up to 5 seconds for the process to terminate.  If the
         process does not terminate, logs an error and returns empty
-        output.
+        stdout with a diagnostic stderr message.
         """
         try:
             return await asyncio.wait_for(
@@ -490,7 +502,8 @@ class SubprocessSandbox:
 
         Raises:
             SandboxStartError: If the subprocess could not be started.
-            SandboxError: If cwd is outside the workspace boundary.
+            SandboxError: If cwd is outside the workspace boundary or
+                if no safe PATH directories can be determined.
         """
         work_dir = cwd if cwd is not None else self._workspace
         self._validate_cwd(work_dir)

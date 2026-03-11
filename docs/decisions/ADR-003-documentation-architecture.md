@@ -98,18 +98,21 @@ Key constraints:
 ## Consequences
 
 ### Positive
+
 - API docs auto-update on every push — always in sync with code
 - Landing page and docs use best-in-class tools for their respective jobs
 - Single domain simplifies DNS and maximizes SEO
 - Python-native docs toolchain (no Node.js needed for docs)
 
 ### Negative
+
 - Two build tools in CI (Python + Node.js) — slightly more complex pipeline
 - Landing page changes trigger full CI (mitigated by path filters)
 - MkDocs Material entering maintenance mode (mitigated by Zensical migration path)
 - Docs in Vue dashboard feel like a sub-site (accepted trade-off)
 
 ### Neutral
+
 - Astro landing page scaffold is minimal — content development is deferred
 - MkDocs overrides directory reserved for future custom landing page within docs
 

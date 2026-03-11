@@ -15,12 +15,17 @@ uv sync
 ```
 
 ```python
+import asyncio
+
 from ai_company.config.loader import load_config
 from ai_company.engine.agent_engine import AgentEngine
 
-config = load_config("company.yaml")
-engine = AgentEngine(config)
-result = await engine.run("Build a REST API for user management")
+async def main():
+    config = load_config("company.yaml")
+    engine = AgentEngine(config)
+    result = await engine.run("Build a REST API for user management")
+
+asyncio.run(main())
 ```
 
 *API shown is illustrative — see [Getting Started](getting_started.md) for full setup.*

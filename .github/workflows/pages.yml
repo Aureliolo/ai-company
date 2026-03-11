@@ -61,8 +61,13 @@ jobs:
       # --- Merge outputs ---
       - name: Merge Astro + MkDocs into final output
         run: |
-          # Astro output goes to root
-          cp -r site/dist/* _site/
+          # Guard against Astro accidentally producing a docs/ route
+          if [ -d "site/dist/docs" ]; then
+            echo "::error::Astro output contains 'docs/' directory which would overwrite MkDocs output"
+            exit 1
+          fi
+          # Astro output goes to root (use /. to avoid glob edge cases)
+          cp -r site/dist/. _site/
           # MkDocs output is already at _site/docs/ from the build step
 
       - name: Upload Pages artifact

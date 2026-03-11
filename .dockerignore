@@ -20,6 +20,14 @@ tests/
 docs/
 *.md
 
+# Documentation build output (MkDocs)
+_site/
+
+# Astro / Node.js (landing page)
+site/node_modules/
+site/dist/
+site/.astro/
+
 # Virtual environments
 .venv/
 venv/

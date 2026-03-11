@@ -44,8 +44,6 @@ Tool system — base class, registry, invoker, built-in tools, and MCP bridge.
 
 ## MCP Bridge
 
-::: ai_company.tools.mcp.protocol
-
 ::: ai_company.tools.mcp.config
 
 ::: ai_company.tools.mcp.models
@@ -59,7 +57,5 @@ Tool system — base class, registry, invoker, built-in tools, and MCP bridge.
 ::: ai_company.tools.sandbox.protocol
 
 ::: ai_company.tools.sandbox.config
-
-::: ai_company.tools.sandbox.models
 
 ::: ai_company.tools.sandbox.result

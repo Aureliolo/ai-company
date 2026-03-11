@@ -52,7 +52,7 @@ Agent lifecycle management — hiring, firing, onboarding, offboarding, performa
 
 ::: ai_company.hr.promotion.service
 
-::: ai_company.hr.promotion.protocol
+::: ai_company.hr.promotion.model_mapping_protocol
 
 ::: ai_company.hr.promotion.criteria_protocol
 

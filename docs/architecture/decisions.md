@@ -7,7 +7,7 @@ Architectural Decision Records (ADRs) document significant technical decisions m
 | ADR | Title | Status | Date |
 |-----|-------|--------|------|
 | [ADR-001](../decisions/ADR-001-memory-layer.md) | Memory Layer Selection | Accepted | 2026-03-08 |
-| [ADR-002](../decisions/ADR-002-design-decisions-batch-1.md) | Design Decisions Batch 1 | Accepted | 2026-03 |
+| [ADR-002](../decisions/ADR-002-design-decisions-batch-1.md) | Design Decisions Batch 1 | Accepted | 2026-03-09 |
 | [ADR-003](../decisions/ADR-003-documentation-architecture.md) | Documentation & Site Architecture | Accepted | 2026-03-11 |
 
 ## ADR Format

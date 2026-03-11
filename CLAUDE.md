@@ -28,6 +28,7 @@
 
 ```bash
 uv sync                                    # install all deps (dev + test)
+uv sync --group docs                       # install MkDocs docs toolchain
 uv run ruff check src/ tests/              # lint
 uv run ruff check src/ tests/ --fix        # lint + auto-fix
 uv run ruff format src/ tests/             # format

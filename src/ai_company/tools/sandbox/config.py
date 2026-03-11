@@ -91,12 +91,21 @@ class SubprocessSandboxConfig(BaseModel):
                 )
                 raise ValueError(msg)
             normalized = os.path.normpath(prefix)
+            normalized_path = PurePath(normalized)
             # Defense-in-depth: normpath should preserve
             # absoluteness, but verify for safety.
-            if not PurePath(normalized).is_absolute():
+            if not normalized_path.is_absolute():
                 msg = (
                     "extra_safe_path_prefixes entries must resolve "
                     f"to absolute paths, got: {prefix!r}"
+                )
+                raise ValueError(msg)
+            # Reject filesystem roots — they effectively disable
+            # the restricted_path guard for all absolute entries.
+            if normalized_path == PurePath(normalized_path.anchor):
+                msg = (
+                    "extra_safe_path_prefixes entries must be more "
+                    f"specific than a filesystem root, got: {prefix!r}"
                 )
                 raise ValueError(msg)
             sanitized.append(normalized)

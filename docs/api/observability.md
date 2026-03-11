@@ -32,3 +32,7 @@ Structured logging, event constants, correlation tracking, and log sinks.
 ## Enums
 
 ::: ai_company.observability.enums
+
+## Events
+
+::: ai_company.observability.events

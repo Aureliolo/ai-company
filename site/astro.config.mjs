@@ -1,8 +1,10 @@
 import { defineConfig } from "astro/config";
-import tailwind from "@astrojs/tailwind";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-  integrations: [tailwind()],
+  vite: {
+    plugins: [tailwindcss()],
+  },
   site: "https://synthorg.io",
   // Docs live at /docs (served by MkDocs build output merged in CI)
   // Landing page is everything else

@@ -3140,6 +3140,7 @@ synthorg/
 │       │       ├── config.py       # TrustConfig, strategy-specific sub-configs
 │       │       ├── enums.py        # TrustStrategyType, TrustChangeReason
 │       │       ├── errors.py       # TrustEvaluationError
+│       │       ├── levels.py       # Shared trust level ordering and transition constants
 │       │       ├── models.py       # TrustState, TrustEvaluationResult, TrustChangeRecord
 │       │       ├── protocol.py     # TrustStrategy protocol
 │       │       ├── service.py      # TrustService orchestrator (state, evaluation, decay, approval)
@@ -3181,7 +3182,7 @@ synthorg/
 │       │   ├── bus_bridge.py       # Message-bus → WebSocket bridge
 │       │   ├── channels.py         # WebSocket channel definitions
 │       │   ├── config.py           # API configuration models (ServerConfig, CorsConfig)
-│       │   ├── controllers/        # 15 class-based controllers + 1 WebSocket handler (16 route modules)
+│       │   ├── controllers/        # 14 class-based controllers + 1 WebSocket handler (15 route modules)
 │       │   ├── dto.py              # Request/response DTOs and envelopes
 │       │   ├── errors.py           # API error hierarchy (ApiError, NotFoundError, UnauthorizedError, etc.)
 │       │   ├── exception_handlers.py # Litestar exception handler registration
@@ -3250,8 +3251,10 @@ synthorg/
 │   ├── compose.override.yml        # Local dev overrides (debug logging)
 │   └── .env.example                # Environment variable reference
 ├── web/
+│   ├── app.js                      # Dashboard JavaScript
 │   ├── index.html                  # Placeholder dashboard with health check
-│   └── nginx.conf                  # SPA routing + API/WebSocket proxy
+│   ├── nginx.conf                  # SPA routing + API/WebSocket proxy
+│   └── style.css                   # Dashboard styles
 ├── .github/
 │   ├── workflows/
 │   │   ├── ci.yml                  # Lint + type-check + test (parallel)

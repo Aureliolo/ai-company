@@ -286,7 +286,16 @@ jobs:
           BACKEND_DIGEST: ${{ needs.build-backend.outputs.digest }}
           WEB_DIGEST: ${{ needs.build-web.outputs.digest }}
         run: |
-          EXISTING=$(gh release view "$TAG" --json body -q .body)
+          set -euo pipefail
+
+          # Validate required inputs
+          if [ -z "$VERSION" ] || [ -z "$BACKEND_DIGEST" ] || [ -z "$WEB_DIGEST" ]; then
+            echo "::error::Missing required values: VERSION='$VERSION' BACKEND_DIGEST='$BACKEND_DIGEST' WEB_DIGEST='$WEB_DIGEST'"
+            exit 1
+          fi
+
+          EXISTING=$(gh release view "$TAG" --json body -q '.body // ""' 2>/dev/null || true)
+
           IMAGES=$(cat <<'BLOCK'
 
           ## Container Images
@@ -302,7 +311,7 @@ jobs:
 
           All images are signed with [cosign](https://github.com/sigstore/cosign). Verify with:
           ```bash
-          cosign verify ghcr.io/aureliolo/synthorg-backend:VERSION_PH \
+          cosign verify ghcr.io/aureliolo/synthorg-backend@BACKEND_DIGEST_PH \
             --certificate-identity-regexp='github\.com/Aureliolo/synthorg' \
             --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
           ```
@@ -313,4 +322,7 @@ jobs:
           IMAGES=${IMAGES//VERSION_PH/$VERSION}
           IMAGES=${IMAGES//BACKEND_DIGEST_PH/$BACKEND_DIGEST}
           IMAGES=${IMAGES//WEB_DIGEST_PH/$WEB_DIGEST}
-          gh release edit "$TAG" --notes "${EXISTING}${IMAGES}"
+
+          # Idempotent: strip existing Container Images section before appending
+          CLEANED=$(echo "$EXISTING" | sed '/^## Container Images$/,$d')
+          gh release edit "$TAG" --notes "${CLEANED}${IMAGES}"
