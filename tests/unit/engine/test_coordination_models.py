@@ -135,6 +135,33 @@ class TestCoordinationPhaseResult:
                 duration_seconds=0.0,
             )
 
+    @pytest.mark.unit
+    def test_success_with_error_rejected(self) -> None:
+        """Successful phase with error is rejected."""
+        with pytest.raises(
+            ValidationError,
+            match="successful phase must not have an error",
+        ):
+            CoordinationPhaseResult(
+                phase="decompose",
+                success=True,
+                duration_seconds=1.0,
+                error="something",
+            )
+
+    @pytest.mark.unit
+    def test_failed_without_error_rejected(self) -> None:
+        """Failed phase without error description is rejected."""
+        with pytest.raises(
+            ValidationError,
+            match="failed phase must have an error description",
+        ):
+            CoordinationPhaseResult(
+                phase="decompose",
+                success=False,
+                duration_seconds=1.0,
+            )
+
 
 class TestCoordinationWave:
     """CoordinationWave model tests."""
@@ -179,6 +206,18 @@ class TestCoordinationWave:
             CoordinationWave(
                 wave_index=-1,
                 subtask_ids=("sub-1",),
+            )
+
+    @pytest.mark.unit
+    def test_empty_subtask_ids_rejected(self) -> None:
+        """Empty subtask_ids is rejected."""
+        with pytest.raises(
+            ValidationError,
+            match="subtask_ids must contain at least one ID",
+        ):
+            CoordinationWave(
+                wave_index=0,
+                subtask_ids=(),
             )
 
 
@@ -230,7 +269,11 @@ class TestCoordinationResult:
         result = CoordinationResult(
             parent_task_id="task-1",
             topology=CoordinationTopology.SAS,
-            phases=(),
+            phases=(
+                CoordinationPhaseResult(
+                    phase="decompose", success=True, duration_seconds=0.0
+                ),
+            ),
             total_duration_seconds=0.0,
         )
         assert result.decomposition_result is None
@@ -273,7 +316,11 @@ class TestCoordinationResult:
             CoordinationResult(
                 parent_task_id="task-1",
                 topology=CoordinationTopology.SAS,
-                phases=(),
+                phases=(
+                    CoordinationPhaseResult(
+                        phase="test", success=True, duration_seconds=0.0
+                    ),
+                ),
                 total_duration_seconds=-1.0,
             )
 
@@ -284,18 +331,22 @@ class TestCoordinationResult:
             CoordinationResult(
                 parent_task_id="task-1",
                 topology=CoordinationTopology.SAS,
-                phases=(),
+                phases=(
+                    CoordinationPhaseResult(
+                        phase="test", success=True, duration_seconds=0.0
+                    ),
+                ),
                 total_duration_seconds=0.0,
                 total_cost_usd=-1.0,
             )
 
     @pytest.mark.unit
-    def test_empty_phases_is_success(self) -> None:
-        """Empty phases means is_success = True (vacuously)."""
-        result = CoordinationResult(
-            parent_task_id="task-1",
-            topology=CoordinationTopology.SAS,
-            phases=(),
-            total_duration_seconds=0.0,
-        )
-        assert result.is_success is True
+    def test_empty_phases_rejected(self) -> None:
+        """Empty phases tuple is rejected (min_length=1)."""
+        with pytest.raises(ValidationError):
+            CoordinationResult(
+                parent_task_id="task-1",
+                topology=CoordinationTopology.SAS,
+                phases=(),
+                total_duration_seconds=0.0,
+            )

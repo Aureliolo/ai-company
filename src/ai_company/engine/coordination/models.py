@@ -84,6 +84,17 @@ class CoordinationPhaseResult(BaseModel):
         description="Error description on failure",
     )
 
+    @model_validator(mode="after")
+    def _validate_success_error_consistency(self) -> Self:
+        """Ensure success and error fields are consistent."""
+        if self.success and self.error is not None:
+            msg = "successful phase must not have an error"
+            raise ValueError(msg)
+        if not self.success and self.error is None:
+            msg = "failed phase must have an error description"
+            raise ValueError(msg)
+        return self
+
 
 class CoordinationWave(BaseModel):
     """A single execution wave within a coordination run.
@@ -104,6 +115,14 @@ class CoordinationWave(BaseModel):
         default=None,
         description="Parallel execution result",
     )
+
+    @model_validator(mode="after")
+    def _validate_subtask_ids_non_empty(self) -> Self:
+        """Ensure at least one subtask ID is present."""
+        if not self.subtask_ids:
+            msg = "subtask_ids must contain at least one ID"
+            raise ValueError(msg)
+        return self
 
 
 class CoordinationResult(BaseModel):
@@ -137,6 +156,7 @@ class CoordinationResult(BaseModel):
         description="Routing result",
     )
     phases: tuple[CoordinationPhaseResult, ...] = Field(
+        min_length=1,
         description="Phase results in execution order",
     )
     waves: tuple[CoordinationWave, ...] = Field(

@@ -631,6 +631,37 @@ class TestEventConstants:
             == "persistence.parked_context.deserialize_failed"
         )
 
+    def test_coordination_events_exist(self) -> None:
+        from ai_company.observability.events.coordination import (
+            COORDINATION_CLEANUP_COMPLETED,
+            COORDINATION_CLEANUP_FAILED,
+            COORDINATION_CLEANUP_STARTED,
+            COORDINATION_COMPLETED,
+            COORDINATION_FAILED,
+            COORDINATION_PHASE_COMPLETED,
+            COORDINATION_PHASE_FAILED,
+            COORDINATION_PHASE_STARTED,
+            COORDINATION_STARTED,
+            COORDINATION_TOPOLOGY_RESOLVED,
+            COORDINATION_WAVE_BUILT,
+            COORDINATION_WAVE_COMPLETED,
+            COORDINATION_WAVE_STARTED,
+        )
+
+        assert COORDINATION_STARTED == "coordination.started"
+        assert COORDINATION_COMPLETED == "coordination.completed"
+        assert COORDINATION_FAILED == "coordination.failed"
+        assert COORDINATION_PHASE_STARTED == "coordination.phase.started"
+        assert COORDINATION_PHASE_COMPLETED == "coordination.phase.completed"
+        assert COORDINATION_PHASE_FAILED == "coordination.phase.failed"
+        assert COORDINATION_WAVE_STARTED == "coordination.wave.started"
+        assert COORDINATION_WAVE_COMPLETED == "coordination.wave.completed"
+        assert COORDINATION_WAVE_BUILT == "coordination.wave.built"
+        assert COORDINATION_TOPOLOGY_RESOLVED == "coordination.topology.resolved"
+        assert COORDINATION_CLEANUP_STARTED == "coordination.cleanup.started"
+        assert COORDINATION_CLEANUP_COMPLETED == "coordination.cleanup.completed"
+        assert COORDINATION_CLEANUP_FAILED == "coordination.cleanup.failed"
+
     def test_classification_events_exist(self) -> None:
         assert CLASSIFICATION_START == "classification.start"
         assert CLASSIFICATION_COMPLETE == "classification.complete"

@@ -656,3 +656,231 @@ class TestMultiAgentCoordinator:
 
         with pytest.raises(CoordinationPhaseError):
             await coordinator.coordinate(ctx)
+
+    @pytest.mark.unit
+    async def test_auto_topology_resolves_to_centralized(self) -> None:
+        """AUTO topology falls back to CENTRALIZED."""
+        sub_a = _make_subtask("sub-a")
+        decomp = _make_decomposition((sub_a,), topology=CoordinationTopology.AUTO)
+        routing = _make_routing(
+            [("sub-a", "alice")],
+            topology=CoordinationTopology.AUTO,
+        )
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=[
+                _make_exec_result("wave-0", [("sub-a", agent_id)]),
+            ],
+        )
+
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(make_assignment_agent("alice"),),
+        )
+
+        result = await coordinator.coordinate(ctx)
+        assert result.topology == CoordinationTopology.CENTRALIZED
+
+    @pytest.mark.unit
+    async def test_update_parent_submit_fails(self) -> None:
+        """Failed task engine submit is captured as phase failure."""
+        sub_a = _make_subtask("sub-a")
+        decomp = _make_decomposition((sub_a,))
+        routing = _make_routing([("sub-a", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        task_engine = AsyncMock()
+        task_engine.submit.return_value = TaskMutationResult(
+            request_id="req-1",
+            success=False,
+            error="transition not allowed",
+            error_code="validation",
+            version=1,
+        )
+
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=[
+                _make_exec_result("wave-0", [("sub-a", agent_id)]),
+            ],
+            task_engine=task_engine,
+        )
+
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(make_assignment_agent("alice"),),
+        )
+
+        result = await coordinator.coordinate(ctx)
+        update_phases = [p for p in result.phases if p.phase == "update_parent"]
+        assert len(update_phases) == 1
+        assert not update_phases[0].success
+
+    @pytest.mark.unit
+    async def test_update_parent_exception_captured(self) -> None:
+        """TaskEngine exception is captured, not propagated."""
+        sub_a = _make_subtask("sub-a")
+        decomp = _make_decomposition((sub_a,))
+        routing = _make_routing([("sub-a", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        task_engine = AsyncMock()
+        task_engine.submit.side_effect = RuntimeError("engine down")
+
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=[
+                _make_exec_result("wave-0", [("sub-a", agent_id)]),
+            ],
+            task_engine=task_engine,
+        )
+
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(make_assignment_agent("alice"),),
+        )
+
+        result = await coordinator.coordinate(ctx)
+        update_phases = [p for p in result.phases if p.phase == "update_parent"]
+        assert len(update_phases) == 1
+        assert not update_phases[0].success
+        assert update_phases[0].error is not None
+        assert "engine down" in update_phases[0].error
+
+    @pytest.mark.unit
+    async def test_rollup_error_captured(self) -> None:
+        """Rollup error is captured, not propagated."""
+        sub_a = _make_subtask("sub-a")
+        decomp = _make_decomposition((sub_a,))
+        routing = _make_routing([("sub-a", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        decomp_service = AsyncMock()
+        decomp_service.decompose_task.return_value = decomp
+        decomp_service.rollup_status = MagicMock(
+            side_effect=RuntimeError("rollup broken"),
+        )
+
+        routing_service = MagicMock()
+        routing_service.route.return_value = routing
+
+        executor = AsyncMock()
+        executor.execute_group.side_effect = [
+            _make_exec_result("wave-0", [("sub-a", agent_id)]),
+        ]
+
+        coordinator = MultiAgentCoordinator(
+            decomposition_service=decomp_service,
+            routing_service=routing_service,
+            parallel_executor=executor,
+        )
+
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(make_assignment_agent("alice"),),
+        )
+
+        result = await coordinator.coordinate(ctx)
+        rollup_phases = [p for p in result.phases if p.phase == "rollup"]
+        assert len(rollup_phases) == 1
+        assert not rollup_phases[0].success
+        assert result.status_rollup is None
+
+    @pytest.mark.unit
+    async def test_total_cost_aggregated(self) -> None:
+        """total_cost_usd sums costs from all waves."""
+        from ai_company.providers.models import TokenUsage
+
+        sub_a = _make_subtask("sub-a")
+        sub_b = _make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = _make_decomposition(
+            (sub_a, sub_b),
+            structure=TaskStructure.SEQUENTIAL,
+        )
+        routing = _make_routing(
+            [("sub-a", "alice"), ("sub-b", "alice")],
+        )
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        # Build run results with non-zero costs
+        run_a = _build_run_result("sub-a", agent_id)
+        ctx_a = run_a.execution_result.context.model_copy(
+            update={
+                "accumulated_cost": TokenUsage(
+                    input_tokens=100, output_tokens=50, cost_usd=0.05
+                )
+            }
+        )
+        from ai_company.engine.loop_protocol import ExecutionResult
+
+        run_a = AgentRunResult(
+            execution_result=ExecutionResult(
+                context=ctx_a,
+                termination_reason=run_a.execution_result.termination_reason,
+            ),
+            system_prompt=run_a.system_prompt,
+            duration_seconds=run_a.duration_seconds,
+            agent_id=run_a.agent_id,
+            task_id=run_a.task_id,
+        )
+
+        run_b = _build_run_result("sub-b", agent_id)
+        ctx_b = run_b.execution_result.context.model_copy(
+            update={
+                "accumulated_cost": TokenUsage(
+                    input_tokens=80, output_tokens=40, cost_usd=0.03
+                )
+            }
+        )
+        run_b = AgentRunResult(
+            execution_result=ExecutionResult(
+                context=ctx_b,
+                termination_reason=run_b.execution_result.termination_reason,
+            ),
+            system_prompt=run_b.system_prompt,
+            duration_seconds=run_b.duration_seconds,
+            agent_id=run_b.agent_id,
+            task_id=run_b.task_id,
+        )
+
+        exec_0 = ParallelExecutionResult(
+            group_id="wave-0",
+            outcomes=(
+                AgentOutcome(
+                    task_id="sub-a",
+                    agent_id=agent_id,
+                    result=run_a,
+                ),
+            ),
+            total_duration_seconds=1.0,
+        )
+        exec_1 = ParallelExecutionResult(
+            group_id="wave-1",
+            outcomes=(
+                AgentOutcome(
+                    task_id="sub-b",
+                    agent_id=agent_id,
+                    result=run_b,
+                ),
+            ),
+            total_duration_seconds=1.0,
+        )
+
+        coordinator = _make_coordinator(
+            decomp_result=decomp,
+            routing_result=routing,
+            exec_results=[exec_0, exec_1],
+        )
+
+        ctx = CoordinationContext(
+            task=make_assignment_task(id="parent-1"),
+            available_agents=(make_assignment_agent("alice"),),
+        )
+
+        result = await coordinator.coordinate(ctx)
+        assert result.total_cost_usd == pytest.approx(0.08)

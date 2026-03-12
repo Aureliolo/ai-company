@@ -35,13 +35,21 @@ class TestCoordinationErrors:
     @pytest.mark.unit
     def test_phase_error_carries_partial_phases(self) -> None:
         """CoordinationPhaseError stores partial phases."""
-        partial = ("decompose_result", "route_result")
+        from ai_company.engine.coordination.models import CoordinationPhaseResult
+
+        partial = (
+            CoordinationPhaseResult(
+                phase="decompose", success=True, duration_seconds=0.1
+            ),
+            CoordinationPhaseResult(phase="route", success=True, duration_seconds=0.2),
+        )
         err = CoordinationPhaseError(
             "execute failed",
             phase="execute",
             partial_phases=partial,
         )
         assert err.partial_phases == partial
+        assert len(err.partial_phases) == 2
 
     @pytest.mark.unit
     def test_phase_error_default_partial_phases(self) -> None:

@@ -18,7 +18,6 @@ from ai_company.engine.coordination.models import (
     CoordinationPhaseResult,
     CoordinationResult,
 )
-from ai_company.engine.decomposition.models import SubtaskStatusRollup
 from ai_company.engine.errors import CoordinationPhaseError
 from ai_company.engine.task_engine_models import TransitionTaskMutation
 from ai_company.observability import get_logger
@@ -26,6 +25,7 @@ from ai_company.observability.events.coordination import (
     COORDINATION_COMPLETED,
     COORDINATION_FAILED,
     COORDINATION_PHASE_COMPLETED,
+    COORDINATION_PHASE_FAILED,
     COORDINATION_PHASE_STARTED,
     COORDINATION_STARTED,
     COORDINATION_TOPOLOGY_RESOLVED,
@@ -33,7 +33,10 @@ from ai_company.observability.events.coordination import (
 
 if TYPE_CHECKING:
     from ai_company.engine.coordination.models import CoordinationContext
-    from ai_company.engine.decomposition.models import DecompositionResult
+    from ai_company.engine.decomposition.models import (
+        DecompositionResult,
+        SubtaskStatusRollup,
+    )
     from ai_company.engine.decomposition.service import DecompositionService
     from ai_company.engine.parallel import ParallelExecutor
     from ai_company.engine.routing.models import RoutingResult
@@ -299,6 +302,14 @@ class MultiAgentCoordinator:
 
         # AUTO should have been resolved by TopologySelector; fallback
         if topology == CoordinationTopology.AUTO:
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase="resolve_topology",
+                error=(
+                    "AUTO topology was not resolved by TopologySelector; "
+                    "falling back to CENTRALIZED"
+                ),
+            )
             topology = CoordinationTopology.CENTRALIZED
 
         logger.info(
@@ -314,13 +325,20 @@ class MultiAgentCoordinator:
     ) -> None:
         """Validate routing result — fail if all subtasks unroutable."""
         if not routing_result.decisions and routing_result.unroutable:
+            error_msg = (
+                f"All {len(routing_result.unroutable)} subtask(s) are unroutable"
+            )
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase="validate",
+                unroutable_count=len(routing_result.unroutable),
+                error=error_msg,
+            )
             phase = CoordinationPhaseResult(
                 phase="validate",
                 success=False,
                 duration_seconds=0.0,
-                error=(
-                    f"All {len(routing_result.unroutable)} subtask(s) are unroutable"
-                ),
+                error=error_msg,
             )
             phases.append(phase)
             msg = "All subtasks are unroutable — no agents matched"
@@ -360,6 +378,11 @@ class MultiAgentCoordinator:
             )
         except Exception as exc:
             elapsed = time.monotonic() - start
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase=phase_name,
+                error=str(exc),
+            )
             phases.append(
                 CoordinationPhaseResult(
                     phase=phase_name,
@@ -383,13 +406,11 @@ class MultiAgentCoordinator:
     async def _phase_update_parent(
         self,
         context: CoordinationContext,
-        rollup: object | None,
+        rollup: SubtaskStatusRollup | None,
         phases: list[CoordinationPhaseResult],
     ) -> None:
         """Update parent task status via TaskEngine if available."""
         if self._task_engine is None or rollup is None:
-            return
-        if not isinstance(rollup, SubtaskStatusRollup):
             return
 
         start = time.monotonic()
@@ -410,25 +431,27 @@ class MultiAgentCoordinator:
             result = await self._task_engine.submit(mutation)
             elapsed = time.monotonic() - start
 
-            if result.success:
-                phases.append(
-                    CoordinationPhaseResult(
-                        phase=phase_name,
-                        success=True,
-                        duration_seconds=elapsed,
-                    )
+            if not result.success:
+                logger.warning(
+                    COORDINATION_PHASE_FAILED,
+                    phase=phase_name,
+                    error=result.error,
                 )
-            else:
-                phases.append(
-                    CoordinationPhaseResult(
-                        phase=phase_name,
-                        success=False,
-                        duration_seconds=elapsed,
-                        error=result.error,
-                    )
+            phases.append(
+                CoordinationPhaseResult(
+                    phase=phase_name,
+                    success=result.success,
+                    duration_seconds=elapsed,
+                    error=result.error,
                 )
+            )
         except Exception as exc:
             elapsed = time.monotonic() - start
+            logger.warning(
+                COORDINATION_PHASE_FAILED,
+                phase=phase_name,
+                error=str(exc),
+            )
             phases.append(
                 CoordinationPhaseResult(
                     phase=phase_name,

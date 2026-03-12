@@ -793,3 +793,48 @@ the memory subsystem) historical single-agent success rate as inputs.
     held-out configurations. The SynthOrg context differs (role-differentiated
     agents vs. identical agents), so thresholds should be validated empirically
     once multi-agent execution is implemented.
+
+### Multi-Agent Coordination Pipeline
+
+The `MultiAgentCoordinator` orchestrates the end-to-end pipeline that transforms
+a parent task into parallel agent work:
+
+```
+decompose → route → resolve topology → dispatch → rollup → update parent
+```
+
+**Pipeline phases:**
+
+1. **Decompose** — `DecompositionService` breaks the parent task into subtasks
+   with a dependency DAG
+2. **Route** — `TaskRoutingService` assigns each subtask to an agent based on
+   skills, workload, and topology
+3. **Resolve topology** — reads topology from routing decisions; falls back to
+   `CENTRALIZED` if `AUTO` was not resolved upstream
+4. **Validate** — fails the pipeline if all subtasks are unroutable
+5. **Dispatch** — a `TopologyDispatcher` executes waves (workspace setup →
+   parallel execution → merge → teardown)
+6. **Rollup** — aggregates subtask statuses into a `SubtaskStatusRollup`
+7. **Update parent** — transitions the parent task via `TaskEngine` (if provided)
+
+Each phase produces a `CoordinationPhaseResult` (success/failure + duration).
+Phase failures in decompose/route/validate raise `CoordinationPhaseError` with
+partial results; rollup and update-parent failures are captured but do not abort
+the pipeline.
+
+**Topology dispatchers:**
+
+| Dispatcher | Topology | Workspace Isolation | Wave Strategy |
+|-----------|----------|-------------------|---------------|
+| `SasDispatcher` | SAS | Never | Sequential waves from DAG |
+| `CentralizedDispatcher` | Centralized | Optional (config-driven) | DAG waves, post-execution merge |
+| `DecentralizedDispatcher` | Decentralized | Mandatory (raises if unavailable) | DAG waves, post-execution merge |
+| `ContextDependentDispatcher` | Context-dependent | Per-wave (multi-subtask waves only) | DAG waves, per-wave merge/teardown |
+
+The `select_dispatcher` factory maps a resolved `CoordinationTopology` to the
+appropriate dispatcher; `AUTO` must be resolved before dispatch.
+
+**Wave execution** (`group_builder.build_execution_waves`) converts DAG parallel
+groups and routing decisions into `ParallelExecutionGroup` instances. Subtasks
+without routing decisions are skipped. Empty waves (all subtasks unroutable) are
+dropped.

@@ -1,5 +1,10 @@
 """Engine-layer error hierarchy."""
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ai_company.engine.coordination.models import CoordinationPhaseResult
+
 
 class EngineError(Exception):
     """Base exception for all engine-layer errors."""
@@ -140,7 +145,7 @@ class CoordinationPhaseError(CoordinationError):
         message: str,
         *,
         phase: str,
-        partial_phases: tuple[object, ...] = (),
+        partial_phases: tuple[CoordinationPhaseResult, ...] = (),
     ) -> None:
         super().__init__(message)
         self.phase = phase

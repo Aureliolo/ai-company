@@ -494,6 +494,44 @@ class TestDecentralizedDispatcher:
     """DecentralizedDispatcher tests."""
 
     @pytest.mark.unit
+    async def test_no_workspace_service_raises(self) -> None:
+        """DecentralizedDispatcher raises when workspace_service is None."""
+        from ai_company.engine.errors import CoordinationError
+
+        sub_a = _make_subtask("sub-a")
+        decomp = _make_decomposition((sub_a,))
+        routing = _make_routing([("sub-a", "alice")])
+
+        dispatcher = DecentralizedDispatcher()
+        with pytest.raises(CoordinationError, match="workspace isolation"):
+            await dispatcher.dispatch(
+                decomposition_result=decomp,
+                routing_result=routing,
+                parallel_executor=_mock_executor(),
+                workspace_service=None,
+                config=CoordinationConfig(),
+            )
+
+    @pytest.mark.unit
+    async def test_isolation_disabled_raises(self) -> None:
+        """DecentralizedDispatcher raises when isolation is disabled."""
+        from ai_company.engine.errors import CoordinationError
+
+        sub_a = _make_subtask("sub-a")
+        decomp = _make_decomposition((sub_a,))
+        routing = _make_routing([("sub-a", "alice")])
+
+        dispatcher = DecentralizedDispatcher()
+        with pytest.raises(CoordinationError, match="workspace isolation"):
+            await dispatcher.dispatch(
+                decomposition_result=decomp,
+                routing_result=routing,
+                parallel_executor=_mock_executor(),
+                workspace_service=_mock_workspace_service(),
+                config=CoordinationConfig(enable_workspace_isolation=False),
+            )
+
+    @pytest.mark.unit
     async def test_single_wave_all_parallel(self) -> None:
         """Decentralized puts everything in parallel waves per DAG."""
         sub_a = _make_subtask("sub-a")
@@ -649,6 +687,134 @@ class TestContextDependentDispatcher:
         ws_service.setup_group.assert_called_once()
         # Per-wave merge
         ws_service.merge_group.assert_called_once()
+
+
+class TestCentralizedWorkspaceFailure:
+    """CentralizedDispatcher workspace setup failure tests."""
+
+    @pytest.mark.unit
+    async def test_workspace_setup_failure_returns_early(self) -> None:
+        """CentralizedDispatcher returns early when workspace setup fails."""
+        sub_a = _make_subtask("sub-a")
+        decomp = _make_decomposition((sub_a,))
+        routing = _make_routing([("sub-a", "alice")])
+
+        ws_service = AsyncMock()
+        ws_service.setup_group.side_effect = RuntimeError("setup failed")
+
+        executor = _mock_executor()
+
+        dispatcher = CentralizedDispatcher()
+        result = await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=ws_service,
+            config=CoordinationConfig(),
+        )
+
+        assert len(result.phases) == 1
+        assert result.phases[0].phase == "workspace_setup"
+        assert not result.phases[0].success
+        executor.execute_group.assert_not_called()
+        assert len(result.waves) == 0
+
+
+class TestContextDependentFailFast:
+    """ContextDependentDispatcher fail_fast behavior tests."""
+
+    @pytest.mark.unit
+    async def test_fail_fast_stops_on_wave_failure(self) -> None:
+        """fail_fast=True stops after first failed wave."""
+        sub_a = _make_subtask("sub-a")
+        sub_b = _make_subtask("sub-b", dependencies=("sub-a",))
+        decomp = _make_decomposition(
+            (sub_a, sub_b),
+            structure=TaskStructure.SEQUENTIAL,
+        )
+        routing = _make_routing([("sub-a", "alice"), ("sub-b", "alice")])
+        agent_id = str(routing.decisions[0].selected_candidate.agent_identity.id)
+
+        executor = _mock_executor(
+            [
+                _make_exec_result("wave-0", [("sub-a", agent_id)], all_succeed=False),
+                _make_exec_result("wave-1", [("sub-b", agent_id)]),
+            ]
+        )
+
+        dispatcher = ContextDependentDispatcher()
+        result = await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=None,
+            config=CoordinationConfig(fail_fast=True),
+        )
+
+        # Only first wave executed
+        assert len(result.waves) == 1
+        assert executor.execute_group.call_count == 1
+
+    @pytest.mark.unit
+    async def test_setup_failure_skips_wave(self) -> None:
+        """CDD skips wave when workspace setup fails (fail_fast=False)."""
+        sub_a = _make_subtask("sub-a")
+        sub_b = _make_subtask("sub-b")
+        decomp = _make_decomposition((sub_a, sub_b))
+        routing = _make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+
+        ws_service = AsyncMock()
+        ws_service.setup_group.side_effect = RuntimeError("setup failed")
+
+        executor = _mock_executor()
+
+        dispatcher = ContextDependentDispatcher()
+        result = await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=ws_service,
+            config=CoordinationConfig(fail_fast=False),
+        )
+
+        # Setup failed, wave skipped, no execution
+        setup_phases = [
+            p for p in result.phases if p.phase.startswith("workspace_setup")
+        ]
+        assert len(setup_phases) == 1
+        assert not setup_phases[0].success
+        executor.execute_group.assert_not_called()
+        assert len(result.waves) == 0
+
+    @pytest.mark.unit
+    async def test_fail_fast_stops_on_setup_failure(self) -> None:
+        """fail_fast=True stops when workspace setup fails."""
+        sub_a = _make_subtask("sub-a")
+        sub_b = _make_subtask("sub-b")
+        decomp = _make_decomposition((sub_a, sub_b))
+        routing = _make_routing([("sub-a", "alice"), ("sub-b", "bob")])
+
+        ws_service = AsyncMock()
+        ws_service.setup_group.side_effect = RuntimeError("setup failed")
+
+        executor = _mock_executor()
+
+        dispatcher = ContextDependentDispatcher()
+        result = await dispatcher.dispatch(
+            decomposition_result=decomp,
+            routing_result=routing,
+            parallel_executor=executor,
+            workspace_service=ws_service,
+            config=CoordinationConfig(fail_fast=True),
+        )
+
+        # Setup failed, pipeline stopped
+        setup_phases = [
+            p for p in result.phases if p.phase.startswith("workspace_setup")
+        ]
+        assert len(setup_phases) == 1
+        assert not setup_phases[0].success
+        executor.execute_group.assert_not_called()
 
 
 class TestDispatchResult:

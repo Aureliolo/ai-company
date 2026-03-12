@@ -13,7 +13,7 @@ from ai_company.engine.parallel_models import (
 )
 from ai_company.observability import get_logger
 from ai_company.observability.events.coordination import (
-    COORDINATION_WAVE_STARTED,
+    COORDINATION_WAVE_BUILT,
 )
 
 if TYPE_CHECKING:
@@ -55,8 +55,8 @@ def build_execution_waves(
     4. Map workspace ``worktree_path`` to ``resource_claims``.
     5. Return tuple of ``ParallelExecutionGroup`` (one per wave).
 
-    Subtasks that are unroutable (not in routing_result.decisions)
-    are silently skipped — they were already reported by routing.
+    Subtasks without a routing decision are skipped with a debug log
+    (they were already reported as unroutable by the routing phase).
 
     Args:
         decomposition_result: Decomposition with plan and created tasks.
@@ -83,6 +83,13 @@ def build_execution_waves(
         for subtask_id in subtask_ids:
             decision = routing_lookup.get(subtask_id)
             if decision is None:
+                logger.debug(
+                    COORDINATION_WAVE_BUILT,
+                    wave_index=wave_idx,
+                    subtask_id=subtask_id,
+                    skipped=True,
+                    reason="no routing decision",
+                )
                 continue
 
             task = task_lookup[subtask_id]
@@ -102,11 +109,18 @@ def build_execution_waves(
             )
 
         if not assignments:
+            logger.debug(
+                COORDINATION_WAVE_BUILT,
+                wave_index=wave_idx,
+                assignment_count=0,
+                skipped=True,
+                reason="all subtasks unroutable in wave",
+            )
             continue
 
         group_id = f"wave-{wave_idx}"
         logger.debug(
-            COORDINATION_WAVE_STARTED,
+            COORDINATION_WAVE_BUILT,
             wave_index=wave_idx,
             assignment_count=len(assignments),
             group_id=group_id,
