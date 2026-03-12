@@ -133,7 +133,6 @@ _IMMUTABLE_OVERRIDE_FIELDS: frozenset[str] = frozenset(
     {
         "id",
         "created_by",
-        "created_at",
         "status",
     }
 )

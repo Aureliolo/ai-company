@@ -140,10 +140,12 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     started_persistence: bool,
     message_bus: MessageBus | None,
     started_bus: bool,
+    bridge: MessageBusBridge | None = None,
+    started_bridge: bool = False,
     task_engine: TaskEngine | None = None,
     started_task_engine: bool = False,
 ) -> None:
-    """Reverse cleanup on startup failure (task engine, bus, persistence)."""
+    """Reverse cleanup on startup failure (task engine, bridge, bus, persistence)."""
     if started_task_engine and task_engine is not None:
         try:
             await task_engine.stop()
@@ -151,6 +153,14 @@ async def _cleanup_on_failure(  # noqa: PLR0913
             logger.exception(
                 API_APP_STARTUP,
                 error="Cleanup: failed to stop task engine",
+            )
+    if started_bridge and bridge is not None:
+        try:
+            await bridge.stop()
+        except Exception:
+            logger.exception(
+                API_APP_STARTUP,
+                error="Cleanup: failed to stop message bus bridge",
             )
     if started_bus and message_bus is not None:
         try:
@@ -225,6 +235,7 @@ async def _safe_startup(
     components in reverse order before re-raising.
     """
     started_bus = False
+    started_bridge = False
     started_persistence = False
     started_task_engine = False
     try:
@@ -261,6 +272,7 @@ async def _safe_startup(
                     error="Failed to start message bus bridge",
                 )
                 raise
+            started_bridge = True
         if task_engine is not None:
             try:
                 task_engine.start()
@@ -277,6 +289,8 @@ async def _safe_startup(
             started_persistence=started_persistence,
             message_bus=message_bus,
             started_bus=started_bus,
+            bridge=bridge,
+            started_bridge=started_bridge,
             task_engine=task_engine,
             started_task_engine=started_task_engine,
         )

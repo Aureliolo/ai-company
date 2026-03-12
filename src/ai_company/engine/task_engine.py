@@ -13,7 +13,7 @@ import asyncio
 import contextlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Never
 from uuid import uuid4
 
 from ai_company.core.enums import TaskStatus
@@ -21,6 +21,7 @@ from ai_company.core.task import Task
 from ai_company.engine.errors import (
     TaskEngineNotRunningError,
     TaskEngineQueueFullError,
+    TaskInternalError,
     TaskMutationError,
     TaskNotFoundError,
     TaskVersionConflictError,
@@ -185,6 +186,7 @@ class TaskEngine:
                             request_id=envelope.mutation.request_id,
                             success=False,
                             error="TaskEngine shut down before processing",
+                            error_code="internal",
                         ),
                     )
 
@@ -315,7 +317,7 @@ class TaskEngine:
         reason: str = "",
         expected_version: int | None = None,
         **overrides: object,
-    ) -> Task:
+    ) -> tuple[Task, TaskStatus | None]:
         """Convenience: transition task status and return the updated Task.
 
         Args:
@@ -327,7 +329,8 @@ class TaskEngine:
             **overrides: Additional field overrides for the transition.
 
         Returns:
-            The transitioned task.
+            Tuple of (transitioned task, status before the transition).
+            The second element is ``None`` when the previous status is unknown.
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
@@ -352,7 +355,7 @@ class TaskEngine:
         if result.task is None:
             msg = "Internal error: transition succeeded but task is None"
             raise TaskMutationError(msg)
-        return result.task
+        return result.task, result.previous_status
 
     async def delete_task(
         self,
@@ -423,7 +426,7 @@ class TaskEngine:
         return result.task
 
     @staticmethod
-    def _raise_typed_error(result: TaskMutationResult) -> None:
+    def _raise_typed_error(result: TaskMutationResult) -> Never:
         """Raise a typed error from a failed mutation result."""
         error = result.error or "Mutation failed"
         match result.error_code:
@@ -431,6 +434,8 @@ class TaskEngine:
                 raise TaskNotFoundError(error)
             case "version_conflict":
                 raise TaskVersionConflictError(error)
+            case "internal":
+                raise TaskInternalError(error)
             case _:
                 raise TaskMutationError(error)
 
@@ -706,6 +711,7 @@ class TaskEngine:
                 request_id=mutation.request_id,
                 success=False,
                 error=str(exc),
+                error_code="validation",
             )
 
         await self._persistence.tasks.save(updated)
@@ -782,6 +788,7 @@ class TaskEngine:
                 request_id=mutation.request_id,
                 success=False,
                 error=str(exc),
+                error_code="validation",
             )
 
         await self._persistence.tasks.save(updated)

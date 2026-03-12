@@ -27,6 +27,8 @@ from ai_company.core.enums import (
 from ai_company.core.role import Authority, Role
 from ai_company.core.task import AcceptanceCriterion, Task
 from ai_company.engine.context import AgentContext
+from ai_company.engine.task_engine import TaskEngine
+from ai_company.engine.task_engine_config import TaskEngineConfig
 from ai_company.engine.task_execution import TaskExecution
 from ai_company.providers.capabilities import ModelCapabilities
 from ai_company.providers.enums import FinishReason
@@ -38,9 +40,10 @@ from ai_company.providers.models import (
     TokenUsage,
     ToolDefinition,
 )
+from tests.unit.engine.task_engine_helpers import FakeMessageBus, FakePersistence
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator, AsyncIterator
 
     from ai_company.core.enums import ConflictEscalation
     from ai_company.engine.workspace.models import (
@@ -402,3 +405,56 @@ def make_assignment_task(**overrides: object) -> Task:
     }
     defaults.update(overrides)
     return Task(**defaults)  # type: ignore[arg-type]
+
+
+# ── TaskEngine fixtures ───────────────────────────────────────
+
+
+@pytest.fixture
+def persistence() -> FakePersistence:
+    """Provide a fresh FakePersistence instance."""
+    return FakePersistence()
+
+
+@pytest.fixture
+def message_bus() -> FakeMessageBus:
+    """Provide a fresh FakeMessageBus instance."""
+    return FakeMessageBus()
+
+
+@pytest.fixture
+def config() -> TaskEngineConfig:
+    """Provide a TaskEngineConfig with a sensible queue size."""
+    return TaskEngineConfig(max_queue_size=100)
+
+
+@pytest.fixture
+async def engine(
+    persistence: FakePersistence,
+    config: TaskEngineConfig,
+) -> AsyncGenerator[TaskEngine]:
+    """Create and start a TaskEngine, stop on teardown."""
+    eng = TaskEngine(
+        persistence=persistence,  # type: ignore[arg-type]
+        config=config,
+    )
+    eng.start()
+    yield eng
+    await eng.stop(timeout=2.0)
+
+
+@pytest.fixture
+async def engine_with_bus(
+    persistence: FakePersistence,
+    message_bus: FakeMessageBus,
+    config: TaskEngineConfig,
+) -> AsyncGenerator[TaskEngine]:
+    """Create and start a TaskEngine with a message bus."""
+    eng = TaskEngine(
+        persistence=persistence,  # type: ignore[arg-type]
+        message_bus=message_bus,  # type: ignore[arg-type]
+        config=config,
+    )
+    eng.start()
+    yield eng
+    await eng.stop(timeout=2.0)

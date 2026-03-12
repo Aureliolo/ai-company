@@ -23,6 +23,7 @@ from ai_company.core.task import Task  # noqa: TC001
 from ai_company.engine.errors import (
     TaskEngineNotRunningError,
     TaskEngineQueueFullError,
+    TaskInternalError,
     TaskMutationError,
     TaskNotFoundError,
 )
@@ -143,6 +144,8 @@ class TaskController(Controller):
             raise ServiceUnavailableError(str(exc)) from exc
         except TaskEngineQueueFullError as exc:
             raise ServiceUnavailableError(str(exc)) from exc
+        except TaskInternalError as exc:
+            raise ServiceUnavailableError(str(exc)) from exc
         except TaskMutationError as exc:
             raise ApiValidationError(str(exc)) from exc
         logger.info(
@@ -191,6 +194,8 @@ class TaskController(Controller):
                 id=task_id,
             )
             raise NotFoundError(str(exc)) from exc
+        except TaskInternalError as exc:
+            raise ServiceUnavailableError(str(exc)) from exc
         except TaskMutationError as exc:
             raise ApiValidationError(str(exc)) from exc
         logger.info(API_TASK_UPDATED, task_id=task_id, fields=list(updates))
@@ -220,8 +225,6 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
-        current_task = await app_state.task_engine.get_task(task_id)
-        from_status = current_task.status if current_task else None
         transition_kwargs: dict[str, object] = {
             "requested_by": "api",
             "reason": f"API transition to {data.target_status.value}",
@@ -229,7 +232,7 @@ class TaskController(Controller):
         if data.assigned_to is not None:
             transition_kwargs["assigned_to"] = data.assigned_to
         try:
-            task = await app_state.task_engine.transition_task(
+            task, from_status = await app_state.task_engine.transition_task(
                 task_id,
                 data.target_status,
                 **transition_kwargs,  # type: ignore[arg-type]
@@ -245,6 +248,8 @@ class TaskController(Controller):
                 id=task_id,
             )
             raise NotFoundError(str(exc)) from exc
+        except TaskInternalError as exc:
+            raise ServiceUnavailableError(str(exc)) from exc
         except TaskMutationError as exc:
             error_str = str(exc)
             logger.warning(
@@ -296,5 +301,9 @@ class TaskController(Controller):
                 id=task_id,
             )
             raise NotFoundError(str(exc)) from exc
+        except TaskInternalError as exc:
+            raise ServiceUnavailableError(str(exc)) from exc
+        except TaskMutationError as exc:
+            raise ApiValidationError(str(exc)) from exc
         logger.info(API_TASK_DELETED, task_id=task_id)
         return ApiResponse(data=None)
