@@ -19,7 +19,11 @@ from ai_company.engine._validation import (
 from ai_company.engine.classification.pipeline import classify_execution_errors
 from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.cost_recording import record_execution_costs
-from ai_company.engine.errors import ExecutionStateError, TaskMutationError
+from ai_company.engine.errors import (
+    ExecutionStateError,
+    TaskEngineError,
+    TaskMutationError,
+)
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -107,11 +111,13 @@ _REPORTABLE_STATUSES: frozenset[TaskStatus] = frozenset(
         TaskStatus.CANCELLED,
     }
 )
-"""Final execution outcomes that trigger a report to the centralized TaskEngine.
+"""Statuses that trigger a report to the centralized TaskEngine.
+
+Evaluated after each AgentEngine run.
 
 Note: ``FAILED`` and ``INTERRUPTED`` are not strictly terminal in the task
 lifecycle (they can be reassigned), but represent final outcomes of this
-``AgentEngine`` run that should be reported.
+particular ``AgentEngine`` run that should be reported.
 """
 
 
@@ -705,6 +711,14 @@ class AgentEngine:
                 agent_id=agent_id,
                 task_id=task_id,
                 error="Failed to report final status to TaskEngine (mutation rejected)",
+                exc_info=True,
+            )
+        except TaskEngineError:
+            logger.error(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="TaskEngine unavailable for status report",
                 exc_info=True,
             )
         except Exception:

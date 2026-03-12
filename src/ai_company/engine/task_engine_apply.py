@@ -45,7 +45,10 @@ def not_found_result(
     request_id: str,
     task_id: str,
 ) -> TaskMutationResult:
-    """Build a failure result for a missing task and log it."""
+    """Build a failure result for a missing task and log it.
+
+    Sets ``error_code='not_found'`` on the result.
+    """
     error = f"Task {task_id!r} not found"
     logger.warning(
         TASK_ENGINE_MUTATION_FAILED,
@@ -308,7 +311,13 @@ async def apply_cancel(
     persistence: PersistenceBackend,
     versions: VersionTracker,
 ) -> TaskMutationResult:
-    """Cancel a task (shortcut for transition to CANCELLED)."""
+    """Cancel a task (shortcut for transition to CANCELLED).
+
+    Unlike :func:`apply_update` and :func:`apply_transition`, cancel
+    intentionally omits an ``expected_version`` check — a cancellation
+    should always succeed regardless of version, similar to a forced
+    stop signal.
+    """
     task = await persistence.tasks.get(mutation.task_id)
     if task is None:
         return not_found_result("cancel", mutation.request_id, mutation.task_id)

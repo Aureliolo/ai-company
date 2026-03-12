@@ -2,6 +2,7 @@
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
+from pydantic import ValidationError as PydanticValidationError
 
 from ai_company.api.dto import (
     ApiResponse,
@@ -47,11 +48,17 @@ def _extract_requester(state: State) -> str:
     """Extract requester identity from the authenticated user.
 
     Falls back to ``"api"`` when the connection carries no user
-    (e.g. in tests without auth middleware).
+    (e.g. in tests without auth middleware).  Logs a warning on
+    fallback so auth misconfiguration is visible in production.
     """
     user = getattr(state, "_connection_user", None)
     if user is not None and hasattr(user, "user_id"):
         return str(user.user_id)
+    logger.warning(
+        API_RESOURCE_NOT_FOUND,
+        resource="authenticated_user",
+        note="No authenticated user found, falling back to 'api'",
+    )
     return "api"
 
 
@@ -73,8 +80,22 @@ def _map_task_engine_errors(
             )
         return NotFoundError(str(exc))
     if isinstance(exc, TaskEngineNotRunningError | TaskEngineQueueFullError):
+        logger.error(
+            API_TASK_TRANSITION_FAILED,
+            resource="task",
+            task_id=task_id,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
         return ServiceUnavailableError(str(exc))
     if isinstance(exc, TaskInternalError):
+        logger.error(
+            API_TASK_TRANSITION_FAILED,
+            resource="task",
+            task_id=task_id,
+            error=str(exc),
+            error_type="TaskInternalError",
+        )
         return ServiceUnavailableError(str(exc))
     if isinstance(exc, TaskMutationError):
         return ApiValidationError(str(exc))
@@ -176,8 +197,10 @@ class TaskController(Controller):
         try:
             task = await app_state.task_engine.create_task(
                 task_data,
-                requested_by=data.created_by,
+                requested_by=_extract_requester(state),
             )
+        except PydanticValidationError as exc:
+            raise ApiValidationError(str(exc)) from exc
         except (
             TaskEngineNotRunningError,
             TaskEngineQueueFullError,
@@ -220,6 +243,8 @@ class TaskController(Controller):
                 updates,
                 requested_by=_extract_requester(state),
             )
+        except PydanticValidationError as exc:
+            raise ApiValidationError(str(exc)) from exc
         except (
             TaskEngineNotRunningError,
             TaskEngineQueueFullError,
@@ -268,6 +293,8 @@ class TaskController(Controller):
                 data.target_status,
                 **transition_kwargs,  # type: ignore[arg-type]
             )
+        except PydanticValidationError as exc:
+            raise ApiValidationError(str(exc)) from exc
         except (
             TaskEngineNotRunningError,
             TaskEngineQueueFullError,

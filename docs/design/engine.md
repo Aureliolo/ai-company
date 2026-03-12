@@ -680,7 +680,7 @@ These are complementary systems handling different types of shared state:
 
 | State Type | Coordination | Mechanism |
 |-----------|-------------|-----------|
-| Framework state (tasks, assignments, budget) | Centralized single-writer (`TaskEngine`) | `model_copy(update=...)` via async queue |
+| Framework state (tasks, assignments, budget) | Centralized single-writer (`TaskEngine`) | `model_validate` / `with_transition` via async queue |
 | Code and files (agent work output) | Workspace isolation (`WorkspaceIsolationStrategy`) | Git worktrees / branches |
 | Agent memory (personal) | Per-agent ownership | Each agent owns its memory exclusively |
 | Org memory (shared knowledge) | Single-writer (`OrgMemoryBackend`) | `OrgMemoryBackend` protocol with role-based write access control |

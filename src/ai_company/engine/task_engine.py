@@ -180,15 +180,24 @@ class TaskEngine:
     def _fail_remaining_futures(self) -> None:
         """Fail in-flight and remaining enqueued futures after drain timeout."""
         shutdown_result_for = self._shutdown_result
+        failed_count = 0
         in_flight = self._in_flight
         if in_flight is not None and not in_flight.future.done():
             in_flight.future.set_result(shutdown_result_for(in_flight))
+            failed_count += 1
         self._in_flight = None
         while not self._queue.empty():
             with contextlib.suppress(asyncio.QueueEmpty):
                 envelope = self._queue.get_nowait()
                 if not envelope.future.done():
                     envelope.future.set_result(shutdown_result_for(envelope))
+                    failed_count += 1
+        if failed_count:
+            logger.warning(
+                TASK_ENGINE_DRAIN_TIMEOUT,
+                failed_futures=failed_count,
+                note="Resolved remaining futures with shutdown failure",
+            )
 
     @staticmethod
     def _shutdown_result(envelope: _MutationEnvelope) -> TaskMutationResult:
@@ -271,10 +280,10 @@ class TaskEngine:
         )
         result = await self.submit(mutation)
         if not result.success:
-            raise TaskMutationError(result.error or "Create failed")
+            self._raise_typed_error(result)
         if result.task is None:
             msg = "Internal error: create succeeded but task is None"
-            raise TaskMutationError(msg)
+            raise TaskInternalError(msg)
         return result.task
 
     async def update_task(
@@ -487,13 +496,26 @@ class TaskEngine:
 
     # -- Background processing ---------------------------------------------
 
+    _POLL_INTERVAL_SECONDS: float = 0.5
+    """How often the processing loop checks for ``_running = False``."""
+
+    _SNAPSHOT_SENDER: str = "task-engine"
+    """Sender identity used in snapshot ``Message`` envelopes."""
+
+    _SNAPSHOT_CHANNEL: str = "task_engine"
+    """Message bus channel for snapshot publication."""
+
     async def _processing_loop(self) -> None:
-        """Background loop: dequeue and process mutations sequentially."""
+        """Background loop: dequeue and process mutations sequentially.
+
+        Continues draining queued mutations after ``_running`` is set to
+        ``False``, enabling graceful shutdown.
+        """
         while self._running or not self._queue.empty():
             try:
                 envelope = await asyncio.wait_for(
                     self._queue.get(),
-                    timeout=0.5,
+                    timeout=self._POLL_INTERVAL_SECONDS,
                 )
             except TimeoutError:
                 continue
@@ -566,7 +588,8 @@ class TaskEngine:
     ) -> None:
         """Publish a TaskStateChanged event to the message bus.
 
-        Best-effort: failures are logged and swallowed.
+        Best-effort: failures are logged and swallowed (except
+        ``MemoryError`` and ``RecursionError``, which propagate).
         """
         if self._message_bus is None:
             return
@@ -578,6 +601,8 @@ class TaskEngine:
         else:
             new_status = None
 
+        reason: str | None = getattr(mutation, "reason", None)
+
         event = TaskStateChanged(
             mutation_type=mutation.mutation_type,
             request_id=mutation.request_id,
@@ -586,6 +611,7 @@ class TaskEngine:
             previous_status=result.previous_status,
             new_status=new_status,
             version=result.version,
+            reason=reason,
             timestamp=datetime.now(UTC),
         )
 
@@ -595,12 +621,13 @@ class TaskEngine:
             from ai_company.communication.enums import MessageType  # noqa: PLC0415
             from ai_company.communication.message import Message  # noqa: PLC0415
 
+            task_id = getattr(mutation, "task_id", None)
             msg = Message(
                 timestamp=datetime.now(UTC),
-                sender="task-engine",
-                to="task_engine",
+                sender=self._SNAPSHOT_SENDER,
+                to=self._SNAPSHOT_CHANNEL,
                 type=MessageType.TASK_UPDATE,
-                channel="task_engine",
+                channel=self._SNAPSHOT_CHANNEL,
                 content=event.model_dump_json(),
             )
             await self._message_bus.publish(msg)
@@ -608,13 +635,16 @@ class TaskEngine:
                 TASK_ENGINE_SNAPSHOT_PUBLISHED,
                 mutation_type=mutation.mutation_type,
                 request_id=mutation.request_id,
+                task_id=task_id,
             )
         except MemoryError, RecursionError:
             raise
         except Exception:
+            task_id = getattr(mutation, "task_id", None)
             logger.warning(
                 TASK_ENGINE_SNAPSHOT_PUBLISH_FAILED,
                 mutation_type=mutation.mutation_type,
                 request_id=mutation.request_id,
+                task_id=task_id,
                 exc_info=True,
             )

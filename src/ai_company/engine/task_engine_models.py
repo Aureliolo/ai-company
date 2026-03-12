@@ -16,7 +16,13 @@ from ai_company.core.task import Task
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 _VALID_TASK_FIELDS: frozenset[str] = frozenset(Task.model_fields)
-"""All declared field names on :class:`Task`, used to reject unknown keys."""
+"""Field names from ``model_fields`` on :class:`Task`.
+
+Excludes computed fields.
+
+Used to reject unknown keys in :class:`UpdateTaskMutation` and
+:class:`TransitionTaskMutation` validators.
+"""
 
 # ── Mutation data ─────────────────────────────────────────────
 
@@ -311,6 +317,7 @@ class TaskStateChanged(BaseModel):
         previous_status: Status before the mutation (``None`` on create).
         new_status: Status after the mutation (``None`` on delete).
         version: Version counter after mutation.
+        reason: Reason for transition/cancel (``None`` for other mutations).
         timestamp: When the mutation was applied.
     """
 
@@ -334,6 +341,10 @@ class TaskStateChanged(BaseModel):
         description="Status after mutation",
     )
     version: int = Field(ge=0, description="Version counter after mutation")
+    reason: str | None = Field(
+        default=None,
+        description="Reason for transition/cancel",
+    )
     timestamp: AwareDatetime = Field(
         default_factory=lambda: datetime.now(UTC),
         description="When the mutation was applied",

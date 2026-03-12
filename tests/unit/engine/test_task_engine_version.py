@@ -92,3 +92,15 @@ class TestVersionTracker:
         vt = VersionTracker()
         with pytest.raises(TaskVersionConflictError, match="expected 5"):
             vt.check("task-1", 5)
+
+    def test_set_initial_rejects_zero(self) -> None:
+        """set_initial must reject version=0."""
+        vt = VersionTracker()
+        with pytest.raises(ValueError, match="must be >= 1"):
+            vt.set_initial("task-1", 0)
+
+    def test_set_initial_rejects_negative(self) -> None:
+        """set_initial must reject negative versions."""
+        vt = VersionTracker()
+        with pytest.raises(ValueError, match="must be >= 1"):
+            vt.set_initial("task-1", -5)

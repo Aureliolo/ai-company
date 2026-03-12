@@ -19,6 +19,15 @@ class VersionTracker:
     task is encountered it is seeded at version 1 (it was created at
     least once).  This makes subsequent optimistic-concurrency checks
     work within the current engine lifetime.
+
+    **Limitation:** version tracking is volatile — it resets on process
+    restart.  After a restart, the first optimistic-concurrency check
+    for any task will succeed regardless of the true version history
+    because the tracker seeds the version at 1.  Durable version
+    tracking (persisted alongside the task) is a future enhancement.
+
+    This class is designed for single-writer access from the
+    ``TaskEngine`` processing loop and is **not** thread-safe.
     """
 
     def __init__(self) -> None:
@@ -30,7 +39,14 @@ class VersionTracker:
             self._versions[task_id] = 1
 
     def set_initial(self, task_id: str, version: int) -> None:
-        """Set *task_id* to *version* unconditionally (used on create)."""
+        """Set *task_id* to *version* unconditionally (used on create).
+
+        Raises:
+            ValueError: If *version* is less than 1.
+        """
+        if version < 1:
+            msg = f"Version must be >= 1, got {version}"
+            raise ValueError(msg)
         self._versions[task_id] = version
 
     def bump(self, task_id: str) -> int:

@@ -135,7 +135,7 @@ def _build_lifecycle(
 
 
 async def _try_stop(
-    coro: object,
+    coro: Awaitable[None],
     event: str,
     error_msg: str,
 ) -> None:
@@ -146,7 +146,7 @@ async def _try_stop(
     shutdown steps can still run.
     """
     try:
-        await coro  # type: ignore[misc]
+        await coro
     except MemoryError, RecursionError:
         raise
     except Exception:

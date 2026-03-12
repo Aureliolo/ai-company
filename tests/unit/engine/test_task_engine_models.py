@@ -297,6 +297,40 @@ class TestTaskStateChanged:
         assert event.previous_status is None
         assert event.new_status is None
 
+    def test_reason_field_populated(self) -> None:
+        event = TaskStateChanged(
+            mutation_type="transition",
+            request_id="req-1",
+            requested_by="alice",
+            previous_status=TaskStatus.ASSIGNED,
+            new_status=TaskStatus.IN_PROGRESS,
+            version=2,
+            reason="Starting work on task",
+        )
+        assert event.reason == "Starting work on task"
+
+    def test_reason_field_default_none(self) -> None:
+        event = TaskStateChanged(
+            mutation_type="create",
+            request_id="req-1",
+            requested_by="alice",
+            new_status=TaskStatus.CREATED,
+            version=1,
+        )
+        assert event.reason is None
+
+    def test_cancel_event_has_reason(self) -> None:
+        event = TaskStateChanged(
+            mutation_type="cancel",
+            request_id="req-1",
+            requested_by="alice",
+            previous_status=TaskStatus.ASSIGNED,
+            new_status=TaskStatus.CANCELLED,
+            version=3,
+            reason="No longer needed",
+        )
+        assert event.reason == "No longer needed"
+
     def test_serialization_roundtrip(self) -> None:
         event = TaskStateChanged(
             mutation_type="create",
@@ -310,3 +344,83 @@ class TestTaskStateChanged:
         assert restored.mutation_type == event.mutation_type
         assert restored.request_id == event.request_id
         assert restored.version == event.version
+
+
+@pytest.mark.unit
+class TestDeepCopyIsolation:
+    """Verify deep-copy isolation of mutable dict fields."""
+
+    def test_update_mutation_isolates_updates(self) -> None:
+        """Mutating the original dict after construction has no effect."""
+        original = {"title": "Original"}
+        mutation = UpdateTaskMutation(
+            request_id="req-1",
+            requested_by="alice",
+            task_id="task-1",
+            updates=original,
+        )
+        original["title"] = "Tampered"
+        assert mutation.updates["title"] == "Original"
+
+    def test_transition_mutation_isolates_overrides(self) -> None:
+        """Mutating the original dict after construction has no effect."""
+        original: dict[str, object] = {"assigned_to": "bob"}
+        mutation = TransitionTaskMutation(
+            request_id="req-1",
+            requested_by="alice",
+            task_id="task-1",
+            target_status=TaskStatus.ASSIGNED,
+            reason="Assigning",
+            overrides=original,
+        )
+        original["assigned_to"] = "tampered"
+        assert mutation.overrides["assigned_to"] == "bob"
+
+    def test_update_mutation_nested_dict_isolation(self) -> None:
+        """Nested mutable values are also deep-copied."""
+        nested = {"key": "value"}
+        original: dict[str, object] = {"description": nested}
+        mutation = UpdateTaskMutation(
+            request_id="req-1",
+            requested_by="alice",
+            task_id="task-1",
+            updates=original,
+        )
+        nested["key"] = "tampered"
+        inner = mutation.updates["description"]
+        assert isinstance(inner, dict)
+        assert inner["key"] == "value"
+
+
+@pytest.mark.unit
+class TestUnknownFieldRejection:
+    """Verify unknown field names are rejected in updates/overrides."""
+
+    def test_update_rejects_unknown_field(self) -> None:
+        with pytest.raises(ValidationError, match="Unknown task fields"):
+            UpdateTaskMutation(
+                request_id="req-1",
+                requested_by="alice",
+                task_id="task-1",
+                updates={"nonexistent_field": "value"},
+            )
+
+    def test_update_rejects_multiple_unknown_fields(self) -> None:
+        with pytest.raises(ValidationError, match="Unknown task fields"):
+            UpdateTaskMutation(
+                request_id="req-1",
+                requested_by="alice",
+                task_id="task-1",
+                updates={"foo": 1, "bar": 2},
+            )
+
+    def test_transition_rejects_unknown_override(self) -> None:
+        with pytest.raises(ValidationError, match="Unknown task fields"):
+            TransitionTaskMutation(
+                request_id="req-1",
+                requested_by="alice",
+                task_id="task-1",
+                target_status=TaskStatus.ASSIGNED,
+                reason="test",
+                overrides={"nonexistent_field": "value"},
+            )
