@@ -88,7 +88,9 @@ def _make_expire_callback(
                 event.model_dump_json(),
                 channels=[CHANNEL_APPROVALS],
             )
-        except RuntimeError, OSError:
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
             logger.warning(
                 API_APPROVAL_PUBLISH_FAILED,
                 approval_id=item.id,

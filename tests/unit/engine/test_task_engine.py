@@ -15,6 +15,7 @@ from ai_company.engine.errors import (
     TaskEngineQueueFullError,
     TaskMutationError,
     TaskNotFoundError,
+    TaskVersionConflictError,
 )
 from ai_company.engine.task_engine import TaskEngine
 from ai_company.engine.task_engine_config import TaskEngineConfig
@@ -1035,4 +1036,105 @@ class TestTypedErrors:
                 TaskStatus.ASSIGNED,
                 requested_by="alice",
                 reason="test",
+            )
+
+    async def test_update_version_conflict_raises_typed(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        """Version conflict via convenience method raises TaskVersionConflictError."""
+        task = await engine.create_task(
+            _make_create_data(),
+            requested_by="alice",
+        )
+        with pytest.raises(TaskVersionConflictError, match="conflict"):
+            await engine.update_task(
+                task.id,
+                {"title": "changed"},
+                requested_by="alice",
+                expected_version=99,
+            )
+
+
+# -- Drain timeout / _fail_remaining_futures ──────────────────
+
+
+@pytest.mark.unit
+class TestDrainTimeout:
+    """Verify _fail_remaining_futures resolves abandoned futures."""
+
+    async def test_abandoned_futures_resolved_on_drain_timeout(
+        self,
+        persistence: FakePersistence,
+    ) -> None:
+        """Futures left after drain timeout get failure results."""
+        from ai_company.engine.task_engine import _MutationEnvelope
+
+        config = TaskEngineConfig(drain_timeout_seconds=0.01)
+        eng = TaskEngine(
+            persistence=persistence,  # type: ignore[arg-type]
+            config=config,
+        )
+        eng.start()
+
+        # Pause processing by filling with a slow mutation
+        mutation = CreateTaskMutation(
+            request_id="req-slow",
+            requested_by="alice",
+            task_data=_make_create_data(),
+        )
+        # Submit one that will process normally
+        await eng.submit(mutation)
+
+        # Now stop the engine — force a very short drain
+        # Submit directly to queue to avoid await
+        mutation2 = CreateTaskMutation(
+            request_id="req-abandoned",
+            requested_by="alice",
+            task_data=_make_create_data(),
+        )
+        envelope = _MutationEnvelope(mutation=mutation2)
+        eng._queue.put_nowait(envelope)
+        eng._running = False
+
+        # Call _fail_remaining_futures directly
+        eng._fail_remaining_futures()
+        assert envelope.future.done()
+        result = envelope.future.result()
+        assert result.success is False
+        assert "shut down" in (result.error or "")
+
+        await eng.stop(timeout=0.1)
+
+
+# -- TaskMutationResult consistency ────────────────────────────
+
+
+@pytest.mark.unit
+class TestMutationResultConsistency:
+    """Verify _check_consistency validator on TaskMutationResult."""
+
+    def test_success_with_error_rejected(self) -> None:
+        """Successful result must not carry an error."""
+        from pydantic import ValidationError
+
+        from ai_company.engine.task_engine_models import TaskMutationResult
+
+        with pytest.raises(ValidationError, match="error"):
+            TaskMutationResult(
+                request_id="r",
+                success=True,
+                error="oops",
+            )
+
+    def test_failure_without_error_rejected(self) -> None:
+        """Failed result must carry an error description."""
+        from pydantic import ValidationError
+
+        from ai_company.engine.task_engine_models import TaskMutationResult
+
+        with pytest.raises(ValidationError, match="error"):
+            TaskMutationResult(
+                request_id="r",
+                success=False,
             )

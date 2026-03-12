@@ -10,18 +10,28 @@ from ai_company.api.dto import (
     TransitionTaskRequest,
     UpdateTaskRequest,
 )
-from ai_company.api.errors import ApiValidationError, NotFoundError
+from ai_company.api.errors import (
+    ApiValidationError,
+    NotFoundError,
+    ServiceUnavailableError,
+)
 from ai_company.api.guards import require_read_access, require_write_access
 from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginate
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.core.enums import TaskStatus  # noqa: TC001
 from ai_company.core.task import Task  # noqa: TC001
-from ai_company.engine.errors import TaskMutationError, TaskNotFoundError
+from ai_company.engine.errors import (
+    TaskEngineNotRunningError,
+    TaskEngineQueueFullError,
+    TaskMutationError,
+    TaskNotFoundError,
+)
 from ai_company.engine.task_engine_models import CreateTaskData
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_TASK_DELETED,
+    API_TASK_TRANSITION_FAILED,
     API_TASK_UPDATED,
 )
 from ai_company.observability.events.task import (
@@ -124,10 +134,17 @@ class TaskController(Controller):
             estimated_complexity=data.estimated_complexity,
             budget_limit=data.budget_limit,
         )
-        task = await app_state.task_engine.create_task(
-            task_data,
-            requested_by=data.created_by,
-        )
+        try:
+            task = await app_state.task_engine.create_task(
+                task_data,
+                requested_by=data.created_by,
+            )
+        except TaskEngineNotRunningError as exc:
+            raise ServiceUnavailableError(str(exc)) from exc
+        except TaskEngineQueueFullError as exc:
+            raise ServiceUnavailableError(str(exc)) from exc
+        except TaskMutationError as exc:
+            raise ApiValidationError(str(exc)) from exc
         logger.info(
             TASK_CREATED,
             task_id=task.id,
@@ -163,6 +180,10 @@ class TaskController(Controller):
                 updates,
                 requested_by="api",
             )
+        except TaskEngineNotRunningError as exc:
+            raise ServiceUnavailableError(str(exc)) from exc
+        except TaskEngineQueueFullError as exc:
+            raise ServiceUnavailableError(str(exc)) from exc
         except TaskNotFoundError as exc:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -170,6 +191,8 @@ class TaskController(Controller):
                 id=task_id,
             )
             raise NotFoundError(str(exc)) from exc
+        except TaskMutationError as exc:
+            raise ApiValidationError(str(exc)) from exc
         logger.info(API_TASK_UPDATED, task_id=task_id, fields=list(updates))
         return ApiResponse(data=task)
 
@@ -197,14 +220,24 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
+        current_task = await app_state.task_engine.get_task(task_id)
+        from_status = current_task.status if current_task else None
+        transition_kwargs: dict[str, object] = {
+            "requested_by": "api",
+            "reason": f"API transition to {data.target_status.value}",
+        }
+        if data.assigned_to is not None:
+            transition_kwargs["assigned_to"] = data.assigned_to
         try:
             task = await app_state.task_engine.transition_task(
                 task_id,
                 data.target_status,
-                requested_by="api",
-                reason=f"API transition to {data.target_status.value}",
-                assigned_to=data.assigned_to,
+                **transition_kwargs,  # type: ignore[arg-type]
             )
+        except TaskEngineNotRunningError as exc:
+            raise ServiceUnavailableError(str(exc)) from exc
+        except TaskEngineQueueFullError as exc:
+            raise ServiceUnavailableError(str(exc)) from exc
         except TaskNotFoundError as exc:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,
@@ -215,7 +248,7 @@ class TaskController(Controller):
         except TaskMutationError as exc:
             error_str = str(exc)
             logger.warning(
-                TASK_STATUS_CHANGED,
+                API_TASK_TRANSITION_FAILED,
                 task_id=task_id,
                 error=error_str,
             )
@@ -223,6 +256,7 @@ class TaskController(Controller):
         logger.info(
             TASK_STATUS_CHANGED,
             task_id=task_id,
+            from_status=from_status.value if from_status else None,
             to_status=task.status.value,
         )
         return ApiResponse(data=task)
@@ -251,6 +285,10 @@ class TaskController(Controller):
                 task_id,
                 requested_by="api",
             )
+        except TaskEngineNotRunningError as exc:
+            raise ServiceUnavailableError(str(exc)) from exc
+        except TaskEngineQueueFullError as exc:
+            raise ServiceUnavailableError(str(exc)) from exc
         except TaskNotFoundError as exc:
             logger.warning(
                 API_RESOURCE_NOT_FOUND,

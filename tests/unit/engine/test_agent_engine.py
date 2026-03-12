@@ -1089,3 +1089,29 @@ class TestReportToTaskEngine:
 
         # Run still succeeds despite task engine failure
         assert result.is_success is True
+
+    async def test_memory_error_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """MemoryError from TaskEngine is re-raised, not swallowed."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+
+        mock_te = MagicMock()
+        mock_te.transition_task = AsyncMock(
+            side_effect=MemoryError("out of memory"),
+        )
+
+        engine = AgentEngine(
+            provider=provider,
+            task_engine=mock_te,
+        )
+
+        with pytest.raises(MemoryError, match="out of memory"):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )

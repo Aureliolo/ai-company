@@ -249,6 +249,7 @@ class TaskEngine:
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
+            TaskEngineQueueFullError: If the queue is at capacity.
             TaskMutationError: If the mutation fails.
         """
         mutation = CreateTaskMutation(
@@ -285,7 +286,9 @@ class TaskEngine:
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
+            TaskEngineQueueFullError: If the queue is at capacity.
             TaskNotFoundError: If the task is not found.
+            TaskVersionConflictError: If ``expected_version`` doesn't match.
             TaskMutationError: If the mutation fails.
         """
         mutation = UpdateTaskMutation(
@@ -328,7 +331,9 @@ class TaskEngine:
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
+            TaskEngineQueueFullError: If the queue is at capacity.
             TaskNotFoundError: If the task is not found.
+            TaskVersionConflictError: If ``expected_version`` doesn't match.
             TaskMutationError: If the mutation fails.
         """
         effective_reason = reason or f"Transition to {target_status.value}"
@@ -366,6 +371,7 @@ class TaskEngine:
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
+            TaskEngineQueueFullError: If the queue is at capacity.
             TaskNotFoundError: If the task is not found.
             TaskMutationError: If the mutation fails.
         """
@@ -398,6 +404,7 @@ class TaskEngine:
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
+            TaskEngineQueueFullError: If the queue is at capacity.
             TaskNotFoundError: If the task is not found.
             TaskMutationError: If the mutation fails.
         """
@@ -419,9 +426,13 @@ class TaskEngine:
     def _raise_typed_error(result: TaskMutationResult) -> None:
         """Raise a typed error from a failed mutation result."""
         error = result.error or "Mutation failed"
-        if "not found" in error:
-            raise TaskNotFoundError(error)
-        raise TaskMutationError(error)
+        match result.error_code:
+            case "not_found":
+                raise TaskNotFoundError(error)
+            case "version_conflict":
+                raise TaskVersionConflictError(error)
+            case _:
+                raise TaskMutationError(error)
 
     # -- Read-through (bypass queue) ---------------------------------------
 
@@ -478,6 +489,15 @@ class TaskEngine:
                     TASK_ENGINE_LOOP_ERROR,
                     error="Unhandled exception in processing loop",
                 )
+                if not envelope.future.done():
+                    envelope.future.set_result(
+                        TaskMutationResult(
+                            request_id=envelope.mutation.request_id,
+                            success=False,
+                            error="Internal error in processing loop",
+                            error_code="internal",
+                        ),
+                    )
 
     async def _process_one(self, envelope: _MutationEnvelope) -> None:
         """Process a single mutation envelope."""
@@ -489,7 +509,8 @@ class TaskEngine:
         )
         try:
             result = await self._apply_mutation(mutation)
-            envelope.future.set_result(result)
+            if not envelope.future.done():
+                envelope.future.set_result(result)
             if result.success and self._config.publish_snapshots:
                 await self._publish_snapshot(mutation, result)
         except Exception as exc:
@@ -506,6 +527,7 @@ class TaskEngine:
                         request_id=mutation.request_id,
                         success=False,
                         error="Internal error processing mutation",
+                        error_code="internal",
                     ),
                 )
 
@@ -549,6 +571,7 @@ class TaskEngine:
             request_id=request_id,
             success=False,
             error=error,
+            error_code="not_found",
         )
 
     async def _apply_create(
@@ -607,6 +630,7 @@ class TaskEngine:
                 request_id=mutation.request_id,
                 success=False,
                 error=str(exc),
+                error_code="version_conflict",
             )
 
         if not mutation.updates:
@@ -619,7 +643,9 @@ class TaskEngine:
                 previous_status=task.status,
             )
 
-        updated = task.model_copy(update=mutation.updates)
+        merged = task.model_dump()
+        merged.update(mutation.updates)
+        updated = Task.model_validate(merged)
         await self._persistence.tasks.save(updated)
         version = self._bump_version(mutation.task_id)
 
@@ -658,6 +684,7 @@ class TaskEngine:
                 request_id=mutation.request_id,
                 success=False,
                 error=str(exc),
+                error_code="version_conflict",
             )
 
         previous_status = task.status
@@ -828,6 +855,8 @@ class TaskEngine:
                 mutation_type=mutation.mutation_type,
                 request_id=mutation.request_id,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 TASK_ENGINE_SNAPSHOT_PUBLISH_FAILED,

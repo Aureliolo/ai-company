@@ -23,8 +23,8 @@ class AppState:
     """Typed application state container.
 
     Service fields (``persistence``, ``message_bus``, ``cost_tracker``,
-    ``auth_service``) accept ``None`` at construction time for dev/test
-    mode.  Property
+    ``auth_service``, ``task_engine``) accept ``None`` at construction
+    time for dev/test mode.  Property
     accessors raise ``ServiceUnavailableError`` (HTTP 503) when the
     service is not configured, producing a clear error instead of an
     opaque ``AttributeError``.
@@ -116,7 +116,8 @@ class AppState:
     def set_task_engine(self, engine: TaskEngine) -> None:
         """Set the task engine (deferred initialisation).
 
-        Called once during startup after persistence is connected.
+        Supports late binding when the task engine is created after
+        ``AppState`` construction.
 
         Args:
             engine: Fully configured task engine.

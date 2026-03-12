@@ -99,7 +99,7 @@ _PROMPT_TOKEN_RATIO_THRESHOLD: float = 0.3
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
 """Module-level default instance for the recovery strategy."""
 
-_TERMINAL_STATUSES: frozenset[TaskStatus] = frozenset(
+_REPORTABLE_STATUSES: frozenset[TaskStatus] = frozenset(
     {
         TaskStatus.COMPLETED,
         TaskStatus.FAILED,
@@ -107,7 +107,12 @@ _TERMINAL_STATUSES: frozenset[TaskStatus] = frozenset(
         TaskStatus.CANCELLED,
     }
 )
-"""Task statuses that trigger a report to the centralized TaskEngine."""
+"""Final execution outcomes that trigger a report to the centralized TaskEngine.
+
+Note: ``FAILED`` and ``INTERRUPTED`` are not strictly terminal in the task
+lifecycle (they can be reassigned), but represent final outcomes of this
+``AgentEngine`` run that should be reported.
+"""
 
 
 class AgentEngine:
@@ -666,8 +671,8 @@ class AgentEngine:
     ) -> None:
         """Report final execution status to the centralized TaskEngine.
 
-        Only reports terminal statuses (COMPLETED, FAILED, INTERRUPTED,
-        CANCELLED); non-terminal statuses are silently skipped.
+        Only reports final execution outcomes (COMPLETED, FAILED,
+        INTERRUPTED, CANCELLED); other statuses are silently skipped.
 
         Best-effort: failures are logged and swallowed.  If no
         ``TaskEngine`` is configured, this is a no-op.
@@ -679,7 +684,7 @@ class AgentEngine:
             return
 
         final_status = ctx.task_execution.status
-        if final_status not in _TERMINAL_STATUSES:
+        if final_status not in _REPORTABLE_STATUSES:
             return
 
         try:

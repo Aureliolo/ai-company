@@ -85,13 +85,14 @@ _IMMUTABLE_TASK_FIELDS: frozenset[str] = frozenset(
         "id",
         "status",
         "created_by",
-        "created_at",
-        "updated_at",
-        "started_at",
-        "completed_at",
     }
 )
-"""Fields that must not be modified via :class:`UpdateTaskMutation`."""
+"""Fields that must not be modified via :class:`UpdateTaskMutation`.
+
+``status`` must go through :class:`TransitionTaskMutation` (which
+validates the state machine); ``id`` and ``created_by`` are identity
+fields set at creation time.
+"""
 
 
 class UpdateTaskMutation(BaseModel):
@@ -242,6 +243,8 @@ class TaskMutationResult(BaseModel):
         previous_status: Status before the mutation (``None`` on create
             or failure).
         error: Error description (``None`` on success).
+        error_code: Machine-readable error classification for reliable
+            dispatch (``None`` on success).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -255,6 +258,12 @@ class TaskMutationResult(BaseModel):
         description="Status before mutation",
     )
     error: str | None = Field(default=None, description="Error description")
+    error_code: (
+        Literal["not_found", "version_conflict", "validation", "internal"] | None
+    ) = Field(
+        default=None,
+        description="Machine-readable error classification",
+    )
 
     @model_validator(mode="after")
     def _check_consistency(self) -> Self:

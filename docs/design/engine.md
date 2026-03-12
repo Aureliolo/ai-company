@@ -174,7 +174,7 @@ attempt concurrent transitions on the same task.
 
 ### Architecture
 
-```
+```text
 Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop  ──▶  Persistence
                                                     │
                                                     ├──▶  Version tracking (optimistic concurrency)
@@ -186,8 +186,10 @@ Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop
 - **Immutable updates**: Each mutation calls `model_copy(update=...)` on
   frozen `Task` models — the original is never mutated.
 - **Optimistic concurrency**: In-memory version counters per task.
-  Callers can pass `expected_version` to detect stale writes;
-  `TaskVersionConflictError` is raised on mismatch.
+  Callers can pass `expected_version` to detect stale writes; on mismatch
+  the engine returns a failed `TaskMutationResult` with
+  `error_code="version_conflict"`.  Convenience methods raise
+  `TaskVersionConflictError`.
 - **Read-through**: `get_task()` and `list_tasks()` bypass the queue and
   read directly from persistence — safe because TaskEngine is the sole writer.
 - **Snapshot publishing**: On success, a `TaskStateChanged` event is published
@@ -198,7 +200,7 @@ Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop
 | Mutation | Description |
 |----------|-------------|
 | `CreateTaskMutation` | Generates a unique ID, persists, and returns the new task. |
-| `UpdateTaskMutation` | Applies field updates with immutable-field rejection (`id`, `created_by`, `created_at`). |
+| `UpdateTaskMutation` | Applies field updates with immutable-field rejection (`id`, `status`, `created_by`) and re-validates via `model_validate`. |
 | `TransitionTaskMutation` | Validates status transition via `Task.with_transition()`, supports field overrides. |
 | `DeleteTaskMutation` | Removes from persistence and clears version tracking. |
 | `CancelTaskMutation` | Shortcut for transition to `CANCELLED`. |
@@ -401,7 +403,7 @@ async run(
    alone when no enforcer is configured.
 8. **Delegate to loop** -- calls `ExecutionLoop.execute()` with context,
    provider, tool invoker, budget checker, and completion config. If
-   `timeout_seconds` is set, wraps the call in `asyncio.wait_for`; on expiry
+   `timeout_seconds` is set, wraps the call in `asyncio.wait`; on expiry
    the run returns with `TerminationReason.ERROR` but cost recording and
    post-execution processing still occur.
 9. **Record costs** -- records accumulated `TokenUsage` to `CostTracker` (if
