@@ -19,7 +19,7 @@ from ai_company.engine._validation import (
 from ai_company.engine.classification.pipeline import classify_execution_errors
 from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.cost_recording import record_execution_costs
-from ai_company.engine.errors import ExecutionStateError
+from ai_company.engine.errors import ExecutionStateError, TaskMutationError
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -99,6 +99,16 @@ _PROMPT_TOKEN_RATIO_THRESHOLD: float = 0.3
 _DEFAULT_RECOVERY_STRATEGY = FailAndReassignStrategy()
 """Module-level default instance for the recovery strategy."""
 
+_TERMINAL_STATUSES: frozenset[TaskStatus] = frozenset(
+    {
+        TaskStatus.COMPLETED,
+        TaskStatus.FAILED,
+        TaskStatus.INTERRUPTED,
+        TaskStatus.CANCELLED,
+    }
+)
+"""Task statuses that trigger a report to the centralized TaskEngine."""
+
 
 class AgentEngine:
     """Top-level orchestrator for agent execution.
@@ -119,6 +129,10 @@ class AgentEngine:
         error_taxonomy_config: Post-execution error classification.
         budget_enforcer: Pre-flight checks, auto-downgrade, and
             enhanced in-flight budget checking.
+        security_config: Optional security subsystem configuration.
+        approval_store: Optional approval queue store.
+        task_engine: Optional centralized task engine for reporting
+            final execution status.
     """
 
     def __init__(  # noqa: PLR0913
@@ -339,7 +353,11 @@ class AgentEngine:
         agent_id: str,
         task_id: str,
     ) -> ExecutionResult:
-        """Record costs, apply transitions, report to TaskEngine."""
+        """Post-execution: costs, transitions, TaskEngine, recovery, classify.
+
+        Best-effort: classification and reporting failures are logged,
+        never fatal.
+        """
         await record_execution_costs(
             execution_result,
             identity,
@@ -648,6 +666,9 @@ class AgentEngine:
     ) -> None:
         """Report final execution status to the centralized TaskEngine.
 
+        Only reports terminal statuses (COMPLETED, FAILED, INTERRUPTED,
+        CANCELLED); non-terminal statuses are silently skipped.
+
         Best-effort: failures are logged and swallowed.  If no
         ``TaskEngine`` is configured, this is a no-op.
         """
@@ -658,13 +679,7 @@ class AgentEngine:
             return
 
         final_status = ctx.task_execution.status
-        terminal = {
-            TaskStatus.COMPLETED,
-            TaskStatus.FAILED,
-            TaskStatus.INTERRUPTED,
-            TaskStatus.CANCELLED,
-        }
-        if final_status not in terminal:
+        if final_status not in _TERMINAL_STATUSES:
             return
 
         try:
@@ -679,12 +694,21 @@ class AgentEngine:
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except TaskMutationError:
             logger.warning(
                 EXECUTION_ENGINE_ERROR,
                 agent_id=agent_id,
                 task_id=task_id,
-                error="Failed to report final status to TaskEngine",
+                error="Failed to report final status to TaskEngine (mutation rejected)",
+                exc_info=True,
+            )
+        except Exception:
+            logger.error(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="Unexpected error reporting to TaskEngine"
+                " -- state may be divergent",
                 exc_info=True,
             )
 

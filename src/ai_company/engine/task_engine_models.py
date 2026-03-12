@@ -6,9 +6,9 @@ All mutation requests are frozen Pydantic models, discriminated by a
 """
 
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
 from ai_company.core.task import Task  # noqa: TC001
@@ -21,7 +21,8 @@ class CreateTaskData(BaseModel):
     """Data required to create a new task (server-generated fields excluded).
 
     Mirrors :class:`~ai_company.api.dto.CreateTaskRequest` but lives in
-    the engine layer so it has no dependency on the API.
+    the engine layer so it has no dependency on the API (field parity is
+    maintained by convention, not enforced).
 
     Attributes:
         title: Short task title.
@@ -35,7 +36,7 @@ class CreateTaskData(BaseModel):
         budget_limit: Maximum USD spend.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     title: NotBlankStr = Field(description="Short task title")
     description: NotBlankStr = Field(description="Detailed task description")
@@ -79,6 +80,20 @@ class CreateTaskMutation(BaseModel):
     task_data: CreateTaskData = Field(description="Task creation payload")
 
 
+_IMMUTABLE_TASK_FIELDS: frozenset[str] = frozenset(
+    {
+        "id",
+        "status",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "started_at",
+        "completed_at",
+    }
+)
+"""Fields that must not be modified via :class:`UpdateTaskMutation`."""
+
+
 class UpdateTaskMutation(BaseModel):
     """Request to update task fields.
 
@@ -87,7 +102,7 @@ class UpdateTaskMutation(BaseModel):
         request_id: Unique request identifier for tracing.
         requested_by: Identity of the requester.
         task_id: Target task identifier.
-        updates: Field-value pairs to apply.
+        updates: Field-value pairs to apply (immutable fields rejected).
         expected_version: Optional optimistic concurrency version.
     """
 
@@ -104,6 +119,25 @@ class UpdateTaskMutation(BaseModel):
         description="Optional optimistic concurrency version",
     )
 
+    @model_validator(mode="after")
+    def _reject_immutable_fields(self) -> Self:
+        forbidden = set(self.updates) & _IMMUTABLE_TASK_FIELDS
+        if forbidden:
+            msg = f"Cannot update immutable fields: {sorted(forbidden)}"
+            raise ValueError(msg)
+        return self
+
+
+_IMMUTABLE_OVERRIDE_FIELDS: frozenset[str] = frozenset(
+    {
+        "id",
+        "created_by",
+        "created_at",
+        "status",
+    }
+)
+"""Fields that must not be overridden during a transition."""
+
 
 class TransitionTaskMutation(BaseModel):
     """Request to perform a task status transition.
@@ -115,7 +149,7 @@ class TransitionTaskMutation(BaseModel):
         task_id: Target task identifier.
         target_status: Desired target status.
         reason: Reason for the transition.
-        overrides: Additional field overrides for the transition.
+        overrides: Additional field overrides (immutable fields rejected).
         expected_version: Optional optimistic concurrency version.
     """
 
@@ -136,6 +170,14 @@ class TransitionTaskMutation(BaseModel):
         ge=1,
         description="Optional optimistic concurrency version",
     )
+
+    @model_validator(mode="after")
+    def _reject_immutable_overrides(self) -> Self:
+        forbidden = set(self.overrides) & _IMMUTABLE_OVERRIDE_FIELDS
+        if forbidden:
+            msg = f"Cannot override immutable fields: {sorted(forbidden)}"
+            raise ValueError(msg)
+        return self
 
 
 class DeleteTaskMutation(BaseModel):
@@ -197,6 +239,8 @@ class TaskMutationResult(BaseModel):
         success: Whether the mutation succeeded.
         task: The task after mutation (``None`` on delete or failure).
         version: Current version counter for the task.
+        previous_status: Status before the mutation (``None`` on create
+            or failure).
         error: Error description (``None`` on success).
     """
 
@@ -206,7 +250,21 @@ class TaskMutationResult(BaseModel):
     success: bool = Field(description="Whether the mutation succeeded")
     task: Task | None = Field(default=None, description="Task after mutation")
     version: int = Field(default=0, ge=0, description="Version counter")
+    previous_status: TaskStatus | None = Field(
+        default=None,
+        description="Status before mutation",
+    )
     error: str | None = Field(default=None, description="Error description")
+
+    @model_validator(mode="after")
+    def _check_consistency(self) -> Self:
+        if self.success and self.error is not None:
+            msg = "Successful result must not carry an error"
+            raise ValueError(msg)
+        if not self.success and self.error is None:
+            msg = "Failed result must carry an error description"
+            raise ValueError(msg)
+        return self
 
 
 # ── State-change event ────────────────────────────────────────
@@ -228,7 +286,9 @@ class TaskStateChanged(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mutation_type: str = Field(description="Mutation type that triggered event")
+    mutation_type: Literal["create", "update", "transition", "delete", "cancel"] = (
+        Field(description="Mutation type that triggered event")
+    )
     request_id: NotBlankStr = Field(description="Originating request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
     task: Task | None = Field(

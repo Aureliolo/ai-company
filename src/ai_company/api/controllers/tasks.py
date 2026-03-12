@@ -16,7 +16,7 @@ from ai_company.api.pagination import PaginationLimit, PaginationOffset, paginat
 from ai_company.api.state import AppState  # noqa: TC001
 from ai_company.core.enums import TaskStatus  # noqa: TC001
 from ai_company.core.task import Task  # noqa: TC001
-from ai_company.engine.errors import TaskMutationError
+from ai_company.engine.errors import TaskMutationError, TaskNotFoundError
 from ai_company.engine.task_engine_models import CreateTaskData
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
@@ -163,15 +163,13 @@ class TaskController(Controller):
                 updates,
                 requested_by="api",
             )
-        except TaskMutationError as exc:
-            if "not found" in str(exc):
-                logger.warning(
-                    API_RESOURCE_NOT_FOUND,
-                    resource="task",
-                    id=task_id,
-                )
-                raise NotFoundError(str(exc)) from exc
-            raise
+        except TaskNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="task",
+                id=task_id,
+            )
+            raise NotFoundError(str(exc)) from exc
         logger.info(API_TASK_UPDATED, task_id=task_id, fields=list(updates))
         return ApiResponse(data=task)
 
@@ -207,15 +205,15 @@ class TaskController(Controller):
                 reason=f"API transition to {data.target_status.value}",
                 assigned_to=data.assigned_to,
             )
+        except TaskNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="task",
+                id=task_id,
+            )
+            raise NotFoundError(str(exc)) from exc
         except TaskMutationError as exc:
             error_str = str(exc)
-            if "not found" in error_str:
-                logger.warning(
-                    API_RESOURCE_NOT_FOUND,
-                    resource="task",
-                    id=task_id,
-                )
-                raise NotFoundError(error_str) from exc
             logger.warning(
                 TASK_STATUS_CHANGED,
                 task_id=task_id,
@@ -253,15 +251,12 @@ class TaskController(Controller):
                 task_id,
                 requested_by="api",
             )
-        except TaskMutationError as exc:
-            if "not found" in str(exc):
-                msg = f"Task {task_id!r} not found"
-                logger.warning(
-                    API_RESOURCE_NOT_FOUND,
-                    resource="task",
-                    id=task_id,
-                )
-                raise NotFoundError(msg) from exc
-            raise
+        except TaskNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="task",
+                id=task_id,
+            )
+            raise NotFoundError(str(exc)) from exc
         logger.info(API_TASK_DELETED, task_id=task_id)
         return ApiResponse(data=None)

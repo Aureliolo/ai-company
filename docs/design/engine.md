@@ -166,6 +166,61 @@ exceptions on failure; scoring-based strategies return
 
 ---
 
+## TaskEngine — Centralized State Coordination
+
+All task state mutations flow through a single-writer `TaskEngine` that owns the
+authoritative task state. This eliminates race conditions when multiple agents
+attempt concurrent transitions on the same task.
+
+### Architecture
+
+```
+Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop  ──▶  Persistence
+                                                    │
+                                                    ├──▶  Version tracking (optimistic concurrency)
+                                                    └──▶  Snapshot publishing (MessageBus)
+```
+
+- **Single writer**: A background `asyncio.Task` consumes `TaskMutation`
+  requests sequentially from an `asyncio.Queue`.
+- **Immutable updates**: Each mutation calls `model_copy(update=...)` on
+  frozen `Task` models — the original is never mutated.
+- **Optimistic concurrency**: In-memory version counters per task.
+  Callers can pass `expected_version` to detect stale writes;
+  `TaskVersionConflictError` is raised on mismatch.
+- **Read-through**: `get_task()` and `list_tasks()` bypass the queue and
+  read directly from persistence — safe because TaskEngine is the sole writer.
+- **Snapshot publishing**: On success, a `TaskStateChanged` event is published
+  to the message bus for downstream consumers (WebSocket bridge, audit, etc.).
+
+### Mutation Types
+
+| Mutation | Description |
+|----------|-------------|
+| `CreateTaskMutation` | Generates a unique ID, persists, and returns the new task. |
+| `UpdateTaskMutation` | Applies field updates with immutable-field rejection (`id`, `created_by`, `created_at`). |
+| `TransitionTaskMutation` | Validates status transition via `Task.with_transition()`, supports field overrides. |
+| `DeleteTaskMutation` | Removes from persistence and clears version tracking. |
+| `CancelTaskMutation` | Shortcut for transition to `CANCELLED`. |
+
+### Error Handling
+
+- **Typed errors**: `TaskNotFoundError` and `TaskVersionConflictError` provide
+  precise failure classification — API controllers catch these directly instead
+  of parsing error strings.
+- **Error sanitization**: Internal exception details (SQL paths, stack traces)
+  are replaced with a generic message before reaching callers.
+- **Queue full**: `TaskEngineQueueFullError` signals backpressure when the
+  queue is at capacity.
+
+### Lifecycle
+
+- **start()**: Spawns the background processing task.
+- **stop()**: Sets `_running = False`, drains the queue within a configurable
+  timeout, then cancels. Abandoned futures receive a failure result.
+
+---
+
 ## Agent Execution Loop
 
 The agent execution loop defines how an agent processes a task from start to

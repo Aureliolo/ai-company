@@ -415,6 +415,7 @@ class RootConfig(BaseModel):
         security: Security subsystem configuration.
         trust: Progressive trust configuration.
         promotion: Promotion/demotion configuration.
+        task_engine: Task engine configuration.
     """
 
     model_config = ConfigDict(frozen=True)

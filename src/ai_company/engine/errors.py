@@ -90,8 +90,16 @@ class TaskEngineNotRunningError(TaskEngineError):
     """Raised when a mutation is submitted to a stopped task engine."""
 
 
+class TaskEngineQueueFullError(TaskEngineError):
+    """Raised when the task engine queue is at capacity."""
+
+
 class TaskMutationError(TaskEngineError):
     """Raised when a task mutation fails (not found, validation, etc.)."""
+
+
+class TaskNotFoundError(TaskMutationError):
+    """Raised when a task is not found during mutation."""
 
 
 class TaskVersionConflictError(TaskMutationError):

@@ -82,3 +82,49 @@ class TestAppLifecycle:
 
         # Should not raise even when disconnect fails
         await _safe_shutdown(None, None, None, persistence)
+
+    async def test_task_engine_failure_cleans_up(
+        self,
+        root_config: Any,
+    ) -> None:
+        """Task engine start fails → persistence + bus cleaned up."""
+        from unittest.mock import MagicMock
+
+        from ai_company.api.app import _safe_startup
+        from ai_company.api.approval_store import ApprovalStore
+        from ai_company.api.state import AppState
+        from tests.unit.api.conftest import (
+            FakeMessageBus,
+            FakePersistenceBackend,
+        )
+
+        persistence = FakePersistenceBackend()
+        bus = FakeMessageBus()
+        mock_te = MagicMock()
+        mock_te.start = MagicMock(side_effect=RuntimeError("engine boom"))
+        mock_te.stop = MagicMock()
+
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=persistence,
+        )
+
+        with pytest.raises(RuntimeError, match="engine boom"):
+            await _safe_startup(persistence, bus, None, mock_te, app_state)
+
+        # Persistence and bus should be cleaned up
+        assert not persistence.is_connected
+        assert not bus.is_running
+
+    async def test_shutdown_task_engine_failure_does_not_propagate(self) -> None:
+        """Task engine stop failure during shutdown is logged, not raised."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from ai_company.api.app import _safe_shutdown
+
+        mock_te = MagicMock()
+        mock_te.stop = AsyncMock(side_effect=RuntimeError("stop boom"))
+
+        # Should not raise even when task engine stop fails
+        await _safe_shutdown(None, mock_te, None, None)

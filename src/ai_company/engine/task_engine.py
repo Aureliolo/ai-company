@@ -5,7 +5,7 @@ background task consumes mutation requests sequentially, applies
 ``model_copy(update=...)`` on frozen ``Task`` models, persists the
 result, and publishes snapshots to the message bus.
 
-Reads bypass the queue and go directly to persistence — this is safe
+Reads bypass the queue and go directly to persistence -- this is safe
 because the TaskEngine is the only writer.
 """
 
@@ -20,7 +20,9 @@ from ai_company.core.enums import TaskStatus
 from ai_company.core.task import Task
 from ai_company.engine.errors import (
     TaskEngineNotRunningError,
+    TaskEngineQueueFullError,
     TaskMutationError,
+    TaskNotFoundError,
     TaskVersionConflictError,
 )
 from ai_company.engine.task_engine_config import TaskEngineConfig
@@ -37,9 +39,11 @@ from ai_company.engine.task_engine_models import (
 )
 from ai_company.observability import get_logger
 from ai_company.observability.events.task_engine import (
+    TASK_ENGINE_CREATED,
     TASK_ENGINE_DRAIN_COMPLETE,
     TASK_ENGINE_DRAIN_START,
     TASK_ENGINE_DRAIN_TIMEOUT,
+    TASK_ENGINE_LOOP_ERROR,
     TASK_ENGINE_MUTATION_APPLIED,
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_MUTATION_RECEIVED,
@@ -49,6 +53,7 @@ from ai_company.observability.events.task_engine import (
     TASK_ENGINE_SNAPSHOT_PUBLISHED,
     TASK_ENGINE_STARTED,
     TASK_ENGINE_STOPPED,
+    TASK_ENGINE_VERSION_CONFLICT,
 )
 
 if TYPE_CHECKING:
@@ -60,7 +65,11 @@ logger = get_logger(__name__)
 
 @dataclass
 class _MutationEnvelope:
-    """Pairs a mutation request with its response future."""
+    """Pairs a mutation request with its response future.
+
+    Note: must be instantiated within a running event loop (the
+    ``future`` default factory calls ``asyncio.get_running_loop()``).
+    """
 
     mutation: TaskMutation
     future: asyncio.Future[TaskMutationResult] = field(
@@ -98,8 +107,13 @@ class TaskEngine:
         self._versions: dict[str, int] = {}
         self._processing_task: asyncio.Task[None] | None = None
         self._running = False
+        logger.debug(
+            TASK_ENGINE_CREATED,
+            max_queue_size=self._config.max_queue_size,
+            publish_snapshots=self._config.publish_snapshots,
+        )
 
-    # ── Lifecycle ─────────────────────────────────────────────
+    # -- Lifecycle ---------------------------------------------------------
 
     def start(self) -> None:
         """Spawn the background processing loop.
@@ -109,6 +123,7 @@ class TaskEngine:
         """
         if self._running:
             msg = "TaskEngine is already running"
+            logger.warning(TASK_ENGINE_STARTED, error=msg)
             raise RuntimeError(msg)
         self._running = True
         self._processing_task = asyncio.create_task(
@@ -154,16 +169,31 @@ class TaskEngine:
                 self._processing_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await self._processing_task
+                self._fail_remaining_futures()
             self._processing_task = None
 
         logger.info(TASK_ENGINE_STOPPED)
+
+    def _fail_remaining_futures(self) -> None:
+        """Fail all remaining enqueued futures after drain timeout."""
+        while not self._queue.empty():
+            with contextlib.suppress(asyncio.QueueEmpty):
+                envelope = self._queue.get_nowait()
+                if not envelope.future.done():
+                    envelope.future.set_result(
+                        TaskMutationResult(
+                            request_id=envelope.mutation.request_id,
+                            success=False,
+                            error="TaskEngine shut down before processing",
+                        ),
+                    )
 
     @property
     def is_running(self) -> bool:
         """Whether the engine is accepting mutations."""
         return self._running
 
-    # ── Submit & convenience methods ──────────────────────────
+    # -- Submit & convenience methods --------------------------------------
 
     async def submit(self, mutation: TaskMutation) -> TaskMutationResult:
         """Submit a mutation and await its result.
@@ -176,6 +206,7 @@ class TaskEngine:
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
+            TaskEngineQueueFullError: If the queue is at capacity.
         """
         if not self._running:
             logger.warning(
@@ -197,7 +228,7 @@ class TaskEngine:
                 queue_size=self._queue.qsize(),
             )
             msg = "TaskEngine queue is full"
-            raise TaskEngineNotRunningError(msg) from None
+            raise TaskEngineQueueFullError(msg) from None
 
         return await envelope.future
 
@@ -228,7 +259,9 @@ class TaskEngine:
         result = await self.submit(mutation)
         if not result.success:
             raise TaskMutationError(result.error or "Create failed")
-        assert result.task is not None  # noqa: S101
+        if result.task is None:
+            msg = "Internal error: create succeeded but task is None"
+            raise TaskMutationError(msg)
         return result.task
 
     async def update_task(
@@ -252,6 +285,7 @@ class TaskEngine:
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
+            TaskNotFoundError: If the task is not found.
             TaskMutationError: If the mutation fails.
         """
         mutation = UpdateTaskMutation(
@@ -263,8 +297,10 @@ class TaskEngine:
         )
         result = await self.submit(mutation)
         if not result.success:
-            raise TaskMutationError(result.error or "Update failed")
-        assert result.task is not None  # noqa: S101
+            self._raise_typed_error(result)
+        if result.task is None:
+            msg = "Internal error: update succeeded but task is None"
+            raise TaskMutationError(msg)
         return result.task
 
     async def transition_task(
@@ -292,6 +328,7 @@ class TaskEngine:
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
+            TaskNotFoundError: If the task is not found.
             TaskMutationError: If the mutation fails.
         """
         effective_reason = reason or f"Transition to {target_status.value}"
@@ -306,8 +343,10 @@ class TaskEngine:
         )
         result = await self.submit(mutation)
         if not result.success:
-            raise TaskMutationError(result.error or "Transition failed")
-        assert result.task is not None  # noqa: S101
+            self._raise_typed_error(result)
+        if result.task is None:
+            msg = "Internal error: transition succeeded but task is None"
+            raise TaskMutationError(msg)
         return result.task
 
     async def delete_task(
@@ -327,6 +366,7 @@ class TaskEngine:
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
+            TaskNotFoundError: If the task is not found.
             TaskMutationError: If the mutation fails.
         """
         mutation = DeleteTaskMutation(
@@ -336,7 +376,7 @@ class TaskEngine:
         )
         result = await self.submit(mutation)
         if not result.success:
-            raise TaskMutationError(result.error or "Delete failed")
+            self._raise_typed_error(result)
         return True
 
     async def cancel_task(
@@ -358,6 +398,7 @@ class TaskEngine:
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
+            TaskNotFoundError: If the task is not found.
             TaskMutationError: If the mutation fails.
         """
         mutation = CancelTaskMutation(
@@ -368,11 +409,21 @@ class TaskEngine:
         )
         result = await self.submit(mutation)
         if not result.success:
-            raise TaskMutationError(result.error or "Cancel failed")
-        assert result.task is not None  # noqa: S101
+            self._raise_typed_error(result)
+        if result.task is None:
+            msg = "Internal error: cancel succeeded but task is None"
+            raise TaskMutationError(msg)
         return result.task
 
-    # ── Read-through (bypass queue) ───────────────────────────
+    @staticmethod
+    def _raise_typed_error(result: TaskMutationResult) -> None:
+        """Raise a typed error from a failed mutation result."""
+        error = result.error or "Mutation failed"
+        if "not found" in error:
+            raise TaskNotFoundError(error)
+        raise TaskMutationError(error)
+
+    # -- Read-through (bypass queue) ---------------------------------------
 
     async def get_task(self, task_id: str) -> Task | None:
         """Read a task directly from persistence (bypass queue).
@@ -408,7 +459,7 @@ class TaskEngine:
             project=project,
         )
 
-    # ── Background processing ─────────────────────────────────
+    # -- Background processing ---------------------------------------------
 
     async def _processing_loop(self) -> None:
         """Background loop: dequeue and process mutations sequentially."""
@@ -420,7 +471,13 @@ class TaskEngine:
                 )
             except TimeoutError:
                 continue
-            await self._process_one(envelope)
+            try:
+                await self._process_one(envelope)
+            except Exception:
+                logger.exception(
+                    TASK_ENGINE_LOOP_ERROR,
+                    error="Unhandled exception in processing loop",
+                )
 
     async def _process_one(self, envelope: _MutationEnvelope) -> None:
         """Process a single mutation envelope."""
@@ -436,24 +493,28 @@ class TaskEngine:
             if result.success and self._config.publish_snapshots:
                 await self._publish_snapshot(mutation, result)
         except Exception as exc:
-            error_msg = f"{type(exc).__name__}: {exc}"
+            internal_msg = f"{type(exc).__name__}: {exc}"
             logger.exception(
                 TASK_ENGINE_MUTATION_FAILED,
                 mutation_type=mutation.mutation_type,
                 request_id=mutation.request_id,
-                error=error_msg,
+                error=internal_msg,
             )
             if not envelope.future.done():
                 envelope.future.set_result(
                     TaskMutationResult(
                         request_id=mutation.request_id,
                         success=False,
-                        error=error_msg,
+                        error="Internal error processing mutation",
                     ),
                 )
 
     async def _apply_mutation(self, mutation: TaskMutation) -> TaskMutationResult:
-        """Dispatch and apply a mutation by type."""
+        """Dispatch and apply a mutation by type.
+
+        Raises:
+            TypeError: If the mutation type is unrecognised.
+        """
         match mutation:
             case CreateTaskMutation():
                 return await self._apply_create(mutation)
@@ -465,6 +526,30 @@ class TaskEngine:
                 return await self._apply_delete(mutation)
             case CancelTaskMutation():
                 return await self._apply_cancel(mutation)
+            case _:
+                msg = f"Unknown mutation type: {type(mutation).__name__}"  # type: ignore[unreachable]
+                raise TypeError(msg)
+
+    def _not_found_result(
+        self,
+        mutation_type: str,
+        request_id: str,
+        task_id: str,
+    ) -> TaskMutationResult:
+        """Build a failure result for a missing task and log it."""
+        error = f"Task {task_id!r} not found"
+        logger.warning(
+            TASK_ENGINE_MUTATION_FAILED,
+            mutation_type=mutation_type,
+            request_id=request_id,
+            task_id=task_id,
+            error=error,
+        )
+        return TaskMutationResult(
+            request_id=request_id,
+            success=False,
+            error=error,
+        )
 
     async def _apply_create(
         self,
@@ -509,13 +594,20 @@ class TaskEngine:
         """Update task fields."""
         task = await self._persistence.tasks.get(mutation.task_id)
         if task is None:
+            return self._not_found_result(
+                "update",
+                mutation.request_id,
+                mutation.task_id,
+            )
+
+        try:
+            self._check_version(mutation.task_id, mutation.expected_version)
+        except TaskVersionConflictError as exc:
             return TaskMutationResult(
                 request_id=mutation.request_id,
                 success=False,
-                error=f"Task {mutation.task_id!r} not found",
+                error=str(exc),
             )
-
-        self._check_version(mutation.task_id, mutation.expected_version)
 
         if not mutation.updates:
             version = self._versions.get(mutation.task_id, 0)
@@ -524,6 +616,7 @@ class TaskEngine:
                 success=True,
                 task=task,
                 version=version,
+                previous_status=task.status,
             )
 
         updated = task.model_copy(update=mutation.updates)
@@ -542,6 +635,7 @@ class TaskEngine:
             success=True,
             task=updated,
             version=version,
+            previous_status=task.status,
         )
 
     async def _apply_transition(
@@ -551,13 +645,21 @@ class TaskEngine:
         """Perform a task status transition."""
         task = await self._persistence.tasks.get(mutation.task_id)
         if task is None:
+            return self._not_found_result(
+                "transition",
+                mutation.request_id,
+                mutation.task_id,
+            )
+
+        try:
+            self._check_version(mutation.task_id, mutation.expected_version)
+        except TaskVersionConflictError as exc:
             return TaskMutationResult(
                 request_id=mutation.request_id,
                 success=False,
-                error=f"Task {mutation.task_id!r} not found",
+                error=str(exc),
             )
 
-        self._check_version(mutation.task_id, mutation.expected_version)
         previous_status = task.status
 
         try:
@@ -566,6 +668,13 @@ class TaskEngine:
                 **mutation.overrides,
             )
         except ValueError as exc:
+            logger.warning(
+                TASK_ENGINE_MUTATION_FAILED,
+                mutation_type="transition",
+                request_id=mutation.request_id,
+                task_id=mutation.task_id,
+                error=str(exc),
+            )
             return TaskMutationResult(
                 request_id=mutation.request_id,
                 success=False,
@@ -588,6 +697,7 @@ class TaskEngine:
             success=True,
             task=updated,
             version=version,
+            previous_status=previous_status,
         )
 
     async def _apply_delete(
@@ -597,10 +707,10 @@ class TaskEngine:
         """Delete a task."""
         deleted = await self._persistence.tasks.delete(mutation.task_id)
         if not deleted:
-            return TaskMutationResult(
-                request_id=mutation.request_id,
-                success=False,
-                error=f"Task {mutation.task_id!r} not found",
+            return self._not_found_result(
+                "delete",
+                mutation.request_id,
+                mutation.task_id,
             )
 
         self._versions.pop(mutation.task_id, None)
@@ -624,16 +734,23 @@ class TaskEngine:
         """Cancel a task (shortcut for transition to CANCELLED)."""
         task = await self._persistence.tasks.get(mutation.task_id)
         if task is None:
-            return TaskMutationResult(
-                request_id=mutation.request_id,
-                success=False,
-                error=f"Task {mutation.task_id!r} not found",
+            return self._not_found_result(
+                "cancel",
+                mutation.request_id,
+                mutation.task_id,
             )
 
         previous_status = task.status
         try:
             updated = task.with_transition(TaskStatus.CANCELLED)
         except ValueError as exc:
+            logger.warning(
+                TASK_ENGINE_MUTATION_FAILED,
+                mutation_type="cancel",
+                request_id=mutation.request_id,
+                task_id=mutation.task_id,
+                error=str(exc),
+            )
             return TaskMutationResult(
                 request_id=mutation.request_id,
                 success=False,
@@ -656,9 +773,10 @@ class TaskEngine:
             success=True,
             task=updated,
             version=version,
+            previous_status=previous_status,
         )
 
-    # ── Snapshot publishing ───────────────────────────────────
+    # -- Snapshot publishing -----------------------------------------------
 
     async def _publish_snapshot(
         self,
@@ -672,24 +790,27 @@ class TaskEngine:
         if self._message_bus is None:
             return
 
-        new_status = (
-            None
-            if isinstance(mutation, DeleteTaskMutation)
-            else (result.task.status if result.task else None)
-        )
+        if isinstance(mutation, DeleteTaskMutation):
+            new_status = None
+        elif result.task is not None:
+            new_status = result.task.status
+        else:
+            new_status = None
 
         event = TaskStateChanged(
             mutation_type=mutation.mutation_type,
             request_id=mutation.request_id,
             requested_by=mutation.requested_by,
             task=result.task,
-            previous_status=None,
+            previous_status=result.previous_status,
             new_status=new_status,
             version=result.version,
             timestamp=datetime.now(UTC),
         )
 
         try:
+            # Deferred to break circular import:
+            # communication -> engine -> communication
             from ai_company.communication.enums import MessageType  # noqa: PLC0415
             from ai_company.communication.message import Message  # noqa: PLC0415
 
@@ -715,7 +836,7 @@ class TaskEngine:
                 exc_info=True,
             )
 
-    # ── Version tracking ──────────────────────────────────────
+    # -- Version tracking --------------------------------------------------
 
     def _bump_version(self, task_id: str) -> int:
         """Increment and return the version counter for a task."""
@@ -740,5 +861,11 @@ class TaskEngine:
             msg = (
                 f"Version conflict for task {task_id!r}: "
                 f"expected {expected_version}, current {current}"
+            )
+            logger.warning(
+                TASK_ENGINE_VERSION_CONFLICT,
+                task_id=task_id,
+                expected_version=expected_version,
+                current_version=current,
             )
             raise TaskVersionConflictError(msg)

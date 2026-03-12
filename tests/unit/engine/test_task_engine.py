@@ -12,14 +12,18 @@ from ai_company.core.enums import (
 from ai_company.core.task import Task  # noqa: TC001
 from ai_company.engine.errors import (
     TaskEngineNotRunningError,
+    TaskEngineQueueFullError,
     TaskMutationError,
+    TaskNotFoundError,
 )
 from ai_company.engine.task_engine import TaskEngine
 from ai_company.engine.task_engine_config import TaskEngineConfig
 from ai_company.engine.task_engine_models import (
+    CancelTaskMutation,
     CreateTaskData,
     CreateTaskMutation,
     DeleteTaskMutation,
+    TransitionTaskMutation,
     UpdateTaskMutation,
 )
 
@@ -610,8 +614,8 @@ class TestSnapshotPublishing:
             _make_create_data(),
             requested_by="alice",
         )
-        # Give the processing loop time to publish
-        await asyncio.sleep(0.1)
+        # Yield to event loop so the processing loop completes snapshot publication
+        await asyncio.sleep(0)
         assert len(message_bus.published) == 1
 
     async def test_snapshot_publish_failure_does_not_affect_mutation(
@@ -655,7 +659,7 @@ class TestSnapshotPublishing:
                 _make_create_data(),
                 requested_by="alice",
             )
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0)
             assert len(message_bus.published) == 0
         finally:
             await eng.stop(timeout=2.0)
@@ -736,6 +740,8 @@ class TestQueueFull:
         self,
         persistence: FakePersistence,
     ) -> None:
+        from ai_company.engine.task_engine import _MutationEnvelope
+
         tiny_config = TaskEngineConfig(max_queue_size=1)
         eng = TaskEngine(
             persistence=persistence,  # type: ignore[arg-type]
@@ -750,12 +756,7 @@ class TestQueueFull:
             requested_by="alice",
             task_data=_make_create_data(),
         )
-        eng._queue.put_nowait(
-            __import__(
-                "ai_company.engine.task_engine",
-                fromlist=["_MutationEnvelope"],
-            )._MutationEnvelope(mutation=mutation1),
-        )
+        eng._queue.put_nowait(_MutationEnvelope(mutation=mutation1))
 
         # Second submit should fail because queue is full
         mutation2 = CreateTaskMutation(
@@ -763,7 +764,7 @@ class TestQueueFull:
             requested_by="alice",
             task_data=_make_create_data(),
         )
-        with pytest.raises(TaskEngineNotRunningError, match="queue is full"):
+        with pytest.raises(TaskEngineQueueFullError, match="queue is full"):
             await eng.submit(mutation2)
 
         eng._running = False
@@ -802,7 +803,7 @@ class TestErrorPropagation:
             )
             result = await eng.submit(mutation)
             assert result.success is False
-            assert "Disk full" in (result.error or "")
+            assert result.error == "Internal error processing mutation"
         finally:
             await eng.stop(timeout=2.0)
 
@@ -836,3 +837,202 @@ class TestTaskEngineConfig:
         config = TaskEngineConfig()
         with pytest.raises(ValidationError):
             config.max_queue_size = 999  # type: ignore[misc]
+
+
+# -- Version conflict on transition ────────────────────────────
+
+
+@pytest.mark.unit
+class TestVersionConflictOnTransition:
+    """Version conflict detection on transition mutations."""
+
+    async def test_transition_version_conflict(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        task = await engine.create_task(
+            _make_create_data(),
+            requested_by="alice",
+        )
+        mutation = TransitionTaskMutation(
+            request_id="req-1",
+            requested_by="alice",
+            task_id=task.id,
+            target_status=TaskStatus.ASSIGNED,
+            reason="Assigning",
+            overrides={"assigned_to": "bob"},
+            expected_version=99,
+        )
+        result = await engine.submit(mutation)
+        assert result.success is False
+        assert "conflict" in (result.error or "").lower()
+
+
+# -- Cancel not found ─────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCancelNotFound:
+    """Cancel mutation on a non-existent task."""
+
+    async def test_cancel_not_found(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        with pytest.raises(TaskNotFoundError, match="not found"):
+            await engine.cancel_task(
+                "task-nonexistent",
+                requested_by="alice",
+                reason="test",
+            )
+
+
+# -- Previous status in results ────────────────────────────────
+
+
+@pytest.mark.unit
+class TestPreviousStatus:
+    """Verify previous_status is populated in mutation results."""
+
+    async def test_create_has_no_previous_status(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        mutation = CreateTaskMutation(
+            request_id="req-1",
+            requested_by="alice",
+            task_data=_make_create_data(),
+        )
+        result = await engine.submit(mutation)
+        assert result.success is True
+        assert result.previous_status is None
+
+    async def test_transition_has_previous_status(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        task = await engine.create_task(
+            _make_create_data(),
+            requested_by="alice",
+        )
+        mutation = TransitionTaskMutation(
+            request_id="req-1",
+            requested_by="alice",
+            task_id=task.id,
+            target_status=TaskStatus.ASSIGNED,
+            reason="Assigning",
+            overrides={"assigned_to": "bob"},
+        )
+        result = await engine.submit(mutation)
+        assert result.success is True
+        assert result.previous_status == TaskStatus.CREATED
+
+    async def test_cancel_has_previous_status(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        task = await engine.create_task(
+            _make_create_data(),
+            requested_by="alice",
+        )
+        # First move to ASSIGNED so cancel is valid
+        await engine.transition_task(
+            task.id,
+            TaskStatus.ASSIGNED,
+            requested_by="alice",
+            reason="Assigning",
+            assigned_to="bob",
+        )
+        mutation = CancelTaskMutation(
+            request_id="req-1",
+            requested_by="alice",
+            task_id=task.id,
+            reason="No longer needed",
+        )
+        result = await engine.submit(mutation)
+        assert result.success is True
+        assert result.previous_status == TaskStatus.ASSIGNED
+
+
+# -- Immutable field rejection ─────────────────────────────────
+
+
+@pytest.mark.unit
+class TestImmutableFieldRejection:
+    """UpdateTaskMutation and TransitionTaskMutation reject immutable fields."""
+
+    def test_update_rejects_status(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="immutable"):
+            UpdateTaskMutation(
+                request_id="req-1",
+                requested_by="alice",
+                task_id="task-1",
+                updates={"status": "completed"},
+            )
+
+    def test_update_rejects_id(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="immutable"):
+            UpdateTaskMutation(
+                request_id="req-1",
+                requested_by="alice",
+                task_id="task-1",
+                updates={"id": "new-id"},
+            )
+
+    def test_transition_rejects_id_override(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="immutable"):
+            TransitionTaskMutation(
+                request_id="req-1",
+                requested_by="alice",
+                task_id="task-1",
+                target_status=TaskStatus.ASSIGNED,
+                reason="test",
+                overrides={"id": "new-id"},
+            )
+
+
+# -- Typed error propagation ──────────────────────────────────
+
+
+@pytest.mark.unit
+class TestTypedErrors:
+    """Convenience methods raise typed errors."""
+
+    async def test_update_not_found_raises_typed(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        with pytest.raises(TaskNotFoundError):
+            await engine.update_task(
+                "task-nonexistent",
+                {"title": "X"},
+                requested_by="alice",
+            )
+
+    async def test_delete_not_found_raises_typed(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        with pytest.raises(TaskNotFoundError):
+            await engine.delete_task(
+                "task-nonexistent",
+                requested_by="alice",
+            )
+
+    async def test_transition_not_found_raises_typed(
+        self,
+        engine: TaskEngine,
+    ) -> None:
+        with pytest.raises(TaskNotFoundError):
+            await engine.transition_task(
+                "task-nonexistent",
+                TaskStatus.ASSIGNED,
+                requested_by="alice",
+                reason="test",
+            )

@@ -132,14 +132,24 @@ def _build_lifecycle(
     return [on_startup], [on_shutdown]
 
 
-async def _cleanup_on_failure(
+async def _cleanup_on_failure(  # noqa: PLR0913
     *,
     persistence: PersistenceBackend | None,
     started_persistence: bool,
     message_bus: MessageBus | None,
     started_bus: bool,
+    task_engine: TaskEngine | None = None,
+    started_task_engine: bool = False,
 ) -> None:
-    """Reverse cleanup of persistence and message bus on startup failure."""
+    """Reverse cleanup on startup failure (task engine, bus, persistence)."""
+    if started_task_engine and task_engine is not None:
+        try:
+            await task_engine.stop()
+        except Exception:
+            logger.exception(
+                API_APP_STARTUP,
+                error="Cleanup: failed to stop task engine",
+            )
     if started_bus and message_bus is not None:
         try:
             await message_bus.stop()
@@ -214,6 +224,7 @@ async def _safe_startup(
     """
     started_bus = False
     started_persistence = False
+    started_task_engine = False
     try:
         if persistence is not None:
             try:
@@ -257,12 +268,15 @@ async def _safe_startup(
                     error="Failed to start task engine",
                 )
                 raise
+            started_task_engine = True
     except Exception:
         await _cleanup_on_failure(
             persistence=persistence,
             started_persistence=started_persistence,
             message_bus=message_bus,
             started_bus=started_bus,
+            task_engine=task_engine,
+            started_task_engine=started_task_engine,
         )
         raise
 

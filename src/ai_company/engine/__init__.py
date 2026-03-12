@@ -1,8 +1,8 @@
 """Agent execution engine.
 
-Re-exports the public API for the agent orchestrator, run results,
-system prompt construction, runtime execution state, execution loops,
-and engine errors.
+Re-exports the public API for the agent orchestrator, task engine,
+run results, system prompt construction, runtime execution state,
+execution loops, and engine errors.
 """
 
 from ai_company.engine.agent_engine import AgentEngine
@@ -69,7 +69,9 @@ from ai_company.engine.errors import (
     TaskAssignmentError,
     TaskEngineError,
     TaskEngineNotRunningError,
+    TaskEngineQueueFullError,
     TaskMutationError,
+    TaskNotFoundError,
     TaskRoutingError,
     TaskVersionConflictError,
     WorkspaceCleanupError,
@@ -264,10 +266,12 @@ __all__ = [
     "TaskEngineConfig",
     "TaskEngineError",
     "TaskEngineNotRunningError",
+    "TaskEngineQueueFullError",
     "TaskExecution",
     "TaskMutation",
     "TaskMutationError",
     "TaskMutationResult",
+    "TaskNotFoundError",
     "TaskRoutingError",
     "TaskRoutingService",
     "TaskStateChanged",
