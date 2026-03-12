@@ -15,8 +15,8 @@ from ai_company.memory.backends.mem0.mappers import (
     parse_mem0_metadata,
     query_to_mem0_getall_args,
     query_to_mem0_search_args,
-    store_request_to_mem0_args,
 )
+from ai_company.memory.errors import MemoryRetrievalError
 from ai_company.memory.models import (
     MemoryEntry,
     MemoryMetadata,
@@ -87,23 +87,6 @@ class TestBuildMem0Metadata:
 
 
 @pytest.mark.unit
-class TestStoreRequestToMem0Args:
-    def test_basic_conversion(self) -> None:
-        request = MemoryStoreRequest(
-            category=MemoryCategory.WORKING,
-            content="remember this",
-        )
-        args = store_request_to_mem0_args("test-agent-001", request)
-
-        assert args["messages"] == [
-            {"role": "user", "content": "remember this"},
-        ]
-        assert args["user_id"] == "test-agent-001"
-        assert args["infer"] is False
-        assert f"{_PREFIX}category" in args["metadata"]
-
-
-@pytest.mark.unit
 class TestParseMem0Datetime:
     def test_none_returns_none(self) -> None:
         assert parse_mem0_datetime(None) is None
@@ -126,6 +109,12 @@ class TestParseMem0Datetime:
         dt = parse_mem0_datetime("2026-03-12T10:30:00+05:30")
         assert dt is not None
         assert dt.utcoffset() == timedelta(hours=5, minutes=30)
+
+    def test_malformed_datetime_returns_none(self) -> None:
+        assert parse_mem0_datetime("not-a-date") is None
+
+    def test_partial_datetime_returns_none(self) -> None:
+        assert parse_mem0_datetime("2026-13-45T99:99:99") is None
 
 
 @pytest.mark.unit
@@ -179,6 +168,11 @@ class TestParseMem0Metadata:
 
     def test_missing_category_defaults_to_working(self) -> None:
         raw = {f"{_PREFIX}confidence": 0.5}
+        category, _metadata, _expires = parse_mem0_metadata(raw)
+        assert category == MemoryCategory.WORKING
+
+    def test_invalid_category_defaults_to_working(self) -> None:
+        raw = {f"{_PREFIX}category": "nonexistent_category"}
         category, _metadata, _expires = parse_mem0_metadata(raw)
         assert category == MemoryCategory.WORKING
 
@@ -244,6 +238,31 @@ class TestMem0ResultToEntry:
 
         assert entry.category == MemoryCategory.WORKING
         assert entry.metadata.confidence == 1.0
+
+    def test_missing_id_raises(self) -> None:
+        raw = {"memory": "no id here", "metadata": {}}
+        with pytest.raises(MemoryRetrievalError, match="missing required 'id'"):
+            mem0_result_to_entry(raw, "test-agent-001")
+
+    def test_empty_content_raises(self) -> None:
+        raw = {"id": "empty-content", "memory": "", "metadata": {}}
+        with pytest.raises(MemoryRetrievalError, match="empty content"):
+            mem0_result_to_entry(raw, "test-agent-001")
+
+    def test_whitespace_only_content_raises(self) -> None:
+        raw = {"id": "ws-only", "memory": "   ", "metadata": {}}
+        with pytest.raises(MemoryRetrievalError, match="empty content"):
+            mem0_result_to_entry(raw, "test-agent-001")
+
+    def test_data_key_fallback(self) -> None:
+        raw = {
+            "id": "data-key",
+            "data": "content via data key",
+            "created_at": "2026-03-12T10:00:00+00:00",
+            "metadata": {},
+        }
+        entry = mem0_result_to_entry(raw, "test-agent-001")
+        assert entry.content == "content via data key"
 
 
 @pytest.mark.unit
