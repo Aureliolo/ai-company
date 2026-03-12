@@ -51,6 +51,7 @@ jobs:
           PR_EVENT_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           GH_REPOSITORY: ${{ github.repository }}
         run: |
+          set -euo pipefail
           PR_NUMBER="${PR_EVENT_NUMBER:-$PR_INPUT}"
           if ! [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::PR number must be a positive integer, got: '$PR_NUMBER'"
