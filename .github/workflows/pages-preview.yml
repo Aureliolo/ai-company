@@ -78,7 +78,7 @@ jobs:
             SAME_REPO=$( [ "$PR_EVENT_HEAD_REPO" = "$GH_REPOSITORY" ] && echo "true" || echo "false" )
           fi
 
-          if [ -z "$HEAD_SHA" ]; then
+          if [ -z "$HEAD_SHA" ] || [ "$HEAD_SHA" = "null" ]; then
             echo "::error::Failed to resolve HEAD SHA for PR #$PR_NUMBER"
             exit 1
           fi
