@@ -253,8 +253,8 @@ at `ASSIGNED`).
   Other sync failures log at `WARNING`.
 - **Direct `submit()`**: Uses `TaskEngine.submit()` with
   `TransitionTaskMutation` directly (not the convenience `transition_task()`
-  method) to access `TaskMutationResult.version` for optimistic concurrency
-  chaining.
+  method) to inspect `TaskMutationResult` success/failure without exception
+  propagation, keeping sync best-effort.
 - **No concurrency concern**: Each task has exactly one executing agent at
   any time. Parallel agents operate on separate tasks.
 
@@ -413,7 +413,7 @@ invocation, and cost tracking into a single `run()` call.
 ```python
 async run(
     identity, task, completion_config?, max_turns?,
-    memory_messages?, timeout_seconds?
+    memory_messages?, timeout_seconds?, effective_autonomy?
 ) -> AgentRunResult
 ```
 
@@ -459,6 +459,8 @@ async run(
       see [Crash Recovery](#agent-crash-recovery)).
     - All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`) leave the
       task in its current state.
+    - Each transition is synced to TaskEngine incrementally (see
+      [AgentEngine ↔ TaskEngine Incremental Sync](#agentengine--taskengine-incremental-sync)).
     - Transition failures are logged but do not discard the successful execution
       result.
 11. **Return result** -- wraps `ExecutionResult` in `AgentRunResult` with

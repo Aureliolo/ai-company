@@ -10,7 +10,6 @@ import time
 from typing import TYPE_CHECKING
 
 from ai_company.budget.errors import BudgetExhaustedError
-from ai_company.core.enums import TaskStatus
 from ai_company.engine._validation import (
     validate_agent,
     validate_run_inputs,
@@ -19,10 +18,7 @@ from ai_company.engine._validation import (
 from ai_company.engine.classification.pipeline import classify_execution_errors
 from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.cost_recording import record_execution_costs
-from ai_company.engine.errors import (
-    ExecutionStateError,
-    TaskEngineError,
-)
+from ai_company.engine.errors import ExecutionStateError
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -38,7 +34,11 @@ from ai_company.engine.prompt import (
 from ai_company.engine.react_loop import ReactLoop
 from ai_company.engine.recovery import FailAndReassignStrategy, RecoveryStrategy
 from ai_company.engine.run_result import AgentRunResult
-from ai_company.engine.task_engine_models import TransitionTaskMutation
+from ai_company.engine.task_sync import (
+    apply_post_execution_transitions,
+    sync_to_task_engine,
+    transition_task_if_needed,
+)
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_BUDGET_STOPPED,
@@ -47,10 +47,7 @@ from ai_company.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_PROMPT_BUILT,
     EXECUTION_ENGINE_START,
-    EXECUTION_ENGINE_SYNC_FAILED,
     EXECUTION_ENGINE_TASK_METRICS,
-    EXECUTION_ENGINE_TASK_SYNCED,
-    EXECUTION_ENGINE_TASK_TRANSITION,
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_RECOVERY_FAILED,
 )
@@ -363,10 +360,11 @@ class AgentEngine:
             task_id,
             tracker=self._cost_tracker,
         )
-        execution_result = await self._apply_post_execution_transitions(
+        execution_result = await apply_post_execution_transitions(
             execution_result,
             agent_id,
             task_id,
+            self._task_engine,
         )
         if execution_result.termination_reason == TerminationReason.ERROR:
             execution_result = await self._apply_recovery(
@@ -374,14 +372,16 @@ class AgentEngine:
                 agent_id,
                 task_id,
             )
-            # Sync post-recovery status (typically FAILED) to TaskEngine.
+            # Sync post-recovery status to TaskEngine (FAILED for
+            # default FailAndReassignStrategy).
             ctx = execution_result.context
             if ctx.task_execution is not None:
-                await self._sync_to_task_engine(
+                await sync_to_task_engine(
+                    self._task_engine,
                     target_status=ctx.task_execution.status,
                     task_id=task_id,
                     agent_id=agent_id,
-                    reason=(f"Post-recovery status: {ctx.task_execution.status.value}"),
+                    reason=f"Post-recovery status: {ctx.task_execution.status.value}",
                 )
         # Classification is non-critical — never destroys a result.
         if self._error_taxonomy_config is not None:
@@ -531,261 +531,15 @@ class AgentEngine:
             ),
         )
 
-        ctx = await self._transition_task_if_needed(ctx, agent_id, task_id)
+        ctx = await transition_task_if_needed(
+            ctx,
+            agent_id,
+            task_id,
+            self._task_engine,
+        )
         return ctx, system_prompt
 
     # ── Helpers ──────────────────────────────────────────────────
-
-    async def _transition_task_if_needed(
-        self,
-        ctx: AgentContext,
-        agent_id: str,
-        task_id: str,
-    ) -> AgentContext:
-        """Transition ASSIGNED -> IN_PROGRESS; pass through IN_PROGRESS.
-
-        Also syncs the transition to TaskEngine (best-effort).
-        """
-        if (
-            ctx.task_execution is not None
-            and ctx.task_execution.status == TaskStatus.ASSIGNED
-        ):
-            ctx = ctx.with_task_transition(
-                TaskStatus.IN_PROGRESS,
-                reason="Engine starting execution",
-            )
-            logger.info(
-                EXECUTION_ENGINE_TASK_TRANSITION,
-                agent_id=agent_id,
-                task_id=task_id,
-                from_status=TaskStatus.ASSIGNED.value,
-                to_status=TaskStatus.IN_PROGRESS.value,
-            )
-            await self._sync_to_task_engine(
-                target_status=TaskStatus.IN_PROGRESS,
-                task_id=task_id,
-                agent_id=agent_id,
-                reason="Engine starting execution",
-                critical=True,
-            )
-        return ctx
-
-    async def _apply_post_execution_transitions(
-        self,
-        execution_result: ExecutionResult,
-        agent_id: str,
-        task_id: str,
-    ) -> ExecutionResult:
-        """Apply post-execution task transitions based on termination reason.
-
-        COMPLETED triggers IN_PROGRESS -> IN_REVIEW -> COMPLETED.
-        SHUTDOWN triggers current status -> INTERRUPTED.
-        Each transition is synced to TaskEngine incrementally.
-        Transition failures are logged but never discard the result.
-        """
-        ctx = execution_result.context
-        if ctx.task_execution is None:
-            return execution_result
-
-        reason = execution_result.termination_reason
-
-        if reason == TerminationReason.SHUTDOWN:
-            return await self._transition_to_interrupted(
-                execution_result, ctx, agent_id, task_id
-            )
-
-        if reason != TerminationReason.COMPLETED:
-            return execution_result
-
-        try:
-            ctx = await self._transition_to_complete(ctx, agent_id, task_id)
-        except (ValueError, ExecutionStateError) as exc:
-            logger.exception(
-                EXECUTION_ENGINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                error=f"Post-execution transition failed: {exc}",
-            )
-            return execution_result
-
-        return execution_result.model_copy(update={"context": ctx})
-
-    async def _transition_to_complete(
-        self,
-        ctx: AgentContext,
-        agent_id: str,
-        task_id: str,
-    ) -> AgentContext:
-        """Transition IN_PROGRESS -> IN_REVIEW -> COMPLETED with logging.
-
-        Each step is synced to TaskEngine incrementally.
-        """
-        prev_status = ctx.task_execution.status  # type: ignore[union-attr]
-        ctx = ctx.with_task_transition(
-            TaskStatus.IN_REVIEW,
-            reason="Agent completed execution",
-        )
-        logger.info(
-            EXECUTION_ENGINE_TASK_TRANSITION,
-            agent_id=agent_id,
-            task_id=task_id,
-            from_status=prev_status.value,
-            to_status=TaskStatus.IN_REVIEW.value,
-        )
-        await self._sync_to_task_engine(
-            target_status=TaskStatus.IN_REVIEW,
-            task_id=task_id,
-            agent_id=agent_id,
-            reason="Agent completed execution",
-        )
-        # TODO: Replace auto-complete with review gate (§6.5)
-        prev_status = ctx.task_execution.status  # type: ignore[union-attr]
-        ctx = ctx.with_task_transition(
-            TaskStatus.COMPLETED,
-            reason="Auto-completed (review gate not implemented)",
-        )
-        logger.info(
-            EXECUTION_ENGINE_TASK_TRANSITION,
-            agent_id=agent_id,
-            task_id=task_id,
-            from_status=prev_status.value,
-            to_status=TaskStatus.COMPLETED.value,
-        )
-        await self._sync_to_task_engine(
-            target_status=TaskStatus.COMPLETED,
-            task_id=task_id,
-            agent_id=agent_id,
-            reason="Auto-completed (review gate not implemented)",
-        )
-        return ctx
-
-    async def _transition_to_interrupted(
-        self,
-        execution_result: ExecutionResult,
-        ctx: AgentContext,
-        agent_id: str,
-        task_id: str,
-    ) -> ExecutionResult:
-        """Transition task to INTERRUPTED on graceful shutdown."""
-        try:
-            prev_status = ctx.task_execution.status  # type: ignore[union-attr]
-            ctx = ctx.with_task_transition(
-                TaskStatus.INTERRUPTED,
-                reason="Graceful shutdown requested",
-            )
-            logger.info(
-                EXECUTION_ENGINE_TASK_TRANSITION,
-                agent_id=agent_id,
-                task_id=task_id,
-                from_status=prev_status.value,
-                to_status=TaskStatus.INTERRUPTED.value,
-            )
-            await self._sync_to_task_engine(
-                target_status=TaskStatus.INTERRUPTED,
-                task_id=task_id,
-                agent_id=agent_id,
-                reason="Graceful shutdown requested",
-            )
-            return execution_result.model_copy(update={"context": ctx})
-        except (ValueError, ExecutionStateError) as exc:
-            logger.exception(
-                EXECUTION_ENGINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                error=f"Post-execution INTERRUPTED transition failed: {exc}",
-            )
-            return execution_result
-
-    async def _sync_to_task_engine(  # noqa: PLR0913
-        self,
-        *,
-        target_status: TaskStatus,
-        task_id: str,
-        agent_id: str,
-        reason: str,
-        expected_version: int | None = None,
-        critical: bool = False,
-    ) -> int | None:
-        """Sync a status transition to the centralized TaskEngine.
-
-        Best-effort: failures are logged and swallowed so that agent
-        execution is never blocked by a TaskEngine issue.
-
-        Args:
-            target_status: The status to transition to.
-            task_id: Task identifier.
-            agent_id: Agent performing the transition.
-            reason: Human-readable reason for the transition.
-            expected_version: Optional optimistic concurrency version
-                from the previous sync call.
-            critical: If ``True``, sync failure is logged at ERROR
-                (e.g. the initial IN_PROGRESS transition that all
-                subsequent transitions depend on).
-
-        Returns:
-            The new version counter from TaskEngine on success,
-            ``None`` on failure or when no TaskEngine is configured.
-        """
-        if self._task_engine is None:
-            return None
-
-        from uuid import uuid4  # noqa: PLC0415
-
-        try:
-            mutation = TransitionTaskMutation(
-                request_id=uuid4().hex,
-                requested_by=agent_id,
-                task_id=task_id,
-                target_status=target_status,
-                reason=reason,
-                expected_version=expected_version,
-            )
-            result = await self._task_engine.submit(mutation)
-        except MemoryError, RecursionError:
-            raise
-        except TaskEngineError:
-            log = logger.error if critical else logger.warning
-            log(
-                EXECUTION_ENGINE_SYNC_FAILED,
-                agent_id=agent_id,
-                task_id=task_id,
-                target_status=target_status.value,
-                error="TaskEngine unavailable",
-                exc_info=True,
-            )
-            return None
-        except Exception:
-            log = logger.error if critical else logger.warning
-            log(
-                EXECUTION_ENGINE_SYNC_FAILED,
-                agent_id=agent_id,
-                task_id=task_id,
-                target_status=target_status.value,
-                error="Unexpected error syncing to TaskEngine",
-                exc_info=True,
-            )
-            return None
-        else:
-            if result.success:
-                logger.debug(
-                    EXECUTION_ENGINE_TASK_SYNCED,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    target_status=target_status.value,
-                    version=result.version,
-                )
-                return result.version
-            # Mutation was rejected (e.g. version conflict, invalid
-            # transition).
-            log = logger.error if critical else logger.warning
-            log(
-                EXECUTION_ENGINE_SYNC_FAILED,
-                agent_id=agent_id,
-                task_id=task_id,
-                target_status=target_status.value,
-                error=result.error,
-            )
-            return None
 
     async def _apply_recovery(
         self,
@@ -1041,6 +795,16 @@ class AgentEngine:
                 error_msg,
                 ctx,
             )
+            # Sync post-recovery status to TaskEngine (best-effort).
+            error_ctx = error_execution.context
+            if error_ctx.task_execution is not None:
+                await sync_to_task_engine(
+                    self._task_engine,
+                    target_status=error_ctx.task_execution.status,
+                    task_id=task_id,
+                    agent_id=agent_id,
+                    reason=f"Fatal error recovery: {error_msg}",
+                )
             error_prompt = build_error_prompt(
                 identity,
                 agent_id,

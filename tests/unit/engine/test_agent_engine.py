@@ -1283,3 +1283,35 @@ class TestSyncToTaskEngine:
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,
             )
+
+    async def test_recursion_error_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """RecursionError from submit() is re-raised, not swallowed."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+
+        mock_te = MagicMock()
+        mock_te.submit = AsyncMock(
+            side_effect=RecursionError("maximum recursion depth exceeded"),
+        )
+
+        engine = AgentEngine(provider=provider, task_engine=mock_te)
+
+        with pytest.raises(RecursionError, match="maximum recursion depth exceeded"):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+
+@pytest.mark.unit
+def test_snapshot_channel_matches_api_channel() -> None:
+    """TaskEngine._SNAPSHOT_CHANNEL must match CHANNEL_TASKS in api.channels."""
+    from ai_company.api.channels import CHANNEL_TASKS
+    from ai_company.engine.task_engine import TaskEngine
+
+    assert TaskEngine._SNAPSHOT_CHANNEL == CHANNEL_TASKS
