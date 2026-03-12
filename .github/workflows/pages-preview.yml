@@ -146,6 +146,7 @@ jobs:
     needs: build
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    environment: cloudflare-preview
     timeout-minutes: 5
     permissions:
       contents: read
@@ -223,6 +224,7 @@ jobs:
       github.event.action == 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    environment: cloudflare-preview
     timeout-minutes: 5
     permissions:
       contents: read
