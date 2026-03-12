@@ -43,7 +43,7 @@ from ai_company.providers.models import (
 from tests.unit.engine.task_engine_helpers import FakeMessageBus, FakePersistence
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, AsyncIterator
+    from collections.abc import AsyncIterator
 
     from ai_company.core.enums import ConflictEscalation
     from ai_company.engine.workspace.models import (
@@ -432,7 +432,7 @@ def config() -> TaskEngineConfig:
 async def engine(
     persistence: FakePersistence,
     config: TaskEngineConfig,
-) -> AsyncGenerator[TaskEngine]:
+) -> AsyncIterator[TaskEngine]:
     """Create and start a TaskEngine, stop on teardown."""
     eng = TaskEngine(
         persistence=persistence,  # type: ignore[arg-type]
@@ -448,7 +448,7 @@ async def engine_with_bus(
     persistence: FakePersistence,
     message_bus: FakeMessageBus,
     config: TaskEngineConfig,
-) -> AsyncGenerator[TaskEngine]:
+) -> AsyncIterator[TaskEngine]:
     """Create and start a TaskEngine with a message bus."""
     eng = TaskEngine(
         persistence=persistence,  # type: ignore[arg-type]

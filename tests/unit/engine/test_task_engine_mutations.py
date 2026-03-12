@@ -21,7 +21,7 @@ from ai_company.engine.task_engine_models import (
 from tests.unit.engine.task_engine_helpers import (
     FakePersistence,
     FakeTaskRepository,
-    _make_create_data,
+    make_create_data,
 )
 
 if TYPE_CHECKING:
@@ -40,7 +40,7 @@ class TestCreateTask:
         persistence: FakePersistence,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(title="My Task"),
+            make_create_data(title="My Task"),
             requested_by="alice",
         )
         assert task.title == "My Task"
@@ -58,7 +58,7 @@ class TestCreateTask:
         mutation = CreateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_data=_make_create_data(),
+            task_data=make_create_data(),
         )
         result = await engine.submit(mutation)
         assert result.success is True
@@ -69,7 +69,7 @@ class TestCreateTask:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(assigned_to=None),
+            make_create_data(assigned_to=None),
             requested_by="alice",
         )
         assert task.assigned_to is None
@@ -87,7 +87,7 @@ class TestUpdateTask:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(title="Original"),
+            make_create_data(title="Original"),
             requested_by="alice",
         )
         updated = await engine.update_task(
@@ -103,7 +103,7 @@ class TestUpdateTask:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         result = await engine.update_task(
@@ -137,7 +137,7 @@ class TestTransitionTask:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         assigned, _ = await engine.transition_task(
@@ -155,7 +155,7 @@ class TestTransitionTask:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         with pytest.raises(TaskMutationError):
@@ -193,7 +193,7 @@ class TestDeleteTask:
         persistence: FakePersistence,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         deleted = await engine.delete_task(task.id, requested_by="alice")
@@ -225,7 +225,7 @@ class TestCancelTask:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         assigned, _ = await engine.transition_task(
@@ -248,7 +248,7 @@ class TestCancelTask:
     ) -> None:
         """CREATED -> CANCELLED is not a valid transition."""
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         with pytest.raises(TaskMutationError):
@@ -271,7 +271,7 @@ class TestReadThrough:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(title="Findme"),
+            make_create_data(title="Findme"),
             requested_by="alice",
         )
         found = await engine.get_task(task.id)
@@ -290,11 +290,11 @@ class TestReadThrough:
         engine: TaskEngine,
     ) -> None:
         await engine.create_task(
-            _make_create_data(project="proj-a"),
+            make_create_data(project="proj-a"),
             requested_by="alice",
         )
         await engine.create_task(
-            _make_create_data(project="proj-b"),
+            make_create_data(project="proj-b"),
             requested_by="alice",
         )
         all_tasks = await engine.list_tasks()
@@ -308,7 +308,7 @@ class TestReadThrough:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         await engine.transition_task(
@@ -358,7 +358,7 @@ class TestPreviousStatus:
         mutation = CreateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_data=_make_create_data(),
+            task_data=make_create_data(),
         )
         result = await engine.submit(mutation)
         assert result.success is True
@@ -369,7 +369,7 @@ class TestPreviousStatus:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         mutation = TransitionTaskMutation(
@@ -389,7 +389,7 @@ class TestPreviousStatus:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         # First move to ASSIGNED so cancel is valid
@@ -500,7 +500,7 @@ class TestTypedErrors:
     ) -> None:
         """Version conflict via convenience method raises TaskVersionConflictError."""
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         with pytest.raises(TaskVersionConflictError, match="conflict"):
@@ -541,7 +541,7 @@ class TestErrorPropagation:
             mutation = CreateTaskMutation(
                 request_id="req-1",
                 requested_by="alice",
-                task_data=_make_create_data(),
+                task_data=make_create_data(),
             )
             result = await eng.submit(mutation)
             assert result.success is False

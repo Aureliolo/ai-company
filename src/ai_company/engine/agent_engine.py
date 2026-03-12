@@ -694,7 +694,7 @@ class AgentEngine:
             return
 
         try:
-            _, _ = await self._task_engine.transition_task(
+            _ = await self._task_engine.transition_task(
                 task_id,
                 final_status,
                 requested_by=agent_id,

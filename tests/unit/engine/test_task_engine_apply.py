@@ -20,7 +20,7 @@ from ai_company.engine.task_engine_models import (
     UpdateTaskMutation,
 )
 from ai_company.engine.task_engine_version import VersionTracker
-from tests.unit.engine.task_engine_helpers import FakePersistence, _make_create_data
+from tests.unit.engine.task_engine_helpers import FakePersistence, make_create_data
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ class TestDispatch:
         mutation = CreateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_data=_make_create_data(),
+            task_data=make_create_data(),
         )
         result = await dispatch(mutation, persistence, versions)  # type: ignore[arg-type]
         assert result.success is True
@@ -85,7 +85,7 @@ class TestApplyCreate:
         mutation = CreateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_data=_make_create_data(title="New Task"),
+            task_data=make_create_data(title="New Task"),
         )
         result = await apply_create(mutation, persistence, versions)  # type: ignore[arg-type]
         assert result.success is True
@@ -107,7 +107,7 @@ class TestApplyCreate:
         mutation = CreateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_data=_make_create_data(assigned_to="bob"),
+            task_data=make_create_data(assigned_to="bob"),
         )
         result = await apply_create(mutation, persistence, versions)  # type: ignore[arg-type]
         assert result.success is False
@@ -122,7 +122,7 @@ class TestApplyCreate:
         mutation = CreateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_data=_make_create_data(),
+            task_data=make_create_data(),
         )
         result = await apply_create(mutation, persistence, versions)  # type: ignore[arg-type]
         assert result.task is not None
@@ -145,7 +145,7 @@ class TestApplyUpdate:
         mutation = CreateTaskMutation(
             request_id="req-c",
             requested_by="alice",
-            task_data=_make_create_data(),
+            task_data=make_create_data(),
         )
         return await apply_create(mutation, persistence, versions)  # type: ignore[arg-type]
 
@@ -269,7 +269,7 @@ class TestApplyTransition:
         mutation = CreateTaskMutation(
             request_id="req-c",
             requested_by="alice",
-            task_data=_make_create_data(),
+            task_data=make_create_data(),
         )
         return await apply_create(mutation, persistence, versions)  # type: ignore[arg-type]
 
@@ -367,7 +367,7 @@ class TestApplyDelete:
             CreateTaskMutation(
                 request_id="req-c",
                 requested_by="alice",
-                task_data=_make_create_data(),
+                task_data=make_create_data(),
             ),
             persistence,  # type: ignore[arg-type]
             versions,
@@ -408,7 +408,7 @@ class TestApplyDelete:
             CreateTaskMutation(
                 request_id="req-c",
                 requested_by="alice",
-                task_data=_make_create_data(),
+                task_data=make_create_data(),
             ),
             persistence,  # type: ignore[arg-type]
             versions,
@@ -446,7 +446,7 @@ class TestApplyCancel:
             CreateTaskMutation(
                 request_id="req-c",
                 requested_by="alice",
-                task_data=_make_create_data(),
+                task_data=make_create_data(),
             ),
             persistence,  # type: ignore[arg-type]
             versions,
@@ -510,7 +510,7 @@ class TestApplyCancel:
             CreateTaskMutation(
                 request_id="req-c",
                 requested_by="alice",
-                task_data=_make_create_data(),
+                task_data=make_create_data(),
             ),
             persistence,  # type: ignore[arg-type]
             versions,

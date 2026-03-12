@@ -19,7 +19,7 @@ from tests.unit.engine.task_engine_helpers import (
     FailingMessageBus,
     FakeMessageBus,
     FakePersistence,
-    _make_create_data,
+    make_create_data,
 )
 
 # ── Snapshot publishing ───────────────────────────────────────
@@ -35,7 +35,7 @@ class TestSnapshotPublishing:
         message_bus: FakeMessageBus,
     ) -> None:
         await engine_with_bus.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         # Yield to event loop so the processing loop completes snapshot publication
@@ -56,7 +56,7 @@ class TestSnapshotPublishing:
         eng.start()
         try:
             task = await eng.create_task(
-                _make_create_data(),
+                make_create_data(),
                 requested_by="alice",
             )
             assert task.id.startswith("task-")
@@ -80,7 +80,7 @@ class TestSnapshotPublishing:
         eng.start()
         try:
             await eng.create_task(
-                _make_create_data(),
+                make_create_data(),
                 requested_by="alice",
             )
             await asyncio.sleep(0)
@@ -99,7 +99,7 @@ class TestSnapshotPublishing:
         # Submit concurrently without awaiting — items enter the queue
         create_tasks = [
             asyncio.create_task(
-                eng.create_task(_make_create_data(), requested_by="alice")
+                eng.create_task(make_create_data(), requested_by="alice")
             )
             for _ in range(5)
         ]
@@ -132,7 +132,7 @@ class TestSequentialOrdering:
         tasks = await asyncio.gather(
             *(
                 engine.create_task(
-                    _make_create_data(title=f"Task {i}"),
+                    make_create_data(title=f"Task {i}"),
                     requested_by="alice",
                 )
                 for i in range(10)
@@ -169,7 +169,7 @@ class TestQueueFull:
         mutation1 = CreateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_data=_make_create_data(),
+            task_data=make_create_data(),
         )
         eng._queue.put_nowait(_MutationEnvelope(mutation=mutation1))
 
@@ -177,7 +177,7 @@ class TestQueueFull:
         mutation2 = CreateTaskMutation(
             request_id="req-2",
             requested_by="alice",
-            task_data=_make_create_data(),
+            task_data=make_create_data(),
         )
         with pytest.raises(TaskEngineQueueFullError, match="queue is full"):
             await eng.submit(mutation2)
@@ -199,7 +199,7 @@ class TestVersionTracking:
         mutation = CreateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_data=_make_create_data(),
+            task_data=make_create_data(),
         )
         r1 = await engine.submit(mutation)
         assert r1.version == 1
@@ -218,7 +218,7 @@ class TestVersionTracking:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         # version is 1 after create; expected_version=99 should fail
@@ -238,7 +238,7 @@ class TestVersionTracking:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         delete = DeleteTaskMutation(
@@ -254,7 +254,7 @@ class TestVersionTracking:
         engine: TaskEngine,
     ) -> None:
         task = await engine.create_task(
-            _make_create_data(),
+            make_create_data(),
             requested_by="alice",
         )
         mutation = TransitionTaskMutation(
@@ -300,14 +300,14 @@ class TestDrainTimeout:
 
         # Submit a task — it'll block in slow_save, holding the processing loop
         blocked_task = asyncio.create_task(
-            eng.create_task(_make_create_data(), requested_by="alice")
+            eng.create_task(make_create_data(), requested_by="alice")
         )
 
         # Queue a second task directly so it's definitely waiting
         mutation2 = CreateTaskMutation(
             request_id="req-queued",
             requested_by="alice",
-            task_data=_make_create_data(),
+            task_data=make_create_data(),
         )
         envelope = _MutationEnvelope(mutation=mutation2)
         # Wait until slow_save is entered before queuing the second task

@@ -52,7 +52,11 @@ class VersionTracker:
         self._versions[task_id] = version
 
     def bump(self, task_id: str) -> int:
-        """Increment and return the version counter for *task_id*."""
+        """Increment and return the version counter for *task_id*.
+
+        If *task_id* is not yet tracked, it is seeded at version 1
+        first, so the returned value will be 2 (not 1).
+        """
         self.seed(task_id)
         version = self._versions[task_id] + 1
         self._versions[task_id] = version

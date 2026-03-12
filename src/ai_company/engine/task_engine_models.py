@@ -7,7 +7,7 @@ All mutation requests are frozen Pydantic models, discriminated by a
 
 import copy
 from datetime import UTC, datetime
-from typing import Literal, Self
+from typing import Final, Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -15,10 +15,23 @@ from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
 from ai_company.core.task import Task
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
-_VALID_TASK_FIELDS: frozenset[str] = frozenset(Task.model_fields)
-"""Field names from ``model_fields`` on :class:`Task`.
+MutationType = Literal["create", "update", "transition", "delete", "cancel"]
+"""Discriminator literal for all mutation request types."""
 
-Excludes computed fields.
+TaskErrorCode = Literal["not_found", "version_conflict", "validation", "internal"]
+"""Machine-readable error classification for mutation results."""
+
+_MAX_TITLE_LENGTH: Final[int] = 256
+"""Maximum length for task titles (matches API-layer ``CreateTaskRequest``)."""
+
+_MAX_DESCRIPTION_LENGTH: Final[int] = 4096
+"""Maximum length for task descriptions (matches API-layer ``CreateTaskRequest``)."""
+
+_VALID_TASK_FIELDS: frozenset[str] = frozenset(Task.model_fields)
+"""Field names accepted by ``model_fields`` on :class:`Task`.
+
+Pydantic's ``model_fields`` excludes any ``@computed_field``
+properties by design.
 
 Used to reject unknown keys in :class:`UpdateTaskMutation` and
 :class:`TransitionTaskMutation` validators.
@@ -34,6 +47,10 @@ class CreateTaskData(BaseModel):
     the engine layer so it has no dependency on the API (field parity is
     maintained by convention, not enforced).
 
+    Note: ``CreateTaskRequest`` applies additional length constraints
+    (``max_length``) at the API boundary.  This model enforces the same
+    limits for defense-in-depth so engine-layer callers also benefit.
+
     Attributes:
         title: Short task title.
         description: Detailed task description.
@@ -48,8 +65,14 @@ class CreateTaskData(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    title: NotBlankStr = Field(description="Short task title")
-    description: NotBlankStr = Field(description="Detailed task description")
+    title: NotBlankStr = Field(
+        max_length=_MAX_TITLE_LENGTH,
+        description="Short task title",
+    )
+    description: NotBlankStr = Field(
+        max_length=_MAX_DESCRIPTION_LENGTH,
+        description="Detailed task description",
+    )
     type: TaskType = Field(description="Task work type")
     priority: Priority = Field(default=Priority.MEDIUM, description="Task priority")
     project: NotBlankStr = Field(description="Project ID")
@@ -84,19 +107,21 @@ class CreateTaskMutation(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mutation_type: Literal["create"] = "create"
+    mutation_type: MutationType = "create"
     request_id: NotBlankStr = Field(description="Unique request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
     task_data: CreateTaskData = Field(description="Task creation payload")
 
 
-_IMMUTABLE_TASK_FIELDS: frozenset[str] = frozenset(
-    {
-        "id",
-        "status",
-        "created_by",
-    }
-)
+_ALWAYS_IMMUTABLE_FIELDS: frozenset[str] = frozenset({"id", "created_by"})
+"""Core identity fields that can never be changed via any mutation.
+
+``status`` is also immutable for updates (must use transitions) and
+for transition overrides (set via ``target_status``).  See
+:data:`_IMMUTABLE_TASK_FIELDS` and :data:`_IMMUTABLE_OVERRIDE_FIELDS`.
+"""
+
+_IMMUTABLE_TASK_FIELDS: frozenset[str] = _ALWAYS_IMMUTABLE_FIELDS | {"status"}
 """Fields that must not be modified via :class:`UpdateTaskMutation`.
 
 ``status`` must go through :class:`TransitionTaskMutation` (which
@@ -119,7 +144,7 @@ class UpdateTaskMutation(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mutation_type: Literal["update"] = "update"
+    mutation_type: MutationType = "update"
     request_id: NotBlankStr = Field(description="Unique request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
     task_id: NotBlankStr = Field(description="Target task identifier")
@@ -148,14 +173,11 @@ class UpdateTaskMutation(BaseModel):
         object.__setattr__(self, "updates", copy.deepcopy(self.updates))
 
 
-_IMMUTABLE_OVERRIDE_FIELDS: frozenset[str] = frozenset(
-    {
-        "id",
-        "created_by",
-        "status",
-    }
-)
-"""Fields that must not be overridden during a transition."""
+_IMMUTABLE_OVERRIDE_FIELDS: frozenset[str] = _ALWAYS_IMMUTABLE_FIELDS | {"status"}
+"""Fields that must not be overridden during a transition.
+
+See :data:`_ALWAYS_IMMUTABLE_FIELDS` for the shared base.
+"""
 
 
 class TransitionTaskMutation(BaseModel):
@@ -174,7 +196,7 @@ class TransitionTaskMutation(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mutation_type: Literal["transition"] = "transition"
+    mutation_type: MutationType = "transition"
     request_id: NotBlankStr = Field(description="Unique request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
     task_id: NotBlankStr = Field(description="Target task identifier")
@@ -220,7 +242,7 @@ class DeleteTaskMutation(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mutation_type: Literal["delete"] = "delete"
+    mutation_type: MutationType = "delete"
     request_id: NotBlankStr = Field(description="Unique request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
     task_id: NotBlankStr = Field(description="Target task identifier")
@@ -239,7 +261,7 @@ class CancelTaskMutation(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mutation_type: Literal["cancel"] = "cancel"
+    mutation_type: MutationType = "cancel"
     request_id: NotBlankStr = Field(description="Unique request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")
     task_id: NotBlankStr = Field(description="Target task identifier")
@@ -285,9 +307,7 @@ class TaskMutationResult(BaseModel):
         description="Status before mutation",
     )
     error: str | None = Field(default=None, description="Error description")
-    error_code: (
-        Literal["not_found", "version_conflict", "validation", "internal"] | None
-    ) = Field(
+    error_code: TaskErrorCode | None = Field(
         default=None,
         description="Machine-readable error classification",
     )
@@ -323,8 +343,8 @@ class TaskStateChanged(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    mutation_type: Literal["create", "update", "transition", "delete", "cancel"] = (
-        Field(description="Mutation type that triggered event")
+    mutation_type: MutationType = Field(
+        description="Mutation type that triggered event",
     )
     request_id: NotBlankStr = Field(description="Originating request identifier")
     requested_by: NotBlankStr = Field(description="Identity of the requester")

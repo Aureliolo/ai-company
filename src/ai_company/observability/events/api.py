@@ -36,3 +36,4 @@ API_AUTH_TOKEN_ISSUED: Final[str] = "api.auth.token_issued"  # noqa: S105
 API_AUTH_SETUP_COMPLETE: Final[str] = "api.auth.setup_complete"
 API_AUTH_PASSWORD_CHANGED: Final[str] = "api.auth.password_changed"  # noqa: S105
 API_TASK_TRANSITION_FAILED: Final[str] = "api.task.transition_failed"
+API_AUTH_FALLBACK: Final[str] = "api.auth.fallback"

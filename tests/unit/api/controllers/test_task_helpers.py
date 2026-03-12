@@ -101,7 +101,8 @@ class TestMapTaskEngineErrors:
         result = _map_task_engine_errors(exc)
         assert isinstance(result, ApiValidationError)
 
-    def test_unknown_error_passes_through(self) -> None:
+    def test_unknown_error_wraps_as_service_unavailable(self) -> None:
         exc = RuntimeError("unexpected")
         result = _map_task_engine_errors(exc)
-        assert result is exc
+        assert isinstance(result, ServiceUnavailableError)
+        assert "Unexpected engine error" in str(result)

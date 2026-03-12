@@ -1,9 +1,7 @@
 """Built-in default values for company configuration."""
 
-from typing import Any
 
-
-def default_config_dict() -> dict[str, Any]:
+def default_config_dict() -> dict[str, object]:
     """Return base-layer configuration defaults as a raw dict.
 
     These defaults serve as the base layer; user-provided YAML values

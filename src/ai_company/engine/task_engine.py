@@ -171,19 +171,32 @@ class TaskEngine:
                     TASK_ENGINE_DRAIN_TIMEOUT,
                     remaining=self._queue.qsize(),
                 )
+                # Capture in-flight ref before cancel — the finally block
+                # in _process_one clears self._in_flight on CancelledError.
+                saved_in_flight = self._in_flight
                 self._processing_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
                     await self._processing_task
-                self._fail_remaining_futures()
+                self._fail_remaining_futures(saved_in_flight)
             self._processing_task = None
 
         logger.info(TASK_ENGINE_STOPPED)
 
-    def _fail_remaining_futures(self) -> None:
-        """Fail in-flight and remaining enqueued futures after drain timeout."""
+    def _fail_remaining_futures(
+        self,
+        saved_in_flight: _MutationEnvelope | None = None,
+    ) -> None:
+        """Fail in-flight and remaining enqueued futures after drain timeout.
+
+        Args:
+            saved_in_flight: In-flight envelope captured before task
+                cancellation — needed because ``_process_one``'s
+                ``finally`` block clears ``self._in_flight`` on
+                ``CancelledError``.
+        """
         shutdown_result_for = self._shutdown_result
         failed_count = 0
-        in_flight = self._in_flight
+        in_flight = saved_in_flight if saved_in_flight is not None else self._in_flight
         if in_flight is not None and not in_flight.future.done():
             in_flight.future.set_result(shutdown_result_for(in_flight))
             failed_count += 1
@@ -329,7 +342,7 @@ class TaskEngine:
             self._raise_typed_error(result)
         if result.task is None:
             msg = "Internal error: update succeeded but task is None"
-            raise TaskMutationError(msg)
+            raise TaskInternalError(msg)
         return result.task
 
     async def transition_task(
@@ -354,7 +367,8 @@ class TaskEngine:
 
         Returns:
             Tuple of (transitioned task, status before the transition).
-            The second element is ``None`` when the previous status is unknown.
+            The second element is ``None`` only when the underlying
+            mutation does not provide previous status.
 
         Raises:
             TaskEngineNotRunningError: If the engine is not running.
@@ -381,7 +395,7 @@ class TaskEngine:
             self._raise_typed_error(result)
         if result.task is None:
             msg = "Internal error: transition succeeded but task is None"
-            raise TaskMutationError(msg)
+            raise TaskInternalError(msg)
         return result.task, result.previous_status
 
     async def delete_task(
@@ -449,13 +463,19 @@ class TaskEngine:
             self._raise_typed_error(result)
         if result.task is None:
             msg = "Internal error: cancel succeeded but task is None"
-            raise TaskMutationError(msg)
+            raise TaskInternalError(msg)
         return result.task
 
     @staticmethod
     def _raise_typed_error(result: TaskMutationResult) -> Never:
         """Raise a typed error from a failed mutation result."""
         error = result.error or "Mutation failed"
+        logger.warning(
+            TASK_ENGINE_MUTATION_FAILED,
+            request_id=result.request_id,
+            error=error,
+            error_code=result.error_code,
+        )
         match result.error_code:
             case "not_found":
                 raise TaskNotFoundError(error)
@@ -476,8 +496,22 @@ class TaskEngine:
 
         Returns:
             The task, or ``None`` if not found.
+
+        Raises:
+            TaskInternalError: If the persistence backend fails.
         """
-        return await self._persistence.tasks.get(task_id)
+        try:
+            return await self._persistence.tasks.get(task_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            msg = f"Failed to read task: {exc}"
+            logger.exception(
+                TASK_ENGINE_MUTATION_FAILED,
+                error=msg,
+                task_id=task_id,
+            )
+            raise TaskInternalError(msg) from exc
 
     async def list_tasks(
         self,
@@ -495,14 +529,43 @@ class TaskEngine:
 
         Returns:
             Matching tasks as a tuple.
+
+        Raises:
+            TaskInternalError: If the persistence backend fails.
         """
-        return await self._persistence.tasks.list_tasks(
-            status=status,
-            assigned_to=assigned_to,
-            project=project,
-        )
+        try:
+            tasks = await self._persistence.tasks.list_tasks(
+                status=status,
+                assigned_to=assigned_to,
+                project=project,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            msg = f"Failed to list tasks: {exc}"
+            logger.exception(
+                TASK_ENGINE_MUTATION_FAILED,
+                error=msg,
+            )
+            raise TaskInternalError(msg) from exc
+        if len(tasks) > self._MAX_LIST_RESULTS:
+            logger.warning(
+                TASK_ENGINE_MUTATION_FAILED,
+                error=(
+                    f"list_tasks returned {len(tasks)} results, "
+                    f"capping at {self._MAX_LIST_RESULTS}"
+                ),
+            )
+            return tasks[: self._MAX_LIST_RESULTS]
+        return tasks
 
     # -- Background processing ---------------------------------------------
+
+    _MAX_LIST_RESULTS: int = 10_000
+    """Safety cap on ``list_tasks`` results to bound memory usage.
+
+    Real pagination should be pushed into the persistence layer.
+    """
 
     _POLL_INTERVAL_SECONDS: float = 0.5
     """How often the processing loop checks for ``_running = False``."""
@@ -623,13 +686,13 @@ class TaskEngine:
             timestamp=datetime.now(UTC),
         )
 
+        task_id = getattr(mutation, "task_id", None)
         try:
             # Deferred to break circular import:
             # communication -> engine -> communication
             from ai_company.communication.enums import MessageType  # noqa: PLC0415
             from ai_company.communication.message import Message  # noqa: PLC0415
 
-            task_id = getattr(mutation, "task_id", None)
             msg = Message(
                 timestamp=datetime.now(UTC),
                 sender=self._SNAPSHOT_SENDER,
@@ -648,7 +711,6 @@ class TaskEngine:
         except MemoryError, RecursionError:
             raise
         except Exception:
-            task_id = getattr(mutation, "task_id", None)
             logger.warning(
                 TASK_ENGINE_SNAPSHOT_PUBLISH_FAILED,
                 mutation_type=mutation.mutation_type,

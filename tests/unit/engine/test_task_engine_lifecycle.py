@@ -6,7 +6,7 @@ from ai_company.engine.errors import TaskEngineNotRunningError
 from ai_company.engine.task_engine import TaskEngine
 from ai_company.engine.task_engine_config import TaskEngineConfig
 from ai_company.engine.task_engine_models import CreateTaskMutation
-from tests.unit.engine.task_engine_helpers import FakePersistence, _make_create_data
+from tests.unit.engine.task_engine_helpers import FakePersistence, make_create_data
 
 # ── Lifecycle tests ───────────────────────────────────────────
 
@@ -23,7 +23,7 @@ class TestTaskEngineLifecycle:
         assert eng.is_running is False
         eng.start()
         assert eng.is_running is True
-        await eng.stop(timeout=2.0)  # type: ignore[unreachable]
+        await eng.stop(timeout=2.0)
         assert eng.is_running is False
 
     async def test_double_start_raises(
@@ -72,7 +72,7 @@ class TestSubmitToStoppedEngine:
         mutation = CreateTaskMutation(
             request_id="req-1",
             requested_by="alice",
-            task_data=_make_create_data(),
+            task_data=make_create_data(),
         )
         with pytest.raises(TaskEngineNotRunningError):
             await eng.submit(mutation)
@@ -107,3 +107,34 @@ class TestTaskEngineConfig:
         cfg = TaskEngineConfig()
         with pytest.raises(ValidationError):
             cfg.max_queue_size = 999  # type: ignore[misc]
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("max_queue_size", -1),
+            ("drain_timeout_seconds", 0),
+            ("drain_timeout_seconds", -1.0),
+            ("drain_timeout_seconds", 301),
+        ],
+        ids=[
+            "negative_queue_size",
+            "zero_drain_timeout",
+            "negative_drain_timeout",
+            "drain_timeout_above_max",
+        ],
+    )
+    def test_rejects_out_of_range(self, field: str, value: object) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            TaskEngineConfig(**{field: value})
+
+    def test_zero_queue_size_allowed(self) -> None:
+        """Zero means unbounded — should be accepted."""
+        cfg = TaskEngineConfig(max_queue_size=0)
+        assert cfg.max_queue_size == 0
+
+    def test_drain_timeout_upper_boundary(self) -> None:
+        """Exactly 300 should be accepted."""
+        cfg = TaskEngineConfig(drain_timeout_seconds=300.0)
+        assert cfg.drain_timeout_seconds == 300.0

@@ -55,7 +55,7 @@ def _format_validation_error(
     return f"{prefix}: {'; '.join(parts)}"
 
 
-def not_found_result(
+def _not_found_result(
     mutation_type: str,
     request_id: str,
     task_id: str,
@@ -117,7 +117,17 @@ async def apply_create(
     persistence: PersistenceBackend,
     versions: VersionTracker,
 ) -> TaskMutationResult:
-    """Create a new task."""
+    """Create a new task.
+
+    Args:
+        mutation: Creation request with task data.
+        persistence: Backend for task storage.
+        versions: Version tracker for optimistic concurrency.
+
+    Returns:
+        Result with the created task on success, or a validation
+        failure if the task data is invalid.
+    """
     data = mutation.task_data
     task_id = f"task-{uuid4().hex}"
 
@@ -170,10 +180,21 @@ async def apply_update(
     persistence: PersistenceBackend,
     versions: VersionTracker,
 ) -> TaskMutationResult:
-    """Update task fields."""
+    """Update task fields.
+
+    Args:
+        mutation: Update request with field-value pairs.
+        persistence: Backend for task storage.
+        versions: Version tracker for optimistic concurrency.
+
+    Returns:
+        Result with the updated task on success, or a failure with
+        ``error_code`` of ``"not_found"``, ``"version_conflict"``,
+        or ``"validation"``.
+    """
     task = await persistence.tasks.get(mutation.task_id)
     if task is None:
-        return not_found_result("update", mutation.request_id, mutation.task_id)
+        return _not_found_result("update", mutation.request_id, mutation.task_id)
 
     try:
         versions.check(mutation.task_id, mutation.expected_version)
@@ -238,10 +259,21 @@ async def apply_transition(
     persistence: PersistenceBackend,
     versions: VersionTracker,
 ) -> TaskMutationResult:
-    """Perform a task status transition."""
+    """Perform a task status transition.
+
+    Args:
+        mutation: Transition request with target status and reason.
+        persistence: Backend for task storage.
+        versions: Version tracker for optimistic concurrency.
+
+    Returns:
+        Result with the transitioned task on success, or a failure
+        with ``error_code`` of ``"not_found"``,
+        ``"version_conflict"``, or ``"validation"``.
+    """
     task = await persistence.tasks.get(mutation.task_id)
     if task is None:
-        return not_found_result("transition", mutation.request_id, mutation.task_id)
+        return _not_found_result("transition", mutation.request_id, mutation.task_id)
 
     try:
         versions.check(mutation.task_id, mutation.expected_version)
@@ -301,10 +333,20 @@ async def apply_delete(
     persistence: PersistenceBackend,
     versions: VersionTracker,
 ) -> TaskMutationResult:
-    """Delete a task."""
+    """Delete a task.
+
+    Args:
+        mutation: Deletion request with task identifier.
+        persistence: Backend for task storage.
+        versions: Version tracker for optimistic concurrency.
+
+    Returns:
+        Result with ``success=True`` on deletion, or a failure
+        with ``error_code="not_found"`` if the task does not exist.
+    """
     deleted = await persistence.tasks.delete(mutation.task_id)
     if not deleted:
-        return not_found_result("delete", mutation.request_id, mutation.task_id)
+        return _not_found_result("delete", mutation.request_id, mutation.task_id)
 
     versions.remove(mutation.task_id)
 
@@ -332,10 +374,19 @@ async def apply_cancel(
     intentionally omits an ``expected_version`` check — a cancellation
     should always succeed regardless of version, similar to a forced
     stop signal.
+
+    Args:
+        mutation: Cancellation request with task identifier and reason.
+        persistence: Backend for task storage.
+        versions: Version tracker for optimistic concurrency.
+
+    Returns:
+        Result with the cancelled task on success, or a failure with
+        ``error_code`` of ``"not_found"`` or ``"validation"``.
     """
     task = await persistence.tasks.get(mutation.task_id)
     if task is None:
-        return not_found_result("cancel", mutation.request_id, mutation.task_id)
+        return _not_found_result("cancel", mutation.request_id, mutation.task_id)
 
     previous_status = task.status
     try:

@@ -28,6 +28,12 @@ from ai_company.core.enums import (
 )
 from ai_company.core.task import Task
 from ai_company.engine.task_engine import TaskEngine
+from ai_company.hr.enums import LifecycleEventType  # noqa: TC001
+from ai_company.hr.models import AgentLifecycleEvent  # noqa: TC001
+from ai_company.hr.performance.models import (  # noqa: TC001
+    CollaborationMetricRecord,
+    TaskMetricRecord,
+)
 from ai_company.persistence.errors import DuplicateRecordError, QueryError
 from ai_company.security.models import AuditEntry, AuditVerdictStr  # noqa: TC001
 from ai_company.security.timeout.parked_context import ParkedContext  # noqa: TC001
@@ -133,18 +139,18 @@ class FakeLifecycleEventRepository:
     """In-memory lifecycle event repository for tests."""
 
     def __init__(self) -> None:
-        self._events: list[Any] = []
+        self._events: list[AgentLifecycleEvent] = []
 
-    async def save(self, event: Any) -> None:
+    async def save(self, event: AgentLifecycleEvent) -> None:
         self._events.append(event)
 
     async def list_events(
         self,
         *,
         agent_id: str | None = None,
-        event_type: Any = None,
-        since: Any = None,
-    ) -> tuple[Any, ...]:
+        event_type: LifecycleEventType | None = None,
+        since: datetime | None = None,
+    ) -> tuple[AgentLifecycleEvent, ...]:
         result = self._events
         if agent_id is not None:
             result = [e for e in result if e.agent_id == agent_id]
@@ -159,18 +165,18 @@ class FakeTaskMetricRepository:
     """In-memory task metric repository for tests."""
 
     def __init__(self) -> None:
-        self._records: list[Any] = []
+        self._records: list[TaskMetricRecord] = []
 
-    async def save(self, record: Any) -> None:
+    async def save(self, record: TaskMetricRecord) -> None:
         self._records.append(record)
 
     async def query(
         self,
         *,
         agent_id: str | None = None,
-        since: Any = None,
-        until: Any = None,
-    ) -> tuple[Any, ...]:
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> tuple[TaskMetricRecord, ...]:
         result = self._records
         if agent_id is not None:
             result = [r for r in result if r.agent_id == agent_id]
@@ -185,17 +191,17 @@ class FakeCollaborationMetricRepository:
     """In-memory collaboration metric repository for tests."""
 
     def __init__(self) -> None:
-        self._records: list[Any] = []
+        self._records: list[CollaborationMetricRecord] = []
 
-    async def save(self, record: Any) -> None:
+    async def save(self, record: CollaborationMetricRecord) -> None:
         self._records.append(record)
 
     async def query(
         self,
         *,
         agent_id: str | None = None,
-        since: Any = None,
-    ) -> tuple[Any, ...]:
+        since: datetime | None = None,
+    ) -> tuple[CollaborationMetricRecord, ...]:
         result = self._records
         if agent_id is not None:
             result = [r for r in result if r.agent_id == agent_id]

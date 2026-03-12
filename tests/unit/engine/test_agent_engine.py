@@ -14,7 +14,11 @@ from ai_company.core.enums import AgentStatus, Priority, TaskStatus, TaskType
 from ai_company.core.task import Task
 from ai_company.engine.agent_engine import AgentEngine
 from ai_company.engine.context import AgentContext
-from ai_company.engine.errors import ExecutionStateError, TaskMutationError
+from ai_company.engine.errors import (
+    ExecutionStateError,
+    TaskEngineError,
+    TaskMutationError,
+)
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -1079,6 +1083,34 @@ class TestReportToTaskEngine:
         mock_te = MagicMock()
         mock_te.transition_task = AsyncMock(
             side_effect=RuntimeError("connection lost"),
+        )
+
+        engine = AgentEngine(
+            provider=provider,
+            task_engine=mock_te,
+        )
+
+        result = await engine.run(
+            identity=sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+
+        # Run still succeeds despite task engine failure
+        assert result.is_success is True
+
+    async def test_task_engine_error_swallowed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """TaskEngineError (non-mutation) from TaskEngine is logged and swallowed."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+
+        mock_te = MagicMock()
+        mock_te.transition_task = AsyncMock(
+            side_effect=TaskEngineError("engine unavailable"),
         )
 
         engine = AgentEngine(

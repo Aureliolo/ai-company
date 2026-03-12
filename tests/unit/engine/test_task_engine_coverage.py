@@ -19,7 +19,7 @@ from ai_company.engine.task_engine_models import (
 from tests.unit.engine.task_engine_helpers import (
     FailingMessageBus,
     FakePersistence,
-    _make_create_data,
+    make_create_data,
 )
 
 # ── In-flight envelope resolution ────────────────────────────
@@ -48,7 +48,7 @@ class TestInFlightResolution:
 
         # Submit a task that will block in slow_save
         blocked = asyncio.create_task(
-            eng.create_task(_make_create_data(), requested_by="alice"),
+            eng.create_task(make_create_data(), requested_by="alice"),
         )
         await asyncio.sleep(0.05)
 
@@ -97,7 +97,7 @@ class TestProcessOneExceptionHandling:
             mutation = CreateTaskMutation(
                 request_id="req-1",
                 requested_by="alice",
-                task_data=_make_create_data(),
+                task_data=make_create_data(),
             )
             result = await eng.submit(mutation)
             assert result.success is False
@@ -129,7 +129,7 @@ class TestSnapshotPublishFailure:
         eng.start()
         try:
             task = await eng.create_task(
-                _make_create_data(),
+                make_create_data(),
                 requested_by="alice",
             )
             assert task.id.startswith("task-")
@@ -175,7 +175,7 @@ class TestShutdownResult:
         mutation = CreateTaskMutation(
             request_id="req-shutdown",
             requested_by="alice",
-            task_data=_make_create_data(),
+            task_data=make_create_data(),
         )
         envelope = _MutationEnvelope(mutation=mutation)
         result = TaskEngine._shutdown_result(envelope)
@@ -217,7 +217,7 @@ class TestProcessingLoopResilience:
             m1 = CreateTaskMutation(
                 request_id="req-1",
                 requested_by="alice",
-                task_data=_make_create_data(),
+                task_data=make_create_data(),
             )
             r1 = await eng.submit(m1)
             assert r1.success is False
@@ -226,7 +226,7 @@ class TestProcessingLoopResilience:
             m2 = CreateTaskMutation(
                 request_id="req-2",
                 requested_by="alice",
-                task_data=_make_create_data(),
+                task_data=make_create_data(),
             )
             r2 = await eng.submit(m2)
             assert r2.success is True

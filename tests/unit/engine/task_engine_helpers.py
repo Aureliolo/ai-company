@@ -87,7 +87,7 @@ class FailingMessageBus(FakeMessageBus):
 # ── Helpers ────────────────────────────────────────────────────
 
 
-def _make_create_data(**overrides: object) -> CreateTaskData:
+def make_create_data(**overrides: object) -> CreateTaskData:
     """Build a CreateTaskData with sensible defaults."""
     from ai_company.core.enums import TaskType
 

@@ -33,6 +33,7 @@ from ai_company.engine.errors import (
 from ai_company.engine.task_engine_models import CreateTaskData
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
+    API_AUTH_FALLBACK,
     API_RESOURCE_NOT_FOUND,
     API_TASK_DELETED,
     API_TASK_TRANSITION_FAILED,
@@ -57,8 +58,7 @@ def _extract_requester(state: State) -> str:
     if user is not None and hasattr(user, "user_id"):
         return str(user.user_id)
     logger.warning(
-        API_RESOURCE_NOT_FOUND,
-        resource="authenticated_user",
+        API_AUTH_FALLBACK,
         note="No authenticated user found, falling back to 'api'",
     )
     return "api"
@@ -89,7 +89,7 @@ def _map_task_engine_errors(
             error=str(exc),
             error_type=type(exc).__name__,
         )
-        return ServiceUnavailableError(str(exc))
+        return ServiceUnavailableError("Service temporarily unavailable")
     if isinstance(exc, TaskInternalError):
         logger.error(
             API_TASK_TRANSITION_FAILED,
@@ -98,12 +98,34 @@ def _map_task_engine_errors(
             error=str(exc),
             error_type="TaskInternalError",
         )
-        return ServiceUnavailableError(str(exc))
+        return ServiceUnavailableError("Internal server error")
     if isinstance(exc, TaskVersionConflictError):
+        logger.warning(
+            API_TASK_TRANSITION_FAILED,
+            resource="task",
+            task_id=task_id,
+            error=str(exc),
+            error_type="TaskVersionConflictError",
+        )
         return ConflictError(str(exc))
     if isinstance(exc, TaskMutationError):
+        logger.warning(
+            API_TASK_TRANSITION_FAILED,
+            resource="task",
+            task_id=task_id,
+            error=str(exc),
+            error_type="TaskMutationError",
+        )
         return ApiValidationError(str(exc))
-    return exc
+    # Unknown error type — log and wrap to prevent leaking internals
+    logger.error(
+        API_TASK_TRANSITION_FAILED,
+        resource="task",
+        task_id=task_id,
+        error=str(exc),
+        error_type=type(exc).__name__,
+    )
+    return ServiceUnavailableError("Unexpected engine error")
 
 
 class TaskController(Controller):
@@ -187,6 +209,7 @@ class TaskController(Controller):
             Created task envelope.
         """
         app_state: AppState = state.app_state
+        requester = _extract_requester(state)
         task_data = CreateTaskData(
             title=data.title,
             description=data.description,
@@ -198,10 +221,17 @@ class TaskController(Controller):
             estimated_complexity=data.estimated_complexity,
             budget_limit=data.budget_limit,
         )
+        if data.created_by != requester:
+            logger.info(
+                API_TASK_UPDATED,
+                note="created_by differs from authenticated requester",
+                created_by=data.created_by,
+                requester=requester,
+            )
         try:
             task = await app_state.task_engine.create_task(
                 task_data,
-                requested_by=_extract_requester(state),
+                requested_by=requester,
             )
         except PydanticValidationError as exc:
             raise ApiValidationError(str(exc)) from exc
@@ -285,17 +315,16 @@ class TaskController(Controller):
         """
         app_state: AppState = state.app_state
         requester = _extract_requester(state)
-        transition_kwargs: dict[str, object] = {
-            "requested_by": requester,
-            "reason": f"API transition to {data.target_status.value}",
-        }
+        overrides: dict[str, object] = {}
         if data.assigned_to is not None:
-            transition_kwargs["assigned_to"] = data.assigned_to
+            overrides["assigned_to"] = data.assigned_to
         try:
             task, from_status = await app_state.task_engine.transition_task(
                 task_id,
                 data.target_status,
-                **transition_kwargs,  # type: ignore[arg-type]
+                requested_by=requester,
+                reason=f"API transition to {data.target_status.value}",
+                **overrides,  # type: ignore[arg-type]
             )
         except PydanticValidationError as exc:
             raise ApiValidationError(str(exc)) from exc
