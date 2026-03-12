@@ -118,3 +118,30 @@ class TaskInternalError(TaskEngineError):
     so that broad ``except TaskMutationError`` handlers do not accidentally
     catch internal engine faults.
     """
+
+
+class CoordinationError(EngineError):
+    """Base exception for multi-agent coordination failures."""
+
+
+class CoordinationPhaseError(CoordinationError):
+    """Raised when a coordination pipeline phase fails.
+
+    Carries the failing phase name and any phases that completed
+    before the failure, enabling partial-result inspection.
+
+    Attributes:
+        phase: Name of the phase that failed.
+        partial_phases: Phases completed before this failure.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        phase: str,
+        partial_phases: tuple[object, ...] = (),
+    ) -> None:
+        super().__init__(message)
+        self.phase = phase
+        self.partial_phases = partial_phases

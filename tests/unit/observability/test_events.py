@@ -186,6 +186,7 @@ class TestEventConstants:
             "config",
             "conflict",
             "consolidation",
+            "coordination",
             "correlation",
             "decomposition",
             "delegation",
