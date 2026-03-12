@@ -61,7 +61,7 @@ Search workflow files for all references to the action:
 
 ```bash
 # Find all references to the action in workflow files
-grep -r "<action-owner>/<action-name>" .github/workflows/
+grep -RFn "<action-owner>/<action-name>" .github/workflows/
 ```
 
 Use Grep to search `.github/workflows/` for the action name. Note which workflows use it, which features/inputs we use, and any pinned versions or config.
@@ -92,6 +92,7 @@ Search `package.json`, `package-lock.json`, and source files.
 For each dependency, get the full changelog between the old and new versions.
 
 ### Strategy 1: PR body
+
 Dependabot PRs include release notes in the body. Extract and parse these first.
 
 ### Strategy 2: GitHub releases
@@ -163,7 +164,7 @@ if [ -n "$(git status --porcelain)" ]; then
   # Continue to Phase 5 without docs build results
 else
   # 2. Save current branch and set up cleanup trap
-  original_ref="$(git rev-parse --abbrev-ref HEAD)"
+  original_ref="$(git symbolic-ref --quiet --short HEAD || git rev-parse HEAD)"
   trap 'git checkout "$original_ref"' EXIT
 
   # 3. Checkout the PR branch (gh pr checkout handles fetching automatically)
@@ -189,7 +190,7 @@ For each PR, present a structured report:
 
 ```text
 ## PR #<number>: <title>
-**Package**: <name> | **Ecosystem**: <type> | **Bump**: <from> → <to> (<major/minor/patch>)
+**Package(s)**: <name or comma-separated names> | **Ecosystem**: <type> | **Bump**: <from> → <to> (<major/minor/patch/non-semver>)
 **CI Status**: <pass/fail summary>
 **Usage**: <brief — e.g., "3 workflows, inputs: python-version, cache" or "mkdocs.yml theme + 2 plugins">
 ```
@@ -276,18 +277,22 @@ For each PR based on user's choice:
 1. Check out the PR branch using `gh pr checkout <number>`
 2. Make the recommended changes (config improvements, workaround removal, etc.)
 3. Commit with descriptive message
-4. Push to the PR branch. **Note:** Dependabot branches may reject pushes depending on repo permissions. If push fails, create a new branch with your changes, push that branch, open a replacement PR targeting the original base branch, link to the original PR in the description, and close the original Dependabot PR with a comment pointing to the replacement.
-5. Wait for CI to pass using `gh pr checks <number> --watch --timeout 600` (10-minute timeout — if it expires, warn the user that CI may be stuck and ask how to proceed rather than hanging indefinitely)
-6. Merge
+4. Push to the PR branch. **Note:** Dependabot branches may reject pushes depending on repo permissions. If push fails:
+   - Create a new branch with your changes and push it
+   - Open a replacement PR targeting the original base branch, linking to the original PR in the description
+   - Close the original Dependabot PR with a comment pointing to the replacement
+   - **Use the replacement PR number for all remaining steps** (CI wait, merge)
+5. Wait for CI to pass using `gh pr checks <active-number> --watch --timeout 600` (10-minute timeout — if it expires, warn the user that CI may be stuck and ask how to proceed rather than hanging indefinitely). Use the replacement PR number if step 4 created one.
+6. Merge the active PR
 
 ### Fix CI and merge
 
 1. Check out the PR branch using `gh pr checkout <number>` (same dirty-tree check as above)
 2. Investigate the CI failure
 3. Fix the issue
-4. Commit and push (same Dependabot fallback applies — if push fails, open a replacement PR)
-5. Wait for CI to pass using `gh pr checks <number> --watch --timeout 600` (10-minute timeout — if it expires, warn the user that CI may be stuck and ask how to proceed rather than hanging indefinitely)
-6. Merge when green
+4. Commit and push (same Dependabot fallback applies — if push fails, open a replacement PR and use that PR number for remaining steps)
+5. Wait for CI to pass using `gh pr checks <active-number> --watch --timeout 600` (10-minute timeout — if it expires, warn the user that CI may be stuck and ask how to proceed rather than hanging indefinitely)
+6. Merge the active PR when green
 
 ### Close / Skip
 
