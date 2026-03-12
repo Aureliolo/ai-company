@@ -5,10 +5,10 @@ event: file
 conditions:
   - field: file_path
     operator: regex_match
-    value: "src/ai_company/.*\\.py$"
+    pattern: "src/ai_company/.*\\.py$"
   - field: new_text
     operator: regex_match
-    value: "^\\s*(?:async\\s+)?def "
+    pattern: "^\\s*(?:async\\s+)?def "
 action: warn
 ---
 

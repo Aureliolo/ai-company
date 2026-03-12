@@ -5,31 +5,28 @@ event: file
 conditions:
   - field: file_path
     operator: regex_match
-    value: "src/ai_company/.*\\.py$"
+    pattern: "src/ai_company/.*\\.py$"
   - field: file_path
     operator: not_contains
-    value: "__init__"
+    pattern: "__init__"
   - field: file_path
     operator: not_contains
-    value: "enums.py"
+    pattern: "enums.py"
   - field: file_path
     operator: not_contains
-    value: "errors.py"
+    pattern: "errors.py"
   - field: file_path
     operator: not_contains
-    value: "types.py"
+    pattern: "types.py"
   - field: file_path
     operator: not_contains
-    value: "models.py"
+    pattern: "models.py"
   - field: file_path
     operator: not_contains
-    value: "protocol.py"
+    pattern: "protocol.py"
   - field: new_text
     operator: regex_match
-    value: "^\\s*(?:async\\s+)?(?:def |class )"
-  - field: file_content
-    operator: not_contains
-    value: "get_logger"
+    pattern: "^\\s*(?:async\\s+)?(?:def |class )"
 action: warn
 ---
 
