@@ -942,7 +942,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
     If needed, a thin CLI utility wrapping the REST API with terminal formatting (Typer + Rich
     or similar). Not a priority -- the API is fully self-sufficient. To be determined whether a
     dedicated CLI is warranted or whether `curl`/`httpie` and the interactive Scalar docs at
-    `/docs/api` (Scalar UI) and `/docs` (OpenAPI JSON) suffice.
+    `/docs/api` (Scalar UI) and `/docs/openapi.json` (OpenAPI schema) suffice.
 
 ### API Surface
 

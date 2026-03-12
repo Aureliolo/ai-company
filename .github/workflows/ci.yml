@@ -107,11 +107,15 @@ jobs:
     permissions: {}
     steps:
       - name: Check results
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+          TYPE_CHECK_RESULT: ${{ needs.type-check.result }}
+          TEST_RESULT: ${{ needs.test.result }}
         run: |
-          if [[ "${{ needs.lint.result }}" != "success" || \
-                "${{ needs.type-check.result }}" != "success" || \
-                "${{ needs.test.result }}" != "success" ]]; then
-            echo "CI failed: lint=${{ needs.lint.result }}, type-check=${{ needs.type-check.result }}, test=${{ needs.test.result }}"
+          if [[ "$LINT_RESULT" != "success" || \
+                "$TYPE_CHECK_RESULT" != "success" || \
+                "$TEST_RESULT" != "success" ]]; then
+            echo "CI failed: lint=$LINT_RESULT, type-check=$TYPE_CHECK_RESULT, test=$TEST_RESULT"
             exit 1
           fi
           echo "All CI checks passed"

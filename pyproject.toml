@@ -138,6 +138,7 @@ convention = "google"
 "__init__.py" = ["F401"]
 "scripts/**/*.py" = [
     "T20",     # print allowed in CLI scripts
+    "E501",    # long lines in embedded HTML templates
     "PLC0415", # deferred imports in scripts
 ]
 

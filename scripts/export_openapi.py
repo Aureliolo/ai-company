@@ -6,6 +6,9 @@ Used by CI (pages.yml, pages-preview.yml) to generate:
 
 Both are generated before the MkDocs build so the docs site can
 link to the interactive API reference.
+
+Can also be run locally before ``mkdocs build`` to preview the
+API reference page (see Quick Commands in CLAUDE.md).
 """
 
 import json
@@ -19,6 +22,7 @@ OUTPUT_DIR = REPO_ROOT / "docs" / "_generated"
 SCHEMA_FILE = OUTPUT_DIR / "openapi.json"
 HTML_FILE = OUTPUT_DIR / "api-reference.html"
 
+# Pinned for stability; update after testing newer releases in local preview
 SCALAR_VERSION = "1.48.5"
 
 STANDALONE_HTML = """\
@@ -90,24 +94,23 @@ def main() -> int:
 
         app = create_app()
         schema_dict = app.openapi_schema.to_schema()
+        schema_json = json.dumps(schema_dict, indent=2, ensure_ascii=False) + "\n"
     except Exception as exc:
-        print(f"Failed to export OpenAPI schema: {exc}", file=sys.stderr)
+        print("Failed to export OpenAPI schema:", file=sys.stderr)
         traceback.print_exception(exc)
         return 1
 
     try:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-        SCHEMA_FILE.write_text(
-            json.dumps(schema_dict, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        SCHEMA_FILE.write_text(schema_json, encoding="utf-8")
         print(f"Wrote OpenAPI schema to {SCHEMA_FILE.relative_to(REPO_ROOT)}")
 
         HTML_FILE.write_text(STANDALONE_HTML, encoding="utf-8")
         print(f"Wrote Scalar UI page to {HTML_FILE.relative_to(REPO_ROOT)}")
     except OSError as exc:
-        print(f"Failed to write output files: {exc}", file=sys.stderr)
+        print("Failed to write output files:", file=sys.stderr)
+        traceback.print_exception(exc)
         return 1
 
     return 0
