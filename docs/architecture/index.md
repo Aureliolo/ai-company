@@ -62,4 +62,5 @@ graph TB
 - [Design Specification](../design/index.md) — Full design spec split into 7 focused pages
 - [Tech Stack](tech-stack.md) — Technology choices and engineering conventions
 - [Decision Log](decisions.md) — All design decisions, organized by domain
-- [API Reference](../api/index.md) — Auto-generated from source code
+- [API Reference](../rest-api.md) — REST API reference (Scalar/OpenAPI)
+- [Library Reference](../api/index.md) — Auto-generated from source code

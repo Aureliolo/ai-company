@@ -2,4 +2,4 @@
 template: rest-api.html
 ---
 
-# API Reference
+# REST API Reference

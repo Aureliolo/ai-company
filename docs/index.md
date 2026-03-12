@@ -121,7 +121,8 @@ The design spec covers the full architecture of SynthOrg — from agent identity
 | [Architecture](architecture/index.md) | System overview, module map, design principles |
 | [Tech Stack](architecture/tech-stack.md) | Technology choices and engineering conventions |
 | [Decision Log](architecture/decisions.md) | All design decisions, organized by domain |
-| [API Reference](api/index.md) | Auto-generated from docstrings |
+| [API Reference](rest-api.md) | REST API reference (Scalar/OpenAPI) |
+| [Library Reference](api/index.md) | Auto-generated from docstrings |
 | [Roadmap](roadmap/index.md) | Status, open questions, future vision |
 
 ---

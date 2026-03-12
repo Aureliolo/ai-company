@@ -136,6 +136,10 @@ convention = "google"
     "PLC0415", # local imports in test functions
 ]
 "__init__.py" = ["F401"]
+"scripts/**/*.py" = [
+    "T20",     # print allowed in CLI scripts
+    "PLC0415", # deferred imports in scripts
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["ai_company"]
