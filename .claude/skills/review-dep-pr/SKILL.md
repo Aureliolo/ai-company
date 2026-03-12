@@ -325,7 +325,7 @@ After all merges complete, if any PRs were merged, automatically run `/post-merg
 
 - **NEVER skip changelog review** — every dependency update, regardless of type (CI action, Python package, Docker image), gets a full changelog analysis between the old and new versions.
 - **Be specific about what affects us** — don't just list changelog items, cross-reference each one against our actual config and code usage.
-- **Major version bumps get extra scrutiny** — always look for a migration guide.
+- **Major version bumps get extra scrutiny** — check for a migration guide. Always fetch it if breaking changes are ambiguous or potentially affect our usage; skip only when all breaking changes are clearly in internal APIs we don't use.
 - **Don't merge with failing CI** — if CI fails, investigate and fix first.
 - **Grouped updates (Dependabot groups)**: analyze each package in the group separately, then present as one combined report.
 - **Preserve existing config** — when making improvements, don't refactor unrelated config. Only touch what's relevant to the update.
