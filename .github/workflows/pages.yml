@@ -10,6 +10,7 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - "src/ai_company/**"
+      - "scripts/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -43,6 +44,9 @@ jobs:
 
       - name: Install docs dependencies
         run: uv sync --group docs --no-dev
+
+      - name: Export OpenAPI schema
+        run: uv run python scripts/export_openapi.py
 
       - name: Build MkDocs
         run: uv run mkdocs build --strict

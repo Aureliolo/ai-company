@@ -1,0 +1,32 @@
+{% extends "main.html" %}
+
+{# Hide MkDocs navigation and TOC — Scalar provides its own sidebar #}
+{% block tabs %}
+  {{ super() }}
+{% endblock %}
+
+{% block content %}
+<style>
+  /* Give Scalar the full viewport width */
+  .md-main__inner { max-width: none; padding: 0; }
+  .md-content { max-width: none; margin: 0; }
+  .md-content__inner { margin: 0; padding: 0; }
+  /* Hide MkDocs sidebar and TOC on this page */
+  .md-sidebar { display: none; }
+</style>
+
+<div style="padding: 1rem 2rem 0.5rem;">
+  <p style="margin: 0; font-size: 0.85rem; opacity: 0.7;">
+    This is a static snapshot of the OpenAPI schema.
+    When the server is running, interactive docs are available at
+    <code>/api</code> (Scalar) and <code>/docs</code> (OpenAPI JSON).
+  </p>
+</div>
+
+<script
+  id="api-reference"
+  data-url="../_generated/openapi.json"
+  data-configuration='{"theme": "default"}'
+></script>
+<script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+{% endblock %}

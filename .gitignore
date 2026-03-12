@@ -53,6 +53,9 @@ web/dist/
 # Documentation build output (MkDocs)
 _site/
 
+# Generated OpenAPI schema (built by scripts/export_openapi.py)
+docs/_generated/
+
 # Astro / Node.js (landing page)
 site/node_modules/
 site/dist/

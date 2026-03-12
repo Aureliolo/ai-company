@@ -121,7 +121,8 @@ nav:
   - Reference:
       - reference/research.md
       - reference/standards.md
-  - API Reference:
+  - API Reference: rest-api.md
+  - Library Reference:
       - api/index.md
       - Core: api/core.md
       - Engine: api/engine.md

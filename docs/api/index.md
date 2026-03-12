@@ -1,4 +1,4 @@
-# API Reference
+# Library Reference
 
 Auto-generated reference documentation from source code docstrings.
 
