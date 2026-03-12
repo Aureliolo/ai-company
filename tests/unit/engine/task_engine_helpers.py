@@ -100,5 +100,3 @@ def _make_create_data(**overrides: object) -> CreateTaskData:
     }
     defaults.update(overrides)
     return CreateTaskData(**defaults)  # type: ignore[arg-type]
-
-
