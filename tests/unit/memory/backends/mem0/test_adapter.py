@@ -1,5 +1,6 @@
 """Tests for the Mem0 memory backend adapter."""
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,7 +11,10 @@ from ai_company.memory.backends.mem0.adapter import (
     _SHARED_NAMESPACE,
     Mem0MemoryBackend,
 )
-from ai_company.memory.backends.mem0.config import Mem0BackendConfig
+from ai_company.memory.backends.mem0.config import (
+    Mem0BackendConfig,
+    Mem0EmbedderConfig,
+)
 from ai_company.memory.errors import (
     MemoryConnectionError,
     MemoryRetrievalError,
@@ -24,10 +28,21 @@ from ai_company.memory.models import (
 pytestmark = pytest.mark.timeout(30)
 
 
+def _test_embedder() -> Mem0EmbedderConfig:
+    """Vendor-agnostic embedder config for tests."""
+    return Mem0EmbedderConfig(
+        provider="test-provider",
+        model="test-embedding-001",
+    )
+
+
 @pytest.fixture
 def mem0_config() -> Mem0BackendConfig:
     """Default Mem0 config for tests."""
-    return Mem0BackendConfig(data_dir="/tmp/test-memory")  # noqa: S108
+    return Mem0BackendConfig(
+        data_dir="/tmp/test-memory",  # noqa: S108
+        embedder=_test_embedder(),
+    )
 
 
 @pytest.fixture
@@ -48,7 +63,7 @@ def backend(
     return b
 
 
-def _mem0_add_result(memory_id: str = "mem-001") -> dict:
+def _mem0_add_result(memory_id: str = "mem-001") -> dict[str, Any]:
     """Build a typical Mem0 add() return value."""
     return {
         "results": [
@@ -62,8 +77,8 @@ def _mem0_add_result(memory_id: str = "mem-001") -> dict:
 
 
 def _mem0_search_result(
-    items: list[dict] | None = None,
-) -> dict:
+    items: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Build a typical Mem0 search() return value."""
     if items is None:
         items = [
@@ -81,7 +96,7 @@ def _mem0_search_result(
     return {"results": items}
 
 
-def _mem0_get_result(memory_id: str = "mem-001") -> dict:
+def _mem0_get_result(memory_id: str = "mem-001") -> dict[str, Any]:
     """Build a typical Mem0 get() return value."""
     return {
         "id": memory_id,
@@ -153,6 +168,46 @@ class TestCapabilities:
         assert backend.max_memories_per_agent == 100
 
 
+# ── Protocol Conformance ─────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestProtocolConformance:
+    """Verify Mem0MemoryBackend conforms to protocol interfaces."""
+
+    def test_has_memory_backend_methods(
+        self,
+        backend: Mem0MemoryBackend,
+    ) -> None:
+        assert hasattr(backend, "connect")
+        assert hasattr(backend, "disconnect")
+        assert hasattr(backend, "health_check")
+        assert hasattr(backend, "store")
+        assert hasattr(backend, "retrieve")
+        assert hasattr(backend, "get")
+        assert hasattr(backend, "delete")
+        assert hasattr(backend, "count")
+
+    def test_has_capabilities_properties(
+        self,
+        backend: Mem0MemoryBackend,
+    ) -> None:
+        assert hasattr(backend, "supported_categories")
+        assert hasattr(backend, "supports_graph")
+        assert hasattr(backend, "supports_temporal")
+        assert hasattr(backend, "supports_vector_search")
+        assert hasattr(backend, "supports_shared_access")
+        assert hasattr(backend, "max_memories_per_agent")
+
+    def test_has_shared_knowledge_methods(
+        self,
+        backend: Mem0MemoryBackend,
+    ) -> None:
+        assert hasattr(backend, "publish")
+        assert hasattr(backend, "search_shared")
+        assert hasattr(backend, "retract")
+
+
 # ── Lifecycle ─────────────────────────────────────────────────────
 
 
@@ -203,7 +258,9 @@ class TestLifecycle:
     async def test_health_check_connected(
         self,
         backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
     ) -> None:
+        mock_client.get_all.return_value = {"results": []}
         assert await backend.health_check() is True
 
     async def test_health_check_disconnected(
@@ -212,6 +269,14 @@ class TestLifecycle:
     ) -> None:
         b = Mem0MemoryBackend(mem0_config=mem0_config)
         assert await b.health_check() is False
+
+    async def test_health_check_probe_failure(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        mock_client.get_all.side_effect = RuntimeError("backend down")
+        assert await backend.health_check() is False
 
 
 # ── Connection guard ──────────────────────────────────────────────
@@ -315,6 +380,18 @@ class TestStore:
         mock_client.add.return_value = {"results": []}
 
         with pytest.raises(MemoryStoreError, match="no results"):
+            await backend.store("test-agent-001", _make_store_request())
+
+    async def test_store_missing_id_raises(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        mock_client.add.return_value = {
+            "results": [{"memory": "no id", "event": "ADD"}],
+        }
+
+        with pytest.raises(MemoryStoreError, match="missing 'id'"):
             await backend.store("test-agent-001", _make_store_request())
 
     async def test_store_exception_wraps(
@@ -499,6 +576,17 @@ class TestDelete:
         with pytest.raises(MemoryStoreError, match="Failed to delete"):
             await backend.delete("test-agent-001", "mem-001")
 
+    async def test_delete_get_ok_but_delete_fails(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        mock_client.get.return_value = _mem0_get_result("mem-001")
+        mock_client.delete.side_effect = RuntimeError("delete failed")
+
+        with pytest.raises(MemoryStoreError, match="Failed to delete"):
+            await backend.delete("test-agent-001", "mem-001")
+
 
 # ── Count ─────────────────────────────────────────────────────────
 
@@ -550,6 +638,34 @@ class TestCount:
             category=MemoryCategory.EPISODIC,
         )
         assert count == 2
+
+    async def test_count_with_invalid_category_in_data(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """Invalid category in stored data defaults to WORKING."""
+        mock_client.get_all.return_value = {
+            "results": [
+                {
+                    "id": "m1",
+                    "memory": "a",
+                    "metadata": {"_synthorg_category": "bogus_category"},
+                },
+                {
+                    "id": "m2",
+                    "memory": "b",
+                    "metadata": {"_synthorg_category": "episodic"},
+                },
+            ],
+        }
+
+        count = await backend.count(
+            "test-agent-001",
+            category=MemoryCategory.WORKING,
+        )
+        # "bogus_category" defaults to WORKING
+        assert count == 1
 
     async def test_count_exception_wraps(
         self,
@@ -750,6 +866,21 @@ class TestRetract:
 
         with pytest.raises(MemoryStoreError, match="cannot retract"):
             await backend.retract("test-agent-001", "shared-001")
+
+    async def test_retract_no_publisher_raises(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        mock_client.get.return_value = {
+            "id": "not-shared-001",
+            "memory": "private content",
+            "created_at": "2026-03-12T10:00:00+00:00",
+            "metadata": {},
+        }
+
+        with pytest.raises(MemoryStoreError, match="not a shared memory"):
+            await backend.retract("test-agent-001", "not-shared-001")
 
     async def test_retract_exception_wraps(
         self,

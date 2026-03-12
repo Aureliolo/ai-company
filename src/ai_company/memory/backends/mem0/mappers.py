@@ -1,7 +1,8 @@
 """Bidirectional mapping between SynthOrg domain models and Mem0 dicts.
 
-Pure functions — no I/O, no side effects.  Each mapper handles one
-direction of the conversion so the adapter stays thin.
+Stateless mapping functions — no I/O, no persistent side effects.
+Each mapper handles one direction of the conversion so the adapter
+stays thin.
 """
 
 from datetime import UTC, datetime
@@ -9,15 +10,20 @@ from typing import TYPE_CHECKING, Any
 
 from ai_company.core.enums import MemoryCategory
 from ai_company.core.types import NotBlankStr
+from ai_company.memory.errors import MemoryRetrievalError
 from ai_company.memory.models import (
     MemoryEntry,
     MemoryMetadata,
     MemoryQuery,
     MemoryStoreRequest,
 )
+from ai_company.observability import get_logger
+from ai_company.observability.events.memory import MEMORY_MODEL_INVALID
 
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
+
+logger = get_logger(__name__)
 
 # Metadata prefix avoids collisions with Mem0's own keys.
 _PREFIX = "_synthorg_"
@@ -45,29 +51,6 @@ def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, Any]:
     return meta
 
 
-def store_request_to_mem0_args(
-    agent_id: str,
-    request: MemoryStoreRequest,
-) -> dict[str, Any]:
-    """Convert a store request to ``Memory.add()`` keyword arguments.
-
-    Args:
-        agent_id: Owning agent identifier.
-        request: Memory store request.
-
-    Returns:
-        Dict of kwargs for ``Memory.add()``.
-    """
-    messages = [{"role": "user", "content": request.content}]
-    metadata = build_mem0_metadata(request)
-    return {
-        "messages": messages,
-        "user_id": agent_id,
-        "metadata": metadata,
-        "infer": False,
-    }
-
-
 def parse_mem0_datetime(raw: str | None) -> AwareDatetime | None:
     """Parse a datetime string from Mem0 into an aware datetime.
 
@@ -82,7 +65,16 @@ def parse_mem0_datetime(raw: str | None) -> AwareDatetime | None:
     """
     if not raw:
         return None
-    dt = datetime.fromisoformat(raw)
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="datetime",
+            raw_value=raw,
+            reason="malformed ISO 8601 datetime, returning None",
+        )
+        return None
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     return dt
@@ -121,7 +113,19 @@ def parse_mem0_metadata(
         )
 
     category_str = raw_metadata.get(f"{_PREFIX}category")
-    category = MemoryCategory(category_str) if category_str else MemoryCategory.WORKING
+    if category_str:
+        try:
+            category = MemoryCategory(category_str)
+        except ValueError:
+            logger.warning(
+                MEMORY_MODEL_INVALID,
+                field="category",
+                raw_value=category_str,
+                reason="unrecognized category, defaulting to WORKING",
+            )
+            category = MemoryCategory.WORKING
+    else:
+        category = MemoryCategory.WORKING
 
     confidence = raw_metadata.get(f"{_PREFIX}confidence", 1.0)
     source = raw_metadata.get(f"{_PREFIX}source")
@@ -154,8 +158,16 @@ def mem0_result_to_entry(
     Returns:
         Domain ``MemoryEntry``.
     """
+    if "id" not in raw:
+        msg = f"Mem0 result missing required 'id' field: keys={list(raw.keys())}"
+        raise MemoryRetrievalError(msg)
     memory_id = NotBlankStr(str(raw["id"]))
-    content = NotBlankStr(str(raw.get("memory", raw.get("data", ""))))
+
+    raw_content = raw.get("memory") or raw.get("data")
+    if not raw_content or not str(raw_content).strip():
+        msg = f"Mem0 result {raw.get('id', '?')} has empty content"
+        raise MemoryRetrievalError(msg)
+    content = NotBlankStr(str(raw_content))
 
     created_at = parse_mem0_datetime(raw.get("created_at"))
     if created_at is None:

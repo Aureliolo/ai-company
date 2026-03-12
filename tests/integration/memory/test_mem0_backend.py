@@ -15,12 +15,23 @@ from ai_company.memory.backends.mem0.adapter import (
     _PUBLISHER_KEY,
     Mem0MemoryBackend,
 )
-from ai_company.memory.backends.mem0.config import Mem0BackendConfig
+from ai_company.memory.backends.mem0.config import (
+    Mem0BackendConfig,
+    Mem0EmbedderConfig,
+)
 from ai_company.memory.models import MemoryQuery, MemoryStoreRequest
 from ai_company.memory.retrieval_config import MemoryRetrievalConfig
 from ai_company.memory.retriever import ContextInjectionStrategy
 
 pytestmark = pytest.mark.timeout(30)
+
+
+def _test_embedder() -> Mem0EmbedderConfig:
+    """Vendor-agnostic embedder config for tests."""
+    return Mem0EmbedderConfig(
+        provider="test-provider",
+        model="test-embedding-001",
+    )
 
 
 @pytest.fixture
@@ -32,7 +43,10 @@ def mock_client() -> MagicMock:
 @pytest.fixture
 def backend(mock_client: MagicMock) -> Mem0MemoryBackend:
     """Connected Mem0 backend with mocked client."""
-    config = Mem0BackendConfig(data_dir="/tmp/test-integration")  # noqa: S108
+    config = Mem0BackendConfig(
+        data_dir="/tmp/test-integration",  # noqa: S108
+        embedder=_test_embedder(),
+    )
     b = Mem0MemoryBackend(mem0_config=config, max_memories_per_agent=100)
     b._client = mock_client
     b._connected = True
@@ -144,7 +158,7 @@ class TestMem0RetrievalPipeline:
         # Should produce at least one message with memory context
         assert len(messages) >= 1
         # Content should include both memories (they pass min_relevance)
-        combined = " ".join(m.content for m in messages)
+        combined = " ".join(m.content for m in messages if m.content)
         assert "concise responses" in combined
 
     async def test_shared_knowledge_flow(
@@ -156,7 +170,11 @@ class TestMem0RetrievalPipeline:
         # Publish
         mock_client.add.return_value = {
             "results": [
-                {"id": "shared-001", "memory": "company policy", "event": "ADD"},
+                {
+                    "id": "shared-001",
+                    "memory": "company policy",
+                    "event": "ADD",
+                },
             ],
         }
 

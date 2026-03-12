@@ -5,9 +5,10 @@ The ``build_mem0_config_dict`` function produces the dict that Mem0's
 ``Memory.from_config()`` expects.
 """
 
-from typing import Any
+from pathlib import PurePosixPath, PureWindowsPath
+from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.memory.config import CompanyMemoryConfig  # noqa: TC001
@@ -16,21 +17,24 @@ from ai_company.memory.config import CompanyMemoryConfig  # noqa: TC001
 class Mem0EmbedderConfig(BaseModel):
     """Embedder settings for Mem0.
 
+    ``provider`` and ``model`` are required — callers must supply them
+    explicitly so that vendor-specific identifiers stay out of source
+    defaults.  Pass values that the Mem0 SDK recognises (e.g. via
+    company YAML config).
+
     Attributes:
-        provider: Embedding provider name.
-        model: Embedding model identifier.
+        provider: Embedding provider name (Mem0 SDK identifier).
+        model: Embedding model identifier (Mem0 SDK identifier).
         dims: Embedding vector dimensions.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     provider: NotBlankStr = Field(
-        default="openai",
-        description="Embedding provider name",
+        description="Embedding provider name (Mem0 SDK identifier)",
     )
     model: NotBlankStr = Field(
-        default="text-embedding-3-small",
-        description="Embedding model identifier",
+        description="Embedding model identifier (Mem0 SDK identifier)",
     )
     dims: int = Field(
         default=1536,
@@ -45,7 +49,7 @@ class Mem0BackendConfig(BaseModel):
     Attributes:
         data_dir: Directory for Mem0 data persistence.
         collection_name: Qdrant collection name.
-        embedder: Embedder settings.
+        embedder: Embedder settings (required — no defaults).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -59,9 +63,19 @@ class Mem0BackendConfig(BaseModel):
         description="Qdrant collection name",
     )
     embedder: Mem0EmbedderConfig = Field(
-        default_factory=Mem0EmbedderConfig,
         description="Embedder settings",
     )
+
+    @model_validator(mode="after")
+    def _reject_traversal(self) -> Self:
+        """Reject parent-directory traversal to prevent path escapes."""
+        parts = (
+            PureWindowsPath(self.data_dir).parts + PurePosixPath(self.data_dir).parts
+        )
+        if ".." in parts:
+            msg = "data_dir must not contain parent-directory traversal (..)"
+            raise ValueError(msg)
+        return self
 
 
 def build_mem0_config_dict(config: Mem0BackendConfig) -> dict[str, Any]:
@@ -95,15 +109,20 @@ def build_mem0_config_dict(config: Mem0BackendConfig) -> dict[str, Any]:
 
 def build_config_from_company_config(
     config: CompanyMemoryConfig,
+    *,
+    embedder: Mem0EmbedderConfig,
 ) -> Mem0BackendConfig:
     """Derive a ``Mem0BackendConfig`` from the top-level memory config.
 
     Args:
         config: Company-wide memory configuration.
+        embedder: Embedder settings (provider and model must be
+            supplied explicitly to avoid vendor names in defaults).
 
     Returns:
         Mem0-specific backend configuration.
     """
     return Mem0BackendConfig(
         data_dir=config.storage.data_dir,
+        embedder=embedder,
     )

@@ -5,6 +5,8 @@ dispatches to concrete backend implementations based on
 ``config.backend``.
 """
 
+from typing import Any
+
 from ai_company.memory.config import CompanyMemoryConfig  # noqa: TC001
 from ai_company.memory.errors import MemoryConfigError
 from ai_company.memory.protocol import MemoryBackend  # noqa: TC001
@@ -17,27 +19,51 @@ from ai_company.observability.events.memory import (
 logger = get_logger(__name__)
 
 
-def create_memory_backend(config: CompanyMemoryConfig) -> MemoryBackend:
+def create_memory_backend(
+    config: CompanyMemoryConfig,
+    *,
+    embedder: Any = None,
+) -> MemoryBackend:
     """Create a memory backend from configuration.
 
     Args:
         config: Memory configuration (includes backend selection and
             backend-specific settings).
+        embedder: Backend-specific embedder configuration.  Required
+            for the ``"mem0"`` backend (must be a
+            ``Mem0EmbedderConfig`` instance).
 
     Returns:
         A new, disconnected backend instance.  The caller must call
         ``connect()`` before use.
 
     Raises:
-        MemoryConfigError: If the backend is not recognized.
+        MemoryConfigError: If the backend is not recognized or
+            required configuration is missing.
     """
     if config.backend == "mem0":
         from ai_company.memory.backends.mem0 import Mem0MemoryBackend  # noqa: PLC0415
         from ai_company.memory.backends.mem0.config import (  # noqa: PLC0415
+            Mem0EmbedderConfig,
             build_config_from_company_config,
         )
 
-        mem0_config = build_config_from_company_config(config)
+        if embedder is None:
+            msg = (
+                "Mem0 backend requires an embedder configuration — "
+                "pass a Mem0EmbedderConfig instance"
+            )
+            raise MemoryConfigError(msg)
+        if not isinstance(embedder, Mem0EmbedderConfig):
+            msg = (
+                f"embedder must be a Mem0EmbedderConfig, got {type(embedder).__name__}"
+            )
+            raise MemoryConfigError(msg)
+
+        mem0_config = build_config_from_company_config(
+            config,
+            embedder=embedder,
+        )
         backend = Mem0MemoryBackend(
             mem0_config=mem0_config,
             max_memories_per_agent=config.options.max_memories_per_agent,
