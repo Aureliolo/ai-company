@@ -106,11 +106,15 @@ class TaskVersionConflictError(TaskMutationError):
     """Raised when optimistic concurrency version does not match."""
 
 
-class TaskInternalError(TaskMutationError):
+class TaskInternalError(TaskEngineError):
     """Raised when a task mutation fails due to an internal engine error.
 
     Unlike :class:`TaskMutationError` (which covers business-rule failures
     such as validation or not-found), this signals an unexpected engine fault
     that the caller cannot fix by changing the request. Maps to 5xx at the API
     layer.
+
+    This is deliberately a sibling of ``TaskMutationError``, not a subtype,
+    so that broad ``except TaskMutationError`` handlers do not accidentally
+    catch internal engine faults.
     """

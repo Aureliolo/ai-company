@@ -159,7 +159,10 @@ class TestQueueFull:
             persistence=persistence,  # type: ignore[arg-type]
             config=tiny_config,
         )
-        # Start the engine but pause the processing loop
+        # Directly manipulate internal state because triggering a full-queue
+        # condition through the public API is difficult: we need to fill the
+        # queue without the background loop draining it, so we set _running
+        # without calling start() (no processing task) and enqueue manually.
         eng._running = True
 
         # First submit fills the queue

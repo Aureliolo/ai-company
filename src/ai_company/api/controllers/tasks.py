@@ -43,6 +43,44 @@ from ai_company.observability.events.task import (
 logger = get_logger(__name__)
 
 
+def _extract_requester(state: State) -> str:
+    """Extract requester identity from the authenticated user.
+
+    Falls back to ``"api"`` when the connection carries no user
+    (e.g. in tests without auth middleware).
+    """
+    user = getattr(state, "_connection_user", None)
+    if user is not None and hasattr(user, "user_id"):
+        return str(user.user_id)
+    return "api"
+
+
+def _map_task_engine_errors(
+    exc: Exception,
+    *,
+    task_id: str | None = None,
+) -> Exception:
+    """Map a task-engine exception to the appropriate API error.
+
+    Returns the API exception to raise (caller must ``raise`` it).
+    """
+    if isinstance(exc, TaskNotFoundError):
+        if task_id is not None:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="task",
+                id=task_id,
+            )
+        return NotFoundError(str(exc))
+    if isinstance(exc, TaskEngineNotRunningError | TaskEngineQueueFullError):
+        return ServiceUnavailableError(str(exc))
+    if isinstance(exc, TaskInternalError):
+        return ServiceUnavailableError(str(exc))
+    if isinstance(exc, TaskMutationError):
+        return ApiValidationError(str(exc))
+    return exc
+
+
 class TaskController(Controller):
     """Full CRUD for tasks via ``TaskEngine``."""
 
@@ -140,14 +178,13 @@ class TaskController(Controller):
                 task_data,
                 requested_by=data.created_by,
             )
-        except TaskEngineNotRunningError as exc:
-            raise ServiceUnavailableError(str(exc)) from exc
-        except TaskEngineQueueFullError as exc:
-            raise ServiceUnavailableError(str(exc)) from exc
-        except TaskInternalError as exc:
-            raise ServiceUnavailableError(str(exc)) from exc
-        except TaskMutationError as exc:
-            raise ApiValidationError(str(exc)) from exc
+        except (
+            TaskEngineNotRunningError,
+            TaskEngineQueueFullError,
+            TaskInternalError,
+            TaskMutationError,
+        ) as exc:
+            raise _map_task_engine_errors(exc) from exc
         logger.info(
             TASK_CREATED,
             task_id=task.id,
@@ -181,23 +218,16 @@ class TaskController(Controller):
             task = await app_state.task_engine.update_task(
                 task_id,
                 updates,
-                requested_by="api",
+                requested_by=_extract_requester(state),
             )
-        except TaskEngineNotRunningError as exc:
-            raise ServiceUnavailableError(str(exc)) from exc
-        except TaskEngineQueueFullError as exc:
-            raise ServiceUnavailableError(str(exc)) from exc
-        except TaskNotFoundError as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="task",
-                id=task_id,
-            )
-            raise NotFoundError(str(exc)) from exc
-        except TaskInternalError as exc:
-            raise ServiceUnavailableError(str(exc)) from exc
-        except TaskMutationError as exc:
-            raise ApiValidationError(str(exc)) from exc
+        except (
+            TaskEngineNotRunningError,
+            TaskEngineQueueFullError,
+            TaskNotFoundError,
+            TaskInternalError,
+            TaskMutationError,
+        ) as exc:
+            raise _map_task_engine_errors(exc, task_id=task_id) from exc
         logger.info(API_TASK_UPDATED, task_id=task_id, fields=list(updates))
         return ApiResponse(data=task)
 
@@ -225,8 +255,9 @@ class TaskController(Controller):
             NotFoundError: If the task is not found.
         """
         app_state: AppState = state.app_state
+        requester = _extract_requester(state)
         transition_kwargs: dict[str, object] = {
-            "requested_by": "api",
+            "requested_by": requester,
             "reason": f"API transition to {data.target_status.value}",
         }
         if data.assigned_to is not None:
@@ -237,27 +268,20 @@ class TaskController(Controller):
                 data.target_status,
                 **transition_kwargs,  # type: ignore[arg-type]
             )
-        except TaskEngineNotRunningError as exc:
-            raise ServiceUnavailableError(str(exc)) from exc
-        except TaskEngineQueueFullError as exc:
-            raise ServiceUnavailableError(str(exc)) from exc
-        except TaskNotFoundError as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="task",
-                id=task_id,
-            )
-            raise NotFoundError(str(exc)) from exc
-        except TaskInternalError as exc:
-            raise ServiceUnavailableError(str(exc)) from exc
+        except (
+            TaskEngineNotRunningError,
+            TaskEngineQueueFullError,
+            TaskNotFoundError,
+            TaskInternalError,
+        ) as exc:
+            raise _map_task_engine_errors(exc, task_id=task_id) from exc
         except TaskMutationError as exc:
-            error_str = str(exc)
             logger.warning(
                 API_TASK_TRANSITION_FAILED,
                 task_id=task_id,
-                error=error_str,
+                error=str(exc),
             )
-            raise ApiValidationError(error_str) from exc
+            raise _map_task_engine_errors(exc, task_id=task_id) from exc
         logger.info(
             TASK_STATUS_CHANGED,
             task_id=task_id,
@@ -288,22 +312,15 @@ class TaskController(Controller):
         try:
             await app_state.task_engine.delete_task(
                 task_id,
-                requested_by="api",
+                requested_by=_extract_requester(state),
             )
-        except TaskEngineNotRunningError as exc:
-            raise ServiceUnavailableError(str(exc)) from exc
-        except TaskEngineQueueFullError as exc:
-            raise ServiceUnavailableError(str(exc)) from exc
-        except TaskNotFoundError as exc:
-            logger.warning(
-                API_RESOURCE_NOT_FOUND,
-                resource="task",
-                id=task_id,
-            )
-            raise NotFoundError(str(exc)) from exc
-        except TaskInternalError as exc:
-            raise ServiceUnavailableError(str(exc)) from exc
-        except TaskMutationError as exc:
-            raise ApiValidationError(str(exc)) from exc
+        except (
+            TaskEngineNotRunningError,
+            TaskEngineQueueFullError,
+            TaskNotFoundError,
+            TaskInternalError,
+            TaskMutationError,
+        ) as exc:
+            raise _map_task_engine_errors(exc, task_id=task_id) from exc
         logger.info(API_TASK_DELETED, task_id=task_id)
         return ApiResponse(data=None)

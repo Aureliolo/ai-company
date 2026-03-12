@@ -127,4 +127,53 @@ class TestAppLifecycle:
         mock_te.stop = AsyncMock(side_effect=RuntimeError("stop boom"))
 
         # Should not raise even when task engine stop fails
-        await _safe_shutdown(None, mock_te, None, None)
+        await _safe_shutdown(mock_te, None, None, None)
+
+
+@pytest.mark.unit
+class TestTryStop:
+    """Tests for the _try_stop helper."""
+
+    async def test_try_stop_success(self) -> None:
+        """Successful coroutine runs without error."""
+        from ai_company.api.app import _try_stop
+
+        called = False
+
+        async def noop() -> None:
+            nonlocal called
+            called = True
+
+        await _try_stop(noop(), "event", "error msg")
+        assert called is True
+
+    async def test_try_stop_exception_swallowed(self) -> None:
+        """Non-fatal exceptions are swallowed (logged)."""
+        from ai_company.api.app import _try_stop
+
+        async def fail() -> None:
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        # Should not raise
+        await _try_stop(fail(), "event", "error msg")
+
+    async def test_try_stop_memory_error_reraises(self) -> None:
+        """MemoryError is re-raised immediately."""
+        from ai_company.api.app import _try_stop
+
+        async def oom() -> None:
+            raise MemoryError
+
+        with pytest.raises(MemoryError):
+            await _try_stop(oom(), "event", "error msg")
+
+    async def test_try_stop_recursion_error_reraises(self) -> None:
+        """RecursionError is re-raised immediately."""
+        from ai_company.api.app import _try_stop
+
+        async def recurse() -> None:
+            raise RecursionError
+
+        with pytest.raises(RecursionError):
+            await _try_stop(recurse(), "event", "error msg")

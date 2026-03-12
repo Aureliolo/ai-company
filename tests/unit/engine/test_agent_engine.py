@@ -1032,7 +1032,11 @@ class TestReportToTaskEngine:
         assert result.is_success is True
         mock_te.transition_task.assert_awaited_once()
         call_args = mock_te.transition_task.call_args
+        assert call_args.args[0] == sample_task_with_criteria.id
         assert call_args.args[1] == TaskStatus.COMPLETED
+        assert call_args.kwargs["requested_by"] == str(
+            sample_agent_with_personality.id,
+        )
 
     async def test_mutation_error_swallowed(
         self,

@@ -5,14 +5,18 @@ All mutation requests are frozen Pydantic models, discriminated by a
 ``requested_by`` field for tracing and auditing.
 """
 
+import copy
 from datetime import UTC, datetime
 from typing import Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.enums import Complexity, Priority, TaskStatus, TaskType
-from ai_company.core.task import Task  # noqa: TC001
+from ai_company.core.task import Task
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+
+_VALID_TASK_FIELDS: frozenset[str] = frozenset(Task.model_fields)
+"""All declared field names on :class:`Task`, used to reject unknown keys."""
 
 # ── Mutation data ─────────────────────────────────────────────
 
@@ -122,11 +126,20 @@ class UpdateTaskMutation(BaseModel):
 
     @model_validator(mode="after")
     def _reject_immutable_fields(self) -> Self:
+        unknown = set(self.updates) - _VALID_TASK_FIELDS
+        if unknown:
+            msg = f"Unknown task fields: {sorted(unknown)}"
+            raise ValueError(msg)
         forbidden = set(self.updates) & _IMMUTABLE_TASK_FIELDS
         if forbidden:
             msg = f"Cannot update immutable fields: {sorted(forbidden)}"
             raise ValueError(msg)
         return self
+
+    def __init__(self, **data: object) -> None:
+        super().__init__(**data)
+        # Deep-copy mutable dict at system boundary per coding guidelines.
+        object.__setattr__(self, "updates", copy.deepcopy(self.updates))
 
 
 _IMMUTABLE_OVERRIDE_FIELDS: frozenset[str] = frozenset(
@@ -173,11 +186,20 @@ class TransitionTaskMutation(BaseModel):
 
     @model_validator(mode="after")
     def _reject_immutable_overrides(self) -> Self:
+        unknown = set(self.overrides) - _VALID_TASK_FIELDS
+        if unknown:
+            msg = f"Unknown task fields in overrides: {sorted(unknown)}"
+            raise ValueError(msg)
         forbidden = set(self.overrides) & _IMMUTABLE_OVERRIDE_FIELDS
         if forbidden:
             msg = f"Cannot override immutable fields: {sorted(forbidden)}"
             raise ValueError(msg)
         return self
+
+    def __init__(self, **data: object) -> None:
+        super().__init__(**data)
+        # Deep-copy mutable dict at system boundary per coding guidelines.
+        object.__setattr__(self, "overrides", copy.deepcopy(self.overrides))
 
 
 class DeleteTaskMutation(BaseModel):

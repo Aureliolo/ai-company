@@ -1,9 +1,10 @@
 """Centralized single-writer task engine.
 
 Owns all task state mutations via an ``asyncio.Queue``.  A single
-background task consumes mutation requests sequentially, applies
-``model_copy(update=...)`` on frozen ``Task`` models, persists the
-result, and publishes snapshots to the message bus.
+background task consumes mutation requests sequentially, derives a new
+``Task`` instance from the current state and the mutation (e.g. via
+``Task.model_validate`` / ``Task.with_transition``), persists the result,
+and publishes snapshots to the message bus.
 
 Reads bypass the queue and go directly to persistence -- this is safe
 because the TaskEngine is the only writer.
@@ -16,8 +17,6 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Never
 from uuid import uuid4
 
-from ai_company.core.enums import TaskStatus
-from ai_company.core.task import Task
 from ai_company.engine.errors import (
     TaskEngineNotRunningError,
     TaskEngineQueueFullError,
@@ -26,6 +25,7 @@ from ai_company.engine.errors import (
     TaskNotFoundError,
     TaskVersionConflictError,
 )
+from ai_company.engine.task_engine_apply import dispatch as _dispatch_mutation
 from ai_company.engine.task_engine_config import TaskEngineConfig
 from ai_company.engine.task_engine_models import (
     CancelTaskMutation,
@@ -38,6 +38,7 @@ from ai_company.engine.task_engine_models import (
     TransitionTaskMutation,
     UpdateTaskMutation,
 )
+from ai_company.engine.task_engine_version import VersionTracker
 from ai_company.observability import get_logger
 from ai_company.observability.events.task_engine import (
     TASK_ENGINE_CREATED,
@@ -45,7 +46,6 @@ from ai_company.observability.events.task_engine import (
     TASK_ENGINE_DRAIN_START,
     TASK_ENGINE_DRAIN_TIMEOUT,
     TASK_ENGINE_LOOP_ERROR,
-    TASK_ENGINE_MUTATION_APPLIED,
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_MUTATION_RECEIVED,
     TASK_ENGINE_NOT_RUNNING,
@@ -54,11 +54,12 @@ from ai_company.observability.events.task_engine import (
     TASK_ENGINE_SNAPSHOT_PUBLISHED,
     TASK_ENGINE_STARTED,
     TASK_ENGINE_STOPPED,
-    TASK_ENGINE_VERSION_CONFLICT,
 )
 
 if TYPE_CHECKING:
     from ai_company.communication.bus_protocol import MessageBus
+    from ai_company.core.enums import TaskStatus
+    from ai_company.core.task import Task
     from ai_company.persistence.protocol import PersistenceBackend
 
 logger = get_logger(__name__)
@@ -105,8 +106,9 @@ class TaskEngine:
         self._queue: asyncio.Queue[_MutationEnvelope] = asyncio.Queue(
             maxsize=self._config.max_queue_size,
         )
-        self._versions: dict[str, int] = {}
+        self._versions = VersionTracker()
         self._processing_task: asyncio.Task[None] | None = None
+        self._in_flight: _MutationEnvelope | None = None
         self._running = False
         logger.debug(
             TASK_ENGINE_CREATED,
@@ -176,19 +178,27 @@ class TaskEngine:
         logger.info(TASK_ENGINE_STOPPED)
 
     def _fail_remaining_futures(self) -> None:
-        """Fail all remaining enqueued futures after drain timeout."""
+        """Fail in-flight and remaining enqueued futures after drain timeout."""
+        shutdown_result_for = self._shutdown_result
+        in_flight = self._in_flight
+        if in_flight is not None and not in_flight.future.done():
+            in_flight.future.set_result(shutdown_result_for(in_flight))
+        self._in_flight = None
         while not self._queue.empty():
             with contextlib.suppress(asyncio.QueueEmpty):
                 envelope = self._queue.get_nowait()
                 if not envelope.future.done():
-                    envelope.future.set_result(
-                        TaskMutationResult(
-                            request_id=envelope.mutation.request_id,
-                            success=False,
-                            error="TaskEngine shut down before processing",
-                            error_code="internal",
-                        ),
-                    )
+                    envelope.future.set_result(shutdown_result_for(envelope))
+
+    @staticmethod
+    def _shutdown_result(envelope: _MutationEnvelope) -> TaskMutationResult:
+        """Build an internal-failure result for a shutdown-aborted envelope."""
+        return TaskMutationResult(
+            request_id=envelope.mutation.request_id,
+            success=False,
+            error="TaskEngine shut down before processing",
+            error_code="internal",
+        )
 
     @property
     def is_running(self) -> bool:
@@ -489,6 +499,8 @@ class TaskEngine:
                 continue
             try:
                 await self._process_one(envelope)
+            except MemoryError, RecursionError:
+                raise
             except Exception:
                 logger.exception(
                     TASK_ENGINE_LOOP_ERROR,
@@ -507,17 +519,24 @@ class TaskEngine:
     async def _process_one(self, envelope: _MutationEnvelope) -> None:
         """Process a single mutation envelope."""
         mutation = envelope.mutation
+        self._in_flight = envelope
         logger.debug(
             TASK_ENGINE_MUTATION_RECEIVED,
             mutation_type=mutation.mutation_type,
             request_id=mutation.request_id,
         )
         try:
-            result = await self._apply_mutation(mutation)
+            result = await _dispatch_mutation(
+                mutation,
+                self._persistence,
+                self._versions,
+            )
             if not envelope.future.done():
                 envelope.future.set_result(result)
             if result.success and self._config.publish_snapshots:
                 await self._publish_snapshot(mutation, result)
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             internal_msg = f"{type(exc).__name__}: {exc}"
             logger.exception(
@@ -535,280 +554,8 @@ class TaskEngine:
                         error_code="internal",
                     ),
                 )
-
-    async def _apply_mutation(self, mutation: TaskMutation) -> TaskMutationResult:
-        """Dispatch and apply a mutation by type.
-
-        Raises:
-            TypeError: If the mutation type is unrecognised.
-        """
-        match mutation:
-            case CreateTaskMutation():
-                return await self._apply_create(mutation)
-            case UpdateTaskMutation():
-                return await self._apply_update(mutation)
-            case TransitionTaskMutation():
-                return await self._apply_transition(mutation)
-            case DeleteTaskMutation():
-                return await self._apply_delete(mutation)
-            case CancelTaskMutation():
-                return await self._apply_cancel(mutation)
-            case _:
-                msg = f"Unknown mutation type: {type(mutation).__name__}"  # type: ignore[unreachable]
-                raise TypeError(msg)
-
-    def _not_found_result(
-        self,
-        mutation_type: str,
-        request_id: str,
-        task_id: str,
-    ) -> TaskMutationResult:
-        """Build a failure result for a missing task and log it."""
-        error = f"Task {task_id!r} not found"
-        logger.warning(
-            TASK_ENGINE_MUTATION_FAILED,
-            mutation_type=mutation_type,
-            request_id=request_id,
-            task_id=task_id,
-            error=error,
-        )
-        return TaskMutationResult(
-            request_id=request_id,
-            success=False,
-            error=error,
-            error_code="not_found",
-        )
-
-    async def _apply_create(
-        self,
-        mutation: CreateTaskMutation,
-    ) -> TaskMutationResult:
-        """Create a new task."""
-        data = mutation.task_data
-        task_id = f"task-{uuid4().hex}"
-
-        task = Task(
-            id=task_id,
-            title=data.title,
-            description=data.description,
-            type=data.type,
-            priority=data.priority,
-            project=data.project,
-            created_by=data.created_by,
-            assigned_to=data.assigned_to,
-            estimated_complexity=data.estimated_complexity,
-            budget_limit=data.budget_limit,
-        )
-        await self._persistence.tasks.save(task)
-        self._versions[task_id] = 1
-
-        logger.info(
-            TASK_ENGINE_MUTATION_APPLIED,
-            mutation_type="create",
-            request_id=mutation.request_id,
-            task_id=task_id,
-        )
-        return TaskMutationResult(
-            request_id=mutation.request_id,
-            success=True,
-            task=task,
-            version=1,
-        )
-
-    async def _apply_update(
-        self,
-        mutation: UpdateTaskMutation,
-    ) -> TaskMutationResult:
-        """Update task fields."""
-        task = await self._persistence.tasks.get(mutation.task_id)
-        if task is None:
-            return self._not_found_result(
-                "update",
-                mutation.request_id,
-                mutation.task_id,
-            )
-
-        try:
-            self._check_version(mutation.task_id, mutation.expected_version)
-        except TaskVersionConflictError as exc:
-            return TaskMutationResult(
-                request_id=mutation.request_id,
-                success=False,
-                error=str(exc),
-                error_code="version_conflict",
-            )
-
-        if not mutation.updates:
-            version = self._versions.get(mutation.task_id, 0)
-            return TaskMutationResult(
-                request_id=mutation.request_id,
-                success=True,
-                task=task,
-                version=version,
-                previous_status=task.status,
-            )
-
-        merged = task.model_dump()
-        merged.update(mutation.updates)
-        updated = Task.model_validate(merged)
-        await self._persistence.tasks.save(updated)
-        version = self._bump_version(mutation.task_id)
-
-        logger.info(
-            TASK_ENGINE_MUTATION_APPLIED,
-            mutation_type="update",
-            request_id=mutation.request_id,
-            task_id=mutation.task_id,
-            fields=list(mutation.updates),
-        )
-        return TaskMutationResult(
-            request_id=mutation.request_id,
-            success=True,
-            task=updated,
-            version=version,
-            previous_status=task.status,
-        )
-
-    async def _apply_transition(
-        self,
-        mutation: TransitionTaskMutation,
-    ) -> TaskMutationResult:
-        """Perform a task status transition."""
-        task = await self._persistence.tasks.get(mutation.task_id)
-        if task is None:
-            return self._not_found_result(
-                "transition",
-                mutation.request_id,
-                mutation.task_id,
-            )
-
-        try:
-            self._check_version(mutation.task_id, mutation.expected_version)
-        except TaskVersionConflictError as exc:
-            return TaskMutationResult(
-                request_id=mutation.request_id,
-                success=False,
-                error=str(exc),
-                error_code="version_conflict",
-            )
-
-        previous_status = task.status
-
-        try:
-            updated = task.with_transition(
-                mutation.target_status,
-                **mutation.overrides,
-            )
-        except ValueError as exc:
-            logger.warning(
-                TASK_ENGINE_MUTATION_FAILED,
-                mutation_type="transition",
-                request_id=mutation.request_id,
-                task_id=mutation.task_id,
-                error=str(exc),
-            )
-            return TaskMutationResult(
-                request_id=mutation.request_id,
-                success=False,
-                error=str(exc),
-                error_code="validation",
-            )
-
-        await self._persistence.tasks.save(updated)
-        version = self._bump_version(mutation.task_id)
-
-        logger.info(
-            TASK_ENGINE_MUTATION_APPLIED,
-            mutation_type="transition",
-            request_id=mutation.request_id,
-            task_id=mutation.task_id,
-            from_status=previous_status.value,
-            to_status=mutation.target_status.value,
-        )
-        return TaskMutationResult(
-            request_id=mutation.request_id,
-            success=True,
-            task=updated,
-            version=version,
-            previous_status=previous_status,
-        )
-
-    async def _apply_delete(
-        self,
-        mutation: DeleteTaskMutation,
-    ) -> TaskMutationResult:
-        """Delete a task."""
-        deleted = await self._persistence.tasks.delete(mutation.task_id)
-        if not deleted:
-            return self._not_found_result(
-                "delete",
-                mutation.request_id,
-                mutation.task_id,
-            )
-
-        self._versions.pop(mutation.task_id, None)
-
-        logger.info(
-            TASK_ENGINE_MUTATION_APPLIED,
-            mutation_type="delete",
-            request_id=mutation.request_id,
-            task_id=mutation.task_id,
-        )
-        return TaskMutationResult(
-            request_id=mutation.request_id,
-            success=True,
-            version=0,
-        )
-
-    async def _apply_cancel(
-        self,
-        mutation: CancelTaskMutation,
-    ) -> TaskMutationResult:
-        """Cancel a task (shortcut for transition to CANCELLED)."""
-        task = await self._persistence.tasks.get(mutation.task_id)
-        if task is None:
-            return self._not_found_result(
-                "cancel",
-                mutation.request_id,
-                mutation.task_id,
-            )
-
-        previous_status = task.status
-        try:
-            updated = task.with_transition(TaskStatus.CANCELLED)
-        except ValueError as exc:
-            logger.warning(
-                TASK_ENGINE_MUTATION_FAILED,
-                mutation_type="cancel",
-                request_id=mutation.request_id,
-                task_id=mutation.task_id,
-                error=str(exc),
-            )
-            return TaskMutationResult(
-                request_id=mutation.request_id,
-                success=False,
-                error=str(exc),
-                error_code="validation",
-            )
-
-        await self._persistence.tasks.save(updated)
-        version = self._bump_version(mutation.task_id)
-
-        logger.info(
-            TASK_ENGINE_MUTATION_APPLIED,
-            mutation_type="cancel",
-            request_id=mutation.request_id,
-            task_id=mutation.task_id,
-            from_status=previous_status.value,
-            to_status=TaskStatus.CANCELLED.value,
-        )
-        return TaskMutationResult(
-            request_id=mutation.request_id,
-            success=True,
-            task=updated,
-            version=version,
-            previous_status=previous_status,
-        )
+        finally:
+            self._in_flight = None
 
     # -- Snapshot publishing -----------------------------------------------
 
@@ -871,37 +618,3 @@ class TaskEngine:
                 request_id=mutation.request_id,
                 exc_info=True,
             )
-
-    # -- Version tracking --------------------------------------------------
-
-    def _bump_version(self, task_id: str) -> int:
-        """Increment and return the version counter for a task."""
-        version = self._versions.get(task_id, 0) + 1
-        self._versions[task_id] = version
-        return version
-
-    def _check_version(
-        self,
-        task_id: str,
-        expected_version: int | None,
-    ) -> None:
-        """Check optimistic concurrency version if provided.
-
-        Raises:
-            TaskVersionConflictError: If versions don't match.
-        """
-        if expected_version is None:
-            return
-        current = self._versions.get(task_id, 0)
-        if current != expected_version:
-            msg = (
-                f"Version conflict for task {task_id!r}: "
-                f"expected {expected_version}, current {current}"
-            )
-            logger.warning(
-                TASK_ENGINE_VERSION_CONFLICT,
-                task_id=task_id,
-                expected_version=expected_version,
-                current_version=current,
-            )
-            raise TaskVersionConflictError(msg)

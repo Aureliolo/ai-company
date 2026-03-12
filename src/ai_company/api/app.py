@@ -129,9 +129,28 @@ def _build_lifecycle(
 
     async def on_shutdown() -> None:
         logger.info(API_APP_SHUTDOWN, version=__version__)
-        await _safe_shutdown(bridge, task_engine, message_bus, persistence)
+        await _safe_shutdown(task_engine, bridge, message_bus, persistence)
 
     return [on_startup], [on_shutdown]
+
+
+async def _try_stop(
+    coro: object,
+    event: str,
+    error_msg: str,
+) -> None:
+    """Await *coro* inside a safe try/except, logging failures.
+
+    ``MemoryError`` and ``RecursionError`` are re-raised immediately;
+    all other exceptions are logged and swallowed so that sibling
+    shutdown steps can still run.
+    """
+    try:
+        await coro  # type: ignore[misc]
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.exception(event, error=error_msg)
 
 
 async def _cleanup_on_failure(  # noqa: PLR0913
@@ -147,37 +166,29 @@ async def _cleanup_on_failure(  # noqa: PLR0913
 ) -> None:
     """Reverse cleanup on startup failure (task engine, bridge, bus, persistence)."""
     if started_task_engine and task_engine is not None:
-        try:
-            await task_engine.stop()
-        except Exception:
-            logger.exception(
-                API_APP_STARTUP,
-                error="Cleanup: failed to stop task engine",
-            )
+        await _try_stop(
+            task_engine.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop task engine",
+        )
     if started_bridge and bridge is not None:
-        try:
-            await bridge.stop()
-        except Exception:
-            logger.exception(
-                API_APP_STARTUP,
-                error="Cleanup: failed to stop message bus bridge",
-            )
+        await _try_stop(
+            bridge.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop message bus bridge",
+        )
     if started_bus and message_bus is not None:
-        try:
-            await message_bus.stop()
-        except Exception:
-            logger.exception(
-                API_APP_STARTUP,
-                error="Cleanup: failed to stop message bus",
-            )
+        await _try_stop(
+            message_bus.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop message bus",
+        )
     if started_persistence and persistence is not None:
-        try:
-            await persistence.disconnect()
-        except Exception:
-            logger.exception(
-                API_APP_STARTUP,
-                error="Cleanup: failed to disconnect persistence",
-            )
+        await _try_stop(
+            persistence.disconnect(),
+            API_APP_STARTUP,
+            "Cleanup: failed to disconnect persistence",
+        )
 
 
 async def _init_persistence(
@@ -298,44 +309,41 @@ async def _safe_startup(
 
 
 async def _safe_shutdown(
-    bridge: MessageBusBridge | None,
     task_engine: TaskEngine | None,
+    bridge: MessageBusBridge | None,
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
 ) -> None:
-    """Stop bridge, task engine, message bus and disconnect persistence."""
-    if bridge is not None:
-        try:
-            await bridge.stop()
-        except Exception:
-            logger.exception(
-                API_APP_SHUTDOWN,
-                error="Failed to stop message bus bridge",
-            )
+    """Stop task engine, bridge, message bus and disconnect persistence.
+
+    Mirrors ``_cleanup_on_failure`` reverse order: task engine first so it
+    can drain queued mutations and publish final snapshots through the
+    still-running bridge.
+    """
     if task_engine is not None:
-        try:
-            await task_engine.stop()
-        except Exception:
-            logger.exception(
-                API_APP_SHUTDOWN,
-                error="Failed to stop task engine",
-            )
+        await _try_stop(
+            task_engine.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop task engine",
+        )
+    if bridge is not None:
+        await _try_stop(
+            bridge.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop message bus bridge",
+        )
     if message_bus is not None:
-        try:
-            await message_bus.stop()
-        except Exception:
-            logger.exception(
-                API_APP_SHUTDOWN,
-                error="Failed to stop message bus",
-            )
+        await _try_stop(
+            message_bus.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop message bus",
+        )
     if persistence is not None:
-        try:
-            await persistence.disconnect()
-        except Exception:
-            logger.exception(
-                API_APP_SHUTDOWN,
-                error="Failed to disconnect persistence",
-            )
+        await _try_stop(
+            persistence.disconnect(),
+            API_APP_SHUTDOWN,
+            "Failed to disconnect persistence",
+        )
 
 
 def create_app(  # noqa: PLR0913
@@ -368,11 +376,16 @@ def create_app(  # noqa: PLR0913
     effective_config = config or RootConfig(company_name="default")
     api_config = effective_config.api
 
-    if persistence is None or message_bus is None or cost_tracker is None:
+    if (
+        persistence is None
+        or message_bus is None
+        or cost_tracker is None
+        or task_engine is None
+    ):
         msg = (
             "create_app called without persistence, message_bus, "
-            "and/or cost_tracker — controllers accessing missing "
-            "services will return 503.  Use test fakes for testing."
+            "cost_tracker, and/or task_engine — controllers accessing "
+            "missing services will return 503.  Use test fakes for testing."
         )
         logger.warning(API_APP_STARTUP, note=msg)
 

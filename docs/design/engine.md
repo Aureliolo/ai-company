@@ -183,13 +183,17 @@ Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop
 
 - **Single writer**: A background `asyncio.Task` consumes `TaskMutation`
   requests sequentially from an `asyncio.Queue`.
-- **Immutable updates**: Each mutation calls `model_copy(update=...)` on
-  frozen `Task` models — the original is never mutated.
-- **Optimistic concurrency**: In-memory version counters per task.
-  Callers can pass `expected_version` to detect stale writes; on mismatch
-  the engine returns a failed `TaskMutationResult` with
-  `error_code="version_conflict"`.  Convenience methods raise
-  `TaskVersionConflictError`.
+- **Immutable-style updates**: Each mutation constructs a new `Task` instance
+  from the previous one (for example via
+  `Task.model_validate({**task.model_dump(), **updates})` or
+  `Task.with_transition(...)`); the existing instance is never mutated.
+- **Optimistic concurrency**: Per-task version counters.  The persisted
+  task version is the source of truth; any in-memory cache is an
+  optimization that is seeded from persistence on task load and may be
+  invalid after a restart.  Callers can pass `expected_version` to detect
+  stale writes; on mismatch the engine returns a failed
+  `TaskMutationResult` with `error_code="version_conflict"`.  Convenience
+  methods raise `TaskVersionConflictError`.
 - **Read-through**: `get_task()` and `list_tasks()` bypass the queue and
   read directly from persistence — safe because TaskEngine is the sole writer.
 - **Snapshot publishing**: On success, a `TaskStateChanged` event is published

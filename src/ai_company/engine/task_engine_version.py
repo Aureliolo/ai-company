@@ -1,0 +1,76 @@
+"""Version tracking for TaskEngine optimistic concurrency.
+
+Wraps a plain ``dict[str, int]`` with seed, bump, check, and remove
+operations.  Extracted from ``task_engine.py`` to keep the main module
+focused on lifecycle and queue management.
+"""
+
+from ai_company.engine.errors import TaskVersionConflictError
+from ai_company.observability import get_logger
+from ai_company.observability.events.task_engine import TASK_ENGINE_VERSION_CONFLICT
+
+logger = get_logger(__name__)
+
+
+class VersionTracker:
+    """In-memory per-task version counter for optimistic concurrency.
+
+    After a restart the tracker is empty.  The first time a persisted
+    task is encountered it is seeded at version 1 (it was created at
+    least once).  This makes subsequent optimistic-concurrency checks
+    work within the current engine lifetime.
+    """
+
+    def __init__(self) -> None:
+        self._versions: dict[str, int] = {}
+
+    def seed(self, task_id: str) -> None:
+        """Ensure *task_id* has a baseline version (idempotent)."""
+        if task_id not in self._versions:
+            self._versions[task_id] = 1
+
+    def set_initial(self, task_id: str, version: int) -> None:
+        """Set *task_id* to *version* unconditionally (used on create)."""
+        self._versions[task_id] = version
+
+    def bump(self, task_id: str) -> int:
+        """Increment and return the version counter for *task_id*."""
+        self.seed(task_id)
+        version = self._versions[task_id] + 1
+        self._versions[task_id] = version
+        return version
+
+    def get(self, task_id: str) -> int:
+        """Return the current version (0 if not tracked)."""
+        return self._versions.get(task_id, 0)
+
+    def remove(self, task_id: str) -> None:
+        """Remove version tracking for a deleted task."""
+        self._versions.pop(task_id, None)
+
+    def check(
+        self,
+        task_id: str,
+        expected_version: int | None,
+    ) -> None:
+        """Raise ``TaskVersionConflictError`` if versions disagree.
+
+        Seeds the version from persistence if not yet tracked so that
+        optimistic concurrency survives engine restarts.
+        """
+        if expected_version is None:
+            return
+        self.seed(task_id)
+        current = self._versions[task_id]
+        if current != expected_version:
+            msg = (
+                f"Version conflict for task {task_id!r}: "
+                f"expected {expected_version}, current {current}"
+            )
+            logger.warning(
+                TASK_ENGINE_VERSION_CONFLICT,
+                task_id=task_id,
+                expected_version=expected_version,
+                current_version=current,
+            )
+            raise TaskVersionConflictError(msg)
