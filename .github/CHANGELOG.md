@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.1.2](https://github.com/Aureliolo/synthorg/compare/v0.1.1...v0.1.2) (2026-03-12)
+
+
+### Features
+
+* add /review-dep-pr skill for dependency update PR review ([#315](https://github.com/Aureliolo/synthorg/issues/315)) ([56f6565](https://github.com/Aureliolo/synthorg/commit/56f6565d801ff47f2a86f09dfc3f2693472dc62b))
+* add static OpenAPI reference page with Scalar UI ([#319](https://github.com/Aureliolo/synthorg/issues/319)) ([77cdbcc](https://github.com/Aureliolo/synthorg/commit/77cdbccb71fcb974665350b892b98fd8af43e635))
+
+
+### Bug Fixes
+
+* correct API reference link path in rest-api.md ([#320](https://github.com/Aureliolo/synthorg/issues/320)) ([3d08f92](https://github.com/Aureliolo/synthorg/commit/3d08f92278ba082b7ed44d8306b49151d8b0ebe2))
+
+
+### CI/CD
+
+* bump actions/setup-node from 4.4.0 to 6.3.0 ([#311](https://github.com/Aureliolo/synthorg/issues/311)) ([3c99d6f](https://github.com/Aureliolo/synthorg/commit/3c99d6fd9711d526e07304cf756968796026f821))
+* bump actions/setup-python from 5.6.0 to 6.2.0 ([#312](https://github.com/Aureliolo/synthorg/issues/312)) ([3273553](https://github.com/Aureliolo/synthorg/commit/327355336046db5fa67bdca88fa6f3fba059aac0))
+* bump astral-sh/setup-uv from 6.0.1 to 7.4.0 ([#310](https://github.com/Aureliolo/synthorg/issues/310)) ([b63cee7](https://github.com/Aureliolo/synthorg/commit/b63cee7fc5550da799161943b5ac25894aeeda7e))
+
+
+### Maintenance
+
+* bump mkdocstrings[python] from 0.29.1 to 1.0.3 ([#314](https://github.com/Aureliolo/synthorg/issues/314)) ([d46ccad](https://github.com/Aureliolo/synthorg/commit/d46ccadda5b8db00b2f7e848a6e678a56f6972ff))
+* bump the minor-and-patch group with 2 updates ([#313](https://github.com/Aureliolo/synthorg/issues/313)) ([6337ae4](https://github.com/Aureliolo/synthorg/commit/6337ae4b90e52d869db8ba253dce59c2c3387ca1))
+* improve review-dep-pr skill and add Codecov Test Analytics ([#317](https://github.com/Aureliolo/synthorg/issues/317)) ([eb5782e](https://github.com/Aureliolo/synthorg/commit/eb5782ee31749a3926a0262bc8bce4e8cd303413))
+
 ## [0.1.1](https://github.com/Aureliolo/synthorg/compare/v0.1.0...v0.1.1) (2026-03-11)
 
 
