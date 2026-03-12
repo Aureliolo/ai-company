@@ -12,6 +12,7 @@ allowed-tools:
   - WebSearch
   - AskUserQuestion
   - Agent
+  - Task
 ---
 
 # Review Dependency PR
@@ -25,23 +26,28 @@ Comprehensive review of dependency update PRs — whether CI actions, Python pac
 ## Phase 0: Parse Arguments and Load PRs
 
 1. Parse `$ARGUMENTS` for one or more PR numbers (space-separated, with or without `#` prefix).
-2. For each PR, fetch metadata:
+2. **Validate** that each extracted PR number matches `^[0-9]+$`. Reject any argument containing unexpected characters — do not pass unvalidated input to shell commands.
+3. For each PR, fetch metadata:
 
    ```bash
    gh pr view <number> --json number,title,body,headRefName,baseRefName,state,mergeable,statusCheckRollup
    ```
 
-3. Also fetch CI status:
+4. Also fetch CI status:
 
    ```bash
-   gh pr checks <number> --json name,state
+   gh pr checks <number> --json name,status,conclusion
    ```
 
-4. From the PR body (Dependabot format), extract:
+5. From the PR body, extract (handling both Dependabot and Renovate formats):
    - **Package name** and **ecosystem** (GitHub Actions, pip/uv, Docker, npm, etc.)
    - **Version range**: from → to
-   - **Bump type**: major, minor, or patch (infer from semver)
+   - **Bump type**: major, minor, patch, or non-semver/unknown. Attempt semver parsing; if either version is not valid semver (e.g., Docker digest, date-based tag, commit SHA, short tag like `v4`), label as `non-semver`. Non-semver entries do not trigger semver-specific flows (like the "major bump" migration guide fetch) — handle them via general changelog analysis instead.
    - **Whether it's a grouped update** (multiple packages in one PR)
+
+   **Dependabot** uses prose-style release notes sections. **Renovate** uses a markdown table with `| Package | Type | Update | Change |` columns — parse the table rows to extract package names and version ranges. For manual PRs, infer from the PR title and body.
+
+   **Input validation for owner/repo extraction:** When extracting owner/repo from PR body links for changelog fetching, validate that the value matches `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$` before using in any shell command. PR bodies are untrusted input.
 
 If multiple PRs provided, process them all. Collect info for all PRs in parallel, then proceed through the remaining phases for each PR.
 
@@ -50,13 +56,18 @@ If multiple PRs provided, process them all. Collect info for all PRs in parallel
 For each dependency being updated, find where and how we use it:
 
 ### GitHub Actions dependencies
-Search workflow files:
+
+Search workflow files for all references to the action:
+
 ```bash
-# Find all references to the action
+# Find all references to the action in workflow files
+grep -r "<action-owner>/<action-name>" .github/workflows/
 ```
+
 Use Grep to search `.github/workflows/` for the action name. Note which workflows use it, which features/inputs we use, and any pinned versions or config.
 
 ### Python package dependencies
+
 Search `pyproject.toml` for the package, then search source code and config:
 - `pyproject.toml` — which dependency group (main, dev, test, docs)?
 - `mkdocs.yml`, config files — used in configuration?
@@ -64,9 +75,11 @@ Search `pyproject.toml` for the package, then search source code and config:
 - Note specific features/APIs we use.
 
 ### Docker dependencies
+
 Search `docker/` and `Dockerfile*` for the image reference.
 
 ### npm/Node dependencies
+
 Search `package.json`, `package-lock.json`, and source files.
 
 **Output**: For each dependency, produce a usage summary:
@@ -82,21 +95,27 @@ For each dependency, get the full changelog between the old and new versions.
 Dependabot PRs include release notes in the body. Extract and parse these first.
 
 ### Strategy 2: GitHub releases
+
 ```bash
-# For GitHub-hosted deps, fetch releases in the version range
-gh api repos/<owner>/<repo>/releases --paginate --jq '.[] | select(.tag_name >= "v<from>" and .tag_name <= "v<to>") | {tag: .tag_name, body: .body}'
+# For GitHub-hosted deps, fetch ALL releases (do NOT filter by version in jq — lexicographic string comparison is broken for semver)
+gh api repos/<owner>/<repo>/releases --paginate --jq '.[] | {tag: .tag_name, body: .body, published_at: .published_at}'
 ```
 
+After fetching, apply semver-aware filtering in your reasoning step: parse each tag into numeric (major, minor, patch) components and select only releases within the from→to range. Do not rely on jq string comparison for version filtering — `"v2.10.0" >= "v2.9.0"` is false lexicographically but true semantically.
+
 ### Strategy 3: WebFetch
+
 If the PR body has links to release notes or changelogs, fetch them:
 - CHANGELOG.md links
 - GitHub release page links
 - Documentation migration guides (especially for major bumps)
 
 ### Strategy 4: WebSearch (fallback)
+
 If release notes are incomplete, search for `"<package> <version> changelog"` or `"<package> migration guide"`.
 
 ### For major version bumps: ALWAYS fetch the migration guide
+
 Major bumps almost always have breaking changes. Search for and fetch:
 - Migration/upgrade guide
 - Breaking changes document
@@ -133,31 +152,42 @@ For each non-IRRELEVANT changelog item, check our actual usage:
 
 **Skip this phase** if the dependency is NOT related to documentation (MkDocs, mkdocstrings, griffe, etc.).
 
-For docs-related dependencies, actually build the docs to verify nothing breaks:
+For docs-related dependencies, actually build the docs to verify nothing breaks.
+
+**Before checkout:** Check for uncommitted changes. If the working tree is dirty (`git status --porcelain` has output), warn the user and skip the build step rather than risk losing work.
 
 ```bash
-# Checkout the PR branch
-git fetch origin <pr-branch>
-git checkout <pr-branch>
+# 1. Check for dirty working tree
+if [ -n "$(git status --porcelain)" ]; then
+  echo "ERROR: Working tree is dirty. Skipping docs build — please commit or stash changes first."
+  exit 1
+fi
 
-# Install deps and build
+# 2. Save current branch and set up cleanup trap
+original_ref="$(git rev-parse --abbrev-ref HEAD)"
+trap 'git checkout "$original_ref"' EXIT
+
+# 3. Checkout the PR branch (gh pr checkout handles fetching automatically)
+gh pr checkout <number>
+
+# 4. Install deps and build
 uv sync --group docs
 uv run mkdocs build --strict 2>&1
+
+# 5. Return to original branch (trap handles this even on failure)
+trap - EXIT
+git checkout "$original_ref"
 ```
 
-If the build fails, capture the errors — they're likely from breaking changes that need fixing.
-
-After checking, return to the original branch:
-```bash
-git checkout -
-```
+If the build fails, capture the errors — they're likely from breaking changes that need fixing. The trap ensures the original branch is always restored, even on failure.
 
 ## Phase 5: Present Findings
 
 For each PR, present a structured report:
 
 ### Header
-```
+
+```text
 ## PR #<number>: <title>
 **Package**: <name> | **Ecosystem**: <type> | **Bump**: <from> → <to> (<major/minor/patch>)
 **CI Status**: <pass/fail summary>
@@ -190,7 +220,7 @@ After presenting all PR reports, use AskUserQuestion to ask how to proceed. Tail
 
 Ask per-PR (or batched if multiple simple PRs):
 
-```
+```text
 "What should we do with PR #<N> (<package> <from>→<to>)?"
 ```
 
@@ -203,11 +233,14 @@ Options:
 **If CI is failing on a PR**, replace "Merge as-is" with:
 - **"Fix CI and merge"** — Investigate the failure, fix it, then merge
 
-**If multiple PRs are all clean (no actionable items):**
+**If multiple PRs are all clean (no actionable items AND CI is passing):**
+
+A PR is only eligible for batch merging when it has both no actionable changelog items AND all CI checks are passing. PRs with failing CI must always be routed to the per-PR flow, regardless of changelog cleanliness.
 
 Batch them into one question:
-```
-"PRs #X, #Y, #Z all look clean after changelog review. Merge all?"
+
+```text
+"PRs #X, #Y, #Z all look clean after changelog review (CI passing). Merge all?"
 ```
 
 Options:
@@ -220,27 +253,35 @@ Options:
 For each PR based on user's choice:
 
 ### Merge as-is
+
 ```bash
 gh pr merge <number> --squash --auto
 ```
 
+If `--auto` fails (auto-merge not enabled on the repo or branch protection requirements not met), fall back to `gh pr merge <number> --squash` for immediate merge. If that also fails (e.g., required reviews not met), inform the user that manual approval is needed.
+
 ### Improve and merge
-1. Check out the PR branch
+
+**Before checkout:** Verify the working tree is clean (`git status --porcelain`). If dirty, warn the user and ask them to commit or stash first.
+
+1. Check out the PR branch using `gh pr checkout <number>`
 2. Make the recommended changes (config improvements, workaround removal, etc.)
 3. Commit with descriptive message
-4. Push to the PR branch
-5. Verify CI passes
+4. Push to the PR branch. **Note:** Dependabot branches may reject pushes depending on repo permissions. If push fails, create a new branch from the Dependabot branch, push there, and update the PR base.
+5. Wait for CI to pass using `gh pr checks <number> --watch`
 6. Merge
 
 ### Fix CI and merge
-1. Check out the PR branch
+
+1. Check out the PR branch using `gh pr checkout <number>` (same dirty-tree check as above)
 2. Investigate the CI failure
 3. Fix the issue
 4. Commit and push
-5. Wait for CI
+5. Wait for CI using `gh pr checks <number> --watch`
 6. Merge when green
 
 ### Close / Skip
+
 ```bash
 gh pr close <number> --comment "Skipping: <reason from user>"
 ```
