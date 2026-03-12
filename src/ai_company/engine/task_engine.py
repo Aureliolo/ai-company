@@ -50,6 +50,7 @@ from ai_company.observability.events.task_engine import (
     TASK_ENGINE_FUTURES_FAILED,
     TASK_ENGINE_LIST_CAPPED,
     TASK_ENGINE_LOOP_ERROR,
+    TASK_ENGINE_MUTATION_APPLIED,
     TASK_ENGINE_MUTATION_FAILED,
     TASK_ENGINE_MUTATION_RECEIVED,
     TASK_ENGINE_NOT_RUNNING,
@@ -545,8 +546,14 @@ class TaskEngine:
         status: TaskStatus | None = None,
         assigned_to: str | None = None,
         project: str | None = None,
-    ) -> tuple[Task, ...]:
+    ) -> tuple[tuple[Task, ...], int]:
         """List tasks directly from persistence (bypass queue).
+
+        Returns a tuple of ``(tasks, total)`` where *total* is the true
+        count before any safety cap is applied.  When the result set
+        exceeds ``_MAX_LIST_RESULTS``, the returned tuple is truncated
+        but *total* reflects the real cardinality so pagination metadata
+        stays accurate.
 
         Args:
             status: Filter by status.
@@ -554,7 +561,8 @@ class TaskEngine:
             project: Filter by project.
 
         Returns:
-            Matching tasks as a tuple.
+            ``(tasks, total)`` — *tasks* may be capped at
+            ``_MAX_LIST_RESULTS``; *total* is the true count.
 
         Raises:
             TaskInternalError: If the persistence backend fails.
@@ -574,14 +582,15 @@ class TaskEngine:
                 error=msg,
             )
             raise TaskInternalError(msg) from exc
-        if len(tasks) > self._MAX_LIST_RESULTS:
+        total = len(tasks)
+        if total > self._MAX_LIST_RESULTS:
             logger.warning(
                 TASK_ENGINE_LIST_CAPPED,
-                returned=len(tasks),
+                actual_total=total,
                 cap=self._MAX_LIST_RESULTS,
             )
-            return tasks[: self._MAX_LIST_RESULTS]
-        return tasks
+            return tasks[: self._MAX_LIST_RESULTS], total
+        return tasks, total
 
     # -- Background processing ---------------------------------------------
 
@@ -652,6 +661,19 @@ class TaskEngine:
             )
             if not envelope.future.done():
                 envelope.future.set_result(result)
+            if result.success:
+                task_id = getattr(mutation, "task_id", None)
+                logger.info(
+                    TASK_ENGINE_MUTATION_APPLIED,
+                    mutation_type=mutation.mutation_type,
+                    request_id=mutation.request_id,
+                    task_id=task_id or (result.task.id if result.task else None),
+                    version=result.version,
+                    previous_status=(
+                        result.previous_status.value if result.previous_status else None
+                    ),
+                    new_status=(result.task.status.value if result.task else None),
+                )
             if result.success and self._config.publish_snapshots:
                 await self._publish_snapshot(mutation, result)
         except MemoryError, RecursionError:

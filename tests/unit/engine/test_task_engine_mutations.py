@@ -297,11 +297,13 @@ class TestReadThrough:
             make_create_data(project="proj-b"),
             requested_by="alice",
         )
-        all_tasks = await engine.list_tasks()
+        all_tasks, all_total = await engine.list_tasks()
         assert len(all_tasks) == 2
+        assert all_total == 2
 
-        filtered = await engine.list_tasks(project="proj-a")
+        filtered, filtered_total = await engine.list_tasks(project="proj-a")
         assert len(filtered) == 1
+        assert filtered_total == 1
 
     async def test_list_tasks_by_status(
         self,
@@ -319,8 +321,8 @@ class TestReadThrough:
             assigned_to="bob",
         )
 
-        created = await engine.list_tasks(status=TaskStatus.CREATED)
-        assigned = await engine.list_tasks(status=TaskStatus.ASSIGNED)
+        created, _ = await engine.list_tasks(status=TaskStatus.CREATED)
+        assigned, _ = await engine.list_tasks(status=TaskStatus.ASSIGNED)
         assert len(created) == 0
         assert len(assigned) == 1
 
@@ -430,8 +432,9 @@ class TestListTasksSafetyCap:
         try:
             # Create one task so the oversized list has data to repeat
             await eng.create_task(make_create_data(), requested_by="alice")
-            tasks = await eng.list_tasks()
+            tasks, total = await eng.list_tasks()
             assert len(tasks) <= 10_000
+            assert total == 20_000
         finally:
             await eng.stop(timeout=2.0)
 

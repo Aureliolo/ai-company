@@ -2,7 +2,6 @@
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
-from pydantic import ValidationError as PydanticValidationError
 
 from ai_company.api.dto import (
     ApiResponse,
@@ -179,14 +178,19 @@ class TaskController(Controller):
         """
         app_state: AppState = state.app_state
         try:
-            tasks = await app_state.task_engine.list_tasks(
+            tasks, total = await app_state.task_engine.list_tasks(
                 status=status,
                 assigned_to=assigned_to,
                 project=project,
             )
         except TaskInternalError as exc:
             raise _map_task_engine_errors(exc) from exc
-        page, meta = paginate(tasks, offset=offset, limit=limit)
+        page, meta = paginate(
+            tasks,
+            offset=offset,
+            limit=limit,
+            total=total,
+        )
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{task_id:str}")
@@ -258,8 +262,6 @@ class TaskController(Controller):
                 task_data,
                 requested_by=requester,
             )
-        except PydanticValidationError as exc:
-            raise ApiValidationError(str(exc)) from exc
         except (
             TaskEngineNotRunningError,
             TaskEngineQueueFullError,
@@ -306,8 +308,6 @@ class TaskController(Controller):
                 requested_by=_extract_requester(state),
                 expected_version=data.expected_version,
             )
-        except PydanticValidationError as exc:
-            raise ApiValidationError(str(exc)) from exc
         except (
             TaskEngineNotRunningError,
             TaskEngineQueueFullError,
@@ -357,8 +357,6 @@ class TaskController(Controller):
                 expected_version=data.expected_version,
                 **overrides,
             )
-        except PydanticValidationError as exc:
-            raise ApiValidationError(str(exc)) from exc
         except (
             TaskEngineNotRunningError,
             TaskEngineQueueFullError,
@@ -438,8 +436,6 @@ class TaskController(Controller):
                 requested_by=_extract_requester(state),
                 reason=data.reason,
             )
-        except PydanticValidationError as exc:
-            raise ApiValidationError(str(exc)) from exc
         except (
             TaskEngineNotRunningError,
             TaskEngineQueueFullError,
