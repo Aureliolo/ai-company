@@ -58,6 +58,9 @@ EXECUTION_PLAN_REPLAN_EXHAUSTED: Final[str] = "execution.plan.replan_exhausted"
 EXECUTION_PLAN_PARSE_ERROR: Final[str] = "execution.plan.parse_error"
 EXECUTION_PLAN_STEP_TRUNCATED: Final[str] = "execution.plan.step_truncated"
 
+EXECUTION_ENGINE_TASK_SYNCED: Final[str] = "execution.engine.task_synced"
+EXECUTION_ENGINE_SYNC_FAILED: Final[str] = "execution.engine.sync_failed"
+
 EXECUTION_RECOVERY_START: Final[str] = "execution.recovery.start"
 EXECUTION_RECOVERY_COMPLETE: Final[str] = "execution.recovery.complete"
 EXECUTION_RECOVERY_FAILED: Final[str] = "execution.recovery.failed"
