@@ -46,6 +46,8 @@ class PersistenceBackend(Protocol):
         audit_entries: Repository for AuditEntry persistence.
         users: Repository for User persistence.
         api_keys: Repository for ApiKey persistence.
+        checkpoints: Repository for Checkpoint persistence.
+        heartbeats: Repository for Heartbeat persistence.
     """
 
     async def connect(self) -> None:

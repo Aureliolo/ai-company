@@ -7,6 +7,7 @@ each completed turn.  Errors are logged but never propagated
 
 from datetime import UTC, datetime
 
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.checkpoint.callback import CheckpointCallback  # noqa: TC001
 from ai_company.engine.checkpoint.models import (
     Checkpoint,
@@ -35,8 +36,8 @@ def make_checkpoint_callback(
     checkpoint_repo: CheckpointRepository,
     heartbeat_repo: HeartbeatRepository,
     config: CheckpointConfig,
-    agent_id: str,
-    task_id: str,
+    agent_id: NotBlankStr,
+    task_id: NotBlankStr,
 ) -> CheckpointCallback:
     """Create a checkpoint callback closure.
 
@@ -61,7 +62,7 @@ def make_checkpoint_callback(
 
     async def _checkpoint_callback(ctx: AgentContext) -> None:
         turn = ctx.turn_count
-        if turn % config.persist_every_n_turns != 0:
+        if turn == 0 or turn % config.persist_every_n_turns != 0:
             logger.debug(
                 CHECKPOINT_SKIPPED,
                 execution_id=ctx.execution_id,
@@ -71,6 +72,7 @@ def make_checkpoint_callback(
             return
 
         # Save checkpoint (best-effort)
+        checkpoint_saved = False
         try:
             checkpoint = Checkpoint(
                 execution_id=ctx.execution_id,
@@ -80,6 +82,7 @@ def make_checkpoint_callback(
                 context_json=ctx.model_dump_json(),
             )
             await checkpoint_repo.save(checkpoint)
+            checkpoint_saved = True
             logger.info(
                 CHECKPOINT_SAVED,
                 execution_id=ctx.execution_id,
@@ -95,25 +98,28 @@ def make_checkpoint_callback(
                 turn_number=turn,
             )
 
-        # Update heartbeat (best-effort)
-        try:
-            heartbeat = Heartbeat(
-                execution_id=ctx.execution_id,
-                agent_id=agent_id,
-                task_id=task_id,
-                last_heartbeat_at=datetime.now(UTC),
-            )
-            await heartbeat_repo.save(heartbeat)
-            logger.debug(
-                HEARTBEAT_UPDATED,
-                execution_id=ctx.execution_id,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.exception(
-                HEARTBEAT_UPDATE_FAILED,
-                execution_id=ctx.execution_id,
-            )
+        # Update heartbeat only if checkpoint was saved (best-effort).
+        # Skipping on checkpoint failure prevents the limbo state where
+        # a fresh heartbeat exists but there is no checkpoint to resume.
+        if checkpoint_saved:
+            try:
+                heartbeat = Heartbeat(
+                    execution_id=ctx.execution_id,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    last_heartbeat_at=datetime.now(UTC),
+                )
+                await heartbeat_repo.save(heartbeat)
+                logger.debug(
+                    HEARTBEAT_UPDATED,
+                    execution_id=ctx.execution_id,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.exception(
+                    HEARTBEAT_UPDATE_FAILED,
+                    execution_id=ctx.execution_id,
+                )
 
     return _checkpoint_callback

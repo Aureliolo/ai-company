@@ -18,6 +18,7 @@ from ai_company.engine.recovery import (
 
 if TYPE_CHECKING:
     from ai_company.core.agent import AgentIdentity
+    from ai_company.engine.task_execution import TaskExecution
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -74,7 +75,7 @@ def _make_strategy(
 def _make_in_progress_ctx(
     agent: AgentIdentity,
     task: Task,
-) -> tuple[AgentContext, object]:
+) -> tuple[AgentContext, TaskExecution]:
     """Build a context with IN_PROGRESS task execution."""
     ctx = AgentContext.from_identity(agent, task=task)
     ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="starting")

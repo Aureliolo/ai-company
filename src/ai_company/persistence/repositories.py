@@ -485,7 +485,7 @@ class CheckpointRepository(Protocol):
     """CRUD interface for checkpoint persistence."""
 
     async def save(self, checkpoint: Checkpoint) -> None:
-        """Persist a checkpoint (upsert).
+        """Persist a checkpoint (insert or replace by ID).
 
         Args:
             checkpoint: The checkpoint to persist.

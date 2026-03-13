@@ -87,7 +87,9 @@ class CheckpointConfig(BaseModel):
 
     Attributes:
         persist_every_n_turns: Save a checkpoint every N turns.
-        heartbeat_interval_seconds: Heartbeat update interval.
+        heartbeat_interval_seconds: Heartbeat update interval (reserved
+            for future background heartbeat loop; not used by the
+            per-turn callback).
         max_resume_attempts: Maximum number of resume attempts before
             falling back to fail-and-reassign.
     """
@@ -102,7 +104,11 @@ class CheckpointConfig(BaseModel):
     heartbeat_interval_seconds: float = Field(
         default=30.0,
         gt=0,
-        description="Heartbeat update interval in seconds",
+        description=(
+            "Heartbeat update interval in seconds (reserved for "
+            "future background heartbeat loop; not used by the "
+            "per-turn callback)"
+        ),
     )
     max_resume_attempts: int = Field(
         default=2,

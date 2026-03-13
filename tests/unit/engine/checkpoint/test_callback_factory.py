@@ -79,7 +79,7 @@ class TestCheckpointCallbackBoundaryTurns:
     """Checkpoint is saved on boundary turns based on persist_every_n_turns."""
 
     async def test_saves_on_every_turn_default(self) -> None:
-        """persist_every_n_turns=1 saves every turn."""
+        """persist_every_n_turns=1 saves every turn with correct fields."""
         agent = _make_agent()
         task = _make_task(agent)
         cp_repo, hb_repo = _make_repos()
@@ -96,6 +96,19 @@ class TestCheckpointCallbackBoundaryTurns:
         ctx1 = _make_ctx_at_turn(agent, task, 1)
         await callback(ctx1)
         assert cp_repo.save.await_count == 1
+
+        # Verify checkpoint model content
+        saved_cp = cp_repo.save.call_args_list[0][0][0]
+        assert saved_cp.agent_id == str(agent.id)
+        assert saved_cp.task_id == task.id
+        assert saved_cp.turn_number == 1
+        assert saved_cp.execution_id == ctx1.execution_id
+
+        # Verify heartbeat model content
+        saved_hb = hb_repo.save.call_args_list[0][0][0]
+        assert saved_hb.agent_id == str(agent.id)
+        assert saved_hb.task_id == task.id
+        assert saved_hb.execution_id == ctx1.execution_id
 
         ctx2 = _make_ctx_at_turn(agent, task, 2)
         await callback(ctx2)
@@ -344,8 +357,8 @@ class TestCheckpointCallbackErrorHandling:
         with pytest.raises(RecursionError):
             await callback(ctx)
 
-    async def test_checkpoint_error_does_not_prevent_heartbeat(self) -> None:
-        """Even if checkpoint save fails, heartbeat is still attempted."""
+    async def test_checkpoint_error_skips_heartbeat(self) -> None:
+        """When checkpoint save fails, heartbeat is skipped to avoid limbo state."""
         agent = _make_agent()
         task = _make_task(agent)
         cp_repo, hb_repo = _make_repos()
@@ -363,5 +376,7 @@ class TestCheckpointCallbackErrorHandling:
         ctx = _make_ctx_at_turn(agent, task, 1)
         await callback(ctx)
 
-        # Heartbeat save should still have been called
-        hb_repo.save.assert_awaited_once()
+        # Checkpoint save was attempted
+        cp_repo.save.assert_awaited_once()
+        # Heartbeat should NOT be called when checkpoint failed
+        hb_repo.save.assert_not_awaited()

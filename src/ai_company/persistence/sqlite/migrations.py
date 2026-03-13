@@ -235,9 +235,15 @@ CREATE TABLE IF NOT EXISTS checkpoints (
 )""",
     "CREATE INDEX IF NOT EXISTS idx_cp_execution_id ON checkpoints(execution_id)",
     "CREATE INDEX IF NOT EXISTS idx_cp_task_id ON checkpoints(task_id)",
+    # Ascending index — SQLite can reverse-scan efficiently for
+    # ORDER BY turn_number DESC LIMIT 1.  DESC modifier silently
+    # ignored on SQLite < 3.47 so we use ascending for portability.
     "CREATE INDEX IF NOT EXISTS idx_cp_exec_turn"
-    " ON checkpoints(execution_id, turn_number DESC)",
+    " ON checkpoints(execution_id, turn_number)",
     # ── Heartbeats ─────────────────────────────────────────
+    # No FK to tasks — checkpoints/heartbeats are ephemeral recovery
+    # data that may outlive their tasks.  Cleanup is the engine's
+    # responsibility (delete_by_execution after completion).
     """\
 CREATE TABLE IF NOT EXISTS heartbeats (
     execution_id TEXT PRIMARY KEY,

@@ -111,7 +111,7 @@ class TestSQLiteHeartbeatRepository:
         await repo.save(hb_stale)
         await repo.save(hb_very_stale)
 
-        threshold = (now - timedelta(minutes=30)).isoformat()
+        threshold = now - timedelta(minutes=30)
         stale = await repo.get_stale(threshold)
 
         stale_ids = {h.execution_id for h in stale}
@@ -130,7 +130,7 @@ class TestSQLiteHeartbeatRepository:
         )
         await repo.save(hb)
 
-        very_old_threshold = (now - timedelta(hours=1)).isoformat()
+        very_old_threshold = now - timedelta(hours=1)
         stale = await repo.get_stale(very_old_threshold)
 
         # The heartbeat is newer than the threshold, so not stale
@@ -156,7 +156,7 @@ class TestSQLiteHeartbeatRepository:
         await repo.save(hb2)
         await repo.save(hb1)
 
-        threshold = (now - timedelta(hours=1)).isoformat()
+        threshold = now - timedelta(hours=1)
         stale = await repo.get_stale(threshold)
 
         assert len(stale) == 2

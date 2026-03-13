@@ -111,6 +111,7 @@ graph TB
     Observability[Observability] -.-> Engine
     Persistence[Persistence] -.-> HR
     Persistence -.-> Security
+    Persistence -.-> Engine
 ```
 
 ## Documentation

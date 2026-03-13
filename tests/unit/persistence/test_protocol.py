@@ -14,7 +14,9 @@ from ai_company.persistence.protocol import PersistenceBackend
 from ai_company.persistence.repositories import (
     ApiKeyRepository,
     AuditRepository,
+    CheckpointRepository,
     CostRecordRepository,
+    HeartbeatRepository,
     MessageRepository,
     ParkedContextRepository,
     TaskRepository,
@@ -71,7 +73,12 @@ class _FakeCostRecordRepository:
     ) -> tuple[CostRecord, ...]:
         return ()
 
-    async def aggregate(self, *, agent_id: str | None = None) -> float:
+    async def aggregate(
+        self,
+        *,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+    ) -> float:
         return 0.0
 
 
@@ -357,3 +364,9 @@ class TestProtocolCompliance:
 
     def test_fake_api_key_repo_is_api_key_repository(self) -> None:
         assert isinstance(_FakeApiKeyRepository(), ApiKeyRepository)
+
+    def test_fake_checkpoint_repo_is_checkpoint_repository(self) -> None:
+        assert isinstance(_FakeCheckpointRepository(), CheckpointRepository)
+
+    def test_fake_heartbeat_repo_is_heartbeat_repository(self) -> None:
+        assert isinstance(_FakeHeartbeatRepository(), HeartbeatRepository)

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from ai_company.budget.call_category import LLMCallCategory
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
-    EXECUTION_CHECKPOINT_CALLBACK,
+    EXECUTION_CHECKPOINT_CALLBACK_FAILED,
     EXECUTION_LOOP_ERROR,
     EXECUTION_LOOP_START,
     EXECUTION_LOOP_TERMINATED,
@@ -211,12 +211,12 @@ class ReactLoop:
                 await self._checkpoint_callback(ctx)
             except MemoryError, RecursionError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.exception(
-                    EXECUTION_CHECKPOINT_CALLBACK,
+                    EXECUTION_CHECKPOINT_CALLBACK_FAILED,
                     execution_id=ctx.execution_id,
                     turn=turn_number,
-                    error="Checkpoint callback failed",
+                    error=f"{type(exc).__name__}: {exc}",
                 )
 
         if not response.tool_calls:

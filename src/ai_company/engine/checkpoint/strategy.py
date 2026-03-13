@@ -1,10 +1,11 @@
 """Checkpoint recovery strategy.
 
 Resumes execution from the last persisted checkpoint on crash.
-After ``max_resume_attempts`` failures, falls back to the
+After ``max_resume_attempts`` resume attempts, falls back to the
 ``FailAndReassignStrategy``.
 """
 
+import asyncio
 from typing import Final
 
 from ai_company.engine.checkpoint.models import CheckpointConfig  # noqa: TC001
@@ -33,9 +34,10 @@ class CheckpointRecoveryStrategy:
     """Resume from the last checkpoint on crash.
 
     Loads the latest checkpoint for the execution and returns a
-    ``RecoveryResult`` with ``can_resume=True`` and the serialized
-    context.  After ``max_resume_attempts`` consecutive failures,
-    delegates to the fallback strategy (default: fail-and-reassign).
+    ``RecoveryResult`` with the serialized checkpoint context
+    (making ``can_resume`` evaluate to ``True``).  After
+    ``max_resume_attempts`` resume attempts, delegates to the
+    fallback strategy (default: fail-and-reassign).
 
     Args:
         checkpoint_repo: Repository for loading checkpoints.
@@ -57,6 +59,7 @@ class CheckpointRecoveryStrategy:
         self._config = config
         self._fallback: RecoveryStrategy = fallback or FailAndReassignStrategy()
         self._resume_counts: dict[str, int] = {}
+        self._resume_lock = asyncio.Lock()
 
     async def recover(
         self,
@@ -96,6 +99,8 @@ class CheckpointRecoveryStrategy:
             checkpoint = await self._checkpoint_repo.get_latest(
                 execution_id=execution_id,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 CHECKPOINT_LOAD_FAILED,
@@ -123,25 +128,27 @@ class CheckpointRecoveryStrategy:
             turn_number=checkpoint.turn_number,
         )
 
-        # Check resume attempts
-        resume_count = self._resume_counts.get(execution_id, 0)
-        if resume_count >= self._config.max_resume_attempts:
-            logger.info(
-                CHECKPOINT_RECOVERY_FALLBACK,
-                execution_id=execution_id,
-                task_id=task_id,
-                resume_count=resume_count,
-                max_resume_attempts=self._config.max_resume_attempts,
-                reason="max_resume_attempts_exhausted",
-            )
-            return await self._delegate_to_fallback(
-                task_execution=task_execution,
-                error_message=error_message,
-                context=context,
-            )
+        # Check resume attempts (locked to prevent TOCTOU race)
+        async with self._resume_lock:
+            resume_count = self._resume_counts.get(execution_id, 0)
+            if resume_count >= self._config.max_resume_attempts:
+                logger.info(
+                    CHECKPOINT_RECOVERY_FALLBACK,
+                    execution_id=execution_id,
+                    task_id=task_id,
+                    resume_count=resume_count,
+                    max_resume_attempts=self._config.max_resume_attempts,
+                    reason="max_resume_attempts_exhausted",
+                )
+                self._resume_counts.pop(execution_id, None)
+                return await self._delegate_to_fallback(
+                    task_execution=task_execution,
+                    error_message=error_message,
+                    context=context,
+                )
 
-        # Increment counter and return resumable result
-        self._resume_counts[execution_id] = resume_count + 1
+            # Increment counter
+            self._resume_counts[execution_id] = resume_count + 1
 
         snapshot = context.to_snapshot()
         logger.info(

@@ -1,11 +1,12 @@
 """SQLite repository implementation for checkpoint persistence."""
-# ruff: noqa: S608 — dynamic WHERE built from hardcoded column names
+# ruff: noqa: S608 — dynamic WHERE built from hardcoded column names only
 
 import sqlite3
 
 import aiosqlite
 from pydantic import ValidationError
 
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.checkpoint.models import Checkpoint
 from ai_company.observability import get_logger
 from ai_company.observability.events.persistence import (
@@ -67,8 +68,8 @@ INSERT OR REPLACE INTO checkpoints (
     async def get_latest(
         self,
         *,
-        execution_id: str | None = None,
-        task_id: str | None = None,
+        execution_id: NotBlankStr | None = None,
+        task_id: NotBlankStr | None = None,
     ) -> Checkpoint | None:
         """Retrieve the latest checkpoint by turn_number.
 
@@ -130,13 +131,14 @@ INSERT OR REPLACE INTO checkpoints (
         )
         return checkpoint
 
-    async def delete_by_execution(self, execution_id: str) -> int:
+    async def delete_by_execution(self, execution_id: NotBlankStr) -> int:
         """Delete all checkpoints for an execution."""
         try:
             cursor = await self._db.execute(
                 "DELETE FROM checkpoints WHERE execution_id = ?",
                 (execution_id,),
             )
+            count = cursor.rowcount
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to delete checkpoints for execution {execution_id!r}"
@@ -146,8 +148,6 @@ INSERT OR REPLACE INTO checkpoints (
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-
-        count = cursor.rowcount
         if count > 0:
             logger.debug(
                 PERSISTENCE_CHECKPOINT_DELETED,

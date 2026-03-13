@@ -9,9 +9,9 @@ task can be reassigned (based on retry count vs max retries).
 See the Crash Recovery section of the Engine design page.
 """
 
-from typing import Final, Protocol, runtime_checkable
+from typing import Final, Protocol, Self, runtime_checkable
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from ai_company.core.enums import TaskStatus
 from ai_company.core.types import NotBlankStr  # noqa: TC001
@@ -31,8 +31,8 @@ class RecoveryResult(BaseModel):
     """Frozen result of a recovery strategy invocation.
 
     Attributes:
-        task_execution: Updated execution after recovery (typically
-            ``FAILED`` for the default strategy).
+        task_execution: Execution state after recovery (``FAILED`` for
+            fail-and-reassign, original state for checkpoint resume).
         strategy_type: Identifier of the strategy used (e.g. ``"fail_reassign"``).
         can_reassign: Computed — ``True`` when retry_count < task.max_retries.
             The caller (task router) is responsible for incrementing
@@ -47,7 +47,7 @@ class RecoveryResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     task_execution: TaskExecution = Field(
-        description="Updated execution with FAILED status",
+        description="Execution state after recovery",
     )
     strategy_type: NotBlankStr = Field(
         description="Identifier of the recovery strategy used",
@@ -67,6 +67,19 @@ class RecoveryResult(BaseModel):
         ge=0,
         description="Current resume attempt number",
     )
+
+    @model_validator(mode="after")
+    def _validate_checkpoint_consistency(self) -> Self:
+        """Validate checkpoint_context_json and resume_attempt are consistent."""
+        has_json = self.checkpoint_context_json is not None
+        has_attempt = self.resume_attempt > 0
+        if has_json != has_attempt:
+            msg = (
+                "checkpoint_context_json and resume_attempt must be "
+                "consistent: both set or both at default"
+            )
+            raise ValueError(msg)
+        return self
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Whether the task can be reassigned for retry",

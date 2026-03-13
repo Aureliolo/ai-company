@@ -3,8 +3,9 @@
 import sqlite3
 
 import aiosqlite
-from pydantic import ValidationError
+from pydantic import AwareDatetime, ValidationError
 
+from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.engine.checkpoint.models import Heartbeat
 from ai_company.observability import get_logger
 from ai_company.observability.events.persistence import (
@@ -59,7 +60,7 @@ INSERT OR REPLACE INTO heartbeats (
             execution_id=heartbeat.execution_id,
         )
 
-    async def get(self, execution_id: str) -> Heartbeat | None:
+    async def get(self, execution_id: NotBlankStr) -> Heartbeat | None:
         """Retrieve a heartbeat by execution ID."""
         try:
             cursor = await self._db.execute(
@@ -86,19 +87,20 @@ INSERT OR REPLACE INTO heartbeats (
 
         return self._row_to_model(dict(row))
 
-    async def get_stale(self, threshold: str) -> tuple[Heartbeat, ...]:
+    async def get_stale(self, threshold: AwareDatetime) -> tuple[Heartbeat, ...]:
         """Retrieve heartbeats older than the threshold.
 
         Args:
-            threshold: ISO 8601 timestamp string; heartbeats with
-                ``last_heartbeat_at`` before this are stale.
+            threshold: Heartbeats with ``last_heartbeat_at`` before
+                this timestamp are considered stale.
         """
+        threshold_iso = threshold.isoformat()
         try:
             cursor = await self._db.execute(
                 "SELECT execution_id, agent_id, task_id, last_heartbeat_at "
                 "FROM heartbeats WHERE last_heartbeat_at < ? "
                 "ORDER BY last_heartbeat_at",
-                (threshold,),
+                (threshold_iso,),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -118,13 +120,14 @@ INSERT OR REPLACE INTO heartbeats (
         )
         return results
 
-    async def delete(self, execution_id: str) -> bool:
+    async def delete(self, execution_id: NotBlankStr) -> bool:
         """Delete a heartbeat by execution ID."""
         try:
             cursor = await self._db.execute(
                 "DELETE FROM heartbeats WHERE execution_id = ?",
                 (execution_id,),
             )
+            deleted = cursor.rowcount > 0
             await self._db.commit()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to delete heartbeat {execution_id!r}"
@@ -134,8 +137,6 @@ INSERT OR REPLACE INTO heartbeats (
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-
-        deleted = cursor.rowcount > 0
         if deleted:
             logger.debug(
                 PERSISTENCE_HEARTBEAT_DELETED,
