@@ -966,10 +966,9 @@ future CLI tool are thin clients that call the API -- they contain no business l
 
 ### Web UI Features
 
-!!! info "In Progress"
+!!! note "Status"
 
-    The Web UI is being built as a Vue 3 + PrimeVue + Tailwind CSS dashboard (core
-    infrastructure merged; page views and feature components in progress). The API
+    The Web UI is built as a Vue 3 + PrimeVue + Tailwind CSS dashboard. The API
     remains fully self-sufficient for all operations — the dashboard is a thin client.
 
 - **Dashboard**: Real-time company overview, active tasks, spending

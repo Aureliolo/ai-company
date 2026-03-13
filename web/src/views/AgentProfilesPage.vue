@@ -18,11 +18,15 @@ const wsStore = useWebSocketStore()
 const authStore = useAuthStore()
 
 onMounted(async () => {
-  if (authStore.token && !wsStore.connected) {
-    wsStore.connect(authStore.token)
+  try {
+    if (authStore.token && !wsStore.connected) {
+      wsStore.connect(authStore.token)
+    }
+    wsStore.subscribe(['agents'])
+    wsStore.onChannelEvent('agents', agentStore.handleWsEvent)
+  } catch (err) {
+    console.error('WebSocket setup failed:', err)
   }
-  wsStore.subscribe(['agents'])
-  wsStore.onChannelEvent('agents', agentStore.handleWsEvent)
   await agentStore.fetchAgents()
 })
 

@@ -84,7 +84,7 @@ describe('usePolling', () => {
 
     start()
     await vi.advanceTimersByTimeAsync(0) // first call — errors
-    expect(consoleSpy).toHaveBeenCalledWith('Polling error:', expect.any(Error))
+    expect(consoleSpy).toHaveBeenCalledWith('Polling error:', expect.any(String))
 
     await vi.advanceTimersByTimeAsync(1000) // second call — succeeds
     expect(fn).toHaveBeenCalledTimes(2)

@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import KanbanColumn from './KanbanColumn.vue'
-import type { Task } from '@/api/types'
+import type { Task, TaskStatus } from '@/api/types'
 import { TASK_STATUS_ORDER } from '@/utils/constants'
 
 defineProps<{
-  tasksByStatus: Record<string, Task[]>
+  tasksByStatus: Partial<Record<TaskStatus, Task[]>>
 }>()
 
 defineEmits<{
   'task-click': [task: Task]
-  'task-moved': [task: Task, targetStatus: string]
+  'task-moved': [task: Task, targetStatus: TaskStatus]
 }>()
 </script>
 

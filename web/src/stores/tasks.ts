@@ -4,6 +4,7 @@ import * as tasksApi from '@/api/endpoints/tasks'
 import { getErrorMessage } from '@/utils/errors'
 import type {
   Task,
+  TaskStatus,
   TaskFilters,
   CreateTaskRequest,
   UpdateTaskRequest,
@@ -19,15 +20,11 @@ export const useTaskStore = defineStore('tasks', () => {
   const error = ref<string | null>(null)
   const currentFilters = ref<TaskFilters>({})
 
-  const tasksByStatus = computed(() => {
-    const grouped: Record<string, Task[]> = {}
+  const tasksByStatus = computed<Partial<Record<TaskStatus, Task[]>>>(() => {
+    const grouped: Partial<Record<TaskStatus, Task[]>> = {}
     for (const task of tasks.value) {
-      const list = grouped[task.status]
-      if (list) {
-        list.push(task)
-      } else {
-        grouped[task.status] = [task]
-      }
+      const existing = grouped[task.status]
+      grouped[task.status] = existing ? [...existing, task] : [task]
     }
     return grouped
   })

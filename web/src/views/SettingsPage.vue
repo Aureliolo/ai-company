@@ -35,8 +35,11 @@ const pwdError = ref<string | null>(null)
 
 async function retryFetch() {
   loading.value = true
-  await Promise.all([companyStore.fetchConfig(), providerStore.fetchProviders()])
-  loading.value = false
+  try {
+    await Promise.all([companyStore.fetchConfig(), providerStore.fetchProviders()])
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(retryFetch)
@@ -127,9 +130,18 @@ async function handleChangePassword() {
           <div class="rounded-lg border border-slate-800 p-4">
             <h4 class="mb-3 text-sm font-medium text-slate-300">Change Password</h4>
             <form class="space-y-3" @submit.prevent="handleChangePassword">
-              <InputText v-model="currentPassword" type="password" class="w-full" placeholder="Current password" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
-              <InputText v-model="newPassword" type="password" class="w-full" :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
-              <InputText v-model="confirmPassword" type="password" class="w-full" placeholder="Confirm new password" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+              <div>
+                <label for="current-password" class="mb-1 block text-xs text-slate-400">Current Password</label>
+                <InputText id="current-password" v-model="currentPassword" type="password" class="w-full" placeholder="Current password" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+              </div>
+              <div>
+                <label for="new-password" class="mb-1 block text-xs text-slate-400">New Password</label>
+                <InputText id="new-password" v-model="newPassword" type="password" class="w-full" :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+              </div>
+              <div>
+                <label for="confirm-password" class="mb-1 block text-xs text-slate-400">Confirm Password</label>
+                <InputText id="confirm-password" v-model="confirmPassword" type="password" class="w-full" placeholder="Confirm new password" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+              </div>
               <div v-if="pwdError" id="pwd-error" role="alert" class="rounded bg-red-500/10 p-2 text-sm text-red-400">{{ pwdError }}</div>
               <Button
                 type="submit"

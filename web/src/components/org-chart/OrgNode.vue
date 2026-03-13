@@ -1,28 +1,31 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import { formatLabel } from '@/utils/format'
+import type { AgentStatus, SeniorityLevel } from '@/api/types'
 
-defineProps<{
+const props = defineProps<{
   data: {
     label: string
     type: 'department' | 'team' | 'agent'
-    status?: string
+    status?: AgentStatus
     role?: string
-    level?: string
+    level?: SeniorityLevel
   }
 }>()
+
+const borderClass = computed(() => {
+  switch (props.data.type) {
+    case 'department': return 'border-brand-600 bg-brand-600/10'
+    case 'team': return 'border-purple-600 bg-purple-600/10'
+    default: return 'border-slate-700 bg-slate-800'
+  }
+})
 </script>
 
 <template>
   <div
-    :class="[
-      'rounded-lg border px-3 py-2 text-center',
-      data.type === 'department'
-        ? 'border-brand-600 bg-brand-600/10'
-        : data.type === 'team'
-          ? 'border-purple-600 bg-purple-600/10'
-          : 'border-slate-700 bg-slate-800',
-    ]"
+    :class="['rounded-lg border px-3 py-2 text-center', borderClass]"
   >
     <p class="text-sm font-medium text-slate-200">{{ data.label }}</p>
     <p v-if="data.role" class="text-xs text-slate-400">{{ data.role }}</p>

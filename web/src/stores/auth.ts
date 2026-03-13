@@ -44,8 +44,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   function setToken(newToken: string, expiresIn: number) {
     if (expiresIn <= 0) {
-      console.error('setToken: invalid expiresIn', expiresIn)
-      return
+      throw new Error('Login failed: server returned invalid session duration. Please try again.')
     }
     // Clear any existing expiry timer to prevent stale timer from killing new session
     if (expiryTimer) {

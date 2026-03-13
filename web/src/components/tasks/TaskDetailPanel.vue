@@ -52,9 +52,9 @@ watch(
   },
 )
 
-function getTransitions(): TaskStatus[] {
+function getTransitions(): readonly TaskStatus[] {
   if (!props.task) return []
-  return (VALID_TRANSITIONS[props.task.status] ?? []) as TaskStatus[]
+  return VALID_TRANSITIONS[props.task.status] ?? []
 }
 
 function saveEdit() {
@@ -181,7 +181,7 @@ function handleCancel() {
           @click="showCancel = true"
         />
         <div v-else class="space-y-2">
-          <Textarea v-model="cancelReason" placeholder="Reason for cancellation" class="w-full" rows="2" />
+          <Textarea v-model="cancelReason" placeholder="Reason for cancellation" class="w-full" rows="2" aria-required="true" />
           <div class="flex gap-2">
             <Button label="Confirm Cancel" severity="danger" size="small" :disabled="!cancelReason.trim()" @click="handleCancel" />
             <Button label="Back" text size="small" @click="showCancel = false" />

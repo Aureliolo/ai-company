@@ -7,7 +7,7 @@ const pushMock = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: pushMock }),
-  RouterLink: { template: '<a><slot /></a>' },
+  RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 }))
 
 const mockApproval: ApprovalItem = {
@@ -81,9 +81,8 @@ describe('RecentApprovals', () => {
     const wrapper = mount(RecentApprovals, {
       props: { approvals: [] },
     })
-    const button = wrapper.find('button')
-    await button.trigger('click')
-    expect(pushMock).toHaveBeenCalledWith('/approvals')
+    const link = wrapper.find('a')
+    expect(link.attributes('href')).toBe('/approvals')
   })
 
   it('does not show "No pending approvals" when approvals are present', () => {

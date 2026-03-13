@@ -35,12 +35,15 @@ const filters = ref<TaskFilterType>({})
 const agentNames = computed(() => agentStore.agents.map((a) => a.name))
 
 onMounted(async () => {
-  // Connect WS if not already connected
-  if (authStore.token && !wsStore.connected) {
-    wsStore.connect(authStore.token)
+  try {
+    if (authStore.token && !wsStore.connected) {
+      wsStore.connect(authStore.token)
+    }
+    wsStore.subscribe(['tasks'])
+    wsStore.onChannelEvent('tasks', taskStore.handleWsEvent)
+  } catch (err) {
+    console.error('WebSocket setup failed:', err)
   }
-  wsStore.subscribe(['tasks'])
-  wsStore.onChannelEvent('tasks', taskStore.handleWsEvent)
 
   await Promise.all([
     taskStore.fetchTasks({ limit: 200 }),
@@ -100,18 +103,26 @@ async function handleCreate(data: CreateTaskRequest) {
   }
 }
 
-async function handleTaskMoved(task: Task, targetStatus: string) {
-  await handleTransition(task.id, targetStatus as TaskStatus, task.version ?? 0)
+async function handleTaskMoved(task: Task, targetStatus: TaskStatus) {
+  await handleTransition(task.id, targetStatus, task.version ?? 0)
 }
 
 async function handleFilterUpdate(newFilters: TaskFilterType) {
   filters.value = { ...filters.value, ...newFilters }
-  await taskStore.fetchTasks(filters.value)
+  try {
+    await taskStore.fetchTasks(filters.value)
+  } catch {
+    // Store handles errors internally
+  }
 }
 
 async function handleFilterReset() {
   filters.value = {}
-  await taskStore.fetchTasks({})
+  try {
+    await taskStore.fetchTasks({})
+  } catch {
+    // Store handles errors internally
+  }
 }
 </script>
 

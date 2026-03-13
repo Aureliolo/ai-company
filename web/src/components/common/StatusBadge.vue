@@ -6,7 +6,7 @@ import { formatLabel } from '@/utils/format'
 const FALLBACK = 'bg-slate-600 text-slate-200'
 
 const props = defineProps<{
-  value: string
+  value: Status | Priority | RiskLevel
   type?: 'status' | 'priority' | 'risk'
 }>()
 
@@ -16,8 +16,10 @@ function getColorClass(): string {
       return priorityColors[props.value as Priority] ?? FALLBACK
     case 'risk':
       return riskColors[props.value as RiskLevel] ?? FALLBACK
-    default:
-      return statusColors[props.value as Status] ?? FALLBACK
+    default: {
+      const key = props.value as Status
+      return statusColors[key] ?? FALLBACK
+    }
   }
 }
 </script>

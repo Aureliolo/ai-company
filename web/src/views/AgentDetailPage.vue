@@ -21,9 +21,16 @@ const agent = ref<AgentConfig | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 
+const AGENT_NAME_RE = /^[\w][\w.\-]{0,63}$/
+
 async function fetchAgentData() {
   loading.value = true
   error.value = null
+  if (!AGENT_NAME_RE.test(props.name)) {
+    error.value = 'Invalid agent name'
+    loading.value = false
+    return
+  }
   try {
     agent.value = await agentStore.fetchAgent(props.name)
     if (!agent.value) {

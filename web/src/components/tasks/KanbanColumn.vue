@@ -2,10 +2,10 @@
 import { VueDraggable } from 'vue-draggable-plus'
 import TaskCard from './TaskCard.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
-import type { Task } from '@/api/types'
+import type { Task, TaskStatus } from '@/api/types'
 
 const props = defineProps<{
-  status: string
+  status: TaskStatus
   tasks: Task[]
 }>()
 

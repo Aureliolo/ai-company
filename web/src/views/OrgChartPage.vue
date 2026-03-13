@@ -22,7 +22,11 @@ const companyStore = useCompanyStore()
 const agentStore = useAgentStore()
 
 async function retryFetch() {
-  await Promise.all([companyStore.fetchDepartments(), agentStore.fetchAgents()])
+  try {
+    await Promise.all([companyStore.fetchDepartments(), agentStore.fetchAgents()])
+  } catch {
+    // Stores handle errors internally — ErrorBoundary surfaces them
+  }
 }
 
 onMounted(retryFetch)

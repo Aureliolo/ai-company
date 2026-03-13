@@ -7,7 +7,7 @@ const pushMock = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: pushMock }),
-  RouterLink: { template: '<a><slot /></a>' },
+  RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 }))
 
 const mockTask: Task = {
@@ -92,9 +92,8 @@ describe('ActiveTasksSummary', () => {
     const wrapper = mount(ActiveTasksSummary, {
       props: { tasks: [] },
     })
-    const button = wrapper.find('button')
-    await button.trigger('click')
-    expect(pushMock).toHaveBeenCalledWith('/tasks')
+    const link = wrapper.find('a')
+    expect(link.attributes('href')).toBe('/tasks')
   })
 
   it('does not show "No active tasks" when tasks are present', () => {

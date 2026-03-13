@@ -71,7 +71,7 @@ describe('AgentSpendingTable', () => {
     const table = wrapper.findComponent(DataTableStub)
     const summaries = table.props('value') as Array<{
       agent_id: string
-      total_cost: number
+      total_cost_usd: number
       record_count: number
       total_input_tokens: number
       total_output_tokens: number
@@ -82,7 +82,7 @@ describe('AgentSpendingTable', () => {
     // Two records for agent-1 should be merged into one summary
     const agent1 = summaries.find((s) => s.agent_id === 'agent-1')
     expect(agent1).toBeDefined()
-    expect(agent1!.total_cost).toBeCloseTo(0.015, 6)
+    expect(agent1!.total_cost_usd).toBeCloseTo(0.015, 6)
     expect(agent1!.record_count).toBe(2)
     expect(agent1!.total_input_tokens).toBe(300)
     expect(agent1!.total_output_tokens).toBe(150)
@@ -90,7 +90,7 @@ describe('AgentSpendingTable', () => {
     // Single record for agent-2
     const agent2 = summaries.find((s) => s.agent_id === 'agent-2')
     expect(agent2).toBeDefined()
-    expect(agent2!.total_cost).toBeCloseTo(0.002, 6)
+    expect(agent2!.total_cost_usd).toBeCloseTo(0.002, 6)
     expect(agent2!.record_count).toBe(1)
     expect(agent2!.total_input_tokens).toBe(50)
     expect(agent2!.total_output_tokens).toBe(25)
@@ -102,12 +102,12 @@ describe('AgentSpendingTable', () => {
     const table = wrapper.findComponent(DataTableStub)
     const summaries = table.props('value') as Array<{
       agent_id: string
-      total_cost: number
+      total_cost_usd: number
     }>
 
     expect(summaries[0].agent_id).toBe('agent-1')
     expect(summaries[1].agent_id).toBe('agent-2')
-    expect(summaries[0].total_cost).toBeGreaterThan(summaries[1].total_cost)
+    expect(summaries[0].total_cost_usd).toBeGreaterThan(summaries[1].total_cost_usd)
   })
 
   it('returns empty summaries for empty records', () => {

@@ -4,10 +4,11 @@ import Button from 'primevue/button'
 import Textarea from 'primevue/textarea'
 import { useConfirm } from 'primevue/useconfirm'
 import { useAuth } from '@/composables/useAuth'
+import type { ApprovalStatus } from '@/api/types'
 
 defineProps<{
   approvalId: string
-  status: string
+  status: ApprovalStatus
 }>()
 
 const { canWrite } = useAuth()
@@ -45,8 +46,8 @@ function handleReject(id: string) {
 <template>
   <div v-if="status === 'pending' && canWrite" class="space-y-3">
     <div>
-      <label class="mb-1 block text-xs text-slate-400">Comment (optional)</label>
-      <Textarea v-model="comment" class="w-full" rows="2" placeholder="Add a comment..." />
+      <label for="approval-comment" class="mb-1 block text-xs text-slate-400">Comment (optional)</label>
+      <Textarea id="approval-comment" v-model="comment" class="w-full" rows="2" placeholder="Add a comment..." />
     </div>
 
     <div v-if="!showReject" class="flex gap-2">

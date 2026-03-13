@@ -30,15 +30,17 @@ const health = ref<HealthStatus | null>(null)
 const loading = ref(true)
 
 onMounted(async () => {
-  // Connect WebSocket
-  if (authStore.token) {
-    wsStore.connect(authStore.token)
-    wsStore.subscribe(['tasks', 'agents', 'budget', 'messages', 'system', 'approvals'])
-
-    // Register WS event handlers
-    wsStore.onChannelEvent('tasks', taskStore.handleWsEvent)
-    wsStore.onChannelEvent('budget', budgetStore.handleWsEvent)
-    wsStore.onChannelEvent('approvals', approvalStore.handleWsEvent)
+  // Connect WebSocket (non-fatal if it fails)
+  try {
+    if (authStore.token) {
+      wsStore.connect(authStore.token)
+      wsStore.subscribe(['tasks', 'agents', 'budget', 'messages', 'system', 'approvals'])
+      wsStore.onChannelEvent('tasks', taskStore.handleWsEvent)
+      wsStore.onChannelEvent('budget', budgetStore.handleWsEvent)
+      wsStore.onChannelEvent('approvals', approvalStore.handleWsEvent)
+    }
+  } catch (err) {
+    console.error('WebSocket setup failed:', err)
   }
 
   // Fetch initial data
@@ -54,12 +56,15 @@ onMounted(async () => {
     if (results[0].status === 'fulfilled') {
       health.value = results[0].value
     }
-    const failureCount = results.filter((r) => r.status === 'rejected').length
-    if (failureCount > 0) {
+    const labels = ['Health', 'Analytics', 'Tasks', 'Budget Config', 'Budget Records', 'Approvals']
+    const failed = results
+      .map((r, i) => r.status === 'rejected' ? labels[i] : null)
+      .filter(Boolean)
+    if (failed.length > 0) {
       toast.add({
         severity: 'warn',
         summary: 'Dashboard partially loaded',
-        detail: `${failureCount} data source(s) failed to load`,
+        detail: `Failed to load: ${failed.join(', ')}`,
         life: 5000,
       })
     }

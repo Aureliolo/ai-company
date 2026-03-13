@@ -35,11 +35,15 @@ const statusOptions = [
 ]
 
 onMounted(async () => {
-  if (authStore.token && !wsStore.connected) {
-    wsStore.connect(authStore.token)
+  try {
+    if (authStore.token && !wsStore.connected) {
+      wsStore.connect(authStore.token)
+    }
+    wsStore.subscribe(['approvals'])
+    wsStore.onChannelEvent('approvals', approvalStore.handleWsEvent)
+  } catch (err) {
+    console.error('WebSocket setup failed:', err)
   }
-  wsStore.subscribe(['approvals'])
-  wsStore.onChannelEvent('approvals', approvalStore.handleWsEvent)
   await approvalStore.fetchApprovals()
 })
 
@@ -73,7 +77,11 @@ async function handleReject(id: string, reason: string) {
 }
 
 async function filterByStatus() {
-  await approvalStore.fetchApprovals({ status: statusFilter.value })
+  try {
+    await approvalStore.fetchApprovals({ status: statusFilter.value })
+  } catch {
+    // Store handles errors internally
+  }
 }
 </script>
 

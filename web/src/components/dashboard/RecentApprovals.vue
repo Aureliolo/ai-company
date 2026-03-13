@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import type { ApprovalItem } from '@/api/types'
 import { formatRelativeTime } from '@/utils/format'
@@ -7,17 +7,15 @@ import { formatRelativeTime } from '@/utils/format'
 defineProps<{
   approvals: ApprovalItem[]
 }>()
-
-const router = useRouter()
 </script>
 
 <template>
   <div class="rounded-lg border border-slate-800 bg-slate-900 p-5">
     <div class="mb-4 flex items-center justify-between">
       <h3 class="text-sm font-medium text-slate-300">Recent Approvals</h3>
-      <button class="text-xs text-brand-400 hover:text-brand-300" @click="router.push('/approvals')">
+      <RouterLink to="/approvals" class="text-xs text-brand-400 hover:text-brand-300">
         View all
-      </button>
+      </RouterLink>
     </div>
     <div v-if="approvals.length === 0" class="py-4 text-center text-sm text-slate-500">
       No pending approvals

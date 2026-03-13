@@ -16,11 +16,15 @@ const wsStore = useWebSocketStore()
 const authStore = useAuthStore()
 
 onMounted(async () => {
-  if (authStore.token && !wsStore.connected) {
-    wsStore.connect(authStore.token)
+  try {
+    if (authStore.token && !wsStore.connected) {
+      wsStore.connect(authStore.token)
+    }
+    wsStore.subscribe(['messages'])
+    wsStore.onChannelEvent('messages', messageStore.handleWsEvent)
+  } catch (err) {
+    console.error('WebSocket setup failed:', err)
   }
-  wsStore.subscribe(['messages'])
-  wsStore.onChannelEvent('messages', messageStore.handleWsEvent)
   await Promise.all([messageStore.fetchChannels(), messageStore.fetchMessages()])
 })
 
@@ -31,7 +35,11 @@ onUnmounted(() => {
 watch(
   () => messageStore.activeChannel,
   async (channel) => {
-    await messageStore.fetchMessages(channel ?? undefined)
+    try {
+      await messageStore.fetchMessages(channel ?? undefined)
+    } catch {
+      // Store handles errors internally
+    }
   },
 )
 

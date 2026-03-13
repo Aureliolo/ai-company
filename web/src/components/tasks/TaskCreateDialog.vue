@@ -7,11 +7,14 @@ import Dropdown from 'primevue/dropdown'
 import InputNumber from 'primevue/inputnumber'
 import Button from 'primevue/button'
 import type { CreateTaskRequest, TaskType, Priority, Complexity } from '@/api/types'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
   visible: boolean
   agents: string[]
 }>()
+
+const auth = useAuthStore()
 
 const emit = defineEmits<{
   'update:visible': [value: boolean]
@@ -23,7 +26,6 @@ const description = ref('')
 const type = ref<TaskType>('development')
 const priority = ref<Priority>('medium')
 const project = ref('')
-const createdBy = ref('')
 const assignedTo = ref<string | null>(null)
 const complexity = ref<Complexity>('medium')
 const budgetLimit = ref(0)
@@ -64,7 +66,6 @@ function resetForm() {
   type.value = 'development'
   priority.value = 'medium'
   project.value = ''
-  createdBy.value = ''
   assignedTo.value = null
   complexity.value = 'medium'
   budgetLimit.value = 0
@@ -78,7 +79,7 @@ function handleSubmit() {
     type: type.value,
     priority: priority.value,
     project: project.value,
-    created_by: createdBy.value,
+    created_by: auth.user?.username ?? '',
     assigned_to: assignedTo.value,
     estimated_complexity: complexity.value,
     budget_limit: budgetLimit.value,
@@ -86,7 +87,7 @@ function handleSubmit() {
   emit('create', data)
 }
 
-const isValid = computed(() => !!title.value.trim() && !!description.value.trim() && !!project.value.trim() && !!createdBy.value.trim())
+const isValid = computed(() => !!title.value.trim() && !!description.value.trim() && !!project.value.trim() && !!auth.user?.username)
 </script>
 
 <template>
@@ -99,37 +100,38 @@ const isValid = computed(() => !!title.value.trim() && !!description.value.trim(
   >
     <form class="space-y-4" @submit.prevent="handleSubmit">
       <div>
-        <label class="mb-1 block text-sm text-slate-300">Title</label>
-        <InputText v-model="title" class="w-full" placeholder="Task title" />
+        <label for="task-title" class="mb-1 block text-sm text-slate-300">Title</label>
+        <InputText id="task-title" v-model="title" class="w-full" placeholder="Task title" />
       </div>
       <div>
-        <label class="mb-1 block text-sm text-slate-300">Description</label>
-        <Textarea v-model="description" class="w-full" rows="3" placeholder="Describe the task" />
+        <label for="task-description" class="mb-1 block text-sm text-slate-300">Description</label>
+        <Textarea id="task-description" v-model="description" class="w-full" rows="3" placeholder="Describe the task" />
       </div>
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="mb-1 block text-sm text-slate-300">Type</label>
-          <Dropdown v-model="type" :options="typeOptions" option-label="label" option-value="value" class="w-full" />
+          <label for="task-type" class="mb-1 block text-sm text-slate-300">Type</label>
+          <Dropdown id="task-type" v-model="type" :options="typeOptions" option-label="label" option-value="value" class="w-full" />
         </div>
         <div>
-          <label class="mb-1 block text-sm text-slate-300">Priority</label>
-          <Dropdown v-model="priority" :options="priorityOptions" option-label="label" option-value="value" class="w-full" />
-        </div>
-      </div>
-      <div class="grid grid-cols-2 gap-4">
-        <div>
-          <label class="mb-1 block text-sm text-slate-300">Project</label>
-          <InputText v-model="project" class="w-full" placeholder="Project ID" />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm text-slate-300">Created By</label>
-          <InputText v-model="createdBy" class="w-full" placeholder="Agent name" />
+          <label for="task-priority" class="mb-1 block text-sm text-slate-300">Priority</label>
+          <Dropdown id="task-priority" v-model="priority" :options="priorityOptions" option-label="label" option-value="value" class="w-full" />
         </div>
       </div>
       <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="mb-1 block text-sm text-slate-300">Assign To</label>
+          <label for="task-project" class="mb-1 block text-sm text-slate-300">Project</label>
+          <InputText id="task-project" v-model="project" class="w-full" placeholder="Project ID" />
+        </div>
+        <div>
+          <span class="mb-1 block text-sm text-slate-300">Created By</span>
+          <p class="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300">{{ auth.user?.username ?? '—' }}</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label for="task-assignee" class="mb-1 block text-sm text-slate-300">Assign To</label>
           <Dropdown
+            id="task-assignee"
             v-model="assignedTo"
             :options="agents"
             placeholder="Select agent"
@@ -138,13 +140,13 @@ const isValid = computed(() => !!title.value.trim() && !!description.value.trim(
           />
         </div>
         <div>
-          <label class="mb-1 block text-sm text-slate-300">Complexity</label>
-          <Dropdown v-model="complexity" :options="complexityOptions" option-label="label" option-value="value" class="w-full" />
+          <label for="task-complexity" class="mb-1 block text-sm text-slate-300">Complexity</label>
+          <Dropdown id="task-complexity" v-model="complexity" :options="complexityOptions" option-label="label" option-value="value" class="w-full" />
         </div>
       </div>
       <div>
-        <label class="mb-1 block text-sm text-slate-300">Budget Limit (USD)</label>
-        <InputNumber v-model="budgetLimit" mode="currency" currency="USD" :min="0" class="w-full" />
+        <label for="task-budget" class="mb-1 block text-sm text-slate-300">Budget Limit (USD)</label>
+        <InputNumber id="task-budget" v-model="budgetLimit" mode="currency" currency="USD" :min="0" class="w-full" />
       </div>
     </form>
 

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { WsChannel, WsEvent, WsEventHandler } from '@/api/types'
-import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS } from '@/utils/constants'
+import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS, WS_MAX_MESSAGE_SIZE } from '@/utils/constants'
 import { sanitizeForLog } from '@/utils/logging'
 
 /** Build a stable deduplication key for a subscription (sorted channels + sorted filter keys). */
@@ -59,13 +59,17 @@ export const useWebSocketStore = defineStore('websocket', () => {
       for (const sub of activeSubscriptions) {
         try {
           socket!.send(JSON.stringify({ action: 'subscribe', channels: sub.channels, filters: sub.filters }))
-        } catch {
-          // Will be retried on next reconnect
+        } catch (err) {
+          console.error('WebSocket subscribe send failed (will retry on reconnect):', sanitizeForLog(err))
         }
       }
     }
 
     socket.onmessage = (event: MessageEvent) => {
+      if (typeof event.data === 'string' && event.data.length > WS_MAX_MESSAGE_SIZE) {
+        console.error('WebSocket message exceeds max size, discarding')
+        return
+      }
       let data: unknown
       try {
         data = JSON.parse(event.data)
@@ -163,8 +167,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
     try {
       socket.send(JSON.stringify({ action: 'subscribe', channels, filters }))
-    } catch {
-      // Socket may have transitioned to CLOSING — queue for replay
+    } catch (err) {
+      console.error('WebSocket subscribe send failed (queued for replay):', sanitizeForLog(err))
       if (!pendingSubscriptions.some((s) => subscriptionKey(s.channels, s.filters) === key)) {
         pendingSubscriptions.push({ channels, filters })
       }
@@ -190,8 +194,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
     if (!socket || socket.readyState !== WebSocket.OPEN) return
     try {
       socket.send(JSON.stringify({ action: 'unsubscribe', channels }))
-    } catch {
-      // Socket transitioned to CLOSING — unsubscribe will happen on reconnect
+    } catch (err) {
+      console.error('WebSocket unsubscribe send failed:', sanitizeForLog(err))
     }
   }
 

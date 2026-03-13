@@ -16,11 +16,15 @@ const wsStore = useWebSocketStore()
 const authStore = useAuthStore()
 
 onMounted(async () => {
-  if (authStore.token && !wsStore.connected) {
-    wsStore.connect(authStore.token)
+  try {
+    if (authStore.token && !wsStore.connected) {
+      wsStore.connect(authStore.token)
+    }
+    wsStore.subscribe(['budget'])
+    wsStore.onChannelEvent('budget', budgetStore.handleWsEvent)
+  } catch (err) {
+    console.error('WebSocket setup failed:', err)
   }
-  wsStore.subscribe(['budget'])
-  wsStore.onChannelEvent('budget', budgetStore.handleWsEvent)
   await Promise.all([budgetStore.fetchConfig(), budgetStore.fetchRecords({ limit: 200 })])
 })
 
@@ -28,8 +32,12 @@ onUnmounted(() => {
   wsStore.offChannelEvent('budget', budgetStore.handleWsEvent)
 })
 
-function retryFetch() {
-  void Promise.all([budgetStore.fetchConfig(), budgetStore.fetchRecords({ limit: 200 })])
+async function retryFetch() {
+  try {
+    await Promise.all([budgetStore.fetchConfig(), budgetStore.fetchRecords({ limit: 200 })])
+  } catch {
+    // Stores handle errors internally — ErrorBoundary surfaces them
+  }
 }
 </script>
 

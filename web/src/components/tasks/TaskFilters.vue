@@ -17,8 +17,8 @@ const emit = defineEmits<{
 
 const statusOptions = TASK_STATUS_ORDER.map((s) => ({ label: formatLabel(s), value: s }))
 
-function updateFilter(key: string, value: unknown) {
-  emit('update', { [key]: value || undefined })
+function updateFilter<K extends keyof TaskFilterType>(key: K, value: TaskFilterType[K] | undefined) {
+  emit('update', { [key]: value ?? undefined } as Partial<TaskFilterType>)
 }
 </script>
 
@@ -32,7 +32,7 @@ function updateFilter(key: string, value: unknown) {
       placeholder="Status"
       show-clear
       class="w-40"
-      @update:model-value="updateFilter('status', $event as TaskStatus)"
+      @update:model-value="updateFilter('status', $event)"
     />
     <Dropdown
       :model-value="filters.assigned_to"
