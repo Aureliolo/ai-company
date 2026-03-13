@@ -53,6 +53,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  wsStore.unsubscribe(['approvals'])
   wsStore.offChannelEvent('approvals', approvalStore.handleWsEvent)
 })
 

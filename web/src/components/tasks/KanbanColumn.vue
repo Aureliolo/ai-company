@@ -14,6 +14,8 @@ const emit = defineEmits<{
   'task-added': [task: Task]
 }>()
 
+// vue-draggable-plus exposes the bound data via the internal _underlying_vm_ property.
+// This is an undocumented API — if the library changes, this will need updating.
 function handleAdd(event: { item: HTMLElement & { _underlying_vm_?: Task } }) {
   const task = event.item?._underlying_vm_
   if (task) {

@@ -106,7 +106,7 @@ describe('authGuard', () => {
     const from = createRoute()
 
     authGuard(to, from, next)
-    expect(next).toHaveBeenCalledWith({ name: 'settings' })
+    expect(next).toHaveBeenCalledWith({ name: 'settings', query: { tab: 'user' } })
   })
 
   it('allows settings page access when mustChangePassword is true', () => {

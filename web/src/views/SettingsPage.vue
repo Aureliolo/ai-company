@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 import InputText from 'primevue/inputtext'
@@ -18,11 +19,16 @@ import { getErrorMessage } from '@/utils/errors'
 import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
 import type { ProviderModelConfig } from '@/api/types'
 
+const route = useRoute()
 const toast = useToast()
 const auth = useAuthStore()
 const companyStore = useCompanyStore()
 const providerStore = useProviderStore()
 const loading = ref(true)
+
+const VALID_TABS = ['company', 'providers', 'user'] as const
+const tabParam = String(route.query.tab ?? 'company')
+const activeTab = ref(VALID_TABS.includes(tabParam as typeof VALID_TABS[number]) ? tabParam : 'company')
 
 const providerEntries = computed(() =>
   Object.entries(providerStore.providers).map(([name, config]) => ({ name, config })),
@@ -72,7 +78,7 @@ async function handleChangePassword() {
 
     <ErrorBoundary :error="companyStore.configError ?? providerStore.error" @retry="retryFetch">
     <LoadingSkeleton v-if="loading" :lines="6" />
-    <TabView v-else value="company">
+    <TabView v-else :value="activeTab">
       <!-- Company Config -->
       <TabPanel header="Company" value="company">
         <div v-if="companyStore.config" class="space-y-4">

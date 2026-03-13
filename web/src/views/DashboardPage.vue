@@ -75,6 +75,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  wsStore.unsubscribe(['tasks', 'agents', 'budget', 'messages', 'system', 'approvals'])
   wsStore.offChannelEvent('tasks', taskStore.handleWsEvent)
   wsStore.offChannelEvent('budget', budgetStore.handleWsEvent)
   wsStore.offChannelEvent('approvals', approvalStore.handleWsEvent)

@@ -4,7 +4,7 @@ import { setActivePinia, createPinia } from 'pinia'
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn(), go: vi.fn() }),
-  useRoute: () => ({ params: {} }),
+  useRoute: () => ({ params: {}, query: {} }),
   RouterLink: { template: '<a><slot /></a>' },
   createRouter: () => ({
     push: vi.fn(),

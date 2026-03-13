@@ -36,6 +36,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  wsStore.unsubscribe(['agents'])
   wsStore.offChannelEvent('agents', agentStore.handleWsEvent)
 })
 

@@ -17,7 +17,7 @@ const chartOption = computed(() => {
   const hourlyData = new Map<string, number>()
   for (const record of sorted) {
     const date = new Date(record.timestamp)
-    const hourKey = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:00`
+    const hourKey = `${date.getUTCMonth() + 1}/${date.getUTCDate()} ${date.getUTCHours()}:00`
     hourlyData.set(hourKey, (hourlyData.get(hourKey) ?? 0) + record.cost_usd)
   }
 

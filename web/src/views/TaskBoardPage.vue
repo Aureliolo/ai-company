@@ -56,6 +56,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  wsStore.unsubscribe(['tasks'])
   wsStore.offChannelEvent('tasks', taskStore.handleWsEvent)
 })
 
@@ -115,8 +116,8 @@ async function handleFilterUpdate(newFilters: TaskFilterType) {
   filters.value = { ...filters.value, ...newFilters }
   try {
     await taskStore.fetchTasks(filters.value)
-  } catch {
-    // Store handles errors internally
+  } catch (err) {
+    console.error('Filter fetch failed:', sanitizeForLog(err))
   }
 }
 
@@ -124,8 +125,8 @@ async function handleFilterReset() {
   filters.value = {}
   try {
     await taskStore.fetchTasks({})
-  } catch {
-    // Store handles errors internally
+  } catch (err) {
+    console.error('Filter reset fetch failed:', sanitizeForLog(err))
   }
 }
 </script>

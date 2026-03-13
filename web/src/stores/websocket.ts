@@ -109,8 +109,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
     }
 
-    socket.onerror = (event) => {
-      console.error('WebSocket connection error:', event)
+    socket.onerror = () => {
+      console.error('WebSocket connection error')
       // onclose fires after onerror, reconnect is handled there
     }
   }

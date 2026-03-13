@@ -35,6 +35,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  wsStore.unsubscribe(['messages'])
   wsStore.offChannelEvent('messages', messageStore.handleWsEvent)
 })
 

@@ -35,6 +35,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  wsStore.unsubscribe(['budget'])
   wsStore.offChannelEvent('budget', budgetStore.handleWsEvent)
 })
 
