@@ -9,6 +9,7 @@ task can be reassigned (based on retry count vs max retries).
 See the Crash Recovery section of the Engine design page.
 """
 
+import json
 from typing import Final, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
@@ -79,6 +80,15 @@ class RecoveryResult(BaseModel):
                 "consistent: both set or both at default"
             )
             raise ValueError(msg)
+        if self.checkpoint_context_json is not None:
+            try:
+                parsed = json.loads(self.checkpoint_context_json)
+            except json.JSONDecodeError as exc:
+                msg = f"checkpoint_context_json must be valid JSON: {exc}"
+                raise ValueError(msg) from exc
+            if not isinstance(parsed, dict):
+                msg = "checkpoint_context_json must be a JSON object"
+                raise ValueError(msg)
         return self
 
     @computed_field(  # type: ignore[prop-decorator]
@@ -106,9 +116,9 @@ class RecoveryResult(BaseModel):
 class RecoveryStrategy(Protocol):
     """Protocol for crash recovery strategies.
 
-    Implementations decide how to handle a failed task execution:
-    transition the task, capture diagnostics, and report whether
-    reassignment is possible.
+    Implementations decide how to handle a failed task execution.
+    Strategies may transition the task status, capture diagnostics,
+    and report recovery options (e.g. reassignment, checkpoint resume).
     """
 
     async def recover(

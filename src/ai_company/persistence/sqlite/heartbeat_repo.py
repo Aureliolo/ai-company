@@ -1,6 +1,7 @@
 """SQLite repository implementation for heartbeat persistence."""
 
 import sqlite3
+from datetime import UTC
 
 import aiosqlite
 from pydantic import AwareDatetime, ValidationError
@@ -37,6 +38,11 @@ class SQLiteHeartbeatRepository:
         """Persist a heartbeat (upsert by execution_id)."""
         try:
             data = heartbeat.model_dump(mode="json")
+            # Normalize to UTC so lexicographic comparisons in
+            # get_stale() work correctly regardless of input timezone.
+            data["last_heartbeat_at"] = heartbeat.last_heartbeat_at.astimezone(
+                UTC
+            ).isoformat()
             await self._db.execute(
                 """\
 INSERT OR REPLACE INTO heartbeats (
@@ -94,7 +100,7 @@ INSERT OR REPLACE INTO heartbeats (
             threshold: Heartbeats with ``last_heartbeat_at`` before
                 this timestamp are considered stale.
         """
-        threshold_iso = threshold.isoformat()
+        threshold_iso = threshold.astimezone(UTC).isoformat()
         try:
             cursor = await self._db.execute(
                 "SELECT execution_id, agent_id, task_id, last_heartbeat_at "

@@ -115,9 +115,13 @@ class TestCheckpointContextJsonValidation:
         cp = _make_checkpoint(context_json="{}")
         assert cp.context_json == "{}"
 
-    def test_json_array_passes(self) -> None:
-        cp = _make_checkpoint(context_json="[1, 2, 3]")
-        assert cp.context_json == "[1, 2, 3]"
+    def test_json_array_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="JSON object"):
+            _make_checkpoint(context_json="[1, 2, 3]")
+
+    def test_json_primitive_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="JSON object"):
+            _make_checkpoint(context_json='"hello"')
 
     def test_invalid_json_raises(self) -> None:
         with pytest.raises(ValidationError, match="context_json must be valid JSON"):

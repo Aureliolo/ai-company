@@ -17,6 +17,9 @@ HEARTBEAT_UPDATE_FAILED: Final[str] = "heartbeat.update_failed"
 HEARTBEAT_STALE_DETECTED: Final[str] = "heartbeat.stale_detected"
 HEARTBEAT_DELETED: Final[str] = "heartbeat.deleted"
 
+# Loop integration
+CHECKPOINT_UNSUPPORTED_LOOP: Final[str] = "checkpoint.unsupported_loop"
+
 # Recovery flow
 CHECKPOINT_RECOVERY_START: Final[str] = "checkpoint.recovery.start"
 CHECKPOINT_RECOVERY_RESUME: Final[str] = "checkpoint.recovery.resume"

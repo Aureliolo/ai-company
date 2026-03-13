@@ -64,7 +64,7 @@ class ReactLoop:
 
     Args:
         checkpoint_callback: Optional async callback invoked after each
-            completed turn to persist a checkpoint.
+            completed turn; the callback itself decides whether to persist.
     """
 
     def __init__(

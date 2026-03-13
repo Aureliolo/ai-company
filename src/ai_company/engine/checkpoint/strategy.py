@@ -8,7 +8,11 @@ After ``max_resume_attempts`` resume attempts, falls back to the
 import asyncio
 from typing import Final
 
-from ai_company.engine.checkpoint.models import CheckpointConfig  # noqa: TC001
+from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.engine.checkpoint.models import (
+    Checkpoint,  # noqa: TC001
+    CheckpointConfig,  # noqa: TC001
+)
 from ai_company.engine.context import AgentContext  # noqa: TC001
 from ai_company.engine.recovery import (
     FailAndReassignStrategy,
@@ -25,9 +29,13 @@ from ai_company.observability.events.checkpoint import (
     CHECKPOINT_RECOVERY_RESUME,
     CHECKPOINT_RECOVERY_START,
 )
+from ai_company.persistence.errors import PersistenceError
 from ai_company.persistence.repositories import CheckpointRepository  # noqa: TC001
 
 logger = get_logger(__name__)
+
+_MAX_TRACKED_EXECUTIONS: Final[int] = 10_000
+"""Safety bound on the ``_resume_counts`` dict to prevent unbounded growth."""
 
 
 class CheckpointRecoveryStrategy:
@@ -94,20 +102,75 @@ class CheckpointRecoveryStrategy:
             strategy=self.STRATEGY_TYPE,
         )
 
-        # Load the latest checkpoint
+        checkpoint = await self._load_latest_checkpoint(
+            execution_id,
+            task_id,
+        )
+        if checkpoint is None:
+            return await self._delegate_to_fallback(
+                task_execution=task_execution,
+                error_message=error_message,
+                context=context,
+            )
+
+        should_fallback = await self._reserve_resume_attempt(
+            execution_id,
+            task_id,
+        )
+        if should_fallback:
+            return await self._delegate_to_fallback(
+                task_execution=task_execution,
+                error_message=error_message,
+                context=context,
+            )
+
+        return self._build_resume_result(
+            task_execution=task_execution,
+            error_message=error_message,
+            context=context,
+            checkpoint=checkpoint,
+        )
+
+    def get_strategy_type(self) -> str:
+        """Return the strategy type identifier."""
+        return self.STRATEGY_TYPE
+
+    async def clear_resume_count(
+        self,
+        execution_id: NotBlankStr,
+    ) -> None:
+        """Clear the resume counter for a completed execution.
+
+        Called after successful completion to reset the counter.
+        Safe to call with unknown execution IDs (no-op).
+
+        Args:
+            execution_id: The execution identifier to clear.
+        """
+        async with self._resume_lock:
+            self._resume_counts.pop(execution_id, None)
+
+    # ── Private helpers ──────────────────────────────────────────
+
+    async def _load_latest_checkpoint(
+        self,
+        execution_id: str,
+        task_id: str,
+    ) -> Checkpoint | None:
+        """Load the latest checkpoint, returning ``None`` on failure."""
         try:
             checkpoint = await self._checkpoint_repo.get_latest(
                 execution_id=execution_id,
             )
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except PersistenceError:
             logger.exception(
                 CHECKPOINT_LOAD_FAILED,
                 execution_id=execution_id,
                 task_id=task_id,
             )
-            checkpoint = None
+            return None
 
         if checkpoint is None:
             logger.info(
@@ -115,11 +178,7 @@ class CheckpointRecoveryStrategy:
                 execution_id=execution_id,
                 task_id=task_id,
             )
-            return await self._delegate_to_fallback(
-                task_execution=task_execution,
-                error_message=error_message,
-                context=context,
-            )
+            return None
 
         logger.debug(
             CHECKPOINT_LOADED,
@@ -127,8 +186,14 @@ class CheckpointRecoveryStrategy:
             checkpoint_id=checkpoint.id,
             turn_number=checkpoint.turn_number,
         )
+        return checkpoint
 
-        # Check resume attempts (locked to prevent TOCTOU race)
+    async def _reserve_resume_attempt(
+        self,
+        execution_id: str,
+        task_id: str,
+    ) -> bool:
+        """Reserve a resume attempt, returning ``True`` when exhausted."""
         async with self._resume_lock:
             resume_count = self._resume_counts.get(execution_id, 0)
             if resume_count >= self._config.max_resume_attempts:
@@ -141,23 +206,37 @@ class CheckpointRecoveryStrategy:
                     reason="max_resume_attempts_exhausted",
                 )
                 self._resume_counts.pop(execution_id, None)
-                return await self._delegate_to_fallback(
-                    task_execution=task_execution,
-                    error_message=error_message,
-                    context=context,
-                )
+                return True
 
-            # Increment counter
             self._resume_counts[execution_id] = resume_count + 1
+
+            # Evict oldest entries when the dict grows too large
+            if len(self._resume_counts) > _MAX_TRACKED_EXECUTIONS:
+                oldest = next(iter(self._resume_counts))
+                self._resume_counts.pop(oldest, None)
+
+        return False
+
+    def _build_resume_result(
+        self,
+        *,
+        task_execution: TaskExecution,
+        error_message: str,
+        context: AgentContext,
+        checkpoint: Checkpoint,
+    ) -> RecoveryResult:
+        """Build a resumable ``RecoveryResult``."""
+        execution_id = context.execution_id
+        resume_attempt = self._resume_counts.get(execution_id, 1)
 
         snapshot = context.to_snapshot()
         logger.info(
             CHECKPOINT_RECOVERY_RESUME,
             execution_id=execution_id,
-            task_id=task_id,
+            task_id=task_execution.task.id,
             checkpoint_id=checkpoint.id,
             turn_number=checkpoint.turn_number,
-            resume_attempt=resume_count + 1,
+            resume_attempt=resume_attempt,
             max_resume_attempts=self._config.max_resume_attempts,
         )
 
@@ -167,22 +246,8 @@ class CheckpointRecoveryStrategy:
             context_snapshot=snapshot,
             error_message=error_message,
             checkpoint_context_json=checkpoint.context_json,
-            resume_attempt=resume_count + 1,
+            resume_attempt=resume_attempt,
         )
-
-    def get_strategy_type(self) -> str:
-        """Return the strategy type identifier."""
-        return self.STRATEGY_TYPE
-
-    def clear_resume_count(self, execution_id: str) -> None:
-        """Clear the resume counter for a completed execution.
-
-        Called after successful completion to reset the counter.
-
-        Args:
-            execution_id: The execution identifier to clear.
-        """
-        self._resume_counts.pop(execution_id, None)
 
     async def _delegate_to_fallback(
         self,

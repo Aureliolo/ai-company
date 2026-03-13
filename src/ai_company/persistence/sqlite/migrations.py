@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     execution_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
     task_id TEXT NOT NULL,
-    turn_number INTEGER NOT NULL,
+    turn_number INTEGER NOT NULL CHECK (turn_number >= 0),
     context_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 )""",
@@ -240,6 +240,7 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     # ignored on SQLite < 3.47 so we use ascending for portability.
     "CREATE INDEX IF NOT EXISTS idx_cp_exec_turn"
     " ON checkpoints(execution_id, turn_number)",
+    "CREATE INDEX IF NOT EXISTS idx_cp_task_turn ON checkpoints(task_id, turn_number)",
     # ── Heartbeats ─────────────────────────────────────────
     # No FK to tasks — checkpoints/heartbeats are ephemeral recovery
     # data that may outlive their tasks.  Cleanup is the engine's

@@ -350,6 +350,9 @@ class FakeCheckpointRepository:
         execution_id: str | None = None,
         task_id: str | None = None,
     ) -> Checkpoint | None:
+        if execution_id is None and task_id is None:
+            msg = "At least one of execution_id or task_id is required"
+            raise ValueError(msg)
         candidates = list(self._checkpoints.values())
         if execution_id is not None:
             candidates = [c for c in candidates if c.execution_id == execution_id]
@@ -381,9 +384,11 @@ class FakeHeartbeatRepository:
         return self._heartbeats.get(execution_id)
 
     async def get_stale(self, threshold: datetime) -> tuple[Heartbeat, ...]:
-        return tuple(
+        stale = [
             h for h in self._heartbeats.values() if h.last_heartbeat_at < threshold
-        )
+        ]
+        stale.sort(key=lambda h: h.last_heartbeat_at)
+        return tuple(stale)
 
     async def delete(self, execution_id: str) -> bool:
         return self._heartbeats.pop(execution_id, None) is not None

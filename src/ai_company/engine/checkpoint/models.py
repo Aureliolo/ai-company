@@ -53,12 +53,15 @@ class Checkpoint(BaseModel):
 
     @model_validator(mode="after")
     def _validate_context_json(self) -> Self:
-        """Validate that context_json is valid JSON."""
+        """Validate that context_json is a valid JSON object."""
         try:
-            json.loads(self.context_json)
+            parsed = json.loads(self.context_json)
         except (json.JSONDecodeError, TypeError) as exc:
             msg = f"context_json must be valid JSON: {exc}"
             raise ValueError(msg) from exc
+        if not isinstance(parsed, dict):
+            msg = "context_json must be a JSON object, not a primitive or array"
+            raise ValueError(msg)  # noqa: TRY004
         return self
 
 

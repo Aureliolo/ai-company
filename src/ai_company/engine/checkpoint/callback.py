@@ -11,4 +11,4 @@ from typing import Any
 from ai_company.engine.context import AgentContext
 
 CheckpointCallback = Callable[[AgentContext], Coroutine[Any, Any, None]]
-"""Async callback invoked after each turn to persist a checkpoint."""
+"""Async callback invoked after each turn; may skip persistence based on config."""

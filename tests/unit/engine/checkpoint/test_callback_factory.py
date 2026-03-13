@@ -147,8 +147,10 @@ class TestCheckpointCallbackBoundaryTurns:
     @pytest.mark.parametrize(
         ("persist_every_n", "turn", "should_save"),
         [
+            (1, 0, False),  # Turn 0 always skipped
             (1, 1, True),
             (1, 5, True),
+            (2, 0, False),  # Turn 0 always skipped
             (2, 1, False),
             (2, 2, True),
             (2, 4, True),

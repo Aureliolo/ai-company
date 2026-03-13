@@ -15,6 +15,7 @@ from ai_company.engine.recovery import (
     RecoveryResult,
     RecoveryStrategy,
 )
+from ai_company.persistence.errors import QueryError
 
 if TYPE_CHECKING:
     from ai_company.core.agent import AgentIdentity
@@ -262,7 +263,7 @@ class TestCheckpointRecoveryFallback:
             sample_agent_with_personality,
             sample_task_with_criteria,
         )
-        repo = _make_mock_repo(error=RuntimeError("DB connection lost"))
+        repo = _make_mock_repo(error=QueryError("DB connection lost"))
         strategy = _make_strategy(repo)
 
         result = await strategy.recover(
@@ -367,7 +368,7 @@ class TestCheckpointRecoveryCounter:
         )
 
         # Clear and retry
-        strategy.clear_resume_count(ctx.execution_id)
+        await strategy.clear_resume_count(ctx.execution_id)
 
         result = await strategy.recover(
             task_execution=task_exec,
@@ -376,11 +377,11 @@ class TestCheckpointRecoveryCounter:
         )
         assert result.resume_attempt == 1  # Reset to 1, not 2
 
-    def test_clear_resume_count_noop_for_unknown(self) -> None:
+    async def test_clear_resume_count_noop_for_unknown(self) -> None:
         """Clearing a nonexistent execution_id is a safe no-op."""
         repo = _make_mock_repo()
         strategy = _make_strategy(repo)
-        strategy.clear_resume_count("nonexistent-exec")  # Should not raise
+        await strategy.clear_resume_count("nonexistent-exec")  # Should not raise
 
     async def test_independent_counters_per_execution(
         self,

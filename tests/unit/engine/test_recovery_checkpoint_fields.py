@@ -78,6 +78,55 @@ class TestCanResumeField:
 
 
 @pytest.mark.unit
+class TestCheckpointConsistencyValidator:
+    """RecoveryResult rejects inconsistent checkpoint_context_json / resume_attempt."""
+
+    def test_json_set_but_attempt_zero_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Setting checkpoint_context_json without resume_attempt > 0 raises."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="starting")
+        assert ctx.task_execution is not None
+
+        with pytest.raises(ValueError, match="must be consistent"):
+            RecoveryResult(
+                task_execution=ctx.task_execution,
+                strategy_type="checkpoint",
+                context_snapshot=ctx.to_snapshot(),
+                error_message="crash",
+                checkpoint_context_json='{"state": "partial"}',
+            )
+
+    def test_attempt_set_but_json_none_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Setting resume_attempt > 0 without checkpoint_context_json raises."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="starting")
+        assert ctx.task_execution is not None
+
+        with pytest.raises(ValueError, match="must be consistent"):
+            RecoveryResult(
+                task_execution=ctx.task_execution,
+                strategy_type="checkpoint",
+                context_snapshot=ctx.to_snapshot(),
+                error_message="crash",
+                resume_attempt=1,
+            )
+
+
+@pytest.mark.unit
 class TestResumeAttemptDefault:
     """RecoveryResult.resume_attempt defaults to 0."""
 
