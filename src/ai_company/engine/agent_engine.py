@@ -15,6 +15,7 @@ from ai_company.engine._validation import (
     validate_run_inputs,
     validate_task,
 )
+from ai_company.engine.approval_gate import ApprovalGate
 from ai_company.engine.checkpoint.models import CheckpointConfig
 from ai_company.engine.checkpoint.resume import (
     cleanup_checkpoint_artifacts,
@@ -166,7 +167,9 @@ class AgentEngine:
         checkpoint_config: CheckpointConfig | None = None,
     ) -> None:
         self._provider = provider
-        self._loop: ExecutionLoop = execution_loop or ReactLoop()
+        self._approval_store = approval_store
+        self._approval_gate = self._make_approval_gate()
+        self._loop: ExecutionLoop = execution_loop or self._make_default_loop()
         self._tool_registry = tool_registry
         self._budget_enforcer = budget_enforcer
         if (checkpoint_repo is None) != (heartbeat_repo is None):
@@ -193,7 +196,6 @@ class AgentEngine:
         else:
             self._cost_tracker = cost_tracker
         self._security_config = security_config
-        self._approval_store = approval_store
         self._task_engine = task_engine
         self._recovery_strategy = recovery_strategy
         self._shutdown_checker = shutdown_checker
@@ -880,6 +882,27 @@ class AgentEngine:
             )
         return result
 
+    def _make_approval_gate(self) -> ApprovalGate | None:
+        """Build an ApprovalGate if an approval store is configured.
+
+        Returns ``None`` when no approval store is available — the
+        execution loop skips approval-gate checks in that case.
+        """
+        if self._approval_store is None:
+            return None
+
+        from ai_company.security.timeout.park_service import (  # noqa: PLC0415
+            ParkService,
+        )
+
+        return ApprovalGate(
+            park_service=ParkService(),
+        )
+
+    def _make_default_loop(self) -> ReactLoop:
+        """Build the default ReactLoop with approval gate if available."""
+        return ReactLoop(approval_gate=self._approval_gate)
+
     def _make_security_interceptor(
         self,
         effective_autonomy: EffectiveAutonomy | None = None,
@@ -951,19 +974,61 @@ class AgentEngine:
     ) -> ToolInvoker | None:
         """Create a ToolInvoker with permission checking and security.
 
+        When an approval store is configured, registers the
+        ``request_human_approval`` tool so agents can explicitly
+        request human approval.
+
         Returns None if no tool registry is configured.
         """
         if self._tool_registry is None:
             return None
+
+        registry = self._registry_with_approval_tool(
+            identity,
+            task_id=task_id,
+        )
         checker = ToolPermissionChecker.from_permissions(identity.tools)
         interceptor = self._make_security_interceptor(effective_autonomy)
         return ToolInvoker(
-            self._tool_registry,
+            registry,
             permission_checker=checker,
             security_interceptor=interceptor,
             agent_id=str(identity.id),
             task_id=task_id,
         )
+
+    def _registry_with_approval_tool(
+        self,
+        identity: AgentIdentity,
+        task_id: str | None = None,
+    ) -> ToolRegistry:
+        """Build a registry with the approval tool added if applicable.
+
+        Returns the original registry unchanged when no approval store
+        is configured.
+        """
+        if self._tool_registry is None:
+            msg = "Cannot build registry without _tool_registry"
+            raise ExecutionStateError(msg)
+
+        if self._approval_store is None:
+            return self._tool_registry
+
+        from ai_company.tools.approval_tool import (  # noqa: PLC0415
+            RequestHumanApprovalTool,
+        )
+        from ai_company.tools.registry import (  # noqa: PLC0415
+            ToolRegistry as _ToolRegistry,
+        )
+
+        approval_tool = RequestHumanApprovalTool(
+            approval_store=self._approval_store,
+            risk_classifier=DefaultRiskTierClassifier(),
+            agent_id=str(identity.id),
+            task_id=task_id,
+        )
+        existing = list(self._tool_registry._tools.values())  # noqa: SLF001
+        return _ToolRegistry([*existing, approval_tool])
 
     def _log_completion(
         self,

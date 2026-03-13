@@ -44,6 +44,7 @@ from .loop_protocol import (
 )
 
 if TYPE_CHECKING:
+    from ai_company.engine.approval_gate import ApprovalGate
     from ai_company.engine.checkpoint.callback import CheckpointCallback
     from ai_company.engine.context import AgentContext
     from ai_company.providers.models import ToolDefinition
@@ -70,8 +71,11 @@ class ReactLoop:
     def __init__(
         self,
         checkpoint_callback: CheckpointCallback | None = None,
+        *,
+        approval_gate: ApprovalGate | None = None,
     ) -> None:
         self._checkpoint_callback = checkpoint_callback
+        self._approval_gate = approval_gate
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
@@ -243,6 +247,7 @@ class ReactLoop:
             response,
             turn_number,
             turns,
+            approval_gate=self._approval_gate,
         )
 
     def _handle_completion(
