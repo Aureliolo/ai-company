@@ -15,7 +15,7 @@ const mockAgent: AgentConfig = {
     risk_tolerance: 'medium',
     creativity: 'high',
     decision_making: 'analytical',
-    collaboration: 'cooperative' as never,
+    collaboration: 'team',
     traits: [],
     communication_style: 'professional',
     description: '',

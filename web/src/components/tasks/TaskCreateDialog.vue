@@ -110,11 +110,11 @@ const isValid = computed(() => !!title.value.trim() && !!description.value.trim(
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label for="task-type" class="mb-1 block text-sm text-slate-300">Type</label>
-          <Dropdown id="task-type" v-model="type" :options="typeOptions" option-label="label" option-value="value" class="w-full" />
+          <Dropdown input-id="task-type" v-model="type" :options="typeOptions" option-label="label" option-value="value" class="w-full" />
         </div>
         <div>
           <label for="task-priority" class="mb-1 block text-sm text-slate-300">Priority</label>
-          <Dropdown id="task-priority" v-model="priority" :options="priorityOptions" option-label="label" option-value="value" class="w-full" />
+          <Dropdown input-id="task-priority" v-model="priority" :options="priorityOptions" option-label="label" option-value="value" class="w-full" />
         </div>
       </div>
       <div class="grid grid-cols-2 gap-4">
@@ -131,7 +131,7 @@ const isValid = computed(() => !!title.value.trim() && !!description.value.trim(
         <div>
           <label for="task-assignee" class="mb-1 block text-sm text-slate-300">Assign To</label>
           <Dropdown
-            id="task-assignee"
+            input-id="task-assignee"
             v-model="assignedTo"
             :options="agents"
             placeholder="Select agent"
@@ -141,7 +141,7 @@ const isValid = computed(() => !!title.value.trim() && !!description.value.trim(
         </div>
         <div>
           <label for="task-complexity" class="mb-1 block text-sm text-slate-300">Complexity</label>
-          <Dropdown id="task-complexity" v-model="complexity" :options="complexityOptions" option-label="label" option-value="value" class="w-full" />
+          <Dropdown input-id="task-complexity" v-model="complexity" :options="complexityOptions" option-label="label" option-value="value" class="w-full" />
         </div>
       </div>
       <div>

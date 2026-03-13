@@ -112,7 +112,7 @@ function handleCancel() {
         </div>
         <div>
           <label for="edit-priority" class="mb-1 block text-xs text-slate-400">Priority</label>
-          <Dropdown id="edit-priority" v-model="editPriority" :options="priorityOptions" option-label="label" option-value="value" class="w-full" />
+          <Dropdown input-id="edit-priority" v-model="editPriority" :options="priorityOptions" option-label="label" option-value="value" class="w-full" />
         </div>
         <div class="flex gap-2">
           <Button label="Save" icon="pi pi-check" size="small" @click="saveEdit" />

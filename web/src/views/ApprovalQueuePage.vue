@@ -74,6 +74,9 @@ async function handleApprove(id: string, comment: string) {
     } else {
       toast.add({ severity: 'error', summary: approvalStore.error ?? 'Approve failed', life: 5000 })
     }
+  } catch (err) {
+    console.error('Approve failed:', sanitizeForLog(err))
+    toast.add({ severity: 'error', summary: 'Approve failed', life: 5000 })
   } finally {
     actionLoading.value = false
   }
@@ -89,6 +92,9 @@ async function handleReject(id: string, reason: string) {
     } else {
       toast.add({ severity: 'error', summary: approvalStore.error ?? 'Reject failed', life: 5000 })
     }
+  } catch (err) {
+    console.error('Reject failed:', sanitizeForLog(err))
+    toast.add({ severity: 'error', summary: 'Reject failed', life: 5000 })
   } finally {
     actionLoading.value = false
   }

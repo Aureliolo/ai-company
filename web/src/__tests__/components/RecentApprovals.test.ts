@@ -33,11 +33,11 @@ describe('RecentApprovals', () => {
     expect(wrapper.text()).toContain('Recent Approvals')
   })
 
-  it('shows "No pending approvals" when approvals array is empty', () => {
+  it('shows "No recent approvals" when approvals array is empty', () => {
     const wrapper = mount(RecentApprovals, {
       props: { approvals: [] },
     })
-    expect(wrapper.text()).toContain('No pending approvals')
+    expect(wrapper.text()).toContain('No recent approvals')
   })
 
   it('renders approval titles when approvals are provided', () => {
@@ -82,11 +82,11 @@ describe('RecentApprovals', () => {
     expect(link.attributes('href')).toBe('/approvals')
   })
 
-  it('does not show "No pending approvals" when approvals are present', () => {
+  it('does not show "No recent approvals" when approvals are present', () => {
     const wrapper = mount(RecentApprovals, {
       props: { approvals: [mockApproval] },
     })
-    expect(wrapper.text()).not.toContain('No pending approvals')
+    expect(wrapper.text()).not.toContain('No recent approvals')
   })
 
   it('shows the requester name for each approval', () => {

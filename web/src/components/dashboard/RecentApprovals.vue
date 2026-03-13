@@ -18,7 +18,7 @@ defineProps<{
       </RouterLink>
     </div>
     <div v-if="approvals.length === 0" class="py-4 text-center text-sm text-slate-500">
-      No pending approvals
+      No recent approvals
     </div>
     <div v-else class="space-y-3">
       <div

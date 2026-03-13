@@ -74,7 +74,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       try {
         data = JSON.parse(event.data)
       } catch (parseErr) {
-        console.error('Failed to parse WebSocket message:', parseErr)
+        console.error('Failed to parse WebSocket message:', sanitizeForLog(parseErr))
         return
       }
 

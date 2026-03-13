@@ -33,7 +33,7 @@ const loading = ref(true)
 onMounted(async () => {
   // Connect WebSocket (non-fatal if it fails)
   try {
-    if (authStore.token) {
+    if (authStore.token && !wsStore.connected) {
       wsStore.connect(authStore.token)
       wsStore.subscribe(['tasks', 'budget', 'approvals'])
       wsStore.onChannelEvent('tasks', taskStore.handleWsEvent)
