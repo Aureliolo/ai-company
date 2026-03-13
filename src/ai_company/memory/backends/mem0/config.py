@@ -12,6 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.memory.config import CompanyMemoryConfig  # noqa: TC001
+from ai_company.observability import get_logger
+from ai_company.observability.events.memory import (
+    MEMORY_BACKEND_CONFIG_INVALID,
+)
+
+logger = get_logger(__name__)
 
 
 class Mem0EmbedderConfig(BaseModel):
@@ -74,6 +80,13 @@ class Mem0BackendConfig(BaseModel):
         )
         if ".." in parts:
             msg = "data_dir must not contain parent-directory traversal (..)"
+            logger.warning(
+                MEMORY_BACKEND_CONFIG_INVALID,
+                backend="mem0",
+                field="data_dir",
+                value=self.data_dir,
+                reason=msg,
+            )
             raise ValueError(msg)
         return self
 
@@ -122,7 +135,37 @@ def build_config_from_company_config(
 
     Returns:
         Mem0-specific backend configuration.
+
+    Raises:
+        ValueError: If the storage config specifies a vector or
+            history store that the Mem0 backend does not support.
     """
+    if config.storage.vector_store not in ("qdrant", "qdrant-external"):
+        msg = (
+            f"Mem0 backend only supports qdrant vector stores, "
+            f"got {config.storage.vector_store!r}"
+        )
+        logger.warning(
+            MEMORY_BACKEND_CONFIG_INVALID,
+            backend="mem0",
+            field="vector_store",
+            value=config.storage.vector_store,
+            reason=msg,
+        )
+        raise ValueError(msg)
+    if config.storage.history_store != "sqlite":
+        msg = (
+            f"Mem0 backend only supports sqlite history store, "
+            f"got {config.storage.history_store!r}"
+        )
+        logger.warning(
+            MEMORY_BACKEND_CONFIG_INVALID,
+            backend="mem0",
+            field="history_store",
+            value=config.storage.history_store,
+            reason=msg,
+        )
+        raise ValueError(msg)
     return Mem0BackendConfig(
         data_dir=config.storage.data_dir,
         embedder=embedder,

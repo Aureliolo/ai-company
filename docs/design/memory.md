@@ -283,6 +283,13 @@ memory:
     max_memories_per_agent: 10000
     consolidation_interval: "daily"
     shared_knowledge_base: true
+
+# Embedder config is passed programmatically via the factory:
+#   create_memory_backend(config, embedder=Mem0EmbedderConfig(
+#       provider="<embedding-provider>",
+#       model="<embedding-model-id>",
+#       dims=1536,
+#   ))
 ```
 
 Configuration is modeled by `CompanyMemoryConfig` (top-level), `MemoryStorageConfig`
