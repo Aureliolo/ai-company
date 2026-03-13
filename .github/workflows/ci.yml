@@ -139,10 +139,50 @@ jobs:
       - run: npm run test -- --coverage
         working-directory: web
 
+  dashboard-build:
+    name: Dashboard Build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - name: Production build
+        run: npm run build
+        working-directory: web
+
+  dashboard-audit:
+    name: Dashboard Security Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - name: npm audit (critical + high)
+        run: npm audit --audit-level=high
+        working-directory: web
+
   ci-pass:
     name: CI Pass
     if: always()
-    needs: [lint, type-check, test, dashboard-lint, dashboard-test]
+    needs: [lint, type-check, test, dashboard-lint, dashboard-test, dashboard-build, dashboard-audit]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -153,13 +193,17 @@ jobs:
           TEST_RESULT: ${{ needs.test.result }}
           DASHBOARD_LINT_RESULT: ${{ needs.dashboard-lint.result }}
           DASHBOARD_TEST_RESULT: ${{ needs.dashboard-test.result }}
+          DASHBOARD_BUILD_RESULT: ${{ needs.dashboard-build.result }}
+          DASHBOARD_AUDIT_RESULT: ${{ needs.dashboard-audit.result }}
         run: |
           if [[ "$LINT_RESULT" != "success" || \
                 "$TYPE_CHECK_RESULT" != "success" || \
                 "$TEST_RESULT" != "success" || \
                 "$DASHBOARD_LINT_RESULT" != "success" || \
-                "$DASHBOARD_TEST_RESULT" != "success" ]]; then
-            echo "CI failed: lint=$LINT_RESULT, type-check=$TYPE_CHECK_RESULT, test=$TEST_RESULT, dashboard-lint=$DASHBOARD_LINT_RESULT, dashboard-test=$DASHBOARD_TEST_RESULT"
+                "$DASHBOARD_TEST_RESULT" != "success" || \
+                "$DASHBOARD_BUILD_RESULT" != "success" || \
+                "$DASHBOARD_AUDIT_RESULT" != "success" ]]; then
+            echo "CI failed: lint=$LINT_RESULT, type-check=$TYPE_CHECK_RESULT, test=$TEST_RESULT, dashboard-lint=$DASHBOARD_LINT_RESULT, dashboard-test=$DASHBOARD_TEST_RESULT, dashboard-build=$DASHBOARD_BUILD_RESULT, dashboard-audit=$DASHBOARD_AUDIT_RESULT"
             exit 1
           fi
           echo "All CI checks passed"
