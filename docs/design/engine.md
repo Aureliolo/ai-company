@@ -226,6 +226,42 @@ Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop
 - **stop()**: Sets `_running = False`, drains the queue within a configurable
   timeout, then cancels. Abandoned futures receive a failure result.
 
+### AgentEngine ↔ TaskEngine Incremental Sync
+
+`AgentEngine` syncs task status transitions to `TaskEngine` incrementally at
+each lifecycle point, rather than reporting only the final status. This gives
+real-time visibility into execution progress and improves crash recovery
+(a crash mid-execution leaves the task at the last-reached stage, not stuck
+at `ASSIGNED`).
+
+**Transition sequences** (1–3 `submit()` calls per execution, bounded):
+
+| Path | Synced transitions |
+|------|--------------------|
+| Happy (COMPLETED) | `IN_PROGRESS` → `IN_REVIEW` → `COMPLETED` |
+| Shutdown | `IN_PROGRESS` → `INTERRUPTED` |
+| Error | `IN_PROGRESS` → `FAILED` (after recovery) |
+| MAX_TURNS / BUDGET | `IN_PROGRESS` only |
+
+**Semantics:**
+
+- **Best-effort**: Sync failures are logged and swallowed — agent execution
+  is never blocked by a TaskEngine issue. Each sync failure is isolated and
+  does not prevent subsequent transitions.
+- **Critical IN_PROGRESS**: The initial `ASSIGNED → IN_PROGRESS` sync is
+  logged at `ERROR` on failure (TaskEngine state coherence for all subsequent
+  transitions depends on it).  Other sync failures log at `WARNING`.
+- **Direct `submit()`**: Uses `TaskEngine.submit()` with
+  `TransitionTaskMutation` directly (not the convenience `transition_task()`
+  method) to inspect `TaskMutationResult` success/failure without exception
+  propagation, keeping sync best-effort.
+- **No concurrency concern**: Each task has exactly one executing agent at
+  any time. Parallel agents operate on separate tasks.
+
+**Snapshot channel**: TaskEngine publishes `TaskStateChanged` events to the
+`"tasks"` channel (matching `CHANNEL_TASKS` in `api.channels`) so events
+reach the `MessageBusBridge` and WebSocket consumers.
+
 ---
 
 ## Agent Execution Loop
@@ -250,8 +286,8 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
 **Supporting models:**
 
 `TerminationReason`
-:   Enum: `COMPLETED`, `MAX_TURNS`, `BUDGET_EXHAUSTED`, `SHUTDOWN`, `ERROR`.
-    `max_turns` defaults to 20.
+:   Enum: `COMPLETED`, `MAX_TURNS`, `BUDGET_EXHAUSTED`, `SHUTDOWN`, `ERROR`,
+    `PARKED`.  `max_turns` defaults to 20.
 
 `TurnRecord`
 :   Frozen per-turn stats (tokens, cost, tool calls, finish reason).
@@ -377,7 +413,7 @@ invocation, and cost tracking into a single `run()` call.
 ```python
 async run(
     identity, task, completion_config?, max_turns?,
-    memory_messages?, timeout_seconds?
+    memory_messages?, timeout_seconds?, effective_autonomy?
 ) -> AgentRunResult
 ```
 
@@ -421,8 +457,12 @@ async run(
     - `ERROR` termination: recovery strategy is applied (default
       `FailAndReassignStrategy` transitions to FAILED;
       see [Crash Recovery](#agent-crash-recovery)).
-    - All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`) leave the
-      task in its current state.
+    - All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`, `PARKED`)
+      leave the task in its current state.  `PARKED` indicates the agent was
+      suspended by an approval-timeout policy; the task remains at its current
+      status until explicitly resumed.
+    - Each transition is synced to TaskEngine incrementally (see
+      [AgentEngine ↔ TaskEngine Incremental Sync](#agentengine--taskengine-incremental-sync)).
     - Transition failures are logged but do not discard the successful execution
       result.
 11. **Return result** -- wraps `ExecutionResult` in `AgentRunResult` with
