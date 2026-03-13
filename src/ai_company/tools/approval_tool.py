@@ -14,6 +14,7 @@ from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
 from ai_company.observability import get_logger
 from ai_company.observability.events.approval_gate import (
     APPROVAL_GATE_ESCALATION_DETECTED,
+    APPROVAL_GATE_ESCALATION_FAILED,
 )
 
 from .base import BaseTool, ToolExecutionResult
@@ -66,6 +67,7 @@ class RequestHumanApprovalTool(BaseTool):
                 "properties": {
                     "action_type": {
                         "type": "string",
+                        "maxLength": 128,
                         "description": (
                             "Action type in category:action format "
                             "(e.g. 'deploy:production', 'db:admin')"
@@ -73,10 +75,12 @@ class RequestHumanApprovalTool(BaseTool):
                     },
                     "title": {
                         "type": "string",
+                        "maxLength": 256,
                         "description": "Short summary of the approval request",
                     },
                     "description": {
                         "type": "string",
+                        "maxLength": 4096,
                         "description": "Detailed explanation of what needs approval",
                     },
                 },
@@ -134,7 +138,7 @@ class RequestHumanApprovalTool(BaseTool):
             raise
         except Exception as exc:
             logger.exception(
-                APPROVAL_GATE_ESCALATION_DETECTED,
+                APPROVAL_GATE_ESCALATION_FAILED,
                 agent_id=self._agent_id,
                 action_type=action_type,
                 error=str(exc),
@@ -196,4 +200,9 @@ class RequestHumanApprovalTool(BaseTool):
         """
         if self._risk_classifier is not None:
             return self._risk_classifier.classify(action_type)
+        logger.debug(
+            APPROVAL_GATE_ESCALATION_DETECTED,
+            action_type=action_type,
+            note="No risk classifier — defaulting to HIGH",
+        )
         return ApprovalRiskLevel.HIGH

@@ -4,12 +4,16 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock
 
+import pytest
+
 from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
 from ai_company.providers.models import ToolCall
 from ai_company.security.models import SecurityVerdict, SecurityVerdictType
 from ai_company.tools.base import BaseTool, ToolExecutionResult
 from ai_company.tools.invoker import ToolInvoker
 from ai_company.tools.registry import ToolRegistry
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 _NOW = datetime.now(UTC)
 
@@ -199,7 +203,7 @@ class TestClearBetweenCalls:
         assert len(invoker.pending_escalations) == 1
 
         await invoker.invoke(_make_tool_call(call_id="tc-2"))
-        assert invoker.pending_escalations == ()
+        assert len(invoker.pending_escalations) == 0
 
     async def test_cleared_at_start_of_invoke_all(self) -> None:
         call_count = 0
@@ -226,7 +230,7 @@ class TestClearBetweenCalls:
         assert len(invoker.pending_escalations) == 1
 
         await invoker.invoke_all([_make_tool_call(call_id="tc-2")])
-        assert invoker.pending_escalations == ()
+        assert len(invoker.pending_escalations) == 0
 
 
 class TestMultipleEscalationsInvokeAll:

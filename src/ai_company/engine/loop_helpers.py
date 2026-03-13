@@ -363,11 +363,19 @@ async def _park_for_approval(
     Returns:
         An ``ExecutionResult`` with PARKED termination reason.
     """
-    agent_id = str(ctx.identity.id) if hasattr(ctx, "identity") else ""
+    agent_id = str(ctx.identity.id)
     task_id = ""
     if ctx.task_execution is not None:
         task_id = ctx.task_execution.task.id
+    else:
+        logger.debug(
+            APPROVAL_GATE_CONTEXT_PARK_FAILED,
+            approval_id=escalation.approval_id,
+            agent_id=agent_id,
+            note="No task_execution on context — using empty task_id",
+        )
 
+    parking_failed = False
     try:
         await approval_gate.park_context(
             escalation=escalation,
@@ -378,6 +386,7 @@ async def _park_for_approval(
     except MemoryError, RecursionError:
         raise
     except Exception:
+        parking_failed = True
         logger.exception(
             APPROVAL_GATE_CONTEXT_PARK_FAILED,
             approval_id=escalation.approval_id,
@@ -390,7 +399,10 @@ async def _park_for_approval(
         ctx,
         TerminationReason.PARKED,
         turns,
-        metadata={"approval_id": escalation.approval_id},
+        metadata={
+            "approval_id": escalation.approval_id,
+            "parking_failed": str(parking_failed),
+        },
     )
 
 

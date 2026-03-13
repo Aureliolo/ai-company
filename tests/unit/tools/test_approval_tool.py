@@ -6,6 +6,8 @@ from ai_company.api.approval_store import ApprovalStore
 from ai_company.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 from ai_company.tools.approval_tool import RequestHumanApprovalTool
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 @pytest.fixture
 def approval_store() -> ApprovalStore:
@@ -241,7 +243,7 @@ class TestErrorHandling:
             msg = "Store unavailable"
             raise RuntimeError(msg)
 
-        approval_store.add = _failing_add  # type: ignore[assignment]
+        approval_store.add = _failing_add  # type: ignore[method-assign]
 
         result2 = await tool.execute(
             arguments={

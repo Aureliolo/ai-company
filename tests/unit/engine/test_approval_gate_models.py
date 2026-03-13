@@ -1,9 +1,12 @@
 """Tests for approval gate models — EscalationInfo and ResumePayload."""
 
 import pytest
+from pydantic import ValidationError
 
 from ai_company.core.enums import ApprovalRiskLevel
 from ai_company.engine.approval_gate_models import EscalationInfo, ResumePayload
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 class TestEscalationInfo:
@@ -34,7 +37,7 @@ class TestEscalationInfo:
             risk_level=ApprovalRiskLevel.HIGH,
             reason="Needs approval",
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             info.approval_id = "changed"  # type: ignore[misc]
 
     @pytest.mark.parametrize(
@@ -51,8 +54,8 @@ class TestEscalationInfo:
             "reason": "Needs approval",
         }
         kwargs[field] = "   "
-        with pytest.raises(Exception):  # noqa: B017, PT011
-            EscalationInfo(**kwargs)
+        with pytest.raises(ValidationError):
+            EscalationInfo(**kwargs)  # type: ignore[arg-type]
 
     @pytest.mark.parametrize(
         "field",
@@ -68,8 +71,8 @@ class TestEscalationInfo:
             "reason": "Needs approval",
         }
         kwargs[field] = ""
-        with pytest.raises(Exception):  # noqa: B017, PT011
-            EscalationInfo(**kwargs)
+        with pytest.raises(ValidationError):
+            EscalationInfo(**kwargs)  # type: ignore[arg-type]
 
     def test_all_risk_levels_accepted(self) -> None:
         for level in ApprovalRiskLevel:
@@ -114,7 +117,7 @@ class TestResumePayload:
             approved=True,
             decided_by="admin",
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             payload.approved = False  # type: ignore[misc]
 
     @pytest.mark.parametrize("field", ["approval_id", "decided_by"])
@@ -125,11 +128,11 @@ class TestResumePayload:
             "decided_by": "admin",
         }
         kwargs[field] = "   "
-        with pytest.raises(Exception):  # noqa: B017, PT011
-            ResumePayload(**kwargs)
+        with pytest.raises(ValidationError):
+            ResumePayload(**kwargs)  # type: ignore[arg-type]
 
     def test_blank_decision_reason_rejected(self) -> None:
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             ResumePayload(
                 approval_id="approval-1",
                 approved=False,

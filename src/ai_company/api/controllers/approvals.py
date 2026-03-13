@@ -36,11 +36,6 @@ from ai_company.observability.events.api import (
     API_APPROVAL_REJECTED,
     API_RESOURCE_NOT_FOUND,
 )
-from ai_company.observability.events.approval_gate import (
-    APPROVAL_GATE_CONTEXT_RESUMED,
-    APPROVAL_GATE_NO_PARKED_CONTEXT,
-    APPROVAL_GATE_RESUME_FAILED,
-)
 
 logger = get_logger(__name__)
 
@@ -99,7 +94,9 @@ def _publish_approval_event(
             event.model_dump_json(),
             channels=[CHANNEL_APPROVALS],
         )
-    except RuntimeError, OSError:
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
         logger.warning(
             API_APPROVAL_PUBLISH_FAILED,
             approval_id=item.id,
@@ -148,50 +145,25 @@ def _resolve_decision(
     return auth_user
 
 
-async def _try_resume_parked_context(
-    app_state: AppState,
+def _log_approval_decision(
     approval_id: str,
     *,
     approved: bool,
     decided_by: str,
 ) -> None:
-    """Best-effort: check for a parked context and log the resume result.
+    """Log the approval decision for observability.
 
-    The actual re-execution is handled by the agent scheduler, which
-    is out of scope for the approval controller.  This function only
-    performs the context lookup and logs the result.
-
-    Failures are logged but never block the approval response.
+    The actual context resumption is handled by the agent scheduler
+    (out of scope for the approval controller).  The scheduler
+    observes the status change via WebSocket events or polling and
+    calls ``ApprovalGate.resume_context()`` when ready.
     """
-    gate = app_state.approval_gate
-    if gate is None:
-        return
-
-    try:
-        result = await gate.resume_context(approval_id)
-        if result is None:
-            logger.info(
-                APPROVAL_GATE_NO_PARKED_CONTEXT,
-                approval_id=approval_id,
-                note="No parked context to resume",
-            )
-            return
-        _context, parked_id = result
-        logger.info(
-            APPROVAL_GATE_CONTEXT_RESUMED,
-            approval_id=approval_id,
-            parked_id=parked_id,
-            approved=approved,
-            decided_by=decided_by,
-        )
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.exception(
-            APPROVAL_GATE_RESUME_FAILED,
-            approval_id=approval_id,
-            note="Resume check failed — approval response continues",
-        )
+    event = API_APPROVAL_APPROVED if approved else API_APPROVAL_REJECTED
+    logger.info(
+        event,
+        approval_id=approval_id,
+        decided_by=decided_by,
+    )
 
 
 class ApprovalsController(Controller):
@@ -271,6 +243,9 @@ class ApprovalsController(Controller):
     ) -> ApiResponse[ApprovalItem]:
         """Create a new approval item.
 
+        The ``requested_by`` field is populated from the authenticated
+        user's username, not from the request body.
+
         Args:
             state: Application state.
             data: Approval creation payload.
@@ -278,7 +253,15 @@ class ApprovalsController(Controller):
 
         Returns:
             Created approval item envelope.
+
+        Raises:
+            UnauthorizedError: If the user is missing from the request scope.
         """
+        auth_user = request.scope.get("user")
+        if not isinstance(auth_user, AuthenticatedUser):
+            msg = "Authentication required"
+            raise UnauthorizedError(msg)
+
         app_state: AppState = state.app_state
         now = datetime.now(UTC)
         approval_id = f"approval-{uuid4().hex}"
@@ -292,7 +275,7 @@ class ApprovalsController(Controller):
             action_type=data.action_type,
             title=data.title,
             description=data.description,
-            requested_by=data.requested_by,
+            requested_by=auth_user.username,
             risk_level=data.risk_level,
             created_at=now,
             expires_at=expires_at,
@@ -381,14 +364,7 @@ class ApprovalsController(Controller):
             WsEventType.APPROVAL_APPROVED,
             updated,
         )
-        logger.info(
-            API_APPROVAL_APPROVED,
-            approval_id=approval_id,
-            decided_by=auth_user.username,
-        )
-
-        await _try_resume_parked_context(
-            app_state,
+        _log_approval_decision(
             approval_id,
             approved=True,
             decided_by=auth_user.username,
@@ -463,14 +439,7 @@ class ApprovalsController(Controller):
             WsEventType.APPROVAL_REJECTED,
             updated,
         )
-        logger.info(
-            API_APPROVAL_REJECTED,
-            approval_id=approval_id,
-            decided_by=auth_user.username,
-        )
-
-        await _try_resume_parked_context(
-            app_state,
+        _log_approval_decision(
             approval_id,
             approved=False,
             decided_by=auth_user.username,
