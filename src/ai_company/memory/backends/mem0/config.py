@@ -26,8 +26,9 @@ class Mem0EmbedderConfig(BaseModel):
     Both ``provider`` and ``model`` are required — callers must
     supply them explicitly so that vendor-specific identifiers stay
     out of source defaults.  The values must be valid Mem0 SDK
-    identifiers (e.g. ``"openai"``, ``"text-embedding-ada-002"``);
-    see the Mem0 documentation for supported providers and models.
+    identifiers (e.g. ``"example-provider"``,
+    ``"example-medium-001"``); see the Mem0 documentation for
+    supported providers and models.
 
     Attributes:
         provider: Embedding provider name (Mem0 SDK identifier).
@@ -106,13 +107,14 @@ def build_mem0_config_dict(config: Mem0BackendConfig) -> dict[str, Any]:
     Returns:
         Configuration dict suitable for ``Memory.from_config()``.
     """
+    base_path = PurePosixPath(config.data_dir)
     return {
         "vector_store": {
             "provider": "qdrant",
             "config": {
                 "collection_name": config.collection_name,
                 "embedding_model_dims": config.embedder.dims,
-                "path": f"{config.data_dir}/qdrant",
+                "path": str(base_path / "qdrant"),
             },
         },
         "embedder": {
@@ -121,7 +123,7 @@ def build_mem0_config_dict(config: Mem0BackendConfig) -> dict[str, Any]:
                 "model": config.embedder.model,
             },
         },
-        "history_db_path": f"{config.data_dir}/history.db",
+        "history_db_path": str(base_path / "history.db"),
         # Mem0 config schema version — required by Memory.from_config().
         "version": "v1.1",
     }

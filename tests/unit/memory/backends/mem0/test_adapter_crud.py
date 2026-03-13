@@ -302,7 +302,10 @@ class TestGet:
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
     ) -> None:
-        mock_client.get.return_value = mem0_get_result("mem-001")
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id="test-agent-001",
+        )
 
         entry = await backend.get("test-agent-001", "mem-001")
 
@@ -373,6 +376,17 @@ class TestGet:
         entry = await backend.get("test-agent-001", "mem-001")
         assert entry is None
 
+    async def test_get_orphan_returns_none(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """get() returns None when memory has no user_id (orphan)."""
+        mock_client.get.return_value = mem0_get_result("mem-001")
+
+        entry = await backend.get("test-agent-001", "mem-001")
+        assert entry is None
+
 
 # ── Delete ────────────────────────────────────────────────────────
 
@@ -384,7 +398,10 @@ class TestDelete:
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
     ) -> None:
-        mock_client.get.return_value = mem0_get_result("mem-001")
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id="test-agent-001",
+        )
         mock_client.delete.return_value = None
 
         result = await backend.delete("test-agent-001", "mem-001")
@@ -419,7 +436,10 @@ class TestDelete:
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
     ) -> None:
-        mock_client.get.return_value = mem0_get_result("mem-001")
+        mock_client.get.return_value = mem0_get_result(
+            "mem-001",
+            user_id="test-agent-001",
+        )
         mock_client.delete.side_effect = RuntimeError("delete failed")
 
         with pytest.raises(MemoryStoreError, match="Failed to delete"):
@@ -472,6 +492,18 @@ class TestDelete:
 
         with pytest.raises(MemoryStoreError, match="cannot delete"):
             await backend.delete("test-agent-001", "mem-001")
+
+    async def test_delete_orphan_raises(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """delete() raises when memory has no user_id (orphan)."""
+        mock_client.get.return_value = mem0_get_result("mem-001")
+
+        with pytest.raises(MemoryStoreError, match="unverifiable"):
+            await backend.delete("test-agent-001", "mem-001")
+        mock_client.delete.assert_not_called()
 
 
 # ── Count ─────────────────────────────────────────────────────────

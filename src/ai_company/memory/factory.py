@@ -79,7 +79,7 @@ def _create_mem0_backend(
             config,
             embedder=embedder,
         )
-    except ValueError as exc:
+    except (ValueError, ValidationError) as exc:
         msg = f"Invalid Mem0 configuration: {exc}"
         logger.warning(
             MEMORY_BACKEND_CONFIG_INVALID,

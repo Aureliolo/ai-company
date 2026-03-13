@@ -254,6 +254,20 @@ class TestSearchShared:
         assert len(entries) == 1
         assert entries[0].category == MemoryCategory.SEMANTIC
 
+    async def test_search_shared_rejects_shared_namespace_exclude(
+        self,
+        backend: Mem0MemoryBackend,
+    ) -> None:
+        """search_shared() rejects exclude_agent == shared namespace."""
+        with pytest.raises(
+            MemoryRetrievalError,
+            match="reserved shared namespace",
+        ):
+            await backend.search_shared(
+                MemoryQuery(text="test"),
+                exclude_agent=_SHARED_NAMESPACE,
+            )
+
     async def test_search_shared_reraises_recursion_error(
         self,
         backend: Mem0MemoryBackend,

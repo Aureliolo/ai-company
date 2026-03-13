@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -425,11 +426,16 @@ class TestApplyPostFilters:
 
     def test_exactly_expired_entry_excluded(self) -> None:
         """Entry with expires_at == now is excluded (<=)."""
-        now = datetime.now(UTC)
-        past = now - timedelta(days=7)
-        entries = (_make_entry(memory_id="m1", created_at=past, expires_at=now),)
+        fixed_now = datetime(2026, 3, 13, 12, 0, 0, tzinfo=UTC)
+        past = fixed_now - timedelta(days=7)
+        entries = (_make_entry(memory_id="m1", created_at=past, expires_at=fixed_now),)
         query = MemoryQuery()
-        result = apply_post_filters(entries, query)
+        with patch(
+            "ai_company.memory.backends.mem0.mappers.datetime",
+        ) as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)  # noqa: DTZ001, PLW0108
+            result = apply_post_filters(entries, query)
         assert len(result) == 0
 
     def test_combined_filters(self) -> None:
@@ -465,54 +471,32 @@ class TestValidateAddResult:
         memory_id = validate_add_result(result, context="test")
         assert memory_id == "mem-001"
 
-    def test_empty_results_raises(self) -> None:
-        result: dict[str, Any] = {"results": []}
-        with pytest.raises(MemoryStoreError, match="no results"):
-            validate_add_result(result, context="test")
-
-    def test_missing_results_key_raises(self) -> None:
-        result = {"data": "something"}
-        with pytest.raises(MemoryStoreError, match="no results"):
-            validate_add_result(result, context="test")
-
-    def test_non_list_results_raises(self) -> None:
-        result = {"results": "not-a-list"}
-        with pytest.raises(MemoryStoreError, match="no results"):
-            validate_add_result(result, context="test")
-
-    def test_missing_id_raises(self) -> None:
-        result = {"results": [{"memory": "no id"}]}
-        with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
-            validate_add_result(result, context="test")
-
-    def test_none_id_raises(self) -> None:
-        result = {"results": [{"id": None, "event": "ADD"}]}
-        with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
-            validate_add_result(result, context="test")
-
-    def test_blank_id_raises(self) -> None:
-        result = {"results": [{"id": "", "event": "ADD"}]}
-        with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
-            validate_add_result(result, context="test")
-
-    def test_whitespace_only_id_raises(self) -> None:
-        result = {"results": [{"id": "   ", "event": "ADD"}]}
-        with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
+    @pytest.mark.parametrize(
+        ("result", "expected_match"),
+        [
+            ({"results": []}, "no results"),
+            ({"data": "something"}, "no results"),
+            ({"results": "not-a-list"}, "no results"),
+            ({"results": [{"memory": "no id"}]}, "missing or blank 'id'"),
+            ({"results": [{"id": None, "event": "ADD"}]}, "missing or blank 'id'"),
+            ({"results": [{"id": "", "event": "ADD"}]}, "missing or blank 'id'"),
+            ({"results": [{"id": "   ", "event": "ADD"}]}, "missing or blank 'id'"),
+            ("not-a-dict", "unexpected type"),
+            ({"results": ["not-a-dict"]}, "not a dict"),
+        ],
+    )
+    def test_malformed_result_raises(
+        self,
+        result: Any,
+        expected_match: str,
+    ) -> None:
+        with pytest.raises(MemoryStoreError, match=expected_match):
             validate_add_result(result, context="test")
 
     def test_numeric_id_coerced_to_string(self) -> None:
         result = {"results": [{"id": 42, "event": "ADD"}]}
         memory_id = validate_add_result(result, context="test")
         assert memory_id == "42"
-
-    def test_non_dict_result_raises(self) -> None:
-        with pytest.raises(MemoryStoreError, match="unexpected type"):
-            validate_add_result("not-a-dict", context="test")
-
-    def test_non_dict_first_item_raises(self) -> None:
-        result: dict[str, Any] = {"results": ["not-a-dict"]}
-        with pytest.raises(MemoryStoreError, match="not a dict"):
-            validate_add_result(result, context="test")
 
 
 @pytest.mark.unit

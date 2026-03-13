@@ -288,12 +288,23 @@ def mem0_result_to_entry(
 
     created_at = parse_mem0_datetime(raw.get("created_at"))
     updated_at = parse_mem0_datetime(raw.get("updated_at"))
+
+    raw_metadata = raw.get("metadata")
+    category, metadata, expires_at = parse_mem0_metadata(raw_metadata)
+
     if created_at is None:
-        # Prefer updated_at as a fallback — it is a closer
-        # approximation than now() and avoids violating the
-        # MemoryEntry invariant (updated_at >= created_at).
-        fallback = updated_at or datetime.now(UTC)
-        fallback_source = "updated_at" if updated_at else "now()"
+        # Pick the best available fallback to avoid violating the
+        # MemoryEntry invariants (updated_at >= created_at,
+        # expires_at >= created_at).
+        if updated_at is not None:
+            fallback = updated_at
+            fallback_source = "updated_at"
+        elif expires_at is not None:
+            fallback = expires_at
+            fallback_source = "expires_at"
+        else:
+            fallback = datetime.now(UTC)
+            fallback_source = "now()"
         logger.warning(
             MEMORY_MODEL_INVALID,
             field="created_at",
@@ -302,9 +313,6 @@ def mem0_result_to_entry(
             f"defaulting to {fallback_source}",
         )
         created_at = fallback
-
-    raw_metadata = raw.get("metadata")
-    category, metadata, expires_at = parse_mem0_metadata(raw_metadata)
 
     raw_score = raw.get("score")
     relevance_score = normalize_relevance_score(raw_score)

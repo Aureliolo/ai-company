@@ -552,11 +552,12 @@ class Mem0MemoryBackend:
                     MEMORY_ENTRY_FETCHED,
                     agent_id=agent_id,
                     memory_id=memory_id,
-                    found=True,
+                    found=False,
                     reason="memory has no user_id — ownership "
-                    "unverifiable, returning to requesting agent",
+                    "unverifiable, refusing to return",
                 )
-            elif str(owner) != str(agent_id):
+                return None
+            if str(owner) != str(agent_id):
                 logger.debug(
                     MEMORY_ENTRY_FETCHED,
                     agent_id=agent_id,
@@ -636,14 +637,17 @@ class Mem0MemoryBackend:
             # Block deletion of shared-namespace entries — use retract().
             owner = existing.get("user_id")
             if owner is None:
+                msg = (
+                    f"Memory {memory_id} has no user_id — ownership "
+                    f"unverifiable, refusing deletion"
+                )
                 logger.warning(
-                    MEMORY_ENTRY_DELETED,
+                    MEMORY_ENTRY_DELETE_FAILED,
                     agent_id=agent_id,
                     memory_id=memory_id,
-                    unverifiable_ownership=True,
-                    reason="memory has no user_id — ownership "
-                    "unverifiable, proceeding with delete",
+                    reason="unverifiable_ownership",
                 )
+                raise MemoryStoreError(msg)  # noqa: TRY301
             if owner is not None and str(owner) == _SHARED_NAMESPACE:
                 msg = (
                     f"Memory {memory_id} belongs to the shared namespace — "
@@ -870,6 +874,12 @@ class Mem0MemoryBackend:
             MemoryRetrievalError: If the search fails.
         """
         self._require_connected()
+        if exclude_agent is not None and str(exclude_agent) == _SHARED_NAMESPACE:
+            msg = (
+                "exclude_agent must not be the reserved shared namespace: "
+                f"{_SHARED_NAMESPACE!r}"
+            )
+            raise MemoryRetrievalError(msg)
         try:
             if query.text is not None:
                 raw_result = await asyncio.to_thread(
