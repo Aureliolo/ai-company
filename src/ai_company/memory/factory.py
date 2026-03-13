@@ -25,6 +25,91 @@ from ai_company.observability.events.memory import (
 logger = get_logger(__name__)
 
 
+def _create_mem0_backend(
+    config: CompanyMemoryConfig,
+    *,
+    embedder: Mem0EmbedderConfig | None,
+) -> MemoryBackend:
+    """Create a Mem0 memory backend from configuration.
+
+    Args:
+        config: Company-wide memory configuration.
+        embedder: Mem0-specific embedder configuration (required).
+
+    Returns:
+        A new, disconnected ``Mem0MemoryBackend`` instance.
+
+    Raises:
+        MemoryConfigError: If embedder is missing/invalid or
+            backend construction fails.
+    """
+    from ai_company.memory.backends.mem0 import Mem0MemoryBackend  # noqa: PLC0415
+    from ai_company.memory.backends.mem0.config import (  # noqa: PLC0415
+        Mem0EmbedderConfig,
+        build_config_from_company_config,
+    )
+
+    if embedder is None:
+        msg = (
+            "Mem0 backend requires an embedder configuration — "
+            "pass a Mem0EmbedderConfig instance"
+        )
+        logger.warning(
+            MEMORY_BACKEND_CONFIG_INVALID,
+            backend="mem0",
+            reason="missing_embedder",
+            error=msg,
+        )
+        raise MemoryConfigError(msg)
+    if not isinstance(embedder, Mem0EmbedderConfig):
+        msg = (  # type: ignore[unreachable]
+            f"embedder must be a Mem0EmbedderConfig, got {type(embedder).__name__}"
+        )
+        logger.warning(
+            MEMORY_BACKEND_CONFIG_INVALID,
+            backend="mem0",
+            reason="invalid_embedder_type",
+            error=msg,
+            embedder_type=type(embedder).__name__,
+        )
+        raise MemoryConfigError(msg)
+
+    try:
+        mem0_config = build_config_from_company_config(
+            config,
+            embedder=embedder,
+        )
+    except ValueError as exc:
+        msg = f"Invalid Mem0 configuration: {exc}"
+        logger.warning(
+            MEMORY_BACKEND_CONFIG_INVALID,
+            backend="mem0",
+            reason="config_build_failed",
+            error=msg,
+        )
+        raise MemoryConfigError(msg) from exc
+    try:
+        backend = Mem0MemoryBackend(
+            mem0_config=mem0_config,
+            max_memories_per_agent=config.options.max_memories_per_agent,
+        )
+    except (ValueError, ValidationError) as exc:
+        msg = f"Failed to create Mem0 backend: {exc}"
+        logger.warning(
+            MEMORY_BACKEND_CONFIG_INVALID,
+            backend="mem0",
+            reason="backend_init_failed",
+            error=msg,
+        )
+        raise MemoryConfigError(msg) from exc
+    logger.info(
+        MEMORY_BACKEND_CREATED,
+        backend="mem0",
+        data_dir=mem0_config.data_dir,
+    )
+    return backend
+
+
 def create_memory_backend(
     config: CompanyMemoryConfig,
     *,
@@ -48,71 +133,7 @@ def create_memory_backend(
             required configuration is missing.
     """
     if config.backend == "mem0":
-        from ai_company.memory.backends.mem0 import Mem0MemoryBackend  # noqa: PLC0415
-        from ai_company.memory.backends.mem0.config import (  # noqa: PLC0415
-            Mem0EmbedderConfig,
-            build_config_from_company_config,
-        )
-
-        if embedder is None:
-            msg = (
-                "Mem0 backend requires an embedder configuration — "
-                "pass a Mem0EmbedderConfig instance"
-            )
-            logger.warning(
-                MEMORY_BACKEND_CONFIG_INVALID,
-                backend="mem0",
-                reason="missing_embedder",
-                error=msg,
-            )
-            raise MemoryConfigError(msg)
-        if not isinstance(embedder, Mem0EmbedderConfig):
-            msg = (  # type: ignore[unreachable]
-                f"embedder must be a Mem0EmbedderConfig, got {type(embedder).__name__}"
-            )
-            logger.warning(
-                MEMORY_BACKEND_CONFIG_INVALID,
-                backend="mem0",
-                reason="invalid_embedder_type",
-                error=msg,
-                embedder_type=type(embedder).__name__,
-            )
-            raise MemoryConfigError(msg)
-
-        try:
-            mem0_config = build_config_from_company_config(
-                config,
-                embedder=embedder,
-            )
-        except ValueError as exc:
-            msg = f"Invalid Mem0 configuration: {exc}"
-            logger.warning(
-                MEMORY_BACKEND_CONFIG_INVALID,
-                backend="mem0",
-                reason="config_build_failed",
-                error=msg,
-            )
-            raise MemoryConfigError(msg) from exc
-        try:
-            backend = Mem0MemoryBackend(
-                mem0_config=mem0_config,
-                max_memories_per_agent=config.options.max_memories_per_agent,
-            )
-        except (ValueError, ValidationError) as exc:
-            msg = f"Failed to create Mem0 backend: {exc}"
-            logger.warning(
-                MEMORY_BACKEND_CONFIG_INVALID,
-                backend="mem0",
-                reason="backend_init_failed",
-                error=msg,
-            )
-            raise MemoryConfigError(msg) from exc
-        logger.info(
-            MEMORY_BACKEND_CREATED,
-            backend="mem0",
-            data_dir=mem0_config.data_dir,
-        )
-        return backend
+        return _create_mem0_backend(config, embedder=embedder)
     # Defensive guard: config validation rejects unknown backends, so
     # this branch is unreachable under normal construction.  It exists
     # as a safety net for callers that bypass validation (e.g. via

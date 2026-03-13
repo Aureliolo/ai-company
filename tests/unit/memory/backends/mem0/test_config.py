@@ -217,13 +217,14 @@ class TestBuildConfigFromCompanyConfig:
                 embedder=_embedder(),
             )
 
-    def test_accepts_qdrant_external(self) -> None:
+    def test_rejects_qdrant_external(self) -> None:
+        """qdrant-external is not supported — only embedded qdrant."""
         company_config = CompanyMemoryConfig(
             backend="mem0",
             storage=MemoryStorageConfig(vector_store="qdrant-external"),
         )
-        mem0_config = build_config_from_company_config(
-            company_config,
-            embedder=_embedder(),
-        )
-        assert mem0_config is not None
+        with pytest.raises(ValueError, match="embedded qdrant"):
+            build_config_from_company_config(
+                company_config,
+                embedder=_embedder(),
+            )

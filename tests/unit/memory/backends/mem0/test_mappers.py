@@ -153,6 +153,18 @@ class TestNormalizeRelevanceScore:
     def test_non_numeric_type_returns_none(self) -> None:
         assert normalize_relevance_score(object()) is None
 
+    def test_nan_returns_none(self) -> None:
+        assert normalize_relevance_score(float("nan")) is None
+
+    def test_nan_string_returns_none(self) -> None:
+        assert normalize_relevance_score("nan") is None
+
+    def test_inf_returns_none(self) -> None:
+        assert normalize_relevance_score(float("inf")) is None
+
+    def test_neg_inf_returns_none(self) -> None:
+        assert normalize_relevance_score(float("-inf")) is None
+
 
 @pytest.mark.unit
 class TestParseMem0Metadata:
@@ -601,6 +613,14 @@ class TestCoerceConfidence:
     def test_object_type_returns_half(self) -> None:
         """Object type that can't convert to float defaults to 0.5."""
         assert _coerce_confidence({f"{_PREFIX}confidence": object()}) == 0.5
+
+    def test_nan_returns_half(self) -> None:
+        """NaN confidence defaults to 0.5."""
+        assert _coerce_confidence({f"{_PREFIX}confidence": float("nan")}) == 0.5
+
+    def test_inf_returns_half(self) -> None:
+        """Inf confidence defaults to 0.5."""
+        assert _coerce_confidence({f"{_PREFIX}confidence": float("inf")}) == 0.5
 
 
 @pytest.mark.unit

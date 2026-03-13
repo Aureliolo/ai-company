@@ -149,9 +149,9 @@ def build_config_from_company_config(
             (``..``) — propagated from ``Mem0BackendConfig``
             validation.
     """
-    if config.storage.vector_store not in ("qdrant", "qdrant-external"):
+    if config.storage.vector_store != "qdrant":
         msg = (
-            f"Mem0 backend only supports qdrant vector stores, "
+            f"Mem0 backend only supports embedded qdrant vector store, "
             f"got {config.storage.vector_store!r}"
         )
         logger.warning(

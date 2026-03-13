@@ -1,5 +1,6 @@
 """Tests for Mem0 adapter — shared knowledge store (publish, search, retract)."""
 
+import builtins
 from unittest.mock import MagicMock
 
 import pytest
@@ -86,8 +87,8 @@ class TestPublish:
         mock_client: MagicMock,
     ) -> None:
         """builtins.MemoryError is re-raised without wrapping."""
-        mock_client.add.side_effect = MemoryError("out of memory")
-        with pytest.raises(MemoryError):
+        mock_client.add.side_effect = builtins.MemoryError("out of memory")
+        with pytest.raises(builtins.MemoryError):
             await backend.publish("test-agent-001", make_store_request())
 
     async def test_publish_reraises_recursion_error(
@@ -208,8 +209,8 @@ class TestSearchShared:
         mock_client: MagicMock,
     ) -> None:
         """builtins.MemoryError is re-raised without wrapping."""
-        mock_client.search.side_effect = MemoryError("out of memory")
-        with pytest.raises(MemoryError):
+        mock_client.search.side_effect = builtins.MemoryError("out of memory")
+        with pytest.raises(builtins.MemoryError):
             await backend.search_shared(MemoryQuery(text="test"))
 
     async def test_search_shared_with_category_post_filter(
@@ -300,6 +301,7 @@ class TestRetract:
             "id": "shared-001",
             "memory": "shared content",
             "created_at": "2026-03-12T10:00:00+00:00",
+            "user_id": _SHARED_NAMESPACE,
             "metadata": {PUBLISHER_KEY: "test-agent-001"},
         }
         mock_client.delete.return_value = None
@@ -329,6 +331,7 @@ class TestRetract:
             "id": "shared-001",
             "memory": "content",
             "created_at": "2026-03-12T10:00:00+00:00",
+            "user_id": _SHARED_NAMESPACE,
             "metadata": {PUBLISHER_KEY: "test-agent-002"},
         }
 
@@ -344,6 +347,7 @@ class TestRetract:
             "id": "not-shared-001",
             "memory": "private content",
             "created_at": "2026-03-12T10:00:00+00:00",
+            "user_id": _SHARED_NAMESPACE,
             "metadata": {},
         }
 
@@ -366,8 +370,8 @@ class TestRetract:
         mock_client: MagicMock,
     ) -> None:
         """builtins.MemoryError is re-raised without wrapping."""
-        mock_client.get.side_effect = MemoryError("out of memory")
-        with pytest.raises(MemoryError):
+        mock_client.get.side_effect = builtins.MemoryError("out of memory")
+        with pytest.raises(builtins.MemoryError):
             await backend.retract("test-agent-001", "shared-001")
 
     async def test_retract_reraises_recursion_error(
@@ -380,6 +384,23 @@ class TestRetract:
         with pytest.raises(RecursionError):
             await backend.retract("test-agent-001", "shared-001")
 
+    async def test_retract_not_shared_namespace_raises(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """retract() rejects memories not in the shared namespace."""
+        mock_client.get.return_value = {
+            "id": "private-001",
+            "memory": "private content",
+            "created_at": "2026-03-12T10:00:00+00:00",
+            "user_id": "test-agent-001",
+            "metadata": {PUBLISHER_KEY: "test-agent-001"},
+        }
+
+        with pytest.raises(MemoryStoreError, match="not in the shared namespace"):
+            await backend.retract("test-agent-001", "private-001")
+
     async def test_retract_delete_failure_wraps(
         self,
         backend: Mem0MemoryBackend,
@@ -390,6 +411,7 @@ class TestRetract:
             "id": "shared-001",
             "memory": "content",
             "created_at": "2026-03-12T10:00:00+00:00",
+            "user_id": _SHARED_NAMESPACE,
             "metadata": {PUBLISHER_KEY: "test-agent-001"},
         }
         mock_client.delete.side_effect = RuntimeError("delete failed")

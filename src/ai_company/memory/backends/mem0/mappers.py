@@ -5,6 +5,7 @@ Each mapper handles one direction of the conversion so the adapter
 stays thin.
 """
 
+import math
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -110,6 +111,14 @@ def normalize_relevance_score(score: Any) -> float | None:
             reason="non-numeric relevance score, returning None",
         )
         return None
+    if not math.isfinite(numeric):
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="score",
+            raw_value=score,
+            reason="non-finite relevance score, returning None",
+        )
+        return None
     return max(0.0, min(1.0, numeric))
 
 
@@ -130,6 +139,14 @@ def _coerce_confidence(raw_metadata: dict[str, Any]) -> float:
             field="confidence",
             raw_value=raw,
             reason="non-numeric confidence, defaulting to 0.5",
+        )
+        return 0.5
+    if not math.isfinite(value):
+        logger.warning(
+            MEMORY_MODEL_INVALID,
+            field="confidence",
+            raw_value=raw,
+            reason="non-finite confidence, defaulting to 0.5",
         )
         return 0.5
     return max(0.0, min(1.0, value))
@@ -270,15 +287,21 @@ def mem0_result_to_entry(
     content = NotBlankStr(str(raw_content))
 
     created_at = parse_mem0_datetime(raw.get("created_at"))
+    updated_at = parse_mem0_datetime(raw.get("updated_at"))
     if created_at is None:
+        # Prefer updated_at as a fallback — it is a closer
+        # approximation than now() and avoids violating the
+        # MemoryEntry invariant (updated_at >= created_at).
+        fallback = updated_at or datetime.now(UTC)
+        fallback_source = "updated_at" if updated_at else "now()"
         logger.warning(
             MEMORY_MODEL_INVALID,
             field="created_at",
             memory_id=str(raw.get("id", "?")),
-            reason="missing or unparseable created_at, defaulting to now()",
+            reason=f"missing or unparseable created_at, "
+            f"defaulting to {fallback_source}",
         )
-        created_at = datetime.now(UTC)
-    updated_at = parse_mem0_datetime(raw.get("updated_at"))
+        created_at = fallback
 
     raw_metadata = raw.get("metadata")
     category, metadata, expires_at = parse_mem0_metadata(raw_metadata)

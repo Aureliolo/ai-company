@@ -1,5 +1,6 @@
 """Tests for Mem0 adapter — properties, capabilities, protocol, lifecycle."""
 
+import builtins
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -241,8 +242,8 @@ class TestLifecycle:
         mock_client: MagicMock,
     ) -> None:
         """builtins.MemoryError propagates through health_check."""
-        mock_client.get_all.side_effect = MemoryError("out of memory")
-        with pytest.raises(MemoryError):
+        mock_client.get_all.side_effect = builtins.MemoryError("out of memory")
+        with pytest.raises(builtins.MemoryError):
             await backend.health_check()
 
     async def test_connect_memory_error_propagates(
@@ -254,9 +255,9 @@ class TestLifecycle:
         with (
             patch(
                 "ai_company.memory.backends.mem0.adapter.asyncio.to_thread",
-                side_effect=MemoryError("out of memory"),
+                side_effect=builtins.MemoryError("out of memory"),
             ),
-            pytest.raises(MemoryError),
+            pytest.raises(builtins.MemoryError),
         ):
             await b.connect()
 

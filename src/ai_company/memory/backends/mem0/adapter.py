@@ -19,7 +19,7 @@ guard logic.
 
 import asyncio
 import builtins
-from typing import TYPE_CHECKING, Any, runtime_checkable
+from typing import TYPE_CHECKING, Any
 
 from ai_company.core.enums import MemoryCategory
 from ai_company.core.types import NotBlankStr
@@ -83,7 +83,6 @@ if TYPE_CHECKING:
         MemoryStoreRequest,
     )
 
-    @runtime_checkable
     class Mem0Client(Protocol):
         """Structural type for the Mem0 ``Memory`` client.
 
@@ -255,11 +254,14 @@ class Mem0MemoryBackend:
 
         Releases the client reference so the garbage collector can
         reclaim resources.  Safe to call even if not connected.
+        Acquires ``_connect_lock`` to prevent racing with an
+        in-progress ``connect()`` call.
         """
-        logger.info(MEMORY_BACKEND_DISCONNECTING, backend="mem0")
-        self._client = None
-        self._connected = False
-        logger.info(MEMORY_BACKEND_DISCONNECTED, backend="mem0")
+        async with self._connect_lock:
+            logger.info(MEMORY_BACKEND_DISCONNECTING, backend="mem0")
+            self._client = None
+            self._connected = False
+            logger.info(MEMORY_BACKEND_DISCONNECTED, backend="mem0")
 
     async def health_check(self) -> bool:
         """Check whether the Mem0 backend is healthy.
@@ -635,9 +637,10 @@ class Mem0MemoryBackend:
             owner = existing.get("user_id")
             if owner is None:
                 logger.warning(
-                    MEMORY_ENTRY_DELETE_FAILED,
+                    MEMORY_ENTRY_DELETED,
                     agent_id=agent_id,
                     memory_id=memory_id,
+                    unverifiable_ownership=True,
                     reason="memory has no user_id — ownership "
                     "unverifiable, proceeding with delete",
                 )
@@ -956,6 +959,7 @@ class Mem0MemoryBackend:
                 ownership verification fails.
         """
         self._require_connected()
+        self._validate_agent_id(agent_id)
         try:
             raw = await asyncio.to_thread(self._client.get, str(memory_id))
             if raw is None:
@@ -966,6 +970,22 @@ class Mem0MemoryBackend:
                     found=False,
                 )
                 return False
+
+            # Verify this memory belongs to the shared namespace.
+            owner_ns = raw.get("user_id")
+            if owner_ns != _SHARED_NAMESPACE:
+                logger.warning(
+                    MEMORY_SHARED_RETRACT_FAILED,
+                    agent_id=agent_id,
+                    memory_id=memory_id,
+                    reason="not in shared namespace",
+                    actual_namespace=str(owner_ns),
+                )
+                msg = (
+                    f"Memory {memory_id} is not in the shared namespace — "
+                    f"use delete() to remove private entries"
+                )
+                raise MemoryStoreError(msg)  # noqa: TRY301
 
             publisher = extract_publisher(raw)
             if publisher is None:

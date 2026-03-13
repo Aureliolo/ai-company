@@ -1,5 +1,6 @@
 """Tests for Mem0 adapter — store, retrieve, get, delete, count."""
 
+import builtins
 from unittest.mock import MagicMock
 
 import pytest
@@ -89,8 +90,8 @@ class TestStore:
         mock_client: MagicMock,
     ) -> None:
         """builtins.MemoryError is re-raised without wrapping."""
-        mock_client.add.side_effect = MemoryError("out of memory")
-        with pytest.raises(MemoryError):
+        mock_client.add.side_effect = builtins.MemoryError("out of memory")
+        with pytest.raises(builtins.MemoryError):
             await backend.store("test-agent-001", make_store_request())
 
     async def test_store_blank_id_from_add_raises(
@@ -242,8 +243,8 @@ class TestRetrieve:
         mock_client: MagicMock,
     ) -> None:
         """builtins.MemoryError is re-raised without wrapping."""
-        mock_client.search.side_effect = MemoryError("out of memory")
-        with pytest.raises(MemoryError):
+        mock_client.search.side_effect = builtins.MemoryError("out of memory")
+        with pytest.raises(builtins.MemoryError):
             await backend.retrieve(
                 "test-agent-001",
                 MemoryQuery(text="test"),
@@ -336,8 +337,8 @@ class TestGet:
         mock_client: MagicMock,
     ) -> None:
         """builtins.MemoryError is re-raised without wrapping in get()."""
-        mock_client.get.side_effect = MemoryError("out of memory")
-        with pytest.raises(MemoryError):
+        mock_client.get.side_effect = builtins.MemoryError("out of memory")
+        with pytest.raises(builtins.MemoryError):
             await backend.get("test-agent-001", "mem-001")
 
     async def test_get_reraises_recursion_error(
@@ -430,8 +431,8 @@ class TestDelete:
         mock_client: MagicMock,
     ) -> None:
         """builtins.MemoryError is re-raised without wrapping in delete()."""
-        mock_client.get.side_effect = MemoryError("out of memory")
-        with pytest.raises(MemoryError):
+        mock_client.get.side_effect = builtins.MemoryError("out of memory")
+        with pytest.raises(builtins.MemoryError):
             await backend.delete("test-agent-001", "mem-001")
 
     async def test_delete_reraises_recursion_error(
@@ -603,8 +604,8 @@ class TestCount:
         mock_client: MagicMock,
     ) -> None:
         """builtins.MemoryError is re-raised without wrapping in count()."""
-        mock_client.get_all.side_effect = MemoryError("out of memory")
-        with pytest.raises(MemoryError):
+        mock_client.get_all.side_effect = builtins.MemoryError("out of memory")
+        with pytest.raises(builtins.MemoryError):
             await backend.count("test-agent-001")
 
     async def test_count_reraises_recursion_error(
