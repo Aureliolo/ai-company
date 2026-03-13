@@ -21,7 +21,9 @@ const chartOption = computed(() => {
     hourlyData.set(hourKey, (hourlyData.get(hourKey) ?? 0) + record.cost_usd)
   }
 
-  const entries = Array.from(hourlyData.entries()).slice(-24)
+  // hourlyData is in descending order (newest first from sorted input).
+  // Take first 24 entries (most recent), then reverse for chronological display.
+  const entries = Array.from(hourlyData.entries()).slice(0, 24).reverse()
 
   return {
     tooltip: { trigger: 'axis' },

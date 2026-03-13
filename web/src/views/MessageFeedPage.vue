@@ -66,7 +66,7 @@ function handleChannelChange(channel: string | null) {
       </template>
     </PageHeader>
 
-    <ErrorBoundary :error="messageStore.error" @retry="messageStore.fetchMessages()">
+    <ErrorBoundary :error="messageStore.error" @retry="() => messageStore.fetchMessages(messageStore.activeChannel ?? undefined)">
       <LoadingSkeleton v-if="messageStore.loading && messageStore.messages.length === 0" :lines="6" />
       <EmptyState
         v-else-if="messageStore.messages.length === 0"

@@ -22,7 +22,7 @@ defineProps<{
           color ?? 'bg-brand-600/10 text-brand-400',
         ]"
       >
-        <i :class="[icon, 'text-lg']" />
+        <i :class="[icon, 'text-lg']" aria-hidden="true" />
       </div>
     </div>
   </div>

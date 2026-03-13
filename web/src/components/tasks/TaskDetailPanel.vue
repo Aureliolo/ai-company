@@ -50,6 +50,7 @@ watch(
       cancelReason.value = ''
     }
   },
+  { immediate: true },
 )
 
 function getTransitions(): readonly TaskStatus[] {
@@ -181,7 +182,8 @@ function handleCancel() {
           @click="showCancel = true"
         />
         <div v-else class="space-y-2">
-          <Textarea v-model="cancelReason" placeholder="Reason for cancellation" class="w-full" rows="2" aria-required="true" />
+          <label for="cancel-reason" class="mb-1 block text-xs text-slate-400">Reason for cancellation</label>
+          <Textarea id="cancel-reason" v-model="cancelReason" placeholder="Reason for cancellation" class="w-full" rows="2" aria-required="true" />
           <div class="flex gap-2">
             <Button label="Confirm Cancel" severity="danger" size="small" :disabled="!cancelReason.trim()" @click="handleCancel" />
             <Button label="Back" text size="small" @click="showCancel = false" />

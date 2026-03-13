@@ -141,15 +141,17 @@ async function handleFilterReset() {
             @update="handleFilterUpdate"
             @reset="handleFilterReset"
           />
-          <div class="flex rounded-lg border border-slate-700">
+          <div class="flex rounded-lg border border-slate-700" role="group" aria-label="View mode">
             <button
               :class="['px-3 py-1.5 text-xs', viewMode === 'kanban' ? 'bg-brand-600 text-white' : 'text-slate-400']"
+              :aria-pressed="viewMode === 'kanban'"
               @click="viewMode = 'kanban'"
             >
               Board
             </button>
             <button
               :class="['px-3 py-1.5 text-xs', viewMode === 'list' ? 'bg-brand-600 text-white' : 'text-slate-400']"
+              :aria-pressed="viewMode === 'list'"
               @click="viewMode = 'list'"
             >
               List
