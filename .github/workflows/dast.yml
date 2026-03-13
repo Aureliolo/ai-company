@@ -1,0 +1,73 @@
+name: DAST
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 5 * * 1"  # Weekly Monday 5am UTC
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: false  # Serialize — only one DAST scan at a time
+
+jobs:
+  zap-scan:
+    name: ZAP API Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-python-uv
+
+      # Export OpenAPI schema for ZAP to consume
+      - name: Export OpenAPI schema
+        run: uv run python scripts/export_openapi.py
+
+      # Build backend image locally (no push, no registry credentials)
+      - name: Build backend image
+        run: docker compose -f docker/compose.yml build backend
+
+      # Start backend only (no web/nginx needed for API scan)
+      - name: Start backend
+        run: docker compose -f docker/compose.yml up -d backend
+        env:
+          AI_COMPANY_JWT_SECRET: "ci-dast-scan-only"
+          AI_COMPANY_API_KEY_SECRET: "ci-dast-scan-only"
+
+      - name: Wait for healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+              echo "Backend healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Backend failed to start within 60s"
+          docker compose -f docker/compose.yml logs backend
+          exit 1
+
+      - name: ZAP API Scan
+        uses: zaproxy/action-api-scan@5158fe4d9d8fcc75ea204db81317cce7f9e5453d # v0.10.0
+        with:
+          target: http://localhost:8000/openapi.json
+          format: openapi
+          cmd_options: "-a"
+
+      - name: Upload SARIF
+        if: ${{ !cancelled() }}
+        uses: github/codeql-action/upload-sarif@820e3160e279568db735cee8ed8f8e77a6da7818 # v3.32.6
+        with:
+          sarif_file: report_sarif.json
+
+      - name: Stop backend
+        if: always()
+        run: docker compose -f docker/compose.yml down
