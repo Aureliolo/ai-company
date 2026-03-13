@@ -236,6 +236,17 @@ class TestRetrieve:
                 MemoryQuery(text="test"),
             )
 
+    async def test_retrieve_rejects_shared_namespace_agent_id(
+        self,
+        backend: Mem0MemoryBackend,
+    ) -> None:
+        """retrieve() rejects the shared namespace with MemoryRetrievalError."""
+        with pytest.raises(MemoryRetrievalError, match="reserved shared namespace"):
+            await backend.retrieve(
+                _SHARED_NAMESPACE,
+                MemoryQuery(text="test"),
+            )
+
     async def test_retrieve_invalid_entry_raises(
         self,
         backend: Mem0MemoryBackend,
@@ -302,6 +313,14 @@ class TestGet:
         mock_client.get.side_effect = MemoryError("out of memory")
         with pytest.raises(MemoryError):
             await backend.get("test-agent-001", "mem-001")
+
+    async def test_get_rejects_shared_namespace_agent_id(
+        self,
+        backend: Mem0MemoryBackend,
+    ) -> None:
+        """get() rejects the shared namespace with MemoryRetrievalError."""
+        with pytest.raises(MemoryRetrievalError, match="reserved shared namespace"):
+            await backend.get(_SHARED_NAMESPACE, "mem-001")
 
     async def test_get_ownership_mismatch_returns_none(
         self,
@@ -486,6 +505,14 @@ class TestCount:
         )
         # "bogus_category" defaults to WORKING
         assert count == 1
+
+    async def test_count_rejects_shared_namespace_agent_id(
+        self,
+        backend: Mem0MemoryBackend,
+    ) -> None:
+        """count() rejects the shared namespace with MemoryRetrievalError."""
+        with pytest.raises(MemoryRetrievalError, match="reserved shared namespace"):
+            await backend.count(_SHARED_NAMESPACE)
 
     async def test_count_exception_wraps(
         self,

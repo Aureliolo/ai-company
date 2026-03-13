@@ -148,6 +148,21 @@ class TestLifecycle:
 
         assert b.is_connected is True
 
+    async def test_connect_idempotent_when_already_connected(
+        self,
+        backend: Mem0MemoryBackend,
+    ) -> None:
+        """connect() is a no-op when already connected."""
+        assert backend.is_connected is True
+        # Calling connect() again should not re-create client
+        original_client = backend._client
+        with patch(
+            "ai_company.memory.backends.mem0.adapter.asyncio.to_thread",
+        ) as mock_to_thread:
+            await backend.connect()
+        mock_to_thread.assert_not_called()
+        assert backend._client is original_client
+
     async def test_connect_failure_raises(
         self,
         mem0_config: Mem0BackendConfig,

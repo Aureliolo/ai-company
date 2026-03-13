@@ -41,6 +41,7 @@ def _make_entry(  # noqa: PLR0913
     tags: tuple[str, ...] = (),
     relevance_score: float | None = None,
     created_at: datetime | None = None,
+    expires_at: datetime | None = None,
 ) -> MemoryEntry:
     """Helper to build a MemoryEntry for tests."""
     now = created_at or datetime.now(UTC)
@@ -52,6 +53,7 @@ def _make_entry(  # noqa: PLR0913
         metadata=MemoryMetadata(tags=tags),
         created_at=now,
         relevance_score=relevance_score,
+        expires_at=expires_at,
     )
 
 
@@ -385,6 +387,37 @@ class TestApplyPostFilters:
         assert len(result) == 1
         assert result[0].id == "m1"
 
+    def test_expired_entries_excluded(self) -> None:
+        """Entries with expires_at in the past are filtered out."""
+        now = datetime.now(UTC)
+        past = now - timedelta(days=7)
+        entries = (
+            _make_entry(
+                memory_id="m1",
+                created_at=past,
+                expires_at=now - timedelta(hours=1),
+            ),
+            _make_entry(
+                memory_id="m2",
+                created_at=past,
+                expires_at=now + timedelta(hours=1),
+            ),
+            _make_entry(memory_id="m3"),  # no expires_at
+        )
+        query = MemoryQuery()
+        result = apply_post_filters(entries, query)
+        assert len(result) == 2
+        assert {e.id for e in result} == {"m2", "m3"}
+
+    def test_exactly_expired_entry_excluded(self) -> None:
+        """Entry with expires_at == now is excluded (<=)."""
+        now = datetime.now(UTC)
+        past = now - timedelta(days=7)
+        entries = (_make_entry(memory_id="m1", created_at=past, expires_at=now),)
+        query = MemoryQuery()
+        result = apply_post_filters(entries, query)
+        assert len(result) == 0
+
     def test_combined_filters(self) -> None:
         now = datetime.now(UTC)
         entries = (
@@ -460,7 +493,7 @@ class TestValidateAddResult:
 
     def test_non_dict_result_raises(self) -> None:
         with pytest.raises(MemoryStoreError, match="unexpected type"):
-            validate_add_result("not-a-dict", context="test")  # type: ignore[arg-type]
+            validate_add_result("not-a-dict", context="test")
 
     def test_non_dict_first_item_raises(self) -> None:
         result: dict[str, Any] = {"results": ["not-a-dict"]}
