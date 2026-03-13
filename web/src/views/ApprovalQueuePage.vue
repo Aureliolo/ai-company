@@ -105,6 +105,7 @@ async function filterByStatus() {
     await approvalStore.fetchApprovals({ status: statusFilter.value })
   } catch (err) {
     console.error('Filter fetch failed:', sanitizeForLog(err))
+    toast.add({ severity: 'error', summary: 'Failed to apply filter', life: 5000 })
   }
 }
 </script>

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { defineComponent } from 'vue'
 import type { CostRecord } from '@/api/types'
 
 // Mock vue-echarts at the module level to prevent ECharts renderer initialization.
@@ -17,13 +16,6 @@ vi.mock('vue-echarts', async () => {
 })
 
 import SpendingChart from '@/components/budget/SpendingChart.vue'
-
-// Local reference for findComponent lookups
-const VChartStub = defineComponent({
-  name: 'VChart',
-  props: ['option', 'autoresize'],
-  template: '<div class="v-chart" />',
-})
 
 function createRecord(overrides: Partial<CostRecord> = {}): CostRecord {
   return {

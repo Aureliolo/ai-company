@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, toRef } from 'vue'
 import Button from 'primevue/button'
 import Textarea from 'primevue/textarea'
 import { useConfirm } from 'primevue/useconfirm'
 import { useAuth } from '@/composables/useAuth'
 import type { ApprovalStatus } from '@/api/types'
 
-defineProps<{
+const props = defineProps<{
   approvalId: string
   status: ApprovalStatus
   loading?: boolean
@@ -23,6 +23,12 @@ const confirm = useConfirm()
 const comment = ref('')
 const rejectReason = ref('')
 const showReject = ref(false)
+
+watch(toRef(props, 'approvalId'), () => {
+  comment.value = ''
+  rejectReason.value = ''
+  showReject.value = false
+})
 
 function handleApprove(id: string) {
   confirm.require({

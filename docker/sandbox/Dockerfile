@@ -1,6 +1,4 @@
 FROM node:22-slim AS node-base
-# All stages must end as non-root
-USER node
 
 FROM python:3.14-slim
 
@@ -13,8 +11,9 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /workspace \
-    && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sandbox
+RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sandbox \
+    && mkdir -p /workspace \
+    && chown sandbox:sandbox /workspace
 
 WORKDIR /workspace
 

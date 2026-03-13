@@ -97,8 +97,6 @@ describe('OrgNode', () => {
       props: { data: { label: 'Backend Team', type: 'team' as const } },
     })
     // Should not contain the "Department" type label span
-    const spans = wrapper.findAll('span')
-    const deptBadge = spans.filter((s) => s.text() === 'Team')
     // The department badge specifically renders formatLabel(data.type) only for department type
     expect(wrapper.text()).not.toContain('Department')
   })

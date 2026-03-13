@@ -37,6 +37,7 @@ const nodes = computed<Node[]>(() => {
   let y = 0
 
   const agentIndex = new Map(agentStore.agents.map((a) => [a.name, a]))
+  const addedAgents = new Set<string>()
 
   for (const dept of companyStore.departments) {
     const deptId = `dept-${dept.name}`
@@ -59,6 +60,8 @@ const nodes = computed<Node[]>(() => {
       y += 100
       for (let i = 0; i < team.members.length; i++) {
         const memberName = team.members[i] // eslint-disable-line security/detect-object-injection
+        if (addedAgents.has(memberName)) continue
+        addedAgents.add(memberName)
         const agent = agentIndex.get(memberName)
         result.push({
           id: `agent-${memberName}`,

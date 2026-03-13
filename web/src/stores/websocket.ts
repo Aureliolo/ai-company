@@ -66,6 +66,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
 
     socket.onmessage = (event: MessageEvent) => {
+      // .length counts UTF-16 code units, not bytes — close enough for size-gating
       if (typeof event.data === 'string' && event.data.length > WS_MAX_MESSAGE_SIZE) {
         console.error('WebSocket message exceeds max size, discarding')
         return

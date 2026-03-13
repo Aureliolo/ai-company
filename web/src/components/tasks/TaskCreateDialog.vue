@@ -146,7 +146,7 @@ const isValid = computed(() => !!title.value.trim() && !!description.value.trim(
       </div>
       <div>
         <label for="task-budget" class="mb-1 block text-sm text-slate-300">Budget Limit (USD)</label>
-        <InputNumber id="task-budget" v-model="budgetLimit" mode="currency" currency="USD" :min="0" class="w-full" />
+        <InputNumber input-id="task-budget" v-model="budgetLimit" mode="currency" currency="USD" :min="0" class="w-full" />
       </div>
     </form>
 

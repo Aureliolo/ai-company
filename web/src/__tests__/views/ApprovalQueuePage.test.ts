@@ -89,7 +89,7 @@ vi.mock('@/components/approvals/ApprovalDetail.vue', () => ({
 
 vi.mock('@/components/approvals/ApprovalActions.vue', () => ({
   default: {
-    props: ['approvalId', 'status'],
+    props: ['approvalId', 'status', 'loading'],
     template: '<div data-testid="approval-actions">Actions</div>',
   },
 }))

@@ -20,6 +20,8 @@ function handleAdd(event: { item: HTMLElement & { _underlying_vm_?: Task } }) {
   const task = event.item?._underlying_vm_
   if (task) {
     emit('task-added', task)
+  } else {
+    console.warn('KanbanColumn: could not resolve dragged task — _underlying_vm_ missing')
   }
 }
 </script>

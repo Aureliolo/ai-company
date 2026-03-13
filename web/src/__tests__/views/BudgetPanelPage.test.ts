@@ -64,9 +64,12 @@ vi.mock('@/components/budget/AgentSpendingTable.vue', () => ({
 
 vi.mock('@/api/endpoints/budget', () => ({
   getBudgetConfig: vi.fn().mockResolvedValue({
-    total_budget_usd: 1000,
-    daily_limit_usd: 100,
-    agent_limit_usd: 50,
+    total_monthly: 1000,
+    per_task_limit: 50,
+    per_agent_daily_limit: 100,
+    alerts: { thresholds: [], channels: [] },
+    auto_downgrade: { enabled: false },
+    reset_day: 1,
   }),
   listCostRecords: vi.fn().mockResolvedValue({ data: [], total: 0 }),
   getAgentSpending: vi.fn(),

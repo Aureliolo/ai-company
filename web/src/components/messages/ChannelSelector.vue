@@ -21,6 +21,7 @@ defineEmits<{
     placeholder="All Channels"
     show-clear
     class="w-48"
+    aria-label="Filter by channel"
     @update:model-value="$emit('update:modelValue', $event)"
   />
 </template>

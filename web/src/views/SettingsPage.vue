@@ -29,6 +29,7 @@ const loading = ref(true)
 
 const VALID_TABS = ['company', 'providers', 'user'] as const
 function resolveTab(raw: unknown): string {
+  if (auth.mustChangePassword) return 'user'
   const s = String(raw ?? 'company')
   return VALID_TABS.includes(s as typeof VALID_TABS[number]) ? s : 'company'
 }
@@ -88,9 +89,9 @@ async function handleChangePassword() {
 
     <ErrorBoundary :error="companyStore.configError ?? providerStore.error" @retry="retryFetch">
     <LoadingSkeleton v-if="loading" :lines="6" />
-    <TabView v-else :value="activeTab" @update:value="activeTab = $event">
+    <TabView v-else :value="activeTab" @update:value="auth.mustChangePassword ? undefined : (activeTab = $event)">
       <!-- Company Config -->
-      <TabPanel header="Company" value="company">
+      <TabPanel header="Company" value="company" :disabled="auth.mustChangePassword">
         <div v-if="companyStore.config" class="space-y-4">
           <div class="rounded-lg border border-slate-800 p-4">
             <h4 class="mb-3 text-sm font-medium text-slate-300">Company Name</h4>
@@ -112,7 +113,7 @@ async function handleChangePassword() {
       </TabPanel>
 
       <!-- Providers -->
-      <TabPanel header="Providers" value="providers">
+      <TabPanel header="Providers" value="providers" :disabled="auth.mustChangePassword">
         <DataTable :value="providerEntries" striped-rows class="text-sm">
           <Column field="name" header="Provider" sortable />
           <Column field="config.driver" header="Driver" />
@@ -148,15 +149,15 @@ async function handleChangePassword() {
             <form class="space-y-3" @submit.prevent="handleChangePassword">
               <div>
                 <label for="current-password" class="mb-1 block text-xs text-slate-400">Current Password</label>
-                <InputText id="current-password" v-model="currentPassword" type="password" class="w-full" placeholder="Current password" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+                <InputText id="current-password" v-model="currentPassword" type="password" class="w-full" placeholder="Current password" aria-required="true" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
               </div>
               <div>
                 <label for="new-password" class="mb-1 block text-xs text-slate-400">New Password</label>
-                <InputText id="new-password" v-model="newPassword" type="password" class="w-full" :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+                <InputText id="new-password" v-model="newPassword" type="password" class="w-full" :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`" aria-required="true" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
               </div>
               <div>
                 <label for="confirm-password" class="mb-1 block text-xs text-slate-400">Confirm Password</label>
-                <InputText id="confirm-password" v-model="confirmPassword" type="password" class="w-full" placeholder="Confirm new password" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+                <InputText id="confirm-password" v-model="confirmPassword" type="password" class="w-full" placeholder="Confirm new password" aria-required="true" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
               </div>
               <div v-if="pwdError" id="pwd-error" role="alert" class="rounded bg-red-500/10 p-2 text-sm text-red-400">{{ pwdError }}</div>
               <Button
