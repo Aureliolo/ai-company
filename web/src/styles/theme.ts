@@ -1,5 +1,11 @@
 /** Dark theme color tokens used throughout the application. */
 
+import type { TaskStatus, ApprovalStatus, AgentStatus, Priority as ApiPriority, ApprovalRiskLevel } from '@/api/types'
+
+export type Status = TaskStatus | ApprovalStatus | AgentStatus
+export type Priority = ApiPriority
+export type RiskLevel = ApprovalRiskLevel
+
 export const colors = {
   brand: {
     50: '#eff6ff',
@@ -32,10 +38,6 @@ export const colors = {
   success: { 500: '#22c55e', 600: '#16a34a' },
 } as const
 
-export type Status = 'created' | 'assigned' | 'in_progress' | 'in_review' | 'completed' | 'blocked' | 'failed' | 'interrupted' | 'cancelled' | 'pending' | 'approved' | 'rejected' | 'expired'
-export type Priority = 'critical' | 'high' | 'medium' | 'low'
-export type RiskLevel = 'critical' | 'high' | 'medium' | 'low'
-
 /** Status color mapping for task/approval badges. */
 export const statusColors: Record<Status, string> = {
   created: 'bg-slate-600 text-slate-200',
@@ -51,6 +53,10 @@ export const statusColors: Record<Status, string> = {
   approved: 'bg-green-600 text-green-100',
   rejected: 'bg-red-600 text-red-100',
   expired: 'bg-gray-500 text-gray-200',
+  active: 'bg-green-600 text-green-100',
+  onboarding: 'bg-blue-600 text-blue-100',
+  on_leave: 'bg-yellow-600 text-yellow-100',
+  terminated: 'bg-gray-600 text-gray-200',
 }
 
 /** Priority color mapping. */

@@ -209,7 +209,7 @@ describe('useWebSocketStore', () => {
 
     expect(consoleSpy).toHaveBeenCalledWith(
       'Failed to parse WebSocket message:',
-      expect.any(SyntaxError),
+      expect.any(String),
     )
     consoleSpy.mockRestore()
   })

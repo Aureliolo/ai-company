@@ -1,4 +1,5 @@
 import { ref, onUnmounted } from 'vue'
+import { sanitizeForLog } from '@/utils/logging'
 
 const MIN_POLL_INTERVAL = 100
 
@@ -20,7 +21,7 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number) {
       try {
         await fn()
       } catch (err) {
-        console.error('Polling error:', err)
+        console.error('Polling error:', sanitizeForLog(err))
       }
       scheduleTick()
     }, intervalMs)
@@ -35,7 +36,7 @@ export function usePolling(fn: () => Promise<void>, intervalMs: number) {
       try {
         await fn()
       } catch (err) {
-        console.error('Polling error:', err)
+        console.error('Polling error:', sanitizeForLog(err))
       }
       scheduleTick()
     }

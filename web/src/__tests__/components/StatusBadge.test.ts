@@ -46,7 +46,7 @@ describe('StatusBadge', () => {
 
   it('falls back to slate for unknown value', () => {
     const wrapper = mount(StatusBadge, {
-      props: { value: 'unknown_status' },
+      props: { value: 'unknown_status' as never },
     })
     const tag = wrapper.find('.p-tag')
     expect(tag.exists()).toBe(true)

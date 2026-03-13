@@ -116,13 +116,13 @@ src/ai_company/
 web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
   src/
     api/          # Axios client, endpoint modules, TypeScript types (mirrors backend Pydantic models)
-    components/   # Vue components organized by feature (common/, layout/)
-    composables/  # Reusable composition functions (useAuth, usePolling, useOptimisticUpdate)
+    components/   # Vue components organized by feature (agents/, approvals/, budget/, common/, dashboard/, layout/, messages/, org-chart/, tasks/)
+    composables/  # Reusable composition functions (useAuth, useLoginLockout, usePolling, useOptimisticUpdate)
     router/       # Vue Router config with auth guards
     stores/       # Pinia stores (auth, agents, tasks, budget, messages, approvals, websocket, analytics, company, providers)
     styles/       # Global CSS and PrimeVue theme configuration
     utils/        # Constants, formatters, error helpers
-    views/        # Page-level components (LoginPage, SetupPage, PlaceholderHome; feature pages in PR 2)
+    views/        # Page-level components (LoginPage, SetupPage, DashboardPage, OrgChartPage, TaskBoardPage, MessageFeedPage, ApprovalQueuePage, AgentProfilesPage, AgentDetailPage, BudgetPanelPage, MeetingLogsPage, ArtifactBrowserPage, SettingsPage)
     __tests__/    # Vitest unit tests (organized by feature)
 ```
 

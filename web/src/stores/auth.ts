@@ -13,11 +13,14 @@ export const useAuthStore = defineStore('auth', () => {
   if (!initialToken) {
     localStorage.removeItem('auth_token')
     localStorage.removeItem('auth_token_expires_at')
+    localStorage.removeItem('auth_must_change_password')
   }
 
   const token = ref<string | null>(initialToken)
   const user = ref<UserInfoResponse | null>(null)
   const loading = ref(false)
+  // Persist must_change_password so the guard works even before fetchUser resolves on refresh
+  const persistedMustChange = ref(localStorage.getItem('auth_must_change_password') === 'true')
 
   let expiryTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -39,13 +42,12 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   const isAuthenticated = computed(() => !!token.value)
-  const mustChangePassword = computed(() => user.value?.must_change_password ?? false)
+  const mustChangePassword = computed(() => user.value?.must_change_password ?? persistedMustChange.value)
   const userRole = computed<HumanRole | null>(() => user.value?.role ?? null)
 
   function setToken(newToken: string, expiresIn: number) {
-    if (expiresIn <= 0) {
-      console.error('setToken: invalid expiresIn', expiresIn)
-      return
+    if (!Number.isFinite(expiresIn) || expiresIn <= 0) {
+      throw new Error('Authentication failed: server returned invalid session duration. Please try again.')
     }
     // Clear any existing expiry timer to prevent stale timer from killing new session
     if (expiryTimer) {
@@ -73,6 +75,8 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     localStorage.removeItem('auth_token')
     localStorage.removeItem('auth_token_expires_at')
+    localStorage.removeItem('auth_must_change_password')
+    persistedMustChange.value = false
     // Redirect to login if not already there
     if (router.currentRoute.value.path !== '/login' && router.currentRoute.value.path !== '/setup') {
       router.push('/login')
@@ -126,6 +130,14 @@ export const useAuthStore = defineStore('auth', () => {
     if (!token.value) return
     try {
       user.value = await authApi.getMe()
+      // Persist must_change_password for the auth guard on page refresh
+      if (user.value?.must_change_password) {
+        localStorage.setItem('auth_must_change_password', 'true')
+        persistedMustChange.value = true
+      } else {
+        localStorage.removeItem('auth_must_change_password')
+        persistedMustChange.value = false
+      }
     } catch (err) {
       // Only clear auth on 401 (invalid/expired token)
       // Transient errors (network, 500) should NOT log the user out
@@ -146,6 +158,11 @@ export const useAuthStore = defineStore('auth', () => {
         new_password: newPassword,
       })
       user.value = result
+      // Password changed — clear the persisted flag
+      if (result && !result.must_change_password) {
+        localStorage.removeItem('auth_must_change_password')
+        persistedMustChange.value = false
+      }
       return result
     } catch (err) {
       throw new Error(getErrorMessage(err))
