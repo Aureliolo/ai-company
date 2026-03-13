@@ -112,6 +112,12 @@ def parse_mem0_metadata(
         Tuple of (category, metadata, expires_at).
     """
     if not raw_metadata or not isinstance(raw_metadata, dict):
+        logger.debug(
+            MEMORY_MODEL_INVALID,
+            field="metadata",
+            raw_value=type(raw_metadata).__name__ if raw_metadata else None,
+            reason="missing or non-dict metadata, using defaults",
+        )
         return (
             MemoryCategory.WORKING,
             MemoryMetadata(),
@@ -144,13 +150,20 @@ def parse_mem0_metadata(
             reason="non-numeric confidence, defaulting to 1.0",
         )
         confidence = 1.0
+    confidence = max(0.0, min(1.0, confidence))
     source = raw_metadata.get(f"{_PREFIX}source")
     raw_tags = raw_metadata.get(f"{_PREFIX}tags", ())
     if isinstance(raw_tags, str):
         raw_tags = [raw_tags]
     elif not isinstance(raw_tags, (list, tuple)):
+        logger.debug(
+            MEMORY_MODEL_INVALID,
+            field="tags",
+            raw_value=type(raw_tags).__name__,
+            reason="unexpected tags type, ignoring",
+        )
         raw_tags = ()
-    tags = tuple(NotBlankStr(t) for t in raw_tags if t and str(t).strip())
+    tags = tuple(NotBlankStr(str(t)) for t in raw_tags if t and str(t).strip())
 
     expires_at = parse_mem0_datetime(
         raw_metadata.get(f"{_PREFIX}expires_at"),
@@ -290,6 +303,9 @@ def apply_post_filters(
     """Apply post-retrieval filters that Mem0 cannot handle natively.
 
     Filters by category, tags, time range, and minimum relevance.
+    Entries with ``relevance_score=None`` (e.g. from ``get_all``)
+    are never excluded by ``min_relevance`` — the filter only
+    applies when a score is present.
 
     Args:
         entries: Raw entries from Mem0.
@@ -318,7 +334,7 @@ def apply_post_filters(
     return tuple(result)
 
 
-# ── Adapter helpers (moved here to keep adapter.py under 800 lines) ──
+# ── Adapter helpers ──────────────────────────────────────────────────
 
 
 def validate_add_result(result: dict[str, Any], *, context: str) -> NotBlankStr:
@@ -378,9 +394,15 @@ def extract_category(raw: dict[str, Any]) -> MemoryCategory:
 
 
 def extract_publisher(raw: dict[str, Any]) -> str | None:
-    """Extract the publisher agent ID from a shared memory dict."""
+    """Extract the publisher agent ID from a shared memory dict.
+
+    Returns ``None`` if the publisher key is missing, non-dict
+    metadata, or the value is blank after stripping.
+    """
     metadata = raw.get("metadata", {})
     if not metadata or not isinstance(metadata, dict):
         return None
     value: str | None = metadata.get(_PUBLISHER_KEY)
+    if value is not None and not str(value).strip():
+        return None
     return value

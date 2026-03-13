@@ -77,10 +77,20 @@ def create_memory_backend(
             )
             raise MemoryConfigError(msg)
 
-        mem0_config = build_config_from_company_config(
-            config,
-            embedder=embedder,
-        )
+        try:
+            mem0_config = build_config_from_company_config(
+                config,
+                embedder=embedder,
+            )
+        except ValueError as exc:
+            msg = f"Invalid Mem0 configuration: {exc}"
+            logger.warning(
+                MEMORY_BACKEND_CONFIG_INVALID,
+                backend="mem0",
+                reason="config_build_failed",
+                error=msg,
+            )
+            raise MemoryConfigError(msg) from exc
         backend = Mem0MemoryBackend(
             mem0_config=mem0_config,
             max_memories_per_agent=config.options.max_memories_per_agent,

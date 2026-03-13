@@ -1,14 +1,18 @@
 """Mem0 memory backend adapter.
 
 Implements ``MemoryBackend``, ``MemoryCapabilities``, and
-``SharedKnowledgeStore`` protocols using Mem0 (embedded Qdrant + SQLite)
-as the storage layer.
+``SharedKnowledgeStore`` protocols using Mem0 as the storage layer
+(default: embedded Qdrant + SQLite).
 
 All Mem0 calls are synchronous — they run in ``asyncio.to_thread()``
 to avoid blocking the event loop.
+
+All methods re-raise ``builtins.MemoryError`` and ``RecursionError``
+immediately without wrapping, to avoid masking system-level failures.
 """
 
 import asyncio
+import builtins
 from typing import TYPE_CHECKING, Any
 
 from ai_company.core.enums import MemoryCategory
@@ -43,6 +47,7 @@ if TYPE_CHECKING:
     )
 
 from ai_company.observability.events.memory import (
+    MEMORY_BACKEND_AGENT_ID_REJECTED,
     MEMORY_BACKEND_CONNECTED,
     MEMORY_BACKEND_CONNECTING,
     MEMORY_BACKEND_CONNECTION_FAILED,
@@ -72,6 +77,40 @@ logger = get_logger(__name__)
 
 # Reserved user_id for the shared knowledge namespace.
 _SHARED_NAMESPACE: str = "__synthorg_shared__"
+
+
+def _validate_mem0_result(
+    raw_result: Any,
+    *,
+    context: str,
+) -> list[dict[str, Any]]:
+    """Validate and extract the results list from a Mem0 response.
+
+    Args:
+        raw_result: Raw return value from a Mem0 SDK call.
+        context: Human-readable context for error messages.
+
+    Returns:
+        The ``"results"`` list from the response.
+
+    Raises:
+        MemoryRetrievalError: If the response is not a dict or
+            ``"results"`` is not a list.
+    """
+    if not isinstance(raw_result, dict):
+        msg = (
+            f"Unexpected Mem0 response type for {context}: "
+            f"{type(raw_result).__name__}, expected dict"
+        )
+        raise MemoryRetrievalError(msg)
+    raw_list = raw_result.get("results", [])
+    if not isinstance(raw_list, list):
+        msg = (
+            f"Unexpected Mem0 results type for {context}: "
+            f"{type(raw_list).__name__}, expected list"
+        )
+        raise MemoryRetrievalError(msg)
+    return raw_list
 
 
 class Mem0MemoryBackend:
@@ -122,7 +161,7 @@ class Mem0MemoryBackend:
         try:
             config_dict = build_mem0_config_dict(self._mem0_config)
             client = await asyncio.to_thread(Memory.from_config, config_dict)
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -140,9 +179,19 @@ class Mem0MemoryBackend:
     async def disconnect(self) -> None:
         """Close the Mem0 connection.
 
-        Safe to call even if not connected.
+        Attempts to close the underlying client resources before
+        releasing the reference.  Safe to call even if not connected.
         """
         logger.info(MEMORY_BACKEND_DISCONNECTING, backend="mem0")
+        if self._client is not None:
+            try:
+                await asyncio.to_thread(self._client.reset)
+            except Exception:
+                logger.debug(
+                    MEMORY_BACKEND_DISCONNECTING,
+                    backend="mem0",
+                    note="reset failed during disconnect, ignoring",
+                )
         self._client = None
         self._connected = False
         logger.info(MEMORY_BACKEND_DISCONNECTED, backend="mem0")
@@ -170,13 +219,15 @@ class Mem0MemoryBackend:
                 user_id=_SHARED_NAMESPACE,
                 limit=1,
             )
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             raise
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 MEMORY_BACKEND_HEALTH_CHECK,
                 backend="mem0",
                 healthy=False,
+                error=str(exc),
+                error_type=type(exc).__name__,
             )
             return False
         logger.debug(
@@ -228,7 +279,7 @@ class Mem0MemoryBackend:
         """Maximum memories per agent from configuration."""
         return self._max_memories_per_agent
 
-    # ── Connection guard ──────────────────────────────────────────
+    # ── Guards ────────────────────────────────────────────────────
 
     def _require_connected(self) -> None:
         """Raise ``MemoryConnectionError`` if not connected."""
@@ -239,6 +290,25 @@ class Mem0MemoryBackend:
             )
             msg = "Not connected — call connect() first"
             raise MemoryConnectionError(msg)
+
+    def _validate_agent_id(self, agent_id: NotBlankStr) -> None:
+        """Reject the reserved shared namespace as an agent ID.
+
+        Raises:
+            MemoryStoreError: If ``agent_id`` collides with the
+                reserved ``_SHARED_NAMESPACE``.
+        """
+        if str(agent_id) == _SHARED_NAMESPACE:
+            logger.warning(
+                MEMORY_BACKEND_AGENT_ID_REJECTED,
+                agent_id=agent_id,
+                reason="reserved shared namespace",
+            )
+            msg = (
+                f"agent_id must not be the reserved shared namespace: "
+                f"{_SHARED_NAMESPACE!r}"
+            )
+            raise MemoryStoreError(msg)
 
     # ── CRUD Operations ───────────────────────────────────────────
 
@@ -261,6 +331,7 @@ class Mem0MemoryBackend:
             MemoryStoreError: If the store operation fails.
         """
         self._require_connected()
+        self._validate_agent_id(agent_id)
         try:
             kwargs = {
                 "messages": [
@@ -280,7 +351,7 @@ class Mem0MemoryBackend:
                 error_type="MemoryStoreError",
             )
             raise
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -308,7 +379,8 @@ class Mem0MemoryBackend:
         """Retrieve memories for an agent, ordered by relevance.
 
         Uses ``search()`` when ``query.text`` is set, otherwise falls
-        back to ``get_all()`` for unfiltered retrieval.
+        back to ``get_all()`` for non-semantic retrieval (post-filters
+        still apply).
 
         Args:
             agent_id: Owning agent identifier.
@@ -322,6 +394,7 @@ class Mem0MemoryBackend:
             MemoryRetrievalError: If the retrieval fails.
         """
         self._require_connected()
+        self._validate_agent_id(agent_id)
         try:
             if query.text is not None:
                 kwargs = query_to_mem0_search_args(str(agent_id), query)
@@ -329,7 +402,7 @@ class Mem0MemoryBackend:
             else:
                 kwargs = query_to_mem0_getall_args(str(agent_id), query)
                 raw_result = await asyncio.to_thread(self._client.get_all, **kwargs)
-            raw_list = raw_result.get("results", [])
+            raw_list = _validate_mem0_result(raw_result, context="retrieve")
             entries = tuple(
                 mem0_result_to_entry(item, str(agent_id)) for item in raw_list
             )
@@ -342,7 +415,7 @@ class Mem0MemoryBackend:
                 error_type="MemoryRetrievalError",
             )
             raise
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -368,18 +441,22 @@ class Mem0MemoryBackend:
     ) -> MemoryEntry | None:
         """Get a specific memory entry by ID.
 
+        Verifies ownership: if the retrieved memory belongs to a
+        different agent the method returns ``None``.
+
         Args:
             agent_id: Owning agent identifier.
             memory_id: Memory identifier.
 
         Returns:
-            The memory entry, or ``None`` if not found.
+            The memory entry, or ``None`` if not found or not owned.
 
         Raises:
             MemoryConnectionError: If the backend is not connected.
             MemoryRetrievalError: If the backend query fails.
         """
         self._require_connected()
+        self._validate_agent_id(agent_id)
         try:
             raw = await asyncio.to_thread(self._client.get, str(memory_id))
             if raw is None:
@@ -388,6 +465,17 @@ class Mem0MemoryBackend:
                     agent_id=agent_id,
                     memory_id=memory_id,
                     found=False,
+                )
+                return None
+            owner = raw.get("user_id")
+            if owner is not None and str(owner) != str(agent_id):
+                logger.debug(
+                    MEMORY_ENTRY_FETCHED,
+                    agent_id=agent_id,
+                    memory_id=memory_id,
+                    found=False,
+                    reason="ownership mismatch",
+                    actual_owner=str(owner),
                 )
                 return None
             entry = mem0_result_to_entry(raw, str(agent_id))
@@ -400,7 +488,7 @@ class Mem0MemoryBackend:
                 error_type="MemoryRetrievalError",
             )
             raise
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -428,6 +516,9 @@ class Mem0MemoryBackend:
     ) -> bool:
         """Delete a specific memory entry.
 
+        Verifies ownership before deletion.  Shared-namespace entries
+        must be removed through ``retract()`` instead.
+
         Args:
             agent_id: Owning agent identifier.
             memory_id: Memory identifier.
@@ -437,9 +528,11 @@ class Mem0MemoryBackend:
 
         Raises:
             MemoryConnectionError: If the backend is not connected.
-            MemoryStoreError: If the delete operation fails.
+            MemoryStoreError: If the delete operation fails or
+                ownership verification fails.
         """
         self._require_connected()
+        self._validate_agent_id(agent_id)
         try:
             # Check existence first — Mem0 delete doesn't indicate
             # whether the entry existed.
@@ -452,17 +545,38 @@ class Mem0MemoryBackend:
                     found=False,
                 )
                 return False
+            # Block deletion of shared-namespace entries — use retract().
+            owner = existing.get("user_id")
+            if owner is not None and str(owner) == _SHARED_NAMESPACE:
+                msg = (
+                    f"Memory {memory_id} belongs to the shared namespace — "
+                    f"use retract() to remove shared entries"
+                )
+                logger.warning(
+                    MEMORY_ENTRY_DELETE_FAILED,
+                    agent_id=agent_id,
+                    memory_id=memory_id,
+                    reason="shared namespace entry",
+                )
+                raise MemoryStoreError(msg)  # noqa: TRY301
+            # Verify ownership — reject cross-agent deletion.
+            if owner is not None and str(owner) != str(agent_id):
+                msg = (
+                    f"Agent {agent_id} cannot delete memory "
+                    f"{memory_id} owned by {owner}"
+                )
+                logger.warning(
+                    MEMORY_ENTRY_DELETE_FAILED,
+                    agent_id=agent_id,
+                    memory_id=memory_id,
+                    reason="ownership mismatch",
+                    actual_owner=str(owner),
+                )
+                raise MemoryStoreError(msg)  # noqa: TRY301
             await asyncio.to_thread(self._client.delete, str(memory_id))
-        except MemoryStoreError as exc:
-            logger.warning(
-                MEMORY_ENTRY_DELETE_FAILED,
-                agent_id=agent_id,
-                memory_id=memory_id,
-                error=str(exc),
-                error_type="MemoryStoreError",
-            )
+        except MemoryStoreError:
             raise
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -491,14 +605,15 @@ class Mem0MemoryBackend:
     ) -> int:
         """Count memory entries for an agent.
 
-        Uses ``get_all()`` internally — O(n) in the agent's memory
-        count.  Acceptable because ``count()`` is not on the hot path.
+        Uses ``get_all()`` internally — retrieves all of the agent's
+        memories, so cost scales linearly with the agent's memory count.
+        Acceptable because ``count()`` is not on the hot path.
 
-        .. note::
-           Results are capped at ``max_memories_per_agent``.  If an
-           agent has more memories than this limit the count will be
-           an underestimate.  This is consistent with the adapter's
-           store/retrieve semantics which also respect the cap.
+        Note:
+            Results are capped at ``max_memories_per_agent``.  If an
+            agent has more memories than this limit the count will be
+            an underestimate.  This is consistent with the adapter's
+            store/retrieve semantics which also respect the cap.
 
         Args:
             agent_id: Owning agent identifier.
@@ -513,13 +628,14 @@ class Mem0MemoryBackend:
             MemoryRetrievalError: If the count query fails.
         """
         self._require_connected()
+        self._validate_agent_id(agent_id)
         try:
             raw_result = await asyncio.to_thread(
                 self._client.get_all,
                 user_id=str(agent_id),
                 limit=self._max_memories_per_agent,
             )
-            raw_list = raw_result.get("results", [])
+            raw_list = _validate_mem0_result(raw_result, context="count")
             if category is None:
                 total = len(raw_list)
             else:
@@ -534,7 +650,7 @@ class Mem0MemoryBackend:
                 error_type="MemoryRetrievalError",
             )
             raise
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -546,12 +662,24 @@ class Mem0MemoryBackend:
             msg = f"Failed to count memories: {exc}"
             raise MemoryRetrievalError(msg) from exc
         else:
-            logger.info(
-                MEMORY_ENTRY_COUNTED,
-                agent_id=agent_id,
-                count=total,
-                category=category.value if category else None,
-            )
+            truncated = total == self._max_memories_per_agent
+            if truncated:
+                logger.warning(
+                    MEMORY_ENTRY_COUNTED,
+                    agent_id=agent_id,
+                    count=total,
+                    category=category.value if category else None,
+                    truncated=True,
+                    reason="count equals max_memories_per_agent, "
+                    "actual count may be higher",
+                )
+            else:
+                logger.info(
+                    MEMORY_ENTRY_COUNTED,
+                    agent_id=agent_id,
+                    count=total,
+                    category=category.value if category else None,
+                )
             return total
 
     # ── SharedKnowledgeStore ──────────────────────────────────────
@@ -601,7 +729,7 @@ class Mem0MemoryBackend:
                 error_type="MemoryStoreError",
             )
             raise
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -654,7 +782,10 @@ class Mem0MemoryBackend:
                     user_id=_SHARED_NAMESPACE,
                     limit=query.limit,
                 )
-            raw_list = raw_result.get("results", [])
+            raw_list = _validate_mem0_result(
+                raw_result,
+                context="search_shared",
+            )
 
             raw_entries = tuple(
                 mem0_result_to_entry(
@@ -676,7 +807,7 @@ class Mem0MemoryBackend:
                 exclude_agent=exclude_agent,
             )
             raise
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
@@ -763,7 +894,7 @@ class Mem0MemoryBackend:
             # with context (reason, publisher) above — re-raise
             # without duplicate logging.
             raise
-        except MemoryError, RecursionError:
+        except builtins.MemoryError, RecursionError:
             raise
         except Exception as exc:
             logger.warning(
