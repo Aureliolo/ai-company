@@ -11,6 +11,8 @@ import { useBudgetStore } from '@/stores/budget'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
 
+import { sanitizeForLog } from '@/utils/logging'
+
 const budgetStore = useBudgetStore()
 const wsStore = useWebSocketStore()
 const authStore = useAuthStore()
@@ -23,9 +25,13 @@ onMounted(async () => {
     wsStore.subscribe(['budget'])
     wsStore.onChannelEvent('budget', budgetStore.handleWsEvent)
   } catch (err) {
-    console.error('WebSocket setup failed:', err)
+    console.error('WebSocket setup failed:', sanitizeForLog(err))
   }
-  await Promise.all([budgetStore.fetchConfig(), budgetStore.fetchRecords({ limit: 200 })])
+  try {
+    await Promise.all([budgetStore.fetchConfig(), budgetStore.fetchRecords({ limit: 200 })])
+  } catch (err) {
+    console.error('Initial data fetch failed:', sanitizeForLog(err))
+  }
 })
 
 onUnmounted(() => {

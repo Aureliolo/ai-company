@@ -977,10 +977,10 @@ future CLI tool are thin clients that call the API -- they contain no business l
 - **Message Feed**: Real-time feed of agent communications
 - **Approval Queue**: Pending approvals with context and recommendations
 - **Agent Profiles**: Detailed view of each agent's identity, history, metrics
-- **Budget Panel**: Spending charts, projections, alerts
-- **Meeting Logs**: Transcripts and outcomes of all agent meetings
-- **Artifact Browser**: Browse and inspect all produced work
-- **Settings**: Company config, autonomy levels, provider settings
+- **Budget Panel**: Spending charts, per-agent breakdown (projections/alerts planned)
+- **Meeting Logs**: Placeholder — coming soon
+- **Artifact Browser**: Placeholder — coming soon
+- **Settings**: Password management (autonomy levels, provider settings planned)
 
 ### Human Roles
 

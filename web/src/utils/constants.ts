@@ -7,7 +7,7 @@ export const APP_NAME = 'SynthOrg'
 export const WS_RECONNECT_BASE_DELAY = 1000
 export const WS_RECONNECT_MAX_DELAY = 30000
 export const WS_MAX_RECONNECT_ATTEMPTS = 20
-export const WS_MAX_MESSAGE_SIZE = 4096
+export const WS_MAX_MESSAGE_SIZE = 131072
 
 export const HEALTH_POLL_INTERVAL = 15000
 

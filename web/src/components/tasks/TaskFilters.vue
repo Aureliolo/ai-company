@@ -11,7 +11,7 @@ defineProps<{
 }>()
 
 const emit = defineEmits<{
-  update: [filters: TaskFilterType]
+  update: [filters: Partial<TaskFilterType>]
   reset: []
 }>()
 

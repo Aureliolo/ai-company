@@ -24,7 +24,11 @@ export const useTaskStore = defineStore('tasks', () => {
     const grouped: Partial<Record<TaskStatus, Task[]>> = {}
     for (const task of tasks.value) {
       const existing = grouped[task.status]
-      grouped[task.status] = existing ? [...existing, task] : [task]
+      if (existing) {
+        existing.push(task)
+      } else {
+        grouped[task.status] = [task]
+      }
     }
     return grouped
   })

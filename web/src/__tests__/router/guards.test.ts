@@ -94,4 +94,32 @@ describe('authGuard', () => {
     authGuard(to, from, next)
     expect(next).toHaveBeenCalledWith('/')
   })
+
+  it('redirects to settings when mustChangePassword is true', () => {
+    localStorage.setItem('auth_token', 'test-token')
+    localStorage.setItem('auth_token_expires_at', String(Date.now() + 3600_000))
+    setActivePinia(createPinia())
+    const store = useAuthStore()
+    store.user = { id: 'u1', username: 'ceo', role: 'ceo', must_change_password: true }
+
+    const to = createRoute({ path: '/tasks', name: 'tasks' as never, meta: {} })
+    const from = createRoute()
+
+    authGuard(to, from, next)
+    expect(next).toHaveBeenCalledWith({ name: 'settings' })
+  })
+
+  it('allows settings page access when mustChangePassword is true', () => {
+    localStorage.setItem('auth_token', 'test-token')
+    localStorage.setItem('auth_token_expires_at', String(Date.now() + 3600_000))
+    setActivePinia(createPinia())
+    const store = useAuthStore()
+    store.user = { id: 'u1', username: 'ceo', role: 'ceo', must_change_password: true }
+
+    const to = createRoute({ path: '/settings', name: 'settings' as never, meta: {} })
+    const from = createRoute()
+
+    authGuard(to, from, next)
+    expect(next).toHaveBeenCalledWith()
+  })
 })

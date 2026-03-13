@@ -17,6 +17,7 @@ import { useAuthStore } from '@/stores/auth'
 import { getHealth } from '@/api/endpoints/health'
 import { formatCurrency, formatNumber } from '@/utils/format'
 import { useToast } from 'primevue/usetoast'
+import { sanitizeForLog } from '@/utils/logging'
 import type { HealthStatus } from '@/api/types'
 
 const analytics = useAnalyticsStore()
@@ -40,7 +41,7 @@ onMounted(async () => {
       wsStore.onChannelEvent('approvals', approvalStore.handleWsEvent)
     }
   } catch (err) {
-    console.error('WebSocket setup failed:', err)
+    console.error('WebSocket setup failed:', sanitizeForLog(err))
   }
 
   // Fetch initial data

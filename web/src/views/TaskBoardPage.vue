@@ -16,7 +16,7 @@ import { useAgentStore } from '@/stores/agents'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
 import { useAuth } from '@/composables/useAuth'
-import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 import type { Task, TaskStatus, CreateTaskRequest, TaskFilters as TaskFilterType } from '@/api/types'
 
 const toast = useToast()
@@ -42,13 +42,17 @@ onMounted(async () => {
     wsStore.subscribe(['tasks'])
     wsStore.onChannelEvent('tasks', taskStore.handleWsEvent)
   } catch (err) {
-    console.error('WebSocket setup failed:', err)
+    console.error('WebSocket setup failed:', sanitizeForLog(err))
   }
 
-  await Promise.all([
-    taskStore.fetchTasks({ limit: 200 }),
-    agentStore.fetchAgents(),
-  ])
+  try {
+    await Promise.all([
+      taskStore.fetchTasks({ limit: 200 }),
+      agentStore.fetchAgents(),
+    ])
+  } catch (err) {
+    console.error('Initial data fetch failed:', sanitizeForLog(err))
+  }
 })
 
 onUnmounted(() => {
@@ -162,7 +166,7 @@ async function handleFilterReset() {
       </template>
     </PageHeader>
 
-    <ErrorBoundary :error="taskStore.error ?? agentStore.error" @retry="taskStore.fetchTasks()">
+    <ErrorBoundary :error="taskStore.error ?? agentStore.error" @retry="() => taskStore.fetchTasks(filters)">
       <LoadingSkeleton v-if="taskStore.loading && taskStore.tasks.length === 0" :lines="8" />
       <template v-else>
         <KanbanBoard

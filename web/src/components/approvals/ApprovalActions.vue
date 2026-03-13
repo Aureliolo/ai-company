@@ -69,7 +69,8 @@ function handleReject(id: string) {
     </div>
 
     <div v-else class="space-y-2">
-      <Textarea v-model="rejectReason" class="w-full" rows="2" placeholder="Reason for rejection (required)" />
+      <label for="reject-reason" class="mb-1 block text-xs text-slate-400">Reason for rejection</label>
+      <Textarea id="reject-reason" v-model="rejectReason" class="w-full" rows="2" placeholder="Reason for rejection (required)" aria-required="true" />
       <div class="flex gap-2">
         <Button
           label="Confirm Reject"

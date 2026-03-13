@@ -11,6 +11,8 @@ import { useMessageStore } from '@/stores/messages'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
 
+import { sanitizeForLog } from '@/utils/logging'
+
 const messageStore = useMessageStore()
 const wsStore = useWebSocketStore()
 const authStore = useAuthStore()
@@ -23,9 +25,13 @@ onMounted(async () => {
     wsStore.subscribe(['messages'])
     wsStore.onChannelEvent('messages', messageStore.handleWsEvent)
   } catch (err) {
-    console.error('WebSocket setup failed:', err)
+    console.error('WebSocket setup failed:', sanitizeForLog(err))
   }
-  await Promise.all([messageStore.fetchChannels(), messageStore.fetchMessages()])
+  try {
+    await Promise.all([messageStore.fetchChannels(), messageStore.fetchMessages()])
+  } catch (err) {
+    console.error('Initial data fetch failed:', sanitizeForLog(err))
+  }
 })
 
 onUnmounted(() => {

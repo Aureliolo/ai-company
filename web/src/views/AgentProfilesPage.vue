@@ -10,6 +10,7 @@ import AgentCard from '@/components/agents/AgentCard.vue'
 import { useAgentStore } from '@/stores/agents'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
+import { sanitizeForLog } from '@/utils/logging'
 import type { AgentConfig } from '@/api/types'
 
 const router = useRouter()
@@ -25,9 +26,13 @@ onMounted(async () => {
     wsStore.subscribe(['agents'])
     wsStore.onChannelEvent('agents', agentStore.handleWsEvent)
   } catch (err) {
-    console.error('WebSocket setup failed:', err)
+    console.error('WebSocket setup failed:', sanitizeForLog(err))
   }
-  await agentStore.fetchAgents()
+  try {
+    await agentStore.fetchAgents()
+  } catch (err) {
+    console.error('Initial data fetch failed:', sanitizeForLog(err))
+  }
 })
 
 onUnmounted(() => {

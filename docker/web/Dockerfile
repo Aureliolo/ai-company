@@ -7,7 +7,7 @@
 
 # Stage 1: Build Vue dashboard (non-root for defense-in-depth)
 FROM node:22-alpine@sha256:3a4802e64ab5181c7870d6ddd8c824c2efc42873baae37d1971451668659483b AS builder
-RUN addgroup -S build && adduser -S build -G build
+RUN addgroup -S build && adduser -S build -G build && mkdir /app && chown build:build /app
 WORKDIR /app
 COPY --chown=build:build web/package.json web/package-lock.json ./
 # Run npm ci as build user so node_modules (including .vite cache) is owned by

@@ -16,6 +16,7 @@ import { useApprovalStore } from '@/stores/approvals'
 import { useWebSocketStore } from '@/stores/websocket'
 import { useAuthStore } from '@/stores/auth'
 import { formatDate } from '@/utils/format'
+import { sanitizeForLog } from '@/utils/logging'
 import type { ApprovalItem, ApprovalStatus } from '@/api/types'
 
 const toast = useToast()
@@ -42,9 +43,13 @@ onMounted(async () => {
     wsStore.subscribe(['approvals'])
     wsStore.onChannelEvent('approvals', approvalStore.handleWsEvent)
   } catch (err) {
-    console.error('WebSocket setup failed:', err)
+    console.error('WebSocket setup failed:', sanitizeForLog(err))
   }
-  await approvalStore.fetchApprovals()
+  try {
+    await approvalStore.fetchApprovals()
+  } catch (err) {
+    console.error('Initial data fetch failed:', sanitizeForLog(err))
+  }
 })
 
 onUnmounted(() => {
