@@ -82,10 +82,10 @@ Automated pre-PR pipeline that runs checks, launches review agents, triages find
    - `test_py`: `.py` files in `tests/`
    - `web_src`: `.vue`, `.ts`, `.css` files in `web/src/` (excluding `web/src/__tests__/`)
    - `web_test`: `.ts` files in `web/src/__tests__/`
-   - `docker`: files in `docker/`
+   - `docker`: files in `docker/`, root-level `Dockerfile*`, `compose*.yml`, `compose*.yaml`, `docker-compose*.yml`, `docker-compose*.yaml`
    - `ci`: files in `.github/workflows/`, `.github/actions/`
    - `infra_config`: `.pre-commit-config.yaml`, `.dockerignore`
-   - `config`: `.toml`, `.yaml`, `.json`, `.cfg` files (not already categorized above)
+   - `config`: `.toml`, `.yaml`, `.yml`, `.json`, `.cfg` files (not already categorized above)
    - `docs`: `.md` files
    - `site`: files in `site/`
    - `other`: everything else
@@ -97,7 +97,7 @@ Automated pre-PR pipeline that runs checks, launches review agents, triages find
    - Parse branch name for issue number patterns (e.g., `feat/123-add-widget`, `fix-456`, `42-some-slug`)
    - Take the first match found (arguments > commits > branch name)
 
-   If an issue number is found, validate it is purely numeric (`^[0-9]+$`), then fetch context:
+   If an issue number is found, strip any leading `#` prefix, then validate the extracted digits are purely numeric (`^[0-9]+$`) before use in shell commands:
 
    ```bash
    gh issue view N --json title,body,labels,comments --jq '{title: .title, body: .body, labels: [.labels[].name], comments: [.comments[] | {author: .author.login, body: .body}]}'
@@ -155,21 +155,27 @@ Run these sequentially, fixing as we go:
    uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80
    ```
 
-**Web dashboard checks (steps 6-8):** Run only if `web_src` or `web_test` files changed.
+**Web dashboard checks (steps 6-9):** Run only if `web_src` or `web_test` files changed.
 
-6. **Lint:**
+6. **Install dependencies:**
+
+   ```bash
+   npm --prefix web ci
+   ```
+
+7. **Lint:**
 
    ```bash
    npm --prefix web run lint
    ```
 
-7. **Type-check:**
+8. **Type-check:**
 
    ```bash
    npm --prefix web run type-check
    ```
 
-8. **Test:**
+9. **Test:**
 
    ```bash
    npm --prefix web run test
@@ -209,7 +215,7 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 | **logging-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **resilience-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **conventions-enforcer** | Any `src_py` or `test_py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **security-reviewer** | Files in `src/ai_company/api/`, `security/`, `tools/`, `config/`, `persistence/`, `engine/` changed, OR any `web_src` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, `sql`, auth/credential patterns | `everything-claude-code:security-reviewer` |
+| **security-reviewer** | Files in `src/ai_company/api/`, `src/ai_company/security/`, `src/ai_company/tools/`, `src/ai_company/config/`, `src/ai_company/persistence/`, `src/ai_company/engine/` changed, OR any `web_src` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, `sql`, auth/credential patterns | `everything-claude-code:security-reviewer` |
 | **frontend-reviewer** | Any `web_src` or `web_test` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **api-contract-drift** | Any file in `src/ai_company/api/` OR `web/src/api/` OR `src/ai_company/core/enums.py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `pr-review-toolkit:code-reviewer` (custom prompt below) |
@@ -436,7 +442,7 @@ The infra-reviewer agent checks Docker, CI/CD, and infrastructure configuration.
 7. `pull_request_target` with `actions/checkout` of PR head (code injection risk) (CRITICAL)
 8. Untrusted input used in `run:` steps without sanitization (e.g., `${{ github.event.pull_request.title }}`) (CRITICAL)
 9. Overly broad permissions (`permissions: write-all` or missing `permissions:` block) (MAJOR)
-10. Missing `--no-verify` or `--force` flags that bypass safety checks (MAJOR)
+10. Use of `--no-verify` or `--force` flags that bypass safety checks in CI scripts or workflow `run:` steps (MAJOR)
 11. Secrets exposed in logs (e.g., echoing secrets, not masking) (CRITICAL)
 
 **Docker Compose (MAJOR):**
@@ -550,7 +556,7 @@ The async-concurrency-reviewer agent checks for async/concurrency correctness an
 **Error handling in async code (MAJOR):**
 13. Catching `asyncio.CancelledError` and not re-raising it (suppresses task cancellation) (CRITICAL)
 14. Missing error handling in `TaskGroup` — one task failure cancels siblings, but cleanup may be needed (MAJOR)
-15. `except Exception` in async code that accidentally catches `CancelledError` (Python <3.11 where `CancelledError` inherits from `BaseException` — but verify Python version) (MEDIUM)
+15. `except Exception` in async code that accidentally catches `CancelledError` (only a risk in Python ≤3.7 where `CancelledError` inherited from `Exception`; since Python 3.8+ it inherits from `BaseException` — not applicable for this project's Python 3.14 target) (MEDIUM)
 
 **Patterns (SUGGESTION):**
 16. Sequential `await` calls that could be parallelized with `TaskGroup` or `gather` (SUGGESTION)
@@ -642,14 +648,16 @@ After all fixes:
 
 ## Phase 8: Post-Fix Verification
 
-Run the full automated checks again:
+Run automated checks again (same conditional gating as Phase 2):
+
+**Python checks (steps 1-4):** Run only if `src_py` or `test_py` files were changed or modified during Phase 7.
 
 1. `uv run ruff check src/ tests/`
 2. `uv run ruff format src/ tests/`
 3. `uv run mypy src/ tests/`
 4. `uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80`
 
-If `web_src` or `web_test` files were changed, also run:
+**Web dashboard checks (steps 5-7):** Run only if `web_src` or `web_test` files were changed or modified during Phase 7.
 
 5. `npm --prefix web run lint`
 6. `npm --prefix web run type-check`
@@ -667,7 +675,9 @@ git add -A
 
 1. Launch `pr-review-toolkit:code-simplifier` on all modified files
 2. If it suggests improvements, apply them
-3. Re-run `uv run ruff check src/ tests/` + `uv run ruff format src/ tests/` to ensure polish didn't break formatting
+3. Re-run verification (same conditional gating as Phase 8):
+   - If `src_py` or `test_py` changed: `uv run ruff check src/ tests/` + `uv run ruff format src/ tests/` + `uv run mypy src/ tests/` + `uv run pytest tests/ -n auto --cov=ai_company --cov-fail-under=80`
+   - If `web_src` or `web_test` changed: `npm --prefix web run lint` + `npm --prefix web run type-check` + `npm --prefix web run test`
 
 ## Phase 10: Commit + Push + Create PR
 

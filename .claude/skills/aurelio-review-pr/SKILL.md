@@ -140,10 +140,10 @@ git diff main --name-only
 - `test_py`: `.py` files in `tests/`
 - `web_src`: `.vue`, `.ts`, `.css` files in `web/src/` (excluding `web/src/__tests__/`)
 - `web_test`: `.ts` files in `web/src/__tests__/`
-- `docker`: files in `docker/`
+- `docker`: files in `docker/`, root-level `Dockerfile*`, `compose*.yml`, `compose*.yaml`, `docker-compose*.yml`, `docker-compose*.yaml`
 - `ci`: files in `.github/workflows/`, `.github/actions/`
 - `infra_config`: `.pre-commit-config.yaml`, `.dockerignore`
-- `config`: `.toml`, `.yaml`, `.json`, `.cfg` files (not already categorized above)
+- `config`: `.toml`, `.yaml`, `.yml`, `.json`, `.cfg` files (not already categorized above)
 - `docs`: `.md` files
 - `site`: files in `site/`
 - `other`: everything else
@@ -162,7 +162,7 @@ Based on changed files, launch applicable review agents **in parallel** using th
 | **logging-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **resilience-audit** | Any `src_py` changed | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **conventions-enforcer** | Any `src_py` or `test_py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
-| **security-reviewer** | Files in `src/ai_company/api/`, `security/`, `tools/`, `config/`, `persistence/`, `engine/` changed, OR any `web_src` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, `sql`, auth/credential patterns | `everything-claude-code:security-reviewer` |
+| **security-reviewer** | Files in `src/ai_company/api/`, `src/ai_company/security/`, `src/ai_company/tools/`, `src/ai_company/config/`, `src/ai_company/persistence/`, `src/ai_company/engine/` changed, OR any `web_src` changed, OR diff contains `subprocess`, `eval`, `exec`, `pickle`, `yaml.load`, `sql`, auth/credential patterns | `everything-claude-code:security-reviewer` |
 | **frontend-reviewer** | Any `web_src` or `web_test` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **api-contract-drift** | Any file in `src/ai_company/api/` OR `web/src/api/` OR `src/ai_company/core/enums.py` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **infra-reviewer** | Any `docker`, `ci`, or `infra_config` file | `pr-review-toolkit:code-reviewer` (custom prompt below) |
@@ -407,7 +407,7 @@ The infra-reviewer agent checks Docker, CI/CD, and infrastructure configuration.
 7. `pull_request_target` with `actions/checkout` of PR head (code injection risk) (CRITICAL)
 8. Untrusted input used in `run:` steps without sanitization (e.g., `${{ github.event.pull_request.title }}`) (CRITICAL)
 9. Overly broad permissions (`permissions: write-all` or missing `permissions:` block) (MAJOR)
-10. Missing `--no-verify` or `--force` flags that bypass safety checks (MAJOR)
+10. Use of `--no-verify` or `--force` flags that bypass safety checks in CI scripts or workflow `run:` steps (MAJOR)
 11. Secrets exposed in logs (e.g., echoing secrets, not masking) (CRITICAL)
 
 **Docker Compose (MAJOR):**
@@ -521,7 +521,7 @@ The async-concurrency-reviewer agent checks for async/concurrency correctness an
 **Error handling in async code (MAJOR):**
 13. Catching `asyncio.CancelledError` and not re-raising it (suppresses task cancellation) (CRITICAL)
 14. Missing error handling in `TaskGroup` — one task failure cancels siblings, but cleanup may be needed (MAJOR)
-15. `except Exception` in async code that accidentally catches `CancelledError` (Python <3.11 where `CancelledError` inherits from `BaseException` — but verify Python version) (MEDIUM)
+15. `except Exception` in async code that accidentally catches `CancelledError` (only a risk in Python ≤3.7 where `CancelledError` inherited from `Exception`; since Python 3.8+ it inherits from `BaseException` — not applicable for this project's Python 3.14 target) (MEDIUM)
 
 **Patterns (SUGGESTION):**
 16. Sequential `await` calls that could be parallelized with `TaskGroup` or `gather` (SUGGESTION)
