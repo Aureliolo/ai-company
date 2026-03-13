@@ -255,6 +255,7 @@ class TestExceptionHandlers:
             body = resp.json()
             assert body["success"] is False
             assert body["error"] == "Method Not Allowed"
+            assert "POST" in resp.headers.get("allow", "")
 
     def test_http_exception_5xx_returns_scrubbed_message(self) -> None:
         """5xx HTTPException scrubs detail to prevent info leakage."""
@@ -285,3 +286,22 @@ class TestExceptionHandlers:
             assert resp.status_code == 429
             body = resp.json()
             assert body["error"] == "Too Many Requests"
+
+    def test_http_exception_nonstandard_status_uses_fallback(self) -> None:
+        """Non-standard status code falls back to generic message."""
+        from unittest.mock import MagicMock
+
+        from ai_company.api.exception_handlers import handle_http_exception
+
+        exc = MagicMock(spec=HTTPException)
+        exc.status_code = 499
+        exc.detail = ""
+        exc.headers = None
+
+        request = MagicMock()
+        request.method = "GET"
+        request.url.path = "/test"
+
+        resp = handle_http_exception(request, exc)
+        assert resp.status_code == 499
+        assert resp.content.error == "Request error"  # type: ignore[union-attr]
