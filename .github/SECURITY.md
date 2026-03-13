@@ -39,12 +39,13 @@ This project is designed to handle LLM API keys, sandboxed code execution, and a
 - **Secret scanning** and **push protection** enabled on the repository
 - **Gitleaks** pre-commit hook prevents committing secrets locally + weekly CI workflow
 
-### Dependency Scanning
+### Dependency & Supply Chain Scanning
 
 - **Dependabot** monitors dependencies for known vulnerabilities (daily, uv + github-actions + docker)
 - **Dependency review** runs on every pull request (license allow-list, PR comment summaries)
 - **pip-audit** scans Python dependencies for known vulnerabilities (every PR + weekly scheduled workflow)
 - **npm audit** scans Node.js dependencies for known vulnerabilities (every PR, critical + high severity)
+- **Socket.dev** GitHub App detects supply chain attacks on PRs (typosquatting, malware, suspicious ownership changes, obfuscated code)
 
 ### Container & Infrastructure Security
 
@@ -61,6 +62,7 @@ This project is designed to handle LLM API keys, sandboxed code execution, and a
 - All workflow actions pinned by full SHA with version comments
 - `permissions: {}` at workflow level with least-privilege per job
 - `persist-credentials: false` on all `actions/checkout` steps
+- **Signed commits** required on `main` via branch protection
 
 ### Dynamic Application Security Testing (DAST)
 
