@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Security
 
 Security subsystem — rule engine, trust strategies, autonomy levels, output scanning, and timeout policies.

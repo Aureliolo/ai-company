@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # API Layer
 
 Litestar REST + WebSocket API — controllers, authentication, guards, and channels.

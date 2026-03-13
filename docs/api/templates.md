@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Templates
 
 Pre-built company templates, personality presets, and template builder.

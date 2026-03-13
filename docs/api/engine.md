@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Engine
 
 Agent orchestration, execution loops, task decomposition, routing, and parallel execution.

@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Persistence
 
 Pluggable operational data persistence — protocol, configuration, and SQLite backend.
