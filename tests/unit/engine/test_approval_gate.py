@@ -9,6 +9,8 @@ from ai_company.engine.approval_gate import ApprovalGate
 from ai_company.engine.approval_gate_models import EscalationInfo
 from ai_company.security.timeout.park_service import ParkService
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
 
 def _make_escalation(  # noqa: PLR0913
     approval_id: str = "approval-1",
@@ -133,6 +135,30 @@ class TestParkContext:
                 task_id="task-1",
             )
 
+    async def test_raises_on_repo_save_error(self) -> None:
+        park_service = MagicMock(spec=ParkService)
+        parked_mock = MagicMock()
+        parked_mock.id = "parked-1"
+        park_service.park.return_value = parked_mock
+
+        repo = AsyncMock()
+        repo.save.side_effect = RuntimeError("persistence failed")
+
+        gate = ApprovalGate(
+            park_service=park_service,
+            parked_context_repo=repo,
+        )
+        escalation = _make_escalation()
+        context = MagicMock()
+
+        with pytest.raises(RuntimeError, match="persistence failed"):
+            await gate.park_context(
+                escalation=escalation,
+                context=context,
+                agent_id="agent-1",
+                task_id="task-1",
+            )
+
 
 class TestResumeContext:
     """resume_context() loads, deserializes, and deletes."""
@@ -156,9 +182,9 @@ class TestResumeContext:
 
         result = await gate.resume_context("approval-1")
         assert result is not None
-        ctx, msg = result
+        ctx, parked_id = result
         assert ctx is restored_ctx
-        assert "APPROVED" not in msg  # No decision yet, just checking load
+        assert parked_id == "parked-1"
 
     async def test_returns_none_for_unknown_approval(self) -> None:
         park_service = MagicMock(spec=ParkService)
@@ -199,6 +225,53 @@ class TestResumeContext:
         await gate.resume_context("approval-1")
         repo.delete.assert_awaited_once_with("parked-1")
 
+    async def test_raises_on_deserialization_failure(self) -> None:
+        park_service = MagicMock(spec=ParkService)
+        park_service.resume.side_effect = ValueError("corrupt data")
+
+        parked = MagicMock()
+        parked.id = "parked-1"
+        parked.approval_id = "approval-1"
+
+        repo = AsyncMock()
+        repo.get_by_approval.return_value = parked
+
+        gate = ApprovalGate(
+            park_service=park_service,
+            parked_context_repo=repo,
+        )
+
+        with pytest.raises(ValueError, match="corrupt data"):
+            await gate.resume_context("approval-1")
+
+        # Parked record should NOT be deleted on failure
+        repo.delete.assert_not_awaited()
+
+    async def test_delete_failure_does_not_lose_context(self) -> None:
+        park_service = MagicMock(spec=ParkService)
+        restored_ctx = MagicMock()
+        park_service.resume.return_value = restored_ctx
+
+        parked = MagicMock()
+        parked.id = "parked-1"
+        parked.approval_id = "approval-1"
+
+        repo = AsyncMock()
+        repo.get_by_approval.return_value = parked
+        repo.delete.side_effect = RuntimeError("delete failed")
+
+        gate = ApprovalGate(
+            park_service=park_service,
+            parked_context_repo=repo,
+        )
+
+        # Context should still be returned even if delete fails
+        result = await gate.resume_context("approval-1")
+        assert result is not None
+        ctx, parked_id = result
+        assert ctx is restored_ctx
+        assert parked_id == "parked-1"
+
 
 class TestBuildResumeMessage:
     """build_resume_message() produces correct messages."""
@@ -212,6 +285,7 @@ class TestBuildResumeMessage:
         assert "APPROVED" in msg
         assert "approval-1" in msg
         assert "admin" in msg
+        assert "data only" in msg
 
     def test_rejected_with_reason(self) -> None:
         msg = ApprovalGate.build_resume_message(

@@ -10,7 +10,7 @@ re-raised.  ``BaseException`` subclasses (``KeyboardInterrupt``,
 import asyncio
 import copy
 from contextlib import nullcontext
-from typing import TYPE_CHECKING, Any, Never
+from typing import TYPE_CHECKING, Never
 
 import jsonschema
 from referencing import Registry as JsonSchemaRegistry
@@ -49,6 +49,7 @@ from .errors import ToolExecutionError, ToolNotFoundError, ToolParameterError
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from ai_company.engine.approval_gate_models import EscalationInfo
     from ai_company.providers.models import ToolDefinition
     from ai_company.security.protocol import SecurityInterceptionStrategy
 
@@ -115,9 +116,6 @@ class ToolInvoker:
         self._security_interceptor = security_interceptor
         self._agent_id = agent_id
         self._task_id = task_id
-        from ai_company.engine.approval_gate_models import (  # noqa: PLC0415, TC001
-            EscalationInfo,
-        )
 
         self._pending_escalations: list[EscalationInfo] = []
 
@@ -127,7 +125,7 @@ class ToolInvoker:
         return self._registry
 
     @property
-    def pending_escalations(self) -> tuple[Any, ...]:
+    def pending_escalations(self) -> tuple[EscalationInfo, ...]:
         """Escalations detected during the most recent invoke/invoke_all.
 
         Populated when a security ESCALATE verdict with a non-``None``
@@ -452,13 +450,7 @@ class ToolInvoker:
             return self._schema_error_result(tool_call, exc.message)
         except jsonschema.ValidationError as exc:
             return self._param_error_result(tool_call, exc.message)
-        except (MemoryError, RecursionError) as exc:
-            logger.exception(
-                TOOL_INVOKE_NON_RECOVERABLE,
-                tool_call_id=tool_call.id,
-                tool_name=tool_call.name,
-                error=f"{type(exc).__name__}: {exc}",
-            )
+        except MemoryError, RecursionError:
             raise
         except Exception as exc:
             error_msg = str(exc) or f"{type(exc).__name__} (no message)"
@@ -615,22 +607,32 @@ class ToolInvoker:
         if result.metadata.get("requires_parking") is True and result.metadata.get(
             "approval_id"
         ):
-            from ai_company.engine.approval_gate_models import (  # noqa: PLC0415
-                EscalationInfo,
-            )
+            try:
+                from ai_company.engine.approval_gate_models import (  # noqa: PLC0415
+                    EscalationInfo as _EscalationInfo,
+                )
 
-            self._pending_escalations.append(
-                EscalationInfo(
-                    approval_id=str(result.metadata["approval_id"]),
+                self._pending_escalations.append(
+                    _EscalationInfo(
+                        approval_id=str(result.metadata["approval_id"]),
+                        tool_call_id=tool_call.id,
+                        tool_name=tool.name,
+                        action_type=tool.action_type,
+                        risk_level=ApprovalRiskLevel(
+                            result.metadata.get("risk_level", "high"),
+                        ),
+                        reason="Agent requested human approval",
+                    ),
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.exception(
+                    TOOL_INVOKE_EXECUTION_ERROR,
                     tool_call_id=tool_call.id,
                     tool_name=tool.name,
-                    action_type=tool.action_type,
-                    risk_level=ApprovalRiskLevel(
-                        result.metadata.get("risk_level", "high"),
-                    ),
-                    reason="Agent requested human approval",
-                ),
-            )
+                    note="Failed to track parking metadata — escalation not recorded",
+                )
 
     def _build_result(
         self,

@@ -609,6 +609,11 @@ class AgentEngine:
 
         Returns ``None`` when no approval store is available — the
         execution loop skips approval-gate checks in that case.
+
+        Note:
+            No ``parked_context_repo`` is provided, so parked contexts
+            are not persisted.  Resume requires a persistence backend
+            to be wired in.
         """
         if self._approval_store is None:
             return None
@@ -749,7 +754,7 @@ class AgentEngine:
             agent_id=str(identity.id),
             task_id=task_id,
         )
-        existing = list(self._tool_registry._tools.values())  # noqa: SLF001
+        existing = list(self._tool_registry.all_tools())
         return _ToolRegistry([*existing, approval_tool])
 
     def _log_completion(

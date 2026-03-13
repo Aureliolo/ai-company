@@ -2,6 +2,8 @@
 
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
+import pytest
+
 from ai_company.core.enums import ApprovalRiskLevel
 from ai_company.engine.approval_gate import ApprovalGate
 from ai_company.engine.approval_gate_models import EscalationInfo
@@ -14,6 +16,8 @@ from ai_company.providers.models import (
     ToolCall,
     ToolResult,
 )
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 def _make_escalation(

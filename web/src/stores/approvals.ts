@@ -52,42 +52,46 @@ export const useApprovalStore = defineStore('approvals', () => {
     }
   }
 
-  /** Runtime check for required ApprovalItem fields before insertion. */
-  function isValidApprovalPayload(p: Record<string, unknown>): boolean {
-    return (
-      typeof p.id === 'string' && p.id !== '' &&
-      typeof p.action_type === 'string' &&
-      typeof p.title === 'string' &&
-      typeof p.status === 'string' &&
-      typeof p.requested_by === 'string' &&
-      typeof p.risk_level === 'string' &&
-      typeof p.created_at === 'string'
-    )
-  }
-
-  function handleWsEvent(event: WsEvent) {
+  /**
+   * Handle a WebSocket approval event.
+   *
+   * The backend sends a minimal payload with ``approval_id`` (not ``id``).
+   * For new submissions, we fetch the full item from the API.
+   * For status changes, we update the local status and re-fetch for
+   * the complete updated item.
+   */
+  async function handleWsEvent(event: WsEvent) {
     const payload = event.payload as Record<string, unknown> | null
     if (!payload || typeof payload !== 'object') return
+    const approvalId = payload.approval_id
+    if (typeof approvalId !== 'string' || !approvalId) return
+
     switch (event.event_type) {
       case 'approval.submitted':
-        if (
-          isValidApprovalPayload(payload) &&
-          !approvals.value.some((a) => a.id === payload.id)
-        ) {
-          // Only insert + count into unfiltered views to keep list consistent
-          if (!activeFilters.value) {
-            approvals.value = [payload as unknown as ApprovalItem, ...approvals.value]
-            total.value++
+        if (!approvals.value.some((a) => a.id === approvalId)) {
+          try {
+            const item = await approvalsApi.getApproval(approvalId)
+            if (!activeFilters.value) {
+              approvals.value = [item, ...approvals.value]
+              total.value++
+            }
+          } catch {
+            // Item may have been deleted or expired between event and fetch
           }
         }
         break
       case 'approval.approved':
       case 'approval.rejected':
       case 'approval.expired':
-        if (typeof payload.id === 'string' && payload.id) {
+        try {
+          const updated = await approvalsApi.getApproval(approvalId)
           approvals.value = approvals.value.map((a) =>
-            a.id === payload.id ? { ...a, ...(payload as Partial<ApprovalItem>) } : a,
+            a.id === approvalId ? updated : a,
           )
+        } catch {
+          // Item may have been deleted — remove from local list
+          approvals.value = approvals.value.filter((a) => a.id !== approvalId)
+          total.value = Math.max(0, total.value - 1)
         }
         break
     }

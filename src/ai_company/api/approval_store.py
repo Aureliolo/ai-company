@@ -148,6 +148,15 @@ class ApprovalStore:
                 approval_id=item.id,
             )
             if self._on_expire is not None:
-                self._on_expire(expired)
+                try:
+                    self._on_expire(expired)
+                except MemoryError, RecursionError:
+                    raise
+                except Exception:
+                    logger.exception(
+                        API_APPROVAL_EXPIRED,
+                        approval_id=item.id,
+                        note="on_expire callback failed",
+                    )
             return expired
         return item
