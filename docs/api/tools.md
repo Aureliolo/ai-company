@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Tools
 
 Tool system — base class, registry, invoker, built-in tools, and MCP bridge.

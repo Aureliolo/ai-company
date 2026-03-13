@@ -458,6 +458,14 @@ def create_app(  # noqa: PLR0913
                 name="Permissions-Policy",
                 value="geolocation=(), camera=(), microphone=()",
             ),
+            ResponseHeader(
+                name="Cross-Origin-Resource-Policy",
+                value="same-origin",
+            ),
+            ResponseHeader(
+                name="Cache-Control",
+                value="no-store",
+            ),
         ],
         middleware=middleware,
         plugins=plugins,

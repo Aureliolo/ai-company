@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Observability
 
 Structured logging, event constants, correlation tracking, and log sinks.

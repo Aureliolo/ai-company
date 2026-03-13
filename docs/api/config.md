@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Config
 
 YAML company configuration loading and validation.

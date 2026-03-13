@@ -143,7 +143,7 @@ import Base from "../layouts/Base.astro";
 
       <div class="grid md:grid-cols-3 gap-8">
         <!-- Orchestration -->
-        <div class="bg-[#0F1219] rounded-xl p-8 border border-violet-500/20 hover:border-violet-500/40 transition-colors">
+        <a href="/docs/design/engine/" class="block bg-[#0F1219] rounded-xl p-8 border border-violet-500/20 hover:border-violet-500/40 transition-colors no-underline text-white">
           <div class="w-12 h-12 rounded-lg bg-violet-600/20 flex items-center justify-center text-violet-400 mb-4 text-xl">&#9881;</div>
           <h3 class="text-xl font-semibold mb-3">Orchestration</h3>
           <p class="text-gray-400 mb-4">Define agents with roles, models, and tools. The engine handles task decomposition, routing, conflict resolution, and collaboration.</p>
@@ -152,10 +152,10 @@ import Base from "../layouts/Base.astro";
             <li>DAG-based task decomposition</li>
             <li>5 routing strategies</li>
           </ul>
-        </div>
+        </a>
 
         <!-- Governance -->
-        <div class="bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors">
+        <a href="/docs/security/" class="block bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors no-underline text-white">
           <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#128274;</div>
           <h3 class="text-xl font-semibold mb-3">Governance</h3>
           <p class="text-gray-400 mb-4">Built-in security, budget enforcement, and progressive trust. The SecOps agent and fail-closed rule engine protect every action.</p>
@@ -164,10 +164,10 @@ import Base from "../layouts/Base.astro";
             <li>Per-agent budget limits + auto-downgrade</li>
             <li>Approval timeout policies</li>
           </ul>
-        </div>
+        </a>
 
         <!-- Memory -->
-        <div class="bg-[#0F1219] rounded-xl p-8 border border-violet-500/20 hover:border-violet-500/40 transition-colors">
+        <a href="/docs/design/memory/" class="block bg-[#0F1219] rounded-xl p-8 border border-violet-500/20 hover:border-violet-500/40 transition-colors no-underline text-white">
           <div class="w-12 h-12 rounded-lg bg-violet-600/20 flex items-center justify-center text-violet-400 mb-4 text-xl">&#129504;</div>
           <h3 class="text-xl font-semibold mb-3">Memory</h3>
           <p class="text-gray-400 mb-4">Per-agent and shared organizational memory. Retrieval pipeline with ranking, filtering, and context injection. Consolidation and archival.</p>
@@ -176,7 +176,7 @@ import Base from "../layouts/Base.astro";
             <li>Shared org knowledge base</li>
             <li>Automatic memory consolidation</li>
           </ul>
-        </div>
+        </a>
       </div>
     </div>
   </section>
@@ -191,22 +191,22 @@ import Base from "../layouts/Base.astro";
 
       <!-- TODO: Make this expandable (Vue/React island) -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10">
+        <a href="/docs/design/organization/" class="block bg-[#1a1f2e] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors no-underline">
           <p class="font-semibold text-violet-400">Config</p>
           <p class="text-xs text-gray-500 mt-1">YAML schema, loader, validation</p>
-        </div>
-        <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10">
+        </a>
+        <a href="/docs/design/engine/" class="block bg-[#1a1f2e] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors no-underline">
           <p class="font-semibold text-violet-400">Engine</p>
           <p class="text-xs text-gray-500 mt-1">Loops, decomposition, routing</p>
-        </div>
-        <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10">
+        </a>
+        <a href="/docs/design/agents/" class="block bg-[#1a1f2e] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors no-underline">
           <p class="font-semibold text-violet-400">Agents</p>
           <p class="text-xs text-gray-500 mt-1">HR, comms, tools, memory</p>
-        </div>
-        <div class="bg-[#1a1f2e] rounded-xl p-6 border border-white/10">
+        </a>
+        <a href="/docs/architecture/" class="block bg-[#1a1f2e] rounded-xl p-6 border border-white/10 hover:border-violet-500/30 transition-colors no-underline">
           <p class="font-semibold text-violet-400">Infra</p>
           <p class="text-xs text-gray-500 mt-1">Providers, persistence, observability</p>
-        </div>
+        </a>
       </div>
 
       <a href="/docs/architecture/" class="inline-block mt-8 text-teal-400 hover:text-teal-300 transition-colors">
@@ -216,9 +216,69 @@ import Base from "../layouts/Base.astro";
   </section>
 
   <!-- ============================================================ -->
-  <!-- USE CASES -->
+  <!-- SECURITY -->
   <!-- ============================================================ -->
   <section class="py-24 px-6 bg-gradient-to-b from-[#0F1219] to-[#1a1025]">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">Security-First by Design</h2>
+      <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
+        Autonomous agents need guardrails. SynthOrg embeds security at every layer &mdash;
+        from the application runtime to the CI/CD pipeline and container infrastructure.
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-8">
+        <!-- Runtime Security -->
+        <a href="/docs/security/#application-security" class="block bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors no-underline text-white">
+          <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#128737;</div>
+          <h3 class="text-xl font-semibold mb-3">Runtime Protection</h3>
+          <p class="text-gray-400 mb-4">Every tool invocation passes through a fail-closed rule engine before execution. Five detectors scan for credentials, path traversal, destructive operations, and data leaks.</p>
+          <ul class="text-sm text-gray-500 space-y-1">
+            <li>SecOps agent with fail-closed rule engine</li>
+            <li>Output scanning with redaction policies</li>
+            <li>Progressive trust &amp; approval workflows</li>
+            <li>Persistent audit trail for every decision</li>
+          </ul>
+        </a>
+
+        <!-- Container & Supply Chain -->
+        <a href="/docs/security/#container-hardening" class="block bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors no-underline text-white">
+          <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#128230;</div>
+          <h3 class="text-xl font-semibold mb-3">Hardened Infrastructure</h3>
+          <p class="text-gray-400 mb-4">Distroless containers, digest-pinned images, and CIS Docker Benchmark compliance. Every image is scanned by two tools and signed before push.</p>
+          <ul class="text-sm text-gray-500 space-y-1">
+            <li>Chainguard distroless runtime (no shell)</li>
+            <li>Trivy + Grype dual scanning</li>
+            <li>cosign keyless image signing</li>
+            <li>CIS 5.3 / 5.12 / 5.25 compliance</li>
+          </ul>
+        </a>
+
+        <!-- CI/CD Security -->
+        <a href="/docs/security/#cicd-security" class="block bg-[#0F1219] rounded-xl p-8 border border-teal-500/20 hover:border-teal-500/40 transition-colors no-underline text-white">
+          <div class="w-12 h-12 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 mb-4 text-xl">&#9889;</div>
+          <h3 class="text-xl font-semibold mb-3">Continuous Security</h3>
+          <p class="text-gray-400 mb-4">Eight security scanners run across the development lifecycle. Secret detection, SAST, DAST, dependency auditing, license compliance, and supply chain scoring.</p>
+          <ul class="text-sm text-gray-500 space-y-1">
+            <li>gitleaks, CodeQL, ZAP DAST, zizmor</li>
+            <li>pip-audit + npm audit + Socket.dev</li>
+            <li>OSSF Scorecard supply chain maturity</li>
+            <li>Signed commits + required reviews</li>
+          </ul>
+        </a>
+      </div>
+
+      <div class="text-center mt-10">
+        <a href="/docs/security/" class="text-teal-400 hover:text-teal-300 transition-colors">
+          Read the full security documentation &rarr;
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- USE CASES -->
+  <!-- ============================================================ -->
+  <section class="py-24 px-6">
     <div class="max-w-6xl mx-auto">
       <h2 class="text-3xl md:text-4xl font-bold text-center mb-16">Use Cases</h2>
 
@@ -346,6 +406,7 @@ import Base from "../layouts/Base.astro";
           <li><a href="/docs/user_guide/" class="hover:text-white transition-colors">User Guide</a></li>
           <li><a href="/docs/architecture/" class="hover:text-white transition-colors">Architecture</a></li>
           <li><a href="/docs/design/" class="hover:text-white transition-colors">Design Spec</a></li>
+          <li><a href="/docs/security/" class="hover:text-white transition-colors">Security</a></li>
         </ul>
       </div>
       <div>

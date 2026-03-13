@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Budget
 
 Cost tracking, budget enforcement, auto-downgrade, quota management, and CFO optimization.

@@ -19,7 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: write  # Required by API scan action to create issues for scan findings
+      # The ZAP action creates/updates a single GitHub issue per repo with scan
+      # findings (not one per run). Removing issues:write would cause the action
+      # to fail. The auto-created issue is updated in-place on subsequent runs.
+      issues: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:

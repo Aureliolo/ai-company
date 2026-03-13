@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Core
 
 Shared domain models, base types, and enums used across the framework.

@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # HR
 
 Agent lifecycle management — hiring, firing, onboarding, offboarding, performance tracking, and promotion/demotion.

@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Memory
 
 Persistent agent memory — protocol, retrieval pipeline, shared org memory, consolidation, and archival.

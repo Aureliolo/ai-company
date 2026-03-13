@@ -32,6 +32,30 @@ class TestCreateApp:
         data = response.json()
         assert data["info"]["title"] == "SynthOrg API"
 
+    @pytest.mark.parametrize(
+        ("header", "expected"),
+        [
+            ("X-Content-Type-Options", "nosniff"),
+            ("X-Frame-Options", "DENY"),
+            ("Referrer-Policy", "strict-origin-when-cross-origin"),
+            ("Permissions-Policy", "geolocation=(), camera=(), microphone=()"),
+            (
+                "Strict-Transport-Security",
+                "max-age=63072000; includeSubDomains",
+            ),
+            ("Cross-Origin-Resource-Policy", "same-origin"),
+            ("Cache-Control", "no-store"),
+        ],
+    )
+    def test_security_response_headers(
+        self,
+        test_client: TestClient[Any],
+        header: str,
+        expected: str,
+    ) -> None:
+        response = test_client.get("/docs/openapi.json")
+        assert response.headers.get(header) == expected
+
 
 @pytest.mark.unit
 class TestAppLifecycle:

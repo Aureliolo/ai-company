@@ -1,15 +1,20 @@
 """Exception handlers mapping domain errors to HTTP responses.
 
 Each handler returns an ``ApiResponse(error=...)`` with the
-appropriate HTTP status code and a **scrubbed** user-facing error
-message.  Detailed error context is logged server-side only.
+appropriate HTTP status code.  5xx responses return a generic
+scrubbed message; 4xx responses pass through the exception detail
+(authored by SynthOrg's guards/middleware and user-safe).  Detailed
+error context is logged server-side for all status codes.
 """
 
+from http import HTTPStatus
 from typing import Any, Final
 
 from litestar import Request, Response
 from litestar.exceptions import (
+    HTTPException,
     NotAuthorizedException,
+    NotFoundException,
     PermissionDeniedException,
     ValidationException,
 )
@@ -17,7 +22,10 @@ from litestar.exceptions import (
 from ai_company.api.dto import ApiResponse
 from ai_company.api.errors import ApiError
 from ai_company.observability import get_logger
-from ai_company.observability.events.api import API_REQUEST_ERROR
+from ai_company.observability.events.api import (
+    API_REQUEST_ERROR,
+    API_ROUTE_NOT_FOUND,
+)
 from ai_company.persistence.errors import (
     DuplicateRecordError,
     PersistenceError,
@@ -133,7 +141,7 @@ def handle_permission_denied(
 ) -> Response[ApiResponse[None]]:
     """Map ``PermissionDeniedException`` to 403."""
     _log_error(request, exc, status=403)
-    detail = exc.detail or "Forbidden"
+    detail = exc.detail or HTTPStatus.FORBIDDEN.phrase
     return Response(
         content=ApiResponse[None](error=detail),
         status_code=403,
@@ -160,13 +168,68 @@ def handle_not_authorized(
 ) -> Response[ApiResponse[None]]:
     """Map ``NotAuthorizedException`` to 401."""
     _log_error(request, exc, status=401)
-    detail = exc.detail or "Authentication required"
+    detail = exc.detail or HTTPStatus.UNAUTHORIZED.phrase
     return Response(
         content=ApiResponse[None](error=detail),
         status_code=401,
     )
 
 
+def handle_not_found(
+    request: Request[Any, Any, Any],
+    exc: NotFoundException,
+) -> Response[ApiResponse[None]]:
+    """Map Litestar ``NotFoundException`` to 404.
+
+    Ensures unmatched routes return 404 instead of falling through
+    to ``handle_unexpected`` (which returns 500), which ZAP flags
+    as a security misconfiguration.
+    """
+    logger.warning(
+        API_ROUTE_NOT_FOUND,
+        method=request.method,
+        path=str(request.url.path),
+        status_code=404,
+        error_type=type(exc).__qualname__,
+        error=str(exc),
+    )
+    return Response(
+        content=ApiResponse[None](error="Not found"),
+        status_code=404,
+    )
+
+
+def handle_http_exception(
+    request: Request[Any, Any, Any],
+    exc: HTTPException,
+) -> Response[ApiResponse[None]]:
+    """Catch-all for unhandled Litestar ``HTTPException`` subclasses.
+
+    Preserves the correct status code (e.g. 405, 429) instead of
+    letting them fall through to ``handle_unexpected`` as 500.
+    """
+    status = exc.status_code
+    _log_error(request, exc, status=status)
+    if status >= _SERVER_ERROR_THRESHOLD:
+        msg = "Internal server error"
+    else:
+        try:
+            fallback = HTTPStatus(status).phrase
+        except ValueError:
+            fallback = "Request error"
+        msg = exc.detail or fallback
+    return Response(
+        content=ApiResponse[None](error=msg),
+        status_code=status,
+        headers=exc.headers,
+    )
+
+
+# Litestar resolves exception handlers by walking the raised exception's
+# MRO — the first matching type found in this dict wins.  Dict insertion
+# order does NOT affect resolution priority.  (For HTTPException subclasses,
+# Litestar also checks integer status-code keys first, but this dict uses
+# only type keys.)
 EXCEPTION_HANDLERS: dict[type[Exception], object] = {
     RecordNotFoundError: handle_record_not_found,
     DuplicateRecordError: handle_duplicate_record,
@@ -174,6 +237,8 @@ EXCEPTION_HANDLERS: dict[type[Exception], object] = {
     NotAuthorizedException: handle_not_authorized,
     PermissionDeniedException: handle_permission_denied,
     ValidationException: handle_validation_error,
+    NotFoundException: handle_not_found,
+    HTTPException: handle_http_exception,
     ApiError: handle_api_error,
     Exception: handle_unexpected,
 }

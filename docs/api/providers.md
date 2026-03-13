@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Providers
 
 LLM provider abstraction — protocol, base class, drivers, capabilities, routing, and resilience.

@@ -1,3 +1,8 @@
+---
+search:
+  exclude: true
+---
+
 # Communication
 
 Inter-agent messaging — bus, dispatcher, delegation, loop prevention, conflict resolution, and meeting protocols.
