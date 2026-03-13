@@ -351,10 +351,11 @@ def apply_post_filters(
 ) -> tuple[MemoryEntry, ...]:
     """Apply post-retrieval filters that Mem0 cannot handle natively.
 
-    Filters by category, tags, time range, and minimum relevance.
-    Entries with ``relevance_score=None`` (e.g. from ``get_all``)
-    are never excluded by ``min_relevance`` — the filter only
-    applies when a score is present.
+    Filters expired entries, then applies category, tags, time range,
+    and minimum relevance filters.  Entries with
+    ``relevance_score=None`` (e.g. from ``get_all``) are never
+    excluded by ``min_relevance`` — the filter only applies when a
+    score is present.
 
     Args:
         entries: Raw entries from Mem0.
@@ -363,8 +364,11 @@ def apply_post_filters(
     Returns:
         Filtered entries (order preserved).
     """
+    now = datetime.now(UTC)
     result: list[MemoryEntry] = []
     for entry in entries:
+        if entry.expires_at is not None and entry.expires_at <= now:
+            continue
         if query.categories and entry.category not in query.categories:
             continue
         if query.tags and not all(tag in entry.metadata.tags for tag in query.tags):

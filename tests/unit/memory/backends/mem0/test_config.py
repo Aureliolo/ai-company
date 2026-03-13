@@ -189,3 +189,41 @@ class TestBuildConfigFromCompanyConfig:
         assert mem0_config.embedder.provider == "test-provider"
         assert mem0_config.embedder.model == "test-model-xl"
         assert mem0_config.embedder.dims == 4096
+
+    def test_rejects_unsupported_vector_store(self) -> None:
+        storage = MemoryStorageConfig.model_construct(
+            vector_store="chroma",
+            history_store="sqlite",
+            data_dir="/data/memory",
+        )
+        company_config = CompanyMemoryConfig.model_construct(
+            backend="mem0",
+            storage=storage,
+        )
+        with pytest.raises(ValueError, match="qdrant"):
+            build_config_from_company_config(
+                company_config,
+                embedder=_embedder(),
+            )
+
+    def test_rejects_unsupported_history_store(self) -> None:
+        company_config = CompanyMemoryConfig(
+            backend="mem0",
+            storage=MemoryStorageConfig(history_store="postgresql"),
+        )
+        with pytest.raises(ValueError, match="sqlite"):
+            build_config_from_company_config(
+                company_config,
+                embedder=_embedder(),
+            )
+
+    def test_accepts_qdrant_external(self) -> None:
+        company_config = CompanyMemoryConfig(
+            backend="mem0",
+            storage=MemoryStorageConfig(vector_store="qdrant-external"),
+        )
+        mem0_config = build_config_from_company_config(
+            company_config,
+            embedder=_embedder(),
+        )
+        assert mem0_config is not None

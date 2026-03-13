@@ -43,6 +43,9 @@ from ai_company.memory.errors import (
     MemoryRetrievalError,
     MemoryStoreError,
 )
+from ai_company.memory.errors import (
+    MemoryError as DomainMemoryError,
+)
 from ai_company.observability import get_logger
 
 if TYPE_CHECKING:
@@ -147,11 +150,14 @@ class Mem0MemoryBackend:
         """Establish connection to Mem0.
 
         Creates the Mem0 ``Memory`` client with embedded Qdrant.
+        Idempotent — returns immediately if already connected.
 
         Raises:
             MemoryConnectionError: If Mem0 is not installed or
                 initialization fails.
         """
+        if self._connected:
+            return
         logger.info(MEMORY_BACKEND_CONNECTING, backend="mem0")
         try:
             from mem0 import Memory  # noqa: PLC0415
@@ -288,12 +294,23 @@ class Mem0MemoryBackend:
             msg = "Not connected — call connect() first"
             raise MemoryConnectionError(msg)
 
-    def _validate_agent_id(self, agent_id: NotBlankStr) -> None:
+    def _validate_agent_id(
+        self,
+        agent_id: NotBlankStr,
+        *,
+        error_cls: type[DomainMemoryError] = MemoryStoreError,
+    ) -> None:
         """Reject the reserved shared namespace as an agent ID.
 
+        Args:
+            agent_id: Agent identifier to validate.
+            error_cls: Error class to raise on rejection — defaults to
+                ``MemoryStoreError`` for write ops, pass
+                ``MemoryRetrievalError`` for read ops.
+
         Raises:
-            MemoryStoreError: If ``agent_id`` collides with the
-                reserved ``_SHARED_NAMESPACE``.
+            DomainMemoryError: (subclass per ``error_cls``) If
+                ``agent_id`` collides with ``_SHARED_NAMESPACE``.
         """
         if str(agent_id) == _SHARED_NAMESPACE:
             logger.warning(
@@ -305,7 +322,7 @@ class Mem0MemoryBackend:
                 f"agent_id must not be the reserved shared namespace: "
                 f"{_SHARED_NAMESPACE!r}"
             )
-            raise MemoryStoreError(msg)
+            raise error_cls(msg)
 
     # ── CRUD Operations ───────────────────────────────────────────
 
@@ -391,7 +408,7 @@ class Mem0MemoryBackend:
             MemoryRetrievalError: If the retrieval fails.
         """
         self._require_connected()
-        self._validate_agent_id(agent_id)
+        self._validate_agent_id(agent_id, error_cls=MemoryRetrievalError)
         try:
             if query.text is not None:
                 kwargs = query_to_mem0_search_args(str(agent_id), query)
@@ -453,7 +470,7 @@ class Mem0MemoryBackend:
             MemoryRetrievalError: If the backend query fails.
         """
         self._require_connected()
-        self._validate_agent_id(agent_id)
+        self._validate_agent_id(agent_id, error_cls=MemoryRetrievalError)
         try:
             raw = await asyncio.to_thread(self._client.get, str(memory_id))
             if raw is None:
@@ -625,7 +642,7 @@ class Mem0MemoryBackend:
             MemoryRetrievalError: If the count query fails.
         """
         self._require_connected()
-        self._validate_agent_id(agent_id)
+        self._validate_agent_id(agent_id, error_cls=MemoryRetrievalError)
         try:
             raw_result = await asyncio.to_thread(
                 self._client.get_all,

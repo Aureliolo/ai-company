@@ -1,11 +1,17 @@
 """Tests for memory backend factory."""
 
+from unittest.mock import patch
+
 import pytest
 from pydantic import ValidationError
 
 from ai_company.memory.backends.mem0.adapter import Mem0MemoryBackend
 from ai_company.memory.backends.mem0.config import Mem0EmbedderConfig
-from ai_company.memory.config import CompanyMemoryConfig, MemoryOptionsConfig
+from ai_company.memory.config import (
+    CompanyMemoryConfig,
+    MemoryOptionsConfig,
+    MemoryStorageConfig,
+)
 from ai_company.memory.errors import MemoryConfigError
 from ai_company.memory.factory import create_memory_backend
 
@@ -52,3 +58,37 @@ class TestCreateMemoryBackend:
         config = CompanyMemoryConfig(backend="mem0")
         with pytest.raises(MemoryConfigError, match="must be a Mem0EmbedderConfig"):
             create_memory_backend(config, embedder="not-a-config")  # type: ignore[arg-type]
+
+    def test_config_build_error_wraps_as_memory_config_error(self) -> None:
+        """ValueError from build_config_from_company_config wraps."""
+        storage = MemoryStorageConfig.model_construct(
+            vector_store="chroma",
+            history_store="sqlite",
+            data_dir="/data/memory",
+        )
+        config = CompanyMemoryConfig.model_construct(
+            backend="mem0",
+            storage=storage,
+        )
+        with pytest.raises(MemoryConfigError, match="Invalid Mem0 configuration"):
+            create_memory_backend(config, embedder=_test_embedder())
+
+    def test_backend_init_error_wraps_as_memory_config_error(self) -> None:
+        """Exception from Mem0MemoryBackend() constructor wraps."""
+        config = CompanyMemoryConfig(backend="mem0")
+        with (
+            patch(
+                "ai_company.memory.backends.mem0.Mem0MemoryBackend",
+                side_effect=RuntimeError("init boom"),
+            ),
+            pytest.raises(MemoryConfigError, match="Failed to create Mem0"),
+        ):
+            create_memory_backend(config, embedder=_test_embedder())
+
+    def test_unknown_backend_bypassing_validation_raises(self) -> None:
+        """Defensive guard when model_construct bypasses validation."""
+        config = CompanyMemoryConfig.model_construct(
+            backend="nonexistent",
+        )
+        with pytest.raises(MemoryConfigError, match="Unknown memory backend"):
+            create_memory_backend(config, embedder=_test_embedder())
