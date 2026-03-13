@@ -43,6 +43,7 @@ from .loop_protocol import (
 )
 
 if TYPE_CHECKING:
+    from ai_company.engine.approval_gate import ApprovalGate
     from ai_company.engine.context import AgentContext
     from ai_company.providers.models import ToolDefinition
     from ai_company.providers.protocol import CompletionProvider
@@ -60,6 +61,13 @@ class ReactLoop:
     the turn limit is reached, the budget is exhausted, a shutdown is
     requested, or an error occurs.
     """
+
+    def __init__(
+        self,
+        *,
+        approval_gate: ApprovalGate | None = None,
+    ) -> None:
+        self._approval_gate = approval_gate
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
@@ -212,6 +220,7 @@ class ReactLoop:
             response,
             turn_number,
             turns,
+            approval_gate=self._approval_gate,
         )
 
     def _handle_completion(

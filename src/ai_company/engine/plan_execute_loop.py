@@ -66,6 +66,7 @@ from .plan_parsing import (
 )
 
 if TYPE_CHECKING:
+    from ai_company.engine.approval_gate import ApprovalGate
     from ai_company.engine.context import AgentContext
     from ai_company.providers.models import ToolDefinition
     from ai_company.providers.protocol import CompletionProvider
@@ -81,8 +82,14 @@ class PlanExecuteLoop:
     step with a mini-ReAct sub-loop. Supports re-planning on failure.
     """
 
-    def __init__(self, config: PlanExecuteConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: PlanExecuteConfig | None = None,
+        *,
+        approval_gate: ApprovalGate | None = None,
+    ) -> None:
         self._config = config or PlanExecuteConfig()
+        self._approval_gate = approval_gate
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
@@ -723,8 +730,8 @@ class PlanExecuteLoop:
             )
         return ctx, success
 
-    @staticmethod
     async def _handle_step_tool_calls(  # noqa: PLR0913
+        self,
         ctx: AgentContext,
         tool_invoker: ToolInvoker | None,
         response: CompletionResponse,
@@ -747,6 +754,7 @@ class PlanExecuteLoop:
             response,
             turn_number,
             turns,
+            approval_gate=self._approval_gate,
         )
 
     # ── Utilities ───────────────────────────────────────────────────

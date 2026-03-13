@@ -36,6 +36,11 @@ from ai_company.observability.events.api import (
     API_APPROVAL_REJECTED,
     API_RESOURCE_NOT_FOUND,
 )
+from ai_company.observability.events.approval_gate import (
+    APPROVAL_GATE_CONTEXT_RESUMED,
+    APPROVAL_GATE_NO_PARKED_CONTEXT,
+    APPROVAL_GATE_RESUME_FAILED,
+)
 
 logger = get_logger(__name__)
 
@@ -141,6 +146,52 @@ def _resolve_decision(
         raise UnauthorizedError(msg)
 
     return auth_user
+
+
+async def _try_resume_parked_context(
+    app_state: AppState,
+    approval_id: str,
+    *,
+    approved: bool,
+    decided_by: str,
+) -> None:
+    """Best-effort: check for a parked context and log the resume result.
+
+    The actual re-execution is handled by the agent scheduler, which
+    is out of scope for the approval controller.  This function only
+    performs the context lookup and logs the result.
+
+    Failures are logged but never block the approval response.
+    """
+    gate = app_state.approval_gate
+    if gate is None:
+        return
+
+    try:
+        result = await gate.resume_context(approval_id)
+        if result is None:
+            logger.info(
+                APPROVAL_GATE_NO_PARKED_CONTEXT,
+                approval_id=approval_id,
+                note="No parked context to resume",
+            )
+            return
+        _context, parked_id = result
+        logger.info(
+            APPROVAL_GATE_CONTEXT_RESUMED,
+            approval_id=approval_id,
+            parked_id=parked_id,
+            approved=approved,
+            decided_by=decided_by,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.exception(
+            APPROVAL_GATE_RESUME_FAILED,
+            approval_id=approval_id,
+            note="Resume check failed — approval response continues",
+        )
 
 
 class ApprovalsController(Controller):
@@ -335,6 +386,14 @@ class ApprovalsController(Controller):
             approval_id=approval_id,
             decided_by=auth_user.username,
         )
+
+        await _try_resume_parked_context(
+            app_state,
+            approval_id,
+            approved=True,
+            decided_by=auth_user.username,
+        )
+
         return ApiResponse(data=updated)
 
     @post(
@@ -409,4 +468,12 @@ class ApprovalsController(Controller):
             approval_id=approval_id,
             decided_by=auth_user.username,
         )
+
+        await _try_resume_parked_context(
+            app_state,
+            approval_id,
+            approved=False,
+            decided_by=auth_user.username,
+        )
+
         return ApiResponse(data=updated)

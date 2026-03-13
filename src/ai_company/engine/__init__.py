@@ -6,6 +6,8 @@ execution loops, and engine errors.
 """
 
 from ai_company.engine.agent_engine import AgentEngine
+from ai_company.engine.approval_gate import ApprovalGate
+from ai_company.engine.approval_gate_models import EscalationInfo, ResumePayload
 from ai_company.engine.assignment import (
     STRATEGY_MAP,
     STRATEGY_NAME_AUCTION,
@@ -200,6 +202,7 @@ __all__ = [
     "AgentRunResult",
     "AgentTaskScorer",
     "AgentWorkload",
+    "ApprovalGate",
     "AssignmentCandidate",
     "AssignmentRequest",
     "AssignmentResult",
@@ -238,6 +241,7 @@ __all__ = [
     "EngineError",
     "ErrorFinding",
     "ErrorSeverity",
+    "EscalationInfo",
     "ExecutionLoop",
     "ExecutionPlan",
     "ExecutionResult",
@@ -275,6 +279,7 @@ __all__ = [
     "RecoveryStrategy",
     "ResourceConflictError",
     "ResourceLock",
+    "ResumePayload",
     "RoleBasedAssignmentStrategy",
     "RoutingCandidate",
     "RoutingDecision",

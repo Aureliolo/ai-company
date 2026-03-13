@@ -1,0 +1,236 @@
+"""Tests for ApprovalGate service."""
+
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from ai_company.core.enums import ApprovalRiskLevel
+from ai_company.engine.approval_gate import ApprovalGate
+from ai_company.engine.approval_gate_models import EscalationInfo
+from ai_company.security.timeout.park_service import ParkService
+
+
+def _make_escalation(  # noqa: PLR0913
+    approval_id: str = "approval-1",
+    tool_call_id: str = "tc-1",
+    tool_name: str = "deploy_to_prod",
+    action_type: str = "deploy:production",
+    risk_level: ApprovalRiskLevel = ApprovalRiskLevel.HIGH,
+    reason: str = "Needs approval",
+) -> EscalationInfo:
+    return EscalationInfo(
+        approval_id=approval_id,
+        tool_call_id=tool_call_id,
+        tool_name=tool_name,
+        action_type=action_type,
+        risk_level=risk_level,
+        reason=reason,
+    )
+
+
+class TestShouldPark:
+    """should_park() returns None or first EscalationInfo."""
+
+    def test_returns_none_for_empty(self) -> None:
+        gate = ApprovalGate(park_service=ParkService())
+        assert gate.should_park(()) is None
+
+    def test_returns_first_escalation(self) -> None:
+        gate = ApprovalGate(park_service=ParkService())
+        e1 = _make_escalation(approval_id="a1")
+        e2 = _make_escalation(approval_id="a2")
+        result = gate.should_park((e1, e2))
+        assert result is e1
+
+
+class TestParkContext:
+    """park_context() serializes and persists."""
+
+    async def test_calls_park_service(self) -> None:
+        park_service = MagicMock(spec=ParkService)
+        parked_mock = MagicMock()
+        parked_mock.id = "parked-1"
+        park_service.park.return_value = parked_mock
+
+        gate = ApprovalGate(park_service=park_service)
+        escalation = _make_escalation()
+        context = MagicMock()
+
+        result = await gate.park_context(
+            escalation=escalation,
+            context=context,
+            agent_id="agent-1",
+            task_id="task-1",
+        )
+
+        park_service.park.assert_called_once_with(
+            context=context,
+            approval_id="approval-1",
+            agent_id="agent-1",
+            task_id="task-1",
+            metadata={
+                "tool_name": "deploy_to_prod",
+                "action_type": "deploy:production",
+                "risk_level": "high",
+            },
+        )
+        assert result is parked_mock
+
+    async def test_persists_to_repo_when_available(self) -> None:
+        park_service = MagicMock(spec=ParkService)
+        parked_mock = MagicMock()
+        parked_mock.id = "parked-1"
+        park_service.park.return_value = parked_mock
+
+        repo = AsyncMock()
+        gate = ApprovalGate(
+            park_service=park_service,
+            parked_context_repo=repo,
+        )
+        escalation = _make_escalation()
+        context = MagicMock()
+
+        await gate.park_context(
+            escalation=escalation,
+            context=context,
+            agent_id="agent-1",
+            task_id="task-1",
+        )
+
+        repo.save.assert_awaited_once_with(parked_mock)
+
+    async def test_works_without_repo(self) -> None:
+        park_service = MagicMock(spec=ParkService)
+        parked_mock = MagicMock()
+        parked_mock.id = "parked-1"
+        park_service.park.return_value = parked_mock
+
+        gate = ApprovalGate(park_service=park_service)
+        escalation = _make_escalation()
+        context = MagicMock()
+
+        result = await gate.park_context(
+            escalation=escalation,
+            context=context,
+            agent_id="agent-1",
+            task_id="task-1",
+        )
+        assert result is parked_mock
+
+    async def test_raises_on_serialization_error(self) -> None:
+        park_service = MagicMock(spec=ParkService)
+        park_service.park.side_effect = ValueError("serialization failed")
+
+        gate = ApprovalGate(park_service=park_service)
+        escalation = _make_escalation()
+        context = MagicMock()
+
+        with pytest.raises(ValueError, match="serialization failed"):
+            await gate.park_context(
+                escalation=escalation,
+                context=context,
+                agent_id="agent-1",
+                task_id="task-1",
+            )
+
+
+class TestResumeContext:
+    """resume_context() loads, deserializes, and deletes."""
+
+    async def test_successful_resume(self) -> None:
+        park_service = MagicMock(spec=ParkService)
+        restored_ctx = MagicMock()
+        park_service.resume.return_value = restored_ctx
+
+        parked = MagicMock()
+        parked.id = "parked-1"
+        parked.approval_id = "approval-1"
+
+        repo = AsyncMock()
+        repo.get_by_approval.return_value = parked
+
+        gate = ApprovalGate(
+            park_service=park_service,
+            parked_context_repo=repo,
+        )
+
+        result = await gate.resume_context("approval-1")
+        assert result is not None
+        ctx, msg = result
+        assert ctx is restored_ctx
+        assert "APPROVED" not in msg  # No decision yet, just checking load
+
+    async def test_returns_none_for_unknown_approval(self) -> None:
+        park_service = MagicMock(spec=ParkService)
+        repo = AsyncMock()
+        repo.get_by_approval.return_value = None
+
+        gate = ApprovalGate(
+            park_service=park_service,
+            parked_context_repo=repo,
+        )
+
+        result = await gate.resume_context("nonexistent")
+        assert result is None
+
+    async def test_returns_none_without_repo(self) -> None:
+        park_service = MagicMock(spec=ParkService)
+        gate = ApprovalGate(park_service=park_service)
+
+        result = await gate.resume_context("approval-1")
+        assert result is None
+
+    async def test_deletes_parked_context_after_resume(self) -> None:
+        park_service = MagicMock(spec=ParkService)
+        park_service.resume.return_value = MagicMock()
+
+        parked = MagicMock()
+        parked.id = "parked-1"
+        parked.approval_id = "approval-1"
+
+        repo = AsyncMock()
+        repo.get_by_approval.return_value = parked
+
+        gate = ApprovalGate(
+            park_service=park_service,
+            parked_context_repo=repo,
+        )
+
+        await gate.resume_context("approval-1")
+        repo.delete.assert_awaited_once_with("parked-1")
+
+
+class TestBuildResumeMessage:
+    """build_resume_message() produces correct messages."""
+
+    def test_approved_without_reason(self) -> None:
+        msg = ApprovalGate.build_resume_message(
+            "approval-1",
+            approved=True,
+            decided_by="admin",
+        )
+        assert "APPROVED" in msg
+        assert "approval-1" in msg
+        assert "admin" in msg
+
+    def test_rejected_with_reason(self) -> None:
+        msg = ApprovalGate.build_resume_message(
+            "approval-1",
+            approved=False,
+            decided_by="reviewer",
+            decision_reason="Too risky for production",
+        )
+        assert "REJECTED" in msg
+        assert "approval-1" in msg
+        assert "reviewer" in msg
+        assert "Too risky for production" in msg
+
+    def test_approved_with_reason(self) -> None:
+        msg = ApprovalGate.build_resume_message(
+            "approval-1",
+            approved=True,
+            decided_by="admin",
+            decision_reason="Looks good",
+        )
+        assert "APPROVED" in msg
+        assert "Looks good" in msg
