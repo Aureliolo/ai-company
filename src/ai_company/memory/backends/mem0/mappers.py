@@ -26,6 +26,7 @@ from ai_company.observability.events.memory import (
     MEMORY_ENTRY_DELETE_FAILED,
     MEMORY_ENTRY_RETRIEVAL_FAILED,
     MEMORY_ENTRY_STORE_FAILED,
+    MEMORY_FILTER_APPLIED,
     MEMORY_MODEL_INVALID,
 )
 
@@ -463,14 +464,14 @@ def apply_post_filters(
     post_count = len(result)
     if pre_count > 0 and post_count == 0:
         logger.warning(
-            MEMORY_MODEL_INVALID,
+            MEMORY_FILTER_APPLIED,
             field="post_filter",
             reason="all entries filtered out by post-filters",
             pre_filter_count=pre_count,
         )
     elif pre_count != post_count:
         logger.debug(
-            MEMORY_MODEL_INVALID,
+            MEMORY_FILTER_APPLIED,
             field="post_filter",
             pre_filter_count=pre_count,
             post_filter_count=post_count,

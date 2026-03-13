@@ -45,6 +45,7 @@ from ai_company.memory.errors import (
 from ai_company.observability import get_logger
 from ai_company.observability.events.memory import (
     MEMORY_BACKEND_AGENT_ID_REJECTED,
+    MEMORY_BACKEND_CONFIG_INVALID,
     MEMORY_BACKEND_CONNECTED,
     MEMORY_BACKEND_CONNECTING,
     MEMORY_BACKEND_CONNECTION_FAILED,
@@ -106,6 +107,13 @@ class Mem0MemoryBackend:
     ) -> None:
         if max_memories_per_agent < 1:
             msg = f"max_memories_per_agent must be >= 1, got {max_memories_per_agent}"
+            logger.warning(
+                MEMORY_BACKEND_CONFIG_INVALID,
+                backend="mem0",
+                reason="invalid_max_memories_per_agent",
+                value=max_memories_per_agent,
+                error=msg,
+            )
             raise ValueError(msg)
         self._mem0_config = mem0_config
         self._max_memories_per_agent = max_memories_per_agent

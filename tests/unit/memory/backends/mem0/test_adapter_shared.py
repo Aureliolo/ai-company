@@ -78,14 +78,20 @@ class TestPublish:
         with pytest.raises(MemoryStoreError, match="missing or blank 'id'"):
             await backend.publish("test-agent-001", make_store_request())
 
-    async def test_publish_reraises_memory_error(
+    @pytest.mark.parametrize(
+        "exc_type",
+        [builtins.MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_publish_reraises_system_error(
         self,
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
+        exc_type: type[BaseException],
     ) -> None:
-        """builtins.MemoryError is re-raised without wrapping."""
-        mock_client.add.side_effect = builtins.MemoryError("out of memory")
-        with pytest.raises(builtins.MemoryError):
+        """System errors are re-raised without wrapping."""
+        mock_client.add.side_effect = exc_type("system failure")
+        with pytest.raises(exc_type):
             await backend.publish("test-agent-001", make_store_request())
 
     async def test_publish_rejects_shared_namespace_agent_id(
@@ -95,16 +101,6 @@ class TestPublish:
         """publish() rejects the shared namespace as agent_id."""
         with pytest.raises(MemoryStoreError, match="reserved shared namespace"):
             await backend.publish(SHARED_NAMESPACE, make_store_request())
-
-    async def test_publish_reraises_recursion_error(
-        self,
-        backend: Mem0MemoryBackend,
-        mock_client: MagicMock,
-    ) -> None:
-        """RecursionError is re-raised without wrapping."""
-        mock_client.add.side_effect = RecursionError("infinite loop")
-        with pytest.raises(RecursionError):
-            await backend.publish("test-agent-001", make_store_request())
 
 
 # ── SearchShared ─────────────────────────────────────────────────
@@ -208,14 +204,20 @@ class TestSearchShared:
         with pytest.raises(MemoryRetrievalError, match="Failed to search"):
             await backend.search_shared(MemoryQuery(text="test"))
 
-    async def test_search_shared_reraises_memory_error(
+    @pytest.mark.parametrize(
+        "exc_type",
+        [builtins.MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_search_shared_reraises_system_error(
         self,
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
+        exc_type: type[BaseException],
     ) -> None:
-        """builtins.MemoryError is re-raised without wrapping."""
-        mock_client.search.side_effect = builtins.MemoryError("out of memory")
-        with pytest.raises(builtins.MemoryError):
+        """System errors are re-raised without wrapping."""
+        mock_client.search.side_effect = exc_type("system failure")
+        with pytest.raises(exc_type):
             await backend.search_shared(MemoryQuery(text="test"))
 
     async def test_search_shared_with_category_post_filter(
@@ -272,16 +274,6 @@ class TestSearchShared:
                 MemoryQuery(text="test"),
                 exclude_agent=SHARED_NAMESPACE,
             )
-
-    async def test_search_shared_reraises_recursion_error(
-        self,
-        backend: Mem0MemoryBackend,
-        mock_client: MagicMock,
-    ) -> None:
-        """RecursionError is re-raised without wrapping."""
-        mock_client.search.side_effect = RecursionError("infinite loop")
-        with pytest.raises(RecursionError):
-            await backend.search_shared(MemoryQuery(text="test"))
 
     async def test_search_shared_no_publisher_uses_namespace(
         self,
@@ -383,14 +375,20 @@ class TestRetract:
         with pytest.raises(MemoryStoreError, match="Failed to retract"):
             await backend.retract("test-agent-001", "shared-001")
 
-    async def test_retract_reraises_memory_error(
+    @pytest.mark.parametrize(
+        "exc_type",
+        [builtins.MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_retract_reraises_system_error(
         self,
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
+        exc_type: type[BaseException],
     ) -> None:
-        """builtins.MemoryError is re-raised without wrapping."""
-        mock_client.get.side_effect = builtins.MemoryError("out of memory")
-        with pytest.raises(builtins.MemoryError):
+        """System errors are re-raised without wrapping."""
+        mock_client.get.side_effect = exc_type("system failure")
+        with pytest.raises(exc_type):
             await backend.retract("test-agent-001", "shared-001")
 
     async def test_retract_rejects_shared_namespace_agent_id(
@@ -400,16 +398,6 @@ class TestRetract:
         """retract() rejects the shared namespace as agent_id."""
         with pytest.raises(MemoryStoreError, match="reserved shared namespace"):
             await backend.retract(SHARED_NAMESPACE, "shared-001")
-
-    async def test_retract_reraises_recursion_error(
-        self,
-        backend: Mem0MemoryBackend,
-        mock_client: MagicMock,
-    ) -> None:
-        """RecursionError is re-raised without wrapping."""
-        mock_client.get.side_effect = RecursionError("infinite loop")
-        with pytest.raises(RecursionError):
-            await backend.retract("test-agent-001", "shared-001")
 
     async def test_retract_not_shared_namespace_raises(
         self,
