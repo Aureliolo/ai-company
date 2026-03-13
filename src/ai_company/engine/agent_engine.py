@@ -382,7 +382,11 @@ class AgentEngine:
             # Sync post-recovery status to TaskEngine (typically FAILED,
             # depends on recovery strategy).
             ctx = execution_result.context
-            if ctx.task_execution is not None and pre_recovery_status is not None:
+            if (
+                ctx.task_execution is not None
+                and pre_recovery_status is not None
+                and ctx.task_execution.status != pre_recovery_status
+            ):
                 logger.info(
                     EXECUTION_ENGINE_TASK_TRANSITION,
                     agent_id=agent_id,
@@ -816,7 +820,11 @@ class AgentEngine:
             )
             # Sync fatal-error recovery status to TaskEngine (best-effort).
             error_ctx = error_execution.context
-            if error_ctx.task_execution is not None and pre_fatal_status is not None:
+            if (
+                error_ctx.task_execution is not None
+                and pre_fatal_status is not None
+                and error_ctx.task_execution.status != pre_fatal_status
+            ):
                 logger.info(
                     EXECUTION_ENGINE_TASK_TRANSITION,
                     agent_id=agent_id,

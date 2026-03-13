@@ -503,9 +503,7 @@ class TestApplyPostExecutionTransitions:
                 raise ExecutionStateError(msg)
             return original_transition(self, target, reason=reason)
 
-        original_method = AgentContext.with_task_transition
-        AgentContext.with_task_transition = patched_transition  # type: ignore[method-assign]
-        try:
+        with patch.object(AgentContext, "with_task_transition", patched_transition):
             mock_te = _make_mock_task_engine()
 
             out = await apply_post_execution_transitions(
@@ -521,8 +519,6 @@ class TestApplyPostExecutionTransitions:
             assert out.context.task_execution.status == TaskStatus.IN_REVIEW
             # Result is a model_copy, not the bare original
             assert out is not result
-        finally:
-            AgentContext.with_task_transition = original_method  # type: ignore[method-assign]
 
     async def test_shutdown_transition_failure_returns_original(
         self,
@@ -537,9 +533,6 @@ class TestApplyPostExecutionTransitions:
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result(ctx, reason=TerminationReason.SHUTDOWN)
 
-        # Patch with_task_transition to raise
-        original_method = AgentContext.with_task_transition
-
         def raise_on_transition(
             self: AgentContext,
             target: TaskStatus,
@@ -549,8 +542,7 @@ class TestApplyPostExecutionTransitions:
             msg = "cannot interrupt"
             raise ExecutionStateError(msg)
 
-        AgentContext.with_task_transition = raise_on_transition  # type: ignore[method-assign]
-        try:
+        with patch.object(AgentContext, "with_task_transition", raise_on_transition):
             out = await apply_post_execution_transitions(
                 result,
                 agent_id=str(sample_agent_with_personality.id),
@@ -562,8 +554,6 @@ class TestApplyPostExecutionTransitions:
             assert out is result
             assert out.context.task_execution is not None
             assert out.context.task_execution.status == TaskStatus.IN_PROGRESS
-        finally:
-            AgentContext.with_task_transition = original_method  # type: ignore[method-assign]
 
     async def test_completed_with_none_task_engine(
         self,
