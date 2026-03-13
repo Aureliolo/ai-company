@@ -23,7 +23,7 @@ from ai_company.persistence.errors import MigrationError
 logger = get_logger(__name__)
 
 # Current schema version — bump when adding new migrations.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 _V1_STATEMENTS: Sequence[str] = (
     # ── Tasks ─────────────────────────────────────────────
@@ -221,6 +221,33 @@ CREATE TABLE IF NOT EXISTS api_keys (
     "CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)",
 )
 
+_V6_STATEMENTS: Sequence[str] = (
+    # ── Checkpoints ────────────────────────────────────────
+    """\
+CREATE TABLE IF NOT EXISTS checkpoints (
+    id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    turn_number INTEGER NOT NULL,
+    context_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+)""",
+    "CREATE INDEX IF NOT EXISTS idx_cp_execution_id ON checkpoints(execution_id)",
+    "CREATE INDEX IF NOT EXISTS idx_cp_task_id ON checkpoints(task_id)",
+    "CREATE INDEX IF NOT EXISTS idx_cp_exec_turn"
+    " ON checkpoints(execution_id, turn_number DESC)",
+    # ── Heartbeats ─────────────────────────────────────────
+    """\
+CREATE TABLE IF NOT EXISTS heartbeats (
+    execution_id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    last_heartbeat_at TEXT NOT NULL
+)""",
+    "CREATE INDEX IF NOT EXISTS idx_hb_last_heartbeat ON heartbeats(last_heartbeat_at)",
+)
+
 _MigrateFn = Callable[[aiosqlite.Connection], Coroutine[Any, Any, None]]
 
 
@@ -283,6 +310,12 @@ async def _apply_v5(db: aiosqlite.Connection) -> None:
         await db.execute(stmt)
 
 
+async def _apply_v6(db: aiosqlite.Connection) -> None:
+    """Apply schema v6: checkpoints, heartbeats."""
+    for stmt in _V6_STATEMENTS:
+        await db.execute(stmt)
+
+
 # Ordered list of (target_version, migration_function) pairs. Each migration
 # is applied when the current schema version is below its target version.
 _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
@@ -291,6 +324,7 @@ _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
     (3, _apply_v3),
     (4, _apply_v4),
     (5, _apply_v5),
+    (6, _apply_v6),
 ]
 
 

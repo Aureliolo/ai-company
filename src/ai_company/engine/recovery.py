@@ -39,6 +39,9 @@ class RecoveryResult(BaseModel):
             ``retry_count`` when creating the next ``TaskExecution``.
         context_snapshot: Redacted snapshot (no message contents).
         error_message: The error that triggered recovery.
+        checkpoint_context_json: Serialized ``AgentContext`` for resume
+            (set by ``CheckpointRecoveryStrategy``, ``None`` otherwise).
+        resume_attempt: Current resume attempt number (0 when not resuming).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -55,6 +58,15 @@ class RecoveryResult(BaseModel):
     error_message: NotBlankStr = Field(
         description="The error that triggered recovery",
     )
+    checkpoint_context_json: str | None = Field(
+        default=None,
+        description="Serialized AgentContext from checkpoint for resume",
+    )
+    resume_attempt: int = Field(
+        default=0,
+        ge=0,
+        description="Current resume attempt number",
+    )
 
     @computed_field(  # type: ignore[prop-decorator]
         description="Whether the task can be reassigned for retry",
@@ -67,6 +79,14 @@ class RecoveryResult(BaseModel):
         when creating the next ``TaskExecution`` for the reassigned task.
         """
         return self.task_execution.retry_count < self.task_execution.task.max_retries
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Whether execution can resume from a checkpoint",
+    )
+    @property
+    def can_resume(self) -> bool:
+        """Whether execution can resume from a persisted checkpoint."""
+        return self.checkpoint_context_json is not None
 
 
 @runtime_checkable

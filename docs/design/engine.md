@@ -547,9 +547,6 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 
 === "Strategy 2: Checkpoint Recovery"
 
-    !!! warning "Planned"
-        Checkpoint recovery is planned for a future release.
-
     The engine persists an `AgentContext` snapshot after each completed turn. On
     crash, the framework detects the failure (via heartbeat timeout or
     exception), loads the last checkpoint, and resumes execution from the exact

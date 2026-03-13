@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from ai_company.budget.call_category import LLMCallCategory
 from ai_company.observability import get_logger
 from ai_company.observability.events.execution import (
+    EXECUTION_CHECKPOINT_CALLBACK,
     EXECUTION_LOOP_START,
     EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURN_COMPLETE,
@@ -66,6 +67,7 @@ from .plan_parsing import (
 )
 
 if TYPE_CHECKING:
+    from ai_company.engine.checkpoint.callback import CheckpointCallback
     from ai_company.engine.context import AgentContext
     from ai_company.providers.models import ToolDefinition
     from ai_company.providers.protocol import CompletionProvider
@@ -81,8 +83,13 @@ class PlanExecuteLoop:
     step with a mini-ReAct sub-loop. Supports re-planning on failure.
     """
 
-    def __init__(self, config: PlanExecuteConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: PlanExecuteConfig | None = None,
+        checkpoint_callback: CheckpointCallback | None = None,
+    ) -> None:
         self._config = config or PlanExecuteConfig()
+        self._checkpoint_callback = checkpoint_callback
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
@@ -559,6 +566,19 @@ class PlanExecuteLoop:
             tool_call_count=0,
         )
 
+        if self._checkpoint_callback is not None:
+            try:
+                await self._checkpoint_callback(ctx)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.exception(
+                    EXECUTION_CHECKPOINT_CALLBACK,
+                    execution_id=ctx.execution_id,
+                    turn=turn_number,
+                    error="Checkpoint callback failed",
+                )
+
         plan = parse_plan(
             response,
             ctx.execution_id,
@@ -693,6 +713,19 @@ class PlanExecuteLoop:
             finish_reason=response.finish_reason.value,
             tool_call_count=len(response.tool_calls),
         )
+
+        if self._checkpoint_callback is not None:
+            try:
+                await self._checkpoint_callback(ctx)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.exception(
+                    EXECUTION_CHECKPOINT_CALLBACK,
+                    execution_id=ctx.execution_id,
+                    turn=turn_number,
+                    error="Checkpoint callback failed",
+                )
 
         if not response.tool_calls:
             return self._handle_step_completion(ctx, response, turn_number)
