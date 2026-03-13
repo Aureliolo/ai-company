@@ -8,7 +8,9 @@ import pytest
 from ai_company.core.enums import MemoryCategory
 from ai_company.memory.backends.mem0.mappers import (
     _PREFIX,
-    _PUBLISHER_KEY,
+    PUBLISHER_KEY,
+    _coerce_confidence,
+    _normalize_tags,
     apply_post_filters,
     build_mem0_metadata,
     extract_category,
@@ -539,9 +541,9 @@ class TestExtractCategory:
 @pytest.mark.unit
 class TestExtractPublisher:
     def test_valid_publisher(self) -> None:
-        from ai_company.memory.backends.mem0.mappers import _PUBLISHER_KEY
+        from ai_company.memory.backends.mem0.mappers import PUBLISHER_KEY
 
-        raw = {"metadata": {_PUBLISHER_KEY: "test-agent-001"}}
+        raw = {"metadata": {PUBLISHER_KEY: "test-agent-001"}}
         assert extract_publisher(raw) == "test-agent-001"
 
     def test_missing_metadata(self) -> None:
@@ -569,9 +571,63 @@ class TestExtractPublisher:
         assert extract_publisher(raw) is None
 
     def test_numeric_publisher_coerced_to_string(self) -> None:
-        raw: dict[str, Any] = {"metadata": {_PUBLISHER_KEY: 42}}
+        raw: dict[str, Any] = {"metadata": {PUBLISHER_KEY: 42}}
         assert extract_publisher(raw) == "42"
 
     def test_blank_publisher_returns_none(self) -> None:
-        raw: dict[str, Any] = {"metadata": {_PUBLISHER_KEY: "   "}}
+        raw: dict[str, Any] = {"metadata": {PUBLISHER_KEY: "   "}}
         assert extract_publisher(raw) is None
+
+
+@pytest.mark.unit
+class TestCoerceConfidence:
+    def test_default_when_absent(self) -> None:
+        """Missing key returns 1.0."""
+        assert _coerce_confidence({}) == 1.0
+
+    def test_numeric_value(self) -> None:
+        assert _coerce_confidence({f"{_PREFIX}confidence": 0.7}) == 0.7
+
+    def test_non_numeric_returns_half(self) -> None:
+        """Non-numeric confidence defaults to 0.5."""
+        assert _coerce_confidence({f"{_PREFIX}confidence": "not-a-number"}) == 0.5
+
+    def test_above_one_clamped(self) -> None:
+        assert _coerce_confidence({f"{_PREFIX}confidence": 1.5}) == 1.0
+
+    def test_below_zero_clamped(self) -> None:
+        assert _coerce_confidence({f"{_PREFIX}confidence": -0.5}) == 0.0
+
+    def test_object_type_returns_half(self) -> None:
+        """Object type that can't convert to float defaults to 0.5."""
+        assert _coerce_confidence({f"{_PREFIX}confidence": object()}) == 0.5
+
+
+@pytest.mark.unit
+class TestNormalizeTags:
+    def test_single_string_wrapped_in_list(self) -> None:
+        """A single string tag is wrapped into a tuple."""
+        result = _normalize_tags({f"{_PREFIX}tags": "solo-tag"})
+        assert result == ("solo-tag",)
+
+    def test_list_of_strings(self) -> None:
+        result = _normalize_tags({f"{_PREFIX}tags": ["a", "b", "c"]})
+        assert result == ("a", "b", "c")
+
+    def test_empty_strings_filtered(self) -> None:
+        result = _normalize_tags({f"{_PREFIX}tags": ["valid", "", "  "]})
+        assert result == ("valid",)
+
+    def test_dict_type_ignored(self) -> None:
+        """dict type for tags is unexpected and returns empty tuple."""
+        result = _normalize_tags({f"{_PREFIX}tags": {"key": "value"}})
+        assert result == ()
+
+    def test_int_type_ignored(self) -> None:
+        """int type for tags is unexpected and returns empty tuple."""
+        result = _normalize_tags({f"{_PREFIX}tags": 42})
+        assert result == ()
+
+    def test_missing_key_returns_empty(self) -> None:
+        result = _normalize_tags({})
+        assert result == ()

@@ -32,7 +32,8 @@ logger = get_logger(__name__)
 _PREFIX = "_synthorg_"
 
 # Metadata key to track who published a shared memory.
-_PUBLISHER_KEY: str = "_synthorg_publisher"
+# Public because the adapter module needs it for ownership tracking.
+PUBLISHER_KEY: str = "_synthorg_publisher"
 
 
 def build_mem0_metadata(request: MemoryStoreRequest) -> dict[str, Any]:
@@ -115,7 +116,10 @@ def normalize_relevance_score(score: Any) -> float | None:
 def _coerce_confidence(raw_metadata: dict[str, Any]) -> float:
     """Extract and clamp confidence from Mem0 metadata.
 
-    Returns a float in [0.0, 1.0], defaulting to 1.0 on failure.
+    Returns a float in [0.0, 1.0].  Defaults to 1.0 when the key is
+    absent (newly stored entries always write it), or 0.5 when the
+    value is present but non-numeric (corrupt data gets a conservative
+    mid-range default rather than maximum confidence).
     """
     raw = raw_metadata.get(f"{_PREFIX}confidence", 1.0)
     try:
@@ -125,9 +129,9 @@ def _coerce_confidence(raw_metadata: dict[str, Any]) -> float:
             MEMORY_MODEL_INVALID,
             field="confidence",
             raw_value=raw,
-            reason="non-numeric confidence, defaulting to 1.0",
+            reason="non-numeric confidence, defaulting to 0.5",
         )
-        return 1.0
+        return 0.5
     return max(0.0, min(1.0, value))
 
 
@@ -162,7 +166,7 @@ def _normalize_tags(
     if isinstance(raw_tags, str):
         raw_tags = [raw_tags]
     elif not isinstance(raw_tags, (list, tuple)):
-        logger.debug(
+        logger.warning(
             MEMORY_MODEL_INVALID,
             field="tags",
             raw_value=type(raw_tags).__name__,
@@ -184,7 +188,8 @@ def parse_mem0_metadata(
         Tuple of (category, metadata, expires_at).
     """
     if not raw_metadata or not isinstance(raw_metadata, dict):
-        logger.debug(
+        log_fn = logger.warning if raw_metadata is not None else logger.debug
+        log_fn(
             MEMORY_MODEL_INVALID,
             field="metadata",
             raw_value=type(raw_metadata).__name__ if raw_metadata else None,
@@ -228,14 +233,14 @@ def parse_mem0_metadata(
 
 def mem0_result_to_entry(
     raw: dict[str, Any],
-    agent_id: str,
+    agent_id: NotBlankStr,
 ) -> MemoryEntry:
     """Convert a single Mem0 result dict to a ``MemoryEntry``.
 
     Args:
         raw: Single result dict from Mem0 (``search``, ``get``, or
             ``get_all``).
-        agent_id: Owning agent identifier.
+        agent_id: Owning agent identifier (must be ``NotBlankStr``).
 
     Returns:
         Domain ``MemoryEntry``.
@@ -266,7 +271,7 @@ def mem0_result_to_entry(
 
     created_at = parse_mem0_datetime(raw.get("created_at"))
     if created_at is None:
-        logger.debug(
+        logger.warning(
             MEMORY_MODEL_INVALID,
             field="created_at",
             memory_id=str(raw.get("id", "?")),
@@ -283,7 +288,7 @@ def mem0_result_to_entry(
 
     return MemoryEntry(
         id=memory_id,
-        agent_id=NotBlankStr(agent_id),
+        agent_id=agent_id,
         category=category,
         content=content,
         metadata=metadata,
@@ -356,6 +361,9 @@ def apply_post_filters(
     ``relevance_score=None`` (e.g. from ``get_all``) are never
     excluded by ``min_relevance`` — the filter only applies when a
     score is present.
+
+    Time range uses a half-open interval: entries with
+    ``created_at >= since`` and ``created_at < until`` are included.
 
     Args:
         entries: Raw entries from Mem0.
@@ -467,7 +475,7 @@ def extract_publisher(raw: dict[str, Any]) -> str | None:
     metadata = raw.get("metadata", {})
     if not metadata or not isinstance(metadata, dict):
         return None
-    value = metadata.get(_PUBLISHER_KEY)
+    value = metadata.get(PUBLISHER_KEY)
     if value is None:
         return None
     coerced = str(value).strip()

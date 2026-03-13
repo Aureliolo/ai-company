@@ -29,8 +29,8 @@ configuration without modifying application code.
 | context  | decisions| learned   |               |
 +----------+----------+-----------+---------------+
 |            Storage Backend                      |
-|   SQLite / PostgreSQL / File-based              |
-|   + Mem0 (initial, implemented) / Custom (future)|
+|   Mem0 (initial, implemented) / Custom (future) |
+|   Qdrant (embedded) + SQLite history             |
 |     See Decision Log                             |
 +-------------------------------------------------+
 ```
@@ -60,8 +60,8 @@ Memory persistence is configurable per agent, from no persistence to fully persi
 
     ```yaml
     memory:
-      level: "persistent"            # none, session, project, persistent (default: session)
-      backend: "mem0"               # mem0, custom, cognee, graphiti (future) -- see Decision Log
+      level: "persistent"            # none | session | project | persistent (default: session)
+      backend: "mem0"               # mem0 | custom | cognee | graphiti (future) -- see Decision Log
       storage:
         data_dir: "/data/memory"    # mounted Docker volume path
         vector_store: "qdrant"      # qdrant (embedded), qdrant-external, etc.
@@ -206,11 +206,21 @@ class MemoryBackend(Protocol):
     @property
     def backend_name(self) -> NotBlankStr: ...
 
-    async def store(self, agent_id: NotBlankStr, request: MemoryStoreRequest) -> NotBlankStr: ...
-    async def retrieve(self, agent_id: NotBlankStr, query: MemoryQuery) -> tuple[MemoryEntry, ...]: ...
-    async def get(self, agent_id: NotBlankStr, memory_id: NotBlankStr) -> MemoryEntry | None: ...
-    async def delete(self, agent_id: NotBlankStr, memory_id: NotBlankStr) -> bool: ...
-    async def count(self, agent_id: NotBlankStr, *, category: MemoryCategory | None = None) -> int: ...
+    async def store(self, agent_id: NotBlankStr, request: MemoryStoreRequest) -> NotBlankStr:
+        """Raises: MemoryConnectionError, MemoryStoreError."""
+        ...
+    async def retrieve(self, agent_id: NotBlankStr, query: MemoryQuery) -> tuple[MemoryEntry, ...]:
+        """Raises: MemoryConnectionError, MemoryRetrievalError."""
+        ...
+    async def get(self, agent_id: NotBlankStr, memory_id: NotBlankStr) -> MemoryEntry | None:
+        """Raises: MemoryConnectionError, MemoryRetrievalError."""
+        ...
+    async def delete(self, agent_id: NotBlankStr, memory_id: NotBlankStr) -> bool:
+        """Raises: MemoryConnectionError, MemoryStoreError."""
+        ...
+    async def count(self, agent_id: NotBlankStr, *, category: MemoryCategory | None = None) -> int:
+        """Raises: MemoryConnectionError, MemoryRetrievalError."""
+        ...
 ```
 
 ### MemoryCapabilities Protocol
@@ -248,9 +258,15 @@ clean.
 class SharedKnowledgeStore(Protocol):
     """Cross-agent shared knowledge operations."""
 
-    async def publish(self, agent_id: NotBlankStr, request: MemoryStoreRequest) -> NotBlankStr: ...
-    async def search_shared(self, query: MemoryQuery, *, exclude_agent: NotBlankStr | None = None) -> tuple[MemoryEntry, ...]: ...
-    async def retract(self, agent_id: NotBlankStr, memory_id: NotBlankStr) -> bool: ...
+    async def publish(self, agent_id: NotBlankStr, request: MemoryStoreRequest) -> NotBlankStr:
+        """Raises: MemoryConnectionError, MemoryStoreError."""
+        ...
+    async def search_shared(self, query: MemoryQuery, *, exclude_agent: NotBlankStr | None = None) -> tuple[MemoryEntry, ...]:
+        """Raises: MemoryConnectionError, MemoryRetrievalError."""
+        ...
+    async def retract(self, agent_id: NotBlankStr, memory_id: NotBlankStr) -> bool:
+        """Raises: MemoryConnectionError, MemoryStoreError."""
+        ...
 ```
 
 ### Error Hierarchy
@@ -294,8 +310,9 @@ memory:
 
 Configuration is modeled by `CompanyMemoryConfig` (top-level), `MemoryStorageConfig`
 (storage paths/backends), and `MemoryOptionsConfig` (behaviour tuning). All are frozen
-Pydantic models. The `create_memory_backend(config)` factory returns an isolated
-`MemoryBackend` instance per company.
+Pydantic models. The `create_memory_backend(config, *, embedder=...)` factory returns an
+isolated `MemoryBackend` instance per company. The `embedder` kwarg is required for the
+Mem0 backend (must be a `Mem0EmbedderConfig`).
 
 ### Consolidation and Retention
 

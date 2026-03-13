@@ -194,7 +194,7 @@ class MemoryQuery(BaseModel):
     )
     since: AwareDatetime | None = Field(
         default=None,
-        description="Only memories created after this timestamp",
+        description="Only memories created at or after this timestamp",
     )
     until: AwareDatetime | None = Field(
         default=None,

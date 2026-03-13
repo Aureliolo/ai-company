@@ -16,7 +16,7 @@ from ai_company.memory.backends.mem0.config import (
     Mem0BackendConfig,
     Mem0EmbedderConfig,
 )
-from ai_company.memory.backends.mem0.mappers import _PUBLISHER_KEY
+from ai_company.memory.backends.mem0.mappers import PUBLISHER_KEY
 from ai_company.memory.models import MemoryQuery, MemoryStoreRequest
 from ai_company.memory.retrieval_config import MemoryRetrievalConfig
 from ai_company.memory.retriever import ContextInjectionStrategy
@@ -196,7 +196,7 @@ class TestMem0RetrievalPipeline:
                     "created_at": datetime.now(UTC).isoformat(),
                     "metadata": {
                         "_synthorg_category": "semantic",
-                        _PUBLISHER_KEY: "test-agent-001",
+                        PUBLISHER_KEY: "test-agent-001",
                     },
                 },
             ],
@@ -213,7 +213,7 @@ class TestMem0RetrievalPipeline:
             "id": "shared-001",
             "memory": "company policy: always test code",
             "created_at": datetime.now(UTC).isoformat(),
-            "metadata": {_PUBLISHER_KEY: "test-agent-001"},
+            "metadata": {PUBLISHER_KEY: "test-agent-001"},
         }
         mock_client.delete.return_value = None
 
@@ -233,14 +233,14 @@ class TestMem0RetrievalPipeline:
                     "memory": "from agent 1",
                     "score": 0.9,
                     "created_at": datetime.now(UTC).isoformat(),
-                    "metadata": {_PUBLISHER_KEY: "test-agent-001"},
+                    "metadata": {PUBLISHER_KEY: "test-agent-001"},
                 },
                 {
                     "id": "s2",
                     "memory": "from agent 2",
                     "score": 0.85,
                     "created_at": datetime.now(UTC).isoformat(),
-                    "metadata": {_PUBLISHER_KEY: "test-agent-002"},
+                    "metadata": {PUBLISHER_KEY: "test-agent-002"},
                 },
             ],
         }

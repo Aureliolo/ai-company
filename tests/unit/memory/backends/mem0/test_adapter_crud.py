@@ -8,6 +8,7 @@ from ai_company.core.enums import MemoryCategory
 from ai_company.memory.backends.mem0.adapter import (
     _SHARED_NAMESPACE,
     Mem0MemoryBackend,
+    _validate_mem0_result,
 )
 from ai_company.memory.errors import (
     MemoryRetrievalError,
@@ -129,10 +130,22 @@ class TestStore:
     async def test_store_rejects_shared_namespace_agent_id(
         self,
         backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
     ) -> None:
         """Storing with the shared namespace agent ID is rejected."""
         with pytest.raises(MemoryStoreError, match="reserved shared namespace"):
             await backend.store(_SHARED_NAMESPACE, make_store_request())
+        mock_client.add.assert_not_called()
+
+    async def test_store_reraises_recursion_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """RecursionError is re-raised without wrapping."""
+        mock_client.add.side_effect = RecursionError("infinite loop")
+        with pytest.raises(RecursionError):
+            await backend.store("test-agent-001", make_store_request())
 
 
 # ── Retrieve ──────────────────────────────────────────────────────
@@ -236,6 +249,19 @@ class TestRetrieve:
                 MemoryQuery(text="test"),
             )
 
+    async def test_retrieve_reraises_recursion_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """RecursionError is re-raised without wrapping."""
+        mock_client.search.side_effect = RecursionError("infinite loop")
+        with pytest.raises(RecursionError):
+            await backend.retrieve(
+                "test-agent-001",
+                MemoryQuery(text="test"),
+            )
+
     async def test_retrieve_rejects_shared_namespace_agent_id(
         self,
         backend: Mem0MemoryBackend,
@@ -312,6 +338,16 @@ class TestGet:
         """builtins.MemoryError is re-raised without wrapping in get()."""
         mock_client.get.side_effect = MemoryError("out of memory")
         with pytest.raises(MemoryError):
+            await backend.get("test-agent-001", "mem-001")
+
+    async def test_get_reraises_recursion_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """RecursionError is re-raised without wrapping in get()."""
+        mock_client.get.side_effect = RecursionError("infinite loop")
+        with pytest.raises(RecursionError):
             await backend.get("test-agent-001", "mem-001")
 
     async def test_get_rejects_shared_namespace_agent_id(
@@ -396,6 +432,16 @@ class TestDelete:
         """builtins.MemoryError is re-raised without wrapping in delete()."""
         mock_client.get.side_effect = MemoryError("out of memory")
         with pytest.raises(MemoryError):
+            await backend.delete("test-agent-001", "mem-001")
+
+    async def test_delete_reraises_recursion_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """RecursionError is re-raised without wrapping in delete()."""
+        mock_client.get.side_effect = RecursionError("infinite loop")
+        with pytest.raises(RecursionError):
             await backend.delete("test-agent-001", "mem-001")
 
     async def test_delete_shared_namespace_entry_raises(
@@ -534,6 +580,23 @@ class TestCount:
         count = await backend.count("test-agent-001")
         assert count == 0
 
+    async def test_count_truncation_warning(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """count() returns the count even when truncated at max_memories_per_agent."""
+        # backend fixture has max_memories_per_agent=100
+        items = [
+            {"id": f"m{i}", "memory": f"content-{i}", "metadata": {}}
+            for i in range(100)
+        ]
+        mock_client.get_all.return_value = {"results": items}
+
+        count = await backend.count("test-agent-001")
+        # Truncation should still return a valid count
+        assert count == 100
+
     async def test_count_reraises_memory_error(
         self,
         backend: Mem0MemoryBackend,
@@ -543,3 +606,50 @@ class TestCount:
         mock_client.get_all.side_effect = MemoryError("out of memory")
         with pytest.raises(MemoryError):
             await backend.count("test-agent-001")
+
+    async def test_count_reraises_recursion_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """RecursionError is re-raised without wrapping in count()."""
+        mock_client.get_all.side_effect = RecursionError("infinite loop")
+        with pytest.raises(RecursionError):
+            await backend.count("test-agent-001")
+
+
+# ── _validate_mem0_result ────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestValidateMem0Result:
+    def test_non_dict_raises(self) -> None:
+        """Non-dict response raises MemoryRetrievalError."""
+        with pytest.raises(MemoryRetrievalError, match="Unexpected Mem0 response type"):
+            _validate_mem0_result("not-a-dict", context="test")
+
+    def test_missing_results_key_raises(self) -> None:
+        """Dict without 'results' key raises MemoryRetrievalError."""
+        with pytest.raises(MemoryRetrievalError, match="missing 'results' key"):
+            _validate_mem0_result({"data": []}, context="test")
+
+    def test_non_list_results_raises(self) -> None:
+        """Non-list 'results' value raises MemoryRetrievalError."""
+        with pytest.raises(MemoryRetrievalError, match="Unexpected Mem0 results type"):
+            _validate_mem0_result({"results": "not-a-list"}, context="test")
+
+    def test_valid_response(self) -> None:
+        """Valid response returns the results list."""
+        items = [{"id": "m1"}]
+        result = _validate_mem0_result({"results": items}, context="test")
+        assert result == items
+
+    def test_empty_results(self) -> None:
+        """Empty results list is valid."""
+        result = _validate_mem0_result({"results": []}, context="test")
+        assert result == []
+
+    def test_none_raises(self) -> None:
+        """None response raises MemoryRetrievalError."""
+        with pytest.raises(MemoryRetrievalError, match="Unexpected Mem0 response type"):
+            _validate_mem0_result(None, context="test")

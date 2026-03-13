@@ -73,13 +73,35 @@ class TestCreateMemoryBackend:
         with pytest.raises(MemoryConfigError, match="Invalid Mem0 configuration"):
             create_memory_backend(config, embedder=_test_embedder())
 
-    def test_backend_init_error_wraps_as_memory_config_error(self) -> None:
-        """Exception from Mem0MemoryBackend() constructor wraps."""
+    def test_backend_init_value_error_wraps(self) -> None:
+        """ValueError from Mem0MemoryBackend() constructor wraps."""
         config = CompanyMemoryConfig(backend="mem0")
         with (
             patch(
                 "ai_company.memory.backends.mem0.Mem0MemoryBackend",
-                side_effect=RuntimeError("init boom"),
+                side_effect=ValueError("init boom"),
+            ),
+            pytest.raises(MemoryConfigError, match="Failed to create Mem0"),
+        ):
+            create_memory_backend(config, embedder=_test_embedder())
+
+    def test_backend_init_validation_error_wraps(self) -> None:
+        """ValidationError from Mem0MemoryBackend() constructor wraps."""
+        from pydantic import BaseModel
+
+        class _Dummy(BaseModel):
+            x: int
+
+        try:
+            _Dummy(x="not-an-int")  # type: ignore[arg-type]
+        except ValidationError as ve:
+            side_effect: ValidationError = ve
+
+        config = CompanyMemoryConfig(backend="mem0")
+        with (
+            patch(
+                "ai_company.memory.backends.mem0.Mem0MemoryBackend",
+                side_effect=side_effect,
             ),
             pytest.raises(MemoryConfigError, match="Failed to create Mem0"),
         ):

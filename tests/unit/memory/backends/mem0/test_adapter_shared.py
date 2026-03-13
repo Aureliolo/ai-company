@@ -8,7 +8,7 @@ from ai_company.memory.backends.mem0.adapter import (
     _SHARED_NAMESPACE,
     Mem0MemoryBackend,
 )
-from ai_company.memory.backends.mem0.mappers import _PUBLISHER_KEY
+from ai_company.memory.backends.mem0.mappers import PUBLISHER_KEY
 from ai_company.memory.errors import (
     MemoryRetrievalError,
     MemoryStoreError,
@@ -44,8 +44,8 @@ class TestPublish:
         assert memory_id == "shared-mem-001"
         call_kwargs = mock_client.add.call_args[1]
         assert call_kwargs["user_id"] == _SHARED_NAMESPACE
-        assert _PUBLISHER_KEY in call_kwargs["metadata"]
-        assert call_kwargs["metadata"][_PUBLISHER_KEY] == "test-agent-001"
+        assert PUBLISHER_KEY in call_kwargs["metadata"]
+        assert call_kwargs["metadata"][PUBLISHER_KEY] == "test-agent-001"
 
     async def test_publish_empty_results_raises(
         self,
@@ -90,6 +90,16 @@ class TestPublish:
         with pytest.raises(MemoryError):
             await backend.publish("test-agent-001", make_store_request())
 
+    async def test_publish_reraises_recursion_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """RecursionError is re-raised without wrapping."""
+        mock_client.add.side_effect = RecursionError("infinite loop")
+        with pytest.raises(RecursionError):
+            await backend.publish("test-agent-001", make_store_request())
+
 
 # ── SearchShared ─────────────────────────────────────────────────
 
@@ -110,7 +120,7 @@ class TestSearchShared:
                     "created_at": "2026-03-12T10:00:00+00:00",
                     "metadata": {
                         "_synthorg_category": "semantic",
-                        _PUBLISHER_KEY: "test-agent-002",
+                        PUBLISHER_KEY: "test-agent-002",
                     },
                 },
             ],
@@ -137,7 +147,7 @@ class TestSearchShared:
                     "memory": "shared fact",
                     "created_at": "2026-03-12T10:00:00+00:00",
                     "metadata": {
-                        _PUBLISHER_KEY: "test-agent-002",
+                        PUBLISHER_KEY: "test-agent-002",
                     },
                 },
             ],
@@ -161,14 +171,14 @@ class TestSearchShared:
                     "memory": "from agent 1",
                     "score": 0.9,
                     "created_at": "2026-03-12T10:00:00+00:00",
-                    "metadata": {_PUBLISHER_KEY: "test-agent-001"},
+                    "metadata": {PUBLISHER_KEY: "test-agent-001"},
                 },
                 {
                     "id": "s2",
                     "memory": "from agent 2",
                     "score": 0.8,
                     "created_at": "2026-03-12T10:00:00+00:00",
-                    "metadata": {_PUBLISHER_KEY: "test-agent-002"},
+                    "metadata": {PUBLISHER_KEY: "test-agent-002"},
                 },
             ],
         )
@@ -200,6 +210,57 @@ class TestSearchShared:
         """builtins.MemoryError is re-raised without wrapping."""
         mock_client.search.side_effect = MemoryError("out of memory")
         with pytest.raises(MemoryError):
+            await backend.search_shared(MemoryQuery(text="test"))
+
+    async def test_search_shared_with_category_post_filter(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """search_shared applies post-filters (e.g. category filter)."""
+        mock_client.search.return_value = mem0_search_result(
+            [
+                {
+                    "id": "s1",
+                    "memory": "episodic fact",
+                    "score": 0.9,
+                    "created_at": "2026-03-12T10:00:00+00:00",
+                    "metadata": {
+                        "_synthorg_category": "episodic",
+                        PUBLISHER_KEY: "test-agent-001",
+                    },
+                },
+                {
+                    "id": "s2",
+                    "memory": "semantic fact",
+                    "score": 0.8,
+                    "created_at": "2026-03-12T10:00:00+00:00",
+                    "metadata": {
+                        "_synthorg_category": "semantic",
+                        PUBLISHER_KEY: "test-agent-001",
+                    },
+                },
+            ],
+        )
+
+        from ai_company.core.enums import MemoryCategory
+
+        query = MemoryQuery(
+            text="test",
+            categories=frozenset({MemoryCategory.SEMANTIC}),
+        )
+        entries = await backend.search_shared(query)
+        assert len(entries) == 1
+        assert entries[0].category == MemoryCategory.SEMANTIC
+
+    async def test_search_shared_reraises_recursion_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """RecursionError is re-raised without wrapping."""
+        mock_client.search.side_effect = RecursionError("infinite loop")
+        with pytest.raises(RecursionError):
             await backend.search_shared(MemoryQuery(text="test"))
 
     async def test_search_shared_no_publisher_uses_namespace(
@@ -239,7 +300,7 @@ class TestRetract:
             "id": "shared-001",
             "memory": "shared content",
             "created_at": "2026-03-12T10:00:00+00:00",
-            "metadata": {_PUBLISHER_KEY: "test-agent-001"},
+            "metadata": {PUBLISHER_KEY: "test-agent-001"},
         }
         mock_client.delete.return_value = None
 
@@ -268,7 +329,7 @@ class TestRetract:
             "id": "shared-001",
             "memory": "content",
             "created_at": "2026-03-12T10:00:00+00:00",
-            "metadata": {_PUBLISHER_KEY: "test-agent-002"},
+            "metadata": {PUBLISHER_KEY: "test-agent-002"},
         }
 
         with pytest.raises(MemoryStoreError, match="cannot retract"):
@@ -309,6 +370,16 @@ class TestRetract:
         with pytest.raises(MemoryError):
             await backend.retract("test-agent-001", "shared-001")
 
+    async def test_retract_reraises_recursion_error(
+        self,
+        backend: Mem0MemoryBackend,
+        mock_client: MagicMock,
+    ) -> None:
+        """RecursionError is re-raised without wrapping."""
+        mock_client.get.side_effect = RecursionError("infinite loop")
+        with pytest.raises(RecursionError):
+            await backend.retract("test-agent-001", "shared-001")
+
     async def test_retract_delete_failure_wraps(
         self,
         backend: Mem0MemoryBackend,
@@ -319,7 +390,7 @@ class TestRetract:
             "id": "shared-001",
             "memory": "content",
             "created_at": "2026-03-12T10:00:00+00:00",
-            "metadata": {_PUBLISHER_KEY: "test-agent-001"},
+            "metadata": {PUBLISHER_KEY: "test-agent-001"},
         }
         mock_client.delete.side_effect = RuntimeError("delete failed")
 

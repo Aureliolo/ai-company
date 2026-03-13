@@ -21,12 +21,13 @@ logger = get_logger(__name__)
 
 
 class Mem0EmbedderConfig(BaseModel):
-    """Embedder settings for Mem0.
+    """Embedder settings for the Mem0 memory backend.
 
-    ``provider`` and ``model`` are required — callers must supply them
-    explicitly so that vendor-specific identifiers stay out of source
-    defaults.  Pass values that the Mem0 SDK recognises (e.g. via
-    company YAML config).
+    Both ``provider`` and ``model`` are required — callers must
+    supply them explicitly so that vendor-specific identifiers stay
+    out of source defaults.  The values must be valid Mem0 SDK
+    identifiers (e.g. ``"openai"``, ``"text-embedding-ada-002"``);
+    see the Mem0 documentation for supported providers and models.
 
     Attributes:
         provider: Embedding provider name (Mem0 SDK identifier).
@@ -74,7 +75,12 @@ class Mem0BackendConfig(BaseModel):
 
     @model_validator(mode="after")
     def _reject_traversal(self) -> Self:
-        """Reject parent-directory traversal to prevent path escapes."""
+        """Reject parent-directory traversal to prevent path escapes.
+
+        Note: ``build_config_from_company_config`` passes ``data_dir``
+        from ``CompanyMemoryConfig``, so this check also protects
+        the factory path.
+        """
         parts = (
             PureWindowsPath(self.data_dir).parts + PurePosixPath(self.data_dir).parts
         )
@@ -138,7 +144,10 @@ def build_config_from_company_config(
 
     Raises:
         ValueError: If the storage config specifies a vector or
-            history store that the Mem0 backend does not support.
+            history store that the Mem0 backend does not support,
+            or if ``data_dir`` contains parent-directory traversal
+            (``..``) — propagated from ``Mem0BackendConfig``
+            validation.
     """
     if config.storage.vector_store not in ("qdrant", "qdrant-external"):
         msg = (
