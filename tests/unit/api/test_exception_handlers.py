@@ -304,4 +304,4 @@ class TestExceptionHandlers:
 
         resp = handle_http_exception(request, exc)
         assert resp.status_code == 499
-        assert resp.content.error == "Request error"  # type: ignore[union-attr]
+        assert resp.content.error == "Request error"
