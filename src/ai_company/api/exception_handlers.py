@@ -10,6 +10,7 @@ from typing import Any, Final
 from litestar import Request, Response
 from litestar.exceptions import (
     NotAuthorizedException,
+    NotFoundException,
     PermissionDeniedException,
     ValidationException,
 )
@@ -167,6 +168,23 @@ def handle_not_authorized(
     )
 
 
+def handle_not_found(
+    request: Request[Any, Any, Any],
+    exc: NotFoundException,
+) -> Response[ApiResponse[None]]:
+    """Map Litestar ``NotFoundException`` to 404.
+
+    Without this handler the catch-all ``handle_unexpected`` would
+    return 500 for unmatched routes, which ZAP flags as a security
+    issue.
+    """
+    _log_error(request, exc, status=404)
+    return Response(
+        content=ApiResponse[None](error="Not found"),
+        status_code=404,
+    )
+
+
 EXCEPTION_HANDLERS: dict[type[Exception], object] = {
     RecordNotFoundError: handle_record_not_found,
     DuplicateRecordError: handle_duplicate_record,
@@ -174,6 +192,7 @@ EXCEPTION_HANDLERS: dict[type[Exception], object] = {
     NotAuthorizedException: handle_not_authorized,
     PermissionDeniedException: handle_permission_denied,
     ValidationException: handle_validation_error,
+    NotFoundException: handle_not_found,
     ApiError: handle_api_error,
     Exception: handle_unexpected,
 }

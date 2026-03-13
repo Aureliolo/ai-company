@@ -62,3 +62,17 @@ updates:
       - Aureliolo
     labels:
       - type:chore
+
+  - package-ecosystem: docker
+    directory: /docker/sandbox
+    schedule:
+      interval: daily
+      time: "06:00"
+      timezone: Etc/UTC
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 5
+    reviewers:
+      - Aureliolo
+    labels:
+      - type:chore

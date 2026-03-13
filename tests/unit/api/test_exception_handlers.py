@@ -153,3 +153,17 @@ class TestExceptionHandlers:
             assert resp.status_code == 422
             body = resp.json()
             assert body["error"] == "Bad field"
+
+    def test_unmatched_route_returns_404(self) -> None:
+        """NotFoundException for unknown routes returns 404, not 500."""
+
+        @get("/test")
+        async def handler() -> str:
+            return "ok"
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/nonexistent")
+            assert resp.status_code == 404
+            body = resp.json()
+            assert body["success"] is False
+            assert body["error"] == "Not found"

@@ -233,7 +233,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           PR_NUMBER: ${{ needs.build.outputs.pr_number }}
         run: |
-          npm i --no-save wrangler@3.114.17
+          # Scorecard: npm install cannot be hash-pinned for CI-only tools;
+          # --ignore-scripts mitigates post-install script supply-chain risk.
+          npm i --no-save --ignore-scripts wrangler@3.114.17
           npx wrangler pages deploy _site --project-name=synthorg-pr-preview --branch="pr-${PR_NUMBER}"
 
       - name: Comment preview URL
