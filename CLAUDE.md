@@ -184,7 +184,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 - **Signed commits**: required on `main` via branch protection — all commits must be GPG/SSH signed
 - **Branches**: `<type>/<slug>` from main
 - **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting)
-- **Pre-push hooks**: mypy type-check + pytest unit tests (fast gate before push, skipped in CI — dedicated jobs already run these)
+- **Pre-push hooks**: mypy type-check + pytest unit tests (fast gate before push, skipped in pre-commit.ci — dedicated CI jobs already run these)
 - **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) — MCP `list_issues` has unreliable field data
 - **PR issue references**: preserve existing `Closes #NNN` references — never remove unless explicitly asked
 
@@ -228,7 +228,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 - **Coverage**: Codecov integration — coverage upload via `codecov-action` + test results analytics via `test-results-action` (both best-effort, CI not gated on Codecov availability)
 - **Workflow security**: `.github/workflows/zizmor.yml` — zizmor static analysis of GitHub Actions workflows on push to main and PRs (triggers only when workflow files change), SARIF upload to Security tab on push events only (fork PRs lack `security-events: write`)
 - **OSSF Scorecard**: `.github/workflows/scorecard.yml` — supply chain maturity scoring on push to main + weekly schedule. SARIF upload to Security tab. Contributes to OpenSSF ecosystem data via `publish_results: true`.
-- **DAST**: `.github/workflows/dast.yml` — ZAP API scan against the backend OpenAPI spec on push to main + weekly schedule. Builds backend image locally, starts container, runs ZAP, uploads SARIF to Security tab. Not on PRs (too slow).
+- **DAST**: `.github/workflows/dast.yml` — ZAP API scan against the backend OpenAPI spec on push to main + weekly schedule. Builds backend image locally, starts container, runs ZAP. Results available as workflow artifacts (no SARIF — action v0.10.0 lacks native SARIF output). Not on PRs (too slow).
 - **Socket.dev**: GitHub App — supply chain attack detection on PRs (typosquatting, malware, suspicious ownership changes, obfuscated code). No config file needed, auto-comments on PRs.
 - **Release**: `.github/workflows/release.yml` — Release Please (Google) auto-creates a release PR on every push to main. Merging the release PR creates a git tag (`vX.Y.Z`) + GitHub Release with changelog. Tag push triggers the Docker workflow to build version-tagged images. Uses `RELEASE_PLEASE_TOKEN` secret (PAT/GitHub App token) so tag creation triggers downstream workflows (GITHUB_TOKEN cannot). Config in `.github/release-please-config.json` and `.github/.release-please-manifest.json`.
 

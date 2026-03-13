@@ -67,4 +67,4 @@ This project is designed to handle LLM API keys, sandboxed code execution, and a
 ### Dynamic Application Security Testing (DAST)
 
 - **ZAP API Scan** runs against the backend OpenAPI spec (push to main + weekly)
-- SARIF results uploaded to GitHub Security tab
+- Results available as workflow artifacts (SARIF upload planned when ZAP action adds native support)
