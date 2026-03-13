@@ -25,6 +25,7 @@ htmlcov/
 coverage.xml
 .coverage
 .coverage.*
+web/coverage/
 
 # Environment variables
 .env
