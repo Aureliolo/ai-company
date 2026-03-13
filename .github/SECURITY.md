@@ -35,7 +35,7 @@ This project is designed to handle LLM API keys, sandboxed code execution, and a
 ### Application-Level Security
 
 - **Ruff bandit rules** (S category) check for common security issues in Python code
-- **CodeQL** performs static analysis to find potential vulnerabilities
+- **CodeQL** static analysis — currently disabled pending repository rename cache reset (see [known issue](https://github.com/Aureliolo/synthorg/pull/290))
 - **Secret scanning** and **push protection** enabled on the repository
 - **Gitleaks** pre-commit hook prevents committing secrets locally + weekly CI workflow
 
@@ -57,7 +57,7 @@ This project is designed to handle LLM API keys, sandboxed code execution, and a
 
 ### Workflow & Supply Chain Security
 
-- **Zizmor** static analysis of GitHub Actions workflows (SARIF to Security tab)
+- **Zizmor** static analysis of GitHub Actions workflows (SARIF uploaded on push events only — fork PRs lack `security-events: write`)
 - **OSSF Scorecard** supply chain maturity scoring (SARIF to Security tab, weekly + push to main)
 - All workflow actions pinned by full SHA with version comments
 - `permissions: {}` at workflow level with least-privilege per job

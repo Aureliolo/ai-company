@@ -116,7 +116,7 @@ src/ai_company/
 web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
   src/
     api/          # Axios client, endpoint modules, TypeScript types (mirrors backend Pydantic models)
-    components/   # Vue components organized by feature (agents/, approvals/, budget/, common/, dashboard/, layout/, messages/, org-chart/, tasks/)
+    components/   # Vue components organized by feature (common/, layout/)
     composables/  # Reusable composition functions (useAuth, usePolling, useOptimisticUpdate)
     router/       # Vue Router config with auth guards
     stores/       # Pinia stores (auth, agents, tasks, budget, messages, approvals, websocket, analytics, company, providers)
@@ -235,7 +235,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 ## Dependencies
 
 - **Pinned**: all versions use `==` in `pyproject.toml`
-- **Groups**: `test` (pytest + plugins), `dev` (includes test + ruff, mypy, pre-commit, commitizen)
+- **Groups**: `test` (pytest + plugins), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pip-audit)
 - **Required**: `mem0ai` (Mem0 memory backend — the default and currently only backend)
 - **Install**: `uv sync` installs everything (dev group is default)
 - **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, Vitest, ESLint, vue-tsc)
