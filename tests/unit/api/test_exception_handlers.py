@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from litestar import Litestar, get
 from litestar.exceptions import (
+    HTTPException,
     MethodNotAllowedException,
     NotAuthorizedException,
     PermissionDeniedException,
@@ -175,7 +176,7 @@ class TestExceptionHandlers:
             assert body["error"] == "Not found"
 
     def test_litestar_permission_denied_maps_to_403(self) -> None:
-        """Litestar PermissionDeniedException returns static 403."""
+        """PermissionDeniedException with no detail falls back to 'Forbidden'."""
 
         @get("/test")
         async def handler() -> None:
@@ -188,8 +189,21 @@ class TestExceptionHandlers:
             assert body["success"] is False
             assert body["error"] == "Forbidden"
 
+    def test_permission_denied_preserves_detail(self) -> None:
+        """PermissionDeniedException with custom detail passes it through."""
+
+        @get("/test")
+        async def handler() -> None:
+            raise PermissionDeniedException(detail="Write access denied")
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 403
+            body = resp.json()
+            assert body["error"] == "Write access denied"
+
     def test_litestar_not_authorized_maps_to_401(self) -> None:
-        """Litestar NotAuthorizedException returns static 401."""
+        """NotAuthorizedException with default detail returns 401."""
 
         @get("/test")
         async def handler() -> None:
@@ -200,7 +214,20 @@ class TestExceptionHandlers:
             assert resp.status_code == 401
             body = resp.json()
             assert body["success"] is False
-            assert body["error"] == "Authentication required"
+            assert body["error"] == "Unauthorized"
+
+    def test_not_authorized_preserves_detail(self) -> None:
+        """NotAuthorizedException with custom detail passes it through."""
+
+        @get("/test")
+        async def handler() -> None:
+            raise NotAuthorizedException(detail="Invalid JWT token")
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 401
+            body = resp.json()
+            assert body["error"] == "Invalid JWT token"
 
     def test_litestar_validation_exception_maps_to_400(self) -> None:
         """Litestar ValidationException returns static 400."""
@@ -229,3 +256,33 @@ class TestExceptionHandlers:
             body = resp.json()
             assert body["success"] is False
             assert body["error"] == "Method Not Allowed"
+
+    def test_http_exception_5xx_returns_scrubbed_message(self) -> None:
+        """5xx HTTPException scrubs detail to prevent info leakage."""
+
+        @get("/test")
+        async def handler() -> None:
+            raise HTTPException(
+                status_code=502,
+                detail="upstream db connection refused",
+            )
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 502
+            body = resp.json()
+            assert body["success"] is False
+            assert body["error"] == "Internal server error"
+
+    def test_http_exception_empty_detail_uses_phrase(self) -> None:
+        """HTTPException with empty detail falls back to HTTP phrase."""
+
+        @get("/test")
+        async def handler() -> None:
+            raise HTTPException(status_code=429)
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 429
+            body = resp.json()
+            assert body["error"] == "Too Many Requests"

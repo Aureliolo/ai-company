@@ -163,7 +163,6 @@ Every commit is checked locally before it reaches the remote:
 - **ruff** — Python linting and formatting
 - **commitizen** — conventional commit message enforcement
 - **Large file prevention** — blocks files over 1 MB
-- **Branch protection** — prevents direct commits to `main`
 
 Pre-push hooks run **mypy type checking** and **unit tests** as a fast gate.
 

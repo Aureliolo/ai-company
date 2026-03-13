@@ -1,8 +1,10 @@
 """Exception handlers mapping domain errors to HTTP responses.
 
 Each handler returns an ``ApiResponse(error=...)`` with the
-appropriate HTTP status code and a **scrubbed** user-facing error
-message.  Detailed error context is logged server-side only.
+appropriate HTTP status code.  5xx responses return a generic
+scrubbed message; 4xx responses pass through the exception detail
+(authored by SynthOrg's guards/middleware and user-safe).  Detailed
+error context is logged server-side for all status codes.
 """
 
 from http import HTTPStatus
@@ -139,8 +141,9 @@ def handle_permission_denied(
 ) -> Response[ApiResponse[None]]:
     """Map ``PermissionDeniedException`` to 403."""
     _log_error(request, exc, status=403)
+    detail = exc.detail or "Forbidden"
     return Response(
-        content=ApiResponse[None](error="Forbidden"),
+        content=ApiResponse[None](error=detail),
         status_code=403,
     )
 
@@ -165,8 +168,9 @@ def handle_not_authorized(
 ) -> Response[ApiResponse[None]]:
     """Map ``NotAuthorizedException`` to 401."""
     _log_error(request, exc, status=401)
+    detail = exc.detail or "Authentication required"
     return Response(
-        content=ApiResponse[None](error="Authentication required"),
+        content=ApiResponse[None](error=detail),
         status_code=401,
     )
 
@@ -187,6 +191,7 @@ def handle_not_found(
         path=str(request.url.path),
         status_code=404,
         error_type=type(exc).__qualname__,
+        error=str(exc),
     )
     return Response(
         content=ApiResponse[None](error="Not found"),
@@ -212,12 +217,15 @@ def handle_http_exception(
     return Response(
         content=ApiResponse[None](error=msg),
         status_code=status,
+        headers=exc.headers,
     )
 
 
 # Litestar resolves exception handlers by walking the raised exception's
 # MRO — the first matching type found in this dict wins.  Dict insertion
-# order does NOT affect resolution priority.
+# order does NOT affect resolution priority.  (For HTTPException subclasses,
+# Litestar also checks integer status-code keys first, but this dict uses
+# only type keys.)
 EXCEPTION_HANDLERS: dict[type[Exception], object] = {
     RecordNotFoundError: handle_record_not_found,
     DuplicateRecordError: handle_duplicate_record,
