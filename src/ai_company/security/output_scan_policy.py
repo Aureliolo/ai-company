@@ -14,7 +14,7 @@ from ai_company.observability import get_logger
 from ai_company.observability.events.security import (
     SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
 )
-from ai_company.security.models import OutputScanResult
+from ai_company.security.models import OutputScanResult, ScanOutcome
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -127,7 +127,9 @@ class WithholdPolicy:
         )
         if not scan_result.has_sensitive_data:
             return scan_result
-        return scan_result.model_copy(update={"redacted_content": None})
+        return scan_result.model_copy(
+            update={"redacted_content": None, "outcome": ScanOutcome.WITHHELD},
+        )
 
 
 class LogOnlyPolicy:
@@ -172,12 +174,12 @@ class LogOnlyPolicy:
                 agent_id=context.agent_id,
                 note="Sensitive data detected but passed through by log_only policy",
             )
-        else:
-            logger.debug(
-                SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
-                policy="log_only",
-                has_sensitive_data=False,
-            )
+            return OutputScanResult(outcome=ScanOutcome.LOG_ONLY)
+        logger.debug(
+            SECURITY_OUTPUT_SCAN_POLICY_APPLIED,
+            policy="log_only",
+            has_sensitive_data=False,
+        )
         return OutputScanResult()
 
 

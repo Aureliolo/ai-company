@@ -20,6 +20,26 @@ from ai_company.core.enums import ApprovalRiskLevel, ToolCategory  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 
 
+class ScanOutcome(StrEnum):
+    """Outcome of an output scan policy decision.
+
+    Tracks what the scanner/policy *did* with the output so that
+    downstream consumers (e.g. ``ToolInvoker``) can distinguish
+    intentional withholding from scanner failure.
+
+    Members:
+        CLEAN: No sensitive data detected (default).
+        REDACTED: Sensitive data found, redacted content available.
+        WITHHELD: Content intentionally withheld by policy.
+        LOG_ONLY: Findings logged, original content passed through.
+    """
+
+    CLEAN = "clean"
+    REDACTED = "redacted"
+    WITHHELD = "withheld"
+    LOG_ONLY = "log_only"
+
+
 class SecurityVerdictType(StrEnum):
     """Security verdict constants.
 
@@ -156,6 +176,9 @@ class OutputScanResult(BaseModel):
         has_sensitive_data: Whether sensitive data was detected.
         findings: Descriptions of findings.
         redacted_content: Content with sensitive data replaced, or None.
+        outcome: What the scanner/policy did with the output.
+            Allows downstream consumers to distinguish intentional
+            withholding from scanner failure.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -163,6 +186,7 @@ class OutputScanResult(BaseModel):
     has_sensitive_data: bool = False
     findings: tuple[NotBlankStr, ...] = ()
     redacted_content: str | None = None
+    outcome: ScanOutcome = ScanOutcome.CLEAN
 
     @model_validator(mode="after")
     def _check_consistency(self) -> OutputScanResult:
@@ -174,4 +198,13 @@ class OutputScanResult(BaseModel):
             if self.redacted_content is not None:
                 msg = "redacted_content must be None when has_sensitive_data is False"
                 raise ValueError(msg)
+            if self.outcome in (ScanOutcome.REDACTED, ScanOutcome.WITHHELD):
+                msg = (
+                    f"outcome={self.outcome.value!r} is invalid when "
+                    "has_sensitive_data is False"
+                )
+                raise ValueError(msg)
+        elif self.outcome == ScanOutcome.CLEAN:
+            msg = "outcome='clean' is invalid when has_sensitive_data is True"
+            raise ValueError(msg)
         return self

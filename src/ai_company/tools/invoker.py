@@ -36,12 +36,13 @@ from ai_company.observability.events.tool import (
     TOOL_INVOKE_TOOL_ERROR,
     TOOL_INVOKE_VALIDATION_UNEXPECTED,
     TOOL_OUTPUT_REDACTED,
+    TOOL_OUTPUT_WITHHELD,
     TOOL_PERMISSION_DENIED,
     TOOL_SECURITY_DENIED,
     TOOL_SECURITY_ESCALATED,
 )
 from ai_company.providers.models import ToolCall, ToolResult
-from ai_company.security.models import SecurityContext, SecurityVerdictType
+from ai_company.security.models import ScanOutcome, SecurityContext, SecurityVerdictType
 
 from .base import ToolExecutionResult
 from .errors import ToolExecutionError, ToolNotFoundError, ToolParameterError
@@ -307,6 +308,21 @@ class ToolInvoker:
             )
 
         if scan_result.has_sensitive_data:
+            if scan_result.outcome == ScanOutcome.WITHHELD:
+                logger.warning(
+                    TOOL_OUTPUT_WITHHELD,
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    findings=scan_result.findings,
+                    note="content withheld by security policy",
+                )
+                return ToolExecutionResult(
+                    content=(
+                        "Sensitive data detected — content withheld by security policy."
+                    ),
+                    is_error=True,
+                    metadata={"output_withheld": True},
+                )
             if scan_result.redacted_content is not None:
                 logger.warning(
                     TOOL_OUTPUT_REDACTED,
@@ -323,7 +339,8 @@ class ToolInvoker:
                         "redaction_findings": list(scan_result.findings),
                     },
                 )
-            # Sensitive data found but no redaction available — fail closed.
+            # Defensive: REDACTED outcome but redacted_content is None
+            # (shouldn't happen).
             logger.warning(
                 TOOL_OUTPUT_REDACTED,
                 tool_call_id=tool_call.id,

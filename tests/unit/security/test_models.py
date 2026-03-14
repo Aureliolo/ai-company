@@ -9,6 +9,7 @@ from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
 from ai_company.security.models import (
     AuditEntry,
     OutputScanResult,
+    ScanOutcome,
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
@@ -459,18 +460,21 @@ class TestOutputScanResult:
         assert result.has_sensitive_data is False
         assert result.findings == ()
         assert result.redacted_content is None
+        assert result.outcome == ScanOutcome.CLEAN
 
     def test_with_findings(self) -> None:
         result = OutputScanResult(
             has_sensitive_data=True,
             findings=("API key detected", "Email address found"),
             redacted_content="content with [REDACTED]",
+            outcome=ScanOutcome.REDACTED,
         )
         assert result.has_sensitive_data is True
         assert len(result.findings) == 2
         assert result.findings[0] == "API key detected"
         assert result.findings[1] == "Email address found"
         assert result.redacted_content == "content with [REDACTED]"
+        assert result.outcome == ScanOutcome.REDACTED
 
     def test_frozen(self) -> None:
         result = OutputScanResult()
@@ -512,7 +516,52 @@ class TestOutputScanResult:
             has_sensitive_data=True,
             findings=("PII detected",),
             redacted_content="safe output",
+            outcome=ScanOutcome.REDACTED,
         )
         json_str = result.model_dump_json()
         restored = OutputScanResult.model_validate_json(json_str)
         assert restored == result
+
+    def test_outcome_clean_rejected_when_sensitive(self) -> None:
+        """outcome=CLEAN is invalid when has_sensitive_data=True."""
+        with pytest.raises(ValidationError, match="outcome"):
+            OutputScanResult(
+                has_sensitive_data=True,
+                findings=("leak",),
+                outcome=ScanOutcome.CLEAN,
+            )
+
+    def test_outcome_redacted_rejected_when_not_sensitive(self) -> None:
+        """outcome=REDACTED is invalid when has_sensitive_data=False."""
+        with pytest.raises(ValidationError, match="outcome"):
+            OutputScanResult(
+                has_sensitive_data=False,
+                outcome=ScanOutcome.REDACTED,
+            )
+
+    def test_outcome_withheld_rejected_when_not_sensitive(self) -> None:
+        """outcome=WITHHELD is invalid when has_sensitive_data=False."""
+        with pytest.raises(ValidationError, match="outcome"):
+            OutputScanResult(
+                has_sensitive_data=False,
+                outcome=ScanOutcome.WITHHELD,
+            )
+
+    def test_outcome_log_only_accepted_when_not_sensitive(self) -> None:
+        """outcome=LOG_ONLY is valid with has_sensitive_data=False."""
+        result = OutputScanResult(
+            has_sensitive_data=False,
+            outcome=ScanOutcome.LOG_ONLY,
+        )
+        assert result.outcome == ScanOutcome.LOG_ONLY
+
+    def test_outcome_withheld_valid(self) -> None:
+        """outcome=WITHHELD is valid with has_sensitive_data=True."""
+        result = OutputScanResult(
+            has_sensitive_data=True,
+            findings=("secret",),
+            outcome=ScanOutcome.WITHHELD,
+            redacted_content=None,
+        )
+        assert result.outcome == ScanOutcome.WITHHELD
+        assert result.redacted_content is None

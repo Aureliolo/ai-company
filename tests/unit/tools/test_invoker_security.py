@@ -10,6 +10,7 @@ from ai_company.core.enums import ApprovalRiskLevel, ToolCategory
 from ai_company.providers.models import ToolCall
 from ai_company.security.models import (
     OutputScanResult,
+    ScanOutcome,
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
@@ -333,6 +334,7 @@ class TestOutputScanRedaction:
                 has_sensitive_data=True,
                 findings=("API key detected",),
                 redacted_content="executed: [REDACTED]",
+                outcome=ScanOutcome.REDACTED,
             ),
         )
         invoker = ToolInvoker(
@@ -389,6 +391,7 @@ class TestOutputScanRedaction:
                 has_sensitive_data=True,
                 findings=("potential leak",),
                 redacted_content=None,
+                outcome=ScanOutcome.WITHHELD,
             ),
         )
         invoker = ToolInvoker(
@@ -397,7 +400,7 @@ class TestOutputScanRedaction:
         )
         result = await invoker.invoke(tool_call)
         assert result.is_error is True
-        assert "fail-closed" in result.content.lower()
+        assert "withheld by security policy" in result.content.lower()
         assert "executed:" not in result.content
 
 
@@ -740,6 +743,7 @@ class TestInvokeAllOutputScanning:
                 has_sensitive_data=True,
                 findings=("secret",),
                 redacted_content="[REDACTED]",
+                outcome=ScanOutcome.REDACTED,
             ),
         )
         invoker = ToolInvoker(
@@ -772,6 +776,7 @@ class TestOutputScanOnSoftError:
             has_sensitive_data=True,
             findings=("API key",),
             redacted_content="error: [REDACTED]",
+            outcome=ScanOutcome.REDACTED,
         )
         interceptor = _make_interceptor(
             pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
@@ -806,3 +811,68 @@ class TestOutputScanOnSoftError:
 
         scan_args = interceptor.scan_output.call_args[0]
         assert scan_args[1] == "error: API_KEY=AKIA1234567890EXAMPLE"
+
+
+# ── Withheld outcome tests ─────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestWithheldOutcome:
+    """Tests for the WITHHELD scan outcome path in the invoker."""
+
+    async def test_withheld_outcome_returns_policy_message(
+        self,
+        security_registry: ToolRegistry,
+        tool_call: ToolCall,
+    ) -> None:
+        """Withheld outcome returns explicit policy message."""
+        interceptor = _make_interceptor(
+            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
+            scan_result=OutputScanResult(
+                has_sensitive_data=True,
+                findings=("secret token",),
+                redacted_content=None,
+                outcome=ScanOutcome.WITHHELD,
+            ),
+        )
+        invoker = ToolInvoker(
+            security_registry,
+            security_interceptor=interceptor,
+        )
+        result = await invoker.invoke(tool_call)
+        assert result.is_error is True
+        assert "withheld by security policy" in result.content.lower()
+
+    async def test_withheld_metadata_uses_output_withheld_key(
+        self,
+        security_registry: ToolRegistry,
+        tool_call: ToolCall,
+    ) -> None:
+        """Withheld outcome sets output_withheld metadata, not output_scan_failed."""
+        interceptor = _make_interceptor(
+            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
+            scan_result=OutputScanResult(
+                has_sensitive_data=True,
+                findings=("credential",),
+                redacted_content=None,
+                outcome=ScanOutcome.WITHHELD,
+            ),
+        )
+        invoker = ToolInvoker(
+            security_registry,
+            security_interceptor=interceptor,
+        )
+        # Access the internal _scan_output to inspect metadata.
+        from ai_company.tools.base import ToolExecutionResult
+
+        tool_exec_result = ToolExecutionResult(content="raw output")
+        from ai_company.security.models import SecurityContext
+
+        context = SecurityContext(
+            tool_name="secure_tool",
+            tool_category=ToolCategory.FILE_SYSTEM,
+            action_type="code:write",
+        )
+        scan_exec = await invoker._scan_output(tool_call, tool_exec_result, context)
+        assert scan_exec.metadata.get("output_withheld") is True
+        assert "output_scan_failed" not in scan_exec.metadata

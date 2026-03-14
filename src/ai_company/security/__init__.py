@@ -32,6 +32,7 @@ from ai_company.security.config import (
 from ai_company.security.models import (
     AuditEntry,
     OutputScanResult,
+    ScanOutcome,
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
@@ -66,6 +67,7 @@ __all__ = [
     "RedactPolicy",
     "RuleEngine",
     "RuleEngineConfig",
+    "ScanOutcome",
     "SecOpsService",
     "SecurityConfig",
     "SecurityContext",
