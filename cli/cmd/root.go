@@ -41,6 +41,12 @@ func resolveDataDir() string {
 	return dir
 }
 
+// safeStateDir returns a validated absolute path from the loaded state's DataDir.
+// This satisfies CodeQL's go/path-injection by applying SecurePath at the call site.
+func safeStateDir(state config.State) (string, error) {
+	return config.SecurePath(state.DataDir)
+}
+
 // isInteractive returns true if stdin is a terminal (not piped or in CI).
 func isInteractive() bool {
 	fi, err := os.Stdin.Stat()
