@@ -206,6 +206,12 @@ class ReactLoop:
             tool_call_count=len(response.tool_calls),
         )
 
+        # Checkpoint is saved after the LLM response is recorded but
+        # before tool execution.  This is intentional: if a crash
+        # happens during tool execution, the agent resumes with the
+        # LLM response and can detect whether tools already ran.  The
+        # alternative (after tools) would lose the entire LLM call on
+        # a mid-tool crash.  Tools should be idempotent by design.
         if self._checkpoint_callback is not None:
             try:
                 await self._checkpoint_callback(ctx)

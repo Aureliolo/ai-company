@@ -19,6 +19,7 @@ from ai_company.observability.events.checkpoint import (
     CHECKPOINT_DELETED,
     CHECKPOINT_RECOVERY_RECONCILIATION,
     CHECKPOINT_UNSUPPORTED_LOOP,
+    HEARTBEAT_DELETE_FAILED,
     HEARTBEAT_DELETED,
 )
 from ai_company.providers.enums import MessageRole
@@ -56,7 +57,16 @@ def deserialize_and_reconcile(
     Raises:
         ValueError: If deserialization fails.
     """
-    checkpoint_ctx = AgentContext.model_validate_json(checkpoint_json)
+    try:
+        checkpoint_ctx = AgentContext.model_validate_json(checkpoint_json)
+    except ValueError:
+        logger.exception(
+            CHECKPOINT_RECOVERY_RECONCILIATION,
+            agent_id=agent_id,
+            task_id=task_id,
+            error="Failed to deserialize checkpoint context",
+        )
+        raise
 
     reconciliation_msg = ChatMessage(
         role=MessageRole.SYSTEM,
@@ -155,7 +165,7 @@ async def cleanup_after_resume(
             )
         except Exception:
             logger.warning(
-                CHECKPOINT_DELETE_FAILED,
+                HEARTBEAT_DELETE_FAILED,
                 execution_id=execution_id,
                 error="Failed to clean up heartbeat after resume",
                 exc_info=True,

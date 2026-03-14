@@ -569,7 +569,7 @@ implemented behind a `RecoveryStrategy` protocol, making the system pluggable.
 
     - Preserves progress -- critical for long tasks (multi-step plans,
       epic-level work)
-    - Requires persistence layer and environment state reconciliation on resume
+    - Requires persistence layer and reconciliation message on resume
     - Natural fit with the existing immutable state model
 
     When resuming from a checkpoint, the agent receives a system message

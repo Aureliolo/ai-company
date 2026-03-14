@@ -13,6 +13,7 @@ from ai_company.engine.checkpoint.models import (
     Checkpoint,  # noqa: TC001
     CheckpointConfig,  # noqa: TC001
 )
+from ai_company.engine.checkpoint.resume import cleanup_after_resume
 from ai_company.engine.context import AgentContext  # noqa: TC001
 from ai_company.engine.recovery import (
     FailAndReassignStrategy,
@@ -30,7 +31,10 @@ from ai_company.observability.events.checkpoint import (
     CHECKPOINT_RECOVERY_START,
 )
 from ai_company.persistence.errors import PersistenceError
-from ai_company.persistence.repositories import CheckpointRepository  # noqa: TC001
+from ai_company.persistence.repositories import (
+    CheckpointRepository,  # noqa: TC001
+    HeartbeatRepository,  # noqa: TC001
+)
 
 logger = get_logger(__name__)
 
@@ -49,6 +53,7 @@ class CheckpointRecoveryStrategy:
 
     Args:
         checkpoint_repo: Repository for loading checkpoints.
+        heartbeat_repo: Repository for heartbeat cleanup on fallback.
         config: Checkpoint configuration (controls max_resume_attempts).
         fallback: Fallback recovery strategy; defaults to
             ``FailAndReassignStrategy``.
@@ -60,12 +65,18 @@ class CheckpointRecoveryStrategy:
         self,
         *,
         checkpoint_repo: CheckpointRepository,
+        heartbeat_repo: HeartbeatRepository | None = None,
         config: CheckpointConfig,
         fallback: RecoveryStrategy | None = None,
     ) -> None:
         self._checkpoint_repo = checkpoint_repo
+        self._heartbeat_repo = heartbeat_repo
         self._config = config
         self._fallback: RecoveryStrategy = fallback or FailAndReassignStrategy()
+        # NOTE: _resume_counts is in-memory only.  Across process
+        # restarts the counter resets, allowing up to max_resume_attempts
+        # fresh attempts per lifetime.  Persisting the counter (e.g. in
+        # the checkpoints table) is a planned improvement.
         self._resume_counts: dict[str, int] = {}
         self._resume_lock = asyncio.Lock()
 
@@ -256,7 +267,16 @@ class CheckpointRecoveryStrategy:
         error_message: str,
         context: AgentContext,
     ) -> RecoveryResult:
-        """Delegate recovery to the fallback strategy."""
+        """Delegate recovery to the fallback strategy.
+
+        Also cleans up any orphaned checkpoint/heartbeat rows for
+        this execution, since the resume path will not be entered.
+        """
+        await cleanup_after_resume(
+            self._checkpoint_repo,
+            self._heartbeat_repo,
+            context.execution_id,
+        )
         return await self._fallback.recover(
             task_execution=task_execution,
             error_message=error_message,

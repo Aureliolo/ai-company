@@ -748,6 +748,19 @@ class AgentEngine:
         effective_autonomy: EffectiveAutonomy | None = None,
     ) -> ExecutionResult:
         """Run the execution loop on a reconstituted checkpoint context."""
+        budget_checker: BudgetChecker | None
+        if checkpoint_ctx.task_execution is None:
+            budget_checker = None
+        elif self._budget_enforcer:
+            budget_checker = await self._budget_enforcer.make_budget_checker(
+                checkpoint_ctx.task_execution.task,
+                agent_id,
+            )
+        else:
+            budget_checker = make_budget_checker(
+                checkpoint_ctx.task_execution.task,
+            )
+
         loop = self._make_loop_with_callback(agent_id, task_id)
         return await loop.execute(
             context=checkpoint_ctx,
@@ -757,11 +770,7 @@ class AgentEngine:
                 task_id=task_id,
                 effective_autonomy=effective_autonomy,
             ),
-            budget_checker=make_budget_checker(
-                checkpoint_ctx.task_execution.task,
-            )
-            if checkpoint_ctx.task_execution is not None
-            else None,
+            budget_checker=budget_checker,
             shutdown_checker=self._shutdown_checker,
             completion_config=completion_config,
         )
