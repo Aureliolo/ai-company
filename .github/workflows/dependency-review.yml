@@ -44,9 +44,16 @@ jobs:
           # Packages with null/missing SPDX license metadata in lockfile.
           # Verified manually: mem0ai (Apache-2.0), numpy (BSD-3-Clause),
           # qdrant-client (Apache-2.0), posthog (MIT).
+          # sharp platform binaries use compound AND licenses (e.g.
+          # "Apache-2.0 AND LGPL-3.0-or-later") — all constituents are
+          # in the allowlist but the action doesn't split AND expressions.
+          # CI-only transitive dep via wrangler, no licensing impact.
           allow-dependencies-licenses: >-
             pkg:pypi/mem0ai@1.0.5,
             pkg:pypi/numpy@2.4.3,
             pkg:pypi/qdrant-client@1.17.0,
-            pkg:pypi/posthog@7.9.12
+            pkg:pypi/posthog@7.9.12,
+            pkg:npm/@img/sharp-wasm32,
+            pkg:npm/@img/sharp-win32-ia32,
+            pkg:npm/@img/sharp-win32-x64
           comment-summary-in-pr: always
