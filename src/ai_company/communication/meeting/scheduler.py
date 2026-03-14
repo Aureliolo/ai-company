@@ -242,6 +242,8 @@ class MeetingScheduler:
                 )
                 try:
                     await self._execute_meeting(meeting_type)
+                except MemoryError, RecursionError:
+                    raise
                 except Exception:
                     logger.exception(
                         MEETING_SCHEDULER_ERROR,
@@ -425,10 +427,24 @@ class MeetingScheduler:
         """
         ctx = context or {}
         items = tuple(
-            MeetingAgendaItem(title=str(k), description=str(v)) for k, v in ctx.items()
+            MeetingAgendaItem(title=str(k), description=_format_ctx_value(v))
+            for k, v in ctx.items()
         )
         return MeetingAgenda(
             title=meeting_type.name,
-            context=", ".join(f"{k}: {v}" for k, v in ctx.items()),
+            context=", ".join(f"{k}: {_format_ctx_value(v)}" for k, v in ctx.items()),
             items=items,
         )
+
+
+def _format_ctx_value(value: Any) -> str:
+    """Format a context value as a human-readable string.
+
+    Lists/tuples/sets are comma-joined; scalars use ``str()``.
+    Strings and bytes are not treated as iterables.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return ", ".join(str(item) for item in value)
+    return str(value)
