@@ -76,7 +76,24 @@ Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for exte
 
 ## Quick Start
 
-### Development
+### Install CLI
+
+```bash
+brew install aureliolo/tap/synthorg        # macOS
+scoop install synthorg                      # Windows
+curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | sh  # Linux
+```
+
+### Setup & Run
+
+```bash
+synthorg init       # interactive setup wizard
+synthorg start      # pull images + start containers
+synthorg status     # check health
+synthorg doctor     # diagnostics if something is wrong
+```
+
+### Development (from source)
 
 ```bash
 git clone https://github.com/Aureliolo/synthorg.git
@@ -85,7 +102,7 @@ uv sync                  # install dev + test deps
 uv sync --group docs     # install docs toolchain (zensical)
 ```
 
-### Docker Compose
+### Docker Compose (manual)
 
 ```bash
 cp docker/.env.example docker/.env

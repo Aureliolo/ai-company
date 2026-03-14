@@ -87,15 +87,17 @@ Automated pre-PR pipeline that runs checks, launches review agents, triages find
    - `infra_config`: `.pre-commit-config.yaml`, `.dockerignore`
    - `config`: `.toml`, `.yaml`, `.yml`, `.json`, `.cfg` files (not already categorized above)
    - `docs`: `.md` files
+   - `cli_go`: `.go` files in `cli/`
+   - `cli_config`: non-Go files in `cli/` (`.yml`, `.yaml`, `.tmpl`, `.sh`, `.ps1`)
    - `site`: files in `site/`
    - `other`: everything else
 
-6. **Detect linked issue.** Gather issue context for all agents:
+6. **Detect linked issue.** Gather issue context for all agents. Check these sources in priority order — take the first match:
 
-   - Check `$ARGUMENTS` for a bare issue number (e.g., `42`, `#42`)
-   - Parse commit messages for `#N` references: `git log main..HEAD --oneline`
-   - Parse branch name for issue number patterns (e.g., `feat/123-add-widget`, `fix-456`, `42-some-slug`)
-   - Take the first match found (arguments > commits > branch name)
+   1. Check `$ARGUMENTS` for a bare issue number (e.g., `42`, `#42`)
+   2. Parse commit messages for `#N` references: `git log main..HEAD --oneline`
+   3. Parse branch name for issue number patterns (e.g., `feat/123-add-widget`, `fix-456`, `42-some-slug`)
+   4. **Scan conversation context** — check earlier messages in this conversation for issue references like `#N`, `(#N)`, `issue N`, or GitHub issue URLs. The user may have mentioned the issue in a plan, prompt, or discussion before invoking `/pre-pr-review`.
 
    If an issue number is found, strip any leading `#` prefix, then validate the extracted digits are purely numeric (`^[0-9]+$`) before use in shell commands:
 
@@ -105,7 +107,24 @@ Automated pre-PR pipeline that runs checks, launches review agents, triages find
 
    Store the issue context for passing to all agents in Phase 4. Wrap in `<untrusted-issue-context>` XML tags.
 
-   If no issue is found, proceed without — agents that require issue context (issue-resolution-verifier) simply don't trigger.
+   **If no issue is found from the above sources**, proactively search for a matching issue:
+
+   - Extract 3-5 distinctive keywords from the branch name (split on `/` and `-`) and from any commit messages
+   - Search open issues:
+
+     ```bash
+     gh issue list --state open --limit 15 --search "KEYWORDS" --json number,title --jq '.[] | "\(.number): \(.title)"'
+     ```
+
+   - If a strong match exists (clear title/scope alignment), present it to the user and ask for confirmation
+   - If ambiguous matches exist, present the top candidates and let the user pick
+
+   **If still no issue is found (or search returns nothing)**, always ask the user via AskUserQuestion:
+   - "No linked issue detected. Options:"
+   - Option A: "Link to issue #___ (enter number)"
+   - Option B: "This PR has no GitHub issue — proceed without"
+
+   Never silently proceed without an issue — always confirm with the user.
 
 7. **Large diff warning.** If 50+ files changed, warn about token cost and ask user whether to proceed with all agents or select a subset.
 
@@ -116,7 +135,7 @@ Determine if agent review can be skipped:
 - If `$ARGUMENTS` contains `quick` -> skip agents, go to Phase 2 then Phase 8, then Phase 10 and Phase 11
 - **Auto-detect**: If ALL changed files are non-substantive (only `.md` docs, config formatting, typo-level edits with no logic changes, `site/` static assets like images/fonts), skip agents automatically
   - Auto-skip examples: all changes are `.md` files; only `pyproject.toml` version bump; only `.yaml`/`.json` config with no Python changes; only `site/` image/font/asset changes
-  - Do NOT auto-skip: any `.py` file changed; any `.vue`/`.ts`/`.css` file changed; any `docker/` or `.github/workflows/` file changed; config changes that affect runtime behavior; new dependencies added
+  - Do NOT auto-skip: any `.py` file changed; any `.go` file changed; any `.vue`/`.ts`/`.css` file changed; any `docker/` or `.github/workflows/` file changed; config changes that affect runtime behavior; new dependencies added
 - If auto-skipping, inform user: "Skipping agent review (no substantive code changes detected). Running automated checks only."
 
 ## Phase 2: Automated Checks (always run)
@@ -181,6 +200,28 @@ Run these sequentially, fixing as we go:
    npm --prefix web run test
    ```
 
+**Go CLI checks (steps 10-12):** Run only if `cli_go` or `cli_config` files changed.
+
+10. **Vet:**
+
+   ```bash
+   cd cli && go vet ./...
+   ```
+
+11. **Test:**
+
+   ```bash
+   cd cli && go test ./...
+   ```
+
+12. **Build check:**
+
+   ```bash
+   cd cli && go build ./...
+   ```
+
+If steps 10-12 fail, fix the Go code and re-run.
+
 **Failure handling:**
 - If mypy fails: fix the type errors, re-run mypy
 - If pytest fails: fix failing tests, re-run pytest
@@ -222,7 +263,42 @@ This captures committed-but-unpushed changes AND any uncommitted/untracked work 
 | **persistence-reviewer** | Any file in `src/ai_company/persistence/` | `everything-claude-code:database-reviewer` |
 | **test-quality-reviewer** | Any `test_py` or `web_test` | `pr-review-toolkit:pr-test-analyzer` (custom prompt below) |
 | **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+| **go-reviewer** | Any `cli_go` | `everything-claude-code:go-reviewer` |
+| **go-security-reviewer** | Any `cli_go` — diff contains `exec.Command`, `os/exec`, `http`, `os.Remove`, `os.WriteFile`, `filepath`, user-supplied paths | `everything-claude-code:security-reviewer` |
+| **go-conventions-enforcer** | Any `cli_go` | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 | **issue-resolution-verifier** | Issue context was found in Phase 0 step 6 | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+
+### Go-conventions-enforcer custom prompt
+
+The go-conventions-enforcer agent checks Go CLI code for idiomatic patterns and project conventions.
+
+**Error handling (CRITICAL):**
+1. Errors returned but not checked (`_ = someFunc()` for non-trivial operations) (CRITICAL)
+2. `panic()` in library/CLI code instead of returning errors (CRITICAL)
+3. Error messages starting with uppercase or ending with punctuation (Go convention: lowercase, no period) (MAJOR)
+4. Wrapping errors without `fmt.Errorf("context: %w", err)` — losing the error chain (MAJOR)
+
+**Code structure (MAJOR):**
+5. Functions exceeding 50 lines (MAJOR)
+6. Files exceeding 800 lines (MAJOR)
+7. Exported functions/types missing doc comments (MAJOR)
+8. Package-level vars that should be constants (MEDIUM)
+
+**Security (CRITICAL):**
+9. Command injection via unsanitized input to `exec.Command` (CRITICAL)
+10. Path traversal via user input in file operations without cleaning (CRITICAL)
+11. Secrets logged or printed to stdout (CRITICAL)
+12. HTTP responses not closed (`defer resp.Body.Close()` missing) (MAJOR)
+
+**Testing (MAJOR):**
+13. Missing table-driven tests for functions with multiple cases (MAJOR)
+14. Test names not following `TestFunctionName_scenario` convention (MEDIUM)
+15. Missing `t.Helper()` in test helper functions (MEDIUM)
+
+**Go idioms (MEDIUM):**
+16. Using `interface{}` instead of `any` (Go 1.18+) (MEDIUM)
+17. Unnecessary else after return/continue/break (MEDIUM)
+18. Using `new(T)` instead of `&T{}` for struct initialization (MINOR)
 
 ### Docs-consistency custom prompt
 

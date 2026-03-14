@@ -1,0 +1,64 @@
+version: 2
+
+project_name: synthorg
+
+builds:
+  - id: synthorg
+    main: ./main.go
+    binary: synthorg
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/Aureliolo/synthorg/cli/internal/version.Version={{.Version}}
+      - -X github.com/Aureliolo/synthorg/cli/internal/version.Commit={{.Commit}}
+      - -X github.com/Aureliolo/synthorg/cli/internal/version.Date={{.Date}}
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "synthorg_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+release:
+  mode: keep-existing
+
+changelog:
+  disable: true
+
+brews:
+  - name: synthorg
+    repository:
+      owner: Aureliolo
+      name: homebrew-tap
+    homepage: https://synthorg.io
+    description: CLI for managing SynthOrg — autonomous AI agent orchestration
+    license: BUSL-1.1
+    install: |
+      bin.install "synthorg"
+    test: |
+      system "#{bin}/synthorg", "version"
+
+scoops:
+  - name: synthorg
+    repository:
+      owner: Aureliolo
+      name: scoop-bucket
+    homepage: https://synthorg.io
+    description: CLI for managing SynthOrg — autonomous AI agent orchestration
+    license: BUSL-1.1

@@ -106,7 +106,7 @@ EXPOSE 8000
 
 # Healthcheck — exec form (no shell needed, works with distroless)
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=15s \
-    CMD ["/usr/bin/python", "-c", "import json,urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000/api/v1/health'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='healthy' else 1)"]
+    CMD ["/usr/bin/python", "-c", "import json,urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000/api/v1/health'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='ok' else 1)"]
 
 # Reset Chainguard base entrypoint (/usr/bin/python) so CMD runs uvicorn
 # directly instead of being passed as Python arguments.

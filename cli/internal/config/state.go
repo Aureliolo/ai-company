@@ -1,0 +1,68 @@
+package config
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+)
+
+const stateFileName = "config.json"
+
+// State is the persisted CLI configuration written by `synthorg init`.
+type State struct {
+	DataDir     string `json:"data_dir"`
+	ImageTag    string `json:"image_tag"`
+	BackendPort int    `json:"backend_port"`
+	WebPort     int    `json:"web_port"`
+	Sandbox     bool   `json:"sandbox"`
+	DockerSock  string `json:"docker_sock,omitempty"`
+	LogLevel    string `json:"log_level"`
+	JWTSecret   string `json:"jwt_secret,omitempty"`
+}
+
+// DefaultState returns a State with sensible defaults.
+func DefaultState() State {
+	return State{
+		DataDir:     DataDir(),
+		ImageTag:    "latest",
+		BackendPort: 8000,
+		WebPort:     3000,
+		LogLevel:    "info",
+	}
+}
+
+// StatePath returns the path to the config file inside the data directory.
+func StatePath(dataDir string) string {
+	return filepath.Join(dataDir, stateFileName)
+}
+
+// Load reads State from disk. Returns the default state and a nil error if the
+// file does not exist.
+func Load(dataDir string) (State, error) {
+	path := StatePath(dataDir)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return DefaultState(), nil
+		}
+		return State{}, err
+	}
+	var s State
+	if err := json.Unmarshal(data, &s); err != nil {
+		return State{}, err
+	}
+	return s, nil
+}
+
+// Save writes State to disk as indented JSON.
+func Save(s State) error {
+	if err := EnsureDir(s.DataDir); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(StatePath(s.DataDir), data, 0o600)
+}
