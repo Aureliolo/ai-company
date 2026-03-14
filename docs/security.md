@@ -131,7 +131,9 @@ Both backend and web containers enforce CIS v1.6.0 controls in `compose.yml`:
 | Python | `pip-audit` | Per-PR + weekly scan for known CVEs |
 | Python | Dependabot | Daily updates, `==` pinned versions, grouped minor/patch |
 | Node.js | `npm audit` | Per-PR, blocks on critical/high |
-| Node.js | Dependabot | Daily updates via lockfile |
+| Node.js | Dependabot | Daily updates via lockfile (`/web`, `/site`, `/.github`) |
+| GitHub Actions | Dependabot | Daily updates, pinned by SHA |
+| Pre-commit hooks | Dependabot | Daily updates, version-pinned `rev:` tags |
 | License | `dependency-review-action` | Permissive-only allowlist (MIT, Apache-2.0, BSD, ISC, etc.) |
 | Supply chain | Socket.dev | GitHub App — detects typosquatting, malware, suspicious ownership changes |
 
