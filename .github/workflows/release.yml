@@ -25,6 +25,8 @@ jobs:
       # When Release Please creates/updates a release PR, update the BSL
       # Change Date to 3 years from today. The date update ships as part
       # of the release PR, so it goes through normal review + merge flow.
+      # zizmor: ignore[artipacked] — persist-credentials required to push
+      # the Change Date commit back to the release PR branch.
       - name: Checkout Release PR branch
         if: steps.release.outputs.pr != ''
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
