@@ -7,11 +7,13 @@
 | Personal learning and experimentation | Yes | No |
 | Academic research | Yes | No |
 | Development, testing, evaluation | Yes | No |
-| Production use by small org (<500 employees), non-competing | Yes | No |
-| Production use by large org (500+ employees) | Contact us | Commercial license |
-| Offering SynthOrg as a hosted/managed service | Contact us | Commercial license |
-| Reselling or embedding SynthOrg as your core product | Contact us | Commercial license |
+| Production use by small org (<500 employees and contractors), non-competing | Yes | No |
+| Production use by large org (500+ employees and contractors) | Conditional | Commercial license |
+| Offering SynthOrg as a hosted/managed service | Conditional | Commercial license |
+| Reselling or embedding SynthOrg as your core product | Conditional | Commercial license |
 | Contributing to SynthOrg | Yes | Sign the [CLA](https://github.com/Aureliolo/synthorg/blob/main/CLA.md) |
+
+*"Conditional" uses require a commercial license — please [contact us](https://github.com/Aureliolo/synthorg/discussions) to discuss terms.*
 
 ---
 

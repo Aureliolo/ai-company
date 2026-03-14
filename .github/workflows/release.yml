@@ -31,7 +31,7 @@ jobs:
         if: steps.release.outputs.pr != ''
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          ref: release-please--branches--main
+          ref: release-please--branches--main  # must match the repo default branch name
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
 
       - name: Update BSL Change Date (release + 3 years)
@@ -40,6 +40,7 @@ jobs:
           new_date=$(LC_TIME=C date -d "+3 years" "+%B %-d, %Y")
           echo "Updating Change Date to: $new_date"
           sed -i "s/^Change Date:          .*/Change Date:          $new_date/" LICENSE
+          grep -q "^Change Date:.*$new_date" LICENSE || { echo "ERROR: sed pattern did not match; Change Date was not updated"; exit 1; }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add LICENSE

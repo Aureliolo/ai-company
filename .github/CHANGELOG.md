@@ -5,7 +5,7 @@
 
 ### License
 
-* narrow BSL 1.1 Additional Use Grant — free production use for non-competing organizations with fewer than 500 employees ([#406](https://github.com/Aureliolo/synthorg/issues/406))
+* narrow BSL 1.1 Additional Use Grant — free production use for non-competing organizations with fewer than 500 employees and contractors ([#406](https://github.com/Aureliolo/synthorg/issues/406))
 * add Contributor License Agreement (CLA) with automated enforcement for dual-licensing support
 * add licensing rationale documentation page explaining BSL choice, what's permitted, and invitation for feedback
 * auto-update BSL Change Date to 3 years ahead on each release
