@@ -7,7 +7,8 @@ Public API:
 - ``SecurityVerdict`` / ``SecurityVerdictType`` — evaluation results.
 - ``SecurityContext`` — tool invocation context for evaluation.
 - ``AuditEntry`` / ``AuditLog`` — audit recording.
-- ``OutputScanResult`` / ``OutputScanner`` — post-tool output scanning.
+- ``OutputScanResult`` / ``ScanOutcome`` / ``OutputScanner``
+  — post-tool output scanning.
 - ``OutputScanResponsePolicy`` — protocol for output scan policies.
 - ``RedactPolicy`` / ``WithholdPolicy`` / ``LogOnlyPolicy``
   / ``AutonomyTieredPolicy`` — policy implementations.

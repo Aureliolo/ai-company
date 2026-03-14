@@ -95,7 +95,9 @@ class RedactPolicy:
 class WithholdPolicy:
     """Clear redacted content when sensitive data is found.
 
-    Forces fail-closed in the invoker — no partial data is returned.
+    Sets ``ScanOutcome.WITHHELD`` so the invoker returns a dedicated
+    "withheld by policy" error — no partial data is returned.  This
+    is distinct from the fail-closed path used for scanner errors.
     The ``findings`` tuple is deliberately preserved so that audit
     consumers can categorise what was detected without seeing the
     actual content.

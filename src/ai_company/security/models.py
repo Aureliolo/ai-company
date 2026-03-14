@@ -27,11 +27,15 @@ class ScanOutcome(StrEnum):
     downstream consumers (e.g. ``ToolInvoker``) can distinguish
     intentional withholding from scanner failure.
 
-    Members:
+    Attributes:
         CLEAN: No sensitive data detected (default).
         REDACTED: Sensitive data found, redacted content available.
         WITHHELD: Content intentionally withheld by policy.
-        LOG_ONLY: Findings logged, original content passed through.
+        LOG_ONLY: Findings discarded by policy, original content passed
+            through.  Always emitted with ``has_sensitive_data=False``
+            because the policy resets the result — the audit log
+            (written by ``SecOpsService`` before the policy runs) is
+            the source of truth for what was actually detected.
     """
 
     CLEAN = "clean"
@@ -209,6 +213,9 @@ class OutputScanResult(BaseModel):
             raise ValueError(msg)
         if self.outcome == ScanOutcome.REDACTED and self.redacted_content is None:
             msg = "redacted_content must not be None when outcome is 'redacted'"
+            raise ValueError(msg)
+        if self.outcome == ScanOutcome.WITHHELD and self.redacted_content is not None:
+            msg = "redacted_content must be None when outcome is 'withheld'"
             raise ValueError(msg)
         if self.outcome == ScanOutcome.LOG_ONLY and self.has_sensitive_data:
             msg = "outcome='log_only' is invalid when has_sensitive_data is True"

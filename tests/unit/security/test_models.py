@@ -522,65 +522,93 @@ class TestOutputScanResult:
         restored = OutputScanResult.model_validate_json(json_str)
         assert restored == result
 
-    def test_outcome_clean_rejected_when_sensitive(self) -> None:
-        """outcome=CLEAN is invalid when has_sensitive_data=True."""
-        with pytest.raises(ValidationError, match="outcome"):
-            OutputScanResult(
-                has_sensitive_data=True,
-                findings=("leak",),
-                outcome=ScanOutcome.CLEAN,
-            )
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            pytest.param(
+                {
+                    "has_sensitive_data": True,
+                    "findings": ("leak",),
+                    "outcome": ScanOutcome.CLEAN,
+                },
+                "outcome",
+                id="clean-rejected-when-sensitive",
+            ),
+            pytest.param(
+                {"has_sensitive_data": False, "outcome": ScanOutcome.REDACTED},
+                "outcome",
+                id="redacted-rejected-when-not-sensitive",
+            ),
+            pytest.param(
+                {"has_sensitive_data": False, "outcome": ScanOutcome.WITHHELD},
+                "outcome",
+                id="withheld-rejected-when-not-sensitive",
+            ),
+            pytest.param(
+                {
+                    "has_sensitive_data": True,
+                    "findings": ("leak",),
+                    "outcome": ScanOutcome.REDACTED,
+                    "redacted_content": None,
+                },
+                "redacted_content",
+                id="redacted-requires-redacted-content",
+            ),
+            pytest.param(
+                {
+                    "has_sensitive_data": True,
+                    "findings": ("secret",),
+                    "outcome": ScanOutcome.LOG_ONLY,
+                },
+                "outcome",
+                id="log-only-rejected-when-sensitive",
+            ),
+            pytest.param(
+                {
+                    "has_sensitive_data": True,
+                    "findings": ("secret",),
+                    "outcome": ScanOutcome.WITHHELD,
+                    "redacted_content": "should not be set",
+                },
+                "redacted_content",
+                id="withheld-rejects-non-none-redacted-content",
+            ),
+        ],
+    )
+    def test_outcome_validation_rejects_invalid(
+        self,
+        kwargs: dict[str, object],
+        match: str,
+    ) -> None:
+        """Parametrized: invalid outcome/field combinations are rejected."""
+        with pytest.raises(ValidationError, match=match):
+            OutputScanResult(**kwargs)  # type: ignore[arg-type]
 
-    def test_outcome_redacted_rejected_when_not_sensitive(self) -> None:
-        """outcome=REDACTED is invalid when has_sensitive_data=False."""
-        with pytest.raises(ValidationError, match="outcome"):
-            OutputScanResult(
-                has_sensitive_data=False,
-                outcome=ScanOutcome.REDACTED,
-            )
-
-    def test_outcome_withheld_rejected_when_not_sensitive(self) -> None:
-        """outcome=WITHHELD is invalid when has_sensitive_data=False."""
-        with pytest.raises(ValidationError, match="outcome"):
-            OutputScanResult(
-                has_sensitive_data=False,
-                outcome=ScanOutcome.WITHHELD,
-            )
-
-    def test_outcome_log_only_accepted_when_not_sensitive(self) -> None:
-        """outcome=LOG_ONLY is valid with has_sensitive_data=False."""
-        result = OutputScanResult(
-            has_sensitive_data=False,
-            outcome=ScanOutcome.LOG_ONLY,
-        )
-        assert result.outcome == ScanOutcome.LOG_ONLY
-
-    def test_outcome_withheld_valid(self) -> None:
-        """outcome=WITHHELD is valid with has_sensitive_data=True."""
-        result = OutputScanResult(
-            has_sensitive_data=True,
-            findings=("secret",),
-            outcome=ScanOutcome.WITHHELD,
-            redacted_content=None,
-        )
-        assert result.outcome == ScanOutcome.WITHHELD
-        assert result.redacted_content is None
-
-    def test_outcome_redacted_requires_redacted_content(self) -> None:
-        """outcome=REDACTED with redacted_content=None is rejected."""
-        with pytest.raises(ValidationError, match="redacted_content"):
-            OutputScanResult(
-                has_sensitive_data=True,
-                findings=("leak",),
-                outcome=ScanOutcome.REDACTED,
-                redacted_content=None,
-            )
-
-    def test_outcome_log_only_rejected_when_sensitive(self) -> None:
-        """outcome=LOG_ONLY is invalid when has_sensitive_data=True."""
-        with pytest.raises(ValidationError, match="outcome"):
-            OutputScanResult(
-                has_sensitive_data=True,
-                findings=("secret",),
-                outcome=ScanOutcome.LOG_ONLY,
-            )
+    @pytest.mark.parametrize(
+        ("kwargs", "expected_outcome"),
+        [
+            pytest.param(
+                {"has_sensitive_data": False, "outcome": ScanOutcome.LOG_ONLY},
+                ScanOutcome.LOG_ONLY,
+                id="log-only-accepted-when-not-sensitive",
+            ),
+            pytest.param(
+                {
+                    "has_sensitive_data": True,
+                    "findings": ("secret",),
+                    "outcome": ScanOutcome.WITHHELD,
+                    "redacted_content": None,
+                },
+                ScanOutcome.WITHHELD,
+                id="withheld-valid-when-sensitive",
+            ),
+        ],
+    )
+    def test_outcome_validation_accepts_valid(
+        self,
+        kwargs: dict[str, object],
+        expected_outcome: ScanOutcome,
+    ) -> None:
+        """Parametrized: valid outcome/field combinations are accepted."""
+        result = OutputScanResult(**kwargs)  # type: ignore[arg-type]
+        assert result.outcome == expected_outcome

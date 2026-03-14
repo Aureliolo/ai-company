@@ -379,12 +379,12 @@ class TestOutputScanRedaction:
         await invoker.invoke(tool_call)
         interceptor.scan_output.assert_awaited_once()
 
-    async def test_sensitive_but_no_redacted_content_fails_closed(
+    async def test_withheld_outcome_returns_policy_message(
         self,
         security_registry: ToolRegistry,
         tool_call: ToolCall,
     ) -> None:
-        """If has_sensitive_data=True but redacted_content is None, fail-closed."""
+        """WITHHELD outcome returns explicit policy message (not fail-closed)."""
         interceptor = _make_interceptor(
             pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
             scan_result=OutputScanResult(
@@ -574,49 +574,6 @@ class TestSecurityContextConstruction:
         assert pre_ctx.task_id == scan_ctx.task_id
 
 
-# ── Helper tools for gap tests ───────────────────────────────────
-
-
-class _SecurityFailingTool(BaseTool):
-    """Tool that raises RuntimeError from execute."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            name="failing_tool",
-            description="Tool that always fails",
-            category=ToolCategory.FILE_SYSTEM,
-        )
-
-    async def execute(
-        self,
-        *,
-        arguments: dict[str, Any],
-    ) -> ToolExecutionResult:
-        msg = "intentional failure"
-        raise RuntimeError(msg)
-
-
-class _SecuritySoftErrorTool(BaseTool):
-    """Tool that returns is_error=True with sensitive content."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            name="soft_error_tool",
-            description="Tool returning soft error",
-            category=ToolCategory.FILE_SYSTEM,
-        )
-
-    async def execute(
-        self,
-        *,
-        arguments: dict[str, Any],
-    ) -> ToolExecutionResult:
-        return ToolExecutionResult(
-            is_error=True,
-            content="error: API_KEY=AKIA1234567890EXAMPLE",
-        )
-
-
 # ── Gap 1: Non-recoverable errors from scan propagate ────────────
 
 
@@ -659,7 +616,10 @@ class TestOutputScanSkippedOnToolError:
     """When tool.execute() raises, scan_output is not called."""
 
     async def test_tool_execution_error_skips_output_scan(self) -> None:
-        failing_tool = _SecurityFailingTool()
+        failing_tool = _SecurityTestTool(name="failing_tool")
+        failing_tool.execute = AsyncMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("intentional failure"),
+        )
         registry = ToolRegistry([failing_tool])
         interceptor = _make_interceptor(
             pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
@@ -770,7 +730,13 @@ class TestOutputScanOnSoftError:
 
     async def test_soft_error_content_is_scanned(self) -> None:
         """When tool returns is_error=True, scan_output is still called."""
-        soft_tool = _SecuritySoftErrorTool()
+        soft_tool = _SecurityTestTool(name="soft_error_tool")
+        soft_tool.execute = AsyncMock(  # type: ignore[method-assign]
+            return_value=ToolExecutionResult(
+                is_error=True,
+                content="error: API_KEY=AKIA1234567890EXAMPLE",
+            ),
+        )
         registry = ToolRegistry([soft_tool])
         scan_result = OutputScanResult(
             has_sensitive_data=True,
@@ -796,7 +762,13 @@ class TestOutputScanOnSoftError:
 
     async def test_soft_error_scan_receives_error_content(self) -> None:
         """Verify scan_output receives the error content string."""
-        soft_tool = _SecuritySoftErrorTool()
+        soft_tool = _SecurityTestTool(name="soft_error_tool")
+        soft_tool.execute = AsyncMock(  # type: ignore[method-assign]
+            return_value=ToolExecutionResult(
+                is_error=True,
+                content="error: API_KEY=AKIA1234567890EXAMPLE",
+            ),
+        )
         registry = ToolRegistry([soft_tool])
         interceptor = _make_interceptor(
             pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
@@ -811,115 +783,3 @@ class TestOutputScanOnSoftError:
 
         scan_args = interceptor.scan_output.call_args[0]
         assert scan_args[1] == "error: API_KEY=AKIA1234567890EXAMPLE"
-
-
-# ── Withheld outcome tests ─────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestWithheldOutcome:
-    """Tests for the WITHHELD scan outcome path in the invoker."""
-
-    async def test_withheld_outcome_returns_policy_message(
-        self,
-        security_registry: ToolRegistry,
-        tool_call: ToolCall,
-    ) -> None:
-        """Withheld outcome returns explicit policy message."""
-        interceptor = _make_interceptor(
-            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
-            scan_result=OutputScanResult(
-                has_sensitive_data=True,
-                findings=("secret token",),
-                redacted_content=None,
-                outcome=ScanOutcome.WITHHELD,
-            ),
-        )
-        invoker = ToolInvoker(
-            security_registry,
-            security_interceptor=interceptor,
-        )
-        result = await invoker.invoke(tool_call)
-        assert result.is_error is True
-        assert "withheld by security policy" in result.content.lower()
-
-    async def test_withheld_metadata_uses_output_withheld_key(
-        self,
-        security_registry: ToolRegistry,
-        tool_call: ToolCall,
-    ) -> None:
-        """Withheld outcome sets output_withheld metadata, not output_scan_failed."""
-        interceptor = _make_interceptor(
-            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
-            scan_result=OutputScanResult(
-                has_sensitive_data=True,
-                findings=("credential",),
-                redacted_content=None,
-                outcome=ScanOutcome.WITHHELD,
-            ),
-        )
-        invoker = ToolInvoker(
-            security_registry,
-            security_interceptor=interceptor,
-        )
-        # Access _scan_output to inspect ToolExecutionResult.metadata
-        # (ToolResult does not surface metadata from the execution layer).
-        tool_exec_result = ToolExecutionResult(content="raw output")
-        context = SecurityContext(
-            tool_name="secure_tool",
-            tool_category=ToolCategory.FILE_SYSTEM,
-            action_type="code:write",
-        )
-        scan_exec = await invoker._scan_output(tool_call, tool_exec_result, context)
-        assert scan_exec.metadata.get("output_withheld") is True
-        assert "output_scan_failed" not in scan_exec.metadata
-
-    async def test_withheld_takes_priority_over_redacted_content(
-        self,
-        security_registry: ToolRegistry,
-        tool_call: ToolCall,
-    ) -> None:
-        """WITHHELD outcome withholds even when redacted_content is present."""
-        interceptor = _make_interceptor(
-            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
-            scan_result=OutputScanResult(
-                has_sensitive_data=True,
-                findings=("token",),
-                redacted_content="partially redacted output",
-                outcome=ScanOutcome.WITHHELD,
-            ),
-        )
-        invoker = ToolInvoker(
-            security_registry,
-            security_interceptor=interceptor,
-        )
-        result = await invoker.invoke(tool_call)
-        assert result.is_error is True
-        assert "withheld by security policy" in result.content.lower()
-        assert "partially redacted" not in result.content
-
-
-# ── LOG_ONLY outcome tests ──────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestLogOnlyOutcome:
-    """Tests for the LOG_ONLY scan outcome path in the invoker."""
-
-    async def test_log_only_passes_original_output_through(
-        self,
-        security_registry: ToolRegistry,
-        tool_call: ToolCall,
-    ) -> None:
-        """LOG_ONLY outcome passes original tool output through unchanged."""
-        interceptor = _make_interceptor(
-            pre_tool_verdict=_make_verdict(verdict=SecurityVerdictType.ALLOW),
-            scan_result=OutputScanResult(outcome=ScanOutcome.LOG_ONLY),
-        )
-        invoker = ToolInvoker(
-            security_registry,
-            security_interceptor=interceptor,
-        )
-        result = await invoker.invoke(tool_call)
-        assert result.is_error is False
-        assert result.content == "executed: ls"

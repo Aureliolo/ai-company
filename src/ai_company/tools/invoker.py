@@ -35,22 +35,16 @@ from ai_company.observability.events.tool import (
     TOOL_INVOKE_SUCCESS,
     TOOL_INVOKE_TOOL_ERROR,
     TOOL_INVOKE_VALIDATION_UNEXPECTED,
-    TOOL_OUTPUT_REDACTED,
-    TOOL_OUTPUT_WITHHELD,
     TOOL_PERMISSION_DENIED,
     TOOL_SECURITY_DENIED,
     TOOL_SECURITY_ESCALATED,
 )
 from ai_company.providers.models import ToolCall, ToolResult
-from ai_company.security.models import (
-    OutputScanResult,
-    ScanOutcome,
-    SecurityContext,
-    SecurityVerdictType,
-)
+from ai_company.security.models import SecurityContext, SecurityVerdictType
 
 from .base import ToolExecutionResult
 from .errors import ToolExecutionError, ToolNotFoundError, ToolParameterError
+from .scan_result_handler import handle_sensitive_scan
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -277,67 +271,6 @@ class ToolInvoker:
             is_error=True,
         )
 
-    def _handle_sensitive_scan(
-        self,
-        tool_call: ToolCall,
-        result: ToolExecutionResult,
-        scan_result: OutputScanResult,
-    ) -> ToolExecutionResult:
-        """Route a sensitive scan result to the correct handler.
-
-        Branches on ``ScanOutcome``:
-
-        - ``WITHHELD``: return error with "withheld by policy" message.
-        - ``REDACTED`` with content: return redacted content.
-        - Defensive fallback: withhold output (fail-closed).
-        """
-        if scan_result.outcome == ScanOutcome.WITHHELD:
-            logger.warning(
-                TOOL_OUTPUT_WITHHELD,
-                tool_call_id=tool_call.id,
-                tool_name=tool_call.name,
-                findings=scan_result.findings,
-                note="content withheld by security policy",
-            )
-            return ToolExecutionResult(
-                content=(
-                    "Sensitive data detected — content withheld by security policy."
-                ),
-                is_error=True,
-                metadata={"output_withheld": True},
-            )
-        if scan_result.redacted_content is not None:
-            logger.warning(
-                TOOL_OUTPUT_REDACTED,
-                tool_call_id=tool_call.id,
-                tool_name=tool_call.name,
-                findings=scan_result.findings,
-            )
-            return ToolExecutionResult(
-                content=scan_result.redacted_content,
-                is_error=result.is_error,
-                metadata={
-                    **result.metadata,
-                    "output_redacted": True,
-                    "redaction_findings": list(scan_result.findings),
-                },
-            )
-        # Defensive: model validator prevents REDACTED with
-        # redacted_content=None, so this is only reachable via
-        # mocks or future outcome values.
-        logger.warning(
-            TOOL_OUTPUT_REDACTED,
-            tool_call_id=tool_call.id,
-            tool_name=tool_call.name,
-            findings=scan_result.findings,
-            note="no redacted content available — withholding output",
-        )
-        return ToolExecutionResult(
-            content=("Sensitive data detected (fail-closed). Tool output withheld."),
-            is_error=True,
-            metadata={"output_scan_failed": True},
-        )
-
     async def _scan_output(
         self,
         tool_call: ToolCall,
@@ -346,12 +279,11 @@ class ToolInvoker:
     ) -> ToolExecutionResult:
         """Scan tool output for sensitive data (if interceptor is set).
 
-        When sensitive data is detected, the scan result's ``outcome``
-        determines the response:
-
-        - ``WITHHELD``: error result with "withheld by policy" message.
-        - ``REDACTED``: redacted content replaces the original output.
-        - ``LOG_ONLY`` / ``CLEAN``: original output passes through.
+        When sensitive data is detected (``has_sensitive_data=True``),
+        delegates to ``_handle_sensitive_scan`` which branches on
+        ``outcome`` (``WITHHELD`` vs ``REDACTED``).  When no sensitive
+        data is detected (including ``LOG_ONLY`` and ``CLEAN``
+        outcomes), the original output passes through unchanged.
 
         Scanner exceptions are caught and fail-closed — a generic error
         result is returned to prevent leaking sensitive data.
@@ -379,7 +311,7 @@ class ToolInvoker:
             )
 
         if scan_result.has_sensitive_data:
-            return self._handle_sensitive_scan(tool_call, result, scan_result)
+            return handle_sensitive_scan(tool_call, result, scan_result)
         return result
 
     async def invoke(self, tool_call: ToolCall) -> ToolResult:
