@@ -186,6 +186,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 - **Branches**: `<type>/<slug>` from main
 - **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting)
 - **Pre-push hooks**: mypy type-check + pytest unit tests (fast gate before push, skipped in pre-commit.ci — dedicated CI jobs already run these)
+- **Pre-commit.ci**: autoupdate disabled (`autoupdate_schedule: never`) — Dependabot owns hook version bumps via `pre-commit` ecosystem
 - **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) — MCP `list_issues` has unreliable field data
 - **PR issue references**: preserve existing `Closes #NNN` references — never remove unless explicitly asked
 
@@ -211,7 +212,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
   - Builds site on PRs (same path triggers as Pages) and on `workflow_dispatch` (with `pr_number` input, for Dependabot PRs that can't trigger `pull_request` with secrets)
   - Dispatch runs resolve PR metadata (head SHA, state, same-repo check) via `gh pr view`; PR-triggered runs use event context directly
   - Validates `pr_number` is a positive integer, rejects closed/cross-repo PRs on dispatch, and fails fast if HEAD SHA resolution fails
-  - Injects "Development Preview" banner, deploys to Cloudflare Pages (`synthorg-pr-preview` project) via wrangler CLI
+  - Injects "Development Preview" banner, deploys to Cloudflare Pages (`synthorg-pr-preview` project) via lockfile-pinned wrangler from `.github/package.json` (CI-only tooling, Dependabot-managed)
   - Each PR gets a unique preview URL at `pr-<number>.synthorg-pr-preview.pages.dev`
   - Requires `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` secrets
   - Checks out PR head SHA (not merge commit) so build matches reported commit
@@ -220,7 +221,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
   - Concurrency group cancels stale builds on rapid pushes
 - **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
-- **Dependabot**: daily uv + github-actions + docker updates, grouped minor/patch, no auto-merge. Use `/review-dep-pr` to review Dependabot PRs before merging
+- **Dependabot**: daily uv + github-actions + npm + pre-commit + docker updates, grouped minor/patch, no auto-merge. Use `/review-dep-pr` to review Dependabot PRs before merging
 - **Python audit**: `.github/workflows/python-audit.yml` — weekly pip-audit scan for Python dependency vulnerabilities (also runs per-PR via `python-audit` job in ci.yml)
 - **Dockerfile lint**: hadolint lints all 3 Dockerfiles (backend, web, sandbox) in CI via `dockerfile-lint` job + hadolint-docker pre-commit hook locally
 - **Dashboard audit**: npm audit (critical + high) runs per-PR via `dashboard-audit` job in ci.yml
