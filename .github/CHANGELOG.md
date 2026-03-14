@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.5](https://github.com/Aureliolo/synthorg/compare/v0.1.4...v0.1.5) (2026-03-14)
+
+
+### Features
+
+* add cross-platform Go CLI for container lifecycle management ([#401](https://github.com/Aureliolo/synthorg/issues/401)) ([0353d9e](https://github.com/Aureliolo/synthorg/commit/0353d9ee46a0a97d425ae8daba087a6b72228a43)), closes [#392](https://github.com/Aureliolo/synthorg/issues/392)
+* add explicit ScanOutcome signal to OutputScanResult ([#394](https://github.com/Aureliolo/synthorg/issues/394)) ([be33414](https://github.com/Aureliolo/synthorg/commit/be334141af54dbe5bc16ac2380350f76da012c38)), closes [#284](https://github.com/Aureliolo/synthorg/issues/284)
+* add meeting scheduler, event-triggered meetings, and Go CLI lint fixes ([#407](https://github.com/Aureliolo/synthorg/issues/407)) ([5550fa1](https://github.com/Aureliolo/synthorg/commit/5550fa1cf31f86c39183bf002fba793e19392cb6))
+* wire MultiAgentCoordinator into runtime ([#396](https://github.com/Aureliolo/synthorg/issues/396)) ([7a9e516](https://github.com/Aureliolo/synthorg/commit/7a9e5166952693a23d22f2bfb6750557c89936db))
+
+
+### Bug Fixes
+
+* CLA signatures branch + declutter repo root ([#409](https://github.com/Aureliolo/synthorg/issues/409)) ([cabe953](https://github.com/Aureliolo/synthorg/commit/cabe95301d4e44267aa2ddfd93580083b7e8c155))
+* correct Release Please branch name in release workflow ([#410](https://github.com/Aureliolo/synthorg/issues/410)) ([515d816](https://github.com/Aureliolo/synthorg/commit/515d816b36fba0d7b95385df92f3f7e711936d40))
+
+
+### Maintenance
+
+* narrow BSL Additional Use Grant and add CLA ([#408](https://github.com/Aureliolo/synthorg/issues/408)) ([5ab15bd](https://github.com/Aureliolo/synthorg/commit/5ab15bd1355063144076d735815ad3e34d1cbbb0)), closes [#406](https://github.com/Aureliolo/synthorg/issues/406)
+
 ## [0.1.4](https://github.com/Aureliolo/synthorg/compare/v0.1.3...v0.1.4) (2026-03-14)
 
 
