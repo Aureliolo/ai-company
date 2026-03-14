@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
@@ -111,10 +112,13 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 	}
 
 	if removeData {
-		dir := dataDir
-		// Safety: refuse to remove root, home, or empty paths.
+		dir := filepath.Clean(dataDir)
+		// Safety: refuse to remove root, home, UNC share roots, or drive roots.
 		home, _ := os.UserHomeDir()
-		if dir == "/" || dir == home || (len(dir) == 3 && dir[1] == ':' && dir[2] == '\\') {
+		vol := filepath.VolumeName(dir)
+		isUNC := strings.HasPrefix(vol, `\\`) || strings.HasPrefix(vol, "//")
+		isDriveRoot := len(dir) == 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
+		if dir == "/" || dir == home || isDriveRoot || isUNC {
 			return fmt.Errorf("refusing to remove %q — does not look like an app data directory", dir)
 		}
 		if err := os.RemoveAll(dir); err != nil {
