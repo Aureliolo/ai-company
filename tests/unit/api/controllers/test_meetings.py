@@ -234,7 +234,7 @@ class TestTriggerMeetingRequestValidation:
     def test_rejects_too_many_context_keys(self) -> None:
         from ai_company.api.controllers.meetings import TriggerMeetingRequest
 
-        ctx = {f"key-{i}": "val" for i in range(21)}
+        ctx: dict[str, str | list[str]] = {f"key-{i}": "val" for i in range(21)}
         with pytest.raises(ValueError, match="at most 20 keys"):
             TriggerMeetingRequest(event_name="evt", context=ctx)
 
@@ -259,7 +259,7 @@ class TestTriggerMeetingRequestValidation:
     def test_accepts_boundary_context(self) -> None:
         from ai_company.api.controllers.meetings import TriggerMeetingRequest
 
-        ctx = {f"k{i}": "v" for i in range(20)}
+        ctx: dict[str, str | list[str]] = {f"k{i}": "v" for i in range(20)}
         req = TriggerMeetingRequest(event_name="evt", context=ctx)
         assert len(req.context) == 20
 
