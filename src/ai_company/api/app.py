@@ -7,7 +7,7 @@ lifecycle hooks (startup/shutdown).
 
 import time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from litestar import Litestar, Router
 from litestar.config.compression import CompressionConfig
@@ -24,7 +24,11 @@ from ai_company.api.auth.middleware import create_auth_middleware_class
 from ai_company.api.auth.secret import resolve_jwt_secret
 from ai_company.api.auth.service import AuthService
 from ai_company.api.bus_bridge import MessageBusBridge
-from ai_company.api.channels import CHANNEL_APPROVALS, create_channels_plugin
+from ai_company.api.channels import (
+    CHANNEL_APPROVALS,
+    CHANNEL_MEETINGS,
+    create_channels_plugin,
+)
 from ai_company.api.controllers import ALL_CONTROLLERS
 from ai_company.api.controllers.ws import ws_handler
 from ai_company.api.exception_handlers import EXCEPTION_HANDLERS
@@ -105,6 +109,36 @@ def _make_expire_callback(
             )
 
     return _on_expire
+
+
+def _make_meeting_publisher(
+    channels_plugin: ChannelsPlugin,
+) -> Callable[[str, dict[str, Any]], None]:
+    """Create a sync callback that publishes meeting events to WS.
+
+    Args:
+        channels_plugin: Litestar channels plugin for WebSocket delivery.
+
+    Returns:
+        Sync callback ``(event_name, payload) -> None``.
+    """
+
+    def _on_meeting_event(
+        event_name: str,
+        payload: dict[str, Any],
+    ) -> None:
+        event = WsEvent(
+            event_type=WsEventType(event_name),
+            channel=CHANNEL_MEETINGS,
+            timestamp=datetime.now(UTC),
+            payload=payload,
+        )
+        channels_plugin.publish(
+            event.model_dump_json(),
+            channels=[CHANNEL_MEETINGS],
+        )
+
+    return _on_meeting_event
 
 
 def _build_lifecycle(  # noqa: PLR0913
@@ -445,6 +479,12 @@ def create_app(  # noqa: PLR0913
     effective_approval_store = approval_store or ApprovalStore(
         on_expire=expire_callback,
     )
+
+    # Wire meeting event publisher to the meetings WS channel.
+    if meeting_scheduler is not None and meeting_scheduler._event_publisher is None:  # noqa: SLF001
+        meeting_scheduler._event_publisher = _make_meeting_publisher(  # noqa: SLF001
+            channels_plugin,
+        )
 
     app_state = AppState(
         config=effective_config,

@@ -112,7 +112,7 @@ class RegistryParticipantResolver:
         entry: str,
         ctx: dict[str, Any],
     ) -> list[str]:
-        """Resolve a single participant entry.
+        """Resolve a single participant entry via context then registry.
 
         Args:
             entry: A participant reference string.
@@ -121,48 +121,64 @@ class RegistryParticipantResolver:
         Returns:
             List of agent ID strings for this entry.
         """
-        # 1. Context lookup — str, list/tuple, or warn on unexpected type.
         if entry in ctx:
-            val = ctx[entry]
-            if isinstance(val, str):
-                stripped = val.strip()
-                if stripped:
-                    resolved = [stripped]
-                else:
-                    logger.warning(
-                        MEETING_NO_PARTICIPANTS,
-                        entry=entry,
-                        note="context string value is blank, skipping",
-                    )
-                    resolved = []
-            elif isinstance(val, (list, tuple)):
-                resolved = [v for v in val if isinstance(v, str) and v.strip()]
-            else:
-                logger.warning(
-                    MEETING_NO_PARTICIPANTS,
-                    entry=entry,
-                    ctx_value_type=type(val).__name__,
-                    note="context value is not str or list, skipping",
-                )
-                resolved = []
-            return resolved
+            return self._resolve_from_context(entry, ctx[entry])
+        return await self._resolve_from_registry(entry)
 
-        # 2. Special "all"
+    @staticmethod
+    def _resolve_from_context(entry: str, val: Any) -> list[str]:
+        """Resolve a participant entry from event context.
+
+        Args:
+            entry: The context key that matched.
+            val: The context value.
+
+        Returns:
+            List of agent ID strings.
+        """
+        if isinstance(val, str):
+            stripped = val.strip()
+            if stripped:
+                return [stripped]
+            logger.warning(
+                MEETING_NO_PARTICIPANTS,
+                entry=entry,
+                note="context string value is blank, skipping",
+            )
+            return []
+        if isinstance(val, (list, tuple)):
+            return [v.strip() for v in val if isinstance(v, str) and v.strip()]
+        logger.warning(
+            MEETING_NO_PARTICIPANTS,
+            entry=entry,
+            ctx_value_type=type(val).__name__,
+            note="context value is not str or list, skipping",
+        )
+        return []
+
+    async def _resolve_from_registry(self, entry: str) -> list[str]:
+        """Resolve a participant entry via agent registry lookups.
+
+        Resolution order: "all" → department → name → literal pass-through.
+
+        Args:
+            entry: A participant reference string.
+
+        Returns:
+            List of agent ID strings.
+        """
         if entry.lower() == "all":
             agents = await self._registry.list_active()
             return [str(a.id) for a in agents]
 
-        # 3. Department lookup
         dept_agents = await self._registry.list_by_department(entry)
         if dept_agents:
             return [str(a.id) for a in dept_agents]
 
-        # 4. Agent name lookup
         agent = await self._registry.get_by_name(entry)
         if agent is not None:
             return [str(agent.id)]
 
-        # 5. Pass-through as literal ID
         logger.debug(
             MEETING_PARTICIPANTS_RESOLVED,
             entry=entry,

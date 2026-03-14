@@ -4,6 +4,7 @@ Defines recurrence intervals for scheduled meetings.
 """
 
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Final
 
 # Interval constants in seconds.
@@ -31,13 +32,15 @@ class MeetingFrequency(StrEnum):
     MONTHLY = "monthly"
 
 
-_FREQUENCY_SECONDS: dict[MeetingFrequency, float] = {
-    MeetingFrequency.DAILY: _SECONDS_PER_DAY,
-    MeetingFrequency.WEEKLY: _SECONDS_PER_WEEK,
-    MeetingFrequency.BI_WEEKLY: _SECONDS_PER_BI_WEEK,
-    MeetingFrequency.PER_SPRINT_DAY: _SECONDS_PER_DAY,
-    MeetingFrequency.MONTHLY: _SECONDS_PER_MONTH,
-}
+_FREQUENCY_SECONDS: MappingProxyType[MeetingFrequency, float] = MappingProxyType(
+    {
+        MeetingFrequency.DAILY: _SECONDS_PER_DAY,
+        MeetingFrequency.WEEKLY: _SECONDS_PER_WEEK,
+        MeetingFrequency.BI_WEEKLY: _SECONDS_PER_BI_WEEK,
+        MeetingFrequency.PER_SPRINT_DAY: _SECONDS_PER_DAY,
+        MeetingFrequency.MONTHLY: _SECONDS_PER_MONTH,
+    }
+)
 
 # Ensure every enum member has a mapping entry.
 assert set(_FREQUENCY_SECONDS) == set(MeetingFrequency), (  # noqa: S101

@@ -365,7 +365,8 @@ class TestMeetingScheduler:
         records = await scheduler.trigger_event("code_review_complete")
 
         assert len(records) == 1
-        publisher.assert_called_once()
+        # Both started and completed publish calls are attempted and swallowed.
+        assert publisher.call_count == 2
 
     async def test_publish_event_reraises_memory_error(
         self,
@@ -402,6 +403,8 @@ class TestMeetingScheduler:
 
         await scheduler.trigger_event("code_review_complete")
 
-        publisher.assert_called_once()
-        call_args = publisher.call_args
-        assert call_args[0][0] == "meeting.completed"
+        assert publisher.call_count == 2
+        # First call: meeting.started (before run_meeting)
+        assert publisher.call_args_list[0][0][0] == "meeting.started"
+        # Second call: meeting.completed (after run_meeting)
+        assert publisher.call_args_list[1][0][0] == "meeting.completed"

@@ -218,14 +218,14 @@ function formatTokens(record: MeetingRecord): string {
             <p class="text-sm text-slate-400 whitespace-pre-wrap">{{ selected.minutes.summary || 'No summary' }}</p>
           </div>
 
-          <div v-if="selected.minutes.decisions?.length > 0" class="border-t border-slate-700 pt-3">
+          <div v-if="selected.minutes.decisions.length > 0" class="border-t border-slate-700 pt-3">
             <h3 class="text-sm font-semibold text-slate-300 mb-2">Decisions</h3>
             <ul class="list-disc list-inside text-sm text-slate-400 space-y-1">
               <li v-for="(decision, i) in selected.minutes.decisions" :key="i">{{ decision }}</li>
             </ul>
           </div>
 
-          <div v-if="selected.minutes.action_items?.length > 0" class="border-t border-slate-700 pt-3">
+          <div v-if="selected.minutes.action_items.length > 0" class="border-t border-slate-700 pt-3">
             <h3 class="text-sm font-semibold text-slate-300 mb-2">Action Items</h3>
             <div v-for="(item, i) in selected.minutes.action_items" :key="i" class="mb-2 p-2 bg-slate-800 rounded text-sm">
               <p class="text-slate-200">{{ item.description }}</p>
@@ -236,7 +236,7 @@ function formatTokens(record: MeetingRecord): string {
             </div>
           </div>
 
-          <div v-if="selected.minutes.contributions?.length > 0" class="border-t border-slate-700 pt-3">
+          <div v-if="selected.minutes.contributions.length > 0" class="border-t border-slate-700 pt-3">
             <h3 class="text-sm font-semibold text-slate-300 mb-2">
               Contributions ({{ selected.minutes.contributions.length }})
             </h3>

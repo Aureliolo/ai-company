@@ -13,10 +13,7 @@ from ai_company.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from ai_company.communication.meeting.models import MeetingRecord
 from ai_company.core.types import NotBlankStr  # noqa: TC001
 from ai_company.observability import get_logger
-from ai_company.observability.events.meeting import (
-    MEETING_EVENT_TRIGGERED,
-    MEETING_NOT_FOUND,
-)
+from ai_company.observability.events.meeting import MEETING_NOT_FOUND
 
 logger = get_logger(__name__)
 
@@ -171,12 +168,6 @@ class MeetingController(Controller):
             Tuple of meeting records for all triggered meetings.
         """
         scheduler = state.app_state.meeting_scheduler
-
-        logger.info(
-            MEETING_EVENT_TRIGGERED,
-            event_name=data.event_name,
-            source="api",
-        )
         records = await scheduler.trigger_event(
             data.event_name,
             context=data.context,

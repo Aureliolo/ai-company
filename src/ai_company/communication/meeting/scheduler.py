@@ -148,11 +148,14 @@ class MeetingScheduler:
                 return_exceptions=True,
             )
             for result in results:
+                if isinstance(result, asyncio.CancelledError):
+                    continue
                 if isinstance(result, Exception):
                     logger.warning(
                         MEETING_SCHEDULER_ERROR,
                         note="periodic task error during shutdown",
-                        exc_info=result,
+                        error=str(result),
+                        error_type=type(result).__name__,
                     )
         self._tasks = []
         self._running = False
@@ -216,7 +219,7 @@ class MeetingScheduler:
         self,
         meeting_type: MeetingTypeConfig,
     ) -> None:
-        """Infinite loop: execute the meeting, then sleep for the interval.
+        """Infinite loop: sleep for the interval, then execute the meeting.
 
         Catches ``CancelledError`` to exit cleanly on stop.
         Catches ``Exception`` inside the loop body so transient
@@ -233,8 +236,10 @@ class MeetingScheduler:
             raise TypeError(msg)
         interval = frequency_to_seconds(meeting_type.frequency)
 
+        # Sleep-first: avoids duplicate meetings on restart/deploy.
         try:
             while True:
+                await asyncio.sleep(interval)
                 logger.info(
                     MEETING_PERIODIC_TRIGGERED,
                     meeting_type=meeting_type.name,
@@ -250,7 +255,6 @@ class MeetingScheduler:
                         meeting_type=meeting_type.name,
                         note="periodic execution failed",
                     )
-                await asyncio.sleep(interval)
         except asyncio.CancelledError:  # noqa: TRY203
             raise
 
@@ -321,6 +325,8 @@ class MeetingScheduler:
                 meeting_type=meeting_type.name,
             )
             return None
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 MEETING_SCHEDULER_ERROR,
@@ -358,6 +364,7 @@ class MeetingScheduler:
         Returns:
             Meeting record on success, None on error.
         """
+        self._publish_started_event(meeting_type.name)
         try:
             record = await self._orchestrator.run_meeting(
                 meeting_type_name=meeting_type.name,
@@ -367,6 +374,8 @@ class MeetingScheduler:
                 participant_ids=tuple(participant_ids),
                 token_budget=meeting_type.duration_tokens,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 MEETING_SCHEDULER_ERROR,
@@ -408,6 +417,31 @@ class MeetingScheduler:
                 meeting_id=record.meeting_id,
                 meeting_type=record.meeting_type_name,
                 note="event publisher failed",
+                exc_info=True,
+            )
+
+    def _publish_started_event(self, meeting_type_name: str) -> None:
+        """Publish a meeting.started WS event before execution begins.
+
+        Best-effort: publish errors are logged and swallowed.
+        """
+        if self._event_publisher is None:
+            return
+        try:
+            self._event_publisher(
+                "meeting.started",
+                {
+                    "meeting_type": meeting_type_name,
+                    "status": "in_progress",
+                },
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                MEETING_SCHEDULER_ERROR,
+                meeting_type=meeting_type_name,
+                note="started event publish failed",
                 exc_info=True,
             )
 
