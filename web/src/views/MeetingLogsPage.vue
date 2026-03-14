@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Sidebar from 'primevue/sidebar'
@@ -24,7 +24,7 @@ const meetingStore = useMeetingStore()
 const wsStore = useWebSocketStore()
 const authStore = useAuthStore()
 
-const selected = ref<MeetingRecord | null>(null)
+const selected = computed(() => meetingStore.selectedMeeting)
 const detailVisible = ref(false)
 const statusFilter = ref<MeetingStatus | undefined>(undefined)
 const triggerDialogVisible = ref(false)
@@ -63,7 +63,7 @@ onUnmounted(() => {
 })
 
 function openDetail(meeting: MeetingRecord) {
-  selected.value = meeting
+  meetingStore.selectedMeeting = meeting
   detailVisible.value = true
 }
 
