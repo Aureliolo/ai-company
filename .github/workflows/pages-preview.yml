@@ -136,6 +136,7 @@ jobs:
       # --- Copy install scripts into /get/ ---
       - name: Copy CLI install scripts into Astro output
         run: |
+          mkdir -p site/dist/get
           cp cli/scripts/install.sh site/dist/get/install.sh
           cp cli/scripts/install.ps1 site/dist/get/install.ps1
 
