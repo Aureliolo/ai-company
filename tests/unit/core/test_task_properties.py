@@ -1,3 +1,5 @@
+"""Property-based tests for Task model invariants and transitions."""
+
 from typing import Any
 
 import pytest
@@ -18,9 +20,9 @@ pytestmark = pytest.mark.unit
 
 _not_blank = st.text(min_size=1, max_size=30).filter(lambda s: s.strip())
 
-_task_types = st.sampled_from(list(TaskType))
-_priorities = st.sampled_from(list(Priority))
-_complexities = st.sampled_from(list(Complexity))
+_task_types = st.sampled_from(TaskType)
+_priorities = st.sampled_from(Priority)
+_complexities = st.sampled_from(Complexity)
 
 _TASK_DEFAULTS: dict[str, Any] = {
     "id": "task-001",
@@ -94,11 +96,12 @@ class TestWithTransitionProperties:
     @settings(max_examples=20)
     def test_valid_transition_from_created(self, target: TaskStatus) -> None:
         task = Task(**_make_task_kwargs())
-        # CREATED can only go to ASSIGNED, which requires assigned_to
-        if target == TaskStatus.ASSIGNED:
-            new_task = task.with_transition(target, assigned_to="agent-a")
-            assert new_task.status == target
-            assert new_task.assigned_to == "agent-a"
+        # CREATED can only go to ASSIGNED, which requires assigned_to.
+        # If VALID_TRANSITIONS[CREATED] gains more entries, extend the
+        # kwargs mapping below.
+        assigned_to = "agent-a" if target == TaskStatus.ASSIGNED else None
+        new_task = task.with_transition(target, assigned_to=assigned_to)
+        assert new_task.status == target
 
     @given(
         target=st.sampled_from(list(TaskStatus)).filter(

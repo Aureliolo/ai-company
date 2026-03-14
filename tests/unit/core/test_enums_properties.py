@@ -1,3 +1,5 @@
+"""Property-based tests for enum comparator algebraic properties."""
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -11,8 +13,8 @@ from ai_company.core.enums import (
 
 pytestmark = pytest.mark.unit
 
-_seniority_levels = st.sampled_from(list(SeniorityLevel))
-_autonomy_levels = st.sampled_from(list(AutonomyLevel))
+_seniority_levels = st.sampled_from(SeniorityLevel)
+_autonomy_levels = st.sampled_from(AutonomyLevel)
 
 
 class TestCompareSeniorityProperties:

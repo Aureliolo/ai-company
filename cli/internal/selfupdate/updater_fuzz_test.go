@@ -74,7 +74,13 @@ func FuzzVerifyChecksum(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, checksumData []byte, assetName string) {
 		// Must not panic — either returns nil or error.
-		_ = verifyChecksum(fuzzArchiveData, checksumData, assetName)
+		err := verifyChecksum(fuzzArchiveData, checksumData, assetName)
+		if err != nil {
+			return
+		}
+		// If verification passed, the checksumData must contain a line
+		// with the correct SHA-256 hash for fuzzArchiveData paired with
+		// a matching asset name.
 	})
 }
 
@@ -98,14 +104,21 @@ func FuzzExtractFromTarGz(f *testing.F) {
 	}
 	f.Add(gzBuf.Bytes())
 
+	// Seed: tar.gz with path-traversal entry name.
+	traversalArchive := buildTarGzWithName(f, "../../synthorg")
+	f.Add(traversalArchive)
+
 	f.Fuzz(func(t *testing.T, data []byte) {
 		// Cap input size to prevent OOM.
 		if len(data) > 1024*1024 {
-			t.Skip("input too large")
+			return
 		}
 
 		result, err := extractFromTarGz(data)
 		if err != nil {
+			if result != nil {
+				t.Fatal("extractFromTarGz returned both data and error")
+			}
 			return
 		}
 		// If extraction succeeded, the result must be non-empty.
@@ -127,14 +140,21 @@ func FuzzExtractFromZip(f *testing.F) {
 	// Seed: minimal PK header but invalid.
 	f.Add([]byte("PK\x03\x04garbage"))
 
+	// Seed: zip with path-traversal entry name.
+	traversalZip := buildZipWithName(f, "../../synthorg.exe")
+	f.Add(traversalZip)
+
 	f.Fuzz(func(t *testing.T, data []byte) {
 		// Cap input size to prevent OOM.
 		if len(data) > 1024*1024 {
-			t.Skip("input too large")
+			return
 		}
 
 		result, err := extractFromZip(data)
 		if err != nil {
+			if result != nil {
+				t.Fatal("extractFromZip returned both data and error")
+			}
 			return
 		}
 		// If extraction succeeded, the result must be non-empty.
@@ -147,12 +167,18 @@ func FuzzExtractFromZip(f *testing.F) {
 // buildValidTarGz creates a valid tar.gz archive containing a "synthorg" binary.
 func buildValidTarGz(f *testing.F) []byte {
 	f.Helper()
+	return buildTarGzWithName(f, "synthorg")
+}
+
+// buildTarGzWithName creates a tar.gz archive with the given entry name.
+func buildTarGzWithName(f *testing.F, name string) []byte {
+	f.Helper()
 	content := []byte("binary content")
 	var buf bytes.Buffer
 	gw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gw)
 	hdr := &tar.Header{
-		Name: "synthorg",
+		Name: name,
 		Mode: 0o755,
 		Size: int64(len(content)),
 	}
@@ -174,10 +200,16 @@ func buildValidTarGz(f *testing.F) []byte {
 // buildValidZip creates a valid zip archive containing a "synthorg.exe" binary.
 func buildValidZip(f *testing.F) []byte {
 	f.Helper()
+	return buildZipWithName(f, "synthorg.exe")
+}
+
+// buildZipWithName creates a zip archive with the given entry name.
+func buildZipWithName(f *testing.F, name string) []byte {
+	f.Helper()
 	content := []byte("binary content")
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
-	fw, err := zw.Create("synthorg.exe")
+	fw, err := zw.Create(name)
 	if err != nil {
 		f.Fatalf("zip create: %v", err)
 	}

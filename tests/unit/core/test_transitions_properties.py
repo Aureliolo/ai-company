@@ -1,3 +1,5 @@
+"""Property-based tests for task transition validation invariants."""
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -7,8 +9,8 @@ from ai_company.core.task_transitions import VALID_TRANSITIONS, validate_transit
 
 pytestmark = pytest.mark.unit
 
-_TERMINAL_STATES = frozenset({TaskStatus.COMPLETED, TaskStatus.CANCELLED})
-_all_statuses = st.sampled_from(list(TaskStatus))
+_TERMINAL_STATES = frozenset(s for s in TaskStatus if len(VALID_TRANSITIONS[s]) == 0)
+_all_statuses = st.sampled_from(TaskStatus)
 
 _TRANSITION_ERR = r"Invalid task status transition|has no entry"
 

@@ -1,3 +1,5 @@
+"""Property-based tests for custom type validators (NotBlankStr)."""
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st

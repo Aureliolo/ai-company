@@ -39,5 +39,12 @@ func FuzzVersionAtLeast(f *testing.F) {
 		if !result && !reverse {
 			t.Errorf("total-order violation: versionAtLeast(%q,%q)=false AND versionAtLeast(%q,%q)=false", got, min, min, got)
 		}
+
+		// Antisymmetry note: if both result and reverse are true, the
+		// versions compare as equal despite potentially different strings.
+		// This is expected — versionAtLeast parses 'got' with suffix-stripping
+		// but not 'min', so pairs like ("1.0.0-rc1", "1.0.0") normalise
+		// identically. The total-order check above already covers this case
+		// (both true satisfies at-least-one-true).
 	})
 }

@@ -1,7 +1,9 @@
+"""Property-based tests for config loader crash-safety and pass-through."""
+
 from typing import Any
 
 import pytest
-from hypothesis import assume, given, settings
+from hypothesis import assume, event, given, settings
 from hypothesis import strategies as st
 
 from ai_company.config.errors import ConfigParseError, ConfigValidationError
@@ -51,6 +53,7 @@ class TestSubstituteEnvVarsProperties:
         assume(not has_env_pattern)
         result = _substitute_env_vars(data)
         assert isinstance(result, dict)
+        assert result == data
         assert result is not data
 
     @given(text=_env_var_text)
@@ -60,12 +63,13 @@ class TestSubstituteEnvVarsProperties:
         data = {"key": text}
         try:
             result = _substitute_env_vars(data)
+            event("substitute succeeded")
             assert isinstance(result, dict)
             assert "key" in result
             assert isinstance(result["key"], str)
         except ConfigValidationError:
+            event("ConfigValidationError raised")
             # Expected for unresolvable ${VAR} patterns without defaults.
-            pass
 
     @given(
         data=st.dictionaries(
@@ -92,10 +96,11 @@ class TestParseYamlStringProperties:
         """Crash-safety: _parse_yaml_string must only raise ConfigParseError."""
         try:
             result = _parse_yaml_string(text, "<test>")
+            event("parse succeeded")
             assert isinstance(result, dict)
         except ConfigParseError:
+            event("ConfigParseError raised")
             # Expected for non-mapping or invalid YAML input.
-            pass
 
     def test_empty_string_returns_empty_dict(self) -> None:
         assert _parse_yaml_string("", "<test>") == {}
@@ -124,7 +129,8 @@ class TestParseYamlStringProperties:
         """Crash-safety: garbled input must only raise ConfigParseError."""
         try:
             result = _parse_yaml_string(text, "<test>")
+            event("garbled parse succeeded")
             assert isinstance(result, dict)
         except ConfigParseError:
+            event("ConfigParseError raised")
             # Expected for unparseable input.
-            pass

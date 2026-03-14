@@ -5,7 +5,10 @@ import {
   TERMINAL_STATUSES,
 } from '@/utils/constants'
 
-describe('task status constants (property-based invariants)', () => {
+// Note: These are exhaustive structural invariant checks over constant data
+// structures, not randomized property tests. No fast-check usage is needed
+// because the input space is finite and fully enumerable.
+describe('task status constants (structural invariants)', () => {
   it('every status in TASK_STATUS_ORDER has an entry in VALID_TRANSITIONS', () => {
     for (const status of TASK_STATUS_ORDER) {
       expect(VALID_TRANSITIONS).toHaveProperty(status)

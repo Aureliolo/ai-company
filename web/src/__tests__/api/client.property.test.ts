@@ -61,8 +61,9 @@ describe('unwrap (property-based)', () => {
           // If it didn't throw, we got a value back — that's fine
           expect(result).toBeDefined()
         } catch (err) {
-          // Must throw an Error, not crash with a TypeError
+          // Must throw a controlled Error, not crash with a TypeError
           expect(err).toBeInstanceOf(Error)
+          expect(err).not.toBeInstanceOf(TypeError)
         }
       }),
     )
@@ -165,6 +166,7 @@ describe('unwrapPaginated (property-based)', () => {
           expect(typeof result.limit).toBe('number')
         } catch (err) {
           expect(err).toBeInstanceOf(Error)
+          expect(err).not.toBeInstanceOf(TypeError)
         }
       }),
     )

@@ -2,6 +2,7 @@
 
 import logging
 import os
+from collections.abc import Callable
 
 import structlog
 from hypothesis import HealthCheck, settings
@@ -14,7 +15,6 @@ settings.register_profile(
 settings.register_profile(
     "dev",
     max_examples=1000,
-    suppress_health_check=[HealthCheck.too_slow],
 )
 # Configure Hypothesis globally for the test session.
 # Override by setting HYPOTHESIS_PROFILE=dev in the environment.
@@ -38,7 +38,7 @@ def clear_logging_state() -> None:
 
 def _patched_configure(
     *args: object,
-    _original: object = structlog.configure,
+    _original: Callable[..., None] = structlog.configure,
     **kwargs: object,
 ) -> None:
     """Force ``cache_logger_on_first_use=False`` during tests.
@@ -55,7 +55,7 @@ def _patched_configure(
     processor list.
     """
     kwargs["cache_logger_on_first_use"] = False
-    _original(*args, **kwargs)  # type: ignore[operator]
+    _original(*args, **kwargs)
 
 
 structlog.configure = _patched_configure

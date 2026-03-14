@@ -1,3 +1,5 @@
+"""Property-based tests for config utility functions (deep_merge, to_float)."""
+
 import copy
 from typing import Any
 
@@ -56,8 +58,7 @@ class TestDeepMergeProperties:
         result = deep_merge(a, {})
         assert result == a
         # Result must be a distinct object (deep copy)
-        if a:
-            assert result is not a
+        assert result is not a
 
     @given(a=_str_key_dicts, b=_str_key_dicts)
     @settings(max_examples=100)

@@ -1,3 +1,5 @@
+"""Property-based tests for API DTO validation constraints."""
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -14,10 +16,10 @@ from ai_company.core.enums import ApprovalRiskLevel
 pytestmark = pytest.mark.unit
 
 _not_blank = st.text(min_size=1, max_size=30).filter(lambda s: s.strip())
-_risk_levels = st.sampled_from(list(ApprovalRiskLevel))
+_risk_levels = st.sampled_from(ApprovalRiskLevel)
 
 # Action types must match category:action format
-_action_types = st.from_regex(r"[a-z]{1,10}:[a-z]{1,10}", fullmatch=True)
+_action_types = st.from_regex(r"[a-z0-9_-]{1,10}:[a-z0-9_-]{1,10}", fullmatch=True)
 
 
 class TestCoordinateTaskRequestProperties:

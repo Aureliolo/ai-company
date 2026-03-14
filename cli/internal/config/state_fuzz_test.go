@@ -25,7 +25,7 @@ func FuzzLoadState(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		// Cap input size to prevent excessive I/O during fuzzing.
 		if len(data) > 64*1024 {
-			t.Skip("input too large")
+			return
 		}
 
 		// Write fuzzed data to a temp file as config.json, then call Load.
@@ -45,6 +45,9 @@ func FuzzLoadState(f *testing.F) {
 		// If Load succeeds, DataDir must be set and absolute.
 		if state.DataDir == "" {
 			t.Error("Load returned state with empty DataDir")
+		}
+		if !filepath.IsAbs(state.DataDir) {
+			t.Errorf("Load returned non-absolute DataDir %q", state.DataDir)
 		}
 	})
 }

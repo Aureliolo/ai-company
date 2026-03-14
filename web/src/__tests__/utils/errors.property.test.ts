@@ -5,10 +5,16 @@ import fc from 'fast-check'
 vi.mock('axios', () => ({
   default: {
     isAxiosError: (err: unknown): boolean =>
-      typeof err === 'object' && err !== null && '_isAxiosError' in err,
+      typeof err === 'object' &&
+      err !== null &&
+      'isAxiosError' in err &&
+      (err as { isAxiosError?: unknown }).isAxiosError === true,
   },
   isAxiosError: (err: unknown): boolean =>
-    typeof err === 'object' && err !== null && '_isAxiosError' in err,
+    typeof err === 'object' &&
+    err !== null &&
+    'isAxiosError' in err &&
+    (err as { isAxiosError?: unknown }).isAxiosError === true,
 }))
 
 import { getErrorMessage } from '@/utils/errors'

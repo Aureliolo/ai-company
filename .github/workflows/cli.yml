@@ -161,7 +161,6 @@ jobs:
     needs: cli-changes
     if: needs.cli-changes.outputs.changed == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       contents: read
     strategy:
@@ -182,6 +181,8 @@ jobs:
           cache: false
 
       - name: Run fuzz tests (30s per target)
+        id: fuzz_run
+        continue-on-error: true
         working-directory: cli
         run: |
           # Run each Fuzz* function in the package for 30s.
@@ -197,6 +198,13 @@ jobs:
             go test -fuzz="^${target}$" -fuzztime=30s ${{ matrix.package }}
             echo "::endgroup::"
           done
+
+      - name: Report fuzz outcome
+        if: always()
+        run: |
+          if [ "${{ steps.fuzz_run.outcome }}" = "failure" ]; then
+            echo "::warning::Fuzz target in ${{ matrix.package }} reported failures"
+          fi
 
   # ── Gate: all CLI checks must pass ──
   cli-pass:
@@ -214,15 +222,13 @@ jobs:
             ${{ needs.cli-test.result }}
             ${{ needs.cli-build.result }}
             ${{ needs.cli-vuln.result }}
-          FUZZ_RESULT: ${{ needs.cli-fuzz.result }}
         run: |
           if echo "$RESULTS" | grep -qE "failure|cancelled"; then
             echo "CLI checks failed. Job results: $RESULTS"
             exit 1
           fi
-          if echo "$FUZZ_RESULT" | grep -qE "failure"; then
-            echo "::warning::Fuzz tests reported failures (informational): $FUZZ_RESULT"
-          fi
+          # cli-fuzz uses step-level continue-on-error; fuzz warnings are
+          # emitted by the "Report fuzz outcome" step within each matrix job.
           echo "All CLI checks passed (some may have been skipped due to path filters)"
 
   # ── Release (GoReleaser, only on version tags) ──

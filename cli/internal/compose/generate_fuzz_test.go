@@ -48,6 +48,15 @@ func FuzzYamlStr(f *testing.F) {
 		if !strings.HasSuffix(result, `"`) {
 			t.Fatalf("yamlStr result %q does not end with double quote", result)
 		}
+
+		// Interior must not contain an unescaped double-quote that would
+		// prematurely close the YAML scalar.
+		inner := result[1 : len(result)-1]
+		for i := 0; i < len(inner); i++ {
+			if inner[i] == '"' && (i == 0 || inner[i-1] != '\\') {
+				t.Fatalf("yamlStr result contains unescaped inner double-quote: %q", result)
+			}
+		}
 	})
 }
 
@@ -89,6 +98,9 @@ func FuzzValidateParams(f *testing.F) {
 		if backendPort == webPort {
 			t.Fatal("validateParams accepted equal ports")
 		}
+		if sandbox && dockerSock == "" {
+			t.Fatal("validateParams accepted sandbox=true with empty dockerSock")
+		}
 	})
 }
 
@@ -115,6 +127,9 @@ func FuzzGenerate(f *testing.F) {
 		out, err := Generate(p)
 		if err != nil {
 			// Validation errors are expected for invalid inputs.
+			if out != nil {
+				t.Fatal("Generate returned both output and error")
+			}
 			return
 		}
 

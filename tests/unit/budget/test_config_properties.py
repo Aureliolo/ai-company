@@ -1,3 +1,5 @@
+"""Property-based tests for budget configuration validation constraints."""
+
 import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st

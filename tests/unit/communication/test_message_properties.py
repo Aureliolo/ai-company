@@ -1,3 +1,5 @@
+"""Property-based tests for Message model roundtrips and alias handling."""
+
 from datetime import UTC, datetime
 from typing import Any
 
@@ -15,9 +17,9 @@ from ai_company.communication.message import Attachment, Message, MessageMetadat
 pytestmark = pytest.mark.unit
 
 _not_blank = st.text(min_size=1, max_size=30).filter(lambda s: s.strip())
-_message_types = st.sampled_from(list(MessageType))
-_priorities = st.sampled_from(list(MessagePriority))
-_attachment_types = st.sampled_from(list(AttachmentType))
+_message_types = st.sampled_from(MessageType)
+_priorities = st.sampled_from(MessagePriority)
+_attachment_types = st.sampled_from(AttachmentType)
 
 _aware_datetimes = st.datetimes(
     min_value=datetime(2000, 1, 1),  # noqa: DTZ001 — bounds only; timezones= makes outputs UTC-aware

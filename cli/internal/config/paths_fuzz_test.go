@@ -31,6 +31,12 @@ func FuzzSecurePath(f *testing.F) {
 	f.Fuzz(func(t *testing.T, path string) {
 		result, err := SecurePath(path)
 
+		// Negative invariant: relative paths (those whose Clean form is
+		// not absolute) must always be rejected by SecurePath.
+		if !filepath.IsAbs(filepath.Clean(path)) && err == nil {
+			t.Errorf("SecurePath(%q) accepted a relative path", path)
+		}
+
 		if err != nil {
 			// Error is acceptable for invalid paths.
 			return

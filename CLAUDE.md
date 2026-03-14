@@ -61,7 +61,7 @@ Note: Go commands require `cd cli` because the Go module is in `cli/` (exception
 
 ```bash
 cd cli && go build -o synthorg ./main.go   # build CLI
-cd cli && go test ./...                     # run tests (seed corpus only for fuzz)
+cd cli && go test ./...                     # run tests (fuzz targets run seed corpus only without -fuzz flag)
 cd cli && go vet ./...                      # vet
 cd cli && golangci-lint run                 # lint
 cd cli && go test -fuzz=FuzzYamlStr -fuzztime=30s ./internal/compose/  # fuzz example
@@ -213,7 +213,7 @@ site/               # Astro landing page (synthorg.io)
 - **Parallelism**: `pytest-xdist` via `-n auto` — **ALWAYS** include `-n auto` when running pytest, never run tests sequentially
 - **Parametrize**: Prefer `@pytest.mark.parametrize` for testing similar cases
 - **Vendor-agnostic everywhere**: NEVER use real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples. Use generic names: `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, `large`/`medium`/`small` as aliases. Vendor names may only appear in: (1) Operations design page provider list (`docs/design/operations.md`), (2) `.claude/` skill/agent files, (3) third-party import paths/module names (e.g. `litellm.types.llms.openai`). Tests must use `test-provider`, `test-small-001`, etc.
-- **Property-based testing**: Python uses [Hypothesis](https://hypothesis.readthedocs.io/) (`@given` + `@settings`), Vue uses [fast-check](https://fast-check.dev/) (`fc.assert` + `fc.property`), Go uses native `testing.F` fuzz functions (`Fuzz*`). Hypothesis profiles: `ci` (200 examples, default) and `dev` (1000 examples), controlled via `HYPOTHESIS_PROFILE` env var. Run dev profile: `HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -n auto`. `.hypothesis/` is gitignored.
+- **Property-based testing**: Python uses [Hypothesis](https://hypothesis.readthedocs.io/) (`@given` + `@settings`), Vue uses [fast-check](https://fast-check.dev/) (`fc.assert` + `fc.property`), Go uses native `testing.F` fuzz functions (`Fuzz*`). Hypothesis profiles: `ci` (200 examples, default) and `dev` (1000 examples), controlled via `HYPOTHESIS_PROFILE` env var. Run dev profile: `HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n auto -k properties`. `.hypothesis/` is gitignored.
 
 ## Git
 
