@@ -41,8 +41,12 @@ func StatePath(dataDir string) string {
 // Load reads State from disk. Returns a default state with the given dataDir
 // if the file does not exist (so --data-dir is respected on bootstrap).
 func Load(dataDir string) (State, error) {
-	path := StatePath(dataDir)
-	data, err := os.ReadFile(path)
+	safeDir, err := SecurePath(dataDir)
+	if err != nil {
+		return State{}, err
+	}
+	path := StatePath(safeDir)
+	data, err := os.ReadFile(path) //nolint:gosec // path validated by SecurePath
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			defaults := DefaultState()
@@ -73,12 +77,16 @@ func Load(dataDir string) (State, error) {
 
 // Save writes State to disk as indented JSON.
 func Save(s State) error {
-	if err := EnsureDir(s.DataDir); err != nil {
+	safeDir, err := SecurePath(s.DataDir)
+	if err != nil {
+		return err
+	}
+	if err := EnsureDir(safeDir); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(StatePath(s.DataDir), data, 0o600)
+	return os.WriteFile(StatePath(safeDir), data, 0o600) //nolint:gosec // path validated by SecurePath
 }

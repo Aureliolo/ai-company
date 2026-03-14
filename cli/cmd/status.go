@@ -40,7 +40,11 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 
 	printVersionInfo(out, state)
 
-	composePath := filepath.Join(state.DataDir, "compose.yml")
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return err
+	}
+	composePath := filepath.Join(safeDir, "compose.yml")
 	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
 		_, _ = fmt.Fprintln(out, "Not initialized — run 'synthorg init' first.")
 		return nil

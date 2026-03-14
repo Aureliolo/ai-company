@@ -34,9 +34,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	composePath := filepath.Join(state.DataDir, "compose.yml")
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return err
+	}
+	composePath := filepath.Join(safeDir, "compose.yml")
 	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("compose.yml not found in %s — run 'synthorg init' first", state.DataDir)
+		return fmt.Errorf("compose.yml not found in %s — run 'synthorg init' first", safeDir)
 	}
 
 	info, err := docker.Detect(ctx)
@@ -52,13 +56,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Pull latest images.
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Pulling images...")
-	if err := composeRun(ctx, cmd, info, state.DataDir, "pull"); err != nil {
+	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
 		return fmt.Errorf("pulling images: %w", err)
 	}
 
 	// Start containers.
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Starting containers...")
-	if err := composeRun(ctx, cmd, info, state.DataDir, "up", "-d"); err != nil {
+	if err := composeRun(ctx, cmd, info, safeDir, "up", "-d"); err != nil {
 		return fmt.Errorf("starting containers: %w", err)
 	}
 
