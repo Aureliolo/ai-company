@@ -19,7 +19,7 @@
     "@vue-flow/core": "^1",
     "@vue-flow/minimap": "^1",
     "axios": "^1",
-    "echarts": "^5",
+    "echarts": "^6",
     "pinia": "^3",
     "primevue": "^4",
     "tailwindcss": "^4",
