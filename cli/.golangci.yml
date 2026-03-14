@@ -10,7 +10,6 @@ linters:
     - ineffassign
     - staticcheck
     - unused
-    - gosimple
     - gocritic
     - bodyclose
     - errname
