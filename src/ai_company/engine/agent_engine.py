@@ -446,6 +446,20 @@ class AgentEngine:
                     agent_id=agent_id,
                     reason=f"Post-recovery status: {ctx.task_execution.status.value}",
                 )
+        # Clean up checkpoints and heartbeat on non-ERROR exits.
+        # The ERROR path is handled inside _finalize_resume (resume)
+        # and _delegate_to_fallback (fallback).  Normal completions
+        # (COMPLETED, MAX_TURNS, BUDGET_EXHAUSTED, SHUTDOWN, PARKED)
+        # bypass recovery entirely, so cleanup runs here.
+        if execution_result.termination_reason != TerminationReason.ERROR:
+            exec_id = execution_result.context.execution_id
+            if self._recovery_strategy is not None:
+                await self._recovery_strategy.finalize(exec_id)
+            await cleanup_checkpoint_artifacts(
+                self._checkpoint_repo,
+                self._heartbeat_repo,
+                exec_id,
+            )
         # Classification is non-critical — never destroys a result.
         if self._error_taxonomy_config is not None:
             try:
