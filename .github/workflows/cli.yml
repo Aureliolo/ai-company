@@ -214,10 +214,14 @@ jobs:
             ${{ needs.cli-test.result }}
             ${{ needs.cli-build.result }}
             ${{ needs.cli-vuln.result }}
+          FUZZ_RESULT: ${{ needs.cli-fuzz.result }}
         run: |
           if echo "$RESULTS" | grep -qE "failure|cancelled"; then
             echo "CLI checks failed. Job results: $RESULTS"
             exit 1
+          fi
+          if echo "$FUZZ_RESULT" | grep -qE "failure"; then
+            echo "::warning::Fuzz tests reported failures (informational): $FUZZ_RESULT"
           fi
           echo "All CLI checks passed (some may have been skipped due to path filters)"
 

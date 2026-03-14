@@ -37,6 +37,9 @@ func FuzzSecurePath(f *testing.F) {
 		}
 
 		// If SecurePath succeeds, the result must be an absolute, cleaned path.
+		// Note: SecurePath validates form (absolute, clean) only.
+		// It does not enforce filesystem containment — the caller is
+		// responsible for prefix-checking when containment is required.
 		if !filepath.IsAbs(result) {
 			t.Errorf("SecurePath(%q) returned non-absolute path %q", path, result)
 		}

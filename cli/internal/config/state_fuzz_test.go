@@ -12,7 +12,7 @@ func FuzzLoadState(f *testing.F) {
 	f.Add([]byte(`{}`))
 	f.Add([]byte(`{"backend_port":-1,"web_port":999999}`))
 	f.Add([]byte(`{"data_dir":"/tmp/test","sandbox":true,"docker_sock":"/var/run/docker.sock"}`))
-	f.Add([]byte(`{"jwt_secret":"super-secret-key-12345"}`))
+	f.Add([]byte(`{"jwt_secret":"test-jwt-secret"}`))
 	f.Add([]byte(``))
 	f.Add([]byte(`{invalid json`))
 	f.Add([]byte(`null`))
@@ -23,6 +23,11 @@ func FuzzLoadState(f *testing.F) {
 	f.Add([]byte(`{"image_tag":"` + string(make([]byte, 1000)) + `"}`))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
+		// Cap input size to prevent excessive I/O during fuzzing.
+		if len(data) > 64*1024 {
+			t.Skip("input too large")
+		}
+
 		// Write fuzzed data to a temp file as config.json, then call Load.
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, stateFileName)

@@ -1,7 +1,7 @@
 from typing import Any
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from ai_company.config.errors import ConfigParseError, ConfigValidationError
@@ -48,8 +48,7 @@ class TestSubstituteEnvVarsProperties:
         has_env_pattern = any(
             isinstance(v, str) and "${" in v and "}" in v for v in data.values()
         )
-        if has_env_pattern:
-            return
+        assume(not has_env_pattern)
         result = _substitute_env_vars(data)
         assert isinstance(result, dict)
         assert result is not data
@@ -57,12 +56,15 @@ class TestSubstituteEnvVarsProperties:
     @given(text=_env_var_text)
     @settings(max_examples=100)
     def test_arbitrary_text_with_patterns_no_crash(self, text: str) -> None:
+        """Crash-safety: _substitute_env_vars must only raise ConfigValidationError."""
         data = {"key": text}
         try:
             result = _substitute_env_vars(data)
             assert isinstance(result, dict)
+            assert "key" in result
             assert isinstance(result["key"], str)
         except ConfigValidationError:
+            # Expected for unresolvable ${VAR} patterns without defaults.
             pass
 
     @given(
@@ -87,10 +89,12 @@ class TestParseYamlStringProperties:
     @given(text=_yaml_text)
     @settings(max_examples=100)
     def test_arbitrary_text_no_unhandled_exception(self, text: str) -> None:
+        """Crash-safety: _parse_yaml_string must only raise ConfigParseError."""
         try:
             result = _parse_yaml_string(text, "<test>")
             assert isinstance(result, dict)
         except ConfigParseError:
+            # Expected for non-mapping or invalid YAML input.
             pass
 
     def test_empty_string_returns_empty_dict(self) -> None:
@@ -117,8 +121,10 @@ class TestParseYamlStringProperties:
     )
     @settings(max_examples=100)
     def test_garbled_yaml_raises_or_returns_dict(self, text: str) -> None:
+        """Crash-safety: garbled input must only raise ConfigParseError."""
         try:
             result = _parse_yaml_string(text, "<test>")
             assert isinstance(result, dict)
         except ConfigParseError:
+            # Expected for unparseable input.
             pass

@@ -9,9 +9,20 @@ from ai_company.config.utils import deep_merge, to_float
 
 pytestmark = pytest.mark.unit
 
+# ── Helpers ──────────────────────────────────────────────────
+
+
+def _is_numeric_string(s: str) -> bool:
+    try:
+        float(s)
+    except ValueError:
+        return False
+    return True
+
+
 # ── Strategies ──────────────────────────────────────────────────
 
-json_primitives = st.one_of(
+_json_primitives = st.one_of(
     st.none(),
     st.booleans(),
     st.integers(min_value=-10_000, max_value=10_000),
@@ -19,8 +30,8 @@ json_primitives = st.one_of(
     st.text(max_size=50),
 )
 
-json_values = st.recursive(
-    json_primitives,
+_json_values = st.recursive(
+    _json_primitives,
     lambda children: st.one_of(
         st.lists(children, max_size=5),
         st.dictionaries(st.text(min_size=1, max_size=10), children, max_size=5),
@@ -28,9 +39,9 @@ json_values = st.recursive(
     max_leaves=20,
 )
 
-str_key_dicts = st.dictionaries(
+_str_key_dicts = st.dictionaries(
     st.text(min_size=1, max_size=10),
-    json_values,
+    _json_values,
     max_size=8,
 )
 
@@ -39,7 +50,7 @@ str_key_dicts = st.dictionaries(
 
 
 class TestDeepMergeProperties:
-    @given(a=str_key_dicts)
+    @given(a=_str_key_dicts)
     @settings(max_examples=100)
     def test_identity_merge_with_empty(self, a: dict[str, Any]) -> None:
         result = deep_merge(a, {})
@@ -48,13 +59,13 @@ class TestDeepMergeProperties:
         if a:
             assert result is not a
 
-    @given(a=str_key_dicts, b=str_key_dicts)
+    @given(a=_str_key_dicts, b=_str_key_dicts)
     @settings(max_examples=100)
     def test_result_keys_are_union(self, a: dict[str, Any], b: dict[str, Any]) -> None:
         result = deep_merge(a, b)
         assert set(result.keys()) == set(a.keys()) | set(b.keys())
 
-    @given(a=str_key_dicts, b=str_key_dicts)
+    @given(a=_str_key_dicts, b=_str_key_dicts)
     @settings(max_examples=100)
     def test_inputs_are_not_mutated(self, a: dict[str, Any], b: dict[str, Any]) -> None:
         a_before = copy.deepcopy(a)
@@ -85,7 +96,7 @@ class TestDeepMergeProperties:
         # New key added
         assert result["nested"]["z"] == override_z
 
-    @given(a=str_key_dicts, b=str_key_dicts)
+    @given(a=_str_key_dicts, b=_str_key_dicts)
     @settings(max_examples=100)
     def test_override_values_win_for_non_dict(
         self, a: dict[str, Any], b: dict[str, Any]
@@ -141,10 +152,13 @@ class TestToFloatProperties:
         with pytest.raises(ValueError, match="numeric value"):
             to_float(value)
 
+    @pytest.mark.parametrize("value", ["nan", "inf", "-inf", "infinity"])
+    def test_special_float_strings_accepted(self, value: str) -> None:
+        """Document that to_float accepts Python's special float strings.
 
-def _is_numeric_string(s: str) -> bool:
-    try:
-        float(s)
-    except ValueError:
-        return False
-    return True
+        These are accepted by Python's float() builtin, so to_float
+        also accepts them. Callers that need to reject NaN/Inf should
+        validate after conversion (e.g. Pydantic allow_nan=False).
+        """
+        result = to_float(value)
+        assert isinstance(result, float)

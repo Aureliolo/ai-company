@@ -114,18 +114,25 @@ class TestAutoDowngradeConfigProperties:
         self,
         pairs: list[tuple[str, str]],
     ) -> None:
-        try:
+        has_self_downgrade = any(s == t for s, t in pairs)
+        sources = [s for s, _ in pairs]
+        has_dup_source = len(sources) != len(set(sources))
+
+        if has_self_downgrade or has_dup_source:
+            with pytest.raises(ValidationError):
+                AutoDowngradeConfig(
+                    enabled=True,
+                    downgrade_map=tuple(pairs),
+                )
+        else:
             cfg = AutoDowngradeConfig(
                 enabled=True,
                 downgrade_map=tuple(pairs),
             )
-            # If accepted, verify no self-downgrades and unique sources
-            sources = [s for s, _ in cfg.downgrade_map]
-            assert len(sources) == len(set(sources))
+            out_sources = [s for s, _ in cfg.downgrade_map]
+            assert len(out_sources) == len(set(out_sources))
             for s, t in cfg.downgrade_map:
                 assert s != t
-        except ValidationError:
-            pass
 
 
 class TestBudgetConfigProperties:

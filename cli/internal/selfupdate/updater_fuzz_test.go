@@ -55,10 +55,12 @@ func FuzzCompareSemver(f *testing.F) {
 	})
 }
 
+// fuzzArchiveData is used by FuzzVerifyChecksum for deterministic hashing.
+var fuzzArchiveData = []byte("fixed archive content for fuzzing")
+
 func FuzzVerifyChecksum(f *testing.F) {
 	// Build a valid seed: known data + matching checksum line.
-	data := []byte("hello world")
-	hash := sha256.Sum256(data)
+	hash := sha256.Sum256(fuzzArchiveData)
 	checksum := hex.EncodeToString(hash[:])
 	validChecksums := fmt.Sprintf("%s  test_asset.tar.gz\n", checksum)
 
@@ -71,11 +73,8 @@ func FuzzVerifyChecksum(f *testing.F) {
 	f.Add([]byte("abc  def  ghi\n"), "def")
 
 	f.Fuzz(func(t *testing.T, checksumData []byte, assetName string) {
-		// Use fixed archive data so the hash is deterministic.
-		archiveData := []byte("fixed archive content for fuzzing")
-
 		// Must not panic — either returns nil or error.
-		_ = verifyChecksum(archiveData, checksumData, assetName)
+		_ = verifyChecksum(fuzzArchiveData, checksumData, assetName)
 	})
 }
 
@@ -91,18 +90,28 @@ func FuzzExtractFromTarGz(f *testing.F) {
 	// Seed: valid gzip but not a tar.
 	var gzBuf bytes.Buffer
 	gw := gzip.NewWriter(&gzBuf)
-	_, _ = gw.Write([]byte("just some text, not tar"))
-	_ = gw.Close()
+	if _, err := gw.Write([]byte("just some text, not tar")); err != nil {
+		f.Fatalf("gzip write: %v", err)
+	}
+	if err := gw.Close(); err != nil {
+		f.Fatalf("gzip close: %v", err)
+	}
 	f.Add(gzBuf.Bytes())
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		// Cap input size to prevent OOM.
 		if len(data) > 1024*1024 {
-			return
+			t.Skip("input too large")
 		}
 
-		// Must not panic — either returns data or error.
-		_, _ = extractFromTarGz(data)
+		result, err := extractFromTarGz(data)
+		if err != nil {
+			return
+		}
+		// If extraction succeeded, the result must be non-empty.
+		if len(result) == 0 {
+			t.Fatal("extractFromTarGz returned nil/empty data without error")
+		}
 	})
 }
 
@@ -121,11 +130,17 @@ func FuzzExtractFromZip(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		// Cap input size to prevent OOM.
 		if len(data) > 1024*1024 {
-			return
+			t.Skip("input too large")
 		}
 
-		// Must not panic — either returns data or error.
-		_, _ = extractFromZip(data)
+		result, err := extractFromZip(data)
+		if err != nil {
+			return
+		}
+		// If extraction succeeded, the result must be non-empty.
+		if len(result) == 0 {
+			t.Fatal("extractFromZip returned nil/empty data without error")
+		}
 	})
 }
 

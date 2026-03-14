@@ -20,8 +20,8 @@ _priorities = st.sampled_from(list(MessagePriority))
 _attachment_types = st.sampled_from(list(AttachmentType))
 
 _aware_datetimes = st.datetimes(
-    min_value=datetime(2000, 1, 1),  # noqa: DTZ001
-    max_value=datetime(2100, 1, 1),  # noqa: DTZ001
+    min_value=datetime(2000, 1, 1),  # noqa: DTZ001 — bounds only; timezones= makes outputs UTC-aware
+    max_value=datetime(2100, 1, 1),  # noqa: DTZ001 — bounds only; timezones= makes outputs UTC-aware
     timezones=st.just(UTC),
 )
 

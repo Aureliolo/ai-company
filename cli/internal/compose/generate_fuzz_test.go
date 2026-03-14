@@ -75,7 +75,20 @@ func FuzzValidateParams(f *testing.F) {
 		}
 
 		// Must not panic — either returns nil or a non-nil error.
-		_ = validateParams(p)
+		err := validateParams(p)
+		if err != nil {
+			return
+		}
+		// If validation passed, known invariants must hold.
+		if backendPort < 1 || backendPort > 65535 {
+			t.Fatalf("validateParams accepted invalid backendPort %d", backendPort)
+		}
+		if webPort < 1 || webPort > 65535 {
+			t.Fatalf("validateParams accepted invalid webPort %d", webPort)
+		}
+		if backendPort == webPort {
+			t.Fatal("validateParams accepted equal ports")
+		}
 	})
 }
 

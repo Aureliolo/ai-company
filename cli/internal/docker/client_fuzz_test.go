@@ -33,10 +33,11 @@ func FuzzVersionAtLeast(f *testing.F) {
 			t.Errorf("versionAtLeast(%q, %q) = false, want true (reflexivity)", min, min)
 		}
 
-		// Trichotomy: got < min AND min < got is a contradiction.
+		// Total-order completeness: for any two versions, at least one of
+		// versionAtLeast(got, min) or versionAtLeast(min, got) must be true.
 		reverse := versionAtLeast(min, got)
 		if !result && !reverse {
-			t.Errorf("contradiction: versionAtLeast(%q,%q)=false AND versionAtLeast(%q,%q)=false", got, min, min, got)
+			t.Errorf("total-order violation: versionAtLeast(%q,%q)=false AND versionAtLeast(%q,%q)=false", got, min, min, got)
 		}
 	})
 }
