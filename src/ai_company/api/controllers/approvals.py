@@ -427,7 +427,7 @@ class ApprovalsController(Controller):
             decision_reason=data.comment,
         )
 
-        return ApiResponse(data=updated)
+        return ApiResponse(data=saved)
 
     @post(
         "/{approval_id:str}/reject",
@@ -508,4 +508,4 @@ class ApprovalsController(Controller):
             decision_reason=data.reason,
         )
 
-        return ApiResponse(data=updated)
+        return ApiResponse(data=saved)
