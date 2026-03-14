@@ -78,7 +78,7 @@ cd cli && golangci-lint run                 # lint
 - **Library reference**: `docs/api/` — auto-generated from docstrings via mkdocstrings + Griffe (AST-based, no imports)
 - **Custom templates**: `docs/overrides/` (`custom_dir` in `mkdocs.yml` for optional theme/template overrides)
 - **Scripts**: `scripts/` — CI/build utility scripts (relaxed ruff rules: `print` and deferred imports allowed)
-- **Landing page**: `site/` (Astro, Concept C hybrid design)
+- **Landing page**: `site/` (Astro, Concept C hybrid design). Includes `/get/` CLI installation page and shared `Footer` component.
 - **Config**: `mkdocs.yml` at repo root (Zensical reads this natively)
 - **CI**: `.github/workflows/pages.yml` — exports OpenAPI schema (`scripts/export_openapi.py`), builds Astro landing + Zensical docs, merges, deploys to GitHub Pages
 - **Architecture decisions**: `docs/architecture/decisions.md` (decision log)
@@ -153,6 +153,12 @@ cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
   scripts/          # Install scripts (install.sh, install.ps1)
   testdata/         # Golden files for compose generation tests
   .goreleaser.yml   # GoReleaser config (cross-compile, checksums)
+
+site/               # Astro landing page (synthorg.io)
+  src/
+    pages/          # Astro pages (index, get)
+    components/     # Shared components (Footer)
+    layouts/        # Base layout (Base.astro)
 ```
 
 ## Shell Usage
@@ -236,7 +242,7 @@ cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
 
 - **Path filtering**: `dorny/paths-filter` detects Python/dashboard/docker changes; jobs only run when their domain is affected. CLI has its own workflow (`cli.yml`).
 - **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) + python-audit (pip-audit) + dockerfile-lint (hadolint) + dashboard-lint/type-check/test/build/audit (npm) run in parallel → ci-pass (gate)
-- **Pages**: `.github/workflows/pages.yml` — exports OpenAPI schema (`scripts/export_openapi.py`), builds Astro landing + Zensical docs, merges, deploys to GitHub Pages on push to main. Triggers on `docs/**`, `site/**`, `mkdocs.yml`, `pyproject.toml`, `uv.lock`, `src/ai_company/**`, `scripts/**`, workflow file changes, and `workflow_dispatch`.
+- **Pages**: `.github/workflows/pages.yml` — exports OpenAPI schema (`scripts/export_openapi.py`), builds Astro landing + Zensical docs, copies CLI install scripts into `/get/`, merges, deploys to GitHub Pages on push to main. Triggers on `docs/**`, `site/**`, `mkdocs.yml`, `pyproject.toml`, `uv.lock`, `src/ai_company/**`, `scripts/**`, `cli/scripts/install.{sh,ps1}`, workflow file changes, and `workflow_dispatch`.
 - **PR Preview**: `.github/workflows/pages-preview.yml`
   - Builds site on PRs (same path triggers as Pages) and on `workflow_dispatch` (with `pr_number` input, for Dependabot PRs that can't trigger `pull_request` with secrets)
   - Dispatch runs resolve PR metadata (head SHA, state, same-repo check) via `gh pr view`; PR-triggered runs use event context directly
