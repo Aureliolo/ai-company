@@ -10,6 +10,7 @@ from ai_company.api.controllers.artifacts import ArtifactController
 from ai_company.api.controllers.autonomy import AutonomyController
 from ai_company.api.controllers.budget import BudgetController
 from ai_company.api.controllers.company import CompanyController
+from ai_company.api.controllers.coordination import CoordinationController
 from ai_company.api.controllers.departments import DepartmentController
 from ai_company.api.controllers.health import HealthController
 from ai_company.api.controllers.meetings import MeetingController
@@ -35,6 +36,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     ApprovalsController,
     AutonomyController,
     AuthController,
+    CoordinationController,
 )
 
 __all__ = [
@@ -48,6 +50,7 @@ __all__ = [
     "BudgetController",
     "CompanyController",
     "Controller",
+    "CoordinationController",
     "DepartmentController",
     "HealthController",
     "MeetingController",

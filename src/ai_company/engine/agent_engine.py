@@ -29,6 +29,7 @@ from ai_company.engine.checkpoint.resume import (
 from ai_company.engine.classification.pipeline import classify_execution_errors
 from ai_company.engine.context import DEFAULT_MAX_TURNS, AgentContext
 from ai_company.engine.cost_recording import record_execution_costs
+from ai_company.engine.errors import ExecutionStateError
 from ai_company.engine.loop_protocol import (
     ExecutionResult,
     TerminationReason,
@@ -87,6 +88,11 @@ if TYPE_CHECKING:
     from ai_company.budget.tracker import CostTracker
     from ai_company.core.agent import AgentIdentity
     from ai_company.core.task import Task
+    from ai_company.engine.coordination.models import (
+        CoordinationContext,
+        CoordinationResult,
+    )
+    from ai_company.engine.coordination.service import MultiAgentCoordinator
     from ai_company.engine.loop_protocol import (
         BudgetChecker,
         ExecutionLoop,
@@ -157,6 +163,7 @@ class AgentEngine:
         checkpoint_repo: CheckpointRepository | None = None,
         heartbeat_repo: HeartbeatRepository | None = None,
         checkpoint_config: CheckpointConfig | None = None,
+        coordinator: MultiAgentCoordinator | None = None,
     ) -> None:
         self._provider = provider
         self._approval_store = approval_store
@@ -202,6 +209,7 @@ class AgentEngine:
         self._recovery_strategy = recovery_strategy
         self._shutdown_checker = shutdown_checker
         self._error_taxonomy_config = error_taxonomy_config
+        self._coordinator = coordinator
         self._audit_log = AuditLog()
         logger.debug(
             EXECUTION_ENGINE_CREATED,
@@ -209,7 +217,34 @@ class AgentEngine:
             has_tool_registry=self._tool_registry is not None,
             has_cost_tracker=self._cost_tracker is not None,
             has_budget_enforcer=self._budget_enforcer is not None,
+            has_coordinator=self._coordinator is not None,
         )
+
+    @property
+    def coordinator(self) -> MultiAgentCoordinator | None:
+        """Return the multi-agent coordinator, or ``None`` if not configured."""
+        return self._coordinator
+
+    async def coordinate(
+        self,
+        context: CoordinationContext,
+    ) -> CoordinationResult:
+        """Delegate to the multi-agent coordinator.
+
+        Args:
+            context: Coordination context with task, agents, and config.
+
+        Returns:
+            Coordination result with all phase outcomes.
+
+        Raises:
+            ExecutionStateError: If no coordinator is configured.
+            CoordinationPhaseError: When a critical phase fails.
+        """
+        if self._coordinator is None:
+            msg = "No coordinator configured for multi-agent dispatch"
+            raise ExecutionStateError(msg)
+        return await self._coordinator.coordinate(context)
 
     async def run(  # noqa: PLR0913
         self,

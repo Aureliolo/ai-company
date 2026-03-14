@@ -12,7 +12,9 @@ from ai_company.budget.tracker import CostTracker  # noqa: TC001
 from ai_company.communication.bus_protocol import MessageBus  # noqa: TC001
 from ai_company.config.schema import RootConfig  # noqa: TC001
 from ai_company.engine.approval_gate import ApprovalGate  # noqa: TC001
+from ai_company.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from ai_company.engine.task_engine import TaskEngine  # noqa: TC001
+from ai_company.hr.registry import AgentRegistryService  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
 from ai_company.persistence.protocol import PersistenceBackend  # noqa: TC001
@@ -37,8 +39,10 @@ class AppState:
     """
 
     __slots__ = (
+        "_agent_registry",
         "_approval_gate",
         "_auth_service",
+        "_coordinator",
         "_cost_tracker",
         "_message_bus",
         "_persistence",
@@ -59,6 +63,8 @@ class AppState:
         auth_service: AuthService | None = None,
         task_engine: TaskEngine | None = None,
         approval_gate: ApprovalGate | None = None,
+        coordinator: MultiAgentCoordinator | None = None,
+        agent_registry: AgentRegistryService | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
@@ -69,6 +75,8 @@ class AppState:
         self._cost_tracker = cost_tracker
         self._auth_service = auth_service
         self._task_engine = task_engine
+        self._coordinator = coordinator
+        self._agent_registry = agent_registry
         self.startup_time = startup_time
 
     def _require_service[T](self, service: T | None, name: str) -> T:
@@ -139,6 +147,21 @@ class AppState:
     def approval_gate(self) -> ApprovalGate | None:
         """Return approval gate, or None if not configured."""
         return self._approval_gate
+
+    @property
+    def coordinator(self) -> MultiAgentCoordinator:
+        """Return coordinator or raise 503."""
+        return self._require_service(self._coordinator, "coordinator")
+
+    @property
+    def has_coordinator(self) -> bool:
+        """Check whether the coordinator is configured."""
+        return self._coordinator is not None
+
+    @property
+    def agent_registry(self) -> AgentRegistryService:
+        """Return agent registry or raise 503."""
+        return self._require_service(self._agent_registry, "agent_registry")
 
     @property
     def has_auth_service(self) -> bool:

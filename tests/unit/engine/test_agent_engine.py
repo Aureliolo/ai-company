@@ -1315,3 +1315,55 @@ def test_snapshot_channel_matches_api_channel() -> None:
     from ai_company.engine.task_engine import TaskEngine
 
     assert TaskEngine._SNAPSHOT_CHANNEL == CHANNEL_TASKS
+
+
+@pytest.mark.unit
+class TestAgentEngineCoordinator:
+    """Tests for coordinator property and coordinate() method."""
+
+    def test_coordinator_default_is_none(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider)
+        assert engine.coordinator is None
+
+    def test_coordinator_property_returns_coordinator(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        mock_coordinator = MagicMock()
+        engine = AgentEngine(provider=provider, coordinator=mock_coordinator)
+        assert engine.coordinator is mock_coordinator
+
+    async def test_coordinate_raises_when_no_coordinator(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider)
+        mock_context = MagicMock()
+        with pytest.raises(ExecutionStateError, match="No coordinator configured"):
+            await engine.coordinate(mock_context)
+
+    async def test_coordinate_delegates_to_coordinator(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        mock_coordinator = AsyncMock()
+        expected_result = MagicMock()
+        mock_coordinator.coordinate.return_value = expected_result
+
+        engine = AgentEngine(provider=provider, coordinator=mock_coordinator)
+        mock_context = MagicMock()
+        result = await engine.coordinate(mock_context)
+
+        assert result is expected_result
+        mock_coordinator.coordinate.assert_awaited_once_with(mock_context)

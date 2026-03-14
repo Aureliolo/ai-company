@@ -35,7 +35,9 @@ from ai_company.budget.tracker import CostTracker  # noqa: TC001
 from ai_company.communication.bus_protocol import MessageBus  # noqa: TC001
 from ai_company.config.schema import RootConfig
 from ai_company.core.approval import ApprovalItem  # noqa: TC001
+from ai_company.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from ai_company.engine.task_engine import TaskEngine  # noqa: TC001
+from ai_company.hr.registry import AgentRegistryService  # noqa: TC001
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
     API_APP_SHUTDOWN,
@@ -355,6 +357,8 @@ def create_app(  # noqa: PLR0913
     approval_store: ApprovalStore | None = None,
     auth_service: AuthService | None = None,
     task_engine: TaskEngine | None = None,
+    coordinator: MultiAgentCoordinator | None = None,
+    agent_registry: AgentRegistryService | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -369,6 +373,8 @@ def create_app(  # noqa: PLR0913
         approval_store: Approval queue store.
         auth_service: Pre-built auth service (for testing).
         task_engine: Centralized task state engine.
+        coordinator: Multi-agent coordinator.
+        agent_registry: Agent registry service.
 
     Returns:
         Configured Litestar application.
@@ -403,6 +409,8 @@ def create_app(  # noqa: PLR0913
         approval_store=effective_approval_store,
         auth_service=auth_service,
         task_engine=task_engine,
+        coordinator=coordinator,
+        agent_registry=agent_registry,
         startup_time=time.monotonic(),
     )
 

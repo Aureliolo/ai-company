@@ -15,6 +15,7 @@ from ai_company.engine.coordination.dispatchers import (
     TopologyDispatcher,
     select_dispatcher,
 )
+from ai_company.engine.coordination.factory import build_coordinator
 from ai_company.engine.coordination.group_builder import build_execution_waves
 from ai_company.engine.coordination.models import (
     CoordinationContext,
@@ -22,6 +23,7 @@ from ai_company.engine.coordination.models import (
     CoordinationResult,
     CoordinationWave,
 )
+from ai_company.engine.coordination.section_config import CoordinationSectionConfig
 from ai_company.engine.coordination.service import MultiAgentCoordinator
 
 __all__ = [
@@ -31,12 +33,14 @@ __all__ = [
     "CoordinationContext",
     "CoordinationPhaseResult",
     "CoordinationResult",
+    "CoordinationSectionConfig",
     "CoordinationWave",
     "DecentralizedDispatcher",
     "DispatchResult",
     "MultiAgentCoordinator",
     "SasDispatcher",
     "TopologyDispatcher",
+    "build_coordinator",
     "build_execution_waves",
     "select_dispatcher",
 ]

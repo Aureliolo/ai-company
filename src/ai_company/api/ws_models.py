@@ -43,6 +43,11 @@ class WsEventType(StrEnum):
     APPROVAL_REJECTED = "approval.rejected"
     APPROVAL_EXPIRED = "approval.expired"
 
+    COORDINATION_STARTED = "coordination.started"
+    COORDINATION_PHASE_COMPLETED = "coordination.phase_completed"
+    COORDINATION_COMPLETED = "coordination.completed"
+    COORDINATION_FAILED = "coordination.failed"
+
 
 class WsEvent(BaseModel):
     """A real-time event pushed over WebSocket.

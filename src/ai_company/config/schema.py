@@ -21,6 +21,7 @@ from ai_company.core.enums import AutonomyLevel, CompanyType, SeniorityLevel
 from ai_company.core.resilience_config import RateLimiterConfig, RetryConfig
 from ai_company.core.role import CustomRole  # noqa: TC001
 from ai_company.core.types import NotBlankStr  # noqa: TC001
+from ai_company.engine.coordination.section_config import CoordinationSectionConfig
 from ai_company.engine.task_engine_config import TaskEngineConfig
 from ai_company.hr.promotion.config import PromotionConfig
 from ai_company.memory.config import CompanyMemoryConfig
@@ -526,6 +527,10 @@ class RootConfig(BaseModel):
     task_engine: TaskEngineConfig = Field(
         default_factory=TaskEngineConfig,
         description="Task engine configuration",
+    )
+    coordination: CoordinationSectionConfig = Field(
+        default_factory=CoordinationSectionConfig,
+        description="Multi-agent coordination configuration",
     )
 
     @model_validator(mode="after")

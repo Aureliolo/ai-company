@@ -134,3 +134,48 @@ class TestAppStateTaskEngine:
         state = _make_state(task_engine=engine)
         with pytest.raises(RuntimeError, match="already configured"):
             state.set_task_engine(engine)
+
+
+@pytest.mark.unit
+class TestAppStateCoordinator:
+    """Tests for coordinator property and has_coordinator."""
+
+    def test_coordinator_raises_when_none(self) -> None:
+        state = _make_state(coordinator=None)
+        with pytest.raises(ServiceUnavailableError):
+            _ = state.coordinator
+
+    def test_coordinator_returns_when_set(self) -> None:
+        from unittest.mock import MagicMock
+
+        coordinator = MagicMock()
+        state = _make_state(coordinator=coordinator)
+        assert state.coordinator is coordinator
+
+    def test_has_coordinator_false_when_none(self) -> None:
+        state = _make_state(coordinator=None)
+        assert state.has_coordinator is False
+
+    def test_has_coordinator_true_when_set(self) -> None:
+        from unittest.mock import MagicMock
+
+        coordinator = MagicMock()
+        state = _make_state(coordinator=coordinator)
+        assert state.has_coordinator is True
+
+
+@pytest.mark.unit
+class TestAppStateAgentRegistry:
+    """Tests for agent_registry property."""
+
+    def test_agent_registry_raises_when_none(self) -> None:
+        state = _make_state(agent_registry=None)
+        with pytest.raises(ServiceUnavailableError):
+            _ = state.agent_registry
+
+    def test_agent_registry_returns_when_set(self) -> None:
+        from ai_company.hr.registry import AgentRegistryService
+
+        registry = AgentRegistryService()
+        state = _make_state(agent_registry=registry)
+        assert state.agent_registry is registry

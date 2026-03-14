@@ -266,3 +266,69 @@ class RejectRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     reason: NotBlankStr = Field(max_length=4096)
+
+
+# ── Coordination request/response DTOs ────────────────────────
+
+
+class CoordinateTaskRequest(BaseModel):
+    """Payload for triggering multi-agent coordination on a task.
+
+    Attributes:
+        agent_names: Agent names to coordinate with (``None`` = all active).
+        max_subtasks: Maximum subtasks for decomposition.
+        max_concurrency_per_wave: Override for max concurrency per wave.
+        fail_fast: Override for fail-fast behaviour.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    agent_names: tuple[NotBlankStr, ...] | None = Field(
+        default=None,
+        description="Agent names to coordinate with (None = all active)",
+    )
+    max_subtasks: int = Field(default=10, ge=1, le=50)
+    max_concurrency_per_wave: int | None = Field(default=None, ge=1)
+    fail_fast: bool = False
+
+
+class CoordinationPhaseResponse(BaseModel):
+    """Response model for a single coordination phase.
+
+    Attributes:
+        phase: Phase name.
+        success: Whether the phase completed successfully.
+        duration_seconds: Wall-clock duration of the phase.
+        error: Error description if the phase failed.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    phase: NotBlankStr
+    success: bool
+    duration_seconds: float
+    error: str | None = None
+
+
+class CoordinationResultResponse(BaseModel):
+    """Response model for a complete coordination run.
+
+    Attributes:
+        parent_task_id: ID of the parent task.
+        topology: Resolved coordination topology.
+        is_success: Whether all phases succeeded.
+        total_duration_seconds: Total wall-clock duration.
+        total_cost_usd: Total cost across all waves.
+        phases: Phase results in execution order.
+        wave_count: Number of execution waves.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    parent_task_id: NotBlankStr
+    topology: str
+    is_success: bool
+    total_duration_seconds: float
+    total_cost_usd: float
+    phases: tuple[CoordinationPhaseResponse, ...]
+    wave_count: int

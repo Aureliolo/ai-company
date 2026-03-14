@@ -41,3 +41,9 @@ API_TASK_MUTATION_FAILED: Final[str] = "api.task.mutation_failed"
 API_TASK_CREATED_BY_MISMATCH: Final[str] = "api.task.created_by_mismatch"
 API_AUTH_FALLBACK: Final[str] = "api.auth.fallback"
 API_ROUTE_NOT_FOUND: Final[str] = "api.route.not_found"
+API_COORDINATION_STARTED: Final[str] = "api.coordination.started"
+API_COORDINATION_COMPLETED: Final[str] = "api.coordination.completed"
+API_COORDINATION_FAILED: Final[str] = "api.coordination.failed"
+API_COORDINATION_AGENT_RESOLVE_FAILED: Final[str] = (
+    "api.coordination.agent_resolve_failed"
+)
