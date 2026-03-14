@@ -34,8 +34,8 @@ const (
 	expectedURLPrefix = "https://github.com/" + repoSlug + "/releases/download/"
 
 	maxAPIResponseBytes  = 1 * 1024 * 1024   // 1 MiB for API/checksums
-	maxBinaryBytes       = 256 * 1024 * 1024  // 256 MiB for binary archives
-	maxArchiveEntryBytes = 128 * 1024 * 1024  // 128 MiB per archive entry
+	maxBinaryBytes       = 256 * 1024 * 1024 // 256 MiB for binary archives
+	maxArchiveEntryBytes = 128 * 1024 * 1024 // 128 MiB per archive entry
 
 	httpTimeout = 5 * time.Minute
 )
@@ -304,8 +304,8 @@ func assetName() string {
 // Exported for test injection.
 var AllowedDownloadHosts = map[string]bool{
 	"github.com":                            true,
-	"objects.githubusercontent.com":          true,
-	"github-releases.githubusercontent.com":  true,
+	"objects.githubusercontent.com":         true,
+	"github-releases.githubusercontent.com": true,
 }
 
 func httpGetWithClient(ctx context.Context, client *http.Client, rawURL string, maxBytes int64) ([]byte, error) {
@@ -360,7 +360,7 @@ func extractFromTarGz(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening gzip: %w", err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 
 	tr := tar.NewReader(gz)
 	for {

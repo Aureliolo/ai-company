@@ -559,7 +559,7 @@ func TestDownloadChecksumMismatch(t *testing.T) {
 				t.Logf("write error: %v", err)
 			}
 		case "/checksums":
-			if _, err := w.Write([]byte(fmt.Sprintf("deadbeefdeadbeef  %s\n", assetName()))); err != nil {
+			if _, err := fmt.Fprintf(w, "deadbeefdeadbeef  %s\n", assetName()); err != nil {
 				t.Logf("write error: %v", err)
 			}
 		default:
