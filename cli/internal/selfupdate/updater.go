@@ -1,0 +1,253 @@
+// Package selfupdate handles CLI binary self-updates from GitHub Releases.
+package selfupdate
+
+import (
+	"archive/tar"
+	"archive/zip"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+
+	"github.com/Aureliolo/synthorg/cli/internal/version"
+)
+
+const (
+	releasesURL = "https://api.github.com/repos/Aureliolo/synthorg/releases/latest"
+	binaryName  = "synthorg"
+)
+
+// Release represents a GitHub release.
+type Release struct {
+	TagName string  `json:"tag_name"`
+	Assets  []Asset `json:"assets"`
+}
+
+// Asset represents a release asset.
+type Asset struct {
+	Name               string `json:"name"`
+	BrowserDownloadURL string `json:"browser_download_url"`
+}
+
+// CheckResult contains the result of an update check.
+type CheckResult struct {
+	CurrentVersion string
+	LatestVersion  string
+	UpdateAvail    bool
+	AssetURL       string
+	ChecksumURL    string
+}
+
+// Check queries GitHub for the latest release and compares versions.
+func Check(ctx context.Context) (CheckResult, error) {
+	result := CheckResult{CurrentVersion: version.Version}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releasesURL, nil)
+	if err != nil {
+		return result, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return result, fmt.Errorf("querying GitHub releases: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return result, fmt.Errorf("GitHub API returned %d", resp.StatusCode)
+	}
+
+	var release Release
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return result, fmt.Errorf("decoding release: %w", err)
+	}
+
+	result.LatestVersion = release.TagName
+
+	// Compare versions (strip 'v' prefix).
+	current := strings.TrimPrefix(version.Version, "v")
+	latest := strings.TrimPrefix(release.TagName, "v")
+	if current == "dev" || current != latest {
+		result.UpdateAvail = true
+	}
+
+	// Find matching asset.
+	archiveName := assetName()
+	for _, a := range release.Assets {
+		if a.Name == archiveName {
+			result.AssetURL = a.BrowserDownloadURL
+		}
+		if a.Name == "checksums.txt" {
+			result.ChecksumURL = a.BrowserDownloadURL
+		}
+	}
+
+	return result, nil
+}
+
+// Download fetches the release asset and verifies its SHA-256 checksum.
+func Download(ctx context.Context, assetURL, checksumURL string) ([]byte, error) {
+	// Download binary archive.
+	archiveData, err := httpGet(ctx, assetURL)
+	if err != nil {
+		return nil, fmt.Errorf("downloading release: %w", err)
+	}
+
+	// Download and verify checksum.
+	if checksumURL != "" {
+		checksumData, err := httpGet(ctx, checksumURL)
+		if err != nil {
+			return nil, fmt.Errorf("downloading checksums: %w", err)
+		}
+		if err := verifyChecksum(archiveData, checksumData, assetName()); err != nil {
+			return nil, err
+		}
+	}
+
+	// Extract binary from archive.
+	return extractBinary(archiveData)
+}
+
+// Replace swaps the current binary with the new one.
+func Replace(binaryData []byte) error {
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding executable path: %w", err)
+	}
+	execPath, err = filepath.EvalSymlinks(execPath)
+	if err != nil {
+		return fmt.Errorf("resolving symlinks: %w", err)
+	}
+
+	dir := filepath.Dir(execPath)
+	newPath := filepath.Join(dir, binaryName+".new")
+	oldPath := execPath + ".old"
+
+	// Write new binary.
+	if err := os.WriteFile(newPath, binaryData, 0o755); err != nil {
+		return fmt.Errorf("writing new binary: %w", err)
+	}
+
+	// On Windows, we can't overwrite the running binary — rename first.
+	if runtime.GOOS == "windows" {
+		_ = os.Remove(oldPath) // Clean up from previous update.
+		if err := os.Rename(execPath, oldPath); err != nil {
+			os.Remove(newPath)
+			return fmt.Errorf("renaming current binary: %w", err)
+		}
+	}
+
+	if err := os.Rename(newPath, execPath); err != nil {
+		// Attempt rollback on Windows.
+		if runtime.GOOS == "windows" {
+			_ = os.Rename(oldPath, execPath)
+		}
+		return fmt.Errorf("replacing binary: %w", err)
+	}
+
+	// Clean up old binary (best-effort).
+	_ = os.Remove(oldPath)
+
+	return nil
+}
+
+func assetName() string {
+	ext := ".tar.gz"
+	if runtime.GOOS == "windows" {
+		ext = ".zip"
+	}
+	return fmt.Sprintf("synthorg_%s_%s%s", runtime.GOOS, runtime.GOARCH, ext)
+}
+
+func httpGet(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+	}
+	return io.ReadAll(resp.Body)
+}
+
+func verifyChecksum(archiveData, checksumData []byte, assetName string) error {
+	hash := sha256.Sum256(archiveData)
+	actual := hex.EncodeToString(hash[:])
+
+	lines := strings.Split(string(checksumData), "\n")
+	for _, line := range lines {
+		parts := strings.Fields(line)
+		if len(parts) == 2 && parts[1] == assetName {
+			if parts[0] != actual {
+				return fmt.Errorf("checksum mismatch: expected %s, got %s", parts[0], actual)
+			}
+			return nil
+		}
+	}
+
+	return fmt.Errorf("no checksum found for %s in checksums.txt", assetName)
+}
+
+func extractBinary(data []byte) ([]byte, error) {
+	if runtime.GOOS == "windows" {
+		return extractFromZip(data)
+	}
+	return extractFromTarGz(data)
+}
+
+func extractFromTarGz(data []byte) ([]byte, error) {
+	gz, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("opening gzip: %w", err)
+	}
+	defer gz.Close()
+
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("reading tar: %w", err)
+		}
+		if filepath.Base(hdr.Name) == binaryName {
+			return io.ReadAll(tr)
+		}
+	}
+	return nil, fmt.Errorf("binary %q not found in archive", binaryName)
+}
+
+func extractFromZip(data []byte) ([]byte, error) {
+	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, fmt.Errorf("opening zip: %w", err)
+	}
+	for _, f := range r.File {
+		name := filepath.Base(f.Name)
+		if name == binaryName+".exe" || name == binaryName {
+			rc, err := f.Open()
+			if err != nil {
+				return nil, err
+			}
+			defer rc.Close()
+			return io.ReadAll(rc)
+		}
+	}
+	return nil, fmt.Errorf("binary %q not found in archive", binaryName)
+}

@@ -44,7 +44,7 @@ After identifying the PR, fetch its body and check for issue linkage:
 gh pr view NUMBER --json body,title --jq '{title: .title, body: .body}'
 ```
 
-**Check for closing keywords.** Look for GitHub closing keywords in the PR body: `closes #N`, `fixes #N`, `resolves #N` (case-insensitive, with or without the `#`). Also accept full URL forms like `closes https://github.com/OWNER/REPO/issues/N`.
+**Check for closing keywords.** Look for GitHub closing keywords in the PR body: `closes #N`, `fixes #N`, `resolves #N` (case-insensitive, with or without the `#`). Also accept full URL forms like `closes https://github.com/OWNER/REPO/issues/N`. Additionally, **scan the conversation context** — check earlier messages in this conversation for issue references like `#N`, `(#N)`, `issue N`, or GitHub issue URLs that the user may have mentioned before invoking this skill.
 
 **Determine if closing is expected.** Some PRs are intentionally non-closing — they represent partial progress toward an issue (e.g., investigation scripts, step 1 of N, research spikes, diagnostic tools). Scan the PR title and body for signals like:
 - "step 1", "step N of M", "part 1", "phase 1"
@@ -58,8 +58,8 @@ gh pr view NUMBER --json body,title --jq '{title: .title, body: .body}'
 |---|---|---|
 | Yes | No | Extract issue number, proceed to fetch context |
 | Yes | Yes | Warn the user: "PR has `closes #N` but appears to be partial work — confirm the issue should be closed when this merges" |
-| No | Yes | OK — no warning needed, this is expected for investigation/partial PRs |
-| No | No | **Search for a matching issue** (see below) before warning |
+| No | Yes | Still ask the user to confirm: "PR has no closing keyword and looks like partial/investigation work. Link to an issue anyway, or proceed without?" |
+| No | No | **Search for a matching issue** (see below), then **always ask the user** to confirm |
 
 ### Auto-searching for a matching issue
 
@@ -91,7 +91,7 @@ When no closing keyword is found and the PR doesn't look like partial/investigat
 3. **Confidence threshold:**
    - **High confidence** (single strong match, clear title/scope alignment): present the match to the user and ask for confirmation before editing the PR body. For example: "Found issue #N (*title*) which closely matches this PR. Link it with `closes #N`?" If confirmed, safely update the PR body (see linking procedure below). Inform the user: "Linked closes #N."
    - **Ambiguous** (multiple plausible matches or weak alignment): present the top candidates to the user via AskUserQuestion and let them pick, or confirm none apply. If the user selects an issue, persist the link using the same linking procedure below.
-   - **No matches**: warn the user: "PR does not reference a GitHub issue and no matching issue was found. Consider adding `closes #N` to the PR body if this resolves an issue."
+   - **No matches**: ask the user via AskUserQuestion: "No linked issue detected and no matching issue found. Options: (A) Link to issue #___ (enter number), (B) This PR has no GitHub issue — proceed without." Never silently proceed — always get explicit confirmation.
 
    **Linking procedure (safe body update):** Never interpolate the existing PR body into a shell argument — it is untrusted input. Instead:
 
@@ -145,6 +145,8 @@ git diff main --name-only
 - `infra_config`: `.pre-commit-config.yaml`, `.dockerignore`
 - `config`: `.toml`, `.yaml`, `.yml`, `.json`, `.cfg` files (not already categorized above)
 - `docs`: `.md` files
+- `cli_go`: `.go` files in `cli/`
+- `cli_config`: non-Go files in `cli/` (`.yml`, `.yaml`, `.tmpl`, `.sh`, `.ps1`)
 - `site`: files in `site/`
 - `other`: everything else
 
@@ -169,6 +171,9 @@ Based on changed files, launch applicable review agents **in parallel** using th
 | **persistence-reviewer** | Any file in `src/ai_company/persistence/` | `everything-claude-code:database-reviewer` |
 | **test-quality-reviewer** | Any `test_py` or `web_test` | `pr-review-toolkit:pr-test-analyzer` (custom prompt below) |
 | **async-concurrency-reviewer** | Diff contains `async def`, `await`, `asyncio`, `TaskGroup`, `create_task`, `aiosqlite` in `src_py` files | `pr-review-toolkit:code-reviewer` (custom prompt below) |
+| **go-reviewer** | Any `cli_go` | `everything-claude-code:go-reviewer` |
+| **go-security-reviewer** | Any `cli_go` — diff contains `exec.Command`, `os/exec`, `http`, `os.Remove`, `os.WriteFile`, `filepath`, user-supplied paths | `everything-claude-code:security-reviewer` |
+| **go-conventions-enforcer** | Any `cli_go` | `pr-review-toolkit:code-reviewer` (go-conventions-enforcer custom prompt — same as in pre-pr-review skill) |
 | **issue-resolution-verifier** | Issue is linked (pre-existing or auto-linked in Phase 2) | `pr-review-toolkit:code-reviewer` (custom prompt below) |
 
 The **issue-resolution-verifier** agent checks whether the PR fully resolves the linked issue. It only runs when an issue is linked — either from a pre-existing `closes #N` in the PR body, or auto-linked/user-selected during Phase 2's search.

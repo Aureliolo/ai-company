@@ -2,7 +2,7 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, mypy, pytest-unit]
+  skip: [commitizen, gitleaks, hadolint-docker, mypy, pytest-unit, go-vet, go-test]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -62,5 +62,21 @@ repos:
         name: pytest unit tests
         entry: uv run pytest tests/ -m unit -n auto -q
         language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: go-vet
+        name: go vet (CLI)
+        entry: bash -c 'cd cli && go vet ./...'
+        language: system
+        files: ^cli/.*\.go$
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: go-test
+        name: go test (CLI)
+        entry: bash -c 'cd cli && go test ./...'
+        language: system
+        files: ^cli/.*\.go$
         pass_filenames: false
         stages: [pre-push]

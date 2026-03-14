@@ -5,7 +5,7 @@
 - **What**: Framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company
 - **Python**: 3.14+ (PEP 649 native lazy annotations)
 - **License**: BUSL-1.1 (converts to Apache 2.0 on 2030-02-27)
-- **Layout**: `src/ai_company/` (src layout), `tests/` (unit/integration/e2e), `web/` (Vue 3 dashboard)
+- **Layout**: `src/ai_company/` (src layout), `tests/` (unit/integration/e2e), `web/` (Vue 3 dashboard), `cli/` (Go CLI binary)
 - **Design**: [DESIGN_SPEC.md](DESIGN_SPEC.md) (pointer to `docs/design/` pages)
 
 ## Design Spec (MANDATORY)
@@ -52,6 +52,14 @@ npm --prefix web run build                 # production build
 npm --prefix web run lint                  # ESLint
 npm --prefix web run type-check            # vue-tsc type checking
 npm --prefix web run test                  # Vitest unit tests
+```
+
+### CLI (Go Binary)
+
+```bash
+cd cli && go build -o synthorg ./main.go   # build CLI
+cd cli && go test ./...                     # run tests
+cd cli && go vet ./...                      # vet
 ```
 
 ## Documentation
@@ -125,6 +133,21 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
     utils/        # Constants, formatters, error helpers
     views/        # Page-level components (LoginPage, SetupPage, DashboardPage, OrgChartPage, TaskBoardPage, MessageFeedPage, ApprovalQueuePage, AgentProfilesPage, AgentDetailPage, BudgetPanelPage, MeetingLogsPage, ArtifactBrowserPage, SettingsPage)
     __tests__/    # Vitest unit tests (organized by feature)
+
+cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
+  main.go           # Entry point
+  cmd/              # Cobra commands (init, start, stop, status, logs, doctor, update, uninstall, version)
+  internal/
+    version/        # Build-time version vars (ldflags-injected)
+    config/         # Data dir resolution (XDG/macOS/Windows), persisted state (JSON)
+    docker/         # Docker/Compose detection + exec wrapper
+    compose/        # Compose YAML generation from embedded template
+    health/         # Health check polling with retry + timeout
+    diagnostics/    # System info collection for bug reports
+    selfupdate/     # GitHub Releases self-update + binary replacement
+  scripts/          # Install scripts (install.sh, install.ps1)
+  testdata/         # Golden files for compose generation tests
+  .goreleaser.yml   # GoReleaser config (cross-compile, checksums, Homebrew, Scoop)
 ```
 
 ## Shell Usage
@@ -206,6 +229,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 
 ## CI
 
+- **Path filtering**: `dorny/paths-filter` detects Python/dashboard/docker changes; jobs only run when their domain is affected. CLI has its own workflow (`cli.yml`).
 - **Jobs**: lint (ruff) + type-check (mypy) + test (pytest + coverage) + python-audit (pip-audit) + dockerfile-lint (hadolint) + dashboard-lint/type-check/test/build/audit (npm) run in parallel → ci-pass (gate)
 - **Pages**: `.github/workflows/pages.yml` — exports OpenAPI schema (`scripts/export_openapi.py`), builds Astro landing + Zensical docs, merges, deploys to GitHub Pages on push to main. Triggers on `docs/**`, `site/**`, `mkdocs.yml`, `pyproject.toml`, `uv.lock`, `src/ai_company/**`, `scripts/**`, workflow file changes, and `workflow_dispatch`.
 - **PR Preview**: `.github/workflows/pages-preview.yml`
@@ -221,7 +245,8 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
   - Concurrency group cancels stale builds on rapid pushes
 - **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
-- **Dependabot**: daily uv + github-actions + npm + pre-commit + docker updates, grouped minor/patch, no auto-merge. Use `/review-dep-pr` to review Dependabot PRs before merging
+- **CLI**: `.github/workflows/cli.yml` — Go lint (`golangci-lint` + `go vet`) + test (`-race -coverprofile`) + build (cross-compile matrix: linux/darwin/windows × amd64/arm64) + vulnerability check (`govulncheck`) on `cli/**` changes. GoReleaser release on `v*` tags (attaches assets to existing Release Please release, pushes to Homebrew tap + Scoop bucket).
+- **Dependabot**: daily uv + github-actions + npm + pre-commit + docker + gomod updates, grouped minor/patch, no auto-merge. Use `/review-dep-pr` to review Dependabot PRs before merging
 - **Python audit**: `.github/workflows/python-audit.yml` — weekly pip-audit scan for Python dependency vulnerabilities (also runs per-PR via `python-audit` job in ci.yml)
 - **Dockerfile lint**: hadolint lints all 3 Dockerfiles (backend, web, sandbox) in CI via `dockerfile-lint` job + hadolint-docker pre-commit hook locally
 - **Dashboard audit**: npm audit (critical + high) runs per-PR via `dashboard-audit` job in ci.yml
