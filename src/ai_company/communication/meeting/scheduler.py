@@ -216,7 +216,7 @@ class MeetingScheduler:
         self,
         meeting_type: MeetingTypeConfig,
     ) -> None:
-        """Infinite loop: sleep for the interval, then execute the meeting.
+        """Infinite loop: execute the meeting, then sleep for the interval.
 
         Catches ``CancelledError`` to exit cleanly on stop.
         Catches ``Exception`` inside the loop body so transient
