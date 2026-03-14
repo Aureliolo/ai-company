@@ -67,5 +67,8 @@ site/node_modules/
 site/dist/
 site/.astro/
 
+# CI tooling (wrangler)
+.github/node_modules/
+
 # uv
 .python-version
