@@ -26,58 +26,61 @@ import Footer from "../components/Footer.astro";
   <!-- QUICK INSTALL (CLI) -->
   <!-- ============================================================ -->
   <section class="py-12 px-6">
-    <div class="max-w-3xl mx-auto">
+    <div class="max-w-5xl mx-auto">
       <h2 class="text-2xl md:text-3xl font-bold mb-6 text-center">Quick Install</h2>
 
-      <!-- Linux / macOS -->
-      <div class="mb-6">
-        <p class="text-sm text-gray-400 mb-2 font-mono">Linux / macOS</p>
-        <div class="relative bg-[#0d1117] rounded-xl border border-white/10 overflow-hidden">
-          <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-white/10">
-            <div class="flex items-center gap-2">
-              <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
-              <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
-              <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
-              <span class="ml-2 text-xs text-gray-500 font-mono">bash</span>
-            </div>
-            <button
-              class="copy-btn text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
-              data-code="curl -sSfL https://synthorg.io/get/install.sh | bash"
-              aria-label="Copy to clipboard"
-            >
-              Copy
-            </button>
-          </div>
-          <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code><span class="text-gray-500">$</span> curl -sSfL https://synthorg.io/get/install.sh | bash</code></pre>
-        </div>
-      </div>
-
-      <!-- Windows -->
-      <div class="mb-8">
-        <p class="text-sm text-gray-400 mb-2 font-mono">Windows (PowerShell)</p>
-        <div class="relative bg-[#0d1117] rounded-xl border border-white/10 overflow-hidden">
-          <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-white/10">
-            <span class="text-xs text-gray-500 font-mono">PowerShell</span>
-            <div class="flex items-center gap-3">
+      <!-- Side-by-side terminals: stacked on mobile, side-by-side on md+ -->
+      <div class="grid md:grid-cols-2 gap-5 mb-6">
+        <!-- Linux / macOS -->
+        <div>
+          <p class="text-sm text-gray-400 mb-2 font-mono">Linux / macOS</p>
+          <div class="relative bg-[#0d1117] rounded-xl border border-white/10 overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-white/10">
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
+                <span class="ml-2 text-xs text-gray-500 font-mono">bash</span>
+              </div>
               <button
                 class="copy-btn text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
-                data-code="irm https://synthorg.io/get/install.ps1 | iex"
+                data-code="curl -sSfL https://synthorg.io/get/install.sh | bash"
                 aria-label="Copy to clipboard"
               >
                 Copy
               </button>
-              <div class="flex items-center gap-2.5 text-gray-600 text-xs leading-none">
-                <span>&#x2500;</span>
-                <span>&#x25A1;</span>
-                <span>&#x2715;</span>
+            </div>
+            <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code><span class="text-gray-500">$</span> curl -sSfL https://synthorg.io/get/install.sh | bash</code></pre>
+          </div>
+        </div>
+
+        <!-- Windows -->
+        <div>
+          <p class="text-sm text-gray-400 mb-2 font-mono">Windows (PowerShell)</p>
+          <div class="relative bg-[#0d1117] rounded-xl border border-white/10 overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-white/10">
+              <span class="text-xs text-gray-500 font-mono">PowerShell</span>
+              <div class="flex items-center gap-3">
+                <button
+                  class="copy-btn text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
+                  data-code="irm https://synthorg.io/get/install.ps1 | iex"
+                  aria-label="Copy to clipboard"
+                >
+                  Copy
+                </button>
+                <div class="flex items-center gap-2.5 text-gray-600 text-xs leading-none">
+                  <span>&#x2500;</span>
+                  <span>&#x25A1;</span>
+                  <span>&#x2715;</span>
+                </div>
               </div>
             </div>
+            <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code><span class="text-gray-500">PS&gt;</span> irm https://synthorg.io/get/install.ps1 | iex</code></pre>
           </div>
-          <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code><span class="text-gray-500">PS&gt;</span> irm https://synthorg.io/get/install.ps1 | iex</code></pre>
         </div>
       </div>
 
-      <!-- Post-install -->
+      <!-- Post-install (full width below both) -->
       <div class="bg-[#1a1f2e] rounded-xl p-6 border border-violet-500/20">
         <p class="text-sm text-gray-400 mb-3">Then set up and start your organization:</p>
         <div class="relative bg-[#0d1117] rounded-xl border border-white/10 overflow-hidden">
@@ -111,7 +114,7 @@ import Footer from "../components/Footer.astro";
     <div class="max-w-5xl mx-auto">
       <h2 class="text-2xl md:text-3xl font-bold mb-8 text-center">Other Options</h2>
 
-      <div class="grid md:grid-cols-2 gap-5">
+      <div class="grid sm:grid-cols-2 xl:grid-cols-4 gap-5">
         <!-- Audit the scripts -->
         <div class="bg-[#0F1219] rounded-xl p-6 border border-teal-500/20 flex flex-col">
           <div class="flex items-center gap-3 mb-3">
@@ -119,19 +122,19 @@ import Footer from "../components/Footer.astro";
             <h3 class="text-lg font-semibold">Look before you pipe</h3>
           </div>
           <p class="text-sm text-gray-400 mb-4 flex-1">
-            Both scripts download a pre-built binary from
+            Review the exact scripts the install commands run. They download a binary from
             <a href="https://github.com/Aureliolo/synthorg/releases" class="text-teal-400 hover:underline">GitHub Releases</a>,
             verify its SHA-256 checksum, and place it in your PATH.
           </p>
           <div class="flex flex-wrap gap-2">
             <a
-              href="https://github.com/Aureliolo/synthorg/blob/main/cli/scripts/install.sh"
+              href="/get/install.sh"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 border border-teal-500/30 rounded-lg text-teal-400 text-xs hover:bg-teal-600/20 transition-colors"
             >
               View install.sh
             </a>
             <a
-              href="https://github.com/Aureliolo/synthorg/blob/main/cli/scripts/install.ps1"
+              href="/get/install.ps1"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 border border-teal-500/30 rounded-lg text-teal-400 text-xs hover:bg-teal-600/20 transition-colors"
             >
               View install.ps1
@@ -227,18 +230,17 @@ import Footer from "../components/Footer.astro";
         if (copyStatus) copyStatus.textContent = '';
       }, 2000);
     }
-    document.querySelectorAll('.copy-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
-        const code = this.getAttribute('data-code') || '';
-        const el = this as HTMLElement;
+    document.querySelectorAll<HTMLButtonElement>('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-code') ?? '';
         if (!navigator.clipboard) {
-          flashCopy(el, 'Copy failed');
+          flashCopy(btn, 'Copy failed');
           return;
         }
         navigator.clipboard.writeText(code).then(() => {
-          flashCopy(el, 'Copied!');
+          flashCopy(btn, 'Copied!');
         }).catch(() => {
-          flashCopy(el, 'Copy failed');
+          flashCopy(btn, 'Copy failed');
         });
       });
     });
