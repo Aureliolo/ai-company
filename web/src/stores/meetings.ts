@@ -46,12 +46,12 @@ export const useMeetingStore = defineStore('meetings', () => {
     error.value = null
     try {
       const records = await meetingsApi.triggerMeeting(data)
-      // Append new records to local list
-      for (const record of records) {
-        if (!meetings.value.some((m) => m.meeting_id === record.meeting_id)) {
-          meetings.value = [...meetings.value, record]
-          total.value++
-        }
+      // Append new records not already in local list (batched)
+      const existingIds = new Set(meetings.value.map((m) => m.meeting_id))
+      const newRecords = records.filter((r) => !existingIds.has(r.meeting_id))
+      if (newRecords.length > 0) {
+        meetings.value = [...meetings.value, ...newRecords]
+        total.value += newRecords.length
       }
       return records
     } catch (err) {

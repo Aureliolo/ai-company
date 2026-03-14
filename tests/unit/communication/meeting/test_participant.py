@@ -107,6 +107,19 @@ class TestRegistryParticipantResolver:
 
         assert result == ("r-1", "r-2")
 
+    async def test_context_tuple_value(
+        self,
+        resolver: RegistryParticipantResolver,
+        registry: MagicMock,
+    ) -> None:
+        """Context can provide a tuple of agent IDs."""
+        result = await resolver.resolve(
+            ("reviewers",),
+            context={"reviewers": ("r-1", "r-2")},
+        )
+
+        assert result == ("r-1", "r-2")
+
     async def test_pass_through_literal_id(
         self,
         resolver: RegistryParticipantResolver,

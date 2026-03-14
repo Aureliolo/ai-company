@@ -1,6 +1,7 @@
 """Tests for MeetingTypeConfig frequency type change."""
 
 import pytest
+from pydantic import ValidationError
 
 from ai_company.communication.config import MeetingTypeConfig
 from ai_company.communication.meeting.frequency import MeetingFrequency
@@ -44,7 +45,7 @@ class TestMeetingTypeConfigFrequency:
 
     def test_exactly_one_of_frequency_or_trigger(self) -> None:
         """Validation: both set raises."""
-        with pytest.raises(ValueError, match="Only one of"):
+        with pytest.raises(ValidationError, match="Only one of"):
             MeetingTypeConfig(
                 name="bad",
                 frequency=MeetingFrequency.DAILY,
@@ -54,7 +55,7 @@ class TestMeetingTypeConfigFrequency:
 
     def test_neither_set_raises(self) -> None:
         """Validation: neither set raises."""
-        with pytest.raises(ValueError, match="Exactly one of"):
+        with pytest.raises(ValidationError, match="Exactly one of"):
             MeetingTypeConfig(
                 name="bad",
                 participants=("engineering",),

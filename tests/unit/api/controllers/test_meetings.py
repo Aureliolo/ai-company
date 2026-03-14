@@ -256,6 +256,15 @@ class TestTriggerMeetingRequestValidation:
                 context={"key": "v" * 1025},
             )
 
+    def test_rejects_oversized_context_list_item(self) -> None:
+        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+
+        with pytest.raises(ValueError, match="list item must be at most"):
+            TriggerMeetingRequest(
+                event_name="evt",
+                context={"key": ["valid", "v" * 1025]},
+            )
+
     def test_accepts_boundary_context(self) -> None:
         from ai_company.api.controllers.meetings import TriggerMeetingRequest
 
