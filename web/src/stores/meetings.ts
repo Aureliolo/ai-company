@@ -43,6 +43,7 @@ export const useMeetingStore = defineStore('meetings', () => {
   }
 
   async function triggerMeeting(data: TriggerMeetingRequest): Promise<MeetingRecord[] | null> {
+    loading.value = true
     error.value = null
     try {
       const records = await meetingsApi.triggerMeeting(data)
@@ -57,6 +58,8 @@ export const useMeetingStore = defineStore('meetings', () => {
     } catch (err) {
       error.value = getErrorMessage(err)
       return null
+    } finally {
+      loading.value = false
     }
   }
 

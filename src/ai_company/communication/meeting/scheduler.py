@@ -143,7 +143,17 @@ class MeetingScheduler:
         for task in self._tasks:
             task.cancel()
         if self._tasks:
-            await asyncio.gather(*self._tasks, return_exceptions=True)
+            results = await asyncio.gather(
+                *self._tasks,
+                return_exceptions=True,
+            )
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.warning(
+                        MEETING_SCHEDULER_ERROR,
+                        note="periodic task error during shutdown",
+                        exc_info=result,
+                    )
         self._tasks = []
         self._running = False
 

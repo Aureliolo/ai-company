@@ -23,6 +23,7 @@ logger = get_logger(__name__)
 _MAX_CONTEXT_KEYS: int = 20
 _MAX_CONTEXT_KEY_LEN: int = 256
 _MAX_CONTEXT_VAL_LEN: int = 1024
+_MAX_CONTEXT_LIST_ITEMS: int = 50
 
 
 class TriggerMeetingRequest(BaseModel):
@@ -54,6 +55,12 @@ class TriggerMeetingRequest(BaseModel):
                 msg = f"context key must be at most {_MAX_CONTEXT_KEY_LEN} characters"
                 raise ValueError(msg)
             if isinstance(v, list):
+                if len(v) > _MAX_CONTEXT_LIST_ITEMS:
+                    msg = (
+                        f"context list must have at most"
+                        f" {_MAX_CONTEXT_LIST_ITEMS} items"
+                    )
+                    raise ValueError(msg)
                 for item in v:
                     if len(item) > _MAX_CONTEXT_VAL_LEN:
                         msg = (

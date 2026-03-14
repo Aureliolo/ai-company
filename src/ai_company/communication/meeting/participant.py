@@ -125,7 +125,16 @@ class RegistryParticipantResolver:
         if entry in ctx:
             val = ctx[entry]
             if isinstance(val, str):
-                resolved = [val]
+                stripped = val.strip()
+                if stripped:
+                    resolved = [stripped]
+                else:
+                    logger.warning(
+                        MEETING_NO_PARTICIPANTS,
+                        entry=entry,
+                        note="context string value is blank, skipping",
+                    )
+                    resolved = []
             elif isinstance(val, (list, tuple)):
                 resolved = [v for v in val if isinstance(v, str) and v.strip()]
             else:

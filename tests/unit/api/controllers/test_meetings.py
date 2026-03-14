@@ -1,6 +1,6 @@
 """Tests for meeting controller."""
 
-from collections.abc import Generator
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -86,7 +86,7 @@ def mock_scheduler() -> MagicMock:
 def meeting_client(
     mock_orchestrator: MagicMock,
     mock_scheduler: MagicMock,
-) -> Generator[TestClient[Any]]:
+) -> Iterator[TestClient[Any]]:
     """Test client with meeting orchestrator and scheduler configured."""
     from ai_company.api.approval_store import ApprovalStore
     from ai_company.api.auth.service import AuthService
@@ -263,6 +263,15 @@ class TestTriggerMeetingRequestValidation:
             TriggerMeetingRequest(
                 event_name="evt",
                 context={"key": ["valid", "v" * 1025]},
+            )
+
+    def test_rejects_too_many_context_list_items(self) -> None:
+        from ai_company.api.controllers.meetings import TriggerMeetingRequest
+
+        with pytest.raises(ValueError, match="list must have at most"):
+            TriggerMeetingRequest(
+                event_name="evt",
+                context={"key": [f"v{i}" for i in range(51)]},
             )
 
     def test_accepts_boundary_context(self) -> None:
