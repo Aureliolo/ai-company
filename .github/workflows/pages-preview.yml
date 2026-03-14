@@ -219,6 +219,7 @@ jobs:
       - name: Checkout CI tooling (wrangler lockfile from main)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
+          ref: main
           persist-credentials: false
           sparse-checkout: |
             .github/package.json
