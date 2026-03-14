@@ -383,11 +383,16 @@ async def _apply_v7(db: aiosqlite.Connection) -> None:
             "ALTER TABLE parked_contexts RENAME TO parked_contexts_old",
         )
 
-    # Step 4: rename new → parked_contexts.
+    # Step 4: ensure parked_contexts exists, handling crash states.
+    has_current = await _table_exists(db, "parked_contexts")
     if await _table_exists(db, "parked_contexts_new"):
-        await db.execute(
-            "ALTER TABLE parked_contexts_new RENAME TO parked_contexts",
-        )
+        if has_current:
+            # Crash after a previous step 4 — keep existing, drop redundant.
+            await db.execute("DROP TABLE parked_contexts_new")
+        else:
+            await db.execute(
+                "ALTER TABLE parked_contexts_new RENAME TO parked_contexts",
+            )
 
     # Step 5: clean up.
     await db.execute("DROP TABLE IF EXISTS parked_contexts_old")

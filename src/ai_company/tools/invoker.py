@@ -650,7 +650,9 @@ class ToolInvoker:
                     approval_id=str(result.metadata["approval_id"]),
                     tool_call_id=tool_call.id,
                     tool_name=tool.name,
-                    action_type=tool.action_type,
+                    action_type=str(
+                        result.metadata.get("action_type", tool.action_type),
+                    ),
                     risk_level=ApprovalRiskLevel(
                         result.metadata.get("risk_level", "high"),
                     ),
