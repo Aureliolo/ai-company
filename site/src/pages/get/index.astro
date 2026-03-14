@@ -1,0 +1,251 @@
+---
+import Base from "../../layouts/Base.astro";
+import Footer from "../../components/Footer.astro";
+---
+
+<Base title="Get SynthOrg — Install the CLI">
+  <!-- ============================================================ -->
+  <!-- HERO (compact) -->
+  <!-- ============================================================ -->
+  <section class="relative pt-16 pb-8 px-6">
+    <div class="absolute inset-0 bg-gradient-to-b from-[#0F1219] via-[#1a1025] to-[#0F1219]"></div>
+    <div class="relative z-10 max-w-3xl mx-auto text-center">
+      <h1 class="text-4xl md:text-5xl font-bold leading-tight mb-3">
+        Get
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-teal-400">
+          SynthOrg
+        </span>
+      </h1>
+      <p class="text-lg text-gray-400 max-w-xl mx-auto">
+        Install the CLI to set up and manage your synthetic organization in seconds.
+      </p>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- QUICK INSTALL (CLI) -->
+  <!-- ============================================================ -->
+  <section class="py-10 px-6">
+    <div class="max-w-7xl mx-auto">
+      <h2 class="text-2xl md:text-3xl font-bold mb-6 text-center">Quick Install</h2>
+
+      <!-- Side-by-side terminals: stacked on mobile, side-by-side on md+ -->
+      <div class="grid lg:grid-cols-2 gap-5 mb-6">
+        <!-- Linux / macOS -->
+        <div>
+          <p class="text-sm text-gray-400 mb-2 font-mono">Linux / macOS</p>
+          <div class="relative bg-[#0d1117] rounded-xl border border-white/10 overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-white/10">
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-red-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-yellow-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-green-500/80"></span>
+                <span class="ml-2 text-xs text-gray-500 font-mono">bash</span>
+              </div>
+              <button
+                type="button"
+                class="copy-btn text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
+                data-code="curl -sSfL https://synthorg.io/get/install.sh | bash"
+                aria-label="Copy Linux/macOS install command"
+              >
+                Copy
+              </button>
+            </div>
+            <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code><span class="text-gray-500">$</span> curl -sSfL https://synthorg.io/get/install.sh | bash</code></pre>
+          </div>
+        </div>
+
+        <!-- Windows -->
+        <div>
+          <p class="text-sm text-gray-400 mb-2 font-mono">Windows (PowerShell)</p>
+          <div class="relative bg-[#0d1117] rounded-xl border border-white/10 overflow-hidden">
+            <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-white/10">
+              <span class="text-xs text-gray-500 font-mono">PowerShell</span>
+              <div class="flex items-center gap-3">
+                <button
+                  type="button"
+                  class="copy-btn text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
+                  data-code="irm https://synthorg.io/get/install.ps1 | iex"
+                  aria-label="Copy PowerShell install command"
+                >
+                  Copy
+                </button>
+                <div class="flex items-center gap-2.5 text-gray-600 text-xs leading-none">
+                  <span>&#x2500;</span>
+                  <span>&#x25A1;</span>
+                  <span>&#x2715;</span>
+                </div>
+              </div>
+            </div>
+            <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code><span class="text-gray-500">PS&gt;</span> irm https://synthorg.io/get/install.ps1 | iex</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Post-install (full width below both) -->
+      <div class="bg-[#1a1f2e] rounded-xl p-6 border border-violet-500/20">
+        <p class="text-sm text-gray-400 mb-3">Then set up and start your organization:</p>
+        <div class="relative bg-[#0d1117] rounded-xl border border-white/10 overflow-hidden">
+          <div class="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-white/10">
+            <div class="flex items-center gap-2">
+              <span class="text-gray-600 text-xs font-mono">&gt;_</span>
+              <span class="text-xs text-gray-500 font-mono">terminal</span>
+            </div>
+            <button
+              type="button"
+              class="copy-btn text-xs text-gray-500 hover:text-gray-300 transition-colors px-2 py-1 rounded hover:bg-white/5"
+              data-code="synthorg init&#10;synthorg start"
+              aria-label="Copy post-install commands"
+            >
+              Copy
+            </button>
+          </div>
+          <pre class="p-4 text-sm font-['JetBrains_Mono',monospace] text-gray-300 overflow-x-auto leading-relaxed"><code><span class="text-gray-500">$</span> synthorg init      <span class="text-gray-600"># interactive setup wizard</span>
+<span class="text-gray-500">$</span> synthorg start     <span class="text-gray-600"># pull images + start containers</span></code></pre>
+        </div>
+        <p class="text-xs text-gray-500 mt-3">
+          The web dashboard opens at <a href="http://localhost:3000" class="text-gray-400 hover:text-white transition-colors"><code>http://localhost:3000</code></a> (default).
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- OTHER OPTIONS (side-by-side grid) -->
+  <!-- ============================================================ -->
+  <section class="py-10 px-6">
+    <div class="max-w-7xl mx-auto">
+      <h2 class="text-2xl md:text-3xl font-bold mb-8 text-center">Other Options</h2>
+
+      <div class="grid sm:grid-cols-2 2xl:grid-cols-4 gap-6">
+        <!-- Audit the scripts -->
+        <div class="bg-[#0F1219] rounded-xl p-6 border border-teal-500/20 flex flex-col">
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-9 h-9 rounded-lg bg-teal-600/20 flex items-center justify-center text-teal-400 text-base shrink-0">&#128270;</div>
+            <h3 class="text-lg font-semibold">Look before you pipe</h3>
+          </div>
+          <p class="text-sm text-gray-400 mb-4 flex-1">
+            Review the exact scripts the install commands run. They download a binary from
+            <a href="https://github.com/Aureliolo/synthorg/releases" class="text-teal-400 hover:underline">GitHub Releases</a>,
+            verify its SHA-256 checksum, and place it in your PATH.
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <a
+              href="/get/view/install-sh/"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 border border-teal-500/30 rounded-lg text-teal-400 text-xs hover:bg-teal-600/20 transition-colors"
+            >
+              View install.sh
+            </a>
+            <a
+              href="/get/view/install-ps1/"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600/10 border border-teal-500/30 rounded-lg text-teal-400 text-xs hover:bg-teal-600/20 transition-colors"
+            >
+              View install.ps1
+            </a>
+          </div>
+        </div>
+
+        <!-- Direct download -->
+        <div class="bg-[#0F1219] rounded-xl p-6 border border-white/10 flex flex-col">
+          <h3 class="text-lg font-semibold mb-3">Direct Download</h3>
+          <p class="text-sm text-gray-400 mb-4 flex-1">
+            Download the install scripts and run them locally instead of piping from the network.
+          </p>
+          <div class="grid grid-cols-2 gap-3">
+            <a
+              href="/get/install.sh"
+              download
+              class="block bg-[#1a1f2e] rounded-lg p-3 border border-white/10 hover:border-violet-500/30 transition-colors text-center no-underline"
+            >
+              <p class="font-semibold text-violet-400 text-sm mb-0.5">install.sh</p>
+              <p class="text-xs text-gray-500">Linux / macOS</p>
+            </a>
+            <a
+              href="/get/install.ps1"
+              download
+              class="block bg-[#1a1f2e] rounded-lg p-3 border border-white/10 hover:border-violet-500/30 transition-colors text-center no-underline"
+            >
+              <p class="font-semibold text-violet-400 text-sm mb-0.5">install.ps1</p>
+              <p class="text-xs text-gray-500">Windows</p>
+            </a>
+          </div>
+          <p class="text-xs text-gray-500 mt-3">
+            Then run: <code class="text-gray-400">bash install.sh</code> or <code class="text-gray-400">.\install.ps1</code>
+          </p>
+        </div>
+
+        <!-- Manual binary download -->
+        <div class="bg-[#0F1219] rounded-xl p-6 border border-white/10 flex flex-col">
+          <h3 class="text-lg font-semibold mb-3">Manual Binary</h3>
+          <p class="text-sm text-gray-400 mb-4 flex-1">
+            Skip the install script — grab the binary directly from GitHub Releases.
+          </p>
+          <ol class="space-y-2.5 text-sm text-gray-400">
+            <li class="flex gap-2">
+              <span class="w-5 h-5 rounded-full bg-violet-600/20 flex items-center justify-center text-violet-400 text-xs font-bold shrink-0 mt-0.5">1</span>
+              <span>Download archive from <a href="https://github.com/Aureliolo/synthorg/releases/latest" class="text-teal-400 hover:underline">latest release</a></span>
+            </li>
+            <li class="flex gap-2">
+              <span class="w-5 h-5 rounded-full bg-violet-600/20 flex items-center justify-center text-violet-400 text-xs font-bold shrink-0 mt-0.5">2</span>
+              <span>Verify with <code class="text-gray-300">sha256sum -c checksums.txt</code></span>
+            </li>
+            <li class="flex gap-2">
+              <span class="w-5 h-5 rounded-full bg-violet-600/20 flex items-center justify-center text-violet-400 text-xs font-bold shrink-0 mt-0.5">3</span>
+              <span>Extract and move to your <code class="text-gray-300">PATH</code></span>
+            </li>
+          </ol>
+        </div>
+
+        <!-- CLI is optional -->
+        <div class="bg-[#0F1219] rounded-xl p-6 border border-white/10 flex flex-col">
+          <h3 class="text-lg font-semibold mb-3">Skip the CLI entirely</h3>
+          <p class="text-sm text-gray-400 mb-4 flex-1">
+            The CLI automates Docker Compose setup, image pulling, health checks, and updates.
+            If you're comfortable with Docker, run the containers directly.
+          </p>
+          <a
+            href="/docs/user_guide/"
+            class="inline-flex items-center justify-center px-4 py-2 border border-teal-400/50 text-teal-400 hover:bg-teal-400/10 rounded-lg text-sm font-semibold transition-colors"
+          >
+            Manual Docker Compose setup
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- FOOTER -->
+  <!-- ============================================================ -->
+  <Footer />
+
+  <!-- Screen-reader live region for copy status -->
+  <span id="copy-status" class="sr-only" role="status" aria-live="polite"></span>
+
+  <!-- Copy button script -->
+  <script>
+    const copyStatus = document.getElementById('copy-status');
+    function flashCopy(el: HTMLElement, msg: string) {
+      el.textContent = msg;
+      if (copyStatus) copyStatus.textContent = msg;
+      setTimeout(() => {
+        el.textContent = 'Copy';
+        if (copyStatus) copyStatus.textContent = '';
+      }, 2000);
+    }
+    document.querySelectorAll<HTMLButtonElement>('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const code = btn.getAttribute('data-code') ?? '';
+        if (!navigator.clipboard) {
+          flashCopy(btn, 'Copy failed');
+          return;
+        }
+        navigator.clipboard.writeText(code).then(() => {
+          flashCopy(btn, 'Copied!');
+        }).catch(() => {
+          flashCopy(btn, 'Copy failed');
+        });
+      });
+    });
+  </script>
+</Base>

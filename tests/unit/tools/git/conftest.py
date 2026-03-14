@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import ai_company.tools.git_tools as git_tools_module
+from ai_company.tools._git_base import _GIT_DISCOVERY_VARS
 from ai_company.tools.git_tools import (
     GitBranchTool,
     GitCloneTool,
@@ -24,8 +25,13 @@ _GIT_ENV = {
     "GIT_COMMITTER_EMAIL": "test@test.local",
     "GIT_TERMINAL_PROMPT": "0",
     "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_GLOBAL": os.devnull,
     "GIT_PROTOCOL_FROM_USER": "0",
 }
+# Strip git discovery vars so fixtures use cwd-based repo detection,
+# not stale env vars inherited from e.g. git push → pre-push hook.
+for _key in _GIT_DISCOVERY_VARS:
+    _GIT_ENV.pop(_key, None)
 
 
 def _run_git(args: list[str], cwd: Path) -> None:
@@ -50,6 +56,18 @@ def _run_git_output(args: list[str], cwd: Path) -> str:
         env=_GIT_ENV,
     )
     return result.stdout.strip()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Strip git discovery env vars so tools use cwd-based repo detection.
+
+    Without this, env vars like ``GIT_DIR`` inherited from
+    ``git push`` pre-push hooks cause tools to find the parent
+    repo instead of the test fixture's repo.
+    """
+    for key in _GIT_DISCOVERY_VARS:
+        monkeypatch.delenv(key, raising=False)
 
 
 @pytest.fixture
