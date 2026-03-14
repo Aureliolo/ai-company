@@ -417,6 +417,7 @@ class RootConfig(BaseModel):
         trust: Progressive trust configuration.
         promotion: Promotion/demotion configuration.
         task_engine: Task engine configuration.
+        coordination: Multi-agent coordination configuration.
     """
 
     model_config = ConfigDict(frozen=True)

@@ -100,6 +100,28 @@ class TestBuildCoordinator:
         )
         assert isinstance(coordinator, MultiAgentCoordinator)
 
+    def test_provider_only_uses_placeholder(self) -> None:
+        """Provider without model falls back to placeholder strategy."""
+        coordinator = build_coordinator(
+            config=CoordinationSectionConfig(),
+            engine=_mock_engine(),
+            task_assignment_config=TaskAssignmentConfig(),
+            provider=AsyncMock(),
+            # decomposition_model not provided
+        )
+        assert isinstance(coordinator, MultiAgentCoordinator)
+
+    def test_model_only_uses_placeholder(self) -> None:
+        """Model without provider falls back to placeholder strategy."""
+        coordinator = build_coordinator(
+            config=CoordinationSectionConfig(),
+            engine=_mock_engine(),
+            task_assignment_config=TaskAssignmentConfig(),
+            decomposition_model="test-model-001",
+            # provider not provided
+        )
+        assert isinstance(coordinator, MultiAgentCoordinator)
+
 
 @pytest.mark.unit
 class TestNoProviderDecompositionStrategy:

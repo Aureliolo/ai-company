@@ -41,8 +41,10 @@ class TestCoordinationSectionConfigDefaults:
         assert isinstance(cfg.auto_topology_rules, AutoTopologyConfig)
 
     def test_frozen_model(self) -> None:
+        from pydantic import ValidationError
+
         cfg = CoordinationSectionConfig()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             cfg.fail_fast = True  # type: ignore[misc]
 
 
@@ -102,9 +104,19 @@ class TestCoordinationSectionConfigValidation:
     """Validation constraints on CoordinationSectionConfig."""
 
     def test_max_concurrency_must_be_positive(self) -> None:
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
             CoordinationSectionConfig(max_concurrency_per_wave=0)
 
     def test_base_branch_must_not_be_blank(self) -> None:
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
             CoordinationSectionConfig(base_branch="  ")
+
+    def test_extra_fields_forbidden(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="extra"):
+            CoordinationSectionConfig(unknown_field="oops")  # type: ignore[call-arg]

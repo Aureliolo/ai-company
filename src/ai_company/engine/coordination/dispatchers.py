@@ -160,6 +160,8 @@ async def _setup_workspaces(
     try:
         requests = _build_workspace_requests(routing_result, config)
         workspaces = await workspace_service.setup_group(requests=requests)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         elapsed = time.monotonic() - start
         phase = CoordinationPhaseResult(
@@ -204,6 +206,8 @@ async def _merge_workspaces(
         merge_result = await workspace_service.merge_group(
             workspaces=workspaces,
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         elapsed = time.monotonic() - start
         phase = CoordinationPhaseResult(
@@ -244,6 +248,8 @@ async def _teardown_workspaces(
     )
     try:
         await workspace_service.teardown_group(workspaces=workspaces)
+    except MemoryError, RecursionError:
+        raise
     except Exception as exc:
         logger.warning(
             COORDINATION_CLEANUP_FAILED,
@@ -324,6 +330,8 @@ async def _execute_waves(
             if not success and fail_fast:
                 break
 
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             elapsed = time.monotonic() - start
             logger.warning(
@@ -650,6 +658,8 @@ class ContextDependentDispatcher:
             wave_workspaces = await workspace_service.setup_group(
                 requests=wave_requests,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             ws_elapsed = time.monotonic() - ws_start
             logger.warning(
@@ -751,6 +761,8 @@ class ContextDependentDispatcher:
                     duration_seconds=elapsed,
                 )
 
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             elapsed = time.monotonic() - start
             wave_failed = True

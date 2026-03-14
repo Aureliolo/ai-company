@@ -243,6 +243,10 @@ class AgentEngine:
         """
         if self._coordinator is None:
             msg = "No coordinator configured for multi-agent dispatch"
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                error=msg,
+            )
             raise ExecutionStateError(msg)
         return await self._coordinator.coordinate(context)
 

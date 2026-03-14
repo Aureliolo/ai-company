@@ -276,20 +276,40 @@ class CoordinateTaskRequest(BaseModel):
 
     Attributes:
         agent_names: Agent names to coordinate with (``None`` = all active).
+            When provided, must be non-empty and unique.
         max_subtasks: Maximum subtasks for decomposition.
         max_concurrency_per_wave: Override for max concurrency per wave.
-        fail_fast: Override for fail-fast behaviour.
+        fail_fast: Override for fail-fast behaviour (``None`` = use
+            section config default).
     """
 
     model_config = ConfigDict(frozen=True)
 
     agent_names: tuple[NotBlankStr, ...] | None = Field(
         default=None,
+        min_length=1,
         description="Agent names to coordinate with (None = all active)",
     )
     max_subtasks: int = Field(default=10, ge=1, le=50)
-    max_concurrency_per_wave: int | None = Field(default=None, ge=1)
-    fail_fast: bool = False
+    max_concurrency_per_wave: int | None = Field(
+        default=None,
+        ge=1,
+        le=50,
+    )
+    fail_fast: bool | None = None
+
+    @model_validator(mode="after")
+    def _validate_unique_agent_names(self) -> Self:
+        """Reject duplicate agent names."""
+        if self.agent_names is not None:
+            seen: set[str] = set()
+            for name in self.agent_names:
+                lower = name.lower()
+                if lower in seen:
+                    msg = f"Duplicate agent name: {name!r}"
+                    raise ValueError(msg)
+                seen.add(lower)
+        return self
 
 
 class CoordinationPhaseResponse(BaseModel):
@@ -306,8 +326,19 @@ class CoordinationPhaseResponse(BaseModel):
 
     phase: NotBlankStr
     success: bool
-    duration_seconds: float
+    duration_seconds: float = Field(ge=0.0)
     error: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_success_error_consistency(self) -> Self:
+        """Ensure success and error fields are consistent."""
+        if self.success and self.error is not None:
+            msg = "successful phase must not have an error"
+            raise ValueError(msg)
+        if not self.success and self.error is None:
+            msg = "failed phase must have an error description"
+            raise ValueError(msg)
+        return self
 
 
 class CoordinationResultResponse(BaseModel):
@@ -316,19 +347,26 @@ class CoordinationResultResponse(BaseModel):
     Attributes:
         parent_task_id: ID of the parent task.
         topology: Resolved coordination topology.
-        is_success: Whether all phases succeeded.
         total_duration_seconds: Total wall-clock duration.
         total_cost_usd: Total cost across all waves.
         phases: Phase results in execution order.
         wave_count: Number of execution waves.
+        is_success: Whether all phases succeeded (computed).
     """
 
     model_config = ConfigDict(frozen=True)
 
     parent_task_id: NotBlankStr
-    topology: str
-    is_success: bool
-    total_duration_seconds: float
-    total_cost_usd: float
-    phases: tuple[CoordinationPhaseResponse, ...]
-    wave_count: int
+    topology: NotBlankStr
+    total_duration_seconds: float = Field(ge=0.0)
+    total_cost_usd: float = Field(ge=0.0)
+    phases: tuple[CoordinationPhaseResponse, ...] = Field(min_length=1)
+    wave_count: int = Field(ge=0)
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Whether all phases succeeded",
+    )
+    @property
+    def is_success(self) -> bool:
+        """True when every phase completed successfully."""
+        return all(p.success for p in self.phases)

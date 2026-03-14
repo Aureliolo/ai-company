@@ -174,6 +174,8 @@ class MultiAgentCoordinator:
 
         except CoordinationPhaseError:
             raise
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.exception(
                 COORDINATION_FAILED,
@@ -404,6 +406,8 @@ class MultiAgentCoordinator:
             )
         except CoordinationPhaseError:
             raise
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             elapsed = time.monotonic() - start
             logger.warning(
@@ -467,6 +471,8 @@ class MultiAgentCoordinator:
                 context.task.id,
                 tuple(statuses),
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             elapsed = time.monotonic() - start
             logger.warning(
@@ -506,7 +512,14 @@ class MultiAgentCoordinator:
         phases: list[CoordinationPhaseResult],
     ) -> None:
         """Update parent task status via TaskEngine if available."""
-        if self._task_engine is None or rollup is None:
+        if self._task_engine is None:
+            return
+        if rollup is None:
+            logger.info(
+                COORDINATION_PHASE_STARTED,
+                phase="update_parent",
+                note="Skipped — rollup is None (rollup phase failed)",
+            )
             return
 
         start = time.monotonic()
@@ -548,6 +561,8 @@ class MultiAgentCoordinator:
                     error=result.error,
                 )
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             elapsed = time.monotonic() - start
             logger.warning(

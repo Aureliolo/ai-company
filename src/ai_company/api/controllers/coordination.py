@@ -21,7 +21,10 @@ from ai_company.api.errors import (
 )
 from ai_company.api.guards import require_write_access
 from ai_company.api.ws_models import WsEvent, WsEventType
-from ai_company.engine.coordination.models import CoordinationContext
+from ai_company.engine.coordination.models import (
+    CoordinationContext,
+    CoordinationResult,
+)
 from ai_company.engine.errors import CoordinationPhaseError
 from ai_company.observability import get_logger
 from ai_company.observability.events.api import (
@@ -30,11 +33,13 @@ from ai_company.observability.events.api import (
     API_COORDINATION_FAILED,
     API_COORDINATION_STARTED,
     API_RESOURCE_NOT_FOUND,
+    API_WS_SEND_FAILED,
 )
 
 if TYPE_CHECKING:
     from ai_company.api.state import AppState
     from ai_company.core.agent import AgentIdentity
+    from ai_company.core.task import Task
 
 logger = get_logger(__name__)
 
@@ -74,11 +79,33 @@ def _publish_ws_event(
         raise
     except Exception:
         logger.warning(
-            API_COORDINATION_FAILED,
-            note="Failed to publish WebSocket event",
+            API_WS_SEND_FAILED,
+            note="Failed to publish coordination WebSocket event",
             event_type=event_type.value,
             exc_info=True,
         )
+
+
+def _map_result_to_response(
+    result: CoordinationResult,
+) -> CoordinationResultResponse:
+    """Map a domain ``CoordinationResult`` to an API response DTO."""
+    return CoordinationResultResponse(
+        parent_task_id=result.parent_task_id,
+        topology=result.topology.value,
+        total_duration_seconds=result.total_duration_seconds,
+        total_cost_usd=result.total_cost_usd,
+        phases=tuple(
+            CoordinationPhaseResponse(
+                phase=p.phase,
+                success=p.success,
+                duration_seconds=p.duration_seconds,
+                error=p.error,
+            )
+            for p in result.phases
+        ),
+        wave_count=len(result.waves),
+    )  # is_success is @computed_field from phases
 
 
 class CoordinationController(Controller):
@@ -113,12 +140,43 @@ class CoordinationController(Controller):
         """
         app_state: AppState = state.app_state
 
-        # Ensure coordinator is configured
         if not app_state.has_coordinator:
+            logger.warning(
+                API_COORDINATION_FAILED,
+                error="Coordinator not configured",
+            )
             msg = "Coordinator not configured"
             raise ServiceUnavailableError(msg)
 
-        # 1. Get task
+        task = await self._get_task(app_state, task_id)
+        agents = await self._resolve_agents(app_state, data, task_id)
+        context = self._build_context(app_state, task, agents, data)
+
+        _publish_ws_event(
+            request,
+            WsEventType.COORDINATION_STARTED,
+            {"task_id": task_id, "agent_count": len(agents)},
+        )
+        logger.info(
+            API_COORDINATION_STARTED,
+            task_id=task_id,
+            agent_count=len(agents),
+        )
+
+        result = await self._execute(
+            app_state,
+            request,
+            context,
+            task_id,
+        )
+        return ApiResponse(data=_map_result_to_response(result))
+
+    async def _get_task(
+        self,
+        app_state: AppState,
+        task_id: str,
+    ) -> Task:
+        """Fetch task or raise 404."""
         task = await app_state.task_engine.get_task(task_id)
         if task is None:
             logger.warning(
@@ -128,22 +186,25 @@ class CoordinationController(Controller):
             )
             msg = f"Task {task_id!r} not found"
             raise NotFoundError(msg)
+        return task
 
-        # 2. Resolve agents
-        agents = await self._resolve_agents(app_state, data, task_id)
-
-        # 3. Build coordination config
-        coord_config = app_state.config.coordination.to_coordination_config(
-            max_concurrency_per_wave=data.max_concurrency_per_wave,
-            fail_fast=data.fail_fast,
-        )
-
-        # 4. Build coordination context
+    def _build_context(
+        self,
+        app_state: AppState,
+        task: Task,
+        agents: tuple[AgentIdentity, ...],
+        data: CoordinateTaskRequest,
+    ) -> CoordinationContext:
+        """Build coordination context from request data."""
         from ai_company.engine.decomposition.models import (  # noqa: PLC0415
             DecompositionContext,
         )
 
-        context = CoordinationContext(
+        coord_config = app_state.config.coordination.to_coordination_config(
+            max_concurrency_per_wave=data.max_concurrency_per_wave,
+            fail_fast=data.fail_fast,
+        )
+        return CoordinationContext(
             task=task,
             available_agents=agents,
             decomposition_context=DecompositionContext(
@@ -152,23 +213,14 @@ class CoordinationController(Controller):
             config=coord_config,
         )
 
-        # 5. Publish start event
-        _publish_ws_event(
-            request,
-            WsEventType.COORDINATION_STARTED,
-            {
-                "task_id": task_id,
-                "agent_count": len(agents),
-            },
-        )
-
-        logger.info(
-            API_COORDINATION_STARTED,
-            task_id=task_id,
-            agent_count=len(agents),
-        )
-
-        # 6. Execute coordination
+    async def _execute(
+        self,
+        app_state: AppState,
+        request: Request[Any, Any, Any],
+        context: CoordinationContext,
+        task_id: str,
+    ) -> CoordinationResult:
+        """Run coordination and publish WS events."""
         try:
             result = await app_state.coordinator.coordinate(context)
         except CoordinationPhaseError as exc:
@@ -189,7 +241,6 @@ class CoordinationController(Controller):
             )
             raise ApiValidationError(str(exc)) from exc
 
-        # 7. Publish completion event
         ws_event_type = (
             WsEventType.COORDINATION_COMPLETED
             if result.is_success
@@ -205,7 +256,6 @@ class CoordinationController(Controller):
                 "total_duration_seconds": result.total_duration_seconds,
             },
         )
-
         logger.info(
             API_COORDINATION_COMPLETED,
             task_id=task_id,
@@ -213,26 +263,7 @@ class CoordinationController(Controller):
             is_success=result.is_success,
             total_duration_seconds=result.total_duration_seconds,
         )
-
-        # 8. Map to response
-        response = CoordinationResultResponse(
-            parent_task_id=result.parent_task_id,
-            topology=result.topology.value,
-            is_success=result.is_success,
-            total_duration_seconds=result.total_duration_seconds,
-            total_cost_usd=result.total_cost_usd,
-            phases=tuple(
-                CoordinationPhaseResponse(
-                    phase=p.phase,
-                    success=p.success,
-                    duration_seconds=p.duration_seconds,
-                    error=p.error,
-                )
-                for p in result.phases
-            ),
-            wave_count=len(result.waves),
-        )
-        return ApiResponse(data=response)
+        return result
 
     async def _resolve_agents(
         self,

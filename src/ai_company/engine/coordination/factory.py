@@ -49,6 +49,10 @@ class _NoProviderDecompositionStrategy:
     tests). Attempting to actually decompose will raise a clear error.
     """
 
+    def get_strategy_name(self) -> str:
+        """Return placeholder strategy name."""
+        return "no-provider-placeholder"
+
     async def decompose(
         self,
         task: Task,  # noqa: ARG002
@@ -59,6 +63,10 @@ class _NoProviderDecompositionStrategy:
             "No LLM provider configured for decomposition. "
             "Provide a CompletionProvider and decomposition_model "
             "to enable LLM-based task decomposition."
+        )
+        logger.warning(
+            COORDINATION_STARTED,
+            note="Decomposition attempted without LLM provider",
         )
         raise DecompositionError(msg)
 
@@ -126,7 +134,7 @@ def build_coordinator(  # noqa: PLR0913
             model=decomposition_model,
         )
     else:
-        strategy = _NoProviderDecompositionStrategy()  # type: ignore[assignment]
+        strategy = _NoProviderDecompositionStrategy()
 
     # 3. Decomposition service
     decomposition_service = DecompositionService(strategy, classifier)

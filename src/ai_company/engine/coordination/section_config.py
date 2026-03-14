@@ -26,7 +26,7 @@ class CoordinationSectionConfig(BaseModel):
         base_branch: Git branch to use for workspace isolation.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     topology: CoordinationTopology = Field(
         default=CoordinationTopology.AUTO,

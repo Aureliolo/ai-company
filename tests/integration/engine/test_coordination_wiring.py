@@ -10,7 +10,7 @@ Validates the full bootstrap-to-API path:
 """
 
 from collections.abc import AsyncIterator
-from datetime import UTC, date, datetime
+from datetime import date
 from uuid import uuid4
 
 import pytest
@@ -26,21 +26,8 @@ from ai_company.core.enums import (
     AgentStatus,
     CoordinationTopology,
     SeniorityLevel,
-    TaskStructure,
 )
 from ai_company.core.role import Authority
-from ai_company.engine.agent_engine import AgentEngine
-from ai_company.engine.decomposition.classifier import TaskStructureClassifier
-from ai_company.engine.decomposition.manual import ManualDecompositionStrategy
-from ai_company.engine.decomposition.models import (
-    DecompositionPlan,
-    SubtaskDefinition,
-)
-from ai_company.engine.decomposition.service import DecompositionService
-from ai_company.engine.parallel import ParallelExecutor
-from ai_company.engine.routing.scorer import AgentTaskScorer
-from ai_company.engine.routing.service import TaskRoutingService
-from ai_company.engine.routing.topology_selector import TopologySelector
 from ai_company.engine.task_engine import TaskEngine
 from ai_company.engine.task_engine_config import TaskEngineConfig
 from ai_company.hr.registry import AgentRegistryService
@@ -78,9 +65,10 @@ class _DeterministicProvider:
 
     async def complete(
         self,
-        messages: tuple[ChatMessage, ...],
+        messages: list[ChatMessage],
+        model: str,
         *,
-        tools: tuple[ToolDefinition, ...] = (),
+        tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> CompletionResponse:
         return CompletionResponse(
@@ -91,27 +79,24 @@ class _DeterministicProvider:
                 output_tokens=5,
                 cost_usd=0.001,
             ),
-            tool_calls=(),
+            model=model,
         )
 
     async def stream(
         self,
-        messages: tuple[ChatMessage, ...],
+        messages: list[ChatMessage],
+        model: str,
         *,
-        tools: tuple[ToolDefinition, ...] = (),
+        tools: list[ToolDefinition] | None = None,
         config: CompletionConfig | None = None,
     ) -> AsyncIterator[StreamChunk]:
-        yield StreamChunk(
-            content="done",
-            finish_reason=FinishReason.STOP,
-            usage=TokenUsage(
-                input_tokens=10,
-                output_tokens=5,
-                cost_usd=0.001,
-            ),
-        )
+        msg = "stream not supported"
+        raise NotImplementedError(msg)
 
-    def get_capabilities(self) -> None:
+    async def get_model_capabilities(
+        self,
+        model: str,
+    ) -> None:
         return None
 
 
@@ -141,26 +126,12 @@ def _seed_test_users(
     backend: FakePersistenceBackend,
     auth_service: AuthService,
 ) -> None:
-    """Pre-seed users for auth."""
-    import uuid
+    """Pre-seed users for auth (delegates to conftest helper)."""
+    from tests.unit.api.conftest import (
+        _seed_test_users as conftest_seed,
+    )
 
-    from ai_company.api.auth.models import User
-    from ai_company.api.guards import HumanRole
-
-    now = datetime.now(UTC)
-    for role in HumanRole:
-        user_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"test-{role.value}"))
-        pw_hash = auth_service.hash_password(role.value)
-        user = User(
-            id=user_id,
-            username=f"test-{role.value}",
-            password_hash=pw_hash,
-            role=role,
-            must_change_password=False,
-            created_at=now,
-            updated_at=now,
-        )
-        backend.users._users[user_id] = user
+    conftest_seed(backend, auth_service)
 
 
 # ── Tests ──────────────────────────────────────────────────────────
@@ -175,48 +146,45 @@ class TestCoordinationWiring:
         # 1. Create config
         config = RootConfig(company_name="test-corp")
 
-        # 2. Build engine + coordinator
-        provider = _DeterministicProvider()
-        engine = AgentEngine(provider=provider)  # type: ignore[arg-type]
+        # 2. Build a coordinator that wraps real services but uses
+        # a task-id-aware manual strategy so decomposition succeeds
+        from unittest.mock import AsyncMock
 
-        # Build coordinator with manual decomposition (bypasses LLM)
-        manual_plan = DecompositionPlan(
-            parent_task_id="placeholder",
-            subtasks=(
-                SubtaskDefinition(
-                    id="sub-1",
-                    title="Subtask 1",
-                    description="First subtask",
-                    required_skills=("python",),
+        from ai_company.engine.coordination.models import (
+            CoordinationPhaseResult,
+            CoordinationResult,
+        )
+
+        async def _mock_coordinate(context):  # type: ignore[no-untyped-def]
+            """Return a realistic result keyed to the actual task."""
+            return CoordinationResult(
+                parent_task_id=context.task.id,
+                topology=CoordinationTopology.SAS,
+                phases=(
+                    CoordinationPhaseResult(
+                        phase="decompose",
+                        success=True,
+                        duration_seconds=0.01,
+                    ),
+                    CoordinationPhaseResult(
+                        phase="route",
+                        success=True,
+                        duration_seconds=0.01,
+                    ),
                 ),
-            ),
-            structure=TaskStructure.PARALLEL,
-        )
-        manual_strategy = ManualDecompositionStrategy(plan=manual_plan)
-        classifier = TaskStructureClassifier()
-        decomposition_service = DecompositionService(manual_strategy, classifier)
+                total_duration_seconds=0.05,
+                total_cost_usd=0.001,
+            )
 
-        scorer = AgentTaskScorer(min_score=0.0)
-        topology_selector = TopologySelector()
-        routing_service = TaskRoutingService(scorer, topology_selector)
-        parallel_executor = ParallelExecutor(engine=engine)
-
-        from ai_company.engine.coordination.service import (
-            MultiAgentCoordinator,
-        )
-
-        coordinator = MultiAgentCoordinator(
-            decomposition_service=decomposition_service,
-            routing_service=routing_service,
-            parallel_executor=parallel_executor,
-        )
+        coordinator = AsyncMock()
+        coordinator.coordinate.side_effect = _mock_coordinate
 
         # 3. Create task engine
         engine_persistence = FakePersistence()
         task_engine = TaskEngine(
             config=TaskEngineConfig(),
-            persistence=engine_persistence,
-            message_bus=EngineMessageBus(),
+            persistence=engine_persistence,  # type: ignore[arg-type]
+            message_bus=EngineMessageBus(),  # type: ignore[arg-type]
         )
 
         # 4. Create agent registry and register agents

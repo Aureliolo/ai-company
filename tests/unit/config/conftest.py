@@ -22,6 +22,7 @@ from ai_company.config.schema import (
 )
 from ai_company.core.company import CompanyConfig
 from ai_company.core.resilience_config import RateLimiterConfig, RetryConfig
+from ai_company.engine.coordination.section_config import CoordinationSectionConfig
 from ai_company.hr.promotion.config import PromotionConfig
 from ai_company.memory.config import CompanyMemoryConfig
 from ai_company.memory.org.config import OrgMemoryConfig
@@ -96,6 +97,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     security = SecurityConfig()
     trust = TrustConfig()
     promotion = PromotionConfig()
+    coordination = CoordinationSectionConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

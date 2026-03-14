@@ -107,8 +107,8 @@ def coordination_client(
 
     task_engine = TaskEngine(
         config=TaskEngineConfig(),
-        persistence=FakePersistence(),
-        message_bus=EngineMessageBus(),
+        persistence=FakePersistence(),  # type: ignore[arg-type]
+        message_bus=EngineMessageBus(),  # type: ignore[arg-type]
     )
 
     app = create_app(
@@ -193,6 +193,40 @@ class TestCoordinationControllerHappyPath:
         )
         assert resp.status_code == 200
         assert resp.json()["success"] is True
+
+    async def test_coordinate_with_failed_phases(
+        self,
+        coordination_client: TestClient[Any],
+        mock_coordinator: AsyncMock,
+        agent_registry: AgentRegistryService,
+    ) -> None:
+        """Coordination returns is_success=False for failed phases."""
+        agent = _make_agent()
+        await agent_registry.register(agent)
+
+        resp = coordination_client.post(
+            "/api/v1/tasks",
+            json={
+                "title": "Test task",
+                "description": "Test",
+                "type": "development",
+                "project": "proj-1",
+                "created_by": "api",
+            },
+        )
+        task_id = resp.json()["data"]["id"]
+        mock_coordinator.coordinate.return_value = _make_coordination_result(
+            task_id, is_success=False
+        )
+
+        resp = coordination_client.post(
+            f"/api/v1/tasks/{task_id}/coordinate",
+            json={},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert body["data"]["is_success"] is False
 
 
 @pytest.mark.unit
