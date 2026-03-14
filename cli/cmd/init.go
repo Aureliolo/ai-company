@@ -181,7 +181,11 @@ func buildState(a setupAnswers) (config.State, error) {
 }
 
 func writeInitFiles(state config.State) error {
-	if err := config.EnsureDir(state.DataDir); err != nil {
+	safeDir, err := config.SecurePath(state.DataDir)
+	if err != nil {
+		return err
+	}
+	if err := config.EnsureDir(safeDir); err != nil {
 		return fmt.Errorf("creating data directory: %w", err)
 	}
 
@@ -191,7 +195,7 @@ func writeInitFiles(state config.State) error {
 		return fmt.Errorf("generating compose file: %w", err)
 	}
 
-	composePath := filepath.Join(state.DataDir, "compose.yml")
+	composePath := filepath.Join(safeDir, "compose.yml")
 	if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
 		return fmt.Errorf("writing compose file: %w", err)
 	}
@@ -228,7 +232,8 @@ func generateSecret(n int) (string, error) {
 }
 
 func fileExists(path string) bool {
-	_, err := os.Stat(path)
+	clean := filepath.Clean(path)
+	_, err := os.Stat(clean)
 	return err == nil
 }
 

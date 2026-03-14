@@ -39,8 +39,12 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	text := report.FormatText()
 
 	// Save to file.
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return err
+	}
 	filename := fmt.Sprintf("synthorg-diagnostic-%s.txt", time.Now().Format("20060102-150405"))
-	savePath := filepath.Join(state.DataDir, filename)
+	savePath := filepath.Join(safeDir, filename)
 	if err := os.WriteFile(savePath, []byte(text), 0o600); err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not save diagnostic file: %v\n", err)
 	} else {

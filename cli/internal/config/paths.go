@@ -3,6 +3,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -40,7 +41,23 @@ func dataDirForOS(goos, home, localAppData, xdgDataHome string) string {
 	}
 }
 
+// SecurePath validates that a path is absolute and returns a cleaned version.
+// This satisfies static analysis (CodeQL go/path-injection) by ensuring
+// environment-variable-derived paths are sanitized before filesystem use.
+func SecurePath(path string) (string, error) {
+	clean := filepath.Clean(path)
+	if !filepath.IsAbs(clean) {
+		return "", fmt.Errorf("path must be absolute, got %q", path)
+	}
+	return clean, nil
+}
+
 // EnsureDir creates the directory (and parents) if it does not exist.
+// The path must be absolute.
 func EnsureDir(path string) error {
-	return os.MkdirAll(path, 0o700)
+	safe, err := SecurePath(path)
+	if err != nil {
+		return err
+	}
+	return os.MkdirAll(safe, 0o700)
 }

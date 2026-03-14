@@ -106,7 +106,10 @@ func confirmAndRemoveData(cmd *cobra.Command, state config.State) error {
 	}
 
 	if removeData {
-		dir := state.DataDir
+		dir, err := config.SecurePath(state.DataDir)
+		if err != nil {
+			return err
+		}
 		// Safety: refuse to remove root, home, or empty paths.
 		home, _ := os.UserHomeDir()
 		if dir == "" || dir == "/" || dir == home || (len(dir) == 3 && dir[1] == ':' && dir[2] == '\\') {
