@@ -44,7 +44,6 @@ _STATUS_TO_WS_EVENT: dict[str, str] = {
     "completed": "meeting.completed",
     "failed": "meeting.failed",
     "budget_exhausted": "meeting.failed",
-    "in_progress": "meeting.started",
 }
 
 logger = get_logger(__name__)
@@ -226,7 +225,6 @@ class MeetingScheduler:
 
         try:
             while True:
-                await asyncio.sleep(interval)
                 logger.info(
                     MEETING_PERIODIC_TRIGGERED,
                     meeting_type=meeting_type.name,
@@ -240,6 +238,7 @@ class MeetingScheduler:
                         meeting_type=meeting_type.name,
                         note="periodic execution failed",
                     )
+                await asyncio.sleep(interval)
         except asyncio.CancelledError:  # noqa: TRY203
             raise
 
@@ -267,7 +266,16 @@ class MeetingScheduler:
         # First resolved participant is designated as the meeting leader.
         leader_id = resolved[0]
         participant_ids = resolved[1:]
-        agenda = self._build_default_agenda(meeting_type, context)
+
+        try:
+            agenda = self._build_default_agenda(meeting_type, context)
+        except Exception:
+            logger.exception(
+                MEETING_SCHEDULER_ERROR,
+                meeting_type=meeting_type.name,
+                note="agenda build failed",
+            )
+            return None
 
         return await self._run_and_publish(
             meeting_type,
