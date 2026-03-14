@@ -33,11 +33,14 @@ jobs:
           # ZPL-2.1: pytz 2026.1 (MIT AND ZPL-2.1, Zope Public License — permissive)
           # Null: mem0ai, numpy, qdrant-client, posthog — license metadata missing
           #   from lockfile but all are permissive (Apache-2.0 / BSD-3-Clause / MIT)
+          # LicenseRef-scancode-google-patent-license-golang: golang.org/x/* packages
+          #   (BSD-3-Clause AND google-patent-grant, standard Go stdlib-adjacent, permissive)
           allow-licenses: >-
             MIT, MIT-0, Apache-2.0, BSD-2-Clause, BSD-3-Clause,
             ISC, MPL-2.0, PSF-2.0, Unlicense, 0BSD,
             CC0-1.0, Python-2.0, Python-2.0.1,
             LicenseRef-scancode-free-unknown, LicenseRef-scancode-protobuf,
+            LicenseRef-scancode-google-patent-license-golang,
             ZPL-2.1,
             LGPL-2.0-only, LGPL-2.1-only, LGPL-3.0-only, LGPL-3.0-or-later,
             BlueOak-1.0.0

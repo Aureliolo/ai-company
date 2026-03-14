@@ -3,6 +3,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -38,6 +39,15 @@ func resolveDataDir() string {
 		return resolved
 	}
 	return dir
+}
+
+// isInteractive returns true if stdin is a terminal (not piped or in CI).
+func isInteractive() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
 }
 
 // Execute runs the root command.

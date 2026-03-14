@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -77,14 +78,17 @@ func printContainerStates(ctx context.Context, out io.Writer, info docker.Info, 
 }
 
 func printResourceUsage(ctx context.Context, out io.Writer, info docker.Info, state config.State) {
-	// Get container names to query resource usage.
+	// Get container IDs for this compose project only.
 	psOut, err := docker.ComposeExecOutput(ctx, info, state.DataDir, "ps", "-q")
-	if err != nil || psOut == "" {
+	if err != nil || strings.TrimSpace(psOut) == "" {
 		return
 	}
 
-	statsOut, err := docker.RunCmd(ctx, "docker", "stats", "--no-stream", "--format",
-		"table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}")
+	// Pass specific container IDs to docker stats (not all host containers).
+	ids := strings.Fields(strings.TrimSpace(psOut))
+	statsArgs := append([]string{"stats", "--no-stream", "--format",
+		"table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"}, ids...)
+	statsOut, err := docker.RunCmd(ctx, "docker", statsArgs...)
 	if err != nil {
 		fmt.Fprintf(out, "Could not get resource usage: %v\n", err)
 		return

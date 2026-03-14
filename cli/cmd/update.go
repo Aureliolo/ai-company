@@ -53,11 +53,6 @@ func updateCLI(cmd *cobra.Command) error {
 
 	fmt.Fprintf(out, "New version available: %s (current: %s)\n", result.LatestVersion, result.CurrentVersion)
 
-	if result.AssetURL == "" {
-		fmt.Fprintln(out, "No binary available for your platform. Download manually from GitHub Releases.")
-		return nil
-	}
-
 	fmt.Fprintln(out, "Downloading...")
 	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL)
 	if err != nil {
@@ -100,6 +95,11 @@ func updateContainerImages(cmd *cobra.Command) error {
 	}
 
 	if psOut == "" {
+		return nil
+	}
+
+	if !isInteractive() {
+		fmt.Fprintln(out, "Non-interactive mode: skipping restart. Run 'synthorg stop && synthorg start' to apply new images.")
 		return nil
 	}
 

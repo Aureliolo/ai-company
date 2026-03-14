@@ -152,6 +152,29 @@ jobs:
         working-directory: cli
         run: govulncheck ./...
 
+  # ── Gate: all CLI checks must pass ──
+  cli-pass:
+    name: CLI Pass
+    if: always()
+    needs: [cli-changes, cli-lint, cli-test, cli-build, cli-vuln]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Check results
+        env:
+          RESULTS: >-
+            ${{ needs.cli-changes.result }}
+            ${{ needs.cli-lint.result }}
+            ${{ needs.cli-test.result }}
+            ${{ needs.cli-build.result }}
+            ${{ needs.cli-vuln.result }}
+        run: |
+          if echo "$RESULTS" | grep -qE "failure|cancelled"; then
+            echo "CLI checks failed. Job results: $RESULTS"
+            exit 1
+          fi
+          echo "All CLI checks passed (some may have been skipped due to path filters)"
+
   # ── Release (GoReleaser, only on version tags) ──
   cli-release:
     name: CLI Release
@@ -169,7 +192,8 @@ jobs:
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: cli/go.mod
-          cache-dependency-path: cli/go.sum
+          # Disable caching in release job to prevent cache-poisoning (zizmor).
+          cache: false
 
       - name: Wait for GitHub Release to exist
         env:
@@ -196,7 +220,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pin checksums in install scripts and update release notes
+      - name: Append install instructions and checksums to release notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -215,37 +239,16 @@ jobs:
           CS_windows_amd64="$(get_checksum synthorg_windows_amd64.zip)"
           CS_windows_arm64="$(get_checksum synthorg_windows_arm64.zip)"
 
-          # ── Update install.sh ──
-          sed -i "s/^PINNED_VERSION=.*/PINNED_VERSION=\"${TAG}\"/" cli/scripts/install.sh
-          sed -i "s/^CHECKSUM_linux_amd64=.*/CHECKSUM_linux_amd64=\"${CS_linux_amd64}\"/" cli/scripts/install.sh
-          sed -i "s/^CHECKSUM_linux_arm64=.*/CHECKSUM_linux_arm64=\"${CS_linux_arm64}\"/" cli/scripts/install.sh
-          sed -i "s/^CHECKSUM_darwin_amd64=.*/CHECKSUM_darwin_amd64=\"${CS_darwin_amd64}\"/" cli/scripts/install.sh
-          sed -i "s/^CHECKSUM_darwin_arm64=.*/CHECKSUM_darwin_arm64=\"${CS_darwin_arm64}\"/" cli/scripts/install.sh
-
-          # ── Update install.ps1 ──
-          sed -i "s/^\\\$PinnedVersion = .*/\$PinnedVersion = \"${TAG}\"/" cli/scripts/install.ps1
-          sed -i "s/^\\\$Checksum_windows_amd64 = .*/\$Checksum_windows_amd64 = \"${CS_windows_amd64}\"/" cli/scripts/install.ps1
-          sed -i "s/^\\\$Checksum_windows_arm64 = .*/\$Checksum_windows_arm64 = \"${CS_windows_arm64}\"/" cli/scripts/install.ps1
-
-          # ── Commit and push pinned scripts to main ──
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git checkout main
-          git add cli/scripts/install.sh cli/scripts/install.ps1
-          git commit -m "chore: pin install scripts to ${TAG} checksums [skip ci]" || echo "No changes to commit"
-          git push origin main
-
-          # ── Append installation section to release notes ──
+          # Build install instructions + checksum table.
           INSTALL_NOTES="$(cat <<NOTES
 
           ---
 
           ## Installation
 
-          **Linux / macOS (curl):**
+          **Linux / macOS:**
           \`\`\`bash
-          curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | sh
+          curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | bash
           \`\`\`
 
           **Windows (PowerShell):**
@@ -275,4 +278,4 @@ jobs:
           gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"
           rm -f "$tmpfile"
 
-          echo "✓ Install scripts pinned to ${TAG} and release notes updated."
+          echo "Release notes updated with install instructions and checksums."

@@ -654,12 +654,12 @@ func TestCheckFromURLNoMatchingAsset(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	result, err := CheckFromURL(context.Background(), srv.URL)
-	if err != nil {
-		t.Fatalf("CheckFromURL: %v", err)
+	_, err = CheckFromURL(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("expected error for missing platform asset")
 	}
-	if result.AssetURL != "" {
-		t.Errorf("AssetURL should be empty, got %q", result.AssetURL)
+	if !strings.Contains(err.Error(), "no release asset found") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 

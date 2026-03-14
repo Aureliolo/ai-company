@@ -141,6 +141,12 @@ func findAssets(release Release) (assetURL, checksumURL string, err error) {
 			checksumURL = a.BrowserDownloadURL
 		}
 	}
+	if assetURL == "" {
+		return "", "", fmt.Errorf("no release asset found for %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	if checksumURL == "" {
+		return "", "", fmt.Errorf("no checksums.txt found in release assets")
+	}
 	return assetURL, checksumURL, nil
 }
 

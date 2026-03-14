@@ -2,17 +2,10 @@
 # Usage: irm https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.ps1 | iex
 #
 # Environment variables:
-#   SYNTHORG_VERSION  — specific version to install (overrides pinned version,
-#                       falls back to runtime checksum download)
+#   SYNTHORG_VERSION  — specific version to install (default: latest)
 #   INSTALL_DIR       — installation directory (default: $env:LOCALAPPDATA\synthorg\bin)
 
 $ErrorActionPreference = "Stop"
-
-# ── Pinned by release automation (do not edit manually) ──
-$PinnedVersion = ""
-$Checksum_windows_amd64 = ""
-$Checksum_windows_arm64 = ""
-# ── End pinned section ──
 
 $Repo = "Aureliolo/synthorg"
 $BinaryName = "synthorg.exe"
@@ -20,16 +13,12 @@ $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:L
 
 # --- Resolve version ---
 
-$UsePinned = $false
-if ($env:SYNTHORG_VERSION) {
-    $Version = $env:SYNTHORG_VERSION
-} elseif ($PinnedVersion) {
-    $Version = $PinnedVersion
-    $UsePinned = $true
-} else {
+if (-not $env:SYNTHORG_VERSION) {
     Write-Host "Fetching latest release..."
     $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
     $Version = $Release.tag_name
+} else {
+    $Version = $env:SYNTHORG_VERSION
 }
 
 # Validate version string to prevent injection.
@@ -48,6 +37,7 @@ $WinArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitectu
 
 $ArchiveName = "synthorg_windows_$WinArch.zip"
 $DownloadUrl = "https://github.com/$Repo/releases/download/$Version/$ArchiveName"
+$ChecksumsUrl = "https://github.com/$Repo/releases/download/$Version/checksums.txt"
 
 $TmpDir = Join-Path $env:TEMP "synthorg-install-$(Get-Random)"
 New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
@@ -55,24 +45,13 @@ New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
 try {
     Write-Host "Downloading $DownloadUrl..."
     Invoke-WebRequest -Uri $DownloadUrl -OutFile (Join-Path $TmpDir $ArchiveName)
+    Invoke-WebRequest -Uri $ChecksumsUrl -OutFile (Join-Path $TmpDir "checksums.txt")
 
     # --- Verify checksum ---
 
     Write-Host "Verifying checksum..."
-
-    # Resolve expected checksum: pinned or downloaded.
-    $ChecksumVar = "Checksum_windows_$WinArch"
-    $ExpectedHash = (Get-Variable -Name $ChecksumVar -ValueOnly -ErrorAction SilentlyContinue)
-
-    if ($UsePinned -and $ExpectedHash) {
-        Write-Host "Using pinned checksum for $ArchiveName..."
-    } else {
-        # Download checksums.txt at runtime.
-        $ChecksumsUrl = "https://github.com/$Repo/releases/download/$Version/checksums.txt"
-        Invoke-WebRequest -Uri $ChecksumsUrl -OutFile (Join-Path $TmpDir "checksums.txt")
-        $line = Get-Content (Join-Path $TmpDir "checksums.txt") | Where-Object { ($_ -split '\s+')[1] -eq $ArchiveName }
-        $ExpectedHash = ($line -split '\s+')[0]
-    }
+    $line = Get-Content (Join-Path $TmpDir "checksums.txt") | Where-Object { ($_ -split '\s+')[1] -eq $ArchiveName }
+    $ExpectedHash = ($line -split '\s+')[0]
 
     if (-not $ExpectedHash) {
         throw "No checksum found for $ArchiveName. Aborting."

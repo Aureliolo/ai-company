@@ -80,7 +80,7 @@ Built-in tools (file system, git, sandbox, code runner) plus MCP bridge for exte
 
 ```bash
 # Linux / macOS
-curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | sh
+curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | bash
 ```
 
 ```powershell

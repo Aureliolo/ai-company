@@ -12,7 +12,7 @@ The recommended way to run SynthOrg is via the CLI:
 
 ```bash
 # Install CLI (Linux/macOS)
-curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | sh
+curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | bash
 
 # Set up and start
 synthorg init     # Interactive setup wizard

@@ -1,21 +1,12 @@
 #!/usr/bin/env bash
 # SynthOrg CLI installer for Linux and macOS.
-# Usage: curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | sh
+# Usage: curl -sSfL https://raw.githubusercontent.com/Aureliolo/synthorg/main/cli/scripts/install.sh | bash
 #
 # Environment variables:
-#   SYNTHORG_VERSION  — specific version to install (overrides pinned version,
-#                       falls back to runtime checksum download)
+#   SYNTHORG_VERSION  — specific version to install (default: latest)
 #   INSTALL_DIR       — installation directory (default: /usr/local/bin)
 
 set -euo pipefail
-
-# ── Pinned by release automation (do not edit manually) ──
-PINNED_VERSION=""
-CHECKSUM_linux_amd64=""
-CHECKSUM_linux_arm64=""
-CHECKSUM_darwin_amd64=""
-CHECKSUM_darwin_arm64=""
-# ── End pinned section ──
 
 REPO="Aureliolo/synthorg"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
@@ -39,60 +30,43 @@ esac
 
 # --- Resolve version ---
 
-USE_PINNED=false
-if [ -n "${SYNTHORG_VERSION:-}" ]; then
-    VERSION="$SYNTHORG_VERSION"
-elif [ -n "$PINNED_VERSION" ]; then
-    VERSION="$PINNED_VERSION"
-    USE_PINNED=true
-else
+if [ -z "${SYNTHORG_VERSION:-}" ]; then
     echo "Fetching latest release..."
-    VERSION="$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | cut -d '"' -f 4)"
+    SYNTHORG_VERSION="$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | cut -d '"' -f 4)"
 fi
 
 # Validate version string to prevent injection.
-if ! echo "$VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
-    echo "Error: invalid version string: $VERSION"
+if ! echo "$SYNTHORG_VERSION" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$'; then
+    echo "Error: invalid version string: $SYNTHORG_VERSION"
     exit 1
 fi
 
-echo "Installing SynthOrg CLI ${VERSION}..."
+echo "Installing SynthOrg CLI ${SYNTHORG_VERSION}..."
 
 # --- Download ---
 
 ARCHIVE_NAME="synthorg_${OS}_${ARCH}.tar.gz"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ARCHIVE_NAME}"
+DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${SYNTHORG_VERSION}/${ARCHIVE_NAME}"
+CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${SYNTHORG_VERSION}/checksums.txt"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "Downloading ${DOWNLOAD_URL}..."
 curl -sSfL -o "${TMP_DIR}/${ARCHIVE_NAME}" "$DOWNLOAD_URL"
+curl -sSfL -o "${TMP_DIR}/checksums.txt" "$CHECKSUMS_URL"
 
 # --- Verify checksum (mandatory) ---
 
 echo "Verifying checksum..."
 
-# Resolve expected checksum: pinned or downloaded.
-CHECKSUM_VAR="CHECKSUM_${OS}_${ARCH}"
-EXPECTED_CHECKSUM="${!CHECKSUM_VAR:-}"
-
-if [ "$USE_PINNED" = true ] && [ -n "$EXPECTED_CHECKSUM" ]; then
-    # Use pinned checksum — no network call needed.
-    echo "Using pinned checksum for ${ARCHIVE_NAME}..."
-else
-    # Download checksums.txt at runtime.
-    CHECKSUMS_URL="https://github.com/${REPO}/releases/download/${VERSION}/checksums.txt"
-    curl -sSfL -o "${TMP_DIR}/checksums.txt" "$CHECKSUMS_URL"
-    EXPECTED_CHECKSUM="$(awk -v name="${ARCHIVE_NAME}" '$2 == name { print $1 }' "${TMP_DIR}/checksums.txt")"
-fi
+EXPECTED_CHECKSUM="$(awk -v name="${ARCHIVE_NAME}" '$2 == name { print $1 }' "${TMP_DIR}/checksums.txt")"
 
 if [ -z "$EXPECTED_CHECKSUM" ]; then
     echo "Error: no checksum found for ${ARCHIVE_NAME}. Aborting."
     exit 1
 fi
 
-# Compute actual checksum.
 if command -v sha256sum >/dev/null 2>&1; then
     ACTUAL_CHECKSUM="$(sha256sum "${TMP_DIR}/${ARCHIVE_NAME}" | awk '{ print $1 }')"
 elif command -v shasum >/dev/null 2>&1; then

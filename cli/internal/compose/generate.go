@@ -98,14 +98,18 @@ func validateParams(p Params) error {
 }
 
 // yamlStr safely quotes a string value for YAML, escaping special characters.
+// Also escapes $ to prevent Docker Compose variable interpolation.
 func yamlStr(s string) string {
-	// If the string contains YAML-special characters, double-quote and escape.
-	if strings.ContainsAny(s, ":#{}[]|>&*!%@`\"'\\\n\r\t") {
+	// If the string contains YAML-special or Compose-interpolation characters,
+	// double-quote and escape.
+	if strings.ContainsAny(s, "$:#{}[]|>&*!%@`\"'\\\n\r\t") {
 		escaped := strings.ReplaceAll(s, `\`, `\\`)
 		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
 		escaped = strings.ReplaceAll(escaped, "\n", `\n`)
 		escaped = strings.ReplaceAll(escaped, "\r", `\r`)
 		escaped = strings.ReplaceAll(escaped, "\t", `\t`)
+		// Escape $ to prevent Docker Compose variable interpolation.
+		escaped = strings.ReplaceAll(escaped, "$", "$$")
 		return `"` + escaped + `"`
 	}
 	return `"` + s + `"`

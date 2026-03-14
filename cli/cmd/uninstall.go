@@ -21,6 +21,10 @@ func init() {
 }
 
 func runUninstall(cmd *cobra.Command, _ []string) error {
+	if !isInteractive() {
+		return fmt.Errorf("uninstall requires an interactive terminal (destructive operation)")
+	}
+
 	ctx := cmd.Context()
 	dir := resolveDataDir()
 	out := cmd.OutOrStdout()
