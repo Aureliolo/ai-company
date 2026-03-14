@@ -23,7 +23,7 @@ from ai_company.persistence.errors import MigrationError
 logger = get_logger(__name__)
 
 # Current schema version — bump when adding new migrations.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 _V1_STATEMENTS: Sequence[str] = (
     # ── Tasks ─────────────────────────────────────────────
@@ -221,6 +221,26 @@ CREATE TABLE IF NOT EXISTS api_keys (
     "CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id)",
 )
 
+_V6_STATEMENTS: Sequence[str] = (
+    # ── Make parked_contexts.task_id nullable ─────────────
+    """\
+CREATE TABLE IF NOT EXISTS parked_contexts_new (
+    id TEXT PRIMARY KEY,
+    execution_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    task_id TEXT,
+    approval_id TEXT NOT NULL,
+    parked_at TEXT NOT NULL,
+    context_json TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}'
+)""",
+    "INSERT OR IGNORE INTO parked_contexts_new SELECT * FROM parked_contexts",
+    "DROP TABLE IF EXISTS parked_contexts",
+    "ALTER TABLE parked_contexts_new RENAME TO parked_contexts",
+    "CREATE INDEX IF NOT EXISTS idx_pc_agent_id ON parked_contexts(agent_id)",
+    "CREATE INDEX IF NOT EXISTS idx_pc_approval_id ON parked_contexts(approval_id)",
+)
+
 _MigrateFn = Callable[[aiosqlite.Connection], Coroutine[Any, Any, None]]
 
 
@@ -285,12 +305,19 @@ async def _apply_v5(db: aiosqlite.Connection) -> None:
 
 # Ordered list of (target_version, migration_function) pairs. Each migration
 # is applied when the current schema version is below its target version.
+async def _apply_v6(db: aiosqlite.Connection) -> None:
+    """Apply schema v6: make parked_contexts.task_id nullable."""
+    for stmt in _V6_STATEMENTS:
+        await db.execute(stmt)
+
+
 _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
     (1, _apply_v1),
     (2, _apply_v2),
     (3, _apply_v3),
     (4, _apply_v4),
     (5, _apply_v5),
+    (6, _apply_v6),
 ]
 
 

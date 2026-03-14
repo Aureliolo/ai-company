@@ -29,7 +29,7 @@ async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
 @pytest.mark.unit
 class TestSchemaMigrations:
     async def test_schema_version_is_five(self) -> None:
-        assert SCHEMA_VERSION == 5
+        assert SCHEMA_VERSION == 6
 
     async def test_fresh_db_creates_all_v2_tables(
         self, memory_db: aiosqlite.Connection
@@ -58,7 +58,7 @@ class TestSchemaMigrations:
         assert await get_user_version(memory_db) == 1
 
         await run_migrations(memory_db)
-        assert await get_user_version(memory_db) == 5
+        assert await get_user_version(memory_db) == 6
 
         cursor = await memory_db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
