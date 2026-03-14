@@ -224,13 +224,16 @@ jobs:
             ${{ needs.cli-test.result }}
             ${{ needs.cli-build.result }}
             ${{ needs.cli-vuln.result }}
+            ${{ needs.cli-fuzz.result }}
         run: |
           if echo "$RESULTS" | grep -qE "failure|cancelled"; then
             echo "CLI checks failed. Job results: $RESULTS"
             exit 1
           fi
-          # cli-fuzz uses step-level continue-on-error; fuzz warnings are
-          # emitted by the "Report fuzz outcome" step within each matrix job.
+          # cli-fuzz uses step-level continue-on-error, so fuzz findings
+          # don't fail the job — only infra failures (checkout, setup-go)
+          # propagate here. Fuzz warnings are emitted by the per-matrix
+          # "Report fuzz outcome" step.
           echo "All CLI checks passed (some may have been skipped due to path filters)"
 
   # ── Release (GoReleaser, only on version tags) ──

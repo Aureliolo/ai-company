@@ -50,11 +50,20 @@ func FuzzYamlStr(f *testing.F) {
 		}
 
 		// Interior must not contain an unescaped double-quote that would
-		// prematurely close the YAML scalar.
+		// prematurely close the YAML scalar. A quote is unescaped if
+		// preceded by an even number of backslashes (including zero).
 		inner := result[1 : len(result)-1]
 		for i := 0; i < len(inner); i++ {
-			if inner[i] == '"' && (i == 0 || inner[i-1] != '\\') {
-				t.Fatalf("yamlStr result contains unescaped inner double-quote: %q", result)
+			if inner[i] != '"' {
+				continue
+			}
+			// Count consecutive backslashes before this quote.
+			backslashes := 0
+			for j := i - 1; j >= 0 && inner[j] == '\\'; j-- {
+				backslashes++
+			}
+			if backslashes%2 == 0 {
+				t.Fatalf("yamlStr result contains unescaped inner double-quote at pos %d: %q", i, result)
 			}
 		}
 	})
