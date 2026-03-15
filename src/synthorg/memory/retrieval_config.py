@@ -34,6 +34,9 @@ class MemoryRetrievalConfig(BaseModel):
         injection_point: Message role for context injection.
         non_inferable_only: When True, auto-creates a ``TagBasedMemoryFilter``
             in ``ContextInjectionStrategy`` if no explicit filter is provided.
+        fusion_strategy: Ranking fusion strategy — LINEAR for single-source
+            relevance+recency, RRF for multi-source ranked list merging.
+        rrf_k: RRF smoothing constant (only meaningful with RRF strategy).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -128,6 +131,22 @@ class MemoryRetrievalConfig(BaseModel):
                 reason=msg,
             )
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_rrf_k_strategy_consistency(self) -> Self:
+        """Warn when rrf_k is customized but fusion strategy is LINEAR."""
+        _default_rrf_k = 60
+        if (
+            self.fusion_strategy == FusionStrategy.LINEAR
+            and self.rrf_k != _default_rrf_k
+        ):
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="rrf_k",
+                value=self.rrf_k,
+                reason="rrf_k is ignored when fusion_strategy is LINEAR",
+            )
         return self
 
     @model_validator(mode="after")

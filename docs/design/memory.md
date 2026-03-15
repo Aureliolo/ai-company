@@ -519,7 +519,7 @@ the agent during execution.
     Shared memories (from `SharedKnowledgeStore`) are fetched in parallel, merged with personal
     memories (no `personal_boost` for shared), and ranked together.
 
-    **Ranking Algorithm:**
+    **Ranking Algorithm (Linear — default):**
 
     1. `relevance = entry.relevance_score ?? config.default_relevance`
     2. Personal entries: `relevance = min(relevance + personal_boost, 1.0)`
@@ -527,6 +527,18 @@ the agent during execution.
     4. `combined = relevance_weight * relevance + recency_weight * recency`
     5. Filter: `combined >= min_relevance`
     6. Sort descending by `combined_score`
+
+    **Alternative: Reciprocal Rank Fusion (RRF)**
+
+    When `fusion_strategy: rrf` is configured, multiple pre-ranked lists (e.g., from different
+    retrieval sources) are merged via RRF: `score(doc) = sum(1 / (k + rank_i))` across all
+    lists containing the document. Scores are min-max normalized to [0.0, 1.0]. The smoothing
+    constant `k` (default 60, configurable via `rrf_k`) controls rank-difference amplification.
+    RRF is the de facto standard for hybrid search fusion
+    ([Qdrant](https://qdrant.tech/articles/hybrid-search/),
+    [NeMo Retriever](https://huggingface.co/blog/nvidia/nemo-retriever-agentic-retrieval)). It is
+    intended for multi-source scenarios (BM25 + vector, multi-round tool-based retrieval); the
+    linear strategy remains the default for single-source retrieval.
 
     !!! tip "Non-Inferable Filter"
 

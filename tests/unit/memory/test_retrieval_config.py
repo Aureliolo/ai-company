@@ -24,6 +24,8 @@ class TestMemoryRetrievalConfigDefaults:
         assert c.include_shared is True
         assert c.default_relevance == 0.5
         assert c.injection_point is InjectionPoint.SYSTEM
+        assert c.fusion_strategy is FusionStrategy.LINEAR
+        assert c.rrf_k == 60
 
     def test_frozen(self) -> None:
         c = MemoryRetrievalConfig()
@@ -151,6 +153,17 @@ class TestMemoryRetrievalConfigSerialization:
         data = c.model_dump()
         restored = MemoryRetrievalConfig.model_validate(data)
         assert restored == c
+
+    def test_json_roundtrip_with_rrf(self) -> None:
+        c = MemoryRetrievalConfig(
+            fusion_strategy=FusionStrategy.RRF,
+            rrf_k=42,
+        )
+        json_str = c.model_dump_json()
+        restored = MemoryRetrievalConfig.model_validate_json(json_str)
+        assert restored == c
+        assert restored.fusion_strategy is FusionStrategy.RRF
+        assert restored.rrf_k == 42
 
 
 @pytest.mark.unit

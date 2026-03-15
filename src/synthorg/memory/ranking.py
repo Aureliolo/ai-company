@@ -250,16 +250,33 @@ def fuse_ranked_lists(
     ranking signal.  ``relevance_score`` preserves the entry's raw
     backend relevance (or 0.0 if absent); ``recency_score`` is 0.0.
 
+    When the same entry ID appears in multiple lists, the first
+    ``MemoryEntry`` object encountered is retained.
+
+    Unlike ``rank_memories``, this function does **not** apply a
+    ``min_relevance`` threshold — callers are responsible for
+    post-filtering if needed.
+
     Args:
         ranked_lists: Each inner tuple is a pre-sorted ranked list
             of memory entries (best first).
-        k: RRF smoothing constant (default 60).  Smaller values
-            amplify rank differences.
-        max_results: Maximum entries to return.
+        k: RRF smoothing constant (default 60, must be >= 1).
+            Smaller values amplify rank differences.
+        max_results: Maximum entries to return (must be >= 1).
 
     Returns:
         Sorted tuple of ``ScoredMemory`` by descending RRF score.
+
+    Raises:
+        ValueError: If ``k < 1`` or ``max_results < 1``.
     """
+    if k < 1:
+        msg = f"k must be >= 1, got {k}"
+        raise ValueError(msg)
+    if max_results < 1:
+        msg = f"max_results must be >= 1, got {max_results}"
+        raise ValueError(msg)
+
     # Accumulate raw RRF scores and collect unique entries
     scores: dict[str, float] = {}
     entries: dict[str, MemoryEntry] = {}

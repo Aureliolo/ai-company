@@ -549,3 +549,57 @@ class TestFuseRankedLists:
         entry = _make_entry(created_at=now)
         result = fuse_ranked_lists(((entry,),))
         assert result[0].is_shared is False
+
+    def test_duplicate_id_first_occurrence_wins(self) -> None:
+        """When same ID appears in multiple lists, first MemoryEntry is kept."""
+        now = datetime.now(UTC)
+        first = _make_entry(entry_id="dup", relevance_score=0.9, created_at=now)
+        second = _make_entry(entry_id="dup", relevance_score=0.1, created_at=now)
+        result = fuse_ranked_lists(((first,), (second,)))
+        assert len(result) == 1
+        assert result[0].relevance_score == pytest.approx(0.9)
+
+    def test_exact_rrf_scores(self) -> None:
+        """Verify exact normalized RRF scores with known k=60."""
+        now = datetime.now(UTC)
+        a = _make_entry(entry_id="a", created_at=now)
+        b = _make_entry(entry_id="b", created_at=now)
+        c = _make_entry(entry_id="c", created_at=now)
+        # List 1: [a, b], List 2: [a, c]
+        # Raw: a = 1/61 + 1/61 = 2/61, b = 1/62, c = 1/62
+        # b and c have equal raw scores, a is highest
+        # min = 1/62, max = 2/61
+        # normalized(a) = (2/61 - 1/62) / (2/61 - 1/62) = 1.0
+        # normalized(b) = (1/62 - 1/62) / (2/61 - 1/62) = 0.0
+        # normalized(c) = 0.0
+        result = fuse_ranked_lists(((a, b), (a, c)), k=60)
+        assert result[0].entry.id == "a"
+        assert result[0].combined_score == pytest.approx(1.0)
+        assert {r.entry.id for r in result[1:]} == {"b", "c"}
+        assert result[1].combined_score == pytest.approx(0.0)
+        assert result[2].combined_score == pytest.approx(0.0)
+
+    def test_three_lists_accumulation(self) -> None:
+        """RRF scores accumulate correctly across 3+ lists."""
+        now = datetime.now(UTC)
+        a = _make_entry(entry_id="a", created_at=now)
+        b = _make_entry(entry_id="b", created_at=now)
+        c = _make_entry(entry_id="c", created_at=now)
+        # a appears in all 3 lists at rank 1
+        # b appears in 2 lists at rank 2
+        # c appears in 1 list at rank 2
+        result = fuse_ranked_lists(((a, b), (a, b), (a, c)), k=60)
+        assert result[0].entry.id == "a"
+        assert result[0].combined_score == pytest.approx(1.0)
+        # b: 2 * 1/62 = 2/62, c: 1/62 -> b > c
+        assert result[1].entry.id == "b"
+        assert result[1].combined_score > result[2].combined_score
+        assert result[2].entry.id == "c"
+
+    def test_k_below_one_raises(self) -> None:
+        with pytest.raises(ValueError, match=r"k must be >= 1"):
+            fuse_ranked_lists((), k=0)
+
+    def test_max_results_below_one_raises(self) -> None:
+        with pytest.raises(ValueError, match=r"max_results must be >= 1"):
+            fuse_ranked_lists((), max_results=0)
