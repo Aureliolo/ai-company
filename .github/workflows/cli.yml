@@ -296,8 +296,7 @@ jobs:
       - name: Sign checksums with cosign (keyless)
         run: |
           cosign sign-blob --yes cli/dist/checksums.txt \
-            --output-signature cli/dist/checksums.txt.sig \
-            --output-certificate cli/dist/checksums.txt.pem
+            --bundle cli/dist/checksums.txt.cosign.bundle
 
       - name: Upload assets to draft release
         env:
@@ -308,7 +307,7 @@ jobs:
           # --clobber overwrites if assets already exist (idempotent on re-run).
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
             cli/dist/*.tar.gz cli/dist/*.zip \
-            cli/dist/checksums.txt cli/dist/checksums.txt.sig cli/dist/checksums.txt.pem
+            cli/dist/checksums.txt cli/dist/checksums.txt.cosign.bundle
 
       - name: Attest build provenance (SLSA Level 3)
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
@@ -399,8 +398,7 @@ jobs:
           <!-- CLI_COSIGN_DATA
           \`\`\`bash
           cosign verify-blob checksums.txt \\
-            --signature checksums.txt.sig \\
-            --certificate checksums.txt.pem \\
+            --bundle checksums.txt.cosign.bundle \\
             --certificate-identity-regexp='github\\.com/Aureliolo/synthorg' \\
             --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
           \`\`\`
