@@ -9,14 +9,19 @@ on:
   workflow_run:
     workflows: [Docker, CLI]
     types: [completed]
+    branches: [main]
 
 permissions: {}
 
 jobs:
   publish:
     name: Publish Draft Release
-    # Only process tag-triggered runs (release builds)
-    if: startsWith(github.event.workflow_run.head_branch, 'v')
+    # Only process tag-triggered release builds, not PR-triggered runs.
+    # The event != 'pull_request' guard prevents a PR that modifies the
+    # Docker/CLI workflows from reaching this privileged publish step.
+    if: >-
+      github.event.workflow_run.event != 'pull_request'
+      && startsWith(github.event.workflow_run.head_branch, 'v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -25,27 +30,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.workflow_run.head_branch }}
+          WORKFLOW_NAME: ${{ github.event.workflow.name }}
+          WORKFLOW_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
           set -euo pipefail
 
-          echo "Triggered by: ${{ github.event.workflow.name }}"
+          echo "Triggered by: $WORKFLOW_NAME"
           echo "Tag: $TAG"
-          echo "Triggering run conclusion: ${{ github.event.workflow_run.conclusion }}"
+          echo "Triggering run conclusion: $WORKFLOW_CONCLUSION"
 
           # If the triggering workflow failed, no point checking the other
-          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+          if [ "$WORKFLOW_CONCLUSION" != "success" ]; then
             echo "Triggering workflow failed — skipping."
             exit 0
           fi
 
           # Check status of both workflows for this tag.
           # gh run list --branch works for both branches and tags.
+          # --status completed filters out in-progress re-triggered runs.
           CLI_CONCLUSION=$(gh run list --repo "$GITHUB_REPOSITORY" \
             --workflow cli.yml --branch "$TAG" --limit 1 \
+            --status completed \
             --json conclusion --jq '.[0].conclusion // "pending"')
 
           DOCKER_CONCLUSION=$(gh run list --repo "$GITHUB_REPOSITORY" \
             --workflow docker.yml --branch "$TAG" --limit 1 \
+            --status completed \
             --json conclusion --jq '.[0].conclusion // "pending"')
 
           echo "CLI: $CLI_CONCLUSION"
@@ -57,15 +67,30 @@ jobs:
             exit 0
           fi
 
-          # Both succeeded — check if release is still a draft
-          IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --json isDraft --jq '.isDraft')
-
-          if [ "$IS_DRAFT" != "true" ]; then
-            echo "Release $TAG is not a draft (isDraft=$IS_DRAFT). Already published or not found."
+          # Both succeeded — check if release exists and is still a draft
+          if ! IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft --jq '.isDraft' 2>/dev/null); then
+            echo "Release $TAG not found — nothing to publish."
             exit 0
           fi
 
-          # Publish the draft release (makes it immutable)
-          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
-          echo "Release $TAG published successfully."
+          if [ "$IS_DRAFT" != "true" ]; then
+            echo "Release $TAG is not a draft (isDraft=$IS_DRAFT). Already published."
+            exit 0
+          fi
+
+          # Publish the draft release (makes it immutable).
+          # Handle TOCTOU race: if a concurrent run published first, the second
+          # call may fail with 422 (immutable). Re-check and exit cleanly.
+          if gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false; then
+            echo "Release $TAG published successfully."
+          else
+            IS_DRAFT_NOW=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft --jq '.isDraft' 2>/dev/null || echo "unknown")
+            if [ "$IS_DRAFT_NOW" = "false" ]; then
+              echo "Release $TAG was already published by a concurrent run — OK."
+            else
+              echo "::error::Failed to publish release $TAG (isDraft=$IS_DRAFT_NOW)"
+              exit 1
+            fi
+          fi
