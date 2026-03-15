@@ -19,11 +19,11 @@ import (
 type ShellType int
 
 const (
-	Unknown    ShellType = iota
-	Bash       ShellType = iota
-	Zsh        ShellType = iota
-	Fish       ShellType = iota
-	PowerShell ShellType = iota
+	Unknown ShellType = iota
+	Bash
+	Zsh
+	Fish
+	PowerShell
 )
 
 // String returns the shell name.
@@ -211,9 +211,14 @@ func powershellProfilePath(ctx context.Context) (string, error) {
 		out, err := exec.CommandContext(ctx, shell, "-NoProfile", "-Command", "echo $PROFILE").Output()
 		if err == nil {
 			p := strings.TrimSpace(string(out))
-			if p != "" {
-				return p, nil
+			if p == "" || len(p) > 2048 {
+				continue
 			}
+			p = filepath.Clean(p)
+			if !filepath.IsAbs(p) {
+				continue
+			}
+			return p, nil
 		}
 	}
 
@@ -251,7 +256,9 @@ func appendToFile(path, content string) error {
 	if err != nil {
 		return fmt.Errorf("opening %s: %w", path, err)
 	}
-	defer func() { _ = f.Close() }()
-	_, err = f.WriteString(content)
-	return err
+	if _, err := f.WriteString(content); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("writing to %s: %w", path, err)
+	}
+	return f.Close()
 }

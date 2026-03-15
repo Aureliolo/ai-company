@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -114,7 +115,7 @@ func TestInstallBashIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(data); !contains(got, marker) || !contains(got, "synthorg completion bash") {
+	if got := string(data); !strings.Contains(got, marker) || !strings.Contains(got, "synthorg completion bash") {
 		t.Errorf("unexpected .bashrc content: %s", got)
 	}
 
@@ -152,7 +153,7 @@ func TestInstallZshCreatesFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading .zshrc: %v", err)
 	}
-	if !contains(string(data), "fpath=") {
+	if !strings.Contains(string(data), "fpath=") {
 		t.Error(".zshrc should contain fpath line")
 	}
 
@@ -199,18 +200,4 @@ func TestInstallUnknownShell(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for unknown shell")
 	}
-}
-
-func contains(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
-		(len(s) > 0 && len(sub) > 0 && searchString(s, sub)))
-}
-
-func searchString(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }

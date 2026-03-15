@@ -71,7 +71,7 @@ func updateCLI(cmd *cobra.Command) error {
 	}
 
 	_, _ = fmt.Fprintln(out, "Downloading...")
-	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL)
+	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL, result.SigstoreBundURL)
 	if err != nil {
 		return fmt.Errorf("downloading update: %w", err)
 	}

@@ -48,7 +48,7 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	out.KeyValue("Config file", config.StatePath(state.DataDir))
+	out.KeyValue("Config file", statePath)
 	out.KeyValue("Data directory", state.DataDir)
 	out.KeyValue("Image tag", state.ImageTag)
 	out.KeyValue("Backend port", strconv.Itoa(state.BackendPort))

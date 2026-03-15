@@ -542,7 +542,7 @@ func TestDownloadWithMockServer(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	binary, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums")
+	binary, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums", "")
 	if err != nil {
 		t.Fatalf("Download: %v", err)
 	}
@@ -568,7 +568,7 @@ func TestDownloadChecksumMismatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums")
+	_, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums", "")
 	if err == nil {
 		t.Fatal("expected checksum mismatch error")
 	}
@@ -710,7 +710,7 @@ func TestDownloadNoChecksumRefused(t *testing.T) {
 	defer srv.Close()
 
 	// Empty checksum URL — should refuse to download.
-	_, err := Download(context.Background(), srv.URL, "")
+	_, err := Download(context.Background(), srv.URL, "", "")
 	if err == nil {
 		t.Fatal("expected error when checksum URL is empty")
 	}

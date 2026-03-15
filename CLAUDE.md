@@ -144,15 +144,16 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 
 cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
   main.go           # Entry point
-  cmd/              # Cobra commands (init, start, stop, status, logs, doctor, update, uninstall, version)
+  cmd/              # Cobra commands (init, start, stop, status, logs, doctor, update, uninstall, version, config, completion-install)
   internal/
     version/        # Build-time version vars (ldflags-injected)
     config/         # Data dir resolution (XDG/macOS/Windows), persisted state (JSON)
     docker/         # Docker/Compose detection + exec wrapper
     compose/        # Compose YAML generation from embedded template
     health/         # Health check polling with retry + timeout
-    diagnostics/    # System info collection for bug reports
+    diagnostics/    # System info collection for bug reports (compose validation, port conflicts, image checks, native disk usage)
     selfupdate/     # GitHub Releases self-update + binary replacement
+    completion/     # Shell completion auto-install (bash, zsh, fish, powershell)
     ui/             # Styled CLI output (lipgloss-based: logo, status icons, key-value display)
   scripts/          # Install scripts (install.sh, install.ps1)
   testdata/         # Golden files for compose generation tests

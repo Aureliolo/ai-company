@@ -66,53 +66,67 @@ func Collect(ctx context.Context, state config.State) Report {
 		r.Errors = append(r.Errors, fmt.Sprintf("path: %v", pathErr))
 	}
 
-	// Docker info.
+	info := collectDocker(ctx, &r, safeDir, pathErr)
+	collectHealth(ctx, &r, state.BackendPort)
+	collectConfig(&r, state)
+	collectInfra(ctx, &r, info, state, safeDir, pathErr)
+
+	if pathErr == nil {
+		r.DiskInfo = diskInfo(ctx, safeDir)
+	}
+
+	return r
+}
+
+func collectDocker(ctx context.Context, r *Report, safeDir string, pathErr error) docker.Info {
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		r.Errors = append(r.Errors, fmt.Sprintf("docker: %v", err))
-	} else {
-		r.DockerVersion = info.DockerVersion
-		r.ComposeVersion = info.ComposeVersion
+		return info
+	}
+	r.DockerVersion = info.DockerVersion
+	r.ComposeVersion = info.ComposeVersion
 
-		// Version warnings.
-		for _, w := range docker.CheckMinVersions(info) {
-			r.Errors = append(r.Errors, fmt.Sprintf("version: %s", w))
-		}
-
-		if pathErr == nil {
-			// Container states.
-			if ps, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "--format", "json"); err == nil {
-				r.ContainerPS = strings.TrimSpace(ps)
-			}
-
-			// Recent logs (last 50 lines).
-			if logs, err := docker.ComposeExecOutput(ctx, info, safeDir, "logs", "--tail", "50", "--no-color"); err == nil {
-				r.RecentLogs = truncate(logs, 4000)
-			}
-		}
+	for _, w := range docker.CheckMinVersions(info) {
+		r.Errors = append(r.Errors, fmt.Sprintf("version: %s", w))
 	}
 
-	// Health endpoint.
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
+	if pathErr == nil {
+		if ps, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "--format", "json"); err == nil {
+			r.ContainerPS = strings.TrimSpace(ps)
+		}
+		if logs, err := docker.ComposeExecOutput(ctx, info, safeDir, "logs", "--tail", "50", "--no-color"); err == nil {
+			r.RecentLogs = truncate(logs, 4000)
+		}
+	}
+	return info
+}
+
+func collectHealth(ctx context.Context, r *Report, backendPort int) {
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", backendPort)
 	client := &http.Client{Timeout: 5 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
 		r.HealthStatus = "unreachable"
 		r.Errors = append(r.Errors, fmt.Sprintf("health request: %v", err))
-	} else if resp, err := client.Do(req); err != nil {
+		return
+	}
+	resp, err := client.Do(req)
+	if err != nil {
 		r.HealthStatus = "unreachable"
 		r.Errors = append(r.Errors, fmt.Sprintf("health: %v", err))
-	} else {
-		defer func() { _ = resp.Body.Close() }()
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-		if readErr != nil {
-			r.Errors = append(r.Errors, fmt.Sprintf("health read: %v", readErr))
-		}
-		r.HealthStatus = fmt.Sprintf("%d", resp.StatusCode)
-		r.HealthBody = truncate(string(body), 1000)
+		return
 	}
+	defer func() { _ = resp.Body.Close() }()
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if readErr != nil {
+		r.Errors = append(r.Errors, fmt.Sprintf("health read: %v", readErr))
+	}
+	r.HealthStatus = fmt.Sprintf("%d", resp.StatusCode)
+	r.HealthBody = truncate(string(body), 1000)
+}
 
-	// Redacted config.
+func collectConfig(r *Report, state config.State) {
 	redacted := state
 	if redacted.JWTSecret != "" {
 		redacted.JWTSecret = "[REDACTED]"
@@ -120,35 +134,23 @@ func Collect(ctx context.Context, state config.State) Report {
 	if b, err := json.MarshalIndent(redacted, "", "  "); err == nil {
 		r.ConfigRedacted = string(b)
 	}
+}
 
-	// Compose file check.
+func collectInfra(ctx context.Context, r *Report, info docker.Info, state config.State, safeDir string, pathErr error) {
 	if pathErr == nil {
 		exists, valid := checkComposeFile(ctx, info, safeDir)
 		r.ComposeFileExists = exists
 		r.ComposeFileValid = valid
 	}
-
-	// Parse container details from ps output.
 	if r.ContainerPS != "" {
 		r.ContainerSummary = parseContainerDetails(r.ContainerPS)
 	}
-
-	// Port conflicts (only when no containers are running to avoid self-matches).
 	if !hasRunningContainers(r.ContainerSummary) {
 		r.PortConflicts = checkPorts(ctx, state.BackendPort, state.WebPort)
 	}
-
-	// Docker image availability.
 	if info.DockerPath != "" {
 		r.ImageStatus = checkImages(ctx, state.ImageTag, state.Sandbox)
 	}
-
-	// Disk space for data directory (best-effort, skip if path invalid).
-	if pathErr == nil {
-		r.DiskInfo = diskInfo(ctx, safeDir)
-	}
-
-	return r
 }
 
 // FormatText returns a human-readable text report.
@@ -162,20 +164,31 @@ func (r Report) FormatText() string {
 	fmt.Fprintf(&b, "Compose:   %s\n\n", r.ComposeVersion)
 
 	fmt.Fprintf(&b, "--- Health ---\nStatus: %s\n%s\n\n", r.HealthStatus, r.HealthBody)
+	r.formatComposeSection(&b)
+	fmt.Fprintf(&b, "--- Containers ---\n%s\n\n", r.ContainerPS)
+	r.formatInfraSection(&b)
+	fmt.Fprintf(&b, "--- Config (redacted) ---\n%s\n\n", r.ConfigRedacted)
+	fmt.Fprintf(&b, "--- Disk ---\n%s\n\n", r.DiskInfo)
+	fmt.Fprintf(&b, "--- Recent Logs (may contain sensitive data — review before sharing) ---\n%s\n\n", r.RecentLogs)
+	formatList(&b, "Errors", r.Errors)
 
+	return b.String()
+}
+
+func (r Report) formatComposeSection(b *strings.Builder) {
 	b.WriteString("--- Compose File ---\n")
 	if r.ComposeFileExists {
 		valid := "yes"
 		if !r.ComposeFileValid {
 			valid = "no"
 		}
-		fmt.Fprintf(&b, "Exists: yes  Valid: %s\n\n", valid)
+		fmt.Fprintf(b, "Exists: yes  Valid: %s\n\n", valid)
 	} else {
 		b.WriteString("Not found\n\n")
 	}
+}
 
-	fmt.Fprintf(&b, "--- Containers ---\n%s\n\n", r.ContainerPS)
-
+func (r Report) formatInfraSection(b *strings.Builder) {
 	if len(r.ContainerSummary) > 0 {
 		b.WriteString("--- Container Summary ---\n")
 		for _, c := range r.ContainerSummary {
@@ -183,39 +196,33 @@ func (r Report) FormatText() string {
 			if c.Health != "" {
 				line += fmt.Sprintf(" (%s)", c.Health)
 			}
-			fmt.Fprintf(&b, "%s\n", line)
+			fmt.Fprintf(b, "%s\n", line)
 		}
 		b.WriteString("\n")
 	}
+	formatBulletList(b, "Port Conflicts", r.PortConflicts)
+	formatBulletList(b, "Docker Images", r.ImageStatus)
+}
 
-	if len(r.PortConflicts) > 0 {
-		b.WriteString("--- Port Conflicts ---\n")
-		for _, c := range r.PortConflicts {
-			fmt.Fprintf(&b, "  - %s\n", c)
-		}
-		b.WriteString("\n")
+func formatBulletList(b *strings.Builder, title string, items []string) {
+	if len(items) == 0 {
+		return
 	}
-
-	if len(r.ImageStatus) > 0 {
-		b.WriteString("--- Docker Images ---\n")
-		for _, s := range r.ImageStatus {
-			fmt.Fprintf(&b, "  - %s\n", s)
-		}
-		b.WriteString("\n")
+	fmt.Fprintf(b, "--- %s ---\n", title)
+	for _, s := range items {
+		fmt.Fprintf(b, "  - %s\n", s)
 	}
+	b.WriteString("\n")
+}
 
-	fmt.Fprintf(&b, "--- Config (redacted) ---\n%s\n\n", r.ConfigRedacted)
-	fmt.Fprintf(&b, "--- Disk ---\n%s\n\n", r.DiskInfo)
-	fmt.Fprintf(&b, "--- Recent Logs (may contain sensitive data — review before sharing) ---\n%s\n\n", r.RecentLogs)
-
-	if len(r.Errors) > 0 {
-		fmt.Fprintf(&b, "--- Errors ---\n")
-		for _, e := range r.Errors {
-			fmt.Fprintf(&b, "  - %s\n", e)
-		}
+func formatList(b *strings.Builder, title string, items []string) {
+	if len(items) == 0 {
+		return
 	}
-
-	return b.String()
+	fmt.Fprintf(b, "--- %s ---\n", title)
+	for _, e := range items {
+		fmt.Fprintf(b, "  - %s\n", e)
+	}
 }
 
 func truncate(s string, max int) string {
