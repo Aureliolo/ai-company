@@ -122,8 +122,10 @@ def _compute_repetition_ratio(
     """Compute the repetition ratio for fingerprints in the window.
 
     Returns:
-        ``(ratio, counts)`` where ratio is the fraction of duplicate
-        fingerprints and counts is the ``Counter`` over all fingerprints.
+        ``(ratio, counts)`` where *ratio* is the number of excess
+        (above-first) occurrences of repeated fingerprints divided by
+        the total fingerprint count, and *counts* is the ``Counter``
+        over all fingerprints.
     """
     all_fingerprints: list[str] = []
     for t in window:
@@ -216,22 +218,17 @@ def _build_corrective_message(repeated_tools: list[str]) -> str:
 
     Args:
         repeated_tools: Sorted list of repeated tool fingerprints.
+            Always non-empty — stagnation detection requires at least
+            one repeated fingerprint (ratio or cycle signal).
 
     Returns:
         A corrective message string.
     """
-    if repeated_tools:
-        tool_list = ", ".join(repeated_tools)
-        return (
-            "[SYSTEM INTERVENTION: Stagnation detected — your recent tool "
-            "calls show a repeating pattern without progress. The following "
-            "tools have been called with identical arguments multiple "
-            f"times: {tool_list}. Try a different approach: modify your "
-            "arguments, use different tools, or reconsider your strategy.]"
-        )
+    tool_list = ", ".join(repeated_tools)
     return (
         "[SYSTEM INTERVENTION: Stagnation detected — your recent tool "
-        "calls show a repeating cycle pattern without progress. Try a "
-        "different approach: modify your arguments, use different tools, "
-        "or reconsider your strategy.]"
+        "calls show a repeating pattern without progress. The following "
+        "tools have been called with identical arguments multiple "
+        f"times: {tool_list}. Try a different approach: modify your "
+        "arguments, use different tools, or reconsider your strategy.]"
     )

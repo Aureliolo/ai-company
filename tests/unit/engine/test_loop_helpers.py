@@ -14,6 +14,7 @@ from synthorg.engine.loop_helpers import (
     check_budget,
     check_response_errors,
     check_shutdown,
+    check_stagnation,
     clear_last_turn_tool_calls,
     execute_tool_calls,
     get_tool_definitions,
@@ -668,3 +669,217 @@ class TestClearLastTurnToolCalls:
         assert turns[0].tool_calls_made == ("search",)
         # Last turn cleared
         assert turns[1].tool_calls_made == ()
+
+
+# ---------------------------------------------------------------------------
+# check_stagnation
+# ---------------------------------------------------------------------------
+
+
+def _turn(
+    turn_number: int,
+    fingerprints: tuple[str, ...] = (),
+) -> TurnRecord:
+    return TurnRecord(
+        turn_number=turn_number,
+        input_tokens=10,
+        output_tokens=5,
+        cost_usd=0.001,
+        tool_call_fingerprints=fingerprints,
+        finish_reason=FinishReason.TOOL_USE if fingerprints else FinishReason.STOP,
+    )
+
+
+class _FakeDetector:
+    """Minimal fake StagnationDetector for check_stagnation tests."""
+
+    def __init__(self, result: object) -> None:
+        from synthorg.engine.stagnation.models import NO_STAGNATION_RESULT
+
+        self._result = result
+        self._default = NO_STAGNATION_RESULT
+
+    def get_detector_type(self) -> str:
+        return "fake"
+
+    async def check(
+        self,
+        turns: tuple[TurnRecord, ...],
+        *,
+        corrections_injected: int = 0,
+    ) -> object:
+        return self._result
+
+
+class _RaisingDetector:
+    """Detector that raises a configurable exception."""
+
+    def __init__(self, exc: BaseException) -> None:
+        self._exc = exc
+
+    def get_detector_type(self) -> str:
+        return "raising"
+
+    async def check(
+        self,
+        turns: tuple[TurnRecord, ...],
+        *,
+        corrections_injected: int = 0,
+    ) -> object:
+        raise self._exc
+
+
+@pytest.mark.unit
+class TestCheckStagnation:
+    """Direct unit tests for check_stagnation()."""
+
+    async def test_none_detector_returns_none(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        result = await check_stagnation(
+            sample_agent_context,
+            None,
+            [],
+            0,
+            execution_id="exec-1",
+        )
+        assert result is None
+
+    async def test_no_stagnation_returns_none(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        from synthorg.engine.stagnation.models import NO_STAGNATION_RESULT
+
+        detector = _FakeDetector(NO_STAGNATION_RESULT)
+        result = await check_stagnation(
+            sample_agent_context,
+            detector,  # type: ignore[arg-type]
+            [_turn(1, ("a:1234567890123456",))],
+            0,
+            execution_id="exec-1",
+        )
+        assert result is None
+
+    async def test_terminate_returns_execution_result(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        from synthorg.engine.loop_protocol import ExecutionResult
+        from synthorg.engine.stagnation.models import (
+            StagnationResult,
+            StagnationVerdict,
+        )
+
+        terminate = StagnationResult(
+            verdict=StagnationVerdict.TERMINATE,
+            repetition_ratio=0.9,
+        )
+        detector = _FakeDetector(terminate)
+        result = await check_stagnation(
+            sample_agent_context,
+            detector,  # type: ignore[arg-type]
+            [_turn(1, ("a:1234567890123456",))],
+            0,
+            execution_id="exec-1",
+        )
+        assert isinstance(result, ExecutionResult)
+        assert result.termination_reason == TerminationReason.STAGNATION
+        assert "stagnation" in result.metadata
+
+    async def test_terminate_with_step_number(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        from synthorg.engine.loop_protocol import ExecutionResult
+        from synthorg.engine.stagnation.models import (
+            StagnationResult,
+            StagnationVerdict,
+        )
+
+        terminate = StagnationResult(
+            verdict=StagnationVerdict.TERMINATE,
+            repetition_ratio=0.9,
+        )
+        detector = _FakeDetector(terminate)
+        result = await check_stagnation(
+            sample_agent_context,
+            detector,  # type: ignore[arg-type]
+            [_turn(1, ("a:1234567890123456",))],
+            0,
+            execution_id="exec-1",
+            step_number=3,
+        )
+        assert isinstance(result, ExecutionResult)
+        assert result.metadata["step_number"] == 3
+
+    async def test_inject_prompt_returns_ctx_and_counter(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        from synthorg.engine.stagnation.models import (
+            StagnationResult,
+            StagnationVerdict,
+        )
+
+        inject = StagnationResult(
+            verdict=StagnationVerdict.INJECT_PROMPT,
+            corrective_message="Try again.",
+            repetition_ratio=0.7,
+        )
+        detector = _FakeDetector(inject)
+        result = await check_stagnation(
+            sample_agent_context,
+            detector,  # type: ignore[arg-type]
+            [_turn(1, ("a:1234567890123456",))],
+            2,
+            execution_id="exec-1",
+        )
+        assert isinstance(result, tuple)
+        ctx, corrections = result
+        assert corrections == 3
+        user_msgs = [m for m in ctx.conversation if m.role == MessageRole.USER]
+        assert any("Try again." in (m.content or "") for m in user_msgs)
+
+    async def test_memory_error_propagates(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        detector = _RaisingDetector(MemoryError("oom"))
+        with pytest.raises(MemoryError, match="oom"):
+            await check_stagnation(
+                sample_agent_context,
+                detector,  # type: ignore[arg-type]
+                [],
+                0,
+                execution_id="exec-1",
+            )
+
+    async def test_recursion_error_propagates(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        detector = _RaisingDetector(RecursionError("deep"))
+        with pytest.raises(RecursionError, match="deep"):
+            await check_stagnation(
+                sample_agent_context,
+                detector,  # type: ignore[arg-type]
+                [],
+                0,
+                execution_id="exec-1",
+            )
+
+    async def test_generic_exception_returns_none(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        detector = _RaisingDetector(ValueError("bad value"))
+        result = await check_stagnation(
+            sample_agent_context,
+            detector,  # type: ignore[arg-type]
+            [],
+            0,
+            execution_id="exec-1",
+        )
+        assert result is None

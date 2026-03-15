@@ -231,6 +231,40 @@ class TestMakeLoopWithCallbackInjection:
         assert isinstance(result, PlanExecuteLoop)
         assert result.config is config
 
+    def test_react_loop_preserves_stagnation_detector(self) -> None:
+        from synthorg.engine.stagnation import ToolRepetitionDetector
+
+        cp_repo, hb_repo = _make_repos()
+        detector = ToolRepetitionDetector()
+        original = ReactLoop(stagnation_detector=detector)
+        result = make_loop_with_callback(
+            original,
+            cp_repo,
+            hb_repo,
+            CheckpointConfig(),
+            "agent-1",
+            "task-1",
+        )
+        assert isinstance(result, ReactLoop)
+        assert result.stagnation_detector is detector
+
+    def test_plan_execute_loop_preserves_stagnation_detector(self) -> None:
+        from synthorg.engine.stagnation import ToolRepetitionDetector
+
+        cp_repo, hb_repo = _make_repos()
+        detector = ToolRepetitionDetector()
+        original = PlanExecuteLoop(stagnation_detector=detector)
+        result = make_loop_with_callback(
+            original,
+            cp_repo,
+            hb_repo,
+            CheckpointConfig(),
+            "agent-1",
+            "task-1",
+        )
+        assert isinstance(result, PlanExecuteLoop)
+        assert result.stagnation_detector is detector
+
     def test_unsupported_loop_type_returns_original(self) -> None:
         cp_repo, hb_repo = _make_repos()
 

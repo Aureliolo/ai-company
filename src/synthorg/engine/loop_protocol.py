@@ -47,6 +47,8 @@ class TurnRecord(BaseModel):
         total_tokens: Sum of input and output tokens (computed).
         cost_usd: Cost in USD for this turn.
         tool_calls_made: Names of tools invoked this turn.
+        tool_call_fingerprints: Deterministic fingerprints of tool
+            calls (``name:args_hash``) for stagnation detection.
         finish_reason: LLM finish reason for this turn.
         call_category: Optional LLM call category for coordination
             metrics (productive, coordination, system).
@@ -62,7 +64,7 @@ class TurnRecord(BaseModel):
         default=(),
         description="Tool names invoked this turn",
     )
-    tool_call_fingerprints: tuple[str, ...] = Field(
+    tool_call_fingerprints: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Deterministic fingerprints of tool calls (name:args_hash)",
     )

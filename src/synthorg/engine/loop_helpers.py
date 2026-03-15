@@ -41,7 +41,7 @@ from .loop_protocol import (
     TerminationReason,
     TurnRecord,
 )
-from .stagnation.models import StagnationVerdict
+from .stagnation.models import StagnationResult, StagnationVerdict
 
 if TYPE_CHECKING:
     from synthorg.budget.call_category import LLMCallCategory
@@ -534,6 +534,20 @@ async def check_stagnation(  # noqa: PLR0913
 ) -> tuple[AgentContext, int] | ExecutionResult | None:
     """Run stagnation detection and handle the verdict.
 
+    Stagnation detection is advisory — detector failures are logged
+    and skipped so they never interrupt an otherwise-healthy loop.
+
+    Args:
+        ctx: Current agent context.
+        stagnation_detector: Optional detector; ``None`` skips the
+            check.
+        turns: Accumulated turn records from the current scope.
+        corrections_injected: Number of corrective prompts already
+            injected in this execution scope.
+        execution_id: Execution identifier for structured logging.
+        step_number: Optional step number for plan-and-execute loops
+            (included in log entries and termination metadata).
+
     Returns:
         ``None`` to continue the loop (no stagnation).
         ``(ctx, corrections_injected)`` when a corrective prompt was
@@ -558,10 +572,43 @@ async def check_stagnation(  # noqa: PLR0913
         logger.exception(
             EXECUTION_LOOP_ERROR,
             execution_id=execution_id,
-            error=f"Stagnation check failed: {type(exc).__name__}: {exc}",
+            turn=ctx.turn_count,
+            error=f"Stagnation check failed: {type(exc).__name__}",
         )
         return None
 
+    return _handle_stagnation_verdict(
+        ctx,
+        stag,
+        turns,
+        corrections_injected,
+        execution_id=execution_id,
+        step_number=step_number,
+    )
+
+
+def _handle_stagnation_verdict(  # noqa: PLR0913
+    ctx: AgentContext,
+    stag: StagnationResult,
+    turns: list[TurnRecord],
+    corrections_injected: int,
+    *,
+    execution_id: str,
+    step_number: int | None = None,
+) -> tuple[AgentContext, int] | ExecutionResult | None:
+    """Dispatch on the stagnation verdict.
+
+    Args:
+        ctx: Current agent context.
+        stag: Result from the stagnation detector.
+        turns: Accumulated turn records from the current scope.
+        corrections_injected: Corrections already injected.
+        execution_id: Execution identifier for structured logging.
+        step_number: Optional step number for plan-and-execute loops.
+
+    Returns:
+        Same semantics as :func:`check_stagnation`.
+    """
     if stag.verdict == StagnationVerdict.TERMINATE:
         metadata: dict[str, object] = {"stagnation": stag.model_dump()}
         if step_number is not None:

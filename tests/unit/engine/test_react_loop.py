@@ -8,7 +8,7 @@ import pytest
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.context import AgentContext
-from synthorg.engine.loop_protocol import TerminationReason
+from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
@@ -1050,17 +1050,19 @@ class _FakeStagnationDetector:
         self._results = list(results)
         self._default = NO_STAGNATION_RESULT
         self.check_count = 0
+        self.corrections_seen: list[int] = []
 
     def get_detector_type(self) -> str:
         return "fake"
 
     async def check(
         self,
-        turns: tuple[object, ...],
+        turns: tuple[TurnRecord, ...],
         *,
         corrections_injected: int = 0,
     ) -> object:
         self.check_count += 1
+        self.corrections_seen.append(corrections_injected)
         if self._results:
             return self._results.pop(0)
         return self._default
@@ -1196,3 +1198,4 @@ class TestReactLoopStagnationDetector:
 
         assert result.termination_reason == TerminationReason.STAGNATION
         assert detector.check_count == 2
+        assert detector.corrections_seen == [0, 1]

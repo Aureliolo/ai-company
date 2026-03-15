@@ -26,8 +26,11 @@ class StagnationConfig(BaseModel):
     Attributes:
         enabled: Whether stagnation detection is active.
         window_size: Number of recent tool-bearing turns to analyze.
-        repetition_threshold: Fraction of duplicate fingerprints
-            that triggers detection (0.0 = any duplicate, 1.0 = all).
+        repetition_threshold: Excess-duplicate ratio that triggers
+            detection.  Lower values are more sensitive.  ``0.0``
+            triggers on every check (including zero duplicates);
+            ``1.0`` effectively disables ratio-based detection (the
+            theoretical maximum is ``(n-1)/n``).
         cycle_detection: Whether to detect repeating A->B->A->B patterns.
         max_corrections: Number of corrective prompt injections before
             terminating.  ``0`` means skip injection and terminate

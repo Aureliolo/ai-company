@@ -681,7 +681,11 @@ class PlanExecuteLoop:
                 step_number=step.step_number,
             )
             if isinstance(stag_outcome, ExecutionResult):
-                return stag_outcome
+                # Rebuild with full turns — check_stagnation only
+                # received the step-scoped slice.
+                return stag_outcome.model_copy(
+                    update={"turns": tuple(turns)},
+                )
             if isinstance(stag_outcome, tuple):
                 ctx, step_corrections = stag_outcome
 

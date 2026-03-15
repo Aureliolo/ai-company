@@ -286,8 +286,8 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
 **Supporting models:**
 
 `TerminationReason`
-:   Enum: `COMPLETED`, `MAX_TURNS`, `BUDGET_EXHAUSTED`, `SHUTDOWN`, `ERROR`,
-    `PARKED`.  `max_turns` defaults to 20.
+:   Enum: `COMPLETED`, `MAX_TURNS`, `BUDGET_EXHAUSTED`, `SHUTDOWN`, `STAGNATION`,
+    `ERROR`, `PARKED`.  `max_turns` defaults to 20.
 
 `TurnRecord`
 :   Frozen per-turn stats (tokens, cost, tool calls, finish reason).
@@ -465,8 +465,10 @@ async run(
     - `ERROR` termination: recovery strategy is applied (default
       `FailAndReassignStrategy` transitions to FAILED;
       see [Crash Recovery](#agent-crash-recovery)).
-    - All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`, `PARKED`)
-      leave the task in its current state.  `PARKED` indicates the agent was
+    - All other termination reasons (`MAX_TURNS`, `BUDGET_EXHAUSTED`,
+      `STAGNATION`, `PARKED`) leave the task in its current state.
+      `STAGNATION` indicates the agent was stuck in a repetitive loop.
+      `PARKED` indicates the agent was
       suspended by an approval-timeout policy; the task remains at its current
       status until explicitly resumed.
     - Each transition is synced to TaskEngine incrementally (see
@@ -524,8 +526,9 @@ LLM-based analysis.
 
 Uses dual-signal detection:
 
-1. **Repetition ratio** — fraction of fingerprints in the window that appear
-   more than once. A fingerprint appearing 3 times counts as 2 duplicates.
+1. **Repetition ratio** — excess duplicates divided by total fingerprint count
+   in the window. A fingerprint appearing 3 times contributes 2 to the
+   duplicate count.
 2. **Cycle detection** — checks for repeating A→B→A→B patterns at the turn
    level (`seq[-2k:-k] == seq[-k:]` for cycle lengths 2..len/2).
 
