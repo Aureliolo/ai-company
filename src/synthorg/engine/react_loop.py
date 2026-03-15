@@ -17,13 +17,8 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_TERMINATED,
     EXECUTION_LOOP_TURN_COMPLETE,
 )
-from synthorg.observability.events.stagnation import (
-    STAGNATION_CORRECTION_INJECTED,
-    STAGNATION_TERMINATED,
-)
-from synthorg.providers.enums import FinishReason, MessageRole
+from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import (
-    ChatMessage,
     CompletionConfig,
     CompletionResponse,
 )
@@ -34,6 +29,7 @@ from .loop_helpers import (
     check_budget,
     check_response_errors,
     check_shutdown,
+    check_stagnation,
     clear_last_turn_tool_calls,
     execute_tool_calls,
     get_tool_definitions,
@@ -47,7 +43,6 @@ from .loop_protocol import (
     TerminationReason,
     TurnRecord,
 )
-from .stagnation.models import StagnationVerdict
 
 if TYPE_CHECKING:
     from synthorg.engine.approval_gate import ApprovalGate
@@ -88,6 +83,16 @@ class ReactLoop:
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
         self._stagnation_detector = stagnation_detector
+
+    @property
+    def approval_gate(self) -> ApprovalGate | None:
+        """Return the approval gate, or ``None``."""
+        return self._approval_gate
+
+    @property
+    def stagnation_detector(self) -> StagnationDetector | None:
+        """Return the stagnation detector, or ``None``."""
+        return self._stagnation_detector
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
@@ -170,39 +175,17 @@ class ReactLoop:
             ctx = result
 
             # Stagnation detection after successful turn processing
-            if self._stagnation_detector is not None:
-                stag = await self._stagnation_detector.check(
-                    tuple(turns),
-                    corrections_injected=corrections_injected,
-                )
-                if stag.verdict == StagnationVerdict.TERMINATE:
-                    logger.warning(
-                        STAGNATION_TERMINATED,
-                        execution_id=ctx.execution_id,
-                        repetition_ratio=stag.repetition_ratio,
-                        cycle_length=stag.cycle_length,
-                        corrections_injected=corrections_injected,
-                    )
-                    return build_result(
-                        ctx,
-                        TerminationReason.STAGNATION,
-                        turns,
-                        metadata={"stagnation": stag.model_dump()},
-                    )
-                if stag.verdict == StagnationVerdict.INJECT_PROMPT:
-                    logger.info(
-                        STAGNATION_CORRECTION_INJECTED,
-                        execution_id=ctx.execution_id,
-                        repetition_ratio=stag.repetition_ratio,
-                        correction_number=corrections_injected + 1,
-                    )
-                    ctx = ctx.with_message(
-                        ChatMessage(
-                            role=MessageRole.USER,
-                            content=stag.corrective_message,
-                        ),
-                    )
-                    corrections_injected += 1
+            stag_outcome = await check_stagnation(
+                ctx,
+                self._stagnation_detector,
+                turns,
+                corrections_injected,
+                execution_id=ctx.execution_id,
+            )
+            if isinstance(stag_outcome, ExecutionResult):
+                return stag_outcome
+            if isinstance(stag_outcome, tuple):
+                ctx, corrections_injected = stag_outcome
 
         logger.info(
             EXECUTION_LOOP_TERMINATED,

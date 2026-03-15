@@ -224,3 +224,104 @@ class TestToolRepetitionDetectorMisc:
         config = StagnationConfig(window_size=10)
         detector = ToolRepetitionDetector(config)
         assert detector.config.window_size == 10
+
+    def test_protocol_conformance(self) -> None:
+        from synthorg.engine.stagnation.protocol import StagnationDetector
+
+        detector = ToolRepetitionDetector()
+        assert isinstance(detector, StagnationDetector)
+
+
+@pytest.mark.unit
+class TestDetectCycle:
+    """Direct tests for _detect_cycle helper."""
+
+    def test_no_cycle_short_sequence(self) -> None:
+        from synthorg.engine.stagnation.detector import _detect_cycle
+
+        a: tuple[str, ...] = ("a:1",)
+        b: tuple[str, ...] = ("b:2",)
+        c: tuple[str, ...] = ("c:3",)
+        assert _detect_cycle([a]) is None
+        assert _detect_cycle([a, b]) is None
+        assert _detect_cycle([a, b, c]) is None
+
+    def test_cycle_length_2(self) -> None:
+        from synthorg.engine.stagnation.detector import _detect_cycle
+
+        a: tuple[str, ...] = ("a:1",)
+        b: tuple[str, ...] = ("b:2",)
+        assert _detect_cycle([a, b, a, b]) == 2
+
+    def test_cycle_length_3(self) -> None:
+        from synthorg.engine.stagnation.detector import _detect_cycle
+
+        a: tuple[str, ...] = ("a:1",)
+        b: tuple[str, ...] = ("b:2",)
+        c: tuple[str, ...] = ("c:3",)
+        assert _detect_cycle([a, b, c, a, b, c]) == 3
+
+    def test_no_cycle_almost_match(self) -> None:
+        from synthorg.engine.stagnation.detector import _detect_cycle
+
+        a: tuple[str, ...] = ("a:1",)
+        b: tuple[str, ...] = ("b:2",)
+        c: tuple[str, ...] = ("c:3",)
+        assert _detect_cycle([a, b, a, c]) is None
+
+    def test_shortest_cycle_preferred(self) -> None:
+        from synthorg.engine.stagnation.detector import _detect_cycle
+
+        # A A A A — cycle length 2 matches before 3
+        a: tuple[str, ...] = ("a:1",)
+        assert _detect_cycle([a, a, a, a]) == 2
+
+    def test_empty_sequence(self) -> None:
+        from synthorg.engine.stagnation.detector import _detect_cycle
+
+        assert _detect_cycle([]) is None
+
+
+@pytest.mark.unit
+class TestRepetitionRatioExactValues:
+    """Verify exact repetition ratio computation."""
+
+    async def test_all_identical_ratio(self) -> None:
+        """5 identical fingerprints: 4 duplicates / 5 total = 0.8."""
+        fp = "search:same_hash_12345"
+        turns = tuple(_turn(i + 1, (fp,)) for i in range(5))
+        detector = ToolRepetitionDetector(
+            StagnationConfig(min_tool_turns=2),
+        )
+        result = await detector.check(turns, corrections_injected=0)
+        assert result.repetition_ratio == pytest.approx(0.8)
+
+    async def test_two_distinct_repeated_ratio(self) -> None:
+        """A,A,B,B: 2 duplicates / 4 total = 0.5."""
+        turns = (
+            _turn(1, ("a:hash_a_1234567890",)),
+            _turn(2, ("a:hash_a_1234567890",)),
+            _turn(3, ("b:hash_b_1234567890",)),
+            _turn(4, ("b:hash_b_1234567890",)),
+        )
+        detector = ToolRepetitionDetector(
+            StagnationConfig(
+                min_tool_turns=2,
+                repetition_threshold=1.0,
+                cycle_detection=False,
+            ),
+        )
+        result = await detector.check(turns)
+        assert result.repetition_ratio == pytest.approx(0.5)
+
+    async def test_single_occurrence_zero_ratio(self) -> None:
+        """All unique fingerprints: 0 duplicates = 0.0."""
+        turns = (
+            _turn(1, ("a:hash_a_1234567890",)),
+            _turn(2, ("b:hash_b_1234567890",)),
+        )
+        detector = ToolRepetitionDetector(
+            StagnationConfig(min_tool_turns=2, cycle_detection=False),
+        )
+        result = await detector.check(turns)
+        assert result.repetition_ratio == pytest.approx(0.0)

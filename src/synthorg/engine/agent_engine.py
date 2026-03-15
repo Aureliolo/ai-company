@@ -174,13 +174,16 @@ class AgentEngine:
         self._parked_context_repo = parked_context_repo
         self._stagnation_detector = stagnation_detector
         self._approval_gate = self._make_approval_gate()
-        if execution_loop is not None and self._approval_gate is not None:
+        if execution_loop is not None and (
+            self._approval_gate is not None or self._stagnation_detector is not None
+        ):
             logger.warning(
                 APPROVAL_GATE_LOOP_WIRING_WARNING,
                 note=(
                     "execution_loop provided externally — approval_gate "
-                    "will NOT be wired automatically. Configure the loop "
-                    "with approval_gate= explicitly."
+                    "and stagnation_detector will NOT be wired "
+                    "automatically. Configure the loop with "
+                    "approval_gate= and stagnation_detector= explicitly."
                 ),
             )
         self._loop: ExecutionLoop = execution_loop or self._make_default_loop()

@@ -5,6 +5,7 @@ verdicts, and results.  Used by the ``StagnationDetector`` protocol
 and its implementations.
 """
 
+import copy
 from enum import StrEnum
 from typing import Self
 
@@ -68,6 +69,17 @@ class StagnationConfig(BaseModel):
         description="Minimum tool-bearing turns before any check fires",
     )
 
+    @model_validator(mode="after")
+    def _validate_min_within_window(self) -> Self:
+        if self.min_tool_turns > self.window_size:
+            msg = (
+                f"min_tool_turns ({self.min_tool_turns}) exceeds "
+                f"window_size ({self.window_size}) — stagnation "
+                f"check will never fire within the window"
+            )
+            raise ValueError(msg)
+        return self
+
 
 class StagnationResult(BaseModel):
     """Result of a stagnation check.
@@ -99,12 +111,19 @@ class StagnationResult(BaseModel):
     )
     cycle_length: int | None = Field(
         default=None,
+        ge=2,
         description="Length of detected repeating cycle",
     )
     details: dict[str, object] = Field(
         default_factory=dict,
         description="Forward-compatible metadata",
     )
+
+    def __init__(self, **data: object) -> None:
+        """Deep-copy details dict at construction boundary."""
+        if "details" in data and isinstance(data["details"], dict):
+            data["details"] = copy.deepcopy(data["details"])
+        super().__init__(**data)
 
     @model_validator(mode="after")
     def _validate_corrective_message(self) -> Self:

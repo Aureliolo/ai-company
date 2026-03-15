@@ -113,11 +113,17 @@ def make_loop_with_callback(  # noqa: PLR0913
     )
 
     if isinstance(loop, ReactLoop):
-        return ReactLoop(checkpoint_callback=callback)
+        return ReactLoop(
+            checkpoint_callback=callback,
+            approval_gate=loop.approval_gate,
+            stagnation_detector=loop.stagnation_detector,
+        )
     if isinstance(loop, PlanExecuteLoop):
         return PlanExecuteLoop(
             config=loop.config,
             checkpoint_callback=callback,
+            approval_gate=loop.approval_gate,
+            stagnation_detector=loop.stagnation_detector,
         )
     logger.warning(
         CHECKPOINT_UNSUPPORTED_LOOP,

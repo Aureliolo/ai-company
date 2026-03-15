@@ -1004,3 +1004,47 @@ class TestPlanExecuteLoopStagnation:
         assert result.termination_reason == TerminationReason.STAGNATION
         # Only step 2's turn was passed (1 turn)
         assert detector.last_turns_count == 1
+
+    async def test_step_corrections_counter_increments(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Per-step corrections counter leads to TERMINATE after max."""
+        from synthorg.engine.stagnation.models import (
+            StagnationResult,
+            StagnationVerdict,
+        )
+
+        inject = StagnationResult(
+            verdict=StagnationVerdict.INJECT_PROMPT,
+            corrective_message="Correction.",
+            repetition_ratio=0.7,
+        )
+        terminate = StagnationResult(
+            verdict=StagnationVerdict.TERMINATE,
+            repetition_ratio=0.9,
+        )
+        detector = _FakeStagnationDetector([inject, terminate])
+
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory(
+            [
+                _single_step_plan(),
+                _tool_use_response("echo", "tc-1"),
+                _tool_use_response("echo", "tc-2"),
+            ]
+        )
+        invoker = _make_invoker("echo")
+        loop = PlanExecuteLoop(
+            stagnation_detector=detector,  # type: ignore[arg-type]
+        )
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+        )
+
+        assert result.termination_reason == TerminationReason.STAGNATION
+        assert detector.check_count == 2

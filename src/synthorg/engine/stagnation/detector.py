@@ -69,83 +69,85 @@ class ToolRepetitionDetector:
         if not self._config.enabled:
             return NO_STAGNATION_RESULT
 
-        # Filter to turns with tool-call fingerprints
-        tool_turns = tuple(t for t in turns if t.tool_call_fingerprints)
-
-        if len(tool_turns) < self._config.min_tool_turns:
+        window = self._extract_window(turns)
+        if window is None:
             return NO_STAGNATION_RESULT
 
-        # Take the last window_size tool-bearing turns
-        window = tool_turns[-self._config.window_size :]
-
-        # Flatten all fingerprints in the window
-        all_fingerprints: list[str] = []
-        for t in window:
-            all_fingerprints.extend(t.tool_call_fingerprints)
-
-        if not all_fingerprints:
-            return NO_STAGNATION_RESULT
-
-        # Signal 1: Repetition ratio
-        counts = Counter(all_fingerprints)
-        duplicate_count = sum(c - 1 for c in counts.values() if c > 1)
-        total = len(all_fingerprints)
-        repetition_ratio = duplicate_count / total if total > 0 else 0.0
-
-        # Signal 2: Cycle detection (per-turn fingerprint tuples)
-        cycle_length: int | None = None
-        if self._config.cycle_detection:
-            turn_fps = [t.tool_call_fingerprints for t in window]
-            cycle_length = _detect_cycle(turn_fps)
-
-        # Determine if stagnation is detected
+        ratio, counts = _compute_repetition_ratio(window)
+        cycle_length = _detect_cycle_if_enabled(
+            window, enabled=self._config.cycle_detection
+        )
         stagnation_detected = (
-            repetition_ratio >= self._config.repetition_threshold
-            or cycle_length is not None
+            ratio >= self._config.repetition_threshold or cycle_length is not None
         )
 
         if not stagnation_detected:
             logger.debug(
                 STAGNATION_CHECK_PERFORMED,
                 verdict="no_stagnation",
-                repetition_ratio=repetition_ratio,
+                repetition_ratio=ratio,
                 window_size=len(window),
             )
             return StagnationResult(
                 verdict=StagnationVerdict.NO_STAGNATION,
-                repetition_ratio=repetition_ratio,
+                repetition_ratio=ratio,
                 cycle_length=None,
             )
 
-        # Stagnation detected — choose verdict
-        repeated_tools = sorted({fp for fp, c in counts.items() if c > 1})
-
-        logger.info(
-            STAGNATION_DETECTED,
-            repetition_ratio=repetition_ratio,
-            cycle_length=cycle_length,
-            repeated_tools=repeated_tools,
-            corrections_injected=corrections_injected,
-            max_corrections=self._config.max_corrections,
+        return _build_stagnation_result(
+            ratio,
+            cycle_length,
+            counts,
+            corrections_injected,
+            self._config.max_corrections,
         )
 
-        if corrections_injected < self._config.max_corrections:
-            return StagnationResult(
-                verdict=StagnationVerdict.INJECT_PROMPT,
-                corrective_message=_build_corrective_message(
-                    repeated_tools,
-                ),
-                repetition_ratio=repetition_ratio,
-                cycle_length=cycle_length,
-                details={"repeated_tools": repeated_tools},
-            )
+    def _extract_window(
+        self,
+        turns: tuple[TurnRecord, ...],
+    ) -> tuple[TurnRecord, ...] | None:
+        """Filter and slice turns to the analysis window.
 
-        return StagnationResult(
-            verdict=StagnationVerdict.TERMINATE,
-            repetition_ratio=repetition_ratio,
-            cycle_length=cycle_length,
-            details={"repeated_tools": repeated_tools},
-        )
+        Returns ``None`` if there are not enough tool-bearing turns.
+        """
+        tool_turns = tuple(t for t in turns if t.tool_call_fingerprints)
+        if len(tool_turns) < self._config.min_tool_turns:
+            return None
+        return tuple(tool_turns[-self._config.window_size :])
+
+
+def _compute_repetition_ratio(
+    window: tuple[TurnRecord, ...],
+) -> tuple[float, Counter[str]]:
+    """Compute the repetition ratio for fingerprints in the window.
+
+    Returns:
+        ``(ratio, counts)`` where ratio is the fraction of duplicate
+        fingerprints and counts is the ``Counter`` over all fingerprints.
+    """
+    all_fingerprints: list[str] = []
+    for t in window:
+        all_fingerprints.extend(t.tool_call_fingerprints)
+
+    if not all_fingerprints:
+        return 0.0, Counter()
+
+    counts: Counter[str] = Counter(all_fingerprints)
+    duplicate_count = sum(c - 1 for c in counts.values() if c > 1)
+    total = len(all_fingerprints)
+    return duplicate_count / total, counts
+
+
+def _detect_cycle_if_enabled(
+    window: tuple[TurnRecord, ...],
+    *,
+    enabled: bool,
+) -> int | None:
+    """Run cycle detection if enabled."""
+    if not enabled:
+        return None
+    turn_fps = [t.tool_call_fingerprints for t in window]
+    return _detect_cycle(turn_fps)
 
 
 def _detect_cycle(
@@ -171,6 +173,44 @@ def _detect_cycle(
     return None
 
 
+def _build_stagnation_result(
+    repetition_ratio: float,
+    cycle_length: int | None,
+    counts: Counter[str],
+    corrections_injected: int,
+    max_corrections: int,
+) -> StagnationResult:
+    """Build INJECT_PROMPT or TERMINATE result after stagnation detected."""
+    repeated_tools = sorted({fp for fp, c in counts.items() if c > 1})
+
+    logger.info(
+        STAGNATION_DETECTED,
+        repetition_ratio=repetition_ratio,
+        cycle_length=cycle_length,
+        repeated_tools=repeated_tools,
+        corrections_injected=corrections_injected,
+        max_corrections=max_corrections,
+    )
+
+    if corrections_injected < max_corrections:
+        return StagnationResult(
+            verdict=StagnationVerdict.INJECT_PROMPT,
+            corrective_message=_build_corrective_message(
+                repeated_tools,
+            ),
+            repetition_ratio=repetition_ratio,
+            cycle_length=cycle_length,
+            details={"repeated_tools": repeated_tools},
+        )
+
+    return StagnationResult(
+        verdict=StagnationVerdict.TERMINATE,
+        repetition_ratio=repetition_ratio,
+        cycle_length=cycle_length,
+        details={"repeated_tools": repeated_tools},
+    )
+
+
 def _build_corrective_message(repeated_tools: list[str]) -> str:
     """Build a corrective user-role message for prompt injection.
 
@@ -180,11 +220,18 @@ def _build_corrective_message(repeated_tools: list[str]) -> str:
     Returns:
         A corrective message string.
     """
-    tool_list = ", ".join(repeated_tools)
+    if repeated_tools:
+        tool_list = ", ".join(repeated_tools)
+        return (
+            "[SYSTEM INTERVENTION: Stagnation detected — your recent tool "
+            "calls show a repeating pattern without progress. The following "
+            "tools have been called with identical arguments multiple "
+            f"times: {tool_list}. Try a different approach: modify your "
+            "arguments, use different tools, or reconsider your strategy.]"
+        )
     return (
         "[SYSTEM INTERVENTION: Stagnation detected — your recent tool "
-        "calls show a repeating pattern without progress. The following "
-        "tools have been called with identical arguments multiple "
-        f"times: {tool_list}. Try a different approach: modify your "
-        "arguments, use different tools, or reconsider your strategy.]"
+        "calls show a repeating cycle pattern without progress. Try a "
+        "different approach: modify your arguments, use different tools, "
+        "or reconsider your strategy.]"
     )

@@ -20,6 +20,10 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_TOOL_CALLS,
     EXECUTION_LOOP_TURN_START,
 )
+from synthorg.observability.events.stagnation import (
+    STAGNATION_CORRECTION_INJECTED,
+    STAGNATION_TERMINATED,
+)
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
@@ -37,12 +41,14 @@ from .loop_protocol import (
     TerminationReason,
     TurnRecord,
 )
+from .stagnation.models import StagnationVerdict
 
 if TYPE_CHECKING:
     from synthorg.budget.call_category import LLMCallCategory
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.approval_gate_models import EscalationInfo
     from synthorg.engine.context import AgentContext
+    from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.tools.invoker import ToolInvoker
 
@@ -515,3 +521,80 @@ def build_result(
         error_message=error_message,
         metadata=metadata or {},
     )
+
+
+async def check_stagnation(  # noqa: PLR0913
+    ctx: AgentContext,
+    stagnation_detector: StagnationDetector | None,
+    turns: list[TurnRecord],
+    corrections_injected: int,
+    *,
+    execution_id: str,
+    step_number: int | None = None,
+) -> tuple[AgentContext, int] | ExecutionResult | None:
+    """Run stagnation detection and handle the verdict.
+
+    Returns:
+        ``None`` to continue the loop (no stagnation).
+        ``(ctx, corrections_injected)`` when a corrective prompt was
+        injected (caller should use the updated values).
+        ``ExecutionResult`` with STAGNATION reason to terminate.
+
+    Raises:
+        MemoryError: Re-raised unconditionally.
+        RecursionError: Re-raised unconditionally.
+    """
+    if stagnation_detector is None:
+        return None
+
+    try:
+        stag = await stagnation_detector.check(
+            tuple(turns),
+            corrections_injected=corrections_injected,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.exception(
+            EXECUTION_LOOP_ERROR,
+            execution_id=execution_id,
+            error=f"Stagnation check failed: {type(exc).__name__}: {exc}",
+        )
+        return None
+
+    if stag.verdict == StagnationVerdict.TERMINATE:
+        metadata: dict[str, object] = {"stagnation": stag.model_dump()}
+        if step_number is not None:
+            metadata["step_number"] = step_number
+        logger.warning(
+            STAGNATION_TERMINATED,
+            execution_id=execution_id,
+            step_number=step_number,
+            repetition_ratio=stag.repetition_ratio,
+            cycle_length=stag.cycle_length,
+            corrections_injected=corrections_injected,
+        )
+        return build_result(
+            ctx,
+            TerminationReason.STAGNATION,
+            turns,
+            metadata=metadata,
+        )
+
+    if stag.verdict == StagnationVerdict.INJECT_PROMPT:
+        logger.info(
+            STAGNATION_CORRECTION_INJECTED,
+            execution_id=execution_id,
+            step_number=step_number,
+            repetition_ratio=stag.repetition_ratio,
+            correction_number=corrections_injected + 1,
+        )
+        ctx = ctx.with_message(
+            ChatMessage(
+                role=MessageRole.USER,
+                content=stag.corrective_message,
+            ),
+        )
+        return ctx, corrections_injected + 1
+
+    return None

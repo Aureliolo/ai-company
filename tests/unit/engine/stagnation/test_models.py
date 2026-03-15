@@ -97,6 +97,13 @@ class TestStagnationConfig:
         with pytest.raises(ValidationError):
             StagnationConfig(min_tool_turns=0)
 
+    def test_min_tool_turns_exceeds_window_size_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match=r"min_tool_turns.*exceeds.*window_size",
+        ):
+            StagnationConfig(window_size=3, min_tool_turns=4)
+
 
 @pytest.mark.unit
 class TestStagnationResult:
