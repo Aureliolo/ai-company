@@ -57,7 +57,7 @@ class TestOverridePrecedence:
                 reason=NotBlankStr("Old override"),
                 applied_by=NotBlankStr("manager"),
                 applied_at=NOW - timedelta(days=10),
-                expires_at=NOW - timedelta(hours=1),
+                expires_at=NOW - timedelta(days=5),
             ),
         )
         tracker = PerformanceTracker(override_store=override_store)

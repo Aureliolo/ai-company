@@ -10,6 +10,7 @@ import random
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import LlmCalibrationRecord
 from synthorg.observability import get_logger
 from synthorg.observability.events.performance import (
@@ -23,7 +24,6 @@ from synthorg.providers.models import ChatMessage, CompletionConfig
 if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
-    from synthorg.core.types import NotBlankStr
     from synthorg.hr.performance.models import CollaborationMetricRecord
     from synthorg.providers.protocol import CompletionProvider
 
@@ -64,6 +64,9 @@ class LlmCalibrationSampler:
         model: Model identifier to use for sampling.
         sampling_rate: Fraction of events to sample (0.0-1.0).
         retention_days: Days to retain calibration records.
+
+    Raises:
+        ValueError: If sampling_rate or retention_days are out of bounds.
     """
 
     def __init__(
@@ -74,6 +77,12 @@ class LlmCalibrationSampler:
         sampling_rate: float = 0.01,
         retention_days: int = 90,
     ) -> None:
+        if not (0.0 <= sampling_rate <= 1.0):
+            msg = f"sampling_rate must be in [0.0, 1.0], got {sampling_rate}"
+            raise ValueError(msg)
+        if retention_days < 1:
+            msg = f"retention_days must be >= 1, got {retention_days}"
+            raise ValueError(msg)
         self._provider = provider
         self._model = str(model)
         self._sampling_rate = sampling_rate
@@ -119,6 +128,8 @@ class LlmCalibrationSampler:
 
         try:
             llm_score, rationale, cost_usd = await self._call_llm(record)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 PERF_LLM_SAMPLE_FAILED,
@@ -128,16 +139,12 @@ class LlmCalibrationSampler:
             )
             return None
 
-        drift = abs(llm_score - behavioral_score)
-        from synthorg.core.types import NotBlankStr  # noqa: PLC0415
-
         calibration_record = LlmCalibrationRecord(
             agent_id=record.agent_id,
             sampled_at=datetime.now(UTC),
             interaction_record_id=record.id,
             llm_score=llm_score,
             behavioral_score=behavioral_score,
-            drift=round(drift, 4),
             rationale=NotBlankStr(rationale),
             model_used=NotBlankStr(self._model),
             cost_usd=cost_usd,
@@ -153,7 +160,7 @@ class LlmCalibrationSampler:
             agent_id=record.agent_id,
             llm_score=llm_score,
             behavioral_score=behavioral_score,
-            drift=drift,
+            drift=calibration_record.drift,
         )
         return calibration_record
 
@@ -233,6 +240,12 @@ class LlmCalibrationSampler:
         )
 
         if response.content is None:
+            logger.warning(
+                PERF_LLM_SAMPLE_FAILED,
+                agent_id=record.agent_id,
+                record_id=record.id,
+                reason="LLM returned no content",
+            )
             msg = "LLM returned no content"
             raise ValueError(msg)
 
@@ -242,6 +255,14 @@ class LlmCalibrationSampler:
 
         max_score = 10.0
         if not (0.0 <= score <= max_score):
+            logger.warning(
+                PERF_LLM_SAMPLE_FAILED,
+                agent_id=record.agent_id,
+                record_id=record.id,
+                reason="out_of_range",
+                llm_score=score,
+                raw_content=response.content[:500],
+            )
             msg = f"LLM score {score} outside valid range [0, 10]"
             raise ValueError(msg)
 

@@ -98,7 +98,9 @@ class TestGetActiveOverride:
     def test_expired_override_returns_none(self) -> None:
         """Expired override is treated as inactive."""
         store = CollaborationOverrideStore()
+        # Override was applied 2 hours ago, expired 1 hour ago.
         expired = _make_override(
+            applied_at=NOW - timedelta(hours=2),
             expires_at=NOW - timedelta(hours=1),
         )
         store.set_override(expired)
@@ -197,6 +199,7 @@ class TestListOverrides:
         store.set_override(
             _make_override(
                 agent_id="agent-001",
+                applied_at=NOW - timedelta(hours=2),
                 expires_at=NOW - timedelta(hours=1),
             ),
         )
@@ -215,6 +218,7 @@ class TestListOverrides:
         store.set_override(
             _make_override(
                 agent_id="agent-001",
+                applied_at=NOW - timedelta(hours=2),
                 expires_at=NOW - timedelta(hours=1),
             ),
         )

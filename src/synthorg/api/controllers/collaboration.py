@@ -1,13 +1,15 @@
 """Collaboration scoring controller — overrides and calibration data."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from litestar import Controller, delete, get, post
+from litestar import Controller, Request, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
 
+from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import NotFoundError
+from synthorg.api.errors import NotFoundError, ServiceUnavailableError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
@@ -17,6 +19,7 @@ from synthorg.hr.performance.models import (
     LlmCalibrationRecord,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_REQUEST_ERROR
 
 logger = get_logger(__name__)
 
@@ -33,7 +36,7 @@ class SetOverrideRequest(BaseModel):
         expires_in_days: Optional expiration in days (None = indefinite).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     score: float = Field(ge=0.0, le=10.0, description="Override score")
     reason: NotBlankStr = Field(
@@ -60,7 +63,7 @@ class OverrideResponse(BaseModel):
         expires_at: When the override expires.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr
     score: float = Field(ge=0.0, le=10.0)
@@ -75,17 +78,22 @@ class CalibrationSummaryResponse(BaseModel):
 
     Attributes:
         agent_id: Agent being calibrated.
-        record_count: Number of calibration records.
+        record_count: Number of calibration records (computed).
         average_drift: Average score drift (None if no records).
         records: Calibration records.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     agent_id: NotBlankStr
-    record_count: int = Field(ge=0)
-    average_drift: float | None = Field(default=None, ge=0.0)
+    average_drift: float | None = Field(default=None, ge=0.0, le=10.0)
     records: tuple[LlmCalibrationRecord, ...] = ()
+
+    @computed_field(description="Number of calibration records")  # type: ignore[prop-decorator]
+    @property
+    def record_count(self) -> int:
+        """Number of calibration records."""
+        return len(self.records)
 
 
 # ── Controller ───────────────────────────────────────────────
@@ -136,14 +144,20 @@ class CollaborationController(Controller):
             Override details.
 
         Raises:
+            ServiceUnavailableError: If the override store is not configured.
             NotFoundError: If no active override exists.
         """
         app_state: AppState = state.app_state
         tracker = app_state.performance_tracker
         store = tracker.override_store
         if store is None:
-            msg = f"No override found for agent {agent_id!r}"
-            raise NotFoundError(msg)
+            logger.warning(
+                API_REQUEST_ERROR,
+                path="collaboration/override",
+                reason="override_store_not_configured",
+            )
+            msg = "Override store not configured"
+            raise ServiceUnavailableError(msg)
 
         override = store.get_active_override(NotBlankStr(agent_id))
         if override is None:
@@ -167,6 +181,7 @@ class CollaborationController(Controller):
         state: State,
         agent_id: str,
         data: SetOverrideRequest,
+        request: Request[Any, Any, Any],
     ) -> ApiResponse[OverrideResponse]:
         """Set a collaboration score override for an agent.
 
@@ -174,6 +189,7 @@ class CollaborationController(Controller):
             state: Application state.
             agent_id: Agent identifier.
             data: Override request body.
+            request: The incoming HTTP request.
 
         Returns:
             The created override.
@@ -183,8 +199,13 @@ class CollaborationController(Controller):
 
         store = tracker.override_store
         if store is None:
-            msg = "Override store not configured on tracker"
-            raise NotFoundError(msg)
+            logger.warning(
+                API_REQUEST_ERROR,
+                path="collaboration/override",
+                reason="override_store_not_configured",
+            )
+            msg = "Override store not configured"
+            raise ServiceUnavailableError(msg)
 
         now = datetime.now(UTC)
         expires_at = (
@@ -193,12 +214,18 @@ class CollaborationController(Controller):
             else None
         )
 
-        # Extract user identity from connection scope.
-        applied_by = "unknown"
-        scope = state._connection.scope if hasattr(state, "_connection") else {}  # noqa: SLF001
-        user = scope.get("user")
-        if user is not None and hasattr(user, "sub"):
-            applied_by = str(user.sub)
+        # Extract user identity from the authenticated request.
+        auth_user = request.scope.get("user")
+        if isinstance(auth_user, AuthenticatedUser):
+            applied_by = str(auth_user.user_id)
+        else:
+            logger.warning(
+                API_REQUEST_ERROR,
+                path="collaboration/override",
+                reason="user_identity_extraction_failed",
+                agent_id=agent_id,
+            )
+            applied_by = "unknown"
 
         override = CollaborationOverride(
             agent_id=NotBlankStr(agent_id),
@@ -237,14 +264,20 @@ class CollaborationController(Controller):
             Empty success response.
 
         Raises:
+            ServiceUnavailableError: If the override store is not configured.
             NotFoundError: If no override exists to clear.
         """
         app_state: AppState = state.app_state
         tracker = app_state.performance_tracker
         store = tracker.override_store
         if store is None:
-            msg = f"No override found for agent {agent_id!r}"
-            raise NotFoundError(msg)
+            logger.warning(
+                API_REQUEST_ERROR,
+                path="collaboration/override",
+                reason="override_store_not_configured",
+            )
+            msg = "Override store not configured"
+            raise ServiceUnavailableError(msg)
 
         removed = store.clear_override(NotBlankStr(agent_id))
         if not removed:
@@ -284,7 +317,6 @@ class CollaborationController(Controller):
         return ApiResponse(
             data=CalibrationSummaryResponse(
                 agent_id=agent_nb,
-                record_count=len(records),
                 average_drift=average_drift,
                 records=records,
             ),

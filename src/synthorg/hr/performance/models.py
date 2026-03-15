@@ -13,6 +13,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     model_validator,
 )
 
@@ -122,7 +123,7 @@ class CollaborationMetricRecord(BaseModel):
         le=1.0,
         description="Completeness of task handoff",
     )
-    interaction_summary: str | None = Field(
+    interaction_summary: NotBlankStr | None = Field(
         default=None,
         max_length=4096,
         description="Text summary of the interaction for LLM calibration",
@@ -193,7 +194,7 @@ class LlmCalibrationRecord(BaseModel):
         interaction_record_id: ID of the sampled CollaborationMetricRecord.
         llm_score: LLM-assigned collaboration score (0.0-10.0).
         behavioral_score: Behavioral strategy score at time of sampling.
-        drift: Absolute difference between LLM and behavioral scores.
+        drift: Absolute difference between LLM and behavioral scores (computed).
         rationale: LLM's explanation for the score.
         model_used: Which LLM model was used for evaluation.
         cost_usd: Cost of the LLM call.
@@ -222,10 +223,13 @@ class LlmCalibrationRecord(BaseModel):
         le=10.0,
         description="Behavioral strategy score at time of sampling",
     )
-    drift: float = Field(
-        ge=0.0,
-        description="Absolute difference between LLM and behavioral scores",
-    )
+
+    @computed_field(description="Absolute difference between LLM and behavioral scores")  # type: ignore[prop-decorator]
+    @property
+    def drift(self) -> float:
+        """Absolute difference between LLM and behavioral scores."""
+        return round(abs(self.llm_score - self.behavioral_score), 4)
+
     rationale: NotBlankStr = Field(
         description="LLM's explanation for the score",
     )
@@ -266,6 +270,7 @@ class CollaborationOverride(BaseModel):
         description="Override score",
     )
     reason: NotBlankStr = Field(
+        max_length=4096,
         description="Why the override was applied",
     )
     applied_by: NotBlankStr = Field(
@@ -278,6 +283,17 @@ class CollaborationOverride(BaseModel):
         default=None,
         description="When the override expires (None = indefinite)",
     )
+
+    @model_validator(mode="after")
+    def _validate_expiration_ordering(self) -> Self:
+        """Ensure expires_at is strictly after applied_at when set."""
+        if self.expires_at is not None and self.expires_at <= self.applied_at:
+            msg = (
+                f"expires_at ({self.expires_at}) must be after "
+                f"applied_at ({self.applied_at})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class TrendResult(BaseModel):

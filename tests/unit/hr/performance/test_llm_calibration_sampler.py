@@ -172,6 +172,44 @@ class TestSample:
         assert result is not None
         assert result.drift == 5.0
 
+    async def test_null_content_returns_none(self) -> None:
+        """LLM returning no content produces None."""
+        provider = AsyncMock()
+        provider.complete.return_value = CompletionResponse(
+            content=None,
+            tool_calls=(
+                # Need a tool call since content is None and finish_reason is STOP
+                # Actually, content_filter finish reason allows None content
+            ),
+            finish_reason=FinishReason.CONTENT_FILTER,
+            usage=TokenUsage(input_tokens=10, output_tokens=0, cost_usd=0.0),
+            model=NotBlankStr("test-small-001"),
+        )
+        sampler = _make_sampler(provider=provider)
+        record = make_collab_metric(
+            recorded_at=NOW,
+            interaction_summary="Some interaction",
+        )
+
+        result = await sampler.sample(record=record, behavioral_score=5.0)
+
+        assert result is None
+
+    async def test_out_of_range_score_returns_none(self) -> None:
+        """LLM returning score > 10 produces None."""
+        provider = _make_provider(
+            content='{"score": 15.0, "rationale": "Very good"}',
+        )
+        sampler = _make_sampler(provider=provider)
+        record = make_collab_metric(
+            recorded_at=NOW,
+            interaction_summary="Some interaction",
+        )
+
+        result = await sampler.sample(record=record, behavioral_score=5.0)
+
+        assert result is None
+
     async def test_record_stored_after_sample(self) -> None:
         """Calibration records are stored for later retrieval."""
         sampler = _make_sampler()

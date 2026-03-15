@@ -445,14 +445,30 @@ class PerformanceTracker:
                 agent_id=record.agent_id,
                 records=(record,),
             )
-            await self._sampler.sample(
-                record=record,
-                behavioral_score=behavioral_result.score,
-            )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 PERF_LLM_SAMPLE_FAILED,
                 agent_id=record.agent_id,
                 record_id=record.id,
+                reason="behavioral_score_failed",
+                exc_info=True,
+            )
+            return
+
+        try:
+            await self._sampler.sample(
+                record=record,
+                behavioral_score=behavioral_result.score,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                PERF_LLM_SAMPLE_FAILED,
+                agent_id=record.agent_id,
+                record_id=record.id,
+                reason="llm_sample_failed",
                 exc_info=True,
             )
