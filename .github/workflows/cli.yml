@@ -258,6 +258,9 @@ jobs:
           # Disable caching in release job to prevent cache-poisoning (zizmor).
           cache: false
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+
       - name: Wait for GitHub Release to exist
         env:
           GH_TOKEN: ${{ github.token }}
@@ -290,6 +293,12 @@ jobs:
             exit 1
           fi
 
+      - name: Sign checksums with cosign (keyless)
+        run: |
+          cosign sign-blob --yes cli/dist/checksums.txt \
+            --output-signature cli/dist/checksums.txt.sig \
+            --output-certificate cli/dist/checksums.txt.pem
+
       - name: Upload assets to draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -298,12 +307,37 @@ jobs:
           # gh release upload finds draft releases (unlike GoReleaser's API).
           # --clobber overwrites if assets already exist (idempotent on re-run).
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-            cli/dist/*.tar.gz cli/dist/*.zip cli/dist/checksums.txt
+            cli/dist/*.tar.gz cli/dist/*.zip \
+            cli/dist/checksums.txt cli/dist/checksums.txt.sig cli/dist/checksums.txt.pem
 
       - name: Attest build provenance (SLSA Level 3)
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
+          # subject-checksums treats the file as a manifest: attests every
+          # binary archive listed inside it (the primary SLSA L3 attestations).
           subject-checksums: cli/dist/checksums.txt
+
+      - name: Attest checksums file provenance
+        id: attest-checksums
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          # subject-path attests the checksums.txt file itself; bundle-path
+          # output is uploaded as .sigstore.json for OpenSSF Scorecard scoring.
+          subject-path: cli/dist/checksums.txt
+
+      - name: Upload provenance bundle to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ steps.attest-checksums.outputs.bundle-path }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [ -z "$BUNDLE" ] || [ ! -f "$BUNDLE" ]; then
+            echo "::error::Attestation bundle not found at '$BUNDLE'"
+            exit 1
+          fi
+          cp "$BUNDLE" cli/dist/checksums.txt.sigstore.json
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            cli/dist/checksums.txt.sigstore.json
 
       - name: Append CLI installation and checksums to release notes
         env:
@@ -361,6 +395,26 @@ jobs:
           \`\`\`
           Replace the filename with any archive from this release.
           CLI_VERIFICATION_DATA -->
+
+          <!-- CLI_COSIGN_DATA
+          \`\`\`bash
+          cosign verify-blob checksums.txt \\
+            --signature checksums.txt.sig \\
+            --certificate checksums.txt.pem \\
+            --certificate-identity-regexp='github\\.com/Aureliolo/synthorg' \\
+            --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+          \`\`\`
+          CLI_COSIGN_DATA -->
+
+          <!-- CLI_SLSA_BUNDLE_DATA
+          \`\`\`bash
+          cosign verify-blob-attestation checksums.txt \\
+            --bundle checksums.txt.sigstore.json \\
+            --type slsaprovenance1 \\
+            --certificate-identity-regexp='github\\.com/Aureliolo/synthorg' \\
+            --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+          \`\`\`
+          CLI_SLSA_BUNDLE_DATA -->
           NOTES
           )"
 

@@ -154,7 +154,10 @@ Images are **only pushed to GHCR after both vulnerability scanners pass**.
 ### Signed Artifacts
 
 - **Container images**: cosign keyless signatures (verify via `cosign verify`) + SLSA Level 3 provenance attestations (verify via `gh attestation verify`)
-- **CLI binaries**: SLSA Level 3 provenance attestations (verify via `gh attestation verify`)
+- **CLI binaries**:
+    - cosign keyless signature on checksums file (verify via `cosign verify-blob`)
+    - SLSA Level 3 provenance attestations (verify via `gh attestation verify`)
+    - Sigstore provenance bundle (`.sigstore.json`, verify via `cosign verify-blob-attestation`)
 - **Git commits**: GPG/SSH signed (enforced by branch protection ruleset)
 - **GitHub Actions**: All actions pinned by full SHA commit hash
 - **GitHub Releases**: Immutable releases enabled — once published, assets and body cannot be modified (prevents supply chain tampering). Releases are created as drafts by Release Please, finalized after all assets are attached.
