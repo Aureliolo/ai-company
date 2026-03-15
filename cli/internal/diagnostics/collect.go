@@ -46,7 +46,7 @@ type Report struct {
 	Errors         []string `json:"errors,omitempty"`
 
 	ComposeFileExists bool              `json:"compose_file_exists"`
-	ComposeFileValid  bool              `json:"compose_file_valid,omitempty"`
+	ComposeFileValid  *bool             `json:"compose_file_valid,omitempty"`
 	PortConflicts     []string          `json:"port_conflicts,omitempty"`
 	ImageStatus       []string          `json:"image_status,omitempty"`
 	ContainerSummary  []ContainerDetail `json:"container_summary,omitempty"`
@@ -83,7 +83,7 @@ func collectDocker(ctx context.Context, r *Report, safeDir string, pathErr error
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		r.Errors = append(r.Errors, fmt.Sprintf("docker: %v", err))
-		return info
+		return docker.Info{} // zero value signals detection failure to downstream checks
 	}
 	r.DockerVersion = info.DockerVersion
 	r.ComposeVersion = info.ComposeVersion
@@ -177,9 +177,13 @@ func (r Report) FormatText() string {
 func (r Report) formatComposeSection(b *strings.Builder) {
 	b.WriteString("--- Compose File ---\n")
 	if r.ComposeFileExists {
-		valid := "yes"
-		if !r.ComposeFileValid {
-			valid = "no"
+		valid := "not checked"
+		if r.ComposeFileValid != nil {
+			if *r.ComposeFileValid {
+				valid = "yes"
+			} else {
+				valid = "no"
+			}
 		}
 		fmt.Fprintf(b, "Exists: yes  Valid: %s\n\n", valid)
 	} else {
@@ -250,7 +254,8 @@ func checkComposeFile(ctx context.Context, r *Report, info docker.Info, dataDir 
 		}
 		r.ComposeFileExists = true
 		if info.DockerPath != "" {
-			r.ComposeFileValid = docker.ComposeExec(ctx, info, dataDir, "config", "--quiet") == nil
+			valid := docker.ComposeExec(ctx, info, dataDir, "config", "--quiet") == nil
+			r.ComposeFileValid = &valid
 		}
 		return
 	}

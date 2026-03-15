@@ -213,7 +213,7 @@ func TestFormatTextNewSections(t *testing.T) {
 		CLIVersion:        "dev",
 		CLICommit:         "none",
 		ComposeFileExists: true,
-		ComposeFileValid:  true,
+		ComposeFileValid:  ptrBool(true),
 		PortConflicts:     []string{"port 8000 (backend) is already in use"},
 		ImageStatus:       []string{"ghcr.io/aureliolo/synthorg-backend:latest: available"},
 		ContainerSummary: []ContainerDetail{
@@ -236,3 +236,5 @@ func TestFormatTextNewSections(t *testing.T) {
 		}
 	}
 }
+
+func ptrBool(v bool) *bool { return &v }

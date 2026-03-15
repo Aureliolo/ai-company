@@ -78,6 +78,10 @@ type Result struct {
 func Install(ctx context.Context, rootCmd *cobra.Command, shell ShellType) (Result, error) {
 	res := Result{Shell: shell}
 
+	if rootCmd == nil && (shell == Zsh || shell == Fish) {
+		return res, fmt.Errorf("root command is required for %s completion generation", shell)
+	}
+
 	switch shell {
 	case Bash:
 		return installBash(res)
@@ -207,6 +211,11 @@ func installPowerShell(ctx context.Context, res Result) (Result, error) {
 
 // powershellProfilePath resolves the PowerShell profile path.
 func powershellProfilePath(ctx context.Context) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	}
+
 	// Try pwsh (PowerShell Core) first, then powershell (Windows PowerShell).
 	for _, shell := range []string{"pwsh", "powershell"} {
 		out, err := exec.CommandContext(ctx, shell, "-NoProfile", "-Command", "echo $PROFILE").Output()
@@ -219,15 +228,15 @@ func powershellProfilePath(ctx context.Context) (string, error) {
 			if !filepath.IsAbs(p) {
 				continue
 			}
+			// Ensure path is inside the user's home directory.
+			if rel, relErr := filepath.Rel(home, p); relErr != nil || strings.HasPrefix(rel, "..") {
+				continue
+			}
 			return p, nil
 		}
 	}
 
-	// Fallback: construct the default path.
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("cannot determine home directory: %w", err)
-	}
+	// Fallback: construct the default path (home already resolved above).
 	if runtime.GOOS == "windows" {
 		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1"), nil
 	}
