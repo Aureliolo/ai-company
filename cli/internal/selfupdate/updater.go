@@ -306,6 +306,7 @@ var AllowedDownloadHosts = map[string]bool{
 	"github.com":                            true,
 	"objects.githubusercontent.com":         true,
 	"github-releases.githubusercontent.com": true,
+	"release-assets.githubusercontent.com":  true,
 }
 
 func httpGetWithClient(ctx context.Context, client *http.Client, rawURL string, maxBytes int64) ([]byte, error) {
