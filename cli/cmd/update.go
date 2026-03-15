@@ -61,21 +61,8 @@ func updateCLI(cmd *cobra.Command) (string, error) {
 
 	_, _ = fmt.Fprintf(out, "New version available: %s (current: %s)\n", result.LatestVersion, result.CurrentVersion)
 
-	if isInteractive() {
-		proceed := true // default yes
-		form := huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().
-				Title(fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion)).
-				Value(&proceed),
-		))
-		if err := form.Run(); err != nil {
-			return "", err
-		}
-		if !proceed {
-			return version.Version, nil
-		}
-	} else {
-		_, _ = fmt.Fprintf(out, "Non-interactive mode: auto-applying update to %s\n", result.LatestVersion)
+	if !confirmUpdate(fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion)) {
+		return version.Version, nil
 	}
 
 	_, _ = fmt.Fprintln(out, "Downloading...")
@@ -132,27 +119,51 @@ func updateContainerImages(cmd *cobra.Command, effectiveVersion string) error {
 		return nil
 	}
 
-	// Ask before pulling.
-	if isInteractive() {
-		proceed := true // default yes
-		form := huh.NewForm(huh.NewGroup(
-			huh.NewConfirm().
-				Title(fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag)).
-				Value(&proceed),
-		))
-		if err := form.Run(); err != nil {
-			return err
-		}
-		if !proceed {
-			return nil
-		}
-	} else {
-		_, _ = fmt.Fprintf(out, "Non-interactive mode: updating container images to %s\n", tag)
+	if !confirmUpdate(fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag)) {
+		return nil
 	}
 
-	// Update config and regenerate compose file before pulling.
-	state.ImageTag = tag
-	params := compose.ParamsFromState(state)
+	if err := regenerateCompose(state, tag, safeDir); err != nil {
+		return err
+	}
+
+	_, _ = fmt.Fprintf(out, "Pulling container images (%s)...\n", tag)
+	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
+		return fmt.Errorf("pulling images: %w", err)
+	}
+
+	// Persist config only after successful pull so a failed pull
+	// doesn't leave state claiming images are at the new version.
+	updatedState := state
+	updatedState.ImageTag = tag
+	if err := config.Save(updatedState); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+
+	return restartIfRunning(cmd, info, safeDir, updatedState)
+}
+
+// confirmUpdate prompts the user to confirm an update action.
+// Returns true if non-interactive (auto-accept) or user confirms.
+func confirmUpdate(title string) bool {
+	if !isInteractive() {
+		return true
+	}
+	proceed := true // default yes
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Title(title).Value(&proceed),
+	))
+	if err := form.Run(); err != nil {
+		return false
+	}
+	return proceed
+}
+
+// regenerateCompose writes a new compose.yml for the given image tag.
+func regenerateCompose(state config.State, tag, safeDir string) error {
+	updatedState := state
+	updatedState.ImageTag = tag
+	params := compose.ParamsFromState(updatedState)
 	composeYAML, err := compose.Generate(params)
 	if err != nil {
 		return fmt.Errorf("generating compose file: %w", err)
@@ -161,22 +172,19 @@ func updateContainerImages(cmd *cobra.Command, effectiveVersion string) error {
 	if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
 		return fmt.Errorf("writing compose file: %w", err)
 	}
-	if err := config.Save(state); err != nil {
-		return fmt.Errorf("saving config: %w", err)
-	}
+	return nil
+}
 
-	_, _ = fmt.Fprintf(out, "Pulling container images (%s)...\n", tag)
-	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
-		return fmt.Errorf("pulling images: %w", err)
-	}
+// restartIfRunning checks if containers are running and offers a restart.
+func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, state config.State) error {
+	ctx := cmd.Context()
+	out := cmd.OutOrStdout()
 
-	// Check if containers are running and offer restart.
 	psOut, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q")
 	if err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check container status: %v\n", err)
 		return nil
 	}
-
 	if psOut == "" {
 		return nil
 	}
@@ -202,7 +210,6 @@ func updateContainerImages(cmd *cobra.Command, effectiveVersion string) error {
 		return fmt.Errorf("restarting containers: %w", err)
 	}
 
-	// Health check after restart.
 	_, _ = fmt.Fprintln(out, "Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
 	if err := health.WaitForHealthy(ctx, healthURL, 90*time.Second, 2*time.Second, 5*time.Second); err != nil {

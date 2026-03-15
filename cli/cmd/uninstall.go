@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -127,11 +128,14 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 		// On Windows the running binary cannot be deleted. If it lives
 		// inside the config directory, remove everything else and leave
 		// the binary for deferred cleanup in confirmAndRemoveBinary.
-		execPath, _ := os.Executable()
+		execPath, execErr := os.Executable()
+		if execErr != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: cannot resolve executable path: %v\n", execErr)
+		}
 		if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
 			execPath = resolved
 		}
-		if runtime.GOOS == "windows" && isInsideDir(execPath, dir) {
+		if execErr == nil && runtime.GOOS == "windows" && isInsideDir(execPath, dir) {
 			if err := removeAllExcept(dir, execPath); err != nil {
 				return fmt.Errorf("removing config directory: %w", err)
 			}
@@ -186,14 +190,25 @@ func confirmAndRemoveBinary(cmd *cobra.Command) error {
 }
 
 // isInsideDir reports whether child is inside (or equal to) parent.
+// On Windows, the comparison is case-insensitive (NTFS is case-insensitive).
 func isInsideDir(child, parent string) bool {
 	child = filepath.Clean(child)
 	parent = filepath.Clean(parent)
+	// Case-fold on Windows so that C:\Foo and C:\foo are treated as equal.
+	if runtime.GOOS == "windows" {
+		child = strings.ToLower(child)
+		parent = strings.ToLower(parent)
+	}
 	rel, err := filepath.Rel(parent, child)
 	if err != nil {
 		return false
 	}
 	return !strings.HasPrefix(rel, "..")
+}
+
+type walkEntry struct {
+	path  string
+	isDir bool
 }
 
 // removeAllExcept removes all files and directories under root except the
@@ -203,7 +218,7 @@ func removeAllExcept(root, except string) error {
 	root = filepath.Clean(root)
 	except = filepath.Clean(except)
 
-	var entries []string
+	var entries []walkEntry
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -211,18 +226,21 @@ func removeAllExcept(root, except string) error {
 		if filepath.Clean(path) == except {
 			return nil // skip the excluded file
 		}
-		entries = append(entries, path)
+		entries = append(entries, walkEntry{path: path, isDir: d.IsDir()})
 		return nil
 	})
 	if err != nil {
 		return err
 	}
 
-	// Remove in reverse order (deepest first). os.Remove on a non-empty
-	// directory fails, which is expected for ancestor dirs of the excluded
-	// file — we silently skip those.
+	// Remove in reverse order (deepest first). Directory removal failures
+	// are expected for ancestors of the excluded file (non-empty) and are
+	// silently skipped. File removal errors are collected and reported.
+	var errs []error
 	for i := len(entries) - 1; i >= 0; i-- {
-		_ = os.Remove(entries[i])
+		if err := os.Remove(entries[i].path); err != nil && !entries[i].isDir {
+			errs = append(errs, err)
+		}
 	}
-	return nil
+	return errors.Join(errs...)
 }

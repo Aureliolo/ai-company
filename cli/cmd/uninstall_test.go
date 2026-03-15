@@ -8,6 +8,13 @@ import (
 )
 
 func TestIsInsideDir(t *testing.T) {
+	// Use temp dirs for absolute-path tests (mirrors production usage).
+	parentDir := t.TempDir()
+	childDir := filepath.Join(parentDir, "sub", "deep")
+	if err := os.MkdirAll(childDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
 	tests := []struct {
 		name   string
 		child  string
@@ -15,21 +22,21 @@ func TestIsInsideDir(t *testing.T) {
 		want   bool
 	}{
 		{
-			name:   "child inside parent",
-			child:  filepath.Join("a", "b", "c"),
-			parent: filepath.Join("a", "b"),
+			name:   "child inside parent (absolute)",
+			child:  filepath.Join(parentDir, "sub", "deep"),
+			parent: parentDir,
 			want:   true,
 		},
 		{
-			name:   "child equals parent",
-			child:  filepath.Join("a", "b"),
-			parent: filepath.Join("a", "b"),
+			name:   "child equals parent (absolute)",
+			child:  parentDir,
+			parent: parentDir,
 			want:   true,
 		},
 		{
-			name:   "child outside parent",
-			child:  filepath.Join("x", "y"),
-			parent: filepath.Join("a", "b"),
+			name:   "child outside parent (absolute)",
+			child:  t.TempDir(),
+			parent: parentDir,
 			want:   false,
 		},
 		{
@@ -40,19 +47,32 @@ func TestIsInsideDir(t *testing.T) {
 		},
 	}
 
-	// Add Windows-specific drive-letter tests.
+	// Add Windows-specific tests.
 	if runtime.GOOS == "windows" {
-		tests = append(tests, struct {
-			name   string
-			child  string
-			parent string
-			want   bool
-		}{
-			name:   "different drives",
-			child:  `D:\foo\bar`,
-			parent: `C:\foo`,
-			want:   false,
-		})
+		tests = append(tests,
+			struct {
+				name   string
+				child  string
+				parent string
+				want   bool
+			}{
+				name:   "different drives",
+				child:  `D:\foo\bar`,
+				parent: `C:\foo`,
+				want:   false,
+			},
+			struct {
+				name   string
+				child  string
+				parent string
+				want   bool
+			}{
+				name:   "case-insensitive match on Windows",
+				child:  filepath.Join(parentDir, "Sub", "Deep"),
+				parent: parentDir,
+				want:   true,
+			},
+		)
 	}
 
 	for _, tt := range tests {
@@ -73,7 +93,7 @@ func TestRemoveAllExcept_RemovesEverythingElse(t *testing.T) {
 	//     a.txt
 	//     sub/
 	//       b.txt
-	//       keep.txt   ← excluded
+	//       keep.txt   <- excluded
 	//       deep/
 	//         c.txt
 	sub := filepath.Join(root, "sub")
@@ -133,14 +153,24 @@ func TestRemoveAllExcept_ExcludeOutsideRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Exclude a file outside root — everything in root should be removed.
-	outside := filepath.Join(t.TempDir(), "outside.txt")
+	// Create the excluded file outside root so the test matches its intent.
+	outsideDir := t.TempDir()
+	outside := filepath.Join(outsideDir, "outside.txt")
+	if err := os.WriteFile(outside, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	if err := removeAllExcept(root, outside); err != nil {
 		t.Fatalf("removeAllExcept: %v", err)
 	}
 
 	if _, err := os.Stat(f); err == nil {
 		t.Error("expected file.txt to be removed when excluded is outside root")
+	}
+
+	// Outside file must be untouched.
+	if _, err := os.Stat(outside); err != nil {
+		t.Errorf("outside.txt should not have been affected: %v", err)
 	}
 }
 
