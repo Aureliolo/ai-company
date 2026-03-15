@@ -1,8 +1,13 @@
+---
+const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossAAAAADwxZo5bt8p6az7P3M6I_8k4_ypu";
+---
+
 <form
   id="contact-form"
   action="https://formcarry.com/s/z2vjjRnmz_7"
   method="POST"
   class="bg-[#1a1f2e] rounded-xl p-8 border border-white/10"
+  data-recaptcha-key={recaptchaSiteKey}
 >
   <!-- Honeypot -->
   <input type="text" name="_gotcha" style="display:none" tabindex="-1" autocomplete="off" />
@@ -109,10 +114,16 @@
 
       try {
         // Get fresh reCAPTCHA v3 token before submission
-        if (typeof grecaptcha !== "undefined") {
-          const token = await grecaptcha.execute("6LdQkossAAAAADwxZo5bt8p6az7P3M6I_8k4_ypu", { action: "contact" });
+        const siteKey = form.dataset.recaptchaKey;
+        if (typeof grecaptcha !== "undefined" && siteKey) {
+          const token = await grecaptcha.execute(siteKey, { action: "contact" });
           const captchaInput = form.querySelector<HTMLInputElement>("#captchaResponse");
           if (captchaInput) captchaInput.value = token;
+        } else {
+          errorMsg.textContent = "Security verification unavailable. Please disable ad-blockers or try a different browser.";
+          errorMsg.classList.remove("hidden");
+          errorMsg.focus();
+          return;
         }
 
         const res = await fetch(form.action, {
