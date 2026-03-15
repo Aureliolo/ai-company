@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -103,7 +105,7 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewConfirm().
-				Title(fmt.Sprintf("Remove data directory? (%s)", dataDir)).
+				Title(fmt.Sprintf("Remove config directory? (%s)", dataDir)).
 				Value(&removeData),
 		),
 	)
@@ -121,10 +123,25 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 		if dir == "/" || dir == home || isDriveRoot || isUNC {
 			return fmt.Errorf("refusing to remove %q — does not look like an app data directory", dir)
 		}
-		if err := os.RemoveAll(dir); err != nil {
-			return fmt.Errorf("removing data directory: %w", err)
+
+		// On Windows the running binary cannot be deleted. If it lives
+		// inside the config directory, remove everything else and leave
+		// the binary for deferred cleanup in confirmAndRemoveBinary.
+		execPath, _ := os.Executable()
+		if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
+			execPath = resolved
 		}
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed %s\n", dir)
+		if runtime.GOOS == "windows" && isInsideDir(execPath, dir) {
+			if err := removeAllExcept(dir, execPath); err != nil {
+				return fmt.Errorf("removing config directory: %w", err)
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed contents of %s (binary skipped — still running)\n", dir)
+		} else {
+			if err := os.RemoveAll(dir); err != nil {
+				return fmt.Errorf("removing config directory: %w", err)
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed %s\n", dir)
+		}
 	}
 	return nil
 }
@@ -152,12 +169,60 @@ func confirmAndRemoveBinary(cmd *cobra.Command) error {
 		if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
 			execPath = resolved
 		}
-		if err := os.Remove(execPath); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove binary: %v\n", err)
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Manually remove: %s\n", execPath)
+		if runtime.GOOS == "windows" {
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Cannot delete running binary on Windows.")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "To finish cleanup after exit, run:")
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  cmd /C del \"%s\"\n", execPath)
 		} else {
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "CLI binary removed.")
+			if err := os.Remove(execPath); err != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove binary: %v\n", err)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Manually remove: %s\n", execPath)
+			} else {
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "CLI binary removed.")
+			}
 		}
+	}
+	return nil
+}
+
+// isInsideDir reports whether child is inside (or equal to) parent.
+func isInsideDir(child, parent string) bool {
+	child = filepath.Clean(child)
+	parent = filepath.Clean(parent)
+	rel, err := filepath.Rel(parent, child)
+	if err != nil {
+		return false
+	}
+	return !strings.HasPrefix(rel, "..")
+}
+
+// removeAllExcept removes all files and directories under root except the
+// file at except (and its ancestor directories up to root). Entries are
+// removed deepest-first so that empty directories are cleaned up.
+func removeAllExcept(root, except string) error {
+	root = filepath.Clean(root)
+	except = filepath.Clean(except)
+
+	var entries []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if filepath.Clean(path) == except {
+			return nil // skip the excluded file
+		}
+		entries = append(entries, path)
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	// Remove in reverse order (deepest first). os.Remove on a non-empty
+	// directory fails, which is expected for ancestor dirs of the excluded
+	// file — we silently skip those.
+	for i := len(entries) - 1; i >= 0; i-- {
+		_ = os.Remove(entries[i])
 	}
 	return nil
 }

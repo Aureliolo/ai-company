@@ -46,10 +46,12 @@ func verifySigstoreBundle(checksumData, bundleData []byte) error {
 		return fmt.Errorf("fetching sigstore trusted root: %w", err)
 	}
 
-	// Build verifier requiring SCTs and transparency log entries.
+	// Build verifier requiring SCTs, transparency log entries, and
+	// integrated timestamps (required by sigstore-go v1.1+).
 	sev, err := verify.NewVerifier(trustedRoot,
 		verify.WithSignedCertificateTimestamps(1),
 		verify.WithTransparencyLog(1),
+		verify.WithIntegratedTimestamps(1),
 	)
 	if err != nil {
 		return fmt.Errorf("creating sigstore verifier: %w", err)
