@@ -41,18 +41,23 @@ jobs:
 
           echo "Creating tag $TAG_NAME at $TAG_SHA"
 
-          # Idempotent: check if exact tag already exists.
-          # GitHub refs API uses prefix matching, so we must verify the exact ref.
-          if gh api "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG_NAME" --jq '.[].ref, .ref' 2>/dev/null \
-              | grep -qxF "refs/tags/$TAG_NAME"; then
-            echo "Tag $TAG_NAME already exists — skipping."
-          else
-            gh api "repos/$GITHUB_REPOSITORY/git/refs" \
-              --method POST \
-              --field "ref=refs/tags/$TAG_NAME" \
-              --field "sha=$TAG_SHA"
-            echo "Tag $TAG_NAME created successfully."
-          fi
+          # Atomic create: attempt POST unconditionally, treat "already exists"
+          # (422) as success. Avoids TOCTOU race and prefix-matching pitfalls
+          # of the GET /refs/tags/ endpoint.
+          HTTP_CODE=$(gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            --method POST \
+            --field "ref=refs/tags/$TAG_NAME" \
+            --field "sha=$TAG_SHA" \
+            --silent --include 2>&1 | head -1 | grep -oE '[0-9]{3}' || echo "000")
+
+          case "$HTTP_CODE" in
+            201) echo "Tag $TAG_NAME created successfully." ;;
+            422) echo "Tag $TAG_NAME already exists — skipping." ;;
+            *)
+              echo "::error::Failed to create tag $TAG_NAME (HTTP $HTTP_CODE)"
+              exit 1
+              ;;
+          esac
 
       # When Release Please creates/updates a release PR, update the BSL
       # Change Date to 3 years from today. The date update ships as part

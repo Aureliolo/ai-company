@@ -272,7 +272,7 @@ jobs:
             echo "Attempt $i: release not found yet, waiting 10s..."
             sleep 10
           done
-          echo "Release $TAG not found after 5 minutes — proceeding anyway (GoReleaser will create if needed)."
+          echo "Release $TAG not found after 5 minutes — proceeding, but the next upload step will fail if the draft release is missing."
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
