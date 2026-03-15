@@ -113,17 +113,17 @@ echo ""
 "${INSTALL_DIR}/${BINARY_NAME}" version
 echo ""
 
-# Warn if INSTALL_DIR is not in PATH.
+# Warn if INSTALL_DIR is not in PATH (normalize trailing slash).
 case ":${PATH}:" in
-    *":${INSTALL_DIR}:"*) ;;
+    *":${INSTALL_DIR%/}:"*) ;;
     *)
-        echo "Warning: ${INSTALL_DIR} is not in your PATH."
-        echo "Add it by running:"
-        echo ""
-        echo "  export PATH=\"${INSTALL_DIR}:\$PATH\""
-        echo ""
-        echo "To make it permanent, add that line to your shell profile (~/.bashrc, ~/.zshrc, etc.)."
-        echo ""
+        echo "Warning: ${INSTALL_DIR} is not in your PATH." >&2
+        echo "Add it by running:" >&2
+        echo "" >&2
+        echo "  export PATH=\"${INSTALL_DIR}:\$PATH\"" >&2
+        echo "" >&2
+        echo "To make it permanent, add that line to your shell profile (~/.bashrc, ~/.bash_profile, ~/.profile, ~/.zshrc, etc.)." >&2
+        echo "" >&2
         ;;
 esac
 
