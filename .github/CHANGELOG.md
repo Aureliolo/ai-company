@@ -1,28 +1,5 @@
 # Changelog
 
-## [0.2.4](https://github.com/Aureliolo/synthorg/compare/v0.2.3...v0.2.4) (2026-03-15)
-
-
-### Bug Fixes
-
-* attach cosign signatures and provenance bundle to release assets ([#438](https://github.com/Aureliolo/synthorg/issues/438)) ([f191a4d](https://github.com/Aureliolo/synthorg/commit/f191a4dc810b90434ee01a44fe9827ac2f738232))
-* create git tag explicitly for draft releases ([#432](https://github.com/Aureliolo/synthorg/issues/432)) ([1f5120e](https://github.com/Aureliolo/synthorg/commit/1f5120ee80bca0441a38b399d9b26675e5029df8))
-* docker healthcheck, CI optimization, and container hardening ([#436](https://github.com/Aureliolo/synthorg/issues/436)) ([4d32bca](https://github.com/Aureliolo/synthorg/commit/4d32bca76ceb20715457713f16a9d97f284ecb87))
-* ensure security headers on all HTTP responses ([#437](https://github.com/Aureliolo/synthorg/issues/437)) ([837f2fc](https://github.com/Aureliolo/synthorg/commit/837f2fcca858cec4e2083a43c5ad5a0899ae6bc9))
-* make install scripts usable immediately without terminal restart ([#433](https://github.com/Aureliolo/synthorg/issues/433)) ([b45533c](https://github.com/Aureliolo/synthorg/commit/b45533c9742b6f1d43cf386804d52cf996eaf663))
-* migrate pids_limit to deploy.resources.limits.pids ([#439](https://github.com/Aureliolo/synthorg/issues/439)) ([66b94fd](https://github.com/Aureliolo/synthorg/commit/66b94fdb7f1d121df0463a13df01a2f0c3a8f52a))
-
-
-### Refactoring
-
-* redesign release notes layout ([#434](https://github.com/Aureliolo/synthorg/issues/434)) ([239aaf7](https://github.com/Aureliolo/synthorg/commit/239aaf783135a9cb163cc573c62975a4fb04ab5a))
-
-
-### Maintenance
-
-* **site:** replace hero CTA with license link and scroll arrow ([#440](https://github.com/Aureliolo/synthorg/issues/440)) ([56af41c](https://github.com/Aureliolo/synthorg/commit/56af41c833d82857ccf3f60020687ed7d85ca49d))
-* **web:** adopt @vue/tsconfig preset ([#435](https://github.com/Aureliolo/synthorg/issues/435)) ([7d4b214](https://github.com/Aureliolo/synthorg/commit/7d4b214cc22ec99b922dd46bb529e9c8af476b23))
-
 ## [0.2.3](https://github.com/Aureliolo/synthorg/compare/v0.2.2...v0.2.3) (2026-03-15)
 
 
