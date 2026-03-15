@@ -34,7 +34,8 @@ logger = get_logger(__name__)
 
 # Strict CSP for API routes — no inline scripts, self-origin only.
 _API_CSP: Final[str] = (
-    "default-src 'self'; script-src 'self'; base-uri 'self'; frame-ancestors 'none'"
+    "default-src 'self'; script-src 'self'; object-src 'none'; "
+    "base-uri 'self'; frame-ancestors 'none'"
 )
 
 # Relaxed CSP for /docs/ — Scalar UI loads resources from external origins.
@@ -51,6 +52,7 @@ _DOCS_CSP: Final[str] = (
     "img-src 'self' data: https://cdn.jsdelivr.net; "
     "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.scalar.com; "
     "connect-src 'self' https://cdn.jsdelivr.net https://proxy.scalar.com; "
+    "object-src 'none'; "
     "base-uri 'self'; "
     "frame-ancestors 'none'"
 )
