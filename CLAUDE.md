@@ -134,7 +134,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
   src/
     api/          # Axios client, endpoint modules, TypeScript types (mirrors backend Pydantic models)
     components/   # Vue components organized by feature (agents/, approvals/, budget/, common/, dashboard/, layout/, messages/, org-chart/, tasks/)
-    composables/  # Reusable composition functions (useAuth, useLoginLockout, usePolling, useOptimisticUpdate)
+    composables/  # Reusable composition functions (useAuth, useLoginLockout, usePolling, useOptimisticUpdate, useWebSocketSubscription)
     router/       # Vue Router config with auth guards
     stores/       # Pinia stores (auth, agents, tasks, budget, messages, meetings, approvals, websocket, analytics, company, providers)
     styles/       # Global CSS and PrimeVue theme configuration

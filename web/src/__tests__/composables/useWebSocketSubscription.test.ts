@@ -195,6 +195,53 @@ describe('useWebSocketSubscription', () => {
     )
   })
 
+  it('skips subscribe and handler wiring when connect throws', () => {
+    const subscribeSpy = vi.spyOn(wsStore, 'subscribe')
+    const onSpy = vi.spyOn(wsStore, 'onChannelEvent')
+    vi.spyOn(wsStore, 'connect').mockImplementation(() => {
+      throw new Error('connection failed')
+    })
+    authStore.$patch({ token: 'test-token' })
+
+    const handler: WsEventHandler = vi.fn()
+    useWebSocketSubscription({
+      bindings: [{ channel: 'tasks', handler }],
+    })
+
+    expect(subscribeSpy).not.toHaveBeenCalled()
+    expect(onSpy).not.toHaveBeenCalled()
+  })
+
+  it('swallows subscribe errors and logs them', () => {
+    vi.spyOn(wsStore, 'subscribe').mockImplementation(() => {
+      throw new Error('subscribe failed')
+    })
+
+    const handler: WsEventHandler = vi.fn()
+
+    expect(() =>
+      useWebSocketSubscription({
+        bindings: [{ channel: 'tasks', handler }],
+      }),
+    ).not.toThrow()
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'WebSocket setup failed:',
+      expect.any(String),
+    )
+  })
+
+  it('handles empty bindings array', () => {
+    const subscribeSpy = vi.spyOn(wsStore, 'subscribe')
+    const onSpy = vi.spyOn(wsStore, 'onChannelEvent')
+
+    const result = useWebSocketSubscription({ bindings: [] })
+
+    expect(subscribeSpy).toHaveBeenCalledWith([], undefined)
+    expect(onSpy).not.toHaveBeenCalled()
+    expect(result.connected.value).toBe(false)
+  })
+
   it('connected ref reflects wsStore.connected', () => {
     const handler: WsEventHandler = vi.fn()
     const { connected } = useWebSocketSubscription({
@@ -204,5 +251,16 @@ describe('useWebSocketSubscription', () => {
     expect(connected.value).toBe(false)
     wsStore.$patch({ connected: true })
     expect(connected.value).toBe(true)
+  })
+
+  it('reconnectExhausted ref reflects wsStore.reconnectExhausted', () => {
+    const handler: WsEventHandler = vi.fn()
+    const { reconnectExhausted } = useWebSocketSubscription({
+      bindings: [{ channel: 'tasks', handler }],
+    })
+
+    expect(reconnectExhausted.value).toBe(false)
+    wsStore.$patch({ reconnectExhausted: true })
+    expect(reconnectExhausted.value).toBe(true)
   })
 })
