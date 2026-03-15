@@ -32,19 +32,23 @@ logger = get_logger(__name__)
 # Applied to every HTTP response via the before_send hook.
 
 # Strict CSP for API routes — no inline scripts, self-origin only.
-_API_CSP: Final[str] = "default-src 'self'; script-src 'self'"
+_API_CSP: Final[str] = "default-src 'self'; script-src 'self'; base-uri 'self'"
 
 # Relaxed CSP for /docs/ — Scalar UI loads resources from external origins.
 # cdn.jsdelivr.net: JS bundle, CSS, fonts, source maps
 # fonts.scalar.com: Scalar-hosted font files
 # proxy.scalar.com: API proxy and registry features
+# 'unsafe-inline' in script-src/style-src: required by Scalar UI which uses
+# inline <script> and <style> elements.  Accepted risk — /docs is read-only,
+# unauthenticated, and serves no user-submitted content.
 _DOCS_CSP: Final[str] = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
     "img-src 'self' data: https://cdn.jsdelivr.net; "
     "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.scalar.com; "
-    "connect-src 'self' https://cdn.jsdelivr.net https://proxy.scalar.com"
+    "connect-src 'self' https://cdn.jsdelivr.net https://proxy.scalar.com; "
+    "base-uri 'self'"
 )
 
 # Static security headers (path-independent).
@@ -55,6 +59,7 @@ _SECURITY_HEADERS: Final[dict[str, str]] = {
     "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
     "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
     "Cross-Origin-Resource-Policy": "same-origin",
+    "Cross-Origin-Opener-Policy": "same-origin",
     "Cache-Control": "no-store",
 }
 
@@ -69,6 +74,15 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
     Adds static security headers (CORP, HSTS, X-Content-Type-Options,
     etc.) and a path-aware Content-Security-Policy (strict for API,
     relaxed for ``/docs/`` to allow Scalar UI resources).
+
+    Uses ``__setitem__`` (not ``add``) so that if any handler or
+    middleware already set a header, the known-good value overwrites
+    it rather than creating a duplicate.
+
+    Args:
+        message: ASGI message dict (only ``http.response.start``
+            is processed).
+        scope: ASGI connection scope.
     """
     if scope.get("type") != ScopeType.HTTP:
         return
@@ -77,17 +91,14 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
 
     headers = MutableScopeHeaders.from_message(message)
 
-    # Static security headers
+    # Static security headers — overwrite to prevent duplicates.
     for name, value in _SECURITY_HEADERS.items():
-        headers.add(name, value)
+        headers[name] = value
 
     # Path-aware CSP
     path: str = scope.get("path", "")
     is_docs = path == "/docs" or path.startswith("/docs/")
-    headers.add(
-        "Content-Security-Policy",
-        _DOCS_CSP if is_docs else _API_CSP,
-    )
+    headers["Content-Security-Policy"] = _DOCS_CSP if is_docs else _API_CSP
 
 
 class RequestLoggingMiddleware:

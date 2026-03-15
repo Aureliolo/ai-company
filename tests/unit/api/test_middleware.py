@@ -4,6 +4,7 @@ from typing import Any
 
 import pytest
 from litestar import Litestar, get, post
+from litestar.enums import ScopeType
 from litestar.exceptions import ValidationException
 from litestar.testing import TestClient
 
@@ -25,6 +26,22 @@ def _make_app(*handlers: Any) -> Litestar:
     )
 
 
+def _assert_all_security_headers(
+    resp: Any,
+    *,
+    status: int,
+) -> None:
+    """Assert that all static security headers and CSP are present."""
+    for name, expected in _SECURITY_HEADERS.items():
+        assert resp.headers.get(name) == expected, (
+            f"Missing or wrong header on {status}: {name}"
+        )
+    # CSP must also be present (strict for non-docs paths).
+    assert resp.headers.get("content-security-policy") == _API_CSP, (
+        f"Missing or wrong CSP on {status}"
+    )
+
+
 # ── Security headers hook ──────────────────────────────────────
 
 
@@ -33,7 +50,7 @@ class TestSecurityHeadersHook:
     """Verify security headers appear on ALL response types."""
 
     def test_success_response_has_all_security_headers(self) -> None:
-        """200 OK carries every static security header."""
+        """200 OK carries every static security header and CSP."""
 
         @get("/ok")
         async def handler() -> dict[str, str]:
@@ -42,10 +59,7 @@ class TestSecurityHeadersHook:
         with TestClient(_make_app(handler)) as client:
             resp = client.get("/ok")
             assert resp.status_code == 200
-            for name, expected in _SECURITY_HEADERS.items():
-                assert resp.headers.get(name) == expected, (
-                    f"Missing or wrong header: {name}"
-                )
+            _assert_all_security_headers(resp, status=200)
 
     def test_exception_handler_response_has_security_headers(
         self,
@@ -59,10 +73,7 @@ class TestSecurityHeadersHook:
         with TestClient(_make_app(handler)) as client:
             resp = client.get("/fail")
             assert resp.status_code == 400
-            for name, expected in _SECURITY_HEADERS.items():
-                assert resp.headers.get(name) == expected, (
-                    f"Missing or wrong header on 400: {name}"
-                )
+            _assert_all_security_headers(resp, status=400)
 
     def test_unmatched_route_404_has_security_headers(self) -> None:
         """Router-level 404 (no matching route) carries headers."""
@@ -74,10 +85,7 @@ class TestSecurityHeadersHook:
         with TestClient(_make_app(handler)) as client:
             resp = client.get("/nonexistent")
             assert resp.status_code == 404
-            for name, expected in _SECURITY_HEADERS.items():
-                assert resp.headers.get(name) == expected, (
-                    f"Missing or wrong header on 404: {name}"
-                )
+            _assert_all_security_headers(resp, status=404)
 
     def test_method_not_allowed_405_has_security_headers(self) -> None:
         """Router-level 405 carries security headers."""
@@ -89,10 +97,7 @@ class TestSecurityHeadersHook:
         with TestClient(_make_app(handler)) as client:
             resp = client.get("/only-post")
             assert resp.status_code == 405
-            for name, expected in _SECURITY_HEADERS.items():
-                assert resp.headers.get(name) == expected, (
-                    f"Missing or wrong header on 405: {name}"
-                )
+            _assert_all_security_headers(resp, status=405)
 
     def test_500_error_has_security_headers(self) -> None:
         """Unexpected error 500 carries security headers."""
@@ -105,10 +110,20 @@ class TestSecurityHeadersHook:
         with TestClient(_make_app(handler)) as client:
             resp = client.get("/boom")
             assert resp.status_code == 500
-            for name, expected in _SECURITY_HEADERS.items():
-                assert resp.headers.get(name) == expected, (
-                    f"Missing or wrong header on 500: {name}"
-                )
+            _assert_all_security_headers(resp, status=500)
+
+    async def test_non_http_scope_is_skipped(self) -> None:
+        """Non-HTTP scopes (WebSocket, lifespan) are not modified."""
+        message: Any = {
+            "type": "websocket.connect",
+            "headers": [],
+        }
+        scope: Any = {"type": ScopeType.WEBSOCKET}
+
+        await security_headers_hook(message, scope)
+
+        # Headers list should remain empty — hook returned early.
+        assert message.get("headers") == []
 
 
 # ── CSP path selection ─────────────────────────────────────────
