@@ -17,8 +17,9 @@ from synthorg.api.dto import (
 from synthorg.api.errors import ErrorCategory
 from synthorg.core.enums import ApprovalRiskLevel
 
+pytestmark = pytest.mark.unit
 
-@pytest.mark.unit
+
 class TestApiResponseEnvelope:
     def test_success_true_when_no_error(self) -> None:
         resp = ApiResponse(data={"key": "value"})
@@ -63,7 +64,6 @@ class TestApiResponseEnvelope:
         assert resp.error_detail.error_category == ErrorCategory.NOT_FOUND
 
 
-@pytest.mark.unit
 class TestErrorDetail:
     def test_construction_all_fields(self) -> None:
         detail = ErrorDetail(
@@ -114,8 +114,66 @@ class TestErrorDetail:
         restored = ErrorDetail.model_validate(dumped)
         assert restored == detail
 
+    def test_retry_after_rejects_negative(self) -> None:
+        with pytest.raises(ValidationError, match="greater than or equal to 0"):
+            ErrorDetail(
+                message="err",
+                error_code=5000,
+                error_category=ErrorCategory.RATE_LIMIT,
+                retryable=True,
+                retry_after=-1,
+                instance="x",
+            )
 
-@pytest.mark.unit
+    def test_retry_after_rejects_when_not_retryable(self) -> None:
+        with pytest.raises(ValidationError, match="retry_after must be None"):
+            ErrorDetail(
+                message="err",
+                error_code=8000,
+                error_category=ErrorCategory.INTERNAL,
+                retryable=False,
+                retry_after=30,
+                instance="x",
+            )
+
+    def test_retry_after_allowed_when_retryable(self) -> None:
+        detail = ErrorDetail(
+            message="Slow down",
+            error_code=5000,
+            error_category=ErrorCategory.RATE_LIMIT,
+            retryable=True,
+            retry_after=60,
+            instance="x",
+        )
+        assert detail.retry_after == 60
+
+
+class TestApiResponseErrorDetailConsistency:
+    def test_error_detail_on_success_rejected(self) -> None:
+        detail = ErrorDetail(
+            message="err",
+            error_code=8000,
+            error_category=ErrorCategory.INTERNAL,
+            instance="x",
+        )
+        with pytest.raises(ValidationError, match="error_detail requires error"):
+            ApiResponse(data="ok", error_detail=detail)
+
+    def test_error_detail_on_paginated_success_rejected(self) -> None:
+        detail = ErrorDetail(
+            message="err",
+            error_code=8000,
+            error_category=ErrorCategory.INTERNAL,
+            instance="x",
+        )
+        with pytest.raises(ValidationError, match="error_detail requires error"):
+            PaginatedResponse(
+                data=("a",),
+                error_detail=detail,
+                pagination=PaginationMeta(total=1, offset=0, limit=10),
+            )
+
+
 class TestPaginatedResponseErrorDetail:
     def test_error_detail_defaults_to_none(self) -> None:
         resp: PaginatedResponse[str] = PaginatedResponse(
@@ -139,7 +197,6 @@ class TestPaginatedResponseErrorDetail:
         assert resp.error_detail.error_code == 8000
 
 
-@pytest.mark.unit
 class TestCreateApprovalRequestMetadata:
     def test_metadata_too_many_keys(self) -> None:
         many_keys = {f"k{i}": f"v{i}" for i in range(21)}
@@ -185,7 +242,6 @@ class TestCreateApprovalRequestMetadata:
         assert req.metadata == {"key": "value"}
 
 
-@pytest.mark.unit
 class TestCreateApprovalRequestActionType:
     @pytest.mark.parametrize(
         "invalid_action_type",
@@ -226,7 +282,6 @@ class TestCreateApprovalRequestActionType:
         assert req.action_type == valid_action_type
 
 
-@pytest.mark.unit
 class TestCreateApprovalRequestTtl:
     def test_ttl_below_minimum_rejected(self) -> None:
         with pytest.raises(ValueError, match="greater than or equal to 60"):
@@ -268,7 +323,6 @@ class TestCreateApprovalRequestTtl:
         assert req.ttl_seconds is None
 
 
-@pytest.mark.unit
 class TestApproveRequestDto:
     def test_comment_optional(self) -> None:
         req = ApproveRequest()
@@ -283,7 +337,6 @@ class TestApproveRequestDto:
             ApproveRequest(comment="x" * 5000)
 
 
-@pytest.mark.unit
 class TestCoordinateTaskRequest:
     """Validation tests for CoordinateTaskRequest."""
 
@@ -336,7 +389,6 @@ class TestCoordinateTaskRequest:
         assert getattr(req, field) == value
 
 
-@pytest.mark.unit
 class TestCoordinationPhaseResponse:
     """Validation tests for CoordinationPhaseResponse consistency."""
 
@@ -372,7 +424,6 @@ class TestCoordinationPhaseResponse:
         assert p.error == "fail"
 
 
-@pytest.mark.unit
 class TestCoordinationResultResponse:
     """Tests for CoordinationResultResponse computed field."""
 

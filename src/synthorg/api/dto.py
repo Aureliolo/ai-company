@@ -45,7 +45,8 @@ class ErrorDetail(BaseModel):
 
     Attributes:
         message: Human-readable error message.
-        error_code: Machine-readable 4-digit error code.
+        error_code: Machine-readable error code (by convention, 4-digit
+            category-grouped; see ``ErrorCode``).
         error_category: High-level error category.
         retryable: Whether the client should retry the request.
         retry_after: Seconds to wait before retrying (``None``
@@ -55,12 +56,20 @@ class ErrorDetail(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    message: str
+    message: NotBlankStr
     error_code: int
     error_category: ErrorCategory
     retryable: bool = False
     retry_after: int | None = Field(default=None, ge=0)
     instance: NotBlankStr
+
+    @model_validator(mode="after")
+    def _validate_retry_after_consistency(self) -> Self:
+        """``retry_after`` must be ``None`` when ``retryable`` is ``False``."""
+        if not self.retryable and self.retry_after is not None:
+            msg = "retry_after must be None when retryable is False"
+            raise ValueError(msg)
+        return self
 
 
 # ── Response envelopes ──────────────────────────────────────────
@@ -81,6 +90,14 @@ class ApiResponse[T](BaseModel):
     data: T | None = None
     error: str | None = None
     error_detail: ErrorDetail | None = None
+
+    @model_validator(mode="after")
+    def _validate_error_detail_consistency(self) -> Self:
+        """``error_detail`` must not appear on a successful response."""
+        if self.error_detail is not None and self.error is None:
+            msg = "error_detail requires error to be set"
+            raise ValueError(msg)
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -122,6 +139,17 @@ class PaginatedResponse[T](BaseModel):
     error: str | None = None
     error_detail: ErrorDetail | None = None
     pagination: PaginationMeta
+
+    @model_validator(mode="after")
+    def _validate_error_detail_consistency(self) -> Self:
+        """Ensure ``error`` and ``error_detail`` are set together."""
+        if self.error_detail is not None and self.error is None:
+            msg = "error_detail requires error to be set"
+            raise ValueError(msg)
+        if self.error is not None and self.error_detail is None:
+            msg = "error must be accompanied by error_detail"
+            raise ValueError(msg)
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property

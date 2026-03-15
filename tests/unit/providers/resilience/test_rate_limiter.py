@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+from unittest import mock
 
 import pytest
 import structlog
@@ -13,10 +14,9 @@ from synthorg.observability.events.provider import (
 )
 from synthorg.providers.resilience.rate_limiter import RateLimiter
 
-pytestmark = pytest.mark.timeout(30)
+pytestmark = [pytest.mark.timeout(30), pytest.mark.unit]
 
 
-@pytest.mark.unit
 class TestRateLimiterDisabled:
     async def test_disabled_by_default(self) -> None:
         limiter = RateLimiter(
@@ -34,7 +34,6 @@ class TestRateLimiterDisabled:
         limiter.release()  # should not raise
 
 
-@pytest.mark.unit
 class TestRateLimiterConcurrency:
     async def test_concurrent_limit(self) -> None:
         config = RateLimiterConfig(max_concurrent=2)
@@ -54,12 +53,15 @@ class TestRateLimiterConcurrency:
 
         task = asyncio.create_task(_try_acquire())
         try:
-            await asyncio.sleep(0.05)
+            # Yield control so _try_acquire starts and blocks on semaphore
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
             assert not acquired.is_set()
 
-            # Release one slot
+            # Release one slot and yield so the blocked task can proceed
             limiter.release()
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
             assert acquired.is_set()
 
             # Release the remaining two slots
@@ -77,7 +79,6 @@ class TestRateLimiterConcurrency:
         limiter.release()
 
 
-@pytest.mark.unit
 class TestRateLimiterRPM:
     async def test_rpm_enabled(self) -> None:
         config = RateLimiterConfig(max_requests_per_minute=60)
@@ -93,12 +94,9 @@ class TestRateLimiterRPM:
             await limiter.acquire()
 
 
-@pytest.mark.unit
 class TestRateLimiterPause:
     async def test_pause_blocks_acquire(self) -> None:
         """acquire() sleeps for the remaining pause duration."""
-        from unittest import mock
-
         config = RateLimiterConfig(max_concurrent=10)
         limiter = RateLimiter(config, provider_name="test-provider")
 
@@ -141,8 +139,6 @@ class TestRateLimiterPause:
 
     async def test_pause_extends_if_longer(self) -> None:
         """A longer second pause extends the pause window."""
-        from unittest import mock
-
         config = RateLimiterConfig(max_concurrent=10)
         limiter = RateLimiter(config, provider_name="test-provider")
 
@@ -185,8 +181,6 @@ class TestRateLimiterPause:
 
     async def test_pause_no_extend_if_shorter(self) -> None:
         """A shorter second pause does not reduce the pause window."""
-        from unittest import mock
-
         config = RateLimiterConfig(max_concurrent=10)
         limiter = RateLimiter(config, provider_name="test-provider")
 
@@ -243,12 +237,9 @@ class TestRateLimiterPause:
             limiter.pause(float("nan"))
 
 
-@pytest.mark.unit
 class TestRateLimiterRPMThrottling:
     async def test_rpm_throttles_when_over_limit(self) -> None:
         """acquire() sleeps when RPM budget is exhausted, then retries."""
-        from unittest import mock
-
         config = RateLimiterConfig(max_requests_per_minute=1)
         limiter = RateLimiter(config, provider_name="test-provider")
 
@@ -286,8 +277,6 @@ class TestRateLimiterRPMThrottling:
 
     async def test_rpm_throttle_logs_rpm_limit_reason(self) -> None:
         """RPM throttling emits a log entry with reason='rpm_limit'."""
-        from unittest import mock
-
         config = RateLimiterConfig(max_requests_per_minute=1)
         limiter = RateLimiter(config, provider_name="test-provider")
 
@@ -324,7 +313,6 @@ class TestRateLimiterRPMThrottling:
         assert len(rpm_logs) >= 1
 
 
-@pytest.mark.unit
 class TestRateLimiterLogging:
     async def test_logs_pause(self) -> None:
         config = RateLimiterConfig(max_concurrent=10)

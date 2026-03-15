@@ -3,7 +3,7 @@
  */
 
 import axios, { type AxiosError, type AxiosResponse } from 'axios'
-import type { ApiResponse, PaginatedResponse } from './types'
+import type { ApiResponse, ErrorDetail, PaginatedResponse } from './types'
 
 // Normalize: strip trailing slashes and any existing /api/v1 suffix
 const RAW_BASE = (import.meta.env.VITE_API_BASE_URL as string) || ''
@@ -50,16 +50,31 @@ apiClient.interceptors.response.use(
 )
 
 /**
+ * Error thrown when the API returns an error response.
+ * Carries the structured RFC 9457 error detail when available.
+ */
+export class ApiRequestError extends Error {
+  readonly errorDetail: ErrorDetail | null
+
+  constructor(message: string, errorDetail: ErrorDetail | null = null) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.errorDetail = errorDetail
+  }
+}
+
+/**
  * Extract data from an ApiResponse envelope.
  * Throws if the response indicates an error.
  */
 export function unwrap<T>(response: AxiosResponse<ApiResponse<T>>): T {
   const body = response.data
   if (!body || typeof body !== 'object') {
-    throw new Error('Unknown API error')
+    throw new ApiRequestError('Unknown API error')
   }
   if (!body.success || body.data === null || body.data === undefined) {
-    throw new Error(body.error ?? 'Unknown API error')
+    const detail = 'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
+    throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
   return body.data
 }
@@ -76,7 +91,8 @@ export function unwrapPaginated<T>(
     throw new Error('Unknown API error')
   }
   if (!body.success) {
-    throw new Error(body.error ?? 'Unknown API error')
+    const detail = 'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
+    throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
   }
   if (!body.pagination || !Array.isArray(body.data)) {
     throw new Error('Unexpected API response format')

@@ -11,6 +11,7 @@ metadata (error code, category, retryability, request correlation ID).
 """
 
 from http import HTTPStatus
+from types import MappingProxyType
 from typing import Any, Final
 
 import structlog
@@ -41,6 +42,11 @@ logger = get_logger(__name__)
 
 _SERVER_ERROR_THRESHOLD: Final[int] = 500
 
+# Headers safe to forward from HTTPException to the client response.
+_ALLOWED_PASSTHROUGH_HEADERS: Final[frozenset[str]] = frozenset(
+    {"retry-after", "www-authenticate", "allow"},
+)
+
 
 def _get_instance_id() -> str:
     """Get request correlation ID from structlog context, or generate one.
@@ -53,9 +59,8 @@ def _get_instance_id() -> str:
         request_id = ctx.get("request_id")
         if isinstance(request_id, str) and request_id:
             return request_id
-    except Exception:  # noqa: S110
-        # Exception handlers must never crash — silent fallback is intentional.
-        pass
+    except Exception:
+        logger.debug("correlation_id_fallback_generated")
     return generate_correlation_id()
 
 
@@ -67,7 +72,12 @@ def _build_error_response(
     retryable: bool = False,
     retry_after: int | None = None,
 ) -> ApiResponse[None]:
-    """Build an ``ApiResponse`` with structured ``ErrorDetail``."""
+    """Build an ``ApiResponse`` with structured ``ErrorDetail``.
+
+    The ``instance`` field is auto-populated from the current structlog
+    request context (falling back to a newly generated correlation ID
+    if unavailable).
+    """
     return ApiResponse[None](
         error=message,
         error_detail=ErrorDetail(
@@ -81,14 +91,18 @@ def _build_error_response(
     )
 
 
-_STATUS_TO_ERROR_META: dict[int, tuple[ErrorCode, ErrorCategory, bool]] = {
-    401: (ErrorCode.UNAUTHORIZED, ErrorCategory.AUTH, False),
-    403: (ErrorCode.FORBIDDEN, ErrorCategory.AUTH, False),
-    404: (ErrorCode.ROUTE_NOT_FOUND, ErrorCategory.NOT_FOUND, False),
-    409: (ErrorCode.RESOURCE_CONFLICT, ErrorCategory.CONFLICT, False),
-    429: (ErrorCode.RATE_LIMITED, ErrorCategory.RATE_LIMIT, True),
-    503: (ErrorCode.SERVICE_UNAVAILABLE, ErrorCategory.INTERNAL, True),
-}
+_STATUS_TO_ERROR_META: MappingProxyType[int, tuple[ErrorCode, ErrorCategory, bool]] = (
+    MappingProxyType(
+        {
+            401: (ErrorCode.UNAUTHORIZED, ErrorCategory.AUTH, False),
+            403: (ErrorCode.FORBIDDEN, ErrorCategory.AUTH, False),
+            404: (ErrorCode.ROUTE_NOT_FOUND, ErrorCategory.NOT_FOUND, False),
+            409: (ErrorCode.RESOURCE_CONFLICT, ErrorCategory.CONFLICT, False),
+            429: (ErrorCode.RATE_LIMITED, ErrorCategory.RATE_LIMIT, True),
+            503: (ErrorCode.SERVICE_UNAVAILABLE, ErrorCategory.INTERNAL, True),
+        }
+    )
+)
 
 _CLIENT_ERROR_DEFAULT: tuple[ErrorCode, ErrorCategory, bool] = (
     ErrorCode.REQUEST_VALIDATION_ERROR,
@@ -197,7 +211,7 @@ def handle_api_error(
     if exc.status_code >= _SERVER_ERROR_THRESHOLD:
         msg = type(exc).default_message
     else:
-        msg = str(exc) or type(exc).default_message
+        msg = str(exc)
     return Response(
         content=_build_error_response(
             message=msg,
@@ -231,10 +245,9 @@ def handle_permission_denied(
 ) -> Response[ApiResponse[None]]:
     """Map ``PermissionDeniedException`` to 403."""
     _log_error(request, exc, status=403)
-    detail = exc.detail or HTTPStatus.FORBIDDEN.phrase
     return Response(
         content=_build_error_response(
-            message=detail,
+            message="Forbidden",
             error_code=ErrorCode.FORBIDDEN,
             error_category=ErrorCategory.AUTH,
         ),
@@ -264,10 +277,9 @@ def handle_not_authorized(
 ) -> Response[ApiResponse[None]]:
     """Map ``NotAuthorizedException`` to 401."""
     _log_error(request, exc, status=401)
-    detail = exc.detail or HTTPStatus.UNAUTHORIZED.phrase
     return Response(
         content=_build_error_response(
-            message=detail,
+            message="Authentication required",
             error_code=ErrorCode.UNAUTHORIZED,
             error_category=ErrorCategory.AUTH,
         ),
@@ -331,7 +343,12 @@ def handle_http_exception(
             retryable=retryable,
         ),
         status_code=status,
-        headers=exc.headers,
+        headers={
+            k: v
+            for k, v in (exc.headers or {}).items()
+            if k.lower() in _ALLOWED_PASSTHROUGH_HEADERS
+        }
+        or None,
     )
 
 

@@ -13,8 +13,11 @@ from synthorg.api.middleware import (
     _API_CSP,
     _DOCS_CSP,
     _SECURITY_HEADERS,
+    RequestLoggingMiddleware,
     security_headers_hook,
 )
+
+pytestmark = pytest.mark.unit
 
 
 def _make_app(*handlers: Any) -> Litestar:
@@ -49,7 +52,6 @@ def _assert_all_security_headers(
 # ── Security headers hook ──────────────────────────────────────
 
 
-@pytest.mark.unit
 class TestSecurityHeadersHook:
     """Verify security headers appear on ALL response types."""
 
@@ -133,7 +135,6 @@ class TestSecurityHeadersHook:
 # ── CSP path selection ─────────────────────────────────────────
 
 
-@pytest.mark.unit
 class TestCSPPathSelection:
     """Verify path-aware CSP via the before_send hook."""
 
@@ -194,7 +195,6 @@ class TestCSPPathSelection:
 # ── Request logging middleware ─────────────────────────────────
 
 
-@pytest.mark.unit
 class TestRequestLoggingMiddleware:
     def test_request_completes_with_status(self, test_client: TestClient[Any]) -> None:
         response = test_client.get("/api/v1/health")
@@ -205,3 +205,106 @@ class TestRequestLoggingMiddleware:
     ) -> None:
         response = test_client.get("/api/v1/agents/nonexistent")
         assert response.status_code == 404
+
+
+class TestCorrelationIdBinding:
+    """Verify request correlation ID lifecycle in middleware."""
+
+    def test_correlation_id_bound_during_request(self) -> None:
+        """Middleware binds a request_id into structlog context."""
+        import structlog
+
+        captured_id: str | None = None
+
+        @get("/capture")
+        async def handler() -> dict[str, str]:
+            nonlocal captured_id
+            ctx = structlog.contextvars.get_contextvars()
+            captured_id = ctx.get("request_id")
+            return {"ok": "true"}
+
+        app = Litestar(
+            route_handlers=[handler],
+            middleware=[RequestLoggingMiddleware],
+            exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
+        )
+        with TestClient(app) as client:
+            resp = client.get("/capture")
+            assert resp.status_code == 200
+
+        assert captured_id is not None
+        assert len(captured_id) > 0
+
+    def test_correlation_id_cleared_after_request(self) -> None:
+        """Context is cleaned up after request completes."""
+        import structlog
+
+        @get("/clear-test")
+        async def handler() -> dict[str, str]:
+            return {"ok": "true"}
+
+        app = Litestar(
+            route_handlers=[handler],
+            middleware=[RequestLoggingMiddleware],
+            exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
+        )
+        with TestClient(app) as client:
+            client.get("/clear-test")
+
+        # After request completes, request_id should be cleared
+        ctx = structlog.contextvars.get_contextvars()
+        assert "request_id" not in ctx
+
+    def test_correlation_id_cleared_on_error(self) -> None:
+        """Context is cleaned up even when request raises."""
+        import structlog
+
+        @get("/error-clear")
+        async def handler() -> None:
+            msg = "boom"
+            raise RuntimeError(msg)
+
+        app = Litestar(
+            route_handlers=[handler],
+            middleware=[RequestLoggingMiddleware],
+            exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
+        )
+        with TestClient(app) as client:
+            resp = client.get("/error-clear")
+            assert resp.status_code == 500
+
+        ctx = structlog.contextvars.get_contextvars()
+        assert "request_id" not in ctx
+
+
+class TestLogRequestCompletion:
+    """Tests for the _log_request_completion helper."""
+
+    def test_none_status_logs_warning_with_zero(self) -> None:
+        """status_code=None logs at WARNING with status_code=0."""
+        import structlog as _structlog
+
+        with _structlog.testing.capture_logs() as logs:
+            from synthorg.api.middleware import _log_request_completion
+
+            _log_request_completion("GET", "/test", None, 42.0)
+
+        assert len(logs) >= 1
+        warn_logs = [entry for entry in logs if entry.get("log_level") == "warning"]
+        assert len(warn_logs) >= 1
+        assert warn_logs[0]["status_code"] == 0
+        assert warn_logs[0]["status_code_captured"] is False
+
+    def test_known_status_logs_info(self) -> None:
+        """Known status_code logs at INFO."""
+        import structlog as _structlog
+
+        with _structlog.testing.capture_logs() as logs:
+            from synthorg.api.middleware import _log_request_completion
+
+            _log_request_completion("POST", "/api", 201, 10.5)
+
+        assert len(logs) >= 1
+        info_logs = [entry for entry in logs if entry.get("log_level") == "info"]
+        assert len(info_logs) >= 1
+        assert info_logs[0]["status_code"] == 201

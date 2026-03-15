@@ -2,8 +2,10 @@
 
 import re
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
+import structlog
 from litestar import Litestar, get, post
 from litestar.exceptions import (
     HTTPException,
@@ -24,12 +26,21 @@ from synthorg.api.errors import (
     ServiceUnavailableError,
     UnauthorizedError,
 )
-from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
+from synthorg.api.exception_handlers import (
+    EXCEPTION_HANDLERS,
+    _build_error_response,
+    _category_for_status,
+    _get_instance_id,
+    handle_http_exception,
+    handle_unexpected,
+)
 from synthorg.persistence.errors import (
     DuplicateRecordError,
     PersistenceError,
     RecordNotFoundError,
 )
+
+pytestmark = pytest.mark.unit
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -64,7 +75,6 @@ def _assert_error_detail(
     assert len(detail["instance"]) > 0
 
 
-@pytest.mark.unit
 class TestExceptionHandlers:
     def test_record_not_found_maps_to_404(self) -> None:
         @get("/test")
@@ -291,8 +301,8 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_permission_denied_preserves_detail(self) -> None:
-        """PermissionDeniedException with custom detail passes it through."""
+    def test_permission_denied_scrubs_custom_detail(self) -> None:
+        """PermissionDeniedException always returns fixed 'Forbidden' message."""
 
         @get("/test")
         async def handler() -> None:
@@ -302,7 +312,7 @@ class TestExceptionHandlers:
             resp = client.get("/test")
             assert resp.status_code == 403
             body = resp.json()
-            assert body["error"] == "Write access denied"
+            assert body["error"] == "Forbidden"
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.FORBIDDEN,
@@ -322,7 +332,7 @@ class TestExceptionHandlers:
             assert resp.status_code == 401
             body = resp.json()
             assert body["success"] is False
-            assert body["error"] == "Unauthorized"
+            assert body["error"] == "Authentication required"
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.UNAUTHORIZED,
@@ -330,8 +340,8 @@ class TestExceptionHandlers:
                 retryable=False,
             )
 
-    def test_not_authorized_preserves_detail(self) -> None:
-        """NotAuthorizedException with custom detail passes it through."""
+    def test_not_authorized_scrubs_custom_detail(self) -> None:
+        """NotAuthorizedException always returns fixed message."""
 
         @get("/test")
         async def handler() -> None:
@@ -341,7 +351,7 @@ class TestExceptionHandlers:
             resp = client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
-            assert body["error"] == "Invalid JWT token"
+            assert body["error"] == "Authentication required"
             _assert_error_detail(
                 body,
                 error_code=ErrorCode.UNAUTHORIZED,
@@ -434,10 +444,6 @@ class TestExceptionHandlers:
 
     def test_http_exception_nonstandard_status_uses_fallback(self) -> None:
         """Non-standard status code falls back to generic message."""
-        from unittest.mock import MagicMock
-
-        from synthorg.api.exception_handlers import handle_http_exception
-
         exc = MagicMock(spec=HTTPException)
         exc.status_code = 499
         exc.detail = ""
@@ -454,7 +460,6 @@ class TestExceptionHandlers:
         assert resp.content.error_detail.error_category == ErrorCategory.VALIDATION
 
 
-@pytest.mark.unit
 class TestStructuredErrorMetadata:
     """Tests specifically for RFC 9457 structured error features."""
 
@@ -509,9 +514,6 @@ class TestStructuredErrorMetadata:
 
     def test_instance_is_valid_uuid_format(self) -> None:
         """instance field should be a UUID when middleware is not active."""
-        from unittest.mock import MagicMock
-
-        from synthorg.api.exception_handlers import handle_unexpected
 
         exc = RuntimeError("boom")
         request = MagicMock()
@@ -565,57 +567,40 @@ class TestStructuredErrorMetadata:
             assert "10.0.0.5" not in body["error"]
 
 
-@pytest.mark.unit
 class TestGetInstanceId:
     """Direct unit tests for _get_instance_id helper."""
 
     def test_returns_request_id_from_context(self) -> None:
-        import structlog
-
         structlog.contextvars.bind_contextvars(request_id="req-known-123")
         try:
-            from synthorg.api.exception_handlers import _get_instance_id
-
             result = _get_instance_id()
             assert result == "req-known-123"
         finally:
             structlog.contextvars.unbind_contextvars("request_id")
 
     def test_falls_back_to_uuid_when_no_context(self) -> None:
-        import structlog
-
         structlog.contextvars.unbind_contextvars("request_id")
-        from synthorg.api.exception_handlers import _get_instance_id
 
         result = _get_instance_id()
         assert _UUID_RE.match(result)
 
     def test_falls_back_for_non_string_request_id(self) -> None:
-        import structlog
-
         structlog.contextvars.bind_contextvars(request_id=12345)
         try:
-            from synthorg.api.exception_handlers import _get_instance_id
-
             result = _get_instance_id()
             assert _UUID_RE.match(result)
         finally:
             structlog.contextvars.unbind_contextvars("request_id")
 
     def test_falls_back_for_empty_string_request_id(self) -> None:
-        import structlog
-
         structlog.contextvars.bind_contextvars(request_id="")
         try:
-            from synthorg.api.exception_handlers import _get_instance_id
-
             result = _get_instance_id()
             assert _UUID_RE.match(result)
         finally:
             structlog.contextvars.unbind_contextvars("request_id")
 
 
-@pytest.mark.unit
 class TestCategoryForStatus:
     """Direct unit tests for _category_for_status helper."""
 
@@ -637,31 +622,24 @@ class TestCategoryForStatus:
         expected_category: ErrorCategory,
         expected_retryable: bool,
     ) -> None:
-        from synthorg.api.exception_handlers import _category_for_status
-
         code, category, retryable = _category_for_status(status)
         assert code == expected_code
         assert category == expected_category
         assert retryable is expected_retryable
 
     def test_unmapped_server_error(self) -> None:
-        from synthorg.api.exception_handlers import _category_for_status
-
         code, category, retryable = _category_for_status(507)
         assert code == ErrorCode.INTERNAL_ERROR
         assert category == ErrorCategory.INTERNAL
         assert retryable is False
 
     def test_unmapped_client_error(self) -> None:
-        from synthorg.api.exception_handlers import _category_for_status
-
         code, category, retryable = _category_for_status(418)
         assert code == ErrorCode.REQUEST_VALIDATION_ERROR
         assert category == ErrorCategory.VALIDATION
         assert retryable is False
 
 
-@pytest.mark.unit
 class TestApiErrorInstantiation:
     """Tests for ApiError and subclass instantiation behavior."""
 
@@ -689,3 +667,31 @@ class TestApiErrorInstantiation:
         exc = NotFoundError("Custom not found")
         assert str(exc) == "Custom not found"
         assert exc.status_code == 404
+
+
+class TestGetInstanceIdExceptionFallback:
+    """Test that _get_instance_id falls back when get_contextvars raises."""
+
+    def test_falls_back_when_get_contextvars_raises(self) -> None:
+        with patch(
+            "structlog.contextvars.get_contextvars",
+            side_effect=RuntimeError("broken"),
+        ):
+            result = _get_instance_id()
+            assert _UUID_RE.match(result)
+
+
+class TestBuildErrorResponseRetryAfter:
+    """Test _build_error_response with non-None retry_after."""
+
+    def test_retry_after_propagated(self) -> None:
+        resp = _build_error_response(
+            message="Slow down",
+            error_code=ErrorCode.RATE_LIMITED,
+            error_category=ErrorCategory.RATE_LIMIT,
+            retryable=True,
+            retry_after=120,
+        )
+        assert resp.error_detail is not None
+        assert resp.error_detail.retry_after == 120
+        assert resp.error_detail.retryable is True

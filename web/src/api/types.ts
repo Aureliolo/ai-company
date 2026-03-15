@@ -88,12 +88,43 @@ export type ToolAccessLevel = 'sandboxed' | 'restricted' | 'standard' | 'elevate
 
 export type MemoryLevel = 'persistent' | 'project' | 'session' | 'none'
 
+// ── RFC 9457 Structured Errors ───────────────────────────────
+
+export type ErrorCategory =
+  | 'auth'
+  | 'validation'
+  | 'not_found'
+  | 'conflict'
+  | 'rate_limit'
+  | 'budget_exhausted'
+  | 'provider_error'
+  | 'internal'
+
+export type ErrorCode =
+  | 1000 | 1001
+  | 2000 | 2001
+  | 3000 | 3001 | 3002
+  | 4000 | 4001
+  | 5000
+  | 6000
+  | 7000
+  | 8000 | 8001 | 8002
+
+export interface ErrorDetail {
+  message: string
+  error_code: ErrorCode
+  error_category: ErrorCategory
+  retryable: boolean
+  retry_after: number | null
+  instance: string
+}
+
 // ── Response Envelopes ───────────────────────────────────────
 
 /** Discriminated API response envelope. */
 export type ApiResponse<T> =
-  | { data: T; error: null; success: true }
-  | { data: null; error: string; success: false }
+  | { data: T; error: null; error_detail: null; success: true }
+  | { data: null; error: string; error_detail: ErrorDetail; success: false }
 
 export interface PaginationMeta {
   total: number
@@ -103,8 +134,8 @@ export interface PaginationMeta {
 
 /** Discriminated paginated response envelope. */
 export type PaginatedResponse<T> =
-  | { data: T[]; error: null; success: true; pagination: PaginationMeta }
-  | { data: null; error: string; success: false; pagination: null }
+  | { data: T[]; error: null; error_detail: null; success: true; pagination: PaginationMeta }
+  | { data: null; error: string; error_detail: ErrorDetail; success: false; pagination: null }
 
 // ── Auth ─────────────────────────────────────────────────────
 

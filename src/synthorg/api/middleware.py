@@ -131,7 +131,8 @@ def _log_request_completion(
             API_REQUEST_COMPLETED,
             method=method,
             path=path,
-            status_code="unknown",
+            status_code=0,
+            status_code_captured=False,
             duration_ms=duration_ms,
         )
     else:
@@ -183,7 +184,15 @@ class RequestLoggingMiddleware:
                 isinstance(message, dict)
                 and message.get("type") == "http.response.start"
             ):
-                status_code = message.get("status", 500)
+                raw_status = message.get("status")
+                if raw_status is None:
+                    logger.warning(
+                        "asgi_missing_status",
+                        type=message.get("type"),
+                    )
+                    status_code = 500
+                else:
+                    status_code = raw_status
             await original_send(message)  # pyright: ignore[reportArgumentType]
 
         try:

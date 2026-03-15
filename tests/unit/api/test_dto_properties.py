@@ -220,22 +220,37 @@ class TestCreateApprovalRequestProperties:
         assert req.metadata == metadata
 
 
-_error_detail_strategy = st.builds(
-    ErrorDetail,
-    message=_not_blank,
-    error_code=st.integers(min_value=1000, max_value=8999),
-    error_category=st.sampled_from(list(ErrorCategory)),
-    retryable=st.booleans(),
-    retry_after=st.one_of(
-        st.none(),
-        st.integers(min_value=0, max_value=3600),
-    ),
-    instance=st.text(min_size=1, max_size=40).filter(lambda s: s.strip()),
-)
+def _error_detail_strategy() -> st.SearchStrategy[ErrorDetail]:
+    """Strategy that respects retry_after/retryable consistency."""
+    return st.one_of(
+        # retryable=True, retry_after may be set or None
+        st.builds(
+            ErrorDetail,
+            message=_not_blank,
+            error_code=st.integers(min_value=1000, max_value=8999),
+            error_category=st.sampled_from(list(ErrorCategory)),
+            retryable=st.just(True),
+            retry_after=st.one_of(
+                st.none(),
+                st.integers(min_value=0, max_value=3600),
+            ),
+            instance=st.text(min_size=1, max_size=40).filter(lambda s: s.strip()),
+        ),
+        # retryable=False, retry_after must be None
+        st.builds(
+            ErrorDetail,
+            message=_not_blank,
+            error_code=st.integers(min_value=1000, max_value=8999),
+            error_category=st.sampled_from(list(ErrorCategory)),
+            retryable=st.just(False),
+            retry_after=st.none(),
+            instance=st.text(min_size=1, max_size=40).filter(lambda s: s.strip()),
+        ),
+    )
 
 
 class TestErrorDetailProperties:
-    @given(detail=_error_detail_strategy)
+    @given(detail=_error_detail_strategy())
     @settings(max_examples=100)
     def test_roundtrip(self, detail: ErrorDetail) -> None:
         dumped = detail.model_dump()

@@ -8,6 +8,7 @@ metadata for structured error responses (RFC 9457 Phase 1).
 """
 
 from enum import IntEnum, StrEnum
+from types import MappingProxyType
 from typing import ClassVar
 
 
@@ -69,29 +70,35 @@ class ErrorCode(IntEnum):
 
 
 # Maps first digit of error code to its expected category.
-# Used by __init_subclass__ for runtime validation and by tests
-# for consistency assertions.
-_CODE_CATEGORY_PREFIX: dict[int, ErrorCategory] = {
-    1: ErrorCategory.AUTH,
-    2: ErrorCategory.VALIDATION,
-    3: ErrorCategory.NOT_FOUND,
-    4: ErrorCategory.CONFLICT,
-    5: ErrorCategory.RATE_LIMIT,
-    6: ErrorCategory.BUDGET_EXHAUSTED,
-    7: ErrorCategory.PROVIDER_ERROR,
-    8: ErrorCategory.INTERNAL,
-}
+# Used by ``__init_subclass__`` to validate that error code prefixes
+# match their declared category.
+_CODE_CATEGORY_PREFIX: MappingProxyType[int, ErrorCategory] = MappingProxyType(
+    {
+        1: ErrorCategory.AUTH,
+        2: ErrorCategory.VALIDATION,
+        3: ErrorCategory.NOT_FOUND,
+        4: ErrorCategory.CONFLICT,
+        5: ErrorCategory.RATE_LIMIT,
+        6: ErrorCategory.BUDGET_EXHAUSTED,
+        7: ErrorCategory.PROVIDER_ERROR,
+        8: ErrorCategory.INTERNAL,
+    }
+)
 
 
 class ApiError(Exception):
     """Base exception for API-layer errors.
 
-    Attributes:
-        default_message: Class-level default error message.
-        status_code: HTTP status code associated with this error.
+    Class Attributes:
+        default_message: Fallback error message used when none is provided
+            and for 5xx response scrubbing.
         error_category: RFC 9457 error category.
         error_code: RFC 9457 machine-readable error code.
         retryable: Whether the client should retry the request.
+
+    Instance Attributes:
+        status_code: HTTP status code (set via ``__init__``, fixed per
+            subclass).
     """
 
     default_message: ClassVar[str] = "Internal server error"

@@ -1,6 +1,7 @@
 /** Error utilities and user-friendly messages. */
 
 import axios, { type AxiosError } from 'axios'
+import type { ErrorDetail } from '@/api/types'
 
 /**
  * Check if an error is an Axios error.
@@ -16,7 +17,9 @@ export function isAxiosError(error: unknown): error is AxiosError {
 export function getErrorMessage(error: unknown): string {
   if (isAxiosError(error)) {
     const status = error.response?.status
-    const data = error.response?.data as { error?: string; success?: boolean } | undefined
+    const data = error.response?.data as
+      | { error?: string; error_detail?: ErrorDetail; success?: boolean }
+      | undefined
 
     // For 4xx errors, surface the backend's validation message
     if (data?.error && typeof data.error === 'string' && status !== undefined && status < 500) {
@@ -63,4 +66,17 @@ export function getErrorMessage(error: unknown): string {
   }
 
   return 'An unexpected error occurred.'
+}
+
+/**
+ * Extract structured error detail from an Axios error, if present.
+ * Returns null for non-API errors or when the backend did not
+ * include structured error metadata.
+ */
+export function getErrorDetail(error: unknown): ErrorDetail | null {
+  if (!isAxiosError(error)) return null
+  const data = error.response?.data as
+    | { error_detail?: ErrorDetail }
+    | undefined
+  return data?.error_detail ?? null
 }
