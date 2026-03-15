@@ -283,6 +283,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Validate checksums file
+        run: |
+          if [ ! -f cli/dist/checksums.txt ] || [ ! -s cli/dist/checksums.txt ]; then
+            echo "::error::cli/dist/checksums.txt is missing or empty — GoReleaser may have failed"
+            exit 1
+          fi
+
       - name: Attest build provenance (SLSA Level 3)
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
@@ -344,9 +351,10 @@ jobs:
           NOTES
           )"
 
-          # Fetch existing body and append.
+          # Idempotent: strip existing Installation section before appending.
           EXISTING_BODY="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body)"
-          FULL_BODY="${EXISTING_BODY}${INSTALL_NOTES}"
+          CLEANED_BODY="$(printf '%s' "$EXISTING_BODY" | sed '/^## Installation$/,$d')"
+          FULL_BODY="${CLEANED_BODY}${INSTALL_NOTES}"
 
           tmpfile="$(mktemp)"
           printf '%s' "$FULL_BODY" > "$tmpfile"

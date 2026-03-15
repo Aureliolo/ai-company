@@ -9,8 +9,8 @@ services:
       - synthorg-data:/data
     env_file: .env
     environment:
-      SYNTHORG_HOST: "0.0.0.0"
-      SYNTHORG_PORT: "8000"
+      SYNTHORG_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
+      SYNTHORG_PORT: "${SYNTHORG_PORT:-8000}"
       SYNTHORG_DB_PATH: "/data/synthorg.db"
       SYNTHORG_MEMORY_DIR: "/data/memory"
       # Bridge SYNTHORG_* to uvicorn's native env vars (exec form CMD, no shell)
