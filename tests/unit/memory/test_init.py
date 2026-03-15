@@ -16,6 +16,7 @@ class TestMemoryExports:
     def test_all_has_expected_names(self) -> None:
         expected = {
             "ArchivalStore",
+            "FusionStrategy",
             "Mem0EmbedderConfig",
             "Mem0MemoryBackend",
             "CompanyMemoryConfig",
@@ -60,5 +61,6 @@ class TestMemoryExports:
             "TokenEstimator",
             "create_memory_backend",
             "create_org_memory_backend",
+            "fuse_ranked_lists",
         }
         assert set(memory_module.__all__) == expected

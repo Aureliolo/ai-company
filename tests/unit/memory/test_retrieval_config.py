@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from synthorg.memory.injection import InjectionPoint, InjectionStrategy
+from synthorg.memory.ranking import FusionStrategy
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 pytestmark = pytest.mark.timeout(30)
@@ -150,3 +151,54 @@ class TestMemoryRetrievalConfigSerialization:
         data = c.model_dump()
         restored = MemoryRetrievalConfig.model_validate(data)
         assert restored == c
+
+
+@pytest.mark.unit
+class TestMemoryRetrievalConfigFusion:
+    def test_default_fusion_strategy_is_linear(self) -> None:
+        c = MemoryRetrievalConfig()
+        assert c.fusion_strategy is FusionStrategy.LINEAR
+
+    def test_rrf_strategy_accepted(self) -> None:
+        c = MemoryRetrievalConfig(
+            fusion_strategy=FusionStrategy.RRF,
+            relevance_weight=0.7,
+            recency_weight=0.3,
+        )
+        assert c.fusion_strategy is FusionStrategy.RRF
+
+    def test_rrf_strategy_skips_weight_sum_validation(self) -> None:
+        """RRF strategy allows weights that do not sum to 1.0."""
+        c = MemoryRetrievalConfig(
+            fusion_strategy=FusionStrategy.RRF,
+            relevance_weight=0.5,
+            recency_weight=0.3,
+        )
+        assert c.fusion_strategy is FusionStrategy.RRF
+        assert c.relevance_weight == 0.5
+
+    def test_linear_strategy_still_enforces_weight_sum(self) -> None:
+        with pytest.raises(ValidationError, match=r"must equal 1\.0"):
+            MemoryRetrievalConfig(
+                fusion_strategy=FusionStrategy.LINEAR,
+                relevance_weight=0.5,
+                recency_weight=0.3,
+            )
+
+    def test_default_rrf_k(self) -> None:
+        c = MemoryRetrievalConfig()
+        assert c.rrf_k == 60
+
+    def test_rrf_k_boundaries(self) -> None:
+        c1 = MemoryRetrievalConfig(rrf_k=1)
+        assert c1.rrf_k == 1
+        c2 = MemoryRetrievalConfig(rrf_k=1000)
+        assert c2.rrf_k == 1000
+
+    def test_rrf_k_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MemoryRetrievalConfig(rrf_k=0)
+
+    def test_rrf_k_above_max_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MemoryRetrievalConfig(rrf_k=1001)

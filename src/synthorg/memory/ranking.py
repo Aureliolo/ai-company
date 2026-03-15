@@ -1,19 +1,25 @@
 """Memory ranking — scoring and sorting functions.
 
 All functions are functionally pure (deterministic given the same
-inputs).  Logging calls are the only side effect.  They take
-``MemoryEntry`` tuples and a ``MemoryRetrievalConfig`` and return
-``ScoredMemory`` tuples sorted by combined relevance+recency score.
+inputs).  Logging calls are the only side effect.
+
+``rank_memories`` scores entries via linear combination of relevance
+and recency (single-source).  ``fuse_ranked_lists`` merges multiple
+pre-ranked lists via Reciprocal Rank Fusion (multi-source).
 """
 
 import math
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.memory.models import MemoryEntry  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.memory import MEMORY_RANKING_COMPLETE
+from synthorg.observability.events.memory import (
+    MEMORY_RANKING_COMPLETE,
+    MEMORY_RRF_FUSION_COMPLETE,
+)
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -21,6 +27,20 @@ if TYPE_CHECKING:
     from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
 logger = get_logger(__name__)
+
+
+class FusionStrategy(StrEnum):
+    """Ranking fusion strategy selection.
+
+    Attributes:
+        LINEAR: Weighted linear combination of relevance and recency
+            (default, for single-source scoring).
+        RRF: Reciprocal Rank Fusion for merging multiple ranked lists
+            (for multi-source hybrid search).
+    """
+
+    LINEAR = "linear"
+    RRF = "rrf"
 
 
 class ScoredMemory(BaseModel):
@@ -209,6 +229,82 @@ def rank_memories(
         after_truncation=len(result),
         min_relevance=config.min_relevance,
         max_memories=config.max_memories,
+    )
+
+    return result
+
+
+def fuse_ranked_lists(
+    ranked_lists: tuple[tuple[MemoryEntry, ...], ...],
+    *,
+    k: int = 60,
+    max_results: int = 20,
+) -> tuple[ScoredMemory, ...]:
+    """Merge multiple pre-ranked lists via Reciprocal Rank Fusion.
+
+    ``RRF_score(doc) = sum(1 / (k + rank_i))`` across all lists
+    containing the document.  Scores are min-max normalized to
+    [0.0, 1.0].
+
+    For RRF output, only ``combined_score`` is the meaningful
+    ranking signal.  ``relevance_score`` preserves the entry's raw
+    backend relevance (or 0.0 if absent); ``recency_score`` is 0.0.
+
+    Args:
+        ranked_lists: Each inner tuple is a pre-sorted ranked list
+            of memory entries (best first).
+        k: RRF smoothing constant (default 60).  Smaller values
+            amplify rank differences.
+        max_results: Maximum entries to return.
+
+    Returns:
+        Sorted tuple of ``ScoredMemory`` by descending RRF score.
+    """
+    # Accumulate raw RRF scores and collect unique entries
+    scores: dict[str, float] = {}
+    entries: dict[str, MemoryEntry] = {}
+
+    for ranked_list in ranked_lists:
+        for rank, entry in enumerate(ranked_list, start=1):
+            scores[entry.id] = scores.get(entry.id, 0.0) + 1.0 / (k + rank)
+            if entry.id not in entries:
+                entries[entry.id] = entry
+
+    if not entries:
+        return ()
+
+    # Min-max normalize to [0.0, 1.0]
+    min_score = min(scores.values())
+    max_score = max(scores.values())
+    score_range = max_score - min_score
+
+    normalized = {
+        eid: (score - min_score) / score_range if score_range > 0 else 1.0
+        for eid, score in scores.items()
+    }
+
+    # Build ScoredMemory objects, sort, and truncate
+    scored_list: list[ScoredMemory] = []
+    for eid, entry in entries.items():
+        raw_rel = entry.relevance_score if entry.relevance_score is not None else 0.0
+        scored_list.append(
+            ScoredMemory(
+                entry=entry,
+                relevance_score=raw_rel,
+                recency_score=0.0,
+                combined_score=normalized[eid],
+            )
+        )
+    scored_list.sort(key=lambda s: s.combined_score, reverse=True)
+
+    result = tuple(scored_list[:max_results])
+
+    logger.debug(
+        MEMORY_RRF_FUSION_COMPLETE,
+        num_lists=len(ranked_lists),
+        unique_entries=len(entries),
+        after_truncation=len(result),
+        k=k,
     )
 
     return result

@@ -9,9 +9,11 @@ from pydantic import ValidationError
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.ranking import (
+    FusionStrategy,
     ScoredMemory,
     compute_combined_score,
     compute_recency_score,
+    fuse_ranked_lists,
     rank_memories,
 )
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
@@ -410,3 +412,140 @@ class TestRankMemories:
             shared_entries=(),
         )
         assert result == ()
+
+
+# ── FusionStrategy ──────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestFusionStrategy:
+    def test_linear_value(self) -> None:
+        assert FusionStrategy.LINEAR == "linear"
+
+    def test_rrf_value(self) -> None:
+        assert FusionStrategy.RRF == "rrf"
+
+    def test_is_str_enum(self) -> None:
+        assert isinstance(FusionStrategy.LINEAR, str)
+        assert isinstance(FusionStrategy.RRF, str)
+
+
+# ── fuse_ranked_lists ───────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestFuseRankedLists:
+    def test_empty_input(self) -> None:
+        result = fuse_ranked_lists(())
+        assert result == ()
+
+    def test_all_empty_inner_lists(self) -> None:
+        result = fuse_ranked_lists(((), ()))
+        assert result == ()
+
+    def test_single_list_preserves_order(self) -> None:
+        now = datetime.now(UTC)
+        a = _make_entry(entry_id="a", relevance_score=0.9, created_at=now)
+        b = _make_entry(entry_id="b", relevance_score=0.5, created_at=now)
+        result = fuse_ranked_lists(((a, b),))
+        assert len(result) == 2
+        assert result[0].entry.id == "a"
+        assert result[1].entry.id == "b"
+
+    def test_two_disjoint_lists(self) -> None:
+        now = datetime.now(UTC)
+        a = _make_entry(entry_id="a", created_at=now)
+        b = _make_entry(entry_id="b", created_at=now)
+        c = _make_entry(entry_id="c", created_at=now)
+        d = _make_entry(entry_id="d", created_at=now)
+        result = fuse_ranked_lists(((a, b), (c, d)))
+        assert len(result) == 4
+        ids = {r.entry.id for r in result}
+        assert ids == {"a", "b", "c", "d"}
+
+    def test_overlapping_entries_score_higher(self) -> None:
+        """Entry appearing in both lists should rank above disjoint entries."""
+        now = datetime.now(UTC)
+        shared = _make_entry(entry_id="shared", created_at=now)
+        only_a = _make_entry(entry_id="only-a", created_at=now)
+        only_b = _make_entry(entry_id="only-b", created_at=now)
+        list_a = (shared, only_a)
+        list_b = (shared, only_b)
+        result = fuse_ranked_lists((list_a, list_b))
+        assert result[0].entry.id == "shared"
+        assert result[0].combined_score > result[1].combined_score
+
+    def test_rank1_in_all_lists_gets_max_score(self) -> None:
+        now = datetime.now(UTC)
+        top = _make_entry(entry_id="top", created_at=now)
+        other = _make_entry(entry_id="other", created_at=now)
+        result = fuse_ranked_lists(((top, other), (top, other)))
+        assert result[0].entry.id == "top"
+        assert result[0].combined_score == pytest.approx(1.0)
+
+    def test_max_results_truncates(self) -> None:
+        now = datetime.now(UTC)
+        entries = tuple(
+            _make_entry(entry_id=f"e{i}", created_at=now) for i in range(10)
+        )
+        result = fuse_ranked_lists((entries,), max_results=3)
+        assert len(result) == 3
+
+    def test_custom_k_preserves_ranking(self) -> None:
+        """Different k values both produce correct ranking order."""
+        now = datetime.now(UTC)
+        a = _make_entry(entry_id="a", created_at=now)
+        b = _make_entry(entry_id="b", created_at=now)
+        result_small_k = fuse_ranked_lists(((a, b),), k=1)
+        result_large_k = fuse_ranked_lists(((a, b),), k=1000)
+        # Both k values should preserve rank ordering
+        assert result_small_k[0].entry.id == "a"
+        assert result_small_k[1].entry.id == "b"
+        assert result_large_k[0].entry.id == "a"
+        assert result_large_k[1].entry.id == "b"
+        # Min-max normalization with 2 items gives 1.0 and 0.0
+        assert result_small_k[0].combined_score == pytest.approx(1.0)
+        assert result_small_k[1].combined_score == pytest.approx(0.0)
+        assert result_large_k[0].combined_score == pytest.approx(1.0)
+        assert result_large_k[1].combined_score == pytest.approx(0.0)
+
+    def test_single_result_normalizes_to_one(self) -> None:
+        now = datetime.now(UTC)
+        a = _make_entry(entry_id="a", created_at=now)
+        result = fuse_ranked_lists(((a,),))
+        assert len(result) == 1
+        assert result[0].combined_score == pytest.approx(1.0)
+
+    def test_equal_raw_scores_normalize_to_one(self) -> None:
+        """When all entries have the same raw RRF score, all get 1.0."""
+        now = datetime.now(UTC)
+        a = _make_entry(entry_id="a", created_at=now)
+        b = _make_entry(entry_id="b", created_at=now)
+        # Both at rank 1 in separate lists — same raw score
+        result = fuse_ranked_lists(((a,), (b,)))
+        assert result[0].combined_score == pytest.approx(1.0)
+        assert result[1].combined_score == pytest.approx(1.0)
+
+    def test_relevance_score_preserves_raw(self) -> None:
+        now = datetime.now(UTC)
+        entry = _make_entry(relevance_score=0.75, created_at=now)
+        result = fuse_ranked_lists(((entry,),))
+        assert result[0].relevance_score == pytest.approx(0.75)
+
+    def test_relevance_score_defaults_to_zero_when_none(self) -> None:
+        now = datetime.now(UTC)
+        entry = _make_entry(relevance_score=None, created_at=now)
+        result = fuse_ranked_lists(((entry,),))
+        assert result[0].relevance_score == pytest.approx(0.0)
+
+    def test_recency_score_is_zero(self) -> None:
+        now = datetime.now(UTC)
+        entry = _make_entry(created_at=now)
+        result = fuse_ranked_lists(((entry,),))
+        assert result[0].recency_score == pytest.approx(0.0)
+
+    def test_is_shared_is_false(self) -> None:
+        now = datetime.now(UTC)
+        entry = _make_entry(created_at=now)
+        result = fuse_ranked_lists(((entry,),))
+        assert result[0].is_shared is False

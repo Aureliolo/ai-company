@@ -64,7 +64,7 @@ from synthorg.memory.org import (
     create_org_memory_backend,
 )
 from synthorg.memory.protocol import MemoryBackend
-from synthorg.memory.ranking import ScoredMemory
+from synthorg.memory.ranking import FusionStrategy, ScoredMemory, fuse_ranked_lists
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.memory.shared import SharedKnowledgeStore
@@ -77,6 +77,7 @@ __all__ = [
     "ConsolidationStrategy",
     "ContextInjectionStrategy",
     "DefaultTokenEstimator",
+    "FusionStrategy",
     "InjectionPoint",
     "InjectionStrategy",
     "Mem0EmbedderConfig",
@@ -115,4 +116,5 @@ __all__ = [
     "TokenEstimator",
     "create_memory_backend",
     "create_org_memory_backend",
+    "fuse_ranked_lists",
 ]

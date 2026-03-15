@@ -9,6 +9,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.memory.injection import InjectionPoint, InjectionStrategy
+from synthorg.memory.ranking import FusionStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 
@@ -94,10 +95,25 @@ class MemoryRetrievalConfig(BaseModel):
         default=False,
         description="When True, only inject memories tagged as non-inferable",
     )
+    fusion_strategy: FusionStrategy = Field(
+        default=FusionStrategy.LINEAR,
+        description=(
+            "Ranking fusion strategy: linear for single-source "
+            "relevance+recency, rrf for multi-source ranked list merging"
+        ),
+    )
+    rrf_k: int = Field(
+        default=60,
+        ge=1,
+        le=1000,
+        description="RRF smoothing constant k (only used with RRF strategy)",
+    )
 
     @model_validator(mode="after")
     def _validate_weight_sum(self) -> Self:
-        """Ensure relevance_weight + recency_weight == 1.0 (within tolerance)."""
+        """Ensure relevance_weight + recency_weight == 1.0 for LINEAR fusion."""
+        if self.fusion_strategy != FusionStrategy.LINEAR:
+            return self
         total = self.relevance_weight + self.recency_weight
         if abs(total - 1.0) > _WEIGHT_SUM_TOLERANCE:
             msg = (
