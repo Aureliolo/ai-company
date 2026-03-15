@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.7](https://github.com/Aureliolo/synthorg/compare/v0.2.6...v0.2.7) (2026-03-15)
+
+
+### Bug Fixes
+
+* pre-create release tag before Release Please runs ([#473](https://github.com/Aureliolo/synthorg/issues/473)) ([568187b](https://github.com/Aureliolo/synthorg/commit/568187b2ff6c30f32ba62910463c42dff102fa57))
+* **site:** show success message after contact form submission ([#474](https://github.com/Aureliolo/synthorg/issues/474)) ([f782e48](https://github.com/Aureliolo/synthorg/commit/f782e487241b045e12cb734818e8597b8b3962cd))
+
+
+### Maintenance
+
+* add path filtering to pre-push Python hooks ([#470](https://github.com/Aureliolo/synthorg/issues/470)) ([ef51797](https://github.com/Aureliolo/synthorg/commit/ef51797d1d8ea1f7e430b7eef94ae8c474248a86))
+
 ## [0.2.6](https://github.com/Aureliolo/synthorg/compare/v0.2.5...v0.2.6) (2026-03-15)
 
 
