@@ -18,6 +18,10 @@ func TestLogo(t *testing.T) {
 	if !strings.Contains(out, "v1.2.3") {
 		t.Error("Logo output missing version string")
 	}
+	// Verify version string is positioned after the logo art.
+	if trimmed := strings.TrimRight(out, "\n"); !strings.HasSuffix(trimmed, "v1.2.3") {
+		t.Errorf("version string should appear at the end of logo output, got %q", trimmed)
+	}
 }
 
 func TestOutputMethods(t *testing.T) {

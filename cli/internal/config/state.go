@@ -22,7 +22,9 @@ type State struct {
 	JWTSecret   string `json:"jwt_secret,omitempty"`
 }
 
-// DefaultState returns a State with sensible defaults.
+// DefaultState returns a State with sensible defaults for the interactive init
+// wizard. Note: Load applies a more conservative fallback (sandbox disabled)
+// when no config file exists.
 func DefaultState() State {
 	return State{
 		DataDir:     DataDir(),
@@ -57,12 +59,15 @@ func Load(dataDir string) (State, error) {
 			defaults.Sandbox = false
 			return defaults, nil
 		}
-		return State{}, err
+		return State{}, fmt.Errorf("reading config %s: %w", path, err)
 	}
 	// Unmarshal onto defaults so missing fields retain default values.
 	s := DefaultState()
 	if err := json.Unmarshal(data, &s); err != nil {
-		return State{}, err
+		return State{}, fmt.Errorf("parsing config %s: %w", path, err)
+	}
+	if err := s.validate(); err != nil {
+		return State{}, fmt.Errorf("config %s: %w", path, err)
 	}
 	// Canonicalize and validate DataDir.
 	if s.DataDir != "" {
@@ -76,6 +81,17 @@ func Load(dataDir string) (State, error) {
 		s.DataDir = safeDir
 	}
 	return s, nil
+}
+
+// validate checks that loaded config values are within safe ranges.
+func (s State) validate() error {
+	if s.BackendPort < 1 || s.BackendPort > 65535 {
+		return fmt.Errorf("invalid backend_port %d: must be 1-65535", s.BackendPort)
+	}
+	if s.WebPort < 1 || s.WebPort > 65535 {
+		return fmt.Errorf("invalid web_port %d: must be 1-65535", s.WebPort)
+	}
+	return nil
 }
 
 // Save writes State to disk as indented JSON.

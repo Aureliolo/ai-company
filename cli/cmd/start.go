@@ -51,7 +51,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	out.Success("Docker " + info.DockerVersion + ", Compose " + info.ComposeVersion)
+	out.Success(fmt.Sprintf("Docker %s, Compose %s", info.DockerVersion, info.ComposeVersion))
 
 	// Check minimum versions.
 	for _, w := range docker.CheckMinVersions(info) {

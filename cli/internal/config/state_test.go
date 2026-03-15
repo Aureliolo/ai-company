@@ -131,6 +131,10 @@ func TestLoadMissing(t *testing.T) {
 	if s.BackendPort != 8000 {
 		t.Errorf("expected default BackendPort 8000, got %d", s.BackendPort)
 	}
+	// Conservative fallback: sandbox disabled when no config exists.
+	if s.Sandbox {
+		t.Error("Sandbox should be false when config file is missing")
+	}
 }
 
 func TestLoadInvalid(t *testing.T) {

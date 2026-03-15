@@ -108,8 +108,9 @@ func validateParams(p Params) error {
 func yamlStr(s string) string {
 	// If the string contains YAML-special or Compose-interpolation characters,
 	// double-quote and escape.
-	if strings.ContainsAny(s, "$:#{}[]|>&*!%@`\"'\\\n\r\t") {
-		escaped := strings.ReplaceAll(s, `\`, `\\`)
+	if strings.ContainsAny(s, "\x00$:#{}[]|>&*!%@`\"'\\\n\r\t") {
+		escaped := strings.ReplaceAll(s, "\x00", "") // YAML cannot represent null bytes
+		escaped = strings.ReplaceAll(escaped, `\`, `\\`)
 		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
 		escaped = strings.ReplaceAll(escaped, "\n", `\n`)
 		escaped = strings.ReplaceAll(escaped, "\r", `\r`)
