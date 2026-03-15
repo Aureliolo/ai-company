@@ -96,6 +96,12 @@ jobs:
               | sed '1d;$d' | grep -E '^\|' || true)
             CLI_SLSA=$(echo "$BODY" | sed -n '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/p' \
               | sed '1d;$d' | sed -n '/^```bash$/,/^```$/p' || true)
+            if [ -z "$CLI_CHECKSUMS" ]; then
+              echo "::warning::CLI checksums table not found in release body"
+            fi
+            if [ -z "$CLI_SLSA" ]; then
+              echo "::warning::CLI SLSA provenance commands not found in release body"
+            fi
           fi
 
           CONTAINER_COSIGN=""
@@ -124,8 +130,8 @@ jobs:
 
           # Build the combined Verification section
           VERIFICATION=""
-          if [ -n "$CLI_CHECKSUMS" ] || [ -n "$CONTAINER_COSIGN" ]; then
-            VERIFICATION="$(printf '\n---\n\n## Verification\n')"
+          if [ -n "$CLI_CHECKSUMS" ] || [ -n "$CONTAINER_COSIGN" ] || [ -n "$CLI_SLSA" ] || [ -n "$CONTAINER_SLSA" ]; then
+            VERIFICATION="$(printf '\n<!-- FINALIZE_VERIFICATION -->\n\n---\n\n## Verification\n')"
 
             if [ -n "$CLI_CHECKSUMS" ]; then
               VERIFICATION="$(printf '%s\n\n### CLI Checksums (SHA-256)\n\n%s\n' "$VERIFICATION" "$CLI_CHECKSUMS")"
@@ -161,16 +167,24 @@ jobs:
           CLEANED=$(printf '%s' "$BODY" \
             | sed '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/d' \
             | sed '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/d' \
-            | sed '/^## Verification$/,$d')
+            | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
 
           FINAL="${CLEANED}${VERIFICATION}"
 
           tmpfile="$(mktemp)"
           printf '%s' "$FINAL" > "$tmpfile"
+          EDIT_OK=true
           if gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"; then
             echo "Release body assembled with combined Verification section."
           else
-            echo "::warning::Failed to update release body (may have been published by concurrent run)"
+            EDIT_OK=false
+            if [ -n "$VERIFICATION" ]; then
+              echo "::error::Failed to update release body — verification data would be lost. Not publishing."
+              rm -f "$tmpfile"
+              exit 1
+            else
+              echo "::warning::Failed to update release body (no verification data to lose — proceeding)"
+            fi
           fi
           rm -f "$tmpfile"
 
