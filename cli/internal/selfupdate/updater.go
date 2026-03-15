@@ -54,11 +54,12 @@ type Asset struct {
 
 // CheckResult contains the result of an update check.
 type CheckResult struct {
-	CurrentVersion string
-	LatestVersion  string
-	UpdateAvail    bool
-	AssetURL       string
-	ChecksumURL    string
+	CurrentVersion  string
+	LatestVersion   string
+	UpdateAvail     bool
+	AssetURL        string
+	ChecksumURL     string
+	SigstoreBundURL string // Sigstore bundle for checksums.txt (optional)
 }
 
 // Check queries GitHub for the latest release and compares versions.
@@ -80,12 +81,13 @@ func CheckFromURL(ctx context.Context, url string) (CheckResult, error) {
 	result.LatestVersion = release.TagName
 	result.UpdateAvail = isUpdateAvailable(version.Version, release.TagName)
 
-	assetURL, checksumURL, err := findAssets(release)
+	assetURL, checksumURL, bundleURL, err := findAssets(release)
 	if err != nil {
 		return result, err
 	}
 	result.AssetURL = assetURL
 	result.ChecksumURL = checksumURL
+	result.SigstoreBundURL = bundleURL
 
 	return result, nil
 }
@@ -157,34 +159,40 @@ func compareSemver(a, b string) int {
 	return 0
 }
 
-func findAssets(release Release) (assetURL, checksumURL string, err error) {
+func findAssets(release Release) (assetURL, checksumURL, bundleURL string, err error) {
 	archiveName := assetName()
 	for _, a := range release.Assets {
-		if a.Name == archiveName {
+		switch a.Name {
+		case archiveName:
 			if !strings.HasPrefix(a.BrowserDownloadURL, expectedURLPrefix) {
-				return "", "", fmt.Errorf("asset URL %q does not match expected prefix", a.BrowserDownloadURL)
+				return "", "", "", fmt.Errorf("asset URL %q does not match expected prefix", a.BrowserDownloadURL)
 			}
 			assetURL = a.BrowserDownloadURL
-		}
-		if a.Name == "checksums.txt" {
+		case "checksums.txt":
 			if !strings.HasPrefix(a.BrowserDownloadURL, expectedURLPrefix) {
-				return "", "", fmt.Errorf("checksum URL %q does not match expected prefix", a.BrowserDownloadURL)
+				return "", "", "", fmt.Errorf("checksum URL %q does not match expected prefix", a.BrowserDownloadURL)
 			}
 			checksumURL = a.BrowserDownloadURL
+		case "checksums.txt.sigstore.json":
+			if strings.HasPrefix(a.BrowserDownloadURL, expectedURLPrefix) {
+				bundleURL = a.BrowserDownloadURL
+			}
 		}
 	}
 	if assetURL == "" {
-		return "", "", fmt.Errorf("no release asset found for %s/%s", runtime.GOOS, runtime.GOARCH)
+		return "", "", "", fmt.Errorf("no release asset found for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 	if checksumURL == "" {
-		return "", "", fmt.Errorf("no checksums.txt found in release assets")
+		return "", "", "", fmt.Errorf("no checksums.txt found in release assets")
 	}
-	return assetURL, checksumURL, nil
+	return assetURL, checksumURL, bundleURL, nil
 }
 
 // Download fetches the release asset and verifies its SHA-256 checksum.
+// If a Sigstore bundle URL is provided, the checksums file is also
+// cryptographically verified against Sigstore's public transparency log.
 // Returns an error if checksum verification cannot be performed.
-func Download(ctx context.Context, assetURL, checksumURL string) ([]byte, error) {
+func Download(ctx context.Context, assetURL, checksumURL, bundleURL string) ([]byte, error) {
 	if checksumURL == "" {
 		return nil, fmt.Errorf("no checksum file found in release assets — refusing to install unverified binary")
 	}
@@ -204,6 +212,17 @@ func Download(ctx context.Context, assetURL, checksumURL string) ([]byte, error)
 	}
 	if err := verifyChecksum(archiveData, checksumData, assetName()); err != nil {
 		return nil, err
+	}
+
+	// Sigstore bundle verification (optional but recommended).
+	if bundleURL != "" {
+		bundleData, err := httpGetWithClient(ctx, client, bundleURL, maxAPIResponseBytes)
+		if err != nil {
+			return nil, fmt.Errorf("downloading sigstore bundle: %w", err)
+		}
+		if err := verifySigstoreBundle(checksumData, bundleData); err != nil {
+			return nil, fmt.Errorf("sigstore verification failed: %w", err)
+		}
 	}
 
 	// Extract binary from archive.
@@ -306,6 +325,7 @@ var AllowedDownloadHosts = map[string]bool{
 	"github.com":                            true,
 	"objects.githubusercontent.com":         true,
 	"github-releases.githubusercontent.com": true,
+	"release-assets.githubusercontent.com":  true,
 }
 
 func httpGetWithClient(ctx context.Context, client *http.Client, rawURL string, maxBytes int64) ([]byte, error) {

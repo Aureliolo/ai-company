@@ -542,7 +542,7 @@ func TestDownloadWithMockServer(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	binary, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums")
+	binary, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums", "")
 	if err != nil {
 		t.Fatalf("Download: %v", err)
 	}
@@ -568,7 +568,7 @@ func TestDownloadChecksumMismatch(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums")
+	_, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums", "")
 	if err == nil {
 		t.Fatal("expected checksum mismatch error")
 	}
@@ -710,12 +710,116 @@ func TestDownloadNoChecksumRefused(t *testing.T) {
 	defer srv.Close()
 
 	// Empty checksum URL — should refuse to download.
-	_, err := Download(context.Background(), srv.URL, "")
+	_, err := Download(context.Background(), srv.URL, "", "")
 	if err == nil {
 		t.Fatal("expected error when checksum URL is empty")
 	}
 	if !strings.Contains(err.Error(), "refusing to install unverified binary") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func testArchive(t *testing.T, content []byte) []byte {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		var buf bytes.Buffer
+		zw := zip.NewWriter(&buf)
+		fw, err := zw.Create("synthorg.exe")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fw.Write(content); err != nil {
+			t.Fatal(err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return buf.Bytes()
+	}
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+	hdr := &tar.Header{Name: "synthorg", Mode: 0o755, Size: int64(len(content))}
+	if err := tw.WriteHeader(hdr); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestDownloadBundleDownloadFailure(t *testing.T) {
+	// Set up a server that serves valid asset + checksums but fails on bundle.
+	binaryContent := []byte("test-binary-content")
+	archive := testArchive(t, binaryContent)
+	checksumLine := fmt.Sprintf("%x  %s\n", sha256.Sum256(archive), assetName())
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/asset":
+			if _, err := w.Write(archive); err != nil {
+				t.Logf("write error: %v", err)
+			}
+		case "/checksums":
+			if _, err := w.Write([]byte(checksumLine)); err != nil {
+				t.Logf("write error: %v", err)
+			}
+		case "/bundle":
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums", srv.URL+"/bundle")
+	if err == nil {
+		t.Fatal("expected error when bundle download fails")
+	}
+	if !strings.Contains(err.Error(), "sigstore bundle") {
+		t.Errorf("expected sigstore bundle error, got: %v", err)
+	}
+}
+
+func TestDownloadBundleInvalidJSON(t *testing.T) {
+	// Set up a server that serves valid asset + checksums but invalid bundle JSON.
+	binaryContent := []byte("test-binary-content")
+	archive := testArchive(t, binaryContent)
+	checksumLine := fmt.Sprintf("%x  %s\n", sha256.Sum256(archive), assetName())
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/asset":
+			if _, err := w.Write(archive); err != nil {
+				t.Logf("write error: %v", err)
+			}
+		case "/checksums":
+			if _, err := w.Write([]byte(checksumLine)); err != nil {
+				t.Logf("write error: %v", err)
+			}
+		case "/bundle":
+			if _, err := w.Write([]byte("not valid json")); err != nil {
+				t.Logf("write error: %v", err)
+			}
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, err := Download(context.Background(), srv.URL+"/asset", srv.URL+"/checksums", srv.URL+"/bundle")
+	if err == nil {
+		t.Fatal("expected error when bundle is invalid JSON")
+	}
+	if !strings.Contains(err.Error(), "sigstore verification failed") {
+		t.Errorf("expected sigstore verification error, got: %v", err)
 	}
 }
 

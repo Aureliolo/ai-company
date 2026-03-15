@@ -2,13 +2,15 @@
 package diagnostics
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
-	"os/exec"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -17,6 +19,14 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 )
+
+// ContainerDetail summarises a single container's state from compose ps JSON.
+type ContainerDetail struct {
+	Name   string `json:"Name"`
+	State  string `json:"State"`
+	Status string `json:"Status"`
+	Health string `json:"Health,omitempty"`
+}
 
 // Report contains collected diagnostic information.
 type Report struct {
@@ -34,6 +44,12 @@ type Report struct {
 	ConfigRedacted string   `json:"config_redacted,omitempty"`
 	DiskInfo       string   `json:"disk_info,omitempty"`
 	Errors         []string `json:"errors,omitempty"`
+
+	ComposeFileExists bool              `json:"compose_file_exists"`
+	ComposeFileValid  *bool             `json:"compose_file_valid,omitempty"`
+	PortConflicts     []string          `json:"port_conflicts,omitempty"`
+	ImageStatus       []string          `json:"image_status,omitempty"`
+	ContainerSummary  []ContainerDetail `json:"container_summary,omitempty"`
 }
 
 // Collect gathers diagnostics from the system and running containers.
@@ -51,48 +67,67 @@ func Collect(ctx context.Context, state config.State) Report {
 		r.Errors = append(r.Errors, fmt.Sprintf("path: %v", pathErr))
 	}
 
-	// Docker info.
+	info := collectDocker(ctx, &r, safeDir, pathErr)
+	collectHealth(ctx, &r, state.BackendPort)
+	collectConfig(&r, state)
+	collectInfra(ctx, &r, info, state, safeDir, pathErr)
+
+	if pathErr == nil {
+		r.DiskInfo = diskInfo(ctx, safeDir)
+	}
+
+	return r
+}
+
+func collectDocker(ctx context.Context, r *Report, safeDir string, pathErr error) docker.Info {
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		r.Errors = append(r.Errors, fmt.Sprintf("docker: %v", err))
-	} else {
-		r.DockerVersion = info.DockerVersion
-		r.ComposeVersion = info.ComposeVersion
+		return docker.Info{} // zero value signals detection failure to downstream checks
+	}
+	r.DockerVersion = info.DockerVersion
+	r.ComposeVersion = info.ComposeVersion
 
-		if pathErr == nil {
-			// Container states.
-			if ps, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "--format", "json"); err == nil {
-				r.ContainerPS = strings.TrimSpace(ps)
-			}
-
-			// Recent logs (last 50 lines).
-			if logs, err := docker.ComposeExecOutput(ctx, info, safeDir, "logs", "--tail", "50", "--no-color"); err == nil {
-				r.RecentLogs = truncate(logs, 4000)
-			}
-		}
+	for _, w := range docker.CheckMinVersions(info) {
+		r.Errors = append(r.Errors, fmt.Sprintf("version: %s", w))
 	}
 
-	// Health endpoint.
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
+	if pathErr == nil {
+		if ps, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "--format", "json"); err == nil {
+			r.ContainerPS = strings.TrimSpace(ps)
+		}
+		if logs, err := docker.ComposeExecOutput(ctx, info, safeDir, "logs", "--tail", "50", "--no-color"); err == nil {
+			r.RecentLogs = truncate(logs, 4000)
+		}
+	}
+	return info
+}
+
+func collectHealth(ctx context.Context, r *Report, backendPort int) {
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", backendPort)
 	client := &http.Client{Timeout: 5 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
 		r.HealthStatus = "unreachable"
 		r.Errors = append(r.Errors, fmt.Sprintf("health request: %v", err))
-	} else if resp, err := client.Do(req); err != nil {
+		return
+	}
+	resp, err := client.Do(req)
+	if err != nil {
 		r.HealthStatus = "unreachable"
 		r.Errors = append(r.Errors, fmt.Sprintf("health: %v", err))
-	} else {
-		defer func() { _ = resp.Body.Close() }()
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-		if readErr != nil {
-			r.Errors = append(r.Errors, fmt.Sprintf("health read: %v", readErr))
-		}
-		r.HealthStatus = fmt.Sprintf("%d", resp.StatusCode)
-		r.HealthBody = truncate(string(body), 1000)
+		return
 	}
+	defer func() { _ = resp.Body.Close() }()
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if readErr != nil {
+		r.Errors = append(r.Errors, fmt.Sprintf("health read: %v", readErr))
+	}
+	r.HealthStatus = fmt.Sprintf("%d", resp.StatusCode)
+	r.HealthBody = truncate(string(body), 1000)
+}
 
-	// Redacted config.
+func collectConfig(r *Report, state config.State) {
 	redacted := state
 	if redacted.JWTSecret != "" {
 		redacted.JWTSecret = "[REDACTED]"
@@ -100,13 +135,21 @@ func Collect(ctx context.Context, state config.State) Report {
 	if b, err := json.MarshalIndent(redacted, "", "  "); err == nil {
 		r.ConfigRedacted = string(b)
 	}
+}
 
-	// Disk space for data directory (best-effort, skip if path invalid).
+func collectInfra(ctx context.Context, r *Report, info docker.Info, state config.State, safeDir string, pathErr error) {
 	if pathErr == nil {
-		r.DiskInfo = diskInfo(ctx, safeDir)
+		checkComposeFile(ctx, r, info, safeDir)
 	}
-
-	return r
+	if r.ContainerPS != "" {
+		r.ContainerSummary = parseContainerDetails(r.ContainerPS)
+	}
+	if !hasRunningContainers(r.ContainerSummary) {
+		r.PortConflicts = checkPorts(ctx, state.BackendPort, state.WebPort)
+	}
+	if info.DockerPath != "" {
+		r.ImageStatus = checkImages(ctx, state.ImageTag, state.Sandbox)
+	}
 }
 
 // FormatText returns a human-readable text report.
@@ -120,19 +163,69 @@ func (r Report) FormatText() string {
 	fmt.Fprintf(&b, "Compose:   %s\n\n", r.ComposeVersion)
 
 	fmt.Fprintf(&b, "--- Health ---\nStatus: %s\n%s\n\n", r.HealthStatus, r.HealthBody)
+	r.formatComposeSection(&b)
 	fmt.Fprintf(&b, "--- Containers ---\n%s\n\n", r.ContainerPS)
+	r.formatInfraSection(&b)
 	fmt.Fprintf(&b, "--- Config (redacted) ---\n%s\n\n", r.ConfigRedacted)
 	fmt.Fprintf(&b, "--- Disk ---\n%s\n\n", r.DiskInfo)
 	fmt.Fprintf(&b, "--- Recent Logs (may contain sensitive data — review before sharing) ---\n%s\n\n", r.RecentLogs)
-
-	if len(r.Errors) > 0 {
-		fmt.Fprintf(&b, "--- Errors ---\n")
-		for _, e := range r.Errors {
-			fmt.Fprintf(&b, "  - %s\n", e)
-		}
-	}
+	formatList(&b, "Errors", r.Errors)
 
 	return b.String()
+}
+
+func (r Report) formatComposeSection(b *strings.Builder) {
+	b.WriteString("--- Compose File ---\n")
+	if r.ComposeFileExists {
+		valid := "not checked"
+		if r.ComposeFileValid != nil {
+			if *r.ComposeFileValid {
+				valid = "yes"
+			} else {
+				valid = "no"
+			}
+		}
+		fmt.Fprintf(b, "Exists: yes  Valid: %s\n\n", valid)
+	} else {
+		b.WriteString("Not found\n\n")
+	}
+}
+
+func (r Report) formatInfraSection(b *strings.Builder) {
+	if len(r.ContainerSummary) > 0 {
+		b.WriteString("--- Container Summary ---\n")
+		for _, c := range r.ContainerSummary {
+			line := fmt.Sprintf("  %s: %s", c.Name, c.State)
+			if c.Health != "" {
+				line += fmt.Sprintf(" (%s)", c.Health)
+			}
+			fmt.Fprintf(b, "%s\n", line)
+		}
+		b.WriteString("\n")
+	}
+	formatBulletList(b, "Port Conflicts", r.PortConflicts)
+	formatBulletList(b, "Docker Images", r.ImageStatus)
+}
+
+func formatBulletList(b *strings.Builder, title string, items []string) {
+	if len(items) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "--- %s ---\n", title)
+	for _, s := range items {
+		fmt.Fprintf(b, "  - %s\n", s)
+	}
+	b.WriteString("\n")
+}
+
+func formatList(b *strings.Builder, title string, items []string) {
+	if len(items) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "--- %s ---\n", title)
+	for _, e := range items {
+		fmt.Fprintf(b, "  - %s\n", e)
+	}
 }
 
 func truncate(s string, max int) string {
@@ -142,34 +235,144 @@ func truncate(s string, max int) string {
 	return s[:max] + "\n... (truncated)"
 }
 
-func diskInfo(ctx context.Context, dataDir string) string {
-	var name string
-	var args []string
+// composeFileNames are the default Compose file names in search order.
+var composeFileNames = []string{
+	"compose.yml", "compose.yaml",
+	"docker-compose.yml", "docker-compose.yaml",
+}
 
-	// Check the partition containing the data directory rather than root.
-	target := dataDir
-	if target == "" {
-		target = "/"
-	}
-
-	switch runtime.GOOS {
-	case "windows":
-		// Use fsutil on the drive letter of the data dir (or C: as fallback).
-		drive := "C:"
-		if len(target) >= 2 && target[1] == ':' {
-			drive = target[:2]
+// checkComposeFile verifies that a compose file exists and is valid.
+func checkComposeFile(ctx context.Context, r *Report, info docker.Info, dataDir string) {
+	for _, name := range composeFileNames {
+		composePath := filepath.Join(dataDir, name)
+		if _, err := os.Stat(composePath); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			r.Errors = append(r.Errors, fmt.Sprintf("compose: %s: %v", composePath, err))
+			continue
 		}
-		name = "fsutil"
-		args = []string{"volume", "diskfree", drive}
-	default:
-		name = "df"
-		args = []string{"-h", target}
+		r.ComposeFileExists = true
+		if info.DockerPath != "" {
+			valid := docker.ComposeExec(ctx, info, dataDir, "config", "--quiet") == nil
+			r.ComposeFileValid = &valid
+		}
+		return
 	}
-	cmd := exec.CommandContext(ctx, name, args...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+}
+
+// checkPorts tests whether configured ports are already bound.
+func checkPorts(ctx context.Context, backendPort, webPort int) []string {
+	dialer := net.Dialer{Timeout: 1 * time.Second}
+	var conflicts []string
+	for _, p := range []struct {
+		name string
+		port int
+	}{
+		{"backend", backendPort},
+		{"web", webPort},
+	} {
+		addr := fmt.Sprintf("127.0.0.1:%d", p.port)
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
+		if err == nil {
+			_ = conn.Close()
+			conflicts = append(conflicts, fmt.Sprintf("port %d (%s) is already in use", p.port, p.name))
+		}
+	}
+	return conflicts
+}
+
+const imagePrefix = "ghcr.io/aureliolo/synthorg-"
+
+// checkImages reports whether required Docker images exist locally.
+func checkImages(ctx context.Context, imageTag string, sandbox bool) []string {
+	names := []string{"backend", "web"}
+	if sandbox {
+		names = append(names, "sandbox")
+	}
+	var status []string
+	for _, name := range names {
+		image := imagePrefix + name + ":" + imageTag
+		_, err := docker.RunCmd(ctx, "docker", "image", "inspect", image, "--format", "{{.ID}}")
+		if err != nil {
+			status = append(status, fmt.Sprintf("%s: not found locally", image))
+		} else {
+			status = append(status, fmt.Sprintf("%s: available", image))
+		}
+	}
+	return status
+}
+
+// parseContainerDetails parses docker compose ps --format json output.
+// Tries JSON array first, falls back to NDJSON (one object per line).
+func parseContainerDetails(psJSON string) []ContainerDetail {
+	// Try JSON array first (newer Compose versions).
+	var details []ContainerDetail
+	if err := json.Unmarshal([]byte(psJSON), &details); err == nil {
+		filtered := details[:0]
+		for _, d := range details {
+			if d.Name != "" {
+				filtered = append(filtered, d)
+			}
+		}
+		return filtered
+	}
+
+	// Fallback: NDJSON (one JSON object per line).
+	for _, line := range strings.Split(psJSON, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var d ContainerDetail
+		if err := json.Unmarshal([]byte(line), &d); err != nil {
+			continue
+		}
+		if d.Name != "" {
+			details = append(details, d)
+		}
+	}
+	return details
+}
+
+// hasRunningContainers returns true if any container is in "running" state.
+func hasRunningContainers(details []ContainerDetail) bool {
+	for _, d := range details {
+		if d.State == "running" {
+			return true
+		}
+	}
+	return false
+}
+
+// diskInfo returns disk usage for the given path using native Go syscalls.
+// Platform-specific implementations are in disk_unix.go and disk_windows.go.
+func diskInfo(_ context.Context, dataDir string) string {
+	total, free, err := diskUsage(dataDir)
+	if err != nil {
 		return fmt.Sprintf("unavailable: %v", err)
 	}
-	return strings.TrimSpace(out.String())
+	used := total - free
+	pct := 0.0
+	if total > 0 {
+		pct = float64(used) / float64(total) * 100
+	}
+	return fmt.Sprintf("Total: %s  Used: %s  Free: %s  (%.0f%% used)",
+		humanBytes(total), humanBytes(used), humanBytes(free), pct)
+}
+
+func humanBytes(b uint64) string {
+	const (
+		unit     = 1024
+		suffixes = "KMGTPE"
+	)
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := uint64(unit), 0
+	for n := b / unit; n >= unit && exp < len(suffixes)-1; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), suffixes[exp])
 }
