@@ -44,7 +44,6 @@
       <option value="General">General</option>
       <option value="Licensing">Licensing</option>
       <option value="Commercial">Commercial</option>
-
       <option value="Other">Other</option>
     </select>
   </div>
@@ -69,11 +68,11 @@
     Send Message
   </button>
 
-  <div id="contact-success" class="hidden mt-6 p-4 bg-green-600/10 border border-green-500/20 rounded-lg text-green-400 text-sm">
+  <div id="contact-success" class="hidden mt-6 p-4 bg-green-600/10 border border-green-500/20 rounded-lg text-green-400 text-sm" role="status" aria-live="polite" tabindex="-1">
     Thanks for reaching out! We'll get back to you soon.
   </div>
 
-  <div id="contact-error" class="hidden mt-6 p-4 bg-red-600/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+  <div id="contact-error" class="hidden mt-6 p-4 bg-red-600/10 border border-red-500/20 rounded-lg text-red-400 text-sm" role="alert" aria-live="assertive" tabindex="-1">
     Something went wrong. Please try again or email us directly.
   </div>
 </form>
@@ -95,7 +94,9 @@
       const honeypot = form.querySelector<HTMLInputElement>('input[name="_gotcha"]');
       if (honeypot && honeypot.value) {
         form.classList.add("hidden");
+        form.setAttribute("aria-hidden", "true");
         successMsg.classList.remove("hidden");
+        successMsg.focus();
         return;
       }
 
@@ -116,17 +117,22 @@
           if (data && data.code && data.code !== 200) {
             errorMsg.textContent = data.message || "Your message could not be delivered. Please try again.";
             errorMsg.classList.remove("hidden");
+            errorMsg.focus();
           } else {
             form.reset();
             form.classList.add("hidden");
+            form.setAttribute("aria-hidden", "true");
             successMsg.classList.remove("hidden");
+            successMsg.focus();
           }
         } else {
           errorMsg.classList.remove("hidden");
+          errorMsg.focus();
         }
       } catch (err) {
         console.error("ContactForm: submission failed", err);
         errorMsg.classList.remove("hidden");
+        errorMsg.focus();
       } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = "Send Message";
