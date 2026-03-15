@@ -23,13 +23,13 @@ services:
     read_only: true
     tmpfs:
       - /tmp:noexec,nosuid,nodev,size=64m
-    pids_limit: 256
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 4G
           cpus: "2.0"
+          pids: 256
     logging:
       driver: json-file
       options:
@@ -62,13 +62,13 @@ services:
       - /tmp:noexec,nosuid,nodev,size=16m
       - /var/cache/nginx:noexec,nosuid,nodev,size=32m
       - /var/run:noexec,nosuid,nodev,size=1m
-    pids_limit: 64
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 256M
           cpus: "0.5"
+          pids: 64
     logging:
       driver: json-file
       options:
