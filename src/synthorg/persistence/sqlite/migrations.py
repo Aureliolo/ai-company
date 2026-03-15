@@ -411,13 +411,28 @@ CREATE TABLE IF NOT EXISTS agent_states (
     agent_id TEXT PRIMARY KEY,
     execution_id TEXT,
     task_id TEXT,
-    status TEXT NOT NULL DEFAULT 'idle',
-    turn_count INTEGER NOT NULL DEFAULT 0,
-    accumulated_cost_usd REAL NOT NULL DEFAULT 0.0,
+    status TEXT NOT NULL DEFAULT 'idle'
+        CHECK (status IN ('idle', 'executing', 'paused')),
+    turn_count INTEGER NOT NULL DEFAULT 0 CHECK (turn_count >= 0),
+    accumulated_cost_usd REAL NOT NULL DEFAULT 0.0
+        CHECK (accumulated_cost_usd >= 0.0),
     last_activity_at TEXT NOT NULL,
-    started_at TEXT
+    started_at TEXT,
+    CHECK (
+        (status = 'idle'
+         AND execution_id IS NULL
+         AND task_id IS NULL
+         AND started_at IS NULL
+         AND turn_count = 0
+         AND accumulated_cost_usd = 0.0)
+        OR
+        (status IN ('executing', 'paused')
+         AND execution_id IS NOT NULL
+         AND started_at IS NOT NULL)
+    )
 )""",
-    "CREATE INDEX IF NOT EXISTS idx_as_status ON agent_states(status)",
+    "CREATE INDEX IF NOT EXISTS idx_as_status_activity "
+    "ON agent_states(status, last_activity_at DESC)",
 )
 
 

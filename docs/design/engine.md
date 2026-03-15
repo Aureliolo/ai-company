@@ -264,6 +264,24 @@ reach the `MessageBusBridge` and WebSocket consumers.
 
 ---
 
+## Agent Execution Status
+
+The `ExecutionStatus` enum (in `core/enums.py`) tracks the per-agent runtime
+execution state:
+
+| Status | Meaning |
+|--------|---------|
+| `IDLE` | Agent is not currently executing — no active task or execution run. |
+| `EXECUTING` | Agent is actively processing a task within an execution loop. |
+| `PAUSED` | Agent is waiting for an external event (e.g. approval gate). |
+
+`ExecutionStatus` is consumed by `AgentRuntimeState` (in `engine/agent_state.py`),
+which is persisted via `AgentStateRepository` for dashboard queries and
+graceful-shutdown discovery. See the [Agents design page](agents.md#runtime-state)
+for how `AgentRuntimeState` fits into the runtime state layer.
+
+---
+
 ## Agent Execution Loop
 
 The agent execution loop defines how an agent processes a task from start to

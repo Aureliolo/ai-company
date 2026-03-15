@@ -122,7 +122,7 @@ CREATE TABLE parked_contexts (
 
         # Run migrations (applies v7)
         await run_migrations(memory_db)
-        assert await get_user_version(memory_db) == 8
+        assert await get_user_version(memory_db) == SCHEMA_VERSION
 
         # Verify task_id is now nullable
         cursor = await memory_db.execute("PRAGMA table_info('parked_contexts')")

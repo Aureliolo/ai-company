@@ -60,7 +60,7 @@ INSERT OR REPLACE INTO agent_states (
                 error=str(exc),
             )
             raise QueryError(msg) from exc
-        logger.debug(
+        logger.info(
             PERSISTENCE_AGENT_STATE_SAVED,
             agent_id=state.agent_id,
             status=state.status.value,
@@ -144,8 +144,13 @@ INSERT OR REPLACE INTO agent_states (
             )
             raise QueryError(msg) from exc
         if deleted:
-            logger.debug(
+            logger.info(
                 PERSISTENCE_AGENT_STATE_DELETED,
+                agent_id=agent_id,
+            )
+        else:
+            logger.debug(
+                PERSISTENCE_AGENT_STATE_NOT_FOUND,
                 agent_id=agent_id,
             )
         return deleted

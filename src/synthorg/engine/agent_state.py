@@ -101,7 +101,7 @@ class AgentRuntimeState(BaseModel):
         return self
 
     @classmethod
-    def idle(cls, agent_id: str) -> AgentRuntimeState:
+    def idle(cls, agent_id: NotBlankStr) -> AgentRuntimeState:
         """Create an IDLE state for the given agent.
 
         Args:

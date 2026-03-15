@@ -193,47 +193,81 @@ class TestSQLiteAgentStateRepository:
         assert await repo.get("keep") is not None
         assert await repo.get("remove") is None
 
+    async def test_get_active_returns_empty_on_empty_table(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        repo = SQLiteAgentStateRepository(migrated_db)
+        active = await repo.get_active()
+        assert active == ()
+
+    async def test_lifecycle_idle_to_executing_to_idle(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """Full lifecycle: idle → executing → idle roundtrip."""
+        repo = SQLiteAgentStateRepository(migrated_db)
+        idle = _make_state(agent_id="lifecycle", status=ExecutionStatus.IDLE)
+        await repo.save(idle)
+
+        result = await repo.get("lifecycle")
+        assert result is not None
+        assert result.status == ExecutionStatus.IDLE
+
+        executing = _make_state(
+            agent_id="lifecycle",
+            status=ExecutionStatus.EXECUTING,
+            last_activity_at=_T1,
+        )
+        await repo.save(executing)
+
+        result = await repo.get("lifecycle")
+        assert result is not None
+        assert result.status == ExecutionStatus.EXECUTING
+        assert result.execution_id == "exec-001"
+        assert result.started_at == _T0
+
+        idle_again = _make_state(
+            agent_id="lifecycle",
+            status=ExecutionStatus.IDLE,
+            last_activity_at=_T2,
+        )
+        await repo.save(idle_again)
+
+        result = await repo.get("lifecycle")
+        assert result is not None
+        assert result.status == ExecutionStatus.IDLE
+        assert result.execution_id is None
+        assert result.task_id is None
+        assert result.started_at is None
+        assert result.turn_count == 0
+        assert result.accumulated_cost_usd == 0.0
+
 
 @pytest.mark.unit
 class TestSQLiteAgentStateRepositoryErrors:
     """Error paths raise QueryError."""
 
-    async def test_save_raises_query_error_on_db_error(
-        self, memory_db: aiosqlite.Connection
+    @pytest.mark.parametrize(
+        ("method", "args", "match"),
+        [
+            ("save", (_make_state(),), "Failed to save"),
+            ("get", ("agent-001",), "Failed to fetch"),
+            ("get_active", (), "Failed to query"),
+            ("delete", ("agent-001",), "Failed to delete"),
+        ],
+    )
+    async def test_crud_raises_query_error_on_db_error(
+        self,
+        memory_db: aiosqlite.Connection,
+        method: str,
+        args: tuple[object, ...],
+        match: str,
     ) -> None:
         from synthorg.persistence.errors import QueryError
 
         repo = SQLiteAgentStateRepository(memory_db)
-        state = _make_state()
-        with pytest.raises(QueryError, match="Failed to save"):
-            await repo.save(state)
-
-    async def test_get_raises_query_error_on_db_error(
-        self, memory_db: aiosqlite.Connection
-    ) -> None:
-        from synthorg.persistence.errors import QueryError
-
-        repo = SQLiteAgentStateRepository(memory_db)
-        with pytest.raises(QueryError, match="Failed to fetch"):
-            await repo.get("agent-001")
-
-    async def test_get_active_raises_query_error_on_db_error(
-        self, memory_db: aiosqlite.Connection
-    ) -> None:
-        from synthorg.persistence.errors import QueryError
-
-        repo = SQLiteAgentStateRepository(memory_db)
-        with pytest.raises(QueryError, match="Failed to query"):
-            await repo.get_active()
-
-    async def test_delete_raises_query_error_on_db_error(
-        self, memory_db: aiosqlite.Connection
-    ) -> None:
-        from synthorg.persistence.errors import QueryError
-
-        repo = SQLiteAgentStateRepository(memory_db)
-        with pytest.raises(QueryError, match="Failed to delete"):
-            await repo.delete("agent-001")
+        with pytest.raises(QueryError, match=match) as exc_info:
+            await getattr(repo, method)(*args)
+        assert exc_info.value.__cause__ is not None
 
     async def test_row_to_model_raises_query_error_on_invalid_row(
         self, migrated_db: aiosqlite.Connection
@@ -241,7 +275,8 @@ class TestSQLiteAgentStateRepositoryErrors:
         from synthorg.persistence.errors import QueryError
 
         repo = SQLiteAgentStateRepository(migrated_db)
-        # Insert a row with invalid status to trigger deserialization failure
+        # Insert a row with a malformed datetime to trigger deserialization
+        # failure (passes CHECK constraints but fails Pydantic AwareDatetime)
         await migrated_db.execute(
             "INSERT INTO agent_states "
             "(agent_id, execution_id, task_id, status, turn_count, "
@@ -251,11 +286,11 @@ class TestSQLiteAgentStateRepositoryErrors:
                 "agent-bad",
                 "exec-bad",
                 None,
-                "invalid_status",
+                "executing",
                 0,
                 0.0,
+                "not-a-datetime",
                 "2026-01-01T00:00:00+00:00",
-                None,
             ),
         )
         await migrated_db.commit()
@@ -273,7 +308,8 @@ class TestSQLiteAgentStateRepositoryErrors:
         # Insert a valid executing row
         valid = _make_state(agent_id="agent-ok")
         await repo.save(valid)
-        # Insert a corrupt row with invalid status directly
+        # Insert a corrupt row with a malformed datetime (passes CHECK
+        # constraints but fails Pydantic AwareDatetime validation)
         await migrated_db.execute(
             "INSERT INTO agent_states "
             "(agent_id, execution_id, task_id, status, turn_count, "
@@ -283,10 +319,10 @@ class TestSQLiteAgentStateRepositoryErrors:
                 "agent-corrupt",
                 "exec-corrupt",
                 None,
-                "invalid_status",
+                "executing",
                 0,
                 0.0,
-                "2026-01-01T00:00:00+00:00",
+                "not-a-datetime",
                 "2026-01-01T00:00:00+00:00",
             ),
         )

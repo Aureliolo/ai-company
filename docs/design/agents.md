@@ -144,6 +144,9 @@ with `model_copy`:
   accumulated cost (`TokenUsage`), turn count, and timestamps.
 - **AgentContext** wraps `AgentIdentity` + `TaskExecution` with a unique execution ID,
   conversation history, cost accumulation, turn limits, and timing.
+- **AgentRuntimeState** provides a lightweight per-agent execution status snapshot
+  (idle / executing / paused) for dashboard queries and graceful-shutdown discovery.
+  Persisted via `AgentStateRepository`, independent of the checkpoint system.
 
 ---
 

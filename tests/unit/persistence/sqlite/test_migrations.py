@@ -184,14 +184,33 @@ class TestRunMigrations:
         row = await cursor.fetchone()
         assert row is not None
 
-    async def test_v8_creates_agent_states_index(
+    async def test_v8_creates_agent_states_columns(
         self, memory_db: aiosqlite.Connection
     ) -> None:
-        """V8 migration creates the status index."""
+        """V8 migration creates the agent_states table with correct columns."""
+        await run_migrations(memory_db)
+        cursor = await memory_db.execute("PRAGMA table_info('agent_states')")
+        columns = {row[1] for row in await cursor.fetchall()}
+        expected = {
+            "agent_id",
+            "execution_id",
+            "task_id",
+            "status",
+            "turn_count",
+            "accumulated_cost_usd",
+            "last_activity_at",
+            "started_at",
+        }
+        assert columns == expected
+
+    async def test_v8_creates_agent_states_composite_index(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """V8 migration creates the composite status+activity index."""
         await run_migrations(memory_db)
         cursor = await memory_db.execute(
             "SELECT name FROM sqlite_master WHERE type='index' "
-            "AND name = 'idx_as_status'"
+            "AND name = 'idx_as_status_activity'"
         )
         row = await cursor.fetchone()
         assert row is not None
