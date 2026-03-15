@@ -2,7 +2,6 @@
 package diagnostics
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -312,34 +310,31 @@ func hasRunningContainers(details []ContainerDetail) bool {
 	return false
 }
 
-func diskInfo(ctx context.Context, dataDir string) string {
-	var name string
-	var args []string
-
-	// Check the partition containing the data directory rather than root.
-	target := dataDir
-	if target == "" {
-		target = "/"
-	}
-
-	switch runtime.GOOS {
-	case "windows":
-		// Use fsutil on the drive letter of the data dir (or C: as fallback).
-		drive := "C:"
-		if len(target) >= 2 && target[1] == ':' {
-			drive = target[:2]
-		}
-		name = "fsutil"
-		args = []string{"volume", "diskfree", drive}
-	default:
-		name = "df"
-		args = []string{"-h", target}
-	}
-	cmd := exec.CommandContext(ctx, name, args...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
+// diskInfoNative returns disk usage for the given path using native Go syscalls.
+// Platform-specific implementations are in disk_unix.go and disk_windows.go.
+func diskInfo(_ context.Context, dataDir string) string {
+	total, free, err := diskUsage(dataDir)
+	if err != nil {
 		return fmt.Sprintf("unavailable: %v", err)
 	}
-	return strings.TrimSpace(out.String())
+	used := total - free
+	pct := 0.0
+	if total > 0 {
+		pct = float64(used) / float64(total) * 100
+	}
+	return fmt.Sprintf("Total: %s  Used: %s  Free: %s  (%.0f%% used)",
+		humanBytes(total), humanBytes(used), humanBytes(free), pct)
+}
+
+func humanBytes(b uint64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := uint64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
 }
