@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.6](https://github.com/Aureliolo/synthorg/compare/v0.2.5...v0.2.6) (2026-03-15)
+
+
+### Features
+
+* add intra-loop stagnation detector ([#415](https://github.com/Aureliolo/synthorg/issues/415)) ([#458](https://github.com/Aureliolo/synthorg/issues/458)) ([8e9f34f](https://github.com/Aureliolo/synthorg/commit/8e9f34f9a2118a5cbbbcbc0076e384d353d1b3c2))
+* add RFC 9457 structured error responses (Phase 1) ([#457](https://github.com/Aureliolo/synthorg/issues/457)) ([6612a99](https://github.com/Aureliolo/synthorg/commit/6612a994c625489741f2c20887fa9fe91bf232fc)), closes [#419](https://github.com/Aureliolo/synthorg/issues/419)
+* implement AgentStateRepository for runtime state persistence ([#459](https://github.com/Aureliolo/synthorg/issues/459)) ([5009da7](https://github.com/Aureliolo/synthorg/commit/5009da7915ef02e79995ecbc3c8425704b9517ba))
+* **site:** add SEO essentials, contact form, early-access banner ([#467](https://github.com/Aureliolo/synthorg/issues/467)) ([11b645e](https://github.com/Aureliolo/synthorg/commit/11b645ee8b72aba0b48c17e1c00b3781cedb7b20)), closes [#466](https://github.com/Aureliolo/synthorg/issues/466)
+
+
+### Bug Fixes
+
+* CLI improvements — config show, completion install, enhanced doctor, Sigstore verification ([#465](https://github.com/Aureliolo/synthorg/issues/465)) ([9e08cec](https://github.com/Aureliolo/synthorg/commit/9e08cec314faa82d6baf603bf51db31528f41d19))
+* **site:** add reCAPTCHA v3, main landmark, and docs sitemap ([#469](https://github.com/Aureliolo/synthorg/issues/469)) ([fa6d35c](https://github.com/Aureliolo/synthorg/commit/fa6d35c0025fd9a7507d1bf3f307f6ce435721c1))
+* use force-tag-creation instead of manual tag creation hack ([#462](https://github.com/Aureliolo/synthorg/issues/462)) ([2338004](https://github.com/Aureliolo/synthorg/commit/23380049d5a824731d47a22d7baf64af32375ff2))
+
 ## [0.2.5](https://github.com/Aureliolo/synthorg/compare/v0.2.4...v0.2.5) (2026-03-15)
 
 
