@@ -112,9 +112,9 @@ Both backend and web containers enforce CIS v1.6.0 controls in `compose.yml`:
 | **CIS 5.3** | `security_opt: no-new-privileges:true` |
 | **CIS 5.12** | `cap_drop: ALL` |
 | **CIS 5.25** | `read_only: true` with `tmpfs` mounts (`noexec`, `nosuid`, `nodev`) |
-| **CIS 5.28** | `pids_limit` per container (256 backend, 64 web) |
+| **CIS 5.28** | `deploy.resources.limits.pids` per container (256 backend, 64 web) |
 
-Resource limits (`deploy.resources.limits`) cap memory and CPU per container (4G/2CPU backend, 256M/0.5CPU web). Log rotation (`json-file` driver, `max-size: 10m`, `max-file: 3`) prevents disk exhaustion.
+Resource limits (`deploy.resources.limits`) cap memory, CPU, and PIDs per container (4G/2CPU/256pids backend, 256M/0.5CPU/64pids web). Log rotation (`json-file` driver, `max-size: 10m`, `max-file: 3`) prevents disk exhaustion.
 
 ### Artifact Provenance
 
