@@ -52,6 +52,9 @@ func Load(dataDir string) (State, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			defaults := DefaultState()
 			defaults.DataDir = safeDir
+			// Conservative fallback: sandbox requires explicit user confirmation
+			// via `synthorg init`, so disable it when no config file exists.
+			defaults.Sandbox = false
 			return defaults, nil
 		}
 		return State{}, err

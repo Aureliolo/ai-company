@@ -45,12 +45,11 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Warn if re-initializing over existing config (JWT secret will change).
-	// Warn if re-initializing over existing config (JWT secret will change).
 	// isInteractive() is already checked at function entry, so prompt is safe.
+	errOut := ui.NewUI(cmd.ErrOrStderr())
 	if existing := config.StatePath(state.DataDir); fileExists(existing) {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-			"Warning: existing config at %s will be overwritten.\n"+
-				"A new JWT secret will be generated — running containers will need a restart.\n", existing)
+		errOut.Warn(fmt.Sprintf("Existing config at %s will be overwritten.", existing))
+		errOut.Warn("A new JWT secret will be generated — running containers will need a restart.")
 		var proceed bool
 		form := huh.NewForm(huh.NewGroup(
 			huh.NewConfirm().Title("Overwrite existing configuration?").Value(&proceed),

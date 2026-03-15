@@ -152,6 +152,7 @@ cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
     health/         # Health check polling with retry + timeout
     diagnostics/    # System info collection for bug reports
     selfupdate/     # GitHub Releases self-update + binary replacement
+    ui/             # Styled CLI output (lipgloss-based: logo, status icons, key-value display)
   scripts/          # Install scripts (install.sh, install.ps1)
   testdata/         # Golden files for compose generation tests
   .goreleaser.yml   # GoReleaser config (cross-compile, checksums)
@@ -257,7 +258,7 @@ site/               # Astro landing page (synthorg.io)
   - Build job runs regardless (catches build failures); deploy job skips on fork PRs (same-repo check via job output)
   - Cleanup job deletes preview comment and Cloudflare deployments on PR close (pull_request events only)
   - Concurrency group cancels stale builds on rapid pushes
-- **Docker**: `.github/workflows/docker.yml` — builds backend + web images, pushes to GHCR, signs with cosign. SLSA L3 provenance attestations via `actions/attest-build-provenance` (SHA-pinned, Sigstore-signed, pushed to registry). Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff) + CIS Docker Benchmark v1.6.0 compliance (informational). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
+- **Docker**: `.github/workflows/docker.yml` — builds backend + web + sandbox images, pushes to GHCR, signs with cosign. SLSA L3 provenance attestations via `actions/attest-build-provenance` (SHA-pinned, Sigstore-signed, pushed to registry). Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff) + CIS Docker Benchmark v1.6.0 compliance (informational). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
 - **CLI**: `.github/workflows/cli.yml` — Go lint (`golangci-lint` + `go vet`) + test (`-race -coverprofile`) + build (cross-compile matrix: linux/darwin/windows × amd64/arm64) + vulnerability check (`govulncheck`) + fuzz testing (main-only, 30s/target, `continue-on-error`, matrix over 4 packages) on `cli/**` changes. `cli-pass` gate includes fuzz result as informational warning. GoReleaser release on `v*` tags (attaches assets to the draft Release Please release). Cosign keyless signing of `checksums.txt` (`.sig` + `.pem` attached to release). SLSA L3 provenance attestations via `actions/attest-build-provenance` (SHA-pinned, Sigstore-signed) for individual binaries and checksums file. Sigstore provenance bundle (`.sigstore.json`) attached to release for OpenSSF Scorecard signed-releases scoring. Post-release step appends install instructions + checksum table + cosign verification + provenance verification instructions to the draft release notes (while still in draft — before finalize-release publishes).
 - **Dependabot**: daily uv + github-actions + npm + pre-commit + docker + gomod updates, grouped minor/patch, no auto-merge. Use `/review-dep-pr` to review Dependabot PRs before merging
@@ -282,4 +283,4 @@ site/               # Astro landing page (synthorg.io)
 - **Required**: `mem0ai` (Mem0 memory backend — the default and currently only backend)
 - **Install**: `uv sync` installs everything (dev group is default)
 - **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, Vitest, fast-check, ESLint, vue-tsc)
-- **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh)
+- **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss)
