@@ -923,8 +923,11 @@ class TestPlanExecuteLoopStagnation:
 
         assert result.termination_reason == TerminationReason.STAGNATION
         assert "stagnation" in result.metadata
-        # STAGNATION result must include ALL turns, not just step-scoped
-        assert len(result.turns) >= 1
+        # STAGNATION result must include ALL turns (planning + tool-use),
+        # not just step-scoped turns.
+        assert len(result.turns) == 2
+        assert result.turns[0].tool_calls_made == ()  # planning turn
+        assert result.turns[1].tool_calls_made == ("echo",)  # tool turn
 
     async def test_stagnation_correction_in_step(
         self,

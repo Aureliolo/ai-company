@@ -71,6 +71,10 @@ class ReactLoop:
         approval_gate: Optional gate that checks for pending escalations
             after tool execution and parks the agent when approval is
             required.  ``None`` disables approval checks.
+        stagnation_detector: Optional detector that checks for
+            repetitive tool-call patterns and intervenes with
+            corrective prompts or early termination.  ``None``
+            disables stagnation detection.
     """
 
     def __init__(
