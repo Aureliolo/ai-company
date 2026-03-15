@@ -57,7 +57,7 @@ func DetectShell() ShellType {
 			return Zsh
 		case strings.Contains(base, "fish"):
 			return Fish
-		case strings.Contains(base, "pwsh"):
+		case strings.Contains(base, "pwsh") || strings.Contains(base, "powershell"):
 			return PowerShell
 		}
 	}

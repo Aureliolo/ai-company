@@ -18,8 +18,8 @@ const (
 	// expectedIssuer is the OIDC issuer for GitHub Actions keyless signing.
 	expectedIssuer = "https://token.actions.githubusercontent.com"
 	// expectedSANRegex matches the CLI release workflow identity for this repo.
-	// Only accepts signatures from the cli.yml workflow on version tag pushes.
-	expectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/cli\.yml@refs/tags/v[0-9]+`
+	// Only accepts signatures from the cli.yml workflow on semver tag pushes.
+	expectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/cli\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?$`
 	// tufFetchTimeout bounds the TUF metadata fetch for the trusted root.
 	tufFetchTimeout = 30 * time.Second
 )

@@ -4,6 +4,7 @@ package diagnostics
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -138,9 +139,7 @@ func collectConfig(r *Report, state config.State) {
 
 func collectInfra(ctx context.Context, r *Report, info docker.Info, state config.State, safeDir string, pathErr error) {
 	if pathErr == nil {
-		exists, valid := checkComposeFile(ctx, info, safeDir)
-		r.ComposeFileExists = exists
-		r.ComposeFileValid = valid
+		checkComposeFile(ctx, r, info, safeDir)
 	}
 	if r.ContainerPS != "" {
 		r.ContainerSummary = parseContainerDetails(r.ContainerPS)
@@ -239,19 +238,22 @@ var composeFileNames = []string{
 }
 
 // checkComposeFile verifies that a compose file exists and is valid.
-func checkComposeFile(ctx context.Context, info docker.Info, dataDir string) (exists, valid bool) {
+func checkComposeFile(ctx context.Context, r *Report, info docker.Info, dataDir string) {
 	for _, name := range composeFileNames {
 		composePath := filepath.Join(dataDir, name)
-		if _, err := os.Stat(composePath); err == nil {
-			// compose config --quiet validates the file without printing it.
-			if info.DockerPath != "" {
-				err := docker.ComposeExec(ctx, info, dataDir, "config", "--quiet")
-				return true, err == nil
+		if _, err := os.Stat(composePath); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
 			}
-			return true, false
+			r.Errors = append(r.Errors, fmt.Sprintf("compose: %s: %v", composePath, err))
+			continue
 		}
+		r.ComposeFileExists = true
+		if info.DockerPath != "" {
+			r.ComposeFileValid = docker.ComposeExec(ctx, info, dataDir, "config", "--quiet") == nil
+		}
+		return
 	}
-	return false, false
 }
 
 // checkPorts tests whether configured ports are already bound.
