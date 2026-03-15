@@ -126,13 +126,12 @@ func installZsh(rootCmd *cobra.Command, res Result) (Result, error) {
 
 	if _, err := os.Stat(compFile); err == nil {
 		res.AlreadyInstalled = true
-		return res, nil
 	}
 
+	// Always regenerate the completion file so updated commands are picked up.
 	if err := os.MkdirAll(compDir, 0o755); err != nil {
 		return res, fmt.Errorf("creating completion directory: %w", err)
 	}
-
 	var buf bytes.Buffer
 	if err := rootCmd.GenZshCompletion(&buf); err != nil {
 		return res, fmt.Errorf("generating zsh completion: %w", err)
@@ -141,7 +140,7 @@ func installZsh(rootCmd *cobra.Command, res Result) (Result, error) {
 		return res, fmt.Errorf("writing completion file: %w", err)
 	}
 
-	// Ensure fpath is configured in .zshrc.
+	// Ensure fpath is configured in .zshrc (idempotent).
 	zshrc := filepath.Join(home, ".zshrc")
 	fpathLine := "fpath=(~/.zsh/completion $fpath)"
 	installed, err := fileContains(zshrc, fpathLine)
@@ -170,18 +169,20 @@ func installFish(rootCmd *cobra.Command, res Result) (Result, error) {
 
 	if _, err := os.Stat(compFile); err == nil {
 		res.AlreadyInstalled = true
-		return res, nil
 	}
 
+	// Always regenerate the completion file so updated commands are picked up.
 	if err := os.MkdirAll(compDir, 0o755); err != nil {
 		return res, fmt.Errorf("creating completion directory: %w", err)
 	}
-
 	var buf bytes.Buffer
 	if err := rootCmd.GenFishCompletion(&buf, true); err != nil {
 		return res, fmt.Errorf("generating fish completion: %w", err)
 	}
-	return res, os.WriteFile(compFile, buf.Bytes(), 0o644)
+	if err := os.WriteFile(compFile, buf.Bytes(), 0o644); err != nil {
+		return res, fmt.Errorf("writing completion file: %w", err)
+	}
+	return res, nil
 }
 
 func installPowerShell(ctx context.Context, res Result) (Result, error) {
@@ -256,9 +257,13 @@ func appendToFile(path, content string) error {
 	if err != nil {
 		return fmt.Errorf("opening %s: %w", path, err)
 	}
-	if _, err := f.WriteString(content); err != nil {
-		_ = f.Close()
-		return fmt.Errorf("writing to %s: %w", path, err)
+	_, writeErr := f.WriteString(content)
+	closeErr := f.Close()
+	if writeErr != nil {
+		return fmt.Errorf("writing to %s: %w", path, writeErr)
 	}
-	return f.Close()
+	if closeErr != nil {
+		return fmt.Errorf("closing %s: %w", path, closeErr)
+	}
+	return nil
 }

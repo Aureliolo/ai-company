@@ -36,14 +36,19 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	dir := resolveDataDir()
 	out := ui.NewUI(cmd.OutOrStdout())
 
-	statePath := config.StatePath(dir)
+	safeDir, err := config.SecurePath(dir)
+	if err != nil {
+		return fmt.Errorf("invalid data directory: %w", err)
+	}
+
+	statePath := config.StatePath(safeDir)
 	if _, err := os.Stat(statePath); errors.Is(err, os.ErrNotExist) {
 		out.Warn("Not initialized — no config found at " + statePath)
 		out.Hint("Run 'synthorg init' to set up")
 		return nil
 	}
 
-	state, err := config.Load(dir)
+	state, err := config.Load(safeDir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}

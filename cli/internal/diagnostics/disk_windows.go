@@ -7,11 +7,13 @@ import (
 	"unsafe"
 )
 
+var (
+	kernel32            = syscall.NewLazyDLL("kernel32.dll")
+	getDiskFreeSpaceExW = kernel32.NewProc("GetDiskFreeSpaceExW")
+)
+
 // diskUsage returns total and free bytes for the filesystem containing path.
 func diskUsage(path string) (total, free uint64, err error) {
-	kernel32 := syscall.NewLazyDLL("kernel32.dll")
-	getDiskFreeSpaceExW := kernel32.NewProc("GetDiskFreeSpaceExW")
-
 	pathPtr, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
 		return 0, 0, err

@@ -232,18 +232,26 @@ func truncate(s string, max int) string {
 	return s[:max] + "\n... (truncated)"
 }
 
-// checkComposeFile verifies that compose.yml exists and is valid YAML.
+// composeFileNames are the default Compose file names in search order.
+var composeFileNames = []string{
+	"compose.yml", "compose.yaml",
+	"docker-compose.yml", "docker-compose.yaml",
+}
+
+// checkComposeFile verifies that a compose file exists and is valid.
 func checkComposeFile(ctx context.Context, info docker.Info, dataDir string) (exists, valid bool) {
-	composePath := filepath.Join(dataDir, "compose.yml")
-	if _, err := os.Stat(composePath); err != nil {
-		return false, false
+	for _, name := range composeFileNames {
+		composePath := filepath.Join(dataDir, name)
+		if _, err := os.Stat(composePath); err == nil {
+			// compose config --quiet validates the file without printing it.
+			if info.DockerPath != "" {
+				err := docker.ComposeExec(ctx, info, dataDir, "config", "--quiet")
+				return true, err == nil
+			}
+			return true, false
+		}
 	}
-	// compose config --quiet validates the file without printing it.
-	if info.DockerPath != "" {
-		err := docker.ComposeExec(ctx, info, dataDir, "config", "--quiet")
-		return true, err == nil
-	}
-	return true, false
+	return false, false
 }
 
 // checkPorts tests whether configured ports are already bound.
@@ -288,9 +296,16 @@ func checkImages(ctx context.Context, imageTag string, sandbox bool) []string {
 	return status
 }
 
-// parseContainerDetails parses NDJSON output from docker compose ps --format json.
+// parseContainerDetails parses docker compose ps --format json output.
+// Tries JSON array first, falls back to NDJSON (one object per line).
 func parseContainerDetails(psJSON string) []ContainerDetail {
+	// Try JSON array first (newer Compose versions).
 	var details []ContainerDetail
+	if err := json.Unmarshal([]byte(psJSON), &details); err == nil {
+		return details
+	}
+
+	// Fallback: NDJSON (one JSON object per line).
 	for _, line := range strings.Split(psJSON, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -317,7 +332,7 @@ func hasRunningContainers(details []ContainerDetail) bool {
 	return false
 }
 
-// diskInfoNative returns disk usage for the given path using native Go syscalls.
+// diskInfo returns disk usage for the given path using native Go syscalls.
 // Platform-specific implementations are in disk_unix.go and disk_windows.go.
 func diskInfo(_ context.Context, dataDir string) string {
 	total, free, err := diskUsage(dataDir)

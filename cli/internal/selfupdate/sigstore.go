@@ -3,11 +3,15 @@ package selfupdate
 import (
 	"crypto/sha256"
 	"fmt"
+	"net/http"
+	"time"
 
 	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
 	"github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/root"
+	"github.com/sigstore/sigstore-go/pkg/tuf"
 	"github.com/sigstore/sigstore-go/pkg/verify"
+	"github.com/theupdateframework/go-tuf/v2/metadata/fetcher"
 )
 
 const (
@@ -15,6 +19,8 @@ const (
 	expectedIssuer = "https://token.actions.githubusercontent.com"
 	// expectedSANRegex matches the GitHub Actions workflow identity for this repo.
 	expectedSANRegex = `^https://github\.com/Aureliolo/synthorg/`
+	// tufFetchTimeout bounds the TUF metadata fetch for the trusted root.
+	tufFetchTimeout = 30 * time.Second
 )
 
 // verifySigstoreBundle verifies the Sigstore bundle for checksums.txt.
@@ -29,8 +35,12 @@ func verifySigstoreBundle(checksumData, bundleData []byte) error {
 		return fmt.Errorf("parsing sigstore bundle: %w", err)
 	}
 
-	// Use Sigstore's public good trusted root (Fulcio + Rekor).
-	trustedRoot, err := root.FetchTrustedRoot()
+	// Use Sigstore's public good trusted root with a bounded HTTP timeout.
+	opts := tuf.DefaultOptions()
+	f := fetcher.NewDefaultFetcher()
+	f.SetHTTPClient(&http.Client{Timeout: tufFetchTimeout})
+	opts = opts.WithFetcher(f)
+	trustedRoot, err := root.FetchTrustedRootWithOptions(opts)
 	if err != nil {
 		return fmt.Errorf("fetching sigstore trusted root: %w", err)
 	}
