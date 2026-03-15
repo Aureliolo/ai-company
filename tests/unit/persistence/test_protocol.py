@@ -12,6 +12,7 @@ from synthorg.hr.persistence_protocol import (
 )
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.repositories import (
+    AgentStateRepository,
     ApiKeyRepository,
     AuditRepository,
     CheckpointRepository,
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
     from synthorg.communication.message import Message
     from synthorg.core.enums import ApprovalRiskLevel, TaskStatus
     from synthorg.core.task import Task
+    from synthorg.engine.agent_state import AgentRuntimeState
     from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
     from synthorg.hr.models import AgentLifecycleEvent
     from synthorg.hr.performance.models import (
@@ -244,6 +246,20 @@ class _FakeHeartbeatRepository:
         return False
 
 
+class _FakeAgentStateRepository:
+    async def save(self, state: AgentRuntimeState) -> None:
+        pass
+
+    async def get(self, agent_id: str) -> AgentRuntimeState | None:
+        return None
+
+    async def get_active(self) -> tuple[AgentRuntimeState, ...]:
+        return ()
+
+    async def delete(self, agent_id: str) -> bool:
+        return False
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -313,6 +329,10 @@ class _FakeBackend:
     def heartbeats(self) -> _FakeHeartbeatRepository:
         return _FakeHeartbeatRepository()
 
+    @property
+    def agent_states(self) -> _FakeAgentStateRepository:
+        return _FakeAgentStateRepository()
+
     async def get_setting(self, key: str) -> str | None:
         return None
 
@@ -370,3 +390,6 @@ class TestProtocolCompliance:
 
     def test_fake_heartbeat_repo_is_heartbeat_repository(self) -> None:
         assert isinstance(_FakeHeartbeatRepository(), HeartbeatRepository)
+
+    def test_fake_agent_state_repo_is_agent_state_repository(self) -> None:
+        assert isinstance(_FakeAgentStateRepository(), AgentStateRepository)

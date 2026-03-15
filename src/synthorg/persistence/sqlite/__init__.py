@@ -1,5 +1,8 @@
 """SQLite persistence backend (see Memory design page — initial backend)."""
 
+from synthorg.persistence.sqlite.agent_state_repo import (
+    SQLiteAgentStateRepository,
+)
 from synthorg.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
@@ -22,6 +25,7 @@ from synthorg.persistence.sqlite.repositories import (
 
 __all__ = [
     "SCHEMA_VERSION",
+    "SQLiteAgentStateRepository",
     "SQLiteAuditRepository",
     "SQLiteCheckpointRepository",
     "SQLiteCostRecordRepository",

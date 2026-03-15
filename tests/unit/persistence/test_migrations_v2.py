@@ -29,8 +29,8 @@ async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
 
 
 class TestSchemaMigrations:
-    async def test_schema_version_is_seven(self) -> None:
-        assert SCHEMA_VERSION == 7
+    async def test_schema_version_is_eight(self) -> None:
+        assert SCHEMA_VERSION == 8
 
     async def test_fresh_db_creates_all_v2_tables(
         self, memory_db: aiosqlite.Connection
@@ -122,7 +122,7 @@ CREATE TABLE parked_contexts (
 
         # Run migrations (applies v7)
         await run_migrations(memory_db)
-        assert await get_user_version(memory_db) == 7
+        assert await get_user_version(memory_db) == SCHEMA_VERSION
 
         # Verify task_id is now nullable
         cursor = await memory_db.execute("PRAGMA table_info('parked_contexts')")

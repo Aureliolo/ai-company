@@ -23,9 +23,11 @@ from synthorg.security.models import AuditEntry, AuditVerdictStr  # noqa: TC001
 from synthorg.security.timeout.parked_context import ParkedContext  # noqa: TC001
 
 if TYPE_CHECKING:
+    from synthorg.engine.agent_state import AgentRuntimeState
     from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
 
 __all__ = [
+    "AgentStateRepository",
     "ApiKeyRepository",
     "AuditRepository",
     "CheckpointRepository",
@@ -585,6 +587,69 @@ class HeartbeatRepository(Protocol):
 
         Args:
             execution_id: The execution identifier.
+
+        Returns:
+            ``True`` if deleted, ``False`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+
+@runtime_checkable
+class AgentStateRepository(Protocol):
+    """CRUD + query interface for agent runtime state persistence.
+
+    Provides a lightweight per-agent registry of execution state for
+    dashboard queries, graceful shutdown discovery, and cross-restart
+    recovery.
+    """
+
+    async def save(self, state: AgentRuntimeState) -> None:
+        """Upsert an agent runtime state by ``agent_id``.
+
+        Args:
+            state: The agent runtime state to persist.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get(self, agent_id: NotBlankStr) -> AgentRuntimeState | None:
+        """Retrieve an agent runtime state by agent ID.
+
+        Args:
+            agent_id: The agent identifier.
+
+        Returns:
+            The agent state, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get_active(self) -> tuple[AgentRuntimeState, ...]:
+        """Retrieve all non-idle agent states.
+
+        Returns states where ``status != 'idle'``, ordered by
+        ``last_activity_at`` descending (most recent first).
+
+        Returns:
+            Active agent states as a tuple.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def delete(self, agent_id: NotBlankStr) -> bool:
+        """Delete an agent runtime state by agent ID.
+
+        Args:
+            agent_id: The agent identifier.
 
         Returns:
             ``True`` if deleted, ``False`` if not found.

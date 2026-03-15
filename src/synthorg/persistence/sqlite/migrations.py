@@ -23,7 +23,7 @@ from synthorg.persistence.errors import MigrationError
 logger = get_logger(__name__)
 
 # Current schema version — bump when adding new migrations.
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _V1_STATEMENTS: Sequence[str] = (
     # ── Tasks ─────────────────────────────────────────────
@@ -404,6 +404,44 @@ async def _apply_v7(db: aiosqlite.Connection) -> None:
     )
 
 
+_V8_STATEMENTS: Sequence[str] = (
+    # ── Agent states ──────────────────────────────────────
+    """\
+CREATE TABLE IF NOT EXISTS agent_states (
+    agent_id TEXT PRIMARY KEY,
+    execution_id TEXT,
+    task_id TEXT,
+    status TEXT NOT NULL DEFAULT 'idle'
+        CHECK (status IN ('idle', 'executing', 'paused')),
+    turn_count INTEGER NOT NULL DEFAULT 0 CHECK (turn_count >= 0),
+    accumulated_cost_usd REAL NOT NULL DEFAULT 0.0
+        CHECK (accumulated_cost_usd >= 0.0),
+    last_activity_at TEXT NOT NULL,
+    started_at TEXT,
+    CHECK (
+        (status = 'idle'
+         AND execution_id IS NULL
+         AND task_id IS NULL
+         AND started_at IS NULL
+         AND turn_count = 0
+         AND accumulated_cost_usd = 0.0)
+        OR
+        (status IN ('executing', 'paused')
+         AND execution_id IS NOT NULL
+         AND started_at IS NOT NULL)
+    )
+)""",
+    "CREATE INDEX IF NOT EXISTS idx_as_status_activity "
+    "ON agent_states(status, last_activity_at DESC)",
+)
+
+
+async def _apply_v8(db: aiosqlite.Connection) -> None:
+    """Apply schema v8: agent_states."""
+    for stmt in _V8_STATEMENTS:
+        await db.execute(stmt)
+
+
 # Ordered list of (target_version, migration_function) pairs. Each migration
 # is applied when the current schema version is below its target version.
 _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
@@ -414,6 +452,7 @@ _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
     (5, _apply_v5),
     (6, _apply_v6),
     (7, _apply_v7),
+    (8, _apply_v8),
 ]
 
 

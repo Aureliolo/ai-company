@@ -1,0 +1,567 @@
+"""In-memory fake implementations for API unit tests."""
+
+import asyncio
+from datetime import datetime
+from typing import Any
+
+from synthorg.api.auth.models import ApiKey, User
+from synthorg.budget.cost_record import CostRecord
+from synthorg.communication.channel import Channel
+from synthorg.communication.message import Message
+from synthorg.core.enums import (
+    ApprovalRiskLevel,
+    ExecutionStatus,
+    TaskStatus,
+)
+from synthorg.core.task import Task
+from synthorg.engine.agent_state import AgentRuntimeState
+from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
+from synthorg.hr.enums import LifecycleEventType
+from synthorg.hr.models import AgentLifecycleEvent
+from synthorg.hr.performance.models import (
+    CollaborationMetricRecord,
+    TaskMetricRecord,
+)
+from synthorg.persistence.errors import DuplicateRecordError, QueryError
+from synthorg.security.models import AuditEntry, AuditVerdictStr
+from synthorg.security.timeout.parked_context import ParkedContext
+
+# ── Fake Repositories ────────────────────────────────────────────
+
+
+class FakeTaskRepository:
+    """In-memory task repository for tests."""
+
+    def __init__(self) -> None:
+        self._tasks: dict[str, Task] = {}
+
+    async def save(self, task: Task) -> None:
+        self._tasks[task.id] = task
+
+    async def get(self, task_id: str) -> Task | None:
+        return self._tasks.get(task_id)
+
+    async def list_tasks(
+        self,
+        *,
+        status: TaskStatus | None = None,
+        assigned_to: str | None = None,
+        project: str | None = None,
+    ) -> tuple[Task, ...]:
+        result = list(self._tasks.values())
+        if status is not None:
+            result = [t for t in result if t.status == status]
+        if assigned_to is not None:
+            result = [t for t in result if t.assigned_to == assigned_to]
+        if project is not None:
+            result = [t for t in result if t.project == project]
+        return tuple(result)
+
+    async def delete(self, task_id: str) -> bool:
+        return self._tasks.pop(task_id, None) is not None
+
+
+class FakeCostRecordRepository:
+    """In-memory cost record repository for tests."""
+
+    def __init__(self) -> None:
+        self._records: list[CostRecord] = []
+
+    async def save(self, record: CostRecord) -> None:
+        self._records.append(record)
+
+    async def query(
+        self,
+        *,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+    ) -> tuple[CostRecord, ...]:
+        result = self._records
+        if agent_id is not None:
+            result = [r for r in result if r.agent_id == agent_id]
+        if task_id is not None:
+            result = [r for r in result if r.task_id == task_id]
+        return tuple(result)
+
+    async def aggregate(
+        self,
+        *,
+        agent_id: str | None = None,
+        task_id: str | None = None,
+    ) -> float:
+        records = await self.query(agent_id=agent_id, task_id=task_id)
+        return sum(r.cost_usd for r in records)
+
+
+class FakeMessageRepository:
+    """In-memory message repository for tests."""
+
+    def __init__(self) -> None:
+        self._messages: list[Message] = []
+
+    async def save(self, message: Message) -> None:
+        if any(m.id == message.id for m in self._messages):
+            msg = f"Message {message.id} already exists"
+            raise DuplicateRecordError(msg)
+        self._messages.append(message)
+
+    async def get_history(
+        self,
+        channel: str,
+        *,
+        limit: int | None = None,
+    ) -> tuple[Message, ...]:
+        if limit is not None and limit < 1:
+            msg = f"limit must be a positive integer, got {limit}"
+            raise QueryError(msg)
+        result = sorted(
+            (m for m in self._messages if m.channel == channel),
+            key=lambda m: m.timestamp,
+            reverse=True,
+        )
+        if limit is not None:
+            result = result[:limit]
+        return tuple(result)
+
+
+class FakeLifecycleEventRepository:
+    """In-memory lifecycle event repository for tests."""
+
+    def __init__(self) -> None:
+        self._events: list[AgentLifecycleEvent] = []
+
+    async def save(self, event: AgentLifecycleEvent) -> None:
+        self._events.append(event)
+
+    async def list_events(
+        self,
+        *,
+        agent_id: str | None = None,
+        event_type: LifecycleEventType | None = None,
+        since: datetime | None = None,
+    ) -> tuple[AgentLifecycleEvent, ...]:
+        result = self._events
+        if agent_id is not None:
+            result = [e for e in result if e.agent_id == agent_id]
+        if event_type is not None:
+            result = [e for e in result if e.event_type == event_type]
+        if since is not None:
+            result = [e for e in result if e.timestamp >= since]
+        return tuple(result)
+
+
+class FakeTaskMetricRepository:
+    """In-memory task metric repository for tests."""
+
+    def __init__(self) -> None:
+        self._records: list[TaskMetricRecord] = []
+
+    async def save(self, record: TaskMetricRecord) -> None:
+        self._records.append(record)
+
+    async def query(
+        self,
+        *,
+        agent_id: str | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> tuple[TaskMetricRecord, ...]:
+        result = self._records
+        if agent_id is not None:
+            result = [r for r in result if r.agent_id == agent_id]
+        if since is not None:
+            result = [r for r in result if r.completed_at >= since]
+        if until is not None:
+            result = [r for r in result if r.completed_at <= until]
+        return tuple(result)
+
+
+class FakeCollaborationMetricRepository:
+    """In-memory collaboration metric repository for tests."""
+
+    def __init__(self) -> None:
+        self._records: list[CollaborationMetricRecord] = []
+
+    async def save(self, record: CollaborationMetricRecord) -> None:
+        self._records.append(record)
+
+    async def query(
+        self,
+        *,
+        agent_id: str | None = None,
+        since: datetime | None = None,
+    ) -> tuple[CollaborationMetricRecord, ...]:
+        result = self._records
+        if agent_id is not None:
+            result = [r for r in result if r.agent_id == agent_id]
+        if since is not None:
+            result = [r for r in result if r.recorded_at >= since]
+        return tuple(result)
+
+
+class FakeParkedContextRepository:
+    """In-memory parked context repository for tests."""
+
+    def __init__(self) -> None:
+        self._contexts: dict[str, ParkedContext] = {}
+
+    async def save(self, context: ParkedContext) -> None:
+        self._contexts[context.id] = context
+
+    async def get(self, parked_id: str) -> ParkedContext | None:
+        return self._contexts.get(parked_id)
+
+    async def get_by_approval(self, approval_id: str) -> ParkedContext | None:
+        for ctx in self._contexts.values():
+            if ctx.approval_id == approval_id:
+                return ctx
+        return None
+
+    async def get_by_agent(self, agent_id: str) -> tuple[ParkedContext, ...]:
+        return tuple(ctx for ctx in self._contexts.values() if ctx.agent_id == agent_id)
+
+    async def delete(self, parked_id: str) -> bool:
+        return self._contexts.pop(parked_id, None) is not None
+
+
+class FakeAuditRepository:
+    """In-memory audit entry repository for tests."""
+
+    def __init__(self) -> None:
+        self._entries: dict[str, AuditEntry] = {}
+
+    async def save(self, entry: AuditEntry) -> None:
+        if entry.id in self._entries:
+            msg = f"Duplicate audit entry {entry.id!r}"
+            raise DuplicateRecordError(msg)
+        self._entries[entry.id] = entry
+
+    async def query(  # noqa: PLR0913
+        self,
+        *,
+        agent_id: str | None = None,
+        action_type: str | None = None,
+        verdict: AuditVerdictStr | None = None,
+        risk_level: ApprovalRiskLevel | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 100,
+    ) -> tuple[AuditEntry, ...]:
+        if limit < 1:
+            msg = "limit must be >= 1"
+            raise QueryError(msg)
+        if since is not None and until is not None and until < since:
+            msg = "until must not be earlier than since"
+            raise QueryError(msg)
+        results = sorted(
+            self._entries.values(),
+            key=lambda e: e.timestamp,
+            reverse=True,
+        )
+        if agent_id is not None:
+            results = [e for e in results if e.agent_id == agent_id]
+        if action_type is not None:
+            results = [e for e in results if e.action_type == action_type]
+        if verdict is not None:
+            results = [e for e in results if e.verdict == verdict]
+        if risk_level is not None:
+            results = [e for e in results if e.risk_level == risk_level]
+        if since is not None:
+            results = [e for e in results if e.timestamp >= since]
+        if until is not None:
+            results = [e for e in results if e.timestamp <= until]
+        return tuple(results[:limit])
+
+
+class FakeUserRepository:
+    """In-memory user repository for tests."""
+
+    def __init__(self) -> None:
+        self._users: dict[str, User] = {}
+
+    async def save(self, user: User) -> None:
+        self._users[user.id] = user
+
+    async def get(self, user_id: str) -> User | None:
+        return self._users.get(user_id)
+
+    async def get_by_username(self, username: str) -> User | None:
+        for user in self._users.values():
+            if user.username == username:
+                return user
+        return None
+
+    async def list_users(self) -> tuple[User, ...]:
+        return tuple(self._users.values())
+
+    async def count(self) -> int:
+        return len(self._users)
+
+    async def delete(self, user_id: str) -> bool:
+        return self._users.pop(user_id, None) is not None
+
+
+class FakeApiKeyRepository:
+    """In-memory API key repository for tests."""
+
+    def __init__(self) -> None:
+        self._keys: dict[str, ApiKey] = {}
+
+    async def save(self, key: ApiKey) -> None:
+        self._keys[key.id] = key
+
+    async def get(self, key_id: str) -> ApiKey | None:
+        return self._keys.get(key_id)
+
+    async def get_by_hash(self, key_hash: str) -> ApiKey | None:
+        for key in self._keys.values():
+            if key.key_hash == key_hash:
+                return key
+        return None
+
+    async def list_by_user(self, user_id: str) -> tuple[ApiKey, ...]:
+        return tuple(k for k in self._keys.values() if k.user_id == user_id)
+
+    async def delete(self, key_id: str) -> bool:
+        return self._keys.pop(key_id, None) is not None
+
+
+class FakeCheckpointRepository:
+    """In-memory checkpoint repository for tests."""
+
+    def __init__(self) -> None:
+        self._checkpoints: dict[str, Checkpoint] = {}
+
+    async def save(self, checkpoint: Checkpoint) -> None:
+        self._checkpoints[checkpoint.id] = checkpoint
+
+    async def get_latest(
+        self,
+        *,
+        execution_id: str | None = None,
+        task_id: str | None = None,
+    ) -> Checkpoint | None:
+        if execution_id is None and task_id is None:
+            msg = "At least one of execution_id or task_id is required"
+            raise ValueError(msg)
+        candidates = list(self._checkpoints.values())
+        if execution_id is not None:
+            candidates = [c for c in candidates if c.execution_id == execution_id]
+        if task_id is not None:
+            candidates = [c for c in candidates if c.task_id == task_id]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda c: c.turn_number)
+
+    async def delete_by_execution(self, execution_id: str) -> int:
+        to_delete = [
+            k for k, v in self._checkpoints.items() if v.execution_id == execution_id
+        ]
+        for k in to_delete:
+            del self._checkpoints[k]
+        return len(to_delete)
+
+
+class FakeHeartbeatRepository:
+    """In-memory heartbeat repository for tests."""
+
+    def __init__(self) -> None:
+        self._heartbeats: dict[str, Heartbeat] = {}
+
+    async def save(self, heartbeat: Heartbeat) -> None:
+        self._heartbeats[heartbeat.execution_id] = heartbeat
+
+    async def get(self, execution_id: str) -> Heartbeat | None:
+        return self._heartbeats.get(execution_id)
+
+    async def get_stale(self, threshold: datetime) -> tuple[Heartbeat, ...]:
+        stale = [
+            h for h in self._heartbeats.values() if h.last_heartbeat_at < threshold
+        ]
+        stale.sort(key=lambda h: h.last_heartbeat_at)
+        return tuple(stale)
+
+    async def delete(self, execution_id: str) -> bool:
+        return self._heartbeats.pop(execution_id, None) is not None
+
+
+class FakeAgentStateRepository:
+    """In-memory agent state repository for tests."""
+
+    def __init__(self) -> None:
+        self._states: dict[str, AgentRuntimeState] = {}
+
+    async def save(self, state: AgentRuntimeState) -> None:
+        self._states[state.agent_id] = state
+
+    async def get(self, agent_id: str) -> AgentRuntimeState | None:
+        return self._states.get(agent_id)
+
+    async def get_active(self) -> tuple[AgentRuntimeState, ...]:
+        active = (s for s in self._states.values() if s.status != ExecutionStatus.IDLE)
+        return tuple(sorted(active, key=lambda s: s.last_activity_at, reverse=True))
+
+    async def delete(self, agent_id: str) -> bool:
+        return self._states.pop(agent_id, None) is not None
+
+
+class FakePersistenceBackend:
+    """In-memory persistence backend for tests."""
+
+    def __init__(self) -> None:
+        self._tasks = FakeTaskRepository()
+        self._cost_records = FakeCostRecordRepository()
+        self._messages = FakeMessageRepository()
+        self._lifecycle_events = FakeLifecycleEventRepository()
+        self._task_metrics = FakeTaskMetricRepository()
+        self._collaboration_metrics = FakeCollaborationMetricRepository()
+        self._parked_contexts = FakeParkedContextRepository()
+        self._audit_entries = FakeAuditRepository()
+        self._users = FakeUserRepository()
+        self._api_keys = FakeApiKeyRepository()
+        self._checkpoints = FakeCheckpointRepository()
+        self._heartbeats = FakeHeartbeatRepository()
+        self._agent_states = FakeAgentStateRepository()
+        self._settings: dict[str, str] = {}
+        self._connected = False
+
+    async def connect(self) -> None:
+        self._connected = True
+
+    async def disconnect(self) -> None:
+        self._connected = False
+
+    async def health_check(self) -> bool:
+        return self._connected
+
+    async def migrate(self) -> None:
+        pass
+
+    @property
+    def is_connected(self) -> bool:
+        return self._connected
+
+    @property
+    def backend_name(self) -> str:
+        return "fake"
+
+    @property
+    def tasks(self) -> FakeTaskRepository:
+        return self._tasks
+
+    @property
+    def cost_records(self) -> FakeCostRecordRepository:
+        return self._cost_records
+
+    @property
+    def messages(self) -> FakeMessageRepository:
+        return self._messages
+
+    @property
+    def lifecycle_events(self) -> FakeLifecycleEventRepository:
+        return self._lifecycle_events
+
+    @property
+    def task_metrics(self) -> FakeTaskMetricRepository:
+        return self._task_metrics
+
+    @property
+    def collaboration_metrics(self) -> FakeCollaborationMetricRepository:
+        return self._collaboration_metrics
+
+    @property
+    def parked_contexts(self) -> FakeParkedContextRepository:
+        return self._parked_contexts
+
+    @property
+    def audit_entries(self) -> FakeAuditRepository:
+        return self._audit_entries
+
+    @property
+    def users(self) -> FakeUserRepository:
+        return self._users
+
+    @property
+    def api_keys(self) -> FakeApiKeyRepository:
+        return self._api_keys
+
+    @property
+    def checkpoints(self) -> FakeCheckpointRepository:
+        return self._checkpoints
+
+    @property
+    def heartbeats(self) -> FakeHeartbeatRepository:
+        return self._heartbeats
+
+    @property
+    def agent_states(self) -> FakeAgentStateRepository:
+        return self._agent_states
+
+    async def get_setting(self, key: str) -> str | None:
+        return self._settings.get(key)
+
+    async def set_setting(self, key: str, value: str) -> None:
+        self._settings[key] = value
+
+
+class FakeMessageBus:
+    """In-memory message bus for tests."""
+
+    def __init__(self) -> None:
+        self._running = False
+        self._channels: list[Channel] = []
+
+    async def start(self) -> None:
+        self._running = True
+
+    async def stop(self) -> None:
+        self._running = False
+
+    @property
+    def is_running(self) -> bool:
+        return self._running
+
+    async def publish(self, message: Message) -> None:
+        pass
+
+    async def send_direct(self, message: Message, *, recipient: str) -> None:
+        pass
+
+    async def subscribe(self, channel_name: str, subscriber_id: str) -> Any:
+        return None
+
+    async def unsubscribe(self, channel_name: str, subscriber_id: str) -> None:
+        pass
+
+    async def receive(
+        self,
+        channel_name: str,
+        subscriber_id: str,
+        *,
+        timeout: float | None = None,  # noqa: ASYNC109
+    ) -> Any:
+        # Yield to event loop without real delay (deterministic in tests)
+        await asyncio.sleep(0)
+        return None
+
+    async def create_channel(self, channel: Channel) -> Channel:
+        self._channels.append(channel)
+        return channel
+
+    async def get_channel(self, channel_name: str) -> Channel:
+        for ch in self._channels:
+            if ch.name == channel_name:
+                return ch
+        msg = f"Channel {channel_name!r} not found"
+        raise ValueError(msg)
+
+    async def list_channels(self) -> tuple[Channel, ...]:
+        return tuple(self._channels)
+
+    async def get_channel_history(
+        self,
+        channel_name: str,
+        *,
+        limit: int | None = None,
+    ) -> tuple[Message, ...]:
+        return ()

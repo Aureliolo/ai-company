@@ -13,6 +13,7 @@ from synthorg.hr.persistence_protocol import (
     TaskMetricRepository,  # noqa: TC001
 )
 from synthorg.persistence.repositories import (
+    AgentStateRepository,  # noqa: TC001
     ApiKeyRepository,  # noqa: TC001
     AuditRepository,  # noqa: TC001
     CheckpointRepository,  # noqa: TC001
@@ -48,6 +49,7 @@ class PersistenceBackend(Protocol):
         api_keys: Repository for ApiKey persistence.
         checkpoints: Repository for Checkpoint persistence.
         heartbeats: Repository for Heartbeat persistence.
+        agent_states: Repository for AgentRuntimeState persistence.
     """
 
     async def connect(self) -> None:
@@ -150,6 +152,11 @@ class PersistenceBackend(Protocol):
     @property
     def heartbeats(self) -> HeartbeatRepository:
         """Repository for Heartbeat persistence."""
+        ...
+
+    @property
+    def agent_states(self) -> AgentStateRepository:
+        """Repository for AgentRuntimeState persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:
