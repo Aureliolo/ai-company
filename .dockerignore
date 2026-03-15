@@ -23,10 +23,8 @@ docs/
 # Documentation build output (Zensical)
 _site/
 
-# Astro / Node.js (landing page)
-site/node_modules/
-site/dist/
-site/.astro/
+# Astro landing page (not needed by any Docker build)
+site/
 
 # Virtual environments
 .venv/
@@ -38,6 +36,9 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+
+# Hypothesis test database
+.hypothesis/
 
 # Coverage
 htmlcov/
@@ -57,6 +58,9 @@ coverage.xml
 .idea/
 .vscode/
 
+# CI/build utility scripts (not needed in Docker builds)
+scripts/
+
 # CLI (Go binary, not needed in Docker builds)
 cli/
 
@@ -71,10 +75,12 @@ logs/
 Thumbs.db
 .DS_Store
 
-# Web dashboard build artifacts
+# Web dashboard build artifacts and test infrastructure
 web/node_modules/
 web/dist/
 web/.env
+web/__tests__/
+web/vitest.config.*
 
 # uv
 .python-version

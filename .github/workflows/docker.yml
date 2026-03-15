@@ -110,24 +110,38 @@ jobs:
         id: scan-ref
         run: echo "ref=ghcr.io/aureliolo/synthorg-backend:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Trivy scan (critical — hard fail)
+      # Single Trivy run for CRITICAL + HIGH (saves ~30s vs two separate runs).
+      # JSON output lets us fail on CRITICAL only while still reporting HIGH.
+      - name: Trivy scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: table
-          exit-code: "1"
-          severity: CRITICAL
+          format: json
+          output: trivy-backend.json
+          exit-code: "0"
+          severity: CRITICAL,HIGH
           trivyignores: .github/.trivyignore.yaml
 
-      - name: Trivy scan (high — warn only)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
-        continue-on-error: true
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: table
-          exit-code: "0"
-          severity: HIGH
-          trivyignores: .github/.trivyignore.yaml
+      - name: Evaluate Trivy results
+        run: |
+          echo "## Trivy Scan — Backend"
+          jq -r '
+            ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
+            (.Results[]?.Vulnerabilities[]? |
+              [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
+            @tsv
+          ' trivy-backend.json | column -t -s$'\t' || echo "(no vulnerabilities found)"
+
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-backend.json)
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-backend.json)
+          echo "Critical: $CRITICAL, High: $HIGH"
+          if [ "$HIGH" -gt 0 ]; then
+            echo "::warning::Found $HIGH HIGH severity vulnerabilities"
+          fi
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "::error::Found $CRITICAL CRITICAL vulnerabilities — failing build"
+            exit 1
+          fi
 
       - name: Grype scan
         uses: anchore/scan-action@7037fa011853d5a11690026fb85feee79f4c946c # v7.3.2
@@ -136,6 +150,12 @@ jobs:
           fail-build: true
           severity-cutoff: critical
           config: .github/.grype.yaml
+
+      # CIS Docker Benchmark v1.6.0 compliance check (uses trivy installed above).
+      # Informational for now — remove continue-on-error once baseline is clean.
+      - name: CIS Docker Benchmark (backend)
+        continue-on-error: true
+        run: trivy image --compliance docker-cis-1.6.0 --format table ${{ steps.scan-ref.outputs.ref }}
 
       # Push only after scans pass — prevents publishing vulnerable images.
       # NOTE: This is a separate build invocation from the scan step. GHA cache
@@ -236,24 +256,37 @@ jobs:
         id: scan-ref
         run: echo "ref=ghcr.io/aureliolo/synthorg-web:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Trivy scan (critical — hard fail)
+      # Single Trivy run for CRITICAL + HIGH (saves ~12s vs two separate runs).
+      - name: Trivy scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: table
-          exit-code: "1"
-          severity: CRITICAL
+          format: json
+          output: trivy-web.json
+          exit-code: "0"
+          severity: CRITICAL,HIGH
           trivyignores: .github/.trivyignore.yaml
 
-      - name: Trivy scan (high — warn only)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
-        continue-on-error: true
-        with:
-          image-ref: ${{ steps.scan-ref.outputs.ref }}
-          format: table
-          exit-code: "0"
-          severity: HIGH
-          trivyignores: .github/.trivyignore.yaml
+      - name: Evaluate Trivy results
+        run: |
+          echo "## Trivy Scan — Web"
+          jq -r '
+            ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
+            (.Results[]?.Vulnerabilities[]? |
+              [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
+            @tsv
+          ' trivy-web.json | column -t -s$'\t' || echo "(no vulnerabilities found)"
+
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-web.json)
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-web.json)
+          echo "Critical: $CRITICAL, High: $HIGH"
+          if [ "$HIGH" -gt 0 ]; then
+            echo "::warning::Found $HIGH HIGH severity vulnerabilities"
+          fi
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "::error::Found $CRITICAL CRITICAL vulnerabilities — failing build"
+            exit 1
+          fi
 
       - name: Grype scan
         uses: anchore/scan-action@7037fa011853d5a11690026fb85feee79f4c946c # v7.3.2
@@ -262,6 +295,10 @@ jobs:
           fail-build: true
           severity-cutoff: critical
           config: .github/.grype.yaml
+
+      - name: CIS Docker Benchmark (web)
+        continue-on-error: true
+        run: trivy image --compliance docker-cis-1.6.0 --format table ${{ steps.scan-ref.outputs.ref }}
 
       # Push only after scans pass — prevents publishing vulnerable images.
       # NOTE: Separate build invocation; GHA cache ensures deterministic layers,

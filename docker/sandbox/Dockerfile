@@ -2,16 +2,23 @@ FROM node:25-slim@sha256:7a4ef576a570dad463c2e9744e6df118c9c2a3a03a9219122a9dc83
 
 FROM python:3.14.3-slim@sha256:6a27522252aef8432841f224d9baaa6e9fce07b07584154fa0b9a96603af7456
 
+LABEL org.opencontainers.image.title="synthorg-sandbox" \
+      org.opencontainers.image.description="SynthOrg agent code execution sandbox" \
+      org.opencontainers.image.url="https://github.com/Aureliolo/synthorg" \
+      org.opencontainers.image.source="https://github.com/Aureliolo/synthorg" \
+      org.opencontainers.image.licenses="BUSL-1.1" \
+      org.opencontainers.image.vendor="Aureliolo"
+
 COPY --from=node-base /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-base /usr/local/lib/node_modules /usr/local/lib/node_modules
-RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
 
-# git version tracks base image; updated via Dependabot base image bumps
+# git version tracks base image; updated via Dependabot base image bumps.
+# Symlink npm, install git, create sandbox user — single layer.
 # hadolint ignore=DL3008
-RUN apt-get update && apt-get install -y --no-install-recommends git \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sandbox \
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && apt-get update && apt-get install -y --no-install-recommends git \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* \
+    && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sandbox \
     && mkdir -p /workspace \
     && chown sandbox:sandbox /workspace
 

@@ -15,22 +15,28 @@ services:
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_LOG_LEVEL: "info"
     user: "65532:65532"
-    # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25)
+    # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
     read_only: true
     tmpfs:
-      - /tmp:noexec,nosuid,size=64m
+      - /tmp:noexec,nosuid,nodev,size=64m
+    pids_limit: 256
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 512M
-          cpus: "1.0"
+          memory: 4G
+          cpus: "2.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
-      test: ["/usr/bin/python", "-c", "import json,urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000/api/v1/health'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='ok' else 1)"]
+      test: ["CMD", "/usr/bin/python", "-c", "import json,urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000/api/v1/health'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='ok' else 1)"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -50,15 +56,21 @@ services:
       - ALL
     read_only: true
     tmpfs:
-      - /tmp:noexec,nosuid,size=16m
-      - /var/cache/nginx:size=32m
-      - /var/run:size=1m
+      - /tmp:noexec,nosuid,nodev,size=16m
+      - /var/cache/nginx:nodev,size=32m
+      - /var/run:nodev,size=1m
+    pids_limit: 64
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 256M
           cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   synthorg-data:
