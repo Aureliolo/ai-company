@@ -36,6 +36,9 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # Healthcheck assumes internal port is always 8000 (container-side port
+    # mapping is fixed). Dockerfile healthcheck reads UVICORN_PORT dynamically,
+    # but compose-level exec form cannot expand env vars without a shell.
     healthcheck:
       test: ["CMD", "/usr/bin/python", "-c", "import json,urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000/api/v1/health'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='ok' else 1)"]
       interval: 10s
@@ -72,6 +75,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  default:
+    name: synthorg-net
 
 volumes:
   synthorg-data:

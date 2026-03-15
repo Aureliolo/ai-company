@@ -1,3 +1,9 @@
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   backend:
     build:
@@ -16,6 +22,7 @@ services:
       # Bridge SYNTHORG_* to uvicorn's native env vars (exec form CMD, no shell)
       UVICORN_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
       UVICORN_PORT: "${SYNTHORG_PORT:-8000}"
+    user: "65532:65532"
     # Healthcheck defined in Dockerfile (exec form, works with distroless).
     # CLI template overrides it in compose; here we rely on the image-level check.
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
@@ -33,11 +40,7 @@ services:
         limits:
           memory: 4G
           cpus: "2.0"
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *logging
 
   web:
     build:
@@ -48,6 +51,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    user: "101:101"
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -64,11 +68,7 @@ services:
         limits:
           memory: 256M
           cpus: "0.5"
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    logging: *logging
 
 networks:
   default:
