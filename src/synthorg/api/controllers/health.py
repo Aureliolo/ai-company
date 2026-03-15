@@ -38,11 +38,11 @@ class HealthStatus(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     status: ServiceStatus = Field(description="Overall health status")
-    persistence: bool = Field(
-        description="Persistence backend healthy",
+    persistence: bool | None = Field(
+        description="Persistence backend healthy (None if not configured)",
     )
-    message_bus: bool = Field(
-        description="Message bus running",
+    message_bus: bool | None = Field(
+        description="Message bus running (None if not configured)",
     )
     version: str = Field(description="Application version")
     uptime_seconds: float = Field(
@@ -71,29 +71,38 @@ class HealthController(Controller):
         """
         app_state: AppState = state.app_state
 
-        try:
-            persistence_ok = await app_state.persistence.health_check()
-        except Exception:
-            logger.warning(
-                API_HEALTH_CHECK,
-                component="persistence",
-                exc_info=True,
-            )
-            persistence_ok = False
+        persistence_ok: bool | None
+        if app_state.has_persistence:
+            try:
+                persistence_ok = await app_state.persistence.health_check()
+            except Exception:
+                logger.warning(
+                    API_HEALTH_CHECK,
+                    component="persistence",
+                    exc_info=True,
+                )
+                persistence_ok = False
+        else:
+            persistence_ok = None
 
-        try:
-            bus_ok = app_state.message_bus.is_running
-        except Exception:
-            logger.warning(
-                API_HEALTH_CHECK,
-                component="message_bus",
-                exc_info=True,
-            )
-            bus_ok = False
+        bus_ok: bool | None
+        if app_state.has_message_bus:
+            try:
+                bus_ok = app_state.message_bus.is_running
+            except Exception:
+                logger.warning(
+                    API_HEALTH_CHECK,
+                    component="message_bus",
+                    exc_info=True,
+                )
+                bus_ok = False
+        else:
+            bus_ok = None
 
-        if persistence_ok and bus_ok:
+        checks = [v for v in (persistence_ok, bus_ok) if v is not None]
+        if not checks or all(checks):
             status = ServiceStatus.OK
-        elif persistence_ok or bus_ok:
+        elif any(checks):
             status = ServiceStatus.DEGRADED
         else:
             status = ServiceStatus.DOWN

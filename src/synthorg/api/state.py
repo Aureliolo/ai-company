@@ -107,9 +107,19 @@ class AppState:
         return service
 
     @property
+    def has_persistence(self) -> bool:
+        """Check whether the persistence backend is configured."""
+        return self._persistence is not None
+
+    @property
     def persistence(self) -> PersistenceBackend:
         """Return persistence backend or raise 503."""
         return self._require_service(self._persistence, "persistence")
+
+    @property
+    def has_message_bus(self) -> bool:
+        """Check whether the message bus is configured."""
+        return self._message_bus is not None
 
     @property
     def message_bus(self) -> MessageBus:

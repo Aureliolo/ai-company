@@ -5,6 +5,9 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.api.app import create_app
+from tests.unit.api.fakes import FakePersistenceBackend
+
 
 @pytest.mark.unit
 class TestHealthCheck:
@@ -43,3 +46,43 @@ class TestHealthCheck:
         assert response.status_code == 200
         body = response.json()
         assert body["data"]["status"] == "down"
+
+
+@pytest.mark.unit
+class TestHealthCheckUnconfiguredServices:
+    """Health endpoint with partially or fully unconfigured services."""
+
+    def test_returns_ok_when_no_services_configured(self) -> None:
+        with TestClient(create_app()) as client:
+            response = client.get("/api/v1/health")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["data"]["status"] == "ok"
+            assert body["data"]["persistence"] is None
+            assert body["data"]["message_bus"] is None
+
+    async def test_returns_ok_when_persistence_only_and_healthy(self) -> None:
+        backend = FakePersistenceBackend()
+        await backend.connect()
+        with TestClient(create_app(persistence=backend)) as client:
+            response = client.get("/api/v1/health")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["data"]["status"] == "ok"
+            assert body["data"]["persistence"] is True
+            assert body["data"]["message_bus"] is None
+
+    async def test_returns_down_when_only_configured_service_unhealthy(
+        self,
+    ) -> None:
+        backend = FakePersistenceBackend()
+        await backend.connect()
+        with TestClient(create_app(persistence=backend)) as client:
+            # Simulate post-startup failure
+            backend._connected = False
+            response = client.get("/api/v1/health")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["data"]["status"] == "down"
+            assert body["data"]["persistence"] is False
+            assert body["data"]["message_bus"] is None
