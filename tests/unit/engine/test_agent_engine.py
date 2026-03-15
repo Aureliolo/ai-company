@@ -737,6 +737,7 @@ class TestAgentEngineDefaultLoop:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Stagnation detector is passed to the default ReactLoop."""
+        from synthorg.engine.react_loop import ReactLoop
         from synthorg.engine.stagnation import ToolRepetitionDetector
 
         detector = ToolRepetitionDetector()
@@ -745,7 +746,9 @@ class TestAgentEngineDefaultLoop:
             provider=provider,
             stagnation_detector=detector,
         )
-        assert engine._loop.stagnation_detector is detector
+        loop = engine._loop
+        assert isinstance(loop, ReactLoop)
+        assert loop.stagnation_detector is detector
 
 
 @pytest.mark.unit
