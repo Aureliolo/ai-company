@@ -31,9 +31,10 @@ class TestTerminationReason:
         assert TerminationReason.SHUTDOWN.value == "shutdown"
         assert TerminationReason.ERROR.value == "error"
         assert TerminationReason.PARKED.value == "parked"
+        assert TerminationReason.STAGNATION.value == "stagnation"
 
     def test_member_count(self) -> None:
-        assert len(TerminationReason) == 6
+        assert len(TerminationReason) == 7
 
 
 @pytest.mark.unit
@@ -76,6 +77,19 @@ class TestTurnRecord:
             finish_reason=FinishReason.STOP,
         )
         assert record.tool_calls_made == ()
+        assert record.tool_call_fingerprints == ()
+
+    def test_tool_call_fingerprints(self) -> None:
+        record = TurnRecord(
+            turn_number=1,
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            tool_calls_made=("search",),
+            tool_call_fingerprints=("search:abc1234567890123",),
+            finish_reason=FinishReason.TOOL_USE,
+        )
+        assert record.tool_call_fingerprints == ("search:abc1234567890123",)
 
     def test_total_tokens_computed(self) -> None:
         record = TurnRecord(

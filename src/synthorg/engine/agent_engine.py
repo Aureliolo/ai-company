@@ -98,6 +98,7 @@ if TYPE_CHECKING:
         ExecutionLoop,
         ShutdownChecker,
     )
+    from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.persistence.repositories import (
         CheckpointRepository,
@@ -166,10 +167,12 @@ class AgentEngine:
         heartbeat_repo: HeartbeatRepository | None = None,
         checkpoint_config: CheckpointConfig | None = None,
         coordinator: MultiAgentCoordinator | None = None,
+        stagnation_detector: StagnationDetector | None = None,
     ) -> None:
         self._provider = provider
         self._approval_store = approval_store
         self._parked_context_repo = parked_context_repo
+        self._stagnation_detector = stagnation_detector
         self._approval_gate = self._make_approval_gate()
         if execution_loop is not None and self._approval_gate is not None:
             logger.warning(
@@ -944,8 +947,11 @@ class AgentEngine:
         )
 
     def _make_default_loop(self) -> ReactLoop:
-        """Build the default ReactLoop with approval gate if available."""
-        return ReactLoop(approval_gate=self._approval_gate)
+        """Build the default ReactLoop with approval gate and stagnation detector."""
+        return ReactLoop(
+            approval_gate=self._approval_gate,
+            stagnation_detector=self._stagnation_detector,
+        )
 
     def _make_security_interceptor(
         self,

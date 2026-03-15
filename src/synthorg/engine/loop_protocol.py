@@ -33,6 +33,7 @@ class TerminationReason(StrEnum):
     BUDGET_EXHAUSTED = "budget_exhausted"
     SHUTDOWN = "shutdown"
     PARKED = "parked"
+    STAGNATION = "stagnation"
     ERROR = "error"
 
 
@@ -60,6 +61,10 @@ class TurnRecord(BaseModel):
     tool_calls_made: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Tool names invoked this turn",
+    )
+    tool_call_fingerprints: tuple[str, ...] = Field(
+        default=(),
+        description="Deterministic fingerprints of tool calls (name:args_hash)",
     )
     finish_reason: FinishReason = Field(
         description="LLM finish reason this turn",

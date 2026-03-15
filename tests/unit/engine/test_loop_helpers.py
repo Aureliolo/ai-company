@@ -524,6 +524,13 @@ class TestMakeTurnRecord:
         record = make_turn_record(2, response)
         assert record.tool_calls_made == ("echo",)
         assert record.finish_reason == FinishReason.TOOL_USE
+        assert len(record.tool_call_fingerprints) == 1
+        assert record.tool_call_fingerprints[0].startswith("echo:")
+
+    def test_no_tool_calls_empty_fingerprints(self) -> None:
+        response = _stop_response()
+        record = make_turn_record(1, response)
+        assert record.tool_call_fingerprints == ()
 
     def test_with_call_category(self) -> None:
         response = _stop_response()
@@ -621,11 +628,13 @@ class TestClearLastTurnToolCalls:
                 output_tokens=5,
                 cost_usd=0.001,
                 tool_calls_made=("search", "read"),
+                tool_call_fingerprints=("read:abc123", "search:def456"),
                 finish_reason=FinishReason.TOOL_USE,
             ),
         ]
         clear_last_turn_tool_calls(turns)
         assert turns[-1].tool_calls_made == ()
+        assert turns[-1].tool_call_fingerprints == ()
         # Other fields unchanged
         assert turns[-1].turn_number == 1
         assert turns[-1].finish_reason == FinishReason.TOOL_USE

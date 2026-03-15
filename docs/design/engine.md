@@ -495,6 +495,74 @@ and wrapped in an `AgentRunResult` with `TerminationReason.ERROR`.
 
 ---
 
+## Stagnation Detection
+
+Agents can persist in unproductive loops, repeating the same tool calls without
+making progress. Stagnation detection analyzes `TurnRecord` tool call history
+across a sliding window, intervenes with a corrective prompt injection, and
+terminates early with `STAGNATION` if correction fails.
+
+### Protocol Interface
+
+```python
+@runtime_checkable
+class StagnationDetector(Protocol):
+    async def check(
+        self,
+        turns: tuple[TurnRecord, ...],
+        *,
+        corrections_injected: int = 0,
+    ) -> StagnationResult: ...
+
+    def get_detector_type(self) -> str: ...
+```
+
+Async protocol — future implementations may consult external services or
+LLM-based analysis.
+
+### Default Implementation: `ToolRepetitionDetector`
+
+Uses dual-signal detection:
+
+1. **Repetition ratio** — fraction of fingerprints in the window that appear
+   more than once. A fingerprint appearing 3 times counts as 2 duplicates.
+2. **Cycle detection** — checks for repeating A→B→A→B patterns at the turn
+   level (`seq[-2k:-k] == seq[-k:]` for cycle lengths 2..len/2).
+
+Fingerprints are computed as `name:sha256(canonical_json_args)[:16]`,
+sorted per-turn for order-independent comparison.
+
+### Configuration (`StagnationConfig`)
+
+| Field                  | Default | Description                                       |
+|------------------------|---------|---------------------------------------------------|
+| `enabled`              | `True`  | Whether stagnation detection is active             |
+| `window_size`          | `5`     | Number of recent tool-bearing turns to analyze     |
+| `repetition_threshold` | `0.6`   | Duplicate ratio that triggers detection            |
+| `cycle_detection`      | `True`  | Whether to detect repeating patterns               |
+| `max_corrections`      | `1`     | Corrective prompts before terminating (0 = none)   |
+| `min_tool_turns`       | `2`     | Minimum tool-bearing turns before any check fires  |
+
+### Intervention Flow
+
+1. **No stagnation** — execution continues normally
+2. **`INJECT_PROMPT`** — a corrective USER-role message is injected into the
+   conversation (up to `max_corrections` times)
+3. **`TERMINATE`** — execution terminates with `TerminationReason.STAGNATION`
+   and stagnation metadata attached to the result
+
+### Loop Integration
+
+- **ReactLoop**: stagnation checked after each successful turn; corrections
+  counter is loop-scoped
+- **PlanExecuteLoop**: stagnation checked per step (different steps
+  legitimately repeat similar patterns like read→edit→test); corrections
+  counter is step-scoped, window resets across step boundaries
+- `STAGNATION` termination leaves the task in its current state (like
+  `MAX_TURNS` — the task is not failed, it's returned to the caller)
+
+---
+
 ## Agent Crash Recovery
 
 When an agent execution fails unexpectedly (unhandled exception, OOM, process

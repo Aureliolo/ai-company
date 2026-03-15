@@ -1029,3 +1029,170 @@ class TestReactLoopCostAccounting:
         # The failing turn's cost should be in the context
         assert result.context.accumulated_cost.cost_usd > ctx.accumulated_cost.cost_usd
         assert result.context.turn_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Stagnation detector integration
+# ---------------------------------------------------------------------------
+
+
+class _FakeStagnationDetector:
+    """Fake stagnation detector returning pre-configured results."""
+
+    def __init__(
+        self,
+        results: list[object],
+    ) -> None:
+        from synthorg.engine.stagnation.models import (
+            NO_STAGNATION_RESULT,
+        )
+
+        self._results = list(results)
+        self._default = NO_STAGNATION_RESULT
+        self.check_count = 0
+
+    def get_detector_type(self) -> str:
+        return "fake"
+
+    async def check(
+        self,
+        turns: tuple[object, ...],
+        *,
+        corrections_injected: int = 0,
+    ) -> object:
+        self.check_count += 1
+        if self._results:
+            return self._results.pop(0)
+        return self._default
+
+
+@pytest.mark.unit
+class TestReactLoopStagnationDetector:
+    """Stagnation detector integration with ReactLoop."""
+
+    async def test_no_detector_runs_normally(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory([_stop_response("Done.")])
+        loop = ReactLoop(stagnation_detector=None)
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+
+    async def test_inject_prompt_appends_user_message(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        from synthorg.engine.stagnation.models import (
+            StagnationResult,
+            StagnationVerdict,
+        )
+
+        inject_result = StagnationResult(
+            verdict=StagnationVerdict.INJECT_PROMPT,
+            corrective_message="Try something else.",
+            repetition_ratio=0.8,
+        )
+        detector = _FakeStagnationDetector([inject_result])
+
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory(
+            [
+                _tool_use_response("echo", "tc-1"),
+                _stop_response("Done after correction."),
+            ]
+        )
+        invoker = _make_invoker("echo")
+        loop = ReactLoop(stagnation_detector=detector)  # type: ignore[arg-type]
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+        )
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        # Corrective message was injected as USER message
+        user_msgs = [
+            m for m in result.context.conversation if m.role == MessageRole.USER
+        ]
+        assert any("Try something else." in (m.content or "") for m in user_msgs)
+
+    async def test_terminate_returns_stagnation_result(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        from synthorg.engine.stagnation.models import (
+            StagnationResult,
+            StagnationVerdict,
+        )
+
+        terminate_result = StagnationResult(
+            verdict=StagnationVerdict.TERMINATE,
+            repetition_ratio=0.9,
+        )
+        detector = _FakeStagnationDetector([terminate_result])
+
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory(
+            [
+                _tool_use_response("echo", "tc-1"),
+            ]
+        )
+        invoker = _make_invoker("echo")
+        loop = ReactLoop(stagnation_detector=detector)  # type: ignore[arg-type]
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+        )
+
+        assert result.termination_reason == TerminationReason.STAGNATION
+        assert "stagnation" in result.metadata
+
+    async def test_corrections_counter_increments(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        from synthorg.engine.stagnation.models import (
+            StagnationResult,
+            StagnationVerdict,
+        )
+
+        inject1 = StagnationResult(
+            verdict=StagnationVerdict.INJECT_PROMPT,
+            corrective_message="Correction 1.",
+            repetition_ratio=0.7,
+        )
+        terminate = StagnationResult(
+            verdict=StagnationVerdict.TERMINATE,
+            repetition_ratio=0.9,
+        )
+        detector = _FakeStagnationDetector([inject1, terminate])
+
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory(
+            [
+                _tool_use_response("echo", "tc-1"),
+                _tool_use_response("echo", "tc-2"),
+            ]
+        )
+        invoker = _make_invoker("echo")
+        loop = ReactLoop(stagnation_detector=detector)  # type: ignore[arg-type]
+
+        result = await loop.execute(
+            context=ctx,
+            provider=provider,
+            tool_invoker=invoker,
+        )
+
+        assert result.termination_reason == TerminationReason.STAGNATION
+        assert detector.check_count == 2

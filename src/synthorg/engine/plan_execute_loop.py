@@ -28,6 +28,10 @@ from synthorg.observability.events.execution import (
     EXECUTION_PLAN_STEP_START,
     EXECUTION_PLAN_STEP_TRUNCATED,
 )
+from synthorg.observability.events.stagnation import (
+    STAGNATION_CORRECTION_INJECTED,
+    STAGNATION_TERMINATED,
+)
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
@@ -65,11 +69,13 @@ from .plan_parsing import (
     _REPLAN_JSON_EXAMPLE,
     parse_plan,
 )
+from .stagnation.models import StagnationVerdict
 
 if TYPE_CHECKING:
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.checkpoint.callback import CheckpointCallback
     from synthorg.engine.context import AgentContext
+    from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.models import ToolDefinition
     from synthorg.providers.protocol import CompletionProvider
     from synthorg.tools.invoker import ToolInvoker
@@ -97,10 +103,12 @@ class PlanExecuteLoop:
         checkpoint_callback: CheckpointCallback | None = None,
         *,
         approval_gate: ApprovalGate | None = None,
+        stagnation_detector: StagnationDetector | None = None,
     ) -> None:
         self._config = config or PlanExecuteConfig()
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
+        self._stagnation_detector = stagnation_detector
 
     @property
     def config(self) -> PlanExecuteConfig:
@@ -636,6 +644,8 @@ class PlanExecuteLoop:
             content=instruction,
         )
         ctx = ctx.with_message(step_msg)
+        step_start_idx = len(turns)
+        step_corrections = 0
 
         while ctx.has_turns_remaining:
             result = await self._run_step_turn(
@@ -654,6 +664,47 @@ class PlanExecuteLoop:
             if isinstance(result, tuple):
                 return result
             ctx = result
+
+            # Per-step stagnation detection
+            if self._stagnation_detector is not None:
+                step_turns = tuple(turns[step_start_idx:])
+                stag = await self._stagnation_detector.check(
+                    step_turns,
+                    corrections_injected=step_corrections,
+                )
+                if stag.verdict == StagnationVerdict.TERMINATE:
+                    logger.warning(
+                        STAGNATION_TERMINATED,
+                        execution_id=ctx.execution_id,
+                        step_number=step.step_number,
+                        repetition_ratio=stag.repetition_ratio,
+                        cycle_length=stag.cycle_length,
+                        corrections_injected=step_corrections,
+                    )
+                    return build_result(
+                        ctx,
+                        TerminationReason.STAGNATION,
+                        turns,
+                        metadata={
+                            "stagnation": stag.model_dump(),
+                            "step_number": step.step_number,
+                        },
+                    )
+                if stag.verdict == StagnationVerdict.INJECT_PROMPT:
+                    logger.info(
+                        STAGNATION_CORRECTION_INJECTED,
+                        execution_id=ctx.execution_id,
+                        step_number=step.step_number,
+                        repetition_ratio=stag.repetition_ratio,
+                        correction_number=step_corrections + 1,
+                    )
+                    ctx = ctx.with_message(
+                        ChatMessage(
+                            role=MessageRole.USER,
+                            content=stag.corrective_message,
+                        ),
+                    )
+                    step_corrections += 1
 
         return ctx, False
 

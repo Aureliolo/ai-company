@@ -5,6 +5,8 @@ loop implementations (ReAct, Plan-and-Execute, etc.) thin and focused
 on their control-flow logic.
 """
 
+import hashlib
+import json
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -23,6 +25,7 @@ from synthorg.providers.models import (
     ChatMessage,
     CompletionConfig,
     CompletionResponse,
+    ToolCall,
     ToolDefinition,
     add_token_usage,
 )
@@ -423,7 +426,9 @@ def clear_last_turn_tool_calls(turns: list[TurnRecord]) -> None:
     """
     if turns:
         last = turns[-1]
-        turns[-1] = last.model_copy(update={"tool_calls_made": ()})
+        turns[-1] = last.model_copy(
+            update={"tool_calls_made": (), "tool_call_fingerprints": ()},
+        )
 
 
 def get_tool_definitions(
@@ -458,9 +463,40 @@ def make_turn_record(
         output_tokens=response.usage.output_tokens,
         cost_usd=response.usage.cost_usd,
         tool_calls_made=tuple(tc.name for tc in response.tool_calls),
+        tool_call_fingerprints=compute_fingerprints(response.tool_calls),
         finish_reason=response.finish_reason,
         call_category=call_category,
     )
+
+
+def compute_fingerprints(
+    tool_calls: tuple[ToolCall, ...],
+) -> tuple[str, ...]:
+    """Compute sorted deterministic fingerprints from tool calls.
+
+    Each fingerprint is ``name:args_hash`` where ``args_hash`` is a
+    16-char hex prefix of the SHA-256 hash of the canonicalized
+    arguments JSON.
+
+    Args:
+        tool_calls: Tool calls to fingerprint.
+
+    Returns:
+        Sorted tuple of fingerprint strings.
+    """
+    fingerprints = []
+    for tc in tool_calls:
+        canonical = json.dumps(
+            tc.arguments,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        args_hash = hashlib.sha256(
+            canonical.encode(),
+        ).hexdigest()[:16]
+        fingerprints.append(f"{tc.name}:{args_hash}")
+    return tuple(sorted(fingerprints))
 
 
 def build_result(

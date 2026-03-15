@@ -163,6 +163,13 @@ from synthorg.engine.shutdown import (
     ShutdownResult,
     ShutdownStrategy,
 )
+from synthorg.engine.stagnation import (
+    StagnationConfig,
+    StagnationDetector,
+    StagnationResult,
+    StagnationVerdict,
+    ToolRepetitionDetector,
+)
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.engine.task_engine_config import TaskEngineConfig
 from synthorg.engine.task_engine_models import (
@@ -302,6 +309,10 @@ __all__ = [
     "ShutdownManager",
     "ShutdownResult",
     "ShutdownStrategy",
+    "StagnationConfig",
+    "StagnationDetector",
+    "StagnationResult",
+    "StagnationVerdict",
     "StatusRollup",
     "StatusTransition",
     "StepStatus",
@@ -329,6 +340,7 @@ __all__ = [
     "TaskStructureClassifier",
     "TaskVersionConflictError",
     "TerminationReason",
+    "ToolRepetitionDetector",
     "TopologyDispatcher",
     "TopologySelector",
     "TransitionTaskMutation",
