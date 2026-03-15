@@ -13,6 +13,8 @@ COPY --chown=build:build web/package.json web/package-lock.json ./
 # Run npm ci as build user so node_modules (including .vite cache) is owned by
 # the same user that runs the build — avoids permission errors in Vite.
 USER build
+# --ignore-scripts: security hardening; safe for current pure-JS deps.
+# If a future dep needs postinstall, add `npm rebuild <pkg>` after this step.
 RUN npm ci --ignore-scripts
 COPY --chown=build:build web/ ./
 RUN npm run build \

@@ -111,7 +111,10 @@ Both backend and web containers enforce CIS v1.6.0 controls in `compose.yml`:
 |---------|---------|
 | **CIS 5.3** | `security_opt: no-new-privileges:true` |
 | **CIS 5.12** | `cap_drop: ALL` |
-| **CIS 5.25** | `read_only: true` with `tmpfs` mounts (`noexec`, `nosuid`) |
+| **CIS 5.25** | `read_only: true` with `tmpfs` mounts (`noexec`, `nosuid`, `nodev`) |
+| **CIS 5.28** | `pids_limit` per container (256 backend, 64 web) |
+
+Resource limits (`deploy.resources.limits`) cap memory and CPU per container (4G/2CPU backend, 256M/0.5CPU web). Log rotation (`json-file` driver, `max-size: 10m`, `max-file: 3`) prevents disk exhaustion.
 
 ### Artifact Provenance
 
@@ -144,8 +147,9 @@ Every container image is scanned by **two independent tools** before push:
 
 - **Trivy** — CRITICAL = hard fail, HIGH = warn-only (`.trivyignore.yaml` for vetted CVEs)
 - **Grype** — critical severity cutoff (`.grype.yaml` for overrides)
+- **CIS Docker Benchmark** — `trivy image --compliance docker-cis-1.6.0` run against both images (informational; will become enforced once baseline is clean)
 
-Images are **only pushed to GHCR after both scanners pass**.
+Images are **only pushed to GHCR after both vulnerability scanners pass**.
 
 ### Signed Artifacts
 

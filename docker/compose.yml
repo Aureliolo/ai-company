@@ -16,6 +16,8 @@ services:
       # Bridge SYNTHORG_* to uvicorn's native env vars (exec form CMD, no shell)
       UVICORN_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
       UVICORN_PORT: "${SYNTHORG_PORT:-8000}"
+    # Healthcheck defined in Dockerfile (exec form, works with distroless).
+    # CLI template overrides it in compose; here we rely on the image-level check.
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
     security_opt:
       - no-new-privileges:true

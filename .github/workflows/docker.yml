@@ -125,12 +125,17 @@ jobs:
       - name: Evaluate Trivy results
         run: |
           echo "## Trivy Scan — Backend"
-          jq -r '
-            ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
-            (.Results[]?.Vulnerabilities[]? |
-              [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
-            @tsv
-          ' trivy-backend.json | column -t -s$'\t' || echo "(no vulnerabilities found)"
+          TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-backend.json)
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "No CRITICAL or HIGH vulnerabilities found."
+          else
+            jq -r '
+              ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
+              (.Results[]?.Vulnerabilities[]? |
+                [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
+              @tsv
+            ' trivy-backend.json | column -t -s$'\t'
+          fi
 
           CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-backend.json)
           HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-backend.json)
@@ -155,7 +160,11 @@ jobs:
       # Informational for now — remove continue-on-error once baseline is clean.
       - name: CIS Docker Benchmark (backend)
         continue-on-error: true
-        run: trivy image --compliance docker-cis-1.6.0 --format table ${{ steps.scan-ref.outputs.ref }}
+        env:
+          IMAGE_REF: ${{ steps.scan-ref.outputs.ref }}
+        run: |
+          command -v trivy >/dev/null 2>&1 || { echo "::warning::trivy not on PATH, skipping CIS scan"; exit 0; }
+          trivy image --compliance docker-cis-1.6.0 --format table "$IMAGE_REF"
 
       # Push only after scans pass — prevents publishing vulnerable images.
       # NOTE: This is a separate build invocation from the scan step. GHA cache
@@ -270,12 +279,17 @@ jobs:
       - name: Evaluate Trivy results
         run: |
           echo "## Trivy Scan — Web"
-          jq -r '
-            ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
-            (.Results[]?.Vulnerabilities[]? |
-              [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
-            @tsv
-          ' trivy-web.json | column -t -s$'\t' || echo "(no vulnerabilities found)"
+          TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-web.json)
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "No CRITICAL or HIGH vulnerabilities found."
+          else
+            jq -r '
+              ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
+              (.Results[]?.Vulnerabilities[]? |
+                [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
+              @tsv
+            ' trivy-web.json | column -t -s$'\t'
+          fi
 
           CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-web.json)
           HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-web.json)
@@ -298,7 +312,11 @@ jobs:
 
       - name: CIS Docker Benchmark (web)
         continue-on-error: true
-        run: trivy image --compliance docker-cis-1.6.0 --format table ${{ steps.scan-ref.outputs.ref }}
+        env:
+          IMAGE_REF: ${{ steps.scan-ref.outputs.ref }}
+        run: |
+          command -v trivy >/dev/null 2>&1 || { echo "::warning::trivy not on PATH, skipping CIS scan"; exit 0; }
+          trivy image --compliance docker-cis-1.6.0 --format table "$IMAGE_REF"
 
       # Push only after scans pass — prevents publishing vulnerable images.
       # NOTE: Separate build invocation; GHA cache ensures deterministic layers,
