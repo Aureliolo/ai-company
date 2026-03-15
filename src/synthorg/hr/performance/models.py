@@ -122,6 +122,11 @@ class CollaborationMetricRecord(BaseModel):
         le=1.0,
         description="Completeness of task handoff",
     )
+    interaction_summary: str | None = Field(
+        default=None,
+        max_length=4096,
+        description="Text summary of the interaction for LLM calibration",
+    )
 
 
 class QualityScoreResult(BaseModel):
@@ -171,6 +176,107 @@ class CollaborationScoreResult(BaseModel):
         ge=0.0,
         le=1.0,
         description="Confidence in the score",
+    )
+    override_active: bool = Field(
+        default=False,
+        description="Whether a human override is active",
+    )
+
+
+class LlmCalibrationRecord(BaseModel):
+    """Record of an LLM calibration sample for collaboration scoring.
+
+    Attributes:
+        id: Unique record identifier.
+        agent_id: Agent being evaluated.
+        sampled_at: When the LLM evaluation occurred.
+        interaction_record_id: ID of the sampled CollaborationMetricRecord.
+        llm_score: LLM-assigned collaboration score (0.0-10.0).
+        behavioral_score: Behavioral strategy score at time of sampling.
+        drift: Absolute difference between LLM and behavioral scores.
+        rationale: LLM's explanation for the score.
+        model_used: Which LLM model was used for evaluation.
+        cost_usd: Cost of the LLM call.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    id: NotBlankStr = Field(
+        default_factory=lambda: NotBlankStr(str(uuid4())),
+        description="Unique record identifier",
+    )
+    agent_id: NotBlankStr = Field(description="Agent being evaluated")
+    sampled_at: AwareDatetime = Field(
+        description="When the LLM evaluation occurred",
+    )
+    interaction_record_id: NotBlankStr = Field(
+        description="ID of the sampled CollaborationMetricRecord",
+    )
+    llm_score: float = Field(
+        ge=0.0,
+        le=10.0,
+        description="LLM-assigned collaboration score",
+    )
+    behavioral_score: float = Field(
+        ge=0.0,
+        le=10.0,
+        description="Behavioral strategy score at time of sampling",
+    )
+    drift: float = Field(
+        ge=0.0,
+        description="Absolute difference between LLM and behavioral scores",
+    )
+    rationale: NotBlankStr = Field(
+        description="LLM's explanation for the score",
+    )
+    model_used: NotBlankStr = Field(
+        description="Which LLM model was used for evaluation",
+    )
+    cost_usd: float = Field(
+        ge=0.0,
+        description="Cost of the LLM call",
+    )
+
+
+class CollaborationOverride(BaseModel):
+    """Human-applied override for an agent's collaboration score.
+
+    Attributes:
+        id: Unique override identifier.
+        agent_id: Agent whose score is overridden.
+        score: Override score (0.0-10.0).
+        reason: Why the override was applied.
+        applied_by: Identity of the human who applied it.
+        applied_at: When the override was applied.
+        expires_at: When the override expires (None = indefinite).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    id: NotBlankStr = Field(
+        default_factory=lambda: NotBlankStr(str(uuid4())),
+        description="Unique override identifier",
+    )
+    agent_id: NotBlankStr = Field(
+        description="Agent whose score is overridden",
+    )
+    score: float = Field(
+        ge=0.0,
+        le=10.0,
+        description="Override score",
+    )
+    reason: NotBlankStr = Field(
+        description="Why the override was applied",
+    )
+    applied_by: NotBlankStr = Field(
+        description="Identity of the human who applied it",
+    )
+    applied_at: AwareDatetime = Field(
+        description="When the override was applied",
+    )
+    expires_at: AwareDatetime | None = Field(
+        default=None,
+        description="When the override expires (None = indefinite)",
     )
 
 

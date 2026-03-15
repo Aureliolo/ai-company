@@ -7,6 +7,8 @@ from synthorg.core.task import AcceptanceCriterion
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.models import (
     CollaborationMetricRecord,
+    CollaborationOverride,
+    LlmCalibrationRecord,
     TaskMetricRecord,
 )
 
@@ -51,6 +53,7 @@ def make_collab_metric(  # noqa: PLR0913
     meeting_contribution: float | None = None,
     loop_triggered: bool = False,
     handoff_completeness: float | None = None,
+    interaction_summary: str | None = None,
 ) -> CollaborationMetricRecord:
     """Build a CollaborationMetricRecord with sensible defaults."""
     return CollaborationMetricRecord(
@@ -62,6 +65,53 @@ def make_collab_metric(  # noqa: PLR0913
         meeting_contribution=meeting_contribution,
         loop_triggered=loop_triggered,
         handoff_completeness=handoff_completeness,
+        interaction_summary=interaction_summary,
+    )
+
+
+def make_calibration_record(  # noqa: PLR0913
+    *,
+    agent_id: str = "agent-001",
+    interaction_record_id: str = "record-001",
+    sampled_at: datetime | None = None,
+    llm_score: float = 7.5,
+    behavioral_score: float = 6.0,
+    drift: float = 1.5,
+    rationale: str = "Good collaboration",
+    model_used: str = "test-small-001",
+    cost_usd: float = 0.001,
+) -> LlmCalibrationRecord:
+    """Build an LlmCalibrationRecord with sensible defaults."""
+    return LlmCalibrationRecord(
+        agent_id=NotBlankStr(agent_id),
+        sampled_at=sampled_at or datetime.now(UTC),
+        interaction_record_id=NotBlankStr(interaction_record_id),
+        llm_score=llm_score,
+        behavioral_score=behavioral_score,
+        drift=drift,
+        rationale=NotBlankStr(rationale),
+        model_used=NotBlankStr(model_used),
+        cost_usd=cost_usd,
+    )
+
+
+def make_collaboration_override(  # noqa: PLR0913
+    *,
+    agent_id: str = "agent-001",
+    score: float = 8.0,
+    reason: str = "Exceptional mentoring",
+    applied_by: str = "manager-alice",
+    applied_at: datetime | None = None,
+    expires_at: datetime | None = None,
+) -> CollaborationOverride:
+    """Build a CollaborationOverride with sensible defaults."""
+    return CollaborationOverride(
+        agent_id=NotBlankStr(agent_id),
+        score=score,
+        reason=NotBlankStr(reason),
+        applied_by=NotBlankStr(applied_by),
+        applied_at=applied_at or datetime.now(UTC),
+        expires_at=expires_at,
     )
 
 
