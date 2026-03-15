@@ -122,7 +122,10 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossA
           errorMsg.focus();
           return;
         }
-        await new Promise<void>((resolve) => grecaptcha.ready(() => resolve()));
+        await Promise.race([
+          new Promise<void>((resolve) => grecaptcha.ready(() => resolve())),
+          new Promise<void>((_, reject) => setTimeout(() => reject(new Error("reCAPTCHA timeout")), 5000)),
+        ]);
         const token = await grecaptcha.execute(siteKey, { action: "contact" });
         captchaInput.value = token;
 
