@@ -60,6 +60,8 @@
     ></textarea>
   </div>
 
+  <input type="hidden" id="captchaResponse" name="g-recaptcha-response" />
+
   <button
     type="submit"
     id="contact-submit"
@@ -106,6 +108,13 @@
       errorMsg.classList.add("hidden");
 
       try {
+        // Get fresh reCAPTCHA v3 token before submission
+        if (typeof grecaptcha !== "undefined") {
+          const token = await grecaptcha.execute("6LdQkossAAAAADwxZo5bt8p6az7P3M6I_8k4_ypu", { action: "contact" });
+          const captchaInput = form.querySelector<HTMLInputElement>("#captchaResponse");
+          if (captchaInput) captchaInput.value = token;
+        }
+
         const res = await fetch(form.action, {
           method: "POST",
           body: new FormData(form),
