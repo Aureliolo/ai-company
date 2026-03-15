@@ -22,6 +22,11 @@ from litestar.enums import ScopeType
 from litestar.types import ASGIApp, Message, Receive, Scope, Send  # noqa: TC002
 
 from synthorg.observability import get_logger
+from synthorg.observability.correlation import (
+    bind_correlation_id,
+    generate_correlation_id,
+    unbind_correlation_id,
+)
 from synthorg.observability.events.api import (
     API_REQUEST_COMPLETED,
     API_REQUEST_STARTED,
@@ -140,6 +145,9 @@ class RequestLoggingMiddleware:
         method = request.method
         path = str(request.url.path)
 
+        request_id = generate_correlation_id()
+        bind_correlation_id(request_id=request_id)
+
         logger.info(API_REQUEST_STARTED, method=method, path=path)
         start = time.perf_counter()
 
@@ -175,3 +183,4 @@ class RequestLoggingMiddleware:
                     status_code=status_code,
                     duration_ms=duration_ms,
                 )
+            unbind_correlation_id(request_id=True)

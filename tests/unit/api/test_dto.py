@@ -10,7 +10,11 @@ from synthorg.api.dto import (
     CoordinationPhaseResponse,
     CoordinationResultResponse,
     CreateApprovalRequest,
+    ErrorDetail,
+    PaginatedResponse,
+    PaginationMeta,
 )
+from synthorg.api.errors import ErrorCategory
 from synthorg.core.enums import ApprovalRiskLevel
 
 
@@ -37,6 +41,102 @@ class TestApiResponseEnvelope:
         dumped = resp.model_dump()
         assert dumped["success"] is True
         assert dumped["data"] == "ok"
+
+    def test_error_detail_none_on_success(self) -> None:
+        resp = ApiResponse(data="ok")
+        assert resp.error_detail is None
+        dumped = resp.model_dump()
+        assert dumped["error_detail"] is None
+
+    def test_error_detail_populated_on_error(self) -> None:
+        detail = ErrorDetail(
+            message="Not found",
+            error_code=3000,
+            error_category=ErrorCategory.NOT_FOUND,
+            retryable=False,
+            instance="abc-123",
+        )
+        resp = ApiResponse[None](error="Not found", error_detail=detail)
+        assert resp.success is False
+        assert resp.error_detail is not None
+        assert resp.error_detail.error_code == 3000
+        assert resp.error_detail.error_category == ErrorCategory.NOT_FOUND
+
+
+@pytest.mark.unit
+class TestErrorDetail:
+    def test_construction_all_fields(self) -> None:
+        detail = ErrorDetail(
+            message="Rate limited",
+            error_code=5000,
+            error_category=ErrorCategory.RATE_LIMIT,
+            retryable=True,
+            retry_after=30,
+            instance="req-456",
+        )
+        assert detail.message == "Rate limited"
+        assert detail.error_code == 5000
+        assert detail.error_category == ErrorCategory.RATE_LIMIT
+        assert detail.retryable is True
+        assert detail.retry_after == 30
+        assert detail.instance == "req-456"
+
+    def test_retry_after_defaults_to_none(self) -> None:
+        detail = ErrorDetail(
+            message="err",
+            error_code=8000,
+            error_category=ErrorCategory.INTERNAL,
+            instance="x",
+        )
+        assert detail.retry_after is None
+        assert detail.retryable is False
+
+    def test_frozen_immutability(self) -> None:
+        detail = ErrorDetail(
+            message="err",
+            error_code=8000,
+            error_category=ErrorCategory.INTERNAL,
+            instance="x",
+        )
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            detail.message = "changed"  # type: ignore[misc]
+
+    def test_serialization_roundtrip(self) -> None:
+        detail = ErrorDetail(
+            message="Conflict",
+            error_code=4000,
+            error_category=ErrorCategory.CONFLICT,
+            retryable=False,
+            retry_after=None,
+            instance="req-789",
+        )
+        dumped = detail.model_dump()
+        restored = ErrorDetail.model_validate(dumped)
+        assert restored == detail
+
+
+@pytest.mark.unit
+class TestPaginatedResponseErrorDetail:
+    def test_error_detail_defaults_to_none(self) -> None:
+        resp: PaginatedResponse[str] = PaginatedResponse(
+            pagination=PaginationMeta(total=0, offset=0, limit=10),
+        )
+        assert resp.error_detail is None
+
+    def test_error_detail_field_present(self) -> None:
+        detail = ErrorDetail(
+            message="err",
+            error_code=8000,
+            error_category=ErrorCategory.INTERNAL,
+            instance="x",
+        )
+        resp: PaginatedResponse[str] = PaginatedResponse(
+            error="err",
+            error_detail=detail,
+            pagination=PaginationMeta(total=0, offset=0, limit=10),
+        )
+        assert resp.error_detail is not None
+        assert resp.error_detail.error_code == 8000
 
 
 @pytest.mark.unit

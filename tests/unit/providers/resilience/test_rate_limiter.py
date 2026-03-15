@@ -2,7 +2,6 @@
 
 import asyncio
 import contextlib
-import time
 
 import pytest
 import structlog
@@ -97,46 +96,135 @@ class TestRateLimiterRPM:
 @pytest.mark.unit
 class TestRateLimiterPause:
     async def test_pause_blocks_acquire(self) -> None:
+        """acquire() sleeps for the remaining pause duration."""
+        from unittest import mock
+
         config = RateLimiterConfig(max_concurrent=10)
         limiter = RateLimiter(config, provider_name="test-provider")
 
-        limiter.pause(0.1)
-        start = time.monotonic()
-        await limiter.acquire()
-        elapsed = time.monotonic() - start
+        base_t = 500_000.0
+        call_count = 0
 
-        assert 0.07 <= elapsed <= 1.0  # must wait at least 70ms, not forever
+        def time_fn() -> float:
+            nonlocal call_count
+            call_count += 1
+            # pause() sees base_t; acquire() loop sees base_t + 0.02
+            # (still within pause window); after sleep sees base_t + 0.2
+            if call_count <= 2:
+                return base_t
+            if call_count == 3:
+                return base_t + 0.02
+            return base_t + 0.2
 
+        slept_for: float | None = None
+
+        async def fake_sleep(seconds: float) -> None:
+            nonlocal slept_for
+            slept_for = seconds
+
+        with (
+            mock.patch(
+                "synthorg.providers.resilience.rate_limiter.time.monotonic",
+                time_fn,
+            ),
+            mock.patch(
+                "synthorg.providers.resilience.rate_limiter.asyncio.sleep",
+                fake_sleep,
+            ),
+        ):
+            limiter.pause(0.1)
+            await limiter.acquire()
+
+        assert slept_for is not None
+        assert slept_for > 0  # must have waited
         limiter.release()
 
     async def test_pause_extends_if_longer(self) -> None:
+        """A longer second pause extends the pause window."""
+        from unittest import mock
+
         config = RateLimiterConfig(max_concurrent=10)
         limiter = RateLimiter(config, provider_name="test-provider")
 
-        limiter.pause(0.05)
-        limiter.pause(0.15)  # extends
+        base_t = 600_000.0
+        call_count = 0
 
-        start = time.monotonic()
-        await limiter.acquire()
-        elapsed = time.monotonic() - start
+        def time_fn() -> float:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 3:
+                return base_t
+            if call_count == 4:
+                return base_t + 0.01  # still in pause window
+            return base_t + 0.2  # after sleep, past pause
 
-        assert 0.10 <= elapsed <= 1.0  # should wait for the longer pause
+        slept_for: float | None = None
 
+        async def fake_sleep(seconds: float) -> None:
+            nonlocal slept_for
+            slept_for = seconds
+
+        with (
+            mock.patch(
+                "synthorg.providers.resilience.rate_limiter.time.monotonic",
+                time_fn,
+            ),
+            mock.patch(
+                "synthorg.providers.resilience.rate_limiter.asyncio.sleep",
+                fake_sleep,
+            ),
+        ):
+            limiter.pause(0.05)
+            limiter.pause(0.15)  # extends
+            await limiter.acquire()
+
+        # Should have waited for the longer pause
+        assert slept_for is not None
+        assert slept_for > 0.10
         limiter.release()
 
     async def test_pause_no_extend_if_shorter(self) -> None:
+        """A shorter second pause does not reduce the pause window."""
+        from unittest import mock
+
         config = RateLimiterConfig(max_concurrent=10)
         limiter = RateLimiter(config, provider_name="test-provider")
 
-        limiter.pause(0.15)
-        limiter.pause(0.01)  # shorter, should not reduce
+        base_t = 700_000.0
+        call_count = 0
 
-        start = time.monotonic()
-        await limiter.acquire()
-        elapsed = time.monotonic() - start
+        def time_fn() -> float:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 3:
+                return base_t
+            if call_count == 4:
+                return base_t + 0.01
+            return base_t + 0.2
 
-        assert 0.10 <= elapsed <= 1.0
+        slept_for: float | None = None
 
+        async def fake_sleep(seconds: float) -> None:
+            nonlocal slept_for
+            slept_for = seconds
+
+        with (
+            mock.patch(
+                "synthorg.providers.resilience.rate_limiter.time.monotonic",
+                time_fn,
+            ),
+            mock.patch(
+                "synthorg.providers.resilience.rate_limiter.asyncio.sleep",
+                fake_sleep,
+            ),
+        ):
+            limiter.pause(0.15)
+            limiter.pause(0.01)  # shorter, should not reduce
+            await limiter.acquire()
+
+        # Should have waited ~0.14s (the original longer pause minus elapsed)
+        assert slept_for is not None
+        assert slept_for > 0.10
         limiter.release()
 
     async def test_pause_rejects_negative(self) -> None:

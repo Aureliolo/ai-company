@@ -10,7 +10,9 @@ from synthorg.api.dto import (
     _MAX_METADATA_STR_LEN,
     CoordinateTaskRequest,
     CreateApprovalRequest,
+    ErrorDetail,
 )
+from synthorg.api.errors import ErrorCategory
 from synthorg.core.enums import ApprovalRiskLevel
 
 pytestmark = pytest.mark.unit
@@ -216,3 +218,46 @@ class TestCreateApprovalRequestProperties:
             metadata=metadata,
         )
         assert req.metadata == metadata
+
+
+_error_detail_strategy = st.builds(
+    ErrorDetail,
+    message=_not_blank,
+    error_code=st.integers(min_value=1000, max_value=8999),
+    error_category=st.sampled_from(list(ErrorCategory)),
+    retryable=st.booleans(),
+    retry_after=st.one_of(
+        st.none(),
+        st.integers(min_value=0, max_value=3600),
+    ),
+    instance=st.text(min_size=1, max_size=40).filter(lambda s: s.strip()),
+)
+
+
+class TestErrorDetailProperties:
+    @given(detail=_error_detail_strategy)
+    @settings(max_examples=100)
+    def test_roundtrip(self, detail: ErrorDetail) -> None:
+        dumped = detail.model_dump()
+        restored = ErrorDetail.model_validate(dumped)
+        assert restored == detail
+
+    @given(
+        error_category=st.sampled_from(list(ErrorCategory)),
+        retryable=st.booleans(),
+    )
+    @settings(max_examples=50)
+    def test_retryable_and_category_preserved(
+        self,
+        error_category: ErrorCategory,
+        retryable: bool,
+    ) -> None:
+        detail = ErrorDetail(
+            message="test",
+            error_code=8000,
+            error_category=error_category,
+            retryable=retryable,
+            instance="id",
+        )
+        assert detail.retryable is retryable
+        assert detail.error_category == error_category

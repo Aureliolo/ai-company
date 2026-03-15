@@ -16,6 +16,7 @@ from pydantic import (
     model_validator,
 )
 
+from synthorg.api.errors import ErrorCategory  # noqa: TC001
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     Complexity,
@@ -33,6 +34,35 @@ _MAX_METADATA_KEYS: int = 20
 _MAX_METADATA_STR_LEN: int = 256
 
 
+# ── Structured error detail (RFC 9457 Phase 1) ────────────────
+
+
+class ErrorDetail(BaseModel):
+    """Structured error metadata (RFC 9457 Phase 1).
+
+    Self-contained so agents can parse it without referencing
+    the parent envelope.
+
+    Attributes:
+        message: Human-readable error message.
+        error_code: Machine-readable 4-digit error code.
+        error_category: High-level error category.
+        retryable: Whether the client should retry the request.
+        retry_after: Seconds to wait before retrying (``None``
+            when not applicable).
+        instance: Request correlation ID for log tracing.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    message: str
+    error_code: int
+    error_category: ErrorCategory
+    retryable: bool = False
+    retry_after: int | None = None
+    instance: str
+
+
 # ── Response envelopes ──────────────────────────────────────────
 
 
@@ -42,6 +72,7 @@ class ApiResponse[T](BaseModel):
     Attributes:
         data: Response payload (``None`` on error).
         error: Error message (``None`` on success).
+        error_detail: Structured error metadata (``None`` on success).
         success: Whether the request succeeded (computed from ``error``).
     """
 
@@ -49,6 +80,7 @@ class ApiResponse[T](BaseModel):
 
     data: T | None = None
     error: str | None = None
+    error_detail: ErrorDetail | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -79,6 +111,7 @@ class PaginatedResponse[T](BaseModel):
     Attributes:
         data: Page of items.
         error: Error message (``None`` on success).
+        error_detail: Structured error metadata (``None`` on success).
         pagination: Pagination metadata.
         success: Whether the request succeeded (computed from ``error``).
     """
@@ -87,6 +120,7 @@ class PaginatedResponse[T](BaseModel):
 
     data: tuple[T, ...] = ()
     error: str | None = None
+    error_detail: ErrorDetail | None = None
     pagination: PaginationMeta
 
     @computed_field  # type: ignore[prop-decorator]

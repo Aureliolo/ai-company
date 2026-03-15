@@ -5,11 +5,15 @@ appropriate HTTP status code.  5xx responses return a generic
 scrubbed message; 4xx responses pass through the exception detail
 (authored by SynthOrg's guards/middleware and user-safe).  Detailed
 error context is logged server-side for all status codes.
+
+All handlers populate ``error_detail`` with structured RFC 9457
+metadata (error code, category, retryability, request correlation ID).
 """
 
 from http import HTTPStatus
 from typing import Any, Final
 
+import structlog
 from litestar import Request, Response
 from litestar.exceptions import (
     HTTPException,
@@ -19,9 +23,10 @@ from litestar.exceptions import (
     ValidationException,
 )
 
-from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import ApiError
+from synthorg.api.dto import ApiResponse, ErrorDetail
+from synthorg.api.errors import ApiError, ErrorCategory, ErrorCode
 from synthorg.observability import get_logger
+from synthorg.observability.correlation import generate_correlation_id
 from synthorg.observability.events.api import (
     API_REQUEST_ERROR,
     API_ROUTE_NOT_FOUND,
@@ -35,6 +40,70 @@ from synthorg.persistence.errors import (
 logger = get_logger(__name__)
 
 _SERVER_ERROR_THRESHOLD: Final[int] = 500
+
+
+def _get_instance_id() -> str:
+    """Get request correlation ID from structlog context, or generate one."""
+    ctx = structlog.contextvars.get_contextvars()
+    request_id = ctx.get("request_id")
+    if isinstance(request_id, str) and request_id:
+        return request_id
+    return generate_correlation_id()
+
+
+def _build_error_response(
+    *,
+    message: str,
+    error_code: ErrorCode,
+    error_category: ErrorCategory,
+    retryable: bool = False,
+    retry_after: int | None = None,
+) -> ApiResponse[None]:
+    """Build an ``ApiResponse`` with structured ``ErrorDetail``."""
+    return ApiResponse[None](
+        error=message,
+        error_detail=ErrorDetail(
+            message=message,
+            error_code=int(error_code),
+            error_category=error_category,
+            retryable=retryable,
+            retry_after=retry_after,
+            instance=_get_instance_id(),
+        ),
+    )
+
+
+_STATUS_TO_ERROR_META: dict[int, tuple[ErrorCode, ErrorCategory, bool]] = {
+    401: (ErrorCode.UNAUTHORIZED, ErrorCategory.AUTH, False),
+    403: (ErrorCode.FORBIDDEN, ErrorCategory.AUTH, False),
+    404: (ErrorCode.ROUTE_NOT_FOUND, ErrorCategory.NOT_FOUND, False),
+    409: (ErrorCode.RESOURCE_CONFLICT, ErrorCategory.CONFLICT, False),
+    429: (ErrorCode.RATE_LIMITED, ErrorCategory.RATE_LIMIT, True),
+    503: (ErrorCode.SERVICE_UNAVAILABLE, ErrorCategory.INTERNAL, True),
+}
+
+_CLIENT_ERROR_DEFAULT: tuple[ErrorCode, ErrorCategory, bool] = (
+    ErrorCode.REQUEST_VALIDATION_ERROR,
+    ErrorCategory.VALIDATION,
+    False,
+)
+
+_SERVER_ERROR_DEFAULT: tuple[ErrorCode, ErrorCategory, bool] = (
+    ErrorCode.INTERNAL_ERROR,
+    ErrorCategory.INTERNAL,
+    False,
+)
+
+
+def _category_for_status(
+    status: int,
+) -> tuple[ErrorCode, ErrorCategory, bool]:
+    """Map HTTP status to error code, category, and retryability."""
+    if status in _STATUS_TO_ERROR_META:
+        return _STATUS_TO_ERROR_META[status]
+    if status >= _SERVER_ERROR_THRESHOLD:
+        return _SERVER_ERROR_DEFAULT
+    return _CLIENT_ERROR_DEFAULT
 
 
 def _log_error(
@@ -67,8 +136,10 @@ def handle_record_not_found(
     """Map ``RecordNotFoundError`` to 404."""
     _log_error(request, exc, status=404)
     return Response(
-        content=ApiResponse[None](
-            error="Resource not found",
+        content=_build_error_response(
+            message="Resource not found",
+            error_code=ErrorCode.RECORD_NOT_FOUND,
+            error_category=ErrorCategory.NOT_FOUND,
         ),
         status_code=404,
     )
@@ -81,8 +152,10 @@ def handle_duplicate_record(
     """Map ``DuplicateRecordError`` to 409."""
     _log_error(request, exc, status=409)
     return Response(
-        content=ApiResponse[None](
-            error="Resource already exists",
+        content=_build_error_response(
+            message="Resource already exists",
+            error_code=ErrorCode.DUPLICATE_RECORD,
+            error_category=ErrorCategory.CONFLICT,
         ),
         status_code=409,
     )
@@ -95,8 +168,10 @@ def handle_persistence_error(
     """Map ``PersistenceError`` to 500."""
     _log_error(request, exc, status=500)
     return Response(
-        content=ApiResponse[None](
-            error="Internal persistence error",
+        content=_build_error_response(
+            message="Internal persistence error",
+            error_code=ErrorCode.PERSISTENCE_ERROR,
+            error_category=ErrorCategory.INTERNAL,
         ),
         status_code=500,
     )
@@ -116,7 +191,12 @@ def handle_api_error(
     else:
         msg = str(exc) or type(exc).default_message
     return Response(
-        content=ApiResponse[None](error=msg),
+        content=_build_error_response(
+            message=msg,
+            error_code=exc.error_code,
+            error_category=exc.error_category,
+            retryable=exc.retryable,
+        ),
         status_code=exc.status_code,
     )
 
@@ -125,11 +205,13 @@ def handle_unexpected(
     request: Request[Any, Any, Any],
     exc: Exception,
 ) -> Response[ApiResponse[None]]:
-    """Catch-all for unexpected errors → 500."""
+    """Catch-all for unexpected errors -> 500."""
     _log_error(request, exc, status=500)
     return Response(
-        content=ApiResponse[None](
-            error="Internal server error",
+        content=_build_error_response(
+            message="Internal server error",
+            error_code=ErrorCode.INTERNAL_ERROR,
+            error_category=ErrorCategory.INTERNAL,
         ),
         status_code=500,
     )
@@ -143,7 +225,11 @@ def handle_permission_denied(
     _log_error(request, exc, status=403)
     detail = exc.detail or HTTPStatus.FORBIDDEN.phrase
     return Response(
-        content=ApiResponse[None](error=detail),
+        content=_build_error_response(
+            message=detail,
+            error_code=ErrorCode.FORBIDDEN,
+            error_category=ErrorCategory.AUTH,
+        ),
         status_code=403,
     )
 
@@ -155,8 +241,10 @@ def handle_validation_error(
     """Map ``ValidationException`` to 400."""
     _log_error(request, exc, status=400)
     return Response(
-        content=ApiResponse[None](
-            error="Validation error",
+        content=_build_error_response(
+            message="Validation error",
+            error_code=ErrorCode.REQUEST_VALIDATION_ERROR,
+            error_category=ErrorCategory.VALIDATION,
         ),
         status_code=400,
     )
@@ -170,7 +258,11 @@ def handle_not_authorized(
     _log_error(request, exc, status=401)
     detail = exc.detail or HTTPStatus.UNAUTHORIZED.phrase
     return Response(
-        content=ApiResponse[None](error=detail),
+        content=_build_error_response(
+            message=detail,
+            error_code=ErrorCode.UNAUTHORIZED,
+            error_category=ErrorCategory.AUTH,
+        ),
         status_code=401,
     )
 
@@ -194,7 +286,11 @@ def handle_not_found(
         error=str(exc),
     )
     return Response(
-        content=ApiResponse[None](error="Not found"),
+        content=_build_error_response(
+            message="Not found",
+            error_code=ErrorCode.ROUTE_NOT_FOUND,
+            error_category=ErrorCategory.NOT_FOUND,
+        ),
         status_code=404,
     )
 
@@ -218,8 +314,14 @@ def handle_http_exception(
         except ValueError:
             fallback = "Request error"
         msg = exc.detail or fallback
+    code, category, retryable = _category_for_status(status)
     return Response(
-        content=ApiResponse[None](error=msg),
+        content=_build_error_response(
+            message=msg,
+            error_code=code,
+            error_category=category,
+            retryable=retryable,
+        ),
         status_code=status,
         headers=exc.headers,
     )
