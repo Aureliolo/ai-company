@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.5](https://github.com/Aureliolo/synthorg/compare/v0.2.4...v0.2.5) (2026-03-15)
+
+
+### Features
+
+* default sandbox to enabled, polish CLI output, add sandbox CI build ([#455](https://github.com/Aureliolo/synthorg/issues/455)) ([a4869b6](https://github.com/Aureliolo/synthorg/commit/a4869b698afa252cac951a2903a782d3ab34a5a4))
+
+
+### Bug Fixes
+
+* export .intoto.jsonl provenance for OpenSSF Scorecard ([#456](https://github.com/Aureliolo/synthorg/issues/456)) ([2feed09](https://github.com/Aureliolo/synthorg/commit/2feed0913244258cd84926da18c4a7d1b5a856f7))
+
+
+### Maintenance
+
+* add pyrightconfig.json and fix all pyright errors ([#448](https://github.com/Aureliolo/synthorg/issues/448)) ([f60746a](https://github.com/Aureliolo/synthorg/commit/f60746a50f7539b389ff8605cff6b940ecb39856))
+
 ## [0.2.4](https://github.com/Aureliolo/synthorg/compare/v0.2.3...v0.2.4) (2026-03-15)
 
 
