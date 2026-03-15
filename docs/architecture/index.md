@@ -37,7 +37,7 @@ graph TB
 | **budget** | Cost management — cost tracking, budget enforcement (pre-flight/in-flight), auto-downgrade, quota/subscription, CFO optimizer, spending reports |
 | **hr** | Agent lifecycle — hiring, firing, onboarding, offboarding, registry, performance tracking, promotion/demotion |
 | **tools** | Tool system — registry, built-in tools (file system, git, sandbox, code runner), MCP bridge, role-based access |
-| **api** | REST + WebSocket API — Litestar controllers, JWT + API key auth, guards, channels |
+| **api** | REST + WebSocket API — Litestar controllers, JWT + API key auth, guards, channels, RFC 9457 structured error responses |
 | **config** | Company configuration — YAML schema, loader, validation, defaults |
 | **templates** | Pre-built company templates — personality presets, template builder |
 | **persistence** | Operational data — pluggable backend protocol, SQLite implementation |

@@ -8,6 +8,7 @@ metadata for structured error responses (RFC 9457 Phase 1).
 """
 
 from enum import IntEnum, StrEnum
+from typing import ClassVar
 
 
 class ErrorCategory(StrEnum):
@@ -68,6 +69,8 @@ class ErrorCode(IntEnum):
 
 
 # Maps first digit of error code to its expected category.
+# Used by __init_subclass__ for runtime validation and by tests
+# for consistency assertions.
 _CODE_CATEGORY_PREFIX: dict[int, ErrorCategory] = {
     1: ErrorCategory.AUTH,
     2: ErrorCategory.VALIDATION,
@@ -91,23 +94,35 @@ class ApiError(Exception):
         retryable: Whether the client should retry the request.
     """
 
-    default_message: str = "Internal server error"
-    error_category: ErrorCategory = ErrorCategory.INTERNAL
-    error_code: ErrorCode = ErrorCode.INTERNAL_ERROR
-    retryable: bool = False
+    default_message: ClassVar[str] = "Internal server error"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.INTERNAL_ERROR
+    retryable: ClassVar[bool] = False
 
     def __init__(self, message: str | None = None, *, status_code: int = 500) -> None:
         super().__init__(message or self.default_message)
         self.status_code = status_code
 
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        """Validate error_code/error_category consistency at class creation."""
+        super().__init_subclass__(**kwargs)
+        prefix = cls.error_code.value // 1000
+        expected = _CODE_CATEGORY_PREFIX.get(prefix)
+        if expected is not None and cls.error_category != expected:
+            msg = (
+                f"{cls.__name__}: error_code {cls.error_code.name} "
+                f"(prefix {prefix}) implies category {expected.name}, "
+                f"but error_category is {cls.error_category.name}"
+            )
+            raise TypeError(msg)
+
 
 class NotFoundError(ApiError):
     """Raised when a requested resource does not exist (404)."""
 
-    default_message: str = "Resource not found"
-    error_category: ErrorCategory = ErrorCategory.NOT_FOUND
-    error_code: ErrorCode = ErrorCode.RESOURCE_NOT_FOUND
-    retryable: bool = False
+    default_message: ClassVar[str] = "Resource not found"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.NOT_FOUND
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_NOT_FOUND
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message, status_code=404)
@@ -116,10 +131,9 @@ class NotFoundError(ApiError):
 class ApiValidationError(ApiError):
     """Raised when request data fails validation (422)."""
 
-    default_message: str = "Validation error"
-    error_category: ErrorCategory = ErrorCategory.VALIDATION
-    error_code: ErrorCode = ErrorCode.VALIDATION_ERROR
-    retryable: bool = False
+    default_message: ClassVar[str] = "Validation error"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.VALIDATION
+    error_code: ClassVar[ErrorCode] = ErrorCode.VALIDATION_ERROR
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message, status_code=422)
@@ -128,10 +142,9 @@ class ApiValidationError(ApiError):
 class ConflictError(ApiError):
     """Raised when a resource conflict occurs (409)."""
 
-    default_message: str = "Resource conflict"
-    error_category: ErrorCategory = ErrorCategory.CONFLICT
-    error_code: ErrorCode = ErrorCode.RESOURCE_CONFLICT
-    retryable: bool = False
+    default_message: ClassVar[str] = "Resource conflict"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.CONFLICT
+    error_code: ClassVar[ErrorCode] = ErrorCode.RESOURCE_CONFLICT
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message, status_code=409)
@@ -140,10 +153,9 @@ class ConflictError(ApiError):
 class ForbiddenError(ApiError):
     """Raised when access is denied (403)."""
 
-    default_message: str = "Forbidden"
-    error_category: ErrorCategory = ErrorCategory.AUTH
-    error_code: ErrorCode = ErrorCode.FORBIDDEN
-    retryable: bool = False
+    default_message: ClassVar[str] = "Forbidden"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    error_code: ClassVar[ErrorCode] = ErrorCode.FORBIDDEN
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message, status_code=403)
@@ -152,10 +164,9 @@ class ForbiddenError(ApiError):
 class UnauthorizedError(ApiError):
     """Raised when authentication is required or invalid (401)."""
 
-    default_message: str = "Authentication required"
-    error_category: ErrorCategory = ErrorCategory.AUTH
-    error_code: ErrorCode = ErrorCode.UNAUTHORIZED
-    retryable: bool = False
+    default_message: ClassVar[str] = "Authentication required"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.AUTH
+    error_code: ClassVar[ErrorCode] = ErrorCode.UNAUTHORIZED
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message, status_code=401)
@@ -164,10 +175,10 @@ class UnauthorizedError(ApiError):
 class ServiceUnavailableError(ApiError):
     """Raised when a required service is not configured (503)."""
 
-    default_message: str = "Service unavailable"
-    error_category: ErrorCategory = ErrorCategory.INTERNAL
-    error_code: ErrorCode = ErrorCode.SERVICE_UNAVAILABLE
-    retryable: bool = True
+    default_message: ClassVar[str] = "Service unavailable"
+    error_category: ClassVar[ErrorCategory] = ErrorCategory.INTERNAL
+    error_code: ClassVar[ErrorCode] = ErrorCode.SERVICE_UNAVAILABLE
+    retryable: ClassVar[bool] = True
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message, status_code=503)

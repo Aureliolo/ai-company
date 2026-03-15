@@ -135,3 +135,11 @@ class TestApiErrorMetadata:
         exc = ServiceUnavailableError()
         assert exc.retryable is True
         assert exc.status_code == 503
+
+    def test_init_subclass_rejects_mismatched_category(self) -> None:
+        """Subclass with code/category mismatch raises TypeError."""
+        with pytest.raises(TypeError, match="implies category"):
+
+            class _BadError(ApiError):
+                error_category = ErrorCategory.AUTH
+                error_code = ErrorCode.INTERNAL_ERROR  # 8xxx != auth

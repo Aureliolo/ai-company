@@ -59,8 +59,8 @@ class ErrorDetail(BaseModel):
     error_code: int
     error_category: ErrorCategory
     retryable: bool = False
-    retry_after: int | None = None
-    instance: str
+    retry_after: int | None = Field(default=None, ge=0)
+    instance: NotBlankStr
 
 
 # ── Response envelopes ──────────────────────────────────────────

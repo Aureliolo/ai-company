@@ -14,6 +14,7 @@ from litestar.exceptions import (
 from litestar.testing import TestClient
 
 from synthorg.api.errors import (
+    ApiError,
     ApiValidationError,
     ConflictError,
     ErrorCategory,
@@ -114,10 +115,10 @@ class TestExceptionHandlers:
             assert resp.status_code == 500
             body = resp.json()
             assert body["success"] is False
-            assert body["error"] == "Internal persistence error"
+            assert body["error"] == "Internal server error"
             _assert_error_detail(
                 body,
-                error_code=ErrorCode.PERSISTENCE_ERROR,
+                error_code=ErrorCode.INTERNAL_ERROR,
                 error_category=ErrorCategory.INTERNAL,
                 retryable=False,
             )
@@ -546,3 +547,145 @@ class TestStructuredErrorMetadata:
             resp = client.get("/test")
             body = resp.json()
             assert body["error_detail"]["retry_after"] is None
+
+    def test_5xx_scrubs_custom_message(self) -> None:
+        """ServiceUnavailableError with custom message returns default."""
+
+        @get("/test")
+        async def handler() -> None:
+            msg = "Connection pool exhausted: 10.0.0.5:5432"
+            raise ServiceUnavailableError(msg)
+
+        with TestClient(_make_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 503
+            body = resp.json()
+            # 5xx must scrub to class-level default, not leak internals
+            assert body["error"] == "Service unavailable"
+            assert "10.0.0.5" not in body["error"]
+
+
+@pytest.mark.unit
+class TestGetInstanceId:
+    """Direct unit tests for _get_instance_id helper."""
+
+    def test_returns_request_id_from_context(self) -> None:
+        import structlog
+
+        structlog.contextvars.bind_contextvars(request_id="req-known-123")
+        try:
+            from synthorg.api.exception_handlers import _get_instance_id
+
+            result = _get_instance_id()
+            assert result == "req-known-123"
+        finally:
+            structlog.contextvars.unbind_contextvars("request_id")
+
+    def test_falls_back_to_uuid_when_no_context(self) -> None:
+        import structlog
+
+        structlog.contextvars.unbind_contextvars("request_id")
+        from synthorg.api.exception_handlers import _get_instance_id
+
+        result = _get_instance_id()
+        assert _UUID_RE.match(result)
+
+    def test_falls_back_for_non_string_request_id(self) -> None:
+        import structlog
+
+        structlog.contextvars.bind_contextvars(request_id=12345)
+        try:
+            from synthorg.api.exception_handlers import _get_instance_id
+
+            result = _get_instance_id()
+            assert _UUID_RE.match(result)
+        finally:
+            structlog.contextvars.unbind_contextvars("request_id")
+
+    def test_falls_back_for_empty_string_request_id(self) -> None:
+        import structlog
+
+        structlog.contextvars.bind_contextvars(request_id="")
+        try:
+            from synthorg.api.exception_handlers import _get_instance_id
+
+            result = _get_instance_id()
+            assert _UUID_RE.match(result)
+        finally:
+            structlog.contextvars.unbind_contextvars("request_id")
+
+
+@pytest.mark.unit
+class TestCategoryForStatus:
+    """Direct unit tests for _category_for_status helper."""
+
+    @pytest.mark.parametrize(
+        ("status", "expected_code", "expected_category", "expected_retryable"),
+        [
+            (401, ErrorCode.UNAUTHORIZED, ErrorCategory.AUTH, False),
+            (403, ErrorCode.FORBIDDEN, ErrorCategory.AUTH, False),
+            (404, ErrorCode.ROUTE_NOT_FOUND, ErrorCategory.NOT_FOUND, False),
+            (409, ErrorCode.RESOURCE_CONFLICT, ErrorCategory.CONFLICT, False),
+            (429, ErrorCode.RATE_LIMITED, ErrorCategory.RATE_LIMIT, True),
+            (503, ErrorCode.SERVICE_UNAVAILABLE, ErrorCategory.INTERNAL, True),
+        ],
+    )
+    def test_mapped_status_codes(
+        self,
+        status: int,
+        expected_code: ErrorCode,
+        expected_category: ErrorCategory,
+        expected_retryable: bool,
+    ) -> None:
+        from synthorg.api.exception_handlers import _category_for_status
+
+        code, category, retryable = _category_for_status(status)
+        assert code == expected_code
+        assert category == expected_category
+        assert retryable is expected_retryable
+
+    def test_unmapped_server_error(self) -> None:
+        from synthorg.api.exception_handlers import _category_for_status
+
+        code, category, retryable = _category_for_status(507)
+        assert code == ErrorCode.INTERNAL_ERROR
+        assert category == ErrorCategory.INTERNAL
+        assert retryable is False
+
+    def test_unmapped_client_error(self) -> None:
+        from synthorg.api.exception_handlers import _category_for_status
+
+        code, category, retryable = _category_for_status(418)
+        assert code == ErrorCode.REQUEST_VALIDATION_ERROR
+        assert category == ErrorCategory.VALIDATION
+        assert retryable is False
+
+
+@pytest.mark.unit
+class TestApiErrorInstantiation:
+    """Tests for ApiError and subclass instantiation behavior."""
+
+    @pytest.mark.parametrize(
+        ("cls", "expected_status", "expected_default"),
+        [
+            (NotFoundError, 404, "Resource not found"),
+            (ConflictError, 409, "Resource conflict"),
+            (ForbiddenError, 403, "Forbidden"),
+            (UnauthorizedError, 401, "Authentication required"),
+            (ServiceUnavailableError, 503, "Service unavailable"),
+        ],
+    )
+    def test_default_message_and_status(
+        self,
+        cls: type[ApiError],
+        expected_status: int,
+        expected_default: str,
+    ) -> None:
+        exc = cls()
+        assert str(exc) == expected_default
+        assert exc.status_code == expected_status
+
+    def test_custom_message_takes_precedence(self) -> None:
+        exc = NotFoundError("Custom not found")
+        assert str(exc) == "Custom not found"
+        assert exc.status_code == 404

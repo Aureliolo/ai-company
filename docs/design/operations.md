@@ -975,6 +975,25 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/providers` | Model provider status, config |
 | `/api/v1/ws` | WebSocket for real-time updates |
 
+### Error Response Format (RFC 9457 Phase 1)
+
+All error responses include structured metadata for machine consumption alongside
+the existing human-readable `error` field. The `error_detail` object is present on
+every error response and contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message` | `str` | Human-readable error message (matches top-level `error`) |
+| `error_code` | `int` | Machine-readable 4-digit code (category-grouped: 1xxx=auth, 2xxx=validation, 3xxx=not_found, 4xxx=conflict, 5xxx=rate_limit, 6xxx=budget_exhausted, 7xxx=provider_error, 8xxx=internal) |
+| `error_category` | `str` | High-level category: `auth`, `validation`, `not_found`, `conflict`, `rate_limit`, `budget_exhausted`, `provider_error`, `internal` |
+| `retryable` | `bool` | Whether the client should retry the request |
+| `retry_after` | `int \| null` | Seconds to wait before retrying (null when not applicable) |
+| `instance` | `str` | Request correlation ID for log tracing |
+
+Agent consumers can use `retryable` and `retry_after` for autonomous retry logic,
+and `error_code` / `error_category` for programmatic error handling without parsing
+message strings.
+
 ### Web UI Features
 
 !!! note "Status"

@@ -98,7 +98,7 @@ class TestErrorDetail:
             error_category=ErrorCategory.INTERNAL,
             instance="x",
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             detail.message = "changed"  # type: ignore[misc]
 
     def test_serialization_roundtrip(self) -> None:

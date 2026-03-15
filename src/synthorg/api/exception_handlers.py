@@ -43,11 +43,19 @@ _SERVER_ERROR_THRESHOLD: Final[int] = 500
 
 
 def _get_instance_id() -> str:
-    """Get request correlation ID from structlog context, or generate one."""
-    ctx = structlog.contextvars.get_contextvars()
-    request_id = ctx.get("request_id")
-    if isinstance(request_id, str) and request_id:
-        return request_id
+    """Get request correlation ID from structlog context, or generate one.
+
+    Wrapped defensively because this runs inside exception handlers,
+    which are the last line of defense and must never crash.
+    """
+    try:
+        ctx = structlog.contextvars.get_contextvars()
+        request_id = ctx.get("request_id")
+        if isinstance(request_id, str) and request_id:
+            return request_id
+    except Exception:  # noqa: S110
+        # Exception handlers must never crash — silent fallback is intentional.
+        pass
     return generate_correlation_id()
 
 
@@ -64,7 +72,7 @@ def _build_error_response(
         error=message,
         error_detail=ErrorDetail(
             message=message,
-            error_code=int(error_code),
+            error_code=error_code,
             error_category=error_category,
             retryable=retryable,
             retry_after=retry_after,
@@ -169,8 +177,8 @@ def handle_persistence_error(
     _log_error(request, exc, status=500)
     return Response(
         content=_build_error_response(
-            message="Internal persistence error",
-            error_code=ErrorCode.PERSISTENCE_ERROR,
+            message="Internal server error",
+            error_code=ErrorCode.INTERNAL_ERROR,
             error_category=ErrorCategory.INTERNAL,
         ),
         status_code=500,

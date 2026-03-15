@@ -24,8 +24,8 @@ from litestar.types import ASGIApp, Message, Receive, Scope, Send  # noqa: TC002
 from synthorg.observability import get_logger
 from synthorg.observability.correlation import (
     bind_correlation_id,
+    clear_correlation_ids,
     generate_correlation_id,
-    unbind_correlation_id,
 )
 from synthorg.observability.events.api import (
     API_REQUEST_COMPLETED,
@@ -119,6 +119,31 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
         headers["Cross-Origin-Opener-Policy"] = "unsafe-none"
 
 
+def _log_request_completion(
+    method: str,
+    path: str,
+    status_code: int | None,
+    duration_ms: float,
+) -> None:
+    """Log request completion at the appropriate level."""
+    if status_code is None:
+        logger.warning(
+            API_REQUEST_COMPLETED,
+            method=method,
+            path=path,
+            status_code="unknown",
+            duration_ms=duration_ms,
+        )
+    else:
+        logger.info(
+            API_REQUEST_COMPLETED,
+            method=method,
+            path=path,
+            status_code=status_code,
+            duration_ms=duration_ms,
+        )
+
+
 class RequestLoggingMiddleware:
     """ASGI middleware that logs request start and completion.
 
@@ -145,9 +170,7 @@ class RequestLoggingMiddleware:
         method = request.method
         path = str(request.url.path)
 
-        request_id = generate_correlation_id()
-        bind_correlation_id(request_id=request_id)
-
+        bind_correlation_id(request_id=generate_correlation_id())
         logger.info(API_REQUEST_STARTED, method=method, path=path)
         start = time.perf_counter()
 
@@ -167,20 +190,5 @@ class RequestLoggingMiddleware:
             await self.app(scope, receive, capture_send)
         finally:
             duration_ms = round((time.perf_counter() - start) * 1000, 2)
-            if status_code is None:
-                logger.warning(
-                    API_REQUEST_COMPLETED,
-                    method=method,
-                    path=path,
-                    status_code="unknown",
-                    duration_ms=duration_ms,
-                )
-            else:
-                logger.info(
-                    API_REQUEST_COMPLETED,
-                    method=method,
-                    path=path,
-                    status_code=status_code,
-                    duration_ms=duration_ms,
-                )
-            unbind_correlation_id(request_id=True)
+            _log_request_completion(method, path, status_code, duration_ms)
+            clear_correlation_ids()
