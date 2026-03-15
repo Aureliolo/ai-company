@@ -32,7 +32,9 @@ logger = get_logger(__name__)
 # Applied to every HTTP response via the before_send hook.
 
 # Strict CSP for API routes — no inline scripts, self-origin only.
-_API_CSP: Final[str] = "default-src 'self'; script-src 'self'; base-uri 'self'"
+_API_CSP: Final[str] = (
+    "default-src 'self'; script-src 'self'; base-uri 'self'; frame-ancestors 'none'"
+)
 
 # Relaxed CSP for /docs/ — Scalar UI loads resources from external origins.
 # cdn.jsdelivr.net: JS bundle, CSS, fonts, source maps
@@ -48,7 +50,8 @@ _DOCS_CSP: Final[str] = (
     "img-src 'self' data: https://cdn.jsdelivr.net; "
     "font-src 'self' data: https://cdn.jsdelivr.net https://fonts.scalar.com; "
     "connect-src 'self' https://cdn.jsdelivr.net https://proxy.scalar.com; "
-    "base-uri 'self'"
+    "base-uri 'self'; "
+    "frame-ancestors 'none'"
 )
 
 # Static security headers (path-independent).
@@ -95,10 +98,15 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
     for name, value in _SECURITY_HEADERS.items():
         headers[name] = value
 
-    # Path-aware CSP
+    # Path-aware headers
     path: str = scope.get("path", "")
     is_docs = path == "/docs" or path.startswith("/docs/")
     headers["Content-Security-Policy"] = _DOCS_CSP if is_docs else _API_CSP
+
+    # Relax COOP for /docs — Scalar UI may use cross-origin popups
+    # for OAuth/API proxy features via proxy.scalar.com.
+    if is_docs:
+        headers["Cross-Origin-Opener-Policy"] = "unsafe-none"
 
 
 class RequestLoggingMiddleware:
