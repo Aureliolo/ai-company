@@ -5,6 +5,7 @@ import sqlite3
 import aiosqlite
 from pydantic import ValidationError
 
+from synthorg.core.enums import ExecutionStatus
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.observability import get_logger
@@ -105,8 +106,9 @@ INSERT OR REPLACE INTO agent_states (
             cursor = await self._db.execute(
                 "SELECT agent_id, execution_id, task_id, status, "
                 "turn_count, accumulated_cost_usd, last_activity_at, started_at "
-                "FROM agent_states WHERE status != 'idle' "
+                "FROM agent_states WHERE status != ? "
                 "ORDER BY last_activity_at DESC",
+                (ExecutionStatus.IDLE.value,),
             )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:

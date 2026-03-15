@@ -408,7 +408,11 @@ class FakeAgentStateRepository:
         return self._states.get(agent_id)
 
     async def get_active(self) -> tuple[AgentRuntimeState, ...]:
-        return ()
+        from synthorg.core.enums import ExecutionStatus
+
+        return tuple(
+            s for s in self._states.values() if s.status != ExecutionStatus.IDLE
+        )
 
     async def delete(self, agent_id: str) -> bool:
         return self._states.pop(agent_id, None) is not None

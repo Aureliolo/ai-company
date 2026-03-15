@@ -129,6 +129,10 @@ class TestAgentRuntimeStateIdle:
         assert state.last_activity_at is not None
         assert state.last_activity_at.tzinfo is not None
 
+    def test_idle_with_blank_agent_id_raises(self) -> None:
+        with pytest.raises(ValueError, match="whitespace"):
+            AgentRuntimeState.idle("  ")
+
 
 @pytest.mark.unit
 class TestAgentRuntimeStateFromContext:
@@ -164,55 +168,37 @@ class TestAgentRuntimeStateFromContext:
         with pytest.raises(ValueError, match="IDLE"):
             AgentRuntimeState.from_context(ctx, ExecutionStatus.IDLE)
 
+    def test_from_context_with_zero_cost(self) -> None:
+        ctx = _make_context(cost_usd=0.0)
+        state = AgentRuntimeState.from_context(ctx, ExecutionStatus.EXECUTING)
+        assert state.accumulated_cost_usd == 0.0
+
 
 @pytest.mark.unit
 class TestAgentRuntimeStateValidation:
     """Tests for status invariant validation."""
 
-    def test_idle_with_execution_id_raises(self) -> None:
-        with pytest.raises(ValueError, match="execution_id must be None"):
-            AgentRuntimeState(
-                agent_id="a",
-                execution_id="e",
-                status=ExecutionStatus.IDLE,
-                last_activity_at=_NOW,
-            )
-
-    def test_idle_with_task_id_raises(self) -> None:
-        with pytest.raises(ValueError, match="task_id must be None"):
-            AgentRuntimeState(
-                agent_id="a",
-                task_id="t",
-                status=ExecutionStatus.IDLE,
-                last_activity_at=_NOW,
-            )
-
-    def test_idle_with_started_at_raises(self) -> None:
-        with pytest.raises(ValueError, match="started_at must be None"):
-            AgentRuntimeState(
-                agent_id="a",
-                status=ExecutionStatus.IDLE,
-                started_at=_NOW,
-                last_activity_at=_NOW,
-            )
-
-    def test_idle_with_nonzero_turn_count_raises(self) -> None:
-        with pytest.raises(ValueError, match="turn_count must be 0"):
-            AgentRuntimeState(
-                agent_id="a",
-                status=ExecutionStatus.IDLE,
-                turn_count=1,
-                last_activity_at=_NOW,
-            )
-
-    def test_idle_with_nonzero_cost_raises(self) -> None:
-        with pytest.raises(ValueError, match=r"accumulated_cost_usd must be 0\.0"):
-            AgentRuntimeState(
-                agent_id="a",
-                status=ExecutionStatus.IDLE,
-                accumulated_cost_usd=0.01,
-                last_activity_at=_NOW,
-            )
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            ({"execution_id": "e"}, "execution_id must be None"),
+            ({"task_id": "t"}, "task_id must be None"),
+            ({"started_at": _NOW}, "started_at must be None"),
+            ({"turn_count": 1}, "turn_count must be 0"),
+            ({"accumulated_cost_usd": 0.01}, r"accumulated_cost_usd must be 0\.0"),
+        ],
+    )
+    def test_idle_single_violation_raises(
+        self, kwargs: dict[str, object], match: str
+    ) -> None:
+        fields = {
+            "agent_id": "a",
+            "status": ExecutionStatus.IDLE,
+            "last_activity_at": _NOW,
+            **kwargs,
+        }
+        with pytest.raises(ValueError, match=match):
+            AgentRuntimeState.model_validate(fields)
 
     def test_executing_without_execution_id_raises(self) -> None:
         with pytest.raises(ValueError, match="execution_id is required"):
@@ -279,8 +265,10 @@ class TestAgentRuntimeStateImmutability:
     """Tests for frozen model behavior and serialization."""
 
     def test_frozen(self) -> None:
+        from pydantic import ValidationError
+
         state = _make_executing_state()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             state.turn_count = 99  # type: ignore[misc]
 
     def test_json_roundtrip(self) -> None:

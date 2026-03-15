@@ -262,3 +262,35 @@ class TestSQLiteAgentStateRepositoryErrors:
 
         with pytest.raises(QueryError, match="Failed to deserialize"):
             await repo.get("agent-bad")
+
+    async def test_get_active_raises_query_error_on_corrupt_row(
+        self, migrated_db: aiosqlite.Connection
+    ) -> None:
+        """get_active() fails when any row has corrupt data."""
+        from synthorg.persistence.errors import QueryError
+
+        repo = SQLiteAgentStateRepository(migrated_db)
+        # Insert a valid executing row
+        valid = _make_state(agent_id="agent-ok")
+        await repo.save(valid)
+        # Insert a corrupt row with invalid status directly
+        await migrated_db.execute(
+            "INSERT INTO agent_states "
+            "(agent_id, execution_id, task_id, status, turn_count, "
+            "accumulated_cost_usd, last_activity_at, started_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "agent-corrupt",
+                "exec-corrupt",
+                None,
+                "invalid_status",
+                0,
+                0.0,
+                "2026-01-01T00:00:00+00:00",
+                "2026-01-01T00:00:00+00:00",
+            ),
+        )
+        await migrated_db.commit()
+
+        with pytest.raises(QueryError, match="Failed to deserialize"):
+            await repo.get_active()
