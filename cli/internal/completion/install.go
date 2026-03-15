@@ -80,7 +80,7 @@ func Install(ctx context.Context, rootCmd *cobra.Command, shell ShellType) (Resu
 
 	switch shell {
 	case Bash:
-		return installBash(rootCmd, res)
+		return installBash(res)
 	case Zsh:
 		return installZsh(rootCmd, res)
 	case Fish:
@@ -92,7 +92,7 @@ func Install(ctx context.Context, rootCmd *cobra.Command, shell ShellType) (Resu
 	}
 }
 
-func installBash(_ *cobra.Command, res Result) (Result, error) {
+func installBash(res Result) (Result, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return res, fmt.Errorf("cannot determine home directory: %w", err)

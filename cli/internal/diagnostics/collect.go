@@ -302,7 +302,13 @@ func parseContainerDetails(psJSON string) []ContainerDetail {
 	// Try JSON array first (newer Compose versions).
 	var details []ContainerDetail
 	if err := json.Unmarshal([]byte(psJSON), &details); err == nil {
-		return details
+		filtered := details[:0]
+		for _, d := range details {
+			if d.Name != "" {
+				filtered = append(filtered, d)
+			}
+		}
+		return filtered
 	}
 
 	// Fallback: NDJSON (one JSON object per line).

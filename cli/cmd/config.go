@@ -18,12 +18,14 @@ var configCmd = &cobra.Command{
 
 Running 'synthorg config' without a subcommand shows the current configuration
 (equivalent to 'synthorg config show').`,
+	Args: cobra.NoArgs,
 	RunE: runConfigShow,
 }
 
 var configShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Display current configuration",
+	Args:  cobra.NoArgs,
 	RunE:  runConfigShow,
 }
 
@@ -42,10 +44,13 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	}
 
 	statePath := config.StatePath(safeDir)
-	if _, err := os.Stat(statePath); errors.Is(err, os.ErrNotExist) {
-		out.Warn("Not initialized — no config found at " + statePath)
-		out.Hint("Run 'synthorg init' to set up")
-		return nil
+	if _, err := os.Stat(statePath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			out.Warn("Not initialized — no config found at " + statePath)
+			out.Hint("Run 'synthorg init' to set up")
+			return nil
+		}
+		return fmt.Errorf("checking config file: %w", err)
 	}
 
 	state, err := config.Load(safeDir)
