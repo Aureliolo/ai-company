@@ -420,10 +420,10 @@ class TestRankMemories:
 @pytest.mark.unit
 class TestFusionStrategy:
     def test_linear_value(self) -> None:
-        assert FusionStrategy.LINEAR == "linear"
+        assert FusionStrategy.LINEAR.value == "linear"
 
     def test_rrf_value(self) -> None:
-        assert FusionStrategy.RRF == "rrf"
+        assert FusionStrategy.RRF.value == "rrf"
 
     def test_is_str_enum(self) -> None:
         assert isinstance(FusionStrategy.LINEAR, str)
