@@ -104,6 +104,15 @@ jobs:
             fi
           fi
 
+          CLI_COSIGN=""
+          if grep -q "CLI_COSIGN_DATA" <<< "$BODY"; then
+            CLI_COSIGN=$(sed -n '/<!-- CLI_COSIGN_DATA/,/CLI_COSIGN_DATA -->/p' <<< "$BODY" \
+              | sed '1d;$d' | sed -n '/^```bash$/,/^```$/p' || true)
+            if [ -z "$CLI_COSIGN" ]; then
+              echo "::warning::CLI cosign verification data not found in release body"
+            fi
+          fi
+
           CONTAINER_COSIGN=""
           CONTAINER_SLSA=""
           if grep -q "CONTAINER_VERIFICATION_DATA" <<< "$BODY"; then
@@ -130,11 +139,15 @@ jobs:
 
           # Build the combined Verification section
           VERIFICATION=""
-          if [ -n "$CLI_CHECKSUMS" ] || [ -n "$CONTAINER_COSIGN" ] || [ -n "$CLI_SLSA" ] || [ -n "$CONTAINER_SLSA" ]; then
+          if [ -n "$CLI_CHECKSUMS" ] || [ -n "$CLI_COSIGN" ] || [ -n "$CONTAINER_COSIGN" ] || [ -n "$CLI_SLSA" ] || [ -n "$CONTAINER_SLSA" ]; then
             VERIFICATION="$(printf '\n<!-- FINALIZE_VERIFICATION -->\n\n---\n\n## Verification\n')"
 
             if [ -n "$CLI_CHECKSUMS" ]; then
               VERIFICATION="$(printf '%s\n\n### CLI Checksums (SHA-256)\n\n%s\n' "$VERIFICATION" "$CLI_CHECKSUMS")"
+            fi
+
+            if [ -n "$CLI_COSIGN" ]; then
+              VERIFICATION="$(printf '%s\n\n### CLI Binary Signatures\n\n%s\n' "$VERIFICATION" "$CLI_COSIGN")"
             fi
 
             if [ -n "$CONTAINER_COSIGN" ]; then
@@ -168,6 +181,7 @@ jobs:
           if [ -n "$VERIFICATION" ]; then
             CLEANED=$(printf '%s' "$BODY" \
               | sed '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/d' \
+              | sed '/<!-- CLI_COSIGN_DATA/,/CLI_COSIGN_DATA -->/d' \
               | sed '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/d' \
               | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
             FINAL="${CLEANED}${VERIFICATION}"
