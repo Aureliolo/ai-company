@@ -5,6 +5,7 @@
       "release-type": "python",
       "package-name": "synthorg",
       "include-component-in-tag": false,
+      "last-release-sha": "24a0d7aca1eb1b594a821581cf6a1ecc38c3e4c8",
       "changelog-path": ".github/CHANGELOG.md",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
