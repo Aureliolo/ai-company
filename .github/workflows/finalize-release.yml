@@ -149,8 +149,8 @@ jobs:
             if [ -n "$CONTAINER_SLSA" ]; then
               if [ -n "$SLSA_BLOCK" ]; then
                 # Merge: strip closing ``` from CLI, strip opening ```bash from container
-                CLI_COMMANDS=$(echo "$CLI_SLSA" | sed '1d;$d')
-                CONTAINER_COMMANDS=$(echo "$CONTAINER_SLSA" | sed '1d;$d')
+                CLI_COMMANDS=$(printf '%s' "$CLI_SLSA" | sed '1d' | sed '/^```$/d')
+                CONTAINER_COMMANDS=$(printf '%s' "$CONTAINER_SLSA" | sed '1d' | sed '/^```$/d')
                 SLSA_BLOCK="$(printf '```bash\n%s\n\n%s\n```' "$CLI_COMMANDS" "$CONTAINER_COMMANDS")"
               else
                 SLSA_BLOCK="$CONTAINER_SLSA"
@@ -173,11 +173,9 @@ jobs:
 
           tmpfile="$(mktemp)"
           printf '%s' "$FINAL" > "$tmpfile"
-          EDIT_OK=true
           if gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$tmpfile"; then
             echo "Release body assembled with combined Verification section."
           else
-            EDIT_OK=false
             if [ -n "$VERIFICATION" ]; then
               echo "::error::Failed to update release body — verification data would be lost. Not publishing."
               rm -f "$tmpfile"
