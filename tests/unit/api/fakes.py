@@ -527,9 +527,8 @@ class FakeMessageBus:
         *,
         timeout: float | None = None,  # noqa: ASYNC109
     ) -> Any:
-        # Simulate waiting for a message (yields to event loop)
-        if timeout is not None:
-            await asyncio.sleep(min(timeout, 0.01))
+        # Yield to event loop without real delay (deterministic in tests)
+        await asyncio.sleep(0)
         return None
 
     async def create_channel(self, channel: Channel) -> Channel:
