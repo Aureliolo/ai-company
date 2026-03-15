@@ -31,7 +31,11 @@ def _assert_all_security_headers(
     *,
     status: int,
 ) -> None:
-    """Assert that all static security headers and CSP are present."""
+    """Assert that all static security headers and CSP are present.
+
+    Only valid for non-docs paths (where COOP is ``same-origin``
+    and CSP is the strict API policy).
+    """
     for name, expected in _SECURITY_HEADERS.items():
         assert resp.headers.get(name) == expected, (
             f"Missing or wrong header on {status}: {name}"
@@ -175,6 +179,16 @@ class TestCSPPathSelection:
         response = test_client.get(path)
         csp = response.headers.get("content-security-policy")
         assert csp == expected_csp
+
+    def test_docs_path_relaxes_coop(self, test_client: TestClient[Any]) -> None:
+        """Docs paths get COOP unsafe-none for Scalar UI compatibility."""
+        response = test_client.get("/docs/openapi.json")
+        assert response.headers.get("cross-origin-opener-policy") == "unsafe-none"
+
+    def test_api_path_keeps_strict_coop(self, test_client: TestClient[Any]) -> None:
+        """API paths keep COOP same-origin."""
+        response = test_client.get("/api/v1/health")
+        assert response.headers.get("cross-origin-opener-policy") == "same-origin"
 
 
 # ── Request logging middleware ─────────────────────────────────

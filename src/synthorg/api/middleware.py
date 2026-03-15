@@ -13,6 +13,7 @@ for matched routes — 404 and 405 responses from the router bypass it.
 """
 
 import time
+from types import MappingProxyType
 from typing import Any, Final
 
 from litestar import Request
@@ -54,17 +55,19 @@ _DOCS_CSP: Final[str] = (
     "frame-ancestors 'none'"
 )
 
-# Static security headers (path-independent).
-_SECURITY_HEADERS: Final[dict[str, str]] = {
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
-    "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
-    "Cross-Origin-Resource-Policy": "same-origin",
-    "Cross-Origin-Opener-Policy": "same-origin",
-    "Cache-Control": "no-store",
-}
+# Static security headers (path-independent, immutable at runtime).
+_SECURITY_HEADERS: Final[MappingProxyType[str, str]] = MappingProxyType(
+    {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
+        "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cache-Control": "no-store",
+    }
+)
 
 
 async def security_headers_hook(message: Message, scope: Scope) -> None:
