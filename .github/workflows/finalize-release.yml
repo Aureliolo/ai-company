@@ -113,6 +113,15 @@ jobs:
             fi
           fi
 
+          CLI_SLSA_BUNDLE=""
+          if grep -q "CLI_SLSA_BUNDLE_DATA" <<< "$BODY"; then
+            CLI_SLSA_BUNDLE=$(sed -n '/<!-- CLI_SLSA_BUNDLE_DATA/,/CLI_SLSA_BUNDLE_DATA -->/p' <<< "$BODY" \
+              | sed '1d;$d' | sed -n '/^```bash$/,/^```$/p' || true)
+            if [ -z "$CLI_SLSA_BUNDLE" ]; then
+              echo "::warning::CLI SLSA bundle verification data not found in release body"
+            fi
+          fi
+
           CONTAINER_COSIGN=""
           CONTAINER_SLSA=""
           if grep -q "CONTAINER_VERIFICATION_DATA" <<< "$BODY"; then
@@ -139,7 +148,7 @@ jobs:
 
           # Build the combined Verification section
           VERIFICATION=""
-          if [ -n "$CLI_CHECKSUMS" ] || [ -n "$CLI_COSIGN" ] || [ -n "$CONTAINER_COSIGN" ] || [ -n "$CLI_SLSA" ] || [ -n "$CONTAINER_SLSA" ]; then
+          if [ -n "$CLI_CHECKSUMS" ] || [ -n "$CLI_COSIGN" ] || [ -n "$CLI_SLSA_BUNDLE" ] || [ -n "$CONTAINER_COSIGN" ] || [ -n "$CLI_SLSA" ] || [ -n "$CONTAINER_SLSA" ]; then
             VERIFICATION="$(printf '\n<!-- FINALIZE_VERIFICATION -->\n\n---\n\n## Verification\n')"
 
             if [ -n "$CLI_CHECKSUMS" ]; then
@@ -148,6 +157,10 @@ jobs:
 
             if [ -n "$CLI_COSIGN" ]; then
               VERIFICATION="$(printf '%s\n\n### CLI Binary Signatures\n\n%s\n' "$VERIFICATION" "$CLI_COSIGN")"
+            fi
+
+            if [ -n "$CLI_SLSA_BUNDLE" ]; then
+              VERIFICATION="$(printf '%s\n\n### CLI Provenance Bundle\n\nVerify the Sigstore provenance bundle (`.sigstore.json`):\n\n%s\n' "$VERIFICATION" "$CLI_SLSA_BUNDLE")"
             fi
 
             if [ -n "$CONTAINER_COSIGN" ]; then
@@ -182,6 +195,7 @@ jobs:
             CLEANED=$(printf '%s' "$BODY" \
               | sed '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/d' \
               | sed '/<!-- CLI_COSIGN_DATA/,/CLI_COSIGN_DATA -->/d' \
+              | sed '/<!-- CLI_SLSA_BUNDLE_DATA/,/CLI_SLSA_BUNDLE_DATA -->/d' \
               | sed '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/d' \
               | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
             FINAL="${CLEANED}${VERIFICATION}"

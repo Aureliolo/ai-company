@@ -313,12 +313,16 @@ jobs:
       - name: Attest build provenance (SLSA Level 3)
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
+          # subject-checksums treats the file as a manifest: attests every
+          # binary archive listed inside it (the primary SLSA L3 attestations).
           subject-checksums: cli/dist/checksums.txt
 
       - name: Attest checksums file provenance
         id: attest-checksums
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
         with:
+          # subject-path attests the checksums.txt file itself; bundle-path
+          # output is uploaded as .sigstore.json for OpenSSF Scorecard scoring.
           subject-path: cli/dist/checksums.txt
 
       - name: Upload provenance bundle to release
@@ -401,6 +405,15 @@ jobs:
             --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
           \`\`\`
           CLI_COSIGN_DATA -->
+
+          <!-- CLI_SLSA_BUNDLE_DATA
+          \`\`\`bash
+          cosign verify-blob-attestation checksums.txt \\
+            --bundle checksums.txt.sigstore.json \\
+            --certificate-identity-regexp='github\\.com/Aureliolo/synthorg' \\
+            --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+          \`\`\`
+          CLI_SLSA_BUNDLE_DATA -->
           NOTES
           )"
 
