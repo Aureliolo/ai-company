@@ -27,6 +27,7 @@ from synthorg.core.enums import (
     TaskStatus,
 )
 from synthorg.core.task import Task
+from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.engine.checkpoint.models import Checkpoint, Heartbeat
 from synthorg.engine.task_engine import TaskEngine
 from synthorg.hr.enums import LifecycleEventType
@@ -394,6 +395,25 @@ class FakeHeartbeatRepository:
         return self._heartbeats.pop(execution_id, None) is not None
 
 
+class FakeAgentStateRepository:
+    """In-memory agent state repository for tests."""
+
+    def __init__(self) -> None:
+        self._states: dict[str, AgentRuntimeState] = {}
+
+    async def save(self, state: AgentRuntimeState) -> None:
+        self._states[state.agent_id] = state
+
+    async def get(self, agent_id: str) -> AgentRuntimeState | None:
+        return self._states.get(agent_id)
+
+    async def get_active(self) -> tuple[AgentRuntimeState, ...]:
+        return ()
+
+    async def delete(self, agent_id: str) -> bool:
+        return self._states.pop(agent_id, None) is not None
+
+
 class FakePersistenceBackend:
     """In-memory persistence backend for tests."""
 
@@ -410,6 +430,7 @@ class FakePersistenceBackend:
         self._api_keys = FakeApiKeyRepository()
         self._checkpoints = FakeCheckpointRepository()
         self._heartbeats_repo = FakeHeartbeatRepository()
+        self._agent_states_repo = FakeAgentStateRepository()
         self._settings: dict[str, str] = {}
         self._connected = False
 
@@ -480,6 +501,10 @@ class FakePersistenceBackend:
     @property
     def heartbeats(self) -> FakeHeartbeatRepository:
         return self._heartbeats_repo
+
+    @property
+    def agent_states(self) -> FakeAgentStateRepository:
+        return self._agent_states_repo
 
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)

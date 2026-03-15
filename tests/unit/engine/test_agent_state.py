@@ -58,6 +58,7 @@ def _make_context(
     from uuid import UUID
 
     from synthorg.core.agent import AgentIdentity, ModelConfig
+    from synthorg.core.enums import TaskType
     from synthorg.core.task import Task
     from synthorg.engine.context import AgentContext
     from synthorg.engine.task_execution import TaskExecution
@@ -78,7 +79,7 @@ def _make_context(
             id=task_id,
             title="Test task",
             description="A test task",
-            type="development",
+            type=TaskType.DEVELOPMENT,
             project="test-project",
             created_by=str(identity.id),
         )
