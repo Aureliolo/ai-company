@@ -55,6 +55,7 @@ repos:
         name: mypy type-check
         entry: uv run python -m mypy src/ tests/
         language: system
+        files: ^(src/|tests/).*\.py$
         pass_filenames: false
         stages: [pre-push]
 
@@ -62,6 +63,7 @@ repos:
         name: pytest unit tests
         entry: uv run python -m pytest tests/ -m unit -n auto -q
         language: system
+        files: ^(src/|tests/).*\.py$
         pass_filenames: false
         stages: [pre-push]
 
