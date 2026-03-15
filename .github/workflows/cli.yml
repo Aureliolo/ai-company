@@ -236,16 +236,16 @@ jobs:
           # "Report fuzz outcome" step.
           echo "All CLI checks passed (some may have been skipped due to path filters)"
 
-  # ── Release Build (GoReleaser, only on version tags) ──
-  cli-release-build:
-    name: CLI Release Build
+  # ── Release (GoReleaser + provenance, only on version tags) ──
+  cli-release:
+    name: CLI Release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [cli-lint, cli-test, cli-build, cli-vuln]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    outputs:
-      hashes: ${{ steps.hash.outputs.hashes }}
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -283,46 +283,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate subject hashes for SLSA provenance
-        id: hash
-        working-directory: cli/dist
-        run: |
-          # GoReleaser writes checksums.txt in SLSA subjects format (hash  filename).
-          if [ ! -f checksums.txt ] || [ ! -s checksums.txt ]; then
-            echo "::error::checksums.txt is missing or empty"
-            exit 1
-          fi
-          HASHES=$(cat checksums.txt | base64 -w0)
-          echo "hashes=$HASHES" >> "$GITHUB_OUTPUT"
+      - name: Attest build provenance (SLSA Level 3)
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-checksums: cli/dist/checksums.txt
 
-  # ── Release Provenance (SLSA Level 3, only on version tags) ──
-  cli-release-provenance:
-    name: CLI Release Provenance
-    needs: [cli-release-build]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.cli-release-build.result == 'success'
-    permissions:
-      actions: read
-      id-token: write
-      contents: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
-    with:
-      base64-subjects: "${{ needs.cli-release-build.outputs.hashes }}"
-      upload-assets: true
-      provenance-name: cli-provenance.intoto.jsonl
-
-  # ── Release Notes (appended after build + provenance) ──
-  cli-release-notes:
-    name: CLI Release Notes
-    needs: [cli-release-build, cli-release-provenance]
-    if: always() && needs.cli-release-build.result == 'success'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Append install instructions, checksums, and provenance to release notes
+      - name: Append install instructions and checksums to release notes
         env:
           GH_TOKEN: ${{ github.token }}
-          PROVENANCE_RESULT: ${{ needs.cli-release-provenance.result }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
 
@@ -366,30 +334,19 @@ jobs:
           | \`synthorg_darwin_arm64.tar.gz\` | \`${CS_darwin_arm64}\` |
           | \`synthorg_windows_amd64.zip\` | \`${CS_windows_amd64}\` |
           | \`synthorg_windows_arm64.zip\` | \`${CS_windows_arm64}\` |
-          NOTES
-          )"
-
-          # Conditionally add provenance verification section.
-          PROVENANCE_NOTES=""
-          if [ "$PROVENANCE_RESULT" = "success" ]; then
-            PROVENANCE_NOTES="$(cat <<PROV
 
           ### Provenance Verification (SLSA Level 3)
 
-          Verify the provenance of any archive with [slsa-verifier](https://github.com/slsa-framework/slsa-verifier):
+          Verify the provenance of any archive with the [GitHub CLI](https://cli.github.com/):
           \`\`\`bash
-          slsa-verifier verify-artifact synthorg_linux_amd64.tar.gz \\
-            --provenance-path cli-provenance.intoto.jsonl \\
-            --source-uri github.com/Aureliolo/synthorg \\
-            --source-tag ${TAG}
+          gh attestation verify synthorg_linux_amd64.tar.gz -R Aureliolo/synthorg
           \`\`\`
-          PROV
-            )"
-          fi
+          NOTES
+          )"
 
           # Fetch existing body and append.
           EXISTING_BODY="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body -q .body)"
-          FULL_BODY="${EXISTING_BODY}${INSTALL_NOTES}${PROVENANCE_NOTES}"
+          FULL_BODY="${EXISTING_BODY}${INSTALL_NOTES}"
 
           tmpfile="$(mktemp)"
           printf '%s' "$FULL_BODY" > "$tmpfile"

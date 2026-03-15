@@ -79,7 +79,7 @@ The SynthOrg engine is structured as a set of loosely coupled subsystems. Each b
 | Web UI | Vue 3 | React, Svelte, HTMX | Simpler than React for dashboards. |
 | Persistence | Pluggable protocol + repository protocols | ORM (SQLAlchemy), raw SQL, hybrid | Same frozen Pydantic models in and out (no DTOs), async throughout, backend-swappable via config. Repository protocols decouple app code from storage engine. |
 | Sandboxing | Layered: subprocess + Docker | Docker-only, subprocess-only, WASM | Risk-proportionate: fast subprocess for file/git, Docker isolation for code execution. Pluggable `SandboxBackend` protocol enables K8s migration later. |
-| Container Packaging | Chainguard distroless + GHCR | Alpine, Debian-slim, scratch, Docker Hub | Minimal attack surface, non-root by default, continuously scanned in CI. GHCR for tighter GitHub integration. cosign keyless signing for supply-chain integrity. Trivy + Grype dual scanning. SLSA L3 provenance attestations on container images and CLI binaries via slsa-github-generator. |
+| Container Packaging | Chainguard distroless + GHCR | Alpine, Debian-slim, scratch, Docker Hub | Minimal attack surface, non-root by default, continuously scanned in CI. GHCR for tighter GitHub integration. cosign keyless signing for supply-chain integrity. Trivy + Grype dual scanning. SLSA L3 provenance attestations on container images and CLI binaries via `actions/attest-build-provenance`. |
 
 <a id="why-litestar-over-fastapi"></a>
 !!! info "Design Decision: Why Litestar over FastAPI?"
