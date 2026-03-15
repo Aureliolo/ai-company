@@ -339,7 +339,7 @@ jobs:
           # Extract DSSE envelope as .intoto.jsonl for OpenSSF Scorecard
           # provenance detection (Scorecard recognises .intoto.jsonl but
           # classifies .sigstore.json as a signature, not provenance).
-          jq -c '.dsseEnvelope' "$BUNDLE" > cli/dist/checksums.txt.intoto.jsonl
+          jq -e -c '.dsseEnvelope' "$BUNDLE" > cli/dist/checksums.txt.intoto.jsonl
 
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
             cli/dist/checksums.txt.sigstore.json \
