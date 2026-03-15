@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import Button from 'primevue/button'
 import { useToast } from 'primevue/usetoast'
 import AppShell from '@/components/layout/AppShell.vue'
@@ -13,17 +13,14 @@ import TaskCreateDialog from '@/components/tasks/TaskCreateDialog.vue'
 import TaskFilters from '@/components/tasks/TaskFilters.vue'
 import { useTaskStore } from '@/stores/tasks'
 import { useAgentStore } from '@/stores/agents'
-import { useWebSocketStore } from '@/stores/websocket'
-import { useAuthStore } from '@/stores/auth'
 import { useAuth } from '@/composables/useAuth'
+import { useWebSocketSubscription } from '@/composables/useWebSocketSubscription'
 import { sanitizeForLog } from '@/utils/logging'
 import type { Task, TaskStatus, Priority, CreateTaskRequest, TaskFilters as TaskFilterType } from '@/api/types'
 
 const toast = useToast()
 const taskStore = useTaskStore()
 const agentStore = useAgentStore()
-const wsStore = useWebSocketStore()
-const authStore = useAuthStore()
 const { canWrite } = useAuth()
 
 const viewMode = ref<'kanban' | 'list'>('kanban')
@@ -34,17 +31,11 @@ const filters = ref<TaskFilterType>({})
 
 const agentNames = computed(() => agentStore.agents.map((a) => a.name))
 
-onMounted(async () => {
-  try {
-    if (authStore.token && !wsStore.connected) {
-      wsStore.connect(authStore.token)
-    }
-    wsStore.subscribe(['tasks'])
-    wsStore.onChannelEvent('tasks', taskStore.handleWsEvent)
-  } catch (err) {
-    console.error('WebSocket setup failed:', sanitizeForLog(err))
-  }
+useWebSocketSubscription({
+  bindings: [{ channel: 'tasks', handler: taskStore.handleWsEvent }],
+})
 
+onMounted(async () => {
   try {
     await Promise.all([
       taskStore.fetchTasks({ limit: 200 }),
@@ -53,11 +44,6 @@ onMounted(async () => {
   } catch (err) {
     console.error('Initial data fetch failed:', sanitizeForLog(err))
   }
-})
-
-onUnmounted(() => {
-  wsStore.unsubscribe(['tasks'])
-  wsStore.offChannelEvent('tasks', taskStore.handleWsEvent)
 })
 
 function openDetail(task: Task) {

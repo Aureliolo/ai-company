@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted } from 'vue'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
@@ -8,35 +8,21 @@ import BudgetConfigDisplay from '@/components/budget/BudgetConfigDisplay.vue'
 import SpendingChart from '@/components/budget/SpendingChart.vue'
 import AgentSpendingTable from '@/components/budget/AgentSpendingTable.vue'
 import { useBudgetStore } from '@/stores/budget'
-import { useWebSocketStore } from '@/stores/websocket'
-import { useAuthStore } from '@/stores/auth'
-
 import { sanitizeForLog } from '@/utils/logging'
+import { useWebSocketSubscription } from '@/composables/useWebSocketSubscription'
 
 const budgetStore = useBudgetStore()
-const wsStore = useWebSocketStore()
-const authStore = useAuthStore()
+
+useWebSocketSubscription({
+  bindings: [{ channel: 'budget', handler: budgetStore.handleWsEvent }],
+})
 
 onMounted(async () => {
-  try {
-    if (authStore.token && !wsStore.connected) {
-      wsStore.connect(authStore.token)
-    }
-    wsStore.subscribe(['budget'])
-    wsStore.onChannelEvent('budget', budgetStore.handleWsEvent)
-  } catch (err) {
-    console.error('WebSocket setup failed:', sanitizeForLog(err))
-  }
   try {
     await Promise.all([budgetStore.fetchConfig(), budgetStore.fetchRecords({ limit: 200 })])
   } catch (err) {
     console.error('Initial data fetch failed:', sanitizeForLog(err))
   }
-})
-
-onUnmounted(() => {
-  wsStore.unsubscribe(['budget'])
-  wsStore.offChannelEvent('budget', budgetStore.handleWsEvent)
 })
 
 async function retryFetch() {
