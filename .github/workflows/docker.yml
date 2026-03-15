@@ -124,22 +124,30 @@ jobs:
 
       - name: Evaluate Trivy results
         run: |
+          if [ ! -f trivy-backend.json ]; then
+            echo "::error::trivy-backend.json not found — Trivy scan may have failed to produce output"
+            exit 1
+          fi
           echo "## Trivy Scan — Backend"
           TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-backend.json)
           if [ "$TOTAL" -eq 0 ]; then
             echo "No CRITICAL or HIGH vulnerabilities found."
+            echo "## Trivy Scan — Backend: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
           else
-            jq -r '
+            TABLE=$(jq -r '
               ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
               (.Results[]?.Vulnerabilities[]? |
                 [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
               @tsv
-            ' trivy-backend.json | column -t -s$'\t'
+            ' trivy-backend.json | column -t -s$'\t')
+            echo "$TABLE"
+            printf '## Trivy Scan — Backend\n```\n%s\n```\n' "$TABLE" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-backend.json)
           HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-backend.json)
           echo "Critical: $CRITICAL, High: $HIGH"
+          echo "**Critical: $CRITICAL, High: $HIGH**" >> "$GITHUB_STEP_SUMMARY"
           if [ "$HIGH" -gt 0 ]; then
             echo "::warning::Found $HIGH HIGH severity vulnerabilities"
           fi
@@ -286,22 +294,30 @@ jobs:
 
       - name: Evaluate Trivy results
         run: |
+          if [ ! -f trivy-web.json ]; then
+            echo "::error::trivy-web.json not found — Trivy scan may have failed to produce output"
+            exit 1
+          fi
           echo "## Trivy Scan — Web"
           TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-web.json)
           if [ "$TOTAL" -eq 0 ]; then
             echo "No CRITICAL or HIGH vulnerabilities found."
+            echo "## Trivy Scan — Web: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
           else
-            jq -r '
+            TABLE=$(jq -r '
               ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
               (.Results[]?.Vulnerabilities[]? |
                 [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
               @tsv
-            ' trivy-web.json | column -t -s$'\t'
+            ' trivy-web.json | column -t -s$'\t')
+            echo "$TABLE"
+            printf '## Trivy Scan — Web\n```\n%s\n```\n' "$TABLE" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-web.json)
           HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-web.json)
           echo "Critical: $CRITICAL, High: $HIGH"
+          echo "**Critical: $CRITICAL, High: $HIGH**" >> "$GITHUB_STEP_SUMMARY"
           if [ "$HIGH" -gt 0 ]; then
             echo "::warning::Found $HIGH HIGH severity vulnerabilities"
           fi
