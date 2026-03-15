@@ -1,8 +1,13 @@
+---
+const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossAAAAADwxZo5bt8p6az7P3M6I_8k4_ypu";
+---
+
 <form
   id="contact-form"
   action="https://formcarry.com/s/z2vjjRnmz_7"
   method="POST"
   class="bg-[#1a1f2e] rounded-xl p-8 border border-white/10"
+  data-recaptcha-key={recaptchaSiteKey}
 >
   <!-- Honeypot -->
   <input type="text" name="_gotcha" style="display:none" tabindex="-1" autocomplete="off" />
@@ -60,6 +65,8 @@
     ></textarea>
   </div>
 
+  <input type="hidden" id="captchaResponse" name="g-recaptcha-response" />
+
   <button
     type="submit"
     id="contact-submit"
@@ -106,6 +113,23 @@
       errorMsg.classList.add("hidden");
 
       try {
+        // Get fresh reCAPTCHA v3 token before submission
+        const siteKey = form.dataset.recaptchaKey;
+        const captchaInput = form.querySelector<HTMLInputElement>("#captchaResponse");
+        if (typeof grecaptcha === "undefined" || !siteKey || !captchaInput) {
+          errorMsg.textContent = "Security verification unavailable. Please disable ad-blockers or try a different browser.";
+          errorMsg.classList.remove("hidden");
+          errorMsg.focus();
+          return;
+        }
+        let timer: ReturnType<typeof setTimeout>;
+        await Promise.race([
+          new Promise<void>((resolve) => grecaptcha.ready(() => { clearTimeout(timer); resolve(); })),
+          new Promise<void>((_, reject) => { timer = setTimeout(() => reject(new Error("reCAPTCHA timeout")), 5000); }),
+        ]);
+        const token = await grecaptcha.execute(siteKey, { action: "contact" });
+        captchaInput.value = token;
+
         const res = await fetch(form.action, {
           method: "POST",
           body: new FormData(form),
