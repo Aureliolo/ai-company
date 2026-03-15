@@ -410,6 +410,7 @@ jobs:
           \`\`\`bash
           cosign verify-blob-attestation checksums.txt \\
             --bundle checksums.txt.sigstore.json \\
+            --type slsaprovenance1 \\
             --certificate-identity-regexp='github\\.com/Aureliolo/synthorg' \\
             --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
           \`\`\`
