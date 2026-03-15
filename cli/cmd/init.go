@@ -12,6 +12,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -67,12 +68,14 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	composePath := filepath.Join(safeDir, "compose.yml")
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nSynthOrg initialized in %s\n", safeDir)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  Compose file: %s\n", composePath)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  Config:       %s\n", config.StatePath(safeDir))
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "\nKeep compose.yml and config.json private — they contain your JWT secret.\n")
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Run 'synthorg start' to launch.\n")
+	out := ui.NewUI(cmd.OutOrStdout())
+	out.Logo(version.Version)
+	out.Success("SynthOrg initialized")
+	out.KeyValue("Data dir", safeDir)
+	out.KeyValue("Compose file", filepath.Join(safeDir, "compose.yml"))
+	out.KeyValue("Config", config.StatePath(safeDir))
+	out.Warn("Keep compose.yml and config.json private — they contain your JWT secret.")
+	out.Hint("Run 'synthorg start' to launch.")
 
 	return nil
 }
@@ -94,6 +97,7 @@ func runSetupForm() (setupAnswers, error) {
 		dir:            defaults.DataDir,
 		backendPortStr: fmt.Sprintf("%d", defaults.BackendPort),
 		webPortStr:     fmt.Sprintf("%d", defaults.WebPort),
+		sandbox:        defaults.Sandbox,
 		dockerSock:     defaultDockerSock(),
 		logLevel:       defaults.LogLevel,
 		genJWT:         true,

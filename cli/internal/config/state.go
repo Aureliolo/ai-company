@@ -29,6 +29,7 @@ func DefaultState() State {
 		ImageTag:    "latest",
 		BackendPort: 8000,
 		WebPort:     3000,
+		Sandbox:     true,
 		LogLevel:    "info",
 	}
 }

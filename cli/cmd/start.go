@@ -12,6 +12,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/health"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -43,40 +44,44 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("compose.yml not found in %s — run 'synthorg init' first", safeDir)
 	}
 
+	out := ui.NewUI(cmd.OutOrStdout())
+	errOut := ui.NewUI(cmd.ErrOrStderr())
+
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Docker %s, Compose %s\n", info.DockerVersion, info.ComposeVersion)
+	out.Success(fmt.Sprintf("Docker %s, Compose %s", info.DockerVersion, info.ComposeVersion))
 
 	// Check minimum versions.
 	for _, w := range docker.CheckMinVersions(info) {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s\n", w)
+		errOut.Warn(w)
 	}
 
 	// Pull latest images.
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Pulling images...")
+	out.Step("Pulling images...")
 	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
 		return fmt.Errorf("pulling images: %w", err)
 	}
 
 	// Start containers.
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Starting containers...")
+	out.Step("Starting containers...")
 	if err := composeRun(ctx, cmd, info, safeDir, "up", "-d"); err != nil {
 		return fmt.Errorf("starting containers: %w", err)
 	}
 
 	// Wait for health.
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Waiting for backend to become healthy...")
+	out.Step("Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
 	if err := health.WaitForHealthy(ctx, healthURL, 90*time.Second, 2*time.Second, 5*time.Second); err != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Containers are running but health check failed. Run 'synthorg doctor' for diagnostics.\n")
+		errOut.Error("Containers are running but health check failed.")
+		errOut.Hint("Run 'synthorg doctor' for diagnostics.")
 		return fmt.Errorf("health check did not pass: %w", err)
 	}
 
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "SynthOrg is running!")
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  API:       http://localhost:%d/api/v1/health\n", state.BackendPort)
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  Dashboard: http://localhost:%d\n", state.WebPort)
+	out.Success("SynthOrg is running!")
+	out.KeyValue("API", fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort))
+	out.KeyValue("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
 	return nil
 }
 

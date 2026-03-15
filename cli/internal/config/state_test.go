@@ -22,6 +22,9 @@ func TestDefaultState(t *testing.T) {
 	if s.LogLevel != "info" {
 		t.Errorf("LogLevel = %q, want info", s.LogLevel)
 	}
+	if !s.Sandbox {
+		t.Error("Sandbox should default to true")
+	}
 	if s.DataDir == "" {
 		t.Error("DataDir should not be empty")
 	}

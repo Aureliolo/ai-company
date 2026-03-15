@@ -391,11 +391,178 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
+  build-sandbox:
+    name: Build Sandbox
+    needs: [version]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: ghcr.io/aureliolo/synthorg-sandbox
+          tags: |
+            type=raw,value=${{ needs.version.outputs.app_version }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,prefix=sha-
+
+      # Build locally first, scan, then push only if scans pass
+      - name: Build image
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: .
+          file: docker/sandbox/Dockerfile
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      # SHA tag always exists (version/semver tags only on v* tags)
+      - name: Compute scan image ref
+        id: scan-ref
+        run: echo "ref=ghcr.io/aureliolo/synthorg-sandbox:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # Single Trivy run for CRITICAL + HIGH.
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ steps.scan-ref.outputs.ref }}
+          format: json
+          output: trivy-sandbox.json
+          exit-code: "0"
+          severity: CRITICAL,HIGH
+          trivyignores: .github/.trivyignore.yaml
+
+      - name: Evaluate Trivy results
+        run: |
+          if [ ! -f trivy-sandbox.json ]; then
+            echo "::error::trivy-sandbox.json not found — Trivy scan may have failed to produce output"
+            exit 1
+          fi
+          echo "## Trivy Scan — Sandbox"
+          TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-sandbox.json)
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "No CRITICAL or HIGH vulnerabilities found."
+            echo "## Trivy Scan — Sandbox: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
+          else
+            TABLE=$(jq -r '
+              ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
+              (.Results[]?.Vulnerabilities[]? |
+                [.Severity, .VulnerabilityID, .PkgName, .InstalledVersion, (.Title // "")[0:60]]) |
+              @tsv
+            ' trivy-sandbox.json | column -t -s$'\t')
+            echo "$TABLE"
+            printf '## Trivy Scan — Sandbox\n```\n%s\n```\n' "$TABLE" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-sandbox.json)
+          HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' trivy-sandbox.json)
+          echo "Critical: $CRITICAL, High: $HIGH"
+          echo "**Critical: $CRITICAL, High: $HIGH**" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$HIGH" -gt 0 ]; then
+            echo "::warning::Found $HIGH HIGH severity vulnerabilities"
+          fi
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "::error::Found $CRITICAL CRITICAL vulnerabilities — failing build"
+            exit 1
+          fi
+
+      - name: Upload Trivy report (sandbox)
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: trivy-sandbox-report
+          path: trivy-sandbox.json
+          retention-days: 30
+
+      - name: Grype scan
+        uses: anchore/scan-action@7037fa011853d5a11690026fb85feee79f4c946c # v7.3.2
+        with:
+          image: ${{ steps.scan-ref.outputs.ref }}
+          fail-build: true
+          severity-cutoff: critical
+          config: .github/.grype.yaml
+
+      - name: CIS Docker Benchmark (sandbox)
+        continue-on-error: true
+        env:
+          IMAGE_REF: ${{ steps.scan-ref.outputs.ref }}
+        run: |
+          command -v trivy >/dev/null 2>&1 || { echo "::warning::trivy not on PATH, skipping CIS scan"; exit 0; }
+          trivy image --compliance docker-cis-1.6.0 --format table "$IMAGE_REF"
+
+      # Push only after scans pass — prevents publishing vulnerable images.
+      # NOTE: Separate build invocation; GHA cache ensures deterministic layers,
+      # but manifest digest differs due to SBOM + provenance attestation layers.
+      - name: Push image
+        if: github.event_name != 'pull_request'
+        id: push
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: .
+          file: docker/sandbox/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          platforms: linux/amd64
+          sbom: true
+          provenance: true
+
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+
+      - name: Sign image
+        if: github.event_name != 'pull_request'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Push step did not produce a digest — cannot sign image"
+            exit 1
+          fi
+          cosign sign --yes ghcr.io/aureliolo/synthorg-sandbox@${DIGEST}
+
+      - name: Attest build provenance (SLSA Level 3)
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ghcr.io/aureliolo/synthorg-sandbox
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
   # Append container image references to the GitHub Release (version tags only)
   update-release:
     name: Update Release Notes
     if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
-    needs: [version, build-backend, build-web]
+    needs: [version, build-backend, build-web, build-sandbox]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -408,12 +575,13 @@ jobs:
           VERSION: ${{ needs.version.outputs.app_version }}
           BACKEND_DIGEST: ${{ needs.build-backend.outputs.digest }}
           WEB_DIGEST: ${{ needs.build-web.outputs.digest }}
+          SANDBOX_DIGEST: ${{ needs.build-sandbox.outputs.digest }}
         run: |
           set -euo pipefail
 
           # Validate required inputs
-          if [ -z "$VERSION" ] || [ -z "$BACKEND_DIGEST" ] || [ -z "$WEB_DIGEST" ]; then
-            echo "::error::Missing required values: VERSION='$VERSION' BACKEND_DIGEST='$BACKEND_DIGEST' WEB_DIGEST='$WEB_DIGEST'"
+          if [ -z "$VERSION" ] || [ -z "$BACKEND_DIGEST" ] || [ -z "$WEB_DIGEST" ] || [ -z "$SANDBOX_DIGEST" ]; then
+            echo "::error::Missing required values: VERSION='$VERSION' BACKEND_DIGEST='$BACKEND_DIGEST' WEB_DIGEST='$WEB_DIGEST' SANDBOX_DIGEST='$SANDBOX_DIGEST'"
             exit 1
           fi
 
@@ -441,10 +609,12 @@ jobs:
           |-------|------|
           | Backend | `docker pull ghcr.io/aureliolo/synthorg-backend:VERSION_PH` |
           | Web | `docker pull ghcr.io/aureliolo/synthorg-web:VERSION_PH` |
+          | Sandbox | `docker pull ghcr.io/aureliolo/synthorg-sandbox:VERSION_PH` |
 
           **Digests** (for pinning):
           - Backend: `ghcr.io/aureliolo/synthorg-backend@BACKEND_DIGEST_PH`
           - Web: `ghcr.io/aureliolo/synthorg-web@WEB_DIGEST_PH`
+          - Sandbox: `ghcr.io/aureliolo/synthorg-sandbox@SANDBOX_DIGEST_PH`
 
           <!-- CONTAINER_VERIFICATION_DATA
           ```bash
@@ -455,11 +625,16 @@ jobs:
           cosign verify ghcr.io/aureliolo/synthorg-web@WEB_DIGEST_PH \
             --certificate-identity-regexp='github\.com/Aureliolo/synthorg' \
             --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+
+          cosign verify ghcr.io/aureliolo/synthorg-sandbox@SANDBOX_DIGEST_PH \
+            --certificate-identity-regexp='github\.com/Aureliolo/synthorg' \
+            --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
           ```
 
           ```bash
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-backend@BACKEND_DIGEST_PH -R Aureliolo/synthorg
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-web@WEB_DIGEST_PH -R Aureliolo/synthorg
+          gh attestation verify oci://ghcr.io/aureliolo/synthorg-sandbox@SANDBOX_DIGEST_PH -R Aureliolo/synthorg
           ```
           CONTAINER_VERIFICATION_DATA -->
           BLOCK
@@ -468,6 +643,7 @@ jobs:
           IMAGES=${IMAGES//VERSION_PH/$VERSION}
           IMAGES=${IMAGES//BACKEND_DIGEST_PH/$BACKEND_DIGEST}
           IMAGES=${IMAGES//WEB_DIGEST_PH/$WEB_DIGEST}
+          IMAGES=${IMAGES//SANDBOX_DIGEST_PH/$SANDBOX_DIGEST}
 
           # Idempotent: strip existing Container Images section before appending.
           # Uses awk to delete only this section (up to the next ## heading), not to EOF.
