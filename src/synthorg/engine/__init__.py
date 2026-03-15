@@ -6,6 +6,7 @@ execution loops, and engine errors.
 """
 
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.agent_state import AgentRuntimeState
 from synthorg.engine.approval_gate import ApprovalGate
 from synthorg.engine.approval_gate_models import EscalationInfo, ResumePayload
 from synthorg.engine.assignment import (
@@ -215,6 +216,7 @@ __all__ = [
     "AgentEngine",
     "AgentOutcome",
     "AgentRunResult",
+    "AgentRuntimeState",
     "AgentTaskScorer",
     "AgentWorkload",
     "ApprovalGate",

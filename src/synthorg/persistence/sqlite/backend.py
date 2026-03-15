@@ -26,6 +26,9 @@ from synthorg.persistence.errors import (
     PersistenceConnectionError,
     QueryError,
 )
+from synthorg.persistence.sqlite.agent_state_repo import (
+    SQLiteAgentStateRepository,
+)
 from synthorg.persistence.sqlite.audit_repository import (
     SQLiteAuditRepository,
 )
@@ -87,6 +90,7 @@ class SQLitePersistenceBackend:
         self._api_keys: SQLiteApiKeyRepository | None = None
         self._checkpoints: SQLiteCheckpointRepository | None = None
         self._heartbeats: SQLiteHeartbeatRepository | None = None
+        self._agent_states: SQLiteAgentStateRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -103,6 +107,7 @@ class SQLitePersistenceBackend:
         self._api_keys = None
         self._checkpoints = None
         self._heartbeats = None
+        self._agent_states = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -169,6 +174,7 @@ class SQLitePersistenceBackend:
         self._api_keys = SQLiteApiKeyRepository(self._db)
         self._checkpoints = SQLiteCheckpointRepository(self._db)
         self._heartbeats = SQLiteHeartbeatRepository(self._db)
+        self._agent_states = SQLiteAgentStateRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -386,6 +392,15 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If not connected.
         """
         return self._require_connected(self._heartbeats, "heartbeats")
+
+    @property
+    def agent_states(self) -> SQLiteAgentStateRepository:
+        """Repository for AgentRuntimeState persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._agent_states, "agent_states")
 
     async def get_setting(self, key: str) -> str | None:
         """Retrieve a setting value by key.

@@ -173,6 +173,29 @@ class TestRunMigrations:
         indexes = {row[0] for row in await cursor.fetchall()}
         assert "idx_api_keys_user_id" in indexes
 
+    async def test_v8_creates_agent_states_table(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """V8 migration creates the agent_states table."""
+        await run_migrations(memory_db)
+        cursor = await memory_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='agent_states'"
+        )
+        row = await cursor.fetchone()
+        assert row is not None
+
+    async def test_v8_creates_agent_states_index(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """V8 migration creates the status index."""
+        await run_migrations(memory_db)
+        cursor = await memory_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name = 'idx_as_status'"
+        )
+        row = await cursor.fetchone()
+        assert row is not None
+
     async def test_migration_failure_raises_migration_error(
         self, memory_db: aiosqlite.Connection
     ) -> None:

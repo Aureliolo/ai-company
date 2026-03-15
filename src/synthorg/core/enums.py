@@ -502,6 +502,19 @@ class DowngradeReason(StrEnum):
     SECURITY_INCIDENT = "security_incident"
 
 
+class ExecutionStatus(StrEnum):
+    """Runtime execution status of an agent.
+
+    Tracks whether an agent is currently executing, paused (e.g. waiting
+    for approval), or idle.  Used by ``AgentRuntimeState`` for dashboard
+    queries and graceful-shutdown discovery.
+    """
+
+    IDLE = "idle"
+    EXECUTING = "executing"
+    PAUSED = "paused"
+
+
 class TimeoutActionType(StrEnum):
     """Action to take when an approval item times out (see Operations design page)."""
 

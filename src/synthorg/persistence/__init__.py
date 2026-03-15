@@ -17,6 +17,7 @@ from synthorg.persistence.errors import (
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend
 from synthorg.persistence.repositories import (
+    AgentStateRepository,
     AuditRepository,
     CostRecordRepository,
     MessageRepository,
@@ -25,6 +26,7 @@ from synthorg.persistence.repositories import (
 )
 
 __all__ = [
+    "AgentStateRepository",
     "AuditRepository",
     "CostRecordRepository",
     "DuplicateRecordError",
