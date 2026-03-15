@@ -1,0 +1,136 @@
+<form
+  id="contact-form"
+  action="https://formcarry.com/s/z2vjjRnmz_7"
+  method="POST"
+  class="bg-[#1a1f2e] rounded-xl p-8 border border-white/10"
+>
+  <!-- Honeypot -->
+  <input type="text" name="_gotcha" style="display:none" tabindex="-1" autocomplete="off" />
+
+  <div class="grid md:grid-cols-2 gap-6 mb-6">
+    <div>
+      <label for="contact-name" class="block text-sm font-medium text-gray-300 mb-2">Name</label>
+      <input
+        type="text"
+        id="contact-name"
+        name="name"
+        required
+        class="w-full px-4 py-3 bg-[#0F1219] border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-colors"
+        placeholder="Your name"
+      />
+    </div>
+    <div>
+      <label for="contact-email" class="block text-sm font-medium text-gray-300 mb-2">Email</label>
+      <input
+        type="email"
+        id="contact-email"
+        name="email"
+        required
+        class="w-full px-4 py-3 bg-[#0F1219] border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-colors"
+        placeholder="you@example.com"
+      />
+    </div>
+  </div>
+
+  <div class="mb-6">
+    <label for="contact-subject" class="block text-sm font-medium text-gray-300 mb-2">Subject</label>
+    <select
+      id="contact-subject"
+      name="subject"
+      required
+      class="w-full px-4 py-3 bg-[#0F1219] border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-colors"
+    >
+      <option value="" disabled selected>Select a topic</option>
+      <option value="General">General</option>
+      <option value="Licensing">Licensing</option>
+      <option value="Commercial">Commercial</option>
+      <option value="Bug Report">Bug Report</option>
+      <option value="Other">Other</option>
+    </select>
+  </div>
+
+  <div class="mb-6">
+    <label for="contact-message" class="block text-sm font-medium text-gray-300 mb-2">Message</label>
+    <textarea
+      id="contact-message"
+      name="message"
+      required
+      rows="5"
+      class="w-full px-4 py-3 bg-[#0F1219] border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-colors resize-y"
+      placeholder="How can we help?"
+    ></textarea>
+  </div>
+
+  <button
+    type="submit"
+    id="contact-submit"
+    class="w-full sm:w-auto px-8 py-3 bg-violet-600 hover:bg-violet-500 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+    Send Message
+  </button>
+
+  <div id="contact-success" class="hidden mt-6 p-4 bg-green-600/10 border border-green-500/20 rounded-lg text-green-400 text-sm">
+    Thanks for reaching out! We'll get back to you soon.
+  </div>
+
+  <div id="contact-error" class="hidden mt-6 p-4 bg-red-600/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+    Something went wrong. Please try again or email us directly.
+  </div>
+</form>
+
+<script>
+  const form = document.getElementById("contact-form");
+  const submitBtn = document.getElementById("contact-submit");
+  const successMsg = document.getElementById("contact-success");
+  const errorMsg = document.getElementById("contact-error");
+
+  if (!form || !submitBtn || !successMsg || !errorMsg) {
+    // Fall back to native HTML form submission
+    console.error("ContactForm: required DOM elements not found");
+  } else {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      // Client-side honeypot check — show fake success to avoid dead UI
+      const honeypot = (form as HTMLFormElement).querySelector<HTMLInputElement>('input[name="_gotcha"]');
+      if (honeypot && honeypot.value) {
+        form.classList.add("hidden");
+        successMsg.classList.remove("hidden");
+        return;
+      }
+
+      (submitBtn as HTMLButtonElement).disabled = true;
+      submitBtn.textContent = "Sending...";
+      successMsg.classList.add("hidden");
+      errorMsg.classList.add("hidden");
+
+      try {
+        const res = await fetch((form as HTMLFormElement).action, {
+          method: "POST",
+          body: new FormData(form as HTMLFormElement),
+          headers: { Accept: "application/json" },
+        });
+
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data && data.code && data.code !== 200) {
+            errorMsg.textContent = data.message || "Your message could not be delivered. Please try again.";
+            errorMsg.classList.remove("hidden");
+          } else {
+            (form as HTMLFormElement).reset();
+            form.classList.add("hidden");
+            successMsg.classList.remove("hidden");
+          }
+        } else {
+          errorMsg.classList.remove("hidden");
+        }
+      } catch (err) {
+        console.error("ContactForm: submission failed", err);
+        errorMsg.classList.remove("hidden");
+      } finally {
+        (submitBtn as HTMLButtonElement).disabled = false;
+        submitBtn.textContent = "Send Message";
+      }
+    });
+  }
+</script>

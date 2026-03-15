@@ -80,7 +80,7 @@ cd cli && go test -fuzz=FuzzYamlStr -fuzztime=30s ./internal/compose/  # fuzz ex
 - **Library reference**: `docs/api/` — auto-generated from docstrings via mkdocstrings + Griffe (AST-based, no imports)
 - **Custom templates**: `docs/overrides/` (`custom_dir` in `mkdocs.yml` for optional theme/template overrides)
 - **Scripts**: `scripts/` — CI/build utility scripts (relaxed ruff rules: `print` and deferred imports allowed)
-- **Landing page**: `site/` (Astro, Concept C hybrid design). Includes `/get/` CLI installation page and shared `Footer` component.
+- **Landing page**: `site/` (Astro, Concept C hybrid design). Includes `/get/` CLI installation page, contact form (Formcarry), and SEO infrastructure (sitemap, OG/Twitter meta, JSON-LD structured data).
 - **Config**: `mkdocs.yml` at repo root (Zensical reads this natively)
 - **CI**: `.github/workflows/pages.yml` — exports OpenAPI schema (`scripts/export_openapi.py`), builds Astro landing + Zensical docs, merges, deploys to GitHub Pages
 - **Architecture decisions**: `docs/architecture/decisions.md` (decision log)
@@ -161,7 +161,7 @@ cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
 site/               # Astro landing page (synthorg.io)
   src/
     pages/          # Astro pages (index, get)
-    components/     # Shared components (Footer)
+    components/     # Shared components (Footer, ContactForm)
     layouts/        # Base layout (Base.astro)
 ```
 
