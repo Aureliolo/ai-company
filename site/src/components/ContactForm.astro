@@ -44,7 +44,7 @@
       <option value="General">General</option>
       <option value="Licensing">Licensing</option>
       <option value="Commercial">Commercial</option>
-      <option value="Bug Report">Bug Report</option>
+
       <option value="Other">Other</option>
     </select>
   </div>
@@ -79,10 +79,10 @@
 </form>
 
 <script>
-  const form = document.getElementById("contact-form");
-  const submitBtn = document.getElementById("contact-submit");
-  const successMsg = document.getElementById("contact-success");
-  const errorMsg = document.getElementById("contact-error");
+  const form = document.querySelector<HTMLFormElement>("#contact-form");
+  const submitBtn = document.querySelector<HTMLButtonElement>("#contact-submit");
+  const successMsg = document.querySelector<HTMLElement>("#contact-success");
+  const errorMsg = document.querySelector<HTMLElement>("#contact-error");
 
   if (!form || !submitBtn || !successMsg || !errorMsg) {
     // Fall back to native HTML form submission
@@ -92,22 +92,22 @@
       e.preventDefault();
 
       // Client-side honeypot check — show fake success to avoid dead UI
-      const honeypot = (form as HTMLFormElement).querySelector<HTMLInputElement>('input[name="_gotcha"]');
+      const honeypot = form.querySelector<HTMLInputElement>('input[name="_gotcha"]');
       if (honeypot && honeypot.value) {
         form.classList.add("hidden");
         successMsg.classList.remove("hidden");
         return;
       }
 
-      (submitBtn as HTMLButtonElement).disabled = true;
+      submitBtn.disabled = true;
       submitBtn.textContent = "Sending...";
       successMsg.classList.add("hidden");
       errorMsg.classList.add("hidden");
 
       try {
-        const res = await fetch((form as HTMLFormElement).action, {
+        const res = await fetch(form.action, {
           method: "POST",
-          body: new FormData(form as HTMLFormElement),
+          body: new FormData(form),
           headers: { Accept: "application/json" },
         });
 
@@ -117,7 +117,7 @@
             errorMsg.textContent = data.message || "Your message could not be delivered. Please try again.";
             errorMsg.classList.remove("hidden");
           } else {
-            (form as HTMLFormElement).reset();
+            form.reset();
             form.classList.add("hidden");
             successMsg.classList.remove("hidden");
           }
@@ -128,7 +128,7 @@
         console.error("ContactForm: submission failed", err);
         errorMsg.classList.remove("hidden");
       } finally {
-        (submitBtn as HTMLButtonElement).disabled = false;
+        submitBtn.disabled = false;
         submitBtn.textContent = "Send Message";
       }
     });

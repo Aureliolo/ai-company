@@ -163,6 +163,7 @@ site/               # Astro landing page (synthorg.io)
     pages/          # Astro pages (index, get)
     components/     # Shared components (Footer, ContactForm)
     layouts/        # Base layout (Base.astro)
+    styles/         # Global CSS (Tailwind)
 ```
 
 ## Shell Usage

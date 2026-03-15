@@ -2,13 +2,15 @@
 import Base from "../layouts/Base.astro";
 import Footer from "../components/Footer.astro";
 import ContactForm from "../components/ContactForm.astro";
+
+const description = "Framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company";
 ---
 
-<Base title="SynthOrg — Build Synthetic Organizations">
+<Base title="SynthOrg — Build Synthetic Organizations" description={description}>
   <!-- ============================================================ -->
   <!-- HERO (Dark) -->
   <!-- ============================================================ -->
-  <section class="relative min-h-screen flex items-center justify-center px-6">
+  <section class="relative min-h-[85vh] flex items-center justify-center px-6">
     <!-- TODO: Animated particle network background (Canvas island) -->
     <div class="absolute inset-0 bg-gradient-to-b from-[#0F1219] via-[#1a1025] to-[#0F1219]"></div>
 
@@ -440,8 +442,8 @@ import ContactForm from "../components/ContactForm.astro";
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "SynthOrg",
-    "description": "Framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company",
-    "url": "https://synthorg.io",
+    "description": description,
+    "url": Astro.site,
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "Linux, macOS, Windows",
     "license": "https://github.com/Aureliolo/synthorg/blob/main/LICENSE",
