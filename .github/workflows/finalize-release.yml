@@ -22,7 +22,8 @@ jobs:
     # The event != 'pull_request' guard prevents a PR that modifies the
     # Docker/CLI workflows from reaching this privileged publish step.
     if: >-
-      github.event.workflow_run.event != 'pull_request'
+      github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_repository.full_name == github.repository
       && startsWith(github.event.workflow_run.head_branch, 'v')
     runs-on: ubuntu-latest
     permissions:
@@ -33,6 +34,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
           WORKFLOW_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         run: |
@@ -52,13 +54,13 @@ jobs:
           # gh run list --branch works for both branches and tags.
           # --status completed filters out in-progress re-triggered runs.
           CLI_CONCLUSION=$(gh run list --repo "$GITHUB_REPOSITORY" \
-            --workflow cli.yml --branch "$TAG" --limit 1 \
-            --status completed \
+            --workflow cli.yml --branch "$TAG" --event push --commit "$HEAD_SHA" \
+            --limit 1 --status completed \
             --json conclusion --jq '.[0].conclusion // "pending"')
 
           DOCKER_CONCLUSION=$(gh run list --repo "$GITHUB_REPOSITORY" \
-            --workflow docker.yml --branch "$TAG" --limit 1 \
-            --status completed \
+            --workflow docker.yml --branch "$TAG" --event push --commit "$HEAD_SHA" \
+            --limit 1 --status completed \
             --json conclusion --jq '.[0].conclusion // "pending"')
 
           echo "CLI: $CLI_CONCLUSION"
