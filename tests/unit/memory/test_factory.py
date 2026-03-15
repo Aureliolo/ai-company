@@ -97,7 +97,7 @@ class TestCreateMemoryBackend:
             _Dummy(x="not-an-int")  # type: ignore[arg-type]
         except ValidationError as ve:
             side_effect = ve
-        assert side_effect is not None  # always fails, narrows type for pyright
+        assert side_effect is not None  # always set — narrows type for pyright
 
         config = CompanyMemoryConfig(backend="mem0")
         with (

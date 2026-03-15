@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from synthorg.core.agent import PersonalityConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
+    TEMPLATE_PERSONALITY_PRESET_INVALID,
     TEMPLATE_PERSONALITY_PRESET_UNKNOWN,
 )
 
@@ -433,6 +434,11 @@ def _validate_presets() -> None:
         try:
             PersonalityConfig(**preset)
         except (ValidationError, TypeError) as exc:
+            logger.warning(
+                TEMPLATE_PERSONALITY_PRESET_INVALID,
+                preset_name=name,
+                error=str(exc),
+            )
             msg = f"Invalid personality preset {name!r}: {exc}"
             raise ValueError(msg) from exc
 
