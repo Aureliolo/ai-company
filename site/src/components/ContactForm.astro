@@ -115,16 +115,16 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossA
       try {
         // Get fresh reCAPTCHA v3 token before submission
         const siteKey = form.dataset.recaptchaKey;
-        if (typeof grecaptcha !== "undefined" && siteKey) {
-          const token = await grecaptcha.execute(siteKey, { action: "contact" });
-          const captchaInput = form.querySelector<HTMLInputElement>("#captchaResponse");
-          if (captchaInput) captchaInput.value = token;
-        } else {
+        const captchaInput = form.querySelector<HTMLInputElement>("#captchaResponse");
+        if (typeof grecaptcha === "undefined" || !siteKey || !captchaInput) {
           errorMsg.textContent = "Security verification unavailable. Please disable ad-blockers or try a different browser.";
           errorMsg.classList.remove("hidden");
           errorMsg.focus();
           return;
         }
+        await new Promise<void>((resolve) => grecaptcha.ready(() => resolve()));
+        const token = await grecaptcha.execute(siteKey, { action: "contact" });
+        captchaInput.value = token;
 
         const res = await fetch(form.action, {
           method: "POST",
