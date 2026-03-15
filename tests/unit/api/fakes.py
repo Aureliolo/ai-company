@@ -100,6 +100,9 @@ class FakeMessageRepository:
         self._messages: list[Message] = []
 
     async def save(self, message: Message) -> None:
+        if any(m.id == message.id for m in self._messages):
+            msg = f"Message {message.id} already exists"
+            raise DuplicateRecordError(msg)
         self._messages.append(message)
 
     async def get_history(
@@ -108,9 +111,16 @@ class FakeMessageRepository:
         *,
         limit: int | None = None,
     ) -> tuple[Message, ...]:
-        result = [m for m in self._messages if m.channel == channel]
-        if limit is not None and limit > 0:
-            result = result[-limit:]
+        if limit is not None and limit < 1:
+            msg = f"limit must be a positive integer, got {limit}"
+            raise QueryError(msg)
+        result = sorted(
+            (m for m in self._messages if m.channel == channel),
+            key=lambda m: m.timestamp,
+            reverse=True,
+        )
+        if limit is not None:
+            result = result[:limit]
         return tuple(result)
 
 
@@ -239,6 +249,9 @@ class FakeAuditRepository:
     ) -> tuple[AuditEntry, ...]:
         if limit < 1:
             msg = "limit must be >= 1"
+            raise QueryError(msg)
+        if since is not None and until is not None and until < since:
+            msg = "until must not be earlier than since"
             raise QueryError(msg)
         results = sorted(
             self._entries.values(),

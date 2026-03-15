@@ -203,6 +203,38 @@ class TestRunMigrations:
         }
         assert columns == expected
 
+    async def test_v8_agent_states_ddl_has_check_constraints(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """V8 DDL includes CHECK constraints for status, counters, and invariant."""
+        await run_migrations(memory_db)
+        cursor = await memory_db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='agent_states'"
+        )
+        row = await cursor.fetchone()
+        assert row is not None
+        ddl = row[0]
+        assert "CHECK (status IN ('idle', 'executing', 'paused'))" in ddl
+        assert "CHECK (turn_count >= 0)" in ddl
+        assert "CHECK (accumulated_cost_usd >= 0.0)" in ddl
+        # Cross-field invariant CHECK
+        assert "status = 'idle'" in ddl
+        assert "execution_id IS NULL" in ddl
+        assert "started_at IS NOT NULL" in ddl
+
+    async def test_v8_check_constraint_rejects_invalid_status(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """CHECK constraint rejects rows with invalid status values."""
+        await run_migrations(memory_db)
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+            await memory_db.execute(
+                "INSERT INTO agent_states "
+                "(agent_id, status, last_activity_at) "
+                "VALUES (?, ?, ?)",
+                ("a", "invalid", "2026-01-01T00:00:00+00:00"),
+            )
+
     async def test_v8_creates_agent_states_composite_index(
         self, memory_db: aiosqlite.Connection
     ) -> None:
@@ -214,6 +246,18 @@ class TestRunMigrations:
         )
         row = await cursor.fetchone()
         assert row is not None
+
+    async def test_v8_composite_index_covers_status_and_activity(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """Composite index covers (status, last_activity_at DESC)."""
+        await run_migrations(memory_db)
+        cursor = await memory_db.execute("PRAGMA index_xinfo('idx_as_status_activity')")
+        rows = await cursor.fetchall()
+        # index_xinfo columns: seqno, cid, name, desc, coll, key
+        indexed = [(row[2], row[3]) for row in rows if row[5]]
+        assert ("status", 0) in indexed  # status ASC
+        assert ("last_activity_at", 1) in indexed  # last_activity_at DESC
 
     async def test_migration_failure_raises_migration_error(
         self, memory_db: aiosqlite.Connection
