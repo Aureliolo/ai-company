@@ -7,8 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -17,6 +20,14 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 )
+
+// ContainerDetail summarises a single container's state from compose ps JSON.
+type ContainerDetail struct {
+	Name   string `json:"Name"`
+	State  string `json:"State"`
+	Status string `json:"Status"`
+	Health string `json:"Health,omitempty"`
+}
 
 // Report contains collected diagnostic information.
 type Report struct {
@@ -34,6 +45,12 @@ type Report struct {
 	ConfigRedacted string   `json:"config_redacted,omitempty"`
 	DiskInfo       string   `json:"disk_info,omitempty"`
 	Errors         []string `json:"errors,omitempty"`
+
+	ComposeFileExists bool              `json:"compose_file_exists"`
+	ComposeFileValid  bool              `json:"compose_file_valid,omitempty"`
+	PortConflicts     []string          `json:"port_conflicts,omitempty"`
+	ImageStatus       []string          `json:"image_status,omitempty"`
+	ContainerSummary  []ContainerDetail `json:"container_summary,omitempty"`
 }
 
 // Collect gathers diagnostics from the system and running containers.
@@ -58,6 +75,11 @@ func Collect(ctx context.Context, state config.State) Report {
 	} else {
 		r.DockerVersion = info.DockerVersion
 		r.ComposeVersion = info.ComposeVersion
+
+		// Version warnings.
+		for _, w := range docker.CheckMinVersions(info) {
+			r.Errors = append(r.Errors, fmt.Sprintf("version: %s", w))
+		}
 
 		if pathErr == nil {
 			// Container states.
@@ -101,6 +123,28 @@ func Collect(ctx context.Context, state config.State) Report {
 		r.ConfigRedacted = string(b)
 	}
 
+	// Compose file check.
+	if pathErr == nil {
+		exists, valid := checkComposeFile(ctx, info, safeDir)
+		r.ComposeFileExists = exists
+		r.ComposeFileValid = valid
+	}
+
+	// Parse container details from ps output.
+	if r.ContainerPS != "" {
+		r.ContainerSummary = parseContainerDetails(r.ContainerPS)
+	}
+
+	// Port conflicts (only when no containers are running to avoid self-matches).
+	if !hasRunningContainers(r.ContainerSummary) {
+		r.PortConflicts = checkPorts(ctx, state.BackendPort, state.WebPort)
+	}
+
+	// Docker image availability.
+	if info.DockerPath != "" {
+		r.ImageStatus = checkImages(ctx, state.ImageTag, state.Sandbox)
+	}
+
 	// Disk space for data directory (best-effort, skip if path invalid).
 	if pathErr == nil {
 		r.DiskInfo = diskInfo(ctx, safeDir)
@@ -120,7 +164,48 @@ func (r Report) FormatText() string {
 	fmt.Fprintf(&b, "Compose:   %s\n\n", r.ComposeVersion)
 
 	fmt.Fprintf(&b, "--- Health ---\nStatus: %s\n%s\n\n", r.HealthStatus, r.HealthBody)
+
+	b.WriteString("--- Compose File ---\n")
+	if r.ComposeFileExists {
+		valid := "yes"
+		if !r.ComposeFileValid {
+			valid = "no"
+		}
+		fmt.Fprintf(&b, "Exists: yes  Valid: %s\n\n", valid)
+	} else {
+		b.WriteString("Not found\n\n")
+	}
+
 	fmt.Fprintf(&b, "--- Containers ---\n%s\n\n", r.ContainerPS)
+
+	if len(r.ContainerSummary) > 0 {
+		b.WriteString("--- Container Summary ---\n")
+		for _, c := range r.ContainerSummary {
+			line := fmt.Sprintf("  %s: %s", c.Name, c.State)
+			if c.Health != "" {
+				line += fmt.Sprintf(" (%s)", c.Health)
+			}
+			fmt.Fprintf(&b, "%s\n", line)
+		}
+		b.WriteString("\n")
+	}
+
+	if len(r.PortConflicts) > 0 {
+		b.WriteString("--- Port Conflicts ---\n")
+		for _, c := range r.PortConflicts {
+			fmt.Fprintf(&b, "  - %s\n", c)
+		}
+		b.WriteString("\n")
+	}
+
+	if len(r.ImageStatus) > 0 {
+		b.WriteString("--- Docker Images ---\n")
+		for _, s := range r.ImageStatus {
+			fmt.Fprintf(&b, "  - %s\n", s)
+		}
+		b.WriteString("\n")
+	}
+
 	fmt.Fprintf(&b, "--- Config (redacted) ---\n%s\n\n", r.ConfigRedacted)
 	fmt.Fprintf(&b, "--- Disk ---\n%s\n\n", r.DiskInfo)
 	fmt.Fprintf(&b, "--- Recent Logs (may contain sensitive data — review before sharing) ---\n%s\n\n", r.RecentLogs)
@@ -140,6 +225,91 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max] + "\n... (truncated)"
+}
+
+// checkComposeFile verifies that compose.yml exists and is valid YAML.
+func checkComposeFile(ctx context.Context, info docker.Info, dataDir string) (exists, valid bool) {
+	composePath := filepath.Join(dataDir, "compose.yml")
+	if _, err := os.Stat(composePath); err != nil {
+		return false, false
+	}
+	// compose config --quiet validates the file without printing it.
+	if info.DockerPath != "" {
+		err := docker.ComposeExec(ctx, info, dataDir, "config", "--quiet")
+		return true, err == nil
+	}
+	return true, false
+}
+
+// checkPorts tests whether configured ports are already bound.
+func checkPorts(ctx context.Context, backendPort, webPort int) []string {
+	dialer := net.Dialer{Timeout: 1 * time.Second}
+	var conflicts []string
+	for _, p := range []struct {
+		name string
+		port int
+	}{
+		{"backend", backendPort},
+		{"web", webPort},
+	} {
+		addr := fmt.Sprintf("127.0.0.1:%d", p.port)
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
+		if err == nil {
+			_ = conn.Close()
+			conflicts = append(conflicts, fmt.Sprintf("port %d (%s) is already in use", p.port, p.name))
+		}
+	}
+	return conflicts
+}
+
+const imagePrefix = "ghcr.io/aureliolo/synthorg-"
+
+// checkImages reports whether required Docker images exist locally.
+func checkImages(ctx context.Context, imageTag string, sandbox bool) []string {
+	names := []string{"backend", "web"}
+	if sandbox {
+		names = append(names, "sandbox")
+	}
+	var status []string
+	for _, name := range names {
+		image := imagePrefix + name + ":" + imageTag
+		_, err := docker.RunCmd(ctx, "docker", "image", "inspect", image, "--format", "{{.ID}}")
+		if err != nil {
+			status = append(status, fmt.Sprintf("%s: not found locally", image))
+		} else {
+			status = append(status, fmt.Sprintf("%s: available", image))
+		}
+	}
+	return status
+}
+
+// parseContainerDetails parses NDJSON output from docker compose ps --format json.
+func parseContainerDetails(psJSON string) []ContainerDetail {
+	var details []ContainerDetail
+	for _, line := range strings.Split(psJSON, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var d ContainerDetail
+		if err := json.Unmarshal([]byte(line), &d); err != nil {
+			continue
+		}
+		if d.Name != "" {
+			details = append(details, d)
+		}
+	}
+	return details
+}
+
+// hasRunningContainers returns true if any container is in "running" state.
+func hasRunningContainers(details []ContainerDetail) bool {
+	for _, d := range details {
+		if d.State == "running" {
+			return true
+		}
+	}
+	return false
 }
 
 func diskInfo(ctx context.Context, dataDir string) string {
