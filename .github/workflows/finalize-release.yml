@@ -91,10 +91,10 @@ jobs:
 
           CLI_CHECKSUMS=""
           CLI_SLSA=""
-          if echo "$BODY" | grep -q "CLI_VERIFICATION_DATA"; then
-            CLI_CHECKSUMS=$(echo "$BODY" | sed -n '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/p' \
+          if grep -q "CLI_VERIFICATION_DATA" <<< "$BODY"; then
+            CLI_CHECKSUMS=$(sed -n '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/p' <<< "$BODY" \
               | sed '1d;$d' | grep -E '^\|' || true)
-            CLI_SLSA=$(echo "$BODY" | sed -n '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/p' \
+            CLI_SLSA=$(sed -n '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/p' <<< "$BODY" \
               | sed '1d;$d' | sed -n '/^```bash$/,/^```$/p' || true)
             if [ -z "$CLI_CHECKSUMS" ]; then
               echo "::warning::CLI checksums table not found in release body"
@@ -106,8 +106,8 @@ jobs:
 
           CONTAINER_COSIGN=""
           CONTAINER_SLSA=""
-          if echo "$BODY" | grep -q "CONTAINER_VERIFICATION_DATA"; then
-            CONTAINER_INNER=$(echo "$BODY" | sed -n '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/p' | sed '1d;$d')
+          if grep -q "CONTAINER_VERIFICATION_DATA" <<< "$BODY"; then
+            CONTAINER_INNER=$(sed -n '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/p' <<< "$BODY" | sed '1d;$d')
             # Extract first and second ```bash...``` code blocks using line-by-line awk.
             # (awk paragraph mode RS= breaks on blank lines inside code blocks.)
             CONTAINER_COSIGN=$(echo "$CONTAINER_INNER" | awk '
@@ -162,14 +162,18 @@ jobs:
             fi
           fi
 
-          # Strip HTML comment markers and any existing Verification section,
-          # then append the assembled Verification section.
-          CLEANED=$(printf '%s' "$BODY" \
-            | sed '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/d' \
-            | sed '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/d' \
-            | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
-
-          FINAL="${CLEANED}${VERIFICATION}"
+          # Strip and re-append only when we have a replacement. If VERIFICATION
+          # is empty (no data extracted), leave the body untouched to avoid
+          # destroying an existing Verification section with no replacement.
+          if [ -n "$VERIFICATION" ]; then
+            CLEANED=$(printf '%s' "$BODY" \
+              | sed '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/d' \
+              | sed '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/d' \
+              | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
+            FINAL="${CLEANED}${VERIFICATION}"
+          else
+            FINAL="$BODY"
+          fi
 
           tmpfile="$(mktemp)"
           printf '%s' "$FINAL" > "$tmpfile"
