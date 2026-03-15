@@ -214,6 +214,7 @@ class TestEventConstants:
             "routing",
             "sandbox",
             "security",
+            "stagnation",
             "task",
             "task_assignment",
             "task_engine",
