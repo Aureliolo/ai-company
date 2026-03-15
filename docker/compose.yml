@@ -59,8 +59,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp:noexec,nosuid,nodev,size=16m
-      - /var/cache/nginx:nodev,size=32m
-      - /var/run:nodev,size=1m
+      - /var/cache/nginx:noexec,nosuid,nodev,size=32m
+      - /var/run:noexec,nosuid,nodev,size=1m
     pids_limit: 64
     restart: unless-stopped
     deploy:

@@ -148,6 +148,14 @@ jobs:
             exit 1
           fi
 
+      - name: Upload Trivy report (backend)
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: trivy-backend-report
+          path: trivy-backend.json
+          retention-days: 30
+
       - name: Grype scan
         uses: anchore/scan-action@7037fa011853d5a11690026fb85feee79f4c946c # v7.3.2
         with:
@@ -301,6 +309,14 @@ jobs:
             echo "::error::Found $CRITICAL CRITICAL vulnerabilities — failing build"
             exit 1
           fi
+
+      - name: Upload Trivy report (web)
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: trivy-web-report
+          path: trivy-web.json
+          retention-days: 30
 
       - name: Grype scan
         uses: anchore/scan-action@7037fa011853d5a11690026fb85feee79f4c946c # v7.3.2
