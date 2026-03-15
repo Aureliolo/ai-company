@@ -118,6 +118,11 @@ func TestParseContainerDetails(t *testing.T) {
 			"{\"Name\":\"backend\",\"State\":\"running\",\"Status\":\"Up\"}\n{\"Name\":\"web\",\"State\":\"exited\",\"Status\":\"Exited (1)\"}",
 			2,
 		},
+		{
+			"json_array",
+			`[{"Name":"app","State":"running","Status":"Up"},{"Name":"db","State":"exited","Status":"Exited (1)"}]`,
+			2,
+		},
 		{"empty", "", 0},
 		{"invalid_json", "not json at all", 0},
 		{"blank_lines", "\n\n\n", 0},
@@ -198,7 +203,7 @@ func TestCheckPortsDetectsConflict(t *testing.T) {
 }
 
 func TestCheckPortsNoConflict(t *testing.T) {
-	// Use port 0 which should never be bound.
+	// Port 0 is not a connectable port — dialing 127.0.0.1:0 always fails.
 	conflicts := checkPorts(context.Background(), 0, 0)
 	if len(conflicts) != 0 {
 		t.Errorf("expected no conflicts, got %v", conflicts)

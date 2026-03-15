@@ -362,14 +362,17 @@ func diskInfo(_ context.Context, dataDir string) string {
 }
 
 func humanBytes(b uint64) string {
-	const unit = 1024
+	const (
+		unit     = 1024
+		suffixes = "KMGTPE"
+	)
 	if b < unit {
 		return fmt.Sprintf("%d B", b)
 	}
 	div, exp := uint64(unit), 0
-	for n := b / unit; n >= unit; n /= unit {
+	for n := b / unit; n >= unit && exp < len(suffixes)-1; n /= unit {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), suffixes[exp])
 }

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -216,24 +217,40 @@ func powershellProfilePath(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("cannot determine home directory: %w", err)
 	}
 
+	// Resolve home through symlinks for reliable containment check.
+	resolvedHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		resolvedHome = home
+	}
+
 	// Try pwsh (PowerShell Core) first, then powershell (Windows PowerShell).
 	for _, shell := range []string{"pwsh", "powershell"} {
-		out, err := exec.CommandContext(ctx, shell, "-NoProfile", "-Command", "echo $PROFILE").Output()
-		if err == nil {
-			p := strings.TrimSpace(string(out))
-			if p == "" || len(p) > 2048 {
-				continue
-			}
-			p = filepath.Clean(p)
-			if !filepath.IsAbs(p) {
-				continue
-			}
-			// Ensure path is inside the user's home directory.
-			if rel, relErr := filepath.Rel(home, p); relErr != nil || strings.HasPrefix(rel, "..") {
-				continue
-			}
-			return p, nil
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		out, err := exec.CommandContext(probeCtx, shell, "-NoProfile", "-Command", "echo $PROFILE").Output()
+		cancel()
+		if err != nil {
+			continue
 		}
+		p := strings.TrimSpace(string(out))
+		if p == "" || len(p) > 2048 {
+			continue
+		}
+		p = filepath.Clean(p)
+		if !filepath.IsAbs(p) {
+			continue
+		}
+		// Resolve symlinks and verify path is inside user's home directory.
+		resolvedP, err := filepath.EvalSymlinks(filepath.Dir(p))
+		if err != nil {
+			// Parent dir may not exist yet — fall back to lexical check.
+			resolvedP = filepath.Clean(filepath.Dir(p))
+		}
+		resolvedP = filepath.Join(resolvedP, filepath.Base(p))
+		rel, relErr := filepath.Rel(resolvedHome, resolvedP)
+		if relErr != nil || strings.HasPrefix(rel, "..") {
+			continue
+		}
+		return resolvedP, nil
 	}
 
 	// Fallback: construct the default path (home already resolved above).
