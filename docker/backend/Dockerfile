@@ -57,15 +57,11 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/src /app/src
 
-# Fix venv Python symlink: builder points to /usr/local/bin/python3,
-# but Chainguard Python is at /usr/bin/python
-RUN rm -f /app/.venv/bin/python && ln -s /usr/bin/python /app/.venv/bin/python
-
-# Create data directory for persistent volumes
-RUN mkdir -p /data && chown 65532:65532 /data
-
-# Set final ownership
-RUN chown -R 65532:65532 /app
+# Fix venv Python symlink (builder points to /usr/local/bin/python3,
+# Chainguard is /usr/bin/python), create data dir, set ownership.
+RUN rm -f /app/.venv/bin/python && ln -s /usr/bin/python /app/.venv/bin/python \
+    && mkdir -p /data && chown 65532:65532 /data \
+    && chown -R 65532:65532 /app
 
 # Drop root after setup — all stages must end as non-root
 USER 65532
@@ -113,7 +109,7 @@ EXPOSE 8000
 
 # Healthcheck — exec form (no shell needed, works with distroless)
 # Reads UVICORN_PORT so the check stays valid if the port is overridden.
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=15s \
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=30s \
     CMD ["/usr/bin/python", "-c", "import json,urllib.request,sys,os; port=os.environ.get('UVICORN_PORT','8000'); r=urllib.request.urlopen(f'http://localhost:{port}/api/v1/health'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='ok' else 1)"]
 
 # Reset Chainguard base entrypoint (/usr/bin/python) so CMD runs uvicorn
