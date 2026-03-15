@@ -75,14 +75,16 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossA
     Send Message
   </button>
 
-  <div id="contact-success" class="hidden mt-6 p-4 bg-green-600/10 border border-green-500/20 rounded-lg text-green-400 text-sm" role="status" aria-live="polite" tabindex="-1">
-    Thanks for reaching out! We'll get back to you soon.
-  </div>
-
   <div id="contact-error" class="hidden mt-6 p-4 bg-red-600/10 border border-red-500/20 rounded-lg text-red-400 text-sm" role="alert" aria-live="assertive" tabindex="-1">
     Something went wrong. Please try again or email us directly.
   </div>
 </form>
+
+<div id="contact-success" class="hidden bg-[#1a1f2e] rounded-xl p-8 border border-white/10 text-center" role="status" aria-live="polite" tabindex="-1">
+  <div class="text-green-400 text-4xl mb-4">&#10003;</div>
+  <h3 class="text-xl font-semibold text-white mb-2">Message sent</h3>
+  <p class="text-gray-400">Thanks for reaching out! We'll get back to you soon.</p>
+</div>
 
 <script>
   const form = document.querySelector<HTMLFormElement>("#contact-form");
