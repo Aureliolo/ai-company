@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final
 
 import aiodocker
+import aiodocker.containers
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.docker import (
@@ -353,7 +354,7 @@ class DockerSandbox:
         )
 
         try:
-            container = await docker.containers.create(config)
+            container = await docker.containers.create(config)  # pyright: ignore[reportAttributeAccessIssue]
         except Exception as exc:
             msg = f"Failed to create container: {exc}"
             logger.exception(
@@ -409,7 +410,7 @@ class DockerSandbox:
         Returns:
             A ``SandboxResult``.
         """
-        container_obj = docker.containers.container(container_id)
+        container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
         try:
             await container_obj.start()
         except Exception as exc:
@@ -558,7 +559,7 @@ class DockerSandbox:
             container_id: Container ID to stop.
         """
         try:
-            container_obj = docker.containers.container(container_id)
+            container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
             await container_obj.stop(
                 t=_STOP_TIMEOUT_SECONDS,
             )
@@ -585,7 +586,7 @@ class DockerSandbox:
             container_id: Container ID to remove.
         """
         try:
-            container_obj = docker.containers.container(container_id)
+            container_obj = docker.containers.container(container_id)  # pyright: ignore[reportAttributeAccessIssue]
             await container_obj.delete(force=True)
             logger.debug(
                 DOCKER_CONTAINER_REMOVED,

@@ -92,10 +92,12 @@ class TestCreateMemoryBackend:
         class _Dummy(BaseModel):
             x: int
 
+        side_effect: ValidationError | None = None
         try:
             _Dummy(x="not-an-int")  # type: ignore[arg-type]
         except ValidationError as ve:
-            side_effect: ValidationError = ve
+            side_effect = ve
+        assert side_effect is not None  # always fails, narrows type for pyright
 
         config = CompanyMemoryConfig(backend="mem0")
         with (

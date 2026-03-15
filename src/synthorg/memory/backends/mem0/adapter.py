@@ -174,7 +174,7 @@ class Mem0MemoryBackend:
                 )
                 msg = f"Failed to connect to Mem0: {exc}"
                 raise MemoryConnectionError(msg) from exc
-            self._client = client
+            self._client = client  # pyright: ignore[reportAttributeAccessIssue]
             self._connected = True
             logger.info(MEMORY_BACKEND_CONNECTED, backend="mem0")
 

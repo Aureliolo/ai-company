@@ -421,6 +421,7 @@ class SQLiteOrgFactStore:
             clauses.append(f"category IN ({placeholders})")
             params.extend(c.value for c in categories)
 
+        escaped = ""
         if text is not None:
             escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
             clauses.append("content LIKE ? ESCAPE '\\'")

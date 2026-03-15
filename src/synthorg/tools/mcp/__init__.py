@@ -5,6 +5,8 @@ imports. Config models and errors are imported eagerly since they have
 no dependency on the tool base classes.
 """
 
+from typing import TYPE_CHECKING
+
 from .config import MCPConfig, MCPServerConfig
 from .errors import (
     MCPConnectionError,
@@ -14,6 +16,13 @@ from .errors import (
     MCPTimeoutError,
 )
 from .models import MCPRawResult, MCPToolInfo
+
+if TYPE_CHECKING:
+    from .bridge_tool import MCPBridgeTool
+    from .cache import MCPResultCache
+    from .client import MCPClient
+    from .factory import MCPToolFactory
+    from .result_mapper import map_call_tool_result
 
 __all__ = [
     "MCPBridgeTool",

@@ -1,0 +1,16 @@
+{
+  "include": ["src/", "tests/"],
+  "exclude": [".venv/", "build/", "dist/", ".pytest_cache/", ".hypothesis/"],
+  "pythonVersion": "3.14",
+  "venvPath": ".",
+  "venv": ".venv",
+  "typeCheckingMode": "standard",
+  "reportUnknownArgumentType": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownParameterType": false,
+  "reportUnknownLambdaType": false,
+  "reportCallIssue": false,
+  "reportPrivateUsage": false,
+  "reportMissingTypeStubs": false
+}

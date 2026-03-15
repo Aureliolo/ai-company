@@ -116,9 +116,10 @@ def _parse_yaml_string(
     except yaml.YAMLError as exc:
         line: int | None = None
         col: int | None = None
-        if hasattr(exc, "problem_mark") and exc.problem_mark is not None:
-            line = exc.problem_mark.line + 1
-            col = exc.problem_mark.column + 1
+        mark = getattr(exc, "problem_mark", None)
+        if mark is not None:
+            line = mark.line + 1
+            col = mark.column + 1
         msg = f"YAML syntax error in {source_name}: {exc}"
         logger.warning(
             CONFIG_PARSE_FAILED,

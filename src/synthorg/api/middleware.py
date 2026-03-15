@@ -153,7 +153,7 @@ class RequestLoggingMiddleware:
                 and message.get("type") == "http.response.start"
             ):
                 status_code = message.get("status", 500)
-            await original_send(message)
+            await original_send(message)  # pyright: ignore[reportArgumentType]
 
         try:
             await self.app(scope, receive, capture_send)
