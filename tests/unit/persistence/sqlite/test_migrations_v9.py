@@ -149,7 +149,7 @@ class TestV9MigrationCrashSafety:
         await memory_db.execute(
             "INSERT INTO settings_old (key, value) VALUES ('k1', 'old_val')"
         )
-        # settings: the new-schema table (already migrated)
+        # settings: the new-schema table (already migrated, different value)
         await memory_db.execute(
             "CREATE TABLE settings ("
             "namespace TEXT NOT NULL, key TEXT NOT NULL, "
@@ -158,15 +158,54 @@ class TestV9MigrationCrashSafety:
         )
         await memory_db.execute(
             "INSERT INTO settings VALUES "
-            "('_system', 'k1', 'old_val', '2026-01-01T00:00:00+00:00')"
+            "('_system', 'k1', 'new_val', '2026-01-01T00:00:00+00:00')"
         )
         await memory_db.commit()
 
         await _apply_v9(memory_db)
         await memory_db.commit()
 
-        # settings should exist with data from settings_old.
+        # settings should exist — the existing v9-schema data is preserved
+        # since settings_old was used to populate settings_v9 but the
+        # existing settings table (already v9-schema) takes precedence.
         cursor = await memory_db.execute("SELECT namespace, key, value FROM settings")
         rows = list(await cursor.fetchall())
         assert len(rows) == 1
         assert rows[0][0] == "_system"
+        assert rows[0][1] == "k1"
+
+    async def test_v9_schema_settings_without_old_preserves_data(
+        self, memory_db: aiosqlite.Connection
+    ) -> None:
+        """settings already has v9 schema, no settings_old.
+
+        Migration should NOT re-copy rows (which would clobber
+        namespaces into ``_system``).  Existing data is preserved.
+        """
+        # Create a v9-schema settings table with properly namespaced data.
+        await memory_db.execute(
+            "CREATE TABLE settings ("
+            "namespace TEXT NOT NULL, key TEXT NOT NULL, "
+            "value TEXT NOT NULL, updated_at TEXT NOT NULL, "
+            "PRIMARY KEY (namespace, key))"
+        )
+        await memory_db.execute(
+            "INSERT INTO settings VALUES "
+            "('budget', 'total_monthly', '500', '2026-03-01T00:00:00+00:00')"
+        )
+        await memory_db.commit()
+        await set_user_version(memory_db, 8)
+
+        await _apply_v9(memory_db)
+        await memory_db.commit()
+
+        # Data should be preserved with original namespace (not _system).
+        cursor = await memory_db.execute(
+            "SELECT namespace, key, value, updated_at FROM settings"
+        )
+        rows = list(await cursor.fetchall())
+        assert len(rows) == 1
+        assert rows[0][0] == "budget"
+        assert rows[0][1] == "total_monthly"
+        assert rows[0][2] == "500"
+        assert rows[0][3] == "2026-03-01T00:00:00+00:00"

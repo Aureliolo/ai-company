@@ -35,12 +35,15 @@ class _FakeConfig(BaseModel):
     budget: _BudgetConfig = _BudgetConfig()
 
 
+_UNSET = object()
+
+
 def _make_definition(  # noqa: PLR0913
     *,
     namespace: SettingNamespace = SettingNamespace.BUDGET,
     key: str = "total_monthly",
     setting_type: SettingType = SettingType.FLOAT,
-    default: str | None = "100.0",
+    default: str | None | object = _UNSET,
     yaml_path: str | None = "budget.total_monthly",
     sensitive: bool = False,
     restart_required: bool = False,
@@ -49,11 +52,19 @@ def _make_definition(  # noqa: PLR0913
     max_value: float | None = None,
     validator_pattern: str | None = None,
 ) -> SettingDefinition:
+    # Only use the "100.0" default when type is FLOAT and no explicit
+    # default was provided — avoids model_validator rejecting mismatched
+    # defaults (e.g. "100.0" for an ENUM type).
+    resolved_default: str | None
+    if default is _UNSET:
+        resolved_default = "100.0" if setting_type == SettingType.FLOAT else None
+    else:
+        resolved_default = default  # type: ignore[assignment]
     return SettingDefinition(
         namespace=namespace,
         key=key,
         type=setting_type,
-        default=default,
+        default=resolved_default,
         description="test",
         group="test",
         yaml_path=yaml_path,

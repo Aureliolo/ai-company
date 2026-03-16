@@ -548,8 +548,7 @@ class FakeSettingsRepository:
 
     async def delete_namespace(self, namespace: str) -> int:
         keys = [k for k in self._store if k[0] == namespace]
-        for k in keys:
-            self._store = {kk: vv for kk, vv in self._store.items() if kk != k}
+        self._store = {k: v for k, v in self._store.items() if k[0] != namespace}
         return len(keys)
 
 

@@ -41,13 +41,18 @@ class TestSettingsController:
         assert body["success"] is True
         assert body["data"]["definition"]["key"] == "total_monthly"
 
-    def test_get_unknown_setting_returns_404(
-        self, test_client: TestClient[Any]
-    ) -> None:
-        resp = test_client.get(
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
             "/api/v1/settings/budget/nonexistent",
-            headers=_HEADERS,
-        )
+            "/api/v1/settings/nonexistent_ns",
+            "/api/v1/settings/_schema/nonexistent_ns",
+        ],
+    )
+    def test_unknown_resource_returns_404(
+        self, test_client: TestClient[Any], endpoint: str
+    ) -> None:
+        resp = test_client.get(endpoint, headers=_HEADERS)
         assert resp.status_code == 404
 
     def test_update_setting(self, test_client: TestClient[Any]) -> None:
@@ -147,19 +152,3 @@ class TestSettingsController:
             headers=_OBSERVER_HEADERS,
         )
         assert resp.status_code == 403
-
-    def test_invalid_namespace_returns_404(self, test_client: TestClient[Any]) -> None:
-        resp = test_client.get(
-            "/api/v1/settings/nonexistent_ns",
-            headers=_HEADERS,
-        )
-        assert resp.status_code == 404
-
-    def test_invalid_namespace_schema_returns_404(
-        self, test_client: TestClient[Any]
-    ) -> None:
-        resp = test_client.get(
-            "/api/v1/settings/_schema/nonexistent_ns",
-            headers=_HEADERS,
-        )
-        assert resp.status_code == 404

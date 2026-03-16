@@ -2,6 +2,7 @@
 
 import asyncio
 import sqlite3
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -19,13 +20,8 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_BACKEND_HEALTH_CHECK,
     PERSISTENCE_BACKEND_NOT_CONNECTED,
     PERSISTENCE_BACKEND_WAL_MODE_FAILED,
-    PERSISTENCE_SETTING_FETCH_FAILED,
-    PERSISTENCE_SETTING_SAVE_FAILED,
 )
-from synthorg.persistence.errors import (
-    PersistenceConnectionError,
-    QueryError,
-)
+from synthorg.persistence.errors import PersistenceConnectionError
 from synthorg.persistence.sqlite.agent_state_repo import (
     SQLiteAgentStateRepository,
 )
@@ -420,54 +416,23 @@ class SQLitePersistenceBackend:
     async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.
 
+        Delegates to ``self.settings`` (the ``SettingsRepository``).
+
         Raises:
             PersistenceConnectionError: If not connected.
         """
-        if self._db is None:
-            msg = "Not connected — call connect() before accessing settings"
-            logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
-            raise PersistenceConnectionError(msg)
-        try:
-            cursor = await self._db.execute(
-                "SELECT value FROM settings WHERE namespace = '_system' AND key = ?",
-                (key,),
-            )
-            row = await cursor.fetchone()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to get setting {key!r}"
-            logger.exception(
-                PERSISTENCE_SETTING_FETCH_FAILED,
-                key=key,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
-        return str(row[0]) if row else None
+        repo = self._require_connected(self._settings, "settings")
+        result = await repo.get(NotBlankStr("_system"), key)
+        return result[0] if result is not None else None
 
     async def set_setting(self, key: NotBlankStr, value: str) -> None:
         """Store a setting value (upsert) in the ``_system`` namespace.
 
+        Delegates to ``self.settings`` (the ``SettingsRepository``).
+
         Raises:
             PersistenceConnectionError: If not connected.
         """
-        if self._db is None:
-            msg = "Not connected — call connect() before accessing settings"
-            logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
-            raise PersistenceConnectionError(msg)
-        try:
-            await self._db.execute(
-                "INSERT INTO settings (namespace, key, value, updated_at) "
-                "VALUES ('_system', ?, ?, "
-                "strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now', 'utc')) "
-                "ON CONFLICT(namespace, key) DO UPDATE SET "
-                "value=excluded.value, updated_at=excluded.updated_at",
-                (key, value),
-            )
-            await self._db.commit()
-        except (sqlite3.Error, aiosqlite.Error) as exc:
-            msg = f"Failed to set setting {key!r}"
-            logger.exception(
-                PERSISTENCE_SETTING_SAVE_FAILED,
-                key=key,
-                error=str(exc),
-            )
-            raise QueryError(msg) from exc
+        repo = self._require_connected(self._settings, "settings")
+        updated_at = datetime.now(UTC).isoformat()
+        await repo.set(NotBlankStr("_system"), key, value, updated_at)

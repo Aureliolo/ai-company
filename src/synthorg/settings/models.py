@@ -1,5 +1,6 @@
 """Domain models for the settings persistence layer."""
 
+import json
 import re
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -114,7 +115,88 @@ class SettingDefinition(BaseModel):
             except re.error as exc:
                 msg = f"Invalid validator_pattern: {exc}"
                 raise ValueError(msg) from exc
+        if self.default is not None:
+            self._validate_default()
         return self
+
+    def _validate_default(self) -> None:
+        """Validate that the default value is consistent with the type."""
+        default = self.default
+        if default is None:
+            return
+        _validate_default_type(self.type, default, self)
+        _validate_default_range(default, self)
+        if self.validator_pattern is not None and not re.fullmatch(
+            self.validator_pattern, default
+        ):
+            msg = f"default {default!r} does not match validator_pattern"
+            raise ValueError(msg)
+
+
+def _validate_default_type(
+    setting_type: SettingType,
+    default: str,
+    defn: SettingDefinition,
+) -> None:
+    """Check that *default* is parseable as *setting_type*."""
+    validators = {
+        SettingType.INTEGER: _check_default_int,
+        SettingType.FLOAT: _check_default_float,
+        SettingType.BOOLEAN: _check_default_bool,
+        SettingType.JSON: _check_default_json,
+    }
+    validator = validators.get(setting_type)
+    if validator is not None:
+        validator(default)
+    elif setting_type == SettingType.ENUM and default not in defn.enum_values:
+        msg = f"default {default!r} not in enum_values"
+        raise ValueError(msg)
+
+
+def _check_default_int(default: str) -> None:
+    try:
+        int(default)
+    except ValueError:
+        msg = f"default {default!r} is not a valid integer"
+        raise ValueError(msg) from None
+
+
+def _check_default_float(default: str) -> None:
+    try:
+        float(default)
+    except ValueError:
+        msg = f"default {default!r} is not a valid float"
+        raise ValueError(msg) from None
+
+
+def _check_default_bool(default: str) -> None:
+    if default.lower() not in ("true", "false", "1", "0"):
+        msg = f"default {default!r} is not a valid boolean"
+        raise ValueError(msg)
+
+
+def _check_default_json(default: str) -> None:
+    try:
+        json.loads(default)
+    except json.JSONDecodeError:
+        msg = "default is not valid JSON"
+        raise ValueError(msg) from None
+
+
+def _validate_default_range(
+    default: str,
+    defn: SettingDefinition,
+) -> None:
+    """Check numeric range constraints on a default value."""
+    if defn.type not in (SettingType.INTEGER, SettingType.FLOAT):
+        return
+    val = float(default)
+    if defn.min_value is not None and val < defn.min_value:
+        msg = f"default {val} below min_value {defn.min_value}"
+        raise ValueError(msg)
+    if defn.max_value is not None and val > defn.max_value:
+        msg = f"default {val} above max_value {defn.max_value}"
+        raise ValueError(msg)
 
 
 class SettingValue(BaseModel):

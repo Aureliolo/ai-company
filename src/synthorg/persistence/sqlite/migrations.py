@@ -442,6 +442,16 @@ async def _apply_v8(db: aiosqlite.Connection) -> None:
         await db.execute(stmt)
 
 
+async def _has_v9_settings_schema(db: aiosqlite.Connection) -> bool:
+    """Check whether the ``settings`` table already has the v9 schema.
+
+    V9 schema has a ``namespace`` column; V5 does not.
+    """
+    cursor = await db.execute("PRAGMA table_info(settings)")
+    columns = {str(row[1]) for row in await cursor.fetchall()}
+    return "namespace" in columns
+
+
 _V9_NEW_SETTINGS_DDL: str = """\
 CREATE TABLE IF NOT EXISTS settings_v9 (
     namespace TEXT NOT NULL,
@@ -476,6 +486,12 @@ async def _apply_v9(db: aiosqlite.Connection) -> None:
     """
     has_original = await _table_exists(db, "settings")
     has_old = await _table_exists(db, "settings_old")
+
+    # Fast path: settings already has v9 schema and no _old table
+    # means migration completed previously — just clean up.
+    if has_original and not has_old and await _has_v9_settings_schema(db):
+        await db.execute("DROP TABLE IF EXISTS settings_v9")
+        return
 
     # Step 1: create new table (idempotent).
     await db.execute(_V9_NEW_SETTINGS_DDL)
