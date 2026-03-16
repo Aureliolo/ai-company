@@ -32,6 +32,7 @@ from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.persistence.config import PersistenceConfig
 from synthorg.security.config import SecurityConfig
 from synthorg.security.trust.config import TrustConfig
+from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
 from synthorg.tools.mcp.config import MCPConfig
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 
@@ -532,6 +533,10 @@ class RootConfig(BaseModel):
     coordination: CoordinationSectionConfig = Field(
         default_factory=CoordinationSectionConfig,
         description="Multi-agent coordination configuration",
+    )
+    git_clone: GitCloneNetworkPolicy = Field(
+        default_factory=GitCloneNetworkPolicy,
+        description="Git clone SSRF prevention network policy",
     )
 
     @model_validator(mode="after")

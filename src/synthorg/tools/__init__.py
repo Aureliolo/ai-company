@@ -28,6 +28,7 @@ from .git_tools import (
     GitLogTool,
     GitStatusTool,
 )
+from .git_url_validator import GitCloneNetworkPolicy
 from .invoker import ToolInvoker
 from .permissions import ToolPermissionChecker
 from .registry import ToolRegistry
@@ -57,6 +58,7 @@ __all__ = [
     "EchoTool",
     "EditFileTool",
     "GitBranchTool",
+    "GitCloneNetworkPolicy",
     "GitCloneTool",
     "GitCommitTool",
     "GitDiffTool",

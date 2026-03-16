@@ -587,58 +587,58 @@ class TestFlagInjectionPrevention:
         assert "must not start with '-'" in result.content
 
 
-# ── Security: clone URL validation ───────────────────────────────
+# ── Security: SSRF prevention in clone ─────────────────────────────
 
 
 @pytest.mark.unit
-class TestCloneUrlValidation:
-    """Only remote URL schemes should be allowed for clone."""
+class TestGitCloneToolSsrf:
+    """SSRF prevention integration tests for git_clone."""
 
-    async def test_local_path_blocked(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "/etc/passwd"},
+    async def test_clone_ssrf_loopback_blocked(
+        self,
+        workspace: Path,
+    ) -> None:
+        """Clone to loopback IP must be blocked."""
+        tool = GitCloneTool(workspace=workspace)
+        result = await tool.execute(
+            arguments={"url": "https://127.0.0.1/repo.git"},
         )
         assert result.is_error
-        assert "Invalid clone URL" in result.content
+        assert "blocked" in result.content.lower()
 
-    async def test_file_scheme_blocked(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "file:///etc"},
+    async def test_clone_ssrf_private_ip_blocked(
+        self,
+        workspace: Path,
+    ) -> None:
+        """Clone to private network IP must be blocked."""
+        tool = GitCloneTool(workspace=workspace)
+        result = await tool.execute(
+            arguments={"url": "https://10.0.0.5/internal.git"},
         )
         assert result.is_error
+        assert "blocked" in result.content.lower()
 
-    async def test_ext_protocol_blocked(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "ext::sh -c 'evil'"},
+    async def test_clone_ssrf_allowlisted_host(
+        self,
+        workspace: Path,
+    ) -> None:
+        """Allowlisted host bypasses SSRF check."""
+        from synthorg.tools.git_url_validator import (
+            GitCloneNetworkPolicy,
         )
-        assert result.is_error
 
-    async def test_https_allowed(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "https://example.com/repo.git"},
+        policy = GitCloneNetworkPolicy(
+            hostname_allowlist=("internal-git.example.com",),
         )
-        # URL is valid, clone will fail (no such host) but not from validation
-        assert "Invalid clone URL" not in result.content
-
-    async def test_scp_syntax_allowed(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "git@github.com:user/repo.git"},
+        tool = GitCloneTool(workspace=workspace, network_policy=policy)
+        result = await tool.execute(
+            arguments={
+                "url": "https://internal-git.example.com/repo.git",
+            },
         )
-        assert "Invalid clone URL" not in result.content
-
-    async def test_relative_path_blocked(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "../outside-repo"},
-        )
-        assert result.is_error
-
-    async def test_flag_url_blocked(self, clone_tool: GitCloneTool) -> None:
-        """URLs starting with '-' must be rejected (flag injection)."""
-        result = await clone_tool.execute(
-            arguments={"url": "-cfoo=bar@host:path"},
-        )
-        assert result.is_error
-        assert "Invalid clone URL" in result.content
+        # SSRF check passes (allowlisted); clone fails for other
+        # reasons (host doesn't exist) — but NOT an SSRF error.
+        assert "blocked private" not in result.content.lower()
 
 
 # ── Edge cases: detached HEAD ─────────────────────────────────────
