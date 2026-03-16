@@ -442,3 +442,203 @@ class TestSchema:
     def test_get_schema_empty_namespace(self, service: SettingsService) -> None:
         schema = service.get_schema(namespace="nonexistent")
         assert schema == ()
+
+
+# ── Bulk Operations Tests ────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestBulkOperations:
+    """Tests for get_all and get_namespace batch methods."""
+
+    async def test_get_namespace_returns_entries(
+        self, service: SettingsService, mock_repo: AsyncMock
+    ) -> None:
+        mock_repo.get_namespace.return_value = (
+            ("total_monthly", "200.0", "2026-03-16T10:00:00Z"),
+        )
+        entries = await service.get_namespace("budget")
+        assert len(entries) == 1
+        assert entries[0].definition.key == "total_monthly"
+        assert entries[0].value == "200.0"
+        assert entries[0].source == SettingSource.DATABASE
+
+    async def test_get_namespace_falls_back_to_default(
+        self, service: SettingsService, mock_repo: AsyncMock
+    ) -> None:
+        mock_repo.get_namespace.return_value = ()
+        entries = await service.get_namespace("budget")
+        assert len(entries) == 1
+        # Falls to YAML since config has budget.total_monthly=100.0
+        assert entries[0].source == SettingSource.YAML
+
+    async def test_get_all_returns_entries(
+        self, service: SettingsService, mock_repo: AsyncMock
+    ) -> None:
+        mock_repo.get_all.return_value = (
+            ("budget", "total_monthly", "300.0", "2026-03-16T10:00:00Z"),
+        )
+        entries = await service.get_all()
+        assert len(entries) == 1
+        assert entries[0].value == "300.0"
+
+    async def test_get_all_uses_batch_method(
+        self, service: SettingsService, mock_repo: AsyncMock
+    ) -> None:
+        """get_all should call repository.get_all, not individual gets."""
+        mock_repo.get_all.return_value = ()
+        await service.get_all()
+        mock_repo.get_all.assert_called_once()
+        # Should NOT call individual get()
+        mock_repo.get.assert_not_called()
+
+
+# ── Sensitive Read Without Encryptor ─────────────────────────────
+
+
+@pytest.mark.unit
+class TestSensitiveReadWithoutEncryptor:
+    """Test that sensitive DB values are not leaked when encryptor is absent."""
+
+    async def test_sensitive_not_cached(
+        self, mock_repo: AsyncMock, config: _FakeConfig
+    ) -> None:
+        """Sensitive values should not be stored in the cache."""
+        enc = SettingsEncryptor(Fernet.generate_key())
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                key="api_key",
+                setting_type=SettingType.STRING,
+                sensitive=True,
+                yaml_path=None,
+            )
+        )
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+            encryptor=enc,
+        )
+        ciphertext = enc.encrypt("secret123")
+        mock_repo.get.return_value = (ciphertext, "2026-03-16T10:00:00Z")
+        await svc.get("budget", "api_key")
+        # Second call should hit DB again (not cached)
+        await svc.get("budget", "api_key")
+        assert mock_repo.get.call_count == 2
+
+
+# ── Notification Exception Handling ──────────────────────────────
+
+
+@pytest.mark.unit
+class TestNotificationExceptionHandling:
+    """Test that bus.publish exceptions don't break setting writes."""
+
+    async def test_set_succeeds_when_bus_publish_raises(
+        self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
+    ) -> None:
+        bus = MagicMock()
+        bus.is_running = True
+        bus.publish = AsyncMock(side_effect=RuntimeError("bus broken"))
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+            message_bus=bus,
+        )
+        # Should NOT raise despite bus failure
+        entry = await svc.set("budget", "total_monthly", "200.0")
+        assert entry.value == "200.0"
+
+    async def test_skips_publish_when_bus_not_running(
+        self, mock_repo: AsyncMock, registry: SettingsRegistry, config: _FakeConfig
+    ) -> None:
+        bus = MagicMock()
+        bus.is_running = False
+        bus.publish = AsyncMock()
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+            message_bus=bus,
+        )
+        await svc.set("budget", "total_monthly", "200.0")
+        bus.publish.assert_not_called()
+
+
+# ── Additional Validation Tests ──────────────────────────────────
+
+
+@pytest.mark.unit
+class TestAdditionalValidation:
+    """Tests for INTEGER, JSON, and validator_pattern paths."""
+
+    async def test_rejects_float_as_integer(
+        self, mock_repo: AsyncMock, config: _FakeConfig
+    ) -> None:
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                key="count",
+                setting_type=SettingType.INTEGER,
+                yaml_path=None,
+            )
+        )
+        svc = SettingsService(repository=mock_repo, registry=registry, config=config)
+        with pytest.raises(SettingValidationError, match="Expected integer"):
+            await svc.set("budget", "count", "3.5")
+
+    async def test_rejects_invalid_json(
+        self, mock_repo: AsyncMock, config: _FakeConfig
+    ) -> None:
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                key="data",
+                setting_type=SettingType.JSON,
+                yaml_path=None,
+            )
+        )
+        svc = SettingsService(repository=mock_repo, registry=registry, config=config)
+        with pytest.raises(SettingValidationError, match="Invalid JSON"):
+            await svc.set("budget", "data", "not json")
+
+    async def test_accepts_valid_json(
+        self, mock_repo: AsyncMock, config: _FakeConfig
+    ) -> None:
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                key="data",
+                setting_type=SettingType.JSON,
+                yaml_path=None,
+            )
+        )
+        svc = SettingsService(repository=mock_repo, registry=registry, config=config)
+        entry = await svc.set("budget", "data", '{"a": 1}')
+        assert entry.value == '{"a": 1}'
+
+    async def test_sensitive_value_masked_in_validation_error(
+        self, mock_repo: AsyncMock, config: _FakeConfig
+    ) -> None:
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                key="secret",
+                setting_type=SettingType.INTEGER,
+                sensitive=True,
+                yaml_path=None,
+            )
+        )
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+            encryptor=SettingsEncryptor(Fernet.generate_key()),
+        )
+        with pytest.raises(SettingValidationError) as exc_info:
+            await svc.set("budget", "secret", "my-secret-value")
+        # The actual secret must NOT appear in the error message
+        assert "my-secret-value" not in str(exc_info.value)
+        assert "********" in str(exc_info.value)

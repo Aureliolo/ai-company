@@ -17,6 +17,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
     SETTINGS_CACHE_INVALIDATED,
     SETTINGS_ENCRYPTION_ERROR,
+    SETTINGS_NOTIFICATION_FAILED,
     SETTINGS_NOTIFICATION_PUBLISHED,
     SETTINGS_VALIDATION_FAILED,
     SETTINGS_VALUE_DELETED,
@@ -56,6 +57,9 @@ def _env_var_name(namespace: str, key: str) -> str:
 def _validate_value(definition: SettingDefinition, value: str) -> None:
     """Validate a value against its definition.
 
+    For sensitive settings, error messages mask the actual value
+    to prevent secret leakage through validation errors.
+
     Raises:
         SettingValidationError: If validation fails.
     """
@@ -64,7 +68,8 @@ def _validate_value(definition: SettingDefinition, value: str) -> None:
     if definition.validator_pattern is not None and not re.fullmatch(
         definition.validator_pattern, value
     ):
-        msg = f"Value {value!r} does not match pattern {definition.validator_pattern!r}"
+        display = _SENSITIVE_MASK if definition.sensitive else repr(value)
+        msg = f"Value {display} does not match pattern {definition.validator_pattern!r}"
         raise SettingValidationError(msg)
 
 
@@ -77,7 +82,7 @@ def _validate_by_type(definition: SettingDefinition, value: str) -> None:
     elif setting_type == SettingType.FLOAT:
         _validate_float(definition, value)
     elif setting_type == SettingType.BOOLEAN:
-        _validate_boolean(value)
+        _validate_boolean(definition, value)
     elif setting_type == SettingType.ENUM:
         _validate_enum(definition, value)
     elif setting_type == SettingType.JSON:
@@ -88,7 +93,8 @@ def _validate_integer(definition: SettingDefinition, value: str) -> None:
     try:
         int_val = int(value)
     except ValueError as exc:
-        msg = f"Expected integer, got {value!r}"
+        display = _SENSITIVE_MASK if definition.sensitive else repr(value)
+        msg = f"Expected integer, got {display}"
         raise SettingValidationError(msg) from exc
     _check_range(definition, float(int_val))
 
@@ -97,20 +103,23 @@ def _validate_float(definition: SettingDefinition, value: str) -> None:
     try:
         float_val = float(value)
     except ValueError as exc:
-        msg = f"Expected float, got {value!r}"
+        display = _SENSITIVE_MASK if definition.sensitive else repr(value)
+        msg = f"Expected float, got {display}"
         raise SettingValidationError(msg) from exc
     _check_range(definition, float_val)
 
 
-def _validate_boolean(value: str) -> None:
+def _validate_boolean(definition: SettingDefinition, value: str) -> None:
     if value.lower() not in ("true", "false", "1", "0"):
-        msg = f"Expected boolean, got {value!r}"
+        display = _SENSITIVE_MASK if definition.sensitive else repr(value)
+        msg = f"Expected boolean, got {display}"
         raise SettingValidationError(msg)
 
 
 def _validate_enum(definition: SettingDefinition, value: str) -> None:
     if value not in definition.enum_values:
-        msg = f"Invalid enum value {value!r}. Allowed: {definition.enum_values}"
+        display = _SENSITIVE_MASK if definition.sensitive else repr(value)
+        msg = f"Invalid enum value {display}. Allowed: {definition.enum_values}"
         raise SettingValidationError(msg)
 
 
@@ -140,6 +149,10 @@ class SettingsService:
     2. Environment variables (``SYNTHORG_{NAMESPACE}_{KEY}``)
     3. YAML defaults (from ``RootConfig``)
     4. Code defaults (from ``SettingDefinition.default``)
+
+    The cache stores only non-sensitive DB values.  Sensitive values
+    are decrypted on every read to avoid holding plaintext secrets
+    in memory.
 
     Args:
         repository: Persistence repository for DB settings.
@@ -183,11 +196,12 @@ class SettingsService:
             msg = f"Unknown setting: {namespace}/{key}"
             raise SettingNotFoundError(msg)
 
-        # 1. Cache check
+        # 1. Cache check (sensitive values are never cached)
         cache_key = (namespace, key)
-        cached = self._cache.get(cache_key)
-        if cached is not None:
-            return cached
+        if not definition.sensitive:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                return cached
 
         # 2. DB lookup
         result = await self._repository.get(
@@ -206,13 +220,29 @@ class SettingsService:
                 source=SettingSource.DATABASE,
                 updated_at=updated_at,
             )
-            self._cache = {**self._cache, cache_key: setting_value}
+            # Cache only non-sensitive values to avoid holding
+            # plaintext secrets in memory.
+            if not definition.sensitive:
+                self._cache = {**self._cache, cache_key: setting_value}
+            logger.debug(
+                SETTINGS_VALUE_RESOLVED,
+                namespace=namespace,
+                key=key,
+                source="db",
+            )
             return setting_value
 
-        # 3. Environment variable
+        # 3. Environment variable (env vars are protected by OS-level
+        # isolation — no encryption needed for env-sourced values)
         env_name = _env_var_name(namespace, key)
         env_val = os.environ.get(env_name)
         if env_val is not None:
+            logger.debug(
+                SETTINGS_VALUE_RESOLVED,
+                namespace=namespace,
+                key=key,
+                source="env",
+            )
             return SettingValue(
                 namespace=definition.namespace,
                 key=key,
@@ -224,6 +254,12 @@ class SettingsService:
         if definition.yaml_path is not None:
             yaml_val = extract_from_config(self._config, definition.yaml_path)
             if yaml_val is not None:
+                logger.debug(
+                    SETTINGS_VALUE_RESOLVED,
+                    namespace=namespace,
+                    key=key,
+                    source="yaml",
+                )
                 return SettingValue(
                     namespace=definition.namespace,
                     key=key,
@@ -259,11 +295,10 @@ class SettingsService:
         Raises:
             SettingNotFoundError: If the key is not in the registry.
         """
-        definition = self._registry.get(namespace, key)
-        if definition is None:
-            msg = f"Unknown setting: {namespace}/{key}"
-            raise SettingNotFoundError(msg)
+        # get() performs the registry check and raises SettingNotFoundError
         value = await self.get(namespace, key)
+        definition = self._registry.get(namespace, key)
+        assert definition is not None  # noqa: S101 — get() guarantees
         display_value = _SENSITIVE_MASK if definition.sensitive else value.value
         return SettingEntry(
             definition=definition,
@@ -275,6 +310,8 @@ class SettingsService:
     async def get_namespace(self, namespace: str) -> tuple[SettingEntry, ...]:
         """Resolve all settings in a namespace.
 
+        Uses the repository's batch method to avoid N+1 DB queries.
+
         Args:
             namespace: Setting namespace.
 
@@ -282,24 +319,105 @@ class SettingsService:
             All setting entries in the namespace, sorted by key.
         """
         definitions = self._registry.list_namespace(namespace)
+        if not definitions:
+            return ()
+
+        # Batch-fetch all DB values for this namespace in one query.
+        db_rows = await self._repository.get_namespace(
+            NotBlankStr(namespace),
+        )
+        db_lookup: dict[str, tuple[str, str]] = {k: (v, ts) for k, v, ts in db_rows}
+
         entries: list[SettingEntry] = []
         for defn in definitions:
-            entry = await self.get_entry(namespace, defn.key)
+            entry = self._resolve_with_db_lookup(defn, db_lookup.get(defn.key))
             entries.append(entry)
         return tuple(entries)
 
     async def get_all(self) -> tuple[SettingEntry, ...]:
         """Resolve all settings across all namespaces.
 
+        Uses the repository's batch method to avoid N+1 DB queries.
+
         Returns:
             All setting entries, sorted by namespace then key.
         """
         definitions = self._registry.list_all()
+        if not definitions:
+            return ()
+
+        # Batch-fetch all DB values in one query.
+        db_rows = await self._repository.get_all()
+        db_lookup: dict[tuple[str, str], tuple[str, str]] = {
+            (ns, k): (v, ts) for ns, k, v, ts in db_rows
+        }
+
         entries: list[SettingEntry] = []
         for defn in definitions:
-            entry = await self.get_entry(defn.namespace, defn.key)
+            db_hit = db_lookup.get((defn.namespace, defn.key))
+            entry = self._resolve_with_db_lookup(defn, db_hit)
             entries.append(entry)
         return tuple(entries)
+
+    def _resolve_with_db_lookup(
+        self,
+        definition: SettingDefinition,
+        db_hit: tuple[str, str] | None,
+    ) -> SettingEntry:
+        """Resolve a single setting entry using a pre-fetched DB value.
+
+        This is a synchronous helper for batch operations.  It does
+        not check the cache (batch callers skip the cache).  For the
+        env/YAML/default fallback layers it performs the same logic
+        as ``get()`` but without the async DB call.
+        """
+        ns = definition.namespace
+        key = definition.key
+
+        # DB value (pre-fetched)
+        if db_hit is not None:
+            raw_value, updated_at = db_hit
+            value = raw_value
+            if definition.sensitive and self._encryptor is not None:
+                value = self._encryptor.decrypt(raw_value)
+            display = _SENSITIVE_MASK if definition.sensitive else value
+            return SettingEntry(
+                definition=definition,
+                value=display,
+                source=SettingSource.DATABASE,
+                updated_at=updated_at,
+            )
+
+        # Environment variable
+        env_name = _env_var_name(ns, key)
+        env_val = os.environ.get(env_name)
+        if env_val is not None:
+            display = _SENSITIVE_MASK if definition.sensitive else env_val
+            return SettingEntry(
+                definition=definition,
+                value=display,
+                source=SettingSource.ENVIRONMENT,
+            )
+
+        # YAML config bridge
+        if definition.yaml_path is not None:
+            yaml_val = extract_from_config(self._config, definition.yaml_path)
+            if yaml_val is not None:
+                display = _SENSITIVE_MASK if definition.sensitive else yaml_val
+                return SettingEntry(
+                    definition=definition,
+                    value=display,
+                    source=SettingSource.YAML,
+                )
+
+        # Code default
+        default = definition.default if definition.default is not None else ""
+        display = _SENSITIVE_MASK if definition.sensitive else default
+        return SettingEntry(
+            definition=definition,
+            value=display,
+            source=SettingSource.DEFAULT,
+        )
 
     async def set(self, namespace: str, key: str, value: str) -> SettingEntry:
         """Validate and persist a setting value.
@@ -460,7 +578,10 @@ class SettingsService:
                     extra=(
                         ("namespace", namespace),
                         ("key", key),
-                        ("restart_required", str(definition.restart_required)),
+                        (
+                            "restart_required",
+                            str(definition.restart_required),
+                        ),
                     ),
                 ),
             )
@@ -473,8 +594,7 @@ class SettingsService:
         except Exception:
             # Notification failure should not break settings writes.
             logger.warning(
-                SETTINGS_NOTIFICATION_PUBLISHED,
+                SETTINGS_NOTIFICATION_FAILED,
                 namespace=namespace,
                 key=key,
-                error="notification_failed",
             )

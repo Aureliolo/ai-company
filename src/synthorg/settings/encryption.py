@@ -98,9 +98,21 @@ class SettingsEncryptor:
             SettingsEncryptionError: If the env var is set but the key
                 is invalid.
         """
-        raw = os.environ.get(_ENV_VAR, "").strip()
-        if not raw:
+        raw_or_none = os.environ.get(_ENV_VAR)
+        if raw_or_none is None:
             return None
+        raw = raw_or_none.strip()
+        if not raw:
+            msg = (
+                f"{_ENV_VAR} is set but empty — "
+                f"provide a valid Fernet key or unset the variable"
+            )
+            logger.exception(
+                SETTINGS_ENCRYPTION_ERROR,
+                operation="from_env",
+                error=msg,
+            )
+            raise SettingsEncryptionError(msg)
         try:
             return cls(raw.encode("ascii"))
         except Exception as exc:

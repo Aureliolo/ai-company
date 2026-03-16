@@ -30,7 +30,7 @@ class TestSettingsEncryptor:
         assert encryptor.decrypt(ciphertext) == ""
 
     def test_roundtrip_unicode(self, encryptor: SettingsEncryptor) -> None:
-        plaintext = "secretpassword"
+        plaintext = "p\u00e4ssw\u00f6rd-\U0001f512-\u6d4b\u8bd5"
         ciphertext = encryptor.encrypt(plaintext)
         assert encryptor.decrypt(ciphertext) == plaintext
 
@@ -61,11 +61,10 @@ class TestSettingsEncryptor:
         monkeypatch.delenv("SYNTHORG_SETTINGS_KEY", raising=False)
         assert SettingsEncryptor.from_env() is None
 
-    def test_from_env_returns_none_for_empty(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_from_env_raises_for_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SYNTHORG_SETTINGS_KEY", "   ")
-        assert SettingsEncryptor.from_env() is None
+        with pytest.raises(SettingsEncryptionError, match="set but empty"):
+            SettingsEncryptor.from_env()
 
     def test_from_env_raises_for_invalid_key(
         self, monkeypatch: pytest.MonkeyPatch

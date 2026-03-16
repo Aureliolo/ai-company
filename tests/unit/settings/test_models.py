@@ -1,6 +1,7 @@
 """Unit tests for settings domain models."""
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.settings.enums import (
     SettingLevel,
@@ -70,11 +71,11 @@ class TestSettingDefinition:
             description="Monthly budget in USD",
             group="Limits",
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             defn.key = "changed"  # type: ignore[misc]
 
     def test_rejects_blank_key(self) -> None:
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             SettingDefinition(
                 namespace=SettingNamespace.BUDGET,
                 key="   ",
@@ -84,7 +85,7 @@ class TestSettingDefinition:
             )
 
     def test_rejects_empty_description(self) -> None:
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             SettingDefinition(
                 namespace=SettingNamespace.BUDGET,
                 key="total_monthly",
@@ -128,7 +129,7 @@ class TestSettingValue:
             value="100.0",
             source=SettingSource.DEFAULT,
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             val.value = "200.0"  # type: ignore[misc]
 
 
@@ -170,5 +171,5 @@ class TestSettingEntry:
             value="200.0",
             source=SettingSource.DEFAULT,
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             entry.value = "300.0"  # type: ignore[misc]

@@ -9,6 +9,8 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.settings import SETTINGS_ENCRYPTION_ERROR
+from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import (
     SettingNotFoundError,
     SettingsEncryptionError,
@@ -17,6 +19,8 @@ from synthorg.settings.errors import (
 from synthorg.settings.models import SettingDefinition, SettingEntry  # noqa: TC001
 
 logger = get_logger(__name__)
+
+_VALID_NAMESPACES: frozenset[str] = frozenset(ns.value for ns in SettingNamespace)
 
 
 class UpdateSettingRequest(BaseModel):
@@ -29,6 +33,13 @@ class UpdateSettingRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     value: str = Field(max_length=8192, description="New value as string")
+
+
+def _validate_namespace(namespace: str) -> None:
+    """Raise 404 if namespace is not a known SettingNamespace member."""
+    if namespace not in _VALID_NAMESPACES:
+        msg = f"Unknown namespace: {namespace!r}"
+        raise NotFoundException(msg)
 
 
 class SettingsController(Controller):
@@ -70,6 +81,7 @@ class SettingsController(Controller):
         Returns:
             Definitions in the namespace.
         """
+        _validate_namespace(namespace)
         app_state: AppState = state.app_state
         schema = app_state.settings_service.get_schema(namespace=namespace)
         return ApiResponse(data=schema)
@@ -108,6 +120,7 @@ class SettingsController(Controller):
         Returns:
             Resolved setting entries in the namespace.
         """
+        _validate_namespace(namespace)
         app_state: AppState = state.app_state
         entries = await app_state.settings_service.get_namespace(namespace)
         return ApiResponse(data=entries)
@@ -129,6 +142,7 @@ class SettingsController(Controller):
         Returns:
             Resolved setting entry.
         """
+        _validate_namespace(namespace)
         app_state: AppState = state.app_state
         try:
             entry = await app_state.settings_service.get_entry(namespace, key)
@@ -158,6 +172,7 @@ class SettingsController(Controller):
         Returns:
             Updated setting entry.
         """
+        _validate_namespace(namespace)
         app_state: AppState = state.app_state
         try:
             entry = await app_state.settings_service.set(namespace, key, data.value)
@@ -165,8 +180,14 @@ class SettingsController(Controller):
             raise NotFoundException(str(exc)) from exc
         except SettingValidationError as exc:
             raise ClientException(str(exc), status_code=422) from exc
-        except SettingsEncryptionError as exc:
-            raise ClientException(str(exc), status_code=500) from exc
+        except SettingsEncryptionError:
+            logger.exception(
+                SETTINGS_ENCRYPTION_ERROR,
+                namespace=namespace,
+                key=key,
+            )
+            msg = "Internal error processing sensitive setting"
+            raise ClientException(msg, status_code=500) from None
         return ApiResponse(data=entry)
 
     @delete(
@@ -190,6 +211,7 @@ class SettingsController(Controller):
         Returns:
             Empty success response.
         """
+        _validate_namespace(namespace)
         app_state: AppState = state.app_state
         try:
             await app_state.settings_service.delete(namespace, key)

@@ -7,8 +7,8 @@ import aiosqlite
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
+    SETTINGS_FETCH_FAILED,
     SETTINGS_VALUE_DELETED,
-    SETTINGS_VALUE_RESOLVED,
     SETTINGS_VALUE_SET,
 )
 from synthorg.persistence.errors import QueryError
@@ -45,7 +45,7 @@ class SQLiteSettingsRepository:
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to get setting {namespace}/{key}"
             logger.exception(
-                SETTINGS_VALUE_RESOLVED,
+                SETTINGS_FETCH_FAILED,
                 namespace=namespace,
                 key=key,
                 error=str(exc),
@@ -70,7 +70,7 @@ class SQLiteSettingsRepository:
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to get settings for namespace {namespace}"
             logger.exception(
-                SETTINGS_VALUE_RESOLVED,
+                SETTINGS_FETCH_FAILED,
                 namespace=namespace,
                 error=str(exc),
             )
@@ -88,7 +88,7 @@ class SQLiteSettingsRepository:
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to get all settings"
             logger.exception(
-                SETTINGS_VALUE_RESOLVED,
+                SETTINGS_FETCH_FAILED,
                 error=str(exc),
             )
             raise QueryError(msg) from exc

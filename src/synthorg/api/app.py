@@ -65,6 +65,7 @@ if TYPE_CHECKING:
     from litestar.types import Middleware
 
     from synthorg.api.config import ApiConfig
+    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -441,7 +442,7 @@ def create_app(  # noqa: PLR0913
     meeting_orchestrator: MeetingOrchestrator | None = None,
     meeting_scheduler: MeetingScheduler | None = None,
     performance_tracker: PerformanceTracker | None = None,
-    settings_service: Any | None = None,
+    settings_service: SettingsService | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 

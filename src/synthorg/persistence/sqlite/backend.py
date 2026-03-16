@@ -417,7 +417,7 @@ class SQLitePersistenceBackend:
         """
         return self._require_connected(self._settings, "settings")
 
-    async def get_setting(self, key: str) -> str | None:
+    async def get_setting(self, key: NotBlankStr) -> str | None:
         """Retrieve a setting value by key from the ``_system`` namespace.
 
         Raises:
@@ -443,7 +443,7 @@ class SQLitePersistenceBackend:
             raise QueryError(msg) from exc
         return str(row[0]) if row else None
 
-    async def set_setting(self, key: str, value: str) -> None:
+    async def set_setting(self, key: NotBlankStr, value: str) -> None:
         """Store a setting value (upsert) in the ``_system`` namespace.
 
         Raises:

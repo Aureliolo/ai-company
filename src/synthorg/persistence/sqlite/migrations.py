@@ -453,7 +453,14 @@ CREATE TABLE IF NOT EXISTS settings_v9 (
 
 _V9_COPY_ROWS: str = """\
 INSERT OR IGNORE INTO settings_v9 (namespace, key, value, updated_at)
-SELECT '_system', key, value, datetime('now') FROM {source}"""
+SELECT '_system', key, value,
+       strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now', 'utc')
+FROM {source}"""
+
+# Only these two table names are valid copy sources.  The assertion
+# in _apply_v9 enforces this, preventing accidental SQL injection
+# if the pattern is ever copied elsewhere.
+_V9_VALID_SOURCES: frozenset[str] = frozenset({"settings", "settings_old"})
 
 
 async def _apply_v9(db: aiosqlite.Connection) -> None:
@@ -464,6 +471,8 @@ async def _apply_v9(db: aiosqlite.Connection) -> None:
     primary key.  Existing rows go to the ``_system`` namespace.
 
     Crash-safe: follows the same rename pattern as V7.
+    Prefers ``settings_old`` as copy source when both tables exist
+    (mid-crash state where ``settings`` is the already-migrated table).
     """
     has_original = await _table_exists(db, "settings")
     has_old = await _table_exists(db, "settings_old")
@@ -471,11 +480,18 @@ async def _apply_v9(db: aiosqlite.Connection) -> None:
     # Step 1: create new table (idempotent).
     await db.execute(_V9_NEW_SETTINGS_DDL)
 
-    # Step 2: copy rows from surviving source.
-    if has_original:
-        await db.execute(_V9_COPY_ROWS.format(source="settings"))
-    elif has_old:
-        await db.execute(_V9_COPY_ROWS.format(source="settings_old"))
+    # Step 2: copy rows from the authoritative source.
+    # Prefer settings_old — in a crash re-entry where both exist,
+    # settings_old is the V5-schema original while settings may
+    # already be the new-schema table.
+    source: str | None = None
+    if has_old:
+        source = "settings_old"
+    elif has_original:
+        source = "settings"
+    if source is not None:
+        assert source in _V9_VALID_SOURCES  # noqa: S101
+        await db.execute(_V9_COPY_ROWS.format(source=source))
 
     # Step 3: rename original → _old.
     if has_original and not has_old:
@@ -491,11 +507,10 @@ async def _apply_v9(db: aiosqlite.Connection) -> None:
                 "ALTER TABLE settings_v9 RENAME TO settings",
             )
 
-    # Step 5: clean up + index.
+    # Step 5: clean up.  The composite PK (namespace, key) already
+    # covers namespace-only lookups via the leftmost prefix rule,
+    # so no separate namespace index is needed.
     await db.execute("DROP TABLE IF EXISTS settings_old")
-    await db.execute(
-        "CREATE INDEX IF NOT EXISTS idx_settings_namespace ON settings(namespace)",
-    )
 
 
 # Ordered list of (target_version, migration_function) pairs. Each migration
