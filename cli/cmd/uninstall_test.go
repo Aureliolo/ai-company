@@ -180,3 +180,49 @@ func TestRemoveAllExcept_EmptyDir(t *testing.T) {
 		t.Fatalf("removeAllExcept on empty dir: %v", err)
 	}
 }
+
+func TestRemoveAllExcept_CaseInsensitiveWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows-specific test")
+	}
+	root := t.TempDir()
+	file := filepath.Join(root, "Keep.txt")
+	if err := os.WriteFile(file, []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Pass lowercase version as excluded path.
+	excluded := filepath.Join(root, "keep.txt")
+	if err := removeAllExcept(root, excluded); err != nil {
+		t.Fatalf("removeAllExcept: %v", err)
+	}
+	// File should still exist (same file on NTFS).
+	if _, err := os.Stat(file); err != nil {
+		t.Errorf("excluded file was removed despite case difference: %v", err)
+	}
+}
+
+func TestRemoveAllExcept_PreservesRoot(t *testing.T) {
+	root := t.TempDir()
+	f := filepath.Join(root, "file.txt")
+	if err := os.WriteFile(f, []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Excluded is outside root, so all contents are removed.
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := removeAllExcept(root, outside); err != nil {
+		t.Fatalf("removeAllExcept: %v", err)
+	}
+
+	// Root directory itself must still exist.
+	info, err := os.Stat(root)
+	if err != nil {
+		t.Fatalf("root directory was removed: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatal("root is no longer a directory")
+	}
+}

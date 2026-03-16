@@ -504,8 +504,8 @@ export interface Channel {
 
 export interface HealthStatus {
   status: 'ok' | 'degraded' | 'down'
-  persistence: boolean
-  message_bus: boolean
+  persistence: boolean | null
+  message_bus: boolean | null
   version: string
   uptime_seconds: number
 }

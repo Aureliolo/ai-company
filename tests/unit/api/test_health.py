@@ -1,12 +1,13 @@
 """Tests for health check endpoint."""
 
 from typing import Any
+from unittest.mock import PropertyMock, patch
 
 import pytest
 from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
-from tests.unit.api.fakes import FakePersistenceBackend
+from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 
 @pytest.mark.unit
@@ -86,3 +87,68 @@ class TestHealthCheckUnconfiguredServices:
             assert body["data"]["status"] == "down"
             assert body["data"]["persistence"] is False
             assert body["data"]["message_bus"] is None
+
+    async def test_returns_ok_when_message_bus_only_and_healthy(self) -> None:
+        bus = FakeMessageBus()
+        await bus.start()
+        with TestClient(create_app(message_bus=bus)) as client:
+            response = client.get("/api/v1/health")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["data"]["status"] == "ok"
+            assert body["data"]["persistence"] is None
+            assert body["data"]["message_bus"] is True
+
+    async def test_returns_down_when_message_bus_only_and_unhealthy(
+        self,
+    ) -> None:
+        bus = FakeMessageBus()
+        await bus.start()
+        with TestClient(create_app(message_bus=bus)) as client:
+            bus._running = False
+            response = client.get("/api/v1/health")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["data"]["status"] == "down"
+            assert body["data"]["persistence"] is None
+            assert body["data"]["message_bus"] is False
+
+
+@pytest.mark.unit
+class TestHealthCheckExceptionPaths:
+    """Health endpoint when a configured service raises an exception."""
+
+    async def test_persistence_exception_returns_false(self) -> None:
+        backend = FakePersistenceBackend()
+        await backend.connect()
+        with (
+            TestClient(create_app(persistence=backend)) as client,
+            patch.object(
+                type(backend),
+                "health_check",
+                side_effect=RuntimeError("connection lost"),
+            ),
+        ):
+            response = client.get("/api/v1/health")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["data"]["persistence"] is False
+            assert body["data"]["status"] == "down"
+
+    async def test_message_bus_exception_returns_false(self) -> None:
+        bus = FakeMessageBus()
+        await bus.start()
+        with (
+            TestClient(create_app(message_bus=bus)) as client,
+            patch.object(
+                type(bus),
+                "is_running",
+                new_callable=PropertyMock,
+                side_effect=RuntimeError("internal error"),
+            ),
+        ):
+            response = client.get("/api/v1/health")
+            assert response.status_code == 200
+            body = response.json()
+            assert body["data"]["message_bus"] is False
+            assert body["data"]["status"] == "down"

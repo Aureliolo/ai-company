@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,7 +62,11 @@ func updateCLI(cmd *cobra.Command) (string, error) {
 
 	_, _ = fmt.Fprintf(out, "New version available: %s (current: %s)\n", result.LatestVersion, result.CurrentVersion)
 
-	if !confirmUpdate(fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion)) {
+	ok, err := confirmUpdate(fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion))
+	if err != nil {
+		return "", err
+	}
+	if !ok {
 		return version.Version, nil
 	}
 
@@ -79,13 +84,40 @@ func updateCLI(cmd *cobra.Command) (string, error) {
 }
 
 // targetImageTag converts a CLI version string to a Docker image tag.
-// Strips the "v" prefix and maps dev/empty to "latest".
+// Strips the "v" prefix and maps dev/empty/invalid to "latest".
+// Validates the tag at the trust boundary (version may come from the
+// GitHub Releases API); compose.Generate also validates downstream.
 func targetImageTag(ver string) string {
 	tag := strings.TrimPrefix(ver, "v")
 	if tag == "" || tag == "dev" {
 		return "latest"
 	}
+	if !isValidImageTag(tag) {
+		return "latest"
+	}
 	return tag
+}
+
+// isValidImageTag checks that tag matches [a-zA-Z0-9][a-zA-Z0-9._-]*.
+func isValidImageTag(tag string) bool {
+	if len(tag) == 0 {
+		return false
+	}
+	first := tag[0]
+	if !isAlphaNum(first) {
+		return false
+	}
+	for i := 1; i < len(tag); i++ {
+		c := tag[i]
+		if !isAlphaNum(c) && c != '.' && c != '_' && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func isAlphaNum(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 // updateContainerImages offers to update container images to match the
@@ -119,9 +151,48 @@ func updateContainerImages(cmd *cobra.Command, effectiveVersion string) error {
 		return nil
 	}
 
-	if !confirmUpdate(fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag)) {
+	ok, err := confirmUpdate(fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag))
+	if err != nil {
+		return err
+	}
+	if !ok {
 		return nil
 	}
+
+	if err := pullAndPersist(ctx, cmd, info, state, tag, safeDir); err != nil {
+		return err
+	}
+
+	updatedState := state
+	updatedState.ImageTag = tag
+	return restartIfRunning(cmd, info, safeDir, updatedState)
+}
+
+// confirmUpdate prompts the user to confirm an update action.
+// Returns (true, nil) if non-interactive (auto-accept) or user confirms.
+func confirmUpdate(title string) (bool, error) {
+	if !isInteractive() {
+		return true, nil
+	}
+	proceed := true // default yes
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().Title(title).Value(&proceed),
+	))
+	if err := form.Run(); err != nil {
+		return false, err
+	}
+	return proceed, nil
+}
+
+// pullAndPersist regenerates compose.yml, pulls images, and persists config.
+// If the pull fails, the previous compose.yml is restored so that the on-disk
+// state remains consistent.
+func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, tag, safeDir string) error {
+	out := cmd.OutOrStdout()
+
+	// Back up existing compose.yml for rollback on pull failure.
+	composePath := filepath.Join(safeDir, "compose.yml")
+	backup, backupErr := os.ReadFile(composePath)
 
 	if err := regenerateCompose(state, tag, safeDir); err != nil {
 		return err
@@ -129,6 +200,9 @@ func updateContainerImages(cmd *cobra.Command, effectiveVersion string) error {
 
 	_, _ = fmt.Fprintf(out, "Pulling container images (%s)...\n", tag)
 	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
+		if backupErr == nil {
+			_ = os.WriteFile(composePath, backup, 0o600)
+		}
 		return fmt.Errorf("pulling images: %w", err)
 	}
 
@@ -137,26 +211,12 @@ func updateContainerImages(cmd *cobra.Command, effectiveVersion string) error {
 	updatedState := state
 	updatedState.ImageTag = tag
 	if err := config.Save(updatedState); err != nil {
+		if backupErr == nil {
+			_ = os.WriteFile(composePath, backup, 0o600)
+		}
 		return fmt.Errorf("saving config: %w", err)
 	}
-
-	return restartIfRunning(cmd, info, safeDir, updatedState)
-}
-
-// confirmUpdate prompts the user to confirm an update action.
-// Returns true if non-interactive (auto-accept) or user confirms.
-func confirmUpdate(title string) bool {
-	if !isInteractive() {
-		return true
-	}
-	proceed := true // default yes
-	form := huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().Title(title).Value(&proceed),
-	))
-	if err := form.Run(); err != nil {
-		return false
-	}
-	return proceed
+	return nil
 }
 
 // regenerateCompose writes a new compose.yml for the given image tag.
@@ -182,7 +242,8 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 
 	psOut, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "-q")
 	if err != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check container status: %v\n", err)
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+			"Warning: could not check container status: %v\nIf containers are running, restart manually: synthorg stop && synthorg start\n", err)
 		return nil
 	}
 	if psOut == "" {

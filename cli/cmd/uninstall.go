@@ -117,7 +117,10 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 	if removeData {
 		dir := filepath.Clean(dataDir)
 		// Safety: refuse to remove root, home, UNC share roots, or drive roots.
-		home, _ := os.UserHomeDir()
+		home, homeErr := os.UserHomeDir()
+		if homeErr != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: cannot determine home directory: %v\n", homeErr)
+		}
 		vol := filepath.VolumeName(dir)
 		isUNC := strings.HasPrefix(vol, `\\`) || strings.HasPrefix(vol, "//")
 		isDriveRoot := len(dir) == 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
@@ -132,8 +135,10 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 		if execErr != nil {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: cannot resolve executable path: %v\n", execErr)
 		}
-		if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
-			execPath = resolved
+		if execErr == nil {
+			if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
+				execPath = resolved
+			}
 		}
 		if execErr == nil && runtime.GOOS == "windows" && isInsideDir(execPath, dir) {
 			if err := removeAllExcept(dir, execPath); err != nil {
@@ -176,7 +181,10 @@ func confirmAndRemoveBinary(cmd *cobra.Command) error {
 		if runtime.GOOS == "windows" {
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Cannot delete running binary on Windows.")
 			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "To finish cleanup after exit, run:")
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  cmd /C del \"%s\"\n", execPath)
+			// Use PowerShell Remove-Item -LiteralPath which does not interpret
+			// wildcards or cmd.exe metacharacters (%, ^, &, |, <, >).
+			escaped := strings.ReplaceAll(execPath, "'", "''")
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  powershell -Command \"Remove-Item -LiteralPath '%s'\"\n", escaped)
 		} else {
 			if err := os.Remove(execPath); err != nil {
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove binary: %v\n", err)
@@ -191,6 +199,9 @@ func confirmAndRemoveBinary(cmd *cobra.Command) error {
 
 // isInsideDir reports whether child is inside (or equal to) parent.
 // On Windows, the comparison is case-insensitive (NTFS is case-insensitive).
+// Note: strings.ToLower is correct for ASCII paths; non-ASCII Unicode paths
+// on NTFS could require full Unicode case-folding (golang.org/x/text/cases),
+// but Windows user profile and app-data paths are overwhelmingly ASCII.
 func isInsideDir(child, parent string) bool {
 	child = filepath.Clean(child)
 	parent = filepath.Clean(parent)
@@ -212,18 +223,34 @@ type walkEntry struct {
 }
 
 // removeAllExcept removes all files and directories under root except the
-// file at except (and its ancestor directories up to root). Entries are
-// removed deepest-first so that empty directories are cleaned up.
+// file at except (and its ancestor directories up to root). The root
+// directory itself is preserved. Entries are removed deepest-first so
+// that empty directories are cleaned up.
 func removeAllExcept(root, except string) error {
 	root = filepath.Clean(root)
 	except = filepath.Clean(except)
+
+	// Case-fold for comparison on Windows (NTFS is case-insensitive).
+	exceptCmp := except
+	if runtime.GOOS == "windows" {
+		exceptCmp = strings.ToLower(except)
+	}
 
 	var entries []walkEntry
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if filepath.Clean(path) == except {
+		cleanPath := filepath.Clean(path)
+		// Skip root itself — we only remove contents, not the root directory.
+		if cleanPath == root {
+			return nil
+		}
+		cmpPath := cleanPath
+		if runtime.GOOS == "windows" {
+			cmpPath = strings.ToLower(cleanPath)
+		}
+		if cmpPath == exceptCmp {
 			return nil // skip the excluded file
 		}
 		entries = append(entries, walkEntry{path: path, isDir: d.IsDir()})

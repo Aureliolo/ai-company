@@ -6,7 +6,7 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
-from tests.unit.api.conftest import (
+from tests.unit.api.fakes import (
     FakeMessageBus,
     FakePersistenceBackend,
 )

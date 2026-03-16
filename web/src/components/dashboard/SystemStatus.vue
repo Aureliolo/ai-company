@@ -30,9 +30,24 @@ defineProps<{
       <div class="flex items-center justify-between">
         <span class="text-sm text-slate-400">Persistence</span>
         <span
-          :class="['text-sm font-medium', health?.persistence ? 'text-green-400' : health ? 'text-red-400' : 'text-slate-400']"
+          :class="[
+            'text-sm font-medium',
+            health?.persistence === true
+              ? 'text-green-400'
+              : health?.persistence === false
+                ? 'text-red-400'
+                : 'text-slate-400',
+          ]"
         >
-          {{ health ? (health.persistence ? 'OK' : 'Down') : 'Unknown' }}
+          {{
+            health
+              ? health.persistence === null
+                ? 'N/A'
+                : health.persistence
+                  ? 'OK'
+                  : 'Down'
+              : 'Unknown'
+          }}
         </span>
       </div>
 
@@ -40,9 +55,24 @@ defineProps<{
       <div class="flex items-center justify-between">
         <span class="text-sm text-slate-400">Message Bus</span>
         <span
-          :class="['text-sm font-medium', health?.message_bus ? 'text-green-400' : health ? 'text-red-400' : 'text-slate-400']"
+          :class="[
+            'text-sm font-medium',
+            health?.message_bus === true
+              ? 'text-green-400'
+              : health?.message_bus === false
+                ? 'text-red-400'
+                : 'text-slate-400',
+          ]"
         >
-          {{ health ? (health.message_bus ? 'OK' : 'Down') : 'Unknown' }}
+          {{
+            health
+              ? health.message_bus === null
+                ? 'N/A'
+                : health.message_bus
+                  ? 'OK'
+                  : 'Down'
+              : 'Unknown'
+          }}
         </span>
       </div>
 
