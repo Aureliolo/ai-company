@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/Aureliolo/synthorg/cli/internal/completion"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/charmbracelet/huh"
@@ -51,6 +52,15 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 	} else {
 		if err := stopAndRemoveVolumes(cmd, info, safeDir); err != nil {
 			return err
+		}
+	}
+
+	// Remove shell completion snippets.
+	shell := completion.DetectShell()
+	if shell != completion.Unknown {
+		_, _ = fmt.Fprintln(out, "Removing shell completions...")
+		if err := completion.Uninstall(ctx, shell); err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove shell completions: %v\n", err)
 		}
 	}
 

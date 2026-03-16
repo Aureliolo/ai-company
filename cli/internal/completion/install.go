@@ -273,6 +273,104 @@ func fileContains(path, sub string) (bool, error) {
 	return strings.Contains(string(data), sub), nil
 }
 
+// Uninstall removes shell completion snippets and generated files.
+func Uninstall(ctx context.Context, shell ShellType) error {
+	switch shell {
+	case Bash:
+		return uninstallBash()
+	case Zsh:
+		return uninstallZsh()
+	case Fish:
+		return uninstallFish()
+	case PowerShell:
+		return uninstallPowerShell(ctx)
+	default:
+		return fmt.Errorf("unsupported shell: %s", shell)
+	}
+}
+
+func uninstallBash() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	return removeMarkerBlock(filepath.Join(home, ".bashrc"))
+}
+
+func uninstallZsh() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	// Remove completion function file.
+	compFile := filepath.Join(home, ".zsh", "completion", "_synthorg")
+	if err := os.Remove(compFile); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("removing completion file: %w", err)
+	}
+	// Remove fpath snippet from .zshrc.
+	return removeMarkerBlock(filepath.Join(home, ".zshrc"))
+}
+
+func uninstallFish() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	compFile := filepath.Join(home, ".config", "fish", "completions", "synthorg.fish")
+	if err := os.Remove(compFile); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("removing completion file: %w", err)
+	}
+	return nil
+}
+
+func uninstallPowerShell(ctx context.Context) error {
+	profile, err := powershellProfilePath(ctx)
+	if err != nil {
+		return err
+	}
+	return removeMarkerBlock(profile)
+}
+
+// removeMarkerBlock removes lines between (and including) the marker
+// and the next non-empty line from a shell profile file.
+// If the file does not exist or has no marker, this is a no-op.
+func removeMarkerBlock(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("reading %s: %w", path, err)
+	}
+	content := string(data)
+	if !strings.Contains(content, marker) {
+		return nil
+	}
+
+	var result []string
+	lines := strings.Split(content, "\n")
+	inBlock := false
+	for _, line := range lines {
+		if strings.TrimSpace(line) == marker {
+			inBlock = true
+			continue
+		}
+		if inBlock {
+			// Skip non-empty lines that are part of the snippet.
+			if strings.TrimSpace(line) != "" {
+				continue
+			}
+			// Empty line ends the block.
+			inBlock = false
+			continue
+		}
+		result = append(result, line)
+	}
+
+	cleaned := strings.Join(result, "\n")
+	return os.WriteFile(path, []byte(cleaned), 0o644)
+}
+
 // appendToFile appends content to a file, creating it if needed.
 func appendToFile(path, content string) error {
 	dir := filepath.Dir(path)
