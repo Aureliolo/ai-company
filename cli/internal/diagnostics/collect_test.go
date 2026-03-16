@@ -40,6 +40,9 @@ func TestReportFormatText(t *testing.T) {
 		Arch:       "amd64",
 		CLIVersion: "dev",
 		CLICommit:  "none",
+		ContainerSummary: []ContainerDetail{
+			{Name: "synthorg-backend-1", State: "running", Health: "healthy"},
+		},
 	}
 	text := r.FormatText()
 	if text == "" {
@@ -47,7 +50,7 @@ func TestReportFormatText(t *testing.T) {
 	}
 
 	// Check key sections are present.
-	for _, section := range []string{"Diagnostic Report", "Timestamp:", "OS:", "CLI:", "Health", "Containers", "Config"} {
+	for _, section := range []string{"Diagnostic Report", "Timestamp:", "OS:", "CLI:", "Health", "Container Summary", "Config"} {
 		if !strings.Contains(text, section) {
 			t.Errorf("FormatText missing section %q", section)
 		}

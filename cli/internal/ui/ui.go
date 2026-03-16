@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 // Color palette for CLI styling.
@@ -68,6 +69,9 @@ func NewUI(w io.Writer) *UI {
 	}
 }
 
+// Writer returns the underlying writer for direct output.
+func (u *UI) Writer() io.Writer { return u.w }
+
 // Logo renders the SynthOrg Unicode logo in brand color with a version tag.
 func (u *UI) Logo(version string) {
 	art := u.brandBold.Render(logo)
@@ -108,6 +112,85 @@ func (u *UI) KeyValue(key, value string) {
 // Hint prints a hint/suggestion line in muted color.
 func (u *UI) Hint(msg string) {
 	_, _ = fmt.Fprintf(u.w, "%s %s\n", u.muted.Render(IconHint), u.muted.Render(stripControl(msg)))
+}
+
+// Section prints a bold section header.
+func (u *UI) Section(title string) {
+	_, _ = fmt.Fprintln(u.w, u.brandBold.Render(stripControl(title)))
+}
+
+// Link prints a labeled URL in muted color.
+func (u *UI) Link(label, url string) {
+	_, _ = fmt.Fprintf(u.w, "  %s %s\n", u.label.Render(stripControl(label)+":"), u.muted.Render(stripControl(url)))
+}
+
+// Table prints rows as a fixed-width table with a header.
+// All values are sanitized to prevent terminal control injection.
+func (u *UI) Table(headers []string, rows [][]string) {
+	if len(headers) == 0 {
+		return
+	}
+	// Sanitize all inputs — strip control chars and collapse whitespace
+	// that would break column alignment.
+	sanitize := func(s string) string {
+		s = stripControl(s)
+		s = strings.ReplaceAll(s, "\n", " ")
+		s = strings.ReplaceAll(s, "\t", " ")
+		return s
+	}
+	sanHeaders := make([]string, len(headers))
+	for i, h := range headers {
+		sanHeaders[i] = sanitize(h)
+	}
+	sanRows := make([][]string, len(rows))
+	for i, row := range rows {
+		sanRow := make([]string, len(row))
+		for j, cell := range row {
+			sanRow[j] = sanitize(cell)
+		}
+		sanRows[i] = sanRow
+	}
+	widths := make([]int, len(sanHeaders))
+	for i, h := range sanHeaders {
+		widths[i] = runewidth.StringWidth(h)
+	}
+	for _, row := range sanRows {
+		for i := range widths {
+			if i < len(row) {
+				if w := runewidth.StringWidth(row[i]); w > widths[i] {
+					widths[i] = w
+				}
+			}
+		}
+	}
+	printRow := func(cells []string) {
+		var b strings.Builder
+		b.WriteString("  ")
+		for i, w := range widths {
+			cell := ""
+			if i < len(cells) {
+				cell = cells[i]
+			}
+			if i > 0 {
+				b.WriteString("  ")
+			}
+			b.WriteString(cell)
+			pad := w - runewidth.StringWidth(cell)
+			if pad > 0 {
+				b.WriteString(strings.Repeat(" ", pad))
+			}
+		}
+		_, _ = fmt.Fprintln(u.w, b.String())
+	}
+	printRow(sanHeaders)
+	sep := make([]string, len(sanHeaders))
+	for i, w := range widths {
+		sep[i] = strings.Repeat("─", w)
+	}
+	printRow(sep)
+	for _, row := range sanRows {
+		printRow(row)
+	}
 }
 
 // stripControl removes ASCII control characters (except tab and newline)

@@ -129,6 +129,7 @@ class DepartmentFactory(ModelFactory[Department]):
     __model__ = Department
     budget_percent = 10.0
     policies = DepartmentPoliciesFactory
+    reporting_lines = ()
 
 
 class CompanyConfigFactory(ModelFactory[CompanyConfig]):

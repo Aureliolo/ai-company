@@ -54,3 +54,52 @@ func TestOutputMethods(t *testing.T) {
 		})
 	}
 }
+
+func TestLink(t *testing.T) {
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	u.Link("Dashboard", "http://localhost:3000")
+	out := buf.String()
+	if !strings.Contains(out, "Dashboard:") {
+		t.Error("Link missing label")
+	}
+	if !strings.Contains(out, "http://localhost:3000") {
+		t.Error("Link missing URL")
+	}
+}
+
+func TestTable(t *testing.T) {
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	u.Table(
+		[]string{"NAME", "VALUE"},
+		[][]string{{"foo", "bar"}, {"longer", "x"}},
+	)
+	out := buf.String()
+	if !strings.Contains(out, "NAME") {
+		t.Error("Table missing header")
+	}
+	if !strings.Contains(out, "foo") || !strings.Contains(out, "bar") {
+		t.Error("Table missing row data")
+	}
+	if !strings.Contains(out, "───") {
+		t.Error("Table missing separator")
+	}
+}
+
+func TestTableEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	u.Table(nil, nil)
+	if buf.Len() != 0 {
+		t.Error("Table with nil headers should produce no output")
+	}
+}
+
+func TestWriter(t *testing.T) {
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	if u.Writer() != &buf {
+		t.Error("Writer() should return the underlying writer")
+	}
+}
