@@ -53,65 +53,70 @@ class TestHealthCheck:
 class TestHealthCheckUnconfiguredServices:
     """Health endpoint with partially or fully unconfigured services."""
 
-    def test_returns_ok_when_no_services_configured(self) -> None:
-        with TestClient(create_app()) as client:
-            response = client.get("/api/v1/health")
-            assert response.status_code == 200
-            body = response.json()
-            assert body["data"]["status"] == "ok"
-            assert body["data"]["persistence"] is None
-            assert body["data"]["message_bus"] is None
-
-    async def test_returns_ok_when_persistence_only_and_healthy(self) -> None:
-        backend = FakePersistenceBackend()
-        await backend.connect()
-        with TestClient(create_app(persistence=backend)) as client:
-            response = client.get("/api/v1/health")
-            assert response.status_code == 200
-            body = response.json()
-            assert body["data"]["status"] == "ok"
-            assert body["data"]["persistence"] is True
-            assert body["data"]["message_bus"] is None
-
-    async def test_returns_down_when_only_configured_service_unhealthy(
+    @pytest.mark.parametrize(
+        (
+            "persistence_state",
+            "bus_state",
+            "expected_status",
+            "expected_persistence",
+            "expected_bus",
+        ),
+        [
+            pytest.param(None, None, "ok", None, None, id="no_services"),
+            pytest.param(
+                "healthy", None, "ok", True, None, id="persistence_only_healthy"
+            ),
+            pytest.param(
+                "unhealthy",
+                None,
+                "down",
+                False,
+                None,
+                id="persistence_only_unhealthy",
+            ),
+            pytest.param(None, "healthy", "ok", None, True, id="bus_only_healthy"),
+            pytest.param(
+                None,
+                "unhealthy",
+                "down",
+                None,
+                False,
+                id="bus_only_unhealthy",
+            ),
+        ],
+    )
+    async def test_unconfigured_services(
         self,
+        persistence_state: str | None,
+        bus_state: str | None,
+        expected_status: str,
+        expected_persistence: bool | None,
+        expected_bus: bool | None,
     ) -> None:
-        backend = FakePersistenceBackend()
-        await backend.connect()
-        with TestClient(create_app(persistence=backend)) as client:
-            # Simulate post-startup failure
-            backend._connected = False
-            response = client.get("/api/v1/health")
-            assert response.status_code == 200
-            body = response.json()
-            assert body["data"]["status"] == "down"
-            assert body["data"]["persistence"] is False
-            assert body["data"]["message_bus"] is None
+        backend = None
+        bus = None
+        if persistence_state is not None:
+            backend = FakePersistenceBackend()
+            await backend.connect()
+        if bus_state is not None:
+            bus = FakeMessageBus()
+            await bus.start()
 
-    async def test_returns_ok_when_message_bus_only_and_healthy(self) -> None:
-        bus = FakeMessageBus()
-        await bus.start()
-        with TestClient(create_app(message_bus=bus)) as client:
-            response = client.get("/api/v1/health")
-            assert response.status_code == 200
-            body = response.json()
-            assert body["data"]["status"] == "ok"
-            assert body["data"]["persistence"] is None
-            assert body["data"]["message_bus"] is True
+        with TestClient(
+            create_app(persistence=backend, message_bus=bus),
+        ) as client:
+            # Simulate post-startup failures after app lifecycle completes.
+            if persistence_state == "unhealthy" and backend is not None:
+                backend._connected = False
+            if bus_state == "unhealthy" and bus is not None:
+                bus._running = False
 
-    async def test_returns_down_when_message_bus_only_and_unhealthy(
-        self,
-    ) -> None:
-        bus = FakeMessageBus()
-        await bus.start()
-        with TestClient(create_app(message_bus=bus)) as client:
-            bus._running = False
             response = client.get("/api/v1/health")
             assert response.status_code == 200
             body = response.json()
-            assert body["data"]["status"] == "down"
-            assert body["data"]["persistence"] is None
-            assert body["data"]["message_bus"] is False
+            assert body["data"]["status"] == expected_status
+            assert body["data"]["persistence"] is expected_persistence
+            assert body["data"]["message_bus"] is expected_bus
 
 
 @pytest.mark.unit

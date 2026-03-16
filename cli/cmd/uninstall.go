@@ -121,10 +121,19 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 		if homeErr != nil {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: cannot determine home directory: %v\n", homeErr)
 		}
+		isHomeDir := false
+		if homeErr == nil {
+			home = filepath.Clean(home)
+			if runtime.GOOS == "windows" {
+				isHomeDir = strings.EqualFold(dir, home)
+			} else {
+				isHomeDir = dir == home
+			}
+		}
 		vol := filepath.VolumeName(dir)
 		isUNC := strings.HasPrefix(vol, `\\`) || strings.HasPrefix(vol, "//")
 		isDriveRoot := len(dir) == 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
-		if dir == "/" || dir == home || isDriveRoot || isUNC {
+		if dir == "/" || isHomeDir || isDriveRoot || isUNC {
 			return fmt.Errorf("refusing to remove %q — does not look like an app data directory", dir)
 		}
 
@@ -261,11 +270,14 @@ func removeAllExcept(root, except string) error {
 	}
 
 	// Remove in reverse order (deepest first). Directory removal failures
-	// are expected for ancestors of the excluded file (non-empty) and are
-	// silently skipped. File removal errors are collected and reported.
+	// are expected for ancestors of the excluded file (non-empty); other
+	// errors (files, permission-denied dirs) are collected and reported.
 	var errs []error
 	for i := len(entries) - 1; i >= 0; i-- {
-		if err := os.Remove(entries[i].path); err != nil && !entries[i].isDir {
+		if err := os.Remove(entries[i].path); err != nil {
+			if entries[i].isDir && isInsideDir(except, entries[i].path) {
+				continue // expected: ancestor of excluded file is non-empty
+			}
 			errs = append(errs, err)
 		}
 	}

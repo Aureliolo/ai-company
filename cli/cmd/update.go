@@ -159,7 +159,7 @@ func updateContainerImages(cmd *cobra.Command, effectiveVersion string) error {
 		return nil
 	}
 
-	if err := pullAndPersist(ctx, cmd, info, state, tag, safeDir); err != nil {
+	if err := pullAndPersist(ctx, cmd, info, state, tag, safeDir, effectiveVersion); err != nil {
 		return err
 	}
 
@@ -185,24 +185,32 @@ func confirmUpdate(title string) (bool, error) {
 }
 
 // pullAndPersist regenerates compose.yml, pulls images, and persists config.
-// If the pull fails, the previous compose.yml is restored so that the on-disk
-// state remains consistent.
-func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, tag, safeDir string) error {
+// If any step fails, the previous compose.yml is restored (or removed if it
+// did not exist before) so that the on-disk state remains consistent.
+func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, tag, safeDir, effectiveVersion string) error {
 	out := cmd.OutOrStdout()
 
-	// Back up existing compose.yml for rollback on pull failure.
+	// Back up existing compose.yml for rollback on failure.
 	composePath := filepath.Join(safeDir, "compose.yml")
 	backup, backupErr := os.ReadFile(composePath)
+	backupExists := backupErr == nil
 
-	if err := regenerateCompose(state, tag, safeDir); err != nil {
+	rollback := func() {
+		if backupExists {
+			_ = os.WriteFile(composePath, backup, 0o600)
+		} else {
+			_ = os.Remove(composePath)
+		}
+	}
+
+	if err := regenerateCompose(state, tag, safeDir, effectiveVersion); err != nil {
+		rollback()
 		return err
 	}
 
 	_, _ = fmt.Fprintf(out, "Pulling container images (%s)...\n", tag)
 	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
-		if backupErr == nil {
-			_ = os.WriteFile(composePath, backup, 0o600)
-		}
+		rollback()
 		return fmt.Errorf("pulling images: %w", err)
 	}
 
@@ -211,19 +219,20 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 	updatedState := state
 	updatedState.ImageTag = tag
 	if err := config.Save(updatedState); err != nil {
-		if backupErr == nil {
-			_ = os.WriteFile(composePath, backup, 0o600)
-		}
+		rollback()
 		return fmt.Errorf("saving config: %w", err)
 	}
 	return nil
 }
 
 // regenerateCompose writes a new compose.yml for the given image tag.
-func regenerateCompose(state config.State, tag, safeDir string) error {
+// effectiveVersion overrides the stale in-memory version.Version after
+// selfupdate.Replace so the compose header reflects the new CLI version.
+func regenerateCompose(state config.State, tag, safeDir, effectiveVersion string) error {
 	updatedState := state
 	updatedState.ImageTag = tag
 	params := compose.ParamsFromState(updatedState)
+	params.CLIVersion = effectiveVersion
 	composeYAML, err := compose.Generate(params)
 	if err != nil {
 		return fmt.Errorf("generating compose file: %w", err)
