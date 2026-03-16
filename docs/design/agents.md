@@ -337,9 +337,12 @@ agent_metrics:
     )
     ```
 
-    Weights are configurable per-role. Optional: periodic LLM sampling (1%) for
-    calibration + human override via API. Future strategies: LLM evaluation, peer
-    ratings, human-provided.
+    Weights are configurable per-role. Periodic LLM sampling (1%, configurable)
+    for calibration is implemented via `LlmCalibrationSampler` (opt-in,
+    requires `llm_sampling_model` config). Human override via API is
+    implemented via `CollaborationOverrideStore` + `CollaborationController`
+    at `/agents/{agent_id}/collaboration`. Future strategies: LLM evaluation,
+    peer ratings, human-provided.
 
     ---
 

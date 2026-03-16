@@ -18,6 +18,7 @@ from synthorg.config.schema import RootConfig  # noqa: TC001
 from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
+from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
@@ -52,6 +53,7 @@ class AppState:
         "_meeting_orchestrator",
         "_meeting_scheduler",
         "_message_bus",
+        "_performance_tracker",
         "_persistence",
         "_task_engine",
         "approval_store",
@@ -72,6 +74,7 @@ class AppState:
         approval_gate: ApprovalGate | None = None,
         coordinator: MultiAgentCoordinator | None = None,
         agent_registry: AgentRegistryService | None = None,
+        performance_tracker: PerformanceTracker | None = None,
         meeting_orchestrator: MeetingOrchestrator | None = None,
         meeting_scheduler: MeetingScheduler | None = None,
         startup_time: float = 0.0,
@@ -86,6 +89,7 @@ class AppState:
         self._task_engine = task_engine
         self._coordinator = coordinator
         self._agent_registry = agent_registry
+        self._performance_tracker = performance_tracker
         self._meeting_orchestrator = meeting_orchestrator
         self._meeting_scheduler = meeting_scheduler
         self.startup_time = startup_time
@@ -194,6 +198,14 @@ class AppState:
     def has_coordinator(self) -> bool:
         """Check whether the coordinator is configured."""
         return self._coordinator is not None
+
+    @property
+    def performance_tracker(self) -> PerformanceTracker:
+        """Return performance tracker or raise 503."""
+        return self._require_service(
+            self._performance_tracker,
+            "performance_tracker",
+        )
 
     @property
     def agent_registry(self) -> AgentRegistryService:

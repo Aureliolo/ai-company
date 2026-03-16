@@ -12,3 +12,14 @@ PERF_COLLABORATION_SCORED: Final[str] = "perf.collaboration.scored"
 PERF_SNAPSHOT_COMPUTED: Final[str] = "perf.snapshot.computed"
 PERF_TREND_COMPUTED: Final[str] = "perf.trend.computed"
 PERF_WINDOW_INSUFFICIENT_DATA: Final[str] = "perf.window.insufficient_data"
+
+# ── LLM calibration sampling ─────────────────────────────────
+PERF_LLM_SAMPLE_STARTED: Final[str] = "perf.llm_sample.started"
+PERF_LLM_SAMPLE_COMPLETED: Final[str] = "perf.llm_sample.completed"
+PERF_LLM_SAMPLE_FAILED: Final[str] = "perf.llm_sample.failed"
+
+# ── Collaboration score overrides ─────────────────────────────
+PERF_OVERRIDE_SET: Final[str] = "perf.override.set"
+PERF_OVERRIDE_CLEARED: Final[str] = "perf.override.cleared"
+PERF_OVERRIDE_APPLIED: Final[str] = "perf.override.applied"
+PERF_OVERRIDE_EXPIRED: Final[str] = "perf.override.expired"

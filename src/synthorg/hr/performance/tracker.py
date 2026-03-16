@@ -4,6 +4,7 @@ Central service for recording and querying agent performance metrics.
 Delegates scoring, windowing, and trend detection to pluggable strategies.
 """
 
+import asyncio
 import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -20,7 +21,9 @@ from synthorg.hr.performance.models import (
 )
 from synthorg.observability import get_logger
 from synthorg.observability.events.performance import (
+    PERF_LLM_SAMPLE_FAILED,
     PERF_METRIC_RECORDED,
+    PERF_OVERRIDE_APPLIED,
     PERF_SNAPSHOT_COMPUTED,
     PERF_WINDOW_INSUFFICIENT_DATA,
 )
@@ -29,8 +32,14 @@ if TYPE_CHECKING:
     from pydantic import AwareDatetime
 
     from synthorg.core.task import AcceptanceCriterion
+    from synthorg.hr.performance.collaboration_override_store import (
+        CollaborationOverrideStore,
+    )
     from synthorg.hr.performance.collaboration_protocol import (
         CollaborationScoringStrategy,
+    )
+    from synthorg.hr.performance.llm_calibration_sampler import (
+        LlmCalibrationSampler,
     )
     from synthorg.hr.performance.quality_protocol import QualityScoringStrategy
     from synthorg.hr.performance.trend_protocol import TrendDetectionStrategy
@@ -54,9 +63,11 @@ class PerformanceTracker:
         window_strategy: Strategy for computing rolling windows.
         trend_strategy: Strategy for detecting trends.
         config: Performance tracking configuration.
+        sampler: LLM calibration sampler (None = disabled).
+        override_store: Collaboration override store (None = disabled).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         quality_strategy: QualityScoringStrategy | None = None,
@@ -64,6 +75,8 @@ class PerformanceTracker:
         window_strategy: MetricsWindowStrategy | None = None,
         trend_strategy: TrendDetectionStrategy | None = None,
         config: PerformanceConfig | None = None,
+        sampler: LlmCalibrationSampler | None = None,
+        override_store: CollaborationOverrideStore | None = None,
     ) -> None:
         cfg = config or PerformanceConfig()
         self._config = cfg
@@ -73,8 +86,11 @@ class PerformanceTracker:
         )
         self._window_strategy = window_strategy or self._default_window(cfg)
         self._trend_strategy = trend_strategy or self._default_trend(cfg)
+        self._sampler = sampler
+        self._override_store = override_store
         self._task_metrics: dict[str, list[TaskMetricRecord]] = {}
         self._collab_metrics: dict[str, list[CollaborationMetricRecord]] = {}
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     @staticmethod
     def _default_quality() -> QualityScoringStrategy:
@@ -175,6 +191,9 @@ class PerformanceTracker:
     ) -> None:
         """Record a collaboration behavior data point.
 
+        If an LLM sampler is configured and the record has an
+        ``interaction_summary``, the sampler is invoked probabilistically.
+
         Args:
             record: Collaboration metric record to store.
         """
@@ -189,18 +208,47 @@ class PerformanceTracker:
             metric_type="collaboration",
         )
 
+        self._schedule_sampling(record)
+
     async def get_collaboration_score(
         self,
         agent_id: NotBlankStr,
+        *,
+        now: AwareDatetime | None = None,
     ) -> CollaborationScoreResult:
         """Compute collaboration score for an agent.
 
+        Returns the active human override if one exists; otherwise
+        delegates to the collaboration scoring strategy.
+
         Args:
             agent_id: Agent to evaluate.
+            now: Reference time for override expiration check
+                (defaults to current UTC time).
 
         Returns:
             Collaboration score result.
         """
+        if self._override_store is not None:
+            override = self._override_store.get_active_override(
+                agent_id,
+                now=now,
+            )
+            if override is not None:
+                logger.info(
+                    PERF_OVERRIDE_APPLIED,
+                    agent_id=agent_id,
+                    score=override.score,
+                    applied_by=override.applied_by,
+                )
+                return CollaborationScoreResult(
+                    score=override.score,
+                    strategy_name=NotBlankStr("human_override"),
+                    component_scores=(),
+                    confidence=1.0,
+                    override_active=True,
+                )
+
         records = tuple(self._collab_metrics.get(str(agent_id), []))
         return await self._collaboration_strategy.score(
             agent_id=agent_id,
@@ -227,7 +275,6 @@ class PerformanceTracker:
 
         agent_key = str(agent_id)
         task_records = tuple(self._task_metrics.get(agent_key, []))
-        collab_records = tuple(self._collab_metrics.get(agent_key, []))
 
         # Compute windows.
         windows = self._window_strategy.compute_windows(
@@ -242,10 +289,10 @@ class PerformanceTracker:
         scored = [r.quality_score for r in task_records if r.quality_score is not None]
         overall_quality = round(sum(scored) / len(scored), 4) if scored else None
 
-        # Overall collaboration score.
-        collab_result = await self._collaboration_strategy.score(
-            agent_id=agent_id,
-            records=collab_records,
+        # Overall collaboration score (respects active overrides).
+        collab_result = await self.get_collaboration_score(
+            agent_id,
+            now=now,
         )
         overall_collab = collab_result.score if collab_result.confidence > 0.0 else None
 
@@ -379,3 +426,81 @@ class PerformanceTracker:
         if until is not None:
             records = [r for r in records if r.recorded_at <= until]
         return tuple(records)
+
+    @property
+    def override_store(self) -> CollaborationOverrideStore | None:
+        """Return the collaboration override store, if configured."""
+        return self._override_store
+
+    @property
+    def sampler(self) -> LlmCalibrationSampler | None:
+        """Return the LLM calibration sampler, if configured."""
+        return self._sampler
+
+    def _schedule_sampling(
+        self,
+        record: CollaborationMetricRecord,
+    ) -> None:
+        """Schedule LLM sampling as a background task.
+
+        The task is tracked in ``_background_tasks`` to prevent
+        garbage-collection warnings.  Failures are handled inside
+        ``_maybe_sample`` — they never propagate.
+        """
+        if self._sampler is None:
+            return
+        if record.interaction_summary is None:
+            return
+        if not self._sampler.should_sample():
+            return
+
+        task = asyncio.create_task(self._maybe_sample(record))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _maybe_sample(
+        self,
+        record: CollaborationMetricRecord,
+    ) -> None:
+        """Execute LLM sampling for a single record.
+
+        Called as a background task by ``_schedule_sampling``.
+        Failures are caught and logged — sampling must never propagate
+        exceptions to the caller.
+        """
+        sampler = self._sampler
+        if sampler is None:  # pragma: no cover — guarded by _schedule_sampling
+            return
+
+        try:
+            behavioral_result = await self._collaboration_strategy.score(
+                agent_id=record.agent_id,
+                records=(record,),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                PERF_LLM_SAMPLE_FAILED,
+                agent_id=record.agent_id,
+                record_id=record.id,
+                reason="behavioral_score_failed",
+                exc_info=True,
+            )
+            return
+
+        try:
+            await sampler.sample(
+                record=record,
+                behavioral_score=behavioral_result.score,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                PERF_LLM_SAMPLE_FAILED,
+                agent_id=record.agent_id,
+                record_id=record.id,
+                reason="llm_sample_failed",
+                exc_info=True,
+            )

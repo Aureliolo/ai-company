@@ -17,6 +17,12 @@ class PerformanceConfig(BaseModel):
         declining_threshold: Slope threshold for declining trend.
         collaboration_weights: Optional custom weights for collaboration
             scoring components.
+        llm_sampling_rate: Fraction of collaboration events sampled by
+            LLM (0.01 = 1%).
+        llm_sampling_model: Model ID for LLM calibration sampling
+            (None = disabled).
+        calibration_retention_days: Days to retain LLM calibration
+            records.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -45,6 +51,21 @@ class PerformanceConfig(BaseModel):
     collaboration_weights: dict[str, float] | None = Field(
         default=None,
         description="Custom weights for collaboration scoring components",
+    )
+    llm_sampling_rate: float = Field(
+        default=0.01,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of collaboration events sampled by LLM (0.01 = 1%)",
+    )
+    llm_sampling_model: NotBlankStr | None = Field(
+        default=None,
+        description="Model ID for LLM calibration sampling (None = disabled)",
+    )
+    calibration_retention_days: int = Field(
+        default=90,
+        ge=1,
+        description="Days to retain LLM calibration records",
     )
 
     @model_validator(mode="after")
