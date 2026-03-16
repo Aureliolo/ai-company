@@ -19,9 +19,9 @@ from synthorg.observability.events.git import (
 from synthorg.tools._git_base import _BaseGitTool
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.git_url_validator import (
-    _ALLOWED_CLONE_SCHEMES,
+    ALLOWED_CLONE_SCHEMES,
     GitCloneNetworkPolicy,
-    _is_allowed_clone_scheme,
+    is_allowed_clone_scheme,
     validate_clone_url_host,
 )
 
@@ -676,12 +676,12 @@ class GitCloneTool(_BaseGitTool):
         """
         url: str = arguments["url"]
 
-        if not _is_allowed_clone_scheme(url):
+        if not is_allowed_clone_scheme(url):
             logger.warning(
                 GIT_CLONE_URL_REJECTED,
                 url=url,
             )
-            schemes = ", ".join(_ALLOWED_CLONE_SCHEMES)
+            schemes = ", ".join(ALLOWED_CLONE_SCHEMES)
             return ToolExecutionResult(
                 content=(
                     f"Invalid clone URL. Only {schemes} "
@@ -709,7 +709,10 @@ class GitCloneTool(_BaseGitTool):
                 return err
             args.append(directory)
 
-        # SSRF prevention: validate hostname/IP after all local checks
+        # SSRF prevention: validate hostname/IP after all local checks.
+        # NOTE: TOCTOU gap — DNS could change between this check and
+        # git's own resolution.  For high-security deployments, combine
+        # with network-level egress controls (see module docstring).
         if ssrf_err := await validate_clone_url_host(url, self._network_policy):
             return ToolExecutionResult(content=ssrf_err, is_error=True)
 

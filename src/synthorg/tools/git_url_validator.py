@@ -3,18 +3,28 @@
 Validates clone URLs against allowed schemes and performs hostname/IP
 validation to prevent Server-Side Request Forgery (SSRF) attacks via
 ``git clone``.  All resolved IPs must be public; private, loopback,
-and link-local addresses are blocked by default.  A configurable
-hostname allowlist lets legitimate internal Git servers bypass the
-private-IP check.
+link-local, and reserved addresses are blocked by default.  A
+configurable hostname allowlist lets legitimate internal Git servers
+bypass the private-IP check.
+
+.. note::
+
+   There is an inherent TOCTOU gap between DNS validation here and
+   ``git clone`` resolving the hostname again.  A DNS rebinding
+   attack could serve a public IP to the validator, then a private
+   IP when git resolves.  For high-security deployments, combine
+   with network-level egress controls (firewall, HTTP CONNECT
+   proxy).  See the sandbox design page for planned mitigations.
 """
 
 import asyncio
 import ipaddress
-from typing import Final
+from typing import Final, Self
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.git import (
     GIT_CLONE_DNS_FAILED,
@@ -25,22 +35,36 @@ logger = get_logger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────
 
-_ALLOWED_CLONE_SCHEMES: Final[tuple[str, ...]] = (
+ALLOWED_CLONE_SCHEMES: Final[tuple[str, ...]] = (
     "https://",
     "ssh://",
 )
 
 _BLOCKED_NETWORKS: Final[tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]] = (
-    ipaddress.IPv4Network("127.0.0.0/8"),
-    ipaddress.IPv4Network("10.0.0.0/8"),
-    ipaddress.IPv4Network("172.16.0.0/12"),
-    ipaddress.IPv4Network("192.168.0.0/16"),
-    ipaddress.IPv4Network("169.254.0.0/16"),
+    # IPv4 — loopback, private, link-local, reserved
     ipaddress.IPv4Network("0.0.0.0/8"),
-    ipaddress.IPv6Network("::1/128"),
-    ipaddress.IPv6Network("fe80::/10"),
-    ipaddress.IPv6Network("fc00::/7"),
+    ipaddress.IPv4Network("10.0.0.0/8"),
+    ipaddress.IPv4Network("100.64.0.0/10"),  # CGNAT (RFC 6598)
+    ipaddress.IPv4Network("127.0.0.0/8"),
+    ipaddress.IPv4Network("169.254.0.0/16"),
+    ipaddress.IPv4Network("172.16.0.0/12"),
+    ipaddress.IPv4Network("192.0.0.0/24"),  # IETF Protocol Assignments
+    ipaddress.IPv4Network("192.0.2.0/24"),  # TEST-NET-1 (RFC 5737)
+    ipaddress.IPv4Network("192.168.0.0/16"),
+    ipaddress.IPv4Network("198.18.0.0/15"),  # Benchmarking (RFC 2544)
+    ipaddress.IPv4Network("198.51.100.0/24"),  # TEST-NET-2 (RFC 5737)
+    ipaddress.IPv4Network("203.0.113.0/24"),  # TEST-NET-3 (RFC 5737)
+    ipaddress.IPv4Network("224.0.0.0/4"),  # Multicast (RFC 5771)
+    ipaddress.IPv4Network("240.0.0.0/4"),  # Reserved (RFC 1112)
+    ipaddress.IPv4Network("255.255.255.255/32"),  # Broadcast
+    # IPv6 — loopback, link-local, ULA, reserved
     ipaddress.IPv6Network("::/128"),
+    ipaddress.IPv6Network("::1/128"),
+    ipaddress.IPv6Network("64:ff9b::/96"),  # NAT64 (RFC 6052)
+    ipaddress.IPv6Network("100::/64"),  # Discard (RFC 6666)
+    ipaddress.IPv6Network("2001:db8::/32"),  # Documentation (RFC 3849)
+    ipaddress.IPv6Network("fc00::/7"),
+    ipaddress.IPv6Network("fe80::/10"),
 )
 
 
@@ -56,17 +80,22 @@ class GitCloneNetworkPolicy(BaseModel):
     ``hostname_allowlist`` bypass the private-IP check for legitimate
     internal Git servers.
 
+    Allowlist entries are normalized to lowercase and deduplicated
+    at construction time.
+
     Attributes:
         hostname_allowlist: Hostnames that bypass the private-IP
-            check (case-insensitive matching).
+            check.  Stored lowercase after construction.
         block_private_ips: Master switch for private IP blocking.
+            When ``False``, **all** hosts are allowed regardless
+            of IP — use only in development.
         dns_resolution_timeout: Timeout in seconds for async DNS
             resolution.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    hostname_allowlist: tuple[str, ...] = Field(
+    hostname_allowlist: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Hostnames that bypass the private-IP check",
     )
@@ -80,6 +109,14 @@ class GitCloneNetworkPolicy(BaseModel):
         le=30.0,
         description="Timeout in seconds for DNS resolution",
     )
+
+    @model_validator(mode="after")
+    def _normalize_allowlist(self) -> Self:
+        """Lowercase and deduplicate allowlist entries."""
+        normalized = tuple(dict.fromkeys(h.lower() for h in self.hostname_allowlist))
+        if normalized != self.hostname_allowlist:
+            object.__setattr__(self, "hostname_allowlist", normalized)
+        return self
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -100,6 +137,11 @@ def _is_blocked_ip(addr: str) -> bool:
     try:
         ip = ipaddress.ip_address(addr)
     except ValueError:
+        logger.warning(
+            GIT_CLONE_SSRF_BLOCKED,
+            addr=addr,
+            reason="unparseable_ip_blocked",
+        )
         return True  # Unparseable → blocked (fail-closed)
 
     # Unwrap IPv6-mapped IPv4 (::ffff:x.x.x.x)
@@ -152,7 +194,7 @@ def _extract_hostname(url: str) -> str | None:
     return None
 
 
-def _is_allowed_clone_scheme(url: str) -> bool:
+def is_allowed_clone_scheme(url: str) -> bool:
     """Check if a clone URL uses an allowed remote scheme.
 
     Allows standard remote schemes and SCP-like syntax.  Rejects
@@ -167,7 +209,7 @@ def _is_allowed_clone_scheme(url: str) -> bool:
     """
     if url.startswith("-"):
         return False
-    if any(url.startswith(scheme) for scheme in _ALLOWED_CLONE_SCHEMES):
+    if any(url.startswith(scheme) for scheme in ALLOWED_CLONE_SCHEMES):
         return True
     # SCP-like syntax: user@host:path (e.g. git@github.com:user/repo.git).
     # Must have @ and : but NOT :: (rejects ext:: protocol) and NOT ://
@@ -176,6 +218,16 @@ def _is_allowed_clone_scheme(url: str) -> bool:
 
 
 # ── DNS resolution helper ────────────────────────────────────────
+
+
+def _dns_failure(hostname: str, reason: str, message: str) -> str:
+    """Log a DNS resolution failure and return the error message."""
+    logger.warning(
+        GIT_CLONE_DNS_FAILED,
+        hostname=hostname,
+        reason=reason,
+    )
+    return message
 
 
 async def _resolve_and_check(
@@ -199,27 +251,30 @@ async def _resolve_and_check(
             timeout=dns_timeout,
         )
     except TimeoutError:
-        logger.warning(
-            GIT_CLONE_DNS_FAILED,
-            hostname=hostname,
-            reason="timeout",
+        return _dns_failure(
+            hostname,
+            "timeout",
+            f"DNS resolution for {hostname!r} timed out",
         )
-        return f"DNS resolution for {hostname!r} timed out"
     except OSError as exc:
-        logger.warning(
-            GIT_CLONE_DNS_FAILED,
-            hostname=hostname,
-            reason=str(exc),
+        return _dns_failure(
+            hostname,
+            str(exc),
+            f"DNS resolution for {hostname!r} failed: {exc}",
         )
-        return f"DNS resolution for {hostname!r} failed: {exc}"
+    except Exception as exc:
+        return _dns_failure(
+            hostname,
+            f"unexpected: {type(exc).__name__}: {exc}",
+            f"DNS resolution for {hostname!r} failed: {exc}",
+        )
 
     if not results:
-        logger.warning(
-            GIT_CLONE_DNS_FAILED,
-            hostname=hostname,
-            reason="no_results",
+        return _dns_failure(
+            hostname,
+            "no_results",
+            f"DNS resolution for {hostname!r} returned no results",
         )
-        return f"DNS resolution for {hostname!r} returned no results"
 
     # Every resolved IP must be public
     for *_info, sockaddr in results:
@@ -262,12 +317,17 @@ async def validate_clone_url_host(
     """
     hostname = _extract_hostname(url)
     if not hostname:
-        return "Could not extract hostname from clone URL"
+        logger.warning(
+            GIT_CLONE_SSRF_BLOCKED,
+            url=url,
+            reason="hostname_extraction_failed",
+        )
+        return f"Could not extract hostname from clone URL: {url!r}"
 
     normalized = hostname.lower()
 
-    # Allowlist bypass (case-insensitive)
-    if any(normalized == h.lower() for h in policy.hostname_allowlist):
+    # Allowlist bypass (pre-normalized to lowercase at construction)
+    if normalized in policy.hostname_allowlist:
         return None
 
     # Master switch

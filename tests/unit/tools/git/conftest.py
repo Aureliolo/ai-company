@@ -185,7 +185,7 @@ def allow_local_clone(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setattr(
         git_tools_module,
-        "_is_allowed_clone_scheme",
+        "is_allowed_clone_scheme",
         lambda url: True,
     )
 

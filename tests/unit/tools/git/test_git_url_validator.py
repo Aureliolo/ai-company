@@ -12,8 +12,8 @@ from pydantic import ValidationError
 from synthorg.tools.git_url_validator import (
     GitCloneNetworkPolicy,
     _extract_hostname,
-    _is_allowed_clone_scheme,
     _is_blocked_ip,
+    is_allowed_clone_scheme,
     validate_clone_url_host,
 )
 
@@ -73,6 +73,8 @@ class TestExtractHostname:
             "/local/path",
             "https://",
             "https:///path",
+            "git@[]:repo.git",
+            "git@[::1:repo.git",
         ],
         ids=[
             "empty",
@@ -80,6 +82,8 @@ class TestExtractHostname:
             "local-path",
             "scheme-only",
             "empty-host",
+            "scp-empty-brackets",
+            "scp-unclosed-bracket",
         ],
     )
     def test_unparseable_returns_none(self, url: str) -> None:
@@ -100,34 +104,60 @@ class TestIsBlockedIp:
             "127.255.255.255",
             "10.0.0.1",
             "10.255.255.255",
+            "100.64.0.1",
+            "100.127.255.255",
             "172.16.0.1",
             "172.31.255.255",
+            "192.0.0.1",
+            "192.0.2.1",
             "192.168.0.1",
             "192.168.255.255",
+            "198.18.0.1",
+            "198.51.100.1",
+            "203.0.113.1",
             "169.254.1.1",
+            "224.0.0.1",
+            "240.0.0.1",
+            "255.255.255.255",
             "0.0.0.0",  # noqa: S104
             "::1",
             "fe80::1",
             "fc00::1",
             "fd00::1",
             "::",
+            "2001:db8::1",
+            "64:ff9b::1",
+            "100::1",
         ],
         ids=[
             "loopback-start",
             "loopback-end",
             "private-10-start",
             "private-10-end",
+            "cgnat-start",
+            "cgnat-end",
             "private-172-start",
             "private-172-end",
+            "ietf-protocol",
+            "test-net-1",
             "private-192-start",
             "private-192-end",
+            "benchmarking",
+            "test-net-2",
+            "test-net-3",
             "link-local",
+            "multicast",
+            "reserved",
+            "broadcast",
             "unspecified-v4",
             "loopback-v6",
             "link-local-v6",
             "ula-v6-fc",
             "ula-v6-fd",
             "unspecified-v6",
+            "documentation-v6",
+            "nat64",
+            "discard-v6",
         ],
     )
     def test_blocked_addresses(self, addr: str) -> None:
@@ -139,16 +169,12 @@ class TestIsBlockedIp:
             "8.8.8.8",
             "1.1.1.1",
             "93.184.216.34",
-            "203.0.113.1",
-            "2001:db8::1",
             "2607:f8b0:4004:800::200e",
         ],
         ids=[
             "google-dns",
             "cloudflare-dns",
             "example-com",
-            "documentation",
-            "doc-v6",
             "google-v6",
         ],
     )
@@ -180,7 +206,7 @@ class TestIsBlockedIp:
         assert _is_blocked_ip("not-an-ip") is True
 
 
-# ── _is_allowed_clone_scheme ──────────────────────────────────────
+# ── is_allowed_clone_scheme ───────────────────────────────────────
 
 
 @pytest.mark.unit
@@ -207,7 +233,7 @@ class TestIsAllowedCloneScheme:
         ],
     )
     def test_allowed_schemes(self, url: str) -> None:
-        assert _is_allowed_clone_scheme(url) is True
+        assert is_allowed_clone_scheme(url) is True
 
     @pytest.mark.parametrize(
         "url",
@@ -231,7 +257,7 @@ class TestIsAllowedCloneScheme:
         ],
     )
     def test_blocked_schemes(self, url: str) -> None:
-        assert _is_allowed_clone_scheme(url) is False
+        assert is_allowed_clone_scheme(url) is False
 
 
 # ── GitCloneNetworkPolicy ────────────────────────────────────────
@@ -268,6 +294,44 @@ class TestGitCloneNetworkPolicy:
         with pytest.raises(ValidationError):
             GitCloneNetworkPolicy(dns_resolution_timeout=31)
 
+    def test_timeout_rejects_inf_and_nan(self) -> None:
+        """Infinity and NaN are rejected by allow_inf_nan=False."""
+        with pytest.raises(ValidationError):
+            GitCloneNetworkPolicy(dns_resolution_timeout=float("inf"))
+        with pytest.raises(ValidationError):
+            GitCloneNetworkPolicy(dns_resolution_timeout=float("nan"))
+
+    def test_allowlist_normalized_to_lowercase(self) -> None:
+        """Entries are lowercased at construction."""
+        policy = GitCloneNetworkPolicy(
+            hostname_allowlist=("Git.INTERNAL.Corp",),
+        )
+        assert policy.hostname_allowlist == ("git.internal.corp",)
+
+    def test_allowlist_deduplicates(self) -> None:
+        """Duplicate entries (case-insensitive) are removed."""
+        policy = GitCloneNetworkPolicy(
+            hostname_allowlist=(
+                "git.internal",
+                "GIT.INTERNAL",
+                "git.other",
+            ),
+        )
+        assert policy.hostname_allowlist == (
+            "git.internal",
+            "git.other",
+        )
+
+    def test_allowlist_rejects_empty_string(self) -> None:
+        """Empty string in allowlist is rejected (NotBlankStr)."""
+        with pytest.raises(ValidationError):
+            GitCloneNetworkPolicy(hostname_allowlist=("",))
+
+    def test_allowlist_rejects_whitespace(self) -> None:
+        """Whitespace-only allowlist entry is rejected."""
+        with pytest.raises(ValidationError):
+            GitCloneNetworkPolicy(hostname_allowlist=("   ",))
+
 
 # ── validate_clone_url_host ───────────────────────────────────────
 
@@ -275,8 +339,15 @@ class TestGitCloneNetworkPolicy:
 def _dns_result(
     *addrs: str,
 ) -> list[tuple[int, int, int, str, tuple[str, int]]]:
-    """Build a fake getaddrinfo result list."""
+    """Build a fake getaddrinfo result list (AF_INET)."""
     return [(2, 1, 6, "", (addr, 0)) for addr in addrs]
+
+
+def _dns_result_v6(
+    *addrs: str,
+) -> list[tuple[int, int, int, str, tuple[str, int, int, int]]]:
+    """Build a fake getaddrinfo result list (AF_INET6)."""
+    return [(10, 1, 6, "", (addr, 0, 0, 0)) for addr in addrs]
 
 
 @pytest.mark.unit
@@ -324,6 +395,45 @@ class TestValidateCloneUrlHost:
         policy = GitCloneNetworkPolicy()
         result = await validate_clone_url_host("https://93.184.216.34/repo.git", policy)
         assert result is None
+
+    async def test_literal_ipv6_loopback_blocked(self) -> None:
+        """IPv6 loopback literal in URL is blocked."""
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host("https://[::1]/repo.git", policy)
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    async def test_literal_ipv6_link_local_blocked(self) -> None:
+        """IPv6 link-local literal in URL is blocked."""
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host("https://[fe80::1]/repo.git", policy)
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    async def test_literal_ipv6_mapped_loopback_blocked(
+        self,
+    ) -> None:
+        """IPv6-mapped loopback literal is blocked."""
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host(
+            "https://[::ffff:127.0.0.1]/repo.git", policy
+        )
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    async def test_scp_literal_private_ip_blocked(self) -> None:
+        """SCP-like URL with literal private IP is blocked."""
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host("git@10.0.0.1:repo.git", policy)
+        assert result is not None
+        assert "blocked" in result.lower()
+
+    async def test_scp_literal_loopback_blocked(self) -> None:
+        """SCP-like URL with loopback IP is blocked."""
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host("git@127.0.0.1:repo.git", policy)
+        assert result is not None
+        assert "blocked" in result.lower()
 
     async def test_allowlisted_host_bypasses_check(self) -> None:
         """Allowlisted host bypasses private IP check entirely."""
@@ -376,6 +486,23 @@ class TestValidateCloneUrlHost:
         assert result is not None
         assert "failed" in result.lower()
 
+    async def test_dns_unexpected_exception_blocked(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Unexpected DNS exception rejects (fail-closed)."""
+        loop = asyncio.get_running_loop()
+        monkeypatch.setattr(
+            loop,
+            "getaddrinfo",
+            AsyncMock(side_effect=RuntimeError("unexpected")),
+        )
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host(
+            "https://broken.example.com/repo.git", policy
+        )
+        assert result is not None
+        assert "failed" in result.lower()
+
     async def test_dns_empty_results_blocked(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -402,7 +529,7 @@ class TestValidateCloneUrlHost:
     async def test_mixed_dns_results_one_private_blocked(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """One public + one private result → blocked."""
+        """One public + one private result -> blocked."""
         loop = asyncio.get_running_loop()
         monkeypatch.setattr(
             loop,
@@ -438,8 +565,44 @@ class TestValidateCloneUrlHost:
         assert result is not None
         assert "could not extract" in result.lower()
 
+    async def test_ipv6_dns_result_blocked(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AF_INET6 DNS result with private IP is blocked."""
+        loop = asyncio.get_running_loop()
+        monkeypatch.setattr(
+            loop,
+            "getaddrinfo",
+            AsyncMock(return_value=_dns_result_v6("::1")),
+        )
+        policy = GitCloneNetworkPolicy()
+        result = await validate_clone_url_host(
+            "https://evil-v6.example.com/repo.git", policy
+        )
+        assert result is not None
+        assert "blocked" in result.lower()
+
 
 # ── Property-based tests ──────────────────────────────────────────
+
+# All IPv4 networks in _BLOCKED_NETWORKS for property test alignment.
+_ALL_BLOCKED_V4 = (
+    ipaddress.IPv4Network("0.0.0.0/8"),
+    ipaddress.IPv4Network("10.0.0.0/8"),
+    ipaddress.IPv4Network("100.64.0.0/10"),
+    ipaddress.IPv4Network("127.0.0.0/8"),
+    ipaddress.IPv4Network("169.254.0.0/16"),
+    ipaddress.IPv4Network("172.16.0.0/12"),
+    ipaddress.IPv4Network("192.0.0.0/24"),
+    ipaddress.IPv4Network("192.0.2.0/24"),
+    ipaddress.IPv4Network("192.168.0.0/16"),
+    ipaddress.IPv4Network("198.18.0.0/15"),
+    ipaddress.IPv4Network("198.51.100.0/24"),
+    ipaddress.IPv4Network("203.0.113.0/24"),
+    ipaddress.IPv4Network("224.0.0.0/4"),
+    ipaddress.IPv4Network("240.0.0.0/4"),
+    ipaddress.IPv4Network("255.255.255.255/32"),
+)
 
 
 @pytest.mark.unit
@@ -448,12 +611,7 @@ class TestValidateCloneUrlHostProperties:
 
     @given(
         ip=st.one_of(
-            st.ip_addresses(v=4, network="127.0.0.0/8"),
-            st.ip_addresses(v=4, network="10.0.0.0/8"),
-            st.ip_addresses(v=4, network="172.16.0.0/12"),
-            st.ip_addresses(v=4, network="192.168.0.0/16"),
-            st.ip_addresses(v=4, network="169.254.0.0/16"),
-            st.ip_addresses(v=4, network="0.0.0.0/8"),
+            *(st.ip_addresses(v=4, network=str(net)) for net in _ALL_BLOCKED_V4)
         ),
     )
     @settings(max_examples=200)
@@ -466,6 +624,8 @@ class TestValidateCloneUrlHostProperties:
             st.ip_addresses(v=6, network="::1/128"),
             st.ip_addresses(v=6, network="fe80::/10"),
             st.ip_addresses(v=6, network="fc00::/7"),
+            st.ip_addresses(v=6, network="2001:db8::/32"),
+            st.ip_addresses(v=6, network="100::/64"),
         ),
     )
     @settings(max_examples=200)
@@ -475,19 +635,7 @@ class TestValidateCloneUrlHostProperties:
 
     @given(
         ip=st.ip_addresses(v=4).filter(
-            lambda ip: (
-                not any(
-                    ip in net
-                    for net in (
-                        ipaddress.IPv4Network("0.0.0.0/8"),
-                        ipaddress.IPv4Network("10.0.0.0/8"),
-                        ipaddress.IPv4Network("127.0.0.0/8"),
-                        ipaddress.IPv4Network("169.254.0.0/16"),
-                        ipaddress.IPv4Network("172.16.0.0/12"),
-                        ipaddress.IPv4Network("192.168.0.0/16"),
-                    )
-                )
-            )
+            lambda ip: not any(ip in net for net in _ALL_BLOCKED_V4)
         ),
     )
     @settings(max_examples=200)
