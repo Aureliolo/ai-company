@@ -55,18 +55,19 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Remove shell completion snippets.
+	// Remove data directory.
+	if err := confirmAndRemoveData(cmd, safeDir); err != nil {
+		return err
+	}
+
+	// Remove shell completion snippets (after data dir confirmation
+	// so aborting early doesn't leave completions removed).
 	shell := completion.DetectShell()
 	if shell != completion.Unknown {
 		_, _ = fmt.Fprintln(out, "Removing shell completions...")
 		if err := completion.Uninstall(ctx, shell); err != nil {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove shell completions: %v\n", err)
 		}
-	}
-
-	// Remove data directory.
-	if err := confirmAndRemoveData(cmd, safeDir); err != nil {
-		return err
 	}
 
 	// Optionally remove CLI binary.
@@ -123,57 +124,63 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 	if err := form.Run(); err != nil {
 		return err
 	}
+	if !removeData {
+		return nil
+	}
+	dir := filepath.Clean(dataDir)
+	if err := rejectUnsafeDir(dir); err != nil {
+		return err
+	}
+	return removeDataDir(cmd, dir)
+}
 
-	if removeData {
-		dir := filepath.Clean(dataDir)
-		// Safety: refuse to remove root, home, UNC share roots, or drive roots.
-		home, homeErr := os.UserHomeDir()
-		if homeErr != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: cannot determine home directory: %v\n", homeErr)
-		}
-		isHomeDir := false
-		if homeErr == nil {
-			home = filepath.Clean(home)
-			if runtime.GOOS == "windows" {
-				isHomeDir = strings.EqualFold(dir, home)
-			} else {
-				isHomeDir = dir == home
-			}
-		}
-		vol := filepath.VolumeName(dir)
-		// Only reject UNC share roots (e.g. \\server\share), not arbitrary
-		// paths under a UNC share (e.g. \\server\share\synthorg\data).
-		isUNCRoot := vol != "" &&
-			(strings.HasPrefix(vol, `\\`) || strings.HasPrefix(vol, "//")) &&
-			(dir == vol || dir == vol+`\` || dir == vol+"/")
-		isDriveRoot := len(dir) == 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
-		if dir == "/" || isHomeDir || isDriveRoot || isUNCRoot {
-			return fmt.Errorf("refusing to remove %q — does not look like an app data directory", dir)
-		}
-
-		// On Windows the running binary cannot be deleted. If it lives
-		// inside the config directory, remove everything else and leave
-		// the binary for deferred cleanup in confirmAndRemoveBinary.
-		execPath, execErr := os.Executable()
-		if execErr != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: cannot resolve executable path: %v\n", execErr)
-		}
-		if execErr == nil {
-			if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
-				execPath = resolved
-			}
-		}
-		if execErr == nil && runtime.GOOS == "windows" && isInsideDir(execPath, dir) {
-			if err := removeAllExcept(dir, execPath); err != nil {
-				return fmt.Errorf("removing config directory: %w", err)
-			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed contents of %s (binary skipped — still running)\n", dir)
+// rejectUnsafeDir refuses to remove root, home, UNC share roots, or drive roots.
+func rejectUnsafeDir(dir string) error {
+	home, homeErr := os.UserHomeDir()
+	isHomeDir := false
+	if homeErr == nil {
+		home = filepath.Clean(home)
+		if runtime.GOOS == "windows" {
+			isHomeDir = strings.EqualFold(dir, home)
 		} else {
-			if err := os.RemoveAll(dir); err != nil {
-				return fmt.Errorf("removing config directory: %w", err)
-			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed %s\n", dir)
+			isHomeDir = dir == home
 		}
+	}
+	vol := filepath.VolumeName(dir)
+	// Only reject UNC share roots (e.g. \\server\share), not arbitrary
+	// paths under a UNC share (e.g. \\server\share\synthorg\data).
+	isUNCRoot := vol != "" &&
+		(strings.HasPrefix(vol, `\\`) || strings.HasPrefix(vol, "//")) &&
+		(dir == vol || dir == vol+`\` || dir == vol+"/")
+	isDriveRoot := len(dir) == 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
+	if dir == "/" || isHomeDir || isDriveRoot || isUNCRoot {
+		return fmt.Errorf("refusing to remove %q — does not look like an app data directory", dir)
+	}
+	return nil
+}
+
+// removeDataDir removes the data directory. On Windows, if the running
+// binary lives inside the directory, it removes everything except the binary.
+func removeDataDir(cmd *cobra.Command, dir string) error {
+	execPath, execErr := os.Executable()
+	if execErr != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: cannot resolve executable path: %v\n", execErr)
+	}
+	if execErr == nil {
+		if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
+			execPath = resolved
+		}
+	}
+	if execErr == nil && runtime.GOOS == "windows" && isInsideDir(execPath, dir) {
+		if err := removeAllExcept(dir, execPath); err != nil {
+			return fmt.Errorf("removing config directory: %w", err)
+		}
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed contents of %s (binary skipped — still running)\n", dir)
+	} else {
+		if err := os.RemoveAll(dir); err != nil {
+			return fmt.Errorf("removing config directory: %w", err)
+		}
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed %s\n", dir)
 	}
 	return nil
 }

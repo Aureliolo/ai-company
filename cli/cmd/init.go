@@ -131,16 +131,8 @@ func runSetupForm() (setupAnswers, error) {
 				Description("Recommended for API authentication").Value(&a.genJWT),
 		),
 		huh.NewGroup(
-			huh.NewSelect[string]().Title("Persistence backend").
-				Description("Database for operational data (tasks, audit, auth)").
-				Options(
-					huh.NewOption("SQLite (recommended)", "sqlite"),
-				).Value(&a.persistenceBackend),
-			huh.NewSelect[string]().Title("Memory backend").
-				Description("Agent memory storage (conversations, knowledge)").
-				Options(
-					huh.NewOption("Mem0 (recommended)", "mem0"),
-				).Value(&a.memoryBackend),
+			huh.NewNote().Title("Backends").
+				Description("Persistence: SQLite · Memory: Mem0\n(More options coming soon)"),
 		),
 	)
 

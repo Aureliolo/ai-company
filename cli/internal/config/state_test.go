@@ -28,17 +28,25 @@ func TestDefaultState(t *testing.T) {
 	if s.DataDir == "" {
 		t.Error("DataDir should not be empty")
 	}
+	if s.PersistenceBackend != "sqlite" {
+		t.Errorf("PersistenceBackend = %q, want sqlite", s.PersistenceBackend)
+	}
+	if s.MemoryBackend != "mem0" {
+		t.Errorf("MemoryBackend = %q, want mem0", s.MemoryBackend)
+	}
 }
 
 func TestSaveAndLoad(t *testing.T) {
 	tmp := t.TempDir()
 	s := State{
-		DataDir:     tmp,
-		ImageTag:    "v0.1.5",
-		BackendPort: 9000,
-		WebPort:     3001,
-		LogLevel:    "debug",
-		JWTSecret:   "test-secret",
+		DataDir:            tmp,
+		ImageTag:           "v0.1.5",
+		BackendPort:        9000,
+		WebPort:            3001,
+		LogLevel:           "debug",
+		JWTSecret:          "test-secret",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
 	}
 
 	if err := Save(s); err != nil {
@@ -64,6 +72,12 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 	if loaded.LogLevel != s.LogLevel {
 		t.Errorf("LogLevel = %q, want %q", loaded.LogLevel, s.LogLevel)
+	}
+	if loaded.PersistenceBackend != s.PersistenceBackend {
+		t.Errorf("PersistenceBackend = %q, want %q", loaded.PersistenceBackend, s.PersistenceBackend)
+	}
+	if loaded.MemoryBackend != s.MemoryBackend {
+		t.Errorf("MemoryBackend = %q, want %q", loaded.MemoryBackend, s.MemoryBackend)
 	}
 }
 

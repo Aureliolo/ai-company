@@ -331,15 +331,22 @@ func uninstallPowerShell(ctx context.Context) error {
 	return removeMarkerBlock(profile)
 }
 
-// removeMarkerBlock removes lines between (and including) the marker
-// and the next non-empty line from a shell profile file.
+// removeMarkerBlock removes the first marker block from a shell profile.
+// A block starts at the marker line and includes all contiguous non-empty
+// lines after it, plus the terminating empty line. Only the first
+// occurrence is removed to avoid greedy deletion of unrelated content.
+// The original file permissions are preserved.
 // If the file does not exist or has no marker, this is a no-op.
 func removeMarkerBlock(path string) error {
-	data, err := os.ReadFile(path)
+	info, err := os.Stat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
 		return fmt.Errorf("reading %s: %w", path, err)
 	}
 	content := string(data)
@@ -350,9 +357,11 @@ func removeMarkerBlock(path string) error {
 	var result []string
 	lines := strings.Split(content, "\n")
 	inBlock := false
+	found := false
 	for _, line := range lines {
-		if strings.TrimSpace(line) == marker {
+		if !found && strings.TrimSpace(line) == marker {
 			inBlock = true
+			found = true
 			continue
 		}
 		if inBlock {
@@ -360,7 +369,8 @@ func removeMarkerBlock(path string) error {
 			if strings.TrimSpace(line) != "" {
 				continue
 			}
-			// Empty line ends the block.
+			// Empty line terminates the block and is consumed
+			// (the snippet's trailing newline produced it).
 			inBlock = false
 			continue
 		}
@@ -368,7 +378,7 @@ func removeMarkerBlock(path string) error {
 	}
 
 	cleaned := strings.Join(result, "\n")
-	return os.WriteFile(path, []byte(cleaned), 0o644)
+	return os.WriteFile(path, []byte(cleaned), info.Mode())
 }
 
 // appendToFile appends content to a file, creating it if needed.

@@ -87,6 +87,12 @@ func Load(dataDir string) (State, error) {
 	return s, nil
 }
 
+// Valid persistence backend values.
+var validPersistenceBackends = map[string]bool{"sqlite": true}
+
+// Valid memory backend values.
+var validMemoryBackends = map[string]bool{"mem0": true}
+
 // validate checks that loaded config values are within safe ranges.
 func (s State) validate() error {
 	if s.BackendPort < 1 || s.BackendPort > 65535 {
@@ -94,6 +100,12 @@ func (s State) validate() error {
 	}
 	if s.WebPort < 1 || s.WebPort > 65535 {
 		return fmt.Errorf("invalid web_port %d: must be 1-65535", s.WebPort)
+	}
+	if s.PersistenceBackend != "" && !validPersistenceBackends[s.PersistenceBackend] {
+		return fmt.Errorf("invalid persistence_backend %q: must be one of sqlite", s.PersistenceBackend)
+	}
+	if s.MemoryBackend != "" && !validMemoryBackends[s.MemoryBackend] {
+		return fmt.Errorf("invalid memory_backend %q: must be one of mem0", s.MemoryBackend)
 	}
 	return nil
 }
