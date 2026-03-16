@@ -164,7 +164,6 @@ func (r Report) FormatText() string {
 
 	fmt.Fprintf(&b, "--- Health ---\nStatus: %s\n%s\n\n", r.HealthStatus, r.HealthBody)
 	r.formatComposeSection(&b)
-	fmt.Fprintf(&b, "--- Containers ---\n%s\n\n", r.ContainerPS)
 	r.formatInfraSection(&b)
 	fmt.Fprintf(&b, "--- Config (redacted) ---\n%s\n\n", r.ConfigRedacted)
 	fmt.Fprintf(&b, "--- Disk ---\n%s\n\n", r.DiskInfo)

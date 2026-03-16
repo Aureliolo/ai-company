@@ -82,7 +82,11 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		encodedBody,
 	)
 
-	_, _ = fmt.Fprintf(out, "File a bug report:\n  %s\n", issueURL)
+	_, _ = fmt.Fprintln(out, "To file a bug report:")
+	_, _ = fmt.Fprintf(out, "  1. Attach the diagnostic file: %s\n", savePath)
+	_, _ = fmt.Fprintf(out, "  2. Open: %s\n\n", issueURL)
+	_, _ = fmt.Fprintf(out, "Dashboard: http://localhost:%d\n", state.WebPort)
+	_, _ = fmt.Fprintf(out, "API docs:  http://localhost:%d/api\n", state.BackendPort)
 
 	return nil
 }

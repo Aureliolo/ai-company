@@ -80,6 +80,8 @@ func updateCLI(cmd *cobra.Command) (string, error) {
 		return "", fmt.Errorf("replacing binary: %w", err)
 	}
 	_, _ = fmt.Fprintf(out, "CLI updated to %s\n", result.LatestVersion)
+	_, _ = fmt.Fprintf(out, "Release notes: %s/releases/tag/v%s\n",
+		version.RepoURL, strings.TrimPrefix(result.LatestVersion, "v"))
 	return result.LatestVersion, nil
 }
 
@@ -286,6 +288,7 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: health check did not pass after restart: %v\n", err)
 	} else {
 		_, _ = fmt.Fprintln(out, "Containers restarted with new images and healthy.")
+		_, _ = fmt.Fprintf(out, "Dashboard: http://localhost:%d\n", state.WebPort)
 	}
 
 	return nil

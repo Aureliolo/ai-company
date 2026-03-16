@@ -68,6 +68,9 @@ func NewUI(w io.Writer) *UI {
 	}
 }
 
+// Writer returns the underlying writer for direct output.
+func (u *UI) Writer() io.Writer { return u.w }
+
 // Logo renders the SynthOrg Unicode logo in brand color with a version tag.
 func (u *UI) Logo(version string) {
 	art := u.brandBold.Render(logo)
@@ -108,6 +111,53 @@ func (u *UI) KeyValue(key, value string) {
 // Hint prints a hint/suggestion line in muted color.
 func (u *UI) Hint(msg string) {
 	_, _ = fmt.Fprintf(u.w, "%s %s\n", u.muted.Render(IconHint), u.muted.Render(stripControl(msg)))
+}
+
+// Link prints a labeled URL in muted color.
+func (u *UI) Link(label, url string) {
+	_, _ = fmt.Fprintf(u.w, "  %s %s\n", u.label.Render(stripControl(label)+":"), u.muted.Render(stripControl(url)))
+}
+
+// Table prints rows as a fixed-width table with a header.
+func (u *UI) Table(headers []string, rows [][]string) {
+	if len(headers) == 0 {
+		return
+	}
+	widths := make([]int, len(headers))
+	for i, h := range headers {
+		widths[i] = len(h)
+	}
+	for _, row := range rows {
+		for i := range widths {
+			if i < len(row) && len(row[i]) > widths[i] {
+				widths[i] = len(row[i])
+			}
+		}
+	}
+	printRow := func(cells []string) {
+		var b strings.Builder
+		b.WriteString("  ")
+		for i, w := range widths {
+			cell := ""
+			if i < len(cells) {
+				cell = cells[i]
+			}
+			if i > 0 {
+				b.WriteString("  ")
+			}
+			fmt.Fprintf(&b, "%-*s", w, cell)
+		}
+		_, _ = fmt.Fprintln(u.w, b.String())
+	}
+	printRow(headers)
+	sep := make([]string, len(headers))
+	for i, w := range widths {
+		sep[i] = strings.Repeat("─", w)
+	}
+	printRow(sep)
+	for _, row := range rows {
+		printRow(row)
+	}
 }
 
 // stripControl removes ASCII control characters (except tab and newline)
