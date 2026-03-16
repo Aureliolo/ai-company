@@ -10,6 +10,7 @@ from hypothesis import strategies as st
 from pydantic import ValidationError
 
 from synthorg.tools.git_url_validator import (
+    _BLOCKED_NETWORKS,
     GitCloneNetworkPolicy,
     _extract_hostname,
     _is_blocked_ip,
@@ -599,23 +600,12 @@ class TestValidateCloneUrlHost:
 
 # ── Property-based tests ──────────────────────────────────────────
 
-# All IPv4 networks in _BLOCKED_NETWORKS for property test alignment.
-_ALL_BLOCKED_V4 = (
-    ipaddress.IPv4Network("0.0.0.0/8"),
-    ipaddress.IPv4Network("10.0.0.0/8"),
-    ipaddress.IPv4Network("100.64.0.0/10"),
-    ipaddress.IPv4Network("127.0.0.0/8"),
-    ipaddress.IPv4Network("169.254.0.0/16"),
-    ipaddress.IPv4Network("172.16.0.0/12"),
-    ipaddress.IPv4Network("192.0.0.0/24"),
-    ipaddress.IPv4Network("192.0.2.0/24"),
-    ipaddress.IPv4Network("192.168.0.0/16"),
-    ipaddress.IPv4Network("198.18.0.0/15"),
-    ipaddress.IPv4Network("198.51.100.0/24"),
-    ipaddress.IPv4Network("203.0.113.0/24"),
-    ipaddress.IPv4Network("224.0.0.0/4"),
-    ipaddress.IPv4Network("240.0.0.0/4"),
-    ipaddress.IPv4Network("255.255.255.255/32"),
+# Derive from production constant to prevent drift.
+_ALL_BLOCKED_V4 = tuple(
+    net for net in _BLOCKED_NETWORKS if isinstance(net, ipaddress.IPv4Network)
+)
+_ALL_BLOCKED_V6 = tuple(
+    net for net in _BLOCKED_NETWORKS if isinstance(net, ipaddress.IPv6Network)
 )
 
 
@@ -635,15 +625,11 @@ class TestValidateCloneUrlHostProperties:
 
     @given(
         ip=st.one_of(
-            st.ip_addresses(v=6, network="::1/128"),
-            st.ip_addresses(v=6, network="64:ff9b::/96"),
-            st.ip_addresses(v=6, network="100::/64"),
-            st.ip_addresses(v=6, network="2001::/32"),
-            st.ip_addresses(v=6, network="2001:db8::/32"),
-            st.ip_addresses(v=6, network="2002::/16"),
-            st.ip_addresses(v=6, network="fc00::/7"),
-            st.ip_addresses(v=6, network="fe80::/10"),
-            st.ip_addresses(v=6, network="ff00::/8"),
+            *(
+                st.ip_addresses(v=6, network=str(net))
+                for net in _ALL_BLOCKED_V6
+                if net.num_addresses > 1  # skip ::/128 (single addr)
+            )
         ),
     )
     @settings(max_examples=200)

@@ -42,8 +42,8 @@ ALLOWED_CLONE_SCHEMES: Final[tuple[str, ...]] = (
     "ssh://",
 )
 
-# Matches http(s)://userinfo@host patterns in clone URLs.
-_CREDENTIAL_RE: Final[re.Pattern[str]] = re.compile(r"(https?://)[^@/]+@")
+# Matches scheme://userinfo@host patterns in clone URLs.
+_CREDENTIAL_RE: Final[re.Pattern[str]] = re.compile(r"(\w+://)[^@/]+@")
 
 _BLOCKED_NETWORKS: Final[tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]] = (
     # IPv4 — loopback, private, link-local, reserved
