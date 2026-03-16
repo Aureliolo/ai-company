@@ -50,23 +50,25 @@ def _make_sampler(
 class TestConstructorValidation:
     """Constructor input validation."""
 
-    @pytest.mark.parametrize(
-        ("kwargs", "match"),
-        [
-            ({"sampling_rate": -0.1}, "sampling_rate must be in"),
-            ({"sampling_rate": 1.1}, "sampling_rate must be in"),
-            ({"retention_days": 0}, "retention_days must be >= 1"),
-            ({"retention_days": -5}, "retention_days must be >= 1"),
-        ],
-    )
-    def test_invalid_constructor_raises(
-        self,
-        kwargs: dict[str, float | int],
-        match: str,
-    ) -> None:
-        """Invalid constructor parameters raise ValueError."""
-        with pytest.raises(ValueError, match=match):
-            _make_sampler(**kwargs)
+    def test_sampling_rate_below_zero_raises(self) -> None:
+        """Sampling rate below 0.0 raises ValueError."""
+        with pytest.raises(ValueError, match="sampling_rate must be in"):
+            _make_sampler(sampling_rate=-0.1)
+
+    def test_sampling_rate_above_one_raises(self) -> None:
+        """Sampling rate above 1.0 raises ValueError."""
+        with pytest.raises(ValueError, match="sampling_rate must be in"):
+            _make_sampler(sampling_rate=1.1)
+
+    def test_retention_days_zero_raises(self) -> None:
+        """Zero retention days raises ValueError."""
+        with pytest.raises(ValueError, match="retention_days must be >= 1"):
+            _make_sampler(retention_days=0)
+
+    def test_retention_days_negative_raises(self) -> None:
+        """Negative retention days raises ValueError."""
+        with pytest.raises(ValueError, match="retention_days must be >= 1"):
+            _make_sampler(retention_days=-5)
 
 
 @pytest.mark.unit
