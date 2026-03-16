@@ -13,6 +13,7 @@ adjustments.
    (the default) for ticket auth to work correctly.
 """
 
+import math
 import secrets
 import time
 
@@ -30,8 +31,14 @@ from synthorg.observability.events.api import (
 
 logger = get_logger(__name__)
 
+
+class TicketLimitExceededError(Exception):
+    """Raised when a user exceeds the per-user pending ticket cap."""
+
+
 # 32 bytes → 256 bits of entropy, encoded as 43 URL-safe base64 chars.
-_TOKEN_BYTES = 32
+_TOKEN_BYTES: int = 32
+_MAX_PENDING_PER_USER: int = 5
 
 
 class _TicketEntry(BaseModel):
@@ -63,8 +70,8 @@ class WsTicketStore:
     """
 
     def __init__(self, ttl_seconds: float = 30.0) -> None:
-        if ttl_seconds <= 0:
-            msg = f"ttl_seconds must be positive, got {ttl_seconds}"
+        if not math.isfinite(ttl_seconds) or ttl_seconds <= 0:
+            msg = f"ttl_seconds must be a finite positive number, got {ttl_seconds}"
             raise ValueError(msg)
         self._ttl = ttl_seconds
         self._tickets: dict[str, _TicketEntry] = {}
@@ -83,6 +90,13 @@ class WsTicketStore:
         Returns:
             URL-safe random token string.
         """
+        user_pending = sum(
+            1 for e in self._tickets.values() if e.user.user_id == user.user_id
+        )
+        if user_pending >= _MAX_PENDING_PER_USER:
+            msg = f"Ticket limit exceeded for user {user.user_id}"
+            raise TicketLimitExceededError(msg)
+
         ticket = secrets.token_urlsafe(_TOKEN_BYTES)
         entry = _TicketEntry(
             user=user,
@@ -101,8 +115,9 @@ class WsTicketStore:
         """Validate and consume a ticket (single-use).
 
         Atomically removes the ticket via ``dict.pop`` before
-        checking expiry, so concurrent calls on the same ticket
-        are safely serialised by CPython's GIL.
+        checking expiry.  In the single-threaded asyncio event loop,
+        ``dict.pop`` cannot be interleaved with another coroutine,
+        so concurrent calls on the same ticket are safely serialised.
 
         Args:
             ticket: Raw ticket string from the client.
@@ -144,9 +159,9 @@ class WsTicketStore:
         now = time.monotonic()
         expired = [k for k, v in self._tickets.items() if now > v.expires_at]
         for k in expired:
-            del self._tickets[k]
+            self._tickets.pop(k, None)
         if expired:
-            logger.debug(
+            logger.info(
                 API_WS_TICKET_CLEANUP,
                 removed=len(expired),
                 remaining=len(self._tickets),

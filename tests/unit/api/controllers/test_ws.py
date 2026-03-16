@@ -8,12 +8,11 @@ from litestar.testing import TestClient
 
 from synthorg.api.auth.models import AuthMethod
 from synthorg.api.controllers.ws import (
-    _READ_ROLES,
     _WS_CLOSE_AUTH_FAILED,
     _WS_CLOSE_FORBIDDEN,
     _handle_message,
 )
-from synthorg.api.guards import HumanRole
+from synthorg.api.guards import _READ_ROLES, HumanRole
 
 
 @pytest.mark.unit
@@ -169,7 +168,7 @@ class TestWsHandleMessage:
         small_msg = json.dumps({"action": "subscribe", "channels": ["tasks"]})
         result = _handle_message(small_msg, subscribed, filters)
         data = json.loads(result)
-        assert "error" not in data or data.get("action") == "subscribed"
+        assert data["action"] == "subscribed"
 
         # Message whose encoded bytes exceed 4096 should fail
         big_msg = json.dumps({"action": "subscribe", "data": "x" * 4096})
@@ -177,36 +176,17 @@ class TestWsHandleMessage:
         data = json.loads(result)
         assert data["error"] == "Message too large"
 
-    def test_non_dict_json_returns_error(self) -> None:
+    @pytest.mark.parametrize(
+        "value",
+        [[1, 2, 3], "hello", 42],
+        ids=["array", "string", "number"],
+    )
+    def test_non_dict_json_returns_error(self, value: object) -> None:
         subscribed: set[str] = set()
         filters: dict[str, dict[str, str]] = {}
-
-        # JSON array
-        result = _handle_message(
-            json.dumps([1, 2, 3]),
-            subscribed,
-            filters,
-        )
+        result = _handle_message(json.dumps(value), subscribed, filters)
         data = json.loads(result)
-        assert "error" in data
-
-        # JSON string
-        result = _handle_message(
-            json.dumps("hello"),
-            subscribed,
-            filters,
-        )
-        data = json.loads(result)
-        assert "error" in data
-
-        # JSON number
-        result = _handle_message(
-            json.dumps(42),
-            subscribed,
-            filters,
-        )
-        data = json.loads(result)
-        assert "error" in data
+        assert data["error"] == "Expected JSON object"
 
 
 @pytest.mark.unit
@@ -309,9 +289,7 @@ class TestWsTicketAuth:
 
         with (
             pytest.raises(WebSocketDisconnect),
-            test_client.websocket_connect(
-                "/api/v1/ws",
-            ),
+            test_client.websocket_connect("/api/v1/ws"),
         ):
             pass
 
@@ -323,11 +301,7 @@ class TestWsTicketAuth:
         from litestar.exceptions import WebSocketDisconnect
 
         with (
-            pytest.raises(
-                WebSocketDisconnect,
-            ),
-            test_client.websocket_connect(
-                "/api/v1/ws?ticket=bogus-ticket",
-            ),
+            pytest.raises(WebSocketDisconnect),
+            test_client.websocket_connect("/api/v1/ws?ticket=bogus-ticket"),
         ):
             pass

@@ -12,7 +12,7 @@ The SynthOrg core framework is complete. The following subsystems are built and 
 - Security and approval system (rule engine, output scanning, progressive trust, autonomy levels, timeout policies)
 - Tool system (file system, git, code runner, MCP bridge, sandboxing, permissions)
 - HR engine (hiring, firing, onboarding, offboarding, registry, performance tracking, promotions)
-- REST and WebSocket API (Litestar controllers, JWT + API key auth, WebSocket channels)
+- REST and WebSocket API (Litestar controllers, JWT + API key + WS ticket auth, WebSocket channels)
 - Persistence layer (pluggable protocol, SQLite backend, repository protocols)
 - Observability (structured logging, correlation tracking, per-domain event constants)
 - Configuration (YAML loading, Pydantic validation, company templates with inheritance)

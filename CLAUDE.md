@@ -115,6 +115,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 ```text
 src/synthorg/
   api/            # Litestar REST + WebSocket API (controllers, guards, channels, JWT + API key + WS ticket auth, approval gate integration, coordination endpoint, collaboration endpoint, settings endpoint, RFC 9457 structured errors (ErrorCategory, ErrorCode, ErrorDetail, ProblemDetail, CATEGORY_TITLES, category_title, category_type_uri, content negotiation))
+    auth/         # Authentication subpackage (controller, service, middleware, JWT + API key + WS ticket store, models, config)
   budget/         # Cost tracking, budget enforcement (pre-flight/in-flight checks, auto-downgrade), billing periods, cost tiers, quota/subscription tracking, CFO cost optimization (anomaly detection, efficiency analysis, downgrade recommendations, approval decisions), spending reports, budget errors (BudgetExhaustedError, DailyLimitExceededError, QuotaExhaustedError)
   cli/            # Python CLI module (superseded by top-level cli/ Go binary)
   communication/  # Message bus, dispatcher, messenger, channels, delegation, loop prevention, conflict resolution

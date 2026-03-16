@@ -1,11 +1,13 @@
 """Tests for WsTicketStore."""
 
+import math
+import re
 from unittest.mock import patch
 
 import pytest
 
 from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
-from synthorg.api.auth.ticket_store import WsTicketStore
+from synthorg.api.auth.ticket_store import TicketLimitExceededError, WsTicketStore
 from synthorg.api.guards import HumanRole
 
 
@@ -23,10 +25,10 @@ def _make_user(
     )
 
 
+@pytest.mark.unit
 class TestWsTicketStoreCreate:
     """Tests for ticket creation."""
 
-    @pytest.mark.unit
     def test_create_returns_url_safe_string(self) -> None:
         store = WsTicketStore()
         user = _make_user()
@@ -35,37 +37,63 @@ class TestWsTicketStoreCreate:
         assert isinstance(ticket, str)
         assert len(ticket) > 0
         # URL-safe base64 characters only
-        import re
-
         assert re.fullmatch(r"[A-Za-z0-9_-]+", ticket)
 
-    @pytest.mark.unit
     def test_create_returns_unique_tickets(self) -> None:
         store = WsTicketStore()
-        user = _make_user()
-        tickets = {store.create(user) for _ in range(100)}
+        # Use different user IDs to avoid per-user ticket cap
+        tickets = {store.create(_make_user(user_id=f"user-{i}")) for i in range(100)}
         assert len(tickets) == 100
 
-    @pytest.mark.unit
     def test_ttl_seconds_property(self) -> None:
         store = WsTicketStore(ttl_seconds=60.0)
         assert store.ttl_seconds == 60.0
 
-    @pytest.mark.unit
     def test_zero_ttl_rejected(self) -> None:
         with pytest.raises(ValueError, match="positive"):
             WsTicketStore(ttl_seconds=0.0)
 
-    @pytest.mark.unit
     def test_negative_ttl_rejected(self) -> None:
         with pytest.raises(ValueError, match="positive"):
             WsTicketStore(ttl_seconds=-5.0)
 
+    def test_nan_ttl_rejected(self) -> None:
+        with pytest.raises(ValueError, match="finite positive"):
+            WsTicketStore(ttl_seconds=math.nan)
 
+    def test_inf_ttl_rejected(self) -> None:
+        with pytest.raises(ValueError, match="finite positive"):
+            WsTicketStore(ttl_seconds=math.inf)
+
+    def test_negative_inf_ttl_rejected(self) -> None:
+        with pytest.raises(ValueError, match="finite positive"):
+            WsTicketStore(ttl_seconds=-math.inf)
+
+    def test_per_user_ticket_cap(self) -> None:
+        """Creating more than _MAX_PENDING_PER_USER tickets raises."""
+        store = WsTicketStore()
+        user = _make_user()
+        for _ in range(5):
+            store.create(user)
+        with pytest.raises(TicketLimitExceededError):
+            store.create(user)
+
+    def test_per_user_ticket_cap_different_users(self) -> None:
+        """Different users have independent ticket caps."""
+        store = WsTicketStore()
+        user_a = _make_user(user_id="user-a")
+        user_b = _make_user(user_id="user-b")
+        for _ in range(5):
+            store.create(user_a)
+        # user_b should still be able to create tickets
+        ticket = store.create(user_b)
+        assert isinstance(ticket, str)
+
+
+@pytest.mark.unit
 class TestWsTicketStoreValidateAndConsume:
     """Tests for ticket validation and consumption."""
 
-    @pytest.mark.unit
     def test_validate_and_consume_returns_user(self) -> None:
         store = WsTicketStore()
         user = _make_user()
@@ -79,7 +107,6 @@ class TestWsTicketStoreValidateAndConsume:
         assert result.role == user.role
         assert result.auth_method == AuthMethod.WS_TICKET
 
-    @pytest.mark.unit
     def test_validate_and_consume_single_use(self) -> None:
         store = WsTicketStore()
         user = _make_user()
@@ -91,7 +118,6 @@ class TestWsTicketStoreValidateAndConsume:
         assert first is not None
         assert second is None
 
-    @pytest.mark.unit
     def test_validate_and_consume_expired(self) -> None:
         store = WsTicketStore(ttl_seconds=10.0)
         user = _make_user()
@@ -111,7 +137,6 @@ class TestWsTicketStoreValidateAndConsume:
 
         assert result is None
 
-    @pytest.mark.unit
     def test_validate_and_consume_just_before_expiry(self) -> None:
         store = WsTicketStore(ttl_seconds=10.0)
         user = _make_user()
@@ -131,19 +156,16 @@ class TestWsTicketStoreValidateAndConsume:
 
         assert result is not None
 
-    @pytest.mark.unit
     def test_validate_and_consume_unknown_ticket(self) -> None:
         store = WsTicketStore()
         result = store.validate_and_consume("nonexistent-ticket")
         assert result is None
 
-    @pytest.mark.unit
     def test_validate_and_consume_empty_string(self) -> None:
         store = WsTicketStore()
         result = store.validate_and_consume("")
         assert result is None
 
-    @pytest.mark.unit
     def test_custom_ttl(self) -> None:
         store = WsTicketStore(ttl_seconds=5.0)
         user = _make_user()
@@ -162,7 +184,6 @@ class TestWsTicketStoreValidateAndConsume:
             result = store.validate_and_consume(ticket)
         assert result is not None
 
-    @pytest.mark.unit
     def test_custom_ttl_expired(self) -> None:
         store = WsTicketStore(ttl_seconds=5.0)
         user = _make_user()
@@ -182,10 +203,10 @@ class TestWsTicketStoreValidateAndConsume:
         assert result is None
 
 
+@pytest.mark.unit
 class TestWsTicketStoreCleanup:
     """Tests for expired ticket cleanup."""
 
-    @pytest.mark.unit
     def test_cleanup_expired_removes_old_entries(self) -> None:
         store = WsTicketStore(ttl_seconds=10.0)
         user = _make_user()
@@ -205,7 +226,6 @@ class TestWsTicketStoreCleanup:
 
         assert removed == 2
 
-    @pytest.mark.unit
     def test_cleanup_preserves_valid_entries(self) -> None:
         store = WsTicketStore(ttl_seconds=10.0)
         user = _make_user()
@@ -232,7 +252,6 @@ class TestWsTicketStoreCleanup:
             result = store.validate_and_consume(ticket)
         assert result is not None
 
-    @pytest.mark.unit
     def test_cleanup_mixed_expired_and_valid(self) -> None:
         store = WsTicketStore(ttl_seconds=10.0)
         user = _make_user()
@@ -265,7 +284,6 @@ class TestWsTicketStoreCleanup:
             result = store.validate_and_consume(valid_ticket)
         assert result is not None
 
-    @pytest.mark.unit
     def test_cleanup_empty_store(self) -> None:
         store = WsTicketStore()
         removed = store.cleanup_expired()

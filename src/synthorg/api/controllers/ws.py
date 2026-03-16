@@ -20,7 +20,7 @@ from litestar.handlers import websocket
 
 from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.api.channels import ALL_CHANNELS
-from synthorg.api.guards import HumanRole
+from synthorg.api.guards import _READ_ROLES, HumanRole
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_WS_CONNECTED,
@@ -41,20 +41,18 @@ _MAX_FILTER_KEYS: int = 10
 _MAX_FILTER_VALUE_LEN: int = 256
 _MAX_WS_MESSAGE_BYTES: int = 4096
 
-_READ_ROLES: frozenset[HumanRole] = frozenset(HumanRole)
-
 # Application-layer WS close codes (RFC 6455 §7.4.2: 4000-4999).
 _WS_CLOSE_AUTH_FAILED: int = 4001
 _WS_CLOSE_FORBIDDEN: int = 4003
 
 
-async def _authenticate_ws(
+async def _validate_ticket(
     socket: WebSocket[Any, Any, Any],
 ) -> AuthenticatedUser | None:
-    """Validate the one-time ticket and check read-access role.
+    """Validate the one-time ticket and return the user.
 
-    Returns the authenticated user on success.  On failure, closes
-    the socket with an appropriate code and returns ``None``.
+    Returns ``None`` and closes the socket if the ticket is
+    missing, invalid, or expired.
     """
     ticket = socket.query_params.get("ticket")
     if not ticket:
@@ -73,6 +71,18 @@ async def _authenticate_ws(
         )
         return None
 
+    return user
+
+
+async def _check_ws_role(
+    socket: WebSocket[Any, Any, Any],
+    user: AuthenticatedUser,
+) -> bool:
+    """Verify the user has a role permitted for WebSocket access.
+
+    Returns ``True`` if the role is valid.  On failure, closes the
+    socket with a forbidden code and returns ``False``.
+    """
     # Defense-in-depth: user.role is already validated as HumanRole by
     # Pydantic, and _READ_ROLES == frozenset(HumanRole).  These checks
     # guard against future changes to the role model or read-role set.
@@ -85,7 +95,7 @@ async def _authenticate_ws(
             role=str(user.role),
         )
         await socket.close(code=_WS_CLOSE_FORBIDDEN, reason="Invalid role")
-        return None
+        return False
 
     if role not in _READ_ROLES:
         logger.warning(
@@ -97,9 +107,62 @@ async def _authenticate_ws(
             code=_WS_CLOSE_FORBIDDEN,
             reason="Insufficient permissions",
         )
-        return None
+        return False
 
-    return user
+    return True
+
+
+async def _on_event(
+    event_data: bytes,
+    subscribed: set[str],
+    filters: dict[str, dict[str, str]],
+    socket: WebSocket[Any, Any, Any],
+) -> None:
+    """Filter and forward a single channel event to the client."""
+    try:
+        event = json.loads(event_data)
+    except json.JSONDecodeError:
+        logger.warning(
+            API_WS_INVALID_MESSAGE,
+            data_preview=str(event_data)[:100],
+            source="channels_backend",
+        )
+        return
+    except TypeError:
+        logger.error(
+            API_WS_INVALID_MESSAGE,
+            data_type=type(event_data).__name__,
+            reason="unexpected_type",
+            source="channels_backend",
+            exc_info=True,
+        )
+        return
+
+    if not isinstance(event, dict):
+        logger.warning(
+            API_WS_INVALID_MESSAGE,
+            data_preview=str(event_data)[:100],
+            reason="not_a_dict",
+        )
+        return
+
+    channel = event.get("channel", "")
+    if channel not in subscribed:
+        return
+
+    channel_filters = filters.get(channel)
+    if channel_filters:
+        payload = event.get("payload", {})
+        if not all(payload.get(k) == v for k, v in channel_filters.items()):
+            return
+
+    try:
+        await socket.send_text(event_data.decode("utf-8"))
+    except WebSocketDisconnect:
+        logger.debug(API_WS_SEND_FAILED, reason="client_disconnected")
+    except Exception:
+        logger.warning(API_WS_SEND_FAILED, exc_info=True)
+        await socket.close(code=1011, reason="Internal error")
 
 
 @websocket("/ws")
@@ -118,8 +181,11 @@ async def ws_handler(
           "filters": {"agent_id": "...", "project": "..."}}``
         ``{"action": "unsubscribe", "channels": ["tasks"]}``
     """
-    user = await _authenticate_ws(socket)
+    user = await _validate_ticket(socket)
     if user is None:
+        return
+
+    if not await _check_ws_role(socket, user):
         return
 
     socket.scope["user"] = user
@@ -135,48 +201,11 @@ async def ws_handler(
 
     subscriber = await channels_plugin.subscribe(list(ALL_CHANNELS))
 
-    async def _on_event(event_data: bytes) -> None:
-        """Filter and forward events to the client."""
-        try:
-            event = json.loads(event_data)
-        except json.JSONDecodeError, TypeError:
-            logger.warning(
-                API_WS_INVALID_MESSAGE,
-                data_preview=str(event_data)[:100],
-                source="channels_backend",
-            )
-            return
-
-        if not isinstance(event, dict):
-            logger.warning(
-                API_WS_INVALID_MESSAGE,
-                data_preview=str(event_data)[:100],
-                reason="not_a_dict",
-            )
-            return
-
-        channel = event.get("channel", "")
-        if channel not in subscribed:
-            return
-
-        channel_filters = filters.get(channel)
-        if channel_filters:
-            payload = event.get("payload", {})
-            if not all(payload.get(k) == v for k, v in channel_filters.items()):
-                return
-
-        try:
-            await socket.send_text(event_data.decode("utf-8"))
-        except WebSocketDisconnect:
-            logger.debug(API_WS_SEND_FAILED, reason="client_disconnected")
-        except Exception:
-            logger.warning(
-                API_WS_SEND_FAILED,
-                exc_info=True,
-            )
+    async def _event_callback(event_data: bytes) -> None:
+        await _on_event(event_data, subscribed, filters, socket)
 
     try:
-        async with subscriber.run_in_background(_on_event):
+        async with subscriber.run_in_background(_event_callback):
             await _receive_loop(socket, subscribed, filters)
     finally:
         await channels_plugin.unsubscribe(subscriber)
@@ -197,19 +226,22 @@ async def _receive_loop(
     except WebSocketDisconnect:
         logger.debug(API_WS_DISCONNECTED, reason="client_disconnect")
     except Exception:
+        user = socket.scope.get("user")
         logger.error(
             API_WS_TRANSPORT_ERROR,
+            user_id=getattr(user, "user_id", "unknown"),
+            client=str(socket.client),
             exc_info=True,
         )
         raise
 
 
-def _handle_message(  # noqa: C901, PLR0911
+def _handle_message(  # noqa: PLR0911
     data: str,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
 ) -> str:
-    """Parse and handle a single client message.
+    """Parse and dispatch a single client message.
 
     Args:
         data: Raw JSON string from the client.
@@ -224,10 +256,15 @@ def _handle_message(  # noqa: C901, PLR0911
 
     try:
         msg = json.loads(data)
-    except json.JSONDecodeError, TypeError:
-        logger.warning(
+    except json.JSONDecodeError:
+        logger.warning(API_WS_INVALID_MESSAGE, data_preview=str(data)[:100])
+        return json.dumps({"error": "Invalid JSON"})
+    except TypeError:
+        logger.error(
             API_WS_INVALID_MESSAGE,
-            data_preview=str(data)[:100],
+            data_type=type(data).__name__,
+            reason="unexpected_type",
+            exc_info=True,
         )
         return json.dumps({"error": "Invalid JSON"})
 
@@ -244,34 +281,52 @@ def _handle_message(  # noqa: C901, PLR0911
         return json.dumps({"error": "filters must be an object"})
 
     if action == "subscribe":
-        # Validate filter bounds to prevent memory abuse.
-        if len(client_filters) > _MAX_FILTER_KEYS or any(
-            len(str(v)) > _MAX_FILTER_VALUE_LEN for v in client_filters.values()
-        ):
-            return json.dumps({"error": "Filter bounds exceeded"})
-
-        valid = [c for c in channels if c in _ALL_CHANNELS_SET]
-        subscribed.update(valid)
-        for c in valid:
-            if client_filters:
-                filters[c] = dict(client_filters)
-        logger.debug(
-            API_WS_SUBSCRIBE,
-            channels=valid,
-            active=sorted(subscribed),
-        )
-        return json.dumps({"action": "subscribed", "channels": sorted(subscribed)})
+        return _handle_subscribe(channels, client_filters, subscribed, filters)
 
     if action == "unsubscribe":
-        subscribed -= set(channels)
-        for c in channels:
-            filters.pop(c, None)
-        logger.debug(
-            API_WS_UNSUBSCRIBE,
-            channels=channels,
-            active=sorted(subscribed),
-        )
-        return json.dumps({"action": "unsubscribed", "channels": sorted(subscribed)})
+        return _handle_unsubscribe(channels, subscribed, filters)
 
     logger.warning(API_WS_UNKNOWN_ACTION, action=str(action)[:64])
     return json.dumps({"error": "Unknown action"})
+
+
+def _handle_subscribe(
+    channels: list[str],
+    client_filters: dict[str, Any],
+    subscribed: set[str],
+    filters: dict[str, dict[str, str]],
+) -> str:
+    """Process a subscribe action."""
+    if len(client_filters) > _MAX_FILTER_KEYS or any(
+        len(str(v)) > _MAX_FILTER_VALUE_LEN for v in client_filters.values()
+    ):
+        return json.dumps({"error": "Filter bounds exceeded"})
+
+    valid = [c for c in channels if c in _ALL_CHANNELS_SET]
+    subscribed.update(valid)
+    for c in valid:
+        if client_filters:
+            filters[c] = dict(client_filters)
+    logger.debug(
+        API_WS_SUBSCRIBE,
+        channels=valid,
+        active=sorted(subscribed),
+    )
+    return json.dumps({"action": "subscribed", "channels": sorted(subscribed)})
+
+
+def _handle_unsubscribe(
+    channels: list[str],
+    subscribed: set[str],
+    filters: dict[str, dict[str, str]],
+) -> str:
+    """Process an unsubscribe action."""
+    subscribed -= set(channels)
+    for c in channels:
+        filters.pop(c, None)
+    logger.debug(
+        API_WS_UNSUBSCRIBE,
+        channels=channels,
+        active=sorted(subscribed),
+    )
+    return json.dumps({"action": "unsubscribed", "channels": sorted(subscribed)})

@@ -44,6 +44,8 @@ class AppState:
         config: Root company configuration.
         approval_store: In-memory approval queue store.
         startup_time: ``time.monotonic()`` snapshot at app creation.
+        ticket_store: In-memory one-time WebSocket ticket store
+            (always available, no ``_require_service`` guard needed).
     """
 
     __slots__ = (

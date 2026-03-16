@@ -353,8 +353,10 @@ class TestWsTicket:
         test_client: TestClient[Any],
     ) -> None:
         """All roles should be able to get a WS ticket."""
-        test_client.headers.update(make_auth_headers("observer"))
-        response = test_client.post("/api/v1/auth/ws-ticket")
+        response = test_client.post(
+            "/api/v1/auth/ws-ticket",
+            headers=make_auth_headers("observer"),
+        )
         assert response.status_code == 200
         data = response.json()["data"]
         assert "ticket" in data

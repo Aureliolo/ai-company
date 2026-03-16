@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { AxiosError } from 'axios'
 import type { WsChannel, WsEvent, WsEventHandler, WsSubscriptionFilters } from '@/api/types'
 import { getWsTicket } from '@/api/endpoints/auth'
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS, WS_MAX_MESSAGE_SIZE } from '@/utils/constants'
@@ -28,6 +29,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   let intentionalClose = false
   let shouldBeConnected = false
   let connectPromise: Promise<void> | null = null
+  let connectGeneration = 0
   const channelHandlers = new Map<string, Set<WsEventHandler>>()
   let pendingSubscriptions: { channels: WsChannel[]; filters?: Record<string, string> }[] = []
   // Track active subscriptions so reconnect can re-subscribe automatically
@@ -44,11 +46,12 @@ export const useWebSocketStore = defineStore('websocket', () => {
     // Deduplicate concurrent connect() calls — the ticket exchange is async,
     // so two callers could pass the readyState guard before the first resolves.
     if (connectPromise) return connectPromise
-    connectPromise = doConnect().finally(() => { connectPromise = null })
+    const generation = connectGeneration
+    connectPromise = doConnect(generation).finally(() => { connectPromise = null })
     return connectPromise
   }
 
-  async function doConnect() {
+  async function doConnect(generation: number) {
     reconnectExhausted.value = false
     shouldBeConnected = true
     intentionalClose = false
@@ -62,10 +65,17 @@ export const useWebSocketStore = defineStore('websocket', () => {
       ticket = resp.ticket
     } catch (err) {
       console.error('WebSocket ticket exchange failed:', sanitizeForLog(err))
-      // Treat as a connection failure — schedule a reconnect attempt.
-      if (shouldBeConnected) {
+      // Don't reconnect on auth failure — the 401 interceptor handles redirect
+      const isAuthError = err instanceof AxiosError && err.response?.status === 401
+      if (shouldBeConnected && !isAuthError) {
         scheduleReconnect()
       }
+      return
+    }
+
+    // Guard against stale connect attempts — if disconnect() was called while
+    // we were awaiting the ticket, bail out instead of opening a new socket.
+    if (!shouldBeConnected || generation !== connectGeneration) {
       return
     }
 
@@ -164,6 +174,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
   function disconnect() {
     intentionalClose = true
     shouldBeConnected = false
+    connectGeneration++
+    connectPromise = null
     reconnectAttempts = 0
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)

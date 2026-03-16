@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.api.auth.service import AuthService  # noqa: TC001
+from synthorg.api.auth.ticket_store import TicketLimitExceededError
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ConflictError, UnauthorizedError
 from synthorg.api.guards import HumanRole
@@ -437,11 +438,17 @@ class AuthController(Controller):
     ) -> Response[ApiResponse[WsTicketResponse]]:
         """Exchange a valid JWT for a short-lived, single-use WS ticket.
 
-        The ticket replaces the JWT in the WebSocket query parameter
-        so that long-lived credentials never appear in URLs or logs.
+        Issue a short-lived, single-use ticket for WebSocket connections.
+        The ticket is passed as a query parameter instead of the JWT, so
+        long-lived credentials never appear in URLs or server logs.
         """
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="ws_ticket_auth_required",
+                path=str(request.url.path),
+            )
             msg = "Authentication required"
             raise UnauthorizedError(msg)
 
@@ -449,7 +456,11 @@ class AuthController(Controller):
         ws_user = auth_user.model_copy(
             update={"auth_method": AuthMethod.WS_TICKET},
         )
-        ticket = app_state.ticket_store.create(ws_user)
+        try:
+            ticket = app_state.ticket_store.create(ws_user)
+        except TicketLimitExceededError:
+            msg = "Too many pending tickets — wait for existing tickets to expire"
+            raise ConflictError(msg)  # noqa: B904
 
         return Response(
             content=ApiResponse(

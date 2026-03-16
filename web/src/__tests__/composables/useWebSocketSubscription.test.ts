@@ -13,7 +13,7 @@ vi.mock('vue', async () => {
     onMounted: vi.fn((cb: () => void | Promise<void>) => {
       const result = cb()
       if (result instanceof Promise) {
-        mountedPromise = result.catch(() => {}) // swallow — tests check via spies
+        mountedPromise = result // swallow — tests check via spies
       }
     }),
     onUnmounted: vi.fn(),
@@ -43,7 +43,7 @@ describe('useWebSocketSubscription', () => {
     ;(onMounted as Mock).mockImplementation((cb: () => void | Promise<void>) => {
       const result = cb()
       if (result instanceof Promise) {
-        mountedPromise = result.catch(() => {})
+        mountedPromise = result
       }
     })
     ;(onUnmounted as Mock).mockImplementation(() => {})
