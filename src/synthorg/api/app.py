@@ -471,11 +471,19 @@ def create_app(  # noqa: PLR0913
     # compose template).  The startup lifecycle handles connect() +
     # migrate() + auth service creation.
     if persistence is None:
-        db_path = os.environ.get("SYNTHORG_DB_PATH")
+        db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
         if db_path:
-            persistence = create_backend(
-                PersistenceConfig(sqlite=SQLiteConfig(path=db_path)),
-            )
+            try:
+                persistence = create_backend(
+                    PersistenceConfig(sqlite=SQLiteConfig(path=db_path)),
+                )
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Failed to create persistence backend from SYNTHORG_DB_PATH",
+                    db_path=db_path,
+                )
+                raise
             logger.info(
                 API_APP_STARTUP,
                 note="Auto-wired SQLite persistence from SYNTHORG_DB_PATH",
