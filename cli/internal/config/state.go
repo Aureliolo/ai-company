@@ -133,7 +133,26 @@ func (s State) validate() error {
 	if !IsValidMemoryBackend(s.MemoryBackend) {
 		return fmt.Errorf("invalid memory_backend %q: must be one of %s", s.MemoryBackend, sortedKeys(validMemoryBackends))
 	}
+	for name, digest := range s.VerifiedDigests {
+		if !isValidDigestFormat(digest) {
+			return fmt.Errorf("invalid verified_digests[%q]: %q is not a valid sha256 digest", name, digest)
+		}
+	}
 	return nil
+}
+
+// isValidDigestFormat checks if d matches sha256:<64-hex-chars>.
+// Avoids importing the verify package to prevent circular dependencies.
+func isValidDigestFormat(d string) bool {
+	if len(d) != 71 || d[:7] != "sha256:" {
+		return false
+	}
+	for _, c := range d[7:] {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // Save writes State to disk as indented JSON.

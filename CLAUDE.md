@@ -153,7 +153,7 @@ cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
     compose/        # Compose YAML generation from embedded template
     health/         # Health check polling with retry + timeout
     diagnostics/    # System info collection for bug reports (compose validation, port conflicts, image checks, native disk usage)
-    selfupdate/     # GitHub Releases self-update + binary replacement
+    selfupdate/     # GitHub Releases self-update + binary replacement, Sigstore bundle + SLSA provenance verification
     completion/     # Shell completion auto-install (bash, zsh, fish, powershell)
     ui/             # Styled CLI output (lipgloss-based: logo, status icons, key-value display)
     verify/         # Container image cosign signature + SLSA provenance verification, digest pinning
@@ -289,4 +289,4 @@ site/               # Astro landing page (synthorg.io)
 - **Required**: `mem0ai` (Mem0 memory backend — the default and currently only backend)
 - **Install**: `uv sync` installs everything (dev group is default)
 - **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, Vitest, fast-check, ESLint, vue-tsc)
-- **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss)
+- **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss, sigstore-go, go-containerregistry, go-tuf)

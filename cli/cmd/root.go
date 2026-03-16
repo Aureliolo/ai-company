@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/spf13/cobra"
@@ -30,6 +31,14 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", "", "data directory (default: platform-appropriate)")
 	rootCmd.PersistentFlags().BoolVar(&skipVerify, "skip-verify", false,
 		"skip container image signature and provenance verification (NOT RECOMMENDED)")
+
+	// Allow SYNTHORG_SKIP_VERIFY env var as fallback for CI/air-gapped environments.
+	if v := os.Getenv("SYNTHORG_SKIP_VERIFY"); v != "" {
+		switch strings.ToLower(v) {
+		case "1", "true", "yes":
+			skipVerify = true
+		}
+	}
 }
 
 // resolveDataDir returns the effective data directory, using the flag value or

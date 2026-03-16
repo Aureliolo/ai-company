@@ -1,6 +1,7 @@
 package verify
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -18,6 +19,9 @@ func FuzzIsValidDigest(f *testing.F) {
 		result := IsValidDigest(digest)
 		if result {
 			// If valid, must start with "sha256:" and have 71 total chars.
+			if !strings.HasPrefix(digest, "sha256:") {
+				t.Errorf("valid digest has unexpected prefix: %q", digest)
+			}
 			if len(digest) != 71 {
 				t.Errorf("valid digest has unexpected length %d: %q", len(digest), digest)
 			}

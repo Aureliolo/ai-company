@@ -33,8 +33,9 @@ const (
 	TUFFetchTimeout = 30 * time.Second
 )
 
-// ImageNames are the suffixes appended to ImageRepoPrefix for each service.
-var ImageNames = []string{"backend", "web", "sandbox"}
+// ImageNames returns the canonical set of SynthOrg service image suffixes.
+// Returns a new slice each call to prevent callers from mutating the list.
+func ImageNames() []string { return []string{"backend", "web", "sandbox"} }
 
 // BuildVerifier creates a Sigstore verifier using the public good trusted
 // root. The verifier requires SCTs, transparency log entries, and integrated

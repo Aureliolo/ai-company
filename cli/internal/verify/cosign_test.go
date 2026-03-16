@@ -138,7 +138,7 @@ func TestVerifyCosignSignatureInvalidBundle(t *testing.T) {
 		MediaType:     "application/vnd.oci.image.manifest.v1+json",
 		Config: ociDescriptor{
 			MediaType: "application/vnd.oci.image.config.v1+json",
-			Digest:    "sha256:44136fa355b311bfa616a15e4e5e6d84e4f455ce82fb1ed83b tried",
+			Digest:    "sha256:44136fa355b311bfa616a15e4e5e6d84e4f455ce82fb1ed83b0a7f9e2c3d4a5b",
 			Size:      len(configJSON),
 		},
 		Layers: []ociLayerDescriptor{

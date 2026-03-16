@@ -56,17 +56,17 @@ func (r ImageRef) Name() string {
 }
 
 // VerifyResult holds the outcome of verifying a single image.
+// CosignVerified is always true when returned from VerifyImages because cosign
+// failure returns an error — the result is only constructed on success.
 type VerifyResult struct {
 	Ref                ImageRef
-	CosignVerified     bool
 	ProvenanceVerified bool
 }
 
 // VerifyOptions configures the image verification behavior.
 type VerifyOptions struct {
-	SkipVerify bool
-	Images     []ImageRef
-	Output     io.Writer // user-visible progress output
+	Images []ImageRef
+	Output io.Writer // user-visible progress output
 }
 
 // NewImageRef creates an ImageRef for a SynthOrg service image.
@@ -104,13 +104,11 @@ func IsValidDigest(d string) bool {
 // A single Sigstore verifier and identity policy is built once and reused
 // across all images to avoid redundant TUF root fetches.
 //
-// When opts.SkipVerify is true, returns nil results immediately.
+// Callers are responsible for checking skip conditions (e.g. --skip-verify)
+// before calling this function.
 //
 // Progress is printed to opts.Output during verification.
 func VerifyImages(ctx context.Context, opts VerifyOptions) ([]VerifyResult, error) {
-	if opts.SkipVerify {
-		return nil, nil
-	}
 	if len(opts.Images) == 0 {
 		return nil, nil
 	}
@@ -159,11 +157,17 @@ func verifyOneImage(ctx context.Context, ref ImageRef, sev *verify.Verifier, cer
 	}
 	_, _ = fmt.Fprintf(w, "  Cosign signature: verified\n")
 
-	// Step 3: Verify SLSA provenance (warn-only on missing).
+	// Step 3: Verify SLSA provenance.
+	// Missing attestations are warn-only (pre-SLSA images may not have them).
+	// Cryptographic failures (tampered attestation, wrong identity) are hard errors.
 	provenanceVerified := true
 	if err := VerifyProvenance(ctx, ref, sev, certID); err != nil {
-		provenanceVerified = false
-		_, _ = fmt.Fprintf(w, "  SLSA provenance:  not available (%v)\n", err)
+		if isProvenanceMissing(err) {
+			provenanceVerified = false
+			_, _ = fmt.Fprintf(w, "  SLSA provenance:  not available (warn)\n")
+		} else {
+			return VerifyResult{}, fmt.Errorf("SLSA provenance verification: %w", err)
+		}
 	} else {
 		_, _ = fmt.Fprintf(w, "  SLSA provenance:  verified\n")
 	}
@@ -172,7 +176,16 @@ func verifyOneImage(ctx context.Context, ref ImageRef, sev *verify.Verifier, cer
 
 	return VerifyResult{
 		Ref:                ref,
-		CosignVerified:     true,
 		ProvenanceVerified: provenanceVerified,
 	}, nil
+}
+
+// isProvenanceMissing returns true when the provenance error indicates that
+// attestations are absent (the image was published before SLSA provenance was
+// configured), as opposed to a cryptographic or structural verification
+// failure that indicates tampering.
+func isProvenanceMissing(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "no SLSA provenance attestations found") ||
+		strings.Contains(msg, "querying referrers")
 }

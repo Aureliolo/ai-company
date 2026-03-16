@@ -102,12 +102,16 @@ func verifyAndPinImages(ctx context.Context, cmd *cobra.Command, state config.St
 	}
 
 	out.Step("Verifying container image signatures...")
-	results, err := verify.VerifyImages(ctx, verify.VerifyOptions{
+	// Bound OCI registry calls to prevent indefinite hangs.
+	verifyCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
 		Images: verify.BuildImageRefs(state.ImageTag, state.Sandbox),
 		Output: cmd.OutOrStdout(),
 	})
 	if err != nil {
-		return fmt.Errorf("image verification failed: %w\n  Use --skip-verify for air-gapped environments", err)
+		errOut.Hint("Use --skip-verify for air-gapped environments")
+		return fmt.Errorf("image verification failed: %w", err)
 	}
 
 	if err := pinDigestsInCompose(state, results, safeDir); err != nil {

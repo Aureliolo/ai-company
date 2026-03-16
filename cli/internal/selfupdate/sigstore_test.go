@@ -9,13 +9,18 @@ import (
 	protocommon "github.com/sigstore/protobuf-specs/gen/pb-go/common/v1"
 	protodsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	"github.com/sigstore/sigstore-go/pkg/bundle"
+
+	ociverify "github.com/Aureliolo/synthorg/cli/internal/verify"
 )
 
 func TestAssertSLSAProvenanceValidPredicate(t *testing.T) {
-	statement := slsaStatement{
+	statement := ociverify.InTotoStatement{
 		PredicateType: "https://slsa.dev/provenance/v1",
 	}
-	payload, _ := json.Marshal(statement)
+	payload, err := json.Marshal(statement)
+	if err != nil {
+		t.Fatalf("failed to marshal statement: %v", err)
+	}
 
 	b := &bundle.Bundle{Bundle: &protobundle.Bundle{
 		Content: &protobundle.Bundle_DsseEnvelope{
@@ -32,10 +37,13 @@ func TestAssertSLSAProvenanceValidPredicate(t *testing.T) {
 }
 
 func TestAssertSLSAProvenanceWrongPredicateType(t *testing.T) {
-	statement := slsaStatement{
+	statement := ociverify.InTotoStatement{
 		PredicateType: "https://example.com/not-slsa",
 	}
-	payload, _ := json.Marshal(statement)
+	payload, err := json.Marshal(statement)
+	if err != nil {
+		t.Fatalf("failed to marshal statement: %v", err)
+	}
 
 	b := &bundle.Bundle{Bundle: &protobundle.Bundle{
 		Content: &protobundle.Bundle_DsseEnvelope{
@@ -46,7 +54,7 @@ func TestAssertSLSAProvenanceWrongPredicateType(t *testing.T) {
 		},
 	}}
 
-	err := assertSLSAProvenance(b)
+	err = assertSLSAProvenance(b)
 	if err == nil {
 		t.Fatal("expected error for wrong predicate type")
 	}

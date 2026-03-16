@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -215,37 +216,10 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 	errOut := ui.NewUI(cmd.ErrOrStderr())
 
 	// Verify container image signatures before pulling.
-	var digestPins map[string]string
-	if !skipVerify {
-		_, _ = fmt.Fprintln(out, "Verifying container image signatures...")
-		results, err := verify.VerifyImages(ctx, verify.VerifyOptions{
-			Images: verify.BuildImageRefs(tag, state.Sandbox),
-			Output: out,
-		})
-		if err != nil {
-			rollback()
-			return fmt.Errorf("image verification failed: %w\n  Use --skip-verify for air-gapped environments", err)
-		}
-		digestPins = digestPinMap(results)
-
-		// Re-regenerate compose with digest pins.
-		updatedState := state
-		updatedState.ImageTag = tag
-		params := compose.ParamsFromState(updatedState)
-		params.CLIVersion = effectiveVersion
-		params.DigestPins = digestPins
-		composeYAML, err := compose.Generate(params)
-		if err != nil {
-			rollback()
-			return fmt.Errorf("generating digest-pinned compose file: %w", err)
-		}
-		composePath := filepath.Join(safeDir, "compose.yml")
-		if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
-			rollback()
-			return fmt.Errorf("writing digest-pinned compose file: %w", err)
-		}
-	} else {
-		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+	digestPins, err := verifyAndPinForUpdate(ctx, state, tag, safeDir, effectiveVersion, out, errOut)
+	if err != nil {
+		rollback()
+		return err
 	}
 
 	_, _ = fmt.Fprintf(out, "Pulling container images (%s)...\n", tag)
@@ -264,6 +238,45 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 		return fmt.Errorf("saving config: %w", err)
 	}
 	return nil
+}
+
+// verifyAndPinForUpdate runs image verification and regenerates the compose
+// file with digest pins. Returns the digest pin map (nil if --skip-verify).
+func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir, effectiveVersion string, out io.Writer, errOut *ui.UI) (map[string]string, error) {
+	if skipVerify {
+		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+		return nil, nil
+	}
+
+	_, _ = fmt.Fprintln(out, "Verifying container image signatures...")
+	// Bound OCI registry calls to prevent indefinite hangs.
+	verifyCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
+		Images: verify.BuildImageRefs(tag, state.Sandbox),
+		Output: out,
+	})
+	if err != nil {
+		errOut.Hint("Use --skip-verify for air-gapped environments")
+		return nil, fmt.Errorf("image verification failed: %w", err)
+	}
+	pins := digestPinMap(results)
+
+	// Re-regenerate compose with digest pins.
+	updatedState := state
+	updatedState.ImageTag = tag
+	params := compose.ParamsFromState(updatedState)
+	params.CLIVersion = effectiveVersion
+	params.DigestPins = pins
+	composeYAML, err := compose.Generate(params)
+	if err != nil {
+		return nil, fmt.Errorf("generating digest-pinned compose file: %w", err)
+	}
+	composePath := filepath.Join(safeDir, "compose.yml")
+	if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
+		return nil, fmt.Errorf("writing digest-pinned compose file: %w", err)
+	}
+	return pins, nil
 }
 
 // regenerateCompose writes a new compose.yml for the given image tag.

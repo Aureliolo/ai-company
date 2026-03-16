@@ -122,20 +122,6 @@ func TestIsValidDigest(t *testing.T) {
 	}
 }
 
-func TestVerifyImagesSkipVerify(t *testing.T) {
-	results, err := VerifyImages(context.Background(), VerifyOptions{
-		SkipVerify: true,
-		Images:     BuildImageRefs("0.3.0", true),
-		Output:     &bytes.Buffer{},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if results != nil {
-		t.Errorf("expected nil results when SkipVerify=true, got %v", results)
-	}
-}
-
 func TestVerifyImagesNoImages(t *testing.T) {
 	results, err := VerifyImages(context.Background(), VerifyOptions{
 		Images: nil,

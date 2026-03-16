@@ -14,6 +14,8 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/tuf"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 	"github.com/theupdateframework/go-tuf/v2/metadata/fetcher"
+
+	ociverify "github.com/Aureliolo/synthorg/cli/internal/verify"
 )
 
 const (
@@ -89,17 +91,9 @@ func verifySigstoreBundle(checksumData, bundleData []byte) error {
 	return nil
 }
 
-const (
-	// slsaProvenancePredicatePrefix is the prefix for SLSA provenance predicates.
-	slsaProvenancePredicatePrefix = "https://slsa.dev/provenance/"
-	// expectedDSSEPayloadType is the expected DSSE payload type for in-toto statements.
-	expectedDSSEPayloadType = "application/vnd.in-toto+json"
-)
-
-// slsaStatement is a minimal in-toto statement for predicate type extraction.
-type slsaStatement struct {
-	PredicateType string `json:"predicateType"`
-}
+// Constants and types for SLSA validation are imported from the verify package
+// (ociverify.SLSAProvenancePredicatePrefix, ociverify.DSSEPayloadType,
+// ociverify.InTotoStatement) to avoid duplication.
 
 // assertSLSAProvenance checks that the bundle contains a DSSE envelope with
 // a SLSA provenance predicate. If the bundle does not contain a DSSE envelope
@@ -112,18 +106,18 @@ func assertSLSAProvenance(b *bundle.Bundle) error {
 		return nil
 	}
 
-	if env.PayloadType != expectedDSSEPayloadType {
-		return fmt.Errorf("unexpected DSSE payload type %q, want %q", env.PayloadType, expectedDSSEPayloadType)
+	if env.PayloadType != ociverify.DSSEPayloadType {
+		return fmt.Errorf("unexpected DSSE payload type %q, want %q", env.PayloadType, ociverify.DSSEPayloadType)
 	}
 
 	// The protobuf DSSE envelope stores Payload as raw bytes.
-	var stmt slsaStatement
+	var stmt ociverify.InTotoStatement
 	if err := json.Unmarshal(env.Payload, &stmt); err != nil {
 		return fmt.Errorf("parsing in-toto statement: %w", err)
 	}
 
-	if !strings.HasPrefix(stmt.PredicateType, slsaProvenancePredicatePrefix) {
-		return fmt.Errorf("unexpected predicate type %q, want prefix %q", stmt.PredicateType, slsaProvenancePredicatePrefix)
+	if !strings.HasPrefix(stmt.PredicateType, ociverify.SLSAProvenancePredicatePrefix) {
+		return fmt.Errorf("unexpected predicate type %q, want prefix %q", stmt.PredicateType, ociverify.SLSAProvenancePredicatePrefix)
 	}
 
 	return nil

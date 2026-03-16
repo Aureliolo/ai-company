@@ -63,13 +63,13 @@ func TestVerifyProvenanceNoReferrers(t *testing.T) {
 }
 
 func TestValidateSLSAPredicate(t *testing.T) {
-	statement := inTotoStatement{
+	statement := InTotoStatement{
 		PredicateType: "https://slsa.dev/provenance/v1",
 	}
 	statementJSON, _ := json.Marshal(statement)
 
 	envelope := dsseEnvelope{
-		PayloadType: dssePayloadType,
+		PayloadType: DSSEPayloadType,
 		Payload:     base64.StdEncoding.EncodeToString(statementJSON),
 	}
 
@@ -79,13 +79,13 @@ func TestValidateSLSAPredicate(t *testing.T) {
 }
 
 func TestValidateSLSAPredicateWrongType(t *testing.T) {
-	statement := inTotoStatement{
+	statement := InTotoStatement{
 		PredicateType: "https://example.com/wrong-type",
 	}
 	statementJSON, _ := json.Marshal(statement)
 
 	envelope := dsseEnvelope{
-		PayloadType: dssePayloadType,
+		PayloadType: DSSEPayloadType,
 		Payload:     base64.StdEncoding.EncodeToString(statementJSON),
 	}
 
@@ -114,12 +114,12 @@ func TestVerifyProvenanceWithInvalidAttestation(t *testing.T) {
 	repo := "test/image"
 	attestDigest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-	statement := inTotoStatement{
+	statement := InTotoStatement{
 		PredicateType: "https://example.com/not-slsa",
 	}
 	statementJSON, _ := json.Marshal(statement)
 	envelope := dsseEnvelope{
-		PayloadType: dssePayloadType,
+		PayloadType: DSSEPayloadType,
 		Payload:     base64.StdEncoding.EncodeToString(statementJSON),
 	}
 	envelopeJSON, _ := json.Marshal(envelope)

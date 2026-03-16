@@ -42,7 +42,7 @@ func TestExpectedSANRegexRejectsInvalidRefs(t *testing.T) {
 
 func TestImageNamesContainsExpectedServices(t *testing.T) {
 	expected := map[string]bool{"backend": false, "web": false, "sandbox": false}
-	for _, name := range ImageNames {
+	for _, name := range ImageNames() {
 		if _, ok := expected[name]; !ok {
 			t.Errorf("unexpected image name %q", name)
 		}

@@ -16,9 +16,11 @@ curl -sSfL https://synthorg.io/get/install.sh | bash
 
 # Set up and start
 synthorg init     # Interactive setup wizard
-synthorg start    # Pull images + start containers
+synthorg start    # Verify + pull images + start containers
 synthorg status   # Show container health and versions
 ```
+
+`synthorg start` (and `synthorg update`) automatically verifies container image **cosign signatures** and **SLSA provenance** before pulling. If verification fails (e.g. in an air-gapped environment without access to Sigstore infrastructure), pass `--skip-verify` or set `SYNTHORG_SKIP_VERIFY=1`.
 
 The web dashboard is at [http://localhost:3000](http://localhost:3000) (default port).
 

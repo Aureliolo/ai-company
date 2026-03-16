@@ -14,15 +14,19 @@ import (
 )
 
 const (
-	// slsaProvenancePredicatePrefix is the prefix for SLSA provenance predicates.
-	slsaProvenancePredicatePrefix = "https://slsa.dev/provenance/"
+	// SLSAProvenancePredicatePrefix is the prefix for SLSA provenance predicates.
+	// Exported so selfupdate can reuse the same constant.
+	SLSAProvenancePredicatePrefix = "https://slsa.dev/provenance/"
 
-	// dssePayloadType is the expected DSSE envelope payload type for in-toto statements.
-	dssePayloadType = "application/vnd.in-toto+json"
+	// DSSEPayloadType is the expected DSSE envelope payload type for in-toto statements.
+	// Exported so selfupdate can reuse the same constant.
+	DSSEPayloadType = "application/vnd.in-toto+json"
 
-	// referrerArtifactType is the OCI artifact type for SLSA provenance attestations
-	// created by actions/attest-build-provenance.
-	referrerArtifactType = "application/vnd.in-toto+json"
+	// slsaReferrerArtifactType is the OCI artifactType for SLSA provenance referrers.
+	// actions/attest-build-provenance sets this to the same value as the DSSE payload
+	// type; the match is intentional but these are semantically distinct OCI fields
+	// that could diverge in the future.
+	slsaReferrerArtifactType = "application/vnd.in-toto+json"
 )
 
 // VerifyProvenance fetches SLSA provenance attestations from the OCI registry
@@ -73,7 +77,7 @@ func findAttestations(ctx context.Context, ref ImageRef) ([]v1.Descriptor, error
 
 	var descs []v1.Descriptor
 	for _, desc := range manifest.Manifests {
-		if desc.ArtifactType == referrerArtifactType {
+		if desc.ArtifactType == slsaReferrerArtifactType {
 			descs = append(descs, desc)
 		}
 	}
@@ -144,8 +148,8 @@ func extractDSSEEnvelope(img v1.Image) (dsseEnvelope, error) {
 // validateSLSAPredicate checks that a DSSE envelope contains a SLSA provenance
 // predicate type.
 func validateSLSAPredicate(envelope dsseEnvelope) error {
-	if envelope.PayloadType != dssePayloadType {
-		return fmt.Errorf("unexpected DSSE payload type %q, want %q", envelope.PayloadType, dssePayloadType)
+	if envelope.PayloadType != DSSEPayloadType {
+		return fmt.Errorf("unexpected DSSE payload type %q, want %q", envelope.PayloadType, DSSEPayloadType)
 	}
 
 	payloadBytes, err := base64.StdEncoding.DecodeString(envelope.Payload)
@@ -153,12 +157,12 @@ func validateSLSAPredicate(envelope dsseEnvelope) error {
 		return fmt.Errorf("decoding DSSE payload: %w", err)
 	}
 
-	var statement inTotoStatement
+	var statement InTotoStatement
 	if err := json.Unmarshal(payloadBytes, &statement); err != nil {
 		return fmt.Errorf("parsing in-toto statement: %w", err)
 	}
-	if !strings.HasPrefix(statement.PredicateType, slsaProvenancePredicatePrefix) {
-		return fmt.Errorf("unexpected predicate type %q, want prefix %q", statement.PredicateType, slsaProvenancePredicatePrefix)
+	if !strings.HasPrefix(statement.PredicateType, SLSAProvenancePredicatePrefix) {
+		return fmt.Errorf("unexpected predicate type %q, want prefix %q", statement.PredicateType, SLSAProvenancePredicatePrefix)
 	}
 	return nil
 }
@@ -177,9 +181,10 @@ func verifyAttestationBundle(img v1.Image, digest string, sev *verify.Verifier, 
 		return verifyProvenanceBundleWith([]byte(bundleJSON), digest, sev, certID)
 	}
 
-	// Also check layer annotations.
-	if len(attestManifest.Layers) > 0 {
-		if bundleJSON, ok := attestManifest.Layers[0].Annotations["dev.sigstore.cosign/bundle"]; ok {
+	// Also check layer annotations — iterate all layers, not just the first,
+	// since cosign may store the bundle in any layer's annotations.
+	for i := range attestManifest.Layers {
+		if bundleJSON, ok := attestManifest.Layers[i].Annotations["dev.sigstore.cosign/bundle"]; ok {
 			return verifyProvenanceBundleWith([]byte(bundleJSON), digest, sev, certID)
 		}
 	}
@@ -217,7 +222,7 @@ type dsseEnvelope struct {
 	Payload     string `json:"payload"`
 }
 
-// inTotoStatement is a minimal in-toto statement for predicate type extraction.
-type inTotoStatement struct {
+// InTotoStatement is a minimal in-toto statement for predicate type extraction.
+type InTotoStatement struct {
 	PredicateType string `json:"predicateType"`
 }

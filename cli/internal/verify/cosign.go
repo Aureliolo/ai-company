@@ -110,10 +110,14 @@ func cosignSigTag(digest string) string {
 }
 
 // parseDigest splits a digest string into algorithm and hex bytes.
+// Only sha256 is supported; other algorithms are rejected.
 func parseDigest(digest string) (string, []byte, error) {
 	parts := strings.SplitN(digest, ":", 2)
 	if len(parts) != 2 {
 		return "", nil, fmt.Errorf("invalid digest format %q", digest)
+	}
+	if parts[0] != "sha256" {
+		return "", nil, fmt.Errorf("unsupported digest algorithm %q, only sha256 supported", parts[0])
 	}
 
 	digestBytes, err := hex.DecodeString(parts[1])
