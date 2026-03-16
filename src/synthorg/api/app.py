@@ -655,12 +655,16 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
     auth = api_config.auth
     prefix = api_config.api_prefix
     ws_path = f"^{prefix}/ws$"
-    exclude_paths = auth.exclude_paths or (
-        f"^{prefix}/health$",
-        "^/docs",
-        "^/api$",
-        f"^{prefix}/auth/setup$",
-        f"^{prefix}/auth/login$",
+    exclude_paths = (
+        auth.exclude_paths
+        if auth.exclude_paths is not None
+        else (
+            f"^{prefix}/health$",
+            "^/docs",
+            "^/api$",
+            f"^{prefix}/auth/setup$",
+            f"^{prefix}/auth/login$",
+        )
     )
     # Always ensure the WS upgrade path is excluded — the WS handler
     # performs its own ticket-based auth, so the JWT middleware must

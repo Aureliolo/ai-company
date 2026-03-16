@@ -1,5 +1,6 @@
 """Authentication controller — setup, login, password change, me, ws-ticket."""
 
+import math
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Self
@@ -459,6 +460,11 @@ class AuthController(Controller):
         try:
             ticket = app_state.ticket_store.create(ws_user)
         except TicketLimitExceededError:
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="ws_ticket_limit_exceeded",
+                user_id=auth_user.user_id,
+            )
             msg = "Too many pending tickets — wait for existing tickets to expire"
             raise ConflictError(msg)  # noqa: B904
 
@@ -466,7 +472,7 @@ class AuthController(Controller):
             content=ApiResponse(
                 data=WsTicketResponse(
                     ticket=ticket,
-                    expires_in=int(app_state.ticket_store.ttl_seconds),
+                    expires_in=max(1, math.ceil(app_state.ticket_store.ttl_seconds)),
                 ),
             ),
         )

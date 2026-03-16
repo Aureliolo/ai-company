@@ -153,6 +153,8 @@ async def _on_event(
     channel_filters = filters.get(channel)
     if channel_filters:
         payload = event.get("payload", {})
+        if not isinstance(payload, dict):
+            return
         if not all(payload.get(k) == v for k, v in channel_filters.items()):
             return
 
@@ -236,21 +238,10 @@ async def _receive_loop(
         raise
 
 
-def _handle_message(  # noqa: PLR0911
+def _parse_ws_message(
     data: str,
-    subscribed: set[str],
-    filters: dict[str, dict[str, str]],
-) -> str:
-    """Parse and dispatch a single client message.
-
-    Args:
-        data: Raw JSON string from the client.
-        subscribed: Mutable set of subscribed channel names.
-        filters: Mutable per-channel payload filters.
-
-    Returns:
-        JSON acknowledgement or error string.
-    """
+) -> dict[str, Any] | str:
+    """Parse raw JSON from the client, returning a dict or an error string."""
     if len(data.encode()) > _MAX_WS_MESSAGE_BYTES:
         return json.dumps({"error": "Message too large"})
 
@@ -271,7 +262,18 @@ def _handle_message(  # noqa: PLR0911
     if not isinstance(msg, dict):
         return json.dumps({"error": "Expected JSON object"})
 
-    action = msg.get("action")
+    return msg
+
+
+def _validate_ws_fields(
+    msg: dict[str, Any],
+) -> tuple[str, list[str], dict[str, Any]] | str:
+    """Extract and validate action, channels, and filters from a parsed message.
+
+    Returns ``(action, channels, client_filters)`` on success, or a
+    JSON error string on validation failure.
+    """
+    action = str(msg.get("action", ""))
     channels = msg.get("channels", [])
     client_filters = msg.get("filters", {})
 
@@ -279,6 +281,25 @@ def _handle_message(  # noqa: PLR0911
         return json.dumps({"error": "channels must be a list of strings"})
     if not isinstance(client_filters, dict):
         return json.dumps({"error": "filters must be an object"})
+
+    return (action, channels, client_filters)
+
+
+def _handle_message(
+    data: str,
+    subscribed: set[str],
+    filters: dict[str, dict[str, str]],
+) -> str:
+    """Parse, validate, and dispatch a single client message."""
+    parsed = _parse_ws_message(data)
+    if isinstance(parsed, str):
+        return parsed
+
+    fields = _validate_ws_fields(parsed)
+    if isinstance(fields, str):
+        return fields
+
+    action, channels, client_filters = fields
 
     if action == "subscribe":
         return _handle_subscribe(channels, client_filters, subscribed, filters)

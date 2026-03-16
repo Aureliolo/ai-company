@@ -25,6 +25,7 @@ def _make_user(
     )
 
 
+@pytest.mark.timeout(30)
 @pytest.mark.unit
 class TestWsTicketStoreCreate:
     """Tests for ticket creation."""
@@ -90,6 +91,7 @@ class TestWsTicketStoreCreate:
         assert isinstance(ticket, str)
 
 
+@pytest.mark.timeout(30)
 @pytest.mark.unit
 class TestWsTicketStoreValidateAndConsume:
     """Tests for ticket validation and consumption."""
@@ -117,6 +119,28 @@ class TestWsTicketStoreValidateAndConsume:
 
         assert first is not None
         assert second is None
+
+    def test_validate_and_consume_single_use_concurrent(self) -> None:
+        """Exactly one concurrent consumer wins the ticket."""
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        store = WsTicketStore()
+        user = _make_user()
+        ticket = store.create(user)
+
+        barrier = threading.Barrier(10)
+
+        def consume() -> AuthenticatedUser | None:
+            barrier.wait()
+            return store.validate_and_consume(ticket)
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            results = list(pool.map(lambda _: consume(), range(10)))
+
+        winners = [r for r in results if r is not None]
+        assert len(winners) == 1
+        assert winners[0].user_id == user.user_id
 
     def test_validate_and_consume_expired(self) -> None:
         store = WsTicketStore(ttl_seconds=10.0)
@@ -203,6 +227,7 @@ class TestWsTicketStoreValidateAndConsume:
         assert result is None
 
 
+@pytest.mark.timeout(30)
 @pytest.mark.unit
 class TestWsTicketStoreCleanup:
     """Tests for expired ticket cleanup."""
