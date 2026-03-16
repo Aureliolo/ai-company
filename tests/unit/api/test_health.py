@@ -123,37 +123,53 @@ class TestHealthCheckUnconfiguredServices:
 class TestHealthCheckExceptionPaths:
     """Health endpoint when a configured service raises an exception."""
 
-    async def test_persistence_exception_returns_false(self) -> None:
-        backend = FakePersistenceBackend()
-        await backend.connect()
+    @pytest.mark.parametrize(
+        ("service_spec", "response_key"),
+        [
+            pytest.param(
+                {
+                    "factory": FakePersistenceBackend,
+                    "init": "connect",
+                    "kwarg": "persistence",
+                    "attr": "health_check",
+                    "patch_kw": {},
+                },
+                "persistence",
+                id="persistence_exception",
+            ),
+            pytest.param(
+                {
+                    "factory": FakeMessageBus,
+                    "init": "start",
+                    "kwarg": "message_bus",
+                    "attr": "is_running",
+                    "patch_kw": {"new_callable": PropertyMock},
+                },
+                "message_bus",
+                id="message_bus_exception",
+            ),
+        ],
+    )
+    async def test_service_exception_returns_false(
+        self,
+        service_spec: dict[str, Any],
+        response_key: str,
+    ) -> None:
+        service = service_spec["factory"]()
+        await getattr(service, service_spec["init"])()
         with (
-            TestClient(create_app(persistence=backend)) as client,
+            TestClient(
+                create_app(**{service_spec["kwarg"]: service}),
+            ) as client,
             patch.object(
-                type(backend),
-                "health_check",
-                side_effect=RuntimeError("connection lost"),
+                type(service),
+                service_spec["attr"],
+                side_effect=RuntimeError("test error"),
+                **service_spec["patch_kw"],
             ),
         ):
             response = client.get("/api/v1/health")
             assert response.status_code == 200
             body = response.json()
-            assert body["data"]["persistence"] is False
-            assert body["data"]["status"] == "down"
-
-    async def test_message_bus_exception_returns_false(self) -> None:
-        bus = FakeMessageBus()
-        await bus.start()
-        with (
-            TestClient(create_app(message_bus=bus)) as client,
-            patch.object(
-                type(bus),
-                "is_running",
-                new_callable=PropertyMock,
-                side_effect=RuntimeError("internal error"),
-            ),
-        ):
-            response = client.get("/api/v1/health")
-            assert response.status_code == 200
-            body = response.json()
-            assert body["data"]["message_bus"] is False
+            assert body["data"][response_key] is False
             assert body["data"]["status"] == "down"

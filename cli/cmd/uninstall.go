@@ -131,9 +131,13 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 			}
 		}
 		vol := filepath.VolumeName(dir)
-		isUNC := strings.HasPrefix(vol, `\\`) || strings.HasPrefix(vol, "//")
+		// Only reject UNC share roots (e.g. \\server\share), not arbitrary
+		// paths under a UNC share (e.g. \\server\share\synthorg\data).
+		isUNCRoot := vol != "" &&
+			(strings.HasPrefix(vol, `\\`) || strings.HasPrefix(vol, "//")) &&
+			(dir == vol || dir == vol+`\` || dir == vol+"/")
 		isDriveRoot := len(dir) == 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
-		if dir == "/" || isHomeDir || isDriveRoot || isUNC {
+		if dir == "/" || isHomeDir || isDriveRoot || isUNCRoot {
 			return fmt.Errorf("refusing to remove %q — does not look like an app data directory", dir)
 		}
 
