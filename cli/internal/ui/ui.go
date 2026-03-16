@@ -114,6 +114,11 @@ func (u *UI) Hint(msg string) {
 	_, _ = fmt.Fprintf(u.w, "%s %s\n", u.muted.Render(IconHint), u.muted.Render(stripControl(msg)))
 }
 
+// Section prints a bold section header.
+func (u *UI) Section(title string) {
+	_, _ = fmt.Fprintln(u.w, u.brandBold.Render(stripControl(title)))
+}
+
 // Link prints a labeled URL in muted color.
 func (u *UI) Link(label, url string) {
 	_, _ = fmt.Fprintf(u.w, "  %s %s\n", u.label.Render(stripControl(label)+":"), u.muted.Render(stripControl(url)))

@@ -172,7 +172,6 @@ func (r Report) FormatText() string {
 	fmt.Fprintf(&b, "Docker:    %s\n", r.DockerVersion)
 	fmt.Fprintf(&b, "Compose:   %s\n\n", r.ComposeVersion)
 
-	fmt.Fprintf(&b, "--- Recent Logs (may contain sensitive data — review before sharing) ---\n%s\n\n", r.RecentLogs)
 	fmt.Fprintf(&b, "--- Health ---\nStatus: %s\n%s\n\n", r.HealthStatus, r.HealthBody)
 	r.formatComposeSection(&b)
 	r.formatInfraSection(&b)
