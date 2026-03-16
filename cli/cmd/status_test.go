@@ -16,6 +16,7 @@ func TestImageTag(t *testing.T) {
 		{"nocolon", "nocolon"},
 		{"", ""},
 		{"registry:5000/image:v1.0", "v1.0"},
+		{"registry:5000/image", "registry:5000/image"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

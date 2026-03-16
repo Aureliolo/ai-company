@@ -89,11 +89,13 @@ type containerInfo struct {
 }
 
 // imageTag extracts the tag from an image string like "ghcr.io/foo/bar:v1.0".
+// Handles registry ports correctly (e.g. "registry:5000/image" has no tag).
 func imageTag(image string) string {
-	if i := strings.LastIndex(image, ":"); i >= 0 {
-		return image[i+1:]
+	i := strings.LastIndex(image, ":")
+	if i < 0 || i < strings.LastIndex(image, "/") {
+		return image
 	}
-	return image
+	return image[i+1:]
 }
 
 // healthIcon returns a status icon for a container's health/state.
@@ -113,11 +115,21 @@ func healthIcon(state, health string) string {
 	return ui.IconError
 }
 
-// parseContainerJSON parses NDJSON output from docker compose ps.
+// parseContainerJSON parses docker compose ps output.
+// Handles both JSON array (Compose v2.21+) and NDJSON (older versions).
 func parseContainerJSON(psOut string) ([]containerInfo, int) {
+	trimmed := strings.TrimSpace(psOut)
+	// Try JSON array first (Compose v2.21+).
+	if strings.HasPrefix(trimmed, "[") {
+		var containers []containerInfo
+		if json.Unmarshal([]byte(trimmed), &containers) == nil {
+			return containers, 0
+		}
+	}
+	// Fall back to NDJSON (one object per line).
 	var containers []containerInfo
 	var failures int
-	for _, line := range strings.Split(strings.TrimSpace(psOut), "\n") {
+	for _, line := range strings.Split(trimmed, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -185,6 +197,7 @@ func printResourceUsage(ctx context.Context, out *ui.UI, info docker.Info, dataD
 		"table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"}, ids...)
 	statsOut, err := docker.RunCmd(ctx, "docker", statsArgs...)
 	if err != nil {
+		out.Warn(fmt.Sprintf("Could not get resource usage: %v", err))
 		return
 	}
 	w := out.Writer()

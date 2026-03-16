@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 // Color palette for CLI styling.
@@ -125,12 +126,14 @@ func (u *UI) Table(headers []string, rows [][]string) {
 	}
 	widths := make([]int, len(headers))
 	for i, h := range headers {
-		widths[i] = len(h)
+		widths[i] = runewidth.StringWidth(h)
 	}
 	for _, row := range rows {
 		for i := range widths {
-			if i < len(row) && len(row[i]) > widths[i] {
-				widths[i] = len(row[i])
+			if i < len(row) {
+				if w := runewidth.StringWidth(row[i]); w > widths[i] {
+					widths[i] = w
+				}
 			}
 		}
 	}
@@ -145,7 +148,12 @@ func (u *UI) Table(headers []string, rows [][]string) {
 			if i > 0 {
 				b.WriteString("  ")
 			}
-			fmt.Fprintf(&b, "%-*s", w, cell)
+			// Pad based on display width, not byte length.
+			b.WriteString(cell)
+			pad := w - runewidth.StringWidth(cell)
+			if pad > 0 {
+				b.WriteString(strings.Repeat(" ", pad))
+			}
 		}
 		_, _ = fmt.Fprintln(u.w, b.String())
 	}
