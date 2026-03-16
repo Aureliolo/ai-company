@@ -116,8 +116,10 @@ class TestAutoDowngradeConfigProperties:
         self,
         pairs: list[tuple[str, str]],
     ) -> None:
-        has_self_downgrade = any(s == t for s, t in pairs)
-        sources = [s for s, _ in pairs]
+        # NotBlankStr strips whitespace, so compare stripped values to
+        # predict validation outcomes correctly.
+        has_self_downgrade = any(s.strip() == t.strip() for s, t in pairs)
+        sources = [s.strip() for s, _ in pairs]
         has_dup_source = len(sources) != len(set(sources))
 
         if has_self_downgrade or has_dup_source:
