@@ -20,6 +20,7 @@ from synthorg.persistence.repositories import (
     HeartbeatRepository,
     MessageRepository,
     ParkedContextRepository,
+    SettingsRepository,
     TaskRepository,
     UserRepository,
 )
@@ -260,6 +261,26 @@ class _FakeAgentStateRepository:
         return False
 
 
+class _FakeSettingsRepository:
+    async def get(self, namespace: str, key: str) -> tuple[str, str] | None:
+        return None
+
+    async def get_namespace(self, namespace: str) -> tuple[tuple[str, str, str], ...]:
+        return ()
+
+    async def get_all(self) -> tuple[tuple[str, str, str, str], ...]:
+        return ()
+
+    async def set(self, namespace: str, key: str, value: str, updated_at: str) -> None:
+        pass
+
+    async def delete(self, namespace: str, key: str) -> bool:
+        return False
+
+    async def delete_namespace(self, namespace: str) -> int:
+        return 0
+
+
 class _FakeBackend:
     async def connect(self) -> None:
         pass
@@ -333,6 +354,10 @@ class _FakeBackend:
     def agent_states(self) -> _FakeAgentStateRepository:
         return _FakeAgentStateRepository()
 
+    @property
+    def settings(self) -> _FakeSettingsRepository:
+        return _FakeSettingsRepository()
+
     async def get_setting(self, key: str) -> str | None:
         return None
 
@@ -393,3 +418,6 @@ class TestProtocolCompliance:
 
     def test_fake_agent_state_repo_is_agent_state_repository(self) -> None:
         assert isinstance(_FakeAgentStateRepository(), AgentStateRepository)
+
+    def test_fake_settings_repo_is_settings_repository(self) -> None:
+        assert isinstance(_FakeSettingsRepository(), SettingsRepository)

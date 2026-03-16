@@ -18,6 +18,7 @@ from synthorg.api.controllers.meetings import MeetingController
 from synthorg.api.controllers.messages import MessageController
 from synthorg.api.controllers.projects import ProjectController
 from synthorg.api.controllers.providers import ProviderController
+from synthorg.api.controllers.settings import SettingsController
 from synthorg.api.controllers.tasks import TaskController
 from synthorg.api.controllers.ws import ws_handler
 
@@ -39,6 +40,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     AuthController,
     CollaborationController,
     CoordinationController,
+    SettingsController,
 )
 
 __all__ = [
@@ -60,6 +62,7 @@ __all__ = [
     "MessageController",
     "ProjectController",
     "ProviderController",
+    "SettingsController",
     "TaskController",
     "ws_handler",
 ]

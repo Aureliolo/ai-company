@@ -1040,7 +1040,7 @@ and retry guidance.
 - **Budget Panel**: Spending charts, per-agent breakdown (projections/alerts planned)
 - **Meeting Logs**: Placeholder — coming soon
 - **Artifact Browser**: Placeholder — coming soon
-- **Settings**: Password management (autonomy levels, provider settings planned)
+- **Settings**: Runtime-editable configuration via DB-backed settings persistence (8 namespaces: company, providers, memory, budget, security, coordination, observability, backup). 4-layer resolution (DB > env > YAML > code defaults), Fernet encryption for sensitive values, REST API (GET/PUT/DELETE + schema endpoints for dynamic UI generation), change notifications via message bus
 
 ### Human Roles
 

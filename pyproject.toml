@@ -16,6 +16,7 @@ dependencies = [
     "aiodocker==0.26.0",
     "aiosqlite==0.22.1",
     "argon2-cffi==25.1.0",
+    "cryptography==46.0.5",
     "jinja2==3.1.6",
     "jsonschema==4.26.0",
     "litellm==1.82.2",
@@ -63,6 +64,7 @@ dev = [
     "pre-commit-uv==4.2.1",
     "ruff==0.15.6",
     "types-pyyaml==6.0.12.20250915",
+    "bandit==1.9.4",
     {include-group = "test"},
     {include-group = "docs"},
 ]
