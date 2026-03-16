@@ -19,8 +19,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var jsonOutput bool
-
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show container states, health, and versions",
@@ -28,13 +26,14 @@ var statusCmd = &cobra.Command{
 }
 
 func init() {
-	statusCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output raw JSON")
+	statusCmd.Flags().Bool("json", false, "Output raw JSON")
 	rootCmd.AddCommand(statusCmd)
 }
 
 func runStatus(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	dir := resolveDataDir()
+	jsonOut, _ := cmd.Flags().GetBool("json")
 
 	state, err := config.Load(dir)
 	if err != nil {
@@ -61,11 +60,11 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	}
 	out.KeyValue("Docker", info.DockerVersion)
 	out.KeyValue("Compose", info.ComposeVersion)
-	_, _ = fmt.Fprintln(cmd.OutOrStdout())
+	_, _ = fmt.Fprintln(out.Writer())
 
-	printContainerStates(ctx, cmd.OutOrStdout(), out, info, safeDir)
-	printResourceUsage(ctx, cmd.OutOrStdout(), info, safeDir)
-	printHealthStatus(ctx, cmd.OutOrStdout(), out, state)
+	printContainerStates(ctx, out, info, safeDir, jsonOut)
+	printResourceUsage(ctx, out, info, safeDir)
+	printHealthStatus(ctx, out, state, jsonOut)
 	printLinks(out, state)
 
 	return nil
@@ -114,21 +113,10 @@ func healthIcon(state, health string) string {
 	return ui.IconError
 }
 
-func printContainerStates(ctx context.Context, raw io.Writer, out *ui.UI, info docker.Info, dataDir string) {
-	psOut, err := docker.ComposeExecOutput(ctx, info, dataDir, "ps", "--format", "json")
-	if err != nil {
-		out.Warn(fmt.Sprintf("Could not get container states: %v", err))
-		return
-	}
-
-	if jsonOutput {
-		_, _ = fmt.Fprintln(raw, "Containers:")
-		_, _ = fmt.Fprintln(raw, psOut)
-		return
-	}
-
-	// Parse NDJSON (one JSON object per line).
+// parseContainerJSON parses NDJSON output from docker compose ps.
+func parseContainerJSON(psOut string) ([]containerInfo, int) {
 	var containers []containerInfo
+	var failures int
 	for _, line := range strings.Split(strings.TrimSpace(psOut), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -137,16 +125,17 @@ func printContainerStates(ctx context.Context, raw io.Writer, out *ui.UI, info d
 		var c containerInfo
 		if json.Unmarshal([]byte(line), &c) == nil {
 			containers = append(containers, c)
+		} else {
+			failures++
 		}
 	}
+	return containers, failures
+}
 
-	if len(containers) == 0 {
-		out.Warn("No containers running")
-		return
-	}
-
+// renderContainerTable formats containers as a table.
+func renderContainerTable(out *ui.UI, containers []containerInfo) {
 	headers := []string{"SERVICE", "STATE", "HEALTH", "IMAGE", "STATUS"}
-	var rows [][]string
+	rows := make([][]string, 0, len(containers))
 	for _, c := range containers {
 		icon := healthIcon(c.State, c.Health)
 		healthLabel := c.Health
@@ -154,24 +143,43 @@ func printContainerStates(ctx context.Context, raw io.Writer, out *ui.UI, info d
 			healthLabel = "-"
 		}
 		rows = append(rows, []string{
-			c.Service,
-			icon + " " + c.State,
-			healthLabel,
-			imageTag(c.Image),
-			c.Status,
+			c.Service, icon + " " + c.State, healthLabel,
+			imageTag(c.Image), c.Status,
 		})
 	}
-	_, _ = fmt.Fprintln(raw, "Containers:")
 	out.Table(headers, rows)
-	_, _ = fmt.Fprintln(raw)
 }
 
-func printResourceUsage(ctx context.Context, raw io.Writer, info docker.Info, dataDir string) {
+func printContainerStates(ctx context.Context, out *ui.UI, info docker.Info, dataDir string, jsonOut bool) {
+	psOut, err := docker.ComposeExecOutput(ctx, info, dataDir, "ps", "--format", "json")
+	if err != nil {
+		out.Warn(fmt.Sprintf("Could not get container states: %v", err))
+		return
+	}
+	w := out.Writer()
+	if jsonOut {
+		_, _ = fmt.Fprintln(w, "Containers:")
+		_, _ = fmt.Fprintln(w, psOut)
+		return
+	}
+	containers, failures := parseContainerJSON(psOut)
+	if failures > 0 {
+		out.Warn(fmt.Sprintf("%d container lines could not be parsed", failures))
+	}
+	if len(containers) == 0 {
+		out.Warn("No containers running")
+		return
+	}
+	_, _ = fmt.Fprintln(w, "Containers:")
+	renderContainerTable(out, containers)
+	_, _ = fmt.Fprintln(w)
+}
+
+func printResourceUsage(ctx context.Context, out *ui.UI, info docker.Info, dataDir string) {
 	psOut, err := docker.ComposeExecOutput(ctx, info, dataDir, "ps", "-q")
 	if err != nil || strings.TrimSpace(psOut) == "" {
 		return
 	}
-
 	ids := strings.Fields(strings.TrimSpace(psOut))
 	statsArgs := append([]string{"stats", "--no-stream", "--format",
 		"table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"}, ids...)
@@ -179,64 +187,73 @@ func printResourceUsage(ctx context.Context, raw io.Writer, info docker.Info, da
 	if err != nil {
 		return
 	}
-	_, _ = fmt.Fprintln(raw, "Resource usage:")
-	_, _ = fmt.Fprintln(raw, statsOut)
+	w := out.Writer()
+	_, _ = fmt.Fprintln(w, "Resource usage:")
+	_, _ = fmt.Fprintln(w, statsOut)
 }
 
-func printHealthStatus(ctx context.Context, raw io.Writer, out *ui.UI, state config.State) {
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
+// healthResponse holds the parsed health check JSON.
+type healthResponse struct {
+	Status      string  `json:"status"`
+	Version     string  `json:"version"`
+	Persistence any     `json:"persistence"`
+	MessageBus  any     `json:"message_bus"`
+	Uptime      float64 `json:"uptime_seconds"`
+}
 
+func printHealthStatus(ctx context.Context, out *ui.UI, state config.State, jsonOut bool) {
+	body, statusCode, err := fetchHealth(ctx, state.BackendPort)
+	if err != nil {
+		out.Error(err.Error())
+		return
+	}
+	if jsonOut {
+		w := out.Writer()
+		_, _ = fmt.Fprintln(w, "Health check:")
+		_, _ = fmt.Fprintf(w, "  %s\n", string(body))
+		return
+	}
+	renderHealthSummary(out, body, statusCode)
+}
+
+func fetchHealth(ctx context.Context, port int) ([]byte, int, error) {
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", port)
 	client := &http.Client{Timeout: 5 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
-		out.Error(fmt.Sprintf("Health check error: %v", err))
-		return
+		return nil, 0, fmt.Errorf("health check error: %w", err)
 	}
-
 	resp, err := client.Do(req)
 	if err != nil {
-		out.Error(fmt.Sprintf("Backend unreachable: %v", err))
-		return
+		return nil, 0, fmt.Errorf("backend unreachable: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+	if err != nil {
+		return nil, 0, fmt.Errorf("health check read error: %w", err)
+	}
+	return body, resp.StatusCode, nil
+}
 
-	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-	if readErr != nil {
-		out.Error(fmt.Sprintf("Health check read error: %v", readErr))
+func renderHealthSummary(out *ui.UI, body []byte, statusCode int) {
+	var envelope struct {
+		Data healthResponse `json:"data"`
+	}
+	if json.Unmarshal(body, &envelope) != nil || envelope.Data.Status == "" {
+		out.Warn(fmt.Sprintf("Health: unparseable response (HTTP %d)", statusCode))
 		return
 	}
-
-	if jsonOutput {
-		_, _ = fmt.Fprintln(raw, "Health check:")
-		_, _ = fmt.Fprintf(raw, "  %s\n", string(body))
-		return
-	}
-
-	var hr struct {
-		Data struct {
-			Status      string  `json:"status"`
-			Version     string  `json:"version"`
-			Persistence any     `json:"persistence"`
-			MessageBus  any     `json:"message_bus"`
-			Uptime      float64 `json:"uptime_seconds"`
-		} `json:"data"`
-	}
-	if json.Unmarshal(body, &hr) != nil {
-		out.Warn(fmt.Sprintf("Health: unparseable response (HTTP %d)", resp.StatusCode))
-		return
-	}
-
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		out.Success(fmt.Sprintf("Backend healthy (v%s, uptime %.0fs)", hr.Data.Version, hr.Data.Uptime))
+	hr := envelope.Data
+	if statusCode >= 200 && statusCode < 300 {
+		out.Success(fmt.Sprintf("Backend healthy (v%s, uptime %.0fs)", hr.Version, hr.Uptime))
+		persistLabel := "not configured"
+		if hr.Persistence != nil {
+			persistLabel = fmt.Sprintf("%v", hr.Persistence)
+		}
+		out.KeyValue("Persistence", persistLabel)
 	} else {
-		out.Error(fmt.Sprintf("Backend unhealthy (HTTP %d)", resp.StatusCode))
+		out.Error(fmt.Sprintf("Backend unhealthy (HTTP %d)", statusCode))
 	}
-
-	persistLabel := "not configured"
-	if hr.Data.Persistence != nil {
-		persistLabel = fmt.Sprintf("%v", hr.Data.Persistence)
-	}
-	out.KeyValue("Persistence", persistLabel)
 }
 
 func printLinks(out *ui.UI, state config.State) {

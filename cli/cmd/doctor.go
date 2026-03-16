@@ -9,6 +9,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/diagnostics"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -24,21 +25,20 @@ func init() {
 	rootCmd.AddCommand(doctorCmd)
 }
 
-func runDoctor(cmd *cobra.Command, args []string) error {
+func runDoctor(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	dir := resolveDataDir()
-	out := cmd.OutOrStdout()
+	out := ui.NewUI(cmd.OutOrStdout())
 
 	state, err := config.Load(dir)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	_, _ = fmt.Fprintln(out, "Collecting diagnostics...")
+	out.Step("Collecting diagnostics...")
 	report := diagnostics.Collect(ctx, state)
 	text := report.FormatText()
 
-	// Save to file.
 	safeDir, err := safeStateDir(state)
 	if err != nil {
 		return err
@@ -46,47 +46,54 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	filename := fmt.Sprintf("synthorg-diagnostic-%s.txt", time.Now().Format("20060102-150405"))
 	savePath := filepath.Join(safeDir, filename)
 	if err := os.WriteFile(savePath, []byte(text), 0o600); err != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not save diagnostic file: %v\n", err)
+		errOut := ui.NewUI(cmd.ErrOrStderr())
+		errOut.Warn(fmt.Sprintf("Could not save diagnostic file: %v", err))
 	} else {
-		_, _ = fmt.Fprintf(out, "Saved to: %s\n\n", savePath)
+		out.Success(fmt.Sprintf("Saved to: %s", savePath))
 	}
 
-	_, _ = fmt.Fprintln(out, text)
+	_, _ = fmt.Fprintln(out.Writer())
+	_, _ = fmt.Fprintln(out.Writer(), text)
 
-	// Generate GitHub issue URL (exclude logs — may contain secrets).
-	issueTitle := fmt.Sprintf("[CLI] Bug report — %s/%s, CLI %s", report.OS, report.Arch, report.CLIVersion)
+	issueURL := buildIssueURL(report)
+
+	out.Hint("To file a bug report:")
+	out.KeyValue("1. Attach", savePath)
+	out.Link("2. Open", issueURL)
+
+	_, _ = fmt.Fprintln(out.Writer())
+	out.Link("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
+	out.Link("API docs", fmt.Sprintf("http://localhost:%d/api", state.BackendPort))
+
+	return nil
+}
+
+func buildIssueURL(report diagnostics.Report) string {
+	issueTitle := fmt.Sprintf("[CLI] Bug report — %s/%s, CLI %s",
+		report.OS, report.Arch, report.CLIVersion)
 	issueBody := fmt.Sprintf(
 		"## Environment\n\nOS: %s/%s\nCLI: %s (%s)\nDocker: %s\nCompose: %s\nHealth: %s\n\n"+
-			"> Full diagnostics saved to: attach the file from `synthorg doctor` output\n\n"+
+			"> Attach the diagnostic file from `synthorg doctor`\n\n"+
 			"## Steps to Reproduce\n\n1. \n\n## Expected Behavior\n\n\n## Actual Behavior\n\n",
 		report.OS, report.Arch, report.CLIVersion, report.CLICommit,
 		report.DockerVersion, report.ComposeVersion, report.HealthStatus,
 	)
 
-	// Truncate body if URL would exceed browser limits (~4000 chars).
 	encodedBody := url.QueryEscape(issueBody)
 	if len(encodedBody) > 3500 {
 		issueBody = fmt.Sprintf(
 			"## Environment\n\nOS: %s/%s\nCLI: %s\nDocker: %s\nHealth: %s\n\n"+
-				"> Attach the full diagnostics file from `synthorg doctor` output\n",
+				"> Attach the diagnostic file from `synthorg doctor`\n",
 			report.OS, report.Arch, report.CLIVersion,
 			report.DockerVersion, report.HealthStatus,
 		)
 		encodedBody = url.QueryEscape(issueBody)
 	}
 
-	issueURL := fmt.Sprintf(
+	return fmt.Sprintf(
 		"%s/issues/new?title=%s&labels=type%%3Abug&body=%s",
 		version.RepoURL,
 		url.QueryEscape(issueTitle),
 		encodedBody,
 	)
-
-	_, _ = fmt.Fprintln(out, "To file a bug report:")
-	_, _ = fmt.Fprintf(out, "  1. Attach the diagnostic file: %s\n", savePath)
-	_, _ = fmt.Fprintf(out, "  2. Open: %s\n\n", issueURL)
-	_, _ = fmt.Fprintf(out, "Dashboard: http://localhost:%d\n", state.WebPort)
-	_, _ = fmt.Fprintf(out, "API docs:  http://localhost:%d/api\n", state.BackendPort)
-
-	return nil
 }
