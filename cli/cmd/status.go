@@ -169,12 +169,16 @@ func printContainerStates(ctx context.Context, out *ui.UI, info docker.Info, dat
 		return
 	}
 	w := out.Writer()
+	containers, failures := parseContainerJSON(psOut)
 	if jsonOut {
-		_, _ = fmt.Fprintln(w, "Containers:")
-		_, _ = fmt.Fprintln(w, psOut)
+		b, err := json.MarshalIndent(containers, "", "  ")
+		if err != nil {
+			out.Warn(fmt.Sprintf("Could not marshal container JSON: %v", err))
+			return
+		}
+		_, _ = fmt.Fprintln(w, string(b))
 		return
 	}
-	containers, failures := parseContainerJSON(psOut)
 	if failures > 0 {
 		out.Warn(fmt.Sprintf("%d container lines could not be parsed", failures))
 	}
@@ -257,7 +261,7 @@ func renderHealthSummary(out *ui.UI, body []byte, statusCode int) {
 		return
 	}
 	hr := envelope.Data
-	if statusCode >= 200 && statusCode < 300 {
+	if statusCode >= 200 && statusCode < 300 && hr.Status == "ok" {
 		out.Success(fmt.Sprintf("Backend healthy (v%s, uptime %s)", hr.Version, formatUptime(hr.Uptime)))
 		persistLabel := "not configured"
 		if hr.Persistence != nil {

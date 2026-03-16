@@ -60,7 +60,7 @@ invalid json line
 `
 	containers, failures := parseContainerJSON(input)
 	if len(containers) != 2 {
-		t.Errorf("expected 2 containers, got %d", len(containers))
+		t.Fatalf("expected 2 containers, got %d", len(containers))
 	}
 	if failures != 1 {
 		t.Errorf("expected 1 failure, got %d", failures)

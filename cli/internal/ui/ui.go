@@ -125,15 +125,29 @@ func (u *UI) Link(label, url string) {
 }
 
 // Table prints rows as a fixed-width table with a header.
+// All values are sanitized to prevent terminal control injection.
 func (u *UI) Table(headers []string, rows [][]string) {
 	if len(headers) == 0 {
 		return
 	}
-	widths := make([]int, len(headers))
+	// Sanitize all inputs.
+	sanHeaders := make([]string, len(headers))
 	for i, h := range headers {
+		sanHeaders[i] = stripControl(h)
+	}
+	sanRows := make([][]string, len(rows))
+	for i, row := range rows {
+		sanRow := make([]string, len(row))
+		for j, cell := range row {
+			sanRow[j] = stripControl(cell)
+		}
+		sanRows[i] = sanRow
+	}
+	widths := make([]int, len(sanHeaders))
+	for i, h := range sanHeaders {
 		widths[i] = runewidth.StringWidth(h)
 	}
-	for _, row := range rows {
+	for _, row := range sanRows {
 		for i := range widths {
 			if i < len(row) {
 				if w := runewidth.StringWidth(row[i]); w > widths[i] {
@@ -153,7 +167,6 @@ func (u *UI) Table(headers []string, rows [][]string) {
 			if i > 0 {
 				b.WriteString("  ")
 			}
-			// Pad based on display width, not byte length.
 			b.WriteString(cell)
 			pad := w - runewidth.StringWidth(cell)
 			if pad > 0 {
@@ -162,13 +175,13 @@ func (u *UI) Table(headers []string, rows [][]string) {
 		}
 		_, _ = fmt.Fprintln(u.w, b.String())
 	}
-	printRow(headers)
-	sep := make([]string, len(headers))
+	printRow(sanHeaders)
+	sep := make([]string, len(sanHeaders))
 	for i, w := range widths {
 		sep[i] = strings.Repeat("─", w)
 	}
 	printRow(sep)
-	for _, row := range rows {
+	for _, row := range sanRows {
 		printRow(row)
 	}
 }

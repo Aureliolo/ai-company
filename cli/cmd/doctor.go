@@ -105,18 +105,15 @@ func renderDoctorContainers(out *ui.UI, r diagnostics.Report) {
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Section("Containers")
 	for _, c := range r.ContainerSummary {
-		icon := healthIcon(c.State, c.Health)
-		health := c.Health
-		if health == "" {
-			health = c.State
-		}
 		switch {
-		case health == "healthy":
-			out.Success(fmt.Sprintf("%-24s %s", c.Name, health))
-		case health == "unhealthy", c.State == "exited":
-			out.Error(fmt.Sprintf("%-24s %s", c.Name, health))
+		case c.Health == "healthy":
+			out.Success(fmt.Sprintf("%-24s healthy", c.Name))
+		case c.Health == "unhealthy", c.State == "exited":
+			out.Error(fmt.Sprintf("%-24s %s", c.Name, c.Health))
+		case c.Health != "":
+			out.Warn(fmt.Sprintf("%-24s %s (%s)", c.Name, c.State, c.Health))
 		default:
-			out.Warn(fmt.Sprintf("%-24s %s (%s)", c.Name, icon+" "+c.State, health))
+			out.Step(fmt.Sprintf("%-24s %s", c.Name, c.State))
 		}
 	}
 }

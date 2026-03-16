@@ -16,8 +16,8 @@ import (
 
 var doctorReportCmd = &cobra.Command{
 	Use:   "report",
-	Short: "Generate a diagnostic archive and open a bug report",
-	Long:  "Collects diagnostics, saves a report file, and opens a pre-filled GitHub issue URL in the browser.",
+	Short: "Generate a diagnostic archive and bug report URL",
+	Long:  "Collects diagnostics, saves a report file, and prints a pre-filled GitHub issue URL.",
 	RunE:  runDoctorReport,
 }
 
