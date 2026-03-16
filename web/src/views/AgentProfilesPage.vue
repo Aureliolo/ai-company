@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -8,36 +8,23 @@ import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import AgentCard from '@/components/agents/AgentCard.vue'
 import { useAgentStore } from '@/stores/agents'
-import { useWebSocketStore } from '@/stores/websocket'
-import { useAuthStore } from '@/stores/auth'
 import { sanitizeForLog } from '@/utils/logging'
+import { useWebSocketSubscription } from '@/composables/useWebSocketSubscription'
 import type { AgentConfig } from '@/api/types'
 
 const router = useRouter()
 const agentStore = useAgentStore()
-const wsStore = useWebSocketStore()
-const authStore = useAuthStore()
+
+useWebSocketSubscription({
+  bindings: [{ channel: 'agents', handler: agentStore.handleWsEvent }],
+})
 
 onMounted(async () => {
-  try {
-    if (authStore.token && !wsStore.connected) {
-      wsStore.connect(authStore.token)
-    }
-    wsStore.subscribe(['agents'])
-    wsStore.onChannelEvent('agents', agentStore.handleWsEvent)
-  } catch (err) {
-    console.error('WebSocket setup failed:', sanitizeForLog(err))
-  }
   try {
     await agentStore.fetchAgents()
   } catch (err) {
     console.error('Initial data fetch failed:', sanitizeForLog(err))
   }
-})
-
-onUnmounted(() => {
-  wsStore.unsubscribe(['agents'])
-  wsStore.offChannelEvent('agents', agentStore.handleWsEvent)
 })
 
 function openAgent(agent: AgentConfig) {

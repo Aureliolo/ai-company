@@ -654,10 +654,13 @@ export interface WsEvent {
   payload: Record<string, unknown>
 }
 
+/** Filters for WebSocket channel subscriptions. */
+export type WsSubscriptionFilters = Readonly<Record<string, string>>
+
 export interface WsSubscribeMessage {
   action: 'subscribe'
   channels: WsChannel[]
-  filters?: Record<string, string>
+  filters?: WsSubscriptionFilters
 }
 
 export interface WsUnsubscribeMessage {

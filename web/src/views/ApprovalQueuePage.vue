@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Sidebar from 'primevue/sidebar'
@@ -13,16 +13,13 @@ import StatusBadge from '@/components/common/StatusBadge.vue'
 import ApprovalDetail from '@/components/approvals/ApprovalDetail.vue'
 import ApprovalActions from '@/components/approvals/ApprovalActions.vue'
 import { useApprovalStore } from '@/stores/approvals'
-import { useWebSocketStore } from '@/stores/websocket'
-import { useAuthStore } from '@/stores/auth'
 import { formatDate } from '@/utils/format'
 import { sanitizeForLog } from '@/utils/logging'
+import { useWebSocketSubscription } from '@/composables/useWebSocketSubscription'
 import type { ApprovalItem, ApprovalStatus } from '@/api/types'
 
 const toast = useToast()
 const approvalStore = useApprovalStore()
-const wsStore = useWebSocketStore()
-const authStore = useAuthStore()
 
 const selected = ref<ApprovalItem | null>(null)
 const detailVisible = ref(false)
@@ -35,26 +32,16 @@ const statusOptions = [
   { label: 'Expired', value: 'expired' },
 ]
 
+useWebSocketSubscription({
+  bindings: [{ channel: 'approvals', handler: approvalStore.handleWsEvent }],
+})
+
 onMounted(async () => {
-  try {
-    if (authStore.token && !wsStore.connected) {
-      wsStore.connect(authStore.token)
-    }
-    wsStore.subscribe(['approvals'])
-    wsStore.onChannelEvent('approvals', approvalStore.handleWsEvent)
-  } catch (err) {
-    console.error('WebSocket setup failed:', sanitizeForLog(err))
-  }
   try {
     await approvalStore.fetchApprovals()
   } catch (err) {
     console.error('Initial data fetch failed:', sanitizeForLog(err))
   }
-})
-
-onUnmounted(() => {
-  wsStore.unsubscribe(['approvals'])
-  wsStore.offChannelEvent('approvals', approvalStore.handleWsEvent)
 })
 
 function openDetail(approval: ApprovalItem) {

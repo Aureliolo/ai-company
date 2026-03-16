@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
@@ -12,38 +12,30 @@ import { useAnalyticsStore } from '@/stores/analytics'
 import { useTaskStore } from '@/stores/tasks'
 import { useBudgetStore } from '@/stores/budget'
 import { useApprovalStore } from '@/stores/approvals'
-import { useWebSocketStore } from '@/stores/websocket'
-import { useAuthStore } from '@/stores/auth'
 import { getHealth } from '@/api/endpoints/health'
 import { formatCurrency, formatNumber } from '@/utils/format'
 import { useToast } from 'primevue/usetoast'
 import { sanitizeForLog } from '@/utils/logging'
+import { useWebSocketSubscription } from '@/composables/useWebSocketSubscription'
 import type { HealthStatus } from '@/api/types'
 
 const analytics = useAnalyticsStore()
 const taskStore = useTaskStore()
 const budgetStore = useBudgetStore()
 const approvalStore = useApprovalStore()
-const wsStore = useWebSocketStore()
-const authStore = useAuthStore()
 const toast = useToast()
 const health = ref<HealthStatus | null>(null)
 const loading = ref(true)
 
-onMounted(async () => {
-  // Connect WebSocket (non-fatal if it fails)
-  try {
-    if (authStore.token && !wsStore.connected) {
-      wsStore.connect(authStore.token)
-    }
-    wsStore.subscribe(['tasks', 'budget', 'approvals'])
-    wsStore.onChannelEvent('tasks', taskStore.handleWsEvent)
-    wsStore.onChannelEvent('budget', budgetStore.handleWsEvent)
-    wsStore.onChannelEvent('approvals', approvalStore.handleWsEvent)
-  } catch (err) {
-    console.error('WebSocket setup failed:', sanitizeForLog(err))
-  }
+const { connected } = useWebSocketSubscription({
+  bindings: [
+    { channel: 'tasks', handler: taskStore.handleWsEvent },
+    { channel: 'budget', handler: budgetStore.handleWsEvent },
+    { channel: 'approvals', handler: approvalStore.handleWsEvent },
+  ],
+})
 
+onMounted(async () => {
   // Fetch initial data
   try {
     const results = await Promise.allSettled([
@@ -62,6 +54,11 @@ onMounted(async () => {
       .map((r, i) => r.status === 'rejected' ? labels[i] : null)
       .filter(Boolean)
     if (failed.length > 0) {
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          console.error(`Dashboard fetch failed [${labels[i]}]:`, sanitizeForLog(r.reason), r.reason)
+        }
+      })
       toast.add({
         severity: 'warn',
         summary: 'Dashboard partially loaded',
@@ -74,12 +71,6 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => {
-  wsStore.unsubscribe(['tasks', 'budget', 'approvals'])
-  wsStore.offChannelEvent('tasks', taskStore.handleWsEvent)
-  wsStore.offChannelEvent('budget', budgetStore.handleWsEvent)
-  wsStore.offChannelEvent('approvals', approvalStore.handleWsEvent)
-})
 </script>
 
 <template>
@@ -126,7 +117,7 @@ onUnmounted(() => {
           />
         </div>
         <div class="space-y-6">
-          <SystemStatus :health="health" :ws-connected="wsStore.connected" />
+          <SystemStatus :health="health" :ws-connected="connected" />
           <RecentApprovals :approvals="approvalStore.approvals" />
         </div>
       </div>

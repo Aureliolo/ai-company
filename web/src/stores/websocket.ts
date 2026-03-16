@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { WsChannel, WsEvent, WsEventHandler } from '@/api/types'
+import type { WsChannel, WsEvent, WsEventHandler, WsSubscriptionFilters } from '@/api/types'
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS, WS_MAX_MESSAGE_SIZE } from '@/utils/constants'
 import { sanitizeForLog } from '@/utils/logging'
 
@@ -152,7 +152,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     channelHandlers.clear()
   }
 
-  function subscribe(channels: WsChannel[], filters?: Record<string, string>) {
+  function subscribe(channels: WsChannel[], filters?: WsSubscriptionFilters) {
     // Track as active subscription for auto-re-subscribe on reconnect
     const key = subscriptionKey(channels, filters)
     if (!activeSubscriptions.some((s) => subscriptionKey(s.channels, s.filters) === key)) {
@@ -200,14 +200,14 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
-  function onChannelEvent(channel: string, handler: WsEventHandler) {
+  function onChannelEvent(channel: WsChannel | '*', handler: WsEventHandler) {
     if (!channelHandlers.has(channel)) {
       channelHandlers.set(channel, new Set())
     }
     channelHandlers.get(channel)!.add(handler)
   }
 
-  function offChannelEvent(channel: string, handler: WsEventHandler) {
+  function offChannelEvent(channel: WsChannel | '*', handler: WsEventHandler) {
     channelHandlers.get(channel)?.delete(handler)
   }
 
