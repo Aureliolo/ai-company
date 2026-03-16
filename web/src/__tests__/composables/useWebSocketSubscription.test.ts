@@ -28,8 +28,11 @@ describe('useWebSocketSubscription', () => {
     authStore = useAuthStore()
     vi.clearAllMocks()
     consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    // Re-setup mocks cleared by clearAllMocks
+    // Re-establish lifecycle mocks after clearAllMocks:
+    // - onMounted: synchronously invokes callback so setup logic runs during test
+    // - onUnmounted: no-op recorder; getUnmountCallback() reads from mock.calls
     ;(onMounted as Mock).mockImplementation((cb: () => void) => cb())
+    ;(onUnmounted as Mock).mockImplementation(() => {})
   })
 
   function getUnmountCallback(): () => void {
@@ -38,7 +41,7 @@ describe('useWebSocketSubscription', () => {
     return calls[calls.length - 1][0]
   }
 
-  it('returns connected and reconnectExhausted refs', () => {
+  it('returns connected, reconnectExhausted, and setupError refs', () => {
     const handler: WsEventHandler = vi.fn()
     const result = useWebSocketSubscription({
       bindings: [{ channel: 'tasks', handler }],
@@ -46,8 +49,10 @@ describe('useWebSocketSubscription', () => {
 
     expect(result.connected).toBeDefined()
     expect(result.reconnectExhausted).toBeDefined()
+    expect(result.setupError).toBeDefined()
     expect(result.connected.value).toBe(false)
     expect(result.reconnectExhausted.value).toBe(false)
+    expect(result.setupError.value).toBeNull()
   })
 
   it('calls connect when auth token exists and not connected', () => {
@@ -75,8 +80,10 @@ describe('useWebSocketSubscription', () => {
     expect(connectSpy).not.toHaveBeenCalled()
   })
 
-  it('skips connect when no auth token', () => {
+  it('skips all setup when no auth token', () => {
     const connectSpy = vi.spyOn(wsStore, 'connect')
+    const subscribeSpy = vi.spyOn(wsStore, 'subscribe')
+    const onSpy = vi.spyOn(wsStore, 'onChannelEvent')
 
     const handler: WsEventHandler = vi.fn()
     useWebSocketSubscription({
@@ -84,10 +91,13 @@ describe('useWebSocketSubscription', () => {
     })
 
     expect(connectSpy).not.toHaveBeenCalled()
+    expect(subscribeSpy).not.toHaveBeenCalled()
+    expect(onSpy).not.toHaveBeenCalled()
   })
 
   it('subscribes to deduplicated channels from bindings', () => {
     const subscribeSpy = vi.spyOn(wsStore, 'subscribe')
+    authStore.$patch({ token: 'test-token' })
     const handler1: WsEventHandler = vi.fn()
     const handler2: WsEventHandler = vi.fn()
 
@@ -103,6 +113,7 @@ describe('useWebSocketSubscription', () => {
 
   it('forwards filters to subscribe', () => {
     const subscribeSpy = vi.spyOn(wsStore, 'subscribe')
+    authStore.$patch({ token: 'test-token' })
     const handler: WsEventHandler = vi.fn()
     const filters = { project: 'test-project' }
 
@@ -116,6 +127,7 @@ describe('useWebSocketSubscription', () => {
 
   it('calls onChannelEvent for each binding', () => {
     const onSpy = vi.spyOn(wsStore, 'onChannelEvent')
+    authStore.$patch({ token: 'test-token' })
     const handler1: WsEventHandler = vi.fn()
     const handler2: WsEventHandler = vi.fn()
 
@@ -134,6 +146,7 @@ describe('useWebSocketSubscription', () => {
   it('deduplicates channels but wires both handlers for same channel', () => {
     const subscribeSpy = vi.spyOn(wsStore, 'subscribe')
     const onSpy = vi.spyOn(wsStore, 'onChannelEvent')
+    authStore.$patch({ token: 'test-token' })
     const handler1: WsEventHandler = vi.fn()
     const handler2: WsEventHandler = vi.fn()
 
@@ -155,6 +168,7 @@ describe('useWebSocketSubscription', () => {
   it('unsubscribes and removes handlers on unmount', () => {
     const unsubscribeSpy = vi.spyOn(wsStore, 'unsubscribe')
     const offSpy = vi.spyOn(wsStore, 'offChannelEvent')
+    authStore.$patch({ token: 'test-token' })
     const handler1: WsEventHandler = vi.fn()
     const handler2: WsEventHandler = vi.fn()
 
@@ -174,24 +188,22 @@ describe('useWebSocketSubscription', () => {
     expect(offSpy).toHaveBeenCalledWith('budget', handler2)
   })
 
-  it('swallows connect errors and logs them', () => {
+  it('sets setupError and logs when connect throws', () => {
     vi.spyOn(wsStore, 'connect').mockImplementation(() => {
       throw new Error('connection failed')
     })
     authStore.$patch({ token: 'test-token' })
 
     const handler: WsEventHandler = vi.fn()
+    const { setupError } = useWebSocketSubscription({
+      bindings: [{ channel: 'tasks', handler }],
+    })
 
-    // Should not throw
-    expect(() =>
-      useWebSocketSubscription({
-        bindings: [{ channel: 'tasks', handler }],
-      }),
-    ).not.toThrow()
-
+    expect(setupError.value).toBe('WebSocket connection failed.')
     expect(consoleSpy).toHaveBeenCalledWith(
-      'WebSocket setup failed:',
-      expect.any(String),
+      'WebSocket connect failed:',
+      'connection failed',
+      expect.any(Error),
     )
   })
 
@@ -212,28 +224,44 @@ describe('useWebSocketSubscription', () => {
     expect(onSpy).not.toHaveBeenCalled()
   })
 
-  it('swallows subscribe errors and logs them', () => {
+  it('sets setupError and logs when subscribe throws', () => {
     vi.spyOn(wsStore, 'subscribe').mockImplementation(() => {
       throw new Error('subscribe failed')
     })
+    authStore.$patch({ token: 'test-token' })
 
     const handler: WsEventHandler = vi.fn()
+    const { setupError } = useWebSocketSubscription({
+      bindings: [{ channel: 'tasks', handler }],
+    })
 
-    expect(() =>
-      useWebSocketSubscription({
-        bindings: [{ channel: 'tasks', handler }],
-      }),
-    ).not.toThrow()
-
+    expect(setupError.value).toBe('WebSocket subscription failed.')
     expect(consoleSpy).toHaveBeenCalledWith(
-      'WebSocket setup failed:',
-      expect.any(String),
+      'WebSocket subscribe failed:',
+      'subscribe failed',
+      expect.any(Error),
     )
   })
 
-  it('handles empty bindings array', () => {
+  it('still wires handlers when subscribe throws', () => {
+    const onSpy = vi.spyOn(wsStore, 'onChannelEvent')
+    vi.spyOn(wsStore, 'subscribe').mockImplementation(() => {
+      throw new Error('subscribe failed')
+    })
+    authStore.$patch({ token: 'test-token' })
+
+    const handler: WsEventHandler = vi.fn()
+    useWebSocketSubscription({
+      bindings: [{ channel: 'tasks', handler }],
+    })
+
+    expect(onSpy).toHaveBeenCalledWith('tasks', handler)
+  })
+
+  it('handles empty bindings array with token', () => {
     const subscribeSpy = vi.spyOn(wsStore, 'subscribe')
     const onSpy = vi.spyOn(wsStore, 'onChannelEvent')
+    authStore.$patch({ token: 'test-token' })
 
     const result = useWebSocketSubscription({ bindings: [] })
 
@@ -242,25 +270,38 @@ describe('useWebSocketSubscription', () => {
     expect(result.connected.value).toBe(false)
   })
 
-  it('connected ref reflects wsStore.connected', () => {
+  it('unmount cleanup runs safely after failed connect', () => {
+    const unsubscribeSpy = vi.spyOn(wsStore, 'unsubscribe')
+    const offSpy = vi.spyOn(wsStore, 'offChannelEvent')
+    vi.spyOn(wsStore, 'connect').mockImplementation(() => {
+      throw new Error('connection failed')
+    })
+    authStore.$patch({ token: 'test-token' })
+
     const handler: WsEventHandler = vi.fn()
-    const { connected } = useWebSocketSubscription({
+    useWebSocketSubscription({
       bindings: [{ channel: 'tasks', handler }],
     })
 
-    expect(connected.value).toBe(false)
-    wsStore.$patch({ connected: true })
-    expect(connected.value).toBe(true)
+    const unmount = getUnmountCallback()
+    unmount()
+
+    // Cleanup runs even though setup failed
+    expect(unsubscribeSpy).toHaveBeenCalledWith(['tasks'])
+    expect(offSpy).toHaveBeenCalledWith('tasks', handler)
   })
 
-  it('reconnectExhausted ref reflects wsStore.reconnectExhausted', () => {
-    const handler: WsEventHandler = vi.fn()
-    const { reconnectExhausted } = useWebSocketSubscription({
-      bindings: [{ channel: 'tasks', handler }],
-    })
+  it.each(['connected', 'reconnectExhausted'] as const)(
+    '%s ref reflects wsStore state',
+    (refName) => {
+      const handler: WsEventHandler = vi.fn()
+      const result = useWebSocketSubscription({
+        bindings: [{ channel: 'tasks', handler }],
+      })
 
-    expect(reconnectExhausted.value).toBe(false)
-    wsStore.$patch({ reconnectExhausted: true })
-    expect(reconnectExhausted.value).toBe(true)
-  })
+      expect(result[refName].value).toBe(false)
+      wsStore.$patch({ [refName]: true })
+      expect(result[refName].value).toBe(true)
+    },
+  )
 })

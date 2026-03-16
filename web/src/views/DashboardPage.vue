@@ -15,6 +15,7 @@ import { useApprovalStore } from '@/stores/approvals'
 import { getHealth } from '@/api/endpoints/health'
 import { formatCurrency, formatNumber } from '@/utils/format'
 import { useToast } from 'primevue/usetoast'
+import { sanitizeForLog } from '@/utils/logging'
 import { useWebSocketSubscription } from '@/composables/useWebSocketSubscription'
 import type { HealthStatus } from '@/api/types'
 
@@ -53,6 +54,11 @@ onMounted(async () => {
       .map((r, i) => r.status === 'rejected' ? labels[i] : null)
       .filter(Boolean)
     if (failed.length > 0) {
+      results.forEach((r, i) => {
+        if (r.status === 'rejected') {
+          console.error(`Dashboard fetch failed [${labels[i]}]:`, sanitizeForLog(r.reason), r.reason)
+        }
+      })
       toast.add({
         severity: 'warn',
         summary: 'Dashboard partially loaded',

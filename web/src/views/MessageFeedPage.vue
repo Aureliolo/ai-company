@@ -30,8 +30,8 @@ watch(
   async (channel) => {
     try {
       await messageStore.fetchMessages(channel ?? undefined)
-    } catch {
-      // Store handles errors internally
+    } catch (err) {
+      console.error('Channel message fetch failed:', sanitizeForLog(err))
     }
   },
 )
