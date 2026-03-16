@@ -19,6 +19,7 @@ from synthorg.observability.events.git import (
 from synthorg.tools._git_base import _BaseGitTool
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.git_url_validator import (
+    _CREDENTIAL_RE,
     ALLOWED_CLONE_SCHEMES,
     GitCloneNetworkPolicy,
     is_allowed_clone_scheme,
@@ -679,7 +680,7 @@ class GitCloneTool(_BaseGitTool):
         if not is_allowed_clone_scheme(url):
             logger.warning(
                 GIT_CLONE_URL_REJECTED,
-                url=url,
+                url=_CREDENTIAL_RE.sub(r"\1***@", url),
             )
             schemes = ", ".join(ALLOWED_CLONE_SCHEMES)
             return ToolExecutionResult(

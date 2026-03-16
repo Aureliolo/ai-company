@@ -19,6 +19,7 @@ bypass the private-IP check.
 
 import asyncio
 import ipaddress
+import re
 from typing import Final, Self
 from urllib.parse import urlparse
 
@@ -29,6 +30,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.git import (
     GIT_CLONE_DNS_FAILED,
     GIT_CLONE_SSRF_BLOCKED,
+    GIT_CLONE_SSRF_DISABLED,
 )
 
 logger = get_logger(__name__)
@@ -39,6 +41,9 @@ ALLOWED_CLONE_SCHEMES: Final[tuple[str, ...]] = (
     "https://",
     "ssh://",
 )
+
+# Matches http(s)://userinfo@host patterns in clone URLs.
+_CREDENTIAL_RE: Final[re.Pattern[str]] = re.compile(r"(https?://)[^@/]+@")
 
 _BLOCKED_NETWORKS: Final[tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]] = (
     # IPv4 — loopback, private, link-local, reserved
@@ -57,14 +62,17 @@ _BLOCKED_NETWORKS: Final[tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ..
     ipaddress.IPv4Network("224.0.0.0/4"),  # Multicast (RFC 5771)
     ipaddress.IPv4Network("240.0.0.0/4"),  # Reserved (RFC 1112)
     ipaddress.IPv4Network("255.255.255.255/32"),  # Broadcast
-    # IPv6 — loopback, link-local, ULA, reserved
+    # IPv6 — loopback, link-local, ULA, tunneling, multicast, reserved
     ipaddress.IPv6Network("::/128"),
     ipaddress.IPv6Network("::1/128"),
     ipaddress.IPv6Network("64:ff9b::/96"),  # NAT64 (RFC 6052)
     ipaddress.IPv6Network("100::/64"),  # Discard (RFC 6666)
+    ipaddress.IPv6Network("2001::/32"),  # Teredo (RFC 4380)
     ipaddress.IPv6Network("2001:db8::/32"),  # Documentation (RFC 3849)
+    ipaddress.IPv6Network("2002::/16"),  # 6to4 (RFC 3056) — encodes IPv4
     ipaddress.IPv6Network("fc00::/7"),
     ipaddress.IPv6Network("fe80::/10"),
+    ipaddress.IPv6Network("ff00::/8"),  # Multicast (RFC 4291)
 )
 
 
@@ -212,9 +220,17 @@ def is_allowed_clone_scheme(url: str) -> bool:
     if any(url.startswith(scheme) for scheme in ALLOWED_CLONE_SCHEMES):
         return True
     # SCP-like syntax: user@host:path (e.g. git@github.com:user/repo.git).
-    # Must have @ and : but NOT :: (rejects ext:: protocol) and NOT ://
-    # (rejects URLs that should match a scheme above).
-    return "@" in url and ":" in url and "::" not in url and "://" not in url
+    # Must have @ and : but NOT :// (rejects URLs that should match a
+    # scheme above).  Bracketed IPv6 literals (git@[::1]:path) are
+    # allowed; unbracketed :: is rejected (catches ext:: protocol).
+    if "://" in url or "@" not in url or ":" not in url:
+        return False
+    _, rest = url.split("@", 1)
+    if rest.startswith("["):
+        bracket_end = rest.find("]")
+        return bracket_end > 0 and rest[bracket_end + 1 : bracket_end + 2] == ":"
+    host, _sep, _path = rest.partition(":")
+    return bool(host) and "::" not in host
 
 
 # ── DNS resolution helper ────────────────────────────────────────
@@ -263,11 +279,13 @@ async def _resolve_and_check(
             f"DNS resolution for {hostname!r} failed: {exc}",
         )
     except Exception as exc:
-        return _dns_failure(
-            hostname,
-            f"unexpected: {type(exc).__name__}: {exc}",
-            f"DNS resolution for {hostname!r} failed: {exc}",
+        logger.error(
+            GIT_CLONE_DNS_FAILED,
+            hostname=hostname,
+            reason=f"unexpected: {type(exc).__name__}: {exc}",
+            exc_info=True,
         )
+        return f"DNS resolution for {hostname!r} failed: {exc}"
 
     if not results:
         return _dns_failure(
@@ -317,12 +335,13 @@ async def validate_clone_url_host(
     """
     hostname = _extract_hostname(url)
     if not hostname:
+        redacted = _CREDENTIAL_RE.sub(r"\1***@", url)
         logger.warning(
             GIT_CLONE_SSRF_BLOCKED,
-            url=url,
+            url=redacted,
             reason="hostname_extraction_failed",
         )
-        return f"Could not extract hostname from clone URL: {url!r}"
+        return f"Could not extract hostname from clone URL: {redacted!r}"
 
     normalized = hostname.lower()
 
@@ -332,6 +351,11 @@ async def validate_clone_url_host(
 
     # Master switch
     if not policy.block_private_ips:
+        logger.warning(
+            GIT_CLONE_SSRF_DISABLED,
+            hostname=normalized,
+            reason="block_private_ips_disabled",
+        )
         return None
 
     # Literal IP — no DNS needed

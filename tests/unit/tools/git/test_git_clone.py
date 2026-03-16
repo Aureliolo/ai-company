@@ -133,7 +133,7 @@ class TestGitCloneToolSsrf:
         tool = GitCloneTool(workspace=workspace, network_policy=policy)
         result = await tool.execute(
             arguments={
-                "url": ("https://internal-git.example.com/repo.git"),
+                "url": "https://internal-git.example.com/repo.git",
             },
         )
         # SSRF check passes (allowlisted); clone fails for other

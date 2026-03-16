@@ -125,9 +125,14 @@ class TestIsBlockedIp:
             "fc00::1",
             "fd00::1",
             "::",
+            "2001::1",
             "2001:db8::1",
+            "2002:7f00:1::1",
+            "2002:c0a8:101::",
             "64:ff9b::1",
             "100::1",
+            "ff02::1",
+            "ff05::2",
         ],
         ids=[
             "loopback-start",
@@ -146,7 +151,7 @@ class TestIsBlockedIp:
             "test-net-2",
             "test-net-3",
             "link-local",
-            "multicast",
+            "multicast-v4",
             "reserved",
             "broadcast",
             "unspecified-v4",
@@ -155,9 +160,14 @@ class TestIsBlockedIp:
             "ula-v6-fc",
             "ula-v6-fd",
             "unspecified-v6",
+            "teredo",
             "documentation-v6",
+            "6to4-loopback",
+            "6to4-private",
             "nat64",
             "discard-v6",
+            "multicast-v6-link",
+            "multicast-v6-site",
         ],
     )
     def test_blocked_addresses(self, addr: str) -> None:
@@ -222,6 +232,8 @@ class TestIsAllowedCloneScheme:
             "ssh://host:22/repo.git",
             "git@github.com:user/repo.git",
             "deploy@host.example:path/repo",
+            "git@[::1]:repo.git",
+            "git@[2001:db8::1]:repo.git",
         ],
         ids=[
             "https",
@@ -230,6 +242,8 @@ class TestIsAllowedCloneScheme:
             "ssh-port",
             "scp-git",
             "scp-deploy",
+            "scp-ipv6-loopback",
+            "scp-ipv6-documentation",
         ],
     )
     def test_allowed_schemes(self, url: str) -> None:
@@ -622,10 +636,14 @@ class TestValidateCloneUrlHostProperties:
     @given(
         ip=st.one_of(
             st.ip_addresses(v=6, network="::1/128"),
-            st.ip_addresses(v=6, network="fe80::/10"),
-            st.ip_addresses(v=6, network="fc00::/7"),
-            st.ip_addresses(v=6, network="2001:db8::/32"),
+            st.ip_addresses(v=6, network="64:ff9b::/96"),
             st.ip_addresses(v=6, network="100::/64"),
+            st.ip_addresses(v=6, network="2001::/32"),
+            st.ip_addresses(v=6, network="2001:db8::/32"),
+            st.ip_addresses(v=6, network="2002::/16"),
+            st.ip_addresses(v=6, network="fc00::/7"),
+            st.ip_addresses(v=6, network="fe80::/10"),
+            st.ip_addresses(v=6, network="ff00::/8"),
         ),
     )
     @settings(max_examples=200)

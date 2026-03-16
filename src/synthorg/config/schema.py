@@ -419,6 +419,7 @@ class RootConfig(BaseModel):
         promotion: Promotion/demotion configuration.
         task_engine: Task engine configuration.
         coordination: Multi-agent coordination configuration.
+        git_clone: Git clone SSRF prevention network policy.
     """
 
     model_config = ConfigDict(frozen=True)
