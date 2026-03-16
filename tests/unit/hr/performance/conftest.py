@@ -53,7 +53,7 @@ def make_collab_metric(  # noqa: PLR0913
     meeting_contribution: float | None = None,
     loop_triggered: bool = False,
     handoff_completeness: float | None = None,
-    interaction_summary: str | None = None,
+    interaction_summary: NotBlankStr | None = None,
 ) -> CollaborationMetricRecord:
     """Build a CollaborationMetricRecord with sensible defaults."""
     return CollaborationMetricRecord(

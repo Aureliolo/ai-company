@@ -204,10 +204,10 @@ class TestSetOverride:
         collab_client: TestClient[Any],
     ) -> None:
         """Observer role cannot set overrides (write access denied)."""
-        collab_client.headers.update(make_auth_headers("observer"))
         resp = collab_client.post(
             "/api/v1/agents/agent-001/collaboration/override",
             json={"score": 5.0, "reason": "Test"},
+            headers=make_auth_headers("observer"),
         )
         assert resp.status_code == 403
 
@@ -254,6 +254,72 @@ class TestClearOverride:
 
 
 @pytest.mark.unit
+class TestOverrideStoreNotConfigured:
+    """Override endpoints return 503 when store is not configured."""
+
+    @pytest.fixture
+    async def no_store_client(
+        self,
+    ) -> AsyncGenerator[TestClient[Any]]:
+        """Test client with performance_tracker but no override store."""
+        from synthorg.budget.tracker import CostTracker
+        from synthorg.config.schema import RootConfig
+
+        fake_persistence = FakePersistenceBackend()
+        await fake_persistence.connect()
+        fake_bus = FakeMessageBus()
+        await fake_bus.start()
+
+        tracker = PerformanceTracker()  # No override_store
+        auth_service = AuthService(AuthConfig(jwt_secret=_TEST_JWT_SECRET))
+        _seed_test_users(fake_persistence, auth_service)
+
+        app = create_app(
+            config=RootConfig(company_name="test-company"),
+            persistence=fake_persistence,
+            message_bus=fake_bus,
+            cost_tracker=CostTracker(),
+            approval_store=ApprovalStore(),
+            auth_service=auth_service,
+            performance_tracker=tracker,
+        )
+        with TestClient(app) as client:
+            client.headers.update(make_auth_headers("ceo"))
+            yield client
+
+    def test_get_override_503(
+        self,
+        no_store_client: TestClient[Any],
+    ) -> None:
+        """GET override without store -> 503."""
+        resp = no_store_client.get(
+            "/api/v1/agents/agent-001/collaboration/override",
+        )
+        assert resp.status_code == 503
+
+    def test_post_override_503(
+        self,
+        no_store_client: TestClient[Any],
+    ) -> None:
+        """POST override without store -> 503."""
+        resp = no_store_client.post(
+            "/api/v1/agents/agent-001/collaboration/override",
+            json={"score": 5.0, "reason": "Test"},
+        )
+        assert resp.status_code == 503
+
+    def test_delete_override_503(
+        self,
+        no_store_client: TestClient[Any],
+    ) -> None:
+        """DELETE override without store -> 503."""
+        resp = no_store_client.delete(
+            "/api/v1/agents/agent-001/collaboration/override",
+        )
+        assert resp.status_code == 503
+
+
+@pytest.mark.unit
 class TestGetCalibration:
     """GET /agents/{agent_id}/collaboration/calibration."""
 
@@ -269,3 +335,30 @@ class TestGetCalibration:
         body = resp.json()
         assert body["data"]["record_count"] == 0
         assert body["data"]["average_drift"] is None
+
+    def test_returns_calibration_when_sampler_configured(
+        self,
+        collab_client: TestClient[Any],
+        perf_tracker: PerformanceTracker,
+    ) -> None:
+        """Sampler with records -> returns calibration data."""
+        from unittest.mock import MagicMock
+
+        from tests.unit.hr.performance.conftest import make_calibration_record
+
+        mock_sampler = MagicMock()
+        cal_rec = make_calibration_record(
+            llm_score=8.0,
+            behavioral_score=6.0,
+        )
+        mock_sampler.get_calibration_records.return_value = (cal_rec,)
+        mock_sampler.get_drift_summary.return_value = 2.0
+        perf_tracker._sampler = mock_sampler
+
+        resp = collab_client.get(
+            "/api/v1/agents/agent-001/collaboration/calibration",
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["data"]["record_count"] == 1
+        assert body["data"]["average_drift"] == 2.0

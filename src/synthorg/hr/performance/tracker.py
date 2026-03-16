@@ -62,6 +62,8 @@ class PerformanceTracker:
         window_strategy: Strategy for computing rolling windows.
         trend_strategy: Strategy for detecting trends.
         config: Performance tracking configuration.
+        sampler: LLM calibration sampler (None = disabled).
+        override_store: Collaboration override store (None = disabled).
     """
 
     def __init__(  # noqa: PLR0913
@@ -209,6 +211,8 @@ class PerformanceTracker:
     async def get_collaboration_score(
         self,
         agent_id: NotBlankStr,
+        *,
+        now: AwareDatetime | None = None,
     ) -> CollaborationScoreResult:
         """Compute collaboration score for an agent.
 
@@ -217,12 +221,17 @@ class PerformanceTracker:
 
         Args:
             agent_id: Agent to evaluate.
+            now: Reference time for override expiration check
+                (defaults to current UTC time).
 
         Returns:
             Collaboration score result.
         """
         if self._override_store is not None:
-            override = self._override_store.get_active_override(agent_id)
+            override = self._override_store.get_active_override(
+                agent_id,
+                now=now,
+            )
             if override is not None:
                 logger.info(
                     PERF_OVERRIDE_APPLIED,
@@ -279,7 +288,10 @@ class PerformanceTracker:
         overall_quality = round(sum(scored) / len(scored), 4) if scored else None
 
         # Overall collaboration score (respects active overrides).
-        collab_result = await self.get_collaboration_score(agent_id)
+        collab_result = await self.get_collaboration_score(
+            agent_id,
+            now=now,
+        )
         overall_collab = collab_result.score if collab_result.confidence > 0.0 else None
 
         snapshot = AgentPerformanceSnapshot(

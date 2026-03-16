@@ -13,6 +13,9 @@ from synthorg.api.errors import NotFoundError, ServiceUnavailableError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
+from synthorg.hr.performance.collaboration_override_store import (
+    CollaborationOverrideStore,  # noqa: TC001
+)
 from synthorg.hr.performance.models import (
     CollaborationOverride,
     CollaborationScoreResult,
@@ -87,7 +90,10 @@ class CalibrationSummaryResponse(BaseModel):
 
     agent_id: NotBlankStr
     average_drift: float | None = Field(default=None, ge=0.0, le=10.0)
-    records: tuple[LlmCalibrationRecord, ...] = ()
+    records: tuple[LlmCalibrationRecord, ...] = Field(
+        default=(),
+        description="Calibration records",
+    )
 
     @computed_field(description="Number of calibration records")  # type: ignore[prop-decorator]
     @property
@@ -104,6 +110,32 @@ class CollaborationController(Controller):
 
     path = "/agents/{agent_id:str}/collaboration"
     tags = ("collaboration",)
+
+    @staticmethod
+    def _require_override_store(
+        state: State,
+    ) -> CollaborationOverrideStore:
+        """Return the override store or raise 503.
+
+        Args:
+            state: Application state.
+
+        Raises:
+            ServiceUnavailableError: If the override store is not
+                configured.
+        """
+        app_state: AppState = state.app_state
+        tracker = app_state.performance_tracker
+        store = tracker.override_store
+        if store is None:
+            logger.warning(
+                API_REQUEST_ERROR,
+                path="collaboration/override",
+                reason="override_store_not_configured",
+            )
+            msg = "Override store not configured"
+            raise ServiceUnavailableError(msg)
+        return store
 
     @get("/score", guards=[require_read_access])
     async def get_score(
@@ -147,21 +179,17 @@ class CollaborationController(Controller):
             ServiceUnavailableError: If the override store is not configured.
             NotFoundError: If no active override exists.
         """
-        app_state: AppState = state.app_state
-        tracker = app_state.performance_tracker
-        store = tracker.override_store
-        if store is None:
+        store = self._require_override_store(state)
+        agent_nb = NotBlankStr(agent_id)
+        override = store.get_active_override(agent_nb)
+        if override is None:
             logger.warning(
                 API_REQUEST_ERROR,
                 path="collaboration/override",
-                reason="override_store_not_configured",
+                reason="override_not_found",
+                agent_id=agent_id,
             )
-            msg = "Override store not configured"
-            raise ServiceUnavailableError(msg)
-
-        override = store.get_active_override(NotBlankStr(agent_id))
-        if override is None:
-            msg = f"No active override for agent {agent_id!r}"
+            msg = "No active override for the specified agent"
             raise NotFoundError(msg)
 
         return ApiResponse(
@@ -193,19 +221,12 @@ class CollaborationController(Controller):
 
         Returns:
             The created override.
-        """
-        app_state: AppState = state.app_state
-        tracker = app_state.performance_tracker
 
-        store = tracker.override_store
-        if store is None:
-            logger.warning(
-                API_REQUEST_ERROR,
-                path="collaboration/override",
-                reason="override_store_not_configured",
-            )
-            msg = "Override store not configured"
-            raise ServiceUnavailableError(msg)
+        Raises:
+            ServiceUnavailableError: If the override store is not
+                configured or user identity cannot be determined.
+        """
+        store = self._require_override_store(state)
 
         now = datetime.now(UTC)
         expires_at = (
@@ -216,22 +237,21 @@ class CollaborationController(Controller):
 
         # Extract user identity from the authenticated request.
         auth_user = request.scope.get("user")
-        if isinstance(auth_user, AuthenticatedUser):
-            applied_by = str(auth_user.user_id)
-        else:
-            logger.warning(
+        if not isinstance(auth_user, AuthenticatedUser):
+            logger.error(
                 API_REQUEST_ERROR,
                 path="collaboration/override",
                 reason="user_identity_extraction_failed",
                 agent_id=agent_id,
             )
-            applied_by = "unknown"
+            msg = "Unable to determine user identity"
+            raise ServiceUnavailableError(msg)
 
         override = CollaborationOverride(
             agent_id=NotBlankStr(agent_id),
             score=data.score,
             reason=data.reason,
-            applied_by=NotBlankStr(applied_by),
+            applied_by=NotBlankStr(str(auth_user.user_id)),
             applied_at=now,
             expires_at=expires_at,
         )
@@ -267,21 +287,17 @@ class CollaborationController(Controller):
             ServiceUnavailableError: If the override store is not configured.
             NotFoundError: If no override exists to clear.
         """
-        app_state: AppState = state.app_state
-        tracker = app_state.performance_tracker
-        store = tracker.override_store
-        if store is None:
+        store = self._require_override_store(state)
+        agent_nb = NotBlankStr(agent_id)
+        removed = store.clear_override(agent_nb)
+        if not removed:
             logger.warning(
                 API_REQUEST_ERROR,
                 path="collaboration/override",
-                reason="override_store_not_configured",
+                reason="override_not_found",
+                agent_id=agent_id,
             )
-            msg = "Override store not configured"
-            raise ServiceUnavailableError(msg)
-
-        removed = store.clear_override(NotBlankStr(agent_id))
-        if not removed:
-            msg = f"No override to clear for agent {agent_id!r}"
+            msg = "No override to clear for the specified agent"
             raise NotFoundError(msg)
 
         return ApiResponse(data=None)

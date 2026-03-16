@@ -214,3 +214,32 @@ class TestSamplerIntegration:
             agent_id=NotBlankStr("agent-001"),
         )
         assert len(records) == 1
+
+    async def test_behavioral_strategy_failure_does_not_block(self) -> None:
+        """If behavioral strategy.score() raises, the record is stored."""
+        mock_strategy = AsyncMock()
+        mock_strategy.score = AsyncMock(
+            side_effect=RuntimeError("Strategy error"),
+        )
+        mock_strategy.name = "broken_strategy"
+        mock_sampler = MagicMock()
+        mock_sampler.should_sample.return_value = True
+        mock_sampler.sample = AsyncMock()
+        tracker = PerformanceTracker(
+            collaboration_strategy=mock_strategy,
+            sampler=mock_sampler,
+        )
+
+        record = make_collab_metric(
+            recorded_at=NOW,
+            interaction_summary="Some interaction",
+        )
+        await tracker.record_collaboration_event(record)
+
+        # Record should still be stored despite strategy failure.
+        records = tracker.get_collaboration_metrics(
+            agent_id=NotBlankStr("agent-001"),
+        )
+        assert len(records) == 1
+        # Sampler.sample() should NOT have been called.
+        mock_sampler.sample.assert_not_called()

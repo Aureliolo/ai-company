@@ -47,6 +47,29 @@ def _make_sampler(
 
 
 @pytest.mark.unit
+class TestConstructorValidation:
+    """Constructor input validation."""
+
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            ({"sampling_rate": -0.1}, "sampling_rate must be in"),
+            ({"sampling_rate": 1.1}, "sampling_rate must be in"),
+            ({"retention_days": 0}, "retention_days must be >= 1"),
+            ({"retention_days": -5}, "retention_days must be >= 1"),
+        ],
+    )
+    def test_invalid_constructor_raises(
+        self,
+        kwargs: dict[str, float | int],
+        match: str,
+    ) -> None:
+        """Invalid constructor parameters raise ValueError."""
+        with pytest.raises(ValueError, match=match):
+            _make_sampler(**kwargs)
+
+
+@pytest.mark.unit
 class TestShouldSample:
     """Probabilistic sampling decision."""
 
@@ -195,10 +218,18 @@ class TestSample:
 
         assert result is None
 
-    async def test_out_of_range_score_returns_none(self) -> None:
-        """LLM returning score > 10 produces None."""
+    @pytest.mark.parametrize(
+        "score_val",
+        [15.0, -1.0],
+        ids=["above_max", "below_min"],
+    )
+    async def test_out_of_range_score_returns_none(
+        self,
+        score_val: float,
+    ) -> None:
+        """LLM returning score outside [0, 10] produces None."""
         provider = _make_provider(
-            content='{"score": 15.0, "rationale": "Very good"}',
+            content=f'{{"score": {score_val}, "rationale": "Bad range"}}',
         )
         sampler = _make_sampler(provider=provider)
         record = make_collab_metric(

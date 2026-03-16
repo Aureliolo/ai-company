@@ -17,6 +17,12 @@ class PerformanceConfig(BaseModel):
         declining_threshold: Slope threshold for declining trend.
         collaboration_weights: Optional custom weights for collaboration
             scoring components.
+        llm_sampling_rate: Fraction of collaboration events sampled by
+            LLM (0.01 = 1%).
+        llm_sampling_model: Model ID for LLM calibration sampling
+            (None = disabled).
+        calibration_retention_days: Days to retain LLM calibration
+            records.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

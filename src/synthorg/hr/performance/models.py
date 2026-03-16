@@ -80,6 +80,8 @@ class CollaborationMetricRecord(BaseModel):
         meeting_contribution: Quality of meeting contribution.
         loop_triggered: Whether the agent triggered a delegation loop.
         handoff_completeness: Completeness of task handoff (0.0-1.0).
+        interaction_summary: Text summary of the interaction for LLM
+            calibration (None if not available).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -144,7 +146,7 @@ class QualityScoreResult(BaseModel):
 
     score: float = Field(ge=0.0, le=10.0, description="Overall quality score")
     strategy_name: NotBlankStr = Field(description="Scoring strategy used")
-    breakdown: tuple[tuple[str, float], ...] = Field(
+    breakdown: tuple[tuple[NotBlankStr, float], ...] = Field(
         default=(),
         description="Score components as (name, value) pairs",
     )
@@ -169,7 +171,7 @@ class CollaborationScoreResult(BaseModel):
 
     score: float = Field(ge=0.0, le=10.0, description="Overall collaboration score")
     strategy_name: NotBlankStr = Field(description="Scoring strategy used")
-    component_scores: tuple[tuple[str, float], ...] = Field(
+    component_scores: tuple[tuple[NotBlankStr, float], ...] = Field(
         default=(),
         description="Per-component scores as (name, value) pairs",
     )
@@ -231,6 +233,7 @@ class LlmCalibrationRecord(BaseModel):
         return round(abs(self.llm_score - self.behavioral_score), 4)
 
     rationale: NotBlankStr = Field(
+        max_length=2048,
         description="LLM's explanation for the score",
     )
     model_used: NotBlankStr = Field(

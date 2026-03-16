@@ -78,6 +78,7 @@ class CollaborationOverrideStore:
                 agent_id=agent_id,
                 expired_at=str(override.expires_at),
             )
+            del self._overrides[str(agent_id)]
             return None
 
         return override
