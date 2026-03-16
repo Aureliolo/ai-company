@@ -573,8 +573,8 @@ class TestStructuredErrorMetadata:
             resp = client.get("/test")
             body = resp.json()
             ed = body["error_detail"]
-            assert ed["title"] == "Resource Not Found"
-            assert ed["type"] == "https://synthorg.io/docs/errors#not_found"
+            assert ed["title"] == category_title(ErrorCategory.NOT_FOUND)
+            assert ed["type"] == category_type_uri(ErrorCategory.NOT_FOUND)
 
     def test_retry_after_is_none_for_non_rate_limit(self) -> None:
         """retry_after should be None for non-rate-limit errors."""

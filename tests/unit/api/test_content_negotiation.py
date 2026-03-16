@@ -62,119 +62,92 @@ class TestContentNegotiation:
         assert "success" not in body
         assert "error_detail" not in body
 
-    def test_problem_json_for_not_found(self) -> None:
-        """Accept: application/problem+json returns bare RFC 9457 body."""
+    @pytest.mark.parametrize(
+        ("exc_factory", "status", "error_code", "error_category", "retryable"),
+        [
+            (
+                lambda: RecordNotFoundError("gone"),
+                404,
+                ErrorCode.RECORD_NOT_FOUND,
+                ErrorCategory.NOT_FOUND,
+                False,
+            ),
+            (
+                lambda: UnauthorizedError("bad token"),
+                401,
+                ErrorCode.UNAUTHORIZED,
+                ErrorCategory.AUTH,
+                False,
+            ),
+            (
+                lambda: DuplicateRecordError("already exists"),
+                409,
+                ErrorCode.DUPLICATE_RECORD,
+                ErrorCategory.CONFLICT,
+                False,
+            ),
+            (
+                ValidationException,
+                400,
+                ErrorCode.REQUEST_VALIDATION_ERROR,
+                ErrorCategory.VALIDATION,
+                False,
+            ),
+            (
+                lambda: RuntimeError("boom"),
+                500,
+                ErrorCode.INTERNAL_ERROR,
+                ErrorCategory.INTERNAL,
+                False,
+            ),
+            (
+                ServiceUnavailableError,
+                503,
+                ErrorCode.SERVICE_UNAVAILABLE,
+                ErrorCategory.INTERNAL,
+                True,
+            ),
+        ],
+        ids=[
+            "not_found",
+            "auth",
+            "conflict",
+            "validation",
+            "unexpected",
+            "retryable",
+        ],
+    )
+    def test_problem_json_error_mapping(
+        self,
+        exc_factory: Any,
+        status: int,
+        error_code: ErrorCode,
+        error_category: ErrorCategory,
+        retryable: bool,
+    ) -> None:
+        """Accept: application/problem+json returns correct RFC 9457 body."""
 
         @get("/test")
         async def handler() -> None:
-            msg = "gone"
-            raise RecordNotFoundError(msg)
+            raise exc_factory()
 
         with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get(
                 "/test",
                 headers={"Accept": _PROBLEM_JSON},
             )
-            assert resp.status_code == 404
+            assert resp.status_code == status
             assert _PROBLEM_JSON in resp.headers.get("content-type", "")
             body = resp.json()
             self._assert_problem_detail(
                 body,
-                status=404,
-                error_code=ErrorCode.RECORD_NOT_FOUND,
-                error_category=ErrorCategory.NOT_FOUND,
-                retryable=False,
+                status=status,
+                error_code=error_code,
+                error_category=error_category,
+                retryable=retryable,
             )
-            assert body["detail"] == "Resource not found"
-            assert body["title"] == category_title(ErrorCategory.NOT_FOUND)
-            assert body["type"] == category_type_uri(ErrorCategory.NOT_FOUND)
-
-    def test_problem_json_for_auth_error(self) -> None:
-        @get("/test")
-        async def handler() -> None:
-            msg = "bad token"
-            raise UnauthorizedError(msg)
-
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get(
-                "/test",
-                headers={"Accept": _PROBLEM_JSON},
-            )
-            assert resp.status_code == 401
-            assert _PROBLEM_JSON in resp.headers.get("content-type", "")
-            body = resp.json()
-            self._assert_problem_detail(
-                body,
-                status=401,
-                error_code=ErrorCode.UNAUTHORIZED,
-                error_category=ErrorCategory.AUTH,
-                retryable=False,
-            )
-
-    def test_problem_json_for_conflict(self) -> None:
-        @get("/test")
-        async def handler() -> None:
-            msg = "already exists"
-            raise DuplicateRecordError(msg)
-
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get(
-                "/test",
-                headers={"Accept": _PROBLEM_JSON},
-            )
-            assert resp.status_code == 409
-            assert _PROBLEM_JSON in resp.headers.get("content-type", "")
-            body = resp.json()
-            self._assert_problem_detail(
-                body,
-                status=409,
-                error_code=ErrorCode.DUPLICATE_RECORD,
-                error_category=ErrorCategory.CONFLICT,
-                retryable=False,
-            )
-
-    def test_problem_json_for_validation_error(self) -> None:
-        @get("/test")
-        async def handler() -> None:
-            raise ValidationException
-
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get(
-                "/test",
-                headers={"Accept": _PROBLEM_JSON},
-            )
-            assert resp.status_code == 400
-            assert _PROBLEM_JSON in resp.headers.get("content-type", "")
-            body = resp.json()
-            self._assert_problem_detail(
-                body,
-                status=400,
-                error_code=ErrorCode.REQUEST_VALIDATION_ERROR,
-                error_category=ErrorCategory.VALIDATION,
-                retryable=False,
-            )
-
-    def test_problem_json_for_retryable_error(self) -> None:
-        """Retryable error includes retry metadata in problem+json."""
-
-        @get("/test")
-        async def handler() -> None:
-            raise ServiceUnavailableError
-
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get(
-                "/test",
-                headers={"Accept": _PROBLEM_JSON},
-            )
-            assert resp.status_code == 503
-            body = resp.json()
-            self._assert_problem_detail(
-                body,
-                status=503,
-                error_code=ErrorCode.SERVICE_UNAVAILABLE,
-                error_category=ErrorCategory.INTERNAL,
-                retryable=True,
-            )
+            assert body["title"] == category_title(error_category)
+            assert body["type"] == category_type_uri(error_category)
 
     def test_problem_json_5xx_scrubs_detail(self) -> None:
         """5xx problem+json responses scrub internal details."""
@@ -193,28 +166,6 @@ class TestContentNegotiation:
             body = resp.json()
             assert body["detail"] == "Service unavailable"
             assert "10.0.0.5" not in body["detail"]
-
-    def test_problem_json_for_unexpected_error(self) -> None:
-        @get("/test")
-        async def handler() -> None:
-            msg = "boom"
-            raise RuntimeError(msg)
-
-        with TestClient(make_exception_handler_app(handler)) as client:
-            resp = client.get(
-                "/test",
-                headers={"Accept": _PROBLEM_JSON},
-            )
-            assert resp.status_code == 500
-            assert _PROBLEM_JSON in resp.headers.get("content-type", "")
-            body = resp.json()
-            self._assert_problem_detail(
-                body,
-                status=500,
-                error_code=ErrorCode.INTERNAL_ERROR,
-                error_category=ErrorCategory.INTERNAL,
-                retryable=False,
-            )
 
     def test_problem_json_for_http_exception_headers(self) -> None:
         """HTTPException safe headers pass through in problem+json."""
