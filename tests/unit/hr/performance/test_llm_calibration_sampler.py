@@ -353,17 +353,16 @@ class TestRetentionPruning:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Records older than retention_days are pruned on next sample."""
-        # Pin datetime.now(UTC) to NOW so pruning cutoff is deterministic.
-        _real_datetime = datetime
-
-        class _FrozenDatetime(datetime):
-            @classmethod  # type: ignore[override]
-            def now(cls, tz: object = None) -> datetime:
-                return NOW if tz is UTC else _real_datetime.now(tz)
-
+        # Pin datetime.now to NOW so pruning cutoff is deterministic.
         monkeypatch.setattr(
             "synthorg.hr.performance.llm_calibration_sampler.datetime",
-            _FrozenDatetime,
+            type(
+                "FrozenDatetime",
+                (datetime,),
+                {
+                    "now": classmethod(lambda cls, tz=None: NOW),
+                },
+            ),
         )
 
         sampler = _make_sampler(retention_days=7)
