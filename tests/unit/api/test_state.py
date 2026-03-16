@@ -220,3 +220,23 @@ class TestAppStateMessageBusFlag:
         await bus.start()
         state = _make_state(message_bus=bus)
         assert state.has_message_bus is True
+
+
+@pytest.mark.unit
+class TestAppStateConfigResolver:
+    """Tests for config_resolver property."""
+
+    def test_config_resolver_raises_when_settings_service_none(self) -> None:
+        state = _make_state(settings_service=None)
+        with pytest.raises(ServiceUnavailableError):
+            _ = state.config_resolver
+
+    def test_config_resolver_returns_when_settings_service_set(self) -> None:
+        from unittest.mock import MagicMock
+
+        from synthorg.settings.resolver import ConfigResolver
+
+        mock_svc = MagicMock()
+        state = _make_state(settings_service=mock_svc)
+        resolver = state.config_resolver
+        assert isinstance(resolver, ConfigResolver)

@@ -24,13 +24,11 @@ class _Color(StrEnum):
 
 def _make_value(
     value: str,
-    namespace: str = "budget",
+    namespace: SettingNamespace = SettingNamespace.BUDGET,
     key: str = "total_monthly",
 ) -> SettingValue:
     return SettingValue(
-        namespace=SettingNamespace(namespace)
-        if namespace in SettingNamespace.__members__.values()
-        else SettingNamespace.BUDGET,
+        namespace=namespace,
         key=key,
         value=value,
         source=SettingSource.DEFAULT,
@@ -268,7 +266,7 @@ class TestGetAutonomyLevel:
         self, resolver: ConfigResolver, mock_settings: AsyncMock
     ) -> None:
         mock_settings.get.return_value = _make_value(
-            "supervised", namespace="company", key="autonomy_level"
+            "supervised", namespace=SettingNamespace.COMPANY, key="autonomy_level"
         )
         from synthorg.core.enums import AutonomyLevel
 
@@ -312,7 +310,7 @@ def _budget_get_side_effect(
         if value is None:
             msg = f"Unknown: {ns}/{key}"
             raise SettingNotFoundError(msg)
-        return _make_value(value, namespace=ns, key=key)
+        return _make_value(value, namespace=SettingNamespace(ns), key=key)
 
     return AsyncMock(side_effect=_get)
 
@@ -423,7 +421,7 @@ def _coordination_get_side_effect(
         if value is None:
             msg = f"Unknown: {ns}/{key}"
             raise SettingNotFoundError(msg)
-        return _make_value(value, namespace=ns, key=key)
+        return _make_value(value, namespace=SettingNamespace(ns), key=key)
 
     return AsyncMock(side_effect=_get)
 
@@ -552,7 +550,7 @@ def _make_resolver() -> tuple[ConfigResolver, AsyncMock]:
 
 @pytest.mark.unit
 @pytest.mark.timeout(30)
-class TestPropertyBased:
+class TestResolverScalarProperties:
     """Hypothesis-based roundtrip tests for scalar accessors."""
 
     @given(st.integers(min_value=-(2**31), max_value=2**31))
