@@ -110,6 +110,11 @@ func TestValidateSLSAPredicateWrongPayloadType(t *testing.T) {
 	}
 }
 
+// TestVerifyProvenanceInvalidAttestation verifies that VerifyProvenance rejects
+// an attestation with an invalid structure. The mock attestation has a non-SLSA
+// predicate and no Sigstore bundle, so VerifyProvenance may fail at either
+// validateSLSAPredicate or verifyAttestationBundle — the test exercises the
+// general invalid-attestation error path, not a specific validation step.
 func TestVerifyProvenanceInvalidAttestation(t *testing.T) {
 	repo := "test/image"
 	attestDigest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

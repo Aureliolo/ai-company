@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/health"
@@ -208,14 +207,11 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 		}
 	}
 
-	if err := regenerateCompose(state, tag, safeDir, effectiveVersion); err != nil {
-		rollback()
-		return err
-	}
-
 	errOut := ui.NewUI(cmd.ErrOrStderr())
 
-	// Verify container image signatures before pulling.
+	// Verify + write compose atomically: compose.yml is only updated after
+	// verification succeeds (or when --skip-verify explicitly skips it).
+	// This prevents a crash from leaving an unverified tag on disk.
 	digestPins, err := verifyAndPinForUpdate(ctx, state, tag, safeDir, effectiveVersion, out, errOut)
 	if err != nil {
 		rollback()
@@ -243,8 +239,15 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 // verifyAndPinForUpdate runs image verification and regenerates the compose
 // file with digest pins. Returns the digest pin map (nil if --skip-verify).
 func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir, effectiveVersion string, out io.Writer, errOut *ui.UI) (map[string]string, error) {
+	updatedState := state
+	updatedState.ImageTag = tag
+
 	if skipVerify {
 		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+		// Write compose with the new tag but no digest pins.
+		if err := writeDigestPinnedCompose(updatedState, nil, safeDir, effectiveVersion); err != nil {
+			return nil, err
+		}
 		return nil, nil
 	}
 
@@ -260,34 +263,16 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 		errOut.Hint("Use --skip-verify for air-gapped environments")
 		return nil, fmt.Errorf("image verification failed: %w", err)
 	}
-	pins := digestPinMap(results)
+	pins, err := digestPinMap(results)
+	if err != nil {
+		return nil, fmt.Errorf("digest pin map: %w", err)
+	}
 
-	// Re-regenerate compose with digest pins.
-	updatedState := state
-	updatedState.ImageTag = tag
+	// Write compose with verified digest pins.
 	if err := writeDigestPinnedCompose(updatedState, pins, safeDir, effectiveVersion); err != nil {
 		return nil, err
 	}
 	return pins, nil
-}
-
-// regenerateCompose writes a new compose.yml for the given image tag.
-// effectiveVersion overrides the stale in-memory version.Version after
-// selfupdate.Replace so the compose header reflects the new CLI version.
-func regenerateCompose(state config.State, tag, safeDir, effectiveVersion string) error {
-	updatedState := state
-	updatedState.ImageTag = tag
-	params := compose.ParamsFromState(updatedState)
-	params.CLIVersion = effectiveVersion
-	composeYAML, err := compose.Generate(params)
-	if err != nil {
-		return fmt.Errorf("generating compose file: %w", err)
-	}
-	composePath := filepath.Join(safeDir, "compose.yml")
-	if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
-		return fmt.Errorf("writing compose file: %w", err)
-	}
-	return nil
 }
 
 // restartIfRunning checks if containers are running and offers a restart.

@@ -114,21 +114,20 @@ func verifyAndPinImages(ctx context.Context, cmd *cobra.Command, state config.St
 		return fmt.Errorf("image verification failed: %w", err)
 	}
 
-	if err := pinDigestsInCompose(state, results, safeDir); err != nil {
+	pins, err := digestPinMap(results)
+	if err != nil {
+		return fmt.Errorf("digest pin map: %w", err)
+	}
+
+	if err := writeDigestPinnedCompose(state, pins, safeDir, version.Version); err != nil {
 		return fmt.Errorf("pinning verified digests: %w", err)
 	}
 
-	state.VerifiedDigests = digestPinMap(results)
+	state.VerifiedDigests = pins
 	if err := config.Save(state); err != nil {
 		errOut.Warn(fmt.Sprintf("Could not cache verified digests: %v", err))
 	}
 	return nil
-}
-
-// pinDigestsInCompose regenerates the compose file with digest-pinned image
-// references from the verified results.
-func pinDigestsInCompose(state config.State, results []verify.VerifyResult, safeDir string) error {
-	return writeDigestPinnedCompose(state, digestPinMap(results), safeDir, version.Version)
 }
 
 // writeDigestPinnedCompose generates and writes a compose file with digest-pinned
@@ -150,15 +149,17 @@ func writeDigestPinnedCompose(state config.State, digestPins map[string]string, 
 }
 
 // digestPinMap converts verification results to a map of image name → digest
-// for use in compose generation.
-func digestPinMap(results []verify.VerifyResult) map[string]string {
+// for use in compose generation. Returns an error if any result has an empty
+// digest — after successful verification all digests must be resolved.
+func digestPinMap(results []verify.VerifyResult) (map[string]string, error) {
 	pins := make(map[string]string, len(results))
 	for _, r := range results {
-		if r.Ref.Digest != "" {
-			pins[r.Ref.Name()] = r.Ref.Digest
+		if r.Ref.Digest == "" {
+			return nil, fmt.Errorf("image %s has no resolved digest after verification", r.Ref.Name())
 		}
+		pins[r.Ref.Name()] = r.Ref.Digest
 	}
-	return pins
+	return pins, nil
 }
 
 func composeRun(ctx context.Context, cobraCmd *cobra.Command, info docker.Info, dir string, args ...string) error {
