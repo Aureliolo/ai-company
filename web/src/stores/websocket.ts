@@ -153,7 +153,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
     )
     reconnectAttempts++
     reconnectTimer = setTimeout(() => {
-      if (shouldBeConnected) connect()
+      if (shouldBeConnected) {
+        connect().catch((err) => {
+          console.error('WebSocket reconnect failed:', sanitizeForLog(err))
+        })
+      }
     }, delay)
   }
 
