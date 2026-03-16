@@ -275,6 +275,9 @@ func renderHealthSummary(out *ui.UI, body []byte, statusCode int) {
 
 // formatUptime converts seconds to a human-readable duration like "3h 36m".
 func formatUptime(seconds float64) string {
+	if seconds < 0 {
+		return "-" + formatUptime(-seconds)
+	}
 	d := time.Duration(seconds) * time.Second
 	h := int(d.Hours())
 	m := int(d.Minutes()) % 60

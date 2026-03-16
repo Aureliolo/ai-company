@@ -130,16 +130,23 @@ func (u *UI) Table(headers []string, rows [][]string) {
 	if len(headers) == 0 {
 		return
 	}
-	// Sanitize all inputs.
+	// Sanitize all inputs — strip control chars and collapse whitespace
+	// that would break column alignment.
+	sanitize := func(s string) string {
+		s = stripControl(s)
+		s = strings.ReplaceAll(s, "\n", " ")
+		s = strings.ReplaceAll(s, "\t", " ")
+		return s
+	}
 	sanHeaders := make([]string, len(headers))
 	for i, h := range headers {
-		sanHeaders[i] = stripControl(h)
+		sanHeaders[i] = sanitize(h)
 	}
 	sanRows := make([][]string, len(rows))
 	for i, row := range rows {
 		sanRow := make([]string, len(row))
 		for j, cell := range row {
-			sanRow[j] = stripControl(cell)
+			sanRow[j] = sanitize(cell)
 		}
 		sanRows[i] = sanRow
 	}

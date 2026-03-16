@@ -70,6 +70,20 @@ invalid json line
 	}
 }
 
+func TestParseContainerJSON_Array(t *testing.T) {
+	input := `[{"Name":"a","Service":"backend","State":"running","Health":"healthy","Image":"img:1.0"},{"Name":"b","Service":"web","State":"running","Health":"","Image":"img:1.0"}]`
+	containers, failures := parseContainerJSON(input)
+	if len(containers) != 2 {
+		t.Fatalf("expected 2 containers, got %d", len(containers))
+	}
+	if failures != 0 {
+		t.Errorf("expected 0 failures, got %d", failures)
+	}
+	if containers[0].Service != "backend" {
+		t.Errorf("first container service = %q", containers[0].Service)
+	}
+}
+
 func TestFormatUptime(t *testing.T) {
 	tests := []struct {
 		seconds float64

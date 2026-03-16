@@ -109,7 +109,11 @@ func renderDoctorContainers(out *ui.UI, r diagnostics.Report) {
 		case c.Health == "healthy":
 			out.Success(fmt.Sprintf("%-24s healthy", c.Name))
 		case c.Health == "unhealthy", c.State == "exited":
-			out.Error(fmt.Sprintf("%-24s %s", c.Name, c.Health))
+			status := c.Health
+			if status == "" {
+				status = c.State
+			}
+			out.Error(fmt.Sprintf("%-24s %s", c.Name, status))
 		case c.Health != "":
 			out.Warn(fmt.Sprintf("%-24s %s (%s)", c.Name, c.State, c.Health))
 		default:
