@@ -13,6 +13,8 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/health"
 	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
+	"github.com/Aureliolo/synthorg/cli/internal/verify"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -210,6 +212,42 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 		return err
 	}
 
+	errOut := ui.NewUI(cmd.ErrOrStderr())
+
+	// Verify container image signatures before pulling.
+	var digestPins map[string]string
+	if !skipVerify {
+		_, _ = fmt.Fprintln(out, "Verifying container image signatures...")
+		results, err := verify.VerifyImages(ctx, verify.VerifyOptions{
+			Images: verify.BuildImageRefs(tag, state.Sandbox),
+			Output: out,
+		})
+		if err != nil {
+			rollback()
+			return fmt.Errorf("image verification failed: %w\n  Use --skip-verify for air-gapped environments", err)
+		}
+		digestPins = digestPinMap(results)
+
+		// Re-regenerate compose with digest pins.
+		updatedState := state
+		updatedState.ImageTag = tag
+		params := compose.ParamsFromState(updatedState)
+		params.CLIVersion = effectiveVersion
+		params.DigestPins = digestPins
+		composeYAML, err := compose.Generate(params)
+		if err != nil {
+			rollback()
+			return fmt.Errorf("generating digest-pinned compose file: %w", err)
+		}
+		composePath := filepath.Join(safeDir, "compose.yml")
+		if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
+			rollback()
+			return fmt.Errorf("writing digest-pinned compose file: %w", err)
+		}
+	} else {
+		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+	}
+
 	_, _ = fmt.Fprintf(out, "Pulling container images (%s)...\n", tag)
 	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
 		rollback()
@@ -220,6 +258,7 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 	// doesn't leave state claiming images are at the new version.
 	updatedState := state
 	updatedState.ImageTag = tag
+	updatedState.VerifiedDigests = digestPins
 	if err := config.Save(updatedState); err != nil {
 		rollback()
 		return fmt.Errorf("saving config: %w", err)

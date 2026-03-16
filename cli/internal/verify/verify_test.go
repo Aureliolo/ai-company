@@ -1,0 +1,138 @@
+package verify
+
+import (
+	"bytes"
+	"context"
+	"testing"
+)
+
+func TestImageRefString(t *testing.T) {
+	ref := ImageRef{
+		Registry:   "ghcr.io",
+		Repository: "aureliolo/synthorg-backend",
+		Tag:        "0.3.0",
+	}
+	want := "ghcr.io/aureliolo/synthorg-backend:0.3.0"
+	if got := ref.String(); got != want {
+		t.Errorf("String() = %q, want %q", got, want)
+	}
+}
+
+func TestImageRefDigestRef(t *testing.T) {
+	ref := ImageRef{
+		Registry:   "ghcr.io",
+		Repository: "aureliolo/synthorg-backend",
+		Tag:        "0.3.0",
+		Digest:     "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+	}
+	want := "ghcr.io/aureliolo/synthorg-backend@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+	if got := ref.DigestRef(); got != want {
+		t.Errorf("DigestRef() = %q, want %q", got, want)
+	}
+}
+
+func TestImageRefName(t *testing.T) {
+	tests := []struct {
+		repo string
+		want string
+	}{
+		{"aureliolo/synthorg-backend", "backend"},
+		{"aureliolo/synthorg-web", "web"},
+		{"aureliolo/synthorg-sandbox", "sandbox"},
+		{"other/repo", "other/repo"},
+	}
+	for _, tt := range tests {
+		ref := ImageRef{Repository: tt.repo}
+		if got := ref.Name(); got != tt.want {
+			t.Errorf("Name() for repo %q = %q, want %q", tt.repo, got, tt.want)
+		}
+	}
+}
+
+func TestNewImageRef(t *testing.T) {
+	ref := NewImageRef("backend", "0.3.0")
+	if ref.Registry != RegistryHost {
+		t.Errorf("Registry = %q, want %q", ref.Registry, RegistryHost)
+	}
+	if ref.Repository != "aureliolo/synthorg-backend" {
+		t.Errorf("Repository = %q, want aureliolo/synthorg-backend", ref.Repository)
+	}
+	if ref.Tag != "0.3.0" {
+		t.Errorf("Tag = %q, want 0.3.0", ref.Tag)
+	}
+}
+
+func TestBuildImageRefsWithSandbox(t *testing.T) {
+	refs := BuildImageRefs("0.3.0", true)
+	if len(refs) != 3 {
+		t.Fatalf("got %d refs, want 3", len(refs))
+	}
+	names := make([]string, len(refs))
+	for i, r := range refs {
+		names[i] = r.Name()
+	}
+	want := []string{"backend", "web", "sandbox"}
+	for i, w := range want {
+		if names[i] != w {
+			t.Errorf("refs[%d].Name() = %q, want %q", i, names[i], w)
+		}
+	}
+}
+
+func TestBuildImageRefsWithoutSandbox(t *testing.T) {
+	refs := BuildImageRefs("0.3.0", false)
+	if len(refs) != 2 {
+		t.Fatalf("got %d refs, want 2", len(refs))
+	}
+	for _, r := range refs {
+		if r.Name() == "sandbox" {
+			t.Error("sandbox should not be included when disabled")
+		}
+	}
+}
+
+func TestIsValidDigest(t *testing.T) {
+	tests := []struct {
+		digest string
+		valid  bool
+	}{
+		{"sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", true},
+		{"sha256:0000000000000000000000000000000000000000000000000000000000000000", true},
+		{"sha256:short", false},
+		{"md5:abcdef1234567890abcdef1234567890", false},
+		{"", false},
+		{"sha256:ABCDEF1234567890abcdef1234567890abcdef1234567890abcdef1234567890", false}, // uppercase
+	}
+	for _, tt := range tests {
+		if got := IsValidDigest(tt.digest); got != tt.valid {
+			t.Errorf("IsValidDigest(%q) = %v, want %v", tt.digest, got, tt.valid)
+		}
+	}
+}
+
+func TestVerifyImagesSkipVerify(t *testing.T) {
+	results, err := VerifyImages(context.Background(), VerifyOptions{
+		SkipVerify: true,
+		Images:     BuildImageRefs("0.3.0", true),
+		Output:     &bytes.Buffer{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if results != nil {
+		t.Errorf("expected nil results when SkipVerify=true, got %v", results)
+	}
+}
+
+func TestVerifyImagesNoImages(t *testing.T) {
+	results, err := VerifyImages(context.Background(), VerifyOptions{
+		Images: nil,
+		Output: &bytes.Buffer{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if results != nil {
+		t.Errorf("expected nil results for empty images, got %v", results)
+	}
+}

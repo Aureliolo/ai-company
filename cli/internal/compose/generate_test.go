@@ -99,6 +99,90 @@ func TestGenerateWithSandbox(t *testing.T) {
 	assertContains(t, yaml, "no-new-privileges:true")
 }
 
+func TestGenerateWithDigestPins(t *testing.T) {
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "0.3.0",
+		BackendPort:        8000,
+		WebPort:            3000,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		DigestPins: map[string]string{
+			"backend": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"web":     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		},
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	// Digest-pinned images should use @digest syntax.
+	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-backend@sha256:aaaa")
+	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-web@sha256:bbbb")
+
+	// Should NOT contain tag-based references for pinned images.
+	if strings.Contains(yaml, "synthorg-backend:0.3.0") {
+		t.Error("digest-pinned backend should not use tag")
+	}
+	if strings.Contains(yaml, "synthorg-web:0.3.0") {
+		t.Error("digest-pinned web should not use tag")
+	}
+
+	compareGolden(t, "compose_digest_pins.yml", out)
+}
+
+func TestGenerateWithDigestPinsAndSandbox(t *testing.T) {
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "0.3.0",
+		BackendPort:        8000,
+		WebPort:            3000,
+		LogLevel:           "info",
+		Sandbox:            true,
+		DockerSock:         "/var/run/docker.sock",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		DigestPins: map[string]string{
+			"backend": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"web":     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			"sandbox": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+		},
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-backend@sha256:aaaa")
+	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-web@sha256:bbbb")
+	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-sandbox@sha256:cccc")
+}
+
+func TestGenerateNilDigestPinsFallsBackToTag(t *testing.T) {
+	p := Params{
+		CLIVersion:         "dev",
+		ImageTag:           "0.3.0",
+		BackendPort:        8000,
+		WebPort:            3000,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+		DigestPins:         nil,
+	}
+	out, err := Generate(p)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	yaml := string(out)
+
+	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-backend:0.3.0")
+	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-web:0.3.0")
+}
+
 func TestGenerateHardeningPresent(t *testing.T) {
 	p := Params{
 		CLIVersion:         "dev",

@@ -9,10 +9,13 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Aureliolo/synthorg/cli/internal/compose"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/health"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
+	"github.com/Aureliolo/synthorg/cli/internal/verify"
+	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -58,7 +61,32 @@ func runStart(cmd *cobra.Command, args []string) error {
 		errOut.Warn(w)
 	}
 
-	// Pull latest images.
+	// Verify container image signatures before pulling.
+	if !skipVerify {
+		out.Step("Verifying container image signatures...")
+		results, err := verify.VerifyImages(ctx, verify.VerifyOptions{
+			Images: verify.BuildImageRefs(state.ImageTag, state.Sandbox),
+			Output: cmd.OutOrStdout(),
+		})
+		if err != nil {
+			return fmt.Errorf("image verification failed: %w\n  Use --skip-verify for air-gapped environments", err)
+		}
+
+		// Pin verified digests in compose file.
+		if err := pinDigestsInCompose(state, results, safeDir); err != nil {
+			return fmt.Errorf("pinning verified digests: %w", err)
+		}
+
+		// Cache verified digests in config.
+		state.VerifiedDigests = digestPinMap(results)
+		if err := config.Save(state); err != nil {
+			errOut.Warn(fmt.Sprintf("Could not cache verified digests: %v", err))
+		}
+	} else {
+		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+	}
+
+	// Pull images.
 	out.Step("Pulling images...")
 	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
 		return fmt.Errorf("pulling images: %w", err)
@@ -83,6 +111,36 @@ func runStart(cmd *cobra.Command, args []string) error {
 	out.KeyValue("API", fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort))
 	out.KeyValue("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
 	return nil
+}
+
+// pinDigestsInCompose regenerates the compose file with digest-pinned image
+// references from the verified results.
+func pinDigestsInCompose(state config.State, results []verify.VerifyResult, safeDir string) error {
+	params := compose.ParamsFromState(state)
+	params.CLIVersion = version.Version
+	params.DigestPins = digestPinMap(results)
+
+	composeYAML, err := compose.Generate(params)
+	if err != nil {
+		return fmt.Errorf("generating compose file: %w", err)
+	}
+	composePath := filepath.Join(safeDir, "compose.yml")
+	if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
+		return fmt.Errorf("writing compose file: %w", err)
+	}
+	return nil
+}
+
+// digestPinMap converts verification results to a map of image name → digest
+// for use in compose generation.
+func digestPinMap(results []verify.VerifyResult) map[string]string {
+	pins := make(map[string]string, len(results))
+	for _, r := range results {
+		if r.Ref.Digest != "" {
+			pins[r.Ref.Name()] = r.Ref.Digest
+		}
+	}
+	return pins
 }
 
 func composeRun(ctx context.Context, cobraCmd *cobra.Command, info docker.Info, dir string, args ...string) error {

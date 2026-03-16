@@ -2,8 +2,10 @@ package selfupdate
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
@@ -30,6 +32,7 @@ const (
 // 2. The signing certificate chains to Sigstore's trusted root
 // 3. The signer identity matches the expected GitHub Actions workflow
 // 4. The artifact digest matches the actual checksums data
+// 5. If the bundle contains a DSSE envelope, the predicate type is SLSA provenance
 func verifySigstoreBundle(checksumData, bundleData []byte) error {
 	b, err := loadBundleFromJSON(bundleData)
 	if err != nil {
@@ -76,6 +79,51 @@ func verifySigstoreBundle(checksumData, bundleData []byte) error {
 	))
 	if err != nil {
 		return fmt.Errorf("bundle verification failed: %w", err)
+	}
+
+	// Verify SLSA provenance predicate type if bundle contains a DSSE envelope.
+	if err := assertSLSAProvenance(b); err != nil {
+		return fmt.Errorf("SLSA provenance check: %w", err)
+	}
+
+	return nil
+}
+
+const (
+	// slsaProvenancePredicatePrefix is the prefix for SLSA provenance predicates.
+	slsaProvenancePredicatePrefix = "https://slsa.dev/provenance/"
+	// expectedDSSEPayloadType is the expected DSSE payload type for in-toto statements.
+	expectedDSSEPayloadType = "application/vnd.in-toto+json"
+)
+
+// slsaStatement is a minimal in-toto statement for predicate type extraction.
+type slsaStatement struct {
+	PredicateType string `json:"predicateType"`
+}
+
+// assertSLSAProvenance checks that the bundle contains a DSSE envelope with
+// a SLSA provenance predicate. If the bundle does not contain a DSSE envelope
+// (i.e. it's a plain message signature), this is a no-op — SLSA provenance
+// is additive assurance, not a hard requirement for older bundles.
+func assertSLSAProvenance(b *bundle.Bundle) error {
+	env := b.GetDsseEnvelope()
+	if env == nil {
+		// Bundle uses message signature, not DSSE — no provenance to check.
+		return nil
+	}
+
+	if env.PayloadType != expectedDSSEPayloadType {
+		return fmt.Errorf("unexpected DSSE payload type %q, want %q", env.PayloadType, expectedDSSEPayloadType)
+	}
+
+	// The protobuf DSSE envelope stores Payload as raw bytes.
+	var stmt slsaStatement
+	if err := json.Unmarshal(env.Payload, &stmt); err != nil {
+		return fmt.Errorf("parsing in-toto statement: %w", err)
+	}
+
+	if !strings.HasPrefix(stmt.PredicateType, slsaProvenancePredicatePrefix) {
+		return fmt.Errorf("unexpected predicate type %q, want prefix %q", stmt.PredicateType, slsaProvenancePredicatePrefix)
 	}
 
 	return nil

@@ -10,7 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var dataDir string
+var (
+	dataDir    string
+	skipVerify bool
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "synthorg",
@@ -25,6 +28,8 @@ to launch the backend and web dashboard containers.`,
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&dataDir, "data-dir", "", "data directory (default: platform-appropriate)")
+	rootCmd.PersistentFlags().BoolVar(&skipVerify, "skip-verify", false,
+		"skip container image signature and provenance verification (NOT RECOMMENDED)")
 }
 
 // resolveDataDir returns the effective data directory, using the flag value or

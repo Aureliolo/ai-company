@@ -39,6 +39,7 @@ type Params struct {
 	DockerSock         string
 	PersistenceBackend string
 	MemoryBackend      string
+	DigestPins         map[string]string // image name suffix → digest (e.g. "backend" → "sha256:abc...")
 }
 
 // ParamsFromState creates Params from a persisted State.
@@ -65,7 +66,8 @@ func Generate(p Params) ([]byte, error) {
 	}
 
 	funcMap := template.FuncMap{
-		"yamlStr": yamlStr,
+		"yamlStr":   yamlStr,
+		"digestPin": digestPin(p.DigestPins),
 	}
 
 	tmpl, err := template.New("compose").Funcs(funcMap).Parse(composeTmpl)
@@ -111,6 +113,17 @@ func validateParams(p Params) error {
 		return fmt.Errorf("invalid memory backend %q: must be one of %s", p.MemoryBackend, config.MemoryBackendNames())
 	}
 	return nil
+}
+
+// digestPin returns a template function that resolves an image name to either
+// a digest-pinned reference (repo@digest) or a tag-based reference (repo:tag).
+func digestPin(pins map[string]string) func(name, repo, tag string) string {
+	return func(name, repo, tag string) string {
+		if d, ok := pins[name]; ok && d != "" {
+			return repo + "@" + d
+		}
+		return repo + ":" + tag
+	}
 }
 
 // yamlStr safely quotes a string value for YAML, escaping special characters.
