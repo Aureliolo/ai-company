@@ -29,8 +29,8 @@ async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
 
 
 class TestSchemaMigrations:
-    async def test_schema_version_is_eight(self) -> None:
-        assert SCHEMA_VERSION == 8
+    async def test_schema_version_is_nine(self) -> None:
+        assert SCHEMA_VERSION == 9
 
     async def test_fresh_db_creates_all_v2_tables(
         self, memory_db: aiosqlite.Connection

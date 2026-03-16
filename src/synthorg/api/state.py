@@ -23,6 +23,7 @@ from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
+from synthorg.settings.service import SettingsService  # noqa: TC001
 
 logger = get_logger(__name__)
 
@@ -55,6 +56,7 @@ class AppState:
         "_message_bus",
         "_performance_tracker",
         "_persistence",
+        "_settings_service",
         "_task_engine",
         "approval_store",
         "config",
@@ -77,6 +79,7 @@ class AppState:
         performance_tracker: PerformanceTracker | None = None,
         meeting_orchestrator: MeetingOrchestrator | None = None,
         meeting_scheduler: MeetingScheduler | None = None,
+        settings_service: SettingsService | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
@@ -92,6 +95,7 @@ class AppState:
         self._performance_tracker = performance_tracker
         self._meeting_orchestrator = meeting_orchestrator
         self._meeting_scheduler = meeting_scheduler
+        self._settings_service = settings_service
         self.startup_time = startup_time
 
     def _require_service[T](self, service: T | None, name: str) -> T:
@@ -216,6 +220,16 @@ class AppState:
     def has_agent_registry(self) -> bool:
         """Check whether the agent registry is configured."""
         return self._agent_registry is not None
+
+    @property
+    def settings_service(self) -> SettingsService:
+        """Return settings service or raise 503."""
+        return self._require_service(self._settings_service, "settings_service")
+
+    @property
+    def has_settings_service(self) -> bool:
+        """Check whether the settings service is configured."""
+        return self._settings_service is not None
 
     @property
     def has_auth_service(self) -> bool:

@@ -37,6 +37,7 @@ __all__ = [
     "LifecycleEventRepository",
     "MessageRepository",
     "ParkedContextRepository",
+    "SettingsRepository",
     "TaskMetricRepository",
     "TaskRepository",
     "UserRepository",
@@ -653,6 +654,116 @@ class AgentStateRepository(Protocol):
 
         Returns:
             ``True`` if deleted, ``False`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+
+@runtime_checkable
+class SettingsRepository(Protocol):
+    """CRUD interface for namespaced settings persistence.
+
+    Settings are stored as ``(namespace, key)`` composite-keyed
+    string values with ``updated_at`` timestamps.
+    """
+
+    async def get(
+        self,
+        namespace: NotBlankStr,
+        key: NotBlankStr,
+    ) -> tuple[str, str] | None:
+        """Retrieve a setting value and its timestamp.
+
+        Args:
+            namespace: Setting namespace.
+            key: Setting key within the namespace.
+
+        Returns:
+            ``(value, updated_at)`` tuple, or ``None`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get_namespace(
+        self,
+        namespace: NotBlankStr,
+    ) -> tuple[tuple[str, str, str], ...]:
+        """Retrieve all settings in a namespace.
+
+        Args:
+            namespace: Setting namespace.
+
+        Returns:
+            Tuple of ``(key, value, updated_at)`` tuples, sorted by key.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def get_all(self) -> tuple[tuple[str, str, str, str], ...]:
+        """Retrieve all settings across all namespaces.
+
+        Returns:
+            Tuple of ``(namespace, key, value, updated_at)`` tuples,
+            sorted by namespace then key.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def set(
+        self,
+        namespace: NotBlankStr,
+        key: NotBlankStr,
+        value: str,
+        updated_at: str,
+    ) -> None:
+        """Upsert a setting value.
+
+        Args:
+            namespace: Setting namespace.
+            key: Setting key within the namespace.
+            value: Setting value as a string.
+            updated_at: ISO 8601 timestamp of the change.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def delete(
+        self,
+        namespace: NotBlankStr,
+        key: NotBlankStr,
+    ) -> bool:
+        """Delete a setting.
+
+        Args:
+            namespace: Setting namespace.
+            key: Setting key within the namespace.
+
+        Returns:
+            ``True`` if the setting was deleted, ``False`` if not found.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def delete_namespace(self, namespace: NotBlankStr) -> int:
+        """Delete all settings in a namespace.
+
+        Args:
+            namespace: Setting namespace.
+
+        Returns:
+            Number of settings deleted.
 
         Raises:
             PersistenceError: If the operation fails.

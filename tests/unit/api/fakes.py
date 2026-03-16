@@ -422,6 +422,9 @@ class FakePersistenceBackend:
         self._checkpoints = FakeCheckpointRepository()
         self._heartbeats = FakeHeartbeatRepository()
         self._agent_states = FakeAgentStateRepository()
+        self._settings_repo = FakeSettingsRepository()
+        # Legacy flat KV store for get_setting/set_setting (pre-namespaced).
+        # The `settings` property returns `_settings_repo` (namespaced repo).
         self._settings: dict[str, str] = {}
         self._connected = False
 
@@ -497,11 +500,56 @@ class FakePersistenceBackend:
     def agent_states(self) -> FakeAgentStateRepository:
         return self._agent_states
 
+    @property
+    def settings(self) -> FakeSettingsRepository:
+        return self._settings_repo
+
     async def get_setting(self, key: str) -> str | None:
         return self._settings.get(key)
 
     async def set_setting(self, key: str, value: str) -> None:
         self._settings[key] = value
+
+
+class FakeSettingsRepository:
+    """In-memory namespaced settings repository for tests."""
+
+    def __init__(self) -> None:
+        self._store: dict[tuple[str, str], tuple[str, str]] = {}
+
+    async def get(self, namespace: str, key: str) -> tuple[str, str] | None:
+        return self._store.get((namespace, key))
+
+    async def get_namespace(self, namespace: str) -> tuple[tuple[str, str, str], ...]:
+        result = [
+            (k, v, ts)
+            for (ns, k), (v, ts) in sorted(self._store.items())
+            if ns == namespace
+        ]
+        return tuple(result)
+
+    async def get_all(self) -> tuple[tuple[str, str, str, str], ...]:
+        result = [(ns, k, v, ts) for (ns, k), (v, ts) in sorted(self._store.items())]
+        return tuple(result)
+
+    async def set(self, namespace: str, key: str, value: str, updated_at: str) -> None:
+        self._store = {
+            **self._store,
+            (namespace, key): (value, updated_at),
+        }
+
+    async def delete(self, namespace: str, key: str) -> bool:
+        if (namespace, key) in self._store:
+            self._store = {
+                k: v for k, v in self._store.items() if k != (namespace, key)
+            }
+            return True
+        return False
+
+    async def delete_namespace(self, namespace: str) -> int:
+        keys = [k for k in self._store if k[0] == namespace]
+        self._store = {k: v for k, v in self._store.items() if k[0] != namespace}
+        return len(keys)
 
 
 class FakeMessageBus:
