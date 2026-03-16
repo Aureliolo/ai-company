@@ -4,7 +4,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from litestar import Litestar, get
+from litestar import get
 from litestar.exceptions import HTTPException, ValidationException
 from litestar.testing import TestClient
 
@@ -16,25 +16,16 @@ from synthorg.api.errors import (
     category_title,
     category_type_uri,
 )
-from synthorg.api.exception_handlers import (
-    EXCEPTION_HANDLERS,
-    _wants_problem_json,
-)
+from synthorg.api.exception_handlers import _wants_problem_json
 from synthorg.persistence.errors import (
     DuplicateRecordError,
     RecordNotFoundError,
 )
+from tests.unit.api.conftest import make_exception_handler_app
 
 pytestmark = pytest.mark.unit
 
 _PROBLEM_JSON = "application/problem+json"
-
-
-def _make_app(handler: Any) -> Litestar:
-    return Litestar(
-        route_handlers=[handler],
-        exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
-    )
 
 
 class TestContentNegotiation:
@@ -79,7 +70,7 @@ class TestContentNegotiation:
             msg = "gone"
             raise RecordNotFoundError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get(
                 "/test",
                 headers={"Accept": _PROBLEM_JSON},
@@ -104,7 +95,7 @@ class TestContentNegotiation:
             msg = "bad token"
             raise UnauthorizedError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get(
                 "/test",
                 headers={"Accept": _PROBLEM_JSON},
@@ -126,7 +117,7 @@ class TestContentNegotiation:
             msg = "already exists"
             raise DuplicateRecordError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get(
                 "/test",
                 headers={"Accept": _PROBLEM_JSON},
@@ -147,7 +138,7 @@ class TestContentNegotiation:
         async def handler() -> None:
             raise ValidationException
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get(
                 "/test",
                 headers={"Accept": _PROBLEM_JSON},
@@ -170,7 +161,7 @@ class TestContentNegotiation:
         async def handler() -> None:
             raise ServiceUnavailableError
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get(
                 "/test",
                 headers={"Accept": _PROBLEM_JSON},
@@ -193,7 +184,7 @@ class TestContentNegotiation:
             msg = "Connection pool exhausted: 10.0.0.5:5432"
             raise ServiceUnavailableError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get(
                 "/test",
                 headers={"Accept": _PROBLEM_JSON},
@@ -209,7 +200,7 @@ class TestContentNegotiation:
             msg = "boom"
             raise RuntimeError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get(
                 "/test",
                 headers={"Accept": _PROBLEM_JSON},
@@ -236,7 +227,7 @@ class TestContentNegotiation:
                 headers={"Retry-After": "60", "X-Internal": "secret"},
             )
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get(
                 "/test",
                 headers={"Accept": _PROBLEM_JSON},
@@ -254,7 +245,7 @@ class TestContentNegotiation:
             msg = "gone"
             raise RecordNotFoundError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 404
             body = resp.json()
@@ -270,7 +261,7 @@ class TestContentNegotiation:
             msg = "gone"
             raise RecordNotFoundError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get(
                 "/test",
                 headers={"Accept": "application/json"},
@@ -289,7 +280,7 @@ class TestContentNegotiation:
             msg = "gone"
             raise RecordNotFoundError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get(
                 "/test",
                 headers={"Accept": "*/*"},
@@ -307,7 +298,7 @@ class TestContentNegotiation:
             msg = "gone"
             raise RecordNotFoundError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get(
                 "/test",
                 headers={

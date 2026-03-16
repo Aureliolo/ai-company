@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import structlog
-from litestar import Litestar, get, post
+from litestar import get, post
 from litestar.exceptions import (
     HTTPException,
     NotAuthorizedException,
@@ -29,8 +29,8 @@ from synthorg.api.errors import (
     category_type_uri,
 )
 from synthorg.api.exception_handlers import (
-    EXCEPTION_HANDLERS,
     _build_error_response,
+    _build_response,
     _category_for_status,
     _get_instance_id,
     handle_http_exception,
@@ -41,19 +41,13 @@ from synthorg.persistence.errors import (
     PersistenceError,
     RecordNotFoundError,
 )
+from tests.unit.api.conftest import make_exception_handler_app
 
 pytestmark = pytest.mark.unit
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
 )
-
-
-def _make_app(handler: Any) -> Litestar:
-    return Litestar(
-        route_handlers=[handler],
-        exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
-    )
 
 
 def _assert_error_detail(
@@ -72,7 +66,7 @@ def _assert_error_detail(
     assert detail["retryable"] is retryable
     assert detail["retry_after"] == retry_after
     assert detail["detail"] == body["error"]
-    # RFC 9457 Phase 2 fields
+    # RFC 9457 title/type fields
     assert isinstance(detail["title"], str)
     assert len(detail["title"]) > 0
     assert isinstance(detail["type"], str)
@@ -89,7 +83,7 @@ class TestExceptionHandlers:
             msg = "gone"
             raise RecordNotFoundError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 404
             body = resp.json()
@@ -109,7 +103,7 @@ class TestExceptionHandlers:
             msg = "exists"
             raise DuplicateRecordError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 409
             body = resp.json()
@@ -127,7 +121,7 @@ class TestExceptionHandlers:
             msg = "db fail"
             raise PersistenceError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
@@ -135,7 +129,7 @@ class TestExceptionHandlers:
             assert body["error"] == "Internal server error"
             _assert_error_detail(
                 body,
-                error_code=ErrorCode.INTERNAL_ERROR,
+                error_code=ErrorCode.PERSISTENCE_ERROR,
                 error_category=ErrorCategory.INTERNAL,
                 retryable=False,
             )
@@ -146,7 +140,7 @@ class TestExceptionHandlers:
             msg = "nope"
             raise NotFoundError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 404
             body = resp.json()
@@ -165,7 +159,7 @@ class TestExceptionHandlers:
             msg = "conflict"
             raise ConflictError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 409
             body = resp.json()
@@ -183,7 +177,7 @@ class TestExceptionHandlers:
             msg = "denied"
             raise ForbiddenError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 403
             body = resp.json()
@@ -201,7 +195,7 @@ class TestExceptionHandlers:
             msg = "bad input"
             raise ValueError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
@@ -218,7 +212,7 @@ class TestExceptionHandlers:
             msg = "boom"
             raise RuntimeError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 500
             body = resp.json()
@@ -237,7 +231,7 @@ class TestExceptionHandlers:
             msg = "Invalid credentials"
             raise UnauthorizedError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
@@ -256,7 +250,7 @@ class TestExceptionHandlers:
             msg = "Bad field"
             raise ApiValidationError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 422
             body = resp.json()
@@ -275,7 +269,7 @@ class TestExceptionHandlers:
         async def handler() -> str:
             return "ok"
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/nonexistent")
             assert resp.status_code == 404
             body = resp.json()
@@ -295,7 +289,7 @@ class TestExceptionHandlers:
         async def handler() -> None:
             raise PermissionDeniedException
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 403
             body = resp.json()
@@ -315,7 +309,7 @@ class TestExceptionHandlers:
         async def handler() -> None:
             raise PermissionDeniedException(detail="Write access denied")
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 403
             body = resp.json()
@@ -334,7 +328,7 @@ class TestExceptionHandlers:
         async def handler() -> None:
             raise NotAuthorizedException
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
@@ -354,7 +348,7 @@ class TestExceptionHandlers:
         async def handler() -> None:
             raise NotAuthorizedException(detail="Invalid JWT token")
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 401
             body = resp.json()
@@ -373,7 +367,7 @@ class TestExceptionHandlers:
         async def handler() -> None:
             raise ValidationException
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 400
             body = resp.json()
@@ -395,7 +389,7 @@ class TestExceptionHandlers:
         async def handler() -> str:
             return "ok"
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 405
             body = resp.json()
@@ -419,7 +413,7 @@ class TestExceptionHandlers:
                 detail="upstream db connection refused",
             )
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 502
             body = resp.json()
@@ -439,7 +433,7 @@ class TestExceptionHandlers:
         async def handler() -> None:
             raise HTTPException(status_code=429)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 429
             body = resp.json()
@@ -478,7 +472,7 @@ class TestStructuredErrorMetadata:
         async def handler() -> None:
             raise ServiceUnavailableError
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 503
             body = resp.json()
@@ -495,7 +489,7 @@ class TestStructuredErrorMetadata:
         async def handler() -> None:
             raise HTTPException(status_code=429, detail="Slow down")
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 429
             body = resp.json()
@@ -506,12 +500,31 @@ class TestStructuredErrorMetadata:
                 retryable=True,
             )
 
+    def test_http_429_retry_after_header_propagated_to_body(self) -> None:
+        """Retry-After header value is parsed into the body field."""
+
+        @get("/test")
+        async def handler() -> None:
+            raise HTTPException(
+                status_code=429,
+                detail="Slow down",
+                headers={"Retry-After": "60"},
+            )
+
+        with TestClient(make_exception_handler_app(handler)) as client:
+            resp = client.get("/test")
+            assert resp.status_code == 429
+            body = resp.json()
+            assert resp.headers.get("retry-after") == "60"
+            assert body["error_detail"]["retry_after"] == 60
+            assert body["error_detail"]["retryable"] is True
+
     def test_http_503_is_retryable(self) -> None:
         @get("/test")
         async def handler() -> None:
             raise HTTPException(status_code=503)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 503
             body = resp.json()
@@ -543,7 +556,7 @@ class TestStructuredErrorMetadata:
             msg = "custom not found"
             raise NotFoundError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             body = resp.json()
             assert body["error_detail"]["detail"] == body["error"]
@@ -556,7 +569,7 @@ class TestStructuredErrorMetadata:
             msg = "gone"
             raise NotFoundError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             body = resp.json()
             ed = body["error_detail"]
@@ -571,7 +584,7 @@ class TestStructuredErrorMetadata:
             msg = "dup"
             raise ConflictError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             body = resp.json()
             assert body["error_detail"]["retry_after"] is None
@@ -584,7 +597,7 @@ class TestStructuredErrorMetadata:
             msg = "Connection pool exhausted: 10.0.0.5:5432"
             raise ServiceUnavailableError(msg)
 
-        with TestClient(_make_app(handler)) as client:
+        with TestClient(make_exception_handler_app(handler)) as client:
             resp = client.get("/test")
             assert resp.status_code == 503
             body = resp.json()
@@ -723,3 +736,45 @@ class TestBuildErrorResponseRetryAfter:
         assert resp.error_detail.retryable is True
         assert resp.error_detail.title == category_title(ErrorCategory.RATE_LIMIT)
         assert resp.error_detail.type == category_type_uri(ErrorCategory.RATE_LIMIT)
+
+
+class TestBuildResponseFallback:
+    """Test _build_response defensive fallback when construction fails."""
+
+    def test_fallback_returns_500_on_build_failure(self) -> None:
+        """If ProblemDetail/ErrorDetail construction fails, return 500."""
+        request = MagicMock()
+        request.accept.best_match.return_value = "application/json"
+
+        with patch(
+            "synthorg.api.exception_handlers._build_error_response",
+            side_effect=RuntimeError("construction failed"),
+        ):
+            resp = _build_response(
+                request,
+                detail="Resource not found",
+                error_code=ErrorCode.RECORD_NOT_FOUND,
+                error_category=ErrorCategory.NOT_FOUND,
+                status_code=404,
+            )
+        assert resp.status_code == 500
+        assert resp.content == {"error": "Internal server error"}  # type: ignore[comparison-overlap]
+
+    def test_fallback_returns_500_on_problem_json_build_failure(self) -> None:
+        """Fallback fires for problem+json path too."""
+        request = MagicMock()
+        request.accept.best_match.return_value = "application/problem+json"
+
+        with patch(
+            "synthorg.api.exception_handlers._build_problem_detail_response",
+            side_effect=RuntimeError("construction failed"),
+        ):
+            resp = _build_response(
+                request,
+                detail="Resource not found",
+                error_code=ErrorCode.RECORD_NOT_FOUND,
+                error_category=ErrorCategory.NOT_FOUND,
+                status_code=404,
+            )
+        assert resp.status_code == 500
+        assert resp.content == {"error": "Internal server error"}  # type: ignore[comparison-overlap]

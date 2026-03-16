@@ -28,7 +28,7 @@ Send `Accept: application/problem+json` to receive bare RFC 9457 responses:
 ```bash
 curl -H "Accept: application/problem+json" \
      -H "Authorization: Bearer $TOKEN" \
-     https://localhost:8000/api/v1/tasks/nonexistent
+     http://localhost:8000/api/v1/tasks/nonexistent
 ```
 
 Response (`404 Not Found`, `Content-Type: application/problem+json`):
@@ -54,7 +54,7 @@ in the standard `ApiResponse` envelope:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-     https://localhost:8000/api/v1/tasks/nonexistent
+     http://localhost:8000/api/v1/tasks/nonexistent
 ```
 
 Response (`404 Not Found`):
@@ -91,9 +91,9 @@ category-specific section of this page.
 | `not_found` | Resource Not Found | 404 | `https://synthorg.io/docs/errors#not_found` |
 | `conflict` | Resource Conflict | 409 | `https://synthorg.io/docs/errors#conflict` |
 | `rate_limit` | Rate Limit Exceeded | 429 | `https://synthorg.io/docs/errors#rate_limit` |
-| `budget_exhausted` | Budget Exhausted | 402 | `https://synthorg.io/docs/errors#budget_exhausted` |
-| `provider_error` | Provider Error | 502 | `https://synthorg.io/docs/errors#provider_error` |
-| `internal` | Internal Server Error | 500, 502, 503 | `https://synthorg.io/docs/errors#internal` |
+| `budget_exhausted` | Budget Exhausted | 402 (planned) | `https://synthorg.io/docs/errors#budget_exhausted` |
+| `provider_error` | Provider Error | 502 (planned) | `https://synthorg.io/docs/errors#provider_error` |
+| `internal` | Internal Server Error | 500, 503 | `https://synthorg.io/docs/errors#internal` |
 
 ---
 

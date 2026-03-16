@@ -13,6 +13,7 @@ All handlers populate structured RFC 9457 metadata (error code, category,
 retryability, title, type URI, request correlation ID).
 """
 
+import contextlib
 from http import HTTPStatus
 from types import MappingProxyType
 from typing import Any, Final
@@ -38,7 +39,9 @@ from synthorg.api.errors import (
 from synthorg.observability import get_logger
 from synthorg.observability.correlation import generate_correlation_id
 from synthorg.observability.events.api import (
+    API_ACCEPT_PARSE_FAILED,
     API_CONTENT_NEGOTIATED,
+    API_CORRELATION_FALLBACK,
     API_REQUEST_ERROR,
     API_ROUTE_NOT_FOUND,
 )
@@ -53,6 +56,8 @@ logger = get_logger(__name__)
 _SERVER_ERROR_THRESHOLD: Final[int] = 500
 
 _PROBLEM_JSON: Final[str] = "application/problem+json"
+
+_MAX_DETAIL_LEN: Final[int] = 512
 
 # Headers safe to forward from HTTPException to the client response.
 _ALLOWED_PASSTHROUGH_HEADERS: Final[frozenset[str]] = frozenset(
@@ -73,7 +78,7 @@ def _get_instance_id() -> str:
             return request_id
     except Exception as exc:
         logger.debug(
-            "correlation_id_fallback_generated",
+            API_CORRELATION_FALLBACK,
             error_type=type(exc).__qualname__,
             error=str(exc),
         )
@@ -94,7 +99,12 @@ def _wants_problem_json(request: Request[Any, Any, Any]) -> bool:
         match = request.accept.best_match(
             ["application/json", _PROBLEM_JSON],
         )
-    except Exception:
+    except Exception as exc:
+        logger.debug(
+            API_ACCEPT_PARSE_FAILED,
+            error_type=type(exc).__qualname__,
+            error=str(exc),
+        )
         return False
     return match == _PROBLEM_JSON
 
@@ -128,6 +138,35 @@ def _build_error_response(
     )
 
 
+def _build_problem_detail_response(  # noqa: PLR0913
+    *,
+    detail: str,
+    error_code: ErrorCode,
+    error_category: ErrorCategory,
+    status_code: int,
+    retryable: bool,
+    retry_after: int | None,
+    headers: dict[str, str] | None,
+) -> Response[ProblemDetail]:
+    """Build a bare RFC 9457 ``application/problem+json`` response."""
+    return Response(
+        content=ProblemDetail(
+            type=category_type_uri(error_category),
+            title=category_title(error_category),
+            status=status_code,
+            detail=detail,
+            instance=_get_instance_id(),
+            error_code=error_code,
+            error_category=error_category,
+            retryable=retryable,
+            retry_after=retry_after,
+        ),
+        status_code=status_code,
+        media_type=_PROBLEM_JSON,
+        headers=headers,
+    )
+
+
 def _build_response(  # noqa: PLR0913
     request: Request[Any, Any, Any],
     *,
@@ -155,20 +194,13 @@ def _build_response(  # noqa: PLR0913
                 format="problem+json",
                 status_code=status_code,
             )
-            return Response(
-                content=ProblemDetail(
-                    type=category_type_uri(error_category),
-                    title=category_title(error_category),
-                    status=status_code,
-                    detail=detail,
-                    instance=_get_instance_id(),
-                    error_code=error_code,
-                    error_category=error_category,
-                    retryable=retryable,
-                    retry_after=retry_after,
-                ),
+            return _build_problem_detail_response(
+                detail=detail,
+                error_code=error_code,
+                error_category=error_category,
                 status_code=status_code,
-                media_type=_PROBLEM_JSON,
+                retryable=retryable,
+                retry_after=retry_after,
                 headers=headers,
             )
         return Response(
@@ -187,11 +219,14 @@ def _build_response(  # noqa: PLR0913
             API_REQUEST_ERROR,
             error_type="response_build_failure",
             error="Failed to build structured error response",
+            detail=detail,
+            original_status_code=status_code,
             exc_info=True,
         )
         return Response(  # type: ignore[return-value]
             content={"error": "Internal server error"},
-            status_code=status_code,
+            status_code=500,
+            media_type="application/json",
         )
 
 
@@ -294,7 +329,7 @@ def handle_persistence_error(
     return _build_response(
         request,
         detail="Internal server error",
-        error_code=ErrorCode.INTERNAL_ERROR,
+        error_code=ErrorCode.PERSISTENCE_ERROR,
         error_category=ErrorCategory.INTERNAL,
         status_code=500,
     )
@@ -429,18 +464,26 @@ def handle_http_exception(
             fallback = HTTPStatus(status).phrase
         except ValueError:
             fallback = "Request error"
-        msg = exc.detail or fallback
+        msg = (exc.detail or fallback)[:_MAX_DETAIL_LEN]
     code, category, retryable = _category_for_status(status)
+    # Parse Retry-After header into the body field for agent consumers.
+    retry_after: int | None = None
+    raw_headers = exc.headers or {}
+    raw_retry = raw_headers.get("Retry-After") or raw_headers.get("retry-after")
+    if raw_retry:
+        with contextlib.suppress(ValueError):
+            retry_after = int(raw_retry)
     return _build_response(
         request,
         detail=msg,
         error_code=code,
         error_category=category,
         retryable=retryable,
+        retry_after=retry_after,
         status_code=status,
         headers={
             k: v
-            for k, v in (exc.headers or {}).items()
+            for k, v in raw_headers.items()
             if k.lower() in _ALLOWED_PASSTHROUGH_HEADERS
         }
         or None,
@@ -452,15 +495,17 @@ def handle_http_exception(
 # order does NOT affect resolution priority.  (For HTTPException subclasses,
 # Litestar also checks integer status-code keys first, but this dict uses
 # only type keys.)
-EXCEPTION_HANDLERS: dict[type[Exception], object] = {
-    RecordNotFoundError: handle_record_not_found,
-    DuplicateRecordError: handle_duplicate_record,
-    PersistenceError: handle_persistence_error,
-    NotAuthorizedException: handle_not_authorized,
-    PermissionDeniedException: handle_permission_denied,
-    ValidationException: handle_validation_error,
-    NotFoundException: handle_not_found,
-    HTTPException: handle_http_exception,
-    ApiError: handle_api_error,
-    Exception: handle_unexpected,
-}
+EXCEPTION_HANDLERS: MappingProxyType[type[Exception], object] = MappingProxyType(
+    {
+        RecordNotFoundError: handle_record_not_found,
+        DuplicateRecordError: handle_duplicate_record,
+        PersistenceError: handle_persistence_error,
+        NotAuthorizedException: handle_not_authorized,
+        PermissionDeniedException: handle_permission_denied,
+        ValidationException: handle_validation_error,
+        NotFoundException: handle_not_found,
+        HTTPException: handle_http_exception,
+        ApiError: handle_api_error,
+        Exception: handle_unexpected,
+    }
+)

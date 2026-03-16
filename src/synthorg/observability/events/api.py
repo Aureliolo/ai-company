@@ -48,3 +48,5 @@ API_COORDINATION_AGENT_RESOLVE_FAILED: Final[str] = (
     "api.coordination.agent_resolve_failed"
 )
 API_CONTENT_NEGOTIATED: Final[str] = "api.content.negotiated"
+API_CORRELATION_FALLBACK: Final[str] = "api.correlation.fallback"
+API_ACCEPT_PARSE_FAILED: Final[str] = "api.accept.parse_failed"
