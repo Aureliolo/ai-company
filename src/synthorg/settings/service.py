@@ -17,6 +17,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
     SETTINGS_CACHE_INVALIDATED,
     SETTINGS_ENCRYPTION_ERROR,
+    SETTINGS_NOT_FOUND,
     SETTINGS_NOTIFICATION_FAILED,
     SETTINGS_NOTIFICATION_PUBLISHED,
     SETTINGS_VALIDATION_FAILED,
@@ -86,7 +87,7 @@ def _validate_by_type(definition: SettingDefinition, value: str) -> None:
     elif setting_type == SettingType.ENUM:
         _validate_enum(definition, value)
     elif setting_type == SettingType.JSON:
-        _validate_json(value)
+        _validate_json(definition, value)
 
 
 def _validate_integer(definition: SettingDefinition, value: str) -> None:
@@ -123,11 +124,17 @@ def _validate_enum(definition: SettingDefinition, value: str) -> None:
         raise SettingValidationError(msg)
 
 
-def _validate_json(value: str) -> None:
+def _validate_json(definition: SettingDefinition, value: str) -> None:
     try:
         json.loads(value)
     except json.JSONDecodeError as exc:
-        msg = f"Invalid JSON: {exc}"
+        if definition.sensitive:
+            msg = (
+                f"Invalid JSON for sensitive setting"
+                f" {definition.namespace}/{definition.key}"
+            )
+        else:
+            msg = f"Invalid JSON: {exc}"
         raise SettingValidationError(msg) from exc
 
 
@@ -193,6 +200,7 @@ class SettingsService:
         """
         definition = self._registry.get(namespace, key)
         if definition is None:
+            logger.warning(SETTINGS_NOT_FOUND, namespace=namespace, key=key)
             msg = f"Unknown setting: {namespace}/{key}"
             raise SettingNotFoundError(msg)
 
@@ -211,7 +219,19 @@ class SettingsService:
         if result is not None:
             raw_value, updated_at = result
             value = raw_value
-            if definition.sensitive and self._encryptor is not None:
+            if definition.sensitive:
+                if self._encryptor is None:
+                    logger.error(
+                        SETTINGS_ENCRYPTION_ERROR,
+                        namespace=namespace,
+                        key=key,
+                        reason="no_encryptor_on_read",
+                    )
+                    msg = (
+                        f"Cannot decrypt sensitive setting"
+                        f" {namespace}/{key}: no encryptor"
+                    )
+                    raise SettingsEncryptionError(msg)
                 value = self._encryptor.decrypt(raw_value)
             setting_value = SettingValue(
                 namespace=definition.namespace,
@@ -232,55 +252,8 @@ class SettingsService:
             )
             return setting_value
 
-        # 3. Environment variable (env vars are protected by OS-level
-        # isolation — no encryption needed for env-sourced values)
-        env_name = _env_var_name(namespace, key)
-        env_val = os.environ.get(env_name)
-        if env_val is not None:
-            logger.debug(
-                SETTINGS_VALUE_RESOLVED,
-                namespace=namespace,
-                key=key,
-                source="env",
-            )
-            return SettingValue(
-                namespace=definition.namespace,
-                key=key,
-                value=env_val,
-                source=SettingSource.ENVIRONMENT,
-            )
-
-        # 4. YAML config bridge
-        if definition.yaml_path is not None:
-            yaml_val = extract_from_config(self._config, definition.yaml_path)
-            if yaml_val is not None:
-                logger.debug(
-                    SETTINGS_VALUE_RESOLVED,
-                    namespace=namespace,
-                    key=key,
-                    source="yaml",
-                )
-                return SettingValue(
-                    namespace=definition.namespace,
-                    key=key,
-                    value=yaml_val,
-                    source=SettingSource.YAML,
-                )
-
-        # 5. Code default
-        default = definition.default if definition.default is not None else ""
-        logger.debug(
-            SETTINGS_VALUE_RESOLVED,
-            namespace=namespace,
-            key=key,
-            source="default",
-        )
-        return SettingValue(
-            namespace=definition.namespace,
-            key=key,
-            value=default,
-            source=SettingSource.DEFAULT,
-        )
+        # 3-5. Fallback: env > YAML > code default
+        return self._resolve_fallback(definition)
 
     async def get_entry(self, namespace: str, key: str) -> SettingEntry:
         """Resolve a setting and return it with its definition.
@@ -359,6 +332,47 @@ class SettingsService:
             entries.append(entry)
         return tuple(entries)
 
+    def _resolve_fallback(
+        self,
+        definition: SettingDefinition,
+    ) -> SettingValue:
+        """Resolve via env > YAML > code default (no DB lookup)."""
+        ns = definition.namespace
+        key = definition.key
+
+        env_name = _env_var_name(ns, key)
+        env_val = os.environ.get(env_name)
+        if env_val is not None:
+            logger.debug(SETTINGS_VALUE_RESOLVED, namespace=ns, key=key, source="env")
+            return SettingValue(
+                namespace=ns,
+                key=key,
+                value=env_val,
+                source=SettingSource.ENVIRONMENT,
+            )
+
+        if definition.yaml_path is not None:
+            yaml_val = extract_from_config(self._config, definition.yaml_path)
+            if yaml_val is not None:
+                logger.debug(
+                    SETTINGS_VALUE_RESOLVED, namespace=ns, key=key, source="yaml"
+                )
+                return SettingValue(
+                    namespace=ns,
+                    key=key,
+                    value=yaml_val,
+                    source=SettingSource.YAML,
+                )
+
+        default = definition.default if definition.default is not None else ""
+        logger.debug(SETTINGS_VALUE_RESOLVED, namespace=ns, key=key, source="default")
+        return SettingValue(
+            namespace=ns,
+            key=key,
+            value=default,
+            source=SettingSource.DEFAULT,
+        )
+
     def _resolve_with_db_lookup(
         self,
         definition: SettingDefinition,
@@ -367,19 +381,43 @@ class SettingsService:
         """Resolve a single setting entry using a pre-fetched DB value.
 
         This is a synchronous helper for batch operations.  It does
-        not check the cache (batch callers skip the cache).  For the
-        env/YAML/default fallback layers it performs the same logic
-        as ``get()`` but without the async DB call.
+        not check the cache (batch callers skip the cache).
         """
         ns = definition.namespace
         key = definition.key
 
-        # DB value (pre-fetched)
         if db_hit is not None:
             raw_value, updated_at = db_hit
             value = raw_value
-            if definition.sensitive and self._encryptor is not None:
-                value = self._encryptor.decrypt(raw_value)
+            if definition.sensitive:
+                if self._encryptor is None:
+                    logger.error(
+                        SETTINGS_ENCRYPTION_ERROR,
+                        namespace=ns,
+                        key=key,
+                        reason="no_encryptor_on_read",
+                    )
+                    return SettingEntry(
+                        definition=definition,
+                        value=_SENSITIVE_MASK,
+                        source=SettingSource.DATABASE,
+                        updated_at=updated_at,
+                    )
+                try:
+                    value = self._encryptor.decrypt(raw_value)
+                except SettingsEncryptionError:
+                    logger.warning(
+                        SETTINGS_ENCRYPTION_ERROR,
+                        namespace=ns,
+                        key=key,
+                        reason="decrypt_failed_in_batch",
+                    )
+                    return SettingEntry(
+                        definition=definition,
+                        value=_SENSITIVE_MASK,
+                        source=SettingSource.DATABASE,
+                        updated_at=updated_at,
+                    )
             display = _SENSITIVE_MASK if definition.sensitive else value
             return SettingEntry(
                 definition=definition,
@@ -388,36 +426,21 @@ class SettingsService:
                 updated_at=updated_at,
             )
 
-        # Environment variable
-        env_name = _env_var_name(ns, key)
-        env_val = os.environ.get(env_name)
-        if env_val is not None:
-            display = _SENSITIVE_MASK if definition.sensitive else env_val
-            return SettingEntry(
-                definition=definition,
-                value=display,
-                source=SettingSource.ENVIRONMENT,
-            )
-
-        # YAML config bridge
-        if definition.yaml_path is not None:
-            yaml_val = extract_from_config(self._config, definition.yaml_path)
-            if yaml_val is not None:
-                display = _SENSITIVE_MASK if definition.sensitive else yaml_val
-                return SettingEntry(
-                    definition=definition,
-                    value=display,
-                    source=SettingSource.YAML,
-                )
-
-        # Code default
-        default = definition.default if definition.default is not None else ""
-        display = _SENSITIVE_MASK if definition.sensitive else default
+        # Fallback: env > YAML > default
+        fallback = self._resolve_fallback(definition)
+        display = _SENSITIVE_MASK if definition.sensitive else fallback.value
         return SettingEntry(
             definition=definition,
             value=display,
-            source=SettingSource.DEFAULT,
+            source=fallback.source,
+            updated_at=fallback.updated_at,
         )
+
+    def _invalidate_cache(self, namespace: str, key: str) -> None:
+        """Remove a key from the settings cache."""
+        cache_key = (namespace, key)
+        self._cache = {k: v for k, v in self._cache.items() if k != cache_key}
+        logger.debug(SETTINGS_CACHE_INVALIDATED, namespace=namespace, key=key)
 
     async def set(self, namespace: str, key: str, value: str) -> SettingEntry:
         """Validate and persist a setting value.
@@ -438,6 +461,7 @@ class SettingsService:
         """
         definition = self._registry.get(namespace, key)
         if definition is None:
+            logger.warning(SETTINGS_NOT_FOUND, namespace=namespace, key=key)
             msg = f"Unknown setting: {namespace}/{key}"
             raise SettingNotFoundError(msg)
 
@@ -478,14 +502,7 @@ class SettingsService:
             updated_at,
         )
 
-        # Invalidate cache
-        cache_key = (namespace, key)
-        self._cache = {k: v for k, v in self._cache.items() if k != cache_key}
-        logger.debug(
-            SETTINGS_CACHE_INVALIDATED,
-            namespace=namespace,
-            key=key,
-        )
+        self._invalidate_cache(namespace, key)
 
         logger.info(
             SETTINGS_VALUE_SET,
@@ -517,19 +534,13 @@ class SettingsService:
         """
         definition = self._registry.get(namespace, key)
         if definition is None:
+            logger.warning(SETTINGS_NOT_FOUND, namespace=namespace, key=key)
             msg = f"Unknown setting: {namespace}/{key}"
             raise SettingNotFoundError(msg)
 
         await self._repository.delete(NotBlankStr(namespace), NotBlankStr(key))
 
-        # Invalidate cache
-        cache_key = (namespace, key)
-        self._cache = {k: v for k, v in self._cache.items() if k != cache_key}
-        logger.debug(
-            SETTINGS_CACHE_INVALIDATED,
-            namespace=namespace,
-            key=key,
-        )
+        self._invalidate_cache(namespace, key)
 
         logger.info(
             SETTINGS_VALUE_DELETED,
@@ -591,10 +602,12 @@ class SettingsService:
                 namespace=namespace,
                 key=key,
             )
-        except Exception:
+        except Exception as exc:
             # Notification failure should not break settings writes.
             logger.warning(
                 SETTINGS_NOTIFICATION_FAILED,
                 namespace=namespace,
                 key=key,
+                error=str(exc),
+                error_type=type(exc).__name__,
             )

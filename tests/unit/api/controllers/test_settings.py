@@ -147,3 +147,19 @@ class TestSettingsController:
             headers=_OBSERVER_HEADERS,
         )
         assert resp.status_code == 403
+
+    def test_invalid_namespace_returns_404(self, test_client: TestClient[Any]) -> None:
+        resp = test_client.get(
+            "/api/v1/settings/nonexistent_ns",
+            headers=_HEADERS,
+        )
+        assert resp.status_code == 404
+
+    def test_invalid_namespace_schema_returns_404(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        resp = test_client.get(
+            "/api/v1/settings/_schema/nonexistent_ns",
+            headers=_HEADERS,
+        )
+        assert resp.status_code == 404

@@ -7,7 +7,9 @@ import aiosqlite
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
+    SETTINGS_DELETE_FAILED,
     SETTINGS_FETCH_FAILED,
+    SETTINGS_SET_FAILED,
     SETTINGS_VALUE_DELETED,
     SETTINGS_VALUE_SET,
 )
@@ -114,7 +116,7 @@ class SQLiteSettingsRepository:
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to set setting {namespace}/{key}"
             logger.exception(
-                SETTINGS_VALUE_SET,
+                SETTINGS_SET_FAILED,
                 namespace=namespace,
                 key=key,
                 error=str(exc),
@@ -141,7 +143,7 @@ class SQLiteSettingsRepository:
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to delete setting {namespace}/{key}"
             logger.exception(
-                SETTINGS_VALUE_DELETED,
+                SETTINGS_DELETE_FAILED,
                 namespace=namespace,
                 key=key,
                 error=str(exc),
@@ -167,7 +169,7 @@ class SQLiteSettingsRepository:
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = f"Failed to delete namespace {namespace}"
             logger.exception(
-                SETTINGS_VALUE_DELETED,
+                SETTINGS_DELETE_FAILED,
                 namespace=namespace,
                 error=str(exc),
             )

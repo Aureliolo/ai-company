@@ -503,11 +503,13 @@ def create_app(  # noqa: PLR0913
         or message_bus is None
         or cost_tracker is None
         or task_engine is None
+        or settings_service is None
     ):
         msg = (
             "create_app called without persistence, message_bus, "
-            "cost_tracker, and/or task_engine — controllers accessing "
-            "missing services will return 503.  Use test fakes for testing."
+            "cost_tracker, task_engine, and/or settings_service — "
+            "controllers accessing missing services will return 503. "
+            "Use test fakes for testing."
         )
         logger.warning(API_APP_STARTUP, note=msg)
 

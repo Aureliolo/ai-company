@@ -1,6 +1,8 @@
 """Domain models for the settings persistence layer."""
 
-from pydantic import BaseModel, ConfigDict, Field
+import re
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.settings.enums import (
@@ -61,7 +63,7 @@ class SettingDefinition(BaseModel):
         default=(),
         description="Allowed values for ENUM type",
     )
-    validator_pattern: str | None = Field(
+    validator_pattern: NotBlankStr | None = Field(
         default=None,
         description="Regex pattern for string validation",
     )
@@ -73,10 +75,46 @@ class SettingDefinition(BaseModel):
         default=None,
         description="Maximum value for numeric types",
     )
-    yaml_path: str | None = Field(
+    yaml_path: NotBlankStr | None = Field(
         default=None,
         description="Dotted path into RootConfig for YAML resolution",
     )
+
+    @model_validator(mode="after")
+    def _check_cross_field_constraints(self) -> SettingDefinition:
+        """Validate cross-field invariants at construction time."""
+        if self.type == SettingType.ENUM and not self.enum_values:
+            msg = (
+                f"ENUM setting {self.namespace}/{self.key}"
+                f" requires non-empty enum_values"
+            )
+            raise ValueError(msg)
+        if self.min_value is not None and self.type not in (
+            SettingType.INTEGER,
+            SettingType.FLOAT,
+        ):
+            msg = f"min_value is only valid for INTEGER/FLOAT, not {self.type}"
+            raise ValueError(msg)
+        if self.max_value is not None and self.type not in (
+            SettingType.INTEGER,
+            SettingType.FLOAT,
+        ):
+            msg = f"max_value is only valid for INTEGER/FLOAT, not {self.type}"
+            raise ValueError(msg)
+        if (
+            self.min_value is not None
+            and self.max_value is not None
+            and self.min_value > self.max_value
+        ):
+            msg = f"min_value ({self.min_value}) exceeds max_value ({self.max_value})"
+            raise ValueError(msg)
+        if self.validator_pattern is not None:
+            try:
+                re.compile(self.validator_pattern)
+            except re.error as exc:
+                msg = f"Invalid validator_pattern: {exc}"
+                raise ValueError(msg) from exc
+        return self
 
 
 class SettingValue(BaseModel):

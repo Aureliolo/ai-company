@@ -44,7 +44,7 @@ class SettingsEncryptor:
             return self._fernet.encrypt(
                 plaintext.encode("utf-8"),
             ).decode("ascii")
-        except Exception as exc:
+        except (ValueError, TypeError, UnicodeEncodeError) as exc:
             logger.exception(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="encrypt",
@@ -78,7 +78,7 @@ class SettingsEncryptor:
             )
             msg = "Failed to decrypt setting value — wrong key or corrupted data"
             raise SettingsEncryptionError(msg) from exc
-        except Exception as exc:
+        except (ValueError, TypeError, UnicodeDecodeError) as exc:
             logger.exception(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="decrypt",
@@ -107,7 +107,7 @@ class SettingsEncryptor:
                 f"{_ENV_VAR} is set but empty — "
                 f"provide a valid Fernet key or unset the variable"
             )
-            logger.exception(
+            logger.error(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="from_env",
                 error=msg,
@@ -115,7 +115,7 @@ class SettingsEncryptor:
             raise SettingsEncryptionError(msg)
         try:
             return cls(raw.encode("ascii"))
-        except Exception as exc:
+        except (ValueError, TypeError, UnicodeEncodeError) as exc:
             logger.exception(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="from_env",

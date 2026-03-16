@@ -456,7 +456,8 @@ class SQLitePersistenceBackend:
         try:
             await self._db.execute(
                 "INSERT INTO settings (namespace, key, value, updated_at) "
-                "VALUES ('_system', ?, ?, datetime('now')) "
+                "VALUES ('_system', ?, ?, "
+                "strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now', 'utc')) "
                 "ON CONFLICT(namespace, key) DO UPDATE SET "
                 "value=excluded.value, updated_at=excluded.updated_at",
                 (key, value),

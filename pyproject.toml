@@ -64,6 +64,7 @@ dev = [
     "pre-commit-uv==4.2.1",
     "ruff==0.15.6",
     "types-pyyaml==6.0.12.20250915",
+    "bandit>=1.9.4",
     {include-group = "test"},
     {include-group = "docs"},
 ]

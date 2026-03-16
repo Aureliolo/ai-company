@@ -27,16 +27,6 @@ async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
     await conn.close()
 
 
-@pytest.fixture
-async def v8_db(memory_db: aiosqlite.Connection) -> aiosqlite.Connection:
-    """DB at schema version 8 (V5 settings table with old schema)."""
-    await run_migrations(memory_db)
-    # Downgrade user_version to 8 to test V9 in isolation later.
-    # But run_migrations already ran V9 — so for isolation we
-    # build a V5-only DB manually.
-    return memory_db
-
-
 async def _create_v5_settings(db: aiosqlite.Connection) -> None:
     """Create the old V5 settings table and seed test data."""
     await db.execute(
@@ -178,5 +168,5 @@ class TestV9MigrationCrashSafety:
         # settings should exist with data from settings_old.
         cursor = await memory_db.execute("SELECT namespace, key, value FROM settings")
         rows = list(await cursor.fetchall())
-        assert len(rows) >= 1
+        assert len(rows) == 1
         assert rows[0][0] == "_system"

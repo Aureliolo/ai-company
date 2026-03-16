@@ -490,7 +490,9 @@ async def _apply_v9(db: aiosqlite.Connection) -> None:
     elif has_original:
         source = "settings"
     if source is not None:
-        assert source in _V9_VALID_SOURCES  # noqa: S101
+        if source not in _V9_VALID_SOURCES:
+            msg = f"Invalid settings copy source: {source!r}"
+            raise MigrationError(msg)
         await db.execute(_V9_COPY_ROWS.format(source=source))
 
     # Step 3: rename original → _old.

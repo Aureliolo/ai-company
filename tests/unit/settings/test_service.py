@@ -6,6 +6,7 @@ import pytest
 from cryptography.fernet import Fernet
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.persistence.repositories import SettingsRepository
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.enums import (
     SettingNamespace,
@@ -46,6 +47,7 @@ def _make_definition(  # noqa: PLR0913
     enum_values: tuple[str, ...] = (),
     min_value: float | None = None,
     max_value: float | None = None,
+    validator_pattern: str | None = None,
 ) -> SettingDefinition:
     return SettingDefinition(
         namespace=namespace,
@@ -60,6 +62,7 @@ def _make_definition(  # noqa: PLR0913
         enum_values=enum_values,
         min_value=min_value,
         max_value=max_value,
+        validator_pattern=validator_pattern,
     )
 
 
@@ -72,10 +75,13 @@ def registry() -> SettingsRegistry:
 
 @pytest.fixture
 def mock_repo() -> AsyncMock:
-    repo = AsyncMock()
+    repo = AsyncMock(spec=SettingsRepository)
     repo.get = AsyncMock(return_value=None)
     repo.set = AsyncMock()
     repo.delete = AsyncMock(return_value=True)
+    repo.get_namespace = AsyncMock(return_value=())
+    repo.get_all = AsyncMock(return_value=())
+    repo.delete_namespace = AsyncMock(return_value=0)
     return repo
 
 
@@ -642,3 +648,140 @@ class TestAdditionalValidation:
         # The actual secret must NOT appear in the error message
         assert "my-secret-value" not in str(exc_info.value)
         assert "********" in str(exc_info.value)
+
+
+# ── Ciphertext Leak Guard Tests ─────────────────────────────────
+
+
+@pytest.mark.unit
+class TestCiphertextLeakGuard:
+    """Verify sensitive reads raise when encryptor is absent."""
+
+    async def test_get_raises_without_encryptor(
+        self, mock_repo: AsyncMock, config: _FakeConfig
+    ) -> None:
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                key="api_key",
+                setting_type=SettingType.STRING,
+                sensitive=True,
+                yaml_path=None,
+            )
+        )
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+            encryptor=None,
+        )
+        mock_repo.get.return_value = ("ciphertext", "2026-01-01T00:00:00Z")
+        with pytest.raises(SettingsEncryptionError, match="no encryptor"):
+            await svc.get("budget", "api_key")
+
+    async def test_batch_masks_when_encryptor_absent(
+        self, mock_repo: AsyncMock, config: _FakeConfig
+    ) -> None:
+        enc = SettingsEncryptor(Fernet.generate_key())
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                key="api_key",
+                setting_type=SettingType.STRING,
+                sensitive=True,
+                yaml_path=None,
+            )
+        )
+        ciphertext = enc.encrypt("secret123")
+        mock_repo.get_namespace.return_value = (
+            ("api_key", ciphertext, "2026-01-01T00:00:00Z"),
+        )
+        # Service without encryptor — batch should mask, not leak
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+            encryptor=None,
+        )
+        entries = await svc.get_namespace("budget")
+        assert len(entries) == 1
+        assert entries[0].value == "********"
+
+    async def test_batch_masks_on_decrypt_failure(
+        self, mock_repo: AsyncMock, config: _FakeConfig
+    ) -> None:
+        enc = SettingsEncryptor(Fernet.generate_key())
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                key="api_key",
+                setting_type=SettingType.STRING,
+                sensitive=True,
+                yaml_path=None,
+            )
+        )
+        # Use a different key's ciphertext — decrypt will fail
+        other_enc = SettingsEncryptor(Fernet.generate_key())
+        bad_ciphertext = other_enc.encrypt("secret")
+        mock_repo.get_namespace.return_value = (
+            ("api_key", bad_ciphertext, "2026-01-01T00:00:00Z"),
+        )
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+            encryptor=enc,
+        )
+        entries = await svc.get_namespace("budget")
+        assert len(entries) == 1
+        assert entries[0].value == "********"
+
+
+# ── Validator Pattern Tests ─────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestValidatorPattern:
+    """Tests for validator_pattern regex validation."""
+
+    async def test_valid_pattern_passes(
+        self, mock_repo: AsyncMock, config: _FakeConfig
+    ) -> None:
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                key="hostname",
+                setting_type=SettingType.STRING,
+                default="localhost",
+                yaml_path=None,
+                validator_pattern=r"^[a-z0-9.-]+$",
+            )
+        )
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        entry = await svc.set("budget", "hostname", "my-host.local")
+        assert entry.value == "my-host.local"
+
+    async def test_invalid_pattern_rejects(
+        self, mock_repo: AsyncMock, config: _FakeConfig
+    ) -> None:
+        registry = SettingsRegistry()
+        registry.register(
+            _make_definition(
+                key="hostname",
+                setting_type=SettingType.STRING,
+                default="localhost",
+                yaml_path=None,
+                validator_pattern=r"^[a-z0-9.-]+$",
+            )
+        )
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
+        )
+        with pytest.raises(SettingValidationError, match="does not match"):
+            await svc.set("budget", "hostname", "INVALID HOST!")

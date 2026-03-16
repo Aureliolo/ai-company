@@ -423,6 +423,8 @@ class FakePersistenceBackend:
         self._heartbeats = FakeHeartbeatRepository()
         self._agent_states = FakeAgentStateRepository()
         self._settings_repo = FakeSettingsRepository()
+        # Legacy flat KV store for get_setting/set_setting (pre-namespaced).
+        # The `settings` property returns `_settings_repo` (namespaced repo).
         self._settings: dict[str, str] = {}
         self._connected = False
 

@@ -1,6 +1,12 @@
 """Settings metadata registry — single source of truth for setting definitions."""
 
+from types import MappingProxyType
+
+from synthorg.observability import get_logger
+from synthorg.observability.events.settings import SETTINGS_REGISTRY_DUPLICATE
 from synthorg.settings.models import SettingDefinition  # noqa: TC001
+
+logger = get_logger(__name__)
 
 
 class SettingsRegistry:
@@ -17,6 +23,9 @@ class SettingsRegistry:
 
     def __init__(self) -> None:
         self._definitions: dict[tuple[str, str], SettingDefinition] = {}
+        self._read_view: MappingProxyType[tuple[str, str], SettingDefinition] = (
+            MappingProxyType(self._definitions)
+        )
 
     def register(self, definition: SettingDefinition) -> None:
         """Register a setting definition.
@@ -30,9 +39,15 @@ class SettingsRegistry:
         """
         composite_key = (definition.namespace, definition.key)
         if composite_key in self._definitions:
+            logger.warning(
+                SETTINGS_REGISTRY_DUPLICATE,
+                namespace=definition.namespace,
+                key=definition.key,
+            )
             msg = f"Duplicate setting: {definition.namespace}/{definition.key}"
             raise ValueError(msg)
         self._definitions = {**self._definitions, composite_key: definition}
+        self._read_view = MappingProxyType(self._definitions)
 
     def get(self, namespace: str, key: str) -> SettingDefinition | None:
         """Look up a setting definition by namespace and key.
@@ -44,7 +59,7 @@ class SettingsRegistry:
         Returns:
             The definition, or ``None`` if not registered.
         """
-        return self._definitions.get((namespace, key))
+        return self._read_view.get((namespace, key))
 
     def list_namespace(self, namespace: str) -> tuple[SettingDefinition, ...]:
         """Return all definitions in a namespace, sorted by key.
@@ -57,7 +72,7 @@ class SettingsRegistry:
         """
         return tuple(
             sorted(
-                (d for d in self._definitions.values() if d.namespace == namespace),
+                (d for d in self._read_view.values() if d.namespace == namespace),
                 key=lambda d: d.key,
             )
         )
@@ -70,7 +85,7 @@ class SettingsRegistry:
         """
         return tuple(
             sorted(
-                self._definitions.values(),
+                self._read_view.values(),
                 key=lambda d: (d.namespace, d.key),
             )
         )
@@ -81,12 +96,12 @@ class SettingsRegistry:
         Returns:
             Namespace strings in alphabetical order.
         """
-        return tuple(sorted({d.namespace for d in self._definitions.values()}))
+        return tuple(sorted({d.namespace for d in self._read_view.values()}))
 
     @property
     def size(self) -> int:
         """Total number of registered definitions."""
-        return len(self._definitions)
+        return len(self._read_view)
 
 
 # Module-level singleton — populated by definitions/ sub-package imports.

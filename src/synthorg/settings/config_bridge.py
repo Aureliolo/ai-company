@@ -5,6 +5,7 @@ Maps ``(namespace, key)`` pairs to dotted attribute paths in
 """
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.settings import SETTINGS_CONFIG_PATH_MISS
 
 logger = get_logger(__name__)
 
@@ -30,6 +31,11 @@ def extract_from_config(config: object, yaml_path: str) -> str | None:
         try:
             current = getattr(current, segment)
         except AttributeError:
+            logger.debug(
+                SETTINGS_CONFIG_PATH_MISS,
+                yaml_path=yaml_path,
+                failed_segment=segment,
+            )
             return None
         if current is None:
             return None
