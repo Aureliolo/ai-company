@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.9](https://github.com/Aureliolo/synthorg/compare/v0.2.8...v0.2.9) (2026-03-16)
+
+
+### Bug Fixes
+
+* **api:** auto-wire persistence backend from SYNTHORG_DB_PATH env var ([#486](https://github.com/Aureliolo/synthorg/issues/486)) ([7973b07](https://github.com/Aureliolo/synthorg/commit/7973b07f990ee01b369bccabf679101693efc7da))
+* **cli:** completion cleanup on uninstall + init backend selection ([#484](https://github.com/Aureliolo/synthorg/issues/484)) ([97ccb51](https://github.com/Aureliolo/synthorg/commit/97ccb51416b55815a9befc8d1b05abedf41ef7d5))
+* **docker:** keep sandbox container alive with sleep infinity ([#485](https://github.com/Aureliolo/synthorg/issues/485)) ([b9f400f](https://github.com/Aureliolo/synthorg/commit/b9f400f165a19b37438051029f405f28285c06ba))
+
 ## [0.2.8](https://github.com/Aureliolo/synthorg/compare/v0.2.7...v0.2.8) (2026-03-16)
 
 
