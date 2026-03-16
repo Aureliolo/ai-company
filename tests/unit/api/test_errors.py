@@ -4,6 +4,8 @@ import pytest
 
 from synthorg.api.errors import (
     _CODE_CATEGORY_PREFIX,
+    _ERROR_DOCS_BASE,
+    CATEGORY_TITLES,
     ApiError,
     ApiValidationError,
     ConflictError,
@@ -13,6 +15,8 @@ from synthorg.api.errors import (
     NotFoundError,
     ServiceUnavailableError,
     UnauthorizedError,
+    category_title,
+    category_type_uri,
 )
 
 pytestmark = pytest.mark.unit
@@ -83,6 +87,55 @@ class TestErrorCode:
             assert prefix in _CODE_CATEGORY_PREFIX, (
                 f"{code.name} has prefix {prefix} not in mapping"
             )
+
+
+class TestCategoryMetadata:
+    """CATEGORY_TITLES map and helper functions."""
+
+    def test_category_titles_covers_all_members(self) -> None:
+        """Every ErrorCategory member has a title entry."""
+        for cat in ErrorCategory:
+            assert cat in CATEGORY_TITLES, f"Missing title for {cat.name}"
+
+    def test_category_titles_has_no_extra_keys(self) -> None:
+        """No stale keys in CATEGORY_TITLES."""
+        assert len(CATEGORY_TITLES) == len(ErrorCategory)
+
+    @pytest.mark.parametrize(
+        ("cat", "expected_title"),
+        [
+            (ErrorCategory.AUTH, "Authentication Error"),
+            (ErrorCategory.VALIDATION, "Validation Error"),
+            (ErrorCategory.NOT_FOUND, "Resource Not Found"),
+            (ErrorCategory.CONFLICT, "Resource Conflict"),
+            (ErrorCategory.RATE_LIMIT, "Rate Limit Exceeded"),
+            (ErrorCategory.BUDGET_EXHAUSTED, "Budget Exhausted"),
+            (ErrorCategory.PROVIDER_ERROR, "Provider Error"),
+            (ErrorCategory.INTERNAL, "Internal Server Error"),
+        ],
+    )
+    def test_category_title_values(
+        self,
+        cat: ErrorCategory,
+        expected_title: str,
+    ) -> None:
+        assert category_title(cat) == expected_title
+
+    @pytest.mark.parametrize("cat", list(ErrorCategory))
+    def test_category_type_uri_format(self, cat: ErrorCategory) -> None:
+        uri = category_type_uri(cat)
+        assert uri == f"{_ERROR_DOCS_BASE}#{cat.value}"
+        assert uri.startswith("https://")
+
+    def test_category_type_uri_examples(self) -> None:
+        assert (
+            category_type_uri(ErrorCategory.AUTH)
+            == "https://synthorg.io/docs/errors#auth"
+        )
+        assert (
+            category_type_uri(ErrorCategory.INTERNAL)
+            == "https://synthorg.io/docs/errors#internal"
+        )
 
 
 class TestApiErrorMetadata:

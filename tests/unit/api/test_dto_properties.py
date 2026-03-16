@@ -11,8 +11,14 @@ from synthorg.api.dto import (
     CoordinateTaskRequest,
     CreateApprovalRequest,
     ErrorDetail,
+    ProblemDetail,
 )
-from synthorg.api.errors import ErrorCategory
+from synthorg.api.errors import (
+    ErrorCategory,
+    ErrorCode,
+    category_title,
+    category_type_uri,
+)
 from synthorg.core.enums import ApprovalRiskLevel
 
 pytestmark = pytest.mark.unit
@@ -222,29 +228,38 @@ class TestCreateApprovalRequestProperties:
 
 def _error_detail_strategy() -> st.SearchStrategy[ErrorDetail]:
     """Strategy that respects retry_after/retryable consistency."""
+    categories = st.sampled_from(list(ErrorCategory))
     return st.one_of(
         # retryable=True, retry_after may be set or None
-        st.builds(
-            ErrorDetail,
-            message=_not_blank,
-            error_code=st.integers(min_value=1000, max_value=8999),
-            error_category=st.sampled_from(list(ErrorCategory)),
-            retryable=st.just(True),
-            retry_after=st.one_of(
-                st.none(),
-                st.integers(min_value=0, max_value=3600),
-            ),
-            instance=st.text(min_size=1, max_size=40).filter(lambda s: s.strip()),
+        categories.flatmap(
+            lambda cat: st.builds(
+                ErrorDetail,
+                detail=_not_blank,
+                error_code=st.sampled_from(list(ErrorCode)),
+                error_category=st.just(cat),
+                retryable=st.just(True),
+                retry_after=st.one_of(
+                    st.none(),
+                    st.integers(min_value=0, max_value=3600),
+                ),
+                instance=st.text(min_size=1, max_size=40).filter(lambda s: s.strip()),
+                title=st.just(category_title(cat)),
+                type=st.just(category_type_uri(cat)),
+            )
         ),
         # retryable=False, retry_after must be None
-        st.builds(
-            ErrorDetail,
-            message=_not_blank,
-            error_code=st.integers(min_value=1000, max_value=8999),
-            error_category=st.sampled_from(list(ErrorCategory)),
-            retryable=st.just(False),
-            retry_after=st.none(),
-            instance=st.text(min_size=1, max_size=40).filter(lambda s: s.strip()),
+        categories.flatmap(
+            lambda cat: st.builds(
+                ErrorDetail,
+                detail=_not_blank,
+                error_code=st.sampled_from(list(ErrorCode)),
+                error_category=st.just(cat),
+                retryable=st.just(False),
+                retry_after=st.none(),
+                instance=st.text(min_size=1, max_size=40).filter(lambda s: s.strip()),
+                title=st.just(category_title(cat)),
+                type=st.just(category_type_uri(cat)),
+            )
         ),
     )
 
@@ -268,11 +283,134 @@ class TestErrorDetailProperties:
         retryable: bool,
     ) -> None:
         detail = ErrorDetail(
-            message="test",
-            error_code=8000,
+            detail="test",
+            error_code=ErrorCode.INTERNAL_ERROR,
             error_category=error_category,
             retryable=retryable,
             instance="id",
+            title=category_title(error_category),
+            type=category_type_uri(error_category),
         )
         assert detail.retryable is retryable
         assert detail.error_category == error_category
+
+    def test_title_and_type_preserved(self) -> None:
+        cat = ErrorCategory.AUTH
+        detail = ErrorDetail(
+            detail="test",
+            error_code=ErrorCode.UNAUTHORIZED,
+            error_category=cat,
+            instance="id",
+            title=category_title(cat),
+            type=category_type_uri(cat),
+        )
+        assert detail.title == "Authentication Error"
+        assert detail.type == "https://synthorg.io/docs/errors#auth"
+
+
+def _problem_detail_strategy() -> st.SearchStrategy[ProblemDetail]:
+    """Strategy for ProblemDetail with retry_after/retryable consistency."""
+    categories = st.sampled_from(list(ErrorCategory))
+    return st.one_of(
+        # retryable=True
+        categories.flatmap(
+            lambda cat: st.builds(
+                ProblemDetail,
+                type=st.just(category_type_uri(cat)),
+                title=st.just(category_title(cat)),
+                status=st.integers(min_value=400, max_value=599),
+                detail=_not_blank,
+                instance=st.text(min_size=1, max_size=40).filter(lambda s: s.strip()),
+                error_code=st.sampled_from(list(ErrorCode)),
+                error_category=st.just(cat),
+                retryable=st.just(True),
+                retry_after=st.one_of(
+                    st.none(),
+                    st.integers(min_value=0, max_value=3600),
+                ),
+            )
+        ),
+        # retryable=False
+        categories.flatmap(
+            lambda cat: st.builds(
+                ProblemDetail,
+                type=st.just(category_type_uri(cat)),
+                title=st.just(category_title(cat)),
+                status=st.integers(min_value=400, max_value=599),
+                detail=_not_blank,
+                instance=st.text(min_size=1, max_size=40).filter(lambda s: s.strip()),
+                error_code=st.sampled_from(list(ErrorCode)),
+                error_category=st.just(cat),
+                retryable=st.just(False),
+                retry_after=st.none(),
+            )
+        ),
+    )
+
+
+class TestProblemDetailProperties:
+    @given(problem=_problem_detail_strategy())
+    @settings(max_examples=100)
+    def test_roundtrip(self, problem: ProblemDetail) -> None:
+        dumped = problem.model_dump()
+        restored = ProblemDetail.model_validate(dumped)
+        assert restored == problem
+
+    @pytest.mark.parametrize("status", [200, 399, 600])
+    def test_status_range_validation(self, status: int) -> None:
+        """Status must be 400-599."""
+        with pytest.raises(ValidationError):
+            ProblemDetail(
+                type="https://synthorg.io/docs/errors#auth",
+                title="Authentication Error",
+                status=status,
+                detail="test",
+                instance="id",
+                error_code=ErrorCode.UNAUTHORIZED,
+                error_category=ErrorCategory.AUTH,
+            )
+
+    def test_frozen_immutability(self) -> None:
+        """ProblemDetail is frozen (no post-construction mutation)."""
+        problem = ProblemDetail(
+            type="https://synthorg.io/docs/errors#auth",
+            title="Authentication Error",
+            status=401,
+            detail="test",
+            instance="id",
+            error_code=ErrorCode.UNAUTHORIZED,
+            error_category=ErrorCategory.AUTH,
+        )
+        with pytest.raises(ValidationError):
+            problem.detail = "changed"  # type: ignore[misc]
+
+    def test_retry_after_consistency(self) -> None:
+        """retry_after must be None when retryable is False."""
+        with pytest.raises(ValidationError, match="retry_after must be None"):
+            ProblemDetail(
+                type="https://synthorg.io/docs/errors#auth",
+                title="Authentication Error",
+                status=401,
+                detail="test",
+                instance="id",
+                error_code=ErrorCode.UNAUTHORIZED,
+                error_category=ErrorCategory.AUTH,
+                retryable=False,
+                retry_after=60,
+            )
+
+    def test_retryable_with_retry_after(self) -> None:
+        """retry_after is allowed when retryable is True."""
+        problem = ProblemDetail(
+            type="https://synthorg.io/docs/errors#rate_limit",
+            title="Rate Limit Exceeded",
+            status=429,
+            detail="Slow down",
+            instance="id",
+            error_code=ErrorCode.RATE_LIMITED,
+            error_category=ErrorCategory.RATE_LIMIT,
+            retryable=True,
+            retry_after=60,
+        )
+        assert problem.retry_after == 60
+        assert problem.retryable is True

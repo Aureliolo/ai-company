@@ -25,7 +25,7 @@ def _make_app(*handlers: Any) -> Litestar:
     return Litestar(
         route_handlers=list(handlers),
         before_send=[security_headers_hook],
-        exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
+        exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
     )
 
 
@@ -226,7 +226,7 @@ class TestCorrelationIdBinding:
         app = Litestar(
             route_handlers=[handler],
             middleware=[RequestLoggingMiddleware],
-            exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
+            exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
         with TestClient(app) as client:
             resp = client.get("/capture")
@@ -246,7 +246,7 @@ class TestCorrelationIdBinding:
         app = Litestar(
             route_handlers=[handler],
             middleware=[RequestLoggingMiddleware],
-            exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
+            exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
         with TestClient(app) as client:
             client.get("/clear-test")
@@ -267,7 +267,7 @@ class TestCorrelationIdBinding:
         app = Litestar(
             route_handlers=[handler],
             middleware=[RequestLoggingMiddleware],
-            exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
+            exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         )
         with TestClient(app) as client:
             resp = client.get("/error-clear")

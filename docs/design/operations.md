@@ -976,24 +976,53 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/providers` | Model provider status, config |
 | `/api/v1/ws` | WebSocket for real-time updates |
 
-### Error Response Format (RFC 9457 Phase 1)
+### Error Response Format (RFC 9457)
 
-All error responses include structured metadata for machine consumption alongside
-the existing human-readable `error` field. The `error_detail` object is present on
-every error response and contains:
+All error responses follow [RFC 9457 (Problem Details for HTTP APIs)](https://www.rfc-editor.org/rfc/rfc9457).
+The API supports two response formats via content negotiation:
+
+- **Default (`application/json`)**: `ApiResponse` envelope with `error_detail` object
+- **RFC 9457 bare (`application/problem+json`)**: Flat `ProblemDetail` body with `Content-Type: application/problem+json`
+
+Clients request bare RFC 9457 responses by sending `Accept: application/problem+json`.
+
+#### ErrorDetail Fields (Envelope Format)
+
+The `error_detail` object in the envelope contains:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `message` | `str` | Human-readable error message (matches top-level `error`) |
+| `detail` | `str` | Human-readable occurrence-specific explanation |
 | `error_code` | `int` | Machine-readable 4-digit code (category-grouped: 1xxx=auth, 2xxx=validation, 3xxx=not_found, 4xxx=conflict, 5xxx=rate_limit, 6xxx=budget_exhausted, 7xxx=provider_error, 8xxx=internal) |
 | `error_category` | `str` | High-level category: `auth`, `validation`, `not_found`, `conflict`, `rate_limit`, `budget_exhausted`, `provider_error`, `internal` |
 | `retryable` | `bool` | Whether the client should retry the request |
 | `retry_after` | `int \| null` | Seconds to wait before retrying (null when not applicable) |
 | `instance` | `str` | Request correlation ID for log tracing |
+| `title` | `str` | Static per-category title (e.g., "Authentication Error") |
+| `type` | `str` | Documentation URI for the error category (e.g., `https://synthorg.io/docs/errors#auth`) |
+
+#### ProblemDetail Fields (RFC 9457 Bare Format)
+
+When `Accept: application/problem+json`, the response body contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `str` | Documentation URI for the error category |
+| `title` | `str` | Static per-category title |
+| `status` | `int` | HTTP status code |
+| `detail` | `str` | Human-readable occurrence-specific explanation |
+| `instance` | `str` | Request correlation ID for log tracing |
+| `error_code` | `int` | Machine-readable 4-digit error code |
+| `error_category` | `str` | High-level error category |
+| `retryable` | `bool` | Whether the client should retry |
+| `retry_after` | `int \| null` | Seconds to wait before retrying |
 
 Agent consumers can use `retryable` and `retry_after` for autonomous retry logic,
-and `error_code` / `error_category` for programmatic error handling without parsing
-message strings.
+`error_code` / `error_category` for programmatic error handling without parsing
+message strings, and `type` URIs for documentation lookup.
+
+See the [Error Reference](../errors.md) for the full error taxonomy, code list,
+and retry guidance.
 
 ### Web UI Features
 

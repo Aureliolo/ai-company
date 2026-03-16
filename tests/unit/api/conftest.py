@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from litestar import Litestar
 from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
@@ -13,6 +14,7 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import User
 from synthorg.api.auth.service import AuthService
+from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.guards import HumanRole
 from synthorg.budget.tracker import CostTracker
 from synthorg.config.schema import RootConfig
@@ -30,6 +32,15 @@ from tests.unit.api.fakes import (
 )
 
 __all__ = ["FakeMessageBus", "FakePersistenceBackend"]
+
+
+def make_exception_handler_app(handler: Any) -> Litestar:
+    """Build a minimal Litestar app with project exception handlers."""
+    return Litestar(
+        route_handlers=[handler],
+        exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
+    )
+
 
 # ── Test auth constants ───────────────────────────────────────
 

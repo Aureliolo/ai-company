@@ -571,7 +571,7 @@ def create_app(  # noqa: PLR0913
         before_send=[security_headers_hook],
         middleware=middleware,
         plugins=plugins,
-        exception_handlers=EXCEPTION_HANDLERS,  # type: ignore[arg-type]
+        exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
         openapi_config=OpenAPIConfig(
             title="SynthOrg API",
             version=__version__,

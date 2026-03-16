@@ -111,12 +111,26 @@ export type ErrorCode =
   | 8000 | 8001 | 8002
 
 export interface ErrorDetail {
-  message: string
+  detail: string
   error_code: ErrorCode
   error_category: ErrorCategory
   retryable: boolean
   retry_after: number | null
   instance: string
+  title: string
+  type: string
+}
+
+export interface ProblemDetail {
+  type: string
+  title: string
+  status: number
+  detail: string
+  instance: string
+  error_code: ErrorCode
+  error_category: ErrorCategory
+  retryable: boolean
+  retry_after: number | null
 }
 
 // ── Response Envelopes ───────────────────────────────────────
