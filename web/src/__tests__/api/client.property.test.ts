@@ -5,7 +5,9 @@ import type { ApiResponse, ErrorDetail, PaginatedResponse } from '@/api/types'
 import type { AxiosResponse } from 'axios'
 
 const mockErrorDetail: ErrorDetail = {
-  message: 'test error',
+  detail: 'test error',
+  title: 'Internal Server Error',
+  type: 'https://synthorg.io/docs/errors/internal',
   error_code: 8000,
   error_category: 'internal',
   retryable: false,
@@ -37,7 +39,7 @@ describe('unwrap (property-based)', () => {
   it('throws when success is false', () => {
     fc.assert(
       fc.property(fc.string({ minLength: 1 }), (errorMsg) => {
-        const response = mockResponse({ data: null, error: errorMsg, error_detail: { ...mockErrorDetail, message: errorMsg }, success: false as const })
+        const response = mockResponse({ data: null, error: errorMsg, error_detail: { ...mockErrorDetail, detail: errorMsg }, success: false as const })
         expect(() => unwrap(response)).toThrow(errorMsg)
       }),
     )
@@ -111,7 +113,7 @@ describe('unwrapPaginated (property-based)', () => {
         const response = mockResponse({
           data: null,
           error: errorMsg,
-          error_detail: { ...mockErrorDetail, message: errorMsg },
+          error_detail: { ...mockErrorDetail, detail: errorMsg },
           success: false as const,
           pagination: null,
         })

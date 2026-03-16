@@ -34,17 +34,17 @@ _MAX_METADATA_KEYS: int = 20
 _MAX_METADATA_STR_LEN: int = 256
 
 
-# ── Structured error detail (RFC 9457 Phase 1) ────────────────
+# ── Structured error detail (RFC 9457) ─────────────────────────
 
 
 class ErrorDetail(BaseModel):
-    """Structured error metadata (RFC 9457 Phase 1).
+    """Structured error metadata (RFC 9457).
 
     Self-contained so agents can parse it without referencing
     the parent envelope.
 
     Attributes:
-        message: Human-readable error message.
+        detail: Human-readable occurrence-specific explanation.
         error_code: Machine-readable error code (by convention, 4-digit
             category-grouped; see ``ErrorCode``).
         error_category: High-level error category.
@@ -52,16 +52,59 @@ class ErrorDetail(BaseModel):
         retry_after: Seconds to wait before retrying (``None``
             when not applicable).
         instance: Request correlation ID for log tracing.
+        title: Static per-category title (e.g. "Authentication Error").
+        type: Documentation URI for the error category.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    message: NotBlankStr
+    detail: NotBlankStr
     error_code: int
     error_category: ErrorCategory
     retryable: bool = False
     retry_after: int | None = Field(default=None, ge=0)
     instance: NotBlankStr
+    title: NotBlankStr
+    type: str
+
+    @model_validator(mode="after")
+    def _validate_retry_after_consistency(self) -> Self:
+        """``retry_after`` must be ``None`` when ``retryable`` is ``False``."""
+        if not self.retryable and self.retry_after is not None:
+            msg = "retry_after must be None when retryable is False"
+            raise ValueError(msg)
+        return self
+
+
+class ProblemDetail(BaseModel):
+    """Bare RFC 9457 ``application/problem+json`` response body.
+
+    Returned when the client sends ``Accept: application/problem+json``.
+
+    Attributes:
+        type: Documentation URI for the error category.
+        title: Static per-category title.
+        status: HTTP status code.
+        detail: Human-readable occurrence-specific explanation.
+        instance: Request correlation ID for log tracing.
+        error_code: Machine-readable 4-digit error code.
+        error_category: High-level error category.
+        retryable: Whether the client should retry the request.
+        retry_after: Seconds to wait before retrying (``None``
+            when not applicable).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    type: str
+    title: NotBlankStr
+    status: int = Field(ge=400, le=599)
+    detail: NotBlankStr
+    instance: NotBlankStr
+    error_code: int
+    error_category: ErrorCategory
+    retryable: bool = False
+    retry_after: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _validate_retry_after_consistency(self) -> Self:

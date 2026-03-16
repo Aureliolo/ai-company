@@ -1,13 +1,16 @@
 """Exception handlers mapping domain errors to HTTP responses.
 
-Each handler returns an ``ApiResponse(error=...)`` with the
-appropriate HTTP status code.  5xx responses return a generic
-scrubbed message; 4xx responses pass through the exception detail
-(authored by SynthOrg's guards/middleware and user-safe).  Detailed
-error context is logged server-side for all status codes.
+Each handler returns either an ``ApiResponse`` envelope (default) or a
+bare RFC 9457 ``ProblemDetail`` body when the client sends
+``Accept: application/problem+json``.
 
-All handlers populate ``error_detail`` with structured RFC 9457
-metadata (error code, category, retryability, request correlation ID).
+5xx responses return a generic scrubbed message; 4xx responses pass
+through the exception detail (authored by SynthOrg's guards/middleware
+and user-safe).  Detailed error context is logged server-side for all
+status codes.
+
+All handlers populate structured RFC 9457 metadata (error code, category,
+retryability, title, type URI, request correlation ID).
 """
 
 from http import HTTPStatus
@@ -24,11 +27,18 @@ from litestar.exceptions import (
     ValidationException,
 )
 
-from synthorg.api.dto import ApiResponse, ErrorDetail
-from synthorg.api.errors import ApiError, ErrorCategory, ErrorCode
+from synthorg.api.dto import ApiResponse, ErrorDetail, ProblemDetail
+from synthorg.api.errors import (
+    ApiError,
+    ErrorCategory,
+    ErrorCode,
+    category_title,
+    category_type_uri,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.correlation import generate_correlation_id
 from synthorg.observability.events.api import (
+    API_CONTENT_NEGOTIATED,
     API_REQUEST_ERROR,
     API_ROUTE_NOT_FOUND,
 )
@@ -41,6 +51,8 @@ from synthorg.persistence.errors import (
 logger = get_logger(__name__)
 
 _SERVER_ERROR_THRESHOLD: Final[int] = 500
+
+_PROBLEM_JSON: Final[str] = "application/problem+json"
 
 # Headers safe to forward from HTTPException to the client response.
 _ALLOWED_PASSTHROUGH_HEADERS: Final[frozenset[str]] = frozenset(
@@ -64,9 +76,22 @@ def _get_instance_id() -> str:
     return generate_correlation_id()
 
 
+def _wants_problem_json(request: Request[Any, Any, Any]) -> bool:
+    """Check whether the client prefers ``application/problem+json``.
+
+    Returns ``True`` only when the Accept header explicitly prefers
+    ``application/problem+json`` over ``application/json``.  Defaults
+    to ``False`` for ``*/*``, missing, or empty Accept headers.
+    """
+    match = request.accept.best_match(
+        ["application/json", _PROBLEM_JSON],
+    )
+    return match == _PROBLEM_JSON
+
+
 def _build_error_response(
     *,
-    message: str,
+    detail: str,
     error_code: ErrorCode,
     error_category: ErrorCategory,
     retryable: bool = False,
@@ -79,15 +104,69 @@ def _build_error_response(
     if unavailable).
     """
     return ApiResponse[None](
-        error=message,
+        error=detail,
         error_detail=ErrorDetail(
-            message=message,
+            detail=detail,
             error_code=error_code,
             error_category=error_category,
             retryable=retryable,
             retry_after=retry_after,
             instance=_get_instance_id(),
+            title=category_title(error_category),
+            type=category_type_uri(error_category),
         ),
+    )
+
+
+def _build_response(  # noqa: PLR0913
+    request: Request[Any, Any, Any],
+    *,
+    detail: str,
+    error_code: ErrorCode,
+    error_category: ErrorCategory,
+    status_code: int,
+    retryable: bool = False,
+    retry_after: int | None = None,
+    headers: dict[str, str] | None = None,
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
+    """Build either an envelope or bare RFC 9457 response.
+
+    Content negotiation is driven by the client's ``Accept`` header.
+    When ``application/problem+json`` is preferred, returns a bare
+    ``ProblemDetail`` body with the appropriate content type.
+    """
+    if _wants_problem_json(request):
+        logger.debug(
+            API_CONTENT_NEGOTIATED,
+            format="problem+json",
+            status_code=status_code,
+        )
+        return Response(
+            content=ProblemDetail(
+                type=category_type_uri(error_category),
+                title=category_title(error_category),
+                status=status_code,
+                detail=detail,
+                instance=_get_instance_id(),
+                error_code=error_code,
+                error_category=error_category,
+                retryable=retryable,
+                retry_after=retry_after,
+            ),
+            status_code=status_code,
+            media_type=_PROBLEM_JSON,
+            headers=headers,
+        )
+    return Response(
+        content=_build_error_response(
+            detail=detail,
+            error_code=error_code,
+            error_category=error_category,
+            retryable=retryable,
+            retry_after=retry_after,
+        ),
+        status_code=status_code,
+        headers=headers,
     )
 
 
@@ -154,15 +233,14 @@ def _log_error(
 def handle_record_not_found(
     request: Request[Any, Any, Any],
     exc: RecordNotFoundError,
-) -> Response[ApiResponse[None]]:
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``RecordNotFoundError`` to 404."""
     _log_error(request, exc, status=404)
-    return Response(
-        content=_build_error_response(
-            message="Resource not found",
-            error_code=ErrorCode.RECORD_NOT_FOUND,
-            error_category=ErrorCategory.NOT_FOUND,
-        ),
+    return _build_response(
+        request,
+        detail="Resource not found",
+        error_code=ErrorCode.RECORD_NOT_FOUND,
+        error_category=ErrorCategory.NOT_FOUND,
         status_code=404,
     )
 
@@ -170,15 +248,14 @@ def handle_record_not_found(
 def handle_duplicate_record(
     request: Request[Any, Any, Any],
     exc: DuplicateRecordError,
-) -> Response[ApiResponse[None]]:
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``DuplicateRecordError`` to 409."""
     _log_error(request, exc, status=409)
-    return Response(
-        content=_build_error_response(
-            message="Resource already exists",
-            error_code=ErrorCode.DUPLICATE_RECORD,
-            error_category=ErrorCategory.CONFLICT,
-        ),
+    return _build_response(
+        request,
+        detail="Resource already exists",
+        error_code=ErrorCode.DUPLICATE_RECORD,
+        error_category=ErrorCategory.CONFLICT,
         status_code=409,
     )
 
@@ -186,15 +263,14 @@ def handle_duplicate_record(
 def handle_persistence_error(
     request: Request[Any, Any, Any],
     exc: PersistenceError,
-) -> Response[ApiResponse[None]]:
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``PersistenceError`` to 500."""
     _log_error(request, exc, status=500)
-    return Response(
-        content=_build_error_response(
-            message="Internal server error",
-            error_code=ErrorCode.INTERNAL_ERROR,
-            error_category=ErrorCategory.INTERNAL,
-        ),
+    return _build_response(
+        request,
+        detail="Internal server error",
+        error_code=ErrorCode.INTERNAL_ERROR,
+        error_category=ErrorCategory.INTERNAL,
         status_code=500,
     )
 
@@ -202,7 +278,7 @@ def handle_persistence_error(
 def handle_api_error(
     request: Request[Any, Any, Any],
     exc: ApiError,
-) -> Response[ApiResponse[None]]:
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``ApiError`` subclasses to their declared status code."""
     _log_error(request, exc, status=exc.status_code)
     # For 5xx errors return the generic class-level default to avoid
@@ -212,13 +288,12 @@ def handle_api_error(
         msg = type(exc).default_message
     else:
         msg = str(exc)
-    return Response(
-        content=_build_error_response(
-            message=msg,
-            error_code=exc.error_code,
-            error_category=exc.error_category,
-            retryable=exc.retryable,
-        ),
+    return _build_response(
+        request,
+        detail=msg,
+        error_code=exc.error_code,
+        error_category=exc.error_category,
+        retryable=exc.retryable,
         status_code=exc.status_code,
     )
 
@@ -226,15 +301,14 @@ def handle_api_error(
 def handle_unexpected(
     request: Request[Any, Any, Any],
     exc: Exception,
-) -> Response[ApiResponse[None]]:
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Catch-all for unexpected errors -> 500."""
     _log_error(request, exc, status=500)
-    return Response(
-        content=_build_error_response(
-            message="Internal server error",
-            error_code=ErrorCode.INTERNAL_ERROR,
-            error_category=ErrorCategory.INTERNAL,
-        ),
+    return _build_response(
+        request,
+        detail="Internal server error",
+        error_code=ErrorCode.INTERNAL_ERROR,
+        error_category=ErrorCategory.INTERNAL,
         status_code=500,
     )
 
@@ -242,15 +316,14 @@ def handle_unexpected(
 def handle_permission_denied(
     request: Request[Any, Any, Any],
     exc: PermissionDeniedException,
-) -> Response[ApiResponse[None]]:
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``PermissionDeniedException`` to 403."""
     _log_error(request, exc, status=403)
-    return Response(
-        content=_build_error_response(
-            message="Forbidden",
-            error_code=ErrorCode.FORBIDDEN,
-            error_category=ErrorCategory.AUTH,
-        ),
+    return _build_response(
+        request,
+        detail="Forbidden",
+        error_code=ErrorCode.FORBIDDEN,
+        error_category=ErrorCategory.AUTH,
         status_code=403,
     )
 
@@ -258,15 +331,14 @@ def handle_permission_denied(
 def handle_validation_error(
     request: Request[Any, Any, Any],
     exc: ValidationException,
-) -> Response[ApiResponse[None]]:
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``ValidationException`` to 400."""
     _log_error(request, exc, status=400)
-    return Response(
-        content=_build_error_response(
-            message="Validation error",
-            error_code=ErrorCode.REQUEST_VALIDATION_ERROR,
-            error_category=ErrorCategory.VALIDATION,
-        ),
+    return _build_response(
+        request,
+        detail="Validation error",
+        error_code=ErrorCode.REQUEST_VALIDATION_ERROR,
+        error_category=ErrorCategory.VALIDATION,
         status_code=400,
     )
 
@@ -274,15 +346,14 @@ def handle_validation_error(
 def handle_not_authorized(
     request: Request[Any, Any, Any],
     exc: NotAuthorizedException,
-) -> Response[ApiResponse[None]]:
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``NotAuthorizedException`` to 401."""
     _log_error(request, exc, status=401)
-    return Response(
-        content=_build_error_response(
-            message="Authentication required",
-            error_code=ErrorCode.UNAUTHORIZED,
-            error_category=ErrorCategory.AUTH,
-        ),
+    return _build_response(
+        request,
+        detail="Authentication required",
+        error_code=ErrorCode.UNAUTHORIZED,
+        error_category=ErrorCategory.AUTH,
         status_code=401,
     )
 
@@ -290,7 +361,7 @@ def handle_not_authorized(
 def handle_not_found(
     request: Request[Any, Any, Any],
     exc: NotFoundException,
-) -> Response[ApiResponse[None]]:
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map Litestar ``NotFoundException`` to 404.
 
     Ensures unmatched routes return 404 instead of falling through
@@ -305,12 +376,11 @@ def handle_not_found(
         error_type=type(exc).__qualname__,
         error=str(exc),
     )
-    return Response(
-        content=_build_error_response(
-            message="Not found",
-            error_code=ErrorCode.ROUTE_NOT_FOUND,
-            error_category=ErrorCategory.NOT_FOUND,
-        ),
+    return _build_response(
+        request,
+        detail="Not found",
+        error_code=ErrorCode.ROUTE_NOT_FOUND,
+        error_category=ErrorCategory.NOT_FOUND,
         status_code=404,
     )
 
@@ -318,7 +388,7 @@ def handle_not_found(
 def handle_http_exception(
     request: Request[Any, Any, Any],
     exc: HTTPException,
-) -> Response[ApiResponse[None]]:
+) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Catch-all for unhandled Litestar ``HTTPException`` subclasses.
 
     Preserves the correct status code (e.g. 405, 429) instead of
@@ -335,13 +405,12 @@ def handle_http_exception(
             fallback = "Request error"
         msg = exc.detail or fallback
     code, category, retryable = _category_for_status(status)
-    return Response(
-        content=_build_error_response(
-            message=msg,
-            error_code=code,
-            error_category=category,
-            retryable=retryable,
-        ),
+    return _build_response(
+        request,
+        detail=msg,
+        error_code=code,
+        error_category=category,
+        retryable=retryable,
         status_code=status,
         headers={
             k: v

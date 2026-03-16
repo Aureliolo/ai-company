@@ -4,12 +4,12 @@ All API-specific errors inherit from ``ApiError`` so callers
 can catch the entire family with a single except clause.
 
 ``ErrorCategory`` and ``ErrorCode`` provide machine-readable error
-metadata for structured error responses (RFC 9457 Phase 1).
+metadata for structured error responses (RFC 9457).
 """
 
 from enum import IntEnum, StrEnum
 from types import MappingProxyType
-from typing import ClassVar
+from typing import ClassVar, Final
 
 
 class ErrorCategory(StrEnum):
@@ -84,6 +84,46 @@ _CODE_CATEGORY_PREFIX: MappingProxyType[int, ErrorCategory] = MappingProxyType(
         8: ErrorCategory.INTERNAL,
     }
 )
+
+
+CATEGORY_TITLES: MappingProxyType[ErrorCategory, str] = MappingProxyType(
+    {
+        ErrorCategory.AUTH: "Authentication Error",
+        ErrorCategory.VALIDATION: "Validation Error",
+        ErrorCategory.NOT_FOUND: "Resource Not Found",
+        ErrorCategory.CONFLICT: "Resource Conflict",
+        ErrorCategory.RATE_LIMIT: "Rate Limit Exceeded",
+        ErrorCategory.BUDGET_EXHAUSTED: "Budget Exhausted",
+        ErrorCategory.PROVIDER_ERROR: "Provider Error",
+        ErrorCategory.INTERNAL: "Internal Server Error",
+    }
+)
+
+_ERROR_DOCS_BASE: Final[str] = "https://synthorg.io/docs/errors"
+
+
+def category_title(cat: ErrorCategory) -> str:
+    """Return the RFC 9457 ``title`` for a category.
+
+    Args:
+        cat: Error category.
+
+    Returns:
+        Human-readable title string.
+    """
+    return CATEGORY_TITLES[cat]
+
+
+def category_type_uri(cat: ErrorCategory) -> str:
+    """Return the RFC 9457 ``type`` URI for a category.
+
+    Args:
+        cat: Error category.
+
+    Returns:
+        Documentation URI for the error category.
+    """
+    return f"{_ERROR_DOCS_BASE}/{cat.value}"
 
 
 class ApiError(Exception):

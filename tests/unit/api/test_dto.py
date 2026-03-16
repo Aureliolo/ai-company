@@ -1,5 +1,7 @@
 """Tests for DTO models and response envelopes."""
 
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
@@ -14,10 +16,26 @@ from synthorg.api.dto import (
     PaginatedResponse,
     PaginationMeta,
 )
-from synthorg.api.errors import ErrorCategory
+from synthorg.api.errors import ErrorCategory, category_title, category_type_uri
 from synthorg.core.enums import ApprovalRiskLevel
 
 pytestmark = pytest.mark.unit
+
+
+def _make_error_detail(
+    cat: ErrorCategory = ErrorCategory.INTERNAL,
+    **kwargs: Any,
+) -> ErrorDetail:
+    """Build an ``ErrorDetail`` with title/type derived from category."""
+    defaults: dict[str, Any] = {
+        "detail": "err",
+        "error_code": 8000,
+        "error_category": cat,
+        "instance": "x",
+        "title": category_title(cat),
+        "type": category_type_uri(cat),
+    }
+    return ErrorDetail(**(defaults | kwargs))
 
 
 class TestApiResponseEnvelope:
@@ -50,10 +68,10 @@ class TestApiResponseEnvelope:
         assert dumped["error_detail"] is None
 
     def test_error_detail_populated_on_error(self) -> None:
-        detail = ErrorDetail(
-            message="Not found",
+        detail = _make_error_detail(
+            ErrorCategory.NOT_FOUND,
+            detail="Not found",
             error_code=3000,
-            error_category=ErrorCategory.NOT_FOUND,
             retryable=False,
             instance="abc-123",
         )
@@ -66,15 +84,15 @@ class TestApiResponseEnvelope:
 
 class TestErrorDetail:
     def test_construction_all_fields(self) -> None:
-        detail = ErrorDetail(
-            message="Rate limited",
+        detail = _make_error_detail(
+            ErrorCategory.RATE_LIMIT,
+            detail="Rate limited",
             error_code=5000,
-            error_category=ErrorCategory.RATE_LIMIT,
             retryable=True,
             retry_after=30,
             instance="req-456",
         )
-        assert detail.message == "Rate limited"
+        assert detail.detail == "Rate limited"
         assert detail.error_code == 5000
         assert detail.error_category == ErrorCategory.RATE_LIMIT
         assert detail.retryable is True
@@ -82,30 +100,20 @@ class TestErrorDetail:
         assert detail.instance == "req-456"
 
     def test_retry_after_defaults_to_none(self) -> None:
-        detail = ErrorDetail(
-            message="err",
-            error_code=8000,
-            error_category=ErrorCategory.INTERNAL,
-            instance="x",
-        )
+        detail = _make_error_detail()
         assert detail.retry_after is None
         assert detail.retryable is False
 
     def test_frozen_immutability(self) -> None:
-        detail = ErrorDetail(
-            message="err",
-            error_code=8000,
-            error_category=ErrorCategory.INTERNAL,
-            instance="x",
-        )
+        detail = _make_error_detail()
         with pytest.raises(ValidationError):
-            detail.message = "changed"  # type: ignore[misc]
+            detail.detail = "changed"  # type: ignore[misc]
 
     def test_serialization_roundtrip(self) -> None:
-        detail = ErrorDetail(
-            message="Conflict",
+        detail = _make_error_detail(
+            ErrorCategory.CONFLICT,
+            detail="Conflict",
             error_code=4000,
-            error_category=ErrorCategory.CONFLICT,
             retryable=False,
             retry_after=None,
             instance="req-789",
@@ -116,56 +124,39 @@ class TestErrorDetail:
 
     def test_retry_after_rejects_negative(self) -> None:
         with pytest.raises(ValidationError, match="greater than or equal to 0"):
-            ErrorDetail(
-                message="err",
+            _make_error_detail(
+                ErrorCategory.RATE_LIMIT,
                 error_code=5000,
-                error_category=ErrorCategory.RATE_LIMIT,
                 retryable=True,
                 retry_after=-1,
-                instance="x",
             )
 
     def test_retry_after_rejects_when_not_retryable(self) -> None:
         with pytest.raises(ValidationError, match="retry_after must be None"):
-            ErrorDetail(
-                message="err",
-                error_code=8000,
-                error_category=ErrorCategory.INTERNAL,
+            _make_error_detail(
                 retryable=False,
                 retry_after=30,
-                instance="x",
             )
 
     def test_retry_after_allowed_when_retryable(self) -> None:
-        detail = ErrorDetail(
-            message="Slow down",
+        detail = _make_error_detail(
+            ErrorCategory.RATE_LIMIT,
+            detail="Slow down",
             error_code=5000,
-            error_category=ErrorCategory.RATE_LIMIT,
             retryable=True,
             retry_after=60,
-            instance="x",
         )
         assert detail.retry_after == 60
 
 
 class TestApiResponseErrorDetailConsistency:
     def test_error_detail_on_success_rejected(self) -> None:
-        detail = ErrorDetail(
-            message="err",
-            error_code=8000,
-            error_category=ErrorCategory.INTERNAL,
-            instance="x",
-        )
+        detail = _make_error_detail()
         with pytest.raises(ValidationError, match="error_detail requires error"):
             ApiResponse(data="ok", error_detail=detail)
 
     def test_error_detail_on_paginated_success_rejected(self) -> None:
-        detail = ErrorDetail(
-            message="err",
-            error_code=8000,
-            error_category=ErrorCategory.INTERNAL,
-            instance="x",
-        )
+        detail = _make_error_detail()
         with pytest.raises(ValidationError, match="error_detail requires error"):
             PaginatedResponse(
                 data=("a",),
@@ -182,12 +173,7 @@ class TestPaginatedResponseErrorDetail:
         assert resp.error_detail is None
 
     def test_error_detail_field_present(self) -> None:
-        detail = ErrorDetail(
-            message="err",
-            error_code=8000,
-            error_category=ErrorCategory.INTERNAL,
-            instance="x",
-        )
+        detail = _make_error_detail()
         resp: PaginatedResponse[str] = PaginatedResponse(
             error="err",
             error_detail=detail,
