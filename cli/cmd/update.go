@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -192,7 +191,7 @@ func confirmUpdate(title string) (bool, error) {
 // If any step fails, the previous compose.yml is restored (or removed if it
 // did not exist before) so that the on-disk state remains consistent.
 func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, tag, safeDir, effectiveVersion string) error {
-	out := cmd.OutOrStdout()
+	out := ui.NewUI(cmd.OutOrStdout())
 
 	// Back up existing compose.yml for rollback on failure.
 	composePath := filepath.Join(safeDir, "compose.yml")
@@ -218,7 +217,7 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 		return err
 	}
 
-	_, _ = fmt.Fprintf(out, "Pulling container images (%s)...\n", tag)
+	out.Step(fmt.Sprintf("Pulling container images (%s)...", tag))
 	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
 		rollback()
 		return fmt.Errorf("pulling images: %w", err)
@@ -238,7 +237,7 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 
 // verifyAndPinForUpdate runs image verification and regenerates the compose
 // file with digest pins. Returns the digest pin map (nil if --skip-verify).
-func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir, effectiveVersion string, out io.Writer, errOut *ui.UI) (map[string]string, error) {
+func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir, effectiveVersion string, out *ui.UI, errOut *ui.UI) (map[string]string, error) {
 	updatedState := state
 	updatedState.ImageTag = tag
 
@@ -251,13 +250,13 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 		return nil, nil
 	}
 
-	_, _ = fmt.Fprintln(out, "Verifying container image signatures...")
+	out.Step("Verifying container image signatures...")
 	// Bound OCI registry calls to prevent indefinite hangs.
 	verifyCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
 		Images: verify.BuildImageRefs(tag, state.Sandbox),
-		Output: out,
+		Output: out.Writer(),
 	})
 	if err != nil {
 		if isTransportError(err) {

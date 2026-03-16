@@ -129,12 +129,18 @@ func TestVerifyProvenanceInvalidAttestation(t *testing.T) {
 	statement := inTotoStatement{
 		PredicateType: "https://example.com/not-slsa",
 	}
-	statementJSON, _ := json.Marshal(statement)
+	statementJSON, err := json.Marshal(statement)
+	if err != nil {
+		t.Fatalf("failed to marshal statement: %v", err)
+	}
 	envelope := dsseEnvelope{
 		PayloadType: DSSEPayloadType,
 		Payload:     base64.StdEncoding.EncodeToString(statementJSON),
 	}
-	envelopeJSON, _ := json.Marshal(envelope)
+	envelopeJSON, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatalf("failed to marshal envelope: %v", err)
+	}
 
 	attestManifest := ociManifest{
 		SchemaVersion: 2,
@@ -152,7 +158,10 @@ func TestVerifyProvenanceInvalidAttestation(t *testing.T) {
 			},
 		},
 	}
-	attestManifestJSON, _ := json.Marshal(attestManifest)
+	attestManifestJSON, err := json.Marshal(attestManifest)
+	if err != nil {
+		t.Fatalf("failed to marshal attestation manifest: %v", err)
+	}
 
 	referrerIndex := fmt.Sprintf(`{
 		"schemaVersion": 2,
@@ -194,8 +203,11 @@ func TestVerifyProvenanceInvalidAttestation(t *testing.T) {
 		Digest:     testDigest,
 	}
 
-	err := VerifyProvenance(context.Background(), ref, nil, sigverify.CertificateIdentity{})
+	err = VerifyProvenance(context.Background(), ref, nil, sigverify.CertificateIdentity{})
 	if err == nil {
 		t.Fatal("expected error for invalid attestation")
+	}
+	if !strings.Contains(err.Error(), "no valid SLSA provenance attestation") {
+		t.Errorf("expected provenance attestation error, got: %v", err)
 	}
 }

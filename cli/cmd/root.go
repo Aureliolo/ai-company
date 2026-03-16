@@ -78,7 +78,7 @@ func isInteractive() bool {
 // cryptographic verification failure. Used to conditionally suggest
 // --skip-verify only when the issue is connectivity, not a tampered image.
 func isTransportError(err error) bool {
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+	if errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
 	var netErr *net.OpError
@@ -89,13 +89,12 @@ func isTransportError(err error) bool {
 	if errors.As(err, &dnsErr) {
 		return true
 	}
-	// Catch wrapped "connection refused", "no such host", etc.
-	msg := err.Error()
-	return strings.Contains(msg, "connection refused") ||
-		strings.Contains(msg, "no such host") ||
-		strings.Contains(msg, "i/o timeout") ||
-		strings.Contains(msg, "TLS handshake timeout") ||
-		strings.Contains(msg, "fetching sigstore trusted root")
+	// Check for net.Error interface (covers timeout errors from HTTP clients).
+	var netIface net.Error
+	if errors.As(err, &netIface) && netIface.Timeout() {
+		return true
+	}
+	return false
 }
 
 // Execute runs the root command.

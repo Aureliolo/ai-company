@@ -187,6 +187,13 @@ func atomicWriteFile(targetPath string, data []byte, tmpDir string) error {
 		return fmt.Errorf("replacing compose file: %w", err)
 	}
 	tmpPath = "" // prevent deferred removal of the now-renamed file
+
+	// Best-effort directory fsync to ensure the rename is persisted.
+	// Ignored on platforms that don't support Sync on directories (Windows).
+	if dir, err := os.Open(filepath.Dir(targetPath)); err == nil {
+		_ = dir.Sync()
+		_ = dir.Close()
+	}
 	return nil
 }
 
