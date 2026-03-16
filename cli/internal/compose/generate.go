@@ -105,10 +105,10 @@ func validateParams(p Params) error {
 		}
 	}
 	if !config.IsValidPersistenceBackend(p.PersistenceBackend) {
-		return fmt.Errorf("invalid persistence backend %q: must be one of sqlite", p.PersistenceBackend)
+		return fmt.Errorf("invalid persistence backend %q: must be one of %s", p.PersistenceBackend, config.PersistenceBackendNames())
 	}
 	if !config.IsValidMemoryBackend(p.MemoryBackend) {
-		return fmt.Errorf("invalid memory backend %q: must be one of mem0", p.MemoryBackend)
+		return fmt.Errorf("invalid memory backend %q: must be one of %s", p.MemoryBackend, config.MemoryBackendNames())
 	}
 	return nil
 }
