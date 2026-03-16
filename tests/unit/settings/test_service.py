@@ -1,5 +1,6 @@
 """Unit tests for SettingsService."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -116,6 +117,7 @@ def service(
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestResolutionOrder:
     """Tests for the DB > env > YAML > default resolution chain."""
 
@@ -229,58 +231,52 @@ class TestCache:
 class TestValidation:
     """Tests for value validation on set()."""
 
-    async def test_rejects_non_float(self, service: SettingsService) -> None:
-        with pytest.raises(SettingValidationError, match="Expected float"):
-            await service.set("budget", "total_monthly", "not-a-number")
-
-    async def test_rejects_below_min(
-        self, mock_repo: AsyncMock, config: _FakeConfig
+    @pytest.mark.parametrize(
+        ("key", "defn_kwargs", "bad_value", "match"),
+        [
+            ("total_monthly", {}, "not-a-number", "Expected float"),
+            ("total_monthly", {"min_value": 0.0}, "-1.0", "below minimum"),
+            ("total_monthly", {"max_value": 1000.0}, "9999.0", "above maximum"),
+            (
+                "strategy",
+                {
+                    "setting_type": SettingType.ENUM,
+                    "enum_values": ("a", "b"),
+                    "yaml_path": None,
+                },
+                "c",
+                "Invalid enum",
+            ),
+            (
+                "enabled",
+                {
+                    "setting_type": SettingType.BOOLEAN,
+                    "yaml_path": None,
+                },
+                "maybe",
+                "Expected boolean",
+            ),
+        ],
+        ids=["non-float", "below-min", "above-max", "bad-enum", "bad-bool"],
+    )
+    async def test_rejects_invalid_value(  # noqa: PLR0913
+        self,
+        mock_repo: AsyncMock,
+        config: _FakeConfig,
+        key: str,
+        defn_kwargs: dict[str, Any],
+        bad_value: str,
+        match: str,
     ) -> None:
         registry = SettingsRegistry()
-        registry.register(_make_definition(min_value=0.0))
-        svc = SettingsService(repository=mock_repo, registry=registry, config=config)
-        with pytest.raises(SettingValidationError, match="below minimum"):
-            await svc.set("budget", "total_monthly", "-1.0")
-
-    async def test_rejects_above_max(
-        self, mock_repo: AsyncMock, config: _FakeConfig
-    ) -> None:
-        registry = SettingsRegistry()
-        registry.register(_make_definition(max_value=1000.0))
-        svc = SettingsService(repository=mock_repo, registry=registry, config=config)
-        with pytest.raises(SettingValidationError, match="above maximum"):
-            await svc.set("budget", "total_monthly", "9999.0")
-
-    async def test_rejects_invalid_enum(
-        self, mock_repo: AsyncMock, config: _FakeConfig
-    ) -> None:
-        registry = SettingsRegistry()
-        registry.register(
-            _make_definition(
-                key="strategy",
-                setting_type=SettingType.ENUM,
-                enum_values=("a", "b"),
-                yaml_path=None,
-            )
+        registry.register(_make_definition(key=key, **defn_kwargs))
+        svc = SettingsService(
+            repository=mock_repo,
+            registry=registry,
+            config=config,
         )
-        svc = SettingsService(repository=mock_repo, registry=registry, config=config)
-        with pytest.raises(SettingValidationError, match="Invalid enum"):
-            await svc.set("budget", "strategy", "c")
-
-    async def test_rejects_invalid_bool(
-        self, mock_repo: AsyncMock, config: _FakeConfig
-    ) -> None:
-        registry = SettingsRegistry()
-        registry.register(
-            _make_definition(
-                key="enabled",
-                setting_type=SettingType.BOOLEAN,
-                yaml_path=None,
-            )
-        )
-        svc = SettingsService(repository=mock_repo, registry=registry, config=config)
-        with pytest.raises(SettingValidationError, match="Expected boolean"):
-            await svc.set("budget", "enabled", "maybe")
+        with pytest.raises(SettingValidationError, match=match):
+            await svc.set("budget", key, bad_value)
 
     async def test_accepts_valid_value(
         self, service: SettingsService, mock_repo: AsyncMock

@@ -19,19 +19,19 @@ class TestSettingsEncryptor:
     def encryptor(self, key: bytes) -> SettingsEncryptor:
         return SettingsEncryptor(key)
 
-    def test_roundtrip(self, encryptor: SettingsEncryptor) -> None:
-        plaintext = "my-secret-api-key"
+    @pytest.mark.parametrize(
+        "plaintext",
+        [
+            "my-secret-api-key",
+            "",
+            "p\u00e4ssw\u00f6rd-\U0001f512-\u6d4b\u8bd5",
+        ],
+        ids=["ascii", "empty", "unicode"],
+    )
+    def test_roundtrip(self, encryptor: SettingsEncryptor, plaintext: str) -> None:
         ciphertext = encryptor.encrypt(plaintext)
-        assert ciphertext != plaintext
-        assert encryptor.decrypt(ciphertext) == plaintext
-
-    def test_roundtrip_empty_string(self, encryptor: SettingsEncryptor) -> None:
-        ciphertext = encryptor.encrypt("")
-        assert encryptor.decrypt(ciphertext) == ""
-
-    def test_roundtrip_unicode(self, encryptor: SettingsEncryptor) -> None:
-        plaintext = "p\u00e4ssw\u00f6rd-\U0001f512-\u6d4b\u8bd5"
-        ciphertext = encryptor.encrypt(plaintext)
+        if plaintext:
+            assert ciphertext != plaintext
         assert encryptor.decrypt(ciphertext) == plaintext
 
     def test_decrypt_with_wrong_key_raises(self) -> None:

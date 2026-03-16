@@ -171,8 +171,11 @@ class TestV9MigrationCrashSafety:
         cursor = await memory_db.execute("SELECT namespace, key, value FROM settings")
         rows = list(await cursor.fetchall())
         assert len(rows) == 1
-        assert rows[0][0] == "_system"
-        assert rows[0][1] == "k1"
+        assert (rows[0][0], rows[0][1], rows[0][2]) == (
+            "_system",
+            "k1",
+            "new_val",
+        )
 
     async def test_v9_schema_settings_without_old_preserves_data(
         self, memory_db: aiosqlite.Connection

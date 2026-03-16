@@ -140,11 +140,12 @@ def _validate_json(definition: SettingDefinition, value: str) -> None:
 
 def _check_range(definition: SettingDefinition, value: float) -> None:
     """Check numeric range constraints."""
+    display = _SENSITIVE_MASK if definition.sensitive else str(value)
     if definition.min_value is not None and value < definition.min_value:
-        msg = f"Value {value} below minimum {definition.min_value}"
+        msg = f"Value {display} below minimum {definition.min_value}"
         raise SettingValidationError(msg)
     if definition.max_value is not None and value > definition.max_value:
-        msg = f"Value {value} above maximum {definition.max_value}"
+        msg = f"Value {display} above maximum {definition.max_value}"
         raise SettingValidationError(msg)
 
 
@@ -232,7 +233,16 @@ class SettingsService:
                         f" {namespace}/{key}: no encryptor"
                     )
                     raise SettingsEncryptionError(msg)
-                value = self._encryptor.decrypt(raw_value)
+                try:
+                    value = self._encryptor.decrypt(raw_value)
+                except SettingsEncryptionError:
+                    logger.exception(
+                        SETTINGS_ENCRYPTION_ERROR,
+                        namespace=namespace,
+                        key=key,
+                        reason="decrypt_failed",
+                    )
+                    raise
             setting_value = SettingValue(
                 namespace=definition.namespace,
                 key=key,

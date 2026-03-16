@@ -14,3 +14,14 @@ from synthorg.settings.definitions import (
     providers,
     security,
 )
+
+__all__ = [
+    "backup",
+    "budget",
+    "company",
+    "coordination",
+    "memory",
+    "observability",
+    "providers",
+    "security",
+]

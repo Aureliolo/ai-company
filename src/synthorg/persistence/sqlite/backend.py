@@ -421,8 +421,7 @@ class SQLitePersistenceBackend:
         Raises:
             PersistenceConnectionError: If not connected.
         """
-        repo = self._require_connected(self._settings, "settings")
-        result = await repo.get(NotBlankStr("_system"), key)
+        result = await self.settings.get(NotBlankStr("_system"), key)
         return result[0] if result is not None else None
 
     async def set_setting(self, key: NotBlankStr, value: str) -> None:
@@ -433,6 +432,10 @@ class SQLitePersistenceBackend:
         Raises:
             PersistenceConnectionError: If not connected.
         """
-        repo = self._require_connected(self._settings, "settings")
         updated_at = datetime.now(UTC).isoformat()
-        await repo.set(NotBlankStr("_system"), key, value, updated_at)
+        await self.settings.set(
+            NotBlankStr("_system"),
+            key,
+            value,
+            updated_at,
+        )

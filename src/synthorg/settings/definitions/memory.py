@@ -27,8 +27,8 @@ _r.register(
         default="persistent",
         description="Default memory persistence level for agents",
         group="General",
-        enum_values=("none", "session", "persistent"),
-        yaml_path="memory.default_level",
+        enum_values=("none", "session", "project", "persistent"),
+        yaml_path="memory.level",
     )
 )
 
@@ -41,7 +41,7 @@ _r.register(
         description="How often to consolidate and archive memories",
         group="Maintenance",
         level=SettingLevel.ADVANCED,
-        enum_values=("hourly", "daily", "weekly"),
+        enum_values=("hourly", "daily", "weekly", "never"),
         yaml_path="memory.consolidation_interval",
     )
 )

@@ -20,6 +20,7 @@ class _FakeConfig(BaseModel):
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestExtractFromConfig:
     """Tests for dotted-path config extraction."""
 

@@ -11,8 +11,9 @@ from synthorg.settings.enums import (
 )
 from synthorg.settings.models import SettingDefinition, SettingEntry, SettingValue
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-@pytest.mark.unit
+
 class TestSettingDefinition:
     """Tests for SettingDefinition construction and immutability."""
 
@@ -95,7 +96,6 @@ class TestSettingDefinition:
             )
 
 
-@pytest.mark.unit
 class TestSettingValue:
     """Tests for SettingValue construction and immutability."""
 
@@ -133,7 +133,6 @@ class TestSettingValue:
             val.value = "200.0"  # type: ignore[misc]
 
 
-@pytest.mark.unit
 class TestSettingEntry:
     """Tests for SettingEntry construction."""
 

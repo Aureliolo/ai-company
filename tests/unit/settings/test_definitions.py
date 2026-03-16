@@ -12,20 +12,15 @@ from synthorg.settings.registry import SettingsRegistry, get_registry
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestDefinitionsLoading:
     """Tests that all definitions load correctly."""
 
-    def test_all_definitions_load_without_error(self) -> None:
-        """Importing the definitions package must not raise."""
-        registry = get_registry()
-        assert registry.size > 0
-
-    def test_no_duplicate_registrations(self) -> None:
-        """The global registry must have no duplicates.
+    def test_definitions_registry_valid(self) -> None:
+        """Importing definitions must not raise and the registry must have entries.
 
         Duplicates would have raised ValueError during import,
         so if we get here the registry is duplicate-free.
-        Verify it has a reasonable number of definitions.
         """
         registry = get_registry()
         assert registry.size > 0

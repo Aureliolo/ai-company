@@ -1,6 +1,7 @@
 """Domain models for the settings persistence layer."""
 
 import json
+import math
 import re
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -12,6 +13,22 @@ from synthorg.settings.enums import (
     SettingSource,
     SettingType,
 )
+
+
+def _check_numeric_field(
+    value: float | None,
+    name: str,
+    setting_type: SettingType,
+) -> None:
+    """Validate a numeric constraint field (min_value/max_value)."""
+    if value is None:
+        return
+    if setting_type not in (SettingType.INTEGER, SettingType.FLOAT):
+        msg = f"{name} is only valid for INTEGER/FLOAT, not {setting_type}"
+        raise ValueError(msg)
+    if not math.isfinite(value):
+        msg = f"{name} must be finite, got {value}"
+        raise ValueError(msg)
 
 
 class SettingDefinition(BaseModel):
@@ -60,7 +77,7 @@ class SettingDefinition(BaseModel):
         default=False,
         description="Change takes effect after restart",
     )
-    enum_values: tuple[str, ...] = Field(
+    enum_values: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Allowed values for ENUM type",
     )
@@ -90,18 +107,8 @@ class SettingDefinition(BaseModel):
                 f" requires non-empty enum_values"
             )
             raise ValueError(msg)
-        if self.min_value is not None and self.type not in (
-            SettingType.INTEGER,
-            SettingType.FLOAT,
-        ):
-            msg = f"min_value is only valid for INTEGER/FLOAT, not {self.type}"
-            raise ValueError(msg)
-        if self.max_value is not None and self.type not in (
-            SettingType.INTEGER,
-            SettingType.FLOAT,
-        ):
-            msg = f"max_value is only valid for INTEGER/FLOAT, not {self.type}"
-            raise ValueError(msg)
+        _check_numeric_field(self.min_value, "min_value", self.type)
+        _check_numeric_field(self.max_value, "max_value", self.type)
         if (
             self.min_value is not None
             and self.max_value is not None
@@ -163,10 +170,13 @@ def _check_default_int(default: str) -> None:
 
 def _check_default_float(default: str) -> None:
     try:
-        float(default)
+        val = float(default)
     except ValueError:
         msg = f"default {default!r} is not a valid float"
         raise ValueError(msg) from None
+    if not math.isfinite(val):
+        msg = f"default must be finite, got {val}"
+        raise ValueError(msg)
 
 
 def _check_default_bool(default: str) -> None:
