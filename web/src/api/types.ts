@@ -504,8 +504,8 @@ export interface Channel {
 
 export interface HealthStatus {
   status: 'ok' | 'degraded' | 'down'
-  persistence: boolean
-  message_bus: boolean
+  persistence: boolean | null
+  message_bus: boolean | null
   version: string
   uptime_seconds: number
 }
@@ -654,10 +654,13 @@ export interface WsEvent {
   payload: Record<string, unknown>
 }
 
+/** Filters for WebSocket channel subscriptions. */
+export type WsSubscriptionFilters = Readonly<Record<string, string>>
+
 export interface WsSubscribeMessage {
   action: 'subscribe'
   channels: WsChannel[]
-  filters?: Record<string, string>
+  filters?: WsSubscriptionFilters
 }
 
 export interface WsUnsubscribeMessage {
@@ -677,6 +680,51 @@ export interface WsErrorMessage {
 // ── Event handler type ──────────────────────────────────────
 
 export type WsEventHandler = (event: WsEvent) => void
+
+// ── Collaboration scoring ────────────────────────────────────
+
+export interface CollaborationScoreResult {
+  score: number
+  strategy_name: string
+  component_scores: [string, number][]
+  confidence: number
+  override_active: boolean
+}
+
+export interface SetOverrideRequest {
+  score: number
+  reason: string
+  expires_in_days?: number | null
+}
+
+export interface OverrideResponse {
+  agent_id: string
+  score: number
+  reason: string
+  applied_by: string
+  applied_at: string
+  expires_at: string | null
+}
+
+export interface LlmCalibrationRecord {
+  id: string
+  agent_id: string
+  sampled_at: string
+  interaction_record_id: string
+  llm_score: number
+  behavioral_score: number
+  drift: number
+  rationale: string
+  model_used: string
+  cost_usd: number
+}
+
+export interface CalibrationSummaryResponse {
+  agent_id: string
+  average_drift: number | null
+  records: LlmCalibrationRecord[]
+  record_count: number
+}
 
 // ── Pagination helpers ───────────────────────────────────────
 

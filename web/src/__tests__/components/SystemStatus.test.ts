@@ -103,4 +103,36 @@ describe('SystemStatus', () => {
     })
     expect(wrapper.text()).toContain('Down')
   })
+
+  it('shows persistence as "N/A" when null (not configured)', () => {
+    const notConfigured: HealthStatus = { ...mockHealth, persistence: null }
+    const wrapper = mount(SystemStatus, {
+      props: { health: notConfigured, wsConnected: true },
+    })
+    expect(wrapper.text()).toContain('N/A')
+    expect(wrapper.text()).not.toContain('Down')
+  })
+
+  it('shows message bus as "N/A" when null (not configured)', () => {
+    const notConfigured: HealthStatus = { ...mockHealth, message_bus: null }
+    const wrapper = mount(SystemStatus, {
+      props: { health: notConfigured, wsConnected: true },
+    })
+    expect(wrapper.text()).toContain('N/A')
+  })
+
+  it('shows both as "N/A" when no services configured', () => {
+    const noServices: HealthStatus = {
+      ...mockHealth,
+      persistence: null,
+      message_bus: null,
+    }
+    const wrapper = mount(SystemStatus, {
+      props: { health: noServices, wsConnected: true },
+    })
+    const text = wrapper.text()
+    // Should show N/A twice (for persistence and message bus)
+    expect(text.match(/N\/A/g)?.length).toBe(2)
+    expect(text).not.toContain('Down')
+  })
 })

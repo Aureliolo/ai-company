@@ -17,7 +17,7 @@ from synthorg.hr.performance.models import (
     WindowMetrics,
 )
 
-from .conftest import make_collab_metric, make_task_metric
+from .conftest import make_calibration_record, make_collab_metric, make_task_metric
 
 NOW = datetime(2026, 3, 10, 12, 0, 0, tzinfo=UTC)
 
@@ -524,3 +524,114 @@ class TestAgentPerformanceSnapshot:
         )
         with pytest.raises(ValidationError):
             snap.agent_id = "other"  # type: ignore[misc]
+
+
+@pytest.mark.unit
+class TestLlmCalibrationRecord:
+    """LlmCalibrationRecord model tests."""
+
+    def test_construction(self) -> None:
+        """Valid construction produces a record with computed drift."""
+        record = make_calibration_record(
+            llm_score=8.0,
+            behavioral_score=6.0,
+        )
+        assert record.llm_score == 8.0
+        assert record.behavioral_score == 6.0
+        assert record.drift == 2.0
+
+    def test_drift_computed_field(self) -> None:
+        """Drift is abs(llm_score - behavioral_score), rounded."""
+        record = make_calibration_record(
+            llm_score=3.1234,
+            behavioral_score=7.5678,
+        )
+        assert record.drift == round(abs(3.1234 - 7.5678), 4)
+
+    def test_drift_boundary_max(self) -> None:
+        """Maximum drift is 10.0 (0.0 vs 10.0)."""
+        record = make_calibration_record(
+            llm_score=0.0,
+            behavioral_score=10.0,
+        )
+        assert record.drift == 10.0
+
+    def test_drift_boundary_zero(self) -> None:
+        """Zero drift when scores match."""
+        record = make_calibration_record(
+            llm_score=5.0,
+            behavioral_score=5.0,
+        )
+        assert record.drift == 0.0
+
+    def test_score_range_enforced(self) -> None:
+        """Scores outside [0.0, 10.0] are rejected."""
+        with pytest.raises(ValidationError):
+            make_calibration_record(llm_score=11.0)
+        with pytest.raises(ValidationError):
+            make_calibration_record(llm_score=-1.0)
+        with pytest.raises(ValidationError):
+            make_calibration_record(behavioral_score=11.0)
+        with pytest.raises(ValidationError):
+            make_calibration_record(behavioral_score=-1.0)
+
+    def test_frozen(self) -> None:
+        """LlmCalibrationRecord is immutable."""
+        record = make_calibration_record()
+        with pytest.raises(ValidationError):
+            record.llm_score = 9.0  # type: ignore[misc]
+
+    def test_rationale_max_length(self) -> None:
+        """Rationale exceeding 2048 chars is rejected."""
+        with pytest.raises(ValidationError):
+            make_calibration_record(rationale="x" * 2049)
+
+
+@pytest.mark.unit
+class TestCollaborationMetricRecordInteractionSummary:
+    """Tests for the interaction_summary field."""
+
+    def test_none_by_default(self) -> None:
+        """interaction_summary defaults to None."""
+        record = make_collab_metric(recorded_at=NOW)
+        assert record.interaction_summary is None
+
+    def test_valid_summary(self) -> None:
+        """Valid non-blank summary is accepted."""
+        record = make_collab_metric(
+            recorded_at=NOW,
+            interaction_summary=NotBlankStr("Agent delegated task"),
+        )
+        assert record.interaction_summary == "Agent delegated task"
+
+    def test_max_length_enforced(self) -> None:
+        """Summary exceeding 4096 chars is rejected."""
+        with pytest.raises(ValidationError):
+            make_collab_metric(
+                recorded_at=NOW,
+                interaction_summary=NotBlankStr("x" * 4097),
+            )
+
+
+@pytest.mark.unit
+class TestCollaborationScoreResultOverrideActive:
+    """Tests for the override_active field."""
+
+    def test_default_false(self) -> None:
+        """override_active defaults to False."""
+        result = CollaborationScoreResult(
+            score=5.0,
+            strategy_name=NotBlankStr("behavioral_telemetry"),
+            confidence=0.8,
+        )
+        assert result.override_active is False
+
+    def test_explicit_true(self) -> None:
+        """override_active can be set to True."""
+        result = CollaborationScoreResult(
+            score=9.0,
+            strategy_name=NotBlankStr("human_override"),
+            confidence=1.0,
+            override_active=True,
+        )
+        assert result.override_active is True

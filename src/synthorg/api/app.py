@@ -45,6 +45,7 @@ from synthorg.config.schema import RootConfig
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
+from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
@@ -436,6 +437,7 @@ def create_app(  # noqa: PLR0913
     agent_registry: AgentRegistryService | None = None,
     meeting_orchestrator: MeetingOrchestrator | None = None,
     meeting_scheduler: MeetingScheduler | None = None,
+    performance_tracker: PerformanceTracker | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -454,6 +456,7 @@ def create_app(  # noqa: PLR0913
         agent_registry: Agent registry service.
         meeting_orchestrator: Meeting orchestrator.
         meeting_scheduler: Meeting scheduler.
+        performance_tracker: Performance tracking service.
 
     Returns:
         Configured Litestar application.
@@ -498,6 +501,7 @@ def create_app(  # noqa: PLR0913
         agent_registry=agent_registry,
         meeting_orchestrator=meeting_orchestrator,
         meeting_scheduler=meeting_scheduler,
+        performance_tracker=performance_tracker,
         startup_time=time.monotonic(),
     )
 

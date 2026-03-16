@@ -1,10 +1,13 @@
 """Tests for MemoryRetrievalConfig."""
 
 import pytest
+import structlog.testing
 from pydantic import ValidationError
 
 from synthorg.memory.injection import InjectionPoint, InjectionStrategy
+from synthorg.memory.ranking import FusionStrategy
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
+from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -23,6 +26,8 @@ class TestMemoryRetrievalConfigDefaults:
         assert c.include_shared is True
         assert c.default_relevance == 0.5
         assert c.injection_point is InjectionPoint.SYSTEM
+        assert c.fusion_strategy is FusionStrategy.LINEAR
+        assert c.rrf_k == 60
 
     def test_frozen(self) -> None:
         c = MemoryRetrievalConfig()
@@ -150,3 +155,53 @@ class TestMemoryRetrievalConfigSerialization:
         data = c.model_dump()
         restored = MemoryRetrievalConfig.model_validate(data)
         assert restored == c
+
+
+@pytest.mark.unit
+class TestMemoryRetrievalConfigFusion:
+    def test_default_fusion_strategy_is_linear(self) -> None:
+        c = MemoryRetrievalConfig()
+        assert c.fusion_strategy is FusionStrategy.LINEAR
+
+    def test_rrf_fusion_strategy_rejected(self) -> None:
+        """RRF is not yet wired into the retrieval pipeline."""
+        with pytest.raises(
+            ValidationError, match="not yet wired into the retrieval pipeline"
+        ):
+            MemoryRetrievalConfig(fusion_strategy=FusionStrategy.RRF)
+
+    def test_linear_strategy_still_enforces_weight_sum(self) -> None:
+        with pytest.raises(ValidationError, match=r"must equal 1\.0"):
+            MemoryRetrievalConfig(
+                fusion_strategy=FusionStrategy.LINEAR,
+                relevance_weight=0.5,
+                recency_weight=0.3,
+            )
+
+    def test_default_rrf_k(self) -> None:
+        c = MemoryRetrievalConfig()
+        assert c.rrf_k == 60
+
+    def test_rrf_k_boundaries(self) -> None:
+        c1 = MemoryRetrievalConfig(rrf_k=1)
+        assert c1.rrf_k == 1
+        c2 = MemoryRetrievalConfig(rrf_k=1000)
+        assert c2.rrf_k == 1000
+
+    def test_rrf_k_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MemoryRetrievalConfig(rrf_k=0)
+
+    def test_rrf_k_above_max_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            MemoryRetrievalConfig(rrf_k=1001)
+
+    def test_rrf_k_non_default_with_linear_warns(self) -> None:
+        """Custom rrf_k with LINEAR fusion emits a warning."""
+        with structlog.testing.capture_logs() as cap:
+            c = MemoryRetrievalConfig(rrf_k=42)
+        assert c.rrf_k == 42
+        events = [e for e in cap if e.get("event") == CONFIG_VALIDATION_FAILED]
+        assert len(events) == 1
+        assert events[0]["field"] == "rrf_k"
+        assert "rrf_k is ignored" in events[0]["reason"]

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from 'vue'
+import { onMounted, watch } from 'vue'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
@@ -8,25 +8,16 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import MessageList from '@/components/messages/MessageList.vue'
 import ChannelSelector from '@/components/messages/ChannelSelector.vue'
 import { useMessageStore } from '@/stores/messages'
-import { useWebSocketStore } from '@/stores/websocket'
-import { useAuthStore } from '@/stores/auth'
-
 import { sanitizeForLog } from '@/utils/logging'
+import { useWebSocketSubscription } from '@/composables/useWebSocketSubscription'
 
 const messageStore = useMessageStore()
-const wsStore = useWebSocketStore()
-const authStore = useAuthStore()
+
+useWebSocketSubscription({
+  bindings: [{ channel: 'messages', handler: messageStore.handleWsEvent }],
+})
 
 onMounted(async () => {
-  try {
-    if (authStore.token && !wsStore.connected) {
-      wsStore.connect(authStore.token)
-    }
-    wsStore.subscribe(['messages'])
-    wsStore.onChannelEvent('messages', messageStore.handleWsEvent)
-  } catch (err) {
-    console.error('WebSocket setup failed:', sanitizeForLog(err))
-  }
   try {
     await Promise.all([messageStore.fetchChannels(), messageStore.fetchMessages()])
   } catch (err) {
@@ -34,18 +25,13 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => {
-  wsStore.unsubscribe(['messages'])
-  wsStore.offChannelEvent('messages', messageStore.handleWsEvent)
-})
-
 watch(
   () => messageStore.activeChannel,
   async (channel) => {
     try {
       await messageStore.fetchMessages(channel ?? undefined)
-    } catch {
-      // Store handles errors internally
+    } catch (err) {
+      console.error('Channel message fetch failed:', sanitizeForLog(err))
     }
   },
 )

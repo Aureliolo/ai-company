@@ -174,4 +174,18 @@ describe('DashboardPage', () => {
     expect(getOverviewMetrics).toHaveBeenCalled()
     expect(listTasks).toHaveBeenCalled()
   })
+
+  it('renders without error when health has null services (fresh install)', async () => {
+    const { getHealth } = await import('@/api/endpoints/health')
+    vi.mocked(getHealth).mockResolvedValueOnce({
+      status: 'ok',
+      version: '0.1.0',
+      persistence: null,
+      message_bus: null,
+      uptime_seconds: 0,
+    })
+    const wrapper = mount(DashboardPage)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="system-status"]').exists()).toBe(true)
+  })
 })

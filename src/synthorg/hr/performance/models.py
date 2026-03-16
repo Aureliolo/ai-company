@@ -13,6 +13,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     model_validator,
 )
 
@@ -79,6 +80,8 @@ class CollaborationMetricRecord(BaseModel):
         meeting_contribution: Quality of meeting contribution.
         loop_triggered: Whether the agent triggered a delegation loop.
         handoff_completeness: Completeness of task handoff (0.0-1.0).
+        interaction_summary: Text summary of the interaction for LLM
+            calibration (None if not available).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -122,6 +125,11 @@ class CollaborationMetricRecord(BaseModel):
         le=1.0,
         description="Completeness of task handoff",
     )
+    interaction_summary: NotBlankStr | None = Field(
+        default=None,
+        max_length=4096,
+        description="Text summary of the interaction for LLM calibration",
+    )
 
 
 class QualityScoreResult(BaseModel):
@@ -138,7 +146,7 @@ class QualityScoreResult(BaseModel):
 
     score: float = Field(ge=0.0, le=10.0, description="Overall quality score")
     strategy_name: NotBlankStr = Field(description="Scoring strategy used")
-    breakdown: tuple[tuple[str, float], ...] = Field(
+    breakdown: tuple[tuple[NotBlankStr, float], ...] = Field(
         default=(),
         description="Score components as (name, value) pairs",
     )
@@ -163,7 +171,7 @@ class CollaborationScoreResult(BaseModel):
 
     score: float = Field(ge=0.0, le=10.0, description="Overall collaboration score")
     strategy_name: NotBlankStr = Field(description="Scoring strategy used")
-    component_scores: tuple[tuple[str, float], ...] = Field(
+    component_scores: tuple[tuple[NotBlankStr, float], ...] = Field(
         default=(),
         description="Per-component scores as (name, value) pairs",
     )
@@ -172,6 +180,123 @@ class CollaborationScoreResult(BaseModel):
         le=1.0,
         description="Confidence in the score",
     )
+    override_active: bool = Field(
+        default=False,
+        description="Whether a human override is active",
+    )
+
+
+class LlmCalibrationRecord(BaseModel):
+    """Record of an LLM calibration sample for collaboration scoring.
+
+    Attributes:
+        id: Unique record identifier.
+        agent_id: Agent being evaluated.
+        sampled_at: When the LLM evaluation occurred.
+        interaction_record_id: ID of the sampled CollaborationMetricRecord.
+        llm_score: LLM-assigned collaboration score (0.0-10.0).
+        behavioral_score: Behavioral strategy score at time of sampling.
+        drift: Absolute difference between LLM and behavioral scores (computed).
+        rationale: LLM's explanation for the score.
+        model_used: Which LLM model was used for evaluation.
+        cost_usd: Cost of the LLM call.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    id: NotBlankStr = Field(
+        default_factory=lambda: NotBlankStr(str(uuid4())),
+        description="Unique record identifier",
+    )
+    agent_id: NotBlankStr = Field(description="Agent being evaluated")
+    sampled_at: AwareDatetime = Field(
+        description="When the LLM evaluation occurred",
+    )
+    interaction_record_id: NotBlankStr = Field(
+        description="ID of the sampled CollaborationMetricRecord",
+    )
+    llm_score: float = Field(
+        ge=0.0,
+        le=10.0,
+        description="LLM-assigned collaboration score",
+    )
+    behavioral_score: float = Field(
+        ge=0.0,
+        le=10.0,
+        description="Behavioral strategy score at time of sampling",
+    )
+
+    @computed_field(description="Absolute difference between LLM and behavioral scores")  # type: ignore[prop-decorator]
+    @property
+    def drift(self) -> float:
+        """Absolute difference between LLM and behavioral scores."""
+        return round(abs(self.llm_score - self.behavioral_score), 4)
+
+    rationale: NotBlankStr = Field(
+        max_length=2048,
+        description="LLM's explanation for the score",
+    )
+    model_used: NotBlankStr = Field(
+        description="Which LLM model was used for evaluation",
+    )
+    cost_usd: float = Field(
+        ge=0.0,
+        description="Cost of the LLM call",
+    )
+
+
+class CollaborationOverride(BaseModel):
+    """Human-applied override for an agent's collaboration score.
+
+    Attributes:
+        id: Unique override identifier.
+        agent_id: Agent whose score is overridden.
+        score: Override score (0.0-10.0).
+        reason: Why the override was applied.
+        applied_by: Identity of the human who applied it.
+        applied_at: When the override was applied.
+        expires_at: When the override expires (None = indefinite).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    id: NotBlankStr = Field(
+        default_factory=lambda: NotBlankStr(str(uuid4())),
+        description="Unique override identifier",
+    )
+    agent_id: NotBlankStr = Field(
+        description="Agent whose score is overridden",
+    )
+    score: float = Field(
+        ge=0.0,
+        le=10.0,
+        description="Override score",
+    )
+    reason: NotBlankStr = Field(
+        max_length=4096,
+        description="Why the override was applied",
+    )
+    applied_by: NotBlankStr = Field(
+        description="Identity of the human who applied it",
+    )
+    applied_at: AwareDatetime = Field(
+        description="When the override was applied",
+    )
+    expires_at: AwareDatetime | None = Field(
+        default=None,
+        description="When the override expires (None = indefinite)",
+    )
+
+    @model_validator(mode="after")
+    def _validate_expiration_ordering(self) -> Self:
+        """Ensure expires_at is strictly after applied_at when set."""
+        if self.expires_at is not None and self.expires_at <= self.applied_at:
+            msg = (
+                f"expires_at ({self.expires_at}) must be after "
+                f"applied_at ({self.applied_at})"
+            )
+            raise ValueError(msg)
+        return self
 
 
 class TrendResult(BaseModel):

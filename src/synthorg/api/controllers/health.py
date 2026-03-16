@@ -2,6 +2,10 @@
 
 import time
 from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
@@ -29,8 +33,8 @@ class HealthStatus(BaseModel):
 
     Attributes:
         status: Overall health status.
-        persistence: Whether persistence backend is healthy.
-        message_bus: Whether message bus is running.
+        persistence: True if healthy, False if unhealthy, None if not configured.
+        message_bus: True if running, False if stopped, None if not configured.
         version: Application version.
         uptime_seconds: Seconds since application startup.
     """
@@ -38,16 +42,48 @@ class HealthStatus(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     status: ServiceStatus = Field(description="Overall health status")
-    persistence: bool = Field(
-        description="Persistence backend healthy",
+    persistence: bool | None = Field(
+        description="Persistence backend healthy (None if not configured)",
     )
-    message_bus: bool = Field(
-        description="Message bus running",
+    message_bus: bool | None = Field(
+        description="Message bus running (None if not configured)",
     )
     version: str = Field(description="Application version")
     uptime_seconds: float = Field(
         description="Seconds since startup",
     )
+
+
+async def _probe_service(
+    *,
+    configured: bool,
+    probe: Callable[[], Awaitable[bool]],
+    component: str,
+) -> bool | None:
+    """Probe an async service, returning None if not configured."""
+    if not configured:
+        return None
+    try:
+        return await probe()
+    except Exception:
+        logger.warning(API_HEALTH_CHECK, component=component, exc_info=True)
+        return False
+
+
+def _probe_sync_service(
+    *,
+    configured: bool,
+    probe: Callable[[], bool],
+    component: str,
+) -> bool | None:
+    """Probe a synchronous service, returning None if not configured."""
+    if not configured:
+        return None
+    try:
+        return probe()
+    except Exception:
+        logger.warning(API_HEALTH_CHECK, component=component, exc_info=True)
+        return False
 
 
 class HealthController(Controller):
@@ -71,29 +107,21 @@ class HealthController(Controller):
         """
         app_state: AppState = state.app_state
 
-        try:
-            persistence_ok = await app_state.persistence.health_check()
-        except Exception:
-            logger.warning(
-                API_HEALTH_CHECK,
-                component="persistence",
-                exc_info=True,
-            )
-            persistence_ok = False
+        persistence_ok = await _probe_service(
+            configured=app_state.has_persistence,
+            probe=lambda: app_state.persistence.health_check(),  # noqa: PLW0108
+            component="persistence",
+        )
+        bus_ok = _probe_sync_service(
+            configured=app_state.has_message_bus,
+            probe=lambda: app_state.message_bus.is_running,
+            component="message_bus",
+        )
 
-        try:
-            bus_ok = app_state.message_bus.is_running
-        except Exception:
-            logger.warning(
-                API_HEALTH_CHECK,
-                component="message_bus",
-                exc_info=True,
-            )
-            bus_ok = False
-
-        if persistence_ok and bus_ok:
+        checks = [v for v in (persistence_ok, bus_ok) if v is not None]
+        if not checks or all(checks):
             status = ServiceStatus.OK
-        elif persistence_ok or bus_ok:
+        elif any(checks):
             status = ServiceStatus.DEGRADED
         else:
             status = ServiceStatus.DOWN

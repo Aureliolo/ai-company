@@ -6,7 +6,7 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.errors import ServiceUnavailableError
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
-from tests.unit.api.conftest import (
+from tests.unit.api.fakes import (
     FakeMessageBus,
     FakePersistenceBackend,
 )
@@ -190,3 +190,33 @@ class TestAppStateAgentRegistry:
         registry = AgentRegistryService()
         state = _make_state(agent_registry=registry)
         assert state.has_agent_registry is True
+
+
+@pytest.mark.unit
+class TestAppStatePersistenceFlag:
+    """Tests for has_persistence property."""
+
+    def test_has_persistence_false_when_none(self) -> None:
+        state = _make_state(persistence=None)
+        assert state.has_persistence is False
+
+    async def test_has_persistence_true_when_set(self) -> None:
+        backend = FakePersistenceBackend()
+        await backend.connect()
+        state = _make_state(persistence=backend)
+        assert state.has_persistence is True
+
+
+@pytest.mark.unit
+class TestAppStateMessageBusFlag:
+    """Tests for has_message_bus property."""
+
+    def test_has_message_bus_false_when_none(self) -> None:
+        state = _make_state(message_bus=None)
+        assert state.has_message_bus is False
+
+    async def test_has_message_bus_true_when_set(self) -> None:
+        bus = FakeMessageBus()
+        await bus.start()
+        state = _make_state(message_bus=bus)
+        assert state.has_message_bus is True
