@@ -56,6 +56,8 @@ MEMORY_RETRIEVAL_COMPLETE: Final[str] = "memory.retrieval.complete"
 MEMORY_RETRIEVAL_DEGRADED: Final[str] = "memory.retrieval.degraded"
 MEMORY_RETRIEVAL_SKIPPED: Final[str] = "memory.retrieval.skipped"
 MEMORY_RANKING_COMPLETE: Final[str] = "memory.ranking.complete"
+MEMORY_RRF_FUSION_COMPLETE: Final[str] = "memory.ranking.rrf_fusion_complete"
+MEMORY_RRF_VALIDATION_FAILED: Final[str] = "memory.ranking.rrf_validation_failed"
 MEMORY_FORMAT_COMPLETE: Final[str] = "memory.format.complete"
 MEMORY_FORMAT_INVALID_INJECTION_POINT: Final[str] = (
     "memory.format.invalid_injection_point"

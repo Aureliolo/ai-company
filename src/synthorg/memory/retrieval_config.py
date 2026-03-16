@@ -9,12 +9,14 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.memory.injection import InjectionPoint, InjectionStrategy
+from synthorg.memory.ranking import FusionStrategy
 from synthorg.observability import get_logger
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 
 logger = get_logger(__name__)
 
 _WEIGHT_SUM_TOLERANCE = 1e-6
+_DEFAULT_RRF_K = 60
 
 
 class MemoryRetrievalConfig(BaseModel):
@@ -33,6 +35,9 @@ class MemoryRetrievalConfig(BaseModel):
         injection_point: Message role for context injection.
         non_inferable_only: When True, auto-creates a ``TagBasedMemoryFilter``
             in ``ContextInjectionStrategy`` if no explicit filter is provided.
+        fusion_strategy: Ranking fusion strategy — LINEAR for single-source
+            relevance+recency, RRF for multi-source ranked list merging.
+        rrf_k: RRF smoothing constant (1-1000, only used with RRF strategy).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -94,10 +99,25 @@ class MemoryRetrievalConfig(BaseModel):
         default=False,
         description="When True, only inject memories tagged as non-inferable",
     )
+    fusion_strategy: FusionStrategy = Field(
+        default=FusionStrategy.LINEAR,
+        description=(
+            "Ranking fusion strategy: linear for single-source "
+            "relevance+recency, rrf for multi-source ranked list merging"
+        ),
+    )
+    rrf_k: int = Field(
+        default=_DEFAULT_RRF_K,
+        ge=1,
+        le=1000,
+        description="RRF smoothing constant k (only used with RRF strategy)",
+    )
 
     @model_validator(mode="after")
     def _validate_weight_sum(self) -> Self:
-        """Ensure relevance_weight + recency_weight == 1.0 (within tolerance)."""
+        """Ensure relevance_weight + recency_weight == 1.0 for LINEAR fusion."""
+        if self.fusion_strategy != FusionStrategy.LINEAR:
+            return self
         total = self.relevance_weight + self.recency_weight
         if abs(total - 1.0) > _WEIGHT_SUM_TOLERANCE:
             msg = (
@@ -109,6 +129,39 @@ class MemoryRetrievalConfig(BaseModel):
                 CONFIG_VALIDATION_FAILED,
                 field="relevance_weight+recency_weight",
                 value=total,
+                reason=msg,
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_rrf_k_strategy_consistency(self) -> Self:
+        """Warn when rrf_k is customized but fusion strategy is LINEAR."""
+        if (
+            self.fusion_strategy == FusionStrategy.LINEAR
+            and self.rrf_k != _DEFAULT_RRF_K
+        ):
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="rrf_k",
+                value=self.rrf_k,
+                reason="rrf_k is ignored when fusion_strategy is LINEAR",
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_supported_fusion_strategy(self) -> Self:
+        """Reject fusion strategies not yet wired into the retrieval pipeline."""
+        if self.fusion_strategy != FusionStrategy.LINEAR:
+            msg = (
+                f"Fusion strategy {self.fusion_strategy.value!r} is not yet "
+                f"wired into the retrieval pipeline; use "
+                f"fuse_ranked_lists() directly"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="fusion_strategy",
+                value=self.fusion_strategy.value,
                 reason=msg,
             )
             raise ValueError(msg)
