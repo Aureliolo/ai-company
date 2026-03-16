@@ -325,3 +325,53 @@ class TestRequirePasswordChanged:
 
         with pytest.raises(PermissionDeniedException):
             require_password_changed(connection, None)
+
+
+@pytest.mark.unit
+class TestWsTicket:
+    def test_ws_ticket_returns_ticket_and_expires_in(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        response = test_client.post("/api/v1/auth/ws-ticket")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert "ticket" in data
+        assert isinstance(data["ticket"], str)
+        assert len(data["ticket"]) > 0
+        assert data["expires_in"] == 30
+
+    def test_ws_ticket_requires_auth(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        response = bare_client.post("/api/v1/auth/ws-ticket")
+        assert response.status_code == 401
+
+    def test_ws_ticket_with_observer_role(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """All roles should be able to get a WS ticket."""
+        test_client.headers.update(make_auth_headers("observer"))
+        response = test_client.post("/api/v1/auth/ws-ticket")
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert "ticket" in data
+
+    def test_ws_ticket_is_consumable(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """The returned ticket can be consumed by the ticket store."""
+        response = test_client.post("/api/v1/auth/ws-ticket")
+        data = response.json()["data"]
+        ticket = data["ticket"]
+
+        app_state = test_client.app.state["app_state"]
+        user = app_state.ticket_store.validate_and_consume(ticket)
+        assert user is not None
+        assert user.auth_method.value == "ws_ticket"
+
+        # Single-use: second consume fails
+        assert app_state.ticket_store.validate_and_consume(ticket) is None

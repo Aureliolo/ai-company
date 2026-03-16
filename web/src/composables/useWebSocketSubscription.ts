@@ -53,12 +53,12 @@ export function useWebSocketSubscription(
 
   const uniqueChannels: WsChannel[] = [...new Set(options.bindings.map((b) => b.channel))]
 
-  onMounted(() => {
+  onMounted(async () => {
     if (!authStore.token) return
 
     try {
       if (!wsStore.connected) {
-        wsStore.connect(authStore.token)
+        await wsStore.connect()
       }
     } catch (err) {
       setupError.value = 'WebSocket connection failed.'

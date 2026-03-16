@@ -7,6 +7,7 @@ Holds typed references to core services, injected into
 
 from synthorg.api.approval_store import ApprovalStore  # noqa: TC001
 from synthorg.api.auth.service import AuthService  # noqa: TC001
+from synthorg.api.auth.ticket_store import WsTicketStore
 from synthorg.api.errors import ServiceUnavailableError
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
@@ -58,6 +59,7 @@ class AppState:
         "_persistence",
         "_settings_service",
         "_task_engine",
+        "_ticket_store",
         "approval_store",
         "config",
         "startup_time",
@@ -96,6 +98,7 @@ class AppState:
         self._meeting_orchestrator = meeting_orchestrator
         self._meeting_scheduler = meeting_scheduler
         self._settings_service = settings_service
+        self._ticket_store = WsTicketStore()
         self.startup_time = startup_time
 
     def _require_service[T](self, service: T | None, name: str) -> T:
@@ -235,6 +238,11 @@ class AppState:
     def has_auth_service(self) -> bool:
         """Check whether the auth service is already configured."""
         return self._auth_service is not None
+
+    @property
+    def ticket_store(self) -> WsTicketStore:
+        """Return the WebSocket ticket store (always available)."""
+        return self._ticket_store
 
     def set_auth_service(self, service: AuthService) -> None:
         """Set the auth service (deferred initialisation).

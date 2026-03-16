@@ -3,6 +3,7 @@
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import ApiKey, AuthenticatedUser, AuthMethod, User
 from synthorg.api.auth.service import AuthService
+from synthorg.api.auth.ticket_store import WsTicketStore
 
 __all__ = [
     "ApiKey",
@@ -11,4 +12,5 @@ __all__ = [
     "AuthService",
     "AuthenticatedUser",
     "User",
+    "WsTicketStore",
 ]

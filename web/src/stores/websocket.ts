@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { WsChannel, WsEvent, WsEventHandler, WsSubscriptionFilters } from '@/api/types'
+import { getWsTicket } from '@/api/endpoints/auth'
 import { WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY, WS_MAX_RECONNECT_ATTEMPTS, WS_MAX_MESSAGE_SIZE } from '@/utils/constants'
 import { sanitizeForLog } from '@/utils/logging'
 
@@ -25,7 +26,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   let reconnectAttempts = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let intentionalClose = false
-  let currentToken: string | null = null
+  let shouldBeConnected = false
   const channelHandlers = new Map<string, Set<WsEventHandler>>()
   let pendingSubscriptions: { channels: WsChannel[]; filters?: Record<string, string> }[] = []
   // Track active subscriptions so reconnect can re-subscribe automatically
@@ -37,15 +38,27 @@ export const useWebSocketStore = defineStore('websocket', () => {
     return `${protocol}//${host}/api/v1/ws`
   }
 
-  function connect(token: string) {
+  async function connect() {
     if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
     reconnectExhausted.value = false
-
-    currentToken = token
+    shouldBeConnected = true
     intentionalClose = false
-    // TODO(#343): Replace with one-time WS ticket endpoint for production security.
-    // Currently passes JWT as query param which is logged in server/proxy/browser.
-    const url = `${getWsUrl()}?token=${encodeURIComponent(token)}`
+
+    // Fetch a one-time ticket from the backend (requires valid JWT in Authorization header).
+    let ticket: string
+    try {
+      const resp = await getWsTicket()
+      ticket = resp.ticket
+    } catch (err) {
+      console.error('WebSocket ticket exchange failed:', sanitizeForLog(err))
+      // Treat as a connection failure — schedule a reconnect attempt.
+      if (shouldBeConnected) {
+        scheduleReconnect()
+      }
+      return
+    }
+
+    const url = `${getWsUrl()}?ticket=${encodeURIComponent(ticket)}`
     socket = new WebSocket(url)
 
     socket.onopen = () => {
@@ -105,7 +118,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     socket.onclose = () => {
       connected.value = false
       socket = null
-      if (!intentionalClose && currentToken) {
+      if (!intentionalClose && shouldBeConnected) {
         scheduleReconnect()
       }
     }
@@ -129,13 +142,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
     )
     reconnectAttempts++
     reconnectTimer = setTimeout(() => {
-      if (currentToken) connect(currentToken)
+      if (shouldBeConnected) connect()
     }, delay)
   }
 
   function disconnect() {
     intentionalClose = true
-    currentToken = null
+    shouldBeConnected = false
     reconnectAttempts = 0
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)

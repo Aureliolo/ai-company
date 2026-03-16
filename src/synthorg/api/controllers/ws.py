@@ -1,8 +1,13 @@
 """WebSocket handler for real-time event feeds.
 
-Clients connect to ``/api/v1/ws`` and send JSON messages to
-subscribe/unsubscribe from named channels with optional payload
-filters.  The server pushes ``WsEvent`` JSON on subscribed channels.
+Clients connect to ``/api/v1/ws?ticket=<ticket>`` and send JSON
+messages to subscribe/unsubscribe from named channels with optional
+payload filters.  The server pushes ``WsEvent`` JSON on subscribed
+channels.
+
+Authentication uses a one-time ticket obtained from
+``POST /api/v1/auth/ws-ticket``.  The ticket is validated and
+consumed (single-use) before the connection is accepted.
 """
 
 import json
@@ -13,8 +18,9 @@ from litestar.channels import ChannelsPlugin  # noqa: TC002
 from litestar.exceptions import WebSocketDisconnect
 from litestar.handlers import websocket
 
+from synthorg.api.auth.models import AuthenticatedUser  # noqa: TC001
 from synthorg.api.channels import ALL_CHANNELS
-from synthorg.api.guards import require_read_access
+from synthorg.api.guards import HumanRole
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_WS_CONNECTED,
@@ -22,6 +28,7 @@ from synthorg.observability.events.api import (
     API_WS_INVALID_MESSAGE,
     API_WS_SEND_FAILED,
     API_WS_SUBSCRIBE,
+    API_WS_TICKET_INVALID,
     API_WS_TRANSPORT_ERROR,
     API_WS_UNKNOWN_ACTION,
     API_WS_UNSUBSCRIBE,
@@ -34,25 +41,91 @@ _MAX_FILTER_KEYS: int = 10
 _MAX_FILTER_VALUE_LEN: int = 256
 _MAX_WS_MESSAGE_BYTES: int = 4096
 
+_READ_ROLES: frozenset[HumanRole] = frozenset(HumanRole)
 
-@websocket("/ws", guards=[require_read_access])
+# Application-layer WS close codes (RFC 6455 §7.4.2: 4000-4999).
+_WS_CLOSE_AUTH_FAILED: int = 4001
+_WS_CLOSE_FORBIDDEN: int = 4003
+
+
+async def _authenticate_ws(
+    socket: WebSocket[Any, Any, Any],
+) -> AuthenticatedUser | None:
+    """Validate the one-time ticket and check read-access role.
+
+    Returns the authenticated user on success.  On failure, closes
+    the socket with an appropriate code and returns ``None``.
+    """
+    ticket = socket.query_params.get("ticket")
+    if not ticket:
+        logger.warning(API_WS_TICKET_INVALID, reason="missing_ticket")
+        await socket.close(code=_WS_CLOSE_AUTH_FAILED, reason="Missing ticket")
+        return None
+
+    app_state = socket.app.state["app_state"]
+    user: AuthenticatedUser | None = app_state.ticket_store.validate_and_consume(
+        ticket,
+    )
+    if user is None:
+        await socket.close(
+            code=_WS_CLOSE_AUTH_FAILED,
+            reason="Invalid or expired ticket",
+        )
+        return None
+
+    try:
+        role = HumanRole(user.role)
+    except ValueError:
+        logger.warning(
+            API_WS_TICKET_INVALID,
+            reason="invalid_role",
+            role=str(user.role),
+        )
+        await socket.close(code=_WS_CLOSE_FORBIDDEN, reason="Invalid role")
+        return None
+
+    if role not in _READ_ROLES:
+        logger.warning(
+            API_WS_TICKET_INVALID,
+            reason="insufficient_role",
+            role=role.value,
+        )
+        await socket.close(
+            code=_WS_CLOSE_FORBIDDEN,
+            reason="Insufficient permissions",
+        )
+        return None
+
+    return user
+
+
+@websocket("/ws")
 async def ws_handler(
     socket: WebSocket[Any, Any, Any],
     channels_plugin: ChannelsPlugin,
 ) -> None:
     """Handle WebSocket connections with channel subscriptions.
 
-    Clients subscribe to named channels with optional payload
-    filters.  The server pushes ``WsEvent`` JSON for matching
-    events only.
+    Authentication is performed via a one-time ticket passed as
+    ``?ticket=<ticket>`` in the query string.  The ticket is
+    validated and consumed before the connection is accepted.
 
     Protocol (JSON from client):
         ``{"action": "subscribe", "channels": ["tasks"],
           "filters": {"agent_id": "...", "project": "..."}}``
         ``{"action": "unsubscribe", "channels": ["tasks"]}``
     """
+    user = await _authenticate_ws(socket)
+    if user is None:
+        return
+
+    socket.scope["user"] = user
     await socket.accept()
-    logger.info(API_WS_CONNECTED, client=str(socket.client))
+    logger.info(
+        API_WS_CONNECTED,
+        client=str(socket.client),
+        user_id=user.user_id,
+    )
 
     subscribed: set[str] = set()
     filters: dict[str, dict[str, str]] = {}

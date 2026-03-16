@@ -5,6 +5,7 @@ controllers, middleware, exception handlers, plugins, and
 lifecycle hooks (startup/shutdown).
 """
 
+import asyncio
 import os
 import time
 from datetime import UTC, datetime
@@ -162,8 +163,16 @@ def _build_lifecycle(  # noqa: PLR0913
     Returns:
         A tuple of (on_startup, on_shutdown) callback lists.
     """
+    _ticket_cleanup_task: asyncio.Task[None] | None = None
+
+    async def _ticket_cleanup_loop() -> None:
+        """Periodically prune expired WS tickets."""
+        while True:
+            await asyncio.sleep(60)
+            app_state.ticket_store._cleanup_expired()  # noqa: SLF001
 
     async def on_startup() -> None:
+        nonlocal _ticket_cleanup_task
         logger.info(API_APP_STARTUP, version=__version__)
         await _safe_startup(
             persistence,
@@ -173,8 +182,13 @@ def _build_lifecycle(  # noqa: PLR0913
             meeting_scheduler,
             app_state,
         )
+        _ticket_cleanup_task = asyncio.create_task(_ticket_cleanup_loop())
 
     async def on_shutdown() -> None:
+        nonlocal _ticket_cleanup_task
+        if _ticket_cleanup_task is not None:
+            _ticket_cleanup_task.cancel()
+            _ticket_cleanup_task = None
         logger.info(API_APP_SHUTDOWN, version=__version__)
         await _safe_shutdown(
             task_engine,
@@ -619,6 +633,7 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
                     "^/api$",
                     f"^{prefix}/auth/setup$",
                     f"^{prefix}/auth/login$",
+                    f"^{prefix}/ws$",
                 ),
             },
         )

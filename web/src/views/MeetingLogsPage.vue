@@ -45,7 +45,7 @@ const statusOptions = [
 onMounted(async () => {
   try {
     if (authStore.token && !wsStore.connected) {
-      wsStore.connect(authStore.token)
+      await wsStore.connect()
     }
     wsStore.subscribe(['meetings'])
     wsStore.onChannelEvent('meetings', meetingStore.handleWsEvent)

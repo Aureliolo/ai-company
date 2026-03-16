@@ -13,6 +13,7 @@ class AuthMethod(StrEnum):
 
     JWT = "jwt"
     API_KEY = "api_key"
+    WS_TICKET = "ws_ticket"
 
 
 class User(BaseModel):
