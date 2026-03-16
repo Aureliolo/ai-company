@@ -23,7 +23,7 @@ _r.register(
         namespace=SettingNamespace.COMPANY,
         key="autonomy_level",
         type=SettingType.ENUM,
-        default="supervised",
+        default="semi",
         description="Default company-wide autonomy level",
         group="General",
         enum_values=(

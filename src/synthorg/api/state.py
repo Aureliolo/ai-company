@@ -53,6 +53,7 @@ class AppState:
         "_agent_registry",
         "_approval_gate",
         "_auth_service",
+        "_config_resolver",
         "_coordinator",
         "_cost_tracker",
         "_meeting_orchestrator",
@@ -101,6 +102,11 @@ class AppState:
         self._meeting_orchestrator = meeting_orchestrator
         self._meeting_scheduler = meeting_scheduler
         self._settings_service = settings_service
+        self._config_resolver: ConfigResolver | None = (
+            ConfigResolver(settings_service=settings_service, config=config)
+            if settings_service is not None
+            else None
+        )
         self._ticket_store = WsTicketStore()
         self.startup_time = startup_time
 
@@ -239,16 +245,8 @@ class AppState:
 
     @property
     def config_resolver(self) -> ConfigResolver:
-        """Return a typed config resolver backed by SettingsService.
-
-        Creates a :class:`ConfigResolver` wrapping the settings service
-        and the YAML-loaded config.  Raises 503 if the settings service
-        is not configured.
-        """
-        return ConfigResolver(
-            settings_service=self.settings_service,
-            config=self.config,
-        )
+        """Return the cached config resolver or raise 503."""
+        return self._require_service(self._config_resolver, "config_resolver")
 
     @property
     def has_auth_service(self) -> bool:

@@ -6,11 +6,15 @@ accessors and composed-read methods that assemble full Pydantic config
 models from individually resolved settings.
 """
 
+import asyncio
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.settings import SETTINGS_VALUE_RESOLVED
+from synthorg.observability.events.settings import (
+    SETTINGS_VALIDATION_FAILED,
+    SETTINGS_VALUE_RESOLVED,
+)
 
 if TYPE_CHECKING:
     from synthorg.budget.config import BudgetConfig
@@ -78,7 +82,16 @@ class ConfigResolver:
             ValueError: If the value cannot be parsed as an integer.
         """
         result = await self._settings.get(namespace, key)
-        return int(result.value)
+        try:
+            return int(result.value)
+        except ValueError:
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="invalid_integer",
+            )
+            raise
 
     async def get_float(self, namespace: str, key: str) -> float:
         """Resolve a setting as a float.
@@ -95,7 +108,16 @@ class ConfigResolver:
             ValueError: If the value cannot be parsed as a float.
         """
         result = await self._settings.get(namespace, key)
-        return float(result.value)
+        try:
+            return float(result.value)
+        except ValueError:
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="invalid_float",
+            )
+            raise
 
     async def get_bool(self, namespace: str, key: str) -> bool:
         """Resolve a setting as a boolean.
@@ -115,7 +137,16 @@ class ConfigResolver:
             ValueError: If the value is not a recognized boolean string.
         """
         result = await self._settings.get(namespace, key)
-        return _parse_bool(result.value)
+        try:
+            return _parse_bool(result.value)
+        except ValueError:
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="invalid_boolean",
+            )
+            raise
 
     async def get_enum[E: StrEnum](
         self,
@@ -138,7 +169,16 @@ class ConfigResolver:
             ValueError: If the value does not match any enum member.
         """
         result = await self._settings.get(namespace, key)
-        return enum_cls(result.value)
+        try:
+            return enum_cls(result.value)
+        except ValueError:
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="invalid_enum",
+            )
+            raise
 
     async def get_autonomy_level(self) -> AutonomyLevel:
         """Resolve the company-wide default autonomy level.
@@ -157,6 +197,8 @@ class ConfigResolver:
         that have registered settings definitions.  Unregistered fields
         (e.g. ``downgrade_map``, ``boundary``) keep their YAML values.
 
+        Uses ``asyncio.TaskGroup`` to resolve all settings in parallel.
+
         Returns:
             A ``BudgetConfig`` with DB/env overrides applied.
         """
@@ -166,17 +208,20 @@ class ConfigResolver:
 
         base = self._config.budget
 
-        total_monthly = await self.get_float("budget", "total_monthly")
-        per_task_limit = await self.get_float("budget", "per_task_limit")
-        per_agent_daily_limit = await self.get_float("budget", "per_agent_daily_limit")
-        auto_downgrade_enabled = await self.get_bool("budget", "auto_downgrade_enabled")
-        auto_downgrade_threshold = await self.get_int(
-            "budget", "auto_downgrade_threshold"
-        )
-        reset_day = await self.get_int("budget", "reset_day")
-        alert_warn_at = await self.get_int("budget", "alert_warn_at")
-        alert_critical_at = await self.get_int("budget", "alert_critical_at")
-        alert_hard_stop_at = await self.get_int("budget", "alert_hard_stop_at")
+        async with asyncio.TaskGroup() as tg:
+            t_monthly = tg.create_task(self.get_float("budget", "total_monthly"))
+            t_per_task = tg.create_task(self.get_float("budget", "per_task_limit"))
+            t_daily = tg.create_task(self.get_float("budget", "per_agent_daily_limit"))
+            t_downgrade_en = tg.create_task(
+                self.get_bool("budget", "auto_downgrade_enabled")
+            )
+            t_downgrade_th = tg.create_task(
+                self.get_int("budget", "auto_downgrade_threshold")
+            )
+            t_reset = tg.create_task(self.get_int("budget", "reset_day"))
+            t_warn = tg.create_task(self.get_int("budget", "alert_warn_at"))
+            t_crit = tg.create_task(self.get_int("budget", "alert_critical_at"))
+            t_stop = tg.create_task(self.get_int("budget", "alert_hard_stop_at"))
 
         logger.debug(
             SETTINGS_VALUE_RESOLVED,
@@ -187,19 +232,19 @@ class ConfigResolver:
 
         return base.model_copy(
             update={
-                "total_monthly": total_monthly,
-                "per_task_limit": per_task_limit,
-                "per_agent_daily_limit": per_agent_daily_limit,
-                "reset_day": reset_day,
+                "total_monthly": t_monthly.result(),
+                "per_task_limit": t_per_task.result(),
+                "per_agent_daily_limit": t_daily.result(),
+                "reset_day": t_reset.result(),
                 "alerts": BudgetAlertConfig(
-                    warn_at=alert_warn_at,
-                    critical_at=alert_critical_at,
-                    hard_stop_at=alert_hard_stop_at,
+                    warn_at=t_warn.result(),
+                    critical_at=t_crit.result(),
+                    hard_stop_at=t_stop.result(),
                 ),
                 "auto_downgrade": base.auto_downgrade.model_copy(
                     update={
-                        "enabled": auto_downgrade_enabled,
-                        "threshold": auto_downgrade_threshold,
+                        "enabled": t_downgrade_en.result(),
+                        "threshold": t_downgrade_th.result(),
                     },
                 ),
             },
@@ -213,8 +258,9 @@ class ConfigResolver:
     ) -> CoordinationConfig:
         """Assemble a per-run ``CoordinationConfig`` from settings.
 
-        Resolves coordination settings from the settings service, then
-        applies request-level overrides on top.
+        Resolves coordination settings from the settings service using
+        ``asyncio.TaskGroup`` for parallel resolution, then applies
+        request-level overrides on top.
 
         Args:
             max_concurrency_per_wave: Request-level override for max
@@ -228,12 +274,13 @@ class ConfigResolver:
             CoordinationConfig,
         )
 
-        settings_max_wave = await self.get_int("coordination", "max_wave_size")
-        settings_fail_fast = await self.get_bool("coordination", "fail_fast")
-        settings_isolation = await self.get_bool(
-            "coordination", "enable_workspace_isolation"
-        )
-        settings_branch = await self.get_str("coordination", "base_branch")
+        async with asyncio.TaskGroup() as tg:
+            t_wave = tg.create_task(self.get_int("coordination", "max_wave_size"))
+            t_ff = tg.create_task(self.get_bool("coordination", "fail_fast"))
+            t_iso = tg.create_task(
+                self.get_bool("coordination", "enable_workspace_isolation")
+            )
+            t_branch = tg.create_task(self.get_str("coordination", "base_branch"))
 
         logger.debug(
             SETTINGS_VALUE_RESOLVED,
@@ -246,11 +293,11 @@ class ConfigResolver:
             max_concurrency_per_wave=(
                 max_concurrency_per_wave
                 if max_concurrency_per_wave is not None
-                else settings_max_wave
+                else t_wave.result()
             ),
-            fail_fast=(fail_fast if fail_fast is not None else settings_fail_fast),
-            enable_workspace_isolation=settings_isolation,
-            base_branch=settings_branch,
+            fail_fast=(fail_fast if fail_fast is not None else t_ff.result()),
+            enable_workspace_isolation=t_iso.result(),
+            base_branch=t_branch.result(),
         )
 
 

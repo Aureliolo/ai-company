@@ -380,6 +380,28 @@ class TestGetBudgetConfig:
         assert result.auto_downgrade.downgrade_map == (("large", "small"),)
         assert result.auto_downgrade.boundary == "task_assignment"
 
+    async def test_not_found_propagates(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        """SettingNotFoundError from a budget key propagates via ExceptionGroup."""
+        mock_settings.get.side_effect = SettingNotFoundError("missing")
+        with pytest.raises(ExceptionGroup) as exc_info:
+            await resolver.get_budget_config()
+        assert any(
+            isinstance(e, SettingNotFoundError) for e in exc_info.value.exceptions
+        )
+
+    async def test_value_error_propagates(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        """ValueError from a corrupted DB value propagates via ExceptionGroup."""
+        mock_settings.get = _budget_get_side_effect(
+            {("budget", "total_monthly"): "not-a-number"}
+        )
+        with pytest.raises(ExceptionGroup) as exc_info:
+            await resolver.get_budget_config()
+        assert any(isinstance(e, ValueError) for e in exc_info.value.exceptions)
+
 
 # ── Composed Read: Coordination Config ────────────────────────────
 
@@ -460,6 +482,28 @@ class TestGetCoordinationConfig:
         )
         result = await resolver.get_coordination_config(fail_fast=False)
         assert result.fail_fast is False
+
+    async def test_not_found_propagates(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        """SettingNotFoundError from a coordination key propagates."""
+        mock_settings.get.side_effect = SettingNotFoundError("missing")
+        with pytest.raises(ExceptionGroup) as exc_info:
+            await resolver.get_coordination_config()
+        assert any(
+            isinstance(e, SettingNotFoundError) for e in exc_info.value.exceptions
+        )
+
+    async def test_value_error_propagates(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        """ValueError from a corrupted coordination value propagates."""
+        mock_settings.get = _coordination_get_side_effect(
+            {("coordination", "max_wave_size"): "not-a-number"}
+        )
+        with pytest.raises(ExceptionGroup) as exc_info:
+            await resolver.get_coordination_config()
+        assert any(isinstance(e, ValueError) for e in exc_info.value.exceptions)
 
 
 # ── _parse_bool Tests ─────────────────────────────────────────────
