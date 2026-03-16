@@ -1,5 +1,7 @@
 """Unit tests for SQLiteSettingsRepository."""
 
+from collections.abc import AsyncGenerator
+
 import aiosqlite
 import pytest
 
@@ -8,13 +10,13 @@ from synthorg.persistence.sqlite.settings_repo import SQLiteSettingsRepository
 
 
 @pytest.fixture
-async def repo() -> SQLiteSettingsRepository:
+async def repo() -> AsyncGenerator[SQLiteSettingsRepository]:
     """Create an in-memory SQLite DB with migrations and return repo."""
     db = await aiosqlite.connect(":memory:")
     db.row_factory = aiosqlite.Row
     await run_migrations(db)
     repo = SQLiteSettingsRepository(db)
-    yield repo  # type: ignore[misc]
+    yield repo
     await db.close()
 
 
