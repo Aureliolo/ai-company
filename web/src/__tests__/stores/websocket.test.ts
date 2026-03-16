@@ -3,6 +3,13 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useWebSocketStore } from '@/stores/websocket'
 import type { WsEvent } from '@/api/types'
 
+// Mock the auth API module — getWsTicket returns a one-time ticket
+vi.mock('@/api/endpoints/auth', () => ({
+  getWsTicket: vi.fn().mockResolvedValue({ ticket: 'test-ticket-abc', expires_in: 30 }),
+}))
+
+import { getWsTicket } from '@/api/endpoints/auth'
+
 // Track all created MockWebSocket instances
 let mockInstances: MockWebSocket[] = []
 
@@ -40,6 +47,7 @@ beforeEach(() => {
   mockInstances = []
   // @ts-expect-error -- mock WebSocket for testing
   globalThis.WebSocket = MockWebSocket
+  vi.mocked(getWsTicket).mockResolvedValue({ ticket: 'test-ticket-abc', expires_in: 30 })
 })
 
 afterEach(() => {
@@ -66,19 +74,32 @@ describe('useWebSocketStore', () => {
 
   it('connects and sets connected to true', async () => {
     const store = useWebSocketStore()
-    store.connect('test-token')
+    await store.connect()
 
     await vi.advanceTimersByTimeAsync(0)
     expect(store.connected).toBe(true)
   })
 
+  it('fetches a ticket before opening WebSocket', async () => {
+    const store = useWebSocketStore()
+    vi.mocked(getWsTicket).mockClear()
+    await store.connect()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(getWsTicket).toHaveBeenCalledTimes(1)
+    // URL should contain ticket, not JWT
+    const ws = mockInstances[0]
+    expect(ws.url).toContain('ticket=test-ticket-abc')
+    expect(ws.url).not.toContain('token=')
+  })
+
   it('does not create duplicate connections', async () => {
     const store = useWebSocketStore()
-    store.connect('test-token')
+    await store.connect()
     await vi.advanceTimersByTimeAsync(0)
     expect(mockInstances).toHaveLength(1)
 
-    store.connect('test-token') // should be no-op
+    await store.connect() // should be no-op — already connected
     expect(mockInstances).toHaveLength(1) // no new WebSocket created
   })
 
@@ -89,14 +110,12 @@ describe('useWebSocketStore', () => {
 
     // No WebSocket exists, so no send should have been called
     expect(mockInstances).toHaveLength(0)
-    // Verify subscription is queued by connecting and checking send was called
-    store.connect('test-token')
   })
 
   it('replays pending subscriptions on connect', async () => {
     const store = useWebSocketStore()
     store.subscribe(['tasks'])
-    store.connect('test-token')
+    await store.connect()
 
     await vi.advanceTimersByTimeAsync(0)
     expect(store.connected).toBe(true)
@@ -118,7 +137,7 @@ describe('useWebSocketStore', () => {
     store.subscribe(['tasks', 'agents'])
 
     // Connect and verify only one subscribe message is sent (not three)
-    store.connect('test-token')
+    await store.connect()
     await vi.advanceTimersByTimeAsync(0)
 
     const ws = mockInstances[0]
@@ -130,7 +149,7 @@ describe('useWebSocketStore', () => {
 
   it('disconnect sets state correctly', async () => {
     const store = useWebSocketStore()
-    store.connect('test-token')
+    await store.connect()
     await vi.advanceTimersByTimeAsync(0)
     expect(store.connected).toBe(true)
 
@@ -141,7 +160,7 @@ describe('useWebSocketStore', () => {
 
   it('dispatches events to channel handlers via onmessage', async () => {
     const store = useWebSocketStore()
-    store.connect('test-token')
+    await store.connect()
     await vi.advanceTimersByTimeAsync(0)
 
     const handler = vi.fn()
@@ -170,7 +189,7 @@ describe('useWebSocketStore', () => {
 
   it('wildcard handlers receive events from all channels', async () => {
     const store = useWebSocketStore()
-    store.connect('test-token')
+    await store.connect()
     await vi.advanceTimersByTimeAsync(0)
 
     const handler = vi.fn()
@@ -201,7 +220,7 @@ describe('useWebSocketStore', () => {
   it('handles malformed JSON messages gracefully', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const store = useWebSocketStore()
-    store.connect('test-token')
+    await store.connect()
     await vi.advanceTimersByTimeAsync(0)
 
     const ws = mockInstances[0]
@@ -216,7 +235,7 @@ describe('useWebSocketStore', () => {
 
   it('subscription ack updates subscribedChannels when array is valid', async () => {
     const store = useWebSocketStore()
-    store.connect('test-token')
+    await store.connect()
     await vi.advanceTimersByTimeAsync(0)
 
     const ws = mockInstances[0]
@@ -237,7 +256,7 @@ describe('useWebSocketStore', () => {
   it('scheduleReconnect stops after max attempts', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const store = useWebSocketStore()
-    store.connect('test-token')
+    await store.connect()
     await vi.advanceTimersByTimeAsync(0)
     expect(store.connected).toBe(true)
 
@@ -282,7 +301,7 @@ describe('useWebSocketStore', () => {
 
   it('re-subscribes to active subscriptions on reconnect', async () => {
     const store = useWebSocketStore()
-    store.connect('test-token')
+    await store.connect()
     await vi.advanceTimersByTimeAsync(0)
 
     // Subscribe while connected
@@ -306,9 +325,28 @@ describe('useWebSocketStore', () => {
     )
   })
 
+  it('reconnect fetches a fresh ticket each time', async () => {
+    vi.mocked(getWsTicket).mockClear()
+    const store = useWebSocketStore()
+    await store.connect()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(getWsTicket).toHaveBeenCalledTimes(1)
+
+    // Simulate disconnect
+    const ws1 = mockInstances[0]
+    ws1.readyState = MockWebSocket.CLOSED
+    ws1.onclose?.()
+
+    // Trigger reconnect
+    await vi.advanceTimersByTimeAsync(5_000)
+
+    // Should have fetched a second ticket
+    expect(getWsTicket).toHaveBeenCalledTimes(2)
+  })
+
   it('unsubscribe removes channels from active subscriptions so reconnect does not re-subscribe', async () => {
     const store = useWebSocketStore()
-    store.connect('test-token')
+    await store.connect()
     await vi.advanceTimersByTimeAsync(0)
 
     // Subscribe then unsubscribe
@@ -334,7 +372,7 @@ describe('useWebSocketStore', () => {
   it('sanitizes error messages from server', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const store = useWebSocketStore()
-    store.connect('test-token')
+    await store.connect()
     await vi.advanceTimersByTimeAsync(0)
 
     const ws = mockInstances[0]
@@ -352,7 +390,7 @@ describe('useWebSocketStore', () => {
 
   it('send failures queue subscriptions for replay', async () => {
     const store = useWebSocketStore()
-    store.connect('test-token')
+    await store.connect()
     await vi.advanceTimersByTimeAsync(0)
 
     const ws = mockInstances[0]
@@ -364,5 +402,22 @@ describe('useWebSocketStore', () => {
     store.subscribe(['budget'])
     // Should not throw — caught internally and queued for replay
     expect(store.connected).toBe(true)
+  })
+
+  it('connect fails gracefully when ticket exchange fails', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(getWsTicket).mockRejectedValueOnce(new Error('401 Unauthorized'))
+
+    const store = useWebSocketStore()
+    await store.connect()
+
+    // Should not have created any WebSocket (ticket exchange failed)
+    expect(mockInstances).toHaveLength(0)
+    expect(store.connected).toBe(false)
+    expect(consoleSpy).toHaveBeenCalledWith(
+      'WebSocket ticket exchange failed:',
+      expect.any(String),
+    )
+    consoleSpy.mockRestore()
   })
 })

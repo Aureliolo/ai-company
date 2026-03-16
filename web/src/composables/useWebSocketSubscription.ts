@@ -52,19 +52,24 @@ export function useWebSocketSubscription(
   const setupError = ref<string | null>(null)
 
   const uniqueChannels: WsChannel[] = [...new Set(options.bindings.map((b) => b.channel))]
+  let disposed = false
 
-  onMounted(() => {
+  onMounted(async () => {
     if (!authStore.token) return
 
     try {
       if (!wsStore.connected) {
-        wsStore.connect(authStore.token)
+        await wsStore.connect()
       }
     } catch (err) {
+      if (disposed) return
       setupError.value = 'WebSocket connection failed.'
       console.error('WebSocket connect failed:', sanitizeForLog(err), err)
       return
     }
+
+    // Component may have unmounted while awaiting connect
+    if (disposed) return
 
     try {
       wsStore.subscribe(uniqueChannels, options.filters)
@@ -83,6 +88,7 @@ export function useWebSocketSubscription(
   })
 
   onUnmounted(() => {
+    disposed = true
     try {
       wsStore.unsubscribe(uniqueChannels)
     } catch (err) {

@@ -175,6 +175,11 @@ export interface TokenResponse {
   must_change_password: boolean
 }
 
+export interface WsTicketResponse {
+  ticket: string
+  expires_in: number
+}
+
 export interface UserInfoResponse {
   id: string
   username: string

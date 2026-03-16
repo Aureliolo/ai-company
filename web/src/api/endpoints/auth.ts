@@ -6,6 +6,7 @@ import type {
   SetupRequest,
   TokenResponse,
   UserInfoResponse,
+  WsTicketResponse,
 } from '../types'
 
 export async function setup(data: SetupRequest): Promise<TokenResponse> {
@@ -25,5 +26,10 @@ export async function changePassword(data: ChangePasswordRequest): Promise<UserI
 
 export async function getMe(): Promise<UserInfoResponse> {
   const response = await apiClient.get<ApiResponse<UserInfoResponse>>('/auth/me')
+  return unwrap(response)
+}
+
+export async function getWsTicket(): Promise<WsTicketResponse> {
+  const response = await apiClient.post<ApiResponse<WsTicketResponse>>('/auth/ws-ticket')
   return unwrap(response)
 }

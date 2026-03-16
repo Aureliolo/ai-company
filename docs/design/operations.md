@@ -960,7 +960,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | Endpoint | Purpose |
 |----------|---------|
 | `/api/v1/health` | Health check, readiness |
-| `/api/v1/auth` | Authentication: setup, login, password change |
+| `/api/v1/auth` | Authentication: setup, login, password change, ws-ticket |
 | `/api/v1/company` | CRUD company config |
 | `/api/v1/agents` | List, hire, fire, modify agents |
 | `/api/v1/departments` | Department management |
@@ -974,7 +974,8 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/approvals` | Pending human approvals queue |
 | `/api/v1/analytics` | Performance metrics, dashboards |
 | `/api/v1/providers` | Model provider status, config |
-| `/api/v1/ws` | WebSocket for real-time updates |
+| `/api/v1/ws` | WebSocket for real-time updates (ticket auth via `?ticket=`) |
+| `POST /api/v1/auth/ws-ticket` | Exchange JWT for one-time WebSocket connection ticket |
 
 ### Error Response Format (RFC 9457)
 

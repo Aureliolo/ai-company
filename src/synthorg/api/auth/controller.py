@@ -1,5 +1,6 @@
-"""Authentication controller — setup, login, password change, me."""
+"""Authentication controller — setup, login, password change, me, ws-ticket."""
 
+import math
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Self
@@ -10,8 +11,9 @@ from litestar.exceptions import PermissionDeniedException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.auth.config import AuthConfig
-from synthorg.api.auth.models import AuthenticatedUser, User
+from synthorg.api.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.api.auth.service import AuthService  # noqa: TC001
+from synthorg.api.auth.ticket_store import TicketLimitExceededError
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ConflictError, UnauthorizedError
 from synthorg.api.guards import HumanRole
@@ -149,6 +151,20 @@ class UserInfoResponse(BaseModel):
     username: NotBlankStr
     role: HumanRole
     must_change_password: bool
+
+
+class WsTicketResponse(BaseModel):
+    """One-time WebSocket connection ticket.
+
+    Attributes:
+        ticket: Single-use, short-lived ticket string.
+        expires_in: Ticket lifetime in seconds.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    ticket: NotBlankStr
+    expires_in: int = Field(gt=0)
 
 
 _PWD_CHANGE_EXEMPT_SUFFIXES = ("/auth/change-password", "/auth/me")
@@ -408,6 +424,65 @@ class AuthController(Controller):
                     username=auth_user.username,
                     role=auth_user.role,
                     must_change_password=auth_user.must_change_password,
+                ),
+            ),
+        )
+
+    @post(
+        "/ws-ticket",
+        status_code=200,
+        summary="Issue a one-time WebSocket connection ticket",
+    )
+    async def ws_ticket(
+        self,
+        request: Request[Any, Any, Any],
+    ) -> Response[ApiResponse[WsTicketResponse]]:
+        """Exchange a valid JWT for a short-lived, single-use WS ticket.
+
+        Issue a short-lived, single-use ticket for WebSocket connections.
+        The ticket is passed as a query parameter instead of the JWT, so
+        long-lived credentials never appear in URLs or server logs.
+        """
+        auth_user = request.scope.get("user")
+        if not isinstance(auth_user, AuthenticatedUser):
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="ws_ticket_auth_required",
+                path=str(request.url.path),
+            )
+            msg = "Authentication required"
+            raise UnauthorizedError(msg)
+
+        if auth_user.auth_method != AuthMethod.JWT:
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="ws_ticket_requires_jwt",
+                auth_method=auth_user.auth_method.value,
+                user_id=auth_user.user_id,
+            )
+            msg = "WebSocket tickets require JWT authentication"
+            raise UnauthorizedError(msg)
+
+        app_state = request.app.state["app_state"]
+        ws_user = auth_user.model_copy(
+            update={"auth_method": AuthMethod.WS_TICKET},
+        )
+        try:
+            ticket = app_state.ticket_store.create(ws_user)
+        except TicketLimitExceededError:
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="ws_ticket_limit_exceeded",
+                user_id=auth_user.user_id,
+            )
+            msg = "Too many pending tickets — wait for existing tickets to expire"
+            raise ConflictError(msg)  # noqa: B904
+
+        return Response(
+            content=ApiResponse(
+                data=WsTicketResponse(
+                    ticket=ticket,
+                    expires_in=max(1, math.ceil(app_state.ticket_store.ttl_seconds)),
                 ),
             ),
         )

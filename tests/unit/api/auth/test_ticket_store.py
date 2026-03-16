@@ -1,0 +1,310 @@
+"""Tests for WsTicketStore."""
+
+import math
+import re
+from unittest.mock import patch
+
+import pytest
+
+from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
+from synthorg.api.auth.ticket_store import TicketLimitExceededError, WsTicketStore
+from synthorg.api.guards import HumanRole
+
+
+def _make_user(
+    *,
+    user_id: str = "test-user-001",
+    username: str = "testadmin",
+    role: HumanRole = HumanRole.CEO,
+) -> AuthenticatedUser:
+    return AuthenticatedUser(
+        user_id=user_id,
+        username=username,
+        role=role,
+        auth_method=AuthMethod.WS_TICKET,
+    )
+
+
+@pytest.mark.timeout(30)
+@pytest.mark.unit
+class TestWsTicketStoreCreate:
+    """Tests for ticket creation."""
+
+    def test_create_returns_url_safe_string(self) -> None:
+        store = WsTicketStore()
+        user = _make_user()
+        ticket = store.create(user)
+
+        assert isinstance(ticket, str)
+        assert len(ticket) > 0
+        # URL-safe base64 characters only
+        assert re.fullmatch(r"[A-Za-z0-9_-]+", ticket)
+
+    def test_create_returns_unique_tickets(self) -> None:
+        store = WsTicketStore()
+        # Use different user IDs to avoid per-user ticket cap
+        tickets = {store.create(_make_user(user_id=f"user-{i}")) for i in range(100)}
+        assert len(tickets) == 100
+
+    def test_ttl_seconds_property(self) -> None:
+        store = WsTicketStore(ttl_seconds=60.0)
+        assert store.ttl_seconds == 60.0
+
+    @pytest.mark.parametrize(
+        ("ttl", "match"),
+        [
+            (0.0, "positive"),
+            (-5.0, "positive"),
+            (math.nan, "finite positive"),
+            (math.inf, "finite positive"),
+            (-math.inf, "finite positive"),
+        ],
+        ids=["zero", "negative", "nan", "inf", "neg_inf"],
+    )
+    def test_invalid_ttl_rejected(self, ttl: float, match: str) -> None:
+        with pytest.raises(ValueError, match=match):
+            WsTicketStore(ttl_seconds=ttl)
+
+    def test_per_user_ticket_cap(self) -> None:
+        """Creating more than _MAX_PENDING_PER_USER tickets raises."""
+        store = WsTicketStore()
+        user = _make_user()
+        for _ in range(5):
+            store.create(user)
+        with pytest.raises(TicketLimitExceededError):
+            store.create(user)
+
+    def test_per_user_ticket_cap_different_users(self) -> None:
+        """Different users have independent ticket caps."""
+        store = WsTicketStore()
+        user_a = _make_user(user_id="user-a")
+        user_b = _make_user(user_id="user-b")
+        for _ in range(5):
+            store.create(user_a)
+        # user_b should still be able to create tickets
+        ticket = store.create(user_b)
+        assert isinstance(ticket, str)
+
+
+@pytest.mark.timeout(30)
+@pytest.mark.unit
+class TestWsTicketStoreValidateAndConsume:
+    """Tests for ticket validation and consumption."""
+
+    def test_validate_and_consume_returns_user(self) -> None:
+        store = WsTicketStore()
+        user = _make_user()
+        ticket = store.create(user)
+
+        result = store.validate_and_consume(ticket)
+
+        assert result is not None
+        assert result.user_id == user.user_id
+        assert result.username == user.username
+        assert result.role == user.role
+        assert result.auth_method == AuthMethod.WS_TICKET
+
+    def test_validate_and_consume_single_use(self) -> None:
+        store = WsTicketStore()
+        user = _make_user()
+        ticket = store.create(user)
+
+        first = store.validate_and_consume(ticket)
+        second = store.validate_and_consume(ticket)
+
+        assert first is not None
+        assert second is None
+
+    def test_validate_and_consume_single_use_concurrent(self) -> None:
+        """Exactly one concurrent consumer wins the ticket."""
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        store = WsTicketStore()
+        user = _make_user()
+        ticket = store.create(user)
+
+        barrier = threading.Barrier(10)
+
+        def consume() -> AuthenticatedUser | None:
+            barrier.wait()
+            return store.validate_and_consume(ticket)
+
+        with ThreadPoolExecutor(max_workers=10) as pool:
+            results = list(pool.map(lambda _: consume(), range(10)))
+
+        winners = [r for r in results if r is not None]
+        assert len(winners) == 1
+        assert winners[0].user_id == user.user_id
+
+    def test_validate_and_consume_expired(self) -> None:
+        store = WsTicketStore(ttl_seconds=10.0)
+        user = _make_user()
+
+        base_time = 1000.0
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic", return_value=base_time
+        ):
+            ticket = store.create(user)
+
+        # Advance past expiry
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic",
+            return_value=base_time + 11.0,
+        ):
+            result = store.validate_and_consume(ticket)
+
+        assert result is None
+
+    def test_validate_and_consume_just_before_expiry(self) -> None:
+        store = WsTicketStore(ttl_seconds=10.0)
+        user = _make_user()
+
+        base_time = 1000.0
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic", return_value=base_time
+        ):
+            ticket = store.create(user)
+
+        # Just before expiry — should still work
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic",
+            return_value=base_time + 9.9,
+        ):
+            result = store.validate_and_consume(ticket)
+
+        assert result is not None
+
+    def test_validate_and_consume_unknown_ticket(self) -> None:
+        store = WsTicketStore()
+        result = store.validate_and_consume("nonexistent-ticket")
+        assert result is None
+
+    def test_validate_and_consume_empty_string(self) -> None:
+        store = WsTicketStore()
+        result = store.validate_and_consume("")
+        assert result is None
+
+    def test_custom_ttl(self) -> None:
+        store = WsTicketStore(ttl_seconds=5.0)
+        user = _make_user()
+
+        base_time = 1000.0
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic", return_value=base_time
+        ):
+            ticket = store.create(user)
+
+        # Within custom TTL
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic",
+            return_value=base_time + 4.0,
+        ):
+            result = store.validate_and_consume(ticket)
+        assert result is not None
+
+    def test_custom_ttl_expired(self) -> None:
+        store = WsTicketStore(ttl_seconds=5.0)
+        user = _make_user()
+
+        base_time = 1000.0
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic", return_value=base_time
+        ):
+            ticket = store.create(user)
+
+        # Past custom TTL
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic",
+            return_value=base_time + 6.0,
+        ):
+            result = store.validate_and_consume(ticket)
+        assert result is None
+
+
+@pytest.mark.timeout(30)
+@pytest.mark.unit
+class TestWsTicketStoreCleanup:
+    """Tests for expired ticket cleanup."""
+
+    def test_cleanup_expired_removes_old_entries(self) -> None:
+        store = WsTicketStore(ttl_seconds=10.0)
+        user = _make_user()
+
+        base_time = 1000.0
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic", return_value=base_time
+        ):
+            store.create(user)
+            store.create(user)
+
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic",
+            return_value=base_time + 11.0,
+        ):
+            removed = store.cleanup_expired()
+
+        assert removed == 2
+
+    def test_cleanup_preserves_valid_entries(self) -> None:
+        store = WsTicketStore(ttl_seconds=10.0)
+        user = _make_user()
+
+        base_time = 1000.0
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic", return_value=base_time
+        ):
+            ticket = store.create(user)
+
+        # Still within TTL
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic",
+            return_value=base_time + 5.0,
+        ):
+            removed = store.cleanup_expired()
+
+        assert removed == 0
+        # Ticket should still be valid
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic",
+            return_value=base_time + 5.0,
+        ):
+            result = store.validate_and_consume(ticket)
+        assert result is not None
+
+    def test_cleanup_mixed_expired_and_valid(self) -> None:
+        store = WsTicketStore(ttl_seconds=10.0)
+        user = _make_user()
+
+        base_time = 1000.0
+        # Create two tickets at different times
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic", return_value=base_time
+        ):
+            store.create(user)  # expires at 1010
+
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic",
+            return_value=base_time + 8.0,
+        ):
+            valid_ticket = store.create(user)  # expires at 1018
+
+        # At t=1012: first expired, second still valid
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic",
+            return_value=base_time + 12.0,
+        ):
+            removed = store.cleanup_expired()
+
+        assert removed == 1
+        with patch(
+            "synthorg.api.auth.ticket_store.time.monotonic",
+            return_value=base_time + 12.0,
+        ):
+            result = store.validate_and_consume(valid_ticket)
+        assert result is not None
+
+    def test_cleanup_empty_store(self) -> None:
+        store = WsTicketStore()
+        removed = store.cleanup_expired()
+        assert removed == 0

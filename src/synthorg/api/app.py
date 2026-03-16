@@ -5,6 +5,8 @@ controllers, middleware, exception handlers, plugins, and
 lifecycle hooks (startup/shutdown).
 """
 
+import asyncio
+import contextlib
 import os
 import time
 from datetime import UTC, datetime
@@ -53,6 +55,7 @@ from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
     API_APPROVAL_PUBLISH_FAILED,
+    API_WS_TICKET_CLEANUP,
 )
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
@@ -146,6 +149,22 @@ def _make_meeting_publisher(
     return _on_meeting_event
 
 
+async def _ticket_cleanup_loop(app_state: AppState) -> None:
+    """Periodically prune expired WS tickets (runs as background task)."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            app_state.ticket_store.cleanup_expired()
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                API_WS_TICKET_CLEANUP,
+                error="Periodic ticket cleanup failed",
+                exc_info=True,
+            )
+
+
 def _build_lifecycle(  # noqa: PLR0913
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
@@ -162,8 +181,22 @@ def _build_lifecycle(  # noqa: PLR0913
     Returns:
         A tuple of (on_startup, on_shutdown) callback lists.
     """
+    _ticket_cleanup_task: asyncio.Task[None] | None = None
+
+    def _on_cleanup_task_done(task: asyncio.Task[None]) -> None:
+        """Log unexpected cleanup-task death."""
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error(
+                API_WS_TICKET_CLEANUP,
+                error="Ticket cleanup task died unexpectedly",
+                exc_info=exc,
+            )
 
     async def on_startup() -> None:
+        nonlocal _ticket_cleanup_task
         logger.info(API_APP_STARTUP, version=__version__)
         await _safe_startup(
             persistence,
@@ -173,8 +206,19 @@ def _build_lifecycle(  # noqa: PLR0913
             meeting_scheduler,
             app_state,
         )
+        _ticket_cleanup_task = asyncio.create_task(
+            _ticket_cleanup_loop(app_state),
+            name="ws-ticket-cleanup",
+        )
+        _ticket_cleanup_task.add_done_callback(_on_cleanup_task_done)
 
     async def on_shutdown() -> None:
+        nonlocal _ticket_cleanup_task
+        if _ticket_cleanup_task is not None:
+            _ticket_cleanup_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await _ticket_cleanup_task
+            _ticket_cleanup_task = None
         logger.info(API_APP_SHUTDOWN, version=__version__)
         await _safe_shutdown(
             task_engine,
@@ -609,19 +653,25 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
         exclude=list(rl.exclude_paths),
     )
     auth = api_config.auth
-    if auth.exclude_paths is None:
-        prefix = api_config.api_prefix
-        auth = auth.model_copy(
-            update={
-                "exclude_paths": (
-                    f"^{prefix}/health$",
-                    "^/docs",
-                    "^/api$",
-                    f"^{prefix}/auth/setup$",
-                    f"^{prefix}/auth/login$",
-                ),
-            },
+    prefix = api_config.api_prefix
+    ws_path = f"^{prefix}/ws$"
+    exclude_paths = (
+        auth.exclude_paths
+        if auth.exclude_paths is not None
+        else (
+            f"^{prefix}/health$",
+            "^/docs",
+            "^/api$",
+            f"^{prefix}/auth/setup$",
+            f"^{prefix}/auth/login$",
         )
+    )
+    # Always ensure the WS upgrade path is excluded — the WS handler
+    # performs its own ticket-based auth, so the JWT middleware must
+    # not run on the upgrade request.
+    if ws_path not in exclude_paths:
+        exclude_paths = (*exclude_paths, ws_path)
+    auth = auth.model_copy(update={"exclude_paths": exclude_paths})
     auth_middleware = create_auth_middleware_class(auth)
     return [
         auth_middleware,
