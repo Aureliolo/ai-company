@@ -269,6 +269,33 @@ def _build_rrf_scored_memories(
     return scored
 
 
+def _accumulate_rrf_scores(
+    ranked_lists: tuple[tuple[MemoryEntry, ...], ...],
+    k: int,
+) -> tuple[dict[str, float], dict[str, MemoryEntry], int]:
+    """Iterate ranked lists, accumulate RRF scores with per-list dedup.
+
+    Returns:
+        Tuple of (scores, entries, duplicate_count).
+    """
+    scores: dict[str, float] = {}
+    entries: dict[str, MemoryEntry] = {}
+    duplicate_count = 0
+
+    for ranked_list in ranked_lists:
+        seen_in_list: set[str] = set()
+        for rank, entry in enumerate(ranked_list, start=1):
+            if entry.id in seen_in_list:
+                duplicate_count += 1
+                continue
+            seen_in_list.add(entry.id)
+            scores[entry.id] = scores.get(entry.id, 0.0) + 1.0 / (k + rank)
+            if entry.id not in entries:
+                entries[entry.id] = entry
+
+    return scores, entries, duplicate_count
+
+
 def fuse_ranked_lists(
     ranked_lists: tuple[tuple[MemoryEntry, ...], ...],
     *,
@@ -318,23 +345,10 @@ def fuse_ranked_lists(
         )
         raise ValueError(msg)
 
-    scores: dict[str, float] = {}
-    entries: dict[str, MemoryEntry] = {}
-    duplicate_count = 0
-
-    for ranked_list in ranked_lists:
-        seen_in_list: set[str] = set()
-        for rank, entry in enumerate(ranked_list, start=1):
-            if entry.id in seen_in_list:
-                duplicate_count += 1
-                continue
-            seen_in_list.add(entry.id)
-            scores[entry.id] = scores.get(entry.id, 0.0) + 1.0 / (k + rank)
-            if entry.id not in entries:
-                entries[entry.id] = entry
+    scores, entries, duplicate_count = _accumulate_rrf_scores(ranked_lists, k)
 
     if not entries:
-        logger.debug(
+        logger.info(
             MEMORY_RRF_FUSION_COMPLETE,
             num_lists=len(ranked_lists),
             unique_entries=0,
@@ -349,7 +363,7 @@ def fuse_ranked_lists(
     scored_list.sort(key=lambda s: s.combined_score, reverse=True)
     result = tuple(scored_list[:max_results])
 
-    logger.debug(
+    logger.info(
         MEMORY_RRF_FUSION_COMPLETE,
         num_lists=len(ranked_lists),
         unique_entries=len(entries),
