@@ -12,14 +12,16 @@ const stateFileName = "config.json"
 
 // State is the persisted CLI configuration written by `synthorg init`.
 type State struct {
-	DataDir     string `json:"data_dir"`
-	ImageTag    string `json:"image_tag"`
-	BackendPort int    `json:"backend_port"`
-	WebPort     int    `json:"web_port"`
-	Sandbox     bool   `json:"sandbox"`
-	DockerSock  string `json:"docker_sock,omitempty"`
-	LogLevel    string `json:"log_level"`
-	JWTSecret   string `json:"jwt_secret,omitempty"`
+	DataDir            string `json:"data_dir"`
+	ImageTag           string `json:"image_tag"`
+	BackendPort        int    `json:"backend_port"`
+	WebPort            int    `json:"web_port"`
+	Sandbox            bool   `json:"sandbox"`
+	DockerSock         string `json:"docker_sock,omitempty"`
+	LogLevel           string `json:"log_level"`
+	JWTSecret          string `json:"jwt_secret,omitempty"`
+	PersistenceBackend string `json:"persistence_backend"`
+	MemoryBackend      string `json:"memory_backend"`
 }
 
 // DefaultState returns a State with sensible defaults for the interactive init
@@ -27,12 +29,14 @@ type State struct {
 // when no config file exists.
 func DefaultState() State {
 	return State{
-		DataDir:     DataDir(),
-		ImageTag:    "latest",
-		BackendPort: 8000,
-		WebPort:     3000,
-		Sandbox:     true,
-		LogLevel:    "info",
+		DataDir:            DataDir(),
+		ImageTag:           "latest",
+		BackendPort:        8000,
+		WebPort:            3000,
+		Sandbox:            true,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
 	}
 }
 

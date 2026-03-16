@@ -11,11 +11,13 @@ import (
 
 func TestGenerateDefault(t *testing.T) {
 	p := Params{
-		CLIVersion:  "dev",
-		ImageTag:    "latest",
-		BackendPort: 8000,
-		WebPort:     3000,
-		LogLevel:    "info",
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        8000,
+		WebPort:            3000,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
 	}
 	out, err := Generate(p)
 	if err != nil {
@@ -50,12 +52,14 @@ func TestGenerateDefault(t *testing.T) {
 
 func TestGenerateCustomPorts(t *testing.T) {
 	p := Params{
-		CLIVersion:  "dev",
-		ImageTag:    "v0.2.0",
-		BackendPort: 9000,
-		WebPort:     4000,
-		LogLevel:    "debug",
-		JWTSecret:   "test-secret-value",
+		CLIVersion:         "dev",
+		ImageTag:           "v0.2.0",
+		BackendPort:        9000,
+		WebPort:            4000,
+		LogLevel:           "debug",
+		JWTSecret:          "test-secret-value",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
 	}
 	out, err := Generate(p)
 	if err != nil {
@@ -74,13 +78,15 @@ func TestGenerateCustomPorts(t *testing.T) {
 
 func TestGenerateWithSandbox(t *testing.T) {
 	p := Params{
-		CLIVersion:  "dev",
-		ImageTag:    "latest",
-		BackendPort: 8000,
-		WebPort:     3000,
-		LogLevel:    "info",
-		Sandbox:     true,
-		DockerSock:  "/var/run/docker.sock",
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        8000,
+		WebPort:            3000,
+		LogLevel:           "info",
+		Sandbox:            true,
+		DockerSock:         "/var/run/docker.sock",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
 	}
 	out, err := Generate(p)
 	if err != nil {
@@ -95,11 +101,13 @@ func TestGenerateWithSandbox(t *testing.T) {
 
 func TestGenerateHardeningPresent(t *testing.T) {
 	p := Params{
-		CLIVersion:  "dev",
-		ImageTag:    "latest",
-		BackendPort: 8000,
-		WebPort:     3000,
-		LogLevel:    "info",
+		CLIVersion:         "dev",
+		ImageTag:           "latest",
+		BackendPort:        8000,
+		WebPort:            3000,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
 	}
 	out, err := Generate(p)
 	if err != nil {
@@ -123,14 +131,16 @@ func TestGenerateHardeningPresent(t *testing.T) {
 
 func TestParamsFromState(t *testing.T) {
 	s := config.State{
-		DataDir:     "/tmp/test",
-		ImageTag:    "v1.0.0",
-		BackendPort: 9000,
-		WebPort:     4000,
-		LogLevel:    "debug",
-		JWTSecret:   "secret",
-		Sandbox:     true,
-		DockerSock:  "/var/run/docker.sock",
+		DataDir:            "/tmp/test",
+		ImageTag:           "v1.0.0",
+		BackendPort:        9000,
+		WebPort:            4000,
+		LogLevel:           "debug",
+		JWTSecret:          "secret",
+		Sandbox:            true,
+		DockerSock:         "/var/run/docker.sock",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
 	}
 	p := ParamsFromState(s)
 
@@ -148,6 +158,12 @@ func TestParamsFromState(t *testing.T) {
 	}
 	if p.DockerSock != "/var/run/docker.sock" {
 		t.Errorf("DockerSock = %q", p.DockerSock)
+	}
+	if p.PersistenceBackend != "sqlite" {
+		t.Errorf("PersistenceBackend = %q, want sqlite", p.PersistenceBackend)
+	}
+	if p.MemoryBackend != "mem0" {
+		t.Errorf("MemoryBackend = %q, want mem0", p.MemoryBackend)
 	}
 }
 

@@ -81,25 +81,29 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 // setupAnswers holds raw form input before validation.
 type setupAnswers struct {
-	dir            string
-	backendPortStr string
-	webPortStr     string
-	sandbox        bool
-	dockerSock     string
-	logLevel       string
-	genJWT         bool
+	dir                string
+	backendPortStr     string
+	webPortStr         string
+	sandbox            bool
+	dockerSock         string
+	logLevel           string
+	genJWT             bool
+	persistenceBackend string
+	memoryBackend      string
 }
 
 func runSetupForm() (setupAnswers, error) {
 	defaults := config.DefaultState()
 	a := setupAnswers{
-		dir:            defaults.DataDir,
-		backendPortStr: fmt.Sprintf("%d", defaults.BackendPort),
-		webPortStr:     fmt.Sprintf("%d", defaults.WebPort),
-		sandbox:        defaults.Sandbox,
-		dockerSock:     defaultDockerSock(),
-		logLevel:       defaults.LogLevel,
-		genJWT:         true,
+		dir:                defaults.DataDir,
+		backendPortStr:     fmt.Sprintf("%d", defaults.BackendPort),
+		webPortStr:         fmt.Sprintf("%d", defaults.WebPort),
+		sandbox:            defaults.Sandbox,
+		dockerSock:         defaultDockerSock(),
+		logLevel:           defaults.LogLevel,
+		genJWT:             true,
+		persistenceBackend: defaults.PersistenceBackend,
+		memoryBackend:      defaults.MemoryBackend,
 	}
 
 	form := huh.NewForm(
@@ -125,6 +129,18 @@ func runSetupForm() (setupAnswers, error) {
 			).Value(&a.logLevel),
 			huh.NewConfirm().Title("Generate JWT secret?").
 				Description("Recommended for API authentication").Value(&a.genJWT),
+		),
+		huh.NewGroup(
+			huh.NewSelect[string]().Title("Persistence backend").
+				Description("Database for operational data (tasks, audit, auth)").
+				Options(
+					huh.NewOption("SQLite (recommended)", "sqlite"),
+				).Value(&a.persistenceBackend),
+			huh.NewSelect[string]().Title("Memory backend").
+				Description("Agent memory storage (conversations, knowledge)").
+				Options(
+					huh.NewOption("Mem0 (recommended)", "mem0"),
+				).Value(&a.memoryBackend),
 		),
 	)
 
@@ -173,14 +189,16 @@ func buildState(a setupAnswers) (config.State, error) {
 	}
 
 	return config.State{
-		DataDir:     dir,
-		ImageTag:    imageTag,
-		BackendPort: backendPort,
-		WebPort:     webPort,
-		Sandbox:     a.sandbox,
-		DockerSock:  dockerSock,
-		LogLevel:    a.logLevel,
-		JWTSecret:   jwtSecret,
+		DataDir:            dir,
+		ImageTag:           imageTag,
+		BackendPort:        backendPort,
+		WebPort:            webPort,
+		Sandbox:            a.sandbox,
+		DockerSock:         dockerSock,
+		LogLevel:           a.logLevel,
+		JWTSecret:          jwtSecret,
+		PersistenceBackend: a.persistenceBackend,
+		MemoryBackend:      a.memoryBackend,
 	}, nil
 }
 

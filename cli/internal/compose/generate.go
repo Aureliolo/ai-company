@@ -29,27 +29,31 @@ var allowedLogLevels = map[string]bool{
 
 // Params are the template parameters for compose generation.
 type Params struct {
-	CLIVersion  string
-	ImageTag    string
-	BackendPort int
-	WebPort     int
-	LogLevel    string
-	JWTSecret   string
-	Sandbox     bool
-	DockerSock  string
+	CLIVersion         string
+	ImageTag           string
+	BackendPort        int
+	WebPort            int
+	LogLevel           string
+	JWTSecret          string
+	Sandbox            bool
+	DockerSock         string
+	PersistenceBackend string
+	MemoryBackend      string
 }
 
 // ParamsFromState creates Params from a persisted State.
 func ParamsFromState(s config.State) Params {
 	return Params{
-		CLIVersion:  version.Version,
-		ImageTag:    s.ImageTag,
-		BackendPort: s.BackendPort,
-		WebPort:     s.WebPort,
-		LogLevel:    s.LogLevel,
-		JWTSecret:   s.JWTSecret,
-		Sandbox:     s.Sandbox,
-		DockerSock:  s.DockerSock,
+		CLIVersion:         version.Version,
+		ImageTag:           s.ImageTag,
+		BackendPort:        s.BackendPort,
+		WebPort:            s.WebPort,
+		LogLevel:           s.LogLevel,
+		JWTSecret:          s.JWTSecret,
+		Sandbox:            s.Sandbox,
+		DockerSock:         s.DockerSock,
+		PersistenceBackend: s.PersistenceBackend,
+		MemoryBackend:      s.MemoryBackend,
 	}
 }
 

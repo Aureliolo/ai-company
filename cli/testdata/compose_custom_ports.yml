@@ -13,6 +13,8 @@ services:
       SYNTHORG_PORT: "8000"
       SYNTHORG_DB_PATH: "/data/synthorg.db"
       SYNTHORG_MEMORY_DIR: "/data/memory"
+      SYNTHORG_PERSISTENCE_BACKEND: "sqlite"
+      SYNTHORG_MEMORY_BACKEND: "mem0"
       SYNTHORG_LOG_LEVEL: "debug"
       SYNTHORG_JWT_SECRET: "test-secret-value"
     user: "65532:65532"
