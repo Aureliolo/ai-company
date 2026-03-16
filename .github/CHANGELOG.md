@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.2.8](https://github.com/Aureliolo/synthorg/compare/v0.2.7...v0.2.8) (2026-03-16)
+
+
+### Features
+
+* add RRF rank fusion to memory ranking ([#478](https://github.com/Aureliolo/synthorg/issues/478)) ([42242b5](https://github.com/Aureliolo/synthorg/commit/42242b51e5f6d4c2d034d569d20652f5175abf91))
+* collaboration scoring enhancements — LLM sampling and human override ([#477](https://github.com/Aureliolo/synthorg/issues/477)) ([b3f3330](https://github.com/Aureliolo/synthorg/commit/b3f33303e9a2dbcb57c59b7ed32cc5fda292398d))
+
+
+### Bug Fixes
+
+* add .gitattributes to enforce LF line endings for Go files ([#483](https://github.com/Aureliolo/synthorg/issues/483)) ([1b8c7b6](https://github.com/Aureliolo/synthorg/commit/1b8c7b618a55194ddd925b9e0c11a9b481e2f2d7))
+* **cli:** Windows uninstall, update UX, health check, sigstore ([#476](https://github.com/Aureliolo/synthorg/issues/476)) ([470ca72](https://github.com/Aureliolo/synthorg/commit/470ca7251235294b7d30a042d28988fea12695c3))
+
+
+### Refactoring
+
+* **web:** extract WebSocket subscription into reusable composable ([#475](https://github.com/Aureliolo/synthorg/issues/475)) ([96e6c46](https://github.com/Aureliolo/synthorg/commit/96e6c466b115462b1a2248310d5d778e0232592c)), closes [#351](https://github.com/Aureliolo/synthorg/issues/351)
+
+
+### Maintenance
+
+* bump hypothesis from 6.151.5 to 6.151.9 in the minor-and-patch group ([#482](https://github.com/Aureliolo/synthorg/issues/482)) ([a7297d5](https://github.com/Aureliolo/synthorg/commit/a7297d57401efbca38ae38364c2d39c773cd3ec7))
+* bump nginxinc/nginx-unprivileged from `aec540f` to `ccbac1a` in /docker/web ([#479](https://github.com/Aureliolo/synthorg/issues/479)) ([176e052](https://github.com/Aureliolo/synthorg/commit/176e052ec4957652bef98cdbed2d3b864f63f089))
+
 ## [0.2.7](https://github.com/Aureliolo/synthorg/compare/v0.2.6...v0.2.7) (2026-03-15)
 
 
