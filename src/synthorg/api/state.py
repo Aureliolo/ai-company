@@ -24,6 +24,7 @@ from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -235,6 +236,19 @@ class AppState:
     def has_settings_service(self) -> bool:
         """Check whether the settings service is configured."""
         return self._settings_service is not None
+
+    @property
+    def config_resolver(self) -> ConfigResolver:
+        """Return a typed config resolver backed by SettingsService.
+
+        Creates a :class:`ConfigResolver` wrapping the settings service
+        and the YAML-loaded config.  Raises 503 if the settings service
+        is not configured.
+        """
+        return ConfigResolver(
+            settings_service=self.settings_service,
+            config=self.config,
+        )
 
     @property
     def has_auth_service(self) -> bool:

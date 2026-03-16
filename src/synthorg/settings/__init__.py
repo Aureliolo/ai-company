@@ -18,8 +18,10 @@ from synthorg.settings.errors import (
 )
 from synthorg.settings.models import SettingDefinition, SettingEntry, SettingValue
 from synthorg.settings.registry import SettingsRegistry, get_registry
+from synthorg.settings.resolver import ConfigResolver
 
 __all__ = [
+    "ConfigResolver",
     "SettingDefinition",
     "SettingEntry",
     "SettingLevel",

@@ -27,12 +27,12 @@ _r.register(
         description="Default company-wide autonomy level",
         group="General",
         enum_values=(
-            "full_autonomy",
+            "full",
+            "semi",
             "supervised",
-            "approval_required",
-            "human_in_the_loop",
+            "locked",
         ),
-        yaml_path="config.autonomy_level",
+        yaml_path="config.autonomy.level",
     )
 )
 
