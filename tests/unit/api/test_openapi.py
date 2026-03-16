@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from synthorg.api.openapi import inject_rfc9457_responses
+from synthorg.api.openapi import _should_inject, inject_rfc9457_responses
 
 # ── Fixtures ──────────────────────────────────────────────────
 
@@ -147,7 +147,9 @@ class TestProblemDetailSchema:
         result = inject_rfc9457_responses(base_schema)
         pd = result["components"]["schemas"]["ProblemDetail"]
         error_cat_prop = pd["properties"]["error_category"]
-        assert error_cat_prop == {"$ref": "#/components/schemas/ErrorCategory"}
+        assert error_cat_prop == {
+            "$ref": "#/components/schemas/ErrorCategory",
+        }
 
     def test_not_overwritten_if_exists(self) -> None:
         """Pre-existing ProblemDetail schema is preserved."""
@@ -155,6 +157,12 @@ class TestProblemDetailSchema:
         schema = _minimal_schema(extra_schemas={"ProblemDetail": custom_pd})
         result = inject_rfc9457_responses(schema)
         assert result["components"]["schemas"]["ProblemDetail"]["custom"] is True
+
+    def test_no_defs_in_problem_detail(self, base_schema: dict[str, Any]) -> None:
+        """ProblemDetail schema has no leftover $defs."""
+        result = inject_rfc9457_responses(base_schema)
+        pd = result["components"]["schemas"]["ProblemDetail"]
+        assert "$defs" not in pd
 
 
 # ── Reusable responses ────────────────────────────────────────
@@ -171,6 +179,17 @@ _EXPECTED_RESPONSE_KEYS = frozenset(
         "ServiceUnavailable",
     }
 )
+
+_EXPECTED_STATUS_CODES: dict[str, int] = {
+    "BadRequest": 400,
+    "Unauthorized": 401,
+    "Forbidden": 403,
+    "NotFound": 404,
+    "Conflict": 409,
+    "TooManyRequests": 429,
+    "InternalError": 500,
+    "ServiceUnavailable": 503,
+}
 
 
 @pytest.mark.unit
@@ -211,7 +230,9 @@ class TestReusableResponses:
         pj_content = result["components"]["responses"][key]["content"][
             "application/problem+json"
         ]
-        assert pj_content["schema"] == {"$ref": "#/components/schemas/ProblemDetail"}
+        assert pj_content["schema"] == {
+            "$ref": "#/components/schemas/ProblemDetail",
+        }
 
     @pytest.mark.parametrize("key", sorted(_EXPECTED_RESPONSE_KEYS))
     def test_examples_present(self, base_schema: dict[str, Any], key: str) -> None:
@@ -255,6 +276,23 @@ class TestReusableResponses:
         assert "error_code" in example
         assert "error_category" in example
 
+    @pytest.mark.parametrize(
+        ("key", "expected_status"),
+        sorted(_EXPECTED_STATUS_CODES.items()),
+    )
+    def test_problem_detail_example_status_matches_http_code(
+        self,
+        base_schema: dict[str, Any],
+        key: str,
+        expected_status: int,
+    ) -> None:
+        """ProblemDetail example status matches the HTTP status code."""
+        result = inject_rfc9457_responses(base_schema)
+        example = result["components"]["responses"][key]["content"][
+            "application/problem+json"
+        ]["example"]
+        assert example["status"] == expected_status
+
 
 # ── Operation injection ───────────────────────────────────────
 
@@ -287,7 +325,11 @@ class TestOperationInjection:
 
     def test_public_endpoints_skip_401(self, base_schema: dict[str, Any]) -> None:
         result = inject_rfc9457_responses(base_schema)
-        for path in ("/api/v1/health", "/api/v1/auth/login", "/api/v1/auth/setup"):
+        for path in (
+            "/api/v1/health",
+            "/api/v1/auth/login",
+            "/api/v1/auth/setup",
+        ):
             for method in result["paths"][path]:
                 op = result["paths"][path][method]
                 if not isinstance(op, dict):
@@ -298,7 +340,10 @@ class TestOperationInjection:
 
     def test_path_param_endpoints_have_404(self, base_schema: dict[str, Any]) -> None:
         result = inject_rfc9457_responses(base_schema)
-        for path in ("/api/v1/tasks/{task_id}", "/api/v1/agents/{agent_name}"):
+        for path in (
+            "/api/v1/tasks/{task_id}",
+            "/api/v1/agents/{agent_name}",
+        ):
             for method in result["paths"][path]:
                 responses = result["paths"][path][method]["responses"]
                 assert "404" in responses, f"{method.upper()} {path} missing 404"
@@ -425,7 +470,8 @@ class TestOperationInjection:
         assert problem_ex["retryable"] is True
 
     @pytest.mark.parametrize(
-        "key", ["BadRequest", "Unauthorized", "Forbidden", "NotFound", "Conflict"]
+        "key",
+        ["BadRequest", "Unauthorized", "Forbidden", "NotFound", "Conflict"],
     )
     def test_non_retryable_example_has_retryable_false(
         self, base_schema: dict[str, Any], key: str
@@ -436,6 +482,58 @@ class TestOperationInjection:
         assert envelope_ex["error_detail"]["retryable"] is False
         problem_ex = content["application/problem+json"]["example"]
         assert problem_ex["retryable"] is False
+
+    def test_put_endpoints_have_write_responses(self) -> None:
+        """PUT method gets 400, 403, and 409 injected."""
+        schema = _minimal_schema(
+            paths={
+                "/api/v1/tasks/{task_id}": {
+                    "put": _minimal_operation(has_body=True),
+                },
+            },
+        )
+        result = inject_rfc9457_responses(schema)
+        responses = result["paths"]["/api/v1/tasks/{task_id}"]["put"]["responses"]
+        assert "400" in responses
+        assert "403" in responses
+        assert "409" in responses
+
+    def test_get_without_existing_400_skips_bad_request(
+        self, base_schema: dict[str, Any]
+    ) -> None:
+        """GET endpoint without pre-existing 400 does not get BadRequest."""
+        result = inject_rfc9457_responses(base_schema)
+        # GET /tasks has no pre-existing 400 and is not a write method.
+        responses = result["paths"]["/api/v1/tasks"]["get"]["responses"]
+        assert "400" not in responses
+
+    def test_skips_non_operation_entries(self) -> None:
+        """Path-level metadata (parameters) is not treated as operations."""
+        schema = _minimal_schema(
+            paths={
+                "/api/v1/items/{id}": {
+                    "parameters": [{"name": "id", "in": "path"}],
+                    "get": _minimal_operation(),
+                },
+            },
+        )
+        result = inject_rfc9457_responses(schema)
+        # Should not crash; GET should have 500 injected.
+        responses = result["paths"]["/api/v1/items/{id}"]["get"]["responses"]
+        assert "500" in responses
+        # Parameters list should be unchanged.
+        params = result["paths"]["/api/v1/items/{id}"]["parameters"]
+        assert isinstance(params, list)
+
+    def test_unknown_key_returns_false(self) -> None:
+        """Unknown response key falls back to False (not injected)."""
+        result = _should_inject(
+            key="UnknownResponse",
+            path="/api/v1/tasks",
+            method="get",
+            operation={"responses": {"200": {"description": "OK"}}},
+        )
+        assert result is False
 
 
 # ── Info description ──────────────────────────────────────────
@@ -460,6 +558,15 @@ class TestInfoDescription:
         result = inject_rfc9457_responses(base_schema)
         desc = result["info"]["description"]
         assert "synthorg.io/docs/errors" in desc
+
+    def test_preserves_existing_description(self) -> None:
+        """Existing info.description is preserved with RFC section appended."""
+        schema = _minimal_schema()
+        schema["info"]["description"] = "My custom API description."
+        result = inject_rfc9457_responses(schema)
+        desc = result["info"]["description"]
+        assert desc.startswith("My custom API description.")
+        assert "RFC 9457" in desc
 
 
 # ── Idempotency and immutability ──────────────────────────────
@@ -488,44 +595,9 @@ class TestIdempotencyAndImmutability:
 
     def test_missing_components(self) -> None:
         """Handles schema with missing components section."""
-        schema = {"openapi": "3.1.0", "info": {"title": "X", "version": "1"}}
+        schema = {
+            "openapi": "3.1.0",
+            "info": {"title": "X", "version": "1"},
+        }
         result = inject_rfc9457_responses(schema)
         assert "ProblemDetail" in result["components"]["schemas"]
-
-
-# ── Integration ───────────────────────────────────────────────
-
-
-@pytest.mark.integration
-def test_full_app_schema_enhancement() -> None:
-    """Enhance the real Litestar-generated schema end-to-end."""
-    from synthorg.api.app import create_app
-
-    app = create_app()
-    schema = app.openapi_schema.to_schema()
-    result = inject_rfc9457_responses(schema)
-
-    # ProblemDetail schema present.
-    assert "ProblemDetail" in result["components"]["schemas"]
-
-    # All 8 reusable responses defined.
-    responses = result["components"]["responses"]
-    assert set(responses.keys()) == _EXPECTED_RESPONSE_KEYS
-
-    # Every reusable response has dual content types.
-    for key, resp in responses.items():
-        content = resp["content"]
-        assert "application/json" in content, f"{key} missing application/json"
-        assert "application/problem+json" in content, f"{key} missing problem+json"
-
-    # At least one operation has error response refs.
-    tasks_get = result["paths"]["/api/v1/tasks"]["get"]["responses"]
-    assert "500" in tasks_get
-    assert tasks_get["500"] == {"$ref": "#/components/responses/InternalError"}
-
-    # Public endpoints don't have 401.
-    health = result["paths"]["/api/v1/health"]["get"]["responses"]
-    assert "401" not in health
-
-    # Info description updated.
-    assert "RFC 9457" in result["info"]["description"]

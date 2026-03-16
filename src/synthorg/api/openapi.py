@@ -12,13 +12,20 @@ the Litestar-generated schema dict to:
 2. Define reusable error responses with dual content types
 3. Inject error response references into every operation
 4. Replace Litestar's default 400 schema with the actual envelope
-5. Document content negotiation in ``info.description``
+5. Append content negotiation docs to ``info.description``
 
 Called by ``scripts/export_openapi.py`` after schema generation.
+
+.. note::
+
+    The ``ProblemDetail`` schema rewrites ``$ref`` paths from Pydantic's
+    internal ``#/$defs/`` to ``#/components/schemas/``.  This assumes
+    the referenced schemas (``ErrorCode``, ``ErrorCategory``) already
+    exist in the Litestar-generated ``components.schemas``.
 """
 
 import copy
-from typing import Any, Final
+from typing import Any, Final, NamedTuple
 
 from synthorg.api.dto import ProblemDetail
 from synthorg.api.errors import (
@@ -27,6 +34,9 @@ from synthorg.api.errors import (
     ErrorCode,
     category_type_uri,
 )
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────
 
@@ -41,7 +51,9 @@ _PUBLIC_PATH_SUFFIXES: Final[tuple[str, ...]] = (
 )
 
 # HTTP methods that accept a request body (get 400/409 injected).
-_WRITE_METHODS: Final[frozenset[str]] = frozenset({"post", "put", "patch", "delete"})
+_WRITE_METHODS: Final[frozenset[str]] = frozenset(
+    {"post", "put", "patch", "delete"},
+)
 
 # Envelope schema ref (Litestar-generated name for ApiResponse[None]).
 _ENVELOPE_REF: Final[str] = "#/components/schemas/ApiResponse_NoneType_"
@@ -53,88 +65,95 @@ _EXAMPLE_INSTANCE_ID: Final[str] = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
 # ── Error response definitions ────────────────────────────────
 
-# (status_code, key, description, error_code, error_category, detail, retryable)
-_ERROR_RESPONSES: Final[
-    tuple[tuple[int, str, str, ErrorCode, ErrorCategory, str, bool], ...]
-] = (
-    (
-        400,
-        "BadRequest",
-        "Validation error — request body or parameters are invalid.",
-        ErrorCode.REQUEST_VALIDATION_ERROR,
-        ErrorCategory.VALIDATION,
-        "Validation error",
-        False,
+
+class _ErrorResponseSpec(NamedTuple):
+    """Specification for a reusable error response definition."""
+
+    status: int
+    key: str
+    description: str
+    error_code: ErrorCode
+    error_category: ErrorCategory
+    detail: str
+    retryable: bool
+
+
+_ERROR_RESPONSES: Final[tuple[_ErrorResponseSpec, ...]] = (
+    _ErrorResponseSpec(
+        status=400,
+        key="BadRequest",
+        description=("Validation error \u2014 request body or parameters are invalid."),
+        error_code=ErrorCode.REQUEST_VALIDATION_ERROR,
+        error_category=ErrorCategory.VALIDATION,
+        detail="Validation error",
+        retryable=False,
     ),
-    (
-        401,
-        "Unauthorized",
-        "Authentication required — missing or invalid credentials.",
-        ErrorCode.UNAUTHORIZED,
-        ErrorCategory.AUTH,
-        "Authentication required",
-        False,
+    _ErrorResponseSpec(
+        status=401,
+        key="Unauthorized",
+        description=("Authentication required \u2014 missing or invalid credentials."),
+        error_code=ErrorCode.UNAUTHORIZED,
+        error_category=ErrorCategory.AUTH,
+        detail="Authentication required",
+        retryable=False,
     ),
-    (
-        403,
-        "Forbidden",
-        "Insufficient permissions for this operation.",
-        ErrorCode.FORBIDDEN,
-        ErrorCategory.AUTH,
-        "Forbidden",
-        False,
+    _ErrorResponseSpec(
+        status=403,
+        key="Forbidden",
+        description="Insufficient permissions for this operation.",
+        error_code=ErrorCode.FORBIDDEN,
+        error_category=ErrorCategory.AUTH,
+        detail="Forbidden",
+        retryable=False,
     ),
-    (
-        404,
-        "NotFound",
-        "Requested resource does not exist.",
-        ErrorCode.RECORD_NOT_FOUND,
-        ErrorCategory.NOT_FOUND,
-        "Resource not found",
-        False,
+    _ErrorResponseSpec(
+        status=404,
+        key="NotFound",
+        description="Requested resource does not exist.",
+        error_code=ErrorCode.RECORD_NOT_FOUND,
+        error_category=ErrorCategory.NOT_FOUND,
+        detail="Resource not found",
+        retryable=False,
     ),
-    (
-        409,
-        "Conflict",
-        "Resource conflict — duplicate or invalid state transition.",
-        ErrorCode.RESOURCE_CONFLICT,
-        ErrorCategory.CONFLICT,
-        "Resource conflict",
-        False,
+    _ErrorResponseSpec(
+        status=409,
+        key="Conflict",
+        description=("Resource conflict \u2014 duplicate or invalid state transition."),
+        error_code=ErrorCode.RESOURCE_CONFLICT,
+        error_category=ErrorCategory.CONFLICT,
+        detail="Resource conflict",
+        retryable=False,
     ),
-    (
-        429,
-        "TooManyRequests",
-        "Rate limit exceeded — back off and retry.",
-        ErrorCode.RATE_LIMITED,
-        ErrorCategory.RATE_LIMIT,
-        "Rate limit exceeded",
-        True,
+    _ErrorResponseSpec(
+        status=429,
+        key="TooManyRequests",
+        description="Rate limit exceeded \u2014 back off and retry.",
+        error_code=ErrorCode.RATE_LIMITED,
+        error_category=ErrorCategory.RATE_LIMIT,
+        detail="Rate limit exceeded",
+        retryable=True,
     ),
-    (
-        500,
-        "InternalError",
-        "Internal server error.",
-        ErrorCode.INTERNAL_ERROR,
-        ErrorCategory.INTERNAL,
-        "Internal server error",
-        False,
+    _ErrorResponseSpec(
+        status=500,
+        key="InternalError",
+        description="Internal server error.",
+        error_code=ErrorCode.INTERNAL_ERROR,
+        error_category=ErrorCategory.INTERNAL,
+        detail="Internal server error",
+        retryable=False,
     ),
-    (
-        503,
-        "ServiceUnavailable",
-        "Required service is temporarily unavailable.",
-        ErrorCode.SERVICE_UNAVAILABLE,
-        ErrorCategory.INTERNAL,
-        "Service unavailable",
-        True,
+    _ErrorResponseSpec(
+        status=503,
+        key="ServiceUnavailable",
+        description="Required service is temporarily unavailable.",
+        error_code=ErrorCode.SERVICE_UNAVAILABLE,
+        error_category=ErrorCategory.INTERNAL,
+        detail="Service unavailable",
+        retryable=True,
     ),
 )
 
-_INFO_DESCRIPTION: Final[str] = """\
-SynthOrg REST API for managing synthetic organizations \u2014 autonomous \
-AI agents orchestrated as a virtual company.
-
+_RFC9457_DESCRIPTION_SECTION: Final[str] = """\
 ## Error Handling (RFC 9457)
 
 All error responses support content negotiation between two formats:
@@ -163,6 +182,14 @@ def _build_problem_detail_schema() -> dict[str, Any]:
     ``#/components/schemas/`` so they resolve correctly when placed
     inside the OpenAPI ``components.schemas`` section.
 
+    .. note::
+
+        The ``$defs`` block is stripped because the referenced schemas
+        (e.g. ``ErrorCode``, ``ErrorCategory``) are already present in
+        the Litestar-generated ``components.schemas``.  If this function
+        is used with a schema that lacks those definitions, the rewritten
+        ``$ref`` paths will be dangling.
+
     Returns:
         JSON Schema dict for ``ProblemDetail`` with ``$defs``
         stripped and ``$ref`` paths rewritten to resolve under
@@ -170,7 +197,7 @@ def _build_problem_detail_schema() -> dict[str, Any]:
     """
     raw = ProblemDetail.model_json_schema(mode="serialization")
 
-    # Strip $defs — they'll be merged separately.
+    # Strip $defs — referenced types already exist in components.schemas.
     raw.pop("$defs", None)
 
     # Rewrite $ref from '#/$defs/X' to '#/components/schemas/X'.
@@ -179,12 +206,20 @@ def _build_problem_detail_schema() -> dict[str, Any]:
 
 
 def _rewrite_refs(obj: Any) -> Any:
-    """Recursively rewrite ``$ref`` paths from Pydantic to OpenAPI."""
+    """Recursively rewrite ``$ref`` paths from Pydantic to OpenAPI.
+
+    Only rewrites ``#/$defs/``-prefixed refs to
+    ``#/components/schemas/``.  Other prefixes (e.g.
+    already-rewritten ``#/components/schemas/``) pass through
+    unchanged for idempotency.
+    """
     if isinstance(obj, dict):
         if "$ref" in obj:
             ref: str = obj["$ref"]
             if ref.startswith("#/$defs/"):
-                return {"$ref": f"#/components/schemas/{ref.removeprefix('#/$defs/')}"}
+                return {
+                    "$ref": (f"#/components/schemas/{ref.removeprefix('#/$defs/')}"),
+                }
         return {k: _rewrite_refs(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_rewrite_refs(item) for item in obj]
@@ -242,36 +277,28 @@ def _problem_detail_example(
     }
 
 
-def _build_reusable_response(  # noqa: PLR0913
-    *,
-    status: int,
-    description: str,
-    error_code: ErrorCode,
-    error_category: ErrorCategory,
-    detail: str,
-    retryable: bool,
-) -> dict[str, Any]:
+def _build_reusable_response(spec: _ErrorResponseSpec) -> dict[str, Any]:
     """Build a reusable response object with dual content types."""
     return {
-        "description": description,
+        "description": spec.description,
         "content": {
             _APP_JSON: {
                 "schema": {"$ref": _ENVELOPE_REF},
                 "example": _envelope_example(
-                    detail=detail,
-                    error_code=error_code,
-                    error_category=error_category,
-                    retryable=retryable,
+                    detail=spec.detail,
+                    error_code=spec.error_code,
+                    error_category=spec.error_category,
+                    retryable=spec.retryable,
                 ),
             },
             _PROBLEM_JSON: {
                 "schema": {"$ref": _PROBLEM_DETAIL_REF},
                 "example": _problem_detail_example(
-                    status=status,
-                    detail=detail,
-                    error_code=error_code,
-                    error_category=error_category,
-                    retryable=retryable,
+                    status=spec.status,
+                    detail=spec.detail,
+                    error_code=spec.error_code,
+                    error_category=spec.error_category,
+                    retryable=spec.retryable,
                 ),
             },
         },
@@ -295,9 +322,6 @@ def _response_ref(key: str) -> dict[str, str]:
 
 # ── Response-to-operation mapping ─────────────────────────────
 
-# Maps response keys to the condition under which they are injected.
-# Condition signature: (path: str, method: str, operation: dict) -> bool
-
 
 def _should_inject(
     key: str,
@@ -308,7 +332,8 @@ def _should_inject(
     """Decide whether to inject a response reference into an operation.
 
     Returns ``True`` when the given error response *key* is applicable
-    to the *path*/*method* combination.
+    to the *path*/*method* combination.  Returns ``False`` for
+    unrecognised keys (defensive fallback).
     """
     is_public = _is_public_path(path)
     is_write = method in _WRITE_METHODS
@@ -322,9 +347,8 @@ def _should_inject(
         # Inject on write methods or replace Litestar's incorrect default.
         "BadRequest": is_write or "400" in operation.get("responses", {}),
         "NotFound": has_params,
-        # DELETE is excluded — it's idempotent and conflicts are
-        # a create/update concern in this API's model.
-        "Conflict": method in {"post", "put", "patch"},
+        # DELETE excluded — idempotent; conflicts are a create/update concern.
+        "Conflict": is_write and method != "delete",
         "TooManyRequests": not is_public,
     }
     return checks.get(key, False)
@@ -349,9 +373,43 @@ def _inject_operation_responses(
                 status_code = status_for_key[key]
                 if not _should_inject(key, path, method, operation):
                     continue
-                # Always replace 400 (Litestar's default is incorrect).
+                # Replace Litestar's auto-generated 400 (ValidationException)
+                # with the RFC 9457 dual-format version.  All 400 responses
+                # in Litestar-generated schemas use the default
+                # ValidationException schema; custom 400s would need manual
+                # post-processing.
                 if status_code == "400" or status_code not in op_responses:
                     op_responses[status_code] = _response_ref(key)
+
+
+# ── Extracted steps ───────────────────────────────────────────
+
+
+def _add_problem_detail_schema(schemas: dict[str, Any]) -> None:
+    """Add ``ProblemDetail`` to ``components.schemas`` if absent."""
+    if "ProblemDetail" not in schemas:
+        schemas["ProblemDetail"] = _build_problem_detail_schema()
+
+
+def _build_all_responses(
+    responses: dict[str, Any],
+) -> tuple[list[str], dict[str, str]]:
+    """Build reusable error responses and return keys + status mapping."""
+    response_keys: list[str] = []
+    status_for_key: dict[str, str] = {}
+    for spec in _ERROR_RESPONSES:
+        responses[spec.key] = _build_reusable_response(spec)
+        response_keys.append(spec.key)
+        status_for_key[spec.key] = str(spec.status)
+    return response_keys, status_for_key
+
+
+def _update_info_description(info: dict[str, Any]) -> None:
+    """Append RFC 9457 documentation to ``info.description`` idempotently."""
+    existing = info.get("description", "")
+    if "## Error Handling (RFC 9457)" not in existing:
+        separator = "\n\n" if existing else ""
+        info["description"] = f"{existing}{separator}{_RFC9457_DESCRIPTION_SECTION}"
 
 
 # ── Main function ─────────────────────────────────────────────
@@ -367,7 +425,7 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
     - Reusable error responses (dual content types) in
       ``components.responses``
     - Error response refs injected into every operation
-    - ``info.description`` updated with RFC 9457 documentation
+    - RFC 9457 docs appended to ``info.description``
 
     Args:
         schema: OpenAPI schema dict (not modified).
@@ -381,36 +439,13 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
     schemas = components.setdefault("schemas", {})
     responses = components.setdefault("responses", {})
 
-    # 1. Add ProblemDetail schema.
-    if "ProblemDetail" not in schemas:
-        schemas["ProblemDetail"] = _build_problem_detail_schema()
-
-    # 2. Build reusable responses with dual content types.
-    response_keys: list[str] = []
-    for (
-        status,
-        key,
-        description,
-        error_code,
-        error_category,
-        detail,
-        retryable,
-    ) in _ERROR_RESPONSES:
-        responses[key] = _build_reusable_response(
-            status=status,
-            description=description,
-            error_code=error_code,
-            error_category=error_category,
-            detail=detail,
-            retryable=retryable,
-        )
-        response_keys.append(key)
-
-    # 3. Inject error response refs into individual operations.
-    status_for_key = {key: str(status) for status, key, *_ in _ERROR_RESPONSES}
-    _inject_operation_responses(result.get("paths", {}), response_keys, status_for_key)
-
-    # 4. Update info.description.
-    result.setdefault("info", {})["description"] = _INFO_DESCRIPTION
+    _add_problem_detail_schema(schemas)
+    response_keys, status_for_key = _build_all_responses(responses)
+    _inject_operation_responses(
+        result.get("paths", {}),
+        response_keys,
+        status_for_key,
+    )
+    _update_info_description(result.setdefault("info", {}))
 
     return result
