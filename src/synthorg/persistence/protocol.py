@@ -21,6 +21,7 @@ from synthorg.persistence.repositories import (
     HeartbeatRepository,  # noqa: TC001
     MessageRepository,  # noqa: TC001
     ParkedContextRepository,  # noqa: TC001
+    SettingsRepository,  # noqa: TC001
     TaskRepository,  # noqa: TC001
     UserRepository,  # noqa: TC001
 )
@@ -50,6 +51,7 @@ class PersistenceBackend(Protocol):
         checkpoints: Repository for Checkpoint persistence.
         heartbeats: Repository for Heartbeat persistence.
         agent_states: Repository for AgentRuntimeState persistence.
+        settings: Repository for namespaced settings persistence.
     """
 
     async def connect(self) -> None:
@@ -157,6 +159,11 @@ class PersistenceBackend(Protocol):
     @property
     def agent_states(self) -> AgentStateRepository:
         """Repository for AgentRuntimeState persistence."""
+        ...
+
+    @property
+    def settings(self) -> SettingsRepository:
+        """Repository for namespaced settings persistence."""
         ...
 
     async def get_setting(self, key: NotBlankStr) -> str | None:

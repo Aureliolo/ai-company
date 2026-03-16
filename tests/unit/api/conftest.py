@@ -9,6 +9,7 @@ import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
+import synthorg.settings.definitions  # noqa: F401 — trigger registration
 from synthorg.api.app import create_app
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.config import AuthConfig
@@ -26,6 +27,8 @@ from synthorg.core.enums import (
 )
 from synthorg.core.task import Task
 from synthorg.engine.task_engine import TaskEngine
+from synthorg.settings.registry import get_registry
+from synthorg.settings.service import SettingsService
 from tests.unit.api.fakes import (
     FakeMessageBus,
     FakePersistenceBackend,
@@ -199,6 +202,12 @@ def test_client(  # noqa: PLR0913
     # Pre-seed users for each role so JWT sub claims resolve
     _seed_test_users(fake_persistence, auth_service)
 
+    settings_service = SettingsService(
+        repository=fake_persistence.settings,
+        registry=get_registry(),
+        config=root_config,
+    )
+
     app = create_app(
         config=root_config,
         persistence=fake_persistence,
@@ -207,6 +216,7 @@ def test_client(  # noqa: PLR0913
         approval_store=approval_store,
         auth_service=auth_service,
         task_engine=fake_task_engine,
+        settings_service=settings_service,
     )
     with TestClient(app) as client:
         # Default: CEO token (most tests need write access)

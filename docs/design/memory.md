@@ -391,7 +391,7 @@ class PersistenceBackend(Protocol):
     def messages(self) -> MessageRepository: ...
     # ... plus lifecycle_events, task_metrics, collaboration_metrics,
     #     parked_contexts, audit_entries, users, api_keys, checkpoints,
-    #     heartbeats, agent_states
+    #     heartbeats, agent_states, settings
 ```
 
 Each entity type has its own repository protocol:
@@ -449,6 +449,7 @@ persistence:
 | `AuditEntry` | `security/models.py` | `AuditRepository` | by agent, by action type, by verdict, by risk level, time range |
 | `ParkedContext` | `security/timeout/parked_context.py` | `ParkedContextRepository` | by execution_id, by agent_id, by task_id |
 | `AgentRuntimeState` | `engine/agent_state.py` | `AgentStateRepository` | by agent_id, active agents |
+| Setting | `settings/models.py` | `SettingsRepository` | by namespace+key, by namespace, all |
 
 ### Migration Strategy
 
