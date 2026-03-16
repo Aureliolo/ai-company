@@ -271,22 +271,24 @@ class TestWsTicketAuth:
         assert user.role == HumanRole.CEO
         assert user.username == "test-ceo"
 
-    def test_ws_endpoint_excluded_from_auth_middleware(
-        self,
-        test_client: TestClient[Any],
-    ) -> None:
-        """The /ws path should be in the auth middleware exclude list."""
+    def test_ws_endpoint_excluded_from_auth_middleware(self) -> None:
+        """The /ws path must be in the auto-derived auth exclude list."""
         from synthorg.api.app import _build_middleware
         from synthorg.api.config import ApiConfig
 
         api_config = ApiConfig()
-        # The middleware builder auto-derives exclude paths
-        # including /ws when exclude_paths is None
         middleware = _build_middleware(api_config)
-        # The first middleware is the auth middleware class
         auth_cls = middleware[0]
-        # Verify by checking the class is a configured subclass
-        assert hasattr(auth_cls, "__init__")
+
+        from litestar import Litestar
+
+        dummy_app = Litestar(route_handlers=[])
+        instance = auth_cls(dummy_app)  # type: ignore[operator,call-arg]
+        # Litestar compiles exclude paths into a single regex pattern.
+        assert instance.exclude is not None  # type: ignore[union-attr]
+        assert instance.exclude.match("/api/v1/ws"), (  # type: ignore[union-attr]
+            f"/api/v1/ws not matched by exclude: {instance.exclude.pattern}"  # type: ignore[union-attr]
+        )
 
     def test_read_roles_includes_all_human_roles(self) -> None:
         """The WS handler's _READ_ROLES should include all HumanRole values."""

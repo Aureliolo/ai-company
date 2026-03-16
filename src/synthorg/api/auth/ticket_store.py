@@ -4,6 +4,13 @@ Tickets are ephemeral — they do not survive a server restart, which
 forces re-authentication (correct security behaviour).  The store
 uses ``time.monotonic()`` for expiry so it is immune to wall-clock
 adjustments.
+
+.. note::
+
+   The store is per-process — if the ASGI server runs multiple
+   worker processes, a ticket issued by one worker cannot be
+   consumed by another.  ``ServerConfig.workers`` must be ``1``
+   (the default) for ticket auth to work correctly.
 """
 
 import secrets
@@ -23,6 +30,7 @@ from synthorg.observability.events.api import (
 
 logger = get_logger(__name__)
 
+# 32 bytes → 256 bits of entropy, encoded as 43 URL-safe base64 chars.
 _TOKEN_BYTES = 32
 
 
@@ -44,14 +52,20 @@ class WsTicketStore:
     """In-memory store for one-time WebSocket auth tickets.
 
     Each ticket is a cryptographically random URL-safe token
-    (43 characters).  Tickets expire after *ttl_seconds* or on
-    first use, whichever comes first.
+    (43 characters, 256-bit entropy).  Tickets expire after
+    *ttl_seconds* or on first use, whichever comes first.
 
     Args:
         ttl_seconds: Ticket lifetime in seconds (default 30).
+
+    Raises:
+        ValueError: If *ttl_seconds* is not positive.
     """
 
     def __init__(self, ttl_seconds: float = 30.0) -> None:
+        if ttl_seconds <= 0:
+            msg = f"ttl_seconds must be positive, got {ttl_seconds}"
+            raise ValueError(msg)
         self._ttl = ttl_seconds
         self._tickets: dict[str, _TicketEntry] = {}
 
@@ -86,8 +100,9 @@ class WsTicketStore:
     def validate_and_consume(self, ticket: str) -> AuthenticatedUser | None:
         """Validate and consume a ticket (single-use).
 
-        Removes the ticket from the store on success.  Returns
-        ``None`` if the ticket is unknown, expired, or already used.
+        Atomically removes the ticket via ``dict.pop`` before
+        checking expiry, so concurrent calls on the same ticket
+        are safely serialised by CPython's GIL.
 
         Args:
             ticket: Raw ticket string from the client.
@@ -95,8 +110,6 @@ class WsTicketStore:
         Returns:
             The bound ``AuthenticatedUser``, or ``None``.
         """
-        self._cleanup_expired()
-
         entry = self._tickets.pop(ticket, None)
         if entry is None:
             logger.warning(API_WS_TICKET_INVALID, reason="not_found")
@@ -118,8 +131,12 @@ class WsTicketStore:
         )
         return entry.user
 
-    def _cleanup_expired(self) -> int:
+    def cleanup_expired(self) -> int:
         """Remove expired tickets.
+
+        Called periodically by a background task to prevent
+        unbounded memory growth from tickets that are requested
+        but never consumed.
 
         Returns:
             Number of entries removed.

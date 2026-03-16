@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Sidebar from 'primevue/sidebar'
@@ -14,17 +14,18 @@ import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import { useMeetingStore } from '@/stores/meetings'
-import { useWebSocketStore } from '@/stores/websocket'
-import { useAuthStore } from '@/stores/auth'
 import { useAuth } from '@/composables/useAuth'
+import { useWebSocketSubscription } from '@/composables/useWebSocketSubscription'
 import { sanitizeForLog } from '@/utils/logging'
 import type { MeetingRecord, MeetingStatus } from '@/api/types'
 
 const toast = useToast()
 const meetingStore = useMeetingStore()
-const wsStore = useWebSocketStore()
-const authStore = useAuthStore()
 const { canWrite } = useAuth()
+
+useWebSocketSubscription({
+  bindings: [{ channel: 'meetings', handler: meetingStore.handleWsEvent }],
+})
 
 const selected = computed(() => meetingStore.selectedMeeting)
 const detailVisible = ref(false)
@@ -44,24 +45,10 @@ const statusOptions = [
 
 onMounted(async () => {
   try {
-    if (authStore.token && !wsStore.connected) {
-      await wsStore.connect()
-    }
-    wsStore.subscribe(['meetings'])
-    wsStore.onChannelEvent('meetings', meetingStore.handleWsEvent)
-  } catch (err) {
-    console.error('WebSocket setup failed:', sanitizeForLog(err))
-  }
-  try {
     await meetingStore.fetchMeetings()
   } catch (err) {
     console.error('Initial data fetch failed:', sanitizeForLog(err))
   }
-})
-
-onUnmounted(() => {
-  wsStore.unsubscribe(['meetings'])
-  wsStore.offChannelEvent('meetings', meetingStore.handleWsEvent)
 })
 
 function openDetail(meeting: MeetingRecord) {

@@ -27,6 +27,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let intentionalClose = false
   let shouldBeConnected = false
+  let connectPromise: Promise<void> | null = null
   const channelHandlers = new Map<string, Set<WsEventHandler>>()
   let pendingSubscriptions: { channels: WsChannel[]; filters?: Record<string, string> }[] = []
   // Track active subscriptions so reconnect can re-subscribe automatically
@@ -40,11 +41,21 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   async function connect() {
     if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
+    // Deduplicate concurrent connect() calls — the ticket exchange is async,
+    // so two callers could pass the readyState guard before the first resolves.
+    if (connectPromise) return connectPromise
+    connectPromise = doConnect().finally(() => { connectPromise = null })
+    return connectPromise
+  }
+
+  async function doConnect() {
     reconnectExhausted.value = false
     shouldBeConnected = true
     intentionalClose = false
 
     // Fetch a one-time ticket from the backend (requires valid JWT in Authorization header).
+    // The ticket is short-lived (30s) and single-use — browsers cannot set custom headers
+    // on WebSocket upgrade requests, so a query parameter is the only viable transport.
     let ticket: string
     try {
       const resp = await getWsTicket()

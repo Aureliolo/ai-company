@@ -51,6 +51,16 @@ class TestWsTicketStoreCreate:
         store = WsTicketStore(ttl_seconds=60.0)
         assert store.ttl_seconds == 60.0
 
+    @pytest.mark.unit
+    def test_zero_ttl_rejected(self) -> None:
+        with pytest.raises(ValueError, match="positive"):
+            WsTicketStore(ttl_seconds=0.0)
+
+    @pytest.mark.unit
+    def test_negative_ttl_rejected(self) -> None:
+        with pytest.raises(ValueError, match="positive"):
+            WsTicketStore(ttl_seconds=-5.0)
+
 
 class TestWsTicketStoreValidateAndConsume:
     """Tests for ticket validation and consumption."""
@@ -191,7 +201,7 @@ class TestWsTicketStoreCleanup:
             "synthorg.api.auth.ticket_store.time.monotonic",
             return_value=base_time + 11.0,
         ):
-            removed = store._cleanup_expired()
+            removed = store.cleanup_expired()
 
         assert removed == 2
 
@@ -211,7 +221,7 @@ class TestWsTicketStoreCleanup:
             "synthorg.api.auth.ticket_store.time.monotonic",
             return_value=base_time + 5.0,
         ):
-            removed = store._cleanup_expired()
+            removed = store.cleanup_expired()
 
         assert removed == 0
         # Ticket should still be valid
@@ -245,7 +255,7 @@ class TestWsTicketStoreCleanup:
             "synthorg.api.auth.ticket_store.time.monotonic",
             return_value=base_time + 12.0,
         ):
-            removed = store._cleanup_expired()
+            removed = store.cleanup_expired()
 
         assert removed == 1
         with patch(
@@ -258,5 +268,5 @@ class TestWsTicketStoreCleanup:
     @pytest.mark.unit
     def test_cleanup_empty_store(self) -> None:
         store = WsTicketStore()
-        removed = store._cleanup_expired()
+        removed = store.cleanup_expired()
         assert removed == 0

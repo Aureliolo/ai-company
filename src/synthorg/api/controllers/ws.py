@@ -73,6 +73,9 @@ async def _authenticate_ws(
         )
         return None
 
+    # Defense-in-depth: user.role is already validated as HumanRole by
+    # Pydantic, and _READ_ROLES == frozenset(HumanRole).  These checks
+    # guard against future changes to the role model or read-role set.
     try:
         role = HumanRole(user.role)
     except ValueError:

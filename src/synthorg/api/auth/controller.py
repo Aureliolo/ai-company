@@ -22,7 +22,6 @@ from synthorg.observability.events.api import (
     API_AUTH_PASSWORD_CHANGED,
     API_AUTH_SETUP_COMPLETE,
     API_AUTH_TOKEN_ISSUED,
-    API_WS_TICKET_ISSUED,
 )
 
 logger = get_logger(__name__)
@@ -451,12 +450,6 @@ class AuthController(Controller):
             update={"auth_method": AuthMethod.WS_TICKET},
         )
         ticket = app_state.ticket_store.create(ws_user)
-
-        logger.info(
-            API_WS_TICKET_ISSUED,
-            user_id=auth_user.user_id,
-            username=auth_user.username,
-        )
 
         return Response(
             content=ApiResponse(
