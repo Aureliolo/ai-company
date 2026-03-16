@@ -9,6 +9,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	sigverify "github.com/sigstore/sigstore-go/pkg/verify"
 )
 
 func TestVerifyProvenanceEmptyDigest(t *testing.T) {
@@ -17,7 +19,7 @@ func TestVerifyProvenanceEmptyDigest(t *testing.T) {
 		Repository: "test/image",
 		Tag:        "1.0.0",
 	}
-	err := VerifyProvenance(context.Background(), ref)
+	err := VerifyProvenance(context.Background(), ref, nil, sigverify.CertificateIdentity{})
 	if err == nil {
 		t.Fatal("expected error for empty digest")
 	}
@@ -27,7 +29,6 @@ func TestVerifyProvenanceEmptyDigest(t *testing.T) {
 }
 
 func TestVerifyProvenanceNoReferrers(t *testing.T) {
-	// Mock registry that returns an empty referrers index.
 	repo := "test/image"
 	emptyIndex := `{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[]}`
 
@@ -52,7 +53,7 @@ func TestVerifyProvenanceNoReferrers(t *testing.T) {
 		Digest:     testDigest,
 	}
 
-	err := VerifyProvenance(context.Background(), ref)
+	err := VerifyProvenance(context.Background(), ref, nil, sigverify.CertificateIdentity{})
 	if err == nil {
 		t.Fatal("expected error when no attestations found")
 	}
@@ -61,7 +62,7 @@ func TestVerifyProvenanceNoReferrers(t *testing.T) {
 	}
 }
 
-func TestDSSEEnvelopeParsing(t *testing.T) {
+func TestValidateSLSAPredicate(t *testing.T) {
 	statement := inTotoStatement{
 		PredicateType: "https://slsa.dev/provenance/v1",
 	}
@@ -72,28 +73,12 @@ func TestDSSEEnvelopeParsing(t *testing.T) {
 		Payload:     base64.StdEncoding.EncodeToString(statementJSON),
 	}
 
-	// Verify payload type.
-	if envelope.PayloadType != "application/vnd.in-toto+json" {
-		t.Errorf("unexpected payload type: %s", envelope.PayloadType)
-	}
-
-	// Decode payload.
-	decoded, err := base64.StdEncoding.DecodeString(envelope.Payload)
-	if err != nil {
-		t.Fatalf("decoding payload: %v", err)
-	}
-
-	var parsed inTotoStatement
-	if err := json.Unmarshal(decoded, &parsed); err != nil {
-		t.Fatalf("parsing statement: %v", err)
-	}
-
-	if !strings.HasPrefix(parsed.PredicateType, slsaProvenancePredicatePrefix) {
-		t.Errorf("predicate type %q does not start with %q", parsed.PredicateType, slsaProvenancePredicatePrefix)
+	if err := validateSLSAPredicate(envelope); err != nil {
+		t.Fatalf("validateSLSAPredicate() error: %v", err)
 	}
 }
 
-func TestDSSEEnvelopeWrongPredicateType(t *testing.T) {
+func TestValidateSLSAPredicateWrongType(t *testing.T) {
 	statement := inTotoStatement{
 		PredicateType: "https://example.com/wrong-type",
 	}
@@ -104,17 +89,28 @@ func TestDSSEEnvelopeWrongPredicateType(t *testing.T) {
 		Payload:     base64.StdEncoding.EncodeToString(statementJSON),
 	}
 
-	decoded, _ := base64.StdEncoding.DecodeString(envelope.Payload)
-	var parsed inTotoStatement
-	_ = json.Unmarshal(decoded, &parsed)
+	err := validateSLSAPredicate(envelope)
+	if err == nil {
+		t.Fatal("expected error for wrong predicate type")
+	}
+	if !strings.Contains(err.Error(), "unexpected predicate type") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
 
-	if strings.HasPrefix(parsed.PredicateType, slsaProvenancePredicatePrefix) {
-		t.Error("wrong predicate type should not match SLSA prefix")
+func TestValidateSLSAPredicateWrongPayloadType(t *testing.T) {
+	envelope := dsseEnvelope{
+		PayloadType: "application/octet-stream",
+		Payload:     base64.StdEncoding.EncodeToString([]byte("{}")),
+	}
+
+	err := validateSLSAPredicate(envelope)
+	if err == nil {
+		t.Fatal("expected error for wrong payload type")
 	}
 }
 
 func TestVerifyProvenanceWithInvalidAttestation(t *testing.T) {
-	// Mock registry returning a referrer that points to an invalid attestation.
 	repo := "test/image"
 	attestDigest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -186,7 +182,7 @@ func TestVerifyProvenanceWithInvalidAttestation(t *testing.T) {
 		Digest:     testDigest,
 	}
 
-	err := VerifyProvenance(context.Background(), ref)
+	err := VerifyProvenance(context.Background(), ref, nil, sigverify.CertificateIdentity{})
 	if err == nil {
 		t.Fatal("expected error for wrong predicate type")
 	}

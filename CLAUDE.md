@@ -105,6 +105,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 - **Sandbox**: `synthorg-sandbox` — Python 3.14 + Node.js + git, non-root (UID 10001), agent code execution sandbox
 - **Config**: all Docker files in `docker/` — Dockerfiles, compose, `.env.example`
 - **CI**: `.github/workflows/docker.yml` — build → scan → push to GHCR + cosign sign + SLSA L3 provenance via `attest-build-provenance` (images only pushed after Trivy/Grype scans pass)
+- **Verification**: CLI verifies cosign signatures + SLSA provenance at pull time (`internal/verify/`); bypass with `--skip-verify` for air-gapped environments
 - **Build context**: single root `.dockerignore` (all images build with `context: .`)
 - **Tags**: CI tags images with version from `pyproject.toml` (`[tool.commitizen].version`), semver, and SHA
 - **Dependabot**: auto-updates Docker image digests and versions daily
@@ -144,7 +145,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 
 cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
   main.go           # Entry point
-  cmd/              # Cobra commands (init, start, stop, status, logs, doctor, update, uninstall, version, config, completion-install)
+  cmd/              # Cobra commands (init, start, stop, status, logs, doctor, update, uninstall, version, config, completion-install); root flags: --data-dir, --skip-verify
   internal/
     version/        # Build-time version vars (ldflags-injected)
     config/         # Data dir resolution (XDG/macOS/Windows), persisted state (JSON)
@@ -155,6 +156,7 @@ cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
     selfupdate/     # GitHub Releases self-update + binary replacement
     completion/     # Shell completion auto-install (bash, zsh, fish, powershell)
     ui/             # Styled CLI output (lipgloss-based: logo, status icons, key-value display)
+    verify/         # Container image cosign signature + SLSA provenance verification, digest pinning
   scripts/          # Install scripts (install.sh, install.ps1)
   testdata/         # Golden files for compose generation tests
   .goreleaser.yml   # GoReleaser config (cross-compile, checksums)
@@ -264,7 +266,7 @@ site/               # Astro landing page (synthorg.io)
   - Concurrency group cancels stale builds on rapid pushes
 - **Docker**: `.github/workflows/docker.yml` — builds backend + web + sandbox images, pushes to GHCR, signs with cosign. SLSA L3 provenance attestations via `actions/attest-build-provenance` (SHA-pinned, Sigstore-signed, pushed to registry). Scans: Trivy (CRITICAL = hard fail, HIGH = warn-only) + Grype (critical cutoff) + CIS Docker Benchmark v1.6.0 compliance (informational). CVE triage via `.github/.trivyignore.yaml` and `.github/.grype.yaml`. Images only pushed after scans pass. Triggers on push to main and version tags (`v*`).
 - **Matrix**: Python 3.14
-- **CLI**: `.github/workflows/cli.yml` — Go lint (`golangci-lint` + `go vet`) + test (`-race -coverprofile`) + build (cross-compile matrix: linux/darwin/windows × amd64/arm64) + vulnerability check (`govulncheck`) + fuzz testing (main-only, 30s/target, `continue-on-error`, matrix over 4 packages) on `cli/**` changes. `cli-pass` gate includes fuzz result as informational warning. GoReleaser release on `v*` tags (attaches assets to the draft Release Please release). Cosign keyless signing of `checksums.txt` (`.sig` + `.pem` attached to release). SLSA L3 provenance attestations via `actions/attest-build-provenance` (SHA-pinned, Sigstore-signed) for individual binaries and checksums file. Sigstore provenance bundle (`.sigstore.json`) attached to release for OpenSSF Scorecard signed-releases scoring. Post-release step appends install instructions + checksum table + cosign verification + provenance verification instructions to the draft release notes (while still in draft — before finalize-release publishes).
+- **CLI**: `.github/workflows/cli.yml` — Go lint (`golangci-lint` + `go vet`) + test (`-race -coverprofile`) + build (cross-compile matrix: linux/darwin/windows × amd64/arm64) + vulnerability check (`govulncheck`) + fuzz testing (main-only, 30s/target, `continue-on-error`, matrix over 5 packages) on `cli/**` changes. `cli-pass` gate includes fuzz result as informational warning. GoReleaser release on `v*` tags (attaches assets to the draft Release Please release). Cosign keyless signing of `checksums.txt` (`.sig` + `.pem` attached to release). SLSA L3 provenance attestations via `actions/attest-build-provenance` (SHA-pinned, Sigstore-signed) for individual binaries and checksums file. Sigstore provenance bundle (`.sigstore.json`) attached to release for OpenSSF Scorecard signed-releases scoring. Post-release step appends install instructions + checksum table + cosign verification + provenance verification instructions to the draft release notes (while still in draft — before finalize-release publishes).
 - **Dependabot**: daily uv + github-actions + npm + pre-commit + docker + gomod updates, grouped minor/patch, no auto-merge. Use `/review-dep-pr` to review Dependabot PRs before merging
 - **Python audit**: `.github/workflows/python-audit.yml` — weekly pip-audit scan for Python dependency vulnerabilities (also runs per-PR via `python-audit` job in ci.yml)
 - **Dockerfile lint**: hadolint lints all 3 Dockerfiles (backend, web, sandbox) in CI via `dockerfile-lint` job + hadolint-docker pre-commit hook locally

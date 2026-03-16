@@ -2,12 +2,15 @@ package verify
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	sigverify "github.com/sigstore/sigstore-go/pkg/verify"
 )
 
 func TestCosignSigTag(t *testing.T) {
@@ -31,28 +34,31 @@ func TestCosignSigTag(t *testing.T) {
 	}
 }
 
-func TestHexToBytes(t *testing.T) {
+func TestParseDigest(t *testing.T) {
 	tests := []struct {
 		name    string
-		hex     string
-		wantLen int
+		digest  string
 		wantErr bool
 	}{
-		{"valid", "abcdef", 3, false},
-		{"empty", "", 0, false},
-		{"uppercase", "ABCDEF", 3, false},
-		{"odd length", "abc", 0, true},
-		{"invalid char", "xyz", 0, true},
+		{"valid", "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", false},
+		{"no colon", "sha256abcdef", true},
+		{"invalid hex", "sha256:xyz", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := hexToBytes(tt.hex)
+			algo, b, err := parseDigest(tt.digest)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("hexToBytes(%q) error = %v, wantErr %v", tt.hex, err, tt.wantErr)
+				t.Errorf("parseDigest(%q) error = %v, wantErr %v", tt.digest, err, tt.wantErr)
 				return
 			}
-			if !tt.wantErr && len(got) != tt.wantLen {
-				t.Errorf("hexToBytes(%q) len = %d, want %d", tt.hex, len(got), tt.wantLen)
+			if !tt.wantErr {
+				if algo != "sha256" {
+					t.Errorf("algo = %q, want sha256", algo)
+				}
+				expected, _ := hex.DecodeString(strings.SplitN(tt.digest, ":", 2)[1])
+				if len(b) != len(expected) {
+					t.Errorf("byte length = %d, want %d", len(b), len(expected))
+				}
 			}
 		})
 	}
@@ -64,7 +70,7 @@ func TestVerifyCosignSignatureEmptyDigest(t *testing.T) {
 		Repository: "test/image",
 		Tag:        "1.0.0",
 	}
-	err := VerifyCosignSignature(context.Background(), ref)
+	err := VerifyCosignSignature(context.Background(), ref, nil, sigverify.CertificateIdentity{})
 	if err == nil {
 		t.Fatal("expected error for empty digest")
 	}
@@ -92,7 +98,7 @@ func TestVerifyCosignSignatureNoSigArtifact(t *testing.T) {
 		Digest:     testDigest,
 	}
 
-	err := VerifyCosignSignature(context.Background(), ref)
+	err := VerifyCosignSignature(context.Background(), ref, nil, sigverify.CertificateIdentity{})
 	if err == nil {
 		t.Fatal("expected error when no signature artifact exists")
 	}
@@ -178,7 +184,7 @@ func TestVerifyCosignSignatureInvalidBundle(t *testing.T) {
 		Digest:     testDigest,
 	}
 
-	err := VerifyCosignSignature(context.Background(), ref)
+	err := VerifyCosignSignature(context.Background(), ref, nil, sigverify.CertificateIdentity{})
 	if err == nil {
 		t.Fatal("expected error for invalid bundle JSON")
 	}

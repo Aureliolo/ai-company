@@ -62,28 +62,8 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Verify container image signatures before pulling.
-	if !skipVerify {
-		out.Step("Verifying container image signatures...")
-		results, err := verify.VerifyImages(ctx, verify.VerifyOptions{
-			Images: verify.BuildImageRefs(state.ImageTag, state.Sandbox),
-			Output: cmd.OutOrStdout(),
-		})
-		if err != nil {
-			return fmt.Errorf("image verification failed: %w\n  Use --skip-verify for air-gapped environments", err)
-		}
-
-		// Pin verified digests in compose file.
-		if err := pinDigestsInCompose(state, results, safeDir); err != nil {
-			return fmt.Errorf("pinning verified digests: %w", err)
-		}
-
-		// Cache verified digests in config.
-		state.VerifiedDigests = digestPinMap(results)
-		if err := config.Save(state); err != nil {
-			errOut.Warn(fmt.Sprintf("Could not cache verified digests: %v", err))
-		}
-	} else {
-		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+	if err := verifyAndPinImages(ctx, cmd, state, safeDir, out, errOut); err != nil {
+		return err
 	}
 
 	// Pull images.
@@ -110,6 +90,34 @@ func runStart(cmd *cobra.Command, args []string) error {
 	out.Success("SynthOrg is running!")
 	out.KeyValue("API", fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort))
 	out.KeyValue("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
+	return nil
+}
+
+// verifyAndPinImages verifies image signatures (unless --skip-verify) and
+// pins the verified digests in the compose file and config.
+func verifyAndPinImages(ctx context.Context, cmd *cobra.Command, state config.State, safeDir string, out, errOut *ui.UI) error {
+	if skipVerify {
+		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
+		return nil
+	}
+
+	out.Step("Verifying container image signatures...")
+	results, err := verify.VerifyImages(ctx, verify.VerifyOptions{
+		Images: verify.BuildImageRefs(state.ImageTag, state.Sandbox),
+		Output: cmd.OutOrStdout(),
+	})
+	if err != nil {
+		return fmt.Errorf("image verification failed: %w\n  Use --skip-verify for air-gapped environments", err)
+	}
+
+	if err := pinDigestsInCompose(state, results, safeDir); err != nil {
+		return fmt.Errorf("pinning verified digests: %w", err)
+	}
+
+	state.VerifiedDigests = digestPinMap(results)
+	if err := config.Save(state); err != nil {
+		errOut.Warn(fmt.Sprintf("Could not cache verified digests: %v", err))
+	}
 	return nil
 }
 

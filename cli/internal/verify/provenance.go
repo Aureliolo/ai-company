@@ -10,10 +10,7 @@ import (
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/verify"
-
-	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
 )
 
 const (
@@ -33,44 +30,20 @@ const (
 // DSSE envelope against the Sigstore transparency log and expected identity.
 //
 // The image ref must have a resolved Digest.
-func VerifyProvenance(ctx context.Context, ref ImageRef) error {
+func VerifyProvenance(ctx context.Context, ref ImageRef, sev *verify.Verifier, certID verify.CertificateIdentity) error {
 	if ref.Digest == "" {
 		return fmt.Errorf("image digest not resolved")
 	}
 
-	// Parse the digest reference for the referrers query.
-	digestRef := fmt.Sprintf("%s/%s@%s", ref.Registry, ref.Repository, ref.Digest)
-	parsed, err := name.NewDigest(digestRef)
+	attestationDescs, err := findAttestations(ctx, ref)
 	if err != nil {
-		return fmt.Errorf("parsing digest reference %q: %w", digestRef, err)
-	}
-
-	// Query OCI referrers to find attestation artifacts.
-	referrerIdx, err := remote.Referrers(parsed, remote.WithContext(ctx))
-	if err != nil {
-		return fmt.Errorf("querying referrers for %s: %w", ref, err)
-	}
-
-	manifest, err := referrerIdx.IndexManifest()
-	if err != nil {
-		return fmt.Errorf("reading referrer index manifest: %w", err)
-	}
-
-	// Find attestation manifests matching the in-toto artifact type.
-	var attestationDescs []v1.Descriptor
-	for _, desc := range manifest.Manifests {
-		if desc.ArtifactType == referrerArtifactType {
-			attestationDescs = append(attestationDescs, desc)
-		}
-	}
-	if len(attestationDescs) == 0 {
-		return fmt.Errorf("no SLSA provenance attestations found for %s", ref)
+		return err
 	}
 
 	// Try each attestation — verify the first one that passes.
 	var lastErr error
 	for _, desc := range attestationDescs {
-		if err := verifyAttestation(ctx, ref, desc); err != nil {
+		if err := verifyAttestation(ctx, ref, desc, sev, certID); err != nil {
 			lastErr = err
 			continue
 		}
@@ -79,54 +52,105 @@ func VerifyProvenance(ctx context.Context, ref ImageRef) error {
 	return fmt.Errorf("no valid SLSA provenance attestation for %s: %w", ref, lastErr)
 }
 
+// findAttestations queries OCI referrers and returns descriptors for in-toto
+// attestation artifacts associated with the given image.
+func findAttestations(ctx context.Context, ref ImageRef) ([]v1.Descriptor, error) {
+	digestRef := fmt.Sprintf("%s/%s@%s", ref.Registry, ref.Repository, ref.Digest)
+	parsed, err := name.NewDigest(digestRef)
+	if err != nil {
+		return nil, fmt.Errorf("parsing digest reference %q: %w", digestRef, err)
+	}
+
+	referrerIdx, err := remote.Referrers(parsed, remote.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("querying referrers for %s: %w", ref, err)
+	}
+
+	manifest, err := referrerIdx.IndexManifest()
+	if err != nil {
+		return nil, fmt.Errorf("reading referrer index manifest: %w", err)
+	}
+
+	var descs []v1.Descriptor
+	for _, desc := range manifest.Manifests {
+		if desc.ArtifactType == referrerArtifactType {
+			descs = append(descs, desc)
+		}
+	}
+	if len(descs) == 0 {
+		return nil, fmt.Errorf("no SLSA provenance attestations found for %s", ref)
+	}
+	return descs, nil
+}
+
 // verifyAttestation fetches and verifies a single attestation manifest.
-func verifyAttestation(ctx context.Context, ref ImageRef, desc v1.Descriptor) error {
-	// Fetch the attestation image by digest.
+func verifyAttestation(ctx context.Context, ref ImageRef, desc v1.Descriptor, sev *verify.Verifier, certID verify.CertificateIdentity) error {
+	img, err := fetchAttestationImage(ctx, ref, desc)
+	if err != nil {
+		return err
+	}
+
+	envelope, err := extractDSSEEnvelope(img)
+	if err != nil {
+		return err
+	}
+
+	if err := validateSLSAPredicate(envelope); err != nil {
+		return err
+	}
+
+	return verifyAttestationBundle(img, ref.Digest, sev, certID)
+}
+
+// fetchAttestationImage fetches the attestation image by its descriptor digest.
+func fetchAttestationImage(ctx context.Context, ref ImageRef, desc v1.Descriptor) (v1.Image, error) {
 	attestRef := fmt.Sprintf("%s/%s@%s", ref.Registry, ref.Repository, desc.Digest.String())
 	parsed, err := name.NewDigest(attestRef)
 	if err != nil {
-		return fmt.Errorf("parsing attestation reference: %w", err)
+		return nil, fmt.Errorf("parsing attestation reference: %w", err)
 	}
 
 	img, err := remote.Image(parsed, remote.WithContext(ctx))
 	if err != nil {
-		return fmt.Errorf("fetching attestation image: %w", err)
+		return nil, fmt.Errorf("fetching attestation image: %w", err)
 	}
+	return img, nil
+}
 
+// extractDSSEEnvelope reads and parses the DSSE envelope from the first layer
+// of an attestation image.
+func extractDSSEEnvelope(img v1.Image) (dsseEnvelope, error) {
 	layers, err := img.Layers()
 	if err != nil {
-		return fmt.Errorf("reading attestation layers: %w", err)
+		return dsseEnvelope{}, fmt.Errorf("reading attestation layers: %w", err)
 	}
-
 	if len(layers) == 0 {
-		return fmt.Errorf("attestation has no layers")
+		return dsseEnvelope{}, fmt.Errorf("attestation has no layers")
 	}
 
-	// Read the DSSE envelope from the first layer.
 	layerReader, err := layers[0].Uncompressed()
 	if err != nil {
-		return fmt.Errorf("reading attestation layer: %w", err)
+		return dsseEnvelope{}, fmt.Errorf("reading attestation layer: %w", err)
 	}
 	defer func() { _ = layerReader.Close() }()
 
 	var envelope dsseEnvelope
 	if err := json.NewDecoder(layerReader).Decode(&envelope); err != nil {
-		return fmt.Errorf("decoding DSSE envelope: %w", err)
+		return dsseEnvelope{}, fmt.Errorf("decoding DSSE envelope: %w", err)
 	}
+	return envelope, nil
+}
 
-	// Validate payload type.
+// validateSLSAPredicate checks that a DSSE envelope contains a SLSA provenance
+// predicate type.
+func validateSLSAPredicate(envelope dsseEnvelope) error {
 	if envelope.PayloadType != dssePayloadType {
 		return fmt.Errorf("unexpected DSSE payload type %q, want %q", envelope.PayloadType, dssePayloadType)
 	}
 
-	// Decode and check predicate type.
 	payloadBytes, err := base64.StdEncoding.DecodeString(envelope.Payload)
 	if err != nil {
-		// Try URL-safe base64.
-		payloadBytes, err = base64.URLEncoding.DecodeString(envelope.Payload)
-		if err != nil {
-			return fmt.Errorf("decoding DSSE payload: %w", err)
-		}
+		return fmt.Errorf("decoding DSSE payload: %w", err)
 	}
 
 	var statement inTotoStatement
@@ -136,8 +160,13 @@ func verifyAttestation(ctx context.Context, ref ImageRef, desc v1.Descriptor) er
 	if !strings.HasPrefix(statement.PredicateType, slsaProvenancePredicatePrefix) {
 		return fmt.Errorf("unexpected predicate type %q, want prefix %q", statement.PredicateType, slsaProvenancePredicatePrefix)
 	}
+	return nil
+}
 
-	// Attempt Sigstore bundle verification if annotations contain a bundle.
+// verifyAttestationBundle looks for a Sigstore bundle in the attestation
+// manifest or layer annotations and verifies it. Returns an error if no
+// bundle is found — structural validation alone is insufficient.
+func verifyAttestationBundle(img v1.Image, digest string, sev *verify.Verifier, certID verify.CertificateIdentity) error {
 	attestManifest, err := img.Manifest()
 	if err != nil {
 		return fmt.Errorf("reading attestation manifest: %w", err)
@@ -145,52 +174,34 @@ func verifyAttestation(ctx context.Context, ref ImageRef, desc v1.Descriptor) er
 
 	// Look for Sigstore bundle in manifest annotations.
 	if bundleJSON, ok := attestManifest.Annotations["dev.sigstore.cosign/bundle"]; ok {
-		return verifyProvenanceBundle([]byte(bundleJSON), ref.Digest)
+		return verifyProvenanceBundleWith([]byte(bundleJSON), digest, sev, certID)
 	}
 
 	// Also check layer annotations.
 	if len(attestManifest.Layers) > 0 {
 		if bundleJSON, ok := attestManifest.Layers[0].Annotations["dev.sigstore.cosign/bundle"]; ok {
-			return verifyProvenanceBundle([]byte(bundleJSON), ref.Digest)
+			return verifyProvenanceBundleWith([]byte(bundleJSON), digest, sev, certID)
 		}
 	}
 
-	// If no Sigstore bundle found, the attestation structure is valid but
-	// not cryptographically verified via Sigstore. This is acceptable for
-	// attestations created by actions/attest-build-provenance which uses
-	// GitHub's attestation API rather than cosign.
-	return nil
+	return fmt.Errorf("no sigstore bundle found in attestation — cannot cryptographically verify provenance")
 }
 
-// verifyProvenanceBundle verifies a Sigstore bundle from an attestation.
-func verifyProvenanceBundle(bundleJSON []byte, digest string) error {
-	b := &bundle.Bundle{Bundle: new(protobundle.Bundle)}
-	if err := b.UnmarshalJSON(bundleJSON); err != nil {
+// verifyProvenanceBundleWith verifies a Sigstore bundle from an attestation
+// using the provided verifier and identity policy.
+func verifyProvenanceBundleWith(bundleJSON []byte, digest string, sev *verify.Verifier, certID verify.CertificateIdentity) error {
+	b, err := loadBundle(bundleJSON)
+	if err != nil {
 		return fmt.Errorf("parsing provenance bundle: %w", err)
 	}
 
-	sev, err := BuildVerifier()
+	digestAlgo, digestHex, err := parseDigest(digest)
 	if err != nil {
 		return err
-	}
-
-	certID, err := BuildIdentityPolicy()
-	if err != nil {
-		return err
-	}
-
-	parts := strings.SplitN(digest, ":", 2)
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid digest format %q", digest)
-	}
-
-	digestBytes, err := hexToBytes(parts[1])
-	if err != nil {
-		return fmt.Errorf("decoding digest hex: %w", err)
 	}
 
 	_, err = sev.Verify(b, verify.NewPolicy(
-		verify.WithArtifactDigest(parts[0], digestBytes),
+		verify.WithArtifactDigest(digestAlgo, digestHex),
 		verify.WithCertificateIdentity(certID),
 	))
 	if err != nil {

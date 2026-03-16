@@ -6,10 +6,22 @@ import (
 	"io"
 	"regexp"
 	"strings"
+
+	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
+	"github.com/sigstore/sigstore-go/pkg/bundle"
+	"github.com/sigstore/sigstore-go/pkg/verify"
 )
 
 // digestPattern validates an OCI content digest (algorithm:hex).
 var digestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+
+// sigstoreBundle is a type alias for the sigstore-go bundle type.
+type sigstoreBundle = bundle.Bundle
+
+// newBundle creates a new empty Sigstore bundle for JSON unmarshalling.
+func newBundle() *sigstoreBundle {
+	return &bundle.Bundle{Bundle: new(protobundle.Bundle)}
+}
 
 // ImageRef identifies a container image with an optional resolved digest.
 type ImageRef struct {
@@ -25,9 +37,12 @@ func (r ImageRef) String() string {
 }
 
 // DigestRef returns the full image reference pinned to its digest.
-// Panics if Digest is empty — call only after successful resolution.
-func (r ImageRef) DigestRef() string {
-	return fmt.Sprintf("%s/%s@%s", r.Registry, r.Repository, r.Digest)
+// Returns an error if Digest is empty.
+func (r ImageRef) DigestRef() (string, error) {
+	if r.Digest == "" {
+		return "", fmt.Errorf("digest not resolved for %s", r)
+	}
+	return fmt.Sprintf("%s/%s@%s", r.Registry, r.Repository, r.Digest), nil
 }
 
 // Name returns the short image name suffix (e.g. "backend" from
@@ -86,6 +101,9 @@ func IsValidDigest(d string) bool {
 // in opts. Returns verified results with resolved digests, or an error if
 // any verification fails.
 //
+// A single Sigstore verifier and identity policy is built once and reused
+// across all images to avoid redundant TUF root fetches.
+//
 // When opts.SkipVerify is true, returns nil results immediately.
 //
 // Progress is printed to opts.Output during verification.
@@ -102,9 +120,19 @@ func VerifyImages(ctx context.Context, opts VerifyOptions) ([]VerifyResult, erro
 		w = io.Discard
 	}
 
+	// Build verifier and identity once — reuse for all images.
+	sev, err := BuildVerifier()
+	if err != nil {
+		return nil, fmt.Errorf("building sigstore verifier: %w", err)
+	}
+	certID, err := BuildIdentityPolicy()
+	if err != nil {
+		return nil, fmt.Errorf("building identity policy: %w", err)
+	}
+
 	results := make([]VerifyResult, 0, len(opts.Images))
 	for _, img := range opts.Images {
-		result, err := verifyOneImage(ctx, img, w)
+		result, err := verifyOneImage(ctx, img, sev, certID, w)
 		if err != nil {
 			return nil, fmt.Errorf("verifying %s: %w", img, err)
 		}
@@ -114,7 +142,7 @@ func VerifyImages(ctx context.Context, opts VerifyOptions) ([]VerifyResult, erro
 }
 
 // verifyOneImage resolves the digest and verifies cosign + SLSA for one image.
-func verifyOneImage(ctx context.Context, ref ImageRef, w io.Writer) (VerifyResult, error) {
+func verifyOneImage(ctx context.Context, ref ImageRef, sev *verify.Verifier, certID verify.CertificateIdentity, w io.Writer) (VerifyResult, error) {
 	_, _ = fmt.Fprintf(w, "Verifying %s...\n", ref)
 
 	// Step 1: Resolve tag to digest.
@@ -126,14 +154,14 @@ func verifyOneImage(ctx context.Context, ref ImageRef, w io.Writer) (VerifyResul
 	_, _ = fmt.Fprintf(w, "  Resolved digest: %s\n", digest)
 
 	// Step 2: Verify cosign signature.
-	if err := VerifyCosignSignature(ctx, ref); err != nil {
+	if err := VerifyCosignSignature(ctx, ref, sev, certID); err != nil {
 		return VerifyResult{}, fmt.Errorf("cosign signature: %w", err)
 	}
 	_, _ = fmt.Fprintf(w, "  Cosign signature: verified\n")
 
 	// Step 3: Verify SLSA provenance (warn-only on missing).
 	provenanceVerified := true
-	if err := VerifyProvenance(ctx, ref); err != nil {
+	if err := VerifyProvenance(ctx, ref, sev, certID); err != nil {
 		provenanceVerified = false
 		_, _ = fmt.Fprintf(w, "  SLSA provenance:  not available (%v)\n", err)
 	} else {

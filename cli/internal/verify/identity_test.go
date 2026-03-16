@@ -11,7 +11,6 @@ func TestExpectedSANRegexMatchesValidRefs(t *testing.T) {
 	valid := []string{
 		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/tags/v0.3.0",
 		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/heads/main",
-		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/tags/v1.0.0",
 		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/tags/v0.3.0-rc.1",
 		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/tags/v1.2.3+build.456",
 	}
@@ -29,6 +28,8 @@ func TestExpectedSANRegexRejectsInvalidRefs(t *testing.T) {
 		"https://github.com/evil/synthorg/.github/workflows/docker.yml@refs/tags/v0.3.0",
 		"https://github.com/Aureliolo/other-repo/.github/workflows/docker.yml@refs/tags/v0.3.0",
 		"https://example.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/tags/v0.3.0",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/cli.yml@refs/tags/v1.0.0",
+		"https://github.com/Aureliolo/synthorg/.github/workflows/docker.yml@refs/heads/feature/evil",
 		"",
 		"random-string",
 	}

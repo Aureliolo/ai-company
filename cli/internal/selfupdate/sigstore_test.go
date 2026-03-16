@@ -2,6 +2,7 @@ package selfupdate
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
@@ -49,7 +50,7 @@ func TestAssertSLSAProvenanceWrongPredicateType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for wrong predicate type")
 	}
-	if !contains(err.Error(), "unexpected predicate type") {
+	if !strings.Contains(err.Error(), "unexpected predicate type") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -68,7 +69,7 @@ func TestAssertSLSAProvenanceWrongPayloadType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for wrong payload type")
 	}
-	if !contains(err.Error(), "unexpected DSSE payload type") {
+	if !strings.Contains(err.Error(), "unexpected DSSE payload type") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -106,17 +107,4 @@ func TestAssertSLSAProvenanceInvalidJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid JSON payload")
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchStr(s, substr)
-}
-
-func searchStr(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }

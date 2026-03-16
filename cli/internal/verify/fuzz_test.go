@@ -48,28 +48,6 @@ func FuzzCosignSigTag(f *testing.F) {
 	})
 }
 
-// FuzzHexToBytes verifies that hexToBytes never panics on arbitrary input
-// and that successful decoding produces the expected length.
-func FuzzHexToBytes(f *testing.F) {
-	f.Add("abcdef")
-	f.Add("")
-	f.Add("0123456789abcdef")
-	f.Add("xyz")
-	f.Add("a")
-
-	f.Fuzz(func(t *testing.T, hex string) {
-		if len(hex) > 1024 {
-			return // cap input size
-		}
-		b, err := hexToBytes(hex)
-		if err == nil && len(hex)%2 == 0 {
-			if len(b) != len(hex)/2 {
-				t.Errorf("hexToBytes(%q) len = %d, want %d", hex, len(b), len(hex)/2)
-			}
-		}
-	})
-}
-
 // FuzzNewImageRef verifies that NewImageRef never panics and produces
 // consistent output.
 func FuzzNewImageRef(f *testing.F) {
@@ -89,9 +67,9 @@ func FuzzNewImageRef(f *testing.F) {
 		if ref.Tag != tag {
 			t.Errorf("Tag = %q, want %q", ref.Tag, tag)
 		}
-		// Name() should return the original name.
-		if ref.Name() != name {
-			t.Errorf("Name() = %q, want %q", ref.Name(), name)
+		// Repository must contain the image repo prefix.
+		if ref.Repository != ImageRepoPrefix+name {
+			t.Errorf("Repository = %q, want %q", ref.Repository, ImageRepoPrefix+name)
 		}
 	})
 }

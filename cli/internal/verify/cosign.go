@@ -2,15 +2,13 @@ package verify
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/sigstore/sigstore-go/pkg/bundle"
 	"github.com/sigstore/sigstore-go/pkg/verify"
-
-	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
 )
 
 // cosignTagSuffix is the OCI tag suffix cosign uses to store signatures.
@@ -21,7 +19,8 @@ const cosignTagSuffix = ".sig"
 // VerifyCosignSignature fetches the cosign keyless signature for the given
 // image (identified by ref.Digest) and verifies it against the Sigstore
 // public transparency log. The image ref must have a resolved Digest.
-func VerifyCosignSignature(ctx context.Context, ref ImageRef) error {
+// The provided verifier and identity policy are reused across images.
+func VerifyCosignSignature(ctx context.Context, ref ImageRef, sev *verify.Verifier, certID verify.CertificateIdentity) error {
 	if ref.Digest == "" {
 		return fmt.Errorf("image digest not resolved")
 	}
@@ -58,6 +57,7 @@ func VerifyCosignSignature(ctx context.Context, ref ImageRef) error {
 	}
 
 	// Try each layer — cosign may store the bundle in layer annotations.
+	var lastErr error
 	for i := range layers {
 		annotations := manifest.Layers[i].Annotations
 		bundleJSON, ok := annotations["dev.sigstore.cosign/bundle"]
@@ -65,46 +65,34 @@ func VerifyCosignSignature(ctx context.Context, ref ImageRef) error {
 			continue
 		}
 
-		if err := verifyCosignBundle([]byte(bundleJSON), ref.Digest); err == nil {
-			return nil // verified successfully
+		if err := verifyCosignBundleWith([]byte(bundleJSON), ref.Digest, sev, certID); err != nil {
+			lastErr = err
+			continue
 		}
+		return nil // verified successfully
 	}
 
-	// Fallback: try simple payload verification on first layer.
-	return fmt.Errorf("no valid cosign signature bundle found for %s", ref)
+	if lastErr != nil {
+		return fmt.Errorf("cosign signature verification failed for %s: %w", ref, lastErr)
+	}
+	return fmt.Errorf("no cosign signature bundle found for %s", ref)
 }
 
-// verifyCosignBundle verifies a cosign Sigstore bundle against the expected
-// identity and image digest.
-func verifyCosignBundle(bundleJSON []byte, digest string) error {
-	b := &bundle.Bundle{Bundle: new(protobundle.Bundle)}
-	if err := b.UnmarshalJSON(bundleJSON); err != nil {
+// verifyCosignBundleWith verifies a cosign Sigstore bundle against the expected
+// identity and image digest using the provided verifier and identity policy.
+func verifyCosignBundleWith(bundleJSON []byte, digest string, sev *verify.Verifier, certID verify.CertificateIdentity) error {
+	b, err := loadBundle(bundleJSON)
+	if err != nil {
 		return fmt.Errorf("parsing cosign bundle: %w", err)
 	}
 
-	sev, err := BuildVerifier()
+	digestAlgo, digestHex, err := parseDigest(digest)
 	if err != nil {
 		return err
-	}
-
-	certID, err := BuildIdentityPolicy()
-	if err != nil {
-		return err
-	}
-
-	// Parse the digest for verification.
-	parts := strings.SplitN(digest, ":", 2)
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid digest format %q", digest)
-	}
-
-	digestBytes, err := hexToBytes(parts[1])
-	if err != nil {
-		return fmt.Errorf("decoding digest hex: %w", err)
 	}
 
 	_, err = sev.Verify(b, verify.NewPolicy(
-		verify.WithArtifactDigest(parts[0], digestBytes),
+		verify.WithArtifactDigest(digestAlgo, digestHex),
 		verify.WithCertificateIdentity(certID),
 	))
 	if err != nil {
@@ -121,35 +109,25 @@ func cosignSigTag(digest string) string {
 	return tag + cosignTagSuffix
 }
 
-// hexToBytes converts a hex string to a byte slice.
-func hexToBytes(hex string) ([]byte, error) {
-	if len(hex)%2 != 0 {
-		return nil, fmt.Errorf("odd-length hex string")
+// parseDigest splits a digest string into algorithm and hex bytes.
+func parseDigest(digest string) (string, []byte, error) {
+	parts := strings.SplitN(digest, ":", 2)
+	if len(parts) != 2 {
+		return "", nil, fmt.Errorf("invalid digest format %q", digest)
 	}
-	b := make([]byte, len(hex)/2)
-	for i := range b {
-		hi, ok := hexVal(hex[2*i])
-		if !ok {
-			return nil, fmt.Errorf("invalid hex char %q", hex[2*i])
-		}
-		lo, ok := hexVal(hex[2*i+1])
-		if !ok {
-			return nil, fmt.Errorf("invalid hex char %q", hex[2*i+1])
-		}
-		b[i] = hi<<4 | lo
+
+	digestBytes, err := hex.DecodeString(parts[1])
+	if err != nil {
+		return "", nil, fmt.Errorf("decoding digest hex: %w", err)
 	}
-	return b, nil
+	return parts[0], digestBytes, nil
 }
 
-func hexVal(c byte) (byte, bool) {
-	switch {
-	case c >= '0' && c <= '9':
-		return c - '0', true
-	case c >= 'a' && c <= 'f':
-		return c - 'a' + 10, true
-	case c >= 'A' && c <= 'F':
-		return c - 'A' + 10, true
-	default:
-		return 0, false
+// loadBundle parses a Sigstore bundle from JSON bytes.
+func loadBundle(data []byte) (*sigstoreBundle, error) {
+	b := newBundle()
+	if err := b.UnmarshalJSON(data); err != nil {
+		return nil, err
 	}
+	return b, nil
 }

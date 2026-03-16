@@ -26,8 +26,20 @@ func TestImageRefDigestRef(t *testing.T) {
 		Digest:     "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
 	}
 	want := "ghcr.io/aureliolo/synthorg-backend@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-	if got := ref.DigestRef(); got != want {
+	got, err := ref.DigestRef()
+	if err != nil {
+		t.Fatalf("DigestRef() error: %v", err)
+	}
+	if got != want {
 		t.Errorf("DigestRef() = %q, want %q", got, want)
+	}
+}
+
+func TestImageRefDigestRefEmpty(t *testing.T) {
+	ref := ImageRef{Registry: "ghcr.io", Repository: "test/image", Tag: "1.0.0"}
+	_, err := ref.DigestRef()
+	if err == nil {
+		t.Error("DigestRef() should error on empty digest")
 	}
 }
 

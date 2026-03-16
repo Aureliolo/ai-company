@@ -19,6 +19,9 @@ var composeTmpl string
 // imageTagPattern validates image tags to prevent YAML injection.
 var imageTagPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 
+// digestPattern validates OCI content digests (sha256:hex64).
+var digestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+
 // allowedLogLevels restricts log level values to a known safe set.
 var allowedLogLevels = map[string]bool{
 	"debug": true,
@@ -111,6 +114,11 @@ func validateParams(p Params) error {
 	}
 	if !config.IsValidMemoryBackend(p.MemoryBackend) {
 		return fmt.Errorf("invalid memory backend %q: must be one of %s", p.MemoryBackend, config.MemoryBackendNames())
+	}
+	for name, d := range p.DigestPins {
+		if !digestPattern.MatchString(d) {
+			return fmt.Errorf("invalid digest pin for %q: %q must match %s", name, d, digestPattern.String())
+		}
 	}
 	return nil
 }

@@ -46,7 +46,7 @@ Per-agent cost limits, auto-downgrade to cheaper models at task boundaries, spen
 
 **Security & Trust**
 
-SecOps agent with fail-closed rule engine, progressive trust (4 strategies), configurable autonomy levels, audit logging, and approval timeout policies.
+SecOps agent with fail-closed rule engine, progressive trust (4 strategies), configurable autonomy levels, audit logging, and approval timeout policies. Container images are cosign-signed with SLSA L3 provenance, verified by the CLI at pull time.
 
 </td>
 </tr>

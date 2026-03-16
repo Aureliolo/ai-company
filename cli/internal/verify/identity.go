@@ -17,9 +17,11 @@ const (
 	// ExpectedIssuer is the OIDC issuer for GitHub Actions keyless signing.
 	ExpectedIssuer = "https://token.actions.githubusercontent.com"
 
-	// ExpectedSANRegex matches any workflow identity from the SynthOrg repo.
-	// Broad match (same as CI cosign verify commands), not workflow-specific.
-	ExpectedSANRegex = `^https://github\.com/Aureliolo/synthorg/`
+	// ExpectedSANRegex matches the docker.yml workflow identity from the
+	// SynthOrg repo on version tags or the main branch. Only accepts
+	// signatures from the docker workflow — not from arbitrary workflows
+	// or feature branches.
+	ExpectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/docker\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?|heads/main)$`
 
 	// RegistryHost is the container registry hosting SynthOrg images.
 	RegistryHost = "ghcr.io"
