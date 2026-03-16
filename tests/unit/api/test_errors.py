@@ -124,17 +124,17 @@ class TestCategoryMetadata:
     @pytest.mark.parametrize("cat", list(ErrorCategory))
     def test_category_type_uri_format(self, cat: ErrorCategory) -> None:
         uri = category_type_uri(cat)
-        assert uri == f"{_ERROR_DOCS_BASE}/{cat.value}"
+        assert uri == f"{_ERROR_DOCS_BASE}#{cat.value}"
         assert uri.startswith("https://")
 
     def test_category_type_uri_examples(self) -> None:
         assert (
             category_type_uri(ErrorCategory.AUTH)
-            == "https://synthorg.io/docs/errors/auth"
+            == "https://synthorg.io/docs/errors#auth"
         )
         assert (
             category_type_uri(ErrorCategory.INTERNAL)
-            == "https://synthorg.io/docs/errors/internal"
+            == "https://synthorg.io/docs/errors#internal"
         )
 
 

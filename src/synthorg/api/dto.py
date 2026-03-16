@@ -16,7 +16,7 @@ from pydantic import (
     model_validator,
 )
 
-from synthorg.api.errors import ErrorCategory  # noqa: TC001
+from synthorg.api.errors import ErrorCategory, ErrorCode  # noqa: TC001
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     Complexity,
@@ -35,6 +35,16 @@ _MAX_METADATA_STR_LEN: int = 256
 
 
 # ── Structured error detail (RFC 9457) ─────────────────────────
+
+
+def _check_retry_after(*, retryable: bool, retry_after: int | None) -> None:
+    """Validate ``retry_after``/``retryable`` consistency.
+
+    Shared by ``ErrorDetail`` and ``ProblemDetail``.
+    """
+    if not retryable and retry_after is not None:
+        msg = "retry_after must be None when retryable is False"
+        raise ValueError(msg)
 
 
 class ErrorDetail(BaseModel):
@@ -59,20 +69,18 @@ class ErrorDetail(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     detail: NotBlankStr
-    error_code: int
+    error_code: ErrorCode
     error_category: ErrorCategory
     retryable: bool = False
     retry_after: int | None = Field(default=None, ge=0)
     instance: NotBlankStr
     title: NotBlankStr
-    type: str
+    type: NotBlankStr
 
     @model_validator(mode="after")
     def _validate_retry_after_consistency(self) -> Self:
         """``retry_after`` must be ``None`` when ``retryable`` is ``False``."""
-        if not self.retryable and self.retry_after is not None:
-            msg = "retry_after must be None when retryable is False"
-            raise ValueError(msg)
+        _check_retry_after(retryable=self.retryable, retry_after=self.retry_after)
         return self
 
 
@@ -96,12 +104,12 @@ class ProblemDetail(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    type: str
+    type: NotBlankStr
     title: NotBlankStr
     status: int = Field(ge=400, le=599)
     detail: NotBlankStr
     instance: NotBlankStr
-    error_code: int
+    error_code: ErrorCode
     error_category: ErrorCategory
     retryable: bool = False
     retry_after: int | None = Field(default=None, ge=0)
@@ -109,9 +117,7 @@ class ProblemDetail(BaseModel):
     @model_validator(mode="after")
     def _validate_retry_after_consistency(self) -> Self:
         """``retry_after`` must be ``None`` when ``retryable`` is ``False``."""
-        if not self.retryable and self.retry_after is not None:
-            msg = "retry_after must be None when retryable is False"
-            raise ValueError(msg)
+        _check_retry_after(retryable=self.retryable, retry_after=self.retry_after)
         return self
 
 

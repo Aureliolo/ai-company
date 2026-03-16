@@ -7,7 +7,7 @@ import type { AxiosResponse } from 'axios'
 const mockErrorDetail: ErrorDetail = {
   detail: 'test error',
   title: 'Internal Server Error',
-  type: 'https://synthorg.io/docs/errors/internal',
+  type: 'https://synthorg.io/docs/errors#internal',
   error_code: 8000,
   error_category: 'internal',
   retryable: false,

@@ -16,7 +16,12 @@ from synthorg.api.dto import (
     PaginatedResponse,
     PaginationMeta,
 )
-from synthorg.api.errors import ErrorCategory, category_title, category_type_uri
+from synthorg.api.errors import (
+    ErrorCategory,
+    ErrorCode,
+    category_title,
+    category_type_uri,
+)
 from synthorg.core.enums import ApprovalRiskLevel
 
 pytestmark = pytest.mark.unit
@@ -29,7 +34,7 @@ def _make_error_detail(
     """Build an ``ErrorDetail`` with title/type derived from category."""
     defaults: dict[str, Any] = {
         "detail": "err",
-        "error_code": 8000,
+        "error_code": ErrorCode.INTERNAL_ERROR,
         "error_category": cat,
         "instance": "x",
         "title": category_title(cat),

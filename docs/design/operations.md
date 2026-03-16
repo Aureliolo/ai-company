@@ -999,7 +999,7 @@ The `error_detail` object in the envelope contains:
 | `retry_after` | `int \| null` | Seconds to wait before retrying (null when not applicable) |
 | `instance` | `str` | Request correlation ID for log tracing |
 | `title` | `str` | Static per-category title (e.g. "Authentication Error") |
-| `type` | `str` | Documentation URI for the error category (e.g. `https://synthorg.io/docs/errors/auth`) |
+| `type` | `str` | Documentation URI for the error category (e.g. `https://synthorg.io/docs/errors#auth`) |
 
 #### ProblemDetail Fields (RFC 9457 Bare Format)
 

@@ -71,8 +71,12 @@ def _get_instance_id() -> str:
         request_id = ctx.get("request_id")
         if isinstance(request_id, str) and request_id:
             return request_id
-    except Exception:
-        logger.debug("correlation_id_fallback_generated")
+    except Exception as exc:
+        logger.debug(
+            "correlation_id_fallback_generated",
+            error_type=type(exc).__qualname__,
+            error=str(exc),
+        )
     return generate_correlation_id()
 
 
@@ -82,10 +86,16 @@ def _wants_problem_json(request: Request[Any, Any, Any]) -> bool:
     Returns ``True`` only when the Accept header explicitly prefers
     ``application/problem+json`` over ``application/json``.  Defaults
     to ``False`` for ``*/*``, missing, or empty Accept headers.
+
+    Wrapped defensively because this runs inside exception handlers,
+    which are the last line of defense and must never crash.
     """
-    match = request.accept.best_match(
-        ["application/json", _PROBLEM_JSON],
-    )
+    try:
+        match = request.accept.best_match(
+            ["application/json", _PROBLEM_JSON],
+        )
+    except Exception:
+        return False
     return match == _PROBLEM_JSON
 
 
@@ -134,40 +144,55 @@ def _build_response(  # noqa: PLR0913
     Content negotiation is driven by the client's ``Accept`` header.
     When ``application/problem+json`` is preferred, returns a bare
     ``ProblemDetail`` body with the appropriate content type.
+
+    Wrapped in a defensive try/except because this runs inside
+    exception handlers — a failure here would lose the original error.
     """
-    if _wants_problem_json(request):
-        logger.debug(
-            API_CONTENT_NEGOTIATED,
-            format="problem+json",
-            status_code=status_code,
-        )
+    try:
+        if _wants_problem_json(request):
+            logger.debug(
+                API_CONTENT_NEGOTIATED,
+                format="problem+json",
+                status_code=status_code,
+            )
+            return Response(
+                content=ProblemDetail(
+                    type=category_type_uri(error_category),
+                    title=category_title(error_category),
+                    status=status_code,
+                    detail=detail,
+                    instance=_get_instance_id(),
+                    error_code=error_code,
+                    error_category=error_category,
+                    retryable=retryable,
+                    retry_after=retry_after,
+                ),
+                status_code=status_code,
+                media_type=_PROBLEM_JSON,
+                headers=headers,
+            )
         return Response(
-            content=ProblemDetail(
-                type=category_type_uri(error_category),
-                title=category_title(error_category),
-                status=status_code,
+            content=_build_error_response(
                 detail=detail,
-                instance=_get_instance_id(),
                 error_code=error_code,
                 error_category=error_category,
                 retryable=retryable,
                 retry_after=retry_after,
             ),
             status_code=status_code,
-            media_type=_PROBLEM_JSON,
             headers=headers,
         )
-    return Response(
-        content=_build_error_response(
-            detail=detail,
-            error_code=error_code,
-            error_category=error_category,
-            retryable=retryable,
-            retry_after=retry_after,
-        ),
-        status_code=status_code,
-        headers=headers,
-    )
+    except Exception:
+        logger.error(
+            API_REQUEST_ERROR,
+            error_type="response_build_failure",
+            error="Failed to build structured error response",
+            exc_info=True,
+        )
+        return Response(  # type: ignore[return-value]
+            content={"error": "Internal server error"},
+            status_code=status_code,
+        )
 
 
 _STATUS_TO_ERROR_META: MappingProxyType[int, tuple[ErrorCode, ErrorCategory, bool]] = (
@@ -334,9 +359,10 @@ def handle_validation_error(
 ) -> Response[ApiResponse[None]] | Response[ProblemDetail]:
     """Map ``ValidationException`` to 400."""
     _log_error(request, exc, status=400)
+    msg = str(exc.detail) if exc.detail else "Validation error"
     return _build_response(
         request,
-        detail="Validation error",
+        detail=msg,
         error_code=ErrorCode.REQUEST_VALIDATION_ERROR,
         error_category=ErrorCategory.VALIDATION,
         status_code=400,

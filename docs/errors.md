@@ -35,7 +35,7 @@ Response (`404 Not Found`, `Content-Type: application/problem+json`):
 
 ```json
 {
-  "type": "https://synthorg.io/docs/errors/not_found",
+  "type": "https://synthorg.io/docs/errors#not_found",
   "title": "Resource Not Found",
   "status": 404,
   "detail": "Resource not found",
@@ -71,7 +71,7 @@ Response (`404 Not Found`):
     "retry_after": null,
     "instance": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "title": "Resource Not Found",
-    "type": "https://synthorg.io/docs/errors/not_found"
+    "type": "https://synthorg.io/docs/errors#not_found"
   },
   "success": false
 }
@@ -86,14 +86,14 @@ category-specific section of this page.
 
 | Category | Title | HTTP Status | Type URI |
 |----------|-------|-------------|----------|
-| `auth` | Authentication Error | 401, 403 | `https://synthorg.io/docs/errors/auth` |
-| `validation` | Validation Error | 400, 405, 422 | `https://synthorg.io/docs/errors/validation` |
-| `not_found` | Resource Not Found | 404 | `https://synthorg.io/docs/errors/not_found` |
-| `conflict` | Resource Conflict | 409 | `https://synthorg.io/docs/errors/conflict` |
-| `rate_limit` | Rate Limit Exceeded | 429 | `https://synthorg.io/docs/errors/rate_limit` |
-| `budget_exhausted` | Budget Exhausted | 402 | `https://synthorg.io/docs/errors/budget_exhausted` |
-| `provider_error` | Provider Error | 502 | `https://synthorg.io/docs/errors/provider_error` |
-| `internal` | Internal Server Error | 500, 502, 503 | `https://synthorg.io/docs/errors/internal` |
+| `auth` | Authentication Error | 401, 403 | `https://synthorg.io/docs/errors#auth` |
+| `validation` | Validation Error | 400, 405, 422 | `https://synthorg.io/docs/errors#validation` |
+| `not_found` | Resource Not Found | 404 | `https://synthorg.io/docs/errors#not_found` |
+| `conflict` | Resource Conflict | 409 | `https://synthorg.io/docs/errors#conflict` |
+| `rate_limit` | Rate Limit Exceeded | 429 | `https://synthorg.io/docs/errors#rate_limit` |
+| `budget_exhausted` | Budget Exhausted | 402 | `https://synthorg.io/docs/errors#budget_exhausted` |
+| `provider_error` | Provider Error | 502 | `https://synthorg.io/docs/errors#provider_error` |
+| `internal` | Internal Server Error | 500, 502, 503 | `https://synthorg.io/docs/errors#internal` |
 
 ---
 
@@ -101,21 +101,21 @@ category-specific section of this page.
 
 Error codes are 4-digit integers grouped by category (first digit = category).
 
-### 1xxx — Authentication
+### 1xxx — Authentication { #auth }
 
 | Code | Name | Description |
 |------|------|-------------|
 | 1000 | `UNAUTHORIZED` | Missing or invalid authentication credentials |
 | 1001 | `FORBIDDEN` | Authenticated but insufficient permissions |
 
-### 2xxx — Validation
+### 2xxx — Validation { #validation }
 
 | Code | Name | Description |
 |------|------|-------------|
 | 2000 | `VALIDATION_ERROR` | Application-level validation failure (e.g. invalid field values) |
 | 2001 | `REQUEST_VALIDATION_ERROR` | Request structure/format validation failure |
 
-### 3xxx — Not Found
+### 3xxx — Not Found { #not_found }
 
 | Code | Name | Description |
 |------|------|-------------|
@@ -123,32 +123,32 @@ Error codes are 4-digit integers grouped by category (first digit = category).
 | 3001 | `RECORD_NOT_FOUND` | Database record not found |
 | 3002 | `ROUTE_NOT_FOUND` | API endpoint does not exist |
 
-### 4xxx — Conflict
+### 4xxx — Conflict { #conflict }
 
 | Code | Name | Description |
 |------|------|-------------|
 | 4000 | `RESOURCE_CONFLICT` | Operation conflicts with current resource state |
 | 4001 | `DUPLICATE_RECORD` | Attempted to create a resource that already exists |
 
-### 5xxx — Rate Limit
+### 5xxx — Rate Limit { #rate_limit }
 
 | Code | Name | Description |
 |------|------|-------------|
 | 5000 | `RATE_LIMITED` | Too many requests; back off and retry |
 
-### 6xxx — Budget Exhausted
+### 6xxx — Budget Exhausted { #budget_exhausted }
 
 | Code | Name | Description |
 |------|------|-------------|
 | 6000 | `BUDGET_EXHAUSTED` | Budget limit reached; no further spending allowed |
 
-### 7xxx — Provider Error
+### 7xxx — Provider Error { #provider_error }
 
 | Code | Name | Description |
 |------|------|-------------|
 | 7000 | `PROVIDER_ERROR` | Upstream LLM provider returned an error |
 
-### 8xxx — Internal
+### 8xxx — Internal { #internal }
 
 | Code | Name | Description |
 |------|------|-------------|

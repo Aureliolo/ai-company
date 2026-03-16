@@ -121,9 +121,9 @@ def category_type_uri(cat: ErrorCategory) -> str:
         cat: Error category.
 
     Returns:
-        Documentation URI for the error category.
+        Documentation URI with fragment anchor for the error category.
     """
-    return f"{_ERROR_DOCS_BASE}/{cat.value}"
+    return f"{_ERROR_DOCS_BASE}#{cat.value}"
 
 
 class ApiError(Exception):
