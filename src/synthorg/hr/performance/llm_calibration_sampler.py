@@ -175,6 +175,9 @@ class LlmCalibrationSampler:
     ) -> tuple[LlmCalibrationRecord, ...]:
         """Query stored calibration records.
 
+        Expired records (older than ``retention_days``) are pruned
+        before filtering.
+
         Args:
             agent_id: Filter by agent (``None`` = all agents).
             since: Include records after this time.
@@ -182,6 +185,8 @@ class LlmCalibrationSampler:
         Returns:
             Matching calibration records.
         """
+        self._prune_expired()
+
         if agent_id is not None:
             records = list(self._records.get(str(agent_id), []))
         else:
@@ -198,12 +203,17 @@ class LlmCalibrationSampler:
     ) -> float | None:
         """Compute average drift for an agent.
 
+        Expired records (older than ``retention_days``) are pruned
+        before aggregation.
+
         Args:
             agent_id: Agent to compute drift for.
 
         Returns:
             Average drift, or ``None`` if no calibration records exist.
         """
+        self._prune_expired()
+
         records = self._records.get(str(agent_id), [])
         if not records:
             return None

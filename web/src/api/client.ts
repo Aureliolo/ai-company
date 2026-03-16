@@ -80,6 +80,21 @@ export function unwrap<T>(response: AxiosResponse<ApiResponse<T>>): T {
 }
 
 /**
+ * Validate an ApiResponse envelope without extracting data.
+ * Use for endpoints that return {@code ApiResponse<null>}.
+ */
+export function unwrapVoid(response: AxiosResponse<ApiResponse<null>>): void {
+  const body = response.data
+  if (!body || typeof body !== 'object') {
+    throw new ApiRequestError('Unknown API error')
+  }
+  if (!body.success) {
+    const detail = 'error_detail' in body ? (body.error_detail as ErrorDetail | null) : null
+    throw new ApiRequestError(body.error ?? 'Unknown API error', detail)
+  }
+}
+
+/**
  * Extract data from a paginated response.
  * Validates the response structure to avoid cryptic TypeErrors.
  */

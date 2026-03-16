@@ -694,7 +694,7 @@ export interface CollaborationScoreResult {
 export interface SetOverrideRequest {
   score: number
   reason: string
-  expires_in_days: number | null
+  expires_in_days?: number | null
 }
 
 export interface OverrideResponse {

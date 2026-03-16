@@ -348,8 +348,24 @@ class TestGetDriftSummary:
 class TestRetentionPruning:
     """Old calibration records are pruned."""
 
-    async def test_old_records_pruned(self) -> None:
+    async def test_old_records_pruned(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """Records older than retention_days are pruned on next sample."""
+        # Pin datetime.now(UTC) to NOW so pruning cutoff is deterministic.
+        _real_datetime = datetime
+
+        class _FrozenDatetime(datetime):
+            @classmethod  # type: ignore[override]
+            def now(cls, tz: object = None) -> datetime:
+                return NOW if tz is UTC else _real_datetime.now(tz)
+
+        monkeypatch.setattr(
+            "synthorg.hr.performance.llm_calibration_sampler.datetime",
+            _FrozenDatetime,
+        )
+
         sampler = _make_sampler(retention_days=7)
         # Insert an old calibration record directly.
         old_cal = make_calibration_record(
@@ -358,9 +374,6 @@ class TestRetentionPruning:
             interaction_record_id="old-record",
         )
         sampler._records["agent-001"] = [old_cal]
-
-        # Verify it exists before pruning.
-        assert len(sampler.get_calibration_records()) == 1
 
         # Sample a new record — triggers pruning of old records.
         new_record = make_collab_metric(

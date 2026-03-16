@@ -4,6 +4,7 @@ Central service for recording and querying agent performance metrics.
 Delegates scoring, windowing, and trend detection to pluggable strategies.
 """
 
+import asyncio
 import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -89,6 +90,7 @@ class PerformanceTracker:
         self._override_store = override_store
         self._task_metrics: dict[str, list[TaskMetricRecord]] = {}
         self._collab_metrics: dict[str, list[CollaborationMetricRecord]] = {}
+        self._background_tasks: set[asyncio.Task[None]] = set()
 
     @staticmethod
     def _default_quality() -> QualityScoringStrategy:
@@ -206,7 +208,7 @@ class PerformanceTracker:
             metric_type="collaboration",
         )
 
-        await self._maybe_sample(record)
+        self._schedule_sampling(record)
 
     async def get_collaboration_score(
         self,
@@ -435,21 +437,39 @@ class PerformanceTracker:
         """Return the LLM calibration sampler, if configured."""
         return self._sampler
 
-    async def _maybe_sample(
+    def _schedule_sampling(
         self,
         record: CollaborationMetricRecord,
     ) -> None:
-        """Invoke the LLM sampler if conditions are met.
+        """Schedule LLM sampling as a background task.
 
-        Conditions: sampler configured, record has ``interaction_summary``,
-        and ``should_sample()`` returns ``True``.  Failures are caught
-        and logged — sampling must never block recording.
+        The task is tracked in ``_background_tasks`` to prevent
+        garbage-collection warnings.  Failures are handled inside
+        ``_maybe_sample`` — they never propagate.
         """
         if self._sampler is None:
             return
         if record.interaction_summary is None:
             return
         if not self._sampler.should_sample():
+            return
+
+        task = asyncio.create_task(self._maybe_sample(record))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def _maybe_sample(
+        self,
+        record: CollaborationMetricRecord,
+    ) -> None:
+        """Execute LLM sampling for a single record.
+
+        Called as a background task by ``_schedule_sampling``.
+        Failures are caught and logged — sampling must never propagate
+        exceptions to the caller.
+        """
+        sampler = self._sampler
+        if sampler is None:  # pragma: no cover — guarded by _schedule_sampling
             return
 
         try:
@@ -470,7 +490,7 @@ class PerformanceTracker:
             return
 
         try:
-            await self._sampler.sample(
+            await sampler.sample(
                 record=record,
                 behavioral_score=behavioral_result.score,
             )

@@ -3,6 +3,7 @@
 Tests override precedence and LLM sampler integration in the tracker.
 """
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -18,6 +19,12 @@ from synthorg.hr.performance.tracker import PerformanceTracker
 from .conftest import make_collab_metric
 
 NOW = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
+
+
+async def _drain_background(tracker: PerformanceTracker) -> None:
+    """Await all background sampling tasks on the tracker."""
+    if tracker._background_tasks:
+        await asyncio.gather(*tracker._background_tasks)
 
 
 @pytest.mark.unit
@@ -64,6 +71,7 @@ class TestOverridePrecedence:
 
         result = await tracker.get_collaboration_score(
             NotBlankStr("agent-001"),
+            now=NOW,
         )
 
         # Falls through to behavioral strategy, returns neutral score
@@ -143,6 +151,7 @@ class TestSamplerIntegration:
             interaction_summary="Agent delegated task",
         )
         await tracker.record_collaboration_event(record)
+        await _drain_background(tracker)
 
         mock_sampler.should_sample.assert_called_once()
         mock_sampler.sample.assert_called_once()
@@ -159,6 +168,7 @@ class TestSamplerIntegration:
             delegation_success=True,
         )
         await tracker.record_collaboration_event(record)
+        await _drain_background(tracker)
 
         mock_sampler.should_sample.assert_not_called()
         mock_sampler.sample.assert_not_called()
@@ -175,6 +185,7 @@ class TestSamplerIntegration:
             interaction_summary="Some interaction",
         )
         await tracker.record_collaboration_event(record)
+        await _drain_background(tracker)
 
         mock_sampler.should_sample.assert_called_once()
         mock_sampler.sample.assert_not_called()
@@ -208,6 +219,7 @@ class TestSamplerIntegration:
             interaction_summary="Some interaction",
         )
         await tracker.record_collaboration_event(record)
+        await _drain_background(tracker)
 
         # Record should still be stored.
         records = tracker.get_collaboration_metrics(
@@ -235,6 +247,7 @@ class TestSamplerIntegration:
             interaction_summary="Some interaction",
         )
         await tracker.record_collaboration_event(record)
+        await _drain_background(tracker)
 
         # Record should still be stored despite strategy failure.
         records = tracker.get_collaboration_metrics(

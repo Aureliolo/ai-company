@@ -287,34 +287,26 @@ class TestOverrideStoreNotConfigured:
             client.headers.update(make_auth_headers("ceo"))
             yield client
 
-    def test_get_override_503(
+    @pytest.mark.parametrize(
+        ("method", "json_body"),
+        [
+            ("GET", None),
+            ("POST", {"score": 5.0, "reason": "Test"}),
+            ("DELETE", None),
+        ],
+        ids=["get", "post", "delete"],
+    )
+    def test_override_returns_503(
         self,
         no_store_client: TestClient[Any],
+        method: str,
+        json_body: dict[str, object] | None,
     ) -> None:
-        """GET override without store -> 503."""
-        resp = no_store_client.get(
+        """Override endpoints return 503 when store is not configured."""
+        resp = no_store_client.request(
+            method,
             "/api/v1/agents/agent-001/collaboration/override",
-        )
-        assert resp.status_code == 503
-
-    def test_post_override_503(
-        self,
-        no_store_client: TestClient[Any],
-    ) -> None:
-        """POST override without store -> 503."""
-        resp = no_store_client.post(
-            "/api/v1/agents/agent-001/collaboration/override",
-            json={"score": 5.0, "reason": "Test"},
-        )
-        assert resp.status_code == 503
-
-    def test_delete_override_503(
-        self,
-        no_store_client: TestClient[Any],
-    ) -> None:
-        """DELETE override without store -> 503."""
-        resp = no_store_client.delete(
-            "/api/v1/agents/agent-001/collaboration/override",
+            json=json_body,
         )
         assert resp.status_code == 503
 

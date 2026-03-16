@@ -73,7 +73,7 @@ class CollaborationOverrideStore:
             now = datetime.now(UTC)
 
         if override.expires_at is not None and override.expires_at <= now:
-            logger.debug(
+            logger.info(
                 PERF_OVERRIDE_EXPIRED,
                 agent_id=agent_id,
                 expired_at=str(override.expires_at),
