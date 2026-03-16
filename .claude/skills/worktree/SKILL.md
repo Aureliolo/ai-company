@@ -137,6 +137,14 @@ Directory suffix is auto-derived from the branch name:
    for f in .claude/*.local.*; do test -f "$f" && cp "$f" "<dir-path>/.claude/$(basename "$f")"; done
    ```
 
+   d. **Pre-sync the venv** to prevent uv cache lock contention when multiple Claude Code instances run concurrently. `uv` uses a global cache lock (`~/.local/uv/cache/.lock` or `$LOCALAPPDATA/uv/cache/.lock`) — if multiple worktrees run `uv run`/`uv sync` simultaneously, they serialize on this lock and all appear to hang. Pre-syncing sequentially here avoids this:
+
+   ```bash
+   cd <dir-path> && uv sync 2>&1 | tail -3; cd -
+   ```
+
+   Run these **sequentially** (one per worktree, not in parallel) to avoid cache lock contention during setup itself.
+
 4. **Verify all worktrees created:**
 
    ```bash
@@ -450,6 +458,7 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
   - Owner/repo (from `git remote`): must match `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`
   - Directory paths: must not contain shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``, `(`, `)`)
   - Reject and warn if any value fails validation — do not execute the command.
+- **uv cache lock contention:** `uv` uses a global cache lock file (`$LOCALAPPDATA/uv/cache/.lock` on Windows, `~/.cache/uv/.lock` on Linux/macOS). When multiple worktrees run `uv run` or `uv sync` concurrently, they serialize on this lock, causing all instances to appear stuck. The `setup` command pre-syncs each worktree's venv sequentially to avoid this. If users report all instances hanging on python/uv commands, the fix is: `rm -f "$LOCALAPPDATA/uv/cache/.lock"` (Windows) or `rm -f ~/.cache/uv/.lock` (Linux/macOS).
 - If `$ARGUMENTS` is empty or doesn't match a command, show a brief usage guide:
 
   ```text
