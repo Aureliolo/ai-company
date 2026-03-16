@@ -51,27 +51,13 @@ class TestComputeRecencyScore:
         now = datetime.now(UTC)
         assert compute_recency_score(now, now, decay_rate=0.01) == 1.0
 
-    def test_one_hour_decay(self) -> None:
+    @pytest.mark.parametrize("hours", [1, 24, 72])
+    def test_decay_matches_formula(self, hours: int) -> None:
         now = datetime.now(UTC)
-        one_hour_ago = now - timedelta(hours=1)
-        score = compute_recency_score(one_hour_ago, now, decay_rate=0.01)
-        expected = math.exp(-0.01 * 1.0)
+        past = now - timedelta(hours=hours)
+        score = compute_recency_score(past, now, decay_rate=0.01)
+        expected = math.exp(-0.01 * hours)
         assert abs(score - expected) < 1e-9
-
-    def test_24_hour_decay(self) -> None:
-        now = datetime.now(UTC)
-        day_ago = now - timedelta(hours=24)
-        score = compute_recency_score(day_ago, now, decay_rate=0.01)
-        expected = math.exp(-0.01 * 24.0)
-        assert abs(score - expected) < 1e-9
-
-    def test_72_hour_decay(self) -> None:
-        now = datetime.now(UTC)
-        three_days_ago = now - timedelta(hours=72)
-        score = compute_recency_score(three_days_ago, now, decay_rate=0.01)
-        expected = math.exp(-0.01 * 72.0)
-        assert abs(score - expected) < 1e-9
-        assert score < 0.5  # ~0.49
 
     def test_zero_decay_rate_always_one(self) -> None:
         now = datetime.now(UTC)
@@ -97,22 +83,26 @@ class TestComputeRecencyScore:
 
 @pytest.mark.unit
 class TestComputeCombinedScore:
-    def test_default_weights(self) -> None:
-        score = compute_combined_score(0.8, 0.6, 0.7, 0.3)
-        expected = 0.7 * 0.8 + 0.3 * 0.6
+    @pytest.mark.parametrize(
+        ("relevance", "recency", "rel_w", "rec_w", "expected"),
+        [
+            (0.8, 0.6, 0.7, 0.3, 0.7 * 0.8 + 0.3 * 0.6),
+            (0.9, 0.1, 1.0, 0.0, 0.9),
+            (0.9, 0.1, 0.0, 1.0, 0.1),
+            (0.8, 0.4, 0.5, 0.5, 0.6),
+        ],
+        ids=["default_weights", "all_relevance", "all_recency", "equal_weights"],
+    )
+    def test_weighted_combination(
+        self,
+        relevance: float,
+        recency: float,
+        rel_w: float,
+        rec_w: float,
+        expected: float,
+    ) -> None:
+        score = compute_combined_score(relevance, recency, rel_w, rec_w)
         assert abs(score - expected) < 1e-9
-
-    def test_all_relevance(self) -> None:
-        score = compute_combined_score(0.9, 0.1, 1.0, 0.0)
-        assert abs(score - 0.9) < 1e-9
-
-    def test_all_recency(self) -> None:
-        score = compute_combined_score(0.9, 0.1, 0.0, 1.0)
-        assert abs(score - 0.1) < 1e-9
-
-    def test_equal_weights(self) -> None:
-        score = compute_combined_score(0.8, 0.4, 0.5, 0.5)
-        assert abs(score - 0.6) < 1e-9
 
 
 # ── ScoredMemory model ─────────────────────────────────────────
@@ -462,6 +452,12 @@ class TestFuseRankedLists:
         assert len(result) == 4
         ids = {r.entry.id for r in result}
         assert ids == {"a", "b", "c", "d"}
+        # Rank-1 entries score higher than rank-2 entries
+        rank1_ids = {"a", "c"}
+        rank2_ids = {"b", "d"}
+        rank1_scores = [r.combined_score for r in result if r.entry.id in rank1_ids]
+        rank2_scores = [r.combined_score for r in result if r.entry.id in rank2_ids]
+        assert min(rank1_scores) >= max(rank2_scores)
 
     def test_overlapping_entries_score_higher(self) -> None:
         """Entry appearing in both lists should rank above disjoint entries."""
@@ -596,10 +592,19 @@ class TestFuseRankedLists:
         assert result[1].combined_score > result[2].combined_score
         assert result[2].entry.id == "c"
 
-    def test_k_below_one_raises(self) -> None:
-        with pytest.raises(ValueError, match=r"k must be >= 1"):
-            fuse_ranked_lists((), k=0)
+    def test_max_results_above_entry_count_returns_all(self) -> None:
+        """When fewer entries exist than max_results, all are returned."""
+        now = datetime.now(UTC)
+        entries = tuple(_make_entry(entry_id=f"e{i}", created_at=now) for i in range(3))
+        result = fuse_ranked_lists((entries,), max_results=20)
+        assert len(result) == 3
 
-    def test_max_results_below_one_raises(self) -> None:
+    @pytest.mark.parametrize("bad_k", [0, -1, -100])
+    def test_k_below_one_raises(self, bad_k: int) -> None:
+        with pytest.raises(ValueError, match=r"k must be >= 1"):
+            fuse_ranked_lists((), k=bad_k)
+
+    @pytest.mark.parametrize("bad_max", [0, -1, -50])
+    def test_max_results_below_one_raises(self, bad_max: int) -> None:
         with pytest.raises(ValueError, match=r"max_results must be >= 1"):
-            fuse_ranked_lists((), max_results=0)
+            fuse_ranked_lists((), max_results=bad_max)

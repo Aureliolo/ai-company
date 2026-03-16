@@ -19,6 +19,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.memory import (
     MEMORY_RANKING_COMPLETE,
     MEMORY_RRF_FUSION_COMPLETE,
+    MEMORY_RRF_VALIDATION_FAILED,
 )
 
 if TYPE_CHECKING:
@@ -48,11 +49,13 @@ class ScoredMemory(BaseModel):
 
     Attributes:
         entry: The original memory entry.
-        relevance_score: Relevance score — defaults to ``config.default_relevance``
-            when the backend omits it, then boosted for personal entries
-            (clamped to 1.0).  Shared entries use the unboosted value.
-        recency_score: Exponential decay based on age.
-        combined_score: Weighted combination of relevance and recency.
+        relevance_score: Relevance score after pipeline-specific
+            transformations (0.0-1.0).
+        recency_score: Exponential decay based on age (0.0-1.0).
+            Always 0.0 for RRF-produced results.
+        combined_score: Final ranking signal (0.0-1.0).  For linear
+            ranking this is a weighted combination; for RRF this is
+            the normalized fusion score.
         is_shared: Whether this came from SharedKnowledgeStore.
     """
 
@@ -234,6 +237,38 @@ def rank_memories(
     return result
 
 
+def _normalize_rrf_scores(
+    scores: dict[str, float],
+) -> dict[str, float]:
+    """Min-max normalize raw RRF scores to [0.0, 1.0]."""
+    min_score = min(scores.values())
+    max_score = max(scores.values())
+    score_range = max_score - min_score
+    return {
+        eid: (score - min_score) / score_range if score_range > 0 else 1.0
+        for eid, score in scores.items()
+    }
+
+
+def _build_rrf_scored_memories(
+    entries: dict[str, MemoryEntry],
+    normalized: dict[str, float],
+) -> list[ScoredMemory]:
+    """Build ScoredMemory objects from RRF-normalized scores."""
+    scored: list[ScoredMemory] = []
+    for eid, entry in entries.items():
+        raw_rel = entry.relevance_score if entry.relevance_score is not None else 0.0
+        scored.append(
+            ScoredMemory(
+                entry=entry,
+                relevance_score=raw_rel,
+                recency_score=0.0,
+                combined_score=normalized[eid],
+            )
+        )
+    return scored
+
+
 def fuse_ranked_lists(
     ranked_lists: tuple[tuple[MemoryEntry, ...], ...],
     *,
@@ -272,48 +307,49 @@ def fuse_ranked_lists(
     """
     if k < 1:
         msg = f"k must be >= 1, got {k}"
+        logger.warning(MEMORY_RRF_VALIDATION_FAILED, param="k", value=k)
         raise ValueError(msg)
     if max_results < 1:
         msg = f"max_results must be >= 1, got {max_results}"
+        logger.warning(
+            MEMORY_RRF_VALIDATION_FAILED,
+            param="max_results",
+            value=max_results,
+        )
         raise ValueError(msg)
 
-    # Accumulate raw RRF scores and collect unique entries
     scores: dict[str, float] = {}
     entries: dict[str, MemoryEntry] = {}
+    duplicate_count = 0
 
     for ranked_list in ranked_lists:
         for rank, entry in enumerate(ranked_list, start=1):
             scores[entry.id] = scores.get(entry.id, 0.0) + 1.0 / (k + rank)
             if entry.id not in entries:
                 entries[entry.id] = entry
+            else:
+                duplicate_count += 1
+
+    if duplicate_count:
+        logger.debug(
+            MEMORY_RRF_FUSION_COMPLETE,
+            duplicate_ids_merged=duplicate_count,
+            unique_entries=len(entries),
+        )
 
     if not entries:
+        logger.debug(
+            MEMORY_RRF_FUSION_COMPLETE,
+            num_lists=len(ranked_lists),
+            unique_entries=0,
+            after_truncation=0,
+            k=k,
+        )
         return ()
 
-    # Min-max normalize to [0.0, 1.0]
-    min_score = min(scores.values())
-    max_score = max(scores.values())
-    score_range = max_score - min_score
-
-    normalized = {
-        eid: (score - min_score) / score_range if score_range > 0 else 1.0
-        for eid, score in scores.items()
-    }
-
-    # Build ScoredMemory objects, sort, and truncate
-    scored_list: list[ScoredMemory] = []
-    for eid, entry in entries.items():
-        raw_rel = entry.relevance_score if entry.relevance_score is not None else 0.0
-        scored_list.append(
-            ScoredMemory(
-                entry=entry,
-                relevance_score=raw_rel,
-                recency_score=0.0,
-                combined_score=normalized[eid],
-            )
-        )
+    normalized = _normalize_rrf_scores(scores)
+    scored_list = _build_rrf_scored_memories(entries, normalized)
     scored_list.sort(key=lambda s: s.combined_score, reverse=True)
-
     result = tuple(scored_list[:max_results])
 
     logger.debug(

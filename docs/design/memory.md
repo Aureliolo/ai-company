@@ -510,8 +510,8 @@ the agent during execution.
     **Pipeline:**
 
     1. `MemoryBackend.retrieve()` -- fetch candidate memories
-    2. Rank by relevance + recency (algorithm below)
-    3. Filter by `min_relevance` threshold
+    2. Rank by relevance + recency (Linear, default) or fuse via RRF (algorithms below)
+    3. Filter by `min_relevance` threshold (Linear only — RRF does not apply this filter)
     4. Apply `MemoryFilterStrategy` ([Decision Log](../architecture/decisions.md) D23, optional) -- exclude inferable content
     5. Greedy token-budget packing
     6. Format as `ChatMessage` (configured role: SYSTEM or USER) with delimiters
@@ -538,7 +538,8 @@ the agent during execution.
     ([Qdrant](https://qdrant.tech/articles/hybrid-search/),
     [NeMo Retriever](https://huggingface.co/blog/nvidia/nemo-retriever-agentic-retrieval)). It is
     intended for multi-source scenarios (BM25 + vector, multi-round tool-based retrieval); the
-    linear strategy remains the default for single-source retrieval.
+    linear strategy remains the default for single-source retrieval.  Results are truncated to
+    `max_results` (default 20) after scoring and sorting.
 
     !!! tip "Non-Inferable Filter"
 

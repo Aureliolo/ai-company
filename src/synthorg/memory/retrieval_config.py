@@ -16,6 +16,7 @@ from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 logger = get_logger(__name__)
 
 _WEIGHT_SUM_TOLERANCE = 1e-6
+_DEFAULT_RRF_K = 60
 
 
 class MemoryRetrievalConfig(BaseModel):
@@ -36,7 +37,7 @@ class MemoryRetrievalConfig(BaseModel):
             in ``ContextInjectionStrategy`` if no explicit filter is provided.
         fusion_strategy: Ranking fusion strategy — LINEAR for single-source
             relevance+recency, RRF for multi-source ranked list merging.
-        rrf_k: RRF smoothing constant (only meaningful with RRF strategy).
+        rrf_k: RRF smoothing constant (1-1000, only used with RRF strategy).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -106,7 +107,7 @@ class MemoryRetrievalConfig(BaseModel):
         ),
     )
     rrf_k: int = Field(
-        default=60,
+        default=_DEFAULT_RRF_K,
         ge=1,
         le=1000,
         description="RRF smoothing constant k (only used with RRF strategy)",
@@ -136,10 +137,9 @@ class MemoryRetrievalConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_rrf_k_strategy_consistency(self) -> Self:
         """Warn when rrf_k is customized but fusion strategy is LINEAR."""
-        _default_rrf_k = 60
         if (
             self.fusion_strategy == FusionStrategy.LINEAR
-            and self.rrf_k != _default_rrf_k
+            and self.rrf_k != _DEFAULT_RRF_K
         ):
             logger.warning(
                 CONFIG_VALIDATION_FAILED,
@@ -147,6 +147,24 @@ class MemoryRetrievalConfig(BaseModel):
                 value=self.rrf_k,
                 reason="rrf_k is ignored when fusion_strategy is LINEAR",
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_supported_fusion_strategy(self) -> Self:
+        """Reject fusion strategies not yet wired into the retrieval pipeline."""
+        if self.fusion_strategy != FusionStrategy.LINEAR:
+            msg = (
+                f"Fusion strategy {self.fusion_strategy.value!r} is not yet "
+                f"wired into the retrieval pipeline; use "
+                f"fuse_ranked_lists() directly"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="fusion_strategy",
+                value=self.fusion_strategy.value,
+                reason=msg,
+            )
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
