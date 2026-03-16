@@ -13,7 +13,7 @@ vi.mock('vue', async () => {
     onMounted: vi.fn((cb: () => void | Promise<void>) => {
       const result = cb()
       if (result instanceof Promise) {
-        mountedPromise = result // swallow — tests check via spies
+        mountedPromise = result // preserve rejections for test assertion
       }
     }),
     onUnmounted: vi.fn(),

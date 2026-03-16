@@ -47,7 +47,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
     // so two callers could pass the readyState guard before the first resolves.
     if (connectPromise) return connectPromise
     const generation = connectGeneration
-    connectPromise = doConnect(generation).finally(() => { connectPromise = null })
+    connectPromise = doConnect(generation).finally(() => {
+      // Only clear if no disconnect() happened — disconnect increments
+      // connectGeneration, so stale finally callbacks are no-ops.
+      if (generation === connectGeneration) connectPromise = null
+    })
     return connectPromise
   }
 

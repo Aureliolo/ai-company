@@ -453,6 +453,16 @@ class AuthController(Controller):
             msg = "Authentication required"
             raise UnauthorizedError(msg)
 
+        if auth_user.auth_method != AuthMethod.JWT:
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="ws_ticket_requires_jwt",
+                auth_method=auth_user.auth_method.value,
+                user_id=auth_user.user_id,
+            )
+            msg = "WebSocket tickets require JWT authentication"
+            raise UnauthorizedError(msg)
+
         app_state = request.app.state["app_state"]
         ws_user = auth_user.model_copy(
             update={"auth_method": AuthMethod.WS_TICKET},

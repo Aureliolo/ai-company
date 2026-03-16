@@ -50,25 +50,20 @@ class TestWsTicketStoreCreate:
         store = WsTicketStore(ttl_seconds=60.0)
         assert store.ttl_seconds == 60.0
 
-    def test_zero_ttl_rejected(self) -> None:
-        with pytest.raises(ValueError, match="positive"):
-            WsTicketStore(ttl_seconds=0.0)
-
-    def test_negative_ttl_rejected(self) -> None:
-        with pytest.raises(ValueError, match="positive"):
-            WsTicketStore(ttl_seconds=-5.0)
-
-    def test_nan_ttl_rejected(self) -> None:
-        with pytest.raises(ValueError, match="finite positive"):
-            WsTicketStore(ttl_seconds=math.nan)
-
-    def test_inf_ttl_rejected(self) -> None:
-        with pytest.raises(ValueError, match="finite positive"):
-            WsTicketStore(ttl_seconds=math.inf)
-
-    def test_negative_inf_ttl_rejected(self) -> None:
-        with pytest.raises(ValueError, match="finite positive"):
-            WsTicketStore(ttl_seconds=-math.inf)
+    @pytest.mark.parametrize(
+        ("ttl", "match"),
+        [
+            (0.0, "positive"),
+            (-5.0, "positive"),
+            (math.nan, "finite positive"),
+            (math.inf, "finite positive"),
+            (-math.inf, "finite positive"),
+        ],
+        ids=["zero", "negative", "nan", "inf", "neg_inf"],
+    )
+    def test_invalid_ttl_rejected(self, ttl: float, match: str) -> None:
+        with pytest.raises(ValueError, match=match):
+            WsTicketStore(ttl_seconds=ttl)
 
     def test_per_user_ticket_cap(self) -> None:
         """Creating more than _MAX_PENDING_PER_USER tickets raises."""

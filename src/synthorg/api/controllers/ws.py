@@ -267,7 +267,7 @@ def _parse_ws_message(
 
 def _validate_ws_fields(
     msg: dict[str, Any],
-) -> tuple[str, list[str], dict[str, Any]] | str:
+) -> tuple[str, list[str], dict[str, Any] | None] | str:
     """Extract and validate action, channels, and filters from a parsed message.
 
     Returns ``(action, channels, client_filters)`` on success, or a
@@ -275,12 +275,16 @@ def _validate_ws_fields(
     """
     action = str(msg.get("action", ""))
     channels = msg.get("channels", [])
-    client_filters = msg.get("filters", {})
+    # None = key absent (leave existing filters), {} = explicitly clear
+    raw_filters = msg.get("filters")
+    client_filters: dict[str, Any] | None = None
+    if raw_filters is not None:
+        if not isinstance(raw_filters, dict):
+            return json.dumps({"error": "filters must be an object"})
+        client_filters = raw_filters
 
     if not isinstance(channels, list) or not all(isinstance(c, str) for c in channels):
         return json.dumps({"error": "channels must be a list of strings"})
-    if not isinstance(client_filters, dict):
-        return json.dumps({"error": "filters must be an object"})
 
     return (action, channels, client_filters)
 
@@ -313,21 +317,31 @@ def _handle_message(
 
 def _handle_subscribe(
     channels: list[str],
-    client_filters: dict[str, Any],
+    client_filters: dict[str, Any] | None,
     subscribed: set[str],
     filters: dict[str, dict[str, str]],
 ) -> str:
-    """Process a subscribe action."""
-    if len(client_filters) > _MAX_FILTER_KEYS or any(
-        len(str(v)) > _MAX_FILTER_VALUE_LEN for v in client_filters.values()
+    """Process a subscribe action.
+
+    Filter semantics:
+        ``None``  — filters key absent, leave existing filters unchanged.
+        ``{}``    — explicitly clear filters for the subscribed channels.
+        ``{...}`` — set new filters for the subscribed channels.
+    """
+    if client_filters is not None and (
+        len(client_filters) > _MAX_FILTER_KEYS
+        or any(len(str(v)) > _MAX_FILTER_VALUE_LEN for v in client_filters.values())
     ):
         return json.dumps({"error": "Filter bounds exceeded"})
 
     valid = [c for c in channels if c in _ALL_CHANNELS_SET]
     subscribed.update(valid)
-    for c in valid:
-        if client_filters:
-            filters[c] = dict(client_filters)
+    if client_filters is not None:
+        for c in valid:
+            if client_filters:
+                filters[c] = dict(client_filters)
+            else:
+                filters.pop(c, None)
     logger.debug(
         API_WS_SUBSCRIBE,
         channels=valid,

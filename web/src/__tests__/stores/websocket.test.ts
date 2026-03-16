@@ -99,7 +99,7 @@ describe('useWebSocketStore', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(mockInstances).toHaveLength(1)
 
-    await store.connect() // should be no-op
+    await store.connect() // should be no-op — already connected
     expect(mockInstances).toHaveLength(1) // no new WebSocket created
   })
 

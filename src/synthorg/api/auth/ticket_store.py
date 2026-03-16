@@ -90,8 +90,11 @@ class WsTicketStore:
         Returns:
             URL-safe random token string.
         """
+        now = time.monotonic()
         user_pending = sum(
-            1 for e in self._tickets.values() if e.user.user_id == user.user_id
+            1
+            for e in self._tickets.values()
+            if e.user.user_id == user.user_id and now <= e.expires_at
         )
         if user_pending >= _MAX_PENDING_PER_USER:
             msg = f"Ticket limit exceeded for user {user.user_id}"
