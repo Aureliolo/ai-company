@@ -74,7 +74,7 @@ class TestCreateAppEnvAutoWire:
             monkeypatch.delenv("SYNTHORG_DB_PATH", raising=False)
         app = create_app(config=root_config)
         state = app.state["app_state"]
-        assert (state._persistence is not None) == expect_persistence
+        assert state.has_persistence == expect_persistence
 
 
 @pytest.mark.unit

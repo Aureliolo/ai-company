@@ -447,6 +447,11 @@ def create_app(  # noqa: PLR0913
     All parameters are optional for testing — provide fakes via
     keyword arguments.
 
+    When ``persistence`` is not provided, the factory checks
+    ``SYNTHORG_DB_PATH`` in the environment and auto-creates a
+    SQLite backend if set (used by the Docker compose template).
+    Explicit ``persistence`` always takes precedence.
+
     Args:
         config: Root company configuration.
         persistence: Persistence backend.
