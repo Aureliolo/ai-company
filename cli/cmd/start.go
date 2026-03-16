@@ -128,9 +128,15 @@ func verifyAndPinImages(ctx context.Context, cmd *cobra.Command, state config.St
 // pinDigestsInCompose regenerates the compose file with digest-pinned image
 // references from the verified results.
 func pinDigestsInCompose(state config.State, results []verify.VerifyResult, safeDir string) error {
+	return writeDigestPinnedCompose(state, digestPinMap(results), safeDir, version.Version)
+}
+
+// writeDigestPinnedCompose generates and writes a compose file with digest-pinned
+// image references. Shared by start.go and update.go verification flows.
+func writeDigestPinnedCompose(state config.State, digestPins map[string]string, safeDir, cliVersion string) error {
 	params := compose.ParamsFromState(state)
-	params.CLIVersion = version.Version
-	params.DigestPins = digestPinMap(results)
+	params.CLIVersion = cliVersion
+	params.DigestPins = digestPins
 
 	composeYAML, err := compose.Generate(params)
 	if err != nil {

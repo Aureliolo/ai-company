@@ -9,12 +9,10 @@ import (
 	protocommon "github.com/sigstore/protobuf-specs/gen/pb-go/common/v1"
 	protodsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	"github.com/sigstore/sigstore-go/pkg/bundle"
-
-	ociverify "github.com/Aureliolo/synthorg/cli/internal/verify"
 )
 
 func TestAssertSLSAProvenanceValidPredicate(t *testing.T) {
-	statement := ociverify.InTotoStatement{
+	statement := slsaStatement{
 		PredicateType: "https://slsa.dev/provenance/v1",
 	}
 	payload, err := json.Marshal(statement)
@@ -37,7 +35,7 @@ func TestAssertSLSAProvenanceValidPredicate(t *testing.T) {
 }
 
 func TestAssertSLSAProvenanceWrongPredicateType(t *testing.T) {
-	statement := ociverify.InTotoStatement{
+	statement := slsaStatement{
 		PredicateType: "https://example.com/not-slsa",
 	}
 	payload, err := json.Marshal(statement)

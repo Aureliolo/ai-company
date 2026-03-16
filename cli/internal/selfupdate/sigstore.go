@@ -91,9 +91,14 @@ func verifySigstoreBundle(checksumData, bundleData []byte) error {
 	return nil
 }
 
-// Constants and types for SLSA validation are imported from the verify package
-// (ociverify.SLSAProvenancePredicatePrefix, ociverify.DSSEPayloadType,
-// ociverify.InTotoStatement) to avoid duplication.
+// Constants for SLSA validation are imported from the verify package to avoid
+// duplication. The slsaStatement struct is defined locally (trivial one-field
+// struct for JSON unmarshalling — not worth exporting from verify).
+
+// slsaStatement is a minimal in-toto statement for predicate type extraction.
+type slsaStatement struct {
+	PredicateType string `json:"predicateType"`
+}
 
 // assertSLSAProvenance checks that the bundle contains a DSSE envelope with
 // a SLSA provenance predicate. If the bundle does not contain a DSSE envelope
@@ -111,7 +116,7 @@ func assertSLSAProvenance(b *bundle.Bundle) error {
 	}
 
 	// The protobuf DSSE envelope stores Payload as raw bytes.
-	var stmt ociverify.InTotoStatement
+	var stmt slsaStatement
 	if err := json.Unmarshal(env.Payload, &stmt); err != nil {
 		return fmt.Errorf("parsing in-toto statement: %w", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -29,6 +30,11 @@ const (
 	slsaReferrerArtifactType = "application/vnd.in-toto+json"
 )
 
+// ErrNoProvenanceAttestations indicates that no SLSA provenance attestations
+// were found for an image. This is distinct from a cryptographic verification
+// failure — it means the image was published before provenance was configured.
+var ErrNoProvenanceAttestations = errors.New("no SLSA provenance attestations found")
+
 // VerifyProvenance fetches SLSA provenance attestations from the OCI registry
 // (pushed as referrers by actions/attest-build-provenance) and verifies the
 // DSSE envelope against the Sigstore transparency log and expected identity.
@@ -45,15 +51,15 @@ func VerifyProvenance(ctx context.Context, ref ImageRef, sev *verify.Verifier, c
 	}
 
 	// Try each attestation — verify the first one that passes.
-	var lastErr error
-	for _, desc := range attestationDescs {
+	var errs []error
+	for i, desc := range attestationDescs {
 		if err := verifyAttestation(ctx, ref, desc, sev, certID); err != nil {
-			lastErr = err
+			errs = append(errs, fmt.Errorf("attestation[%d]: %w", i, err))
 			continue
 		}
 		return nil // verified successfully
 	}
-	return fmt.Errorf("no valid SLSA provenance attestation for %s: %w", ref, lastErr)
+	return fmt.Errorf("no valid SLSA provenance attestation for %s: %w", ref, errors.Join(errs...))
 }
 
 // findAttestations queries OCI referrers and returns descriptors for in-toto
@@ -82,7 +88,7 @@ func findAttestations(ctx context.Context, ref ImageRef) ([]v1.Descriptor, error
 		}
 	}
 	if len(descs) == 0 {
-		return nil, fmt.Errorf("no SLSA provenance attestations found for %s", ref)
+		return nil, fmt.Errorf("%w for %s", ErrNoProvenanceAttestations, ref)
 	}
 	return descs, nil
 }
@@ -157,7 +163,7 @@ func validateSLSAPredicate(envelope dsseEnvelope) error {
 		return fmt.Errorf("decoding DSSE payload: %w", err)
 	}
 
-	var statement InTotoStatement
+	var statement inTotoStatement
 	if err := json.Unmarshal(payloadBytes, &statement); err != nil {
 		return fmt.Errorf("parsing in-toto statement: %w", err)
 	}
@@ -222,7 +228,7 @@ type dsseEnvelope struct {
 	Payload     string `json:"payload"`
 }
 
-// InTotoStatement is a minimal in-toto statement for predicate type extraction.
-type InTotoStatement struct {
+// inTotoStatement is a minimal in-toto statement for predicate type extraction.
+type inTotoStatement struct {
 	PredicateType string `json:"predicateType"`
 }

@@ -265,16 +265,8 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 	// Re-regenerate compose with digest pins.
 	updatedState := state
 	updatedState.ImageTag = tag
-	params := compose.ParamsFromState(updatedState)
-	params.CLIVersion = effectiveVersion
-	params.DigestPins = pins
-	composeYAML, err := compose.Generate(params)
-	if err != nil {
-		return nil, fmt.Errorf("generating digest-pinned compose file: %w", err)
-	}
-	composePath := filepath.Join(safeDir, "compose.yml")
-	if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
-		return nil, fmt.Errorf("writing digest-pinned compose file: %w", err)
+	if err := writeDigestPinnedCompose(updatedState, pins, safeDir, effectiveVersion); err != nil {
+		return nil, err
 	}
 	return pins, nil
 }

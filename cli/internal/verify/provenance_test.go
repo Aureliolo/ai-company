@@ -63,7 +63,7 @@ func TestVerifyProvenanceNoReferrers(t *testing.T) {
 }
 
 func TestValidateSLSAPredicate(t *testing.T) {
-	statement := InTotoStatement{
+	statement := inTotoStatement{
 		PredicateType: "https://slsa.dev/provenance/v1",
 	}
 	statementJSON, _ := json.Marshal(statement)
@@ -79,7 +79,7 @@ func TestValidateSLSAPredicate(t *testing.T) {
 }
 
 func TestValidateSLSAPredicateWrongType(t *testing.T) {
-	statement := InTotoStatement{
+	statement := inTotoStatement{
 		PredicateType: "https://example.com/wrong-type",
 	}
 	statementJSON, _ := json.Marshal(statement)
@@ -110,11 +110,11 @@ func TestValidateSLSAPredicateWrongPayloadType(t *testing.T) {
 	}
 }
 
-func TestVerifyProvenanceWithInvalidAttestation(t *testing.T) {
+func TestVerifyProvenanceInvalidAttestation(t *testing.T) {
 	repo := "test/image"
 	attestDigest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-	statement := InTotoStatement{
+	statement := inTotoStatement{
 		PredicateType: "https://example.com/not-slsa",
 	}
 	statementJSON, _ := json.Marshal(statement)
@@ -184,6 +184,6 @@ func TestVerifyProvenanceWithInvalidAttestation(t *testing.T) {
 
 	err := VerifyProvenance(context.Background(), ref, nil, sigverify.CertificateIdentity{})
 	if err == nil {
-		t.Fatal("expected error for wrong predicate type")
+		t.Fatal("expected error for invalid attestation")
 	}
 }

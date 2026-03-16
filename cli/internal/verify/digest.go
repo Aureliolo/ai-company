@@ -25,7 +25,7 @@ func ResolveDigest(ctx context.Context, ref ImageRef) (string, error) {
 		// Fallback to GET for registries that don't support HEAD.
 		rd, getErr := remote.Get(tagRef, remote.WithContext(ctx))
 		if getErr != nil {
-			return "", fmt.Errorf("fetching manifest for %s: %w", ref, err)
+			return "", fmt.Errorf("fetching manifest for %s: %w", ref, getErr)
 		}
 		desc = &rd.Descriptor
 	}

@@ -46,7 +46,7 @@ func FuzzCosignSigTag(f *testing.F) {
 		}
 
 		// Must end with .sig suffix.
-		if len(tag) < 4 || tag[len(tag)-4:] != ".sig" {
+		if !strings.HasSuffix(tag, ".sig") {
 			t.Errorf("cosignSigTag(%q) = %q, does not end with .sig", digest, tag)
 		}
 	})

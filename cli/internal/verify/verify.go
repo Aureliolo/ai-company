@@ -2,6 +2,7 @@ package verify
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -32,7 +33,11 @@ type ImageRef struct {
 }
 
 // String returns the full image reference with tag.
+// If Tag is empty, returns registry/repository without a trailing colon.
 func (r ImageRef) String() string {
+	if r.Tag == "" {
+		return fmt.Sprintf("%s/%s", r.Registry, r.Repository)
+	}
 	return fmt.Sprintf("%s/%s:%s", r.Registry, r.Repository, r.Tag)
 }
 
@@ -185,7 +190,5 @@ func verifyOneImage(ctx context.Context, ref ImageRef, sev *verify.Verifier, cer
 // configured), as opposed to a cryptographic or structural verification
 // failure that indicates tampering.
 func isProvenanceMissing(err error) bool {
-	msg := err.Error()
-	return strings.Contains(msg, "no SLSA provenance attestations found") ||
-		strings.Contains(msg, "querying referrers")
+	return errors.Is(err, ErrNoProvenanceAttestations)
 }

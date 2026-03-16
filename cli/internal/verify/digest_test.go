@@ -110,6 +110,9 @@ func TestResolveDigestHEADFallbackToGET(t *testing.T) {
 	repo := "test/image"
 	tag := "1.0.0"
 	manifestBody := `{"schemaVersion":2}`
+	// go-containerregistry computes sha256 from the GET response body.
+	expectedDigest := "sha256:bafebd36189ad3688b7b3915ea55d461e0bfcfbdde11e54b0a123999fb6be50f"
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		expectedPath := fmt.Sprintf("/v2/%s/manifests/%s", repo, tag)
 		if r.Method == http.MethodGet && r.URL.Path == "/v2/" {
@@ -142,8 +145,8 @@ func TestResolveDigestHEADFallbackToGET(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveDigest() error: %v", err)
 	}
-	if !IsValidDigest(digest) {
-		t.Errorf("expected valid digest, got %q", digest)
+	if digest != expectedDigest {
+		t.Errorf("digest = %q, want %q", digest, expectedDigest)
 	}
 }
 

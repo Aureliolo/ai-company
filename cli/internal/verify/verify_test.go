@@ -66,8 +66,9 @@ func TestNewImageRef(t *testing.T) {
 	if ref.Registry != RegistryHost {
 		t.Errorf("Registry = %q, want %q", ref.Registry, RegistryHost)
 	}
-	if ref.Repository != "aureliolo/synthorg-backend" {
-		t.Errorf("Repository = %q, want aureliolo/synthorg-backend", ref.Repository)
+	wantRepo := ImageRepoPrefix + "backend"
+	if ref.Repository != wantRepo {
+		t.Errorf("Repository = %q, want %q", ref.Repository, wantRepo)
 	}
 	if ref.Tag != "0.3.0" {
 		t.Errorf("Tag = %q, want 0.3.0", ref.Tag)
