@@ -6,20 +6,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 const stateFileName = "config.json"
 
 // State is the persisted CLI configuration written by `synthorg init`.
 type State struct {
-	DataDir     string `json:"data_dir"`
-	ImageTag    string `json:"image_tag"`
-	BackendPort int    `json:"backend_port"`
-	WebPort     int    `json:"web_port"`
-	Sandbox     bool   `json:"sandbox"`
-	DockerSock  string `json:"docker_sock,omitempty"`
-	LogLevel    string `json:"log_level"`
-	JWTSecret   string `json:"jwt_secret,omitempty"`
+	DataDir            string `json:"data_dir"`
+	ImageTag           string `json:"image_tag"`
+	BackendPort        int    `json:"backend_port"`
+	WebPort            int    `json:"web_port"`
+	Sandbox            bool   `json:"sandbox"`
+	DockerSock         string `json:"docker_sock,omitempty"`
+	LogLevel           string `json:"log_level"`
+	JWTSecret          string `json:"jwt_secret,omitempty"`
+	PersistenceBackend string `json:"persistence_backend"`
+	MemoryBackend      string `json:"memory_backend"`
 }
 
 // DefaultState returns a State with sensible defaults for the interactive init
@@ -27,12 +31,14 @@ type State struct {
 // when no config file exists.
 func DefaultState() State {
 	return State{
-		DataDir:     DataDir(),
-		ImageTag:    "latest",
-		BackendPort: 8000,
-		WebPort:     3000,
-		Sandbox:     true,
-		LogLevel:    "info",
+		DataDir:            DataDir(),
+		ImageTag:           "latest",
+		BackendPort:        8000,
+		WebPort:            3000,
+		Sandbox:            true,
+		LogLevel:           "info",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
 	}
 }
 
@@ -83,6 +89,35 @@ func Load(dataDir string) (State, error) {
 	return s, nil
 }
 
+var validPersistenceBackends = map[string]bool{"sqlite": true}
+var validMemoryBackends = map[string]bool{"mem0": true}
+
+// sortedKeys returns a comma-separated sorted list of map keys.
+func sortedKeys(m map[string]bool) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ", ")
+}
+
+// IsValidPersistenceBackend reports whether name is a known persistence backend.
+func IsValidPersistenceBackend(name string) bool {
+	return validPersistenceBackends[name]
+}
+
+// IsValidMemoryBackend reports whether name is a known memory backend.
+func IsValidMemoryBackend(name string) bool {
+	return validMemoryBackends[name]
+}
+
+// PersistenceBackendNames returns the allowed persistence backend names.
+func PersistenceBackendNames() string { return sortedKeys(validPersistenceBackends) }
+
+// MemoryBackendNames returns the allowed memory backend names.
+func MemoryBackendNames() string { return sortedKeys(validMemoryBackends) }
+
 // validate checks that loaded config values are within safe ranges.
 func (s State) validate() error {
 	if s.BackendPort < 1 || s.BackendPort > 65535 {
@@ -90,6 +125,12 @@ func (s State) validate() error {
 	}
 	if s.WebPort < 1 || s.WebPort > 65535 {
 		return fmt.Errorf("invalid web_port %d: must be 1-65535", s.WebPort)
+	}
+	if !IsValidPersistenceBackend(s.PersistenceBackend) {
+		return fmt.Errorf("invalid persistence_backend %q: must be one of %s", s.PersistenceBackend, sortedKeys(validPersistenceBackends))
+	}
+	if !IsValidMemoryBackend(s.MemoryBackend) {
+		return fmt.Errorf("invalid memory_backend %q: must be one of %s", s.MemoryBackend, sortedKeys(validMemoryBackends))
 	}
 	return nil
 }

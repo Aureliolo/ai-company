@@ -29,27 +29,31 @@ var allowedLogLevels = map[string]bool{
 
 // Params are the template parameters for compose generation.
 type Params struct {
-	CLIVersion  string
-	ImageTag    string
-	BackendPort int
-	WebPort     int
-	LogLevel    string
-	JWTSecret   string
-	Sandbox     bool
-	DockerSock  string
+	CLIVersion         string
+	ImageTag           string
+	BackendPort        int
+	WebPort            int
+	LogLevel           string
+	JWTSecret          string
+	Sandbox            bool
+	DockerSock         string
+	PersistenceBackend string
+	MemoryBackend      string
 }
 
 // ParamsFromState creates Params from a persisted State.
 func ParamsFromState(s config.State) Params {
 	return Params{
-		CLIVersion:  version.Version,
-		ImageTag:    s.ImageTag,
-		BackendPort: s.BackendPort,
-		WebPort:     s.WebPort,
-		LogLevel:    s.LogLevel,
-		JWTSecret:   s.JWTSecret,
-		Sandbox:     s.Sandbox,
-		DockerSock:  s.DockerSock,
+		CLIVersion:         version.Version,
+		ImageTag:           s.ImageTag,
+		BackendPort:        s.BackendPort,
+		WebPort:            s.WebPort,
+		LogLevel:           s.LogLevel,
+		JWTSecret:          s.JWTSecret,
+		Sandbox:            s.Sandbox,
+		DockerSock:         s.DockerSock,
+		PersistenceBackend: s.PersistenceBackend,
+		MemoryBackend:      s.MemoryBackend,
 	}
 }
 
@@ -99,6 +103,12 @@ func validateParams(p Params) error {
 		if strings.ContainsAny(p.DockerSock, "\"'`$\n\r{}[]") {
 			return fmt.Errorf("docker socket path %q contains unsafe characters", p.DockerSock)
 		}
+	}
+	if !config.IsValidPersistenceBackend(p.PersistenceBackend) {
+		return fmt.Errorf("invalid persistence backend %q: must be one of %s", p.PersistenceBackend, config.PersistenceBackendNames())
+	}
+	if !config.IsValidMemoryBackend(p.MemoryBackend) {
+		return fmt.Errorf("invalid memory backend %q: must be one of %s", p.MemoryBackend, config.MemoryBackendNames())
 	}
 	return nil
 }

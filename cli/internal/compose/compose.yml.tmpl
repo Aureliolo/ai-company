@@ -13,6 +13,8 @@ services:
       SYNTHORG_PORT: "8000"
       SYNTHORG_DB_PATH: "/data/synthorg.db"
       SYNTHORG_MEMORY_DIR: "/data/memory"
+      SYNTHORG_PERSISTENCE_BACKEND: {{yamlStr .PersistenceBackend}}
+      SYNTHORG_MEMORY_BACKEND: {{yamlStr .MemoryBackend}}
       SYNTHORG_LOG_LEVEL: {{yamlStr .LogLevel}}
 {{- if .JWTSecret}}
       SYNTHORG_JWT_SECRET: {{yamlStr .JWTSecret}}

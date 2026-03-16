@@ -68,6 +68,8 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	if state.Sandbox && state.DockerSock != "" {
 		out.KeyValue("Docker socket", state.DockerSock)
 	}
+	out.KeyValue("Persistence backend", state.PersistenceBackend)
+	out.KeyValue("Memory backend", state.MemoryBackend)
 	out.KeyValue("JWT secret", maskSecret(state.JWTSecret))
 
 	return nil

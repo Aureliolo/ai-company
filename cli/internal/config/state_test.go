@@ -28,17 +28,25 @@ func TestDefaultState(t *testing.T) {
 	if s.DataDir == "" {
 		t.Error("DataDir should not be empty")
 	}
+	if s.PersistenceBackend != "sqlite" {
+		t.Errorf("PersistenceBackend = %q, want sqlite", s.PersistenceBackend)
+	}
+	if s.MemoryBackend != "mem0" {
+		t.Errorf("MemoryBackend = %q, want mem0", s.MemoryBackend)
+	}
 }
 
 func TestSaveAndLoad(t *testing.T) {
 	tmp := t.TempDir()
 	s := State{
-		DataDir:     tmp,
-		ImageTag:    "v0.1.5",
-		BackendPort: 9000,
-		WebPort:     3001,
-		LogLevel:    "debug",
-		JWTSecret:   "test-secret",
+		DataDir:            tmp,
+		ImageTag:           "v0.1.5",
+		BackendPort:        9000,
+		WebPort:            3001,
+		LogLevel:           "debug",
+		JWTSecret:          "test-secret",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
 	}
 
 	if err := Save(s); err != nil {
@@ -64,6 +72,12 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 	if loaded.LogLevel != s.LogLevel {
 		t.Errorf("LogLevel = %q, want %q", loaded.LogLevel, s.LogLevel)
+	}
+	if loaded.PersistenceBackend != s.PersistenceBackend {
+		t.Errorf("PersistenceBackend = %q, want %q", loaded.PersistenceBackend, s.PersistenceBackend)
+	}
+	if loaded.MemoryBackend != s.MemoryBackend {
+		t.Errorf("MemoryBackend = %q, want %q", loaded.MemoryBackend, s.MemoryBackend)
 	}
 }
 
@@ -148,6 +162,41 @@ func TestLoadInvalid(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsInvalidBackends(t *testing.T) {
+	tests := []struct {
+		name    string
+		persist string
+		memory  string
+	}{
+		{"empty persistence", "", "mem0"},
+		{"empty memory", "sqlite", ""},
+		{"unknown persistence", "postgres", "mem0"},
+		{"unknown memory", "sqlite", "redis"},
+		{"both empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			raw, _ := json.Marshal(map[string]any{
+				"data_dir":            tmp,
+				"image_tag":           "latest",
+				"backend_port":        8000,
+				"web_port":            3000,
+				"log_level":           "info",
+				"persistence_backend": tt.persist,
+				"memory_backend":      tt.memory,
+			})
+			if err := os.WriteFile(filepath.Join(tmp, stateFileName), raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Load(tmp)
+			if err == nil {
+				t.Errorf("expected validation error for persist=%q memory=%q", tt.persist, tt.memory)
+			}
+		})
+	}
+}
+
 func TestStatePath(t *testing.T) {
 	path := StatePath("/some/dir")
 	if filepath.Base(path) != stateFileName {
@@ -158,14 +207,16 @@ func TestStatePath(t *testing.T) {
 func TestSaveLoadRoundTrip(t *testing.T) {
 	tmp := t.TempDir()
 	original := State{
-		DataDir:     tmp,
-		ImageTag:    "v2.0.0",
-		BackendPort: 8080,
-		WebPort:     3030,
-		Sandbox:     true,
-		DockerSock:  "/custom/docker.sock",
-		LogLevel:    "warn",
-		JWTSecret:   "super-secret-key",
+		DataDir:            tmp,
+		ImageTag:           "v2.0.0",
+		BackendPort:        8080,
+		WebPort:            3030,
+		Sandbox:            true,
+		DockerSock:         "/custom/docker.sock",
+		LogLevel:           "warn",
+		JWTSecret:          "super-secret-key",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
 	}
 
 	if err := Save(original); err != nil {

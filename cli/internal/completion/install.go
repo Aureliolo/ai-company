@@ -273,6 +273,124 @@ func fileContains(path, sub string) (bool, error) {
 	return strings.Contains(string(data), sub), nil
 }
 
+// Uninstall removes shell completion snippets and generated files.
+func Uninstall(ctx context.Context, shell ShellType) error {
+	switch shell {
+	case Bash:
+		return uninstallBash()
+	case Zsh:
+		return uninstallZsh()
+	case Fish:
+		return uninstallFish()
+	case PowerShell:
+		return uninstallPowerShell(ctx)
+	default:
+		return fmt.Errorf("unsupported shell: %s", shell)
+	}
+}
+
+func uninstallBash() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	return removeMarkerBlock(filepath.Join(home, ".bashrc"))
+}
+
+func uninstallZsh() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	// Remove completion function file.
+	compFile := filepath.Join(home, ".zsh", "completion", "_synthorg")
+	if err := os.Remove(compFile); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("removing completion file: %w", err)
+	}
+	// Remove fpath snippet from .zshrc.
+	return removeMarkerBlock(filepath.Join(home, ".zshrc"))
+}
+
+func uninstallFish() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	compFile := filepath.Join(home, ".config", "fish", "completions", "synthorg.fish")
+	if err := os.Remove(compFile); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("removing completion file: %w", err)
+	}
+	return nil
+}
+
+func uninstallPowerShell(ctx context.Context) error {
+	profile, err := powershellProfilePath(ctx)
+	if err != nil {
+		return err
+	}
+	return removeMarkerBlock(profile)
+}
+
+// maxSnippetLines caps how many non-empty lines after the marker are
+// treated as part of the snippet, preventing unbounded deletion if a
+// user's content follows without a blank-line separator.
+const maxSnippetLines = 5
+
+// removeMarkerBlock removes the first marker block from a shell profile.
+// A block starts at the marker line and includes up to maxSnippetLines
+// contiguous non-empty lines after it, plus the terminating empty line.
+// Only the first occurrence is removed to avoid greedy deletion.
+// The original file permissions are preserved.
+// If the file does not exist or has no marker, this is a no-op.
+func removeMarkerBlock(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", path, err)
+	}
+	content := string(data)
+	if !strings.Contains(content, marker) {
+		return nil
+	}
+
+	var result []string
+	lines := strings.Split(content, "\n")
+	inBlock := false
+	found := false
+	blockLines := 0
+	for _, line := range lines {
+		if !found && strings.TrimSpace(line) == marker {
+			inBlock = true
+			found = true
+			blockLines = 0
+			continue
+		}
+		if inBlock {
+			if strings.TrimSpace(line) != "" && blockLines < maxSnippetLines {
+				blockLines++
+				continue
+			}
+			// Empty line or cap reached — end the block.
+			inBlock = false
+			if strings.TrimSpace(line) == "" {
+				// Consume the terminating empty line.
+				continue
+			}
+			// Cap reached on a non-empty line — keep it.
+		}
+		result = append(result, line)
+	}
+
+	cleaned := strings.Join(result, "\n")
+	return os.WriteFile(path, []byte(cleaned), info.Mode())
+}
+
 // appendToFile appends content to a file, creating it if needed.
 func appendToFile(path, content string) error {
 	dir := filepath.Dir(path)
