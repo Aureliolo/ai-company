@@ -60,13 +60,14 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// Remove shell completion snippets (after data dir confirmation
-	// so aborting early doesn't leave completions removed).
-	shell := completion.DetectShell()
-	if shell != completion.Unknown {
-		_, _ = fmt.Fprintln(out, "Removing shell completions...")
+	// Remove shell completion snippets for all supported shells
+	// (user may have installed completions for multiple shells).
+	_, _ = fmt.Fprintln(out, "Removing shell completions...")
+	for _, shell := range []completion.ShellType{
+		completion.Bash, completion.Zsh, completion.Fish, completion.PowerShell,
+	} {
 		if err := completion.Uninstall(ctx, shell); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove shell completions: %v\n", err)
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove %s completions: %v\n", shell, err)
 		}
 	}
 
@@ -134,8 +135,11 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 	return removeDataDir(cmd, dir)
 }
 
-// rejectUnsafeDir refuses to remove root, home, UNC share roots, or drive roots.
+// rejectUnsafeDir refuses to remove root, home, relative, UNC share roots, or drive roots.
 func rejectUnsafeDir(dir string) error {
+	if dir == "" || dir == "." || !filepath.IsAbs(dir) {
+		return fmt.Errorf("refusing to remove %q — must be an absolute path", dir)
+	}
 	home, homeErr := os.UserHomeDir()
 	isHomeDir := false
 	if homeErr == nil {

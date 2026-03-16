@@ -27,12 +27,6 @@ var allowedLogLevels = map[string]bool{
 	"error": true,
 }
 
-// allowedPersistenceBackends restricts persistence backend values.
-var allowedPersistenceBackends = map[string]bool{"sqlite": true}
-
-// allowedMemoryBackends restricts memory backend values.
-var allowedMemoryBackends = map[string]bool{"mem0": true}
-
 // Params are the template parameters for compose generation.
 type Params struct {
 	CLIVersion         string
@@ -110,10 +104,10 @@ func validateParams(p Params) error {
 			return fmt.Errorf("docker socket path %q contains unsafe characters", p.DockerSock)
 		}
 	}
-	if !allowedPersistenceBackends[p.PersistenceBackend] {
+	if !config.ValidPersistenceBackends[p.PersistenceBackend] {
 		return fmt.Errorf("invalid persistence backend %q: must be one of sqlite", p.PersistenceBackend)
 	}
-	if !allowedMemoryBackends[p.MemoryBackend] {
+	if !config.ValidMemoryBackends[p.MemoryBackend] {
 		return fmt.Errorf("invalid memory backend %q: must be one of mem0", p.MemoryBackend)
 	}
 	return nil

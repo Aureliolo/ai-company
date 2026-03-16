@@ -331,10 +331,15 @@ func uninstallPowerShell(ctx context.Context) error {
 	return removeMarkerBlock(profile)
 }
 
+// maxSnippetLines caps how many non-empty lines after the marker are
+// treated as part of the snippet, preventing unbounded deletion if a
+// user's content follows without a blank-line separator.
+const maxSnippetLines = 5
+
 // removeMarkerBlock removes the first marker block from a shell profile.
-// A block starts at the marker line and includes all contiguous non-empty
-// lines after it, plus the terminating empty line. Only the first
-// occurrence is removed to avoid greedy deletion of unrelated content.
+// A block starts at the marker line and includes up to maxSnippetLines
+// contiguous non-empty lines after it, plus the terminating empty line.
+// Only the first occurrence is removed to avoid greedy deletion.
 // The original file permissions are preserved.
 // If the file does not exist or has no marker, this is a no-op.
 func removeMarkerBlock(path string) error {
@@ -358,21 +363,26 @@ func removeMarkerBlock(path string) error {
 	lines := strings.Split(content, "\n")
 	inBlock := false
 	found := false
+	blockLines := 0
 	for _, line := range lines {
 		if !found && strings.TrimSpace(line) == marker {
 			inBlock = true
 			found = true
+			blockLines = 0
 			continue
 		}
 		if inBlock {
-			// Skip non-empty lines that are part of the snippet.
-			if strings.TrimSpace(line) != "" {
+			if strings.TrimSpace(line) != "" && blockLines < maxSnippetLines {
+				blockLines++
 				continue
 			}
-			// Empty line terminates the block and is consumed
-			// (the snippet's trailing newline produced it).
+			// Empty line or cap reached — end the block.
 			inBlock = false
-			continue
+			if strings.TrimSpace(line) == "" {
+				// Consume the terminating empty line.
+				continue
+			}
+			// Cap reached on a non-empty line — keep it.
 		}
 		result = append(result, line)
 	}

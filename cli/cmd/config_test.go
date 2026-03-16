@@ -46,14 +46,16 @@ func TestConfigShowNotInitialized(t *testing.T) {
 func TestConfigShowDisplaysFields(t *testing.T) {
 	dir := t.TempDir()
 	state := config.State{
-		DataDir:     dir,
-		ImageTag:    "v1.2.3",
-		BackendPort: 9000,
-		WebPort:     4000,
-		Sandbox:     true,
-		DockerSock:  "/var/run/docker.sock",
-		LogLevel:    "debug",
-		JWTSecret:   "super-secret",
+		DataDir:            dir,
+		ImageTag:           "v1.2.3",
+		BackendPort:        9000,
+		WebPort:            4000,
+		Sandbox:            true,
+		DockerSock:         "/var/run/docker.sock",
+		LogLevel:           "debug",
+		JWTSecret:          "super-secret",
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
 	}
 
 	data, err := json.MarshalIndent(state, "", "  ")

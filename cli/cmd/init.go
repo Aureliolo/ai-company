@@ -132,7 +132,10 @@ func runSetupForm() (setupAnswers, error) {
 		),
 		huh.NewGroup(
 			huh.NewNote().Title("Backends").
-				Description("Persistence: SQLite · Memory: Mem0\n(More options coming soon)"),
+				Description(fmt.Sprintf(
+					"Persistence: %s · Memory: %s\n(More options coming soon)",
+					a.persistenceBackend, a.memoryBackend,
+				)),
 		),
 	)
 
