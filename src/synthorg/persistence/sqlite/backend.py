@@ -52,6 +52,9 @@ from synthorg.persistence.sqlite.repositories import (
     SQLiteMessageRepository,
     SQLiteTaskRepository,
 )
+from synthorg.persistence.sqlite.settings_repo import (
+    SQLiteSettingsRepository,
+)
 from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
@@ -91,6 +94,7 @@ class SQLitePersistenceBackend:
         self._checkpoints: SQLiteCheckpointRepository | None = None
         self._heartbeats: SQLiteHeartbeatRepository | None = None
         self._agent_states: SQLiteAgentStateRepository | None = None
+        self._settings: SQLiteSettingsRepository | None = None
 
     def _clear_state(self) -> None:
         """Reset connection and repository references to ``None``."""
@@ -108,6 +112,7 @@ class SQLitePersistenceBackend:
         self._checkpoints = None
         self._heartbeats = None
         self._agent_states = None
+        self._settings = None
 
     async def connect(self) -> None:
         """Open the SQLite database and configure WAL mode."""
@@ -175,6 +180,7 @@ class SQLitePersistenceBackend:
         self._checkpoints = SQLiteCheckpointRepository(self._db)
         self._heartbeats = SQLiteHeartbeatRepository(self._db)
         self._agent_states = SQLiteAgentStateRepository(self._db)
+        self._settings = SQLiteSettingsRepository(self._db)
 
     async def _cleanup_failed_connect(self, exc: sqlite3.Error | OSError) -> None:
         """Log failure, close partial connection, and raise.
@@ -402,8 +408,17 @@ class SQLitePersistenceBackend:
         """
         return self._require_connected(self._agent_states, "agent_states")
 
+    @property
+    def settings(self) -> SQLiteSettingsRepository:
+        """Repository for namespaced settings persistence.
+
+        Raises:
+            PersistenceConnectionError: If not connected.
+        """
+        return self._require_connected(self._settings, "settings")
+
     async def get_setting(self, key: str) -> str | None:
-        """Retrieve a setting value by key.
+        """Retrieve a setting value by key from the ``_system`` namespace.
 
         Raises:
             PersistenceConnectionError: If not connected.
@@ -414,7 +429,8 @@ class SQLitePersistenceBackend:
             raise PersistenceConnectionError(msg)
         try:
             cursor = await self._db.execute(
-                "SELECT value FROM settings WHERE key = ?", (key,)
+                "SELECT value FROM settings WHERE namespace = '_system' AND key = ?",
+                (key,),
             )
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
@@ -428,7 +444,7 @@ class SQLitePersistenceBackend:
         return str(row[0]) if row else None
 
     async def set_setting(self, key: str, value: str) -> None:
-        """Store a setting value (upsert).
+        """Store a setting value (upsert) in the ``_system`` namespace.
 
         Raises:
             PersistenceConnectionError: If not connected.
@@ -439,9 +455,10 @@ class SQLitePersistenceBackend:
             raise PersistenceConnectionError(msg)
         try:
             await self._db.execute(
-                """\
-INSERT INTO settings (key, value) VALUES (?, ?)
-ON CONFLICT(key) DO UPDATE SET value=excluded.value""",
+                "INSERT INTO settings (namespace, key, value, updated_at) "
+                "VALUES ('_system', ?, ?, datetime('now')) "
+                "ON CONFLICT(namespace, key) DO UPDATE SET "
+                "value=excluded.value, updated_at=excluded.updated_at",
                 (key, value),
             )
             await self._db.commit()

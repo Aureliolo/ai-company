@@ -1,0 +1,174 @@
+"""Unit tests for settings domain models."""
+
+import pytest
+
+from synthorg.settings.enums import (
+    SettingLevel,
+    SettingNamespace,
+    SettingSource,
+    SettingType,
+)
+from synthorg.settings.models import SettingDefinition, SettingEntry, SettingValue
+
+
+@pytest.mark.unit
+class TestSettingDefinition:
+    """Tests for SettingDefinition construction and immutability."""
+
+    def test_minimal_construction(self) -> None:
+        defn = SettingDefinition(
+            namespace=SettingNamespace.BUDGET,
+            key="total_monthly",
+            type=SettingType.FLOAT,
+            description="Monthly budget in USD",
+            group="Limits",
+        )
+        assert defn.namespace == SettingNamespace.BUDGET
+        assert defn.key == "total_monthly"
+        assert defn.type == SettingType.FLOAT
+        assert defn.default is None
+        assert defn.level == SettingLevel.BASIC
+        assert defn.sensitive is False
+        assert defn.restart_required is False
+        assert defn.enum_values == ()
+        assert defn.validator_pattern is None
+        assert defn.min_value is None
+        assert defn.max_value is None
+        assert defn.yaml_path is None
+
+    def test_full_construction(self) -> None:
+        defn = SettingDefinition(
+            namespace=SettingNamespace.SECURITY,
+            key="output_scan_policy_type",
+            type=SettingType.ENUM,
+            default="autonomy_tiered",
+            description="Output scan response policy",
+            group="Output Scanning",
+            level=SettingLevel.ADVANCED,
+            sensitive=False,
+            restart_required=True,
+            enum_values=("redact", "withhold", "log_only", "autonomy_tiered"),
+            validator_pattern=None,
+            min_value=None,
+            max_value=None,
+            yaml_path="security.output_scan_policy_type",
+        )
+        assert defn.enum_values == (
+            "redact",
+            "withhold",
+            "log_only",
+            "autonomy_tiered",
+        )
+        assert defn.restart_required is True
+        assert defn.yaml_path == "security.output_scan_policy_type"
+
+    def test_frozen(self) -> None:
+        defn = SettingDefinition(
+            namespace=SettingNamespace.BUDGET,
+            key="total_monthly",
+            type=SettingType.FLOAT,
+            description="Monthly budget in USD",
+            group="Limits",
+        )
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            defn.key = "changed"  # type: ignore[misc]
+
+    def test_rejects_blank_key(self) -> None:
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            SettingDefinition(
+                namespace=SettingNamespace.BUDGET,
+                key="   ",
+                type=SettingType.FLOAT,
+                description="Monthly budget",
+                group="Limits",
+            )
+
+    def test_rejects_empty_description(self) -> None:
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            SettingDefinition(
+                namespace=SettingNamespace.BUDGET,
+                key="total_monthly",
+                type=SettingType.FLOAT,
+                description="",
+                group="Limits",
+            )
+
+
+@pytest.mark.unit
+class TestSettingValue:
+    """Tests for SettingValue construction and immutability."""
+
+    def test_construction(self) -> None:
+        val = SettingValue(
+            namespace=SettingNamespace.BUDGET,
+            key="total_monthly",
+            value="100.0",
+            source=SettingSource.DATABASE,
+            updated_at="2026-03-16T10:00:00Z",
+        )
+        assert val.namespace == SettingNamespace.BUDGET
+        assert val.key == "total_monthly"
+        assert val.value == "100.0"
+        assert val.source == SettingSource.DATABASE
+        assert val.updated_at == "2026-03-16T10:00:00Z"
+
+    def test_default_updated_at_is_none(self) -> None:
+        val = SettingValue(
+            namespace=SettingNamespace.BUDGET,
+            key="total_monthly",
+            value="100.0",
+            source=SettingSource.DEFAULT,
+        )
+        assert val.updated_at is None
+
+    def test_frozen(self) -> None:
+        val = SettingValue(
+            namespace=SettingNamespace.BUDGET,
+            key="total_monthly",
+            value="100.0",
+            source=SettingSource.DEFAULT,
+        )
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            val.value = "200.0"  # type: ignore[misc]
+
+
+@pytest.mark.unit
+class TestSettingEntry:
+    """Tests for SettingEntry construction."""
+
+    def test_construction(self) -> None:
+        defn = SettingDefinition(
+            namespace=SettingNamespace.BUDGET,
+            key="total_monthly",
+            type=SettingType.FLOAT,
+            default="100.0",
+            description="Monthly budget in USD",
+            group="Limits",
+        )
+        entry = SettingEntry(
+            definition=defn,
+            value="200.0",
+            source=SettingSource.DATABASE,
+            updated_at="2026-03-16T10:00:00Z",
+        )
+        assert entry.definition.key == "total_monthly"
+        assert entry.value == "200.0"
+        assert entry.source == SettingSource.DATABASE
+        assert entry.updated_at == "2026-03-16T10:00:00Z"
+
+    def test_frozen(self) -> None:
+        defn = SettingDefinition(
+            namespace=SettingNamespace.BUDGET,
+            key="total_monthly",
+            type=SettingType.FLOAT,
+            default="100.0",
+            description="Monthly budget in USD",
+            group="Limits",
+        )
+        entry = SettingEntry(
+            definition=defn,
+            value="200.0",
+            source=SettingSource.DEFAULT,
+        )
+        with pytest.raises(Exception):  # noqa: B017, PT011
+            entry.value = "300.0"  # type: ignore[misc]

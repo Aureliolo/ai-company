@@ -441,6 +441,7 @@ def create_app(  # noqa: PLR0913
     meeting_orchestrator: MeetingOrchestrator | None = None,
     meeting_scheduler: MeetingScheduler | None = None,
     performance_tracker: PerformanceTracker | None = None,
+    settings_service: Any | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
@@ -465,6 +466,7 @@ def create_app(  # noqa: PLR0913
         meeting_orchestrator: Meeting orchestrator.
         meeting_scheduler: Meeting scheduler.
         performance_tracker: Performance tracking service.
+        settings_service: Settings service for runtime config.
 
     Returns:
         Configured Litestar application.
@@ -533,6 +535,7 @@ def create_app(  # noqa: PLR0913
         meeting_orchestrator=meeting_orchestrator,
         meeting_scheduler=meeting_scheduler,
         performance_tracker=performance_tracker,
+        settings_service=settings_service,
         startup_time=time.monotonic(),
     )
 

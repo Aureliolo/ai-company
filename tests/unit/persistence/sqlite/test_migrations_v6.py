@@ -17,8 +17,8 @@ pytestmark = pytest.mark.timeout(30)
 
 @pytest.mark.unit
 class TestSchemaVersion:
-    def test_schema_version_is_eight(self) -> None:
-        assert SCHEMA_VERSION == 8
+    def test_schema_version_is_nine(self) -> None:
+        assert SCHEMA_VERSION == 9
 
 
 @pytest.mark.unit

@@ -23,7 +23,7 @@ from synthorg.persistence.errors import MigrationError
 logger = get_logger(__name__)
 
 # Current schema version — bump when adding new migrations.
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 _V1_STATEMENTS: Sequence[str] = (
     # ── Tasks ─────────────────────────────────────────────
@@ -442,6 +442,62 @@ async def _apply_v8(db: aiosqlite.Connection) -> None:
         await db.execute(stmt)
 
 
+_V9_NEW_SETTINGS_DDL: str = """\
+CREATE TABLE IF NOT EXISTS settings_v9 (
+    namespace TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (namespace, key)
+)"""
+
+_V9_COPY_ROWS: str = """\
+INSERT OR IGNORE INTO settings_v9 (namespace, key, value, updated_at)
+SELECT '_system', key, value, datetime('now') FROM {source}"""
+
+
+async def _apply_v9(db: aiosqlite.Connection) -> None:
+    """Apply schema v9: evolve settings to namespaced composite key.
+
+    Migrates the V5 ``settings(key, value)`` table to
+    ``settings(namespace, key, value, updated_at)`` with a composite
+    primary key.  Existing rows go to the ``_system`` namespace.
+
+    Crash-safe: follows the same rename pattern as V7.
+    """
+    has_original = await _table_exists(db, "settings")
+    has_old = await _table_exists(db, "settings_old")
+
+    # Step 1: create new table (idempotent).
+    await db.execute(_V9_NEW_SETTINGS_DDL)
+
+    # Step 2: copy rows from surviving source.
+    if has_original:
+        await db.execute(_V9_COPY_ROWS.format(source="settings"))
+    elif has_old:
+        await db.execute(_V9_COPY_ROWS.format(source="settings_old"))
+
+    # Step 3: rename original → _old.
+    if has_original and not has_old:
+        await db.execute("ALTER TABLE settings RENAME TO settings_old")
+
+    # Step 4: ensure settings exists.
+    has_current = await _table_exists(db, "settings")
+    if await _table_exists(db, "settings_v9"):
+        if has_current:
+            await db.execute("DROP TABLE settings_v9")
+        else:
+            await db.execute(
+                "ALTER TABLE settings_v9 RENAME TO settings",
+            )
+
+    # Step 5: clean up + index.
+    await db.execute("DROP TABLE IF EXISTS settings_old")
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_settings_namespace ON settings(namespace)",
+    )
+
+
 # Ordered list of (target_version, migration_function) pairs. Each migration
 # is applied when the current schema version is below its target version.
 _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
@@ -453,6 +509,7 @@ _MIGRATIONS: list[tuple[int, _MigrateFn]] = [
     (6, _apply_v6),
     (7, _apply_v7),
     (8, _apply_v8),
+    (9, _apply_v9),
 ]
 
 
