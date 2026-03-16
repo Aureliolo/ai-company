@@ -284,12 +284,14 @@ def _accumulate_rrf_scores(
 
     for ranked_list in ranked_lists:
         seen_in_list: set[str] = set()
-        for rank, entry in enumerate(ranked_list, start=1):
+        unique_rank = 0
+        for entry in ranked_list:
             if entry.id in seen_in_list:
                 duplicate_count += 1
                 continue
             seen_in_list.add(entry.id)
-            scores[entry.id] = scores.get(entry.id, 0.0) + 1.0 / (k + rank)
+            unique_rank += 1
+            scores[entry.id] = scores.get(entry.id, 0.0) + 1.0 / (k + unique_rank)
             if entry.id not in entries:
                 entries[entry.id] = entry
 
