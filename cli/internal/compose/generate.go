@@ -104,10 +104,10 @@ func validateParams(p Params) error {
 			return fmt.Errorf("docker socket path %q contains unsafe characters", p.DockerSock)
 		}
 	}
-	if !config.ValidPersistenceBackends[p.PersistenceBackend] {
+	if !config.IsValidPersistenceBackend(p.PersistenceBackend) {
 		return fmt.Errorf("invalid persistence backend %q: must be one of sqlite", p.PersistenceBackend)
 	}
-	if !config.ValidMemoryBackends[p.MemoryBackend] {
+	if !config.IsValidMemoryBackend(p.MemoryBackend) {
 		return fmt.Errorf("invalid memory backend %q: must be one of mem0", p.MemoryBackend)
 	}
 	return nil

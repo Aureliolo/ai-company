@@ -87,11 +87,18 @@ func Load(dataDir string) (State, error) {
 	return s, nil
 }
 
-// ValidPersistenceBackends are the allowed persistence backend values.
-var ValidPersistenceBackends = map[string]bool{"sqlite": true}
+var validPersistenceBackends = map[string]bool{"sqlite": true}
+var validMemoryBackends = map[string]bool{"mem0": true}
 
-// ValidMemoryBackends are the allowed memory backend values.
-var ValidMemoryBackends = map[string]bool{"mem0": true}
+// IsValidPersistenceBackend reports whether name is a known persistence backend.
+func IsValidPersistenceBackend(name string) bool {
+	return validPersistenceBackends[name]
+}
+
+// IsValidMemoryBackend reports whether name is a known memory backend.
+func IsValidMemoryBackend(name string) bool {
+	return validMemoryBackends[name]
+}
 
 // validate checks that loaded config values are within safe ranges.
 func (s State) validate() error {
@@ -101,10 +108,10 @@ func (s State) validate() error {
 	if s.WebPort < 1 || s.WebPort > 65535 {
 		return fmt.Errorf("invalid web_port %d: must be 1-65535", s.WebPort)
 	}
-	if !ValidPersistenceBackends[s.PersistenceBackend] {
+	if !IsValidPersistenceBackend(s.PersistenceBackend) {
 		return fmt.Errorf("invalid persistence_backend %q: must be one of sqlite", s.PersistenceBackend)
 	}
-	if !ValidMemoryBackends[s.MemoryBackend] {
+	if !IsValidMemoryBackend(s.MemoryBackend) {
 		return fmt.Errorf("invalid memory_backend %q: must be one of mem0", s.MemoryBackend)
 	}
 	return nil

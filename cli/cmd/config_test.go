@@ -83,6 +83,8 @@ func TestConfigShowDisplaysFields(t *testing.T) {
 		"debug",
 		"/var/run/docker.sock",
 		"****",
+		"sqlite",
+		"mem0",
 	} {
 		if !bytes.Contains([]byte(out), []byte(want)) {
 			t.Errorf("expected %q in output, got: %s", want, out)
