@@ -63,50 +63,57 @@ func TestVerifyProvenanceNoReferrers(t *testing.T) {
 }
 
 func TestValidateSLSAPredicate(t *testing.T) {
-	statement := inTotoStatement{
-		PredicateType: "https://slsa.dev/provenance/v1",
-	}
-	statementJSON, _ := json.Marshal(statement)
-
-	envelope := dsseEnvelope{
-		PayloadType: DSSEPayloadType,
-		Payload:     base64.StdEncoding.EncodeToString(statementJSON),
-	}
-
-	if err := validateSLSAPredicate(envelope); err != nil {
-		t.Fatalf("validateSLSAPredicate() error: %v", err)
-	}
-}
-
-func TestValidateSLSAPredicateWrongType(t *testing.T) {
-	statement := inTotoStatement{
-		PredicateType: "https://example.com/wrong-type",
-	}
-	statementJSON, _ := json.Marshal(statement)
-
-	envelope := dsseEnvelope{
-		PayloadType: DSSEPayloadType,
-		Payload:     base64.StdEncoding.EncodeToString(statementJSON),
-	}
-
-	err := validateSLSAPredicate(envelope)
-	if err == nil {
-		t.Fatal("expected error for wrong predicate type")
-	}
-	if !strings.Contains(err.Error(), "unexpected predicate type") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestValidateSLSAPredicateWrongPayloadType(t *testing.T) {
-	envelope := dsseEnvelope{
-		PayloadType: "application/octet-stream",
-		Payload:     base64.StdEncoding.EncodeToString([]byte("{}")),
+	tests := []struct {
+		name          string
+		predicateType string
+		payloadType   string
+		wantErr       bool
+		errContains   string
+	}{
+		{
+			name:          "valid SLSA v1",
+			predicateType: "https://slsa.dev/provenance/v1",
+			payloadType:   DSSEPayloadType,
+		},
+		{
+			name:          "wrong predicate type",
+			predicateType: "https://example.com/wrong-type",
+			payloadType:   DSSEPayloadType,
+			wantErr:       true,
+			errContains:   "unexpected predicate type",
+		},
+		{
+			name:          "wrong payload type",
+			predicateType: "https://slsa.dev/provenance/v1",
+			payloadType:   "application/octet-stream",
+			wantErr:       true,
+			errContains:   "unexpected DSSE payload type",
+		},
 	}
 
-	err := validateSLSAPredicate(envelope)
-	if err == nil {
-		t.Fatal("expected error for wrong payload type")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			statement := inTotoStatement{PredicateType: tt.predicateType}
+			statementJSON, err := json.Marshal(statement)
+			if err != nil {
+				t.Fatalf("failed to marshal statement: %v", err)
+			}
+
+			envelope := dsseEnvelope{
+				PayloadType: tt.payloadType,
+				Payload:     base64.StdEncoding.EncodeToString(statementJSON),
+			}
+
+			err = validateSLSAPredicate(envelope)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("validateSLSAPredicate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.errContains != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("error %q should contain %q", err.Error(), tt.errContains)
+				}
+			}
+		})
 	}
 }
 

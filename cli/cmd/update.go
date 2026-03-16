@@ -260,7 +260,9 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 		Output: out,
 	})
 	if err != nil {
-		errOut.Hint("Use --skip-verify for air-gapped environments")
+		if isTransportError(err) {
+			errOut.Hint("Use --skip-verify for air-gapped environments")
+		}
 		return nil, fmt.Errorf("image verification failed: %w", err)
 	}
 	pins, err := digestPinMap(results)

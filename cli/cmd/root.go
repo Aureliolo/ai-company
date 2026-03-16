@@ -2,7 +2,10 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,6 +71,31 @@ func isInteractive() bool {
 		return false
 	}
 	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// isTransportError returns true when err is caused by a network/transport
+// problem (DNS failure, connection refused, timeout) rather than a
+// cryptographic verification failure. Used to conditionally suggest
+// --skip-verify only when the issue is connectivity, not a tampered image.
+func isTransportError(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	var netErr *net.OpError
+	if errors.As(err, &netErr) {
+		return true
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+	// Catch wrapped "connection refused", "no such host", etc.
+	msg := err.Error()
+	return strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "no such host") ||
+		strings.Contains(msg, "i/o timeout") ||
+		strings.Contains(msg, "TLS handshake timeout") ||
+		strings.Contains(msg, "fetching sigstore trusted root")
 }
 
 // Execute runs the root command.

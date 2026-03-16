@@ -110,7 +110,9 @@ func verifyAndPinImages(ctx context.Context, cmd *cobra.Command, state config.St
 		Output: cmd.OutOrStdout(),
 	})
 	if err != nil {
-		errOut.Hint("Use --skip-verify for air-gapped environments")
+		if isTransportError(err) {
+			errOut.Hint("Use --skip-verify for air-gapped environments")
+		}
 		return fmt.Errorf("image verification failed: %w", err)
 	}
 
@@ -132,6 +134,9 @@ func verifyAndPinImages(ctx context.Context, cmd *cobra.Command, state config.St
 
 // writeDigestPinnedCompose generates and writes a compose file with digest-pinned
 // image references. Shared by start.go and update.go verification flows.
+//
+// Uses atomic write (temp file + rename) to prevent a partial write from
+// corrupting the compose file if the process is interrupted.
 func writeDigestPinnedCompose(state config.State, digestPins map[string]string, safeDir, cliVersion string) error {
 	params := compose.ParamsFromState(state)
 	params.CLIVersion = cliVersion
@@ -141,10 +146,47 @@ func writeDigestPinnedCompose(state config.State, digestPins map[string]string, 
 	if err != nil {
 		return fmt.Errorf("generating compose file: %w", err)
 	}
-	composePath := filepath.Join(safeDir, "compose.yml")
-	if err := os.WriteFile(composePath, composeYAML, 0o600); err != nil {
+
+	return atomicWriteFile(filepath.Join(safeDir, "compose.yml"), composeYAML, safeDir)
+}
+
+// atomicWriteFile writes data to targetPath via a temp file + rename to prevent
+// partial writes on crash. tmpDir must be on the same filesystem as targetPath.
+func atomicWriteFile(targetPath string, data []byte, tmpDir string) error {
+	tmp, err := os.CreateTemp(tmpDir, ".compose-*.yml.tmp")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+
+	// Clean up temp file on any error path.
+	defer func() {
+		if tmpPath != "" {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
 		return fmt.Errorf("writing compose file: %w", err)
 	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("syncing compose file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("closing compose file: %w", err)
+	}
+
+	// Set permissions before rename so the target is never world-readable.
+	if err := os.Chmod(tmpPath, 0o600); err != nil {
+		return fmt.Errorf("setting compose file permissions: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, targetPath); err != nil {
+		return fmt.Errorf("replacing compose file: %w", err)
+	}
+	tmpPath = "" // prevent deferred removal of the now-renamed file
 	return nil
 }
 
