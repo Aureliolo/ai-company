@@ -26,4 +26,4 @@ WORKDIR /workspace
 
 USER sandbox
 
-CMD ["bash"]
+CMD ["sleep", "infinity"]
