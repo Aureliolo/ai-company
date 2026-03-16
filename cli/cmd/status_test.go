@@ -68,3 +68,24 @@ invalid json line
 		t.Errorf("first container service = %q", containers[0].Service)
 	}
 }
+
+func TestFormatUptime(t *testing.T) {
+	tests := []struct {
+		seconds float64
+		want    string
+	}{
+		{0, "0s"},
+		{45, "45s"},
+		{90, "1m 30s"},
+		{3600, "1h 0m"},
+		{12991, "3h 36m"},
+		{86400, "24h 0m"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := formatUptime(tt.seconds); got != tt.want {
+				t.Errorf("formatUptime(%v) = %q, want %q", tt.seconds, got, tt.want)
+			}
+		})
+	}
+}

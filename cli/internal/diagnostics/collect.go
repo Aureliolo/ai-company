@@ -124,7 +124,17 @@ func collectHealth(ctx context.Context, r *Report, backendPort int) {
 		r.Errors = append(r.Errors, fmt.Sprintf("health read: %v", readErr))
 	}
 	r.HealthStatus = fmt.Sprintf("%d", resp.StatusCode)
-	r.HealthBody = truncate(string(body), 1000)
+	// Pretty-print JSON health body for readability.
+	var parsed map[string]any
+	if json.Unmarshal(body, &parsed) == nil {
+		if pretty, err := json.MarshalIndent(parsed, "", "  "); err == nil {
+			r.HealthBody = truncate(string(pretty), 2000)
+		} else {
+			r.HealthBody = truncate(string(body), 1000)
+		}
+	} else {
+		r.HealthBody = truncate(string(body), 1000)
+	}
 }
 
 func collectConfig(r *Report, state config.State) {

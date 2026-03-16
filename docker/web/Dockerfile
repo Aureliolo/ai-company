@@ -36,4 +36,4 @@ COPY --from=builder /app/dist/ /usr/share/nginx/html/
 EXPOSE 8080
 
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=5s \
-    CMD ["wget", "--spider", "--quiet", "http://localhost:8080/"]
+    CMD ["wget", "--spider", "--quiet", "http://127.0.0.1:8080/"]

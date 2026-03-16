@@ -245,7 +245,7 @@ func renderHealthSummary(out *ui.UI, body []byte, statusCode int) {
 	}
 	hr := envelope.Data
 	if statusCode >= 200 && statusCode < 300 {
-		out.Success(fmt.Sprintf("Backend healthy (v%s, uptime %.0fs)", hr.Version, hr.Uptime))
+		out.Success(fmt.Sprintf("Backend healthy (v%s, uptime %s)", hr.Version, formatUptime(hr.Uptime)))
 		persistLabel := "not configured"
 		if hr.Persistence != nil {
 			persistLabel = fmt.Sprintf("%v", hr.Persistence)
@@ -254,6 +254,20 @@ func renderHealthSummary(out *ui.UI, body []byte, statusCode int) {
 	} else {
 		out.Error(fmt.Sprintf("Backend unhealthy (HTTP %d)", statusCode))
 	}
+}
+
+// formatUptime converts seconds to a human-readable duration like "3h 36m".
+func formatUptime(seconds float64) string {
+	d := time.Duration(seconds) * time.Second
+	h := int(d.Hours())
+	m := int(d.Minutes()) % 60
+	if h > 0 {
+		return fmt.Sprintf("%dh %dm", h, m)
+	}
+	if m > 0 {
+		return fmt.Sprintf("%dm %ds", m, int(d.Seconds())%60)
+	}
+	return fmt.Sprintf("%ds", int(d.Seconds()))
 }
 
 func printLinks(out *ui.UI, state config.State) {
