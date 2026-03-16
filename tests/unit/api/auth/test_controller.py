@@ -32,7 +32,7 @@ class TestSetup:
         assert response.status_code == 201
         data = response.json()["data"]
         assert "token" in data
-        assert data["must_change_password"] is True
+        assert data["must_change_password"] is False
         assert data["expires_in"] > 0
 
     def test_setup_409_when_users_exist(

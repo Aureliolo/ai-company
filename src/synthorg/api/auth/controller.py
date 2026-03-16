@@ -234,7 +234,7 @@ class AuthController(Controller):
             username=data.username,
             password_hash=password_hash,
             role=HumanRole.CEO,
-            must_change_password=True,
+            must_change_password=False,
             created_at=now,
             updated_at=now,
         )
