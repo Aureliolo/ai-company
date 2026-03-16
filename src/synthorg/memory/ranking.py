@@ -323,19 +323,15 @@ def fuse_ranked_lists(
     duplicate_count = 0
 
     for ranked_list in ranked_lists:
+        seen_in_list: set[str] = set()
         for rank, entry in enumerate(ranked_list, start=1):
+            if entry.id in seen_in_list:
+                duplicate_count += 1
+                continue
+            seen_in_list.add(entry.id)
             scores[entry.id] = scores.get(entry.id, 0.0) + 1.0 / (k + rank)
             if entry.id not in entries:
                 entries[entry.id] = entry
-            else:
-                duplicate_count += 1
-
-    if duplicate_count:
-        logger.debug(
-            MEMORY_RRF_FUSION_COMPLETE,
-            duplicate_ids_merged=duplicate_count,
-            unique_entries=len(entries),
-        )
 
     if not entries:
         logger.debug(
@@ -343,6 +339,7 @@ def fuse_ranked_lists(
             num_lists=len(ranked_lists),
             unique_entries=0,
             after_truncation=0,
+            duplicate_ids_skipped=duplicate_count,
             k=k,
         )
         return ()
@@ -357,6 +354,7 @@ def fuse_ranked_lists(
         num_lists=len(ranked_lists),
         unique_entries=len(entries),
         after_truncation=len(result),
+        duplicate_ids_skipped=duplicate_count,
         k=k,
     )
 

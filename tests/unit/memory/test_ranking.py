@@ -546,7 +546,7 @@ class TestFuseRankedLists:
         result = fuse_ranked_lists(((entry,),))
         assert result[0].is_shared is False
 
-    def test_duplicate_id_first_occurrence_wins(self) -> None:
+    def test_duplicate_id_across_lists_first_entry_wins(self) -> None:
         """When same ID appears in multiple lists, first MemoryEntry is kept."""
         now = datetime.now(UTC)
         first = _make_entry(entry_id="dup", relevance_score=0.9, created_at=now)
@@ -554,6 +554,19 @@ class TestFuseRankedLists:
         result = fuse_ranked_lists(((first,), (second,)))
         assert len(result) == 1
         assert result[0].relevance_score == pytest.approx(0.9)
+
+    def test_intra_list_duplicate_id_skipped(self) -> None:
+        """Same ID within one list contributes only one rank score."""
+        now = datetime.now(UTC)
+        a = _make_entry(entry_id="a", created_at=now)
+        a_dup = _make_entry(entry_id="a", created_at=now)
+        b = _make_entry(entry_id="b", created_at=now)
+        # List has [a, b, a_dup] — a_dup at rank 3 should be skipped
+        # a gets 1/(k+1), b gets 1/(k+2), a_dup is ignored
+        result = fuse_ranked_lists(((a, b, a_dup),))
+        assert len(result) == 2
+        assert result[0].entry.id == "a"
+        assert result[1].entry.id == "b"
 
     def test_exact_rrf_scores(self) -> None:
         """Verify exact normalized RRF scores with known k=60."""
