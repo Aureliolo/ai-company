@@ -219,19 +219,11 @@ class LlmCalibrationSampler:
             return None
         return round(sum(r.drift for r in records) / len(records), 4)
 
-    async def _call_llm(
-        self,
-        record: CollaborationMetricRecord,
-    ) -> tuple[float, str, float]:
-        """Call the LLM to evaluate a collaboration interaction.
+    def _build_prompt(self, record: CollaborationMetricRecord) -> str:
+        """Build the LLM evaluation prompt from a metric record.
 
-        Returns:
-            Tuple of (score, rationale, cost_usd).
-
-        Raises:
-            ValueError: If the LLM response is empty, cannot be parsed
-                (missing keys, malformed JSON), or contains an
-                out-of-range score.
+        Escapes user-controlled text and replaces ``None`` metric
+        values with ``"not observed"`` for clearer LLM context.
         """
 
         def _display(val: object) -> str:
@@ -243,7 +235,7 @@ class LlmCalibrationSampler:
             str(record.interaction_summary).replace("{", "{{").replace("}", "}}")
         )
 
-        prompt = _SYSTEM_PROMPT.format(
+        return _SYSTEM_PROMPT.format(
             delegation_success=_display(record.delegation_success),
             delegation_response_seconds=_display(
                 record.delegation_response_seconds,
@@ -256,6 +248,81 @@ class LlmCalibrationSampler:
             handoff_completeness=_display(record.handoff_completeness),
             interaction_summary=safe_summary,
         )
+
+    def _parse_llm_response(
+        self,
+        raw_content: str,
+        record: CollaborationMetricRecord,
+    ) -> tuple[float, str]:
+        """Parse and validate the LLM JSON response.
+
+        Args:
+            raw_content: Raw LLM response text.
+            record: Source record (for log context on failure).
+
+        Returns:
+            Tuple of (score, rationale).
+
+        Raises:
+            ValueError: On parse failure, out-of-range score, or
+                blank rationale.
+        """
+        try:
+            parsed = json.loads(raw_content)
+            score = float(parsed["score"])
+            rationale = str(parsed["rationale"])[:2048].strip()
+        except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            logger.warning(
+                PERF_LLM_SAMPLE_FAILED,
+                agent_id=record.agent_id,
+                record_id=record.id,
+                reason="parse_error",
+                raw_content=raw_content[:500],
+            )
+            msg = f"Failed to parse LLM response: {exc}"
+            raise ValueError(msg) from exc
+
+        max_score = 10.0
+        if not (0.0 <= score <= max_score):
+            logger.warning(
+                PERF_LLM_SAMPLE_FAILED,
+                agent_id=record.agent_id,
+                record_id=record.id,
+                reason="out_of_range",
+                llm_score=score,
+                raw_content=raw_content[:500],
+            )
+            msg = f"LLM score {score} outside valid range [0, 10]"
+            raise ValueError(msg)
+
+        if not rationale:
+            logger.warning(
+                PERF_LLM_SAMPLE_FAILED,
+                agent_id=record.agent_id,
+                record_id=record.id,
+                reason="blank_rationale",
+                raw_content=raw_content[:500],
+            )
+            msg = "LLM returned blank rationale"
+            raise ValueError(msg)
+
+        return score, rationale
+
+    async def _call_llm(
+        self,
+        record: CollaborationMetricRecord,
+    ) -> tuple[float, str, float]:
+        """Call the LLM and return parsed evaluation results.
+
+        Returns:
+            Tuple of (score, rationale, cost_usd).
+
+        Raises:
+            ValueError: If the LLM response is empty, cannot be parsed
+                (missing keys, malformed JSON), contains an
+                out-of-range score, or has a blank rationale.
+        """
+        prompt = self._build_prompt(record)
 
         response = await self._provider.complete(
             messages=[
@@ -278,34 +345,10 @@ class LlmCalibrationSampler:
             msg = "LLM returned no content"
             raise ValueError(msg)
 
-        try:
-            parsed = json.loads(response.content)
-            score = float(parsed["score"])
-            rationale = str(parsed["rationale"])[:2048]
-        except (json.JSONDecodeError, KeyError, TypeError) as exc:
-            logger.warning(
-                PERF_LLM_SAMPLE_FAILED,
-                agent_id=record.agent_id,
-                record_id=record.id,
-                reason="parse_error",
-                raw_content=response.content[:500],
-            )
-            msg = f"Failed to parse LLM response: {exc}"
-            raise ValueError(msg) from exc
-
-        max_score = 10.0
-        if not (0.0 <= score <= max_score):
-            logger.warning(
-                PERF_LLM_SAMPLE_FAILED,
-                agent_id=record.agent_id,
-                record_id=record.id,
-                reason="out_of_range",
-                llm_score=score,
-                raw_content=response.content[:500],
-            )
-            msg = f"LLM score {score} outside valid range [0, 10]"
-            raise ValueError(msg)
-
+        score, rationale = self._parse_llm_response(
+            response.content,
+            record,
+        )
         return score, rationale, response.usage.cost_usd
 
     def _prune_expired(self) -> None:

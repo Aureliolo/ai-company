@@ -175,11 +175,11 @@ class TestClearOverride:
     """Clearing overrides."""
 
     def test_clear_existing(self) -> None:
-        """Clearing an existing override returns True and removes it."""
+        """Clearing an active override returns True and removes it."""
         store = CollaborationOverrideStore()
         store.set_override(make_collaboration_override(applied_at=NOW))
 
-        removed = store.clear_override(NotBlankStr("agent-001"))
+        removed = store.clear_override(NotBlankStr("agent-001"), now=NOW)
 
         assert removed is True
         assert (
@@ -194,9 +194,25 @@ class TestClearOverride:
         """Clearing a non-existent override returns False."""
         store = CollaborationOverrideStore()
 
-        removed = store.clear_override(NotBlankStr("agent-001"))
+        removed = store.clear_override(NotBlankStr("agent-001"), now=NOW)
 
         assert removed is False
+
+    def test_clear_expired_returns_false(self) -> None:
+        """Clearing an expired override returns False and evicts it."""
+        store = CollaborationOverrideStore()
+        store.set_override(
+            make_collaboration_override(
+                applied_at=NOW - timedelta(hours=2),
+                expires_at=NOW - timedelta(hours=1),
+            ),
+        )
+
+        removed = store.clear_override(NotBlankStr("agent-001"), now=NOW)
+
+        assert removed is False
+        # The expired entry should have been evicted.
+        assert store.list_overrides(include_expired=True) == ()
 
 
 @pytest.mark.unit

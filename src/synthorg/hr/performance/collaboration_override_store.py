@@ -83,23 +83,44 @@ class CollaborationOverrideStore:
 
         return override
 
-    def clear_override(self, agent_id: NotBlankStr) -> bool:
-        """Remove the override for an agent.
+    def clear_override(
+        self,
+        agent_id: NotBlankStr,
+        *,
+        now: AwareDatetime | None = None,
+    ) -> bool:
+        """Remove the active (non-expired) override for an agent.
+
+        Expired overrides are silently evicted and not counted as
+        a successful clear.
 
         Args:
             agent_id: Agent whose override to remove.
+            now: Reference time for expiration check (defaults to UTC now).
 
         Returns:
-            ``True`` if an override was removed, ``False`` otherwise.
+            ``True`` if an active override was removed, ``False``
+            if absent or already expired.
         """
-        removed = self._overrides.pop(str(agent_id), None)
-        if removed is not None:
-            logger.info(
-                PERF_OVERRIDE_CLEARED,
-                agent_id=agent_id,
-            )
-            return True
-        return False
+        agent_key = str(agent_id)
+        override = self._overrides.get(agent_key)
+        if override is None:
+            return False
+
+        if now is None:
+            now = datetime.now(UTC)
+
+        if override.expires_at is not None and override.expires_at <= now:
+            # Silently evict the expired entry.
+            del self._overrides[agent_key]
+            return False
+
+        del self._overrides[agent_key]
+        logger.info(
+            PERF_OVERRIDE_CLEARED,
+            agent_id=agent_id,
+        )
+        return True
 
     def list_overrides(
         self,

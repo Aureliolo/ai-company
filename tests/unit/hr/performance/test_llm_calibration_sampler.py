@@ -243,6 +243,21 @@ class TestSample:
 
         assert result is None
 
+    async def test_blank_rationale_returns_none(self) -> None:
+        """LLM returning whitespace-only rationale produces None."""
+        provider = _make_provider(
+            content='{"score": 7.0, "rationale": "   "}',
+        )
+        sampler = _make_sampler(provider=provider)
+        record = make_collab_metric(
+            recorded_at=NOW,
+            interaction_summary="Some interaction",
+        )
+
+        result = await sampler.sample(record=record, behavioral_score=5.0)
+
+        assert result is None
+
     async def test_record_stored_after_sample(self) -> None:
         """Calibration records are stored for later retrieval."""
         sampler = _make_sampler()
