@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/Aureliolo/synthorg/compare/v0.2.9...v0.3.0) (2026-03-16)
+
+
+### Features
+
+* **cli:** prettify status output with table, links, and --json flag ([#490](https://github.com/Aureliolo/synthorg/issues/490)) ([61fa8af](https://github.com/Aureliolo/synthorg/commit/61fa8afe55667a34eca3b53aa5604e12f15f36cd))
+
+
+### Bug Fixes
+
+* **api:** don't require password change after self-service setup ([#488](https://github.com/Aureliolo/synthorg/issues/488)) ([ba13e04](https://github.com/Aureliolo/synthorg/commit/ba13e041969f71ab4dd6925a9487c91dc94776f9))
+
 ## [0.2.9](https://github.com/Aureliolo/synthorg/compare/v0.2.8...v0.2.9) (2026-03-16)
 
 
