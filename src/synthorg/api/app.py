@@ -5,6 +5,7 @@ controllers, middleware, exception handlers, plugins, and
 lifecycle hooks (startup/shutdown).
 """
 
+import os
 import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -53,6 +54,8 @@ from synthorg.observability.events.api import (
     API_APP_STARTUP,
     API_APPROVAL_PUBLISH_FAILED,
 )
+from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
+from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 
 if TYPE_CHECKING:
@@ -463,6 +466,21 @@ def create_app(  # noqa: PLR0913
     """
     effective_config = config or RootConfig(company_name="default")
     api_config = effective_config.api
+
+    # Auto-wire persistence from SYNTHORG_DB_PATH env var (set by CLI
+    # compose template).  The startup lifecycle handles connect() +
+    # migrate() + auth service creation.
+    if persistence is None:
+        db_path = os.environ.get("SYNTHORG_DB_PATH")
+        if db_path:
+            persistence = create_backend(
+                PersistenceConfig(sqlite=SQLiteConfig(path=db_path)),
+            )
+            logger.info(
+                API_APP_STARTUP,
+                note="Auto-wired SQLite persistence from SYNTHORG_DB_PATH",
+                db_path=db_path,
+            )
 
     if (
         persistence is None
