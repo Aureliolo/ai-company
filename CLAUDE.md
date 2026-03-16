@@ -39,7 +39,7 @@ uv run python -m pytest tests/ -m e2e -n auto         # e2e tests only
 uv run python -m pytest tests/ -n auto --cov=synthorg --cov-fail-under=80  # full suite + coverage
 HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n auto -k properties  # property tests (dev profile, 1000 examples)
 uv run pre-commit run --all-files          # all pre-commit hooks
-uv run python scripts/export_openapi.py    # export OpenAPI schema (needed before docs build)
+uv run python scripts/export_openapi.py    # export OpenAPI schema with RFC 9457 error responses (needed before docs build)
 uv run zensical build                      # build docs (output: _site/docs/) — no --strict until zensical/backlog#72
 uv run zensical serve                      # local docs preview (http://127.0.0.1:8000)
 ```
@@ -114,7 +114,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 
 ```text
 src/synthorg/
-  api/            # Litestar REST + WebSocket API (controllers, guards, channels, JWT + API key + WS ticket auth, approval gate integration, coordination endpoint, collaboration endpoint, settings endpoint, RFC 9457 structured errors (ErrorCategory, ErrorCode, ErrorDetail, ProblemDetail, CATEGORY_TITLES, category_title, category_type_uri, content negotiation))
+  api/            # Litestar REST + WebSocket API (controllers, guards, channels, JWT + API key + WS ticket auth, approval gate integration, coordination endpoint, collaboration endpoint, settings endpoint, RFC 9457 structured errors (ErrorCategory, ErrorCode, ErrorDetail, ProblemDetail, CATEGORY_TITLES, category_title, category_type_uri, content negotiation), OpenAPI schema post-processor (inject_rfc9457_responses — dual-format error responses for export))
     auth/         # Authentication subpackage (controller, service, middleware, JWT + API key + WS ticket store, models, config)
   budget/         # Cost tracking, budget enforcement (pre-flight/in-flight checks, auto-downgrade), billing periods, cost tiers, quota/subscription tracking, CFO cost optimization (anomaly detection, efficiency analysis, downgrade recommendations, approval decisions), spending reports, budget errors (BudgetExhaustedError, DailyLimitExceededError, QuotaExhaustedError)
   cli/            # Python CLI module (superseded by top-level cli/ Go binary)

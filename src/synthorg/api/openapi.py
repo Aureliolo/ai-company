@@ -164,8 +164,9 @@ def _build_problem_detail_schema() -> dict[str, Any]:
     inside the OpenAPI ``components.schemas`` section.
 
     Returns:
-        A two-tuple-style dict: the schema itself has ``$defs``
-        stripped and ``$ref`` paths rewritten.
+        JSON Schema dict for ``ProblemDetail`` with ``$defs``
+        stripped and ``$ref`` paths rewritten to resolve under
+        ``#/components/schemas/``.
     """
     raw = ProblemDetail.model_json_schema(mode="serialization")
 
@@ -321,10 +322,36 @@ def _should_inject(
         # Inject on write methods or replace Litestar's incorrect default.
         "BadRequest": is_write or "400" in operation.get("responses", {}),
         "NotFound": has_params,
+        # DELETE is excluded — it's idempotent and conflicts are
+        # a create/update concern in this API's model.
         "Conflict": method in {"post", "put", "patch"},
         "TooManyRequests": not is_public,
     }
     return checks.get(key, False)
+
+
+def _inject_operation_responses(
+    paths: dict[str, Any],
+    response_keys: list[str],
+    status_for_key: dict[str, str],
+) -> None:
+    """Inject error response refs into each operation in *paths*.
+
+    Mutates *paths* in place — the caller is responsible for
+    passing a deep-copied schema.
+    """
+    for path, path_item in paths.items():
+        for method, operation in path_item.items():
+            if not isinstance(operation, dict) or "responses" not in operation:
+                continue
+            op_responses = operation["responses"]
+            for key in response_keys:
+                status_code = status_for_key[key]
+                if not _should_inject(key, path, method, operation):
+                    continue
+                # Always replace 400 (Litestar's default is incorrect).
+                if status_code == "400" or status_code not in op_responses:
+                    op_responses[status_code] = _response_ref(key)
 
 
 # ── Main function ─────────────────────────────────────────────
@@ -379,22 +406,9 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
         )
         response_keys.append(key)
 
-    # 3. Inject into operations.
+    # 3. Inject error response refs into individual operations.
     status_for_key = {key: str(status) for status, key, *_ in _ERROR_RESPONSES}
-
-    for path, path_item in result.get("paths", {}).items():
-        for method, operation in path_item.items():
-            if not isinstance(operation, dict) or "responses" not in operation:
-                continue
-            op_responses = operation["responses"]
-
-            for key in response_keys:
-                status_code = status_for_key[key]
-                if not _should_inject(key, path, method, operation):
-                    continue
-                # Always replace 400 (Litestar's default is incorrect).
-                if status_code == "400" or status_code not in op_responses:
-                    op_responses[status_code] = _response_ref(key)
+    _inject_operation_responses(result.get("paths", {}), response_keys, status_for_key)
 
     # 4. Update info.description.
     result.setdefault("info", {})["description"] = _INFO_DESCRIPTION

@@ -402,6 +402,41 @@ class TestOperationInjection:
         responses = result["paths"]["/api/v1/health"]["get"]["responses"]
         assert "429" not in responses
 
+    def test_public_skip_503(self, base_schema: dict[str, Any]) -> None:
+        result = inject_rfc9457_responses(base_schema)
+        responses = result["paths"]["/api/v1/health"]["get"]["responses"]
+        assert "503" not in responses
+
+    def test_delete_skip_409(self, base_schema: dict[str, Any]) -> None:
+        """DELETE is idempotent — conflicts are a create/update concern."""
+        result = inject_rfc9457_responses(base_schema)
+        responses = result["paths"]["/api/v1/tasks/{task_id}"]["delete"]["responses"]
+        assert "409" not in responses
+
+    @pytest.mark.parametrize("key", ["TooManyRequests", "ServiceUnavailable"])
+    def test_retryable_example_has_retryable_true(
+        self, base_schema: dict[str, Any], key: str
+    ) -> None:
+        result = inject_rfc9457_responses(base_schema)
+        content = result["components"]["responses"][key]["content"]
+        envelope_ex = content["application/json"]["example"]
+        assert envelope_ex["error_detail"]["retryable"] is True
+        problem_ex = content["application/problem+json"]["example"]
+        assert problem_ex["retryable"] is True
+
+    @pytest.mark.parametrize(
+        "key", ["BadRequest", "Unauthorized", "Forbidden", "NotFound", "Conflict"]
+    )
+    def test_non_retryable_example_has_retryable_false(
+        self, base_schema: dict[str, Any], key: str
+    ) -> None:
+        result = inject_rfc9457_responses(base_schema)
+        content = result["components"]["responses"][key]["content"]
+        envelope_ex = content["application/json"]["example"]
+        assert envelope_ex["error_detail"]["retryable"] is False
+        problem_ex = content["application/problem+json"]["example"]
+        assert problem_ex["retryable"] is False
+
 
 # ── Info description ──────────────────────────────────────────
 
@@ -461,9 +496,9 @@ class TestIdempotencyAndImmutability:
 # ── Integration ───────────────────────────────────────────────
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 def test_full_app_schema_enhancement() -> None:
-    """Integration: enhance the real Litestar-generated schema."""
+    """Enhance the real Litestar-generated schema end-to-end."""
     from synthorg.api.app import create_app
 
     app = create_app()
