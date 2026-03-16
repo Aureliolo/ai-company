@@ -35,6 +35,7 @@ from synthorg.api.errors import (
     category_type_uri,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.api import API_OPENAPI_SCHEMA_ENHANCED
 
 logger = get_logger(__name__)
 
@@ -447,5 +448,12 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
         status_for_key,
     )
     _update_info_description(result.setdefault("info", {}))
+
+    path_count = len(result.get("paths", {}))
+    logger.debug(
+        API_OPENAPI_SCHEMA_ENHANCED,
+        paths_processed=path_count,
+        responses_added=len(response_keys),
+    )
 
     return result
