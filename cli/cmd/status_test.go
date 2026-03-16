@@ -95,6 +95,7 @@ func TestFormatUptime(t *testing.T) {
 		{3600, "1h 0m"},
 		{12991, "3h 36m"},
 		{86400, "24h 0m"},
+		{-90, "-1m 30s"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {

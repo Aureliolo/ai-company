@@ -129,7 +129,7 @@ func renderDoctorImages(out *ui.UI, r diagnostics.Report) {
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Section("Images")
 	for _, img := range r.ImageStatus {
-		if strings.Contains(img, "available") {
+		if strings.HasSuffix(img, ": available") {
 			out.Success(img)
 		} else {
 			out.Error(img)
