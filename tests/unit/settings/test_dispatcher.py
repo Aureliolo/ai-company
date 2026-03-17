@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
 import pytest
@@ -191,10 +192,10 @@ def dispatcher(
 @pytest.fixture
 async def started_dispatcher(
     dispatcher: SettingsChangeDispatcher,
-) -> SettingsChangeDispatcher:
+) -> AsyncGenerator[SettingsChangeDispatcher]:
     """Start the dispatcher and stop it on teardown."""
     await dispatcher.start()
-    yield dispatcher  # type: ignore[misc]
+    yield dispatcher
     await dispatcher.stop()
 
 
