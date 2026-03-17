@@ -574,13 +574,7 @@ class TestConsecutiveErrors:
         )
         await d.start()
         try:
-            # Wait for the subscriber to be called
-            loop = asyncio.get_running_loop()
-            deadline = loop.time() + 10.0
-            while len(sub.calls) == 0:
-                if loop.time() > deadline:
-                    pytest.fail("Timed out waiting for subscriber call")
-                await asyncio.sleep(0.05)
+            await _wait_for_subscriber(sub, timeout=10.0)
             assert ("ns", "k") in sub.calls
         finally:
             await d.stop()
