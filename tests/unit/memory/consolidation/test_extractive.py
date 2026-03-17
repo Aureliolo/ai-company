@@ -65,12 +65,15 @@ class TestExtractivePreserver:
                 assert len(anchor_text) <= 53  # 50 + "..."
 
     def test_short_content(self) -> None:
-        """Content shorter than anchor_length still works."""
+        """Content shorter than anchor_length uses single anchor."""
         preserver = ExtractivePreserver(anchor_length=150)
         content = "short text"
         result = preserver.extract(content)
         assert "[Extractive preservation]" in result
-        assert "short text" in result
+        assert "[START] short text" in result
+        # Short content should not duplicate into MID/END
+        assert "[MID]" not in result
+        assert "[END]" not in result
 
     def test_invalid_max_facts(self) -> None:
         with pytest.raises(ValueError, match="max_facts"):

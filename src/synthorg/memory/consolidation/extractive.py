@@ -73,7 +73,7 @@ def _build_anchors(
     text_len = len(text)
 
     if text_len <= anchor_length:
-        return text, text, text
+        return text, "", ""
 
     start = text[:anchor_length]
     if text_len > anchor_length:
@@ -154,8 +154,10 @@ class ExtractivePreserver:
         if facts:
             lines.append(f"Key facts: {', '.join(facts)}")
         lines.append(f"[START] {start}")
-        lines.append(f"[MID] {mid}")
-        lines.append(f"[END] {end}")
+        if mid:
+            lines.append(f"[MID] {mid}")
+        if end:
+            lines.append(f"[END] {end}")
 
         result = "\n".join(lines)
 

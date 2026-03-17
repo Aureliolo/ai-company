@@ -105,7 +105,7 @@ class TestDualModeConfig:
 
     def test_defaults(self) -> None:
         config = DualModeConfig()
-        assert config.enabled is True
+        assert config.enabled is False
         assert config.dense_threshold == 0.5
         assert config.summarization_model == ""
         assert config.max_summary_tokens == 200
@@ -114,14 +114,14 @@ class TestDualModeConfig:
 
     def test_custom(self) -> None:
         config = DualModeConfig(
-            enabled=False,
+            enabled=True,
             dense_threshold=0.7,
             summarization_model="test-small-001",
             max_summary_tokens=500,
             max_facts=10,
             anchor_length=200,
         )
-        assert config.enabled is False
+        assert config.enabled is True
         assert config.dense_threshold == 0.7
         assert config.summarization_model == "test-small-001"
 
@@ -152,7 +152,22 @@ class TestDualModeConfig:
     def test_frozen(self) -> None:
         config = DualModeConfig()
         with pytest.raises(ValidationError):
-            config.enabled = False  # type: ignore[misc]
+            config.enabled = True  # type: ignore[misc]
+
+    def test_enabled_requires_model(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="summarization_model must be non-blank",
+        ):
+            DualModeConfig(enabled=True, summarization_model="")
+
+    def test_enabled_with_blank_model_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            DualModeConfig(enabled=True, summarization_model="   ")
+
+    def test_disabled_allows_empty_model(self) -> None:
+        config = DualModeConfig(enabled=False, summarization_model="")
+        assert config.summarization_model == ""
 
 
 @pytest.mark.unit
@@ -162,17 +177,18 @@ class TestArchivalConfigDualMode:
     def test_backward_compatible_default(self) -> None:
         """Existing ArchivalConfig() still works with dual_mode added."""
         config = ArchivalConfig()
-        assert config.dual_mode.enabled is True
+        assert config.dual_mode.enabled is False
         assert config.dual_mode.dense_threshold == 0.5
 
     def test_with_custom_dual_mode(self) -> None:
         config = ArchivalConfig(
             enabled=True,
             dual_mode=DualModeConfig(
-                enabled=False,
+                enabled=True,
                 dense_threshold=0.8,
+                summarization_model="test-small-001",
             ),
         )
         assert config.enabled is True
-        assert config.dual_mode.enabled is False
+        assert config.dual_mode.enabled is True
         assert config.dual_mode.dense_threshold == 0.8

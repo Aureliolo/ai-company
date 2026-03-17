@@ -39,6 +39,21 @@ _WEIGHT_IDENTIFIERS = 0.20
 _WEIGHT_NUMERIC = 0.10
 _WEIGHT_LINE_STRUCTURE = 0.15
 
+_WEIGHT_SUM_TOLERANCE = 1e-9
+
+# Guard: weights must sum to 1.0 for threshold interpretability.
+assert (  # noqa: S101
+    abs(
+        _WEIGHT_CODE
+        + _WEIGHT_STRUCTURED
+        + _WEIGHT_IDENTIFIERS
+        + _WEIGHT_NUMERIC
+        + _WEIGHT_LINE_STRUCTURE
+        - 1.0
+    )
+    < _WEIGHT_SUM_TOLERANCE
+), "Density signal weights must sum to 1.0"
+
 # ── Compiled patterns ───────────────────────────────────────────
 
 _CODE_PATTERNS = re.compile(

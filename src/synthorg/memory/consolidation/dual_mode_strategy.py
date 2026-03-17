@@ -8,6 +8,7 @@ preservation (dense) accordingly.
 from itertools import groupby
 from operator import attrgetter
 
+from synthorg.core.enums import MemoryCategory  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.consolidation.abstractive import (
     AbstractiveSummarizer,  # noqa: TC001
@@ -102,6 +103,12 @@ class DualModeConsolidationStrategy:
             Result describing what was consolidated.
         """
         if not entries:
+            logger.debug(
+                STRATEGY_COMPLETE,
+                agent_id=agent_id,
+                consolidated_count=0,
+                strategy="dual_mode",
+            )
             return ConsolidationResult()
 
         logger.info(
@@ -122,42 +129,15 @@ class DualModeConsolidationStrategy:
             group = list(group_iter)
             if len(group) < self._group_threshold:
                 continue
-
-            group_tuple = tuple(group)
-            group_mode = self._determine_group_mode(group_tuple)
-            _, to_remove = self._select_entries(group)
-
-            logger.debug(
-                DUAL_MODE_GROUP_CLASSIFIED,
-                agent_id=agent_id,
-                category=category.value,
-                group_size=len(group),
-                mode=group_mode.value,
+            new_id, group_removed, group_modes = await self._process_group(
+                category,
+                group,
+                agent_id,
             )
-
-            content = await self._build_content(to_remove, group_mode)
-
-            store_request = MemoryStoreRequest(
-                category=category,
-                content=content,
-                metadata=MemoryMetadata(
-                    source="consolidation",
-                    tags=("consolidated", f"mode:{group_mode.value}"),
-                ),
-            )
-            new_id = await self._backend.store(agent_id, store_request)
             if summary_id is None:
                 summary_id = new_id
-
-            for entry in to_remove:
-                await self._backend.delete(agent_id, entry.id)
-                removed_ids.append(entry.id)
-                mode_assignments.append(
-                    ArchivalModeAssignment(
-                        original_id=entry.id,
-                        mode=group_mode,
-                    ),
-                )
+            removed_ids.extend(group_removed)
+            mode_assignments.extend(group_modes)
 
         result = ConsolidationResult(
             removed_ids=tuple(removed_ids),
@@ -174,6 +154,64 @@ class DualModeConsolidationStrategy:
         )
 
         return result
+
+    async def _process_group(
+        self,
+        category: MemoryCategory,
+        group: list[MemoryEntry],
+        agent_id: NotBlankStr,
+    ) -> tuple[
+        NotBlankStr,
+        list[NotBlankStr],
+        list[ArchivalModeAssignment],
+    ]:
+        """Process a single category group for consolidation.
+
+        Args:
+            category: The memory category.
+            group: Entries in this category.
+            agent_id: Owning agent identifier.
+
+        Returns:
+            Tuple of (summary_id, removed_ids, mode_assignments).
+        """
+        group_tuple = tuple(group)
+        group_mode = self._determine_group_mode(group_tuple)
+        _, to_remove = self._select_entries(group_tuple)
+
+        # Tie-breaking note: 50/50 dense/sparse splits default to
+        # ABSTRACTIVE (strict > comparison), which is the safer mode.
+        logger.debug(
+            DUAL_MODE_GROUP_CLASSIFIED,
+            agent_id=agent_id,
+            category=category.value,
+            group_size=len(group),
+            mode=group_mode.value,
+        )
+
+        content = await self._build_content(to_remove, group_mode)
+        store_request = MemoryStoreRequest(
+            category=category,
+            content=content,
+            metadata=MemoryMetadata(
+                source="consolidation",
+                tags=("consolidated", f"mode:{group_mode.value}"),
+            ),
+        )
+        new_id = await self._backend.store(agent_id, store_request)
+
+        removed_ids: list[NotBlankStr] = []
+        assignments: list[ArchivalModeAssignment] = []
+        for entry in to_remove:
+            await self._backend.delete(agent_id, entry.id)
+            removed_ids.append(entry.id)
+            assignments.append(
+                ArchivalModeAssignment(
+                    original_id=entry.id,
+                    mode=group_mode,
+                ),
+            )
+        return new_id, removed_ids, assignments
 
     def _determine_group_mode(
         self,
@@ -198,8 +236,8 @@ class DualModeConsolidationStrategy:
 
     def _select_entries(
         self,
-        group: list[MemoryEntry],
-    ) -> tuple[MemoryEntry, list[MemoryEntry]]:
+        group: tuple[MemoryEntry, ...],
+    ) -> tuple[MemoryEntry, tuple[MemoryEntry, ...]]:
         """Select the best entry to keep and the rest to remove.
 
         Entries with ``None`` relevance scores are treated as ``0.0``.
@@ -218,12 +256,12 @@ class DualModeConsolidationStrategy:
                 e.created_at,
             ),
         )
-        to_remove = [e for e in group if e.id != best.id]
+        to_remove = tuple(e for e in group if e.id != best.id)
         return best, to_remove
 
     async def _build_content(
         self,
-        entries: list[MemoryEntry],
+        entries: tuple[MemoryEntry, ...],
         mode: ArchivalMode,
     ) -> str:
         """Build consolidated content using the appropriate mode.

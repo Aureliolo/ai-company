@@ -115,6 +115,17 @@ class ConsolidationResult(BaseModel):
         description="Original-to-archival ID mapping",
     )
 
+    @model_validator(mode="after")
+    def _validate_index_count(self) -> Self:
+        """Ensure archival index does not exceed archived count."""
+        if len(self.archival_index) > self.archived_count:
+            msg = (
+                f"archival_index length ({len(self.archival_index)}) "
+                f"must not exceed archived_count ({self.archived_count})"
+            )
+            raise ValueError(msg)
+        return self
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def consolidated_count(self) -> int:

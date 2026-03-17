@@ -71,7 +71,7 @@ class DualModeConfig(BaseModel):
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
     enabled: bool = Field(
-        default=True,
+        default=False,
         description="Whether dual-mode density classification is active",
     )
     dense_threshold: float = Field(
@@ -102,6 +102,14 @@ class DualModeConfig(BaseModel):
         le=500,
         description="Character length for each extractive anchor",
     )
+
+    @model_validator(mode="after")
+    def _validate_model_when_enabled(self) -> Self:
+        """Require a summarization model when dual-mode is enabled."""
+        if self.enabled and not self.summarization_model.strip():
+            msg = "summarization_model must be non-blank when dual-mode is enabled"
+            raise ValueError(msg)
+        return self
 
 
 class ArchivalConfig(BaseModel):

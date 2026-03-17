@@ -12,6 +12,7 @@ from synthorg.memory.consolidation.config import ConsolidationConfig  # noqa: TC
 from synthorg.memory.consolidation.models import (
     ArchivalEntry,
     ArchivalIndexEntry,
+    ArchivalMode,
     ArchivalModeAssignment,
     ConsolidationResult,
 )
@@ -268,46 +269,16 @@ class MemoryConsolidationService:
         for entry in all_entries:
             if entry.id not in removed_set:
                 continue
-
-            archival_mode = mode_map.get(entry.id)
-            archival_entry = ArchivalEntry(
-                original_id=entry.id,
-                agent_id=entry.agent_id,
-                content=entry.content,
-                category=entry.category,
-                metadata=entry.metadata,
-                created_at=entry.created_at,
-                archived_at=now,
-                archival_mode=archival_mode,
+            success, idx = await self._archive_single_entry(
+                entry,
+                agent_id,
+                mode_map,
+                now,
             )
-            try:
-                archival_id = await self._archival_store.archive(
-                    archival_entry,
-                )
-            except Exception as exc:
-                logger.warning(
-                    ARCHIVAL_FAILED,
-                    original_id=entry.id,
-                    agent_id=agent_id,
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                )
-                continue
-            archived += 1
-            if archival_mode is not None:
-                index_entries.append(
-                    ArchivalIndexEntry(
-                        original_id=entry.id,
-                        archival_id=archival_id,
-                        mode=archival_mode,
-                    ),
-                )
-            logger.debug(
-                ARCHIVAL_ENTRY_STORED,
-                original_id=entry.id,
-                agent_id=agent_id,
-                archival_mode=archival_mode,
-            )
+            if success:
+                archived += 1
+                if idx is not None:
+                    index_entries.append(idx)
 
         index = tuple(index_entries)
         if index:
@@ -318,3 +289,61 @@ class MemoryConsolidationService:
             )
 
         return archived, index
+
+    async def _archive_single_entry(
+        self,
+        entry: MemoryEntry,
+        agent_id: NotBlankStr,
+        mode_map: dict[str, ArchivalMode],
+        now: datetime,
+    ) -> tuple[bool, ArchivalIndexEntry | None]:
+        """Archive a single entry to cold storage.
+
+        Args:
+            entry: Memory entry to archive.
+            agent_id: Agent identifier.
+            mode_map: Mapping of original IDs to archival modes.
+            now: Current timestamp for archival.
+
+        Returns:
+            Tuple of (success flag, index entry or ``None``).
+        """
+        assert self._archival_store is not None  # noqa: S101
+        archival_mode = mode_map.get(entry.id)
+        archival_entry = ArchivalEntry(
+            original_id=entry.id,
+            agent_id=entry.agent_id,
+            content=entry.content,
+            category=entry.category,
+            metadata=entry.metadata,
+            created_at=entry.created_at,
+            archived_at=now,
+            archival_mode=archival_mode,
+        )
+        try:
+            archival_id = await self._archival_store.archive(archival_entry)
+        except Exception as exc:
+            logger.warning(
+                ARCHIVAL_FAILED,
+                original_id=entry.id,
+                agent_id=agent_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            return False, None
+        logger.debug(
+            ARCHIVAL_ENTRY_STORED,
+            original_id=entry.id,
+            agent_id=agent_id,
+            archival_mode=archival_mode,
+        )
+        index_entry = (
+            ArchivalIndexEntry(
+                original_id=entry.id,
+                archival_id=archival_id,
+                mode=archival_mode,
+            )
+            if archival_mode is not None
+            else None
+        )
+        return True, index_entry

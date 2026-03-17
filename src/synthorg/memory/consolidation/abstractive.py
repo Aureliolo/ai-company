@@ -58,6 +58,9 @@ class AbstractiveSummarizer:
         max_summary_tokens: int = 200,
         temperature: float = 0.3,
     ) -> None:
+        if not model or not model.strip():
+            msg = "model must be a non-blank string"
+            raise ValueError(msg)
         self._provider = provider
         self._model = model
         self._config = CompletionConfig(
