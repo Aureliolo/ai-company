@@ -11,6 +11,7 @@ from .errors import (
     ToolPermissionDeniedError,
 )
 from .examples.echo import EchoTool
+from .factory import build_default_tools, build_default_tools_from_config
 from .file_system import (
     BaseFileSystemTool,
     DeleteFileTool,
@@ -86,4 +87,6 @@ __all__ = [
     "ToolPermissionDeniedError",
     "ToolRegistry",
     "WriteFileTool",
+    "build_default_tools",
+    "build_default_tools_from_config",
 ]
