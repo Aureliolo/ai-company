@@ -19,7 +19,7 @@ from synthorg.observability.events.settings import (
 from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
-    from synthorg.budget.config import BudgetConfig
+    from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
     from synthorg.config.schema import RootConfig
     from synthorg.core.enums import AutonomyLevel
     from synthorg.engine.coordination.config import CoordinationConfig
@@ -61,6 +61,7 @@ class ConfigResolver:
         # runtime defence for callers without type checking
         if settings_service is None:
             msg = "settings_service must not be None"  # type: ignore[unreachable]
+            logger.error(SETTINGS_VALIDATION_FAILED, reason=msg)
             raise TypeError(msg)
         self._settings = settings_service
         self._config = config
@@ -280,12 +281,6 @@ class ConfigResolver:
                 the assembled alert thresholds violate the ordering
                 constraint (``warn_at < critical_at < hard_stop_at``).
         """
-        from pydantic import ValidationError  # noqa: PLC0415
-
-        from synthorg.budget.config import (  # noqa: PLC0415
-            BudgetAlertConfig,
-        )
-
         base = self._config.budget
 
         try:
@@ -308,16 +303,7 @@ class ConfigResolver:
         except ExceptionGroup as eg:
             raise eg.exceptions[0] from eg
 
-        try:
-            alerts = BudgetAlertConfig(
-                warn_at=t_warn.result(),
-                critical_at=t_crit.result(),
-                hard_stop_at=t_stop.result(),
-            )
-        except ValidationError as exc:
-            msg = f"Budget alert thresholds violate ordering constraint: {exc}"
-            raise ValueError(msg) from exc
-
+        alerts = _build_budget_alerts(t_warn.result(), t_crit.result(), t_stop.result())
         return base.model_copy(
             update={
                 "total_monthly": t_monthly.result(),
@@ -394,6 +380,39 @@ class ConfigResolver:
             enable_workspace_isolation=t_iso.result(),
             base_branch=t_branch.result(),
         )
+
+
+def _build_budget_alerts(warn: int, crit: int, stop: int) -> BudgetAlertConfig:
+    """Construct ``BudgetAlertConfig`` with ordering validation.
+
+    Args:
+        warn: Warning threshold percent.
+        crit: Critical threshold percent.
+        stop: Hard-stop threshold percent.
+
+    Returns:
+        A validated ``BudgetAlertConfig``.
+
+    Raises:
+        ValueError: If the thresholds violate the ordering constraint
+            (``warn < crit < stop``).
+    """
+    from pydantic import ValidationError  # noqa: PLC0415
+
+    from synthorg.budget.config import BudgetAlertConfig  # noqa: PLC0415
+
+    try:
+        return BudgetAlertConfig(warn_at=warn, critical_at=crit, hard_stop_at=stop)
+    except ValidationError as exc:
+        logger.warning(
+            SETTINGS_VALIDATION_FAILED,
+            namespace="budget",
+            key="_alerts",
+            reason="threshold_ordering",
+            exc_info=True,
+        )
+        msg = f"Budget alert thresholds violate ordering constraint: {exc}"
+        raise ValueError(msg) from exc
 
 
 _BOOL_TRUE = frozenset({"true", "1"})
