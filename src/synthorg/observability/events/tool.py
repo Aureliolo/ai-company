@@ -25,6 +25,7 @@ TOOL_PERMISSION_FILTERED: Final[str] = "tool.permission.filtered"
 
 # ── Factory events ──────────────────────────────────────────────
 TOOL_FACTORY_BUILT: Final[str] = "tool.factory.built"
+TOOL_FACTORY_ERROR: Final[str] = "tool.factory.error"
 
 # ── File system tool events ──────────────────────────────────────
 TOOL_FS_READ: Final[str] = "tool.fs.read"

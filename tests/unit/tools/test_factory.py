@@ -44,46 +44,52 @@ class TestBuildDefaultTools:
         names = tuple(t.name for t in tools)
         assert names == _EXPECTED_TOOL_NAMES
 
-    def test_git_clone_receives_custom_policy(
+    @pytest.mark.parametrize(
+        ("policy", "expected_allowlist", "expected_block_ips"),
+        [
+            pytest.param(
+                GitCloneNetworkPolicy(
+                    hostname_allowlist=("internal.example.com",),
+                ),
+                ("internal.example.com",),
+                True,
+                id="custom-allowlist",
+            ),
+            pytest.param(
+                None,
+                (),
+                True,
+                id="default-when-none",
+            ),
+            pytest.param(
+                GitCloneNetworkPolicy(block_private_ips=False),
+                (),
+                False,
+                id="permissive-policy",
+            ),
+        ],
+    )
+    def test_git_clone_policy_wiring(
         self,
         tmp_path: Path,
+        policy: GitCloneNetworkPolicy | None,
+        expected_allowlist: tuple[str, ...],
+        expected_block_ips: bool,
     ) -> None:
-        """Custom GitCloneNetworkPolicy is wired to clone tool."""
-        policy = GitCloneNetworkPolicy(
-            hostname_allowlist=("internal.example.com",),
-        )
+        """Network policy is correctly wired to clone tool."""
         tools = build_default_tools(
             workspace=tmp_path,
             git_clone_policy=policy,
         )
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, GitCloneTool)
-        assert clone._network_policy.hostname_allowlist == ("internal.example.com",)
+        assert clone._network_policy.hostname_allowlist == expected_allowlist
+        assert clone._network_policy.block_private_ips is expected_block_ips
 
-    def test_git_clone_default_policy_when_none(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        """Without explicit policy, clone tool uses defaults."""
-        tools = build_default_tools(workspace=tmp_path)
-        clone = next(t for t in tools if t.name == "git_clone")
-        assert isinstance(clone, GitCloneTool)
-        assert clone._network_policy.hostname_allowlist == ()
-        assert clone._network_policy.block_private_ips is True
-
-    def test_git_clone_permissive_policy(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        """Policy with block_private_ips=False is wired correctly."""
-        policy = GitCloneNetworkPolicy(block_private_ips=False)
-        tools = build_default_tools(
-            workspace=tmp_path,
-            git_clone_policy=policy,
-        )
-        clone = next(t for t in tools if t.name == "git_clone")
-        assert isinstance(clone, GitCloneTool)
-        assert clone._network_policy.block_private_ips is False
+    def test_rejects_relative_workspace(self) -> None:
+        """Relative workspace path raises ValueError."""
+        with pytest.raises(ValueError, match="absolute path"):
+            build_default_tools(workspace=Path("relative/path"))
 
     def test_file_system_tools_receive_workspace(
         self,

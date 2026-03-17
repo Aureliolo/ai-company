@@ -10,7 +10,10 @@ in a ``ToolRegistry``.
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.tool import TOOL_FACTORY_BUILT
+from synthorg.observability.events.tool import (
+    TOOL_FACTORY_BUILT,
+    TOOL_FACTORY_ERROR,
+)
 from synthorg.tools.file_system import (
     DeleteFileTool,
     EditFileTool,
@@ -38,37 +41,28 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-def build_default_tools(
+def _build_file_system_tools(
     *,
     workspace: Path,
-    git_clone_policy: GitCloneNetworkPolicy | None = None,
-    sandbox: SandboxBackend | None = None,
 ) -> tuple[BaseTool, ...]:
-    """Instantiate all built-in workspace tools.
-
-    Returns a sorted tuple of tool instances ready for use or
-    extension before wrapping in a ``ToolRegistry``.
-
-    Args:
-        workspace: Absolute path to the agent workspace root.
-        git_clone_policy: Network policy for git clone SSRF
-            prevention.  ``None`` uses the default (block all
-            private IPs, empty hostname allowlist).
-        sandbox: Optional sandbox backend for git subprocess
-            isolation.
-
-    Returns:
-        Tuple of ``BaseTool`` instances sorted by name.
-    """
-    fs_tools: list[BaseTool] = [
+    """Instantiate the five built-in file-system tools."""
+    return (
         ReadFileTool(workspace_root=workspace),
         WriteFileTool(workspace_root=workspace),
         EditFileTool(workspace_root=workspace),
         ListDirectoryTool(workspace_root=workspace),
         DeleteFileTool(workspace_root=workspace),
-    ]
+    )
 
-    git_tools: list[BaseTool] = [
+
+def _build_git_tools(
+    *,
+    workspace: Path,
+    git_clone_policy: GitCloneNetworkPolicy | None,
+    sandbox: SandboxBackend | None,
+) -> tuple[BaseTool, ...]:
+    """Instantiate the six built-in git tools."""
+    return (
         GitStatusTool(workspace=workspace, sandbox=sandbox),
         GitLogTool(workspace=workspace, sandbox=sandbox),
         GitDiffTool(workspace=workspace, sandbox=sandbox),
@@ -79,16 +73,56 @@ def build_default_tools(
             sandbox=sandbox,
             network_policy=git_clone_policy,
         ),
-    ]
+    )
 
-    result = tuple(sorted(fs_tools + git_tools, key=lambda t: t.name))
 
+def build_default_tools(
+    *,
+    workspace: Path,
+    git_clone_policy: GitCloneNetworkPolicy | None = None,
+    sandbox: SandboxBackend | None = None,
+) -> tuple[BaseTool, ...]:
+    """Instantiate all built-in workspace tools.
+
+    Args:
+        workspace: Absolute path to the agent workspace root.
+        git_clone_policy: Network policy for git clone SSRF
+            prevention.  ``None`` uses the default (block all
+            private IPs, empty hostname allowlist).
+        sandbox: Optional sandbox backend for subprocess
+            isolation (passed to git tools).
+
+    Returns:
+        Sorted tuple of ``BaseTool`` instances.
+
+    Raises:
+        ValueError: If *workspace* is not an absolute path.
+    """
+    if not workspace.is_absolute():
+        msg = f"workspace must be an absolute path, got: {workspace}"
+        logger.warning(TOOL_FACTORY_ERROR, error=msg)
+        raise ValueError(msg)
+
+    all_tools = (
+        *_build_file_system_tools(workspace=workspace),
+        *_build_git_tools(
+            workspace=workspace,
+            git_clone_policy=git_clone_policy,
+            sandbox=sandbox,
+        ),
+    )
+    result = tuple(sorted(all_tools, key=lambda t: t.name))
+
+    policy = git_clone_policy
+    block_ips = policy.block_private_ips if policy is not None else True
+    allowlist_len = len(policy.hostname_allowlist) if policy is not None else 0
     logger.info(
         TOOL_FACTORY_BUILT,
         tool_count=len(result),
         tools=tuple(t.name for t in result),
+        git_clone_block_private_ips=block_ips,
+        git_clone_allowlist_size=allowlist_len,
     )
-
     return result
 
 
@@ -106,12 +140,19 @@ def build_default_tools_from_config(
     Args:
         workspace: Absolute path to the agent workspace root.
         config: Validated root configuration.
-        sandbox: Optional sandbox backend for git subprocess
-            isolation.
+        sandbox: Optional sandbox backend for subprocess
+            isolation (passed to git tools).
 
     Returns:
-        Tuple of ``BaseTool`` instances sorted by name.
+        Sorted tuple of ``BaseTool`` instances.
+
+    Raises:
+        ValueError: If *workspace* is not an absolute path.
     """
+    logger.debug(
+        TOOL_FACTORY_BUILT,
+        source="config",
+    )
     return build_default_tools(
         workspace=workspace,
         git_clone_policy=config.git_clone,
