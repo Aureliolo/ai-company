@@ -123,3 +123,8 @@ class TestAgentControllerDbOverride:
             assert body["pagination"]["total"] == 2
             names = {a["name"] for a in body["data"]}
             assert names == {"db-agent-1", "db-agent-2"}
+
+            detail_resp = client.get("/api/v1/agents/db-agent-1")
+            assert detail_resp.status_code == 200
+            detail = detail_resp.json()
+            assert detail["data"]["name"] == "db-agent-1"

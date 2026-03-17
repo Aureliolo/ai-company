@@ -76,8 +76,9 @@ def extract_from_config(config: object, yaml_path: str) -> str | None:
     attribute exists and is not ``None``, otherwise ``None``.
 
     For Pydantic models, tuples/lists containing models, and
-    dicts with model values, the result is valid JSON.  For
-    scalars, the result is ``str(value)``.
+    dicts with model values, the result is valid JSON.  Scalar
+    booleans produce lowercase ``"true"``/``"false"``.  Other
+    scalars (``str``, ``int``, ``float``) use ``str(value)``.
 
     Args:
         config: Root config object (typically ``RootConfig``).

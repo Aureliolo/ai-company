@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from litestar import Litestar
 from litestar.testing import TestClient
 
 from synthorg.config.schema import RootConfig
@@ -18,6 +19,36 @@ from tests.unit.api.conftest import (
 )
 
 _HEADERS = make_auth_headers("ceo")
+
+
+@pytest.fixture
+async def db_override_app(
+    fake_persistence: FakePersistenceBackend,
+    fake_message_bus: FakeMessageBus,
+) -> tuple[Litestar, SettingsService]:
+    """Build an app with a real SettingsService for DB-override tests."""
+    from synthorg.api.app import create_app
+    from synthorg.api.auth.service import AuthService
+    from synthorg.budget.tracker import CostTracker
+    from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
+
+    config = RootConfig(company_name="test")
+    auth_service: AuthService = _make_test_auth_service()
+    _seed_test_users(fake_persistence, auth_service)
+    settings_service = SettingsService(
+        repository=fake_persistence.settings,
+        registry=get_registry(),
+        config=config,
+    )
+    app = create_app(
+        config=config,
+        persistence=fake_persistence,
+        message_bus=fake_message_bus,
+        cost_tracker=CostTracker(),
+        auth_service=auth_service,
+        settings_service=settings_service,
+    )
+    return app, settings_service
 
 
 @pytest.mark.unit
@@ -52,34 +83,12 @@ class TestCompanyControllerDbOverride:
 
     async def test_db_company_departments_override(
         self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
+        db_override_app: tuple[Litestar, SettingsService],
     ) -> None:
-        from synthorg.api.app import create_app
-        from synthorg.api.auth.service import AuthService
-        from synthorg.budget.tracker import CostTracker
-        from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
-
-        config = RootConfig(company_name="test")
-        auth_service: AuthService = _make_test_auth_service()
-        _seed_test_users(fake_persistence, auth_service)
-        settings_service = SettingsService(
-            repository=fake_persistence.settings,
-            registry=get_registry(),
-            config=config,
-        )
-
+        app, settings_service = db_override_app
         db_depts = [{"name": "db-sales", "head": "bob"}]
         await settings_service.set("company", "departments", json.dumps(db_depts))
 
-        app = create_app(
-            config=config,
-            persistence=fake_persistence,
-            message_bus=fake_message_bus,
-            cost_tracker=CostTracker(),
-            auth_service=auth_service,
-            settings_service=settings_service,
-        )
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
             resp = client.get("/api/v1/company/departments")
@@ -91,32 +100,10 @@ class TestCompanyControllerDbOverride:
 
     async def test_taskgroup_error_returns_clean_error_response(
         self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
+        db_override_app: tuple[Litestar, SettingsService],
     ) -> None:
         """Verify TaskGroup exception unwraps to a clean API error."""
-        from synthorg.api.app import create_app
-        from synthorg.api.auth.service import AuthService
-        from synthorg.budget.tracker import CostTracker
-        from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
-
-        config = RootConfig(company_name="test")
-        auth_service: AuthService = _make_test_auth_service()
-        _seed_test_users(fake_persistence, auth_service)
-        settings_service = SettingsService(
-            repository=fake_persistence.settings,
-            registry=get_registry(),
-            config=config,
-        )
-
-        app = create_app(
-            config=config,
-            persistence=fake_persistence,
-            message_bus=fake_message_bus,
-            cost_tracker=CostTracker(),
-            auth_service=auth_service,
-            settings_service=settings_service,
-        )
+        app, _settings_service = db_override_app
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
             resolver = app.state.app_state.config_resolver
@@ -131,34 +118,12 @@ class TestCompanyControllerDbOverride:
 
     async def test_db_company_overview_includes_db_agents(
         self,
-        fake_persistence: FakePersistenceBackend,
-        fake_message_bus: FakeMessageBus,
+        db_override_app: tuple[Litestar, SettingsService],
     ) -> None:
-        from synthorg.api.app import create_app
-        from synthorg.api.auth.service import AuthService
-        from synthorg.budget.tracker import CostTracker
-        from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
-
-        config = RootConfig(company_name="test")
-        auth_service: AuthService = _make_test_auth_service()
-        _seed_test_users(fake_persistence, auth_service)
-        settings_service = SettingsService(
-            repository=fake_persistence.settings,
-            registry=get_registry(),
-            config=config,
-        )
-
+        app, settings_service = db_override_app
         db_agents = [{"name": "db-agent", "role": "dev", "department": "eng"}]
         await settings_service.set("company", "agents", json.dumps(db_agents))
 
-        app = create_app(
-            config=config,
-            persistence=fake_persistence,
-            message_bus=fake_message_bus,
-            cost_tracker=CostTracker(),
-            auth_service=auth_service,
-            settings_service=settings_service,
-        )
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
             resp = client.get("/api/v1/company")

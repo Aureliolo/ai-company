@@ -84,6 +84,7 @@ class TestAnalyticsControllerDbOverride:
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
             resp = client.get("/api/v1/analytics/overview")
+            assert resp.status_code == 200
             body = resp.json()
             assert body["success"] is True
             assert body["data"]["total_agents"] == 3
