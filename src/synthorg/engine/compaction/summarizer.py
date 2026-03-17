@@ -191,9 +191,10 @@ def _compress(
     compactions_count = prior.compactions_performed + 1 if prior is not None else 1
     prior_archived = prior.archived_turns if prior is not None else 0
 
+    archived_turn_count = sum(1 for m in archivable if m.role == MessageRole.ASSISTANT)
     metadata = CompressionMetadata(
         compression_point=ctx.turn_count,
-        archived_turns=prior_archived + len(archivable) // 2,
+        archived_turns=prior_archived + archived_turn_count,
         summary_tokens=summary_tokens,
         compactions_performed=compactions_count,
     )

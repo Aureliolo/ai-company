@@ -34,6 +34,7 @@ from synthorg.observability.events.prompt import (
     PROMPT_BUILD_SUCCESS,
     PROMPT_BUILD_TOKEN_TRIMMED,
 )
+from synthorg.providers.models import ChatMessage
 from synthorg.security.autonomy.models import EffectiveAutonomy
 
 if TYPE_CHECKING:
@@ -474,7 +475,7 @@ class TestTokenEstimation:
 
             def estimate_conversation_tokens(
                 self,
-                messages: tuple[object, ...],
+                messages: tuple[ChatMessage, ...],
             ) -> int:
                 return 0
 
