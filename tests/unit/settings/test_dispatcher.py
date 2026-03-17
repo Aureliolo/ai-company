@@ -49,7 +49,7 @@ def _envelope(msg: Message) -> DeliveryEnvelope:
 
 
 class _FakeSubscriber:
-    """Test subscriber that records calls."""
+    """Test subscriber that records calls and signals completion."""
 
     def __init__(
         self,
@@ -59,6 +59,7 @@ class _FakeSubscriber:
         self._name = name
         self._keys = keys
         self.calls: list[tuple[str, str]] = []
+        self.notified: asyncio.Event = asyncio.Event()
 
     @property
     def watched_keys(self) -> frozenset[tuple[str, str]]:
@@ -70,6 +71,7 @@ class _FakeSubscriber:
 
     async def on_settings_changed(self, namespace: str, key: str) -> None:
         self.calls.append((namespace, key))
+        self.notified.set()
 
 
 class _ErrorSubscriber(_FakeSubscriber):
@@ -199,22 +201,42 @@ async def started_dispatcher(
     await dispatcher.stop()
 
 
-async def _drain(
-    dispatcher: SettingsChangeDispatcher,
+async def _wait_for_subscriber(
+    subscriber: _FakeSubscriber,
+    *,
+    timeout: float = 2.0,  # noqa: ASYNC109
+) -> None:
+    """Wait until the subscriber's ``on_settings_changed`` has been called.
+
+    Event-driven: blocks on ``subscriber.notified`` rather than polling
+    or sleeping, so the test wakes deterministically as soon as the
+    dispatcher finishes dispatching to this subscriber.
+    """
+    await asyncio.wait_for(subscriber.notified.wait(), timeout=timeout)
+    # Reset for the next wait
+    subscriber.notified.clear()
+
+
+async def _wait_for_queue_drain(
     bus: _FakeBus,
     *,
     timeout: float = 2.0,  # noqa: ASYNC109
 ) -> None:
-    """Wait until all enqueued messages have been processed."""
+    """Wait for the bus queue to empty (for negative/skip assertions).
+
+    Used when no subscriber is expected to be called — we wait for the
+    dispatcher to consume the message from the queue, then give it a
+    tick to finish the dispatch decision (skip/restart_required).
+    """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     while bus._queue.qsize() > 0:
         if loop.time() > deadline:
-            msg = "Drain timed out"
+            msg = "Queue drain timed out"
             raise TimeoutError(msg)
-        await asyncio.sleep(0.05)
-    # Extra sleep to let the dispatcher finish processing the last message
-    await asyncio.sleep(0.1)
+        await asyncio.sleep(0.01)
+    # One event-loop tick for the dispatcher to finish processing
+    await asyncio.sleep(0)
 
 
 # ── Lifecycle Tests ──────────────────────────────────────────────
@@ -265,7 +287,7 @@ class TestDispatchRouting:
     ) -> None:
         msg = _settings_message("providers", "routing_strategy")
         bus.enqueue(_envelope(msg))
-        await _drain(started_dispatcher, bus)
+        await _wait_for_subscriber(provider_sub)
         assert ("providers", "routing_strategy") in provider_sub.calls
 
     async def test_does_not_dispatch_to_non_matching_subscriber(
@@ -277,7 +299,8 @@ class TestDispatchRouting:
     ) -> None:
         msg = _settings_message("providers", "routing_strategy")
         bus.enqueue(_envelope(msg))
-        await _drain(started_dispatcher, bus)
+        # provider_sub matches and gets called — wait on it
+        await _wait_for_subscriber(provider_sub)
         assert len(memory_sub.calls) == 0
 
     async def test_dispatches_to_multiple_matching_subscribers(
@@ -293,7 +316,7 @@ class TestDispatchRouting:
         await d.start()
         try:
             bus.enqueue(_envelope(_settings_message("ns", "k")))
-            await _drain(d, bus)
+            await _wait_for_subscriber(sub_b)
             assert ("ns", "k") in sub_a.calls
             assert ("ns", "k") in sub_b.calls
         finally:
@@ -307,7 +330,7 @@ class TestDispatchRouting:
     ) -> None:
         msg = _settings_message("memory", "backend", restart_required=True)
         bus.enqueue(_envelope(msg))
-        await _drain(started_dispatcher, bus)
+        await _wait_for_queue_drain(bus)
         assert len(memory_sub.calls) == 0
 
     async def test_dispatches_non_restart_required_memory_settings(
@@ -318,7 +341,7 @@ class TestDispatchRouting:
     ) -> None:
         msg = _settings_message("memory", "default_level", restart_required=False)
         bus.enqueue(_envelope(msg))
-        await _drain(started_dispatcher, bus)
+        await _wait_for_subscriber(memory_sub)
         assert ("memory", "default_level") in memory_sub.calls
 
 
@@ -341,7 +364,7 @@ class TestDispatcherErrorIsolation:
         await d.start()
         try:
             bus.enqueue(_envelope(_settings_message("ns", "k")))
-            await _drain(d, bus)
+            await _wait_for_subscriber(good_sub)
             assert ("ns", "k") in good_sub.calls
         finally:
             await d.stop()
@@ -360,11 +383,11 @@ class TestDispatcherErrorIsolation:
         await d.start()
         try:
             bus.enqueue(_envelope(_settings_message("ns", "k")))
-            await _drain(d, bus)
+            await _wait_for_subscriber(good_sub)
             good_sub.calls.clear()
 
             bus.enqueue(_envelope(_settings_message("ns", "k")))
-            await _drain(d, bus)
+            await _wait_for_subscriber(good_sub)
             assert ("ns", "k") in good_sub.calls
         finally:
             await d.stop()
@@ -392,7 +415,7 @@ class TestMetadataExtraction:
             metadata=MessageMetadata(extra=()),
         )
         bus.enqueue(_envelope(msg))
-        await _drain(started_dispatcher, bus)
+        await _wait_for_queue_drain(bus)
         assert len(provider_sub.calls) == 0
 
     async def test_partial_metadata_namespace_only(
@@ -414,7 +437,7 @@ class TestMetadataExtraction:
             ),
         )
         bus.enqueue(_envelope(msg))
-        await _drain(started_dispatcher, bus)
+        await _wait_for_queue_drain(bus)
         assert len(provider_sub.calls) == 0
 
     async def test_restart_required_defaults_to_true_when_absent(
@@ -442,7 +465,7 @@ class TestMetadataExtraction:
         await d.start()
         try:
             bus.enqueue(_envelope(msg))
-            await _drain(d, bus)
+            await _wait_for_queue_drain(bus)
             # Fail-safe: missing restart_required treated as True → not dispatched
             assert len(sub.calls) == 0
         finally:
