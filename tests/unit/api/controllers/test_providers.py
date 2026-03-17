@@ -17,6 +17,7 @@ from tests.unit.api.conftest import (
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestProviderController:
     def test_list_providers_empty(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/providers")
@@ -35,6 +36,7 @@ class TestProviderController:
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestProviderApiKeySecurity:
     def test_provider_api_key_stripped(
         self,
@@ -53,6 +55,7 @@ class TestProviderApiKeySecurity:
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestProviderControllerDbOverride:
     """Test that DB-stored settings override YAML providers."""
 

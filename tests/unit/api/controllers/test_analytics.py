@@ -20,6 +20,7 @@ _HEADERS = make_auth_headers("ceo")
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestAnalyticsController:
     def test_overview_empty(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/analytics/overview", headers=_HEADERS)
@@ -42,6 +43,7 @@ class TestAnalyticsController:
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestAnalyticsControllerDbOverride:
     """Test that DB-stored agents affect analytics agent count."""
 

@@ -1,5 +1,6 @@
 """Company configuration controller."""
 
+import asyncio
 from typing import Any
 
 from litestar import Controller, get
@@ -38,15 +39,15 @@ class CompanyController(Controller):
             Company configuration envelope.
         """
         app_state: AppState = state.app_state
-        company_name = await app_state.config_resolver.get_str(
-            "company", "company_name"
-        )
-        agents = await app_state.config_resolver.get_agents()
-        departments = await app_state.config_resolver.get_departments()
+        resolver = app_state.config_resolver
+        async with asyncio.TaskGroup() as tg:
+            t_name = tg.create_task(resolver.get_str("company", "company_name"))
+            t_agents = tg.create_task(resolver.get_agents())
+            t_depts = tg.create_task(resolver.get_departments())
         data: dict[str, Any] = {
-            "company_name": company_name,
-            "agents": [a.model_dump(mode="json") for a in agents],
-            "departments": [d.model_dump(mode="json") for d in departments],
+            "company_name": t_name.result(),
+            "agents": [a.model_dump(mode="json") for a in t_agents.result()],
+            "departments": [d.model_dump(mode="json") for d in t_depts.result()],
         }
         return ApiResponse(data=data)
 

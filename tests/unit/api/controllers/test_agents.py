@@ -17,6 +17,7 @@ from tests.unit.api.conftest import (
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestAgentController:
     def test_list_agents_empty(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/agents")
@@ -74,6 +75,7 @@ class TestAgentController:
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(30)
 class TestAgentControllerDbOverride:
     """Test that DB-stored settings override YAML agents."""
 

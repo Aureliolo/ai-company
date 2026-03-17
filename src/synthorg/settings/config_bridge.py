@@ -31,7 +31,7 @@ def _serialize_value(value: object) -> str:
         return json.dumps(value.model_dump(mode="json"))
 
     if isinstance(value, (tuple, list)):
-        if value and isinstance(value[0], BaseModel):
+        if any(isinstance(item, BaseModel) for item in value):
             return json.dumps(
                 [
                     item.model_dump(mode="json")

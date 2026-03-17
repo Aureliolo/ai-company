@@ -303,7 +303,7 @@ class ConfigResolver:
         """Resolve agent configurations from settings.
 
         Falls back to ``RootConfig.agents`` if the setting is
-        empty or contains invalid JSON.
+        empty, contains invalid JSON, or fails schema validation.
 
         Returns:
             A tuple of ``AgentConfig`` objects.
@@ -312,6 +312,8 @@ class ConfigResolver:
             SettingNotFoundError: If the agents key is not
                 in the registry.
         """
+        from pydantic import ValidationError  # noqa: PLC0415
+
         from synthorg.config.schema import AgentConfig  # noqa: PLC0415
 
         try:
@@ -326,13 +328,31 @@ class ConfigResolver:
             return self._config.agents
         if not raw:
             return self._config.agents
-        return tuple(AgentConfig.model_validate(item) for item in raw)
+        if not isinstance(raw, list):
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="company",
+                key="agents",
+                reason="expected_list_fallback",
+            )
+            return self._config.agents
+        try:
+            return tuple(AgentConfig.model_validate(item) for item in raw)
+        except ValidationError:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="company",
+                key="agents",
+                reason="invalid_schema_fallback",
+                exc_info=True,
+            )
+            return self._config.agents
 
     async def get_departments(self) -> tuple[Department, ...]:
         """Resolve department configurations from settings.
 
         Falls back to ``RootConfig.departments`` if the setting
-        is empty or contains invalid JSON.
+        is empty, contains invalid JSON, or fails schema validation.
 
         Returns:
             A tuple of ``Department`` objects.
@@ -341,6 +361,8 @@ class ConfigResolver:
             SettingNotFoundError: If the departments key is not
                 in the registry.
         """
+        from pydantic import ValidationError  # noqa: PLC0415
+
         from synthorg.core.company import Department  # noqa: PLC0415
 
         try:
@@ -355,13 +377,31 @@ class ConfigResolver:
             return self._config.departments
         if not raw:
             return self._config.departments
-        return tuple(Department.model_validate(item) for item in raw)
+        if not isinstance(raw, list):
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="company",
+                key="departments",
+                reason="expected_list_fallback",
+            )
+            return self._config.departments
+        try:
+            return tuple(Department.model_validate(item) for item in raw)
+        except ValidationError:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="company",
+                key="departments",
+                reason="invalid_schema_fallback",
+                exc_info=True,
+            )
+            return self._config.departments
 
     async def get_provider_configs(self) -> dict[str, ProviderConfig]:
         """Resolve provider configurations from settings.
 
         Falls back to ``RootConfig.providers`` if the setting
-        is empty or contains invalid JSON.
+        is empty, contains invalid JSON, or fails schema validation.
 
         Returns:
             A dict of provider name to ``ProviderConfig``.
@@ -370,6 +410,8 @@ class ConfigResolver:
             SettingNotFoundError: If the configs key is not
                 in the registry.
         """
+        from pydantic import ValidationError  # noqa: PLC0415
+
         from synthorg.config.schema import ProviderConfig  # noqa: PLC0415
 
         try:
@@ -381,10 +423,30 @@ class ConfigResolver:
                 key="configs",
                 reason="invalid_json_fallback",
             )
-            return self._config.providers
+            return dict(self._config.providers)
         if not raw:
-            return self._config.providers
-        return {name: ProviderConfig.model_validate(conf) for name, conf in raw.items()}
+            return dict(self._config.providers)
+        if not isinstance(raw, dict):
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="providers",
+                key="configs",
+                reason="expected_dict_fallback",
+            )
+            return dict(self._config.providers)
+        try:
+            return {
+                name: ProviderConfig.model_validate(conf) for name, conf in raw.items()
+            }
+        except ValidationError:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="providers",
+                key="configs",
+                reason="invalid_schema_fallback",
+                exc_info=True,
+            )
+            return dict(self._config.providers)
 
     async def get_budget_config(self) -> BudgetConfig:
         """Assemble a ``BudgetConfig`` from individually resolved settings.
