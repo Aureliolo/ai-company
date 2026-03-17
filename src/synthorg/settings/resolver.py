@@ -336,10 +336,11 @@ class ConfigResolver:
         max requests, rate-limit time unit, JWT expiry, min password
         length) and merges them onto the YAML-loaded base config.
 
-        Bootstrap-only settings (server host/port, api_prefix, CORS
-        origins, exclude paths) are **not** resolved — they are baked
-        into the Litestar app at construction and cannot change at
-        runtime.
+        Bootstrap-only settings (``server_host``, ``server_port``,
+        ``api_prefix``, ``cors_allowed_origins``,
+        ``rate_limit_exclude_paths``, ``auth_exclude_paths``) are
+        **not** resolved — they are baked into the Litestar app at
+        construction and cannot change at runtime.
 
         Uses ``asyncio.TaskGroup`` to resolve all settings in parallel.
 

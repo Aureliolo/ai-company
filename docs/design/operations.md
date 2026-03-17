@@ -1041,7 +1041,7 @@ and retry guidance.
 - **Budget Panel**: Spending charts, per-agent breakdown (projections/alerts planned)
 - **Meeting Logs**: Placeholder — coming soon
 - **Artifact Browser**: Placeholder — coming soon
-- **Settings**: Runtime-editable configuration via DB-backed settings persistence (8 namespaces: company, providers, memory, budget, security, coordination, observability, backup). 4-layer resolution (DB > env > YAML > code defaults), Fernet encryption for sensitive values, REST API (GET/PUT/DELETE + schema endpoints for dynamic UI generation), change notifications via message bus. `ConfigResolver` provides typed composed reads for API controllers (assembles full Pydantic config models from individually resolved settings, using `asyncio.TaskGroup` for parallel resolution)
+- **Settings**: Runtime-editable configuration via DB-backed settings persistence (9 namespaces: api, company, providers, memory, budget, security, coordination, observability, backup). 4-layer resolution (DB > env > YAML > code defaults), Fernet encryption for sensitive values, REST API (GET/PUT/DELETE + schema endpoints for dynamic UI generation), change notifications via message bus. `ConfigResolver` provides typed composed reads for API controllers (assembles full Pydantic config models from individually resolved settings, using `asyncio.TaskGroup` for parallel resolution)
 
 ### Human Roles
 

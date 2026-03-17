@@ -477,8 +477,9 @@ async def _safe_shutdown(
 # Phase 1 (construct): Litestar bakes middleware, CORS, and routes
 #   into the app at construction time — these read directly from
 #   RootConfig and are immutable after construction.  Bootstrap-only
-#   settings (server host/port, api_prefix, CORS origins, exclude
-#   paths) are therefore NOT resolved through SettingsService.
+#   settings (server_host, server_port, api_prefix, cors_allowed_origins,
+#   rate_limit_exclude_paths, auth_exclude_paths) are therefore NOT
+#   resolved through SettingsService.
 #
 # Phase 2 (on_startup): After persistence connects and migrations
 #   run, SettingsService + ConfigResolver become available.  Runtime-

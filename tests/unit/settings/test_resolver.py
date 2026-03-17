@@ -8,6 +8,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.api.config import RateLimitTimeUnit
 from synthorg.core.enums import AutonomyLevel
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SettingNotFoundError
@@ -82,7 +83,7 @@ class _FakeAuthConfig(BaseModel):
 class _FakeRateLimitConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
     max_requests: int = 100
-    time_unit: str = "minute"
+    time_unit: RateLimitTimeUnit = RateLimitTimeUnit.MINUTE
     exclude_paths: tuple[str, ...] = ("/api/v1/health",)
 
 
@@ -668,7 +669,7 @@ class TestGetApiConfig:
         result = await resolver.get_api_config()
 
         assert result.rate_limit.max_requests == 100
-        assert result.rate_limit.time_unit == "minute"
+        assert result.rate_limit.time_unit == RateLimitTimeUnit.MINUTE
         assert result.auth.jwt_expiry_minutes == 1440
         assert result.auth.min_password_length == 12
 
@@ -686,7 +687,7 @@ class TestGetApiConfig:
         assert result.rate_limit.max_requests == 500
         assert result.auth.min_password_length == 16
         # Non-overridden fields keep defaults
-        assert result.rate_limit.time_unit == "minute"
+        assert result.rate_limit.time_unit == RateLimitTimeUnit.MINUTE
         assert result.auth.jwt_expiry_minutes == 1440
 
     async def test_preserves_unregistered_fields(
@@ -745,7 +746,5 @@ class TestGetApiConfig:
             {("api", "rate_limit_time_unit"): "hour"}
         )
         result = await resolver.get_api_config()
-
-        from synthorg.api.config import RateLimitTimeUnit
 
         assert result.rate_limit.time_unit == RateLimitTimeUnit.HOUR

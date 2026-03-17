@@ -128,8 +128,8 @@ src/synthorg/
   persistence/    # Operational data persistence — pluggable PersistenceBackend protocol, SQLite initial, SettingsRepository (namespaced settings CRUD) (see Memory & Persistence design page)
   observability/  # Structured logging, correlation tracking, log sinks
   providers/      # LLM provider abstraction (LiteLLM adapter)
-  settings/       # Runtime-editable settings persistence (DB > env > YAML > code defaults), typed definitions (8 namespaces), Fernet encryption for sensitive values, config bridge, ConfigResolver (typed composed reads for controllers), validation, registry, change notifications via message bus
-    definitions/  # Per-namespace setting definitions (company, providers, memory, budget, security, coordination, observability, backup)
+  settings/       # Runtime-editable settings persistence (DB > env > YAML > code defaults), typed definitions (9 namespaces), Fernet encryption for sensitive values, config bridge, ConfigResolver (typed composed reads for controllers), validation, registry, change notifications via message bus
+    definitions/  # Per-namespace setting definitions (api, company, providers, memory, budget, security, coordination, observability, backup)
   security/       # SecOps agent, rule engine (soft-allow/hard-deny, fail-closed), audit log, output scanner, output scan response policies (redact/withhold/log-only/autonomy-tiered), risk classifier, risk tier classifier, action type registry, ToolInvoker security integration, progressive trust (4 strategies: disabled/weighted/per-category/milestone), autonomy levels (presets, resolver, change strategy), timeout policies (park/resume)
   templates/      # Pre-built company templates, personality presets, and builder
   tools/          # Tool registry, built-in tools (file_system/, git, sandbox/, code_runner), git clone SSRF prevention (git_url_validator), MCP bridge (mcp/), role-based access, approval tool (request_human_approval)
