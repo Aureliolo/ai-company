@@ -99,8 +99,53 @@ def _do_compaction(
         message_count=len(conversation),
     )
 
-    # Preserve a leading SYSTEM message only when present.
-    # preserve_recent_turns * 2 for user+assistant pairs.
+    split = _split_conversation(ctx, config)
+    if split is None:
+        return None
+    head, archivable, recent = split
+
+    compressed, metadata, summary_tokens = _compress(
+        ctx,
+        head,
+        archivable,
+        recent,
+        estimator,
+    )
+
+    # Re-estimate fill with compressed conversation.  Counts
+    # conversation tokens only — system prompt and tool overhead
+    # are excluded.  The loop's next ``update_context_fill``
+    # call restores the full estimate.
+    new_fill = estimator.estimate_conversation_tokens(compressed)
+
+    logger.info(
+        CONTEXT_BUDGET_COMPACTION_COMPLETED,
+        execution_id=ctx.execution_id,
+        original_messages=len(conversation),
+        compacted_messages=len(compressed),
+        archived_turns=metadata.archived_turns,
+        summary_tokens=summary_tokens,
+        compactions_total=metadata.compactions_performed,
+    )
+    return ctx.with_compression(metadata, compressed, new_fill)
+
+
+def _split_conversation(
+    ctx: AgentContext,
+    config: CompactionConfig,
+) -> (
+    tuple[
+        tuple[ChatMessage, ...],
+        tuple[ChatMessage, ...],
+        tuple[ChatMessage, ...],
+    ]
+    | None
+):
+    """Split conversation into head, archivable, and recent segments.
+
+    Returns ``None`` when there is nothing to archive.
+    """
+    conversation = ctx.conversation
     preserve_count = config.preserve_recent_turns * 2
     head: tuple[ChatMessage, ...] = ()
     start_idx = 0
@@ -120,53 +165,39 @@ def _do_compaction(
 
     archivable = conversation[start_idx:-preserve_count]
     recent = conversation[-preserve_count:]
+    return head, archivable, recent
 
+
+def _compress(
+    ctx: AgentContext,
+    head: tuple[ChatMessage, ...],
+    archivable: tuple[ChatMessage, ...],
+    recent: tuple[ChatMessage, ...],
+    estimator: PromptTokenEstimator,
+) -> tuple[tuple[ChatMessage, ...], CompressionMetadata, int]:
+    """Build compressed conversation and metadata.
+
+    Returns ``(compressed_conversation, metadata, summary_tokens)``.
+    """
     summary_text = _build_summary(archivable)
     summary_msg = ChatMessage(
         role=MessageRole.SYSTEM,
         content=summary_text,
     )
     summary_tokens = estimator.estimate_tokens(summary_text)
+    compressed = (*head, summary_msg, *recent)
 
-    compressed_conversation = (*head, summary_msg, *recent)
-
-    # Build compression metadata.
     prior = ctx.compression_metadata
     compactions_count = prior.compactions_performed + 1 if prior is not None else 1
     prior_archived = prior.archived_turns if prior is not None else 0
 
-    archived_turn_count = len(archivable) // 2
     metadata = CompressionMetadata(
         compression_point=ctx.turn_count,
-        archived_turns=prior_archived + archived_turn_count,
+        archived_turns=prior_archived + len(archivable) // 2,
         summary_tokens=summary_tokens,
         compactions_performed=compactions_count,
     )
-
-    # Re-estimate fill with compressed conversation.  This counts
-    # conversation tokens only — system prompt and tool overhead are
-    # excluded because the compaction callback does not have access to
-    # those values.  The execution loop's next call to
-    # ``update_context_fill`` will restore the full estimate.
-    new_fill = estimator.estimate_conversation_tokens(
-        compressed_conversation,
-    )
-
-    logger.info(
-        CONTEXT_BUDGET_COMPACTION_COMPLETED,
-        execution_id=ctx.execution_id,
-        original_messages=len(conversation),
-        compacted_messages=len(compressed_conversation),
-        archived_turns=archived_turn_count,
-        summary_tokens=summary_tokens,
-        compactions_total=compactions_count,
-    )
-
-    return ctx.with_compression(
-        metadata,
-        compressed_conversation,
-        new_fill,
-    )
+    return compressed, metadata, summary_tokens
 
 
 def _build_summary(messages: tuple[ChatMessage, ...]) -> str:

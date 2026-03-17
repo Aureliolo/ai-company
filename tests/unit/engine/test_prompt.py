@@ -474,7 +474,7 @@ class TestTokenEstimation:
 
             def estimate_conversation_tokens(
                 self,
-                messages: object,
+                messages: tuple,  # type: ignore[override]
             ) -> int:
                 return 0
 
