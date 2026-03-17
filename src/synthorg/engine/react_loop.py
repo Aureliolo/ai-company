@@ -33,6 +33,7 @@ from .loop_helpers import (
     clear_last_turn_tool_calls,
     execute_tool_calls,
     get_tool_definitions,
+    invoke_compaction,
     make_turn_record,
     response_to_message,
 )
@@ -47,6 +48,7 @@ from .loop_protocol import (
 if TYPE_CHECKING:
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.checkpoint.callback import CheckpointCallback
+    from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.context import AgentContext
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.models import ToolDefinition
@@ -75,6 +77,9 @@ class ReactLoop:
             repetitive tool-call patterns and intervenes with
             corrective prompts or early termination.  ``None``
             disables stagnation detection.
+        compaction_callback: Optional async callback invoked at turn
+            boundaries to compress older conversation turns when the
+            context fill level is high.  ``None`` disables compaction.
     """
 
     def __init__(
@@ -83,10 +88,12 @@ class ReactLoop:
         *,
         approval_gate: ApprovalGate | None = None,
         stagnation_detector: StagnationDetector | None = None,
+        compaction_callback: CompactionCallback | None = None,
     ) -> None:
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
         self._stagnation_detector = stagnation_detector
+        self._compaction_callback = compaction_callback
 
     @property
     def approval_gate(self) -> ApprovalGate | None:
@@ -97,6 +104,11 @@ class ReactLoop:
     def stagnation_detector(self) -> StagnationDetector | None:
         """Return the stagnation detector, or ``None``."""
         return self._stagnation_detector
+
+    @property
+    def compaction_callback(self) -> CompactionCallback | None:
+        """Return the compaction callback, or ``None``."""
+        return self._compaction_callback
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
@@ -190,6 +202,15 @@ class ReactLoop:
                 return stag_outcome
             if isinstance(stag_outcome, tuple):
                 ctx, corrections_injected = stag_outcome
+
+            # Context compaction at turn boundaries
+            compacted = await invoke_compaction(
+                ctx,
+                self._compaction_callback,
+                turn_number,
+            )
+            if compacted is not None:
+                ctx = compacted
 
         logger.info(
             EXECUTION_LOOP_TERMINATED,

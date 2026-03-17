@@ -8,12 +8,20 @@ Wraps an ``AgentIdentity`` (frozen config) with evolving runtime state
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    computed_field,
+    model_validator,
+)
 
 from synthorg.core.agent import AgentIdentity  # noqa: TC001
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.task import Task  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.compaction.models import CompressionMetadata  # noqa: TC001
 from synthorg.engine.errors import ExecutionStateError, MaxTurnsExceededError
 from synthorg.engine.task_execution import TaskExecution
 from synthorg.observability import get_logger
@@ -74,6 +82,15 @@ class AgentContextSnapshot(BaseModel):
         description="When snapshot was taken",
     )
     message_count: int = Field(ge=0, description="Messages in conversation")
+    context_fill_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Estimated context fill tokens",
+    )
+    context_fill_percent: float | None = Field(
+        default=None,
+        description="Context fill percentage",
+    )
 
     @model_validator(mode="after")
     def _validate_task_pair(self) -> AgentContextSnapshot:
@@ -100,6 +117,12 @@ class AgentContext(BaseModel):
         turn_count: Number of LLM turns completed.
         max_turns: Hard limit on turns before the engine stops.
         started_at: When this execution began.
+        context_fill_tokens: Estimated tokens currently in the full
+            context (system prompt + conversation + tool defs).
+        context_capacity_tokens: Model's max context window tokens,
+            or ``None`` when unknown.
+        compression_metadata: Metadata about conversation compression,
+            set when compaction has occurred.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -135,6 +158,33 @@ class AgentContext(BaseModel):
     started_at: AwareDatetime = Field(
         description="When execution began",
     )
+    context_fill_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Estimated tokens in the full context",
+    )
+    context_capacity_tokens: int | None = Field(
+        default=None,
+        gt=0,
+        description="Model's max context window tokens",
+    )
+    compression_metadata: CompressionMetadata | None = Field(
+        default=None,
+        description="Compression metadata when compacted",
+    )
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Context fill percentage",
+    )
+    @property
+    def context_fill_percent(self) -> float | None:
+        """Percentage of context window currently filled.
+
+        Returns ``None`` when context capacity is unknown.
+        """
+        if self.context_capacity_tokens is None:
+            return None
+        return (self.context_fill_tokens / self.context_capacity_tokens) * 100.0
 
     @classmethod
     def from_identity(
@@ -143,6 +193,7 @@ class AgentContext(BaseModel):
         *,
         task: Task | None = None,
         max_turns: int = DEFAULT_MAX_TURNS,
+        context_capacity_tokens: int | None = None,
     ) -> AgentContext:
         """Create a fresh execution context from an agent identity.
 
@@ -150,6 +201,8 @@ class AgentContext(BaseModel):
             identity: The frozen agent identity card.
             task: Optional task to bind to this execution.
             max_turns: Maximum number of LLM turns allowed.
+            context_capacity_tokens: Model's max context window
+                tokens, or ``None`` when unknown.
 
         Returns:
             New ``AgentContext`` ready for execution.
@@ -161,6 +214,7 @@ class AgentContext(BaseModel):
             task_execution=task_execution,
             max_turns=max_turns,
             started_at=datetime.now(UTC),
+            context_capacity_tokens=context_capacity_tokens,
         )
         logger.debug(
             EXECUTION_CONTEXT_CREATED,
@@ -232,6 +286,55 @@ class AgentContext(BaseModel):
         )
         return result
 
+    def with_context_fill(self, fill_tokens: int) -> AgentContext:
+        """Update the estimated context fill level.
+
+        Args:
+            fill_tokens: New estimated fill in tokens.
+
+        Returns:
+            New ``AgentContext`` with updated fill level.
+
+        Raises:
+            ValueError: If ``fill_tokens`` is negative.
+        """
+        if fill_tokens < 0:
+            msg = f"fill_tokens must be >= 0, got {fill_tokens}"
+            raise ValueError(msg)
+        return self.model_copy(
+            update={"context_fill_tokens": fill_tokens},
+        )
+
+    def with_compression(
+        self,
+        metadata: CompressionMetadata,
+        compressed_conversation: tuple[ChatMessage, ...],
+        fill_tokens: int,
+    ) -> AgentContext:
+        """Replace conversation with a compressed version.
+
+        Args:
+            metadata: Compression metadata to attach.
+            compressed_conversation: The compressed message tuple.
+            fill_tokens: Updated fill estimate after compression.
+
+        Returns:
+            New ``AgentContext`` with compressed conversation.
+
+        Raises:
+            ValueError: If ``fill_tokens`` is negative.
+        """
+        if fill_tokens < 0:
+            msg = f"fill_tokens must be >= 0, got {fill_tokens}"
+            raise ValueError(msg)
+        return self.model_copy(
+            update={
+                "conversation": compressed_conversation,
+                "compression_metadata": metadata,
+                "context_fill_tokens": fill_tokens,
+            },
+        )
+
     def with_task_transition(
         self,
         target: TaskStatus,
@@ -294,6 +397,8 @@ class AgentContext(BaseModel):
             started_at=self.started_at,
             snapshot_at=datetime.now(UTC),
             message_count=len(self.conversation),
+            context_fill_tokens=self.context_fill_tokens,
+            context_fill_percent=self.context_fill_percent,
         )
         logger.debug(
             EXECUTION_CONTEXT_SNAPSHOT,

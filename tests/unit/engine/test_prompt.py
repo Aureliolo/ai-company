@@ -20,7 +20,6 @@ from synthorg.core.enums import (
 )
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.prompt import (
-    DefaultTokenEstimator,
     SystemPrompt,
     build_error_prompt,
     build_system_prompt,
@@ -29,11 +28,13 @@ from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
     PROMPT_TEMPLATE_VERSION,
 )
+from synthorg.engine.token_estimation import DefaultTokenEstimator
 from synthorg.observability.events.prompt import (
     PROMPT_BUILD_START,
     PROMPT_BUILD_SUCCESS,
     PROMPT_BUILD_TOKEN_TRIMMED,
 )
+from synthorg.providers.models import ChatMessage
 from synthorg.security.autonomy.models import EffectiveAutonomy
 
 if TYPE_CHECKING:
@@ -472,6 +473,12 @@ class TestTokenEstimation:
                 call_count += 1
                 return len(text) // 4
 
+            def estimate_conversation_tokens(
+                self,
+                messages: tuple[ChatMessage, ...],
+            ) -> int:
+                return 0
+
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             token_estimator=CountingEstimator(),
@@ -538,9 +545,9 @@ class TestPromptVersioning:
     """Tests for prompt versioning and section tracking."""
 
     @pytest.mark.unit
-    def test_template_version_is_1_3_0(self) -> None:
-        """PROMPT_TEMPLATE_VERSION is '1.3.0' (D22 tools removal)."""
-        assert PROMPT_TEMPLATE_VERSION == "1.4.0"
+    def test_template_version_frozen(self) -> None:
+        """PROMPT_TEMPLATE_VERSION is frozen at '1.0.0' until first deploy."""
+        assert PROMPT_TEMPLATE_VERSION == "1.0.0"
 
     @pytest.mark.unit
     def test_template_version_in_result(

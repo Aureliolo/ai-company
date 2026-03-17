@@ -17,7 +17,10 @@ from typing import Final
 
 from synthorg.core.enums import SeniorityLevel
 
-PROMPT_TEMPLATE_VERSION: Final[str] = "1.4.0"
+# Frozen at "1.0.0" until the app has users — no caching, snapshots,
+# or migrations depend on this yet.  Bump to a meaningful version when
+# the first production deployment ships.
+PROMPT_TEMPLATE_VERSION: Final[str] = "1.0.0"
 
 # ── Autonomy instructions by seniority level ─────────────────────
 
@@ -182,5 +185,11 @@ You work at **{{ company.name }}**.
 {% if company_departments %}
 **Departments**: {{ company_departments | join(', ') }}
 {% endif %}
+{% endif %}
+{% if context_budget %}
+
+## Context Budget
+
+{{ context_budget }}
 {% endif %}
 """

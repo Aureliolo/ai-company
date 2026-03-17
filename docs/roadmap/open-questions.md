@@ -9,7 +9,7 @@ Numbers are stable identifiers — resolved questions are removed without renumb
 | # | Question | Impact | Notes |
 |---|----------|--------|-------|
 | 1 | How deep should agent personality affect output? | Medium | Too deep leads to inconsistency; too shallow makes all agents feel the same. |
-| 3 | How to handle context window limits for long tasks? | High | Agents may lose track of complex multi-file changes. |
+| 3 | ~~How to handle context window limits for long tasks?~~ | ~~High~~ | **Partially resolved**: context budget management (#416) provides fill tracking, soft indicators, and oldest-turns compaction. Remaining: LLM-based summarization, tiktoken estimator, AgentEngine wiring. |
 | 4 | Should agents be able to create/modify other agents? | Medium | For example, a CTO "hires" a developer by creating a new agent config. |
 | 6 | What metrics define "good" agent performance? | Medium | Needed for HR/hiring/firing decisions. |
 | 8 | Optimal message bus for local-first architecture? | Medium | asyncio queues vs Redis vs embedded broker. |
@@ -21,7 +21,7 @@ Numbers are stable identifiers — resolved questions are removed without renumb
 
 | Risk | Severity | Mitigation |
 |------|----------|------------|
-| Context window exhaustion on complex tasks | High | Memory summarization, task decomposition, working memory management. |
+| Context window exhaustion on complex tasks | Medium | **Partially mitigated**: context budget management (#416) tracks fill, injects indicators, and compacts at turn boundaries. Remaining: LLM-based summarization for higher-quality summaries. |
 | Cost explosion from agent loops | High | Budget hard stops, loop detection, max iterations per task. |
 | Agent quality degradation with cheap models | Medium | Quality gates, minimum model requirements per task type. |
 | Third-party library breaking changes | Medium | Pin versions, integration tests, abstraction layers. |

@@ -584,6 +584,85 @@ sorted per-turn for order-independent comparison.
 
 ---
 
+## Context Budget Management
+
+Agents running long tasks consume their LLM context window without awareness.
+The context budget system tracks fill levels, injects soft indicators into
+system prompts, and compresses conversations at turn boundaries.
+
+### Context Fill Tracking
+
+`AgentContext` carries three context-budget fields:
+
+- `context_fill_tokens` — estimated tokens in the full context (system prompt +
+  conversation + tool definitions)
+- `context_capacity_tokens` — the model's `max_context_tokens` from
+  `ModelCapabilities`, or `None` when unknown
+- `context_fill_percent` — computed percentage (`fill / capacity * 100`),
+  `None` when capacity is unknown
+
+Fill is re-estimated after each turn via `update_context_fill()` in
+`context_budget.py`, using the `PromptTokenEstimator` protocol (default:
+`DefaultTokenEstimator` at `len(text) // 4`).
+
+### Soft Budget Indicators
+
+`ContextBudgetIndicator` is injected into the system prompt via
+`_SECTION_CONTEXT_BUDGET`:
+
+```text
+[Context: 12,450/16,000 tokens (78%) | 0 archived blocks]
+```
+
+The indicator is set at initial prompt build time. The `archived_blocks` count
+is derived from `CompressionMetadata.compactions_performed`.
+
+### Compaction Hook
+
+`CompactionCallback` is a type alias (`Callable[[AgentContext], Coroutine[...,
+AgentContext | None]]`) wired into both `ReactLoop` and `PlanExecuteLoop` via
+their constructors — the same injection pattern as `checkpoint_callback`,
+`stagnation_detector`, and `approval_gate`.
+
+The default implementation (`make_compaction_callback` in
+`compaction/summarizer.py`) archives oldest conversation turns into a summary
+message when `context_fill_percent` exceeds a configurable threshold (default
+80%).
+
+`CompactionConfig` controls:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `fill_threshold_percent` | `80.0` | Fill percentage that triggers compaction |
+| `min_messages_to_compact` | `4` | Minimum messages before compaction is allowed |
+| `preserve_recent_turns` | `3` | Recent turn pairs to keep uncompressed |
+
+Compaction errors are logged but never propagated — compaction is advisory,
+not critical.
+
+### Compressed Checkpoint Recovery
+
+`CompressionMetadata` is persisted on `AgentContext` and serialized into
+checkpoint JSON. On resume, `deserialize_and_reconcile()` detects compressed
+checkpoints and includes compression-aware information in the reconciliation
+message:
+
+```text
+Execution resumed from checkpoint at turn 8. Note: conversation was
+previously compacted (archived 12 turns). Previous error: ...
+```
+
+### Loop Integration
+
+- **ReactLoop**: compaction checked after stagnation detection, at turn
+  boundaries (between completed turns)
+- **PlanExecuteLoop**: compaction checked within step execution at turn
+  boundaries, before stagnation detection
+
+Both loops use the shared `invoke_compaction()` helper from `loop_helpers.py`.
+
+---
+
 ## Agent Crash Recovery
 
 When an agent execution fails unexpectedly (unhandled exception, OOM, process

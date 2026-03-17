@@ -177,13 +177,24 @@ def clone_tool(workspace: Path) -> GitCloneTool:
 def allow_local_clone(monkeypatch: pytest.MonkeyPatch) -> None:
     """Allow local file paths in clone URL validation for testing.
 
-    Also sets ``GIT_ALLOW_PROTOCOL=file`` so that ``_run_git`` (which
-    uses ``GIT_CONFIG_GLOBAL=/dev/null``) still permits the ``file``
+    Bypasses both the scheme check and the SSRF host validation so
+    that local ``file://`` clones work in tests.  Also sets
+    ``GIT_ALLOW_PROTOCOL=file`` so that ``_run_git`` (which uses
+    ``GIT_CONFIG_GLOBAL=/dev/null``) still permits the ``file``
     transport.
     """
     monkeypatch.setattr(
         git_tools_module,
-        "_is_allowed_clone_url",
+        "is_allowed_clone_scheme",
         lambda url: True,
+    )
+
+    async def _allow_all_hosts(url: str, policy: object) -> None:
+        return None
+
+    monkeypatch.setattr(
+        git_tools_module,
+        "validate_clone_url_host",
+        _allow_all_hosts,
     )
     monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")
