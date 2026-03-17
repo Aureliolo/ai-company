@@ -147,11 +147,15 @@ def _split_conversation(
     """
     conversation = ctx.conversation
     preserve_count = config.preserve_recent_turns * 2
-    head: tuple[ChatMessage, ...] = ()
+    # Preserve all leading SYSTEM messages (original system prompt
+    # and any prior compaction summaries).
     start_idx = 0
-    if conversation and conversation[0].role == MessageRole.SYSTEM:
-        head = (conversation[0],)
-        start_idx = 1
+    while (
+        start_idx < len(conversation)
+        and conversation[start_idx].role == MessageRole.SYSTEM
+    ):
+        start_idx += 1
+    head = tuple(conversation[:start_idx])
 
     if preserve_count >= len(conversation) - start_idx:
         logger.debug(
