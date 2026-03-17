@@ -44,19 +44,15 @@ func VerifyCosignSignature(ctx context.Context, ref ImageRef, sev *verify.Verifi
 	}
 
 	// Try each signature referrer -- first successful verification wins.
-	var lastErr error
-	for _, desc := range sigDescs {
+	var errs []error
+	for i, desc := range sigDescs {
 		if err := verifyCosignReferrer(ctx, ref, desc, sev, certID); err != nil {
-			lastErr = err
+			errs = append(errs, fmt.Errorf("referrer[%d]: %w", i, err))
 			continue
 		}
 		return nil
 	}
-
-	if lastErr != nil {
-		return fmt.Errorf("cosign signature verification failed for %s: %w", ref, lastErr)
-	}
-	return fmt.Errorf("no cosign signature bundle found for %s", ref)
+	return fmt.Errorf("no valid cosign signature for %s: %w", ref, errors.Join(errs...))
 }
 
 // findCosignSignatures queries OCI referrers and returns descriptors for
@@ -109,23 +105,32 @@ func verifyCosignReferrer(ctx context.Context, ref ImageRef, desc v1.Descriptor,
 		return fmt.Errorf("reading cosign signature manifest: %w", err)
 	}
 
-	// Check manifest-level annotations first.
+	// Check manifest-level annotations first, then layer annotations.
+	// Accumulate errors so callers can diagnose verification failures.
+	var bundleErrs []error
+
 	if bundleJSON, ok := sigManifest.Annotations[cosignBundleAnnotation]; ok {
-		if err := verifyCosignBundleWith([]byte(bundleJSON), ref.Digest, sev, certID); err == nil {
+		if err := verifyCosignBundleWith([]byte(bundleJSON), ref.Digest, sev, certID); err != nil {
+			bundleErrs = append(bundleErrs, fmt.Errorf("manifest bundle: %w", err))
+		} else {
 			return nil
 		}
 	}
 
-	// Then check layer annotations -- cosign may store the bundle in any layer.
 	for i := range sigManifest.Layers {
 		if bundleJSON, ok := sigManifest.Layers[i].Annotations[cosignBundleAnnotation]; ok {
-			if err := verifyCosignBundleWith([]byte(bundleJSON), ref.Digest, sev, certID); err == nil {
+			if err := verifyCosignBundleWith([]byte(bundleJSON), ref.Digest, sev, certID); err != nil {
+				bundleErrs = append(bundleErrs, fmt.Errorf("layer[%d] bundle: %w", i, err))
+			} else {
 				return nil
 			}
 		}
 	}
 
-	return fmt.Errorf("no valid cosign bundle in signature referrer %s", desc.Digest)
+	if len(bundleErrs) > 0 {
+		return fmt.Errorf("cosign bundle verification failed in referrer %s: %w", desc.Digest, errors.Join(bundleErrs...))
+	}
+	return fmt.Errorf("no cosign bundle annotation in signature referrer %s", desc.Digest)
 }
 
 // verifyCosignBundleWith verifies a cosign Sigstore bundle against the expected

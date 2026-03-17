@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +23,7 @@ func TestParseDigest(t *testing.T) {
 	}{
 		{"valid", "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", false},
 		{"no colon", "sha256abcdef", true},
+		{"unsupported algo", "sha512:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", true},
 		{"invalid hex", "sha256:xyz", true},
 	}
 	for _, tt := range tests {
@@ -204,7 +206,7 @@ func TestVerifyCosignSignatureInvalidBundle(t *testing.T) {
 
 func TestErrNoCosignSignaturesIs(t *testing.T) {
 	wrapped := fmt.Errorf("%w for ghcr.io/test:1.0", ErrNoCosignSignatures)
-	if !strings.Contains(wrapped.Error(), "no cosign signatures found") {
-		t.Errorf("wrapped error should contain sentinel message, got: %v", wrapped)
+	if !errors.Is(wrapped, ErrNoCosignSignatures) {
+		t.Errorf("errors.Is(%v, ErrNoCosignSignatures) = false, want true", wrapped)
 	}
 }
