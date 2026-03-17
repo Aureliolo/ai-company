@@ -12,23 +12,25 @@ from synthorg.tools.factory import (
 from synthorg.tools.git_tools import GitCloneTool
 from synthorg.tools.registry import ToolRegistry
 
+_EXPECTED_TOOL_COUNT: int = 11
+
 
 @pytest.mark.integration
 class TestToolFactoryConfigIntegration:
-    """End-to-end: YAML config → RootConfig → factory → tool instances."""
+    """Integration: YAML config -> RootConfig -> factory -> tool instances."""
 
     def test_yaml_with_allowlist_wires_to_clone_tool(
         self,
         tmp_path: Path,
     ) -> None:
         """YAML hostname_allowlist propagates to GitCloneTool."""
-        yaml = """\
+        yaml_str = """\
 company_name: test-corp
 git_clone:
   hostname_allowlist:
     - internal.example.com
 """
-        config = load_config_from_string(yaml)
+        config = load_config_from_string(yaml_str)
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
@@ -42,11 +44,11 @@ git_clone:
         tmp_path: Path,
     ) -> None:
         """Empty git_clone section yields default policy."""
-        yaml = """\
+        yaml_str = """\
 company_name: test-corp
 git_clone: {}
 """
-        config = load_config_from_string(yaml)
+        config = load_config_from_string(yaml_str)
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
@@ -63,4 +65,4 @@ git_clone: {}
         """Factory output can be wrapped in ToolRegistry without errors."""
         tools = build_default_tools(workspace=tmp_path)
         registry = ToolRegistry(tools)
-        assert len(list(registry.all_tools())) == 11
+        assert len(list(registry.all_tools())) == _EXPECTED_TOOL_COUNT

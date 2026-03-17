@@ -81,8 +81,7 @@ def build_default_tools(
         ),
     ]
 
-    all_tools = sorted(fs_tools + git_tools, key=lambda t: t.name)
-    result = tuple(all_tools)
+    result = tuple(sorted(fs_tools + git_tools, key=lambda t: t.name))
 
     logger.info(
         TOOL_FACTORY_BUILT,

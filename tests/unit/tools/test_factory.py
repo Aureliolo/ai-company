@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from synthorg.config.schema import RootConfig
 from synthorg.tools._git_base import _BaseGitTool
 from synthorg.tools.base import BaseTool
 from synthorg.tools.factory import (
@@ -67,9 +68,22 @@ class TestBuildDefaultTools:
         tools = build_default_tools(workspace=tmp_path)
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, GitCloneTool)
-        default = GitCloneNetworkPolicy()
-        assert clone._network_policy.hostname_allowlist == default.hostname_allowlist
-        assert clone._network_policy.block_private_ips == default.block_private_ips
+        assert clone._network_policy.hostname_allowlist == ()
+        assert clone._network_policy.block_private_ips is True
+
+    def test_git_clone_permissive_policy(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Policy with block_private_ips=False is wired correctly."""
+        policy = GitCloneNetworkPolicy(block_private_ips=False)
+        tools = build_default_tools(
+            workspace=tmp_path,
+            git_clone_policy=policy,
+        )
+        clone = next(t for t in tools if t.name == "git_clone")
+        assert isinstance(clone, GitCloneTool)
+        assert clone._network_policy.block_private_ips is False
 
     def test_file_system_tools_receive_workspace(
         self,
@@ -106,7 +120,7 @@ class TestBuildDefaultTools:
         for tool in tools:
             if tool.name in git_names:
                 assert isinstance(tool, _BaseGitTool)
-                assert tool._workspace == tmp_path.resolve()
+                assert tool.workspace == tmp_path.resolve()
 
     def test_sandbox_passed_to_git_tools(
         self,
@@ -155,8 +169,6 @@ class TestBuildDefaultToolsFromConfig:
         tmp_path: Path,
     ) -> None:
         """Policy from RootConfig.git_clone flows to clone tool."""
-        from synthorg.config.schema import RootConfig
-
         policy = GitCloneNetworkPolicy(
             hostname_allowlist=("git.corp.example.com",),
         )
@@ -177,8 +189,6 @@ class TestBuildDefaultToolsFromConfig:
         tmp_path: Path,
     ) -> None:
         """Default RootConfig yields default network policy."""
-        from synthorg.config.schema import RootConfig
-
         config = RootConfig(company_name="test-corp")
         tools = build_default_tools_from_config(
             workspace=tmp_path,
@@ -188,3 +198,19 @@ class TestBuildDefaultToolsFromConfig:
         assert isinstance(clone, GitCloneTool)
         assert clone._network_policy.hostname_allowlist == ()
         assert clone._network_policy.block_private_ips is True
+
+    def test_sandbox_passed_through_config_wrapper(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Sandbox arg is forwarded by build_default_tools_from_config."""
+        mock_sandbox = MagicMock()
+        config = RootConfig(company_name="test-corp")
+        tools = build_default_tools_from_config(
+            workspace=tmp_path,
+            config=config,
+            sandbox=mock_sandbox,
+        )
+        clone = next(t for t in tools if t.name == "git_clone")
+        assert isinstance(clone, _BaseGitTool)
+        assert clone._sandbox is mock_sandbox
