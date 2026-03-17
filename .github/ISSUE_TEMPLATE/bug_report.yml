@@ -110,11 +110,19 @@ body:
     attributes:
       label: Doctor output
       description: |
-        If SynthOrg is installed, paste the output of `synthorg doctor`.
-        This collects OS, architecture, Docker version, container status, health checks,
-        and config (secrets are redacted). It makes debugging much faster.
+        Paste the output of `synthorg doctor`. It collects OS, architecture,
+        Docker version, container status, health checks, and config (secrets
+        are redacted). If SynthOrg is not installed, write "not installed".
       placeholder: |
-        Paste `synthorg doctor` output here (optional but very helpful)
+        {
+          "os": "windows",
+          "arch": "amd64",
+          "cli_version": "v0.3.0",
+          "docker_version": "27.x",
+          "compose_version": "2.x",
+          "health_status": "healthy",
+          "compose_file_exists": true
+        }
       render: json
     validations:
       required: false
