@@ -51,7 +51,8 @@ _PUBLIC_PATH_SUFFIXES: Final[tuple[str, ...]] = (
     "/auth/login",
 )
 
-# HTTP methods that accept a request body (get 400/409 injected).
+# HTTP methods that mutate state.  Includes DELETE for 400/403 injection;
+# DELETE is intentionally excluded from 409 by the Conflict injection logic.
 _WRITE_METHODS: Final[frozenset[str]] = frozenset(
     {"post", "put", "patch", "delete"},
 )

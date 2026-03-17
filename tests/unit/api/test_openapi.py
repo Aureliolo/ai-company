@@ -508,7 +508,14 @@ class TestOperationInjection:
 
     @pytest.mark.parametrize(
         "key",
-        ["BadRequest", "Unauthorized", "Forbidden", "NotFound", "Conflict"],
+        [
+            "BadRequest",
+            "Unauthorized",
+            "Forbidden",
+            "NotFound",
+            "Conflict",
+            "InternalError",
+        ],
     )
     def test_non_retryable_example_has_retryable_false(
         self, base_schema: dict[str, Any], key: str
