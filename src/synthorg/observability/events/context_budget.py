@@ -11,5 +11,8 @@ CONTEXT_BUDGET_COMPACTION_COMPLETED: Final[str] = "context_budget.compaction.com
 CONTEXT_BUDGET_COMPACTION_FAILED: Final[str] = "context_budget.compaction.failed"
 CONTEXT_BUDGET_COMPACTION_SKIPPED: Final[str] = "context_budget.compaction.skipped"
 
+# Fallback summary (compaction proceeded but no assistant content for summary)
+CONTEXT_BUDGET_COMPACTION_FALLBACK: Final[str] = "context_budget.compaction.fallback"
+
 # Indicator injection
 CONTEXT_BUDGET_INDICATOR_INJECTED: Final[str] = "context_budget.indicator.injected"

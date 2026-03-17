@@ -18,6 +18,7 @@ from synthorg.engine.token_estimation import (
 from synthorg.observability import get_logger
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_COMPACTION_COMPLETED,
+    CONTEXT_BUDGET_COMPACTION_FALLBACK,
     CONTEXT_BUDGET_COMPACTION_SKIPPED,
     CONTEXT_BUDGET_COMPACTION_STARTED,
 )
@@ -189,7 +190,7 @@ def _build_summary(messages: tuple[ChatMessage, ...]) -> str:
 
     if not snippets:
         logger.debug(
-            CONTEXT_BUDGET_COMPACTION_COMPLETED,
+            CONTEXT_BUDGET_COMPACTION_FALLBACK,
             reason="no_assistant_content_for_summary",
             archived_count=len(messages),
         )

@@ -17,7 +17,7 @@ from typing import Final
 
 from synthorg.core.enums import SeniorityLevel
 
-PROMPT_TEMPLATE_VERSION: Final[str] = "1.4.0"
+PROMPT_TEMPLATE_VERSION: Final[str] = "1.5.0"
 
 # ── Autonomy instructions by seniority level ─────────────────────
 
