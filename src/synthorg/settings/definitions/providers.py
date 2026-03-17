@@ -44,3 +44,15 @@ _r.register(
         max_value=10,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="configs",
+        type=SettingType.JSON,
+        default=None,
+        description="LLM provider configurations (JSON object keyed by name)",
+        group="General",
+        yaml_path="providers",
+    )
+)

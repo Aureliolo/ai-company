@@ -49,3 +49,27 @@ _r.register(
         yaml_path="graceful_shutdown.grace_seconds",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMPANY,
+        key="agents",
+        type=SettingType.JSON,
+        default=None,
+        description="Agent configurations (JSON array of AgentConfig objects)",
+        group="Structure",
+        yaml_path="agents",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMPANY,
+        key="departments",
+        type=SettingType.JSON,
+        default=None,
+        description="Department hierarchy (JSON array of Department objects)",
+        group="Structure",
+        yaml_path="departments",
+    )
+)

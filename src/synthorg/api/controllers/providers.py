@@ -43,9 +43,8 @@ class ProviderController(Controller):
             Provider configurations envelope (api_key stripped).
         """
         app_state: AppState = state.app_state
-        safe = {
-            name: _safe_provider(p) for name, p in app_state.config.providers.items()
-        }
+        providers = await app_state.config_resolver.get_provider_configs()
+        safe = {name: _safe_provider(p) for name, p in providers.items()}
         return ApiResponse(data=safe)
 
     @get("/{name:str}")
@@ -67,7 +66,8 @@ class ProviderController(Controller):
             NotFoundError: If the provider is not found.
         """
         app_state: AppState = state.app_state
-        provider = app_state.config.providers.get(name)
+        providers = await app_state.config_resolver.get_provider_configs()
+        provider = providers.get(name)
         if provider is None:
             msg = f"Provider {name!r} not found"
             logger.warning(API_RESOURCE_NOT_FOUND, resource="provider", name=name)
@@ -93,7 +93,8 @@ class ProviderController(Controller):
             NotFoundError: If the provider is not found.
         """
         app_state: AppState = state.app_state
-        provider = app_state.config.providers.get(name)
+        providers = await app_state.config_resolver.get_provider_configs()
+        provider = providers.get(name)
         if provider is None:
             msg = f"Provider {name!r} not found"
             logger.warning(API_RESOURCE_NOT_FOUND, resource="provider", name=name)

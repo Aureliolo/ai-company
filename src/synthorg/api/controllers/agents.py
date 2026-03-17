@@ -40,11 +40,8 @@ class AgentController(Controller):
             Paginated agent configurations.
         """
         app_state: AppState = state.app_state
-        page, meta = paginate(
-            app_state.config.agents,
-            offset=offset,
-            limit=limit,
-        )
+        agents = await app_state.config_resolver.get_agents()
+        page, meta = paginate(agents, offset=offset, limit=limit)
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{agent_name:str}")
@@ -66,7 +63,8 @@ class AgentController(Controller):
             NotFoundError: If the agent is not found.
         """
         app_state: AppState = state.app_state
-        for agent in app_state.config.agents:
+        agents = await app_state.config_resolver.get_agents()
+        for agent in agents:
             if agent.name == agent_name:
                 return ApiResponse(data=agent)
         msg = f"Agent {agent_name!r} not found"

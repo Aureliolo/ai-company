@@ -40,11 +40,8 @@ class DepartmentController(Controller):
             Paginated department list.
         """
         app_state: AppState = state.app_state
-        page, meta = paginate(
-            app_state.config.departments,
-            offset=offset,
-            limit=limit,
-        )
+        departments = await app_state.config_resolver.get_departments()
+        page, meta = paginate(departments, offset=offset, limit=limit)
         return PaginatedResponse(data=page, pagination=meta)
 
     @get("/{name:str}")
@@ -66,7 +63,8 @@ class DepartmentController(Controller):
             NotFoundError: If the department is not found.
         """
         app_state: AppState = state.app_state
-        for dept in app_state.config.departments:
+        departments = await app_state.config_resolver.get_departments()
+        for dept in departments:
             if dept.name == name:
                 return ApiResponse(data=dept)
         msg = f"Department {name!r} not found"

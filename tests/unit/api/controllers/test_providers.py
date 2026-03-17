@@ -1,9 +1,19 @@
 """Tests for provider controller."""
 
+import json
 from typing import Any
 
 import pytest
 from litestar.testing import TestClient
+
+from synthorg.config.schema import RootConfig
+from synthorg.settings.registry import get_registry
+from synthorg.settings.service import SettingsService
+from tests.unit.api.conftest import (
+    FakeMessageBus,
+    FakePersistenceBackend,
+    make_auth_headers,
+)
 
 
 @pytest.mark.unit
@@ -40,3 +50,48 @@ class TestProviderApiKeySecurity:
         )
         safe = _safe_provider(provider)
         assert safe.api_key is None
+
+
+@pytest.mark.unit
+class TestProviderControllerDbOverride:
+    """Test that DB-stored settings override YAML providers."""
+
+    async def test_db_providers_override_config(
+        self,
+        fake_persistence: FakePersistenceBackend,
+        fake_message_bus: FakeMessageBus,
+    ) -> None:
+        from synthorg.api.app import create_app
+        from synthorg.api.auth.service import AuthService
+        from synthorg.budget.tracker import CostTracker
+        from tests.unit.api.conftest import _make_test_auth_service, _seed_test_users
+
+        config = RootConfig(company_name="test")
+        auth_service: AuthService = _make_test_auth_service()
+        _seed_test_users(fake_persistence, auth_service)
+        settings_service = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=config,
+        )
+
+        db_providers = {
+            "db-provider": {"driver": "litellm"},
+        }
+        await settings_service.set("providers", "configs", json.dumps(db_providers))
+
+        app = create_app(
+            config=config,
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+            cost_tracker=CostTracker(),
+            auth_service=auth_service,
+            settings_service=settings_service,
+        )
+        with TestClient(app) as client:
+            client.headers.update(make_auth_headers("observer"))
+            resp = client.get("/api/v1/providers")
+            body = resp.json()
+            assert "db-provider" in body["data"]
+            # api_key should be stripped
+            assert body["data"]["db-provider"].get("api_key") is None

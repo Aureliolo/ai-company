@@ -41,11 +41,12 @@ class CompanyController(Controller):
         company_name = await app_state.config_resolver.get_str(
             "company", "company_name"
         )
-        config = app_state.config
+        agents = await app_state.config_resolver.get_agents()
+        departments = await app_state.config_resolver.get_departments()
         data: dict[str, Any] = {
             "company_name": company_name,
-            "agents": [a.model_dump(mode="json") for a in config.agents],
-            "departments": [d.model_dump(mode="json") for d in config.departments],
+            "agents": [a.model_dump(mode="json") for a in agents],
+            "departments": [d.model_dump(mode="json") for d in departments],
         }
         return ApiResponse(data=data)
 
@@ -63,4 +64,5 @@ class CompanyController(Controller):
             Departments envelope.
         """
         app_state: AppState = state.app_state
-        return ApiResponse(data=app_state.config.departments)
+        departments = await app_state.config_resolver.get_departments()
+        return ApiResponse(data=departments)

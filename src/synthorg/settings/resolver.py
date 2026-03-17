@@ -8,8 +8,9 @@ config models from individually resolved settings.
 """
 
 import asyncio
+import json
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
@@ -22,7 +23,8 @@ from synthorg.settings.errors import SettingNotFoundError
 if TYPE_CHECKING:
     from synthorg.api.config import ApiConfig
     from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
-    from synthorg.config.schema import RootConfig
+    from synthorg.config.schema import AgentConfig, ProviderConfig, RootConfig
+    from synthorg.core.company import Department
     from synthorg.core.enums import AutonomyLevel
     from synthorg.engine.coordination.config import CoordinationConfig
     from synthorg.settings.service import SettingsService
@@ -260,6 +262,129 @@ class ConfigResolver:
         from synthorg.core.enums import AutonomyLevel  # noqa: PLC0415
 
         return await self.get_enum("company", "autonomy_level", AutonomyLevel)
+
+    async def get_json(self, namespace: str, key: str) -> Any:
+        """Resolve a setting as parsed JSON.
+
+        Args:
+            namespace: Setting namespace.
+            key: Setting key.
+
+        Returns:
+            The parsed JSON value (list, dict, scalar, etc.).
+
+        Raises:
+            SettingNotFoundError: If the key is not in the registry.
+            ValueError: If the value is not valid JSON.
+        """
+        try:
+            result = await self._settings.get(namespace, key)
+        except SettingNotFoundError:
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=namespace,
+                key=key,
+            )
+            raise
+        try:
+            return json.loads(result.value)
+        except json.JSONDecodeError:
+            logger.warning(
+                SETTINGS_VALIDATION_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="invalid_json",
+                exc_info=True,
+            )
+            msg = f"Setting {namespace}/{key} has an invalid JSON value"
+            raise ValueError(msg) from None
+
+    async def get_agents(self) -> tuple[AgentConfig, ...]:
+        """Resolve agent configurations from settings.
+
+        Falls back to ``RootConfig.agents`` if the setting is
+        empty or contains invalid JSON.
+
+        Returns:
+            A tuple of ``AgentConfig`` objects.
+
+        Raises:
+            SettingNotFoundError: If the agents key is not
+                in the registry.
+        """
+        from synthorg.config.schema import AgentConfig  # noqa: PLC0415
+
+        try:
+            raw = await self.get_json("company", "agents")
+        except ValueError:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="company",
+                key="agents",
+                reason="invalid_json_fallback",
+            )
+            return self._config.agents
+        if not raw:
+            return self._config.agents
+        return tuple(AgentConfig.model_validate(item) for item in raw)
+
+    async def get_departments(self) -> tuple[Department, ...]:
+        """Resolve department configurations from settings.
+
+        Falls back to ``RootConfig.departments`` if the setting
+        is empty or contains invalid JSON.
+
+        Returns:
+            A tuple of ``Department`` objects.
+
+        Raises:
+            SettingNotFoundError: If the departments key is not
+                in the registry.
+        """
+        from synthorg.core.company import Department  # noqa: PLC0415
+
+        try:
+            raw = await self.get_json("company", "departments")
+        except ValueError:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="company",
+                key="departments",
+                reason="invalid_json_fallback",
+            )
+            return self._config.departments
+        if not raw:
+            return self._config.departments
+        return tuple(Department.model_validate(item) for item in raw)
+
+    async def get_provider_configs(self) -> dict[str, ProviderConfig]:
+        """Resolve provider configurations from settings.
+
+        Falls back to ``RootConfig.providers`` if the setting
+        is empty or contains invalid JSON.
+
+        Returns:
+            A dict of provider name to ``ProviderConfig``.
+
+        Raises:
+            SettingNotFoundError: If the configs key is not
+                in the registry.
+        """
+        from synthorg.config.schema import ProviderConfig  # noqa: PLC0415
+
+        try:
+            raw = await self.get_json("providers", "configs")
+        except ValueError:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="providers",
+                key="configs",
+                reason="invalid_json_fallback",
+            )
+            return self._config.providers
+        if not raw:
+            return self._config.providers
+        return {name: ProviderConfig.model_validate(conf) for name, conf in raw.items()}
 
     async def get_budget_config(self) -> BudgetConfig:
         """Assemble a ``BudgetConfig`` from individually resolved settings.

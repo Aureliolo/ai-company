@@ -66,7 +66,7 @@ class AnalyticsController(Controller):
             data=OverviewMetrics(
                 total_tasks=len(all_tasks),
                 tasks_by_status=by_status,
-                total_agents=len(app_state.config.agents),
+                total_agents=len(await app_state.config_resolver.get_agents()),
                 total_cost_usd=total_cost,
             ),
         )

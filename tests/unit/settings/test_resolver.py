@@ -1,5 +1,6 @@
 """Unit tests for ConfigResolver."""
 
+import json
 from enum import StrEnum
 from typing import Literal
 from unittest.mock import AsyncMock
@@ -113,12 +114,33 @@ class _CompanyConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+class _FakeAgentConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    name: str = "agent-1"
+    role: str = "developer"
+    department: str = "eng"
+
+
+class _FakeDepartment(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    name: str = "eng"
+    head: str = "lead"
+
+
+class _FakeProviderConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    driver: str = "litellm"
+
+
 class _FakeRootConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
     api: _FakeApiConfig = _FakeApiConfig()
     budget: _BudgetConfig = _BudgetConfig()
     coordination: _CoordinationSection = _CoordinationSection()
     config: _CompanyConfig = _CompanyConfig()
+    agents: tuple[_FakeAgentConfig, ...] = ()
+    departments: tuple[_FakeDepartment, ...] = ()
+    providers: dict[str, _FakeProviderConfig] = {}
 
 
 # ── Fixtures ──────────────────────────────────────────────────────
@@ -803,3 +825,283 @@ class TestGetApiConfig:
         )
         with pytest.raises(ValueError, match=r"invalid.*RateLimitTimeUnit"):
             await resolver.get_api_config()
+
+
+# ── JSON Accessor Tests ──────────────────────────────────────────
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestGetJson:
+    """Tests for get_json() generic accessor."""
+
+    async def test_valid_json_array(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.return_value = _make_value('[{"name": "a"}]')
+        result = await resolver.get_json("company", "agents")
+        assert result == [{"name": "a"}]
+        mock_settings.get.assert_awaited_once_with("company", "agents")
+
+    async def test_valid_json_object(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.return_value = _make_value('{"k": "v"}')
+        result = await resolver.get_json("test", "key")
+        assert result == {"k": "v"}
+
+    async def test_invalid_json_raises_value_error(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.return_value = _make_value("not-json{}")
+        with pytest.raises(ValueError, match="invalid JSON"):
+            await resolver.get_json("test", "key")
+
+    async def test_not_found_propagates(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.side_effect = SettingNotFoundError("nope")
+        with pytest.raises(SettingNotFoundError):
+            await resolver.get_json("bad", "key")
+
+    async def test_empty_array(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.return_value = _make_value("[]")
+        assert await resolver.get_json("test", "key") == []
+
+
+# ── Composed Read: Agents ────────────────────────────────────────
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestGetAgents:
+    """Tests for get_agents() composed read."""
+
+    async def test_json_roundtrip(self, mock_settings: AsyncMock) -> None:
+        """Agent configs parsed from JSON setting."""
+        from synthorg.config.schema import AgentConfig
+
+        agent_data = [
+            {"name": "alice", "role": "dev", "department": "eng"},
+            {"name": "bob", "role": "qa", "department": "eng"},
+        ]
+        mock_settings.get.return_value = _make_value(
+            json.dumps(agent_data),
+            namespace=SettingNamespace.COMPANY,
+            key="agents",
+        )
+        config = _FakeRootConfig()
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+        result = await resolver.get_agents()
+
+        assert len(result) == 2
+        assert isinstance(result[0], AgentConfig)
+        assert result[0].name == "alice"
+        assert result[1].name == "bob"
+
+    async def test_empty_list_falls_back_to_config(
+        self, mock_settings: AsyncMock
+    ) -> None:
+        """Empty JSON list → fall back to config.agents."""
+        mock_settings.get.return_value = _make_value(
+            "[]",
+            namespace=SettingNamespace.COMPANY,
+            key="agents",
+        )
+        agent = _FakeAgentConfig(name="fallback-agent")
+        config = _FakeRootConfig(agents=(agent,))
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+        result = await resolver.get_agents()
+
+        assert len(result) == 1
+        assert result[0].name == "fallback-agent"
+
+    async def test_invalid_json_falls_back_to_config(
+        self, mock_settings: AsyncMock
+    ) -> None:
+        """Invalid JSON → fall back to config.agents."""
+        mock_settings.get.return_value = _make_value(
+            "not-json",
+            namespace=SettingNamespace.COMPANY,
+            key="agents",
+        )
+        agent = _FakeAgentConfig(name="safe-agent")
+        config = _FakeRootConfig(agents=(agent,))
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+        result = await resolver.get_agents()
+
+        assert len(result) == 1
+        assert result[0].name == "safe-agent"
+
+    async def test_not_found_propagates(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.side_effect = SettingNotFoundError("nope")
+        with pytest.raises(SettingNotFoundError):
+            await resolver.get_agents()
+
+
+# ── Composed Read: Departments ───────────────────────────────────
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestGetDepartments:
+    """Tests for get_departments() composed read."""
+
+    async def test_json_roundtrip(self, mock_settings: AsyncMock) -> None:
+        """Departments parsed from JSON setting."""
+        from synthorg.core.company import Department
+
+        dept_data = [
+            {"name": "engineering", "head": "alice"},
+        ]
+        mock_settings.get.return_value = _make_value(
+            json.dumps(dept_data),
+            namespace=SettingNamespace.COMPANY,
+            key="departments",
+        )
+        config = _FakeRootConfig()
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+        result = await resolver.get_departments()
+
+        assert len(result) == 1
+        assert isinstance(result[0], Department)
+        assert result[0].name == "engineering"
+
+    async def test_empty_list_falls_back_to_config(
+        self, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.return_value = _make_value(
+            "[]",
+            namespace=SettingNamespace.COMPANY,
+            key="departments",
+        )
+        dept = _FakeDepartment(name="fallback-dept")
+        config = _FakeRootConfig(departments=(dept,))
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+        result = await resolver.get_departments()
+
+        assert len(result) == 1
+        assert result[0].name == "fallback-dept"
+
+    async def test_invalid_json_falls_back_to_config(
+        self, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.return_value = _make_value(
+            "{bad-json",
+            namespace=SettingNamespace.COMPANY,
+            key="departments",
+        )
+        dept = _FakeDepartment(name="safe-dept")
+        config = _FakeRootConfig(departments=(dept,))
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+        result = await resolver.get_departments()
+
+        assert len(result) == 1
+        assert result[0].name == "safe-dept"
+
+    async def test_not_found_propagates(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.side_effect = SettingNotFoundError("nope")
+        with pytest.raises(SettingNotFoundError):
+            await resolver.get_departments()
+
+
+# ── Composed Read: Provider Configs ──────────────────────────────
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestGetProviderConfigs:
+    """Tests for get_provider_configs() composed read."""
+
+    async def test_json_roundtrip(self, mock_settings: AsyncMock) -> None:
+        """Provider configs parsed from JSON setting."""
+        from synthorg.config.schema import ProviderConfig
+
+        prov_data = {
+            "test-provider": {"driver": "litellm"},
+        }
+        mock_settings.get.return_value = _make_value(
+            json.dumps(prov_data),
+            namespace=SettingNamespace.PROVIDERS,
+            key="configs",
+        )
+        config = _FakeRootConfig()
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+        result = await resolver.get_provider_configs()
+
+        assert "test-provider" in result
+        assert isinstance(result["test-provider"], ProviderConfig)
+        assert result["test-provider"].driver == "litellm"
+
+    async def test_empty_dict_falls_back_to_config(
+        self, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.return_value = _make_value(
+            "{}",
+            namespace=SettingNamespace.PROVIDERS,
+            key="configs",
+        )
+        config = _FakeRootConfig(
+            providers={"fallback": _FakeProviderConfig(driver="test-driver")},
+        )
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+        result = await resolver.get_provider_configs()
+
+        assert "fallback" in result
+        assert result["fallback"].driver == "test-driver"
+
+    async def test_invalid_json_falls_back_to_config(
+        self, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.return_value = _make_value(
+            "not-valid-json",
+            namespace=SettingNamespace.PROVIDERS,
+            key="configs",
+        )
+        config = _FakeRootConfig(
+            providers={"safe": _FakeProviderConfig()},
+        )
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+        result = await resolver.get_provider_configs()
+
+        assert "safe" in result
+
+    async def test_not_found_propagates(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.side_effect = SettingNotFoundError("nope")
+        with pytest.raises(SettingNotFoundError):
+            await resolver.get_provider_configs()
