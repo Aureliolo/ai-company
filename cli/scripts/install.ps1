@@ -40,6 +40,7 @@ try {
     $OsArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
 } catch {
     # Type not available — fall through to env var detection.
+    Write-Verbose "RuntimeInformation unavailable; using PROCESSOR_ARCHITECTURE fallback."
 }
 
 if ($null -ne $OsArch) {
