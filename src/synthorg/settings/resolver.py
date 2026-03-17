@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
+    SETTINGS_FETCH_FAILED,
     SETTINGS_NOT_FOUND,
     SETTINGS_VALIDATION_FAILED,
 )
@@ -301,6 +302,13 @@ class ConfigResolver:
                 t_crit = tg.create_task(self.get_int("budget", "alert_critical_at"))
                 t_stop = tg.create_task(self.get_int("budget", "alert_hard_stop_at"))
         except ExceptionGroup as eg:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="budget",
+                key="_composed",
+                error_count=len(eg.exceptions),
+                exc_info=True,
+            )
             raise eg.exceptions[0] from eg
 
         alerts = _build_budget_alerts(t_warn.result(), t_crit.result(), t_stop.result())
@@ -368,6 +376,13 @@ class ConfigResolver:
                 )
                 t_branch = tg.create_task(self.get_str("coordination", "base_branch"))
         except ExceptionGroup as eg:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="coordination",
+                key="_composed",
+                error_count=len(eg.exceptions),
+                exc_info=True,
+            )
             raise eg.exceptions[0] from eg
 
         return CoordinationConfig(
