@@ -4,7 +4,6 @@ from typing import Final
 
 # Fill level tracking
 CONTEXT_BUDGET_FILL_UPDATED: Final[str] = "context_budget.fill.updated"
-CONTEXT_BUDGET_THRESHOLD_REACHED: Final[str] = "context_budget.threshold.reached"
 
 # Compaction lifecycle
 CONTEXT_BUDGET_COMPACTION_STARTED: Final[str] = "context_budget.compaction.started"

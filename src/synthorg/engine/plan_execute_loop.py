@@ -14,9 +14,6 @@ from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.observability import get_logger
-from synthorg.observability.events.context_budget import (
-    CONTEXT_BUDGET_COMPACTION_FAILED,
-)
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
     EXECUTION_LOOP_START,
@@ -48,6 +45,7 @@ from .loop_helpers import (
     clear_last_turn_tool_calls,
     execute_tool_calls,
     get_tool_definitions,
+    invoke_compaction,
     make_turn_record,
     response_to_message,
 )
@@ -690,13 +688,13 @@ class PlanExecuteLoop:
             ctx = result
 
             # Context compaction at turn boundaries
-            if self._compaction_callback is not None:
-                compacted = await self._invoke_compaction(
-                    ctx,
-                    ctx.turn_count,
-                )
-                if compacted is not None:
-                    ctx = compacted
+            compacted = await invoke_compaction(
+                ctx,
+                self._compaction_callback,
+                ctx.turn_count,
+            )
+            if compacted is not None:
+                ctx = compacted
 
             # Per-step stagnation detection (step-scoped turns only)
             stag_outcome = await check_stagnation(
@@ -837,38 +835,6 @@ class PlanExecuteLoop:
             turns,
             approval_gate=self._approval_gate,
         )
-
-    # ── Compaction ──────────────────────────────────────────────────
-
-    async def _invoke_compaction(
-        self,
-        ctx: AgentContext,
-        turn_number: int,
-    ) -> AgentContext | None:
-        """Invoke compaction callback if configured.
-
-        Errors are logged but never propagated — compaction must
-        not interrupt execution.
-
-        Args:
-            ctx: Current agent context.
-            turn_number: Current turn number for logging.
-
-        Returns:
-            Compacted context or ``None``.
-        """
-        try:
-            return await self._compaction_callback(ctx)  # type: ignore[misc]
-        except MemoryError, RecursionError:
-            raise
-        except Exception as exc:
-            logger.exception(
-                CONTEXT_BUDGET_COMPACTION_FAILED,
-                execution_id=ctx.execution_id,
-                turn=turn_number,
-                error=f"{type(exc).__name__}: {exc}",
-            )
-            return None
 
     # ── Checkpoint ──────────────────────────────────────────────────
 

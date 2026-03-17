@@ -3,6 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
+from synthorg.core.agent import AgentIdentity
+from synthorg.engine.compaction.models import CompressionMetadata
 from synthorg.engine.context import AgentContext
 from synthorg.engine.context_budget import (
     ContextBudgetIndicator,
@@ -10,7 +12,7 @@ from synthorg.engine.context_budget import (
     make_context_indicator,
     update_context_fill,
 )
-from synthorg.engine.prompt import DefaultTokenEstimator
+from synthorg.engine.token_estimation import DefaultTokenEstimator
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 
@@ -129,10 +131,10 @@ class TestMakeContextIndicator:
                 "context_capacity_tokens": 10_000,
             },
         )
-        ind = make_context_indicator(ctx, archived_blocks=1)
+        ind = make_context_indicator(ctx)
         assert ind.fill_tokens == 5_000
         assert ind.capacity_tokens == 10_000
-        assert ind.archived_blocks == 1
+        assert ind.archived_blocks == 0
 
     def test_from_context_without_capacity(
         self,
@@ -198,3 +200,105 @@ class TestEstimateConversationTokens:
         result = est.estimate_conversation_tokens(msgs)
         # empty content => 0 + 4 overhead = 4
         assert result == 4
+
+    def test_capacity_tokens_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ContextBudgetIndicator(fill_tokens=100, capacity_tokens=0)
+
+
+# ── AgentContext context budget fields ────────────────────────────
+
+
+@pytest.mark.unit
+class TestAgentContextBudgetFields:
+    """AgentContext context budget field tests."""
+
+    def test_context_fill_percent_with_capacity(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            context_capacity_tokens=10_000,
+        ).model_copy(update={"context_fill_tokens": 5_000})
+        assert ctx.context_fill_percent == pytest.approx(50.0)
+
+    def test_context_fill_percent_without_capacity(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        assert ctx.context_fill_percent is None
+
+    def test_with_context_fill(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        ctx = AgentContext.from_identity(sample_agent_with_personality)
+        updated = ctx.with_context_fill(500)
+        assert updated.context_fill_tokens == 500
+        assert ctx.context_fill_tokens == 0  # original unchanged
+
+    def test_with_compression(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            context_capacity_tokens=10_000,
+        )
+        msg = ChatMessage(role=MessageRole.SYSTEM, content="summary")
+        metadata = CompressionMetadata(
+            compression_point=5,
+            archived_turns=3,
+            summary_tokens=10,
+        )
+        updated = ctx.with_compression(metadata, (msg,), 100)
+        assert updated.compression_metadata is metadata
+        assert updated.conversation == (msg,)
+        assert updated.context_fill_tokens == 100
+        assert ctx.compression_metadata is None  # original unchanged
+
+    def test_from_identity_with_capacity(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            context_capacity_tokens=200_000,
+        )
+        assert ctx.context_capacity_tokens == 200_000
+
+    def test_snapshot_includes_fill_fields(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            context_capacity_tokens=10_000,
+        ).model_copy(update={"context_fill_tokens": 3_000})
+        snapshot = ctx.to_snapshot()
+        assert snapshot.context_fill_tokens == 3_000
+        assert snapshot.context_fill_percent == pytest.approx(30.0)
+
+    def test_make_context_indicator_with_compression(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        metadata = CompressionMetadata(
+            compression_point=5,
+            archived_turns=3,
+            summary_tokens=10,
+            compactions_performed=2,
+        )
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            context_capacity_tokens=10_000,
+        ).model_copy(
+            update={
+                "context_fill_tokens": 5_000,
+                "compression_metadata": metadata,
+            },
+        )
+        ind = make_context_indicator(ctx)
+        assert ind.archived_blocks == 2

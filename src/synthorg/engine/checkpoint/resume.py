@@ -173,6 +173,8 @@ async def cleanup_checkpoint_artifacts(
                 execution_id=execution_id,
                 deleted_count=count,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 CHECKPOINT_DELETE_FAILED,
@@ -188,6 +190,8 @@ async def cleanup_checkpoint_artifacts(
                 HEARTBEAT_DELETED,
                 execution_id=execution_id,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 HEARTBEAT_DELETE_FAILED,

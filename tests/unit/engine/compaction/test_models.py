@@ -5,7 +5,6 @@ from pydantic import ValidationError
 
 from synthorg.engine.compaction.models import (
     CompactionConfig,
-    CompactionResult,
     CompressionMetadata,
 )
 
@@ -17,7 +16,7 @@ class TestCompactionConfig:
     def test_defaults(self) -> None:
         config = CompactionConfig()
         assert config.fill_threshold_percent == 80.0
-        assert config.min_turns_to_compact == 4
+        assert config.min_messages_to_compact == 4
         assert config.preserve_recent_turns == 3
 
     def test_threshold_bounds(self) -> None:
@@ -29,9 +28,9 @@ class TestCompactionConfig:
             CompactionConfig(fill_threshold_percent=100.1)
 
     def test_min_turns_minimum(self) -> None:
-        CompactionConfig(min_turns_to_compact=2)
+        CompactionConfig(min_messages_to_compact=2)
         with pytest.raises(ValidationError):
-            CompactionConfig(min_turns_to_compact=1)
+            CompactionConfig(min_messages_to_compact=1)
 
     def test_preserve_recent_minimum(self) -> None:
         CompactionConfig(preserve_recent_turns=1)
@@ -42,33 +41,6 @@ class TestCompactionConfig:
         config = CompactionConfig()
         with pytest.raises(ValidationError):
             config.fill_threshold_percent = 90.0  # type: ignore[misc]
-
-
-@pytest.mark.unit
-class TestCompactionResult:
-    """CompactionResult construction."""
-
-    def test_basic(self) -> None:
-        result = CompactionResult(
-            original_message_count=20,
-            compacted_message_count=8,
-            summary_tokens=50,
-            archived_turn_count=6,
-        )
-        assert result.original_message_count == 20
-        assert result.compacted_message_count == 8
-        assert result.summary_tokens == 50
-        assert result.archived_turn_count == 6
-
-    def test_frozen(self) -> None:
-        result = CompactionResult(
-            original_message_count=10,
-            compacted_message_count=5,
-            summary_tokens=25,
-            archived_turn_count=3,
-        )
-        with pytest.raises(ValidationError):
-            result.summary_tokens = 0  # type: ignore[misc]
 
 
 @pytest.mark.unit

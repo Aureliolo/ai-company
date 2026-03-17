@@ -9,7 +9,10 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
-from synthorg.engine.prompt import DefaultTokenEstimator, PromptTokenEstimator
+from synthorg.engine.token_estimation import (
+    DefaultTokenEstimator,
+    PromptTokenEstimator,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_FILL_UPDATED,
@@ -41,6 +44,7 @@ class ContextBudgetIndicator(BaseModel):
     fill_tokens: int = Field(ge=0, description="Current fill tokens")
     capacity_tokens: int | None = Field(
         default=None,
+        gt=0,
         description="Max context window tokens",
     )
     archived_blocks: int = Field(
@@ -82,22 +86,27 @@ class ContextBudgetIndicator(BaseModel):
 
 def make_context_indicator(
     ctx: AgentContext,
-    *,
-    archived_blocks: int = 0,
 ) -> ContextBudgetIndicator:
     """Create a ``ContextBudgetIndicator`` from an ``AgentContext``.
 
+    Derives ``archived_blocks`` from ``compression_metadata`` when
+    available.
+
     Args:
         ctx: Agent context with fill and capacity data.
-        archived_blocks: Number of archived compaction blocks.
 
     Returns:
         Frozen indicator model.
     """
+    archived = (
+        ctx.compression_metadata.compactions_performed
+        if ctx.compression_metadata is not None
+        else 0
+    )
     indicator = ContextBudgetIndicator(
         fill_tokens=ctx.context_fill_tokens,
         capacity_tokens=ctx.context_capacity_tokens,
-        archived_blocks=archived_blocks,
+        archived_blocks=archived,
     )
     logger.debug(
         CONTEXT_BUDGET_INDICATOR_INJECTED,
@@ -165,11 +174,13 @@ def update_context_fill(
         tool_definitions_count=tool_defs_count,
         estimator=estimator,
     )
+    capacity = ctx.context_capacity_tokens
+    new_pct = (fill / capacity) * 100.0 if capacity is not None else None
     logger.debug(
         CONTEXT_BUDGET_FILL_UPDATED,
         execution_id=ctx.execution_id,
         fill_tokens=fill,
-        capacity_tokens=ctx.context_capacity_tokens,
-        fill_percent=ctx.context_fill_percent,
+        capacity_tokens=capacity,
+        fill_percent=new_pct,
     )
     return ctx.with_context_fill(fill)

@@ -13,8 +13,8 @@ class CompactionConfig(BaseModel):
     Attributes:
         fill_threshold_percent: Context fill percentage that triggers
             compaction (e.g. 80.0 means compact when 80% full).
-        min_turns_to_compact: Minimum number of conversation turns
-            required before compaction is allowed.
+        min_messages_to_compact: Minimum number of conversation
+            messages required before compaction is allowed.
         preserve_recent_turns: Number of recent turn pairs to keep
             uncompressed after compaction.
     """
@@ -27,45 +27,15 @@ class CompactionConfig(BaseModel):
         le=100.0,
         description="Fill percentage that triggers compaction",
     )
-    min_turns_to_compact: int = Field(
+    min_messages_to_compact: int = Field(
         default=4,
         ge=2,
-        description="Minimum turns before compaction is allowed",
+        description="Minimum messages before compaction is allowed",
     )
     preserve_recent_turns: int = Field(
         default=3,
         ge=1,
         description="Recent turn pairs to keep uncompressed",
-    )
-
-
-class CompactionResult(BaseModel):
-    """Outcome of a compaction operation.
-
-    Attributes:
-        original_message_count: Messages before compaction.
-        compacted_message_count: Messages after compaction.
-        summary_tokens: Estimated tokens in the summary message.
-        archived_turn_count: Number of turns archived.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    original_message_count: int = Field(
-        ge=0,
-        description="Messages before compaction",
-    )
-    compacted_message_count: int = Field(
-        ge=0,
-        description="Messages after compaction",
-    )
-    summary_tokens: int = Field(
-        ge=0,
-        description="Estimated tokens in summary",
-    )
-    archived_turn_count: int = Field(
-        ge=0,
-        description="Turns archived into summary",
     )
 
 

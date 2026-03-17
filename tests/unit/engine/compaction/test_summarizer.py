@@ -68,7 +68,7 @@ class TestMakeCompactionCallback:
     ) -> None:
         config = CompactionConfig(
             fill_threshold_percent=80.0,
-            min_turns_to_compact=4,
+            min_messages_to_compact=4,
             preserve_recent_turns=1,
         )
         callback = make_compaction_callback(config=config)
@@ -111,7 +111,7 @@ class TestMakeCompactionCallback:
         self,
         sample_agent_with_personality: AgentIdentity,
     ) -> None:
-        config = CompactionConfig(min_turns_to_compact=4)
+        config = CompactionConfig(min_messages_to_compact=4)
         callback = make_compaction_callback(config=config)
 
         ctx = _build_context(
@@ -133,7 +133,7 @@ class TestMakeCompactionCallback:
     ) -> None:
         config = CompactionConfig(
             preserve_recent_turns=3,
-            min_turns_to_compact=2,
+            min_messages_to_compact=2,
         )
         callback = make_compaction_callback(config=config)
 
@@ -187,7 +187,7 @@ class TestMakeCompactionCallback:
     ) -> None:
         config = CompactionConfig(
             fill_threshold_percent=80.0,
-            min_turns_to_compact=4,
+            min_messages_to_compact=4,
             preserve_recent_turns=1,
         )
         callback = make_compaction_callback(config=config)

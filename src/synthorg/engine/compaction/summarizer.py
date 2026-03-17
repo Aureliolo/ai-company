@@ -11,7 +11,10 @@ from synthorg.engine.compaction.models import (
     CompactionConfig,
     CompressionMetadata,
 )
-from synthorg.engine.prompt import DefaultTokenEstimator, PromptTokenEstimator
+from synthorg.engine.token_estimation import (
+    DefaultTokenEstimator,
+    PromptTokenEstimator,
+)
 from synthorg.observability import get_logger
 from synthorg.observability.events.context_budget import (
     CONTEXT_BUDGET_COMPACTION_COMPLETED,
@@ -78,13 +81,13 @@ def _do_compaction(
         return None
 
     conversation = ctx.conversation
-    if len(conversation) < config.min_turns_to_compact:
+    if len(conversation) < config.min_messages_to_compact:
         logger.debug(
             CONTEXT_BUDGET_COMPACTION_SKIPPED,
             execution_id=ctx.execution_id,
             reason="too_few_messages",
             message_count=len(conversation),
-            min_required=config.min_turns_to_compact,
+            min_required=config.min_messages_to_compact,
         )
         return None
 
@@ -133,7 +136,11 @@ def _do_compaction(
         compactions_performed=compactions_count,
     )
 
-    # Re-estimate fill with compressed conversation.
+    # Re-estimate fill with compressed conversation.  This counts
+    # conversation tokens only — system prompt and tool overhead are
+    # excluded because the compaction callback does not have access to
+    # those values.  The execution loop's next call to
+    # ``update_context_fill`` will restore the full estimate.
     new_fill = estimator.estimate_conversation_tokens(
         compressed_conversation,
     )
@@ -175,6 +182,11 @@ def _build_summary(messages: tuple[ChatMessage, ...]) -> str:
                 snippets.append(snippet)
 
     if not snippets:
+        logger.debug(
+            CONTEXT_BUDGET_COMPACTION_SKIPPED,
+            reason="no_assistant_content",
+            archived_count=len(messages),
+        )
         return f"[Archived {len(messages)} messages from earlier in the conversation.]"
 
     joined = "; ".join(snippets)

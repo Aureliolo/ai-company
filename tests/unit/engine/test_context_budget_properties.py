@@ -5,7 +5,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from synthorg.engine.context_budget import ContextBudgetIndicator
-from synthorg.engine.prompt import DefaultTokenEstimator
+from synthorg.engine.token_estimation import DefaultTokenEstimator
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 

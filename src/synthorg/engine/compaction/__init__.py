@@ -7,7 +7,6 @@ fill level exceeds a configurable threshold.
 
 from synthorg.engine.compaction.models import (
     CompactionConfig,
-    CompactionResult,
     CompressionMetadata,
 )
 from synthorg.engine.compaction.protocol import CompactionCallback
@@ -15,6 +14,5 @@ from synthorg.engine.compaction.protocol import CompactionCallback
 __all__ = [
     "CompactionCallback",
     "CompactionConfig",
-    "CompactionResult",
     "CompressionMetadata",
 ]
