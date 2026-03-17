@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://synthorg.io/docs/
+    about: Check the docs before opening an issue
+  - name: Discussions
+    url: https://github.com/Aureliolo/synthorg/discussions
+    about: Ask questions or share ideas
+  - name: Security Vulnerabilities
+    url: https://github.com/Aureliolo/synthorg/security/policy
+    about: Report security vulnerabilities privately
