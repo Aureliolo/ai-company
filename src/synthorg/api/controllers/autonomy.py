@@ -71,8 +71,7 @@ class AutonomyController(Controller):
             Current autonomy level info.
         """
         app_state: AppState = state.app_state
-        config = app_state.config.config
-        level = config.autonomy.level
+        level = await app_state.config_resolver.get_autonomy_level()
         return ApiResponse(
             data=AutonomyLevelResponse(
                 agent_id=agent_id,
@@ -103,8 +102,7 @@ class AutonomyController(Controller):
             Updated autonomy level info.
         """
         app_state: AppState = state.app_state
-        config = app_state.config.config
-        current_level = config.autonomy.level
+        current_level = await app_state.config_resolver.get_autonomy_level()
         requested_level = data.level
 
         logger.info(

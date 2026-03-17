@@ -10,6 +10,7 @@ class SettingNamespace(StrEnum):
     can be edited at runtime via the settings API.
     """
 
+    API = "api"
     COMPANY = "company"
     PROVIDERS = "providers"
     MEMORY = "memory"

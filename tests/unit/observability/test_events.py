@@ -226,6 +226,7 @@ class TestEventConstants:
             "trust",
             "promotion",
             "checkpoint",
+            "context_budget",
             "settings",
         }
         discovered = {info.name for info in pkgutil.iter_modules(events.__path__)}

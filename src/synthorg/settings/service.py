@@ -252,8 +252,15 @@ class SettingsService:
             )
             # Cache only non-sensitive values to avoid holding
             # plaintext secrets in memory.
+            #
+            # Direct dict mutation is intentional: the previous
+            # copy-on-write pattern {**self._cache, k: v} had a
+            # TOCTOU race under concurrent TaskGroup reads (the
+            # spread sees a stale snapshot after an await).  In
+            # asyncio's cooperative concurrency, dict item assignment
+            # is a single-opcode operation and safe without locking.
             if not definition.sensitive:
-                self._cache = {**self._cache, cache_key: setting_value}
+                self._cache[cache_key] = setting_value
             logger.debug(
                 SETTINGS_VALUE_RESOLVED,
                 namespace=namespace,
@@ -374,6 +381,10 @@ class SettingsService:
                     source=SettingSource.YAML,
                 )
 
+        # default=None means "optional — no built-in default".  Return
+        # empty string as a sentinel (callers like ConfigResolver.get_int
+        # will raise ValueError on empty, giving a clear error at the
+        # consumer layer rather than here).
         default = definition.default if definition.default is not None else ""
         logger.debug(SETTINGS_VALUE_RESOLVED, namespace=ns, key=key, source="default")
         return SettingValue(
@@ -612,6 +623,8 @@ class SettingsService:
                 namespace=namespace,
                 key=key,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # Notification failure should not break settings writes.
             logger.warning(
