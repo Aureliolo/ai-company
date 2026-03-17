@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
     TOOL_FACTORY_BUILT,
+    TOOL_FACTORY_CONFIG_ENTRY,
     TOOL_FACTORY_ERROR,
 )
 from synthorg.tools.file_system import (
@@ -150,7 +151,7 @@ def build_default_tools_from_config(
         ValueError: If *workspace* is not an absolute path.
     """
     logger.debug(
-        TOOL_FACTORY_BUILT,
+        TOOL_FACTORY_CONFIG_ENTRY,
         source="config",
     )
     return build_default_tools(
