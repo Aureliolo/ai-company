@@ -12,8 +12,8 @@ class TestContentDensity:
     """ContentDensity enum values."""
 
     def test_values(self) -> None:
-        assert ContentDensity.SPARSE == "sparse"
-        assert ContentDensity.DENSE == "dense"
+        assert ContentDensity.SPARSE.value == "sparse"
+        assert ContentDensity.DENSE.value == "dense"
 
     def test_is_str(self) -> None:
         assert isinstance(ContentDensity.SPARSE, str)

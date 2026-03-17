@@ -142,8 +142,8 @@ class TestArchivalMode:
     """ArchivalMode enum values and StrEnum behaviour."""
 
     def test_values(self) -> None:
-        assert ArchivalMode.ABSTRACTIVE == "abstractive"
-        assert ArchivalMode.EXTRACTIVE == "extractive"
+        assert ArchivalMode.ABSTRACTIVE.value == "abstractive"
+        assert ArchivalMode.EXTRACTIVE.value == "extractive"
 
     def test_is_str(self) -> None:
         assert isinstance(ArchivalMode.ABSTRACTIVE, str)
