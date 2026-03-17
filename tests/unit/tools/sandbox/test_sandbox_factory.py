@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -135,20 +136,20 @@ class TestBuildSandboxBackends:
 
     @patch("synthorg.tools.sandbox.factory.DockerSandbox")
     @patch("synthorg.tools.sandbox.factory.SubprocessSandbox")
-    def test_returns_dict_with_correct_keys(
+    def test_returns_mapping_proxy_with_correct_keys(
         self,
         mock_subprocess_cls: MagicMock,
         mock_docker_cls: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Return type is a dict mapping backend names to instances."""
+        """Return type is a MappingProxyType with correct keys and values."""
         config = SandboxingConfig(
             default_backend="subprocess",
             overrides={"code_execution": "docker"},
         )
         backends = build_sandbox_backends(config=config, workspace=tmp_path)
 
-        assert isinstance(backends, dict)
+        assert isinstance(backends, MappingProxyType)
         assert set(backends.keys()) == {"subprocess", "docker"}
         assert backends["subprocess"] is mock_subprocess_cls.return_value
         assert backends["docker"] is mock_docker_cls.return_value
@@ -220,12 +221,28 @@ class TestResolveSandboxForCategory:
         )
         assert result is mock_backend
 
+    def test_raises_key_error_when_backend_missing(self) -> None:
+        """KeyError with descriptive message when backend not in map."""
+        config = SandboxingConfig(
+            default_backend="subprocess",
+            overrides={"version_control": "docker"},
+        )
+        backends: Mapping[str, SandboxBackend] = {
+            "subprocess": MagicMock(spec=SandboxBackend),
+        }
+
+        with pytest.raises(KeyError, match="docker"):
+            resolve_sandbox_for_category(
+                config=config,
+                backends=backends,
+                category=ToolCategory.VERSION_CONTROL,
+            )
+
 
 @pytest.mark.unit
 class TestCleanupSandboxBackends:
     """Tests for cleanup_sandbox_backends()."""
 
-    @pytest.mark.asyncio
     async def test_calls_cleanup_on_all_backends(self) -> None:
         """cleanup() is called on every backend in the mapping."""
         mock_sub = AsyncMock(spec=SandboxBackend)
@@ -240,12 +257,10 @@ class TestCleanupSandboxBackends:
         mock_sub.cleanup.assert_awaited_once()
         mock_docker.cleanup.assert_awaited_once()
 
-    @pytest.mark.asyncio
     async def test_cleanup_empty_mapping(self) -> None:
         """No error when cleaning up an empty mapping."""
         await cleanup_sandbox_backends({})
 
-    @pytest.mark.asyncio
     async def test_cleanup_single_backend(self) -> None:
         """Cleanup works with a single backend."""
         mock_backend = AsyncMock(spec=SandboxBackend)
@@ -256,3 +271,20 @@ class TestCleanupSandboxBackends:
         await cleanup_sandbox_backends(backends)
 
         mock_backend.cleanup.assert_awaited_once()
+
+    async def test_cleanup_continues_on_error(self) -> None:
+        """All backends are cleaned up even when one raises."""
+        failing = AsyncMock(spec=SandboxBackend)
+        failing.cleanup.side_effect = RuntimeError("container gone")
+        healthy = AsyncMock(spec=SandboxBackend)
+
+        backends: Mapping[str, SandboxBackend] = {
+            "broken": failing,
+            "ok": healthy,
+        }
+
+        # Should not raise -- errors are logged and swallowed
+        await cleanup_sandbox_backends(backends)
+
+        failing.cleanup.assert_awaited_once()
+        healthy.cleanup.assert_awaited_once()

@@ -6,6 +6,8 @@ to look up the correct backend for a tool category, and
 ``cleanup_sandbox_backends`` to release resources.
 """
 
+import asyncio
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
@@ -32,7 +34,7 @@ def build_sandbox_backends(
     *,
     config: SandboxingConfig,
     workspace: Path,
-) -> dict[str, SandboxBackend]:
+) -> MappingProxyType[str, SandboxBackend]:
     """Build only the backend instances actually referenced by *config*.
 
     Collects which backend names are needed (the default plus all
@@ -44,8 +46,8 @@ def build_sandbox_backends(
         workspace: Absolute path to the agent workspace root.
 
     Returns:
-        A dict mapping backend name to backend instance.  Only
-        contains keys for backends that are actually referenced.
+        A read-only mapping of backend name to backend instance.
+        Only contains keys for backends that are actually referenced.
     """
     needed: set[str] = {config.default_backend}
     needed.update(config.overrides.values())
@@ -70,7 +72,7 @@ def build_sandbox_backends(
         default=config.default_backend,
         override_count=len(config.overrides),
     )
-    return backends
+    return MappingProxyType(backends)
 
 
 def resolve_sandbox_for_category(
@@ -91,9 +93,27 @@ def resolve_sandbox_for_category(
 
     Returns:
         The ``SandboxBackend`` instance for the given category.
+
+    Raises:
+        KeyError: If the resolved backend name is not present in
+            *backends*.
     """
     backend_name = config.backend_for_category(category.value)
-    backend = backends[backend_name]
+    try:
+        backend = backends[backend_name]
+    except KeyError:
+        msg = (
+            f"Backend {backend_name!r} resolved for category "
+            f"{category.value!r} not found in backends mapping "
+            f"(available: {sorted(backends.keys())})"
+        )
+        logger.warning(
+            SANDBOX_FACTORY_RESOLVE,
+            category=category.value,
+            backend=backend_name,
+            error=msg,
+        )
+        raise KeyError(msg) from None
 
     logger.debug(
         SANDBOX_FACTORY_RESOLVE,
@@ -108,9 +128,26 @@ async def cleanup_sandbox_backends(
 ) -> None:
     """Clean up all backends by calling ``cleanup()`` on each.
 
+    Errors from individual backends are logged but do not prevent
+    cleanup of remaining backends.  Uses ``asyncio.TaskGroup`` for
+    parallel cleanup.
+
     Args:
         backends: Mapping of backend name to backend instance.
     """
-    for name, backend in backends.items():
+
+    async def _cleanup_one(name: str, backend: SandboxBackend) -> None:
         logger.debug(SANDBOX_FACTORY_CLEANUP, backend=name)
-        await backend.cleanup()
+        try:
+            await backend.cleanup()
+        except Exception:
+            logger.warning(
+                SANDBOX_FACTORY_CLEANUP,
+                backend=name,
+                error=f"cleanup failed for backend {name!r}",
+                exc_info=True,
+            )
+
+    async with asyncio.TaskGroup() as tg:
+        for name, backend in backends.items():
+            tg.create_task(_cleanup_one(name, backend))

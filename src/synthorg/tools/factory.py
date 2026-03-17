@@ -145,6 +145,10 @@ def build_default_tools_from_config(
     Convenience wrapper that extracts ``config.git_clone`` and
     ``config.sandboxing`` to resolve per-category sandbox backends.
 
+    Currently wires the ``VERSION_CONTROL`` category (git tools).
+    Other categories (e.g. ``CODE_EXECUTION``) will be wired as
+    their respective tool builders are added to the factory.
+
     Sandbox resolution priority:
         1. Explicit *sandbox* -- backward-compat single backend for all tools.
         2. Explicit *sandbox_backends* -- per-category resolution via config.

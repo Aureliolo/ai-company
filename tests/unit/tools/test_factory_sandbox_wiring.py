@@ -7,6 +7,7 @@ import pytest
 
 from synthorg.config.schema import RootConfig
 from synthorg.tools._git_base import _BaseGitTool
+from synthorg.tools.base import BaseTool
 from synthorg.tools.factory import build_default_tools_from_config
 from synthorg.tools.file_system import BaseFileSystemTool
 from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -33,6 +34,17 @@ _FS_TOOL_NAMES: frozenset[str] = frozenset(
     }
 )
 
+_EXPECTED_TOOL_COUNT: int = len(_GIT_TOOL_NAMES) + len(_FS_TOOL_NAMES)
+
+
+def _git_tools(
+    tools: tuple[BaseTool, ...],
+) -> list[_BaseGitTool]:
+    """Filter and return git tools, asserting expected count."""
+    matched = [t for t in tools if t.name in _GIT_TOOL_NAMES]
+    assert len(matched) == len(_GIT_TOOL_NAMES)
+    return matched  # type: ignore[return-value]
+
 
 @pytest.mark.unit
 class TestFactorySandboxWiring:
@@ -56,10 +68,8 @@ class TestFactorySandboxWiring:
             config=config,
         )
 
-        for tool in tools:
-            if tool.name in _GIT_TOOL_NAMES:
-                assert isinstance(tool, _BaseGitTool)
-                assert tool._sandbox is mock_instance
+        for tool in _git_tools(tools):
+            assert tool._sandbox is mock_instance
 
     @patch(
         "synthorg.tools.sandbox.factory.DockerSandbox",
@@ -83,10 +93,8 @@ class TestFactorySandboxWiring:
             config=config,
         )
 
-        for tool in tools:
-            if tool.name in _GIT_TOOL_NAMES:
-                assert isinstance(tool, _BaseGitTool)
-                assert tool._sandbox is mock_instance
+        for tool in _git_tools(tools):
+            assert tool._sandbox is mock_instance
 
     def test_explicit_sandbox_param_takes_precedence(
         self,
@@ -102,10 +110,27 @@ class TestFactorySandboxWiring:
             sandbox=explicit_sandbox,
         )
 
-        for tool in tools:
-            if tool.name in _GIT_TOOL_NAMES:
-                assert isinstance(tool, _BaseGitTool)
-                assert tool._sandbox is explicit_sandbox
+        for tool in _git_tools(tools):
+            assert tool._sandbox is explicit_sandbox
+
+    def test_explicit_sandbox_overrides_sandbox_backends(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """sandbox= takes precedence even when sandbox_backends= also provided."""
+        explicit = MagicMock(spec=SandboxBackend)
+        backends_map = {"subprocess": MagicMock(spec=SandboxBackend)}
+        config = RootConfig(company_name="test-corp")
+
+        tools = build_default_tools_from_config(
+            workspace=tmp_path,
+            config=config,
+            sandbox=explicit,
+            sandbox_backends=backends_map,
+        )
+
+        for tool in _git_tools(tools):
+            assert tool._sandbox is explicit
 
     @patch(
         "synthorg.tools.sandbox.factory.SubprocessSandbox",
@@ -125,10 +150,8 @@ class TestFactorySandboxWiring:
             sandbox_backends={"subprocess": mock_backend},
         )
 
-        for tool in tools:
-            if tool.name in _GIT_TOOL_NAMES:
-                assert isinstance(tool, _BaseGitTool)
-                assert tool._sandbox is mock_backend
+        for tool in _git_tools(tools):
+            assert tool._sandbox is mock_backend
         # Should NOT auto-build backends when map is provided
         mock_subprocess_cls.assert_not_called()
 
@@ -153,10 +176,8 @@ class TestFactorySandboxWiring:
         # Should have built subprocess backend from config
         mock_subprocess_cls.assert_called_once()
 
-        for tool in tools:
-            if tool.name in _GIT_TOOL_NAMES:
-                assert isinstance(tool, _BaseGitTool)
-                assert tool._sandbox is mock_instance
+        for tool in _git_tools(tools):
+            assert tool._sandbox is mock_instance
 
     def test_file_system_tools_unaffected(
         self,
@@ -172,30 +193,36 @@ class TestFactorySandboxWiring:
             sandbox=mock_sandbox,
         )
 
-        for tool in tools:
-            if tool.name in _FS_TOOL_NAMES:
-                assert isinstance(tool, BaseFileSystemTool)
-                assert not hasattr(tool, "_sandbox")
+        fs_tools = [t for t in tools if t.name in _FS_TOOL_NAMES]
+        assert len(fs_tools) == len(_FS_TOOL_NAMES)
+        for tool in fs_tools:
+            assert isinstance(tool, BaseFileSystemTool)
+            assert not hasattr(tool, "_sandbox")
 
-    def test_tool_count_unchanged(
+    @patch(
+        "synthorg.tools.sandbox.factory.SubprocessSandbox",
+    )
+    def test_tool_count_unchanged_with_auto_build(
         self,
+        mock_subprocess_cls: MagicMock,
         tmp_path: Path,
     ) -> None:
         """Sandbox wiring doesn't change the number of tools returned."""
+        mock_subprocess_cls.return_value = MagicMock(spec=SandboxBackend)
         config = RootConfig(company_name="test-corp")
 
-        tools_with_sandbox = build_default_tools_from_config(
+        # Explicit sandbox path
+        tools_explicit = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
             sandbox=MagicMock(spec=SandboxBackend),
         )
 
-        tools_without = build_default_tools_from_config(
+        # Auto-build from config path
+        tools_auto = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            sandbox=MagicMock(spec=SandboxBackend),
         )
 
-        expected_count = 11
-        assert len(tools_with_sandbox) == expected_count
-        assert len(tools_without) == expected_count
+        assert len(tools_explicit) == _EXPECTED_TOOL_COUNT
+        assert len(tools_auto) == _EXPECTED_TOOL_COUNT
