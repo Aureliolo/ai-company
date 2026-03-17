@@ -1,5 +1,7 @@
 """Tests for application state accessors."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from synthorg.api.approval_store import ApprovalStore
@@ -223,6 +225,20 @@ class TestAppStateMessageBusFlag:
 
 
 @pytest.mark.unit
+class TestAppStateSettingsServiceFlag:
+    """Tests for has_settings_service property."""
+
+    def test_has_settings_service_false_when_none(self) -> None:
+        state = _make_state(settings_service=None)
+        assert state.has_settings_service is False
+
+    def test_has_settings_service_true_when_set(self) -> None:
+        mock_svc = AsyncMock()
+        state = _make_state(settings_service=mock_svc)
+        assert state.has_settings_service is True
+
+
+@pytest.mark.unit
 class TestAppStateConfigResolver:
     """Tests for config_resolver property."""
 
@@ -232,11 +248,26 @@ class TestAppStateConfigResolver:
             _ = state.config_resolver
 
     def test_config_resolver_returns_when_settings_service_set(self) -> None:
-        from unittest.mock import MagicMock
-
         from synthorg.settings.resolver import ConfigResolver
 
-        mock_svc = MagicMock()
+        mock_svc = AsyncMock()
         state = _make_state(settings_service=mock_svc)
         resolver = state.config_resolver
         assert isinstance(resolver, ConfigResolver)
+
+    def test_config_resolver_is_singleton(self) -> None:
+        """Successive property accesses return the same cached instance."""
+        mock_svc = AsyncMock()
+        state = _make_state(settings_service=mock_svc)
+        first = state.config_resolver
+        second = state.config_resolver
+        assert first is second
+
+    def test_has_config_resolver_false_when_none(self) -> None:
+        state = _make_state(settings_service=None)
+        assert state.has_config_resolver is False
+
+    def test_has_config_resolver_true_when_set(self) -> None:
+        mock_svc = AsyncMock()
+        state = _make_state(settings_service=mock_svc)
+        assert state.has_config_resolver is True

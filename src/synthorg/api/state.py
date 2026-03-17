@@ -244,9 +244,14 @@ class AppState:
         return self._settings_service is not None
 
     @property
+    def has_config_resolver(self) -> bool:
+        """Check whether the config resolver is configured."""
+        return self._config_resolver is not None
+
+    @property
     def config_resolver(self) -> ConfigResolver:
         """Return the cached config resolver or raise 503."""
-        return self._require_service(self._config_resolver, "config_resolver")
+        return self._require_service(self._config_resolver, "settings_service")
 
     @property
     def has_auth_service(self) -> bool:

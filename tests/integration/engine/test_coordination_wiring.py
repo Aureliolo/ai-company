@@ -321,10 +321,7 @@ class TestCoordinationWiring:
             assert body["success"] is True
             data = body["data"]
             assert data["parent_task_id"] == task_id
-            resolved = [
-                t.value for t in CoordinationTopology if t != CoordinationTopology.AUTO
-            ]
-            assert data["topology"] in resolved
+            assert data["topology"] == "sas"
             assert isinstance(data["total_duration_seconds"], float)
             assert isinstance(data["phases"], list)
             assert len(data["phases"]) >= 1

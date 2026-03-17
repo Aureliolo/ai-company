@@ -28,7 +28,7 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COORDINATION,
-        key="max_wave_size",
+        key="max_concurrency_per_wave",
         type=SettingType.INTEGER,
         default="5",
         description="Maximum number of agents in a single execution wave",

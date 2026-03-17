@@ -1,9 +1,10 @@
 """Config resolver — typed config access backed by SettingsService.
 
-Bridges the gap between :class:`SettingsService` (which returns string
-values) and consumers that need typed Python objects.  Provides scalar
-accessors and composed-read methods that assemble full Pydantic config
-models from individually resolved settings.
+Bridges the gap between :class:`SettingsService` (which returns
+:class:`~synthorg.settings.models.SettingValue` objects with a string
+``.value``) and consumers that need typed Python objects.  Provides
+scalar accessors and composed-read methods that assemble full Pydantic
+config models from individually resolved settings.
 """
 
 import asyncio
@@ -12,9 +13,10 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import (
+    SETTINGS_NOT_FOUND,
     SETTINGS_VALIDATION_FAILED,
-    SETTINGS_VALUE_RESOLVED,
 )
+from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
     from synthorg.budget.config import BudgetConfig
@@ -36,10 +38,18 @@ class ConfigResolver:
     reading individual settings and merging them onto a base config
     loaded from YAML (for fields not yet in the settings registry).
 
+    The ``config`` snapshot is captured at construction time and is
+    **not** updated if the underlying ``RootConfig`` is replaced.
+    ``ConfigResolver`` and ``AppState`` must always hold the same
+    reference; see ``AppState.__init__`` for the wiring invariant.
+
     Args:
         settings_service: The settings service for value resolution.
         config: Root company configuration used as the base for
             composed reads (provides defaults for unregistered fields).
+
+    Raises:
+        TypeError: If *settings_service* is ``None``.
     """
 
     def __init__(
@@ -48,6 +58,10 @@ class ConfigResolver:
         settings_service: SettingsService,
         config: RootConfig,
     ) -> None:
+        # runtime defence for callers without type checking
+        if settings_service is None:
+            msg = "settings_service must not be None"  # type: ignore[unreachable]
+            raise TypeError(msg)
         self._settings = settings_service
         self._config = config
 
@@ -59,12 +73,20 @@ class ConfigResolver:
             key: Setting key.
 
         Returns:
-            The resolved value.
+            The resolved value as a ``str``.
 
         Raises:
             SettingNotFoundError: If the key is not in the registry.
         """
-        result = await self._settings.get(namespace, key)
+        try:
+            result = await self._settings.get(namespace, key)
+        except SettingNotFoundError:
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=namespace,
+                key=key,
+            )
+            raise
         return result.value
 
     async def get_int(self, namespace: str, key: str) -> int:
@@ -90,8 +112,10 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="invalid_integer",
+                exc_info=True,
             )
-            raise
+            msg = f"Setting {namespace}/{key} has an invalid integer value"
+            raise ValueError(msg) from None
 
     async def get_float(self, namespace: str, key: str) -> float:
         """Resolve a setting as a float.
@@ -116,14 +140,15 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="invalid_float",
+                exc_info=True,
             )
-            raise
+            msg = f"Setting {namespace}/{key} has an invalid float value"
+            raise ValueError(msg) from None
 
     async def get_bool(self, namespace: str, key: str) -> bool:
         """Resolve a setting as a boolean.
 
-        Accepts ``"true"``/``"false"``/``"1"``/``"0"``
-        (case-insensitive).
+        Accepted values are delegated to :func:`_parse_bool`.
 
         Args:
             namespace: Setting namespace.
@@ -145,8 +170,10 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="invalid_boolean",
+                exc_info=True,
             )
-            raise
+            msg = f"Setting {namespace}/{key} is not a recognized boolean"
+            raise ValueError(msg) from None
 
     async def get_enum[E: StrEnum](
         self,
@@ -177,14 +204,23 @@ class ConfigResolver:
                 namespace=namespace,
                 key=key,
                 reason="invalid_enum",
+                enum_cls=enum_cls.__name__,
+                exc_info=True,
             )
-            raise
+            msg = f"Setting {namespace}/{key} has an invalid {enum_cls.__name__} value"
+            raise ValueError(msg) from None
 
     async def get_autonomy_level(self) -> AutonomyLevel:
         """Resolve the company-wide default autonomy level.
 
         Returns:
             The resolved ``AutonomyLevel`` enum member.
+
+        Raises:
+            SettingNotFoundError: If the autonomy_level key is
+                not registered.
+            ValueError: If the stored value does not match any
+                ``AutonomyLevel`` member.
         """
         from synthorg.core.enums import AutonomyLevel  # noqa: PLC0415
 
@@ -195,40 +231,60 @@ class ConfigResolver:
 
         Starts from the YAML-loaded base config and overrides fields
         that have registered settings definitions.  Unregistered fields
-        (e.g. ``downgrade_map``, ``boundary``) keep their YAML values.
+        on nested models (e.g. ``auto_downgrade.downgrade_map``,
+        ``auto_downgrade.boundary``) keep their YAML values.
 
         Uses ``asyncio.TaskGroup`` to resolve all settings in parallel.
+        If any individual resolution fails, the ``ExceptionGroup`` is
+        unwrapped and the first cause is re-raised directly.
 
         Returns:
             A ``BudgetConfig`` with DB/env overrides applied.
+
+        Raises:
+            SettingNotFoundError: If a required budget setting is
+                missing from the registry.
+            ValueError: If a resolved value cannot be parsed or if
+                the assembled alert thresholds violate the ordering
+                constraint (``warn_at < critical_at < hard_stop_at``).
         """
+        from pydantic import ValidationError  # noqa: PLC0415
+
         from synthorg.budget.config import (  # noqa: PLC0415
             BudgetAlertConfig,
         )
 
         base = self._config.budget
 
-        async with asyncio.TaskGroup() as tg:
-            t_monthly = tg.create_task(self.get_float("budget", "total_monthly"))
-            t_per_task = tg.create_task(self.get_float("budget", "per_task_limit"))
-            t_daily = tg.create_task(self.get_float("budget", "per_agent_daily_limit"))
-            t_downgrade_en = tg.create_task(
-                self.get_bool("budget", "auto_downgrade_enabled")
-            )
-            t_downgrade_th = tg.create_task(
-                self.get_int("budget", "auto_downgrade_threshold")
-            )
-            t_reset = tg.create_task(self.get_int("budget", "reset_day"))
-            t_warn = tg.create_task(self.get_int("budget", "alert_warn_at"))
-            t_crit = tg.create_task(self.get_int("budget", "alert_critical_at"))
-            t_stop = tg.create_task(self.get_int("budget", "alert_hard_stop_at"))
+        try:
+            async with asyncio.TaskGroup() as tg:
+                t_monthly = tg.create_task(self.get_float("budget", "total_monthly"))
+                t_per_task = tg.create_task(self.get_float("budget", "per_task_limit"))
+                t_daily = tg.create_task(
+                    self.get_float("budget", "per_agent_daily_limit")
+                )
+                t_downgrade_en = tg.create_task(
+                    self.get_bool("budget", "auto_downgrade_enabled")
+                )
+                t_downgrade_th = tg.create_task(
+                    self.get_int("budget", "auto_downgrade_threshold")
+                )
+                t_reset = tg.create_task(self.get_int("budget", "reset_day"))
+                t_warn = tg.create_task(self.get_int("budget", "alert_warn_at"))
+                t_crit = tg.create_task(self.get_int("budget", "alert_critical_at"))
+                t_stop = tg.create_task(self.get_int("budget", "alert_hard_stop_at"))
+        except ExceptionGroup as eg:
+            raise eg.exceptions[0] from eg
 
-        logger.debug(
-            SETTINGS_VALUE_RESOLVED,
-            namespace="budget",
-            key="_composed",
-            source="resolver",
-        )
+        try:
+            alerts = BudgetAlertConfig(
+                warn_at=t_warn.result(),
+                critical_at=t_crit.result(),
+                hard_stop_at=t_stop.result(),
+            )
+        except ValidationError as exc:
+            msg = f"Budget alert thresholds violate ordering constraint: {exc}"
+            raise ValueError(msg) from exc
 
         return base.model_copy(
             update={
@@ -236,11 +292,7 @@ class ConfigResolver:
                 "per_task_limit": t_per_task.result(),
                 "per_agent_daily_limit": t_daily.result(),
                 "reset_day": t_reset.result(),
-                "alerts": BudgetAlertConfig(
-                    warn_at=t_warn.result(),
-                    critical_at=t_crit.result(),
-                    hard_stop_at=t_stop.result(),
-                ),
+                "alerts": alerts,
                 "auto_downgrade": base.auto_downgrade.model_copy(
                     update={
                         "enabled": t_downgrade_en.result(),
@@ -260,7 +312,15 @@ class ConfigResolver:
 
         Resolves coordination settings from the settings service using
         ``asyncio.TaskGroup`` for parallel resolution, then applies
-        request-level overrides on top.
+        request-level overrides on top.  If any individual resolution
+        fails, the ``ExceptionGroup`` is unwrapped and the first cause
+        is re-raised directly.
+
+        ``CoordinationConfig`` is constructed from scratch (not via
+        ``model_copy``) because all its fields are registered in the
+        settings registry.  The ``default_topology`` setting is
+        resolved separately by the ``TopologyDispatcher`` and is not
+        part of ``CoordinationConfig``.
 
         Args:
             max_concurrency_per_wave: Request-level override for max
@@ -269,25 +329,28 @@ class ConfigResolver:
 
         Returns:
             A ``CoordinationConfig`` with settings + request overrides.
+
+        Raises:
+            SettingNotFoundError: If a required coordination setting
+                is missing from the registry.
+            ValueError: If a resolved value cannot be parsed.
         """
         from synthorg.engine.coordination.config import (  # noqa: PLC0415
             CoordinationConfig,
         )
 
-        async with asyncio.TaskGroup() as tg:
-            t_wave = tg.create_task(self.get_int("coordination", "max_wave_size"))
-            t_ff = tg.create_task(self.get_bool("coordination", "fail_fast"))
-            t_iso = tg.create_task(
-                self.get_bool("coordination", "enable_workspace_isolation")
-            )
-            t_branch = tg.create_task(self.get_str("coordination", "base_branch"))
-
-        logger.debug(
-            SETTINGS_VALUE_RESOLVED,
-            namespace="coordination",
-            key="_composed",
-            source="resolver",
-        )
+        try:
+            async with asyncio.TaskGroup() as tg:
+                t_wave = tg.create_task(
+                    self.get_int("coordination", "max_concurrency_per_wave")
+                )
+                t_ff = tg.create_task(self.get_bool("coordination", "fail_fast"))
+                t_iso = tg.create_task(
+                    self.get_bool("coordination", "enable_workspace_isolation")
+                )
+                t_branch = tg.create_task(self.get_str("coordination", "base_branch"))
+        except ExceptionGroup as eg:
+            raise eg.exceptions[0] from eg
 
         return CoordinationConfig(
             max_concurrency_per_wave=(
@@ -325,5 +388,5 @@ def _parse_bool(value: str) -> bool:
         return True
     if lower in _BOOL_FALSE:
         return False
-    msg = f"Cannot parse {value!r} as boolean"
+    msg = "Value is not a recognized boolean string"
     raise ValueError(msg)

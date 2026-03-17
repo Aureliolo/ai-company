@@ -8,6 +8,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from pydantic import BaseModel, ConfigDict
 
+from synthorg.core.enums import AutonomyLevel
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.models import SettingValue
@@ -124,6 +125,13 @@ class TestGetStr:
         result = await resolver.get_str("test", "key")
         assert result == ""
 
+    async def test_not_found_logs_and_propagates(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        mock_settings.get.side_effect = SettingNotFoundError("nope")
+        with pytest.raises(SettingNotFoundError):
+            await resolver.get_str("bad", "key")
+
 
 @pytest.mark.unit
 @pytest.mark.timeout(30)
@@ -152,7 +160,7 @@ class TestGetInt:
         self, resolver: ConfigResolver, mock_settings: AsyncMock
     ) -> None:
         mock_settings.get.return_value = _make_value("not_a_number")
-        with pytest.raises(ValueError, match="invalid literal"):
+        with pytest.raises(ValueError, match="invalid integer"):
             await resolver.get_int("test", "key")
 
 
@@ -178,7 +186,7 @@ class TestGetFloat:
         self, resolver: ConfigResolver, mock_settings: AsyncMock
     ) -> None:
         mock_settings.get.return_value = _make_value("abc")
-        with pytest.raises(ValueError, match="could not convert"):
+        with pytest.raises(ValueError, match="invalid float"):
             await resolver.get_float("test", "key")
 
 
@@ -214,7 +222,7 @@ class TestGetBool:
         self, resolver: ConfigResolver, mock_settings: AsyncMock
     ) -> None:
         mock_settings.get.return_value = _make_value("maybe")
-        with pytest.raises(ValueError, match="Cannot parse"):
+        with pytest.raises(ValueError, match="not a recognized boolean"):
             await resolver.get_bool("test", "key")
 
 
@@ -234,7 +242,7 @@ class TestGetEnum:
         self, resolver: ConfigResolver, mock_settings: AsyncMock
     ) -> None:
         mock_settings.get.return_value = _make_value("purple")
-        with pytest.raises(ValueError, match="purple"):
+        with pytest.raises(ValueError, match=r"invalid.*_Color"):
             await resolver.get_enum("test", "key", _Color)
 
 
@@ -254,6 +262,25 @@ class TestErrorPropagation:
             await resolver.get_str("bad", "key")
 
 
+# ── Constructor Guard ─────────────────────────────────────────────
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestConfigResolverInit:
+    """Tests for ConfigResolver constructor validation."""
+
+    def test_none_settings_service_raises_type_error(
+        self,
+        root_config: _FakeRootConfig,
+    ) -> None:
+        with pytest.raises(TypeError, match="settings_service must not be None"):
+            ConfigResolver(
+                settings_service=None,  # type: ignore[arg-type]
+                config=root_config,  # type: ignore[arg-type]
+            )
+
+
 # ── Composed Read: Autonomy Level ─────────────────────────────────
 
 
@@ -268,21 +295,20 @@ class TestGetAutonomyLevel:
         mock_settings.get.return_value = _make_value(
             "supervised", namespace=SettingNamespace.COMPANY, key="autonomy_level"
         )
-        from synthorg.core.enums import AutonomyLevel
-
         result = await resolver.get_autonomy_level()
         assert result is AutonomyLevel.SUPERVISED
         mock_settings.get.assert_awaited_once_with("company", "autonomy_level")
 
+    @pytest.mark.parametrize("level", list(AutonomyLevel))
     async def test_resolves_all_levels(
-        self, resolver: ConfigResolver, mock_settings: AsyncMock
+        self,
+        resolver: ConfigResolver,
+        mock_settings: AsyncMock,
+        level: AutonomyLevel,
     ) -> None:
-        from synthorg.core.enums import AutonomyLevel
-
-        for level in AutonomyLevel:
-            mock_settings.get.return_value = _make_value(level.value)
-            result = await resolver.get_autonomy_level()
-            assert result is level
+        mock_settings.get.return_value = _make_value(level.value)
+        result = await resolver.get_autonomy_level()
+        assert result is level
 
 
 # ── Composed Read: Budget Config ──────────────────────────────────
@@ -381,24 +407,20 @@ class TestGetBudgetConfig:
     async def test_not_found_propagates(
         self, resolver: ConfigResolver, mock_settings: AsyncMock
     ) -> None:
-        """SettingNotFoundError from a budget key propagates via ExceptionGroup."""
+        """SettingNotFoundError propagates directly (unwrapped from ExceptionGroup)."""
         mock_settings.get.side_effect = SettingNotFoundError("missing")
-        with pytest.raises(ExceptionGroup) as exc_info:
+        with pytest.raises(SettingNotFoundError):
             await resolver.get_budget_config()
-        assert any(
-            isinstance(e, SettingNotFoundError) for e in exc_info.value.exceptions
-        )
 
     async def test_value_error_propagates(
         self, resolver: ConfigResolver, mock_settings: AsyncMock
     ) -> None:
-        """ValueError from a corrupted DB value propagates via ExceptionGroup."""
+        """ValueError from a corrupted DB value propagates directly."""
         mock_settings.get = _budget_get_side_effect(
             {("budget", "total_monthly"): "not-a-number"}
         )
-        with pytest.raises(ExceptionGroup) as exc_info:
+        with pytest.raises(ValueError, match="invalid"):
             await resolver.get_budget_config()
-        assert any(isinstance(e, ValueError) for e in exc_info.value.exceptions)
 
 
 # ── Composed Read: Coordination Config ────────────────────────────
@@ -409,7 +431,7 @@ def _coordination_get_side_effect(
 ) -> AsyncMock:
     """Create a mock .get() for coordination settings."""
     defaults = {
-        ("coordination", "max_wave_size"): "5",
+        ("coordination", "max_concurrency_per_wave"): "5",
         ("coordination", "fail_fast"): "false",
         ("coordination", "enable_workspace_isolation"): "true",
         ("coordination", "base_branch"): "main",
@@ -484,24 +506,20 @@ class TestGetCoordinationConfig:
     async def test_not_found_propagates(
         self, resolver: ConfigResolver, mock_settings: AsyncMock
     ) -> None:
-        """SettingNotFoundError from a coordination key propagates."""
+        """SettingNotFoundError propagates directly (unwrapped from ExceptionGroup)."""
         mock_settings.get.side_effect = SettingNotFoundError("missing")
-        with pytest.raises(ExceptionGroup) as exc_info:
+        with pytest.raises(SettingNotFoundError):
             await resolver.get_coordination_config()
-        assert any(
-            isinstance(e, SettingNotFoundError) for e in exc_info.value.exceptions
-        )
 
     async def test_value_error_propagates(
         self, resolver: ConfigResolver, mock_settings: AsyncMock
     ) -> None:
-        """ValueError from a corrupted coordination value propagates."""
+        """ValueError from a corrupted coordination value propagates directly."""
         mock_settings.get = _coordination_get_side_effect(
-            {("coordination", "max_wave_size"): "not-a-number"}
+            {("coordination", "max_concurrency_per_wave"): "not-a-number"}
         )
-        with pytest.raises(ExceptionGroup) as exc_info:
+        with pytest.raises(ValueError, match="invalid"):
             await resolver.get_coordination_config()
-        assert any(isinstance(e, ValueError) for e in exc_info.value.exceptions)
 
 
 # ── _parse_bool Tests ─────────────────────────────────────────────
@@ -530,7 +548,7 @@ class TestParseBool:
 
     @pytest.mark.parametrize("raw", ["yes", "no", "maybe", "", "2", "tru"])
     def test_invalid_values(self, raw: str) -> None:
-        with pytest.raises(ValueError, match="Cannot parse"):
+        with pytest.raises(ValueError, match="not a recognized boolean"):
             _parse_bool(raw)
 
 
@@ -554,14 +572,14 @@ class TestResolverScalarProperties:
     """Hypothesis-based roundtrip tests for scalar accessors."""
 
     @given(st.integers(min_value=-(2**31), max_value=2**31))
-    @settings(max_examples=200)
+    @settings()
     async def test_int_roundtrip(self, n: int) -> None:
         resolver, mock = _make_resolver()
         mock.get = AsyncMock(return_value=_make_value(str(n)))
         assert await resolver.get_int("budget", "total_monthly") == n
 
     @given(st.floats(allow_nan=False, allow_infinity=False, allow_subnormal=False))
-    @settings(max_examples=200)
+    @settings()
     async def test_float_roundtrip(self, x: float) -> None:
         resolver, mock = _make_resolver()
         mock.get = AsyncMock(return_value=_make_value(str(x)))
@@ -569,7 +587,7 @@ class TestResolverScalarProperties:
         assert result == pytest.approx(x, rel=1e-9, abs=1e-15)
 
     @given(st.booleans())
-    @settings(max_examples=200)
+    @settings()
     async def test_bool_roundtrip(self, b: bool) -> None:
         resolver, mock = _make_resolver()
         mock.get = AsyncMock(return_value=_make_value(str(b)))

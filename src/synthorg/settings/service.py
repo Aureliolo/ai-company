@@ -253,7 +253,7 @@ class SettingsService:
             # Cache only non-sensitive values to avoid holding
             # plaintext secrets in memory.
             if not definition.sensitive:
-                self._cache = {**self._cache, cache_key: setting_value}
+                self._cache[cache_key] = setting_value
             logger.debug(
                 SETTINGS_VALUE_RESOLVED,
                 namespace=namespace,
@@ -374,12 +374,20 @@ class SettingsService:
                     source=SettingSource.YAML,
                 )
 
-        default = definition.default if definition.default is not None else ""
+        if definition.default is None:
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=ns,
+                key=key,
+                reason="no_default_configured",
+            )
+            msg = f"Setting {ns}/{key} has no configured value or default"
+            raise SettingNotFoundError(msg)
         logger.debug(SETTINGS_VALUE_RESOLVED, namespace=ns, key=key, source="default")
         return SettingValue(
             namespace=ns,
             key=key,
-            value=default,
+            value=definition.default,
             source=SettingSource.DEFAULT,
         )
 
@@ -612,6 +620,8 @@ class SettingsService:
                 namespace=namespace,
                 key=key,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             # Notification failure should not break settings writes.
             logger.warning(
