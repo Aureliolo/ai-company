@@ -5,7 +5,7 @@ of conversational/narrative memory content.  Falls back to truncation
 if the LLM call fails.
 """
 
-import builtins
+import asyncio
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.models import MemoryEntry  # noqa: TC001
@@ -15,6 +15,7 @@ from synthorg.observability.events.consolidation import (
     DUAL_MODE_ABSTRACTIVE_SUMMARY,
 )
 from synthorg.providers.enums import MessageRole
+from synthorg.providers.errors import ProviderError
 from synthorg.providers.models import ChatMessage, CompletionConfig
 from synthorg.providers.protocol import CompletionProvider  # noqa: TC001
 
@@ -41,20 +42,23 @@ class AbstractiveSummarizer:
 
     Uses a ``CompletionProvider`` to generate concise summaries of
     conversational/narrative memory content.  Falls back to truncation
-    if the LLM call fails.
+    if the LLM call fails with a retryable error.
 
     Args:
         provider: Completion provider for LLM calls.
         model: Model identifier to use for summarization.
         max_summary_tokens: Maximum tokens for the summary response.
         temperature: Sampling temperature for summarization.
+
+    Raises:
+        ValueError: If ``model`` is empty or whitespace-only.
     """
 
     def __init__(
         self,
         *,
         provider: CompletionProvider,
-        model: str,
+        model: NotBlankStr,
         max_summary_tokens: int = 200,
         temperature: float = 0.3,
     ) -> None:
@@ -71,8 +75,9 @@ class AbstractiveSummarizer:
     async def summarize(self, content: str) -> str:
         """Generate an abstractive summary of the given content.
 
-        Falls back to truncation if the LLM call fails or returns
-        empty content.
+        Falls back to truncation if the LLM call fails with a
+        retryable error or returns empty content.  Non-retryable
+        provider errors (authentication, invalid model) propagate.
 
         Args:
             content: The sparse/conversational text to summarize.
@@ -98,8 +103,18 @@ class AbstractiveSummarizer:
                     model=self._model,
                 )
                 return response.content.strip()
-        except builtins.MemoryError, RecursionError:
+        except MemoryError, RecursionError:
             raise
+        except ProviderError as exc:
+            if not exc.is_retryable:
+                raise
+            logger.warning(
+                DUAL_MODE_ABSTRACTIVE_FALLBACK,
+                content_length=len(content),
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            return _truncate_fallback(content)
         except Exception as exc:
             logger.warning(
                 DUAL_MODE_ABSTRACTIVE_FALLBACK,
@@ -107,12 +122,13 @@ class AbstractiveSummarizer:
                 error=str(exc),
                 error_type=type(exc).__name__,
             )
+            return _truncate_fallback(content)
 
-        # Fallback: truncation
+        # Fallback: empty/whitespace-only LLM response
         logger.debug(
             DUAL_MODE_ABSTRACTIVE_FALLBACK,
             content_length=len(content),
-            reason="empty_or_failed",
+            reason="empty_response",
         )
         return _truncate_fallback(content)
 
@@ -120,11 +136,11 @@ class AbstractiveSummarizer:
         self,
         entries: tuple[MemoryEntry, ...],
     ) -> tuple[tuple[NotBlankStr, str], ...]:
-        """Summarize multiple entries.
+        """Summarize multiple entries concurrently.
 
-        Each entry is summarized independently.  Failures for
-        individual entries fall back to truncation without aborting
-        the batch.
+        Each entry is summarized independently via ``asyncio.TaskGroup``.
+        Failures for individual entries fall back to truncation without
+        aborting the batch.
 
         Args:
             entries: Memory entries to summarize.
@@ -132,8 +148,18 @@ class AbstractiveSummarizer:
         Returns:
             Tuple of ``(entry_id, summary)`` pairs in input order.
         """
-        results: list[tuple[NotBlankStr, str]] = []
-        for entry in entries:
-            summary = await self.summarize(entry.content)
-            results.append((entry.id, summary))
-        return tuple(results)
+        if not entries:
+            return ()
+
+        results: dict[NotBlankStr, str] = {}
+        async with asyncio.TaskGroup() as tg:
+            tasks: dict[NotBlankStr, asyncio.Task[str]] = {}
+            for entry in entries:
+                tasks[entry.id] = tg.create_task(
+                    self.summarize(entry.content),
+                )
+
+        for entry_id, task in tasks.items():
+            results[entry_id] = task.result()
+
+        return tuple((entry.id, results[entry.id]) for entry in entries)

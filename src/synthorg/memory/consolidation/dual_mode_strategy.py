@@ -5,6 +5,7 @@ then applies LLM abstractive summarization (sparse) or extractive
 preservation (dense) accordingly.
 """
 
+import asyncio
 from itertools import groupby
 from operator import attrgetter
 
@@ -179,8 +180,6 @@ class DualModeConsolidationStrategy:
         group_mode = self._determine_group_mode(group_tuple)
         _, to_remove = self._select_entries(group_tuple)
 
-        # Tie-breaking note: 50/50 dense/sparse splits default to
-        # ABSTRACTIVE (strict > comparison), which is the safer mode.
         logger.debug(
             DUAL_MODE_GROUP_CLASSIFIED,
             agent_id=agent_id,
@@ -203,7 +202,16 @@ class DualModeConsolidationStrategy:
         removed_ids: list[NotBlankStr] = []
         assignments: list[ArchivalModeAssignment] = []
         for entry in to_remove:
-            await self._backend.delete(agent_id, entry.id)
+            deleted = await self._backend.delete(agent_id, entry.id)
+            if not deleted:
+                logger.warning(
+                    DUAL_MODE_GROUP_CLASSIFIED,
+                    agent_id=agent_id,
+                    category=category.value,
+                    reason="delete_not_found",
+                    entry_id=entry.id,
+                )
+                continue
             removed_ids.append(entry.id)
             assignments.append(
                 ArchivalModeAssignment(
@@ -229,6 +237,8 @@ class DualModeConsolidationStrategy:
         dense_count = sum(
             1 for _, density in classified if density == ContentDensity.DENSE
         )
+        # Tie-breaking: 50/50 dense/sparse splits default to
+        # ABSTRACTIVE (strict > comparison), which is the safer mode.
         is_majority_dense = dense_count > len(classified) / 2
         return (
             ArchivalMode.EXTRACTIVE if is_majority_dense else ArchivalMode.ABSTRACTIVE
@@ -273,11 +283,13 @@ class DualModeConsolidationStrategy:
         Returns:
             Consolidated content text.
         """
-        parts: list[str] = []
-        for entry in entries:
-            if mode == ArchivalMode.EXTRACTIVE:
-                parts.append(self._extractor.extract(entry.content))
-            else:
-                summary = await self._summarizer.summarize(entry.content)
-                parts.append(summary)
+        if mode == ArchivalMode.EXTRACTIVE:
+            parts = [self._extractor.extract(e.content) for e in entries]
+        else:
+            async with asyncio.TaskGroup() as tg:
+                tasks = [
+                    tg.create_task(self._summarizer.summarize(e.content))
+                    for e in entries
+                ]
+            parts = [t.result() for t in tasks]
         return "\n---\n".join(parts)

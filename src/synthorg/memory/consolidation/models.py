@@ -116,13 +116,37 @@ class ConsolidationResult(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _validate_index_count(self) -> Self:
-        """Ensure archival index does not exceed archived count."""
+    def _validate_archival_consistency(self) -> Self:
+        """Ensure archival fields are internally consistent."""
+        if self.archived_count > self.consolidated_count:
+            msg = (
+                f"archived_count ({self.archived_count}) must not exceed "
+                f"consolidated_count ({self.consolidated_count})"
+            )
+            raise ValueError(msg)
         if len(self.archival_index) > self.archived_count:
             msg = (
                 f"archival_index length ({len(self.archival_index)}) "
                 f"must not exceed archived_count ({self.archived_count})"
             )
+            raise ValueError(msg)
+        if len(self.mode_assignments) > len(self.removed_ids):
+            msg = (
+                f"mode_assignments length ({len(self.mode_assignments)}) "
+                f"must not exceed removed_ids length "
+                f"({len(self.removed_ids)})"
+            )
+            raise ValueError(msg)
+        removed_set = set(self.removed_ids)
+        for idx_entry in self.archival_index:
+            if idx_entry.original_id not in removed_set:
+                msg = (
+                    f"archival_index entry '{idx_entry.original_id}' not in removed_ids"
+                )
+                raise ValueError(msg)
+        index_ids = [e.original_id for e in self.archival_index]
+        if len(index_ids) != len(set(index_ids)):
+            msg = "archival_index contains duplicate original_ids"
             raise ValueError(msg)
         return self
 

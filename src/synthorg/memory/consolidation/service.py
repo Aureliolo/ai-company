@@ -78,10 +78,10 @@ class MemoryConsolidationService:
     ) -> ConsolidationResult:
         """Run memory consolidation for an agent.
 
-        Retrieves memories, applies the consolidation strategy, and
-        archives removed entries if archival is configured and enabled.
-        Per-entry archival failures are logged and skipped — they do
-        not abort the entire archival batch.
+        Retrieves up to 1000 entries per invocation and applies the
+        consolidation strategy, then archives removed entries if archival
+        is configured and enabled.  Per-entry archival failures are
+        logged and skipped — they do not abort the entire batch.
 
         Args:
             agent_id: Agent whose memories to consolidate.
@@ -260,14 +260,17 @@ class MemoryConsolidationService:
         if self._archival_store is None:
             return 0, ()
 
-        mode_map = {a.original_id: a.mode for a in mode_assignments}
-        removed_set = set(removed_ids)
+        mode_map: dict[NotBlankStr, ArchivalMode] = {
+            a.original_id: a.mode for a in mode_assignments
+        }
+        entry_map = {entry.id: entry for entry in all_entries}
         now = datetime.now(UTC)
         archived = 0
         index_entries: list[ArchivalIndexEntry] = []
 
-        for entry in all_entries:
-            if entry.id not in removed_set:
+        for removed_id in removed_ids:
+            entry = entry_map.get(removed_id)
+            if entry is None:
                 continue
             success, idx = await self._archive_single_entry(
                 entry,
@@ -294,7 +297,7 @@ class MemoryConsolidationService:
         self,
         entry: MemoryEntry,
         agent_id: NotBlankStr,
-        mode_map: dict[str, ArchivalMode],
+        mode_map: dict[NotBlankStr, ArchivalMode],
         now: datetime,
     ) -> tuple[bool, ArchivalIndexEntry | None]:
         """Archive a single entry to cold storage.

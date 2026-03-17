@@ -9,6 +9,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import ConsolidationInterval
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.consolidation.models import RetentionRule  # noqa: TC001
 
 
@@ -57,7 +58,7 @@ class DualModeConfig(BaseModel):
 
     Attributes:
         enabled: Whether dual-mode density classification is active.
-            When ``False``, all entries use abstractive mode.
+            When ``False``, the dual-mode strategy is not used.
         dense_threshold: Density score threshold for DENSE classification
             (0.0 = classify everything as dense, 1.0 = everything sparse).
         summarization_model: Model ID for abstractive summarization.
@@ -80,8 +81,8 @@ class DualModeConfig(BaseModel):
         le=1.0,
         description="Density score threshold for DENSE classification",
     )
-    summarization_model: str = Field(
-        default="",
+    summarization_model: NotBlankStr | None = Field(
+        default=None,
         description="Model ID for abstractive summarization",
     )
     max_summary_tokens: int = Field(
@@ -106,7 +107,7 @@ class DualModeConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_model_when_enabled(self) -> Self:
         """Require a summarization model when dual-mode is enabled."""
-        if self.enabled and not self.summarization_model.strip():
+        if self.enabled and self.summarization_model is None:
             msg = "summarization_model must be non-blank when dual-mode is enabled"
             raise ValueError(msg)
         return self

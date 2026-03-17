@@ -173,8 +173,8 @@ class TestDualModeStrategySparse:
         )
         await strategy.consolidate(entries, agent_id=_AGENT_ID)
 
-        # Summarizer should be called for removed entries (not the best one)
-        assert summarizer.summarize.call_count >= 1
+        # Summarizer called for 2 removed entries (best one kept)
+        assert summarizer.summarize.call_count == 2
 
 
 @pytest.mark.unit
@@ -211,7 +211,8 @@ class TestDualModeStrategyDense:
         entries = tuple(_make_dense_entry(f"d{i}", relevance=0.1 * i) for i in range(3))
         await strategy.consolidate(entries, agent_id=_AGENT_ID)
 
-        assert extractor.extract.call_count >= 1
+        # Extractor called for 2 removed entries (best one kept)
+        assert extractor.extract.call_count == 2
 
 
 @pytest.mark.unit
@@ -257,6 +258,49 @@ class TestDualModeStrategyEntrySelection:
         assert "high" not in result.removed_ids
         assert "low" in result.removed_ids
         assert "mid" in result.removed_ids
+
+    async def test_fifty_fifty_defaults_to_abstractive(self) -> None:
+        """50/50 dense/sparse split defaults to ABSTRACTIVE."""
+        backend = AsyncMock()
+        backend.store = AsyncMock(return_value="summary-1")
+        backend.delete = AsyncMock(return_value=True)
+
+        summarizer = AsyncMock()
+        summarizer.summarize = AsyncMock(return_value="Summary.")
+
+        strategy = _make_strategy(
+            backend=backend,
+            summarizer=summarizer,
+            group_threshold=4,
+        )
+        # 2 sparse + 2 dense = 50/50 split
+        entries = (
+            _make_sparse_entry("s1", relevance=0.1),
+            _make_sparse_entry("s2", relevance=0.2),
+            _make_dense_entry("d1", MemoryCategory.EPISODIC, relevance=0.3),
+            _make_dense_entry("d2", MemoryCategory.EPISODIC, relevance=0.4),
+        )
+        result = await strategy.consolidate(entries, agent_id=_AGENT_ID)
+
+        # 50/50 → ABSTRACTIVE (strict > comparison)
+        modes = {a.original_id: a.mode for a in result.mode_assignments}
+        for mode in modes.values():
+            assert mode == ArchivalMode.ABSTRACTIVE
+
+    async def test_none_relevance_treated_as_zero(self) -> None:
+        """Entries with None relevance are treated as lowest priority."""
+        strategy = _make_strategy()
+        entries = (
+            _make_sparse_entry("none-rel", relevance=None),
+            _make_sparse_entry("low-rel", relevance=0.1),
+            _make_sparse_entry("high-rel", relevance=0.9),
+        )
+        result = await strategy.consolidate(entries, agent_id=_AGENT_ID)
+        # high-rel (0.9) is kept
+        assert "high-rel" not in result.removed_ids
+        # none-rel (treated as 0.0) and low-rel (0.1) are removed
+        assert "none-rel" in result.removed_ids
+        assert "low-rel" in result.removed_ids
 
     async def test_equal_relevance_keeps_most_recent(self) -> None:
         strategy = _make_strategy()

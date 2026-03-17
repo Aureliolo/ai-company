@@ -28,6 +28,7 @@ class TestExtractivePreserver:
         result = preserver.extract(content)
         assert "[Extractive preservation]" in result
         assert "Key facts:" in result
+        assert "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2" in result
 
     def test_extracts_urls(self) -> None:
         preserver = ExtractivePreserver()
@@ -40,18 +41,17 @@ class TestExtractivePreserver:
         content = "host: 192.168.1.100\nport: 5432\ntimeout: 30"
         result = preserver.extract(content)
         assert "Key facts:" in result
+        assert "host: 192.168.1.100" in result
+        assert "port: 5432" in result
 
     def test_max_facts_limit(self) -> None:
         preserver = ExtractivePreserver(max_facts=3)
         content = "\n".join(f"key_{i}: value_{i}" for i in range(20))
         result = preserver.extract(content)
-        facts_line = [
-            line for line in result.splitlines() if line.startswith("Key facts:")
-        ]
-        assert len(facts_line) == 1
-        # Count comma-separated facts (may be fewer than 20)
-        facts = facts_line[0].removeprefix("Key facts: ").split(", ")
-        assert len(facts) <= 3
+        assert "Key facts:" in result
+        # Count individual fact lines (one per line, prefixed with "- ")
+        fact_lines = [line for line in result.splitlines() if line.startswith("- ")]
+        assert len(fact_lines) <= 3
 
     def test_anchor_length_parameter(self) -> None:
         preserver = ExtractivePreserver(anchor_length=50)

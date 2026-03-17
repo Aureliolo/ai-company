@@ -29,7 +29,7 @@ _HEX_HASH_PATTERN = re.compile(r"\b[0-9a-f]{32,}\b", re.IGNORECASE)
 _VERSION_PATTERN = re.compile(r"\bv?\d+\.\d+\.\d+(?:\.\d+)?\b")
 
 _KEY_VALUE_PATTERN = re.compile(
-    r"^\s*([\w.-]+)\s*[:=]\s*(\S.*)$",
+    r"^\s*([\w.-]+\s*[:=]\s*.*)$",
     re.MULTILINE,
 )
 
@@ -52,9 +52,8 @@ def _extract_versions(text: str) -> list[str]:
 
 
 def _extract_key_values(text: str) -> list[str]:
-    """Extract key=value and key: value pairs from text."""
-    matches = _KEY_VALUE_PATTERN.findall(text)
-    return [f"{k}={v.strip()}" for k, v in matches]
+    """Extract key-value pairs from text, preserving original form."""
+    return [m.strip() for m in _KEY_VALUE_PATTERN.findall(text)]
 
 
 def _build_anchors(
@@ -75,9 +74,7 @@ def _build_anchors(
     if text_len <= anchor_length:
         return text, "", ""
 
-    start = text[:anchor_length]
-    if text_len > anchor_length:
-        start += "..."
+    start = text[:anchor_length] + "..."
 
     mid_offset = max(0, (text_len - anchor_length) // 2)
     mid = text[mid_offset : mid_offset + anchor_length]
@@ -86,9 +83,7 @@ def _build_anchors(
     if mid_offset + anchor_length < text_len:
         mid += "..."
 
-    end = text[-anchor_length:]
-    if text_len > anchor_length:
-        end = "..." + end
+    end = "..." + text[-anchor_length:]
 
     return start, mid, end
 
@@ -152,7 +147,8 @@ class ExtractivePreserver:
 
         lines = ["[Extractive preservation]"]
         if facts:
-            lines.append(f"Key facts: {', '.join(facts)}")
+            lines.append("Key facts:")
+            lines.extend(f"- {fact}" for fact in facts)
         lines.append(f"[START] {start}")
         if mid:
             lines.append(f"[MID] {mid}")

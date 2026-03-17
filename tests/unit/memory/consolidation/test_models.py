@@ -235,6 +235,69 @@ class TestConsolidationResultDualMode:
         assert len(result.mode_assignments) == 2
         assert result.mode_assignments[0].mode == ArchivalMode.ABSTRACTIVE
 
+    def test_archival_index_exceeds_count_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="must not exceed archived_count",
+        ):
+            ConsolidationResult(
+                removed_ids=("m1",),
+                archived_count=0,
+                archival_index=(
+                    ArchivalIndexEntry(
+                        original_id="m1",
+                        archival_id="a1",
+                        mode=ArchivalMode.EXTRACTIVE,
+                    ),
+                ),
+            )
+
+    def test_archived_count_exceeds_consolidated_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="must not exceed consolidated_count",
+        ):
+            ConsolidationResult(
+                removed_ids=("m1",),
+                archived_count=5,
+            )
+
+    def test_archival_index_id_not_in_removed_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="not in removed_ids",
+        ):
+            ConsolidationResult(
+                removed_ids=("m1",),
+                archived_count=1,
+                archival_index=(
+                    ArchivalIndexEntry(
+                        original_id="m99",
+                        archival_id="a1",
+                        mode=ArchivalMode.ABSTRACTIVE,
+                    ),
+                ),
+            )
+
+    def test_mode_assignments_exceeds_removed_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="must not exceed removed_ids length",
+        ):
+            ConsolidationResult(
+                removed_ids=("m1",),
+                mode_assignments=(
+                    ArchivalModeAssignment(
+                        original_id="m1",
+                        mode=ArchivalMode.ABSTRACTIVE,
+                    ),
+                    ArchivalModeAssignment(
+                        original_id="m2",
+                        mode=ArchivalMode.EXTRACTIVE,
+                    ),
+                ),
+            )
+
     def test_with_archival_index(self) -> None:
         index = (
             ArchivalIndexEntry(

@@ -77,6 +77,12 @@ Persistent agent memory — protocol, retrieval pipeline, shared org memory, con
 
 ::: synthorg.memory.consolidation.service
 
+::: synthorg.memory.consolidation.retention
+
+::: synthorg.memory.consolidation.archival
+
+::: synthorg.memory.consolidation.simple_strategy
+
 ::: synthorg.memory.consolidation.density
 
 ::: synthorg.memory.consolidation.extractive

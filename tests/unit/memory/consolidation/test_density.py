@@ -1,8 +1,12 @@
 """Tests for content density classification."""
 
+from datetime import UTC, datetime
+
 import pytest
 
+from synthorg.core.enums import MemoryCategory
 from synthorg.memory.consolidation.density import ContentDensity, DensityClassifier
+from synthorg.memory.models import MemoryEntry, MemoryMetadata
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -114,6 +118,11 @@ class TestDensityClassifierThreshold:
         with pytest.raises(ValueError, match="dense_threshold"):
             DensityClassifier(dense_threshold=1.1)
 
+    def test_empty_string_is_sparse(self) -> None:
+        """Empty content classifies as SPARSE without error."""
+        classifier = DensityClassifier()
+        assert classifier.classify("") == ContentDensity.SPARSE
+
 
 @pytest.mark.unit
 class TestDensityClassifierBatch:
@@ -125,11 +134,6 @@ class TestDensityClassifierBatch:
         assert result == ()
 
     def test_batch_returns_paired_results(self) -> None:
-        from datetime import UTC, datetime
-
-        from synthorg.core.enums import MemoryCategory
-        from synthorg.memory.models import MemoryEntry, MemoryMetadata
-
         classifier = DensityClassifier()
         now = datetime.now(UTC)
         entries = (

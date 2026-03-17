@@ -98,8 +98,35 @@ class TestAbstractiveSummarizer:
             model="test-small-001",
         )
         result = await summarizer.summarize("Original content")
-        # Empty response triggers fallback
-        assert len(result) > 0
+        # Empty response triggers truncation fallback; content is
+        # shorter than _TRUNCATE_LENGTH so returned verbatim.
+        assert result == "Original content"
+
+    async def test_blank_model_rejected(self) -> None:
+        with pytest.raises(ValueError, match="non-blank"):
+            AbstractiveSummarizer(provider=_make_provider(), model="")
+        with pytest.raises(ValueError, match="non-blank"):
+            AbstractiveSummarizer(provider=_make_provider(), model="   ")
+
+    async def test_memory_error_propagates(self) -> None:
+        provider = AsyncMock()
+        provider.complete = AsyncMock(side_effect=MemoryError("out of memory"))
+        summarizer = AbstractiveSummarizer(
+            provider=provider,
+            model="test-small-001",
+        )
+        with pytest.raises(MemoryError):
+            await summarizer.summarize("Some content")
+
+    async def test_recursion_error_propagates(self) -> None:
+        provider = AsyncMock()
+        provider.complete = AsyncMock(side_effect=RecursionError("max depth"))
+        summarizer = AbstractiveSummarizer(
+            provider=provider,
+            model="test-small-001",
+        )
+        with pytest.raises(RecursionError):
+            await summarizer.summarize("Some content")
 
 
 @pytest.mark.unit

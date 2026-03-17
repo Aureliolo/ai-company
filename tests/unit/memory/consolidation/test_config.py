@@ -107,7 +107,7 @@ class TestDualModeConfig:
         config = DualModeConfig()
         assert config.enabled is False
         assert config.dense_threshold == 0.5
-        assert config.summarization_model == ""
+        assert config.summarization_model is None
         assert config.max_summary_tokens == 200
         assert config.max_facts == 20
         assert config.anchor_length == 150
@@ -159,15 +159,15 @@ class TestDualModeConfig:
             ValidationError,
             match="summarization_model must be non-blank",
         ):
-            DualModeConfig(enabled=True, summarization_model="")
+            DualModeConfig(enabled=True, summarization_model=None)
 
     def test_enabled_with_blank_model_rejected(self) -> None:
         with pytest.raises(ValidationError):
             DualModeConfig(enabled=True, summarization_model="   ")
 
-    def test_disabled_allows_empty_model(self) -> None:
-        config = DualModeConfig(enabled=False, summarization_model="")
-        assert config.summarization_model == ""
+    def test_disabled_allows_none_model(self) -> None:
+        config = DualModeConfig(enabled=False, summarization_model=None)
+        assert config.summarization_model is None
 
 
 @pytest.mark.unit
