@@ -437,6 +437,43 @@ class TestOperationInjection:
         # Should be replaced with our ref.
         assert resp_400 == {"$ref": "#/components/responses/BadRequest"}
 
+    def test_custom_400_preserved(self) -> None:
+        """Custom (non-Litestar) 400 response is not replaced."""
+        custom_400 = {
+            "description": "Custom validation",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "description": "Custom error schema",
+                    },
+                },
+            },
+        }
+        schema = _minimal_schema(
+            paths={
+                "/api/v1/tasks": {
+                    "post": {
+                        "responses": {
+                            "201": {"description": "Created"},
+                            "400": custom_400,
+                        },
+                        "requestBody": {
+                            "content": {
+                                "application/json": {
+                                    "schema": {"type": "object"},
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        )
+        result = inject_rfc9457_responses(schema)
+        resp_400 = result["paths"]["/api/v1/tasks"]["post"]["responses"]["400"]
+        # Custom 400 should be preserved (not Litestar's ValidationException).
+        assert resp_400["description"] == "Custom validation"
+
     def test_non_public_have_429(self, base_schema: dict[str, Any]) -> None:
         result = inject_rfc9457_responses(base_schema)
         responses = result["paths"]["/api/v1/tasks"]["get"]["responses"]

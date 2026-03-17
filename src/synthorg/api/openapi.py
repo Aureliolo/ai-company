@@ -355,6 +355,20 @@ def _should_inject(
     return checks.get(key, False)
 
 
+def _is_litestar_validation_400(response: dict[str, Any]) -> bool:
+    """Detect Litestar's auto-generated ``ValidationException`` 400 response.
+
+    Returns ``True`` when the response schema contains the
+    ``"Validation Exception"`` description that Litestar emits for
+    request-body validation errors.  Custom 400 responses will not
+    match this heuristic and are left untouched.
+    """
+    content = response.get("content", {})
+    json_content = content.get("application/json", {})
+    schema = json_content.get("schema", {})
+    return schema.get("description") == "Validation Exception"
+
+
 def _inject_operation_responses(
     paths: dict[str, Any],
     response_keys: list[str],
@@ -374,12 +388,15 @@ def _inject_operation_responses(
                 status_code = status_for_key[key]
                 if not _should_inject(key, path, method, operation):
                     continue
-                # Replace Litestar's auto-generated 400 (ValidationException)
-                # with the RFC 9457 dual-format version.  All 400 responses
-                # in Litestar-generated schemas use the default
-                # ValidationException schema; custom 400s would need manual
-                # post-processing.
-                if status_code == "400" or status_code not in op_responses:
+                if status_code == "400":
+                    # Only replace Litestar's auto-generated
+                    # ValidationException 400; preserve custom 400s.
+                    existing = op_responses.get("400")
+                    if existing is None or _is_litestar_validation_400(
+                        existing,
+                    ):
+                        op_responses["400"] = _response_ref(key)
+                elif status_code not in op_responses:
                     op_responses[status_code] = _response_ref(key)
 
 
@@ -390,6 +407,18 @@ def _add_problem_detail_schema(schemas: dict[str, Any]) -> None:
     """Add ``ProblemDetail`` to ``components.schemas`` if absent."""
     if "ProblemDetail" not in schemas:
         schemas["ProblemDetail"] = _build_problem_detail_schema()
+        logger.debug(
+            API_OPENAPI_SCHEMA_ENHANCED,
+            step="add_problem_detail",
+            added=True,
+        )
+    else:
+        logger.debug(
+            API_OPENAPI_SCHEMA_ENHANCED,
+            step="add_problem_detail",
+            added=False,
+            reason="already_exists",
+        )
 
 
 def _build_all_responses(
