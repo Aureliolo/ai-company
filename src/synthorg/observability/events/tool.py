@@ -23,6 +23,11 @@ TOOL_PERMISSION_DENIED: Final[str] = "tool.permission.denied"
 TOOL_PERMISSION_CHECKER_CREATED: Final[str] = "tool.permission.checker_created"
 TOOL_PERMISSION_FILTERED: Final[str] = "tool.permission.filtered"
 
+# ── Factory events ──────────────────────────────────────────────
+TOOL_FACTORY_BUILT: Final[str] = "tool.factory.built"
+TOOL_FACTORY_CONFIG_ENTRY: Final[str] = "tool.factory.config_entry"
+TOOL_FACTORY_ERROR: Final[str] = "tool.factory.error"
+
 # ── File system tool events ──────────────────────────────────────
 TOOL_FS_READ: Final[str] = "tool.fs.read"
 TOOL_FS_WRITE: Final[str] = "tool.fs.write"
