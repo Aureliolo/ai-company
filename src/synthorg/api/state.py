@@ -305,10 +305,12 @@ class AppState:
         )
 
     def swap_provider_registry(self, registry: ProviderRegistry) -> None:
-        """Atomically replace the provider registry (hot-reload).
+        """Replace the provider registry (hot-reload).
 
         Unlike ``set_*`` methods, this does not guard against
         replacement — it is designed for repeated hot-reload swaps.
+        Safe under asyncio's single-threaded event loop (no
+        ``await`` between read and write).
 
         Args:
             registry: New provider registry instance.
@@ -335,10 +337,12 @@ class AppState:
         return self._require_service(self._model_router, "model_router")
 
     def swap_model_router(self, router: ModelRouter) -> None:
-        """Atomically replace the model router (hot-reload).
+        """Replace the model router (hot-reload).
 
         Unlike ``set_*`` methods, this does not guard against
         replacement — it is designed for repeated hot-reload swaps.
+        Safe under asyncio's single-threaded event loop (no
+        ``await`` between read and write).
 
         Args:
             router: New model router instance.

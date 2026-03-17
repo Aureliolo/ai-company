@@ -3,10 +3,7 @@
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.settings import (
-    SETTINGS_SERVICE_SWAP_FAILED,
-    SETTINGS_SUBSCRIBER_NOTIFIED,
-)
+from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
 from synthorg.providers.routing.router import ModelRouter
 
 if TYPE_CHECKING:
@@ -33,11 +30,16 @@ class ProviderSettingsSubscriber:
 
     ``default_provider`` and ``retry_max_attempts`` are advisory-only:
     they are read through :class:`ConfigResolver` at use time and do
-    not require a service rebuild.
+    not require a service rebuild.  They are watched so the operator
+    sees a log entry confirming the change was detected.
+
+    Errors during rebuild propagate to the dispatcher, which logs
+    them with full subscriber context and continues to the next
+    subscriber.  The old ``ModelRouter`` remains in ``AppState``.
 
     Args:
         config: Root company configuration (providers + routing).
-        app_state: Application state for atomic service swap.
+        app_state: Application state for service swap.
         settings_service: Settings service for reading new values.
     """
 
@@ -87,27 +89,22 @@ class ProviderSettingsSubscriber:
             )
 
     async def _rebuild_router(self) -> None:
-        """Build a new ModelRouter from current settings and swap it in."""
-        try:
-            new_strategy = await self._settings_service.get(
-                "providers",
-                "routing_strategy",
-            )
-            new_routing = self._config.routing.model_copy(
-                update={"strategy": new_strategy},
-            )
-            new_router = ModelRouter(
-                new_routing,
-                dict(self._config.providers),
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.error(
-                SETTINGS_SERVICE_SWAP_FAILED,
-                service="model_router",
-                exc_info=True,
-            )
-            return
+        """Build a new ModelRouter from current settings and swap it in.
 
+        Reads the current ``routing_strategy`` value from
+        :class:`SettingsService`, extracts the string value from the
+        returned :class:`SettingValue`, and constructs a new router.
+        Errors propagate to the dispatcher for logging.
+        """
+        result = await self._settings_service.get(
+            "providers",
+            "routing_strategy",
+        )
+        new_routing = self._config.routing.model_copy(
+            update={"strategy": result.value},
+        )
+        new_router = ModelRouter(
+            new_routing,
+            dict(self._config.providers),
+        )
         self._app_state.swap_model_router(new_router)

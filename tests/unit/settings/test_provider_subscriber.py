@@ -8,10 +8,22 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.state import AppState
 from synthorg.config.schema import RootConfig
 from synthorg.providers.routing.router import ModelRouter
+from synthorg.settings.enums import SettingNamespace, SettingSource
+from synthorg.settings.models import SettingValue
 from synthorg.settings.subscriber import SettingsSubscriber
 from synthorg.settings.subscribers.provider_subscriber import (
     ProviderSettingsSubscriber,
 )
+
+
+def _setting_value(value: str) -> SettingValue:
+    """Build a SettingValue matching SettingsService.get() return type."""
+    return SettingValue(
+        namespace=SettingNamespace.PROVIDERS,
+        key="routing_strategy",
+        value=value,
+        source=SettingSource.DEFAULT,
+    )
 
 
 def _make_state(config: RootConfig | None = None) -> AppState:
@@ -32,7 +44,7 @@ def _make_subscriber(
     cfg = config or RootConfig(company_name="test")
     state = app_state or _make_state(cfg)
     svc = settings_service or AsyncMock()
-    svc.get = AsyncMock(return_value="cost_aware")
+    svc.get = AsyncMock(return_value=_setting_value("cost_aware"))
     sub = ProviderSettingsSubscriber(
         config=cfg,
         app_state=state,
@@ -70,7 +82,7 @@ class TestProviderSubscriberRebuild:
         old_router = state.model_router
 
         svc = AsyncMock()
-        svc.get = AsyncMock(return_value="cost_aware")
+        svc.get = AsyncMock(return_value=_setting_value("cost_aware"))
         sub = ProviderSettingsSubscriber(
             config=cfg,
             app_state=state,
@@ -79,22 +91,27 @@ class TestProviderSubscriberRebuild:
         await sub.on_settings_changed("providers", "routing_strategy")
         assert state.model_router is not old_router
 
-    async def test_rebuild_failure_keeps_old_router(self) -> None:
+    async def test_rebuild_failure_propagates(self) -> None:
+        """Errors in _rebuild_router propagate to the dispatcher."""
         cfg = RootConfig(company_name="test")
         state = _make_state(cfg)
         old_router = state.model_router
 
         svc = AsyncMock()
-        # Return an invalid strategy to trigger rebuild failure
-        svc.get = AsyncMock(return_value="nonexistent_strategy")
+        svc.get = AsyncMock(
+            return_value=_setting_value("nonexistent_strategy"),
+        )
         sub = ProviderSettingsSubscriber(
             config=cfg,
             app_state=state,
             settings_service=svc,
         )
-        # Should not raise — error is caught and logged
-        await sub.on_settings_changed("providers", "routing_strategy")
-        # Old router is still in place
+        # Error propagates (dispatcher catches it for logging)
+        from synthorg.providers.routing.errors import UnknownStrategyError
+
+        with pytest.raises(UnknownStrategyError):
+            await sub.on_settings_changed("providers", "routing_strategy")
+        # Old router is still in place (swap never called)
         assert state.model_router is old_router
 
     async def test_default_provider_change_is_noop(self) -> None:
@@ -103,7 +120,7 @@ class TestProviderSubscriberRebuild:
         old_router = state.model_router
 
         svc = AsyncMock()
-        svc.get = AsyncMock(return_value="some-provider")
+        svc.get = AsyncMock(return_value=_setting_value("some-provider"))
         sub = ProviderSettingsSubscriber(
             config=cfg,
             app_state=state,
@@ -119,7 +136,7 @@ class TestProviderSubscriberRebuild:
         old_router = state.model_router
 
         svc = AsyncMock()
-        svc.get = AsyncMock(return_value="5")
+        svc.get = AsyncMock(return_value=_setting_value("5"))
         sub = ProviderSettingsSubscriber(
             config=cfg,
             app_state=state,

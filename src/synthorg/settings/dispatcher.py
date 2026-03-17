@@ -13,9 +13,6 @@ from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType
 from synthorg.communication.errors import ChannelAlreadyExistsError
 from synthorg.observability import get_logger
-
-if TYPE_CHECKING:
-    from synthorg.communication.message import Message
 from synthorg.observability.events.settings import (
     SETTINGS_CHANNEL_CREATED,
     SETTINGS_DISPATCHER_CHANNEL_DEAD,
@@ -27,6 +24,9 @@ from synthorg.observability.events.settings import (
     SETTINGS_SUBSCRIBER_RESTART_REQUIRED,
 )
 from synthorg.settings.subscriber import SettingsSubscriber  # noqa: TC001
+
+if TYPE_CHECKING:
+    from synthorg.communication.message import Message
 
 logger = get_logger(__name__)
 
@@ -73,6 +73,7 @@ class SettingsChangeDispatcher:
         """
         if self._running:
             msg = "SettingsChangeDispatcher is already running"
+            logger.warning(SETTINGS_DISPATCHER_STARTED, error=msg)
             raise RuntimeError(msg)
 
         await self._ensure_channel()
@@ -83,6 +84,7 @@ class SettingsChangeDispatcher:
             self._poll_loop(),
             name="settings-dispatcher",
         )
+        self._task.add_done_callback(self._on_task_done)
         logger.info(
             SETTINGS_DISPATCHER_STARTED,
             subscriber_count=len(self._subscribers),
@@ -101,6 +103,28 @@ class SettingsChangeDispatcher:
 
         self._running = False
         logger.info(SETTINGS_DISPATCHER_STOPPED)
+
+    def _on_task_done(self, task: asyncio.Task[None]) -> None:
+        """Handle unexpected poll-loop exit.
+
+        Resets ``_running`` so the dispatcher's state is honest,
+        and logs an error if the loop died with an exception.
+        """
+        if task.cancelled():
+            return
+        self._running = False
+        exc = task.exception()
+        if exc is not None:
+            logger.error(
+                SETTINGS_DISPATCHER_CHANNEL_DEAD,
+                error="Settings dispatcher poll loop died unexpectedly",
+                exc_info=exc,
+            )
+        else:
+            logger.warning(
+                SETTINGS_DISPATCHER_STOPPED,
+                note="Poll loop exited (max consecutive errors or channel dead)",
+            )
 
     async def _ensure_channel(self) -> None:
         """Create ``#settings`` channel if it does not exist."""
@@ -131,7 +155,7 @@ class SettingsChangeDispatcher:
                 break
             except MemoryError, RecursionError:
                 raise
-            except OSError, ConnectionError, TimeoutError:
+            except OSError, TimeoutError:
                 consecutive_errors += 1
                 if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
                     logger.exception(
@@ -198,12 +222,22 @@ def _extract_metadata(
 
     Returns:
         A tuple of (namespace, key, restart_required) or ``None`` if
-        the required metadata fields are missing.
+        the ``namespace`` or ``key`` metadata fields are missing.
+        The ``restart_required`` field defaults to ``False`` when
+        absent from the metadata.
     """
     extra = dict(message.metadata.extra)
     namespace = extra.get("namespace")
     key = extra.get("key")
     if namespace is None or key is None:
+        logger.warning(
+            SETTINGS_DISPATCHER_POLL_ERROR,
+            error="Received #settings message with missing metadata",
+            has_namespace=namespace is not None,
+            has_key=key is not None,
+            sender=message.sender,
+        )
         return None
+    # restart_required is encoded as str(bool) by SettingsService._publish_change
     restart_required = extra.get("restart_required", "False").lower() == "true"
     return namespace, key, restart_required

@@ -18,9 +18,11 @@ class TestMemorySubscriberProtocol:
 
     def test_watched_keys(self) -> None:
         sub = MemorySettingsSubscriber()
-        assert ("memory", "backend") in sub.watched_keys
         assert ("memory", "default_level") in sub.watched_keys
         assert ("memory", "consolidation_interval") in sub.watched_keys
+        # memory/backend has restart_required=True — filtered by
+        # dispatcher, not watched by subscriber
+        assert ("memory", "backend") not in sub.watched_keys
 
     def test_subscriber_name(self) -> None:
         sub = MemorySettingsSubscriber()

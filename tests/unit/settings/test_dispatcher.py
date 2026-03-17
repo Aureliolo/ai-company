@@ -407,3 +407,95 @@ class TestMetadataExtraction:
             assert len(provider_sub.calls) == 0
         finally:
             await dispatcher.stop()
+
+    async def test_partial_metadata_namespace_only(
+        self,
+        dispatcher: SettingsChangeDispatcher,
+        bus: _FakeBus,
+        provider_sub: _FakeSubscriber,
+    ) -> None:
+        """Message with namespace but no key is skipped."""
+        msg = Message(
+            timestamp=datetime.now(UTC),
+            sender="system",
+            to="#settings",
+            type=MessageType.ANNOUNCEMENT,
+            channel="#settings",
+            content="partial",
+            metadata=MessageMetadata(
+                extra=(("namespace", "providers"),),
+            ),
+        )
+        await dispatcher.start()
+        try:
+            bus.enqueue(_envelope(msg))
+            await _drain(dispatcher, bus, 1)
+            assert len(provider_sub.calls) == 0
+        finally:
+            await dispatcher.stop()
+
+    async def test_restart_required_defaults_to_false_when_absent(
+        self,
+        bus: _FakeBus,
+    ) -> None:
+        """Missing restart_required metadata defaults to False (dispatched)."""
+        sub = _FakeSubscriber("sub", frozenset({("ns", "k")}))
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(sub,),
+        )
+        # Message with namespace and key but NO restart_required field
+        msg = Message(
+            timestamp=datetime.now(UTC),
+            sender="system",
+            to="#settings",
+            type=MessageType.ANNOUNCEMENT,
+            channel="#settings",
+            content="no restart flag",
+            metadata=MessageMetadata(
+                extra=(("namespace", "ns"), ("key", "k")),
+            ),
+        )
+        await d.start()
+        try:
+            bus.enqueue(_envelope(msg))
+            await _drain(d, bus, 1)
+            assert ("ns", "k") in sub.calls
+        finally:
+            await d.stop()
+
+
+# ── Done Callback Tests ──────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDoneCallback:
+    async def test_running_flag_cleared_on_unexpected_exit(
+        self,
+        bus: _FakeBus,
+    ) -> None:
+        """_running is set to False when poll loop exits unexpectedly."""
+        sub = _FakeSubscriber("sub", frozenset())
+
+        class _ErrorBus(_FakeBus):
+            async def receive(
+                self,
+                channel_name: str,
+                subscriber_id: str,
+                *,
+                timeout: float | None = None,  # noqa: ASYNC109
+            ) -> DeliveryEnvelope | None:
+                msg = "unexpected bus error"
+                raise ValueError(msg)
+
+        err_bus = _ErrorBus()
+        d = SettingsChangeDispatcher(
+            message_bus=err_bus,
+            subscribers=(sub,),
+        )
+        await d.start()
+        # Wait for the task to complete (it should break on the error)
+        assert d._task is not None
+        await asyncio.sleep(0.2)
+        # done_callback should have set _running to False
+        assert d._running is False
