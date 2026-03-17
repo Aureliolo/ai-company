@@ -652,7 +652,8 @@ class TestValidateCloneUrlHostProperties:
             lambda ip: (
                 not any(ip in net for net in _ALL_BLOCKED_V6)
                 and not (
-                    ip.ipv4_mapped
+                    isinstance(ip, ipaddress.IPv6Address)
+                    and ip.ipv4_mapped
                     and any(ip.ipv4_mapped in net for net in _ALL_BLOCKED_V4)
                 )
             )
