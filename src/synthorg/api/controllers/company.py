@@ -11,6 +11,7 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.company import Department  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
 
 logger = get_logger(__name__)
 
@@ -46,6 +47,13 @@ class CompanyController(Controller):
                 t_agents = tg.create_task(resolver.get_agents())
                 t_depts = tg.create_task(resolver.get_departments())
         except ExceptionGroup as eg:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="company",
+                key="_composed",
+                error_count=len(eg.exceptions),
+                exc_info=True,
+            )
             raise eg.exceptions[0] from eg
         data: dict[str, Any] = {
             "company_name": t_name.result(),

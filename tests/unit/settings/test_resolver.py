@@ -20,10 +20,10 @@ from tests.unit.settings.conftest import (
     FakeAgentConfig,
     FakeDepartment,
     FakeProviderConfig,
+    make_setting_value,
 )
-from tests.unit.settings.conftest import (
-    make_setting_value as _make_value,
-)
+
+_make_value = make_setting_value
 
 # ── Helpers ───────────────────────────────────────────────────────
 

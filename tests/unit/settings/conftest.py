@@ -24,6 +24,14 @@ def make_setting_value(
 
 
 class FakeAgentConfig(BaseModel):
+    """Frozen test fixture for agent configuration.
+
+    Attributes:
+        name: Agent identifier.
+        role: Agent role.
+        department: Owning department.
+    """
+
     model_config = ConfigDict(frozen=True)
     name: str = "agent-1"
     role: str = "developer"
@@ -31,11 +39,24 @@ class FakeAgentConfig(BaseModel):
 
 
 class FakeDepartment(BaseModel):
+    """Frozen test fixture for department configuration.
+
+    Attributes:
+        name: Department identifier.
+        head: Department head name.
+    """
+
     model_config = ConfigDict(frozen=True)
     name: str = "eng"
     head: str = "lead"
 
 
 class FakeProviderConfig(BaseModel):
+    """Frozen test fixture for LLM provider configuration.
+
+    Attributes:
+        driver: Provider driver name.
+    """
+
     model_config = ConfigDict(frozen=True)
     driver: str = "litellm"

@@ -111,18 +111,18 @@ class TestSerializeValue:
         result = _serialize_value({})
         assert result == "{}"
 
-    def test_scalar_string_unchanged(self) -> None:
-        assert _serialize_value("hello") == "hello"
-
-    def test_scalar_int_unchanged(self) -> None:
-        assert _serialize_value(42) == "42"
-
-    def test_scalar_float_unchanged(self) -> None:
-        assert _serialize_value(3.14) == "3.14"
-
-    def test_scalar_bool_lowercase_json(self) -> None:
-        assert _serialize_value(True) == "true"
-        assert _serialize_value(False) == "false"
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("hello", "hello"),
+            (42, "42"),
+            (3.14, "3.14"),
+            (True, "true"),
+            (False, "false"),
+        ],
+    )
+    def test_scalar_values(self, value: object, expected: str) -> None:
+        assert _serialize_value(value) == expected
 
     def test_mixed_list_models_and_scalars(self) -> None:
         items = [_ItemModel(name="x", value=1), "plain", 42]

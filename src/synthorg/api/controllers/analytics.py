@@ -57,10 +57,13 @@ class AnalyticsController(Controller):
         """
         app_state: AppState = state.app_state
 
-        async with asyncio.TaskGroup() as tg:
-            t_tasks = tg.create_task(app_state.persistence.tasks.list_tasks())
-            t_cost = tg.create_task(app_state.cost_tracker.get_total_cost())
-            t_agents = tg.create_task(app_state.config_resolver.get_agents())
+        try:
+            async with asyncio.TaskGroup() as tg:
+                t_tasks = tg.create_task(app_state.persistence.tasks.list_tasks())
+                t_cost = tg.create_task(app_state.cost_tracker.get_total_cost())
+                t_agents = tg.create_task(app_state.config_resolver.get_agents())
+        except ExceptionGroup as eg:
+            raise eg.exceptions[0] from eg
 
         all_tasks = t_tasks.result()
         counts = Counter(t.status.value for t in all_tasks)
