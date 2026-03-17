@@ -29,7 +29,11 @@ def db_path(tmp_path: Path) -> str:
 
 @pytest.fixture
 async def backend(db_path: str) -> AsyncGenerator[SQLitePersistenceBackend]:
-    """Connected + migrated on-disk SQLite backend."""
+    """Create a connected and migrated on-disk SQLite backend.
+
+    Yields:
+        A ``SQLitePersistenceBackend`` ready for settings operations.
+    """
     be = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
     await be.connect()
     await be.migrate()
@@ -78,7 +82,11 @@ class TestApiSettingsIntegration:
         settings_service: SettingsService,
         resolver: ConfigResolver,
     ) -> None:
-        """Write an override via SettingsService, read through ConfigResolver."""
+        """Verify DB overrides flow through the full resolution chain.
+
+        Writes a rate-limit override via ``SettingsService`` and reads
+        it back through ``ConfigResolver.get_api_config()``.
+        """
         await settings_service.set("api", "rate_limit_max_requests", "500")
 
         result = await resolver.get_api_config()
@@ -93,7 +101,11 @@ class TestApiSettingsIntegration:
         self,
         resolver: ConfigResolver,
     ) -> None:
-        """Without DB overrides, all values come from code defaults."""
+        """Verify code defaults are used when no DB overrides exist.
+
+        All four runtime-editable API settings should resolve to their
+        ``SettingDefinition`` defaults.
+        """
         result = await resolver.get_api_config()
 
         assert result.rate_limit.max_requests == 100

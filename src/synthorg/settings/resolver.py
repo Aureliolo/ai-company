@@ -340,7 +340,7 @@ class ConfigResolver:
         ``api_prefix``, ``cors_allowed_origins``,
         ``rate_limit_exclude_paths``, ``auth_exclude_paths``) are
         **not** resolved — they are baked into the Litestar app at
-        construction and cannot change at runtime.
+        construction and require a restart to take effect.
 
         Uses ``asyncio.TaskGroup`` to resolve all settings in parallel.
 

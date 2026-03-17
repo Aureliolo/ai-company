@@ -67,10 +67,11 @@ _r.register(
         description="Origins permitted to make cross-origin requests",
         group="CORS",
         restart_required=True,
+        yaml_path="api.cors.allowed_origins",
     )
 )
 
-# ── Rate Limiting ────────────────────────────────────────────────
+# ── Rate Limiting (exclude_paths: bootstrap-only) ────────────────
 
 _r.register(
     SettingDefinition(
@@ -81,6 +82,7 @@ _r.register(
         description="Maximum requests per time window",
         group="Rate Limiting",
         min_value=1,
+        max_value=10000,
         yaml_path="api.rate_limit.max_requests",
     )
 )
@@ -108,10 +110,11 @@ _r.register(
         group="Rate Limiting",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        yaml_path="api.rate_limit.exclude_paths",
     )
 )
 
-# ── Authentication ───────────────────────────────────────────────
+# ── Authentication (exclude_paths: bootstrap-only) ───────────────
 
 _r.register(
     SettingDefinition(
@@ -122,7 +125,7 @@ _r.register(
         description="JWT token lifetime in minutes",
         group="Authentication",
         min_value=1,
-        max_value=43200,
+        max_value=10080,
         yaml_path="api.auth.jwt_expiry_minutes",
     )
 )
@@ -135,7 +138,7 @@ _r.register(
         default="12",
         description="Minimum password length for setup and password change",
         group="Authentication",
-        min_value=8,
+        min_value=12,
         max_value=128,
         yaml_path="api.auth.min_password_length",
     )
@@ -151,5 +154,6 @@ _r.register(
         group="Authentication",
         level=SettingLevel.ADVANCED,
         restart_required=True,
+        yaml_path="api.auth.exclude_paths",
     )
 )

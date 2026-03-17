@@ -487,6 +487,10 @@ async def _safe_shutdown(
 #   jwt_expiry_minutes, min_password_length) are resolved through
 #   ConfigResolver.get_api_config() by consumers that need current
 #   values post-startup.
+#
+#   Note: Litestar's rate-limit middleware reads max_requests and
+#   time_unit at construction; runtime DB changes are visible only
+#   to code calling get_api_config(), not to the middleware itself.
 
 
 def create_app(  # noqa: PLR0913

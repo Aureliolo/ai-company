@@ -1,6 +1,7 @@
 """Unit tests for ConfigResolver."""
 
 from enum import StrEnum
+from typing import Literal
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,6 +11,7 @@ from pydantic import BaseModel, ConfigDict
 
 from synthorg.api.config import RateLimitTimeUnit
 from synthorg.core.enums import AutonomyLevel
+from synthorg.core.types import NotBlankStr
 from synthorg.settings.enums import SettingNamespace, SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.models import SettingValue
@@ -74,7 +76,7 @@ class _CoordinationSection(BaseModel):
 class _FakeAuthConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
     jwt_secret: str = ""
-    jwt_algorithm: str = "HS256"
+    jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
     jwt_expiry_minutes: int = 1440
     min_password_length: int = 12
     exclude_paths: tuple[str, ...] | None = None
@@ -104,7 +106,7 @@ class _FakeApiConfig(BaseModel):
     rate_limit: _FakeRateLimitConfig = _FakeRateLimitConfig()
     server: _FakeServerConfig = _FakeServerConfig()
     auth: _FakeAuthConfig = _FakeAuthConfig()
-    api_prefix: str = "/api/v1"
+    api_prefix: NotBlankStr = "/api/v1"
 
 
 class _CompanyConfig(BaseModel):
@@ -694,7 +696,10 @@ class TestGetApiConfig:
         self,
         mock_settings: AsyncMock,
     ) -> None:
-        """Bootstrap-only fields (CORS, server, exclude_paths) keep YAML values."""
+        """Bootstrap-only fields keep YAML values.
+
+        Covers CORS, server, api_prefix, and exclude_paths.
+        """
         custom_config = _FakeRootConfig(
             api=_FakeApiConfig(
                 cors=_FakeCorsConfig(allowed_origins=("https://example.com",)),
@@ -738,13 +743,63 @@ class TestGetApiConfig:
         with pytest.raises(ValueError, match="invalid"):
             await resolver.get_api_config()
 
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("second", RateLimitTimeUnit.SECOND),
+            ("minute", RateLimitTimeUnit.MINUTE),
+            ("hour", RateLimitTimeUnit.HOUR),
+            ("day", RateLimitTimeUnit.DAY),
+        ],
+    )
     async def test_enum_resolution(
-        self, resolver: ConfigResolver, mock_settings: AsyncMock
+        self,
+        resolver: ConfigResolver,
+        mock_settings: AsyncMock,
+        value: str,
+        expected: RateLimitTimeUnit,
     ) -> None:
         """rate_limit_time_unit resolves to the correct enum member."""
         mock_settings.get = _api_get_side_effect(
-            {("api", "rate_limit_time_unit"): "hour"}
+            {("api", "rate_limit_time_unit"): value}
         )
         result = await resolver.get_api_config()
 
-        assert result.rate_limit.time_unit == RateLimitTimeUnit.HOUR
+        assert result.rate_limit.time_unit == expected
+
+    async def test_partial_failure_unwraps_first_exception(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        """When one setting fails but others succeed, first exception propagates."""
+        call_count = 0
+
+        async def _mixed_get(ns: str, key: str) -> SettingValue:
+            nonlocal call_count
+            call_count += 1
+            if key == "jwt_expiry_minutes":
+                msg = "jwt_expiry_minutes"
+                raise SettingNotFoundError(msg)
+            defaults = {
+                ("api", "rate_limit_max_requests"): "100",
+                ("api", "rate_limit_time_unit"): "minute",
+                ("api", "min_password_length"): "12",
+            }
+            value = defaults.get((ns, key))
+            if value is None:
+                msg = f"Unknown: {ns}/{key}"
+                raise SettingNotFoundError(msg)
+            return _make_value(value, namespace=SettingNamespace(ns), key=key)
+
+        mock_settings.get = AsyncMock(side_effect=_mixed_get)
+        with pytest.raises(SettingNotFoundError, match="jwt_expiry_minutes"):
+            await resolver.get_api_config()
+
+    async def test_invalid_enum_value_propagates(
+        self, resolver: ConfigResolver, mock_settings: AsyncMock
+    ) -> None:
+        """Invalid enum value for rate_limit_time_unit raises ValueError."""
+        mock_settings.get = _api_get_side_effect(
+            {("api", "rate_limit_time_unit"): "weekly"}
+        )
+        with pytest.raises(ValueError, match=r"invalid.*RateLimitTimeUnit"):
+            await resolver.get_api_config()
