@@ -1,0 +1,114 @@
+"""Integration test: API settings round-trip through real persistence.
+
+Uses a real SQLite backend + SettingsService + ConfigResolver to
+verify that DB overrides flow through the full resolution chain.
+"""
+
+from typing import TYPE_CHECKING
+
+import pytest
+
+import synthorg.settings.definitions  # noqa: F401 — trigger registration
+from synthorg.config.schema import RootConfig
+from synthorg.persistence.config import SQLiteConfig
+from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
+from synthorg.settings.registry import get_registry
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.service import SettingsService
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+    from pathlib import Path
+
+
+@pytest.fixture
+def db_path(tmp_path: Path) -> str:
+    """Return a temporary on-disk database path."""
+    return str(tmp_path / "settings-test.db")
+
+
+@pytest.fixture
+async def backend(db_path: str) -> AsyncGenerator[SQLitePersistenceBackend]:
+    """Create a connected and migrated on-disk SQLite backend.
+
+    Yields:
+        A ``SQLitePersistenceBackend`` ready for settings operations.
+    """
+    be = SQLitePersistenceBackend(SQLiteConfig(path=db_path))
+    await be.connect()
+    await be.migrate()
+    yield be
+    await be.disconnect()
+
+
+@pytest.fixture
+def config() -> RootConfig:
+    """Minimal root config with defaults."""
+    return RootConfig(company_name="test-co")
+
+
+@pytest.fixture
+def settings_service(
+    backend: SQLitePersistenceBackend,
+    config: RootConfig,
+) -> SettingsService:
+    """Real SettingsService wired to on-disk SQLite."""
+    return SettingsService(
+        repository=backend.settings,
+        registry=get_registry(),
+        config=config,
+    )
+
+
+@pytest.fixture
+def resolver(
+    settings_service: SettingsService,
+    config: RootConfig,
+) -> ConfigResolver:
+    """Real ConfigResolver wired to real SettingsService."""
+    return ConfigResolver(
+        settings_service=settings_service,
+        config=config,
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.timeout(30)
+class TestApiSettingsIntegration:
+    """End-to-end test: DB override → SettingsService → ConfigResolver."""
+
+    async def test_db_override_flows_through_resolver(
+        self,
+        settings_service: SettingsService,
+        resolver: ConfigResolver,
+    ) -> None:
+        """Verify DB overrides flow through the full resolution chain.
+
+        Writes a rate-limit override via ``SettingsService`` and reads
+        it back through ``ConfigResolver.get_api_config()``.
+        """
+        await settings_service.set("api", "rate_limit_max_requests", "500")
+
+        result = await resolver.get_api_config()
+
+        assert result.rate_limit.max_requests == 500
+        # Non-overridden fields keep code defaults
+        assert result.rate_limit.time_unit.value == "minute"
+        assert result.auth.jwt_expiry_minutes == 1440
+        assert result.auth.min_password_length == 12
+
+    async def test_defaults_without_db_overrides(
+        self,
+        resolver: ConfigResolver,
+    ) -> None:
+        """Verify code defaults are used when no DB overrides exist.
+
+        All four runtime-editable API settings should resolve to their
+        ``SettingDefinition`` defaults.
+        """
+        result = await resolver.get_api_config()
+
+        assert result.rate_limit.max_requests == 100
+        assert result.rate_limit.time_unit.value == "minute"
+        assert result.auth.jwt_expiry_minutes == 1440
+        assert result.auth.min_password_length == 12

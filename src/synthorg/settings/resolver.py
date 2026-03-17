@@ -20,6 +20,7 @@ from synthorg.observability.events.settings import (
 from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
+    from synthorg.api.config import ApiConfig
     from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
     from synthorg.config.schema import RootConfig
     from synthorg.core.enums import AutonomyLevel
@@ -323,6 +324,71 @@ class ConfigResolver:
                     update={
                         "enabled": t_downgrade_en.result(),
                         "threshold": t_downgrade_th.result(),
+                    },
+                ),
+            },
+        )
+
+    async def get_api_config(self) -> ApiConfig:
+        """Assemble an ``ApiConfig`` with runtime-editable overrides.
+
+        Resolves the four runtime-editable API settings (rate-limit
+        max requests, rate-limit time unit, JWT expiry, min password
+        length) and merges them onto the YAML-loaded base config.
+
+        Bootstrap-only settings (``server_host``, ``server_port``,
+        ``api_prefix``, ``cors_allowed_origins``,
+        ``rate_limit_exclude_paths``, ``auth_exclude_paths``) are
+        **not** resolved — they are baked into the Litestar app at
+        construction and require a restart to take effect.
+
+        Uses ``asyncio.TaskGroup`` to resolve all settings in parallel.
+
+        Returns:
+            An ``ApiConfig`` with DB/env overrides applied to the
+            runtime-editable fields.
+
+        Raises:
+            SettingNotFoundError: If a required API setting is
+                missing from the registry.
+            ValueError: If a resolved value cannot be parsed.
+        """
+        from synthorg.api.config import RateLimitTimeUnit  # noqa: PLC0415
+
+        base = self._config.api
+
+        try:
+            async with asyncio.TaskGroup() as tg:
+                t_max_req = tg.create_task(
+                    self.get_int("api", "rate_limit_max_requests")
+                )
+                t_time_unit = tg.create_task(
+                    self.get_enum("api", "rate_limit_time_unit", RateLimitTimeUnit)
+                )
+                t_jwt_exp = tg.create_task(self.get_int("api", "jwt_expiry_minutes"))
+                t_min_pw = tg.create_task(self.get_int("api", "min_password_length"))
+        except ExceptionGroup as eg:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace="api",
+                key="_composed",
+                error_count=len(eg.exceptions),
+                exc_info=True,
+            )
+            raise eg.exceptions[0] from eg
+
+        return base.model_copy(
+            update={
+                "rate_limit": base.rate_limit.model_copy(
+                    update={
+                        "max_requests": t_max_req.result(),
+                        "time_unit": t_time_unit.result(),
+                    },
+                ),
+                "auth": base.auth.model_copy(
+                    update={
+                        "jwt_expiry_minutes": t_jwt_exp.result(),
+                        "min_password_length": t_min_pw.result(),
                     },
                 ),
             },
