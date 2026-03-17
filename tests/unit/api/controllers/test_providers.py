@@ -51,7 +51,7 @@ class TestProviderApiKeySecurity:
         assert safe.api_key is None
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 @pytest.mark.timeout(30)
 class TestProviderControllerDbOverride:
     """Test that DB-stored settings override YAML providers."""
@@ -102,3 +102,9 @@ class TestProviderControllerDbOverride:
             assert "db-provider" in body["data"]
             # api_key should be stripped
             assert body["data"]["db-provider"].get("api_key") is None
+
+            detail_resp = client.get("/api/v1/providers/db-provider")
+            assert detail_resp.status_code == 200
+            detail = detail_resp.json()
+            assert detail["data"]["driver"] == "litellm"
+            assert detail["data"].get("api_key") is None

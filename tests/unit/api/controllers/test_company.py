@@ -45,7 +45,7 @@ class TestCompanyController:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 @pytest.mark.timeout(30)
 class TestCompanyControllerDbOverride:
     """Test that DB-stored settings override YAML company data."""

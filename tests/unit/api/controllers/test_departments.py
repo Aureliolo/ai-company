@@ -32,7 +32,7 @@ class TestDepartmentController:
         assert resp.json()["success"] is False
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 @pytest.mark.timeout(30)
 class TestDepartmentControllerDbOverride:
     """Test that DB-stored settings override YAML departments."""
@@ -72,6 +72,12 @@ class TestDepartmentControllerDbOverride:
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("observer"))
             resp = client.get("/api/v1/departments")
+            assert resp.status_code == 200
             body = resp.json()
             assert body["pagination"]["total"] == 1
             assert body["data"][0]["name"] == "db-dept"
+
+            detail_resp = client.get("/api/v1/departments/db-dept")
+            assert detail_resp.status_code == 200
+            detail = detail_resp.json()
+            assert detail["data"]["name"] == "db-dept"

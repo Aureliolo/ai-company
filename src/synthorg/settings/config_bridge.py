@@ -101,4 +101,14 @@ def extract_from_config(config: object, yaml_path: str) -> str | None:
             return None
         if current is None:
             return None
-    return _serialize_value(current)
+    try:
+        return _serialize_value(current)
+    except TypeError:
+        logger.warning(
+            SETTINGS_CONFIG_PATH_MISS,
+            yaml_path=yaml_path,
+            reason="unsupported_type",
+            value_type=type(current).__name__,
+            exc_info=True,
+        )
+        raise

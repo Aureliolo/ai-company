@@ -42,7 +42,7 @@ class TestAnalyticsController:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 @pytest.mark.timeout(30)
 class TestAnalyticsControllerDbOverride:
     """Test that DB-stored agents affect analytics agent count."""

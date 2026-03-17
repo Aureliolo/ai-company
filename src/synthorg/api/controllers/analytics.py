@@ -12,7 +12,7 @@ from synthorg.api.guards import require_read_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import TaskStatus
 from synthorg.observability import get_logger
-from synthorg.observability.events.settings import SETTINGS_FETCH_FAILED
+from synthorg.observability.events.api import API_REQUEST_ERROR
 
 logger = get_logger(__name__)
 
@@ -65,9 +65,8 @@ class AnalyticsController(Controller):
                 t_agents = tg.create_task(app_state.config_resolver.get_agents())
         except ExceptionGroup as eg:
             logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace="analytics",
-                key="_overview",
+                API_REQUEST_ERROR,
+                endpoint="analytics.overview",
                 error_count=len(eg.exceptions),
                 exc_info=True,
             )

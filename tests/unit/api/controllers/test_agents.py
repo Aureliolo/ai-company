@@ -74,7 +74,7 @@ class TestAgentController:
         assert resp.json()["success"] is False
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 @pytest.mark.timeout(30)
 class TestAgentControllerDbOverride:
     """Test that DB-stored settings override YAML agents."""
@@ -118,6 +118,7 @@ class TestAgentControllerDbOverride:
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("observer"))
             resp = client.get("/api/v1/agents")
+            assert resp.status_code == 200
             body = resp.json()
             assert body["pagination"]["total"] == 2
             names = {a["name"] for a in body["data"]}
