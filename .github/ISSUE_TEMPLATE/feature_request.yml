@@ -47,6 +47,25 @@ body:
     validations:
       required: false
 
+  - type: input
+    id: design-spec
+    attributes:
+      label: Design spec reference
+      description: "Which `docs/design/` page is relevant? See [DESIGN_SPEC.md](../blob/main/docs/DESIGN_SPEC.md) for the index."
+      placeholder: "e.g. docs/design/engine.md §6.5"
+    validations:
+      required: false
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies / related issues
+      description: "Issues that should be done first or are closely related."
+      placeholder: |
+        - #NNN (description)
+    validations:
+      required: false
+
   - type: textarea
     id: context
     attributes:

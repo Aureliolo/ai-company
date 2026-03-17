@@ -24,6 +24,22 @@ body:
       required: true
 
   - type: dropdown
+    id: install-method
+    attributes:
+      label: Installation method (if CLI / installer bug)
+      description: How did you install SynthOrg? Skip if not relevant.
+      options:
+        - Homebrew (brew install)
+        - Scoop (scoop install)
+        - "curl | sh (Linux/macOS)"
+        - PowerShell installer (Windows)
+        - Manual download from GitHub Releases
+        - Built from source (go build)
+        - N/A
+    validations:
+      required: false
+
+  - type: dropdown
     id: severity
     attributes:
       label: Severity
@@ -82,14 +98,14 @@ body:
     id: version
     attributes:
       label: Version info
-      description: "Output of `synthorg version`, or the version you tried to install."
+      description: "Output of `synthorg version`, or the version you tried to install. Write 'not installed' if installation failed."
       placeholder: |
         synthorg v0.3.0
           commit: abc1234
           built:  2026-03-15T12:00:00Z
       render: shell
     validations:
-      required: false
+      required: true
 
   - type: textarea
     id: doctor
