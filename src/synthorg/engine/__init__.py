@@ -135,8 +135,6 @@ from synthorg.engine.plan_models import (
     StepStatus,
 )
 from synthorg.engine.prompt import (
-    DefaultTokenEstimator,
-    PromptTokenEstimator,
     SystemPrompt,
     build_system_prompt,
 )
@@ -185,6 +183,10 @@ from synthorg.engine.task_engine_models import (
     UpdateTaskMutation,
 )
 from synthorg.engine.task_execution import StatusTransition, TaskExecution
+from synthorg.engine.token_estimation import (
+    DefaultTokenEstimator,
+    PromptTokenEstimator,
+)
 from synthorg.engine.workspace import (
     MergeConflict,
     MergeOrchestrator,

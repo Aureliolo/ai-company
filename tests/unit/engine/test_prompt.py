@@ -20,7 +20,6 @@ from synthorg.core.enums import (
 )
 from synthorg.engine.errors import PromptBuildError
 from synthorg.engine.prompt import (
-    DefaultTokenEstimator,
     SystemPrompt,
     build_error_prompt,
     build_system_prompt,
@@ -29,6 +28,7 @@ from synthorg.engine.prompt_template import (
     AUTONOMY_INSTRUCTIONS,
     PROMPT_TEMPLATE_VERSION,
 )
+from synthorg.engine.token_estimation import DefaultTokenEstimator
 from synthorg.observability.events.prompt import (
     PROMPT_BUILD_START,
     PROMPT_BUILD_SUCCESS,
