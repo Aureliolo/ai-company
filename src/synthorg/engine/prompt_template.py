@@ -183,4 +183,10 @@ You work at **{{ company.name }}**.
 **Departments**: {{ company_departments | join(', ') }}
 {% endif %}
 {% endif %}
+{% if context_budget %}
+
+## Context Budget
+
+{{ context_budget }}
+{% endif %}
 """

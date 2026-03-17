@@ -69,14 +69,27 @@ def deserialize_and_reconcile(
         )
         raise
 
-    reconciliation_msg = ChatMessage(
-        role=MessageRole.SYSTEM,
-        content=(
+    compression = checkpoint_ctx.compression_metadata
+    if compression is not None:
+        reconciliation_content = (
+            f"Execution resumed from checkpoint at turn "
+            f"{checkpoint_ctx.turn_count}. "
+            f"Note: conversation was previously compacted "
+            f"(archived {compression.archived_turns} turns). "
+            f"Previous error: {error_message}. "
+            "Review progress and continue."
+        )
+    else:
+        reconciliation_content = (
             f"Execution resumed from checkpoint at turn "
             f"{checkpoint_ctx.turn_count}. Previous error: "
             f"{error_message}. "
             "Review progress and continue."
-        ),
+        )
+
+    reconciliation_msg = ChatMessage(
+        role=MessageRole.SYSTEM,
+        content=reconciliation_content,
     )
     logger.debug(
         CHECKPOINT_RECOVERY_RECONCILIATION,
@@ -117,6 +130,7 @@ def make_loop_with_callback(  # noqa: PLR0913
             checkpoint_callback=callback,
             approval_gate=loop.approval_gate,
             stagnation_detector=loop.stagnation_detector,
+            compaction_callback=loop.compaction_callback,
         )
     if isinstance(loop, PlanExecuteLoop):
         return PlanExecuteLoop(
@@ -124,6 +138,7 @@ def make_loop_with_callback(  # noqa: PLR0913
             checkpoint_callback=callback,
             approval_gate=loop.approval_gate,
             stagnation_detector=loop.stagnation_detector,
+            compaction_callback=loop.compaction_callback,
         )
     logger.warning(
         CHECKPOINT_UNSUPPORTED_LOOP,

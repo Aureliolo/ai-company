@@ -44,6 +44,7 @@ from synthorg.observability.events.prompt import (
     PROMPT_CUSTOM_TEMPLATE_LOADED,
     PROMPT_POLICY_VALIDATION_FAILED,
 )
+from synthorg.providers.models import ChatMessage  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
@@ -100,7 +101,8 @@ class SystemPrompt(BaseModel):
 class PromptTokenEstimator(Protocol):
     """Runtime-checkable protocol for estimating token count from text.
 
-    Implementors must define a single ``estimate_tokens`` method.
+    Implementors must define ``estimate_tokens`` and
+    ``estimate_conversation_tokens`` methods.
     """
 
     def estimate_tokens(self, text: str) -> int:
@@ -114,6 +116,20 @@ class PromptTokenEstimator(Protocol):
         """
         ...
 
+    def estimate_conversation_tokens(
+        self,
+        messages: tuple[ChatMessage, ...],
+    ) -> int:
+        """Estimate the total token count of a conversation.
+
+        Args:
+            messages: The conversation messages to estimate.
+
+        Returns:
+            Estimated total token count.
+        """
+        ...
+
 
 class DefaultTokenEstimator:
     """Heuristic token estimator using character-count approximation.
@@ -121,6 +137,9 @@ class DefaultTokenEstimator:
     Uses the common ``len(text) // 4`` heuristic. Suitable for rough
     estimates; swap in a tiktoken-based estimator for precision.
     """
+
+    _PER_MESSAGE_OVERHEAD: int = 4
+    """Overhead tokens per message for role tags and structure."""
 
     def estimate_tokens(self, text: str) -> int:
         """Estimate tokens as approximately 1 token per 4 characters.
@@ -132,6 +151,29 @@ class DefaultTokenEstimator:
             Estimated token count (minimum 0).
         """
         return len(text) // 4
+
+    def estimate_conversation_tokens(
+        self,
+        messages: tuple[ChatMessage, ...],
+    ) -> int:
+        """Estimate total tokens across all messages.
+
+        Sums ``len(content) // 4 + overhead`` per message.
+        Tool results use their content field for estimation.
+
+        Args:
+            messages: The conversation messages to estimate.
+
+        Returns:
+            Estimated total token count (minimum 0).
+        """
+        total = 0
+        for msg in messages:
+            content = msg.content or ""
+            if msg.tool_result is not None:
+                content = msg.tool_result.content or ""
+            total += len(content) // 4 + self._PER_MESSAGE_OVERHEAD
+        return total
 
 
 # ── Section names ────────────────────────────────────────────────
@@ -145,6 +187,7 @@ _SECTION_AUTONOMY = "autonomy"
 _SECTION_TASK = "task"
 _SECTION_COMPANY = "company"
 _SECTION_TOOLS = "tools"
+_SECTION_CONTEXT_BUDGET = "context_budget"
 
 # Sections trimmed when over token budget, least critical first.
 # Tools section was removed from the default template per D22
@@ -171,6 +214,7 @@ def build_system_prompt(  # noqa: PLR0913
     custom_template: str | None = None,
     token_estimator: PromptTokenEstimator | None = None,
     effective_autonomy: EffectiveAutonomy | None = None,
+    context_budget_indicator: str | None = None,
 ) -> SystemPrompt:
     """Build a system prompt from agent identity and optional context.
 
@@ -191,6 +235,8 @@ def build_system_prompt(  # noqa: PLR0913
         custom_template: Optional Jinja2 template string override.
         token_estimator: Custom token estimator (defaults to char/4).
         effective_autonomy: Resolved autonomy for the current run.
+        context_budget_indicator: Formatted context budget indicator
+            string to inject into the prompt.
 
     Returns:
         Immutable :class:`SystemPrompt` with rendered content and metadata.
@@ -239,6 +285,7 @@ def build_system_prompt(  # noqa: PLR0913
             max_tokens=max_tokens,
             estimator=estimator,
             effective_autonomy=effective_autonomy,
+            context_budget_indicator=context_budget_indicator,
         )
     except PromptBuildError:
         raise  # Already logged by inner functions.
@@ -418,6 +465,7 @@ def _build_template_context(  # noqa: PLR0913
     company: Company | None,
     org_policies: tuple[str, ...] = (),
     effective_autonomy: EffectiveAutonomy | None = None,
+    context_budget: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the full Jinja2 template context from agent and optional inputs.
 
@@ -429,6 +477,7 @@ def _build_template_context(  # noqa: PLR0913
         company: Optional company context.
         org_policies: Company-wide policy texts.
         effective_autonomy: Resolved autonomy for the current run.
+        context_budget: Formatted context budget indicator string.
 
     Returns:
         Dict of template variables.
@@ -436,6 +485,7 @@ def _build_template_context(  # noqa: PLR0913
     context = _build_core_context(agent, role, effective_autonomy)
 
     context["org_policies"] = org_policies
+    context["context_budget"] = context_budget
 
     context["task"] = (
         {
@@ -467,13 +517,14 @@ def _build_template_context(  # noqa: PLR0913
     return context
 
 
-def _compute_sections(
+def _compute_sections(  # noqa: PLR0913
     *,
     task: Task | None,
     available_tools: tuple[ToolDefinition, ...] = (),
     company: Company | None,
     org_policies: tuple[str, ...] = (),
     custom_template: bool = False,
+    context_budget: str | None = None,
 ) -> tuple[str, ...]:
     """Determine which sections are present in the rendered prompt.
 
@@ -488,6 +539,7 @@ def _compute_sections(
         company: Optional company context.
         org_policies: Company-wide policy texts.
         custom_template: Whether a custom template is being used.
+        context_budget: Formatted context budget indicator string.
 
     Returns:
         Tuple of section names that are included.
@@ -508,6 +560,8 @@ def _compute_sections(
         sections.append(_SECTION_TOOLS)
     if company is not None:
         sections.append(_SECTION_COMPANY)
+    if context_budget is not None:
+        sections.append(_SECTION_CONTEXT_BUDGET)
     return tuple(sections)
 
 
@@ -563,6 +617,7 @@ def _trim_sections(  # noqa: PLR0913
     max_tokens: int,
     estimator: PromptTokenEstimator,
     effective_autonomy: EffectiveAutonomy | None = None,
+    context_budget: str | None = None,
 ) -> tuple[
     str,
     int,
@@ -588,6 +643,7 @@ def _trim_sections(  # noqa: PLR0913
             org_policies,
             estimator,
             effective_autonomy=effective_autonomy,
+            context_budget=context_budget,
         )
         if estimated <= max_tokens:
             break
@@ -614,6 +670,7 @@ def _trim_sections(  # noqa: PLR0913
             org_policies,
             estimator,
             effective_autonomy=effective_autonomy,
+            context_budget=context_budget,
         )
 
     _log_trim_results(agent, max_tokens, estimated, trimmed_sections)
@@ -657,6 +714,7 @@ def _render_with_trimming(  # noqa: PLR0913
     max_tokens: int | None,
     estimator: PromptTokenEstimator,
     effective_autonomy: EffectiveAutonomy | None = None,
+    context_budget_indicator: str | None = None,
 ) -> SystemPrompt:
     """Render the prompt, trimming optional sections if over token budget."""
     content, estimated = _render_and_estimate(
@@ -669,6 +727,7 @@ def _render_with_trimming(  # noqa: PLR0913
         org_policies,
         estimator,
         effective_autonomy=effective_autonomy,
+        context_budget=context_budget_indicator,
     )
 
     if max_tokens is not None and estimated > max_tokens:
@@ -683,6 +742,7 @@ def _render_with_trimming(  # noqa: PLR0913
             max_tokens=max_tokens,
             estimator=estimator,
             effective_autonomy=effective_autonomy,
+            context_budget=context_budget_indicator,
         )
 
     return _build_prompt_result(
@@ -694,6 +754,7 @@ def _render_with_trimming(  # noqa: PLR0913
         org_policies,
         agent,
         custom_template=template_str is not DEFAULT_TEMPLATE,
+        context_budget=context_budget_indicator,
     )
 
 
@@ -707,6 +768,7 @@ def _build_prompt_result(  # noqa: PLR0913
     agent: AgentIdentity,
     *,
     custom_template: bool = False,
+    context_budget: str | None = None,
 ) -> SystemPrompt:
     """Assemble the final ``SystemPrompt`` from rendered content."""
     sections = _compute_sections(
@@ -715,6 +777,7 @@ def _build_prompt_result(  # noqa: PLR0913
         company=company,
         org_policies=org_policies,
         custom_template=custom_template,
+        context_budget=context_budget,
     )
     return SystemPrompt(
         content=content,
@@ -736,6 +799,7 @@ def _render_and_estimate(  # noqa: PLR0913
     estimator: PromptTokenEstimator,
     *,
     effective_autonomy: EffectiveAutonomy | None = None,
+    context_budget: str | None = None,
 ) -> tuple[str, int]:
     """Render the template and estimate its token count.
 
@@ -749,6 +813,7 @@ def _render_and_estimate(  # noqa: PLR0913
         org_policies: Company-wide policy texts.
         estimator: Token estimator.
         effective_autonomy: Resolved autonomy for the current run.
+        context_budget: Formatted context budget indicator string.
 
     Returns:
         Tuple of (rendered content, estimated token count).
@@ -761,6 +826,7 @@ def _render_and_estimate(  # noqa: PLR0913
         company=company,
         org_policies=org_policies,
         effective_autonomy=effective_autonomy,
+        context_budget=context_budget,
     )
     content = _render_template(template_str, context)
     return content, estimator.estimate_tokens(content)

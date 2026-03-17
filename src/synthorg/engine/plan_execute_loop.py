@@ -14,6 +14,9 @@ from typing import TYPE_CHECKING
 
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.observability import get_logger
+from synthorg.observability.events.context_budget import (
+    CONTEXT_BUDGET_COMPACTION_FAILED,
+)
 from synthorg.observability.events.execution import (
     EXECUTION_CHECKPOINT_CALLBACK_FAILED,
     EXECUTION_LOOP_START,
@@ -70,6 +73,7 @@ from .plan_parsing import (
 if TYPE_CHECKING:
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.checkpoint.callback import CheckpointCallback
+    from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.context import AgentContext
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.models import ToolDefinition
@@ -95,6 +99,9 @@ class PlanExecuteLoop:
             repetitive tool-call patterns within each step and
             intervenes with corrective prompts or early termination.
             ``None`` disables stagnation detection.
+        compaction_callback: Optional async callback invoked at turn
+            boundaries to compress older conversation turns when the
+            context fill level is high.  ``None`` disables compaction.
     """
 
     def __init__(
@@ -104,11 +111,13 @@ class PlanExecuteLoop:
         *,
         approval_gate: ApprovalGate | None = None,
         stagnation_detector: StagnationDetector | None = None,
+        compaction_callback: CompactionCallback | None = None,
     ) -> None:
         self._config = config or PlanExecuteConfig()
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
         self._stagnation_detector = stagnation_detector
+        self._compaction_callback = compaction_callback
 
     @property
     def config(self) -> PlanExecuteConfig:
@@ -124,6 +133,11 @@ class PlanExecuteLoop:
     def stagnation_detector(self) -> StagnationDetector | None:
         """Return the stagnation detector, or ``None``."""
         return self._stagnation_detector
+
+    @property
+    def compaction_callback(self) -> CompactionCallback | None:
+        """Return the compaction callback, or ``None``."""
+        return self._compaction_callback
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
@@ -675,6 +689,15 @@ class PlanExecuteLoop:
                 return result
             ctx = result
 
+            # Context compaction at turn boundaries
+            if self._compaction_callback is not None:
+                compacted = await self._invoke_compaction(
+                    ctx,
+                    ctx.turn_count,
+                )
+                if compacted is not None:
+                    ctx = compacted
+
             # Per-step stagnation detection (step-scoped turns only)
             stag_outcome = await check_stagnation(
                 ctx,
@@ -814,6 +837,38 @@ class PlanExecuteLoop:
             turns,
             approval_gate=self._approval_gate,
         )
+
+    # ── Compaction ──────────────────────────────────────────────────
+
+    async def _invoke_compaction(
+        self,
+        ctx: AgentContext,
+        turn_number: int,
+    ) -> AgentContext | None:
+        """Invoke compaction callback if configured.
+
+        Errors are logged but never propagated — compaction must
+        not interrupt execution.
+
+        Args:
+            ctx: Current agent context.
+            turn_number: Current turn number for logging.
+
+        Returns:
+            Compacted context or ``None``.
+        """
+        try:
+            return await self._compaction_callback(ctx)  # type: ignore[misc]
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                CONTEXT_BUDGET_COMPACTION_FAILED,
+                execution_id=ctx.execution_id,
+                turn=turn_number,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return None
 
     # ── Checkpoint ──────────────────────────────────────────────────
 
