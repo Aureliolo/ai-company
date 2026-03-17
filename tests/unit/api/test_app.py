@@ -161,6 +161,50 @@ class TestAppLifecycle:
         assert not persistence.is_connected
         assert not bus.is_running
 
+    async def test_settings_dispatcher_failure_cleans_up(
+        self,
+        root_config: Any,
+    ) -> None:
+        """Settings dispatcher start fails → persistence + bus cleaned up."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.api.app import _safe_startup
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.state import AppState
+        from tests.unit.api.conftest import (
+            FakeMessageBus,
+            FakePersistenceBackend,
+        )
+
+        persistence = FakePersistenceBackend()
+        bus = FakeMessageBus()
+        mock_dispatcher = MagicMock()
+        mock_dispatcher.start = AsyncMock(
+            side_effect=RuntimeError("dispatcher boom"),
+        )
+        mock_dispatcher.stop = AsyncMock()
+
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=persistence,
+        )
+
+        with pytest.raises(RuntimeError, match="dispatcher boom"):
+            await _safe_startup(
+                persistence,
+                bus,
+                None,
+                mock_dispatcher,
+                None,
+                None,
+                app_state,
+            )
+
+        # Persistence and bus should be cleaned up
+        assert not persistence.is_connected
+        assert not bus.is_running
+
     async def test_shutdown_task_engine_failure_does_not_propagate(self) -> None:
         """Task engine stop failure during shutdown is logged, not raised."""
         from unittest.mock import AsyncMock, MagicMock

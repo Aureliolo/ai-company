@@ -3,7 +3,10 @@
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
+from synthorg.observability.events.settings import (
+    SETTINGS_SERVICE_SWAP_FAILED,
+    SETTINGS_SUBSCRIBER_NOTIFIED,
+)
 from synthorg.providers.routing.router import ModelRouter
 
 if TYPE_CHECKING:
@@ -94,17 +97,32 @@ class ProviderSettingsSubscriber:
         Reads the current ``routing_strategy`` value from
         :class:`SettingsService`, extracts the string value from the
         returned :class:`SettingValue`, and constructs a new router.
-        Errors propagate to the dispatcher for logging.
+        On failure, the existing ``ModelRouter`` in ``AppState``
+        remains unchanged.  Errors are logged with actionable context
+        via ``SETTINGS_SERVICE_SWAP_FAILED`` before re-raising to the
+        dispatcher.
         """
         result = await self._settings_service.get(
             "providers",
             "routing_strategy",
         )
-        new_routing = self._config.routing.model_copy(
-            update={"strategy": result.value},
-        )
-        new_router = ModelRouter(
-            new_routing,
-            dict(self._config.providers),
-        )
+        try:
+            config = self._app_state.config
+            new_routing = config.routing.model_copy(
+                update={"strategy": result.value},
+            )
+            new_router = ModelRouter(
+                new_routing,
+                dict(config.providers),
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.error(
+                SETTINGS_SERVICE_SWAP_FAILED,
+                service="model_router",
+                attempted_strategy=result.value,
+                exc_info=True,
+            )
+            raise
         self._app_state.swap_model_router(new_router)

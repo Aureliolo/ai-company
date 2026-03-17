@@ -1,15 +1,16 @@
 """Tests for SettingsChangeDispatcher."""
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType, MessageType
+from synthorg.communication.errors import ChannelAlreadyExistsError
 from synthorg.communication.message import Message, MessageMetadata
-from synthorg.communication.subscription import DeliveryEnvelope
+from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -106,9 +107,13 @@ class _FakeBus:
     def enqueue(self, envelope: DeliveryEnvelope) -> None:
         self._queue.put_nowait(envelope)
 
-    async def subscribe(self, channel_name: str, subscriber_id: str) -> Any:
+    async def subscribe(self, channel_name: str, subscriber_id: str) -> Subscription:
         self._subscriptions.append((channel_name, subscriber_id))
-        return None
+        return Subscription(
+            channel_name=channel_name,
+            subscriber_id=subscriber_id,
+            subscribed_at=datetime.now(UTC),
+        )
 
     async def unsubscribe(self, channel_name: str, subscriber_id: str) -> None:
         pass
@@ -183,18 +188,27 @@ def dispatcher(
     )
 
 
+@pytest.fixture
+async def started_dispatcher(
+    dispatcher: SettingsChangeDispatcher,
+) -> SettingsChangeDispatcher:
+    """Start the dispatcher and stop it on teardown."""
+    await dispatcher.start()
+    yield dispatcher  # type: ignore[misc]
+    await dispatcher.stop()
+
+
 async def _drain(
     dispatcher: SettingsChangeDispatcher,
     bus: _FakeBus,
-    count: int,
     *,
     timeout: float = 2.0,  # noqa: ASYNC109
 ) -> None:
     """Wait until all enqueued messages have been processed."""
-    # Give the poll loop time to process messages
-    deadline = asyncio.get_event_loop().time() + timeout
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
     while bus._queue.qsize() > 0:
-        if asyncio.get_event_loop().time() > deadline:
+        if loop.time() > deadline:
             msg = "Drain timed out"
             raise TimeoutError(msg)
         await asyncio.sleep(0.05)
@@ -209,25 +223,17 @@ async def _drain(
 class TestDispatcherLifecycle:
     async def test_start_subscribes_to_settings_channel(
         self,
-        dispatcher: SettingsChangeDispatcher,
+        started_dispatcher: SettingsChangeDispatcher,
         bus: _FakeBus,
     ) -> None:
-        await dispatcher.start()
-        try:
-            assert ("#settings", "__settings_dispatcher__") in bus._subscriptions
-        finally:
-            await dispatcher.stop()
+        assert ("#settings", "__settings_dispatcher__") in bus._subscriptions
 
     async def test_double_start_raises(
         self,
-        dispatcher: SettingsChangeDispatcher,
+        started_dispatcher: SettingsChangeDispatcher,
     ) -> None:
-        await dispatcher.start()
-        try:
-            with pytest.raises(RuntimeError, match="already running"):
-                await dispatcher.start()
-        finally:
-            await dispatcher.stop()
+        with pytest.raises(RuntimeError, match="already running"):
+            await started_dispatcher.start()
 
     async def test_stop_is_idempotent(
         self,
@@ -252,34 +258,26 @@ class TestDispatcherLifecycle:
 class TestDispatchRouting:
     async def test_dispatches_to_matching_subscriber(
         self,
-        dispatcher: SettingsChangeDispatcher,
+        started_dispatcher: SettingsChangeDispatcher,
         bus: _FakeBus,
         provider_sub: _FakeSubscriber,
     ) -> None:
-        await dispatcher.start()
-        try:
-            msg = _settings_message("providers", "routing_strategy")
-            bus.enqueue(_envelope(msg))
-            await _drain(dispatcher, bus, 1)
-            assert ("providers", "routing_strategy") in provider_sub.calls
-        finally:
-            await dispatcher.stop()
+        msg = _settings_message("providers", "routing_strategy")
+        bus.enqueue(_envelope(msg))
+        await _drain(started_dispatcher, bus)
+        assert ("providers", "routing_strategy") in provider_sub.calls
 
     async def test_does_not_dispatch_to_non_matching_subscriber(
         self,
-        dispatcher: SettingsChangeDispatcher,
+        started_dispatcher: SettingsChangeDispatcher,
         bus: _FakeBus,
         provider_sub: _FakeSubscriber,
         memory_sub: _FakeSubscriber,
     ) -> None:
-        await dispatcher.start()
-        try:
-            msg = _settings_message("providers", "routing_strategy")
-            bus.enqueue(_envelope(msg))
-            await _drain(dispatcher, bus, 1)
-            assert len(memory_sub.calls) == 0
-        finally:
-            await dispatcher.stop()
+        msg = _settings_message("providers", "routing_strategy")
+        bus.enqueue(_envelope(msg))
+        await _drain(started_dispatcher, bus)
+        assert len(memory_sub.calls) == 0
 
     async def test_dispatches_to_multiple_matching_subscribers(
         self,
@@ -294,7 +292,7 @@ class TestDispatchRouting:
         await d.start()
         try:
             bus.enqueue(_envelope(_settings_message("ns", "k")))
-            await _drain(d, bus, 1)
+            await _drain(d, bus)
             assert ("ns", "k") in sub_a.calls
             assert ("ns", "k") in sub_b.calls
         finally:
@@ -302,33 +300,25 @@ class TestDispatchRouting:
 
     async def test_skips_restart_required_settings(
         self,
-        dispatcher: SettingsChangeDispatcher,
+        started_dispatcher: SettingsChangeDispatcher,
         bus: _FakeBus,
         memory_sub: _FakeSubscriber,
     ) -> None:
-        await dispatcher.start()
-        try:
-            msg = _settings_message("memory", "backend", restart_required=True)
-            bus.enqueue(_envelope(msg))
-            await _drain(dispatcher, bus, 1)
-            assert len(memory_sub.calls) == 0
-        finally:
-            await dispatcher.stop()
+        msg = _settings_message("memory", "backend", restart_required=True)
+        bus.enqueue(_envelope(msg))
+        await _drain(started_dispatcher, bus)
+        assert len(memory_sub.calls) == 0
 
     async def test_dispatches_non_restart_required_memory_settings(
         self,
-        dispatcher: SettingsChangeDispatcher,
+        started_dispatcher: SettingsChangeDispatcher,
         bus: _FakeBus,
         memory_sub: _FakeSubscriber,
     ) -> None:
-        await dispatcher.start()
-        try:
-            msg = _settings_message("memory", "default_level", restart_required=False)
-            bus.enqueue(_envelope(msg))
-            await _drain(dispatcher, bus, 1)
-            assert ("memory", "default_level") in memory_sub.calls
-        finally:
-            await dispatcher.stop()
+        msg = _settings_message("memory", "default_level", restart_required=False)
+        bus.enqueue(_envelope(msg))
+        await _drain(started_dispatcher, bus)
+        assert ("memory", "default_level") in memory_sub.calls
 
 
 # ── Error Isolation Tests ────────────────────────────────────────
@@ -350,7 +340,7 @@ class TestDispatcherErrorIsolation:
         await d.start()
         try:
             bus.enqueue(_envelope(_settings_message("ns", "k")))
-            await _drain(d, bus, 1)
+            await _drain(d, bus)
             assert ("ns", "k") in good_sub.calls
         finally:
             await d.stop()
@@ -369,11 +359,11 @@ class TestDispatcherErrorIsolation:
         await d.start()
         try:
             bus.enqueue(_envelope(_settings_message("ns", "k")))
-            await _drain(d, bus, 1)
+            await _drain(d, bus)
             good_sub.calls.clear()
 
             bus.enqueue(_envelope(_settings_message("ns", "k")))
-            await _drain(d, bus, 1)
+            await _drain(d, bus)
             assert ("ns", "k") in good_sub.calls
         finally:
             await d.stop()
@@ -386,7 +376,7 @@ class TestDispatcherErrorIsolation:
 class TestMetadataExtraction:
     async def test_ignores_message_with_missing_metadata(
         self,
-        dispatcher: SettingsChangeDispatcher,
+        started_dispatcher: SettingsChangeDispatcher,
         bus: _FakeBus,
         provider_sub: _FakeSubscriber,
     ) -> None:
@@ -400,17 +390,13 @@ class TestMetadataExtraction:
             content="bad message",
             metadata=MessageMetadata(extra=()),
         )
-        await dispatcher.start()
-        try:
-            bus.enqueue(_envelope(msg))
-            await _drain(dispatcher, bus, 1)
-            assert len(provider_sub.calls) == 0
-        finally:
-            await dispatcher.stop()
+        bus.enqueue(_envelope(msg))
+        await _drain(started_dispatcher, bus)
+        assert len(provider_sub.calls) == 0
 
     async def test_partial_metadata_namespace_only(
         self,
-        dispatcher: SettingsChangeDispatcher,
+        started_dispatcher: SettingsChangeDispatcher,
         bus: _FakeBus,
         provider_sub: _FakeSubscriber,
     ) -> None:
@@ -426,19 +412,15 @@ class TestMetadataExtraction:
                 extra=(("namespace", "providers"),),
             ),
         )
-        await dispatcher.start()
-        try:
-            bus.enqueue(_envelope(msg))
-            await _drain(dispatcher, bus, 1)
-            assert len(provider_sub.calls) == 0
-        finally:
-            await dispatcher.stop()
+        bus.enqueue(_envelope(msg))
+        await _drain(started_dispatcher, bus)
+        assert len(provider_sub.calls) == 0
 
-    async def test_restart_required_defaults_to_false_when_absent(
+    async def test_restart_required_defaults_to_true_when_absent(
         self,
         bus: _FakeBus,
     ) -> None:
-        """Missing restart_required metadata defaults to False (dispatched)."""
+        """Missing restart_required metadata defaults to True (fail-safe)."""
         sub = _FakeSubscriber("sub", frozenset({("ns", "k")}))
         d = SettingsChangeDispatcher(
             message_bus=bus,
@@ -459,8 +441,9 @@ class TestMetadataExtraction:
         await d.start()
         try:
             bus.enqueue(_envelope(msg))
-            await _drain(d, bus, 1)
-            assert ("ns", "k") in sub.calls
+            await _drain(d, bus)
+            # Fail-safe: missing restart_required treated as True → not dispatched
+            assert len(sub.calls) == 0
         finally:
             await d.stop()
 
@@ -472,7 +455,6 @@ class TestMetadataExtraction:
 class TestDoneCallback:
     async def test_running_flag_cleared_on_unexpected_exit(
         self,
-        bus: _FakeBus,
     ) -> None:
         """_running is set to False when poll loop exits unexpectedly."""
         sub = _FakeSubscriber("sub", frozenset())
@@ -494,8 +476,120 @@ class TestDoneCallback:
             subscribers=(sub,),
         )
         await d.start()
-        # Wait for the task to complete (it should break on the error)
+        # Wait for the task to complete deterministically
         assert d._task is not None
-        await asyncio.sleep(0.2)
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(d._task, timeout=2.0)
         # done_callback should have set _running to False
+        assert d._running is False
+
+
+@pytest.mark.unit
+class TestEnsureChannel:
+    async def test_start_succeeds_when_channel_already_exists(
+        self,
+    ) -> None:
+        """Dispatcher starts cleanly even if #settings channel pre-exists."""
+        sub = _FakeSubscriber("sub", frozenset())
+
+        class _ExistingChannelBus(_FakeBus):
+            async def create_channel(self, channel: Channel) -> Channel:
+                raise ChannelAlreadyExistsError(channel.name)
+
+        bus = _ExistingChannelBus()
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(sub,),
+        )
+        await d.start()
+        try:
+            assert d._running is True
+        finally:
+            await d.stop()
+
+
+@pytest.mark.unit
+class TestConsecutiveErrors:
+    async def test_transient_errors_do_not_kill_loop(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """OSError/TimeoutError are tolerated below the threshold."""
+        import synthorg.settings.dispatcher as _mod
+
+        monkeypatch.setattr(_mod, "_ERROR_BACKOFF", 0.01)
+        monkeypatch.setattr(_mod, "_MAX_CONSECUTIVE_ERRORS", 5)
+
+        sub = _FakeSubscriber("sub", frozenset({("ns", "k")}))
+        call_count = 0
+
+        class _TransientBus(_FakeBus):
+            async def receive(
+                self,
+                channel_name: str,
+                subscriber_id: str,
+                *,
+                timeout: float | None = None,  # noqa: ASYNC109
+            ) -> DeliveryEnvelope | None:
+                nonlocal call_count
+                call_count += 1
+                if call_count <= 3:
+                    msg = "transient"
+                    raise OSError(msg)
+                if call_count == 4:
+                    # After 3 errors, return a valid message once
+                    return _envelope(_settings_message("ns", "k"))
+                # Then block (normal poll timeout)
+                await asyncio.sleep(timeout or 1.0)
+                return None
+
+        bus = _TransientBus()
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(sub,),
+        )
+        await d.start()
+        try:
+            # Wait for the subscriber to be called
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 10.0
+            while len(sub.calls) == 0:
+                if loop.time() > deadline:
+                    pytest.fail("Timed out waiting for subscriber call")
+                await asyncio.sleep(0.05)
+            assert ("ns", "k") in sub.calls
+        finally:
+            await d.stop()
+
+    async def test_max_consecutive_errors_kills_loop(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Loop exits after _MAX_CONSECUTIVE_ERRORS OSErrors."""
+        import synthorg.settings.dispatcher as _mod
+
+        monkeypatch.setattr(_mod, "_ERROR_BACKOFF", 0.01)
+        monkeypatch.setattr(_mod, "_MAX_CONSECUTIVE_ERRORS", 5)
+
+        class _PermanentErrorBus(_FakeBus):
+            async def receive(
+                self,
+                channel_name: str,
+                subscriber_id: str,
+                *,
+                timeout: float | None = None,  # noqa: ASYNC109
+            ) -> DeliveryEnvelope | None:
+                msg = "permanent"
+                raise OSError(msg)
+
+        bus = _PermanentErrorBus()
+        sub = _FakeSubscriber("sub", frozenset())
+        d = SettingsChangeDispatcher(
+            message_bus=bus,
+            subscribers=(sub,),
+        )
+        await d.start()
+        assert d._task is not None
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(d._task, timeout=10.0)
         assert d._running is False

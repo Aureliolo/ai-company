@@ -6,7 +6,7 @@ Follows the same polling-loop pattern as
 
 import asyncio
 import contextlib
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.channel import Channel
@@ -32,8 +32,17 @@ logger = get_logger(__name__)
 
 _SUBSCRIBER_ID: Final[str] = "__settings_dispatcher__"
 _POLL_TIMEOUT: Final[float] = 1.0
+_ERROR_BACKOFF: Final[float] = 1.0
 _MAX_CONSECUTIVE_ERRORS: Final[int] = 30
 _SETTINGS_CHANNEL: Final[str] = "#settings"
+
+
+class _ChangeMetadata(NamedTuple):
+    """Structured metadata extracted from a ``#settings`` bus message."""
+
+    namespace: str
+    key: str
+    restart_required: bool
 
 
 class SettingsChangeDispatcher:
@@ -152,7 +161,7 @@ class SettingsChangeDispatcher:
                 consecutive_errors = 0
                 await self._dispatch(envelope.message)
             except asyncio.CancelledError:
-                break
+                raise
             except MemoryError, RecursionError:
                 raise
             except OSError, TimeoutError:
@@ -168,7 +177,7 @@ class SettingsChangeDispatcher:
                     consecutive_errors=consecutive_errors,
                     exc_info=True,
                 )
-                await asyncio.sleep(_POLL_TIMEOUT)
+                await asyncio.sleep(_ERROR_BACKOFF)
             except Exception:
                 logger.error(
                     SETTINGS_DISPATCHER_CHANNEL_DEAD,
@@ -217,14 +226,15 @@ class SettingsChangeDispatcher:
 
 def _extract_metadata(
     message: Message,
-) -> tuple[str, str, bool] | None:
-    """Extract (namespace, key, restart_required) from message metadata.
+) -> _ChangeMetadata | None:
+    """Extract structured change metadata from a ``#settings`` message.
 
     Returns:
-        A tuple of (namespace, key, restart_required) or ``None`` if
-        the ``namespace`` or ``key`` metadata fields are missing.
-        The ``restart_required`` field defaults to ``False`` when
-        absent from the metadata.
+        A :class:`_ChangeMetadata` or ``None`` if the ``namespace`` or
+        ``key`` metadata fields are missing.  The ``restart_required``
+        field defaults to ``True`` when absent — fail-safe to prevent
+        accidental hot-reload of restart-required settings on metadata
+        corruption.
     """
     extra = dict(message.metadata.extra)
     namespace = extra.get("namespace")
@@ -238,6 +248,8 @@ def _extract_metadata(
             sender=message.sender,
         )
         return None
-    # restart_required is encoded as str(bool) by SettingsService._publish_change
-    restart_required = extra.get("restart_required", "False").lower() == "true"
-    return namespace, key, restart_required
+    # restart_required is encoded as str(bool) by SettingsService._publish_change.
+    # Default to True (fail-safe): missing/corrupted metadata prevents hot-reload
+    # rather than accidentally allowing it for restart-required settings.
+    restart_required = extra.get("restart_required", "True").lower() != "false"
+    return _ChangeMetadata(namespace, key, restart_required)
