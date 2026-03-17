@@ -544,9 +544,9 @@ class TestPromptVersioning:
     """Tests for prompt versioning and section tracking."""
 
     @pytest.mark.unit
-    def test_template_version_is_1_5_0(self) -> None:
-        """PROMPT_TEMPLATE_VERSION is '1.5.0' (context budget section)."""
-        assert PROMPT_TEMPLATE_VERSION == "1.5.0"
+    def test_template_version_frozen(self) -> None:
+        """PROMPT_TEMPLATE_VERSION is frozen at '1.0.0' until first deploy."""
+        assert PROMPT_TEMPLATE_VERSION == "1.0.0"
 
     @pytest.mark.unit
     def test_template_version_in_result(

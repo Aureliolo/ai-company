@@ -17,7 +17,10 @@ from typing import Final
 
 from synthorg.core.enums import SeniorityLevel
 
-PROMPT_TEMPLATE_VERSION: Final[str] = "1.5.0"
+# Frozen at "1.0.0" until the app has users — no caching, snapshots,
+# or migrations depend on this yet.  Bump to a meaningful version when
+# the first production deployment ships.
+PROMPT_TEMPLATE_VERSION: Final[str] = "1.0.0"
 
 # ── Autonomy instructions by seniority level ─────────────────────
 
