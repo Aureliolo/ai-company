@@ -16,3 +16,18 @@ SETTINGS_DELETE_FAILED: Final[str] = "settings.delete.failed"
 SETTINGS_NOT_FOUND: Final[str] = "settings.not_found"
 SETTINGS_REGISTRY_DUPLICATE: Final[str] = "settings.registry.duplicate"
 SETTINGS_CONFIG_PATH_MISS: Final[str] = "settings.config_bridge.path_miss"
+
+# ── Dispatcher & subscriber events ────────────────────────────────
+
+SETTINGS_DISPATCHER_STARTED: Final[str] = "settings.dispatcher.started"
+SETTINGS_DISPATCHER_STOPPED: Final[str] = "settings.dispatcher.stopped"
+SETTINGS_DISPATCHER_POLL_ERROR: Final[str] = "settings.dispatcher.poll_error"
+SETTINGS_DISPATCHER_CHANNEL_DEAD: Final[str] = "settings.dispatcher.channel_dead"
+SETTINGS_SUBSCRIBER_NOTIFIED: Final[str] = "settings.subscriber.notified"
+SETTINGS_SUBSCRIBER_ERROR: Final[str] = "settings.subscriber.error"
+SETTINGS_SUBSCRIBER_RESTART_REQUIRED: Final[str] = (
+    "settings.subscriber.restart_required"
+)
+SETTINGS_SERVICE_SWAPPED: Final[str] = "settings.service.swapped"
+SETTINGS_SERVICE_SWAP_FAILED: Final[str] = "settings.service.swap_failed"
+SETTINGS_CHANNEL_CREATED: Final[str] = "settings.channel.created"
