@@ -141,6 +141,13 @@ class ConsolidationResult(BaseModel):
             )
             raise ValueError(msg)
         removed_set = set(self.removed_ids)
+        assignment_ids = [a.original_id for a in self.mode_assignments]
+        if len(assignment_ids) != len(set(assignment_ids)):
+            msg = "mode_assignments contains duplicate original_ids"
+            raise ValueError(msg)
+        if any(aid not in removed_set for aid in assignment_ids):
+            msg = "mode_assignments contains original_ids not in removed_ids"
+            raise ValueError(msg)
         for idx_entry in self.archival_index:
             if idx_entry.original_id not in removed_set:
                 msg = (

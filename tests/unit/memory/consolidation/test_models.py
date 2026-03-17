@@ -307,6 +307,40 @@ class TestConsolidationResultDualMode:
                 ),
             )
 
+    def test_mode_assignments_duplicate_ids_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="mode_assignments contains duplicate",
+        ):
+            ConsolidationResult(
+                removed_ids=("m1", "m2"),
+                mode_assignments=(
+                    ArchivalModeAssignment(
+                        original_id="m1",
+                        mode=ArchivalMode.ABSTRACTIVE,
+                    ),
+                    ArchivalModeAssignment(
+                        original_id="m1",
+                        mode=ArchivalMode.EXTRACTIVE,
+                    ),
+                ),
+            )
+
+    def test_mode_assignments_unknown_id_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="not in removed_ids",
+        ):
+            ConsolidationResult(
+                removed_ids=("m1",),
+                mode_assignments=(
+                    ArchivalModeAssignment(
+                        original_id="m99",
+                        mode=ArchivalMode.ABSTRACTIVE,
+                    ),
+                ),
+            )
+
     def test_with_archival_index(self) -> None:
         index = (
             ArchivalIndexEntry(
