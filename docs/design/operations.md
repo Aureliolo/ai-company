@@ -973,6 +973,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/budget` | Spending, limits, projections |
 | `/api/v1/approvals` | Pending human approvals queue |
 | `/api/v1/analytics` | Performance metrics, dashboards |
+| `/api/v1/settings` | Runtime-editable configuration (9 namespaces), schema discovery |
 | `/api/v1/providers` | Model provider status, config |
 | `/api/v1/ws` | WebSocket for real-time updates (ticket auth via `?ticket=`) |
 | `POST /api/v1/auth/ws-ticket` | Exchange JWT for one-time WebSocket connection ticket |
@@ -1041,7 +1042,7 @@ and retry guidance.
 - **Budget Panel**: Spending charts, per-agent breakdown (projections/alerts planned)
 - **Meeting Logs**: Placeholder — coming soon
 - **Artifact Browser**: Placeholder — coming soon
-- **Settings**: Runtime-editable configuration via DB-backed settings persistence (8 namespaces: company, providers, memory, budget, security, coordination, observability, backup). 4-layer resolution (DB > env > YAML > code defaults), Fernet encryption for sensitive values, REST API (GET/PUT/DELETE + schema endpoints for dynamic UI generation), change notifications via message bus
+- **Settings**: Runtime-editable configuration via DB-backed settings persistence (9 namespaces: api, company, providers, memory, budget, security, coordination, observability, backup). 4-layer resolution (DB > env > YAML > code defaults), Fernet encryption for sensitive values, REST API (GET/PUT/DELETE + schema endpoints for dynamic UI generation), change notifications via message bus. `ConfigResolver` provides typed composed reads for API controllers (assembles full Pydantic config models from individually resolved settings, using `asyncio.TaskGroup` for parallel resolution). **Hot-reload**: `SettingsChangeDispatcher` polls the `#settings` bus channel and routes change notifications to registered `SettingsSubscriber` implementations. Settings marked `restart_required=True` are filtered (logged as WARNING, not dispatched). Concrete subscribers: `ProviderSettingsSubscriber` (rebuilds `ModelRouter` on `routing_strategy` change via `AppState.swap_model_router`), `MemorySettingsSubscriber` (advisory logging for non-restart memory settings)
 
 ### Human Roles
 

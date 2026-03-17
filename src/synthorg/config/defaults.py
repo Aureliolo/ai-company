@@ -40,4 +40,5 @@ def default_config_dict() -> dict[str, object]:
         "promotion": {},
         "task_engine": {},
         "coordination": {},
+        "git_clone": {},
     }

@@ -2,7 +2,11 @@
 
 from litestar import Controller, delete, get, put
 from litestar.datastructures import State  # noqa: TC002
-from litestar.exceptions import ClientException, NotFoundException
+from litestar.exceptions import (
+    ClientException,
+    InternalServerException,
+    NotFoundException,
+)
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
@@ -187,7 +191,7 @@ class SettingsController(Controller):
                 key=key,
             )
             msg = "Internal error processing sensitive setting"
-            raise ClientException(msg, status_code=500) from None
+            raise InternalServerException(msg) from None
         return ApiResponse(data=entry)
 
     @delete(

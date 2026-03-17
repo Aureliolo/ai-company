@@ -158,7 +158,7 @@ class CoordinationController(Controller):
         _validate_task_id(task_id)
         task = await self._get_task(app_state, task_id)
         agents = await self._resolve_agents(app_state, data, task_id)
-        context = self._build_context(app_state, task, agents, data)
+        context = await self._build_context(app_state, task, agents, data)
 
         _publish_ws_event(
             request,
@@ -196,7 +196,7 @@ class CoordinationController(Controller):
             raise NotFoundError(msg)
         return task
 
-    def _build_context(
+    async def _build_context(
         self,
         app_state: AppState,
         task: Task,
@@ -208,7 +208,7 @@ class CoordinationController(Controller):
             DecompositionContext,
         )
 
-        coord_config = app_state.config.coordination.to_coordination_config(
+        coord_config = await app_state.config_resolver.get_coordination_config(
             max_concurrency_per_wave=data.max_concurrency_per_wave,
             fail_fast=data.fail_fast,
         )

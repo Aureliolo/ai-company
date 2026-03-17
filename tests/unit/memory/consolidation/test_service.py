@@ -12,7 +12,11 @@ from synthorg.memory.consolidation.config import (
     ConsolidationConfig,
     RetentionConfig,
 )
-from synthorg.memory.consolidation.models import ConsolidationResult
+from synthorg.memory.consolidation.models import (
+    ArchivalMode,
+    ArchivalModeAssignment,
+    ConsolidationResult,
+)
 from synthorg.memory.consolidation.service import MemoryConsolidationService
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 
@@ -291,3 +295,174 @@ class TestArchivalResilience:
         result = await service.run_consolidation(_AGENT_ID)
         assert result.archived_count == 2
         assert archival.archive.call_count == 3
+
+
+@pytest.mark.unit
+class TestArchivalModeAware:
+    """Mode-aware archival with archival index (dual-mode)."""
+
+    async def test_archival_sets_mode_on_entry(self) -> None:
+        """ArchivalEntry receives archival_mode from strategy assignments."""
+        entries = (_make_entry("m1"), _make_entry("m2"))
+        backend = _make_backend_mock(entries=entries)
+
+        strategy = AsyncMock()
+        strategy.consolidate = AsyncMock(
+            return_value=ConsolidationResult(
+                removed_ids=("m1",),
+                mode_assignments=(
+                    ArchivalModeAssignment(
+                        original_id="m1",
+                        mode=ArchivalMode.EXTRACTIVE,
+                    ),
+                ),
+            ),
+        )
+
+        archival = AsyncMock()
+        archival.archive = AsyncMock(return_value="arch-1")
+
+        config = ConsolidationConfig(
+            archival=ArchivalConfig(enabled=True),
+        )
+        service = MemoryConsolidationService(
+            backend=backend,
+            config=config,
+            strategy=strategy,
+            archival_store=archival,
+        )
+        await service.run_consolidation(_AGENT_ID)
+
+        call_args = archival.archive.call_args[0][0]
+        assert call_args.archival_mode == ArchivalMode.EXTRACTIVE
+
+    async def test_archival_builds_index(self) -> None:
+        """run_consolidation result includes archival_index."""
+        entries = (_make_entry("m1"), _make_entry("m2"))
+        backend = _make_backend_mock(entries=entries)
+
+        strategy = AsyncMock()
+        strategy.consolidate = AsyncMock(
+            return_value=ConsolidationResult(
+                removed_ids=("m1", "m2"),
+                mode_assignments=(
+                    ArchivalModeAssignment(
+                        original_id="m1",
+                        mode=ArchivalMode.ABSTRACTIVE,
+                    ),
+                    ArchivalModeAssignment(
+                        original_id="m2",
+                        mode=ArchivalMode.EXTRACTIVE,
+                    ),
+                ),
+            ),
+        )
+
+        archival = AsyncMock()
+        archival.archive = AsyncMock(
+            side_effect=["arch-1", "arch-2"],
+        )
+
+        config = ConsolidationConfig(
+            archival=ArchivalConfig(enabled=True),
+        )
+        service = MemoryConsolidationService(
+            backend=backend,
+            config=config,
+            strategy=strategy,
+            archival_store=archival,
+        )
+        result = await service.run_consolidation(_AGENT_ID)
+
+        assert result.archived_count == 2
+        assert len(result.archival_index) == 2
+        index_map = {e.original_id: e for e in result.archival_index}
+        assert index_map["m1"].archival_id == "arch-1"
+        assert index_map["m1"].mode == ArchivalMode.ABSTRACTIVE
+        assert index_map["m2"].archival_id == "arch-2"
+        assert index_map["m2"].mode == ArchivalMode.EXTRACTIVE
+
+    async def test_archival_index_keyed_by_original_id(self) -> None:
+        """Archival index maps by original_id, not by position."""
+        entries = (_make_entry("m1"), _make_entry("m2"), _make_entry("m3"))
+        backend = _make_backend_mock(entries=entries)
+
+        # Mode assignments in REVERSED order from removed_ids
+        strategy = AsyncMock()
+        strategy.consolidate = AsyncMock(
+            return_value=ConsolidationResult(
+                removed_ids=("m1", "m2", "m3"),
+                mode_assignments=(
+                    ArchivalModeAssignment(
+                        original_id="m3",
+                        mode=ArchivalMode.EXTRACTIVE,
+                    ),
+                    ArchivalModeAssignment(
+                        original_id="m1",
+                        mode=ArchivalMode.ABSTRACTIVE,
+                    ),
+                    ArchivalModeAssignment(
+                        original_id="m2",
+                        mode=ArchivalMode.EXTRACTIVE,
+                    ),
+                ),
+            ),
+        )
+
+        archival = AsyncMock()
+        # Second archival fails — only m1 and m3 succeed
+        archival.archive = AsyncMock(
+            side_effect=["arch-1", RuntimeError("disk full"), "arch-3"],
+        )
+
+        config = ConsolidationConfig(
+            archival=ArchivalConfig(enabled=True),
+        )
+        service = MemoryConsolidationService(
+            backend=backend,
+            config=config,
+            strategy=strategy,
+            archival_store=archival,
+        )
+        result = await service.run_consolidation(_AGENT_ID)
+
+        assert result.archived_count == 2
+        assert len(result.archival_index) == 2
+        index_map = {e.original_id: e for e in result.archival_index}
+        assert index_map["m1"].archival_id == "arch-1"
+        assert index_map["m1"].mode == ArchivalMode.ABSTRACTIVE
+        assert index_map["m3"].archival_id == "arch-3"
+        assert index_map["m3"].mode == ArchivalMode.EXTRACTIVE
+        assert "m2" not in index_map
+
+    async def test_archival_no_mode_assignments_backward_compat(self) -> None:
+        """Strategy without dual-mode returns empty mode_assignments."""
+        entries = (_make_entry("m1"),)
+        backend = _make_backend_mock(entries=entries)
+
+        strategy = AsyncMock()
+        strategy.consolidate = AsyncMock(
+            return_value=ConsolidationResult(
+                removed_ids=("m1",),
+            ),
+        )
+
+        archival = AsyncMock()
+        archival.archive = AsyncMock(return_value="arch-1")
+
+        config = ConsolidationConfig(
+            archival=ArchivalConfig(enabled=True),
+        )
+        service = MemoryConsolidationService(
+            backend=backend,
+            config=config,
+            strategy=strategy,
+            archival_store=archival,
+        )
+        result = await service.run_consolidation(_AGENT_ID)
+
+        # Entry archived with archival_mode=None (legacy)
+        call_args = archival.archive.call_args[0][0]
+        assert call_args.archival_mode is None
+        # No index entries for entries without mode assignments
+        assert result.archival_index == ()

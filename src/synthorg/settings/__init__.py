@@ -18,8 +18,11 @@ from synthorg.settings.errors import (
 )
 from synthorg.settings.models import SettingDefinition, SettingEntry, SettingValue
 from synthorg.settings.registry import SettingsRegistry, get_registry
+from synthorg.settings.resolver import ConfigResolver
+from synthorg.settings.subscriber import SettingsSubscriber
 
 __all__ = [
+    "ConfigResolver",
     "SettingDefinition",
     "SettingEntry",
     "SettingLevel",
@@ -32,5 +35,6 @@ __all__ = [
     "SettingsEncryptionError",
     "SettingsError",
     "SettingsRegistry",
+    "SettingsSubscriber",
     "get_registry",
 ]

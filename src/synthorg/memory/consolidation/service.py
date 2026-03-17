@@ -9,7 +9,13 @@ from datetime import UTC, datetime
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.consolidation.archival import ArchivalStore  # noqa: TC001
 from synthorg.memory.consolidation.config import ConsolidationConfig  # noqa: TC001
-from synthorg.memory.consolidation.models import ArchivalEntry, ConsolidationResult
+from synthorg.memory.consolidation.models import (
+    ArchivalEntry,
+    ArchivalIndexEntry,
+    ArchivalMode,
+    ArchivalModeAssignment,
+    ConsolidationResult,
+)
 from synthorg.memory.consolidation.retention import RetentionEnforcer
 from synthorg.memory.consolidation.strategy import (
     ConsolidationStrategy,  # noqa: TC001
@@ -20,6 +26,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.consolidation import (
     ARCHIVAL_ENTRY_STORED,
     ARCHIVAL_FAILED,
+    ARCHIVAL_INDEX_BUILT,
     CONSOLIDATION_COMPLETE,
     CONSOLIDATION_FAILED,
     CONSOLIDATION_SKIPPED,
@@ -71,10 +78,10 @@ class MemoryConsolidationService:
     ) -> ConsolidationResult:
         """Run memory consolidation for an agent.
 
-        Retrieves memories, applies the consolidation strategy, and
-        archives removed entries if archival is configured and enabled.
-        Per-entry archival failures are logged and skipped — they do
-        not abort the entire archival batch.
+        Retrieves up to 1000 entries per invocation and applies the
+        consolidation strategy, then archives removed entries if archival
+        is configured and enabled.  Per-entry archival failures are
+        logged and skipped — they do not abort the entire batch.
 
         Args:
             agent_id: Agent whose memories to consolidate.
@@ -98,15 +105,18 @@ class MemoryConsolidationService:
             )
 
             if self._archival_store is not None and self._config.archival.enabled:
-                archived = await self._archive_entries(
+                archived, index = await self._archive_entries(
                     agent_id,
                     entries,
                     result.removed_ids,
+                    result.mode_assignments,
                 )
                 result = ConsolidationResult(
                     removed_ids=result.removed_ids,
                     summary_id=result.summary_id,
                     archived_count=archived,
+                    mode_assignments=result.mode_assignments,
+                    archival_index=index,
                 )
         except Exception as exc:
             logger.exception(
@@ -229,7 +239,8 @@ class MemoryConsolidationService:
         agent_id: NotBlankStr,
         all_entries: tuple[MemoryEntry, ...],
         removed_ids: tuple[NotBlankStr, ...],
-    ) -> int:
+        mode_assignments: tuple[ArchivalModeAssignment, ...] = (),
+    ) -> tuple[int, tuple[ArchivalIndexEntry, ...]]:
         """Archive removed entries to cold storage.
 
         Per-entry failures are logged at WARNING and skipped so that a
@@ -240,45 +251,109 @@ class MemoryConsolidationService:
             agent_id: Agent identifier.
             all_entries: All retrieved entries (to find removed ones).
             removed_ids: IDs of entries that were removed.
+            mode_assignments: Per-entry archival mode assignments from
+                the strategy (empty for strategies without dual-mode).
 
         Returns:
-            Number of entries successfully archived.
+            Tuple of (archived count, archival index entries).
         """
         if self._archival_store is None:
-            return 0
-        removed_set = set(removed_ids)
+            return 0, ()
+
+        mode_map: dict[NotBlankStr, ArchivalMode] = {
+            a.original_id: a.mode for a in mode_assignments
+        }
+        entry_map = {entry.id: entry for entry in all_entries}
         now = datetime.now(UTC)
         archived = 0
+        index_entries: list[ArchivalIndexEntry] = []
 
-        for entry in all_entries:
-            if entry.id not in removed_set:
-                continue
-
-            archival_entry = ArchivalEntry(
-                original_id=entry.id,
-                agent_id=entry.agent_id,
-                content=entry.content,
-                category=entry.category,
-                metadata=entry.metadata,
-                created_at=entry.created_at,
-                archived_at=now,
-            )
-            try:
-                await self._archival_store.archive(archival_entry)
-            except Exception as exc:
+        for removed_id in removed_ids:
+            entry = entry_map.get(removed_id)
+            if entry is None:
                 logger.warning(
                     ARCHIVAL_FAILED,
-                    original_id=entry.id,
+                    original_id=removed_id,
                     agent_id=agent_id,
-                    error=str(exc),
-                    error_type=type(exc).__name__,
+                    error="removed_id not found in retrieved entries",
+                    error_type="KeyError",
                 )
                 continue
-            archived += 1
+            success, idx = await self._archive_single_entry(
+                entry,
+                agent_id,
+                mode_map,
+                now,
+            )
+            if success:
+                archived += 1
+                if idx is not None:
+                    index_entries.append(idx)
+
+        index = tuple(index_entries)
+        if index:
             logger.debug(
-                ARCHIVAL_ENTRY_STORED,
-                original_id=entry.id,
+                ARCHIVAL_INDEX_BUILT,
                 agent_id=agent_id,
+                index_size=len(index),
             )
 
-        return archived
+        return archived, index
+
+    async def _archive_single_entry(
+        self,
+        entry: MemoryEntry,
+        agent_id: NotBlankStr,
+        mode_map: dict[NotBlankStr, ArchivalMode],
+        now: datetime,
+    ) -> tuple[bool, ArchivalIndexEntry | None]:
+        """Archive a single entry to cold storage.
+
+        Args:
+            entry: Memory entry to archive.
+            agent_id: Agent identifier.
+            mode_map: Mapping of original IDs to archival modes.
+            now: Current timestamp for archival.
+
+        Returns:
+            Tuple of (success flag, index entry or ``None``).
+        """
+        assert self._archival_store is not None  # noqa: S101
+        archival_mode = mode_map.get(entry.id)
+        archival_entry = ArchivalEntry(
+            original_id=entry.id,
+            agent_id=entry.agent_id,
+            content=entry.content,
+            category=entry.category,
+            metadata=entry.metadata,
+            created_at=entry.created_at,
+            archived_at=now,
+            archival_mode=archival_mode,
+        )
+        try:
+            archival_id = await self._archival_store.archive(archival_entry)
+        except Exception as exc:
+            logger.warning(
+                ARCHIVAL_FAILED,
+                original_id=entry.id,
+                agent_id=agent_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+            return False, None
+        logger.debug(
+            ARCHIVAL_ENTRY_STORED,
+            original_id=entry.id,
+            agent_id=agent_id,
+            archival_mode=archival_mode,
+        )
+        index_entry = (
+            ArchivalIndexEntry(
+                original_id=entry.id,
+                archival_id=archival_id,
+                mode=archival_mode,
+            )
+            if archival_mode is not None
+            else None
+        )
+        return True, index_entry
