@@ -1,0 +1,136 @@
+name: Bug Report
+description: Report a bug, crash, or unexpected behavior
+title: "[Bug] "
+labels:
+  - type:bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please fill in as much detail as you can — it helps us fix things faster.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of SynthOrg is affected?
+      options:
+        - Backend (Python API / engine)
+        - Dashboard (Vue web UI)
+        - CLI (Go binary / installer)
+        - Docker (compose / containers)
+        - Docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: CLI installation method (if relevant)
+      description: How did you install the SynthOrg CLI? Skip if the bug is not CLI-related.
+      options:
+        - "curl | sh (Linux/macOS)"
+        - PowerShell installer (Windows)
+        - Manual download from GitHub Releases
+        - Built from source (go build)
+        - N/A
+    validations:
+      required: false
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Crash / data loss
+        - Wrong behavior (feature broken)
+        - Performance issue
+        - Cosmetic / minor
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon / arm64)
+        - macOS (Intel / amd64)
+        - Linux (amd64)
+        - Linux (arm64)
+        - Windows (amd64)
+        - Windows (arm64)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe what you expected and what actually happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `synthorg start`
+        2. Open http://localhost:3000
+        3. Click on ...
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Error output / logs
+      description: Full error message, stack trace, or relevant log output.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: version
+    attributes:
+      label: Version info
+      description: "Output of `synthorg version`, or the version you tried to install. Write 'not installed' if installation failed."
+      placeholder: |
+        synthorg v0.3.0
+          commit: abc1234
+          built:  2026-03-15T12:00:00Z
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor output
+      description: |
+        Paste the output of `synthorg doctor`. It collects OS, architecture,
+        Docker version, container status, health checks, and config (secrets
+        are redacted). If SynthOrg is not installed, write "not installed".
+      placeholder: |
+        {
+          "os": "windows",
+          "arch": "amd64",
+          "cli_version": "v0.3.0",
+          "docker_version": "27.x",
+          "compose_version": "2.x",
+          "health_status": "healthy",
+          "compose_file_exists": true
+        }
+      render: json
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: "Screenshots, workarounds tried, related issues, etc."
+    validations:
+      required: false

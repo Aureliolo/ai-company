@@ -1,0 +1,75 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature] "
+labels:
+  - type:feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature. Describe what you'd like and why it matters.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of SynthOrg does this affect?
+      options:
+        - Backend (Python API / engine)
+        - Dashboard (Vue web UI)
+        - CLI (Go binary)
+        - Docker (compose / containers)
+        - Docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What do you want and what problem does it solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why is this needed? What's the current workaround (if any)?
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you thought of and why this one is better.
+    validations:
+      required: false
+
+  - type: input
+    id: design-spec
+    attributes:
+      label: Design spec reference
+      description: "Which `docs/design/` page is relevant? See [DESIGN_SPEC.md](../blob/main/docs/DESIGN_SPEC.md) for the index."
+      placeholder: "e.g. docs/design/engine.md §6.5"
+    validations:
+      required: false
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies / related issues
+      description: "Issues that should be done first or are closely related."
+      placeholder: |
+        - #NNN (description)
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: "Mockups, links, research, related issues, etc."
+    validations:
+      required: false
