@@ -472,6 +472,22 @@ async def _safe_shutdown(
         )
 
 
+# ── 2-Phase Initialisation ────────────────────────────────────────
+#
+# Phase 1 (construct): Litestar bakes middleware, CORS, and routes
+#   into the app at construction time — these read directly from
+#   RootConfig and are immutable after construction.  Bootstrap-only
+#   settings (server host/port, api_prefix, CORS origins, exclude
+#   paths) are therefore NOT resolved through SettingsService.
+#
+# Phase 2 (on_startup): After persistence connects and migrations
+#   run, SettingsService + ConfigResolver become available.  Runtime-
+#   editable settings (rate_limit_max_requests, rate_limit_time_unit,
+#   jwt_expiry_minutes, min_password_length) are resolved through
+#   ConfigResolver.get_api_config() by consumers that need current
+#   values post-startup.
+
+
 def create_app(  # noqa: PLR0913
     *,
     config: RootConfig | None = None,
