@@ -73,7 +73,7 @@ class DefaultTokenEstimator:
         """Estimate total tokens across all messages.
 
         Sums ``len(content) // 4 + overhead`` per message.
-        Tool results use their content field for estimation.
+        Tool results and tool calls are included in the estimate.
 
         Args:
             messages: The conversation messages to estimate.
@@ -87,4 +87,14 @@ class DefaultTokenEstimator:
             if msg.tool_result is not None:
                 content = msg.tool_result.content or ""
             total += len(content) // 4 + self._PER_MESSAGE_OVERHEAD
+            # Tool calls on assistant messages consume tokens
+            # (id, name, serialized arguments).
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    tc_tokens = (
+                        len(tc.name) // 4
+                        + len(str(tc.arguments)) // 4
+                        + self._PER_MESSAGE_OVERHEAD
+                    )
+                    total += tc_tokens
         return total

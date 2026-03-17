@@ -70,22 +70,18 @@ def deserialize_and_reconcile(
         raise
 
     compression = checkpoint_ctx.compression_metadata
-    if compression is not None:
-        reconciliation_content = (
-            f"Execution resumed from checkpoint at turn "
-            f"{checkpoint_ctx.turn_count}. "
-            f"Note: conversation was previously compacted "
-            f"(archived {compression.archived_turns} turns). "
-            f"Previous error: {error_message}. "
-            "Review progress and continue."
-        )
-    else:
-        reconciliation_content = (
-            f"Execution resumed from checkpoint at turn "
-            f"{checkpoint_ctx.turn_count}. Previous error: "
-            f"{error_message}. "
-            "Review progress and continue."
-        )
+    compaction_note = (
+        f"Note: conversation was previously compacted "
+        f"(archived {compression.archived_turns} turns). "
+        if compression is not None
+        else ""
+    )
+    reconciliation_content = (
+        f"Execution resumed from checkpoint at turn "
+        f"{checkpoint_ctx.turn_count}. {compaction_note}"
+        f"Previous error: {error_message}. "
+        "Review progress and continue."
+    )
 
     reconciliation_msg = ChatMessage(
         role=MessageRole.SYSTEM,

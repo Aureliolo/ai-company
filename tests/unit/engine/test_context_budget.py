@@ -7,6 +7,7 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.engine.compaction.models import CompressionMetadata
 from synthorg.engine.context import AgentContext
 from synthorg.engine.context_budget import (
+    _TOOL_DEFINITION_TOKEN_OVERHEAD,
     ContextBudgetIndicator,
     estimate_context_fill,
     make_context_indicator,
@@ -68,6 +69,10 @@ class TestContextBudgetIndicator:
         with pytest.raises(ValidationError):
             ind.fill_tokens = 200  # type: ignore[misc]
 
+    def test_capacity_tokens_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            ContextBudgetIndicator(fill_tokens=100, capacity_tokens=0)
+
 
 # ── estimate_context_fill ─────────────────────────────────────────
 
@@ -110,8 +115,7 @@ class TestEstimateContextFill:
             conversation=(),
             tool_definitions_count=3,
         )
-        # 3 tools * 50 overhead = 150
-        assert result == 100 + 150
+        assert result == 100 + 3 * _TOOL_DEFINITION_TOKEN_OVERHEAD
 
 
 # ── make_context_indicator ────────────────────────────────────────
@@ -200,10 +204,6 @@ class TestEstimateConversationTokens:
         result = est.estimate_conversation_tokens(msgs)
         # empty content => 0 + 4 overhead = 4
         assert result == 4
-
-    def test_capacity_tokens_zero_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            ContextBudgetIndicator(fill_tokens=100, capacity_tokens=0)
 
 
 # ── AgentContext context budget fields ────────────────────────────

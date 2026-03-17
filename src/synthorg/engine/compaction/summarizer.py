@@ -98,10 +98,16 @@ def _do_compaction(
         message_count=len(conversation),
     )
 
-    # Keep system message (index 0) and recent messages.
+    # Preserve a leading SYSTEM message only when present.
     # preserve_recent_turns * 2 for user+assistant pairs.
     preserve_count = config.preserve_recent_turns * 2
-    if preserve_count >= len(conversation) - 1:
+    head: tuple[ChatMessage, ...] = ()
+    start_idx = 0
+    if conversation and conversation[0].role == MessageRole.SYSTEM:
+        head = (conversation[0],)
+        start_idx = 1
+
+    if preserve_count >= len(conversation) - start_idx:
         logger.debug(
             CONTEXT_BUDGET_COMPACTION_SKIPPED,
             execution_id=ctx.execution_id,
@@ -111,8 +117,7 @@ def _do_compaction(
         )
         return None
 
-    system_msg = conversation[0]
-    archivable = conversation[1:-preserve_count]
+    archivable = conversation[start_idx:-preserve_count]
     recent = conversation[-preserve_count:]
 
     summary_text = _build_summary(archivable)
@@ -122,16 +127,17 @@ def _do_compaction(
     )
     summary_tokens = estimator.estimate_tokens(summary_text)
 
-    compressed_conversation = (system_msg, summary_msg, *recent)
+    compressed_conversation = (*head, summary_msg, *recent)
 
     # Build compression metadata.
     prior = ctx.compression_metadata
     compactions_count = prior.compactions_performed + 1 if prior is not None else 1
     prior_archived = prior.archived_turns if prior is not None else 0
 
+    archived_turn_count = len(archivable) // 2
     metadata = CompressionMetadata(
         compression_point=ctx.turn_count,
-        archived_turns=prior_archived + len(archivable),
+        archived_turns=prior_archived + archived_turn_count,
         summary_tokens=summary_tokens,
         compactions_performed=compactions_count,
     )
@@ -150,7 +156,7 @@ def _do_compaction(
         execution_id=ctx.execution_id,
         original_messages=len(conversation),
         compacted_messages=len(compressed_conversation),
-        archived_turns=len(archivable),
+        archived_turns=archived_turn_count,
         summary_tokens=summary_tokens,
         compactions_total=compactions_count,
     )
@@ -183,8 +189,8 @@ def _build_summary(messages: tuple[ChatMessage, ...]) -> str:
 
     if not snippets:
         logger.debug(
-            CONTEXT_BUDGET_COMPACTION_SKIPPED,
-            reason="no_assistant_content",
+            CONTEXT_BUDGET_COMPACTION_COMPLETED,
+            reason="no_assistant_content_for_summary",
             archived_count=len(messages),
         )
         return f"[Archived {len(messages)} messages from earlier in the conversation.]"

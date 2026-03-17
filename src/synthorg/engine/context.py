@@ -294,7 +294,13 @@ class AgentContext(BaseModel):
 
         Returns:
             New ``AgentContext`` with updated fill level.
+
+        Raises:
+            ValueError: If ``fill_tokens`` is negative.
         """
+        if fill_tokens < 0:
+            msg = f"fill_tokens must be >= 0, got {fill_tokens}"
+            raise ValueError(msg)
         return self.model_copy(
             update={"context_fill_tokens": fill_tokens},
         )
@@ -314,7 +320,13 @@ class AgentContext(BaseModel):
 
         Returns:
             New ``AgentContext`` with compressed conversation.
+
+        Raises:
+            ValueError: If ``fill_tokens`` is negative.
         """
+        if fill_tokens < 0:
+            msg = f"fill_tokens must be >= 0, got {fill_tokens}"
+            raise ValueError(msg)
         return self.model_copy(
             update={
                 "conversation": compressed_conversation,

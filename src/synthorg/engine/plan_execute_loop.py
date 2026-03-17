@@ -684,7 +684,16 @@ class PlanExecuteLoop:
             if isinstance(result, ExecutionResult):
                 return result
             if isinstance(result, tuple):
-                return result
+                ctx, step_ok = result
+                # Run compaction on step-completion turns too
+                compacted = await invoke_compaction(
+                    ctx,
+                    self._compaction_callback,
+                    ctx.turn_count,
+                )
+                if compacted is not None:
+                    ctx = compacted
+                return ctx, step_ok
             ctx = result
 
             # Context compaction at turn boundaries

@@ -140,7 +140,17 @@ def estimate_context_fill(
 
     Returns:
         Estimated total fill in tokens.
+
+    Raises:
+        ValueError: If ``system_prompt_tokens`` or
+            ``tool_definitions_count`` is negative.
     """
+    if system_prompt_tokens < 0:
+        msg = f"system_prompt_tokens must be >= 0, got {system_prompt_tokens}"
+        raise ValueError(msg)
+    if tool_definitions_count < 0:
+        msg = f"tool_definitions_count must be >= 0, got {tool_definitions_count}"
+        raise ValueError(msg)
     est = estimator or DefaultTokenEstimator()
     conversation_tokens = est.estimate_conversation_tokens(conversation)
     tool_overhead = tool_definitions_count * _TOOL_DEFINITION_TOKEN_OVERHEAD
