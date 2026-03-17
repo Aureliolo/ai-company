@@ -21,6 +21,8 @@ from synthorg.observability.events.settings import (
 from synthorg.settings.errors import SettingNotFoundError, SettingsEncryptionError
 
 if TYPE_CHECKING:
+    from pydantic import BaseModel
+
     from synthorg.api.config import ApiConfig
     from synthorg.budget.config import BudgetAlertConfig, BudgetConfig
     from synthorg.config.schema import AgentConfig, ProviderConfig, RootConfig
@@ -310,169 +312,164 @@ class ConfigResolver:
             msg = f"Setting {namespace}/{key} has an invalid JSON value"
             raise ValueError(msg) from exc
 
+    async def _resolve_list_setting(
+        self,
+        namespace: str,
+        key: str,
+        model_cls: type[BaseModel],
+        fallback: tuple[Any, ...],
+    ) -> tuple[Any, ...]:
+        """Resolve a JSON list setting to a tuple of validated models.
+
+        Falls back to *fallback* on ``None``, invalid JSON, wrong
+        shape, or schema validation failure.
+        """
+        from pydantic import ValidationError  # noqa: PLC0415
+
+        try:
+            raw = await self.get_json(namespace, key)
+        except ValueError:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="invalid_json_fallback",
+                exc_info=True,
+            )
+            return fallback
+        if raw is None:
+            return fallback
+        if not isinstance(raw, list):
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="expected_list_fallback",
+                value_type=type(raw).__name__,
+            )
+            return fallback
+        try:
+            return tuple(model_cls.model_validate(item) for item in raw)
+        except ValidationError:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="invalid_schema_fallback",
+                exc_info=True,
+            )
+            return fallback
+
+    async def _resolve_dict_setting(
+        self,
+        namespace: str,
+        key: str,
+        model_cls: type[BaseModel],
+        fallback: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Resolve a JSON dict setting to a dict of validated models.
+
+        Falls back to *fallback* on ``None``, invalid JSON, wrong
+        shape, or schema validation failure.
+        """
+        from pydantic import ValidationError  # noqa: PLC0415
+
+        try:
+            raw = await self.get_json(namespace, key)
+        except ValueError:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="invalid_json_fallback",
+                exc_info=True,
+            )
+            return fallback
+        if raw is None:
+            return fallback
+        if not isinstance(raw, dict):
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="expected_dict_fallback",
+                value_type=type(raw).__name__,
+            )
+            return fallback
+        try:
+            return {name: model_cls.model_validate(conf) for name, conf in raw.items()}
+        except ValidationError:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="invalid_schema_fallback",
+                exc_info=True,
+            )
+            return fallback
+
     async def get_agents(self) -> tuple[AgentConfig, ...]:
         """Resolve agent configurations from settings.
 
         Falls back to ``RootConfig.agents`` if the setting value is
         ``None``, contains invalid JSON, or fails schema validation.
-        An explicit empty list ``[]`` is a valid override that returns
-        an empty tuple.
-
-        Returns:
-            A tuple of ``AgentConfig`` objects.
+        An explicit empty list ``[]`` is a valid override.
 
         Raises:
             SettingNotFoundError: If the agents key is not
                 in the registry.
             SettingsEncryptionError: If decryption fails.
         """
-        from pydantic import ValidationError  # noqa: PLC0415
-
         from synthorg.config.schema import AgentConfig  # noqa: PLC0415
 
-        try:
-            raw = await self.get_json("company", "agents")
-        except ValueError:
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace="company",
-                key="agents",
-                reason="invalid_json_fallback",
-                exc_info=True,
-            )
-            return self._config.agents
-        if raw is None:
-            return self._config.agents
-        if not isinstance(raw, list):
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace="company",
-                key="agents",
-                reason="expected_list_fallback",
-                value_type=type(raw).__name__,
-            )
-            return self._config.agents
-        try:
-            return tuple(AgentConfig.model_validate(item) for item in raw)
-        except ValidationError:
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace="company",
-                key="agents",
-                reason="invalid_schema_fallback",
-                exc_info=True,
-            )
-            return self._config.agents
+        return await self._resolve_list_setting(
+            "company",
+            "agents",
+            AgentConfig,
+            self._config.agents,
+        )
 
     async def get_departments(self) -> tuple[Department, ...]:
         """Resolve department configurations from settings.
 
         Falls back to ``RootConfig.departments`` if the setting value
         is ``None``, contains invalid JSON, or fails schema validation.
-        An explicit empty list ``[]`` is a valid override that returns
-        an empty tuple.
-
-        Returns:
-            A tuple of ``Department`` objects.
+        An explicit empty list ``[]`` is a valid override.
 
         Raises:
             SettingNotFoundError: If the departments key is not
                 in the registry.
             SettingsEncryptionError: If decryption fails.
         """
-        from pydantic import ValidationError  # noqa: PLC0415
-
         from synthorg.core.company import Department  # noqa: PLC0415
 
-        try:
-            raw = await self.get_json("company", "departments")
-        except ValueError:
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace="company",
-                key="departments",
-                reason="invalid_json_fallback",
-                exc_info=True,
-            )
-            return self._config.departments
-        if raw is None:
-            return self._config.departments
-        if not isinstance(raw, list):
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace="company",
-                key="departments",
-                reason="expected_list_fallback",
-                value_type=type(raw).__name__,
-            )
-            return self._config.departments
-        try:
-            return tuple(Department.model_validate(item) for item in raw)
-        except ValidationError:
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace="company",
-                key="departments",
-                reason="invalid_schema_fallback",
-                exc_info=True,
-            )
-            return self._config.departments
+        return await self._resolve_list_setting(
+            "company",
+            "departments",
+            Department,
+            self._config.departments,
+        )
 
     async def get_provider_configs(self) -> dict[str, ProviderConfig]:
         """Resolve provider configurations from settings.
 
         Falls back to ``RootConfig.providers`` if the setting value
         is ``None``, contains invalid JSON, or fails schema validation.
-        An explicit empty dict ``{}`` is a valid override that returns
-        an empty dict.
-
-        Returns:
-            A dict of provider name to ``ProviderConfig``.
+        An explicit empty dict ``{}`` is a valid override.
 
         Raises:
             SettingNotFoundError: If the ``configs`` key is not
                 in the registry.
             SettingsEncryptionError: If decryption fails.
         """
-        from pydantic import ValidationError  # noqa: PLC0415
-
         from synthorg.config.schema import ProviderConfig  # noqa: PLC0415
 
-        try:
-            raw = await self.get_json("providers", "configs")
-        except ValueError:
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace="providers",
-                key="configs",
-                reason="invalid_json_fallback",
-                exc_info=True,
-            )
-            return dict(self._config.providers)
-        if raw is None:
-            return dict(self._config.providers)
-        if not isinstance(raw, dict):
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace="providers",
-                key="configs",
-                reason="expected_dict_fallback",
-                value_type=type(raw).__name__,
-            )
-            return dict(self._config.providers)
-        try:
-            return {
-                name: ProviderConfig.model_validate(conf) for name, conf in raw.items()
-            }
-        except ValidationError:
-            logger.warning(
-                SETTINGS_FETCH_FAILED,
-                namespace="providers",
-                key="configs",
-                reason="invalid_schema_fallback",
-                exc_info=True,
-            )
-            return dict(self._config.providers)
+        return await self._resolve_dict_setting(
+            "providers",
+            "configs",
+            ProviderConfig,
+            dict(self._config.providers),
+        )
 
     async def get_budget_config(self) -> BudgetConfig:
         """Assemble a ``BudgetConfig`` from individually resolved settings.

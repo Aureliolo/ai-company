@@ -83,6 +83,7 @@ class TestCompanyControllerDbOverride:
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
             resp = client.get("/api/v1/company/departments")
+            assert resp.status_code == 200
             body = resp.json()
             assert body["success"] is True
             assert len(body["data"]) == 1
@@ -125,7 +126,8 @@ class TestCompanyControllerDbOverride:
             resp = client.get("/api/v1/company")
             assert resp.status_code == 500
             body = resp.json()
-            assert body.get("success") is False or "detail" in body
+            assert body["success"] is False
+            assert body["error"] is not None
 
     async def test_db_company_overview_includes_db_agents(
         self,
@@ -160,6 +162,7 @@ class TestCompanyControllerDbOverride:
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
             resp = client.get("/api/v1/company")
+            assert resp.status_code == 200
             body = resp.json()
             assert body["success"] is True
             assert len(body["data"]["agents"]) == 1

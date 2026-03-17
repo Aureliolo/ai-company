@@ -14,12 +14,29 @@ from synthorg.observability.events.settings import SETTINGS_CONFIG_PATH_MISS
 logger = get_logger(__name__)
 
 
+def _to_json_compatible(value: object) -> object:
+    """Recursively convert Pydantic models to JSON-compatible dicts.
+
+    Walks nested structures so that ``BaseModel`` instances at any
+    depth are replaced by their ``model_dump(mode="json")`` output.
+    """
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    if isinstance(value, (tuple, list)):
+        return [_to_json_compatible(item) for item in value]
+    if isinstance(value, dict):
+        return {k: _to_json_compatible(v) for k, v in value.items()}
+    return value
+
+
 def _serialize_value(value: object) -> str:
     """Serialize a resolved config value to a string.
 
-    Handles Pydantic models, tuples/lists, and dicts by producing
-    valid JSON.  Scalar booleans produce lowercase JSON-style
-    ``"true"``/``"false"``.  Other scalars fall back to ``str()``.
+    Handles Pydantic models, tuples/lists, and dicts (including
+    nested models at any depth) by producing valid JSON.  Scalar
+    booleans produce lowercase JSON-style ``"true"``/``"false"``.
+    Other accepted scalars (``str``, ``int``, ``float``) use
+    ``str()``.
 
     Args:
         value: The resolved config attribute.
@@ -28,32 +45,27 @@ def _serialize_value(value: object) -> str:
         A string representation suitable for the settings layer.
 
     Raises:
-        TypeError: If *value* contains non-JSON-serializable types
-            (e.g. ``set``, ``bytes``, ``datetime``).
+        TypeError: If *value* is not an accepted type (accepted:
+            ``BaseModel``, ``tuple``, ``list``, ``dict``, ``str``,
+            ``int``, ``float``, ``bool``).
     """
     if isinstance(value, BaseModel):
         return json.dumps(value.model_dump(mode="json"))
 
     if isinstance(value, (tuple, list)):
-        return json.dumps(
-            [
-                item.model_dump(mode="json") if isinstance(item, BaseModel) else item
-                for item in value
-            ]
-        )
+        return json.dumps(_to_json_compatible(value))
 
     if isinstance(value, dict):
-        return json.dumps(
-            {
-                k: v.model_dump(mode="json") if isinstance(v, BaseModel) else v
-                for k, v in value.items()
-            }
-        )
+        return json.dumps(_to_json_compatible(value))
 
     if isinstance(value, bool):
         return "true" if value else "false"
 
-    return str(value)
+    if isinstance(value, (str, int, float)):
+        return str(value)
+
+    msg = f"Cannot serialize {type(value).__name__} to settings string"
+    raise TypeError(msg)
 
 
 def extract_from_config(config: object, yaml_path: str) -> str | None:

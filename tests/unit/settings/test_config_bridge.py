@@ -130,6 +130,10 @@ class TestSerializeValue:
         parsed = json.loads(result)
         assert parsed == [{"name": "x", "value": 1}, "plain", 42]
 
+    def test_unsupported_type_raises_type_error(self) -> None:
+        with pytest.raises(TypeError, match="set"):
+            _serialize_value({1, 2, 3})
+
     def test_mixed_dict_models_and_scalars(self) -> None:
         providers: dict[str, object] = {
             "a": _InnerConfig(daily_limit=5.0),

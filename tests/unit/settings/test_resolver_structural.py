@@ -445,3 +445,25 @@ class TestGetProviderConfigs:
         result = await resolver.get_provider_configs()
 
         assert "shape-safe" in result
+
+    async def test_fallback_returns_defensive_copy(
+        self, mock_settings: AsyncMock
+    ) -> None:
+        """Returned dict must be a copy — mutating it must not affect config."""
+        mock_settings.get.return_value = _make_value(
+            "null",
+            namespace=SettingNamespace.PROVIDERS,
+            key="configs",
+        )
+        prov = FakeProviderConfig(driver="original")
+        config = _FakeRootConfig(providers={"p": prov})
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+        result = await resolver.get_provider_configs()
+        result["injected"] = FakeProviderConfig(driver="evil")  # type: ignore[assignment]
+
+        fresh = await resolver.get_provider_configs()
+        assert "injected" not in fresh
+        assert "p" in fresh

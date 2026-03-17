@@ -97,6 +97,7 @@ class TestProviderControllerDbOverride:
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("observer"))
             resp = client.get("/api/v1/providers")
+            assert resp.status_code == 200
             body = resp.json()
             assert "db-provider" in body["data"]
             # api_key should be stripped
