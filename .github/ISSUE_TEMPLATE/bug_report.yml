@@ -26,11 +26,9 @@ body:
   - type: dropdown
     id: install-method
     attributes:
-      label: Installation method (if CLI / installer bug)
-      description: How did you install SynthOrg? Skip if not relevant.
+      label: CLI installation method (if relevant)
+      description: How did you install the SynthOrg CLI? Skip if the bug is not CLI-related.
       options:
-        - Homebrew (brew install)
-        - Scoop (scoop install)
         - "curl | sh (Linux/macOS)"
         - PowerShell installer (Windows)
         - Manual download from GitHub Releases
