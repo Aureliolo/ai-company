@@ -472,6 +472,12 @@ class TestTokenEstimation:
                 call_count += 1
                 return len(text) // 4
 
+            def estimate_conversation_tokens(
+                self,
+                messages: object,
+            ) -> int:
+                return 0
+
         result = build_system_prompt(
             agent=sample_agent_with_personality,
             token_estimator=CountingEstimator(),
