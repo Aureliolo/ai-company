@@ -1,5 +1,6 @@
 """Providers namespace setting definitions."""
 
+from synthorg.providers.routing.strategies import STRATEGY_MAP
 from synthorg.settings.enums import SettingLevel, SettingNamespace, SettingType
 from synthorg.settings.models import SettingDefinition
 from synthorg.settings.registry import get_registry
@@ -25,13 +26,7 @@ _r.register(
         default="cost_aware",
         description="Model routing strategy",
         group="Routing",
-        enum_values=(
-            "cost_aware",
-            "latency_aware",
-            "round_robin",
-            "priority_chain",
-            "capability_match",
-        ),
+        enum_values=tuple(sorted(STRATEGY_MAP.keys())),
         yaml_path="routing.strategy",
     )
 )

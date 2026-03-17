@@ -20,10 +20,13 @@ from synthorg.memory.config import (
     MemoryStorageConfig,
 )
 from synthorg.memory.consolidation import (
+    ArchivalMode,
     ArchivalStore,
     ConsolidationConfig,
     ConsolidationResult,
     ConsolidationStrategy,
+    ContentDensity,
+    DualModeConsolidationStrategy,
     MemoryConsolidationService,
     RetentionEnforcer,
     SimpleConsolidationStrategy,
@@ -70,13 +73,16 @@ from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.memory.shared import SharedKnowledgeStore
 
 __all__ = [
+    "ArchivalMode",
     "ArchivalStore",
     "CompanyMemoryConfig",
     "ConsolidationConfig",
     "ConsolidationResult",
     "ConsolidationStrategy",
+    "ContentDensity",
     "ContextInjectionStrategy",
     "DefaultTokenEstimator",
+    "DualModeConsolidationStrategy",
     "FusionStrategy",
     "InjectionPoint",
     "InjectionStrategy",

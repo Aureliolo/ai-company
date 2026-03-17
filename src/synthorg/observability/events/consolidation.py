@@ -36,6 +36,27 @@ ARCHIVAL_ENTRY_STORED: Final[str] = "consolidation.archival.stored"
 ARCHIVAL_SEARCH_COMPLETE: Final[str] = "consolidation.archival.search_complete"
 ARCHIVAL_FAILED: Final[str] = "consolidation.archival.failed"
 
+# ── Density classification ──────────────────────────────────────
+
+DENSITY_CLASSIFICATION_COMPLETE: Final[str] = "consolidation.density.classified"
+
+# ── Dual-mode strategy ─────────────────────────────────────────
+
+DUAL_MODE_GROUP_CLASSIFIED: Final[str] = "consolidation.dual_mode.group_classified"
+DUAL_MODE_ABSTRACTIVE_SUMMARY: Final[str] = (
+    "consolidation.dual_mode.abstractive_summary"
+)
+DUAL_MODE_ABSTRACTIVE_FALLBACK: Final[str] = (
+    "consolidation.dual_mode.abstractive_fallback"
+)
+DUAL_MODE_EXTRACTIVE_PRESERVED: Final[str] = (
+    "consolidation.dual_mode.extractive_preserved"
+)
+
+# ── Archival index ──────────────────────────────────────────────
+
+ARCHIVAL_INDEX_BUILT: Final[str] = "consolidation.archival.index_built"
+
 # ── Max memories enforcement ─────────────────────────────────────
 
 MAX_MEMORIES_ENFORCED: Final[str] = "consolidation.max_memories.enforced"

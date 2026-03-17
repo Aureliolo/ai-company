@@ -23,7 +23,11 @@ from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
+from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
+from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
+from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -32,13 +36,11 @@ logger = get_logger(__name__)
 class AppState:
     """Typed application state container.
 
-    Service fields (``persistence``, ``message_bus``, ``cost_tracker``,
-    ``auth_service``, ``task_engine``, ``coordinator``,
-    ``agent_registry``) accept ``None`` at construction time for
-    dev/test mode.  Property
-    accessors raise ``ServiceUnavailableError`` (HTTP 503) when the
-    service is not configured, producing a clear error instead of an
-    opaque ``AttributeError``.
+    All service fields accept ``None`` at construction time for
+    dev/test mode.  Property accessors raise
+    ``ServiceUnavailableError`` (HTTP 503) when the service is not
+    configured, producing a clear error instead of an opaque
+    ``AttributeError``.
 
     Attributes:
         config: Root company configuration.
@@ -52,13 +54,16 @@ class AppState:
         "_agent_registry",
         "_approval_gate",
         "_auth_service",
+        "_config_resolver",
         "_coordinator",
         "_cost_tracker",
         "_meeting_orchestrator",
         "_meeting_scheduler",
         "_message_bus",
+        "_model_router",
         "_performance_tracker",
         "_persistence",
+        "_provider_registry",
         "_settings_service",
         "_task_engine",
         "_ticket_store",
@@ -84,6 +89,8 @@ class AppState:
         meeting_orchestrator: MeetingOrchestrator | None = None,
         meeting_scheduler: MeetingScheduler | None = None,
         settings_service: SettingsService | None = None,
+        provider_registry: ProviderRegistry | None = None,
+        model_router: ModelRouter | None = None,
         startup_time: float = 0.0,
     ) -> None:
         self.config = config
@@ -100,6 +107,13 @@ class AppState:
         self._meeting_orchestrator = meeting_orchestrator
         self._meeting_scheduler = meeting_scheduler
         self._settings_service = settings_service
+        self._provider_registry = provider_registry
+        self._model_router = model_router
+        self._config_resolver: ConfigResolver | None = (
+            ConfigResolver(settings_service=settings_service, config=config)
+            if settings_service is not None
+            else None
+        )
         self._ticket_store = WsTicketStore()
         self.startup_time = startup_time
 
@@ -237,6 +251,16 @@ class AppState:
         return self._settings_service is not None
 
     @property
+    def has_config_resolver(self) -> bool:
+        """Check whether the config resolver is configured."""
+        return self._config_resolver is not None
+
+    @property
+    def config_resolver(self) -> ConfigResolver:
+        """Return the cached config resolver or raise 503."""
+        return self._require_service(self._config_resolver, "config_resolver")
+
+    @property
     def has_auth_service(self) -> bool:
         """Check whether the auth service is already configured."""
         return self._auth_service is not None
@@ -262,3 +286,76 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._auth_service = service
+
+    # ── Swappable provider services (hot-reload) ─────────────────
+
+    @property
+    def has_provider_registry(self) -> bool:
+        """Check whether the provider registry is configured."""
+        return self._provider_registry is not None
+
+    @property
+    def provider_registry(self) -> ProviderRegistry:
+        """Return provider registry or raise 503."""
+        return self._require_service(
+            self._provider_registry,
+            "provider_registry",
+        )
+
+    def swap_provider_registry(self, registry: ProviderRegistry) -> None:
+        """Replace the provider registry (hot-reload).
+
+        Unlike ``set_*`` methods, this does not guard against
+        replacement — it is designed for repeated hot-reload swaps.
+        Atomic under asyncio's cooperative scheduling — no ``await``
+        points, so no coroutine can observe a partially-updated state.
+
+        .. note::
+            Not yet wired to a subscriber — provided for the provider
+            runtime CRUD feature (issue #451).
+
+        Args:
+            registry: New provider registry instance.
+        """
+        old_count = (
+            len(self._provider_registry) if self._provider_registry is not None else 0
+        )
+        self._provider_registry = registry
+        logger.info(
+            SETTINGS_SERVICE_SWAPPED,
+            service="provider_registry",
+            old_provider_count=old_count,
+            new_provider_count=len(registry),
+        )
+
+    @property
+    def has_model_router(self) -> bool:
+        """Check whether the model router is configured."""
+        return self._model_router is not None
+
+    @property
+    def model_router(self) -> ModelRouter:
+        """Return model router or raise 503."""
+        return self._require_service(self._model_router, "model_router")
+
+    def swap_model_router(self, router: ModelRouter) -> None:
+        """Replace the model router (hot-reload).
+
+        Unlike ``set_*`` methods, this does not guard against
+        replacement — it is designed for repeated hot-reload swaps.
+        Atomic under asyncio's cooperative scheduling — no ``await``
+        points, so no coroutine can observe a partially-updated state.
+
+        Args:
+            router: New model router instance.
+        """
+        old_strategy = (
+            self._model_router.strategy_name if self._model_router is not None else None
+        )
+        self._model_router = router
+        logger.info(
+            SETTINGS_SERVICE_SWAPPED,
+            service="model_router",
+            old_strategy=old_strategy,
+            new_strategy=router.strategy_name,
+        )

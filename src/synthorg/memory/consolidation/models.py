@@ -1,9 +1,10 @@
 """Memory consolidation domain models.
 
 Frozen Pydantic models for consolidation results, archival entries,
-and retention rules.
+retention rules, and dual-mode archival types.
 """
 
+from enum import StrEnum
 from typing import Self
 
 from pydantic import (
@@ -20,6 +21,62 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.models import MemoryMetadata
 
 
+class ArchivalMode(StrEnum):
+    """How a memory entry was archived during consolidation.
+
+    Determines the preservation strategy applied before archival.
+    """
+
+    ABSTRACTIVE = "abstractive"
+    """LLM-generated summary for sparse/conversational content."""
+
+    EXTRACTIVE = "extractive"
+    """Verbatim key-fact extraction for dense/factual content."""
+
+
+class ArchivalModeAssignment(BaseModel):
+    """Maps a removed memory entry to the archival mode applied.
+
+    Attributes:
+        original_id: ID of the removed memory entry.
+        mode: Archival mode applied to this entry.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    original_id: NotBlankStr = Field(
+        description="ID of the removed memory entry",
+    )
+    mode: ArchivalMode = Field(
+        description="Archival mode applied to this entry",
+    )
+
+
+class ArchivalIndexEntry(BaseModel):
+    """Maps a removed memory entry to its archival store ID.
+
+    Enables deterministic index-based restore: agents can look up
+    their own archived entries by original ID without semantic search.
+
+    Attributes:
+        original_id: ID of the original memory entry.
+        archival_id: ID assigned by the archival store.
+        mode: Archival mode used for this entry.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    original_id: NotBlankStr = Field(
+        description="ID of the original memory entry",
+    )
+    archival_id: NotBlankStr = Field(
+        description="ID assigned by the archival store",
+    )
+    mode: ArchivalMode = Field(
+        description="Archival mode used for this entry",
+    )
+
+
 class ConsolidationResult(BaseModel):
     """Result of a memory consolidation run.
 
@@ -28,6 +85,10 @@ class ConsolidationResult(BaseModel):
         summary_id: ID of the summary entry (if created).
         archived_count: Number of entries archived.
         consolidated_count: Derived from ``len(removed_ids)``.
+        mode_assignments: Per-entry archival mode assignments (set by
+            strategy, empty for strategies that don't classify density).
+        archival_index: Maps original memory IDs to archival store IDs
+            (built by service after archival completes).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -45,6 +106,59 @@ class ConsolidationResult(BaseModel):
         ge=0,
         description="Number of entries archived",
     )
+    mode_assignments: tuple[ArchivalModeAssignment, ...] = Field(
+        default=(),
+        description="Per-entry archival mode assignments",
+    )
+    archival_index: tuple[ArchivalIndexEntry, ...] = Field(
+        default=(),
+        description="Original-to-archival ID mapping",
+    )
+
+    @model_validator(mode="after")
+    def _validate_archival_consistency(self) -> Self:
+        """Ensure archival fields are internally consistent."""
+        if len(self.removed_ids) != len(set(self.removed_ids)):
+            msg = "removed_ids contains duplicates"
+            raise ValueError(msg)
+        if self.archived_count > self.consolidated_count:
+            msg = (
+                f"archived_count ({self.archived_count}) must not exceed "
+                f"consolidated_count ({self.consolidated_count})"
+            )
+            raise ValueError(msg)
+        if len(self.archival_index) > self.archived_count:
+            msg = (
+                f"archival_index length ({len(self.archival_index)}) "
+                f"must not exceed archived_count ({self.archived_count})"
+            )
+            raise ValueError(msg)
+        if len(self.mode_assignments) > len(self.removed_ids):
+            msg = (
+                f"mode_assignments length ({len(self.mode_assignments)}) "
+                f"must not exceed removed_ids length "
+                f"({len(self.removed_ids)})"
+            )
+            raise ValueError(msg)
+        removed_set = set(self.removed_ids)
+        assignment_ids = [a.original_id for a in self.mode_assignments]
+        if len(assignment_ids) != len(set(assignment_ids)):
+            msg = "mode_assignments contains duplicate original_ids"
+            raise ValueError(msg)
+        if any(aid not in removed_set for aid in assignment_ids):
+            msg = "mode_assignments contains original_ids not in removed_ids"
+            raise ValueError(msg)
+        for idx_entry in self.archival_index:
+            if idx_entry.original_id not in removed_set:
+                msg = (
+                    f"archival_index entry '{idx_entry.original_id}' not in removed_ids"
+                )
+                raise ValueError(msg)
+        index_ids = [e.original_id for e in self.archival_index]
+        if len(index_ids) != len(set(index_ids)):
+            msg = "archival_index contains duplicate original_ids"
+            raise ValueError(msg)
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -64,6 +178,8 @@ class ArchivalEntry(BaseModel):
         metadata: Associated metadata.
         created_at: Original creation timestamp.
         archived_at: When this entry was archived.
+        archival_mode: How this entry was archived (``None`` for
+            legacy entries created before dual-mode archival).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -78,6 +194,10 @@ class ArchivalEntry(BaseModel):
     )
     created_at: AwareDatetime = Field(description="Original creation timestamp")
     archived_at: AwareDatetime = Field(description="When this entry was archived")
+    archival_mode: ArchivalMode | None = Field(
+        default=None,
+        description="Archival mode used (None for legacy entries)",
+    )
 
     @model_validator(mode="after")
     def _validate_temporal_order(self) -> Self:
