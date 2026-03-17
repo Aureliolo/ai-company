@@ -363,10 +363,10 @@ def _is_litestar_validation_400(response: dict[str, Any]) -> bool:
     request-body validation errors.  Custom 400 responses will not
     match this heuristic and are left untouched.
     """
-    content = response.get("content", {})
-    json_content = content.get("application/json", {})
-    schema = json_content.get("schema", {})
-    return schema.get("description") == "Validation Exception"
+    content: dict[str, Any] = response.get("content", {})
+    json_content: dict[str, Any] = content.get("application/json", {})
+    schema: dict[str, Any] = json_content.get("schema", {})
+    return str(schema.get("description", "")) == "Validation Exception"
 
 
 def _inject_operation_responses(
