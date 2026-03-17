@@ -13,6 +13,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_PARK_TASKLESS,
 )
+from synthorg.observability.events.context_budget import (
+    CONTEXT_BUDGET_COMPACTION_FAILED,
+)
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_EXHAUSTED,
     EXECUTION_LOOP_ERROR,
@@ -47,6 +50,7 @@ if TYPE_CHECKING:
     from synthorg.budget.call_category import LLMCallCategory
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.approval_gate_models import EscalationInfo
+    from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.context import AgentContext
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.protocol import CompletionProvider
@@ -645,3 +649,41 @@ def _handle_stagnation_verdict(  # noqa: PLR0913
         return ctx, corrections_injected + 1
 
     return None
+
+
+async def invoke_compaction(
+    ctx: AgentContext,
+    compaction_callback: CompactionCallback | None,
+    turn_number: int,
+) -> AgentContext | None:
+    """Invoke compaction callback if configured.
+
+    Errors are logged but never propagated — compaction must
+    not interrupt execution.
+
+    Args:
+        ctx: Current agent context.
+        compaction_callback: Optional compaction callback.
+        turn_number: Current turn number for logging.
+
+    Returns:
+        Compacted context, or ``None`` if no compaction occurred.
+
+    Raises:
+        MemoryError: Re-raised unconditionally.
+        RecursionError: Re-raised unconditionally.
+    """
+    if compaction_callback is None:
+        return None
+    try:
+        return await compaction_callback(ctx)
+    except MemoryError, RecursionError:
+        raise
+    except Exception as exc:
+        logger.exception(
+            CONTEXT_BUDGET_COMPACTION_FAILED,
+            execution_id=ctx.execution_id,
+            turn=turn_number,
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        return None

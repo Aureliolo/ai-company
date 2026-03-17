@@ -323,7 +323,36 @@ models in `memory/consolidation/config.py`:
 |--------|---------|
 | `ConsolidationConfig` | Top-level: `max_memories_per_agent` limit, nested `retention` and `archival` sub-configs |
 | `RetentionConfig` | Per-category `RetentionRule` tuples (category + retention_days), optional `default_retention_days` fallback |
-| `ArchivalConfig` | Enables/disables archival of consolidated entries to `ArchivalStore` |
+| `ArchivalConfig` | Enables/disables archival of consolidated entries to `ArchivalStore`, nested `DualModeConfig` |
+| `DualModeConfig` | Density-aware dual-mode archival: threshold, summarization model, anchor/fact limits |
+
+#### Dual-Mode Archival
+
+When `ArchivalConfig.dual_mode.enabled` is `True`, consolidation classifies content density before
+choosing an archival mode. This prevents catastrophic information loss from naively summarizing
+dense content (code, structured data, identifiers). Based on research: Memex
+([arXiv:2603.04257](https://arxiv.org/abs/2603.04257)) and KV Cache Attention Matching
+([arXiv:2602.16284](https://arxiv.org/abs/2602.16284)).
+
+| Density | Archival Mode | Method |
+|---------|--------------|--------|
+| Sparse (conversational, narrative) | `ABSTRACTIVE` | LLM-generated summary via `AbstractiveSummarizer` |
+| Dense (code, structured data, IDs) | `EXTRACTIVE` | Verbatim key-fact extraction + start/mid/end anchors via `ExtractivePreserver` |
+
+**Classification** is heuristic-based (`DensityClassifier`), using five weighted signals: code
+patterns, structured data markers, identifier density, numeric density, and line structure.  No LLM
+is needed for classification — only for abstractive summarization.  Groups are classified by
+majority vote: if most entries in a category group are dense, the group uses extractive mode.
+
+**Deterministic restore**: When entries are archived, the service builds an `archival_index`
+(mapping `original_id` → `archival_id`) on `ConsolidationResult`.  Agents can use this index to
+call `ArchivalStore.restore(agent_id, entry_id)` directly by ID, bypassing semantic search.
+
+| Model | Purpose |
+|-------|---------|
+| `ArchivalMode` | Enum: `ABSTRACTIVE` or `EXTRACTIVE` |
+| `ArchivalModeAssignment` | Maps a removed entry ID to its archival mode (set by strategy) |
+| `ArchivalIndexEntry` | Maps original entry ID to archival store ID (built by service) |
 
 !!! abstract "Scope Note"
 

@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.3.1](https://github.com/Aureliolo/synthorg/compare/v0.3.0...v0.3.1) (2026-03-17)
+
+
+### Features
+
+* **api:** RFC 9457 Phase 2 — ProblemDetail and content negotiation ([#496](https://github.com/Aureliolo/synthorg/issues/496)) ([30f7c49](https://github.com/Aureliolo/synthorg/commit/30f7c49ff2562919988ed510abd805ba3752ae92))
+* **cli:** verify container image signatures and SLSA provenance on pull ([#492](https://github.com/Aureliolo/synthorg/issues/492)) ([bef272d](https://github.com/Aureliolo/synthorg/commit/bef272d37e0020e9f33da2ce611d33cf749d570f)), closes [#491](https://github.com/Aureliolo/synthorg/issues/491)
+* **engine:** implement context budget management in execution loops ([#520](https://github.com/Aureliolo/synthorg/issues/520)) ([181eb8a](https://github.com/Aureliolo/synthorg/commit/181eb8a7f289e72239916a7832fb64bc5b47f1e1)), closes [#416](https://github.com/Aureliolo/synthorg/issues/416)
+* implement settings persistence layer (DB-backed config) ([#495](https://github.com/Aureliolo/synthorg/issues/495)) ([4bd99f7](https://github.com/Aureliolo/synthorg/commit/4bd99f7c242cf611ec2dadcaaf3d46a21bec20c3)), closes [#450](https://github.com/Aureliolo/synthorg/issues/450)
+* **memory:** implement dual-mode archival in memory consolidation ([#524](https://github.com/Aureliolo/synthorg/issues/524)) ([4603c9e](https://github.com/Aureliolo/synthorg/commit/4603c9e1196b7f5f49e727e3469ce347c7f05f40)), closes [#418](https://github.com/Aureliolo/synthorg/issues/418)
+* migrate config consumers to read through SettingsService ([#510](https://github.com/Aureliolo/synthorg/issues/510)) ([32f553d](https://github.com/Aureliolo/synthorg/commit/32f553d6d166d8ba6ca13186de267ae5d9cc5139))
+* **settings:** implement settings change subscriptions for service hot-reload ([#526](https://github.com/Aureliolo/synthorg/issues/526)) ([53f908e](https://github.com/Aureliolo/synthorg/commit/53f908ed11a925cbb084f2b8cead8539ca0d138a)), closes [#503](https://github.com/Aureliolo/synthorg/issues/503)
+* **settings:** register API config in SettingsService with 2-phase init ([#518](https://github.com/Aureliolo/synthorg/issues/518)) ([29f7481](https://github.com/Aureliolo/synthorg/commit/29f7481c03607592f6c3e3f2051eee4352840637))
+* **tools:** add SSRF prevention for git clone URLs ([#505](https://github.com/Aureliolo/synthorg/issues/505)) ([492dd0d](https://github.com/Aureliolo/synthorg/commit/492dd0d40ec7890bb41325214cf9288190aa303d))
+* **tools:** wire RootConfig.git_clone to GitCloneTool instantiation ([#519](https://github.com/Aureliolo/synthorg/issues/519)) ([b7d8172](https://github.com/Aureliolo/synthorg/commit/b7d81729e7c39590ed382f71bf005046c94be01f))
+
+
+### Bug Fixes
+
+* **api:** replace JWT query parameter with one-time ticket for WebSocket auth ([#493](https://github.com/Aureliolo/synthorg/issues/493)) ([22a25f6](https://github.com/Aureliolo/synthorg/commit/22a25f6f03685a3509875ca2d1299c432db34301)), closes [#343](https://github.com/Aureliolo/synthorg/issues/343)
+
+
+### Documentation
+
+* add uv cache lock contention handling to worktree skill ([#500](https://github.com/Aureliolo/synthorg/issues/500)) ([bd85a8d](https://github.com/Aureliolo/synthorg/commit/bd85a8dd15bb716addb29c96488f22d4d3b21745))
+* document RFC 9457 dual response formats in OpenAPI schema ([#506](https://github.com/Aureliolo/synthorg/issues/506)) ([8dd2524](https://github.com/Aureliolo/synthorg/commit/8dd25245ec9c01e0de53f334dec8adb1c5154836))
+
+
+### Maintenance
+
+* upgrade jsdom from 28 to 29 ([#499](https://github.com/Aureliolo/synthorg/issues/499)) ([1ea2249](https://github.com/Aureliolo/synthorg/commit/1ea2249720482e20281424488a6f17bb012a8410))
+
 ## [0.3.0](https://github.com/Aureliolo/synthorg/compare/v0.2.9...v0.3.0) (2026-03-16)
 
 

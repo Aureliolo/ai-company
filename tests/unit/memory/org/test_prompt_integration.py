@@ -48,8 +48,8 @@ class TestOrgPoliciesPromptIntegration:
         assert "All PRs need review" in result.content
         assert "org_policies" in result.sections
 
-    def test_template_version_updated(self) -> None:
-        assert PROMPT_TEMPLATE_VERSION == "1.4.0"
+    def test_template_version_frozen(self) -> None:
+        assert PROMPT_TEMPLATE_VERSION == "1.0.0"
 
     def test_policies_trimmed_under_budget(self) -> None:
         agent = _make_agent()

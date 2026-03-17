@@ -45,6 +45,7 @@ from .loop_helpers import (
     clear_last_turn_tool_calls,
     execute_tool_calls,
     get_tool_definitions,
+    invoke_compaction,
     make_turn_record,
     response_to_message,
 )
@@ -70,6 +71,7 @@ from .plan_parsing import (
 if TYPE_CHECKING:
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.checkpoint.callback import CheckpointCallback
+    from synthorg.engine.compaction.protocol import CompactionCallback
     from synthorg.engine.context import AgentContext
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.providers.models import ToolDefinition
@@ -95,6 +97,9 @@ class PlanExecuteLoop:
             repetitive tool-call patterns within each step and
             intervenes with corrective prompts or early termination.
             ``None`` disables stagnation detection.
+        compaction_callback: Optional async callback invoked at turn
+            boundaries to compress older conversation turns when the
+            context fill level is high.  ``None`` disables compaction.
     """
 
     def __init__(
@@ -104,11 +109,13 @@ class PlanExecuteLoop:
         *,
         approval_gate: ApprovalGate | None = None,
         stagnation_detector: StagnationDetector | None = None,
+        compaction_callback: CompactionCallback | None = None,
     ) -> None:
         self._config = config or PlanExecuteConfig()
         self._checkpoint_callback = checkpoint_callback
         self._approval_gate = approval_gate
         self._stagnation_detector = stagnation_detector
+        self._compaction_callback = compaction_callback
 
     @property
     def config(self) -> PlanExecuteConfig:
@@ -124,6 +131,11 @@ class PlanExecuteLoop:
     def stagnation_detector(self) -> StagnationDetector | None:
         """Return the stagnation detector, or ``None``."""
         return self._stagnation_detector
+
+    @property
+    def compaction_callback(self) -> CompactionCallback | None:
+        """Return the compaction callback, or ``None``."""
+        return self._compaction_callback
 
     def get_loop_type(self) -> str:
         """Return the loop type identifier."""
@@ -672,8 +684,26 @@ class PlanExecuteLoop:
             if isinstance(result, ExecutionResult):
                 return result
             if isinstance(result, tuple):
-                return result
+                ctx, step_ok = result
+                # Run compaction on step-completion turns too
+                compacted = await invoke_compaction(
+                    ctx,
+                    self._compaction_callback,
+                    ctx.turn_count,
+                )
+                if compacted is not None:
+                    ctx = compacted
+                return ctx, step_ok
             ctx = result
+
+            # Context compaction at turn boundaries
+            compacted = await invoke_compaction(
+                ctx,
+                self._compaction_callback,
+                ctx.turn_count,
+            )
+            if compacted is not None:
+                ctx = compacted
 
             # Per-step stagnation detection (step-scoped turns only)
             stag_outcome = await check_stagnation(

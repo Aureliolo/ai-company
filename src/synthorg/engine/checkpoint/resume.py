@@ -69,14 +69,23 @@ def deserialize_and_reconcile(
         )
         raise
 
+    compression = checkpoint_ctx.compression_metadata
+    compaction_note = (
+        f"Note: conversation was previously compacted "
+        f"(archived {compression.archived_turns} turns). "
+        if compression is not None
+        else ""
+    )
+    reconciliation_content = (
+        f"Execution resumed from checkpoint at turn "
+        f"{checkpoint_ctx.turn_count}. {compaction_note}"
+        f"Previous error: {error_message}. "
+        "Review progress and continue."
+    )
+
     reconciliation_msg = ChatMessage(
         role=MessageRole.SYSTEM,
-        content=(
-            f"Execution resumed from checkpoint at turn "
-            f"{checkpoint_ctx.turn_count}. Previous error: "
-            f"{error_message}. "
-            "Review progress and continue."
-        ),
+        content=reconciliation_content,
     )
     logger.debug(
         CHECKPOINT_RECOVERY_RECONCILIATION,
@@ -117,6 +126,7 @@ def make_loop_with_callback(  # noqa: PLR0913
             checkpoint_callback=callback,
             approval_gate=loop.approval_gate,
             stagnation_detector=loop.stagnation_detector,
+            compaction_callback=loop.compaction_callback,
         )
     if isinstance(loop, PlanExecuteLoop):
         return PlanExecuteLoop(
@@ -124,6 +134,7 @@ def make_loop_with_callback(  # noqa: PLR0913
             checkpoint_callback=callback,
             approval_gate=loop.approval_gate,
             stagnation_detector=loop.stagnation_detector,
+            compaction_callback=loop.compaction_callback,
         )
     logger.warning(
         CHECKPOINT_UNSUPPORTED_LOOP,
@@ -158,6 +169,8 @@ async def cleanup_checkpoint_artifacts(
                 execution_id=execution_id,
                 deleted_count=count,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 CHECKPOINT_DELETE_FAILED,
@@ -173,6 +186,8 @@ async def cleanup_checkpoint_artifacts(
                 HEARTBEAT_DELETED,
                 execution_id=execution_id,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.warning(
                 HEARTBEAT_DELETE_FAILED,
