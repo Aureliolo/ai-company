@@ -92,7 +92,8 @@ class DefaultTokenEstimator:
             if msg.tool_calls:
                 for tc in msg.tool_calls:
                     tc_tokens = (
-                        len(tc.name) // 4
+                        len(tc.id) // 4
+                        + len(tc.name) // 4
                         + len(str(tc.arguments)) // 4
                         + self._PER_MESSAGE_OVERHEAD
                     )
