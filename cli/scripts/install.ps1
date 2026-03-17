@@ -39,7 +39,7 @@ $OsArch = $null
 try {
     $OsArch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
 } catch {
-    # Type not available — fall through to env var detection.
+    # Type not available - fall through to env var detection.
     Write-Verbose "RuntimeInformation unavailable; using PROCESSOR_ARCHITECTURE fallback."
 }
 
@@ -50,10 +50,13 @@ if ($null -ne $OsArch) {
         default { Write-Error "Unsupported architecture: $OsArch"; exit 1 }
     }
 } else {
-    $WinArch = switch ($env:PROCESSOR_ARCHITECTURE) {
+    # PROCESSOR_ARCHITEW6432 is set when running 32-bit PowerShell on 64-bit
+    # Windows (WOW64). It contains the real OS architecture.
+    $ArchEnv = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+    $WinArch = switch ($ArchEnv) {
         "AMD64" { "amd64" }
         "ARM64" { "arm64" }
-        default { Write-Error "Unsupported architecture: $env:PROCESSOR_ARCHITECTURE"; exit 1 }
+        default { Write-Error "Unsupported architecture: $ArchEnv"; exit 1 }
     }
 }
 
