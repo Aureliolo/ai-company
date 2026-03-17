@@ -267,9 +267,19 @@ class TestCoordinationWiring:
         await registry.register(agent_alice)
 
         # 5. Build app
+        import synthorg.settings.definitions  # noqa: F401
+        from synthorg.settings.registry import get_registry
+        from synthorg.settings.service import SettingsService
+
         backend = FakePersistenceBackend()
         auth_service = AuthService(AuthConfig(jwt_secret=_TEST_JWT_SECRET))
         _seed_test_users(backend, auth_service)
+
+        settings_service = SettingsService(
+            repository=backend.settings,
+            registry=get_registry(),
+            config=config,
+        )
 
         app = create_app(
             config=config,
@@ -280,6 +290,7 @@ class TestCoordinationWiring:
             task_engine=task_engine,
             coordinator=coordinator,
             agent_registry=registry,
+            settings_service=settings_service,
         )
 
         # 6. Use TestClient
@@ -310,10 +321,7 @@ class TestCoordinationWiring:
             assert body["success"] is True
             data = body["data"]
             assert data["parent_task_id"] == task_id
-            resolved = [
-                t.value for t in CoordinationTopology if t != CoordinationTopology.AUTO
-            ]
-            assert data["topology"] in resolved
+            assert data["topology"] == "sas"
             assert isinstance(data["total_duration_seconds"], float)
             assert isinstance(data["phases"], list)
             assert len(data["phases"]) >= 1

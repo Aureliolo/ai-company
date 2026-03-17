@@ -24,6 +24,7 @@ from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
+from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
 
 logger = get_logger(__name__)
@@ -52,6 +53,7 @@ class AppState:
         "_agent_registry",
         "_approval_gate",
         "_auth_service",
+        "_config_resolver",
         "_coordinator",
         "_cost_tracker",
         "_meeting_orchestrator",
@@ -100,6 +102,11 @@ class AppState:
         self._meeting_orchestrator = meeting_orchestrator
         self._meeting_scheduler = meeting_scheduler
         self._settings_service = settings_service
+        self._config_resolver: ConfigResolver | None = (
+            ConfigResolver(settings_service=settings_service, config=config)
+            if settings_service is not None
+            else None
+        )
         self._ticket_store = WsTicketStore()
         self.startup_time = startup_time
 
@@ -235,6 +242,16 @@ class AppState:
     def has_settings_service(self) -> bool:
         """Check whether the settings service is configured."""
         return self._settings_service is not None
+
+    @property
+    def has_config_resolver(self) -> bool:
+        """Check whether the config resolver is configured."""
+        return self._config_resolver is not None
+
+    @property
+    def config_resolver(self) -> ConfigResolver:
+        """Return the cached config resolver or raise 503."""
+        return self._require_service(self._config_resolver, "config_resolver")
 
     @property
     def has_auth_service(self) -> bool:

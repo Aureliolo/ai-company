@@ -72,3 +72,63 @@ _r.register(
         yaml_path="budget.auto_downgrade.threshold",
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="reset_day",
+        type=SettingType.INTEGER,
+        default="1",
+        description="Day of month when budget resets (1-28)",
+        group="Limits",
+        level=SettingLevel.ADVANCED,
+        min_value=1,
+        max_value=28,
+        yaml_path="budget.reset_day",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="alert_warn_at",
+        type=SettingType.INTEGER,
+        default="75",
+        description="Budget usage percent that triggers a warning alert",
+        group="Alerts",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=100,
+        yaml_path="budget.alerts.warn_at",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="alert_critical_at",
+        type=SettingType.INTEGER,
+        default="90",
+        description="Budget usage percent that triggers a critical alert",
+        group="Alerts",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=100,
+        yaml_path="budget.alerts.critical_at",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.BUDGET,
+        key="alert_hard_stop_at",
+        type=SettingType.INTEGER,
+        default="100",
+        description="Budget usage percent that triggers a hard stop",
+        group="Alerts",
+        level=SettingLevel.ADVANCED,
+        min_value=0,
+        max_value=100,
+        yaml_path="budget.alerts.hard_stop_at",
+    )
+)

@@ -51,7 +51,8 @@ class BudgetController(Controller):
             Budget config envelope.
         """
         app_state: AppState = state.app_state
-        return ApiResponse(data=app_state.config.budget)
+        budget = await app_state.config_resolver.get_budget_config()
+        return ApiResponse(data=budget)
 
     @get("/records")
     async def list_cost_records(

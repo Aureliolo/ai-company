@@ -91,9 +91,11 @@ def main() -> int:
     """Instantiate the app, extract the OpenAPI schema, and write files."""
     try:
         from synthorg.api.app import create_app
+        from synthorg.api.openapi import inject_rfc9457_responses
 
         app = create_app()
         schema_dict = app.openapi_schema.to_schema()
+        schema_dict = inject_rfc9457_responses(schema_dict)
         schema_json = json.dumps(schema_dict, indent=2, ensure_ascii=False) + "\n"
     except Exception as exc:
         print("Failed to export OpenAPI schema:", file=sys.stderr)
