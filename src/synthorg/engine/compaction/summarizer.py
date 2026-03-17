@@ -179,7 +179,7 @@ def _compress(
 
     Returns ``(compressed_conversation, metadata, summary_tokens)``.
     """
-    summary_text = _build_summary(archivable)
+    summary_text = _build_summary(archivable, ctx.execution_id)
     summary_msg = ChatMessage(
         role=MessageRole.SYSTEM,
         content=summary_text,
@@ -201,7 +201,10 @@ def _compress(
     return compressed, metadata, summary_tokens
 
 
-def _build_summary(messages: tuple[ChatMessage, ...]) -> str:
+def _build_summary(
+    messages: tuple[ChatMessage, ...],
+    execution_id: str,
+) -> str:
     """Build a simple text summary from archived messages.
 
     Concatenates assistant message content snippets into a summary
@@ -209,6 +212,7 @@ def _build_summary(messages: tuple[ChatMessage, ...]) -> str:
 
     Args:
         messages: The archived messages to summarize.
+        execution_id: Execution identifier for log correlation.
 
     Returns:
         Summary text describing the archived conversation.
@@ -223,6 +227,7 @@ def _build_summary(messages: tuple[ChatMessage, ...]) -> str:
     if not snippets:
         logger.debug(
             CONTEXT_BUDGET_COMPACTION_FALLBACK,
+            execution_id=execution_id,
             reason="no_assistant_content_for_summary",
             archived_count=len(messages),
         )
