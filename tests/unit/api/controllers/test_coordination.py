@@ -111,8 +111,19 @@ def coordination_client(
         message_bus=EngineMessageBus(),  # type: ignore[arg-type]
     )
 
+    import synthorg.settings.definitions  # noqa: F401 — trigger registration
+    from synthorg.settings.registry import get_registry
+    from synthorg.settings.service import SettingsService
+
+    root_config = RootConfig(company_name="test")
+    settings_service = SettingsService(
+        repository=fake_persistence.settings,
+        registry=get_registry(),
+        config=root_config,
+    )
+
     app = create_app(
-        config=RootConfig(company_name="test"),
+        config=root_config,
         persistence=fake_persistence,
         message_bus=fake_message_bus,
         cost_tracker=CostTracker(),
@@ -120,6 +131,7 @@ def coordination_client(
         task_engine=task_engine,
         coordinator=mock_coordinator,
         agent_registry=agent_registry,
+        settings_service=settings_service,
     )
     with TestClient(app) as client:
         client.headers.update(make_auth_headers("ceo"))

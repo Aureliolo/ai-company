@@ -38,9 +38,12 @@ class CompanyController(Controller):
             Company configuration envelope.
         """
         app_state: AppState = state.app_state
+        company_name = await app_state.config_resolver.get_str(
+            "company", "company_name"
+        )
         config = app_state.config
         data: dict[str, Any] = {
-            "company_name": config.company_name,
+            "company_name": company_name,
             "agents": [a.model_dump(mode="json") for a in config.agents],
             "departments": [d.model_dump(mode="json") for d in config.departments],
         }

@@ -8,6 +8,8 @@ import pytest
 
 from synthorg.core.enums import ToolCategory
 from synthorg.tools._git_base import _sanitize_command
+
+# GitCloneTool is still in _ALL_GIT_TOOL_CLASSES for property tests.
 from synthorg.tools.git_tools import (
     GitBranchTool,
     GitCloneTool,
@@ -444,85 +446,6 @@ class TestGitCommitTool:
         assert result.is_error
 
 
-# ── GitCloneTool ──────────────────────────────────────────────────
-
-
-@pytest.mark.unit
-class TestGitCloneTool:
-    """Tests for git_clone."""
-
-    async def test_clone_local_repo(
-        self,
-        git_repo: Path,
-        workspace: Path,
-        allow_local_clone: None,
-    ) -> None:
-        tool = GitCloneTool(workspace=workspace)
-        result = await tool.execute(
-            arguments={
-                "url": str(git_repo),
-                "directory": "cloned",
-            },
-        )
-        assert not result.is_error
-        assert (workspace / "cloned" / "README.md").exists()
-
-    async def test_clone_with_depth(
-        self,
-        git_repo: Path,
-        workspace: Path,
-        allow_local_clone: None,
-    ) -> None:
-        tool = GitCloneTool(workspace=workspace)
-        result = await tool.execute(
-            arguments={
-                "url": str(git_repo),
-                "directory": "shallow",
-                "depth": 1,
-            },
-        )
-        assert not result.is_error
-
-    async def test_clone_directory_outside_workspace(
-        self,
-        git_repo: Path,
-        workspace: Path,
-        allow_local_clone: None,
-    ) -> None:
-        tool = GitCloneTool(workspace=workspace)
-        result = await tool.execute(
-            arguments={
-                "url": str(git_repo),
-                "directory": "../../outside",
-            },
-        )
-        assert result.is_error
-
-    async def test_clone_invalid_url(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "not-a-real-url-at-all"},
-        )
-        assert result.is_error
-        assert "Invalid clone URL" in result.content
-
-    async def test_clone_with_branch(
-        self,
-        git_repo: Path,
-        workspace: Path,
-        allow_local_clone: None,
-    ) -> None:
-        _run_git(["branch", "test-branch"], git_repo)
-        tool = GitCloneTool(workspace=workspace)
-        result = await tool.execute(
-            arguments={
-                "url": str(git_repo),
-                "directory": "branch-clone",
-                "branch": "test-branch",
-            },
-        )
-        assert not result.is_error
-
-
 # ── Security: flag injection prevention ───────────────────────────
 
 
@@ -585,60 +508,6 @@ class TestFlagInjectionPrevention:
         )
         assert result.is_error
         assert "must not start with '-'" in result.content
-
-
-# ── Security: clone URL validation ───────────────────────────────
-
-
-@pytest.mark.unit
-class TestCloneUrlValidation:
-    """Only remote URL schemes should be allowed for clone."""
-
-    async def test_local_path_blocked(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "/etc/passwd"},
-        )
-        assert result.is_error
-        assert "Invalid clone URL" in result.content
-
-    async def test_file_scheme_blocked(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "file:///etc"},
-        )
-        assert result.is_error
-
-    async def test_ext_protocol_blocked(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "ext::sh -c 'evil'"},
-        )
-        assert result.is_error
-
-    async def test_https_allowed(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "https://example.com/repo.git"},
-        )
-        # URL is valid, clone will fail (no such host) but not from validation
-        assert "Invalid clone URL" not in result.content
-
-    async def test_scp_syntax_allowed(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "git@github.com:user/repo.git"},
-        )
-        assert "Invalid clone URL" not in result.content
-
-    async def test_relative_path_blocked(self, clone_tool: GitCloneTool) -> None:
-        result = await clone_tool.execute(
-            arguments={"url": "../outside-repo"},
-        )
-        assert result.is_error
-
-    async def test_flag_url_blocked(self, clone_tool: GitCloneTool) -> None:
-        """URLs starting with '-' must be rejected (flag injection)."""
-        result = await clone_tool.execute(
-            arguments={"url": "-cfoo=bar@host:path"},
-        )
-        assert result.is_error
-        assert "Invalid clone URL" in result.content
 
 
 # ── Edge cases: detached HEAD ─────────────────────────────────────

@@ -27,6 +27,7 @@ _DEFAULT_CHANNELS: tuple[str, ...] = (
     "#design",
     "#incidents",
     "#code-review",
+    "#settings",
     "#watercooler",
 )
 

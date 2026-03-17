@@ -18,6 +18,13 @@ from synthorg.observability.events.git import (
 )
 from synthorg.tools._git_base import _BaseGitTool
 from synthorg.tools.base import ToolExecutionResult
+from synthorg.tools.git_url_validator import (
+    _CREDENTIAL_RE,
+    ALLOWED_CLONE_SCHEMES,
+    GitCloneNetworkPolicy,
+    is_allowed_clone_scheme,
+    validate_clone_url_host,
+)
 
 if TYPE_CHECKING:
     from synthorg.tools.sandbox.protocol import SandboxBackend
@@ -25,33 +32,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _CLONE_TIMEOUT: Final[float] = 120.0
-_ALLOWED_CLONE_SCHEMES: Final[tuple[str, ...]] = (
-    "https://",
-    "ssh://",
-)
-
-
-def _is_allowed_clone_url(url: str) -> bool:
-    """Check if a clone URL uses an allowed remote scheme.
-
-    Allows standard remote schemes and SCP-like syntax.  Rejects
-    ``file://``, ``ext::``, bare local paths, and URLs starting with
-    ``-`` (flag injection).
-
-    Args:
-        url: Repository URL string to validate.
-
-    Returns:
-        ``True`` if the URL scheme is allowed.
-    """
-    if url.startswith("-"):
-        return False
-    if any(url.startswith(scheme) for scheme in _ALLOWED_CLONE_SCHEMES):
-        return True
-    # SCP-like syntax: user@host:path (e.g. git@github.com:user/repo.git).
-    # Must have @ and : but NOT :: (rejects ext:: protocol) and NOT ://
-    # (rejects URLs that should match a scheme above).
-    return "@" in url and ":" in url and "::" not in url and "://" not in url
 
 
 # ── GitStatusTool ─────────────────────────────────────────────────
@@ -619,8 +599,9 @@ class GitCloneTool(_BaseGitTool):
     Validates that the target directory stays within the workspace
     boundary.  Supports optional branch selection and shallow clone
     depth.  URLs are validated against allowed schemes (https, ssh,
-    git, SCP-like).  Local paths, ``file://``, and plain ``http://``
-    URLs are rejected.
+    SCP-like) and checked for SSRF via hostname/IP validation with
+    async DNS resolution.  Local paths, ``file://``, and plain
+    ``http://`` URLs are rejected.
     """
 
     def __init__(
@@ -628,12 +609,16 @@ class GitCloneTool(_BaseGitTool):
         *,
         workspace: Path,
         sandbox: SandboxBackend | None = None,
+        network_policy: GitCloneNetworkPolicy | None = None,
     ) -> None:
         """Initialize the git_clone tool.
 
         Args:
             workspace: Absolute path to the workspace root.
             sandbox: Optional sandbox backend for subprocess isolation.
+            network_policy: SSRF prevention network policy.  Defaults
+                to blocking all private/reserved IPs with an empty
+                hostname allowlist.
         """
         super().__init__(
             name="git_clone",
@@ -669,6 +654,9 @@ class GitCloneTool(_BaseGitTool):
             workspace=workspace,
             sandbox=sandbox,
         )
+        self._network_policy = (
+            network_policy if network_policy is not None else GitCloneNetworkPolicy()
+        )
 
     async def execute(
         self,
@@ -676,6 +664,10 @@ class GitCloneTool(_BaseGitTool):
         arguments: dict[str, Any],
     ) -> ToolExecutionResult:
         """Clone a repository.
+
+        Validation order: scheme check → argument checks (branch,
+        depth, directory) → SSRF host/IP check → ``git clone``.
+        All cheap local checks run before the async DNS lookup.
 
         Args:
             arguments: Clone URL, optional directory, branch, depth.
@@ -685,12 +677,12 @@ class GitCloneTool(_BaseGitTool):
         """
         url: str = arguments["url"]
 
-        if not _is_allowed_clone_url(url):
+        if not is_allowed_clone_scheme(url):
             logger.warning(
                 GIT_CLONE_URL_REJECTED,
-                url=url,
+                url=_CREDENTIAL_RE.sub(r"\1***@", url),
             )
-            schemes = ", ".join(_ALLOWED_CLONE_SCHEMES)
+            schemes = ", ".join(ALLOWED_CLONE_SCHEMES)
             return ToolExecutionResult(
                 content=(
                     f"Invalid clone URL. Only {schemes} "
@@ -717,5 +709,12 @@ class GitCloneTool(_BaseGitTool):
             if err := self._check_paths([directory]):
                 return err
             args.append(directory)
+
+        # SSRF prevention: validate hostname/IP after all local checks.
+        # NOTE: TOCTOU gap — DNS could change between this check and
+        # git's own resolution.  For high-security deployments, combine
+        # with network-level egress controls (see module docstring).
+        if ssrf_err := await validate_clone_url_host(url, self._network_policy):
+            return ToolExecutionResult(content=ssrf_err, is_error=True)
 
         return await self._run_git(args, deadline=_CLONE_TIMEOUT)

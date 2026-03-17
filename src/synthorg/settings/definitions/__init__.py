@@ -5,6 +5,7 @@ definitions into the global :func:`~synthorg.settings.registry.get_registry`.
 """
 
 from synthorg.settings.definitions import (
+    api,
     backup,
     budget,
     company,
@@ -16,6 +17,7 @@ from synthorg.settings.definitions import (
 )
 
 __all__ = [
+    "api",
     "backup",
     "budget",
     "company",

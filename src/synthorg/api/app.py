@@ -60,6 +60,11 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
+from synthorg.settings.dispatcher import SettingsChangeDispatcher
+from synthorg.settings.subscribers import (
+    MemorySettingsSubscriber,
+    ProviderSettingsSubscriber,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
@@ -169,6 +174,7 @@ def _build_lifecycle(  # noqa: PLR0913
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
+    settings_dispatcher: SettingsChangeDispatcher | None,
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
     app_state: AppState,
@@ -202,6 +208,7 @@ def _build_lifecycle(  # noqa: PLR0913
             persistence,
             message_bus,
             bridge,
+            settings_dispatcher,
             task_engine,
             meeting_scheduler,
             app_state,
@@ -223,6 +230,7 @@ def _build_lifecycle(  # noqa: PLR0913
         await _safe_shutdown(
             task_engine,
             meeting_scheduler,
+            settings_dispatcher,
             bridge,
             message_bus,
             persistence,
@@ -258,6 +266,8 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     started_bus: bool,
     bridge: MessageBusBridge | None = None,
     started_bridge: bool = False,
+    settings_dispatcher: SettingsChangeDispatcher | None = None,
+    started_settings_dispatcher: bool = False,
     task_engine: TaskEngine | None = None,
     started_task_engine: bool = False,
     meeting_scheduler: MeetingScheduler | None = None,
@@ -275,6 +285,12 @@ async def _cleanup_on_failure(  # noqa: PLR0913
             task_engine.stop(),
             API_APP_STARTUP,
             "Cleanup: failed to stop task engine",
+        )
+    if started_settings_dispatcher and settings_dispatcher is not None:
+        await _try_stop(
+            settings_dispatcher.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop settings dispatcher",
         )
     if started_bridge and bridge is not None:
         await _try_stop(
@@ -338,15 +354,16 @@ async def _init_persistence(
             raise
 
 
-async def _safe_startup(  # noqa: PLR0913, C901
+async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
+    settings_dispatcher: SettingsChangeDispatcher | None,
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
     app_state: AppState,
 ) -> None:
-    """Start all services: persistence, bus, bridge, task engine, scheduler.
+    """Start all services: persistence, bus, bridge, dispatcher, task engine, scheduler.
 
     Executes in order; on failure, cleans up already-started
     components in reverse order before re-raising.
@@ -354,6 +371,7 @@ async def _safe_startup(  # noqa: PLR0913, C901
     started_bus = False
     started_bridge = False
     started_persistence = False
+    started_settings_dispatcher = False
     started_task_engine = False
     started_meeting_scheduler = False
     try:
@@ -391,6 +409,16 @@ async def _safe_startup(  # noqa: PLR0913, C901
                 )
                 raise
             started_bridge = True
+        if settings_dispatcher is not None:
+            try:
+                await settings_dispatcher.start()
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Failed to start settings dispatcher",
+                )
+                raise
+            started_settings_dispatcher = True
         if task_engine is not None:
             try:
                 task_engine.start()
@@ -419,6 +447,8 @@ async def _safe_startup(  # noqa: PLR0913, C901
             started_bus=started_bus,
             bridge=bridge,
             started_bridge=started_bridge,
+            settings_dispatcher=settings_dispatcher,
+            started_settings_dispatcher=started_settings_dispatcher,
             task_engine=task_engine,
             started_task_engine=started_task_engine,
             meeting_scheduler=meeting_scheduler,
@@ -427,14 +457,15 @@ async def _safe_startup(  # noqa: PLR0913, C901
         raise
 
 
-async def _safe_shutdown(
+async def _safe_shutdown(  # noqa: PLR0913
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
+    settings_dispatcher: SettingsChangeDispatcher | None,
     bridge: MessageBusBridge | None,
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
 ) -> None:
-    """Stop scheduler, task engine, bridge, message bus and disconnect persistence.
+    """Stop scheduler, task engine, dispatcher, bridge, bus, persistence.
 
     Mirrors ``_cleanup_on_failure`` reverse order: scheduler first (depends on
     orchestrator), then task engine so it can drain queued mutations and
@@ -451,6 +482,12 @@ async def _safe_shutdown(
             task_engine.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop task engine",
+        )
+    if settings_dispatcher is not None:
+        await _try_stop(
+            settings_dispatcher.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop settings dispatcher",
         )
     if bridge is not None:
         await _try_stop(
@@ -470,6 +507,27 @@ async def _safe_shutdown(
             API_APP_SHUTDOWN,
             "Failed to disconnect persistence",
         )
+
+
+# ── 2-Phase Initialisation ────────────────────────────────────────
+#
+# Phase 1 (construct): Litestar bakes middleware, CORS, and routes
+#   into the app at construction time — these read directly from
+#   RootConfig and are immutable after construction.  Bootstrap-only
+#   settings (server_host, server_port, api_prefix, cors_allowed_origins,
+#   rate_limit_exclude_paths, auth_exclude_paths) are therefore NOT
+#   resolved through SettingsService.
+#
+# Phase 2 (on_startup): After persistence connects and migrations
+#   run, SettingsService + ConfigResolver become available.  Runtime-
+#   editable settings (rate_limit_max_requests, rate_limit_time_unit,
+#   jwt_expiry_minutes, min_password_length) are resolved through
+#   ConfigResolver.get_api_config() by consumers that need current
+#   values post-startup.
+#
+#   Note: Litestar's rate-limit middleware reads max_requests and
+#   time_unit at construction; runtime DB changes are visible only
+#   to code calling get_api_config(), not to the middleware itself.
 
 
 def create_app(  # noqa: PLR0913
@@ -587,6 +645,12 @@ def create_app(  # noqa: PLR0913
     )
 
     bridge = _build_bridge(message_bus, channels_plugin)
+    settings_dispatcher = _build_settings_dispatcher(
+        message_bus,
+        settings_service,
+        effective_config,
+        app_state,
+    )
     plugins: list[ChannelsPlugin] = [channels_plugin]
     middleware = _build_middleware(api_config)
 
@@ -600,6 +664,7 @@ def create_app(  # noqa: PLR0913
         persistence,
         message_bus,
         bridge,
+        settings_dispatcher,
         task_engine,
         meeting_scheduler,
         app_state,
@@ -643,6 +708,27 @@ def _build_bridge(
     if message_bus is None:
         return None
     return MessageBusBridge(message_bus, channels_plugin)
+
+
+def _build_settings_dispatcher(
+    message_bus: MessageBus | None,
+    settings_service: SettingsService | None,
+    config: RootConfig,
+    app_state: AppState,
+) -> SettingsChangeDispatcher | None:
+    """Create settings change dispatcher if bus and settings are available."""
+    if message_bus is None or settings_service is None:
+        return None
+    provider_sub = ProviderSettingsSubscriber(
+        config=config,
+        app_state=app_state,
+        settings_service=settings_service,
+    )
+    memory_sub = MemorySettingsSubscriber()
+    return SettingsChangeDispatcher(
+        message_bus=message_bus,
+        subscribers=(provider_sub, memory_sub),
+    )
 
 
 def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
