@@ -646,3 +646,24 @@ class TestValidateCloneUrlHostProperties:
     def test_non_blocked_ipv4_never_flagged(self, ip: ipaddress.IPv4Address) -> None:
         """IPv4 outside blocked ranges is never flagged."""
         assert _is_blocked_ip(str(ip)) is False
+
+    @given(
+        ip=st.ip_addresses(v=6).filter(
+            lambda ip: (
+                not any(ip in net for net in _ALL_BLOCKED_V6)
+                and not (
+                    ip.ipv4_mapped
+                    and any(ip.ipv4_mapped in net for net in _ALL_BLOCKED_V4)
+                )
+            )
+        ),
+    )
+    @settings(max_examples=50)
+    def test_non_blocked_ipv6_never_flagged(self, ip: ipaddress.IPv6Address) -> None:
+        """IPv6 outside blocked ranges is never flagged.
+
+        Excludes IPv6-mapped IPv4 addresses (``::ffff:x.x.x.x``) that
+        map to blocked IPv4 ranges, since ``_is_blocked_ip`` unwraps
+        these before checking.
+        """
+        assert _is_blocked_ip(str(ip)) is False
