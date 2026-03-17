@@ -374,20 +374,16 @@ class SettingsService:
                     source=SettingSource.YAML,
                 )
 
-        if definition.default is None:
-            logger.warning(
-                SETTINGS_NOT_FOUND,
-                namespace=ns,
-                key=key,
-                reason="no_default_configured",
-            )
-            msg = f"Setting {ns}/{key} has no configured value or default"
-            raise SettingNotFoundError(msg)
+        # default=None means "optional — no built-in default".  Return
+        # empty string as a sentinel (callers like ConfigResolver.get_int
+        # will raise ValueError on empty, giving a clear error at the
+        # consumer layer rather than here).
+        default = definition.default if definition.default is not None else ""
         logger.debug(SETTINGS_VALUE_RESOLVED, namespace=ns, key=key, source="default")
         return SettingValue(
             namespace=ns,
             key=key,
-            value=definition.default,
+            value=default,
             source=SettingSource.DEFAULT,
         )
 
