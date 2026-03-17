@@ -102,14 +102,16 @@ class ProviderSettingsSubscriber:
         via ``SETTINGS_SERVICE_SWAP_FAILED`` before re-raising to the
         dispatcher.
         """
-        result = await self._settings_service.get(
-            "providers",
-            "routing_strategy",
-        )
+        attempted_strategy: str | None = None
         try:
+            result = await self._settings_service.get(
+                "providers",
+                "routing_strategy",
+            )
+            attempted_strategy = result.value
             config = self._app_state.config
             new_routing = config.routing.model_copy(
-                update={"strategy": result.value},
+                update={"strategy": attempted_strategy},
             )
             new_router = ModelRouter(
                 new_routing,
@@ -121,7 +123,7 @@ class ProviderSettingsSubscriber:
             logger.error(
                 SETTINGS_SERVICE_SWAP_FAILED,
                 service="model_router",
-                attempted_strategy=result.value,
+                attempted_strategy=attempted_strategy,
                 exc_info=True,
             )
             raise

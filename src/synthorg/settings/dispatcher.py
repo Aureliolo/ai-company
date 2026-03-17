@@ -202,9 +202,9 @@ class SettingsChangeDispatcher:
             return
 
         for subscriber in self._subscribers:
-            if (namespace, key) not in subscriber.watched_keys:
-                continue
             try:
+                if (namespace, key) not in subscriber.watched_keys:
+                    continue
                 await subscriber.on_settings_changed(namespace, key)
                 logger.info(
                     SETTINGS_SUBSCRIBER_NOTIFIED,
@@ -217,7 +217,7 @@ class SettingsChangeDispatcher:
             except Exception:
                 logger.error(
                     SETTINGS_SUBSCRIBER_ERROR,
-                    subscriber=subscriber.subscriber_name,
+                    subscriber=getattr(subscriber, "subscriber_name", "unknown"),
                     namespace=namespace,
                     key=key,
                     exc_info=True,
@@ -251,5 +251,6 @@ def _extract_metadata(
     # restart_required is encoded as str(bool) by SettingsService._publish_change.
     # Default to True (fail-safe): missing/corrupted metadata prevents hot-reload
     # rather than accidentally allowing it for restart-required settings.
-    restart_required = extra.get("restart_required", "True").lower() != "false"
+    restart_raw = extra.get("restart_required", "True")
+    restart_required = str(restart_raw).lower() != "false"
     return _ChangeMetadata(namespace, key, restart_required)
