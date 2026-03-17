@@ -26,7 +26,11 @@ _UUID_PATTERN = re.compile(
 
 _HEX_HASH_PATTERN = re.compile(r"\b[0-9a-f]{32,}\b", re.IGNORECASE)
 
-_VERSION_PATTERN = re.compile(r"\bv?\d+\.\d+\.\d+(?:\.\d+)?\b")
+# Require leading 'v' OR exclude 4-octet dotted quads (IPv4).
+_VERSION_PATTERN = re.compile(
+    r"\bv\d+\.\d+\.\d+(?:\.\d+)?\b"
+    r"|\b\d+\.\d+\.\d+\b(?!\.\d)"
+)
 
 _KEY_VALUE_PATTERN = re.compile(
     r"^\s*([\w.-]+\s*[:=]\s*.*)$",

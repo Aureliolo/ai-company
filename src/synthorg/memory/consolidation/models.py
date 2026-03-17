@@ -118,6 +118,9 @@ class ConsolidationResult(BaseModel):
     @model_validator(mode="after")
     def _validate_archival_consistency(self) -> Self:
         """Ensure archival fields are internally consistent."""
+        if len(self.removed_ids) != len(set(self.removed_ids)):
+            msg = "removed_ids contains duplicates"
+            raise ValueError(msg)
         if self.archived_count > self.consolidated_count:
             msg = (
                 f"archived_count ({self.archived_count}) must not exceed "

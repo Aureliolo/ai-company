@@ -271,6 +271,13 @@ class MemoryConsolidationService:
         for removed_id in removed_ids:
             entry = entry_map.get(removed_id)
             if entry is None:
+                logger.warning(
+                    ARCHIVAL_FAILED,
+                    original_id=removed_id,
+                    agent_id=agent_id,
+                    error="removed_id not found in retrieved entries",
+                    error_type="KeyError",
+                )
                 continue
             success, idx = await self._archive_single_entry(
                 entry,

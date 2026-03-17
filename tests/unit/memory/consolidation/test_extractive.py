@@ -44,6 +44,14 @@ class TestExtractivePreserver:
         assert "host: 192.168.1.100" in result
         assert "port: 5432" in result
 
+    def test_preserves_empty_value_assignments(self) -> None:
+        """Blank-value key=value pairs are preserved verbatim."""
+        preserver = ExtractivePreserver()
+        content = "API_KEY=\nDEBUG=true"
+        result = preserver.extract(content)
+        assert "API_KEY=" in result
+        assert "DEBUG=true" in result
+
     def test_max_facts_limit(self) -> None:
         preserver = ExtractivePreserver(max_facts=3)
         content = "\n".join(f"key_{i}: value_{i}" for i in range(20))

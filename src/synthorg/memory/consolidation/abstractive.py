@@ -107,6 +107,13 @@ class AbstractiveSummarizer:
             raise
         except ProviderError as exc:
             if not exc.is_retryable:
+                logger.warning(
+                    DUAL_MODE_ABSTRACTIVE_FALLBACK,
+                    content_length=len(content),
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    retryable=False,
+                )
                 raise
             logger.warning(
                 DUAL_MODE_ABSTRACTIVE_FALLBACK,

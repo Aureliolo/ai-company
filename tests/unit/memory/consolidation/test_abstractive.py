@@ -176,8 +176,9 @@ class TestAbstractiveSummarizerBatch:
         result = await summarizer.summarize_batch(entries)
         assert len(result) == 2
         assert result[0][1] == "Good summary"
-        # Second entry should have fallback truncation
-        assert len(result[1][1]) > 0
+        # Second entry falls back to truncation; "Second" is shorter
+        # than _TRUNCATE_LENGTH so returned verbatim.
+        assert result[1][1] == "Second"
 
     async def test_empty_batch(self) -> None:
         provider = _make_provider()

@@ -235,6 +235,15 @@ class TestConsolidationResultDualMode:
         assert len(result.mode_assignments) == 2
         assert result.mode_assignments[0].mode == ArchivalMode.ABSTRACTIVE
 
+    def test_duplicate_removed_ids_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="removed_ids contains duplicates",
+        ):
+            ConsolidationResult(
+                removed_ids=("m1", "m1"),
+            )
+
     def test_archival_index_exceeds_count_rejected(self) -> None:
         with pytest.raises(
             ValidationError,
