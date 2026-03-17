@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.3.2](https://github.com/Aureliolo/synthorg/compare/v0.3.1...v0.3.2) (2026-03-17)
+
+
+### Features
+
+* **settings:** route structural data reads through SettingsService ([#525](https://github.com/Aureliolo/synthorg/issues/525)) ([289f604](https://github.com/Aureliolo/synthorg/commit/289f6047681fa8b4eecd227e317360a4f32bf0d4))
+
+
+### Bug Fixes
+
+* **cli:** add fallback arch detection in PowerShell installer ([#529](https://github.com/Aureliolo/synthorg/issues/529)) ([0250afb](https://github.com/Aureliolo/synthorg/commit/0250afbf5aabca8ba8e2e9ca2b01cc8fff3bdf8a)), closes [#521](https://github.com/Aureliolo/synthorg/issues/521)
+
+
+### CI/CD
+
+* bump the minor-and-patch group with 2 updates ([#517](https://github.com/Aureliolo/synthorg/issues/517)) ([46bdd1a](https://github.com/Aureliolo/synthorg/commit/46bdd1a49080ac1127aa99b7729edc92bc9ab195))
+* bump wrangler from 4.73.0 to 4.74.0 in /.github in the minor-and-patch group ([#511](https://github.com/Aureliolo/synthorg/issues/511)) ([903b71a](https://github.com/Aureliolo/synthorg/commit/903b71ae73fd0b7d7642eb17958e6763141478c5))
+
+
+### Maintenance
+
+* bump node from `7a4ef57` to `44bcbf4` in /docker/sandbox ([#515](https://github.com/Aureliolo/synthorg/issues/515)) ([3cbddd1](https://github.com/Aureliolo/synthorg/commit/3cbddd1ce4ef665f20aa3be9d5a67786d7ff7364))
+* bump python from `6a27522` to `584e89d` in /docker/backend ([#513](https://github.com/Aureliolo/synthorg/issues/513)) ([0715910](https://github.com/Aureliolo/synthorg/commit/0715910445ea5db5b924b69c985fee6e3f9a236c))
+* bump python from `6a27522` to `584e89d` in /docker/sandbox ([#514](https://github.com/Aureliolo/synthorg/issues/514)) ([787dfe1](https://github.com/Aureliolo/synthorg/commit/787dfe1cbfa86b3de63a84e4888e6508402660bd))
+* bump the minor-and-patch group across 1 directory with 2 updates ([#527](https://github.com/Aureliolo/synthorg/issues/527)) ([e96c0d4](https://github.com/Aureliolo/synthorg/commit/e96c0d44879aa91f374c969c9522342ca4dd3384))
+* bump the minor-and-patch group across 2 directories with 3 updates ([#512](https://github.com/Aureliolo/synthorg/issues/512)) ([b95ba3d](https://github.com/Aureliolo/synthorg/commit/b95ba3da089c97e137de29e0b287239809db7960))
+* **docker:** disable Mem0 telemetry in container config ([#531](https://github.com/Aureliolo/synthorg/issues/531)) ([9fc29eb](https://github.com/Aureliolo/synthorg/commit/9fc29ebeb8c24e88153a8c9abd54f9772dd79afd))
+* improve GitHub issue templates with structured forms ([#528](https://github.com/Aureliolo/synthorg/issues/528)) ([4fb66cf](https://github.com/Aureliolo/synthorg/commit/4fb66cf45d59523b21461b1ffe0820abac34acfe)), closes [#522](https://github.com/Aureliolo/synthorg/issues/522)
+
 ## [0.3.1](https://github.com/Aureliolo/synthorg/compare/v0.3.0...v0.3.1) (2026-03-17)
 
 
