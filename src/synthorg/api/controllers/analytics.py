@@ -1,5 +1,6 @@
 """Analytics controller — derived read-only metrics."""
 
+import asyncio
 from collections import Counter
 
 from litestar import Controller, get
@@ -56,17 +57,20 @@ class AnalyticsController(Controller):
         """
         app_state: AppState = state.app_state
 
-        all_tasks = await app_state.persistence.tasks.list_tasks()
+        async with asyncio.TaskGroup() as tg:
+            t_tasks = tg.create_task(app_state.persistence.tasks.list_tasks())
+            t_cost = tg.create_task(app_state.cost_tracker.get_total_cost())
+            t_agents = tg.create_task(app_state.config_resolver.get_agents())
+
+        all_tasks = t_tasks.result()
         counts = Counter(t.status.value for t in all_tasks)
         by_status = {s.value: counts.get(s.value, 0) for s in TaskStatus}
-
-        total_cost = await app_state.cost_tracker.get_total_cost()
 
         return ApiResponse(
             data=OverviewMetrics(
                 total_tasks=len(all_tasks),
                 tasks_by_status=by_status,
-                total_agents=len(await app_state.config_resolver.get_agents()),
-                total_cost_usd=total_cost,
+                total_agents=len(t_agents.result()),
+                total_cost_usd=t_cost.result(),
             ),
         )

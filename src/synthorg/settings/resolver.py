@@ -18,7 +18,7 @@ from synthorg.observability.events.settings import (
     SETTINGS_NOT_FOUND,
     SETTINGS_VALIDATION_FAILED,
 )
-from synthorg.settings.errors import SettingNotFoundError
+from synthorg.settings.errors import SettingNotFoundError, SettingsEncryptionError
 
 if TYPE_CHECKING:
     from synthorg.api.config import ApiConfig
@@ -272,9 +272,11 @@ class ConfigResolver:
 
         Returns:
             The parsed JSON value (list, dict, scalar, etc.).
+            Note that JSON ``null`` parses to Python ``None``.
 
         Raises:
             SettingNotFoundError: If the key is not in the registry.
+            SettingsEncryptionError: If the value cannot be decrypted.
             ValueError: If the value is not valid JSON.
         """
         try:
@@ -286,9 +288,18 @@ class ConfigResolver:
                 key=key,
             )
             raise
+        except SettingsEncryptionError:
+            logger.warning(
+                SETTINGS_FETCH_FAILED,
+                namespace=namespace,
+                key=key,
+                reason="decryption_failed",
+                exc_info=True,
+            )
+            raise
         try:
             return json.loads(result.value)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             logger.warning(
                 SETTINGS_VALIDATION_FAILED,
                 namespace=namespace,
@@ -297,13 +308,15 @@ class ConfigResolver:
                 exc_info=True,
             )
             msg = f"Setting {namespace}/{key} has an invalid JSON value"
-            raise ValueError(msg) from None
+            raise ValueError(msg) from exc
 
     async def get_agents(self) -> tuple[AgentConfig, ...]:
         """Resolve agent configurations from settings.
 
-        Falls back to ``RootConfig.agents`` if the setting is
-        empty, contains invalid JSON, or fails schema validation.
+        Falls back to ``RootConfig.agents`` if the setting value is
+        ``None``, contains invalid JSON, or fails schema validation.
+        An explicit empty list ``[]`` is a valid override that returns
+        an empty tuple.
 
         Returns:
             A tuple of ``AgentConfig`` objects.
@@ -311,6 +324,7 @@ class ConfigResolver:
         Raises:
             SettingNotFoundError: If the agents key is not
                 in the registry.
+            SettingsEncryptionError: If decryption fails.
         """
         from pydantic import ValidationError  # noqa: PLC0415
 
@@ -324,9 +338,10 @@ class ConfigResolver:
                 namespace="company",
                 key="agents",
                 reason="invalid_json_fallback",
+                exc_info=True,
             )
             return self._config.agents
-        if not raw:
+        if raw is None:
             return self._config.agents
         if not isinstance(raw, list):
             logger.warning(
@@ -334,6 +349,7 @@ class ConfigResolver:
                 namespace="company",
                 key="agents",
                 reason="expected_list_fallback",
+                value_type=type(raw).__name__,
             )
             return self._config.agents
         try:
@@ -351,8 +367,10 @@ class ConfigResolver:
     async def get_departments(self) -> tuple[Department, ...]:
         """Resolve department configurations from settings.
 
-        Falls back to ``RootConfig.departments`` if the setting
-        is empty, contains invalid JSON, or fails schema validation.
+        Falls back to ``RootConfig.departments`` if the setting value
+        is ``None``, contains invalid JSON, or fails schema validation.
+        An explicit empty list ``[]`` is a valid override that returns
+        an empty tuple.
 
         Returns:
             A tuple of ``Department`` objects.
@@ -360,6 +378,7 @@ class ConfigResolver:
         Raises:
             SettingNotFoundError: If the departments key is not
                 in the registry.
+            SettingsEncryptionError: If decryption fails.
         """
         from pydantic import ValidationError  # noqa: PLC0415
 
@@ -373,9 +392,10 @@ class ConfigResolver:
                 namespace="company",
                 key="departments",
                 reason="invalid_json_fallback",
+                exc_info=True,
             )
             return self._config.departments
-        if not raw:
+        if raw is None:
             return self._config.departments
         if not isinstance(raw, list):
             logger.warning(
@@ -383,6 +403,7 @@ class ConfigResolver:
                 namespace="company",
                 key="departments",
                 reason="expected_list_fallback",
+                value_type=type(raw).__name__,
             )
             return self._config.departments
         try:
@@ -400,15 +421,18 @@ class ConfigResolver:
     async def get_provider_configs(self) -> dict[str, ProviderConfig]:
         """Resolve provider configurations from settings.
 
-        Falls back to ``RootConfig.providers`` if the setting
-        is empty, contains invalid JSON, or fails schema validation.
+        Falls back to ``RootConfig.providers`` if the setting value
+        is ``None``, contains invalid JSON, or fails schema validation.
+        An explicit empty dict ``{}`` is a valid override that returns
+        an empty dict.
 
         Returns:
             A dict of provider name to ``ProviderConfig``.
 
         Raises:
-            SettingNotFoundError: If the configs key is not
+            SettingNotFoundError: If the ``configs`` key is not
                 in the registry.
+            SettingsEncryptionError: If decryption fails.
         """
         from pydantic import ValidationError  # noqa: PLC0415
 
@@ -422,9 +446,10 @@ class ConfigResolver:
                 namespace="providers",
                 key="configs",
                 reason="invalid_json_fallback",
+                exc_info=True,
             )
             return dict(self._config.providers)
-        if not raw:
+        if raw is None:
             return dict(self._config.providers)
         if not isinstance(raw, dict):
             logger.warning(
@@ -432,6 +457,7 @@ class ConfigResolver:
                 namespace="providers",
                 key="configs",
                 reason="expected_dict_fallback",
+                value_type=type(raw).__name__,
             )
             return dict(self._config.providers)
         try:
@@ -679,7 +705,7 @@ def _build_budget_alerts(warn: int, crit: int, stop: int) -> BudgetAlertConfig:
             reason="threshold_ordering",
             exc_info=True,
         )
-        msg = f"Budget alert thresholds violate ordering constraint: {exc}"
+        msg = "Budget alert thresholds must satisfy warn < critical < hard_stop"
         raise ValueError(msg) from exc
 
 

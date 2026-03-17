@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 
 class AgentController(Controller):
-    """Read-only access to agent configurations from ``RootConfig``."""
+    """Read-only access to agent configurations resolved through settings."""
 
     path = "/agents"
     tags = ("agents",)

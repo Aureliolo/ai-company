@@ -38,10 +38,7 @@ class TestProviderController:
 @pytest.mark.unit
 @pytest.mark.timeout(30)
 class TestProviderApiKeySecurity:
-    def test_provider_api_key_stripped(
-        self,
-        root_config: Any,
-    ) -> None:
+    def test_provider_api_key_stripped(self) -> None:
         """Verify api_key is stripped from provider responses."""
         from synthorg.api.controllers.providers import _safe_provider
         from synthorg.config.schema import ProviderConfig
@@ -72,10 +69,16 @@ class TestProviderControllerDbOverride:
         config = RootConfig(company_name="test")
         auth_service: AuthService = _make_test_auth_service()
         _seed_test_users(fake_persistence, auth_service)
+        from cryptography.fernet import Fernet
+
+        from synthorg.settings.encryption import SettingsEncryptor
+
+        encryptor = SettingsEncryptor(Fernet.generate_key())
         settings_service = SettingsService(
             repository=fake_persistence.settings,
             registry=get_registry(),
             config=config,
+            encryptor=encryptor,
         )
 
         db_providers = {

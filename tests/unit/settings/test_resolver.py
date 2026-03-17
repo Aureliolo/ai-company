@@ -12,10 +12,18 @@ from pydantic import BaseModel, ConfigDict
 from synthorg.api.config import RateLimitTimeUnit
 from synthorg.core.enums import AutonomyLevel
 from synthorg.core.types import NotBlankStr
-from synthorg.settings.enums import SettingNamespace, SettingSource
+from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingNotFoundError
 from synthorg.settings.models import SettingValue
 from synthorg.settings.resolver import ConfigResolver, _parse_bool
+from tests.unit.settings.conftest import (
+    FakeAgentConfig,
+    FakeDepartment,
+    FakeProviderConfig,
+)
+from tests.unit.settings.conftest import (
+    make_setting_value as _make_value,
+)
 
 # ── Helpers ───────────────────────────────────────────────────────
 
@@ -24,19 +32,6 @@ class _Color(StrEnum):
     RED = "red"
     GREEN = "green"
     BLUE = "blue"
-
-
-def _make_value(
-    value: str,
-    namespace: SettingNamespace = SettingNamespace.BUDGET,
-    key: str = "total_monthly",
-) -> SettingValue:
-    return SettingValue(
-        namespace=namespace,
-        key=key,
-        value=value,
-        source=SettingSource.DEFAULT,
-    )
 
 
 class _BudgetAlerts(BaseModel):
@@ -109,37 +104,14 @@ class _FakeApiConfig(BaseModel):
     api_prefix: NotBlankStr = "/api/v1"
 
 
-class _CompanyConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-
-class _FakeAgentConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    name: str = "agent-1"
-    role: str = "developer"
-    department: str = "eng"
-
-
-class _FakeDepartment(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    name: str = "eng"
-    head: str = "lead"
-
-
-class _FakeProviderConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    driver: str = "litellm"
-
-
 class _FakeRootConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
     api: _FakeApiConfig = _FakeApiConfig()
     budget: _BudgetConfig = _BudgetConfig()
     coordination: _CoordinationSection = _CoordinationSection()
-    config: _CompanyConfig = _CompanyConfig()
-    agents: tuple[_FakeAgentConfig, ...] = ()
-    departments: tuple[_FakeDepartment, ...] = ()
-    providers: dict[str, _FakeProviderConfig] = {}
+    agents: tuple[FakeAgentConfig, ...] = ()
+    departments: tuple[FakeDepartment, ...] = ()
+    providers: dict[str, FakeProviderConfig] = {}
 
 
 # ── Fixtures ──────────────────────────────────────────────────────

@@ -40,10 +40,13 @@ class CompanyController(Controller):
         """
         app_state: AppState = state.app_state
         resolver = app_state.config_resolver
-        async with asyncio.TaskGroup() as tg:
-            t_name = tg.create_task(resolver.get_str("company", "company_name"))
-            t_agents = tg.create_task(resolver.get_agents())
-            t_depts = tg.create_task(resolver.get_departments())
+        try:
+            async with asyncio.TaskGroup() as tg:
+                t_name = tg.create_task(resolver.get_str("company", "company_name"))
+                t_agents = tg.create_task(resolver.get_agents())
+                t_depts = tg.create_task(resolver.get_departments())
+        except ExceptionGroup as eg:
+            raise eg.exceptions[0] from eg
         data: dict[str, Any] = {
             "company_name": t_name.result(),
             "agents": [a.model_dump(mode="json") for a in t_agents.result()],

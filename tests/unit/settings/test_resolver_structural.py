@@ -11,50 +11,24 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import BaseModel, ConfigDict
 
-from synthorg.settings.enums import SettingNamespace, SettingSource
+from synthorg.settings.enums import SettingNamespace
 from synthorg.settings.errors import SettingNotFoundError
-from synthorg.settings.models import SettingValue
 from synthorg.settings.resolver import ConfigResolver
-
-# ── Helpers ───────────────────────────────────────────────────────
-
-
-def _make_value(
-    value: str,
-    namespace: SettingNamespace = SettingNamespace.BUDGET,
-    key: str = "total_monthly",
-) -> SettingValue:
-    return SettingValue(
-        namespace=namespace,
-        key=key,
-        value=value,
-        source=SettingSource.DEFAULT,
-    )
-
-
-class _FakeAgentConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    name: str = "agent-1"
-    role: str = "developer"
-    department: str = "eng"
-
-
-class _FakeDepartment(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    name: str = "eng"
-    head: str = "lead"
-
-
-class _FakeProviderConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    driver: str = "litellm"
+from tests.unit.settings.conftest import (
+    FakeAgentConfig,
+    FakeDepartment,
+    FakeProviderConfig,
+)
+from tests.unit.settings.conftest import (
+    make_setting_value as _make_value,
+)
 
 
 class _FakeRootConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
-    agents: tuple[_FakeAgentConfig, ...] = ()
-    departments: tuple[_FakeDepartment, ...] = ()
-    providers: dict[str, _FakeProviderConfig] = {}
+    agents: tuple[FakeAgentConfig, ...] = ()
+    departments: tuple[FakeDepartment, ...] = ()
+    providers: dict[str, FakeProviderConfig] = {}
 
 
 # ── Fixtures ──────────────────────────────────────────────────────
@@ -155,16 +129,14 @@ class TestGetAgents:
         assert result[0].name == "alice"
         assert result[1].name == "bob"
 
-    async def test_empty_list_falls_back_to_config(
-        self, mock_settings: AsyncMock
-    ) -> None:
-        """Empty JSON list -> fall back to config.agents."""
+    async def test_empty_list_is_valid_override(self, mock_settings: AsyncMock) -> None:
+        """Empty JSON list is a valid override returning empty tuple."""
         mock_settings.get.return_value = _make_value(
             "[]",
             namespace=SettingNamespace.COMPANY,
             key="agents",
         )
-        agent = _FakeAgentConfig(name="fallback-agent")
+        agent = FakeAgentConfig(name="fallback-agent")
         config = _FakeRootConfig(agents=(agent,))
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -172,8 +144,7 @@ class TestGetAgents:
         )
         result = await resolver.get_agents()
 
-        assert len(result) == 1
-        assert result[0].name == "fallback-agent"
+        assert result == ()
 
     async def test_invalid_json_falls_back_to_config(
         self, mock_settings: AsyncMock
@@ -184,7 +155,7 @@ class TestGetAgents:
             namespace=SettingNamespace.COMPANY,
             key="agents",
         )
-        agent = _FakeAgentConfig(name="safe-agent")
+        agent = FakeAgentConfig(name="safe-agent")
         config = _FakeRootConfig(agents=(agent,))
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -211,7 +182,7 @@ class TestGetAgents:
             namespace=SettingNamespace.COMPANY,
             key="agents",
         )
-        agent = _FakeAgentConfig(name="schema-fallback")
+        agent = FakeAgentConfig(name="schema-fallback")
         config = _FakeRootConfig(agents=(agent,))
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -231,7 +202,7 @@ class TestGetAgents:
             namespace=SettingNamespace.COMPANY,
             key="agents",
         )
-        agent = _FakeAgentConfig(name="shape-fallback")
+        agent = FakeAgentConfig(name="shape-fallback")
         config = _FakeRootConfig(agents=(agent,))
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -274,15 +245,14 @@ class TestGetDepartments:
         assert isinstance(result[0], Department)
         assert result[0].name == "engineering"
 
-    async def test_empty_list_falls_back_to_config(
-        self, mock_settings: AsyncMock
-    ) -> None:
+    async def test_empty_list_is_valid_override(self, mock_settings: AsyncMock) -> None:
+        """Empty JSON list is a valid override returning empty tuple."""
         mock_settings.get.return_value = _make_value(
             "[]",
             namespace=SettingNamespace.COMPANY,
             key="departments",
         )
-        dept = _FakeDepartment(name="fallback-dept")
+        dept = FakeDepartment(name="fallback-dept")
         config = _FakeRootConfig(departments=(dept,))
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -290,8 +260,7 @@ class TestGetDepartments:
         )
         result = await resolver.get_departments()
 
-        assert len(result) == 1
-        assert result[0].name == "fallback-dept"
+        assert result == ()
 
     async def test_invalid_json_falls_back_to_config(
         self, mock_settings: AsyncMock
@@ -301,7 +270,7 @@ class TestGetDepartments:
             namespace=SettingNamespace.COMPANY,
             key="departments",
         )
-        dept = _FakeDepartment(name="safe-dept")
+        dept = FakeDepartment(name="safe-dept")
         config = _FakeRootConfig(departments=(dept,))
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -328,7 +297,7 @@ class TestGetDepartments:
             namespace=SettingNamespace.COMPANY,
             key="departments",
         )
-        dept = _FakeDepartment(name="schema-dept")
+        dept = FakeDepartment(name="schema-dept")
         config = _FakeRootConfig(departments=(dept,))
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -338,6 +307,26 @@ class TestGetDepartments:
 
         assert len(result) == 1
         assert result[0].name == "schema-dept"
+
+    async def test_wrong_json_shape_falls_back_to_config(
+        self, mock_settings: AsyncMock
+    ) -> None:
+        """JSON dict instead of list -> fall back."""
+        mock_settings.get.return_value = _make_value(
+            '{"name": "eng"}',
+            namespace=SettingNamespace.COMPANY,
+            key="departments",
+        )
+        dept = FakeDepartment(name="shape-dept")
+        config = _FakeRootConfig(departments=(dept,))
+        resolver = ConfigResolver(
+            settings_service=mock_settings,
+            config=config,  # type: ignore[arg-type]
+        )
+        result = await resolver.get_departments()
+
+        assert len(result) == 1
+        assert result[0].name == "shape-dept"
 
 
 # ── Composed Read: Provider Configs ──────────────────────────────
@@ -371,9 +360,8 @@ class TestGetProviderConfigs:
         assert isinstance(result["test-provider"], ProviderConfig)
         assert result["test-provider"].driver == "litellm"
 
-    async def test_empty_dict_falls_back_to_config(
-        self, mock_settings: AsyncMock
-    ) -> None:
+    async def test_empty_dict_is_valid_override(self, mock_settings: AsyncMock) -> None:
+        """Empty JSON dict is a valid override returning empty dict."""
         mock_settings.get.return_value = _make_value(
             "{}",
             namespace=SettingNamespace.PROVIDERS,
@@ -381,7 +369,7 @@ class TestGetProviderConfigs:
         )
         config = _FakeRootConfig(
             providers={
-                "fallback": _FakeProviderConfig(driver="test-driver"),
+                "fallback": FakeProviderConfig(driver="test-driver"),
             },
         )
         resolver = ConfigResolver(
@@ -390,8 +378,7 @@ class TestGetProviderConfigs:
         )
         result = await resolver.get_provider_configs()
 
-        assert "fallback" in result
-        assert result["fallback"].driver == "test-driver"
+        assert result == {}
 
     async def test_invalid_json_falls_back_to_config(
         self, mock_settings: AsyncMock
@@ -402,7 +389,7 @@ class TestGetProviderConfigs:
             key="configs",
         )
         config = _FakeRootConfig(
-            providers={"safe": _FakeProviderConfig()},
+            providers={"safe": FakeProviderConfig()},
         )
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -429,7 +416,7 @@ class TestGetProviderConfigs:
             key="configs",
         )
         config = _FakeRootConfig(
-            providers={"safe": _FakeProviderConfig()},
+            providers={"safe": FakeProviderConfig()},
         )
         resolver = ConfigResolver(
             settings_service=mock_settings,
@@ -449,7 +436,7 @@ class TestGetProviderConfigs:
             key="configs",
         )
         config = _FakeRootConfig(
-            providers={"shape-safe": _FakeProviderConfig()},
+            providers={"shape-safe": FakeProviderConfig()},
         )
         resolver = ConfigResolver(
             settings_service=mock_settings,

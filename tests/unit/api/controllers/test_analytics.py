@@ -85,4 +85,7 @@ class TestAnalyticsControllerDbOverride:
             client.headers.update(make_auth_headers("ceo"))
             resp = client.get("/api/v1/analytics/overview")
             body = resp.json()
+            assert body["success"] is True
             assert body["data"]["total_agents"] == 3
+            assert body["data"]["total_tasks"] == 0
+            assert body["data"]["total_cost_usd"] == 0.0

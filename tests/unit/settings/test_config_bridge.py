@@ -45,7 +45,7 @@ class TestExtractFromConfig:
 
     def test_nested_bool(self) -> None:
         config = _FakeConfig()
-        assert extract_from_config(config, "budget.enabled") == "True"
+        assert extract_from_config(config, "budget.enabled") == "true"
 
     def test_missing_top_level(self) -> None:
         config = _FakeConfig()
@@ -120,8 +120,27 @@ class TestSerializeValue:
     def test_scalar_float_unchanged(self) -> None:
         assert _serialize_value(3.14) == "3.14"
 
-    def test_scalar_bool_unchanged(self) -> None:
-        assert _serialize_value(True) == "True"
+    def test_scalar_bool_lowercase_json(self) -> None:
+        assert _serialize_value(True) == "true"
+        assert _serialize_value(False) == "false"
+
+    def test_mixed_list_models_and_scalars(self) -> None:
+        items = [_ItemModel(name="x", value=1), "plain", 42]
+        result = _serialize_value(items)
+        parsed = json.loads(result)
+        assert parsed == [{"name": "x", "value": 1}, "plain", 42]
+
+    def test_mixed_dict_models_and_scalars(self) -> None:
+        providers: dict[str, object] = {
+            "a": _InnerConfig(daily_limit=5.0),
+            "b": "just-a-string",
+        }
+        result = _serialize_value(providers)
+        parsed = json.loads(result)
+        assert parsed == {
+            "a": {"daily_limit": 5.0, "enabled": True},
+            "b": "just-a-string",
+        }
 
 
 @pytest.mark.unit

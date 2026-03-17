@@ -54,5 +54,6 @@ _r.register(
         description="LLM provider configurations (JSON object keyed by name)",
         group="General",
         yaml_path="providers",
+        sensitive=True,
     )
 )
