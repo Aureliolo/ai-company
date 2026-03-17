@@ -251,7 +251,7 @@ class AppState:
     @property
     def config_resolver(self) -> ConfigResolver:
         """Return the cached config resolver or raise 503."""
-        return self._require_service(self._config_resolver, "settings_service")
+        return self._require_service(self._config_resolver, "config_resolver")
 
     @property
     def has_auth_service(self) -> bool:

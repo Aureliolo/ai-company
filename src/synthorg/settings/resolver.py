@@ -103,7 +103,15 @@ class ConfigResolver:
             SettingNotFoundError: If the key is not in the registry.
             ValueError: If the value cannot be parsed as an integer.
         """
-        result = await self._settings.get(namespace, key)
+        try:
+            result = await self._settings.get(namespace, key)
+        except SettingNotFoundError:
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=namespace,
+                key=key,
+            )
+            raise
         try:
             return int(result.value)
         except ValueError:
@@ -131,7 +139,15 @@ class ConfigResolver:
             SettingNotFoundError: If the key is not in the registry.
             ValueError: If the value cannot be parsed as a float.
         """
-        result = await self._settings.get(namespace, key)
+        try:
+            result = await self._settings.get(namespace, key)
+        except SettingNotFoundError:
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=namespace,
+                key=key,
+            )
+            raise
         try:
             return float(result.value)
         except ValueError:
@@ -161,7 +177,15 @@ class ConfigResolver:
             SettingNotFoundError: If the key is not in the registry.
             ValueError: If the value is not a recognized boolean string.
         """
-        result = await self._settings.get(namespace, key)
+        try:
+            result = await self._settings.get(namespace, key)
+        except SettingNotFoundError:
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=namespace,
+                key=key,
+            )
+            raise
         try:
             return _parse_bool(result.value)
         except ValueError:
@@ -195,7 +219,15 @@ class ConfigResolver:
             SettingNotFoundError: If the key is not in the registry.
             ValueError: If the value does not match any enum member.
         """
-        result = await self._settings.get(namespace, key)
+        try:
+            result = await self._settings.get(namespace, key)
+        except SettingNotFoundError:
+            logger.warning(
+                SETTINGS_NOT_FOUND,
+                namespace=namespace,
+                key=key,
+            )
+            raise
         try:
             return enum_cls(result.value)
         except ValueError:

@@ -252,6 +252,13 @@ class SettingsService:
             )
             # Cache only non-sensitive values to avoid holding
             # plaintext secrets in memory.
+            #
+            # Direct dict mutation is intentional: the previous
+            # copy-on-write pattern {**self._cache, k: v} had a
+            # TOCTOU race under concurrent TaskGroup reads (the
+            # spread sees a stale snapshot after an await).  In
+            # asyncio's cooperative concurrency, dict item assignment
+            # is a single-opcode operation and safe without locking.
             if not definition.sensitive:
                 self._cache[cache_key] = setting_value
             logger.debug(
