@@ -48,12 +48,69 @@ class RetentionConfig(BaseModel):
         return self
 
 
+class DualModeConfig(BaseModel):
+    """Configuration for dual-mode archival.
+
+    Controls density-aware archival: LLM abstractive summaries for
+    sparse/conversational content vs extractive preservation (verbatim
+    key facts + start/mid/end anchors) for dense/factual content.
+
+    Attributes:
+        enabled: Whether dual-mode density classification is active.
+            When ``False``, all entries use abstractive mode.
+        dense_threshold: Density score threshold for DENSE classification
+            (0.0 = classify everything as dense, 1.0 = everything sparse).
+        summarization_model: Model ID for abstractive summarization.
+        max_summary_tokens: Maximum tokens for LLM summary responses.
+        max_facts: Maximum number of extracted key facts for extractive
+            mode.
+        anchor_length: Character length for each extractive anchor
+            snippet (start/mid/end).
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    enabled: bool = Field(
+        default=True,
+        description="Whether dual-mode density classification is active",
+    )
+    dense_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Density score threshold for DENSE classification",
+    )
+    summarization_model: str = Field(
+        default="",
+        description="Model ID for abstractive summarization",
+    )
+    max_summary_tokens: int = Field(
+        default=200,
+        ge=50,
+        le=1000,
+        description="Maximum tokens for LLM summary responses",
+    )
+    max_facts: int = Field(
+        default=20,
+        ge=1,
+        le=100,
+        description="Maximum extracted key facts for extractive mode",
+    )
+    anchor_length: int = Field(
+        default=150,
+        ge=50,
+        le=500,
+        description="Character length for each extractive anchor",
+    )
+
+
 class ArchivalConfig(BaseModel):
     """Archival configuration.
 
     Attributes:
         enabled: Whether archival is enabled.
         age_threshold_days: Minimum age in days before archival.
+        dual_mode: Dual-mode archival configuration.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -66,6 +123,10 @@ class ArchivalConfig(BaseModel):
         default=90,
         ge=1,
         description="Minimum age in days before archival",
+    )
+    dual_mode: DualModeConfig = Field(
+        default_factory=DualModeConfig,
+        description="Dual-mode archival configuration",
     )
 
 

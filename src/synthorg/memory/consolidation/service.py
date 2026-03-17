@@ -9,7 +9,12 @@ from datetime import UTC, datetime
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.consolidation.archival import ArchivalStore  # noqa: TC001
 from synthorg.memory.consolidation.config import ConsolidationConfig  # noqa: TC001
-from synthorg.memory.consolidation.models import ArchivalEntry, ConsolidationResult
+from synthorg.memory.consolidation.models import (
+    ArchivalEntry,
+    ArchivalIndexEntry,
+    ArchivalModeAssignment,
+    ConsolidationResult,
+)
 from synthorg.memory.consolidation.retention import RetentionEnforcer
 from synthorg.memory.consolidation.strategy import (
     ConsolidationStrategy,  # noqa: TC001
@@ -20,6 +25,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.consolidation import (
     ARCHIVAL_ENTRY_STORED,
     ARCHIVAL_FAILED,
+    ARCHIVAL_INDEX_BUILT,
     CONSOLIDATION_COMPLETE,
     CONSOLIDATION_FAILED,
     CONSOLIDATION_SKIPPED,
@@ -98,15 +104,18 @@ class MemoryConsolidationService:
             )
 
             if self._archival_store is not None and self._config.archival.enabled:
-                archived = await self._archive_entries(
+                archived, index = await self._archive_entries(
                     agent_id,
                     entries,
                     result.removed_ids,
+                    result.mode_assignments,
                 )
                 result = ConsolidationResult(
                     removed_ids=result.removed_ids,
                     summary_id=result.summary_id,
                     archived_count=archived,
+                    mode_assignments=result.mode_assignments,
+                    archival_index=index,
                 )
         except Exception as exc:
             logger.exception(
@@ -229,7 +238,8 @@ class MemoryConsolidationService:
         agent_id: NotBlankStr,
         all_entries: tuple[MemoryEntry, ...],
         removed_ids: tuple[NotBlankStr, ...],
-    ) -> int:
+        mode_assignments: tuple[ArchivalModeAssignment, ...] = (),
+    ) -> tuple[int, tuple[ArchivalIndexEntry, ...]]:
         """Archive removed entries to cold storage.
 
         Per-entry failures are logged at WARNING and skipped so that a
@@ -240,20 +250,26 @@ class MemoryConsolidationService:
             agent_id: Agent identifier.
             all_entries: All retrieved entries (to find removed ones).
             removed_ids: IDs of entries that were removed.
+            mode_assignments: Per-entry archival mode assignments from
+                the strategy (empty for strategies without dual-mode).
 
         Returns:
-            Number of entries successfully archived.
+            Tuple of (archived count, archival index entries).
         """
         if self._archival_store is None:
-            return 0
+            return 0, ()
+
+        mode_map = {a.original_id: a.mode for a in mode_assignments}
         removed_set = set(removed_ids)
         now = datetime.now(UTC)
         archived = 0
+        index_entries: list[ArchivalIndexEntry] = []
 
         for entry in all_entries:
             if entry.id not in removed_set:
                 continue
 
+            archival_mode = mode_map.get(entry.id)
             archival_entry = ArchivalEntry(
                 original_id=entry.id,
                 agent_id=entry.agent_id,
@@ -262,9 +278,12 @@ class MemoryConsolidationService:
                 metadata=entry.metadata,
                 created_at=entry.created_at,
                 archived_at=now,
+                archival_mode=archival_mode,
             )
             try:
-                await self._archival_store.archive(archival_entry)
+                archival_id = await self._archival_store.archive(
+                    archival_entry,
+                )
             except Exception as exc:
                 logger.warning(
                     ARCHIVAL_FAILED,
@@ -275,10 +294,27 @@ class MemoryConsolidationService:
                 )
                 continue
             archived += 1
+            if archival_mode is not None:
+                index_entries.append(
+                    ArchivalIndexEntry(
+                        original_id=entry.id,
+                        archival_id=archival_id,
+                        mode=archival_mode,
+                    ),
+                )
             logger.debug(
                 ARCHIVAL_ENTRY_STORED,
                 original_id=entry.id,
                 agent_id=agent_id,
+                archival_mode=archival_mode,
             )
 
-        return archived
+        index = tuple(index_entries)
+        if index:
+            logger.debug(
+                ARCHIVAL_INDEX_BUILT,
+                agent_id=agent_id,
+                index_size=len(index),
+            )
+
+        return archived, index

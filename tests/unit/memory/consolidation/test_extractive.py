@@ -1,0 +1,81 @@
+"""Tests for extractive preservation."""
+
+import pytest
+
+from synthorg.memory.consolidation.extractive import ExtractivePreserver
+
+pytestmark = pytest.mark.timeout(30)
+
+
+@pytest.mark.unit
+class TestExtractivePreserver:
+    """ExtractivePreserver extraction behaviour."""
+
+    def test_extracts_anchors(self) -> None:
+        preserver = ExtractivePreserver(anchor_length=20)
+        content = "A" * 100
+        result = preserver.extract(content)
+        assert "[START]" in result
+        assert "[MID]" in result
+        assert "[END]" in result
+
+    def test_extracts_identifiers(self) -> None:
+        preserver = ExtractivePreserver()
+        content = (
+            "The user_id is abc-123-def and the commit hash is "
+            "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2."
+        )
+        result = preserver.extract(content)
+        assert "[Extractive preservation]" in result
+        assert "Key facts:" in result
+
+    def test_extracts_urls(self) -> None:
+        preserver = ExtractivePreserver()
+        content = "API endpoint: https://api.example.com/v2/users/12345"
+        result = preserver.extract(content)
+        assert "https://api.example.com/v2/users/12345" in result
+
+    def test_extracts_key_value_pairs(self) -> None:
+        preserver = ExtractivePreserver()
+        content = "host: 192.168.1.100\nport: 5432\ntimeout: 30"
+        result = preserver.extract(content)
+        assert "Key facts:" in result
+
+    def test_max_facts_limit(self) -> None:
+        preserver = ExtractivePreserver(max_facts=3)
+        content = "\n".join(f"key_{i}: value_{i}" for i in range(20))
+        result = preserver.extract(content)
+        facts_line = [
+            line for line in result.splitlines() if line.startswith("Key facts:")
+        ]
+        assert len(facts_line) == 1
+        # Count comma-separated facts (may be fewer than 20)
+        facts = facts_line[0].removeprefix("Key facts: ").split(", ")
+        assert len(facts) <= 3
+
+    def test_anchor_length_parameter(self) -> None:
+        preserver = ExtractivePreserver(anchor_length=50)
+        content = "X" * 500
+        result = preserver.extract(content)
+        # Each anchor should be at most anchor_length chars
+        for line in result.splitlines():
+            if line.startswith(("[START]", "[END]")):
+                # Anchor content (after tag + space)
+                anchor_text = line.split("] ", 1)[1] if "] " in line else ""
+                assert len(anchor_text) <= 53  # 50 + "..."
+
+    def test_short_content(self) -> None:
+        """Content shorter than anchor_length still works."""
+        preserver = ExtractivePreserver(anchor_length=150)
+        content = "short text"
+        result = preserver.extract(content)
+        assert "[Extractive preservation]" in result
+        assert "short text" in result
+
+    def test_invalid_max_facts(self) -> None:
+        with pytest.raises(ValueError, match="max_facts"):
+            ExtractivePreserver(max_facts=0)
+
+    def test_invalid_anchor_length(self) -> None:
+        with pytest.raises(ValueError, match="anchor_length"):
+            ExtractivePreserver(anchor_length=0)

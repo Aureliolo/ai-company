@@ -1,9 +1,10 @@
 """Memory consolidation domain models.
 
 Frozen Pydantic models for consolidation results, archival entries,
-and retention rules.
+retention rules, and dual-mode archival types.
 """
 
+from enum import StrEnum
 from typing import Self
 
 from pydantic import (
@@ -20,6 +21,62 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.memory.models import MemoryMetadata
 
 
+class ArchivalMode(StrEnum):
+    """How a memory entry was archived during consolidation.
+
+    Determines the preservation strategy applied before archival.
+    """
+
+    ABSTRACTIVE = "abstractive"
+    """LLM-generated summary for sparse/conversational content."""
+
+    EXTRACTIVE = "extractive"
+    """Verbatim key-fact extraction for dense/factual content."""
+
+
+class ArchivalModeAssignment(BaseModel):
+    """Maps a removed memory entry to the archival mode applied.
+
+    Attributes:
+        original_id: ID of the removed memory entry.
+        mode: Archival mode applied to this entry.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    original_id: NotBlankStr = Field(
+        description="ID of the removed memory entry",
+    )
+    mode: ArchivalMode = Field(
+        description="Archival mode applied to this entry",
+    )
+
+
+class ArchivalIndexEntry(BaseModel):
+    """Maps a removed memory entry to its archival store ID.
+
+    Enables deterministic index-based restore: agents can look up
+    their own archived entries by original ID without semantic search.
+
+    Attributes:
+        original_id: ID of the original memory entry.
+        archival_id: ID assigned by the archival store.
+        mode: Archival mode used for this entry.
+    """
+
+    model_config = ConfigDict(frozen=True, allow_inf_nan=False)
+
+    original_id: NotBlankStr = Field(
+        description="ID of the original memory entry",
+    )
+    archival_id: NotBlankStr = Field(
+        description="ID assigned by the archival store",
+    )
+    mode: ArchivalMode = Field(
+        description="Archival mode used for this entry",
+    )
+
+
 class ConsolidationResult(BaseModel):
     """Result of a memory consolidation run.
 
@@ -28,6 +85,10 @@ class ConsolidationResult(BaseModel):
         summary_id: ID of the summary entry (if created).
         archived_count: Number of entries archived.
         consolidated_count: Derived from ``len(removed_ids)``.
+        mode_assignments: Per-entry archival mode assignments (set by
+            strategy, empty for strategies that don't classify density).
+        archival_index: Maps original memory IDs to archival store IDs
+            (built by service after archival completes).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -44,6 +105,14 @@ class ConsolidationResult(BaseModel):
         default=0,
         ge=0,
         description="Number of entries archived",
+    )
+    mode_assignments: tuple[ArchivalModeAssignment, ...] = Field(
+        default=(),
+        description="Per-entry archival mode assignments",
+    )
+    archival_index: tuple[ArchivalIndexEntry, ...] = Field(
+        default=(),
+        description="Original-to-archival ID mapping",
     )
 
     @computed_field  # type: ignore[prop-decorator]
@@ -64,6 +133,8 @@ class ArchivalEntry(BaseModel):
         metadata: Associated metadata.
         created_at: Original creation timestamp.
         archived_at: When this entry was archived.
+        archival_mode: How this entry was archived (``None`` for
+            legacy entries created before dual-mode archival).
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -78,6 +149,10 @@ class ArchivalEntry(BaseModel):
     )
     created_at: AwareDatetime = Field(description="Original creation timestamp")
     archived_at: AwareDatetime = Field(description="When this entry was archived")
+    archival_mode: ArchivalMode | None = Field(
+        default=None,
+        description="Archival mode used (None for legacy entries)",
+    )
 
     @model_validator(mode="after")
     def _validate_temporal_order(self) -> Self:
