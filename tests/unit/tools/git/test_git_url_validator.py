@@ -2,6 +2,7 @@
 
 import asyncio
 import ipaddress
+import socket
 from unittest.mock import AsyncMock
 
 import pytest
@@ -355,14 +356,20 @@ def _dns_result(
     *addrs: str,
 ) -> list[tuple[int, int, int, str, tuple[str, int]]]:
     """Build a fake getaddrinfo result list (AF_INET)."""
-    return [(2, 1, 6, "", (addr, 0)) for addr in addrs]
+    return [
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (addr, 0))
+        for addr in addrs
+    ]
 
 
 def _dns_result_v6(
     *addrs: str,
 ) -> list[tuple[int, int, int, str, tuple[str, int, int, int]]]:
     """Build a fake getaddrinfo result list (AF_INET6)."""
-    return [(10, 1, 6, "", (addr, 0, 0, 0)) for addr in addrs]
+    return [
+        (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (addr, 0, 0, 0))
+        for addr in addrs
+    ]
 
 
 @pytest.mark.unit
