@@ -8,6 +8,10 @@ from litestar.testing import TestClient
 
 from synthorg.api.app import create_app
 from synthorg.api.middleware import _SECURITY_HEADERS
+from synthorg.api.state import AppState
+from synthorg.budget.tracker import CostTracker
+from synthorg.communication.bus_memory import InMemoryMessageBus
+from synthorg.engine.task_engine import TaskEngine
 
 
 @pytest.mark.unit
@@ -326,3 +330,269 @@ class TestTryStop:
 
         with pytest.raises(RecursionError):
             await _try_stop(recurse(), "event", "error msg")
+
+
+@pytest.mark.unit
+class TestAutoWirePhase1:
+    """Phase 1 auto-wiring: services created at construction time."""
+
+    def test_auto_wires_message_bus(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Message bus is auto-wired when not provided."""
+        monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
+        app = create_app()
+        state: AppState = app.state["app_state"]
+        assert state.has_message_bus
+
+    def test_auto_wired_message_bus_is_in_memory(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Auto-wired message bus is InMemoryMessageBus."""
+        monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
+        app = create_app()
+        state: AppState = app.state["app_state"]
+        # Access the private field to check the concrete type.
+        assert isinstance(state._message_bus, InMemoryMessageBus)
+
+    def test_auto_wires_cost_tracker(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Cost tracker is auto-wired when not provided."""
+        monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
+        app = create_app()
+        state: AppState = app.state["app_state"]
+        assert isinstance(state._cost_tracker, CostTracker)
+
+    def test_auto_wires_task_engine(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Task engine is auto-wired when persistence is available."""
+        monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
+        app = create_app()
+        state: AppState = app.state["app_state"]
+        assert state.has_task_engine
+        assert isinstance(state._task_engine, TaskEngine)
+
+    def test_task_engine_not_wired_without_persistence(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Task engine is not auto-wired without persistence."""
+        monkeypatch.delenv("SYNTHORG_DB_PATH", raising=False)
+        app = create_app()
+        state: AppState = app.state["app_state"]
+        assert not state.has_task_engine
+
+    def test_explicit_services_not_overridden(
+        self,
+        fake_persistence: Any,
+        fake_message_bus: Any,
+        cost_tracker: Any,
+        root_config: Any,
+        fake_task_engine: Any,
+    ) -> None:
+        """Explicitly provided services are not replaced by auto-wiring."""
+        app = create_app(
+            config=root_config,
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+            cost_tracker=cost_tracker,
+            task_engine=fake_task_engine,
+        )
+        state: AppState = app.state["app_state"]
+        assert state._message_bus is fake_message_bus
+        assert state._cost_tracker is cost_tracker
+        assert state._task_engine is fake_task_engine
+
+    def test_no_persistence_warns(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Warning is logged when no persistence is available."""
+        monkeypatch.delenv("SYNTHORG_DB_PATH", raising=False)
+        import structlog
+
+        with structlog.testing.capture_logs() as logs:
+            create_app()
+        warning_logs = [
+            e
+            for e in logs
+            if e.get("log_level") == "warning"
+            and "No persistence backend available" in str(e.get("note", ""))
+        ]
+        assert len(warning_logs) >= 1
+
+
+@pytest.mark.unit
+class TestAutoWirePhase2:
+    """Phase 2 auto-wiring: settings_service after persistence connects."""
+
+    async def test_auto_wire_settings_creates_service(
+        self,
+        fake_persistence: Any,
+        fake_message_bus: Any,
+        root_config: Any,
+    ) -> None:
+        """_auto_wire_settings creates SettingsService on AppState."""
+        from synthorg.api.app import _auto_wire_settings
+        from synthorg.api.approval_store import ApprovalStore
+
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+        )
+        assert not app_state.has_settings_service
+
+        dispatcher = await _auto_wire_settings(
+            fake_persistence,
+            fake_message_bus,
+            root_config,
+            app_state,
+            None,
+        )
+
+        assert app_state.has_settings_service
+        assert app_state.has_config_resolver
+        assert app_state.has_provider_management
+        # Dispatcher is created when bus is available
+        assert dispatcher is not None
+
+        # Clean up
+        await dispatcher.stop()
+
+    async def test_auto_wire_settings_without_bus(
+        self,
+        fake_persistence: Any,
+        root_config: Any,
+    ) -> None:
+        """_auto_wire_settings works without a message bus."""
+        from synthorg.api.app import _auto_wire_settings
+        from synthorg.api.approval_store import ApprovalStore
+
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=fake_persistence,
+        )
+        dispatcher = await _auto_wire_settings(
+            fake_persistence,
+            None,
+            root_config,
+            app_state,
+            None,
+        )
+
+        assert app_state.has_settings_service
+        # No dispatcher without a bus
+        assert dispatcher is None
+
+    def test_phase2_flag_set_when_no_settings(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """auto_wire_settings flag is True when settings_service not provided."""
+        monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
+        app = create_app()
+        state: AppState = app.state["app_state"]
+        # Before startup, settings not yet wired (Phase 2 pending)
+        assert not state.has_settings_service
+        # But Phase 1 services are wired
+        assert state.has_message_bus
+        assert state.has_task_engine
+
+    def test_phase2_skipped_when_settings_provided(
+        self,
+        fake_persistence: Any,
+        fake_message_bus: Any,
+        root_config: Any,
+    ) -> None:
+        """Phase 2 is skipped when settings_service is explicitly provided."""
+        import synthorg.settings.definitions  # noqa: F401
+        from synthorg.settings.registry import get_registry
+        from synthorg.settings.service import SettingsService
+
+        settings_svc = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=root_config,
+        )
+        app = create_app(
+            config=root_config,
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+            settings_service=settings_svc,
+        )
+        state: AppState = app.state["app_state"]
+        assert state.has_settings_service
+        # Verify it's the same instance we passed
+        assert state._settings_service is settings_svc
+
+
+@pytest.mark.unit
+class TestAppStateSetSettingsService:
+    """Tests for AppState.set_settings_service()."""
+
+    def test_creates_resolver_and_management(
+        self,
+        fake_persistence: Any,
+        root_config: Any,
+    ) -> None:
+        """set_settings_service creates ConfigResolver + ProviderManagement."""
+        import synthorg.settings.definitions  # noqa: F401
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.settings.registry import get_registry
+        from synthorg.settings.service import SettingsService
+
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=fake_persistence,
+        )
+        assert not app_state.has_settings_service
+        assert not app_state.has_config_resolver
+        assert not app_state.has_provider_management
+
+        settings_svc = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=root_config,
+        )
+        app_state.set_settings_service(settings_svc)
+
+        assert app_state.has_settings_service
+        assert app_state.has_config_resolver
+        assert app_state.has_provider_management
+
+    def test_raises_if_already_set(
+        self,
+        fake_persistence: Any,
+        root_config: Any,
+    ) -> None:
+        """set_settings_service raises RuntimeError if called twice."""
+        import synthorg.settings.definitions  # noqa: F401
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.settings.registry import get_registry
+        from synthorg.settings.service import SettingsService
+
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=fake_persistence,
+        )
+        settings_svc = SettingsService(
+            repository=fake_persistence.settings,
+            registry=get_registry(),
+            config=root_config,
+        )
+        app_state.set_settings_service(settings_svc)
+
+        with pytest.raises(RuntimeError, match="already configured"):
+            app_state.set_settings_service(settings_svc)

@@ -31,6 +31,7 @@ API_BRIDGE_CHANNEL_DEAD: Final[str] = "api.bus_bridge.channel_dead"
 API_WS_TRANSPORT_ERROR: Final[str] = "api.ws.transport_error"
 API_WS_SEND_FAILED: Final[str] = "api.ws.send_failed"
 API_SERVICE_UNAVAILABLE: Final[str] = "api.service.unavailable"
+API_SERVICE_AUTO_WIRED: Final[str] = "api.service.auto_wired"
 API_AUTH_SUCCESS: Final[str] = "api.auth.success"
 API_AUTH_FAILED: Final[str] = "api.auth.failed"
 API_AUTH_TOKEN_ISSUED: Final[str] = "api.auth.token_issued"  # noqa: S105

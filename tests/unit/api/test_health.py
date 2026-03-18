@@ -62,16 +62,18 @@ class TestHealthCheckUnconfiguredServices:
             "expected_bus",
         ),
         [
-            pytest.param(None, None, "ok", None, None, id="no_services"),
+            # Auto-wiring creates a message bus even when not provided,
+            # so bus is always True unless explicitly set to unhealthy.
+            pytest.param(None, None, "ok", None, True, id="no_services"),
             pytest.param(
-                "healthy", None, "ok", True, None, id="persistence_only_healthy"
+                "healthy", None, "ok", True, True, id="persistence_only_healthy"
             ),
             pytest.param(
                 "unhealthy",
                 None,
-                "down",
+                "degraded",
                 False,
-                None,
+                True,
                 id="persistence_only_unhealthy",
             ),
             pytest.param(None, "healthy", "ok", None, True, id="bus_only_healthy"),
@@ -133,6 +135,8 @@ class TestHealthCheckExceptionPaths:
                     "kwarg": "persistence",
                     "attr": "health_check",
                     "patch_kw": {},
+                    # Auto-wired bus is healthy, so status is degraded
+                    "expected_status": "degraded",
                 },
                 "persistence",
                 id="persistence_exception",
@@ -172,4 +176,5 @@ class TestHealthCheckExceptionPaths:
             assert response.status_code == 200
             body = response.json()
             assert body["data"][response_key] is False
-            assert body["data"]["status"] == "down"
+            expected_status = service_spec.get("expected_status", "down")
+            assert body["data"]["status"] == expected_status

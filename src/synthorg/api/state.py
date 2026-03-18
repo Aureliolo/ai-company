@@ -419,3 +419,33 @@ class AppState:
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
         self._backup_service = service
+
+    def set_settings_service(self, settings_service: SettingsService) -> None:
+        """Set settings service and create ConfigResolver + ProviderManagement.
+
+        Called by the auto-wire Phase 2 in ``on_startup`` after
+        persistence connects and migrations complete.  Also creates
+        ``ConfigResolver`` and ``ProviderManagementService`` which
+        depend on the settings service.
+
+        Args:
+            settings_service: Fully configured settings service.
+
+        Raises:
+            RuntimeError: If the settings service was already configured.
+        """
+        if self._settings_service is not None:
+            msg = "Settings service already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
+        self._settings_service = settings_service
+        self._config_resolver = ConfigResolver(
+            settings_service=settings_service,
+            config=self.config,
+        )
+        self._provider_management = ProviderManagementService(
+            settings_service=settings_service,
+            config_resolver=self._config_resolver,
+            app_state=self,
+            config=self.config,
+        )
