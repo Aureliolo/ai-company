@@ -6,6 +6,7 @@ from typing import Any, ClassVar, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.config import ApiConfig
+from synthorg.backup.config import BackupConfig
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.cost_tiers import CostTiersConfig
@@ -493,6 +494,7 @@ class RootConfig(BaseModel):
         task_engine: Task engine configuration.
         coordination: Multi-agent coordination configuration.
         git_clone: Git clone SSRF prevention network policy.
+        backup: Backup and restore configuration.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -611,6 +613,10 @@ class RootConfig(BaseModel):
     git_clone: GitCloneNetworkPolicy = Field(
         default_factory=GitCloneNetworkPolicy,
         description="Git clone SSRF prevention network policy",
+    )
+    backup: BackupConfig = Field(
+        default_factory=BackupConfig,
+        description="Backup and restore configuration",
     )
 
     @model_validator(mode="after")

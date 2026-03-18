@@ -8,6 +8,7 @@ from synthorg.api.controllers.analytics import AnalyticsController
 from synthorg.api.controllers.approvals import ApprovalsController
 from synthorg.api.controllers.artifacts import ArtifactController
 from synthorg.api.controllers.autonomy import AutonomyController
+from synthorg.api.controllers.backup import BackupController
 from synthorg.api.controllers.budget import BudgetController
 from synthorg.api.controllers.collaboration import CollaborationController
 from synthorg.api.controllers.company import CompanyController
@@ -41,6 +42,7 @@ ALL_CONTROLLERS: tuple[type[Controller], ...] = (
     CollaborationController,
     CoordinationController,
     SettingsController,
+    BackupController,
 )
 
 __all__ = [
@@ -51,6 +53,7 @@ __all__ = [
     "ArtifactController",
     "AuthController",
     "AutonomyController",
+    "BackupController",
     "BudgetController",
     "CollaborationController",
     "CompanyController",

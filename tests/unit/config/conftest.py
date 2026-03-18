@@ -6,6 +6,7 @@ import pytest
 from polyfactory.factories.pydantic_factory import ModelFactory
 
 from synthorg.api.config import ApiConfig
+from synthorg.backup.config import BackupConfig
 from synthorg.budget.config import BudgetConfig
 from synthorg.budget.coordination_config import CoordinationMetricsConfig
 from synthorg.budget.cost_tiers import CostTiersConfig
@@ -100,6 +101,7 @@ class RootConfigFactory(ModelFactory[RootConfig]):
     trust = TrustConfig()
     promotion = PromotionConfig()
     coordination = CoordinationSectionConfig()
+    backup = BackupConfig()
 
 
 # ── Sample YAML strings ──────────────────────────────────────────

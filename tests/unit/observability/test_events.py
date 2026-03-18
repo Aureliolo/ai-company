@@ -212,6 +212,7 @@ class TestEventConstants:
             "quota",
             "role",
             "routing",
+            "backup",
             "sandbox",
             "security",
             "stagnation",
