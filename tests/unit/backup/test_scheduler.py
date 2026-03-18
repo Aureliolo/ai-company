@@ -35,8 +35,8 @@ class TestSchedulerStart:
             mock_ct.return_value = mock_task
             scheduler.start()
 
-        assert scheduler.is_running  # type: ignore[unreachable]
-        mock_ct.assert_called_once()
+        assert scheduler.is_running
+        mock_ct.assert_called_once()  # type: ignore[unreachable]
 
     async def test_start_is_noop_when_already_running(self) -> None:
         """start() does nothing if the scheduler is already running."""
@@ -72,8 +72,8 @@ class TestSchedulerStop:
 
         await scheduler.stop()
 
-        assert not scheduler.is_running  # type: ignore[unreachable]
-        assert scheduler._task is None
+        assert not scheduler.is_running
+        assert scheduler._task is None  # type: ignore[unreachable]
 
     async def test_stop_is_noop_when_not_running(self) -> None:
         """stop() does nothing if the scheduler is not running."""

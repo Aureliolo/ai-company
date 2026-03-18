@@ -33,7 +33,7 @@ def _make_service(
     *,
     enabled: bool = True,
     compression: bool = False,
-    handlers: dict[BackupComponent, Any] | None = None,  # type: ignore[type-arg]
+    handlers: dict[BackupComponent, Any] | None = None,
     schedule_hours: int = 6,
 ) -> BackupService:
     """Build a BackupService with tmp_path-based config and mock handlers."""
@@ -108,7 +108,7 @@ class TestCreateBackup:
 
         # Handler backup methods were called
         for handler in service._handlers.values():
-            handler.backup.assert_called_once()  # type: ignore[union-attr]
+            handler.backup.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_raises_backup_in_progress_error_when_locked(
         self,
