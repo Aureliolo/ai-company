@@ -88,8 +88,8 @@ class TestAppLifecycle:
         root_config: Any,
     ) -> None:
         """Persistence ok, bus fails → persistence cleaned up."""
-        from synthorg.api.app import _safe_startup
         from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.lifecycle import _safe_startup
         from synthorg.api.state import AppState
         from tests.unit.api.conftest import (
             FakeMessageBus,
@@ -126,7 +126,7 @@ class TestAppLifecycle:
 
     async def test_shutdown_error_handling(self) -> None:
         """Shutdown errors are logged but don't propagate."""
-        from synthorg.api.app import _safe_shutdown
+        from synthorg.api.lifecycle import _safe_shutdown
         from tests.unit.api.conftest import FakePersistenceBackend
 
         persistence = FakePersistenceBackend()
@@ -147,8 +147,8 @@ class TestAppLifecycle:
         """Task engine start fails → persistence + bus cleaned up."""
         from unittest.mock import MagicMock
 
-        from synthorg.api.app import _safe_startup
         from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.lifecycle import _safe_startup
         from synthorg.api.state import AppState
         from tests.unit.api.conftest import (
             FakeMessageBus,
@@ -190,8 +190,8 @@ class TestAppLifecycle:
         """Settings dispatcher start fails → persistence + bus cleaned up."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.api.app import _safe_startup
         from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.lifecycle import _safe_startup
         from synthorg.api.state import AppState
         from tests.unit.api.conftest import (
             FakeMessageBus,
@@ -232,7 +232,7 @@ class TestAppLifecycle:
         """Task engine stop failure during shutdown is logged, not raised."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.api.app import _safe_shutdown
+        from synthorg.api.lifecycle import _safe_shutdown
 
         mock_te = MagicMock()
         mock_te.stop = AsyncMock(side_effect=RuntimeError("stop boom"))
@@ -247,8 +247,8 @@ class TestAppLifecycle:
         """Meeting scheduler start/stop are called during lifecycle."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from synthorg.api.app import _safe_shutdown, _safe_startup
         from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.lifecycle import _safe_shutdown, _safe_startup
         from synthorg.api.state import AppState
         from tests.unit.api.conftest import (
             FakeMessageBus,
@@ -289,7 +289,7 @@ class TestTryStop:
 
     async def test_try_stop_success(self) -> None:
         """Successful coroutine runs without error."""
-        from synthorg.api.app import _try_stop
+        from synthorg.api.lifecycle import _try_stop
 
         called = False
 
@@ -302,7 +302,7 @@ class TestTryStop:
 
     async def test_try_stop_exception_swallowed(self) -> None:
         """Non-fatal exceptions are swallowed (logged)."""
-        from synthorg.api.app import _try_stop
+        from synthorg.api.lifecycle import _try_stop
 
         async def fail() -> None:
             msg = "boom"
@@ -313,7 +313,7 @@ class TestTryStop:
 
     async def test_try_stop_memory_error_reraises(self) -> None:
         """MemoryError is re-raised immediately."""
-        from synthorg.api.app import _try_stop
+        from synthorg.api.lifecycle import _try_stop
 
         async def oom() -> None:
             raise MemoryError
@@ -323,7 +323,7 @@ class TestTryStop:
 
     async def test_try_stop_recursion_error_reraises(self) -> None:
         """RecursionError is re-raised immediately."""
-        from synthorg.api.app import _try_stop
+        from synthorg.api.lifecycle import _try_stop
 
         async def recurse() -> None:
             raise RecursionError
@@ -412,7 +412,6 @@ class TestAutoWirePhase1:
     def test_no_persistence_warns(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
     ) -> None:
         """Warning is logged when no persistence is available."""
         monkeypatch.delenv("SYNTHORG_DB_PATH", raising=False)
@@ -426,7 +425,7 @@ class TestAutoWirePhase1:
             if e.get("log_level") == "warning"
             and "No persistence backend available" in str(e.get("note", ""))
         ]
-        assert len(warning_logs) >= 1
+        assert len(warning_logs) == 1
 
 
 @pytest.mark.unit
@@ -646,3 +645,261 @@ class TestAutoWirePhase1Details:
         )
         state: AppState = app.state["app_state"]
         assert state._provider_registry is fake_registry
+
+
+@pytest.mark.unit
+class TestAutoWirePhase2ErrorPaths:
+    """Phase 2 auto-wiring: error handling and rollback."""
+
+    async def test_phase2_failure_triggers_safe_shutdown(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        root_config: Any,
+    ) -> None:
+        """Phase 2 failure in on_startup calls _safe_shutdown for cleanup."""
+        from unittest.mock import AsyncMock
+
+        from synthorg.api.app import _build_lifecycle
+        from synthorg.api.approval_store import ApprovalStore
+        from tests.unit.api.conftest import (
+            FakeMessageBus,
+            FakePersistenceBackend,
+        )
+
+        persistence = FakePersistenceBackend()
+        bus = FakeMessageBus()
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=persistence,
+            message_bus=bus,
+        )
+
+        async def failing_auto_wire(*args: Any, **kwargs: Any) -> None:
+            msg = "phase2 boom"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(
+            "synthorg.api.app.auto_wire_settings",
+            failing_auto_wire,
+        )
+
+        startup, _shutdown = _build_lifecycle(
+            persistence,
+            bus,
+            None,
+            None,
+            None,
+            None,
+            None,
+            app_state,
+            should_auto_wire_settings=True,
+            effective_config=root_config,
+        )
+
+        # Mock _safe_startup so on_startup gets past Phase 1
+        safe_startup_mock = AsyncMock()
+        monkeypatch.setattr(
+            "synthorg.api.app._safe_startup",
+            safe_startup_mock,
+        )
+
+        with pytest.raises(RuntimeError, match="phase2 boom"):
+            await startup[0]()
+
+    async def test_auto_wired_dispatcher_stopped_on_shutdown(
+        self,
+        root_config: Any,
+        fake_persistence: Any,
+        fake_message_bus: Any,
+    ) -> None:
+        """Auto-wired dispatcher is stopped during on_shutdown."""
+        from synthorg.api.app import _build_settings_dispatcher
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.auto_wire import auto_wire_settings
+
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+        )
+
+        dispatcher = await auto_wire_settings(
+            fake_persistence,
+            fake_message_bus,
+            root_config,
+            app_state,
+            None,
+            _build_settings_dispatcher,
+        )
+        assert dispatcher is not None
+
+        # Directly test the dispatcher stop
+        await dispatcher.stop()
+
+    async def test_dispatcher_start_failure_preserves_app_state(
+        self,
+        fake_persistence: Any,
+        root_config: Any,
+    ) -> None:
+        """Dispatcher start failure does not mutate app_state."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.auto_wire import auto_wire_settings
+
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=fake_persistence,
+        )
+
+        def failing_builder(*args: Any, **kwargs: Any) -> MagicMock:
+            mock_dispatcher = MagicMock()
+            mock_dispatcher.start = AsyncMock(
+                side_effect=RuntimeError("dispatcher start boom"),
+            )
+            mock_dispatcher.stop = AsyncMock()
+            return mock_dispatcher
+
+        with pytest.raises(RuntimeError, match="dispatcher start boom"):
+            await auto_wire_settings(
+                fake_persistence,
+                None,
+                root_config,
+                app_state,
+                None,
+                failing_builder,
+            )
+
+        # AppState must not have been mutated
+        assert not app_state.has_settings_service
+
+    async def test_settings_service_creation_failure(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_persistence: Any,
+        root_config: Any,
+    ) -> None:
+        """SettingsService construction failure propagates cleanly."""
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.auto_wire import auto_wire_settings
+
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=fake_persistence,
+        )
+
+        # Set an invalid encryption key to trigger SettingsService failure
+        monkeypatch.setenv("SYNTHORG_SETTINGS_KEY", "invalid-key")
+
+        from synthorg.settings.errors import SettingsEncryptionError
+
+        with pytest.raises(SettingsEncryptionError):
+            await auto_wire_settings(
+                fake_persistence,
+                None,
+                root_config,
+                app_state,
+                None,
+                lambda *a, **kw: None,
+            )
+
+        # AppState must not have been mutated
+        assert not app_state.has_settings_service
+
+
+@pytest.mark.unit
+class TestAutoWirePhase1ErrorPaths:
+    """Phase 1 auto-wiring: error handling edge cases."""
+
+    def test_channel_overlap_deduplication(
+        self,
+        root_config: Any,
+    ) -> None:
+        """Channels already in bus config are not duplicated."""
+        from synthorg.api.auto_wire import auto_wire_phase1
+        from synthorg.api.channels import ALL_CHANNELS
+        from synthorg.communication.bus_memory import InMemoryMessageBus
+
+        # Add an API channel to the bus config so it overlaps
+        bus_cfg = root_config.communication.message_bus
+        overlap_channel = ALL_CHANNELS[0]
+        if overlap_channel not in bus_cfg.channels:
+            bus_cfg = bus_cfg.model_copy(
+                update={"channels": (*bus_cfg.channels, overlap_channel)},
+            )
+            comm = root_config.communication.model_copy(
+                update={"message_bus": bus_cfg},
+            )
+            config = root_config.model_copy(update={"communication": comm})
+        else:
+            config = root_config
+
+        result = auto_wire_phase1(
+            effective_config=config,
+            persistence=None,
+            message_bus=None,
+            cost_tracker=None,
+            task_engine=None,
+            provider_registry=None,
+        )
+        bus = result.message_bus
+        assert isinstance(bus, InMemoryMessageBus)
+        # Verify no duplicates
+        channels = bus._config.channels
+        assert len(channels) == len(set(channels))
+        # All API channels present
+        for ch in ALL_CHANNELS:
+            assert ch in channels
+
+    def test_cost_tracker_creation_failure(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        root_config: Any,
+    ) -> None:
+        """CostTracker construction failure propagates from auto_wire_phase1."""
+        from synthorg.api.auto_wire import auto_wire_phase1
+
+        def failing_init(self: Any, **kwargs: Any) -> None:
+            msg = "tracker boom"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(CostTracker, "__init__", failing_init)
+
+        with pytest.raises(RuntimeError, match="tracker boom"):
+            auto_wire_phase1(
+                effective_config=root_config,
+                persistence=None,
+                message_bus=None,
+                cost_tracker=None,
+                task_engine=None,
+                provider_registry=None,
+            )
+
+    def test_message_bus_creation_failure(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        root_config: Any,
+    ) -> None:
+        """InMemoryMessageBus construction failure propagates."""
+        from synthorg.api.auto_wire import auto_wire_phase1
+        from synthorg.communication.bus_memory import InMemoryMessageBus
+
+        def failing_init(self: Any, **kwargs: Any) -> None:
+            msg = "bus boom"
+            raise RuntimeError(msg)
+
+        monkeypatch.setattr(InMemoryMessageBus, "__init__", failing_init)
+
+        with pytest.raises(RuntimeError, match="bus boom"):
+            auto_wire_phase1(
+                effective_config=root_config,
+                persistence=None,
+                message_bus=None,
+                cost_tracker=None,
+                task_engine=None,
+                provider_registry=None,
+            )

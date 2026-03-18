@@ -8,7 +8,8 @@ Phase 2 (on_startup): creates SettingsService + dispatcher after
 persistence connects and migrations complete.
 """
 
-from typing import TYPE_CHECKING, NamedTuple
+import contextlib
+from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from synthorg.api.channels import ALL_CHANNELS
 from synthorg.budget.tracker import CostTracker
@@ -21,14 +22,13 @@ from synthorg.observability.events.api import (
 from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.config.schema import RootConfig
     from synthorg.persistence.protocol import PersistenceBackend
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
+    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -40,6 +40,19 @@ class Phase1Result(NamedTuple):
     cost_tracker: CostTracker | None
     task_engine: TaskEngine | None
     provider_registry: ProviderRegistry | None
+
+
+class BuildDispatcherFn(Protocol):
+    """Protocol for the dispatcher builder callback."""
+
+    def __call__(  # noqa: D102
+        self,
+        message_bus: MessageBus | None,
+        settings_service: SettingsService | None,
+        config: RootConfig,
+        app_state: AppState,
+        backup_service: BackupService | None = None,
+    ) -> SettingsChangeDispatcher | None: ...
 
 
 def auto_wire_phase1(  # noqa: PLR0913
@@ -58,7 +71,9 @@ def auto_wire_phase1(  # noqa: PLR0913
 
     Args:
         effective_config: Root company configuration.
-        persistence: Persistence backend (may be ``None``).
+        persistence: Persistence backend (may be ``None``).  When
+            ``None``, ``task_engine`` cannot be auto-wired and a
+            warning is logged.
         message_bus: Explicit bus or ``None`` to auto-wire.
         cost_tracker: Explicit tracker or ``None`` to auto-wire.
         task_engine: Explicit engine or ``None`` to auto-wire.
@@ -71,44 +86,13 @@ def auto_wire_phase1(  # noqa: PLR0913
         message_bus = _auto_wire_message_bus(effective_config)
 
     if cost_tracker is None:
-        try:
-            cost_tracker = CostTracker(
-                budget_config=effective_config.budget,
-            )
-        except Exception:
-            logger.exception(
-                API_APP_STARTUP,
-                error="Failed to auto-wire cost tracker",
-            )
-            raise
-        logger.info(API_SERVICE_AUTO_WIRED, service="cost_tracker")
+        cost_tracker = _wire_cost_tracker(effective_config)
 
     if provider_registry is None and effective_config.providers:
-        try:
-            provider_registry = ProviderRegistry.from_config(
-                effective_config.providers,
-            )
-        except Exception:
-            logger.exception(
-                API_APP_STARTUP,
-                error="Failed to build provider registry from config",
-            )
-            raise
-        logger.info(API_SERVICE_AUTO_WIRED, service="provider_registry")
+        provider_registry = _wire_provider_registry(effective_config)
 
     if task_engine is None and persistence is not None:
-        try:
-            task_engine = TaskEngine(
-                persistence=persistence,
-                message_bus=message_bus,
-            )
-        except Exception:
-            logger.exception(
-                API_APP_STARTUP,
-                error="Failed to auto-wire task engine",
-            )
-            raise
-        logger.info(API_SERVICE_AUTO_WIRED, service="task_engine")
+        task_engine = _wire_task_engine(persistence, message_bus)
 
     if persistence is None:
         logger.warning(
@@ -129,6 +113,56 @@ def auto_wire_phase1(  # noqa: PLR0913
     )
 
 
+def _wire_cost_tracker(effective_config: RootConfig) -> CostTracker:
+    """Create a CostTracker from config."""
+    try:
+        tracker = CostTracker(budget_config=effective_config.budget)
+    except Exception:
+        logger.exception(
+            API_APP_STARTUP,
+            error="Failed to auto-wire cost tracker",
+        )
+        raise
+    logger.info(API_SERVICE_AUTO_WIRED, service="cost_tracker")
+    return tracker
+
+
+def _wire_provider_registry(
+    effective_config: RootConfig,
+) -> ProviderRegistry:
+    """Create a ProviderRegistry from config."""
+    try:
+        registry = ProviderRegistry.from_config(effective_config.providers)
+    except Exception:
+        logger.exception(
+            API_APP_STARTUP,
+            error="Failed to build provider registry from config",
+        )
+        raise
+    logger.info(API_SERVICE_AUTO_WIRED, service="provider_registry")
+    return registry
+
+
+def _wire_task_engine(
+    persistence: PersistenceBackend,
+    message_bus: MessageBus | None,
+) -> TaskEngine:
+    """Create a TaskEngine from persistence and optional bus."""
+    try:
+        engine = TaskEngine(
+            persistence=persistence,
+            message_bus=message_bus,
+        )
+    except Exception:
+        logger.exception(
+            API_APP_STARTUP,
+            error="Failed to auto-wire task engine",
+        )
+        raise
+    logger.info(API_SERVICE_AUTO_WIRED, service="task_engine")
+    return engine
+
+
 def _auto_wire_message_bus(
     effective_config: RootConfig,
 ) -> MessageBus:
@@ -136,8 +170,8 @@ def _auto_wire_message_bus(
 
     The default ``MessageBusConfig`` channels are organizational
     (``#all-hands``, ``#engineering``, etc.).  The API bridge needs
-    additional channels (``tasks``, ``agents``, ``budget``, ...) to
-    forward events to WebSocket clients.
+    additional channels defined in ``ALL_CHANNELS`` (see
+    ``synthorg.api.channels``) to forward events to WebSocket clients.
 
     Args:
         effective_config: Root company configuration.
@@ -173,7 +207,7 @@ async def auto_wire_settings(  # noqa: PLR0913
     effective_config: RootConfig,
     app_state: AppState,
     backup_service: BackupService | None,
-    build_dispatcher: Callable[..., SettingsChangeDispatcher | None],
+    build_dispatcher: BuildDispatcherFn,
 ) -> SettingsChangeDispatcher | None:
     """Phase 2 auto-wire: create SettingsService after persistence connects.
 
@@ -188,11 +222,13 @@ async def auto_wire_settings(  # noqa: PLR0913
         effective_config: Root company configuration.
         app_state: Application state container.
         backup_service: Backup service (for settings subscriber wiring).
-        build_dispatcher: The ``_build_settings_dispatcher`` callable.
+        build_dispatcher: Callable that builds a settings dispatcher.
 
     Returns:
-        The started dispatcher, or ``None`` if bus is unavailable.
+        The started dispatcher, or ``None`` if ``build_dispatcher``
+        returns ``None`` (typically when no message bus is available).
     """
+    # Deferred to break import cycle: settings.* -> api.* -> auto_wire
     import synthorg.settings.definitions  # noqa: F401, PLC0415
     from synthorg.settings.encryption import SettingsEncryptor  # noqa: PLC0415
     from synthorg.settings.registry import get_registry  # noqa: PLC0415
@@ -211,7 +247,7 @@ async def auto_wire_settings(  # noqa: PLR0913
         logger.exception(
             API_APP_STARTUP,
             error=(
-                "Failed to create SettingsService (check SYNTHORG_SETTINGS_KEY if set)"
+                "Failed to create SettingsService -- check encryption key configuration"
             ),
         )
         raise
@@ -219,13 +255,21 @@ async def auto_wire_settings(  # noqa: PLR0913
     # Build and start the dispatcher BEFORE mutating AppState, so a
     # dispatcher.start() failure doesn't leave app_state with a
     # settings service that has no running dispatcher.
-    dispatcher = build_dispatcher(
-        message_bus,
-        settings_svc,
-        effective_config,
-        app_state,
-        backup_service,
-    )
+    try:
+        dispatcher = build_dispatcher(
+            message_bus,
+            settings_svc,
+            effective_config,
+            app_state,
+            backup_service,
+        )
+    except Exception:
+        logger.exception(
+            API_APP_STARTUP,
+            error="Failed to build settings dispatcher",
+        )
+        raise
+
     if dispatcher is not None:
         try:
             await dispatcher.start()
@@ -238,6 +282,13 @@ async def auto_wire_settings(  # noqa: PLR0913
         logger.info(API_SERVICE_AUTO_WIRED, service="settings_dispatcher")
 
     # All fallible operations succeeded -- safe to mutate AppState.
-    app_state.set_settings_service(settings_svc)
+    # If set_settings_service fails, stop the dispatcher to prevent leaks.
+    try:
+        app_state.set_settings_service(settings_svc)
+    except Exception:
+        if dispatcher is not None:
+            with contextlib.suppress(Exception):
+                await dispatcher.stop()
+        raise
     logger.info(API_SERVICE_AUTO_WIRED, service="settings_service")
     return dispatcher

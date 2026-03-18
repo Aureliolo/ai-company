@@ -438,17 +438,22 @@ class AppState:
             msg = "Settings service already configured"
             logger.error(API_APP_STARTUP, error=msg)
             raise RuntimeError(msg)
-        self._settings_service = settings_service
-        self._config_resolver = ConfigResolver(
+        # Construct into locals first, then assign all at once to ensure
+        # atomicity -- a failure in ProviderManagementService construction
+        # won't leave AppState with a partial set of services.
+        resolver = ConfigResolver(
             settings_service=settings_service,
             config=self.config,
         )
-        self._provider_management = ProviderManagementService(
+        management = ProviderManagementService(
             settings_service=settings_service,
-            config_resolver=self._config_resolver,
+            config_resolver=resolver,
             app_state=self,
             config=self.config,
         )
+        self._settings_service = settings_service
+        self._config_resolver = resolver
+        self._provider_management = management
         logger.debug(
             API_APP_STARTUP,
             note="Created ConfigResolver and ProviderManagementService",
