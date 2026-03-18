@@ -51,6 +51,7 @@ COMM_HANDLER_INVALID: Final[str] = "communication.handler.invalid"
 COMM_RECEIVE_TIMEOUT: Final[str] = "communication.receive.timeout"
 COMM_RECEIVE_SHUTDOWN: Final[str] = "communication.receive.shutdown"
 COMM_RECEIVE_UNSUBSCRIBED: Final[str] = "communication.receive.unsubscribed"
+COMM_CHANNELS_IDLE_SUMMARY: Final[str] = "communication.channels.idle_summary"
 
 # Validation
 COMM_MESSENGER_INVALID_AGENT: Final[str] = "communication.messenger.invalid_agent"

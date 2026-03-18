@@ -274,7 +274,7 @@ class TestDefaultSinks:
     """Tests for the DEFAULT_SINKS constant."""
 
     def test_count(self) -> None:
-        assert len(DEFAULT_SINKS) == 7
+        assert len(DEFAULT_SINKS) == 8
 
     def test_first_is_console(self) -> None:
         assert DEFAULT_SINKS[0].sink_type == SinkType.CONSOLE
@@ -292,4 +292,4 @@ class TestDefaultSinks:
 
     def test_valid_as_log_config(self) -> None:
         cfg = LogConfig(sinks=DEFAULT_SINKS)
-        assert len(cfg.sinks) == 7
+        assert len(cfg.sinks) == 8

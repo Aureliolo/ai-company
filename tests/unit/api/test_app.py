@@ -415,6 +415,12 @@ class TestAutoWirePhase1:
     ) -> None:
         """Warning is logged when no persistence is available."""
         monkeypatch.delenv("SYNTHORG_DB_PATH", raising=False)
+        # Prevent bootstrap_logging from resetting structlog's
+        # capture_logs context during create_app().
+        monkeypatch.setattr(
+            "synthorg.api.app._bootstrap_app_logging",
+            lambda _config: None,
+        )
         import structlog
 
         with structlog.testing.capture_logs() as logs:

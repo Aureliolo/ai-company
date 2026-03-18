@@ -1133,3 +1133,113 @@ Backup settings live in the `backup` namespace with runtime editability via `Bac
 | `GET` | `/api/v1/admin/backups/{id}` | Get backup details |
 | `DELETE` | `/api/v1/admin/backups/{id}` | Delete a specific backup |
 | `POST` | `/api/v1/admin/backups/restore` | Restore from backup (requires `confirm=true`) |
+
+## Observability and Logging
+
+Structured logging pipeline built on **structlog** + stdlib, with automatic sensitive field
+redaction, async-safe correlation tracking, and per-domain log routing.
+
+### Sink Layout
+
+Eight default sinks, activated at startup via `bootstrap_logging()`:
+
+| Sink | Type | Level | Format | Routes | Description |
+|------|------|-------|--------|--------|-------------|
+| Console | stderr | INFO | Colored text | All loggers | Human-readable development output |
+| `synthorg.log` | File | INFO | JSON | All loggers | Main application log (catch-all) |
+| `audit.log` | File | INFO | JSON | `synthorg.security.*` | Security events only |
+| `errors.log` | File | ERROR | JSON | All loggers | Errors and above only |
+| `agent_activity.log` | File | DEBUG | JSON | `synthorg.engine.*`, `synthorg.core.*` | Agent execution and task lifecycle |
+| `cost_usage.log` | File | INFO | JSON | `synthorg.budget.*`, `synthorg.providers.*` | Cost records and provider calls |
+| `debug.log` | File | DEBUG | JSON | All loggers | Full debug trace (catch-all) |
+| `access.log` | File | DEBUG | JSON | `synthorg.api.*` | HTTP request/response access log |
+
+Logger name routing is implemented via `_LoggerNameFilter` on file handlers. Sinks without
+explicit routing are catch-all (accept all loggers at their configured level).
+
+### Log Directory
+
+- **Docker**: `/data/logs/` (under the `synthorg-data` volume, persisted across restarts)
+- **Local dev**: `logs/` relative to working directory (default)
+- **Override**: `SYNTHORG_LOG_DIR` env var
+
+### Rotation
+
+File sinks use `RotatingFileHandler` by default (10 MB max, 5 backup files). Alternative:
+`WatchedFileHandler` for external logrotate (`rotation.strategy: external` in config).
+
+### Sensitive Field Redaction
+
+The `sanitize_sensitive_fields` processor automatically redacts values for keys matching:
+`password`, `secret`, `token`, `api_key`, `api_secret`, `authorization`, `credential`,
+`private_key`, `bearer`, `session`. Redaction applies at all nesting depths in structured
+log events. Redacted values are replaced with `"[REDACTED]"`.
+
+### Correlation Tracking
+
+Three correlation IDs propagated via `contextvars` (async-safe):
+
+- **`request_id`**: Bound per HTTP request by `RequestLoggingMiddleware`. Links all log
+  events during a single API call.
+- **`task_id`**: Bound per task execution. Links agent activity to a specific task.
+- **`agent_id`**: Bound per agent execution context.
+
+All three are automatically injected into every log event by `merge_contextvars` in the
+structlog processor chain.
+
+### Per-Logger Levels
+
+Default levels per domain module (overridable via `LogConfig.logger_levels`):
+
+| Logger | Default Level |
+|--------|---------------|
+| `synthorg.engine` | DEBUG |
+| `synthorg.memory` | DEBUG |
+| `synthorg.core` | INFO |
+| `synthorg.communication` | INFO |
+| `synthorg.providers` | INFO |
+| `synthorg.budget` | INFO |
+| `synthorg.security` | INFO |
+| `synthorg.tools` | INFO |
+| `synthorg.api` | INFO |
+| `synthorg.config` | INFO |
+| `synthorg.templates` | INFO |
+
+### Event Taxonomy
+
+54 domain-specific event constant modules under `observability/events/` (one per subsystem:
+api, budget, tool, git, engine, communication, etc.). Every log call uses a typed constant
+(e.g., `API_REQUEST_STARTED`, `BUDGET_RECORD_ADDED`) for consistent, grep-friendly event
+names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
+
+### Uvicorn Integration
+
+Uvicorn's default access logger is **disabled** (`access_log=False`, `log_config=None`).
+HTTP access logging is handled by `RequestLoggingMiddleware`, which provides richer structured
+fields (method, path, status_code, duration_ms, request_id) through structlog. Uvicorn's own
+startup/error messages propagate through stdlib's root handler (which structlog wraps via
+`ProcessorFormatter`).
+
+### Docker Logging
+
+Two layers of log management:
+
+1. **App-level** (structlog): 8 file sinks with `RotatingFileHandler` (10 MB x 5) writing
+   JSON to `/data/logs/`. Console sink writes colored text to stderr.
+2. **Container-level** (Docker): `json-file` driver with 10 MB x 3 rotation on
+   stdout/stderr. Captures console sink output and any uncaught stderr.
+
+The layers are complementary -- app files provide structured, routed logs; Docker captures
+the console stream for `docker logs` access.
+
+### Runtime Settings
+
+Two observability settings are runtime-editable via `SettingsService`:
+
+- `root_log_level` (enum: debug/info/warning/error/critical) -- changes the root logger level
+- `enable_correlation` (boolean) -- toggles correlation ID injection
+
+Console sink level can also be overridden via `SYNTHORG_LOG_LEVEL` env var.
+
+Full sink CRUD via SettingsService (add/remove/reconfigure sinks at runtime) is planned as a
+future enhancement.

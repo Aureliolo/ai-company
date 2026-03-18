@@ -55,4 +55,6 @@ def run_server(config: RootConfig) -> None:
         reload=server.reload,
         ws_ping_interval=ws_ping,
         ws_ping_timeout=ws_timeout,
+        access_log=False,
+        log_config=None,
     )

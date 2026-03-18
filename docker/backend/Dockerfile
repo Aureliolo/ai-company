@@ -120,6 +120,10 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=30s \
 # on Python 3.14+ (harmless import-time check, not actual v1 usage).
 # Tracked: Litestar v3 will drop the v1 compat layer entirely (#551).
 ENV PYTHONWARNINGS="ignore::UserWarning:pydantic.v1"
+# Disable Uvicorn's default access log -- RequestLoggingMiddleware provides
+# richer structured access logging via structlog. log_config=None is set
+# in server.py; this env var covers the --factory CMD path.
+ENV UVICORN_ACCESS_LOG=0
 
 ENTRYPOINT []
-CMD ["/app/.venv/bin/uvicorn", "synthorg.api.app:create_app", "--factory"]
+CMD ["/app/.venv/bin/uvicorn", "synthorg.api.app:create_app", "--factory", "--no-access-log"]

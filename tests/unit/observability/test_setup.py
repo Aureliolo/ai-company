@@ -51,7 +51,7 @@ class TestConfigureLogging:
     def test_default_config_creates_handlers(self) -> None:
         configure_logging()
         root = logging.getLogger()
-        assert len(root.handlers) == 7
+        assert len(root.handlers) == 8
 
     def test_custom_config_creates_handlers(self) -> None:
         configure_logging(_console_only_config())
@@ -104,7 +104,7 @@ class TestConfigureLogging:
     def test_none_config_uses_defaults(self) -> None:
         configure_logging(None)
         root = logging.getLogger()
-        assert len(root.handlers) == 7
+        assert len(root.handlers) == 8
 
 
 @pytest.mark.unit

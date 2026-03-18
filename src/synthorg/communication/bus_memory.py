@@ -35,12 +35,12 @@ from synthorg.observability.events.communication import (
     COMM_CHANNEL_ALREADY_EXISTS,
     COMM_CHANNEL_CREATED,
     COMM_CHANNEL_NOT_FOUND,
+    COMM_CHANNELS_IDLE_SUMMARY,
     COMM_DIRECT_SENT,
     COMM_HISTORY_QUERIED,
     COMM_MESSAGE_DELIVERED,
     COMM_MESSAGE_PUBLISHED,
     COMM_RECEIVE_SHUTDOWN,
-    COMM_RECEIVE_TIMEOUT,
     COMM_RECEIVE_UNSUBSCRIBED,
     COMM_SEND_DIRECT_INVALID,
     COMM_SUBSCRIPTION_CREATED,
@@ -102,6 +102,8 @@ class InMemoryMessageBus:
         self._waiters: dict[tuple[str, str], int] = {}
         self._running = False
         self._shutdown_event = asyncio.Event()
+        self._idle_poll_count: int = 0
+        self._idle_summary_interval: int = 60
 
     @property
     def is_running(self) -> bool:
@@ -479,19 +481,20 @@ class InMemoryMessageBus:
             else:
                 self._waiters[key] = current - 1
         if result is None:
-            await self._log_receive_null(channel_name, subscriber_id, timeout)
+            await self._log_receive_null(channel_name, subscriber_id)
         return result
 
     async def _log_receive_null(
         self,
         channel_name: str,
         subscriber_id: str,
-        timeout_seconds: float | None,
     ) -> None:
         """Log the cause when ``receive()`` returns ``None``.
 
         Acquires the lock to safely inspect bus state (queue map
         and shutdown flag) so the inferred reason is not racy.
+        For normal idle timeouts, increments a counter and emits
+        a periodic summary instead of per-timeout spam.
         """
         async with self._lock:
             is_shutdown = self._shutdown_event.is_set()
@@ -509,12 +512,14 @@ class InMemoryMessageBus:
                 subscriber=subscriber_id,
             )
         else:
-            logger.debug(
-                COMM_RECEIVE_TIMEOUT,
-                channel=channel_name,
-                subscriber=subscriber_id,
-                timeout=timeout_seconds,
-            )
+            self._idle_poll_count += 1
+            if self._idle_poll_count >= self._idle_summary_interval:
+                logger.debug(
+                    COMM_CHANNELS_IDLE_SUMMARY,
+                    idle_polls=self._idle_poll_count,
+                    subscriber_count=len(self._queues),
+                )
+                self._idle_poll_count = 0
 
     async def _await_with_shutdown(
         self,

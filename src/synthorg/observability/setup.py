@@ -5,6 +5,7 @@ wires structlog processors, stdlib handlers, and per-logger levels.
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -12,7 +13,7 @@ from typing import Any
 import structlog
 
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
-from synthorg.observability.enums import LogLevel
+from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.processors import sanitize_sensitive_fields
 from synthorg.observability.sinks import build_handler
 
@@ -156,12 +157,52 @@ def _apply_logger_levels(config: LogConfig) -> None:
         logging.getLogger(name).setLevel(level.value)
 
 
+def _apply_console_level_override(config: LogConfig) -> LogConfig:
+    """Override the console sink level from ``SYNTHORG_LOG_LEVEL``.
+
+    When the env var is set, finds the CONSOLE sink in ``config.sinks``
+    and replaces its level.  Invalid values fall back to INFO with a
+    stderr warning.
+
+    Args:
+        config: Current logging configuration.
+
+    Returns:
+        Possibly updated config with the console sink level overridden.
+    """
+    raw = os.environ.get("SYNTHORG_LOG_LEVEL", "").strip().lower()
+    if not raw:
+        return config
+
+    try:
+        level = LogLevel(raw.upper())
+    except ValueError:
+        valid = ", ".join(lvl.value.lower() for lvl in LogLevel)
+        print(  # noqa: T201
+            f"WARNING: Invalid SYNTHORG_LOG_LEVEL={raw!r}. "
+            f"Valid values: {valid}. Falling back to INFO.",
+            file=sys.stderr,
+        )
+        level = LogLevel.INFO
+
+    new_sinks = tuple(
+        sink.model_copy(update={"level": level})
+        if sink.sink_type == SinkType.CONSOLE
+        else sink
+        for sink in config.sinks
+    )
+    return config.model_copy(update={"sinks": new_sinks})
+
+
 def configure_logging(config: LogConfig | None = None) -> None:
     """Configure the structured logging system.
 
     Sets up structlog processor chains, stdlib handlers, and per-logger
-    levels.  This function is **idempotent** — calling it multiple times
+    levels.  This function is **idempotent** -- calling it multiple times
     replaces the previous configuration without duplicating handlers.
+
+    Respects the ``SYNTHORG_LOG_LEVEL`` env var to override the console
+    sink level (useful for Docker deployments).
 
     Args:
         config: Logging configuration.  When ``None``, uses sensible
@@ -169,6 +210,8 @@ def configure_logging(config: LogConfig | None = None) -> None:
     """
     if config is None:
         config = LogConfig(sinks=DEFAULT_SINKS)
+
+    config = _apply_console_level_override(config)
 
     # 1. Reset structlog to a clean state
     structlog.reset_defaults()

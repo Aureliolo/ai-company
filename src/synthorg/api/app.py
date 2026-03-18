@@ -48,6 +48,7 @@ from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,  # noqa: TC001
 )
 from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: TC001
+from synthorg.config import bootstrap_logging
 from synthorg.config.schema import RootConfig
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
@@ -328,6 +329,38 @@ def _build_lifecycle(  # noqa: PLR0913, C901
 #   to code calling get_api_config(), not to the middleware itself.
 
 
+def _bootstrap_app_logging(effective_config: RootConfig) -> None:
+    """Activate the structured logging pipeline.
+
+    Applies the ``SYNTHORG_LOG_DIR`` env var override (for Docker
+    volume paths) before calling :func:`bootstrap_logging`.
+    """
+    log_dir = os.environ.get("SYNTHORG_LOG_DIR", "").strip()
+    if log_dir and effective_config.logging is not None:
+        patched = effective_config.model_copy(
+            update={
+                "logging": effective_config.logging.model_copy(
+                    update={"log_dir": log_dir},
+                ),
+            },
+        )
+        bootstrap_logging(patched)
+    elif log_dir:
+        from synthorg.observability.config import (  # noqa: PLC0415
+            DEFAULT_SINKS,
+            LogConfig,
+        )
+
+        bootstrap_logging(
+            RootConfig(
+                company_name=effective_config.company_name,
+                logging=LogConfig(sinks=DEFAULT_SINKS, log_dir=log_dir),
+            ),
+        )
+    else:
+        bootstrap_logging(effective_config)
+
+
 def create_app(  # noqa: PLR0913
     *,
     config: RootConfig | None = None,
@@ -371,6 +404,13 @@ def create_app(  # noqa: PLR0913
         Configured Litestar application.
     """
     effective_config = config or RootConfig(company_name="default")
+
+    # Activate the structured logging pipeline (7+1 sinks) before any
+    # other setup so that auto-wiring, persistence, and bus logs all
+    # flow through the configured sinks.  Respects SYNTHORG_LOG_DIR
+    # env var for Docker log directory override.
+    _bootstrap_app_logging(effective_config)
+
     api_config = effective_config.api
 
     # Resolve runtime paths for backup service wiring.
