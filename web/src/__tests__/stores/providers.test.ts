@@ -52,7 +52,7 @@ const mockPreset: ProviderPreset = {
 describe('useProviderStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.clearAllMocks()
+    vi.resetAllMocks()
   })
 
   it('initializes with empty state', () => {
@@ -223,9 +223,22 @@ describe('useProviderStore', () => {
           { minKeys: 1, maxKeys: 5 },
         ),
         async (rawProviders) => {
+          // Inject unsafe keys to exercise the prototype-pollution branch
+          const poisoned: Record<string, unknown> = { ...rawProviders }
+          const dummyProvider = { driver: 'litellm', auth_type: 'none' }
+          for (const unsafeKey of UNSAFE_KEYS) {
+            // Use Object.defineProperty to bypass __proto__ assignment semantics
+            Object.defineProperty(poisoned, unsafeKey, {
+              value: dummyProvider,
+              enumerable: true,
+              configurable: true,
+              writable: true,
+            })
+          }
+
           // Exercise the real sanitizer via fetchProviders
           vi.mocked(providersApi.listProviders).mockResolvedValue(
-            rawProviders as unknown as Record<string, ProviderConfig>,
+            poisoned as unknown as Record<string, ProviderConfig>,
           )
           const store = useProviderStore()
           await store.fetchProviders()
@@ -237,9 +250,14 @@ describe('useProviderStore', () => {
               expect(stored).not.toHaveProperty(secret)
             }
           }
-          // Assert no prototype-pollution keys
+          // Assert no prototype-pollution keys (now actually tested)
           for (const unsafeKey of UNSAFE_KEYS) {
             expect(store.providers).not.toHaveProperty(unsafeKey)
+          }
+          // Assert legitimate providers still exist
+          const legitimateKeys = Object.keys(rawProviders)
+          for (const key of legitimateKeys) {
+            expect(store.providers).toHaveProperty(key)
           }
         },
       ),
