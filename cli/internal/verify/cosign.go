@@ -38,14 +38,7 @@ var ErrNoCosignSignatures = errors.New("no cosign signatures found")
 // isCosignSignatureArtifact returns true if the descriptor's artifact type
 // matches a known cosign signature format (v3 bundle or v2 simplesigning).
 func isCosignSignatureArtifact(desc v1.Descriptor) bool {
-	switch desc.ArtifactType {
-	case cosignV3BundleArtifactType:
-		return true
-	case cosignV2ArtifactType:
-		return true
-	default:
-		return false
-	}
+	return desc.ArtifactType == cosignV3BundleArtifactType || desc.ArtifactType == cosignV2ArtifactType
 }
 
 // VerifyCosignSignature fetches cosign keyless signatures for the given image
