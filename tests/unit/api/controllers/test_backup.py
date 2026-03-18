@@ -1,0 +1,341 @@
+"""Unit tests for BackupController -- direct method invocation with mocked service.
+
+Litestar decorators (``@post``, ``@get``, etc.) wrap handler methods as
+``HTTPRouteHandler`` objects.  To unit-test the handler logic without
+bootstrapping a full Litestar app, we call the raw function via
+``handler.fn(self, ...)``.
+"""
+
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+from litestar.exceptions import (
+    ClientException,
+    InternalServerException,
+    NotFoundException,
+)
+
+from synthorg.api.controllers.backup import BackupController
+from synthorg.api.dto import ApiResponse
+from synthorg.backup.errors import (
+    BackupInProgressError,
+    BackupNotFoundError,
+    ManifestError,
+    RestoreError,
+)
+from synthorg.backup.models import (
+    BackupComponent,
+    BackupManifest,
+    BackupTrigger,
+    RestoreRequest,
+    RestoreResponse,
+)
+
+
+def _make_manifest(
+    *,
+    backup_id: str = "abc123def456",
+    trigger: BackupTrigger = BackupTrigger.MANUAL,
+) -> BackupManifest:
+    """Build a minimal BackupManifest for test assertions."""
+    return BackupManifest(
+        synthorg_version="0.3.2",
+        timestamp="2026-03-18T12:00:00+00:00",
+        trigger=trigger,
+        components=(BackupComponent.PERSISTENCE,),
+        db_schema_version=1,
+        size_bytes=4096,
+        checksum="sha256:abcdef1234567890",
+        backup_id=backup_id,
+    )
+
+
+def _make_restore_response(
+    *,
+    backup_id: str = "abc123def456",
+    safety_id: str = "safe00000001",
+) -> RestoreResponse:
+    """Build a minimal RestoreResponse for test assertions."""
+    manifest = _make_manifest(backup_id=backup_id)
+    return RestoreResponse(
+        manifest=manifest,
+        restored_components=(BackupComponent.PERSISTENCE,),
+        safety_backup_id=safety_id,
+    )
+
+
+def _make_state_and_service() -> tuple[MagicMock, AsyncMock]:
+    """Create a mock Litestar State with a mock BackupService in app_state.
+
+    Returns:
+        Tuple of (mock_state, mock_backup_service).
+    """
+    service = AsyncMock()
+    app_state = MagicMock()
+    app_state.backup_service = service
+
+    state = MagicMock()
+    state.app_state = app_state
+    return state, service
+
+
+def _controller() -> BackupController:
+    """Create a BackupController instance for testing."""
+    return BackupController(owner=BackupController)
+
+
+@pytest.mark.unit
+class TestCreateBackup:
+    """BackupController.create_backup endpoint."""
+
+    async def test_create_backup_calls_service_with_manual_trigger(self) -> None:
+        state, service = _make_state_and_service()
+        manifest = _make_manifest()
+        service.create_backup = AsyncMock(return_value=manifest)
+
+        ctrl = _controller()
+        result = await ctrl.create_backup.fn(ctrl, state=state)
+
+        service.create_backup.assert_awaited_once_with(BackupTrigger.MANUAL)
+        assert isinstance(result, ApiResponse)
+        assert result.data is manifest
+
+    async def test_create_backup_returns_409_on_in_progress(self) -> None:
+        state, service = _make_state_and_service()
+        service.create_backup = AsyncMock(
+            side_effect=BackupInProgressError("busy"),
+        )
+
+        ctrl = _controller()
+        with pytest.raises(ClientException) as exc_info:
+            await ctrl.create_backup.fn(ctrl, state=state)
+
+        assert exc_info.value.status_code == 409
+
+
+@pytest.mark.unit
+class TestListBackups:
+    """BackupController.list_backups endpoint."""
+
+    async def test_list_backups_calls_service(self) -> None:
+        state, service = _make_state_and_service()
+        service.list_backups = AsyncMock(return_value=())
+
+        ctrl = _controller()
+        result = await ctrl.list_backups.fn(ctrl, state=state)
+
+        service.list_backups.assert_awaited_once()
+        assert isinstance(result, ApiResponse)
+        assert result.data == ()
+
+
+@pytest.mark.unit
+class TestGetBackup:
+    """BackupController.get_backup endpoint."""
+
+    async def test_get_backup_calls_service_with_id(self) -> None:
+        state, service = _make_state_and_service()
+        manifest = _make_manifest()
+        service.get_backup = AsyncMock(return_value=manifest)
+
+        ctrl = _controller()
+        result = await ctrl.get_backup.fn(
+            ctrl,
+            state=state,
+            backup_id="abc123def456",
+        )
+
+        service.get_backup.assert_awaited_once_with("abc123def456")
+        assert isinstance(result, ApiResponse)
+        assert result.data is manifest
+
+    async def test_get_backup_raises_404_on_not_found(self) -> None:
+        state, service = _make_state_and_service()
+        service.get_backup = AsyncMock(
+            side_effect=BackupNotFoundError("gone"),
+        )
+
+        ctrl = _controller()
+        with pytest.raises(NotFoundException):
+            await ctrl.get_backup.fn(
+                ctrl,
+                state=state,
+                backup_id="nonexistent",
+            )
+
+
+@pytest.mark.unit
+class TestDeleteBackup:
+    """BackupController.delete_backup endpoint."""
+
+    async def test_delete_backup_calls_service_with_id(self) -> None:
+        state, service = _make_state_and_service()
+        service.delete_backup = AsyncMock(return_value=None)
+
+        ctrl = _controller()
+        result = await ctrl.delete_backup.fn(
+            ctrl,
+            state=state,
+            backup_id="abc123def456",
+        )
+
+        service.delete_backup.assert_awaited_once_with("abc123def456")
+        assert isinstance(result, ApiResponse)
+        assert result.data is None
+
+    async def test_delete_backup_raises_404_on_not_found(self) -> None:
+        state, service = _make_state_and_service()
+        service.delete_backup = AsyncMock(
+            side_effect=BackupNotFoundError("gone"),
+        )
+
+        ctrl = _controller()
+        with pytest.raises(NotFoundException):
+            await ctrl.delete_backup.fn(
+                ctrl,
+                state=state,
+                backup_id="nonexistent",
+            )
+
+
+@pytest.mark.unit
+class TestRestoreBackup:
+    """BackupController.restore_backup endpoint."""
+
+    async def test_restore_calls_service_with_confirm_true(self) -> None:
+        state, service = _make_state_and_service()
+        response = _make_restore_response()
+        service.restore_from_backup = AsyncMock(return_value=response)
+
+        request = RestoreRequest(
+            backup_id="abc123def456",
+            confirm=True,
+        )
+        ctrl = _controller()
+        result = await ctrl.restore_backup.fn(
+            ctrl,
+            state=state,
+            data=request,
+        )
+
+        service.restore_from_backup.assert_awaited_once_with(
+            "abc123def456",
+            components=None,
+        )
+        assert isinstance(result, ApiResponse)
+        assert result.data is response
+
+    async def test_restore_passes_components_to_service(self) -> None:
+        state, service = _make_state_and_service()
+        response = _make_restore_response()
+        service.restore_from_backup = AsyncMock(return_value=response)
+
+        components = (BackupComponent.PERSISTENCE, BackupComponent.CONFIG)
+        request = RestoreRequest(
+            backup_id="abc123def456",
+            components=components,
+            confirm=True,
+        )
+        ctrl = _controller()
+        await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+
+        service.restore_from_backup.assert_awaited_once_with(
+            "abc123def456",
+            components=components,
+        )
+
+    async def test_restore_raises_400_without_confirm(self) -> None:
+        state, _service = _make_state_and_service()
+        request = RestoreRequest(
+            backup_id="abc123def456",
+            confirm=False,
+        )
+
+        ctrl = _controller()
+        with pytest.raises(ClientException) as exc_info:
+            await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+
+        assert exc_info.value.status_code == 400
+
+    async def test_restore_raises_404_on_not_found(self) -> None:
+        state, service = _make_state_and_service()
+        service.restore_from_backup = AsyncMock(
+            side_effect=BackupNotFoundError("gone"),
+        )
+
+        request = RestoreRequest(
+            backup_id="nonexistent",
+            confirm=True,
+        )
+        ctrl = _controller()
+        with pytest.raises(NotFoundException):
+            await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+
+    async def test_restore_raises_409_on_in_progress(self) -> None:
+        state, service = _make_state_and_service()
+        service.restore_from_backup = AsyncMock(
+            side_effect=BackupInProgressError("busy"),
+        )
+
+        request = RestoreRequest(
+            backup_id="abc123def456",
+            confirm=True,
+        )
+        ctrl = _controller()
+        with pytest.raises(ClientException) as exc_info:
+            await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+
+        assert exc_info.value.status_code == 409
+
+    async def test_restore_raises_422_on_manifest_error(self) -> None:
+        state, service = _make_state_and_service()
+        service.restore_from_backup = AsyncMock(
+            side_effect=ManifestError("corrupt manifest"),
+        )
+
+        request = RestoreRequest(
+            backup_id="abc123def456",
+            confirm=True,
+        )
+        ctrl = _controller()
+        with pytest.raises(ClientException) as exc_info:
+            await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+
+        assert exc_info.value.status_code == 422
+
+    async def test_restore_raises_500_on_restore_error(self) -> None:
+        state, service = _make_state_and_service()
+        service.restore_from_backup = AsyncMock(
+            side_effect=RestoreError("disk failure"),
+        )
+
+        request = RestoreRequest(
+            backup_id="abc123def456",
+            confirm=True,
+        )
+        ctrl = _controller()
+        with pytest.raises(InternalServerException):
+            await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+
+
+@pytest.mark.unit
+class TestRestoreConfirmGate:
+    """confirm=true safety gate is enforced before any service interaction."""
+
+    @pytest.mark.parametrize("confirm", [False])
+    async def test_service_not_called_when_confirm_false(
+        self,
+        confirm: bool,
+    ) -> None:
+        state, service = _make_state_and_service()
+        request = RestoreRequest(
+            backup_id="abc123def456",
+            confirm=confirm,
+        )
+
+        ctrl = _controller()
+        with pytest.raises(ClientException):
+            await ctrl.restore_backup.fn(ctrl, state=state, data=request)
+
+        # Service must never be called when confirm is false
+        service.restore_from_backup.assert_not_awaited()

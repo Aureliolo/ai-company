@@ -9,6 +9,7 @@ from synthorg.api.approval_store import ApprovalStore  # noqa: TC001
 from synthorg.api.auth.service import AuthService  # noqa: TC001
 from synthorg.api.auth.ticket_store import WsTicketStore
 from synthorg.api.errors import ServiceUnavailableError
+from synthorg.backup.service import BackupService  # noqa: TC001
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.meeting.orchestrator import (
@@ -57,6 +58,7 @@ class AppState:
         "_agent_registry",
         "_approval_gate",
         "_auth_service",
+        "_backup_service",
         "_config_resolver",
         "_coordinator",
         "_cost_tracker",
@@ -100,6 +102,7 @@ class AppState:
         self.config = config
         self.approval_store = approval_store
         self._approval_gate = approval_gate
+        self._backup_service: BackupService | None = None
         self._persistence = persistence
         self._message_bus = message_bus
         self._cost_tracker = cost_tracker
@@ -386,3 +389,33 @@ class AppState:
             old_strategy=old_strategy,
             new_strategy=router.strategy_name,
         )
+
+    # ── Backup service (deferred init) ────────────────────────────
+
+    @property
+    def has_backup_service(self) -> bool:
+        """Check whether the backup service is configured."""
+        return self._backup_service is not None
+
+    @property
+    def backup_service(self) -> BackupService:
+        """Return backup service or raise 503."""
+        return self._require_service(self._backup_service, "backup_service")
+
+    def set_backup_service(self, service: BackupService) -> None:
+        """Set the backup service (deferred initialisation).
+
+        Supports late binding when the backup service is created
+        after ``AppState`` construction.
+
+        Args:
+            service: Fully configured backup service.
+
+        Raises:
+            RuntimeError: If the backup service was already configured.
+        """
+        if self._backup_service is not None:
+            msg = "Backup service already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
+        self._backup_service = service
