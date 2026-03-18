@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from synthorg.core.enums import ToolCategory
+from synthorg.observability.events.sandbox import SANDBOX_FACTORY_CLEANUP_FAILED
 from synthorg.tools.sandbox.config import SubprocessSandboxConfig
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.factory import (
@@ -231,7 +232,13 @@ class TestResolveSandboxForCategory:
             "subprocess": MagicMock(spec=SandboxBackend),
         }
 
-        with pytest.raises(KeyError, match="docker"):
+        with pytest.raises(
+            KeyError,
+            match=(
+                r"resolved for category 'version_control'"
+                r".*available: \['subprocess'\]"
+            ),
+        ):
             resolve_sandbox_for_category(
                 config=config,
                 backends=backends,
@@ -252,14 +259,14 @@ class TestCleanupSandboxBackends:
             "docker": mock_docker,
         }
 
-        await cleanup_sandbox_backends(backends)
+        await cleanup_sandbox_backends(backends=backends)
 
         mock_sub.cleanup.assert_awaited_once()
         mock_docker.cleanup.assert_awaited_once()
 
     async def test_cleanup_empty_mapping(self) -> None:
         """No error when cleaning up an empty mapping."""
-        await cleanup_sandbox_backends({})
+        await cleanup_sandbox_backends(backends={})
 
     async def test_cleanup_single_backend(self) -> None:
         """Cleanup works with a single backend."""
@@ -268,7 +275,7 @@ class TestCleanupSandboxBackends:
             "subprocess": mock_backend,
         }
 
-        await cleanup_sandbox_backends(backends)
+        await cleanup_sandbox_backends(backends=backends)
 
         mock_backend.cleanup.assert_awaited_once()
 
@@ -283,8 +290,16 @@ class TestCleanupSandboxBackends:
             "ok": healthy,
         }
 
-        # Should not raise -- errors are logged and swallowed
-        await cleanup_sandbox_backends(backends)
+        with patch(
+            "synthorg.tools.sandbox.factory.logger",
+        ) as mock_logger:
+            # Should not raise -- errors are logged and swallowed
+            await cleanup_sandbox_backends(backends=backends)
 
         failing.cleanup.assert_awaited_once()
         healthy.cleanup.assert_awaited_once()
+        # Verify the error was actually logged
+        mock_logger.warning.assert_called_once()
+        call_args = mock_logger.warning.call_args
+        assert call_args[0][0] == SANDBOX_FACTORY_CLEANUP_FAILED
+        assert call_args[1]["backend"] == "broken"

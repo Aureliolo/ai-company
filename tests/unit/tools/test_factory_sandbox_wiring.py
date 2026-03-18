@@ -43,7 +43,7 @@ def _git_tools(
     """Filter and return git tools, asserting expected count."""
     matched = [t for t in tools if t.name in _GIT_TOOL_NAMES]
     assert len(matched) == len(_GIT_TOOL_NAMES)
-    return matched  # type: ignore[return-value]
+    return matched  # type: ignore[return-value]  # narrowed by name membership check
 
 
 @pytest.mark.unit

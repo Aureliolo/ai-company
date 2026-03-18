@@ -14,7 +14,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.sandbox import (
     SANDBOX_FACTORY_BUILT,
     SANDBOX_FACTORY_CLEANUP,
+    SANDBOX_FACTORY_CLEANUP_FAILED,
     SANDBOX_FACTORY_RESOLVE,
+    SANDBOX_FACTORY_RESOLVE_FAILED,
 )
 from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
@@ -28,6 +30,8 @@ if TYPE_CHECKING:
     from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 
 logger = get_logger(__name__)
+
+_KNOWN_BACKENDS: frozenset[str] = frozenset({"subprocess", "docker"})
 
 
 def build_sandbox_backends(
@@ -48,9 +52,22 @@ def build_sandbox_backends(
     Returns:
         A read-only mapping of backend name to backend instance.
         Only contains keys for backends that are actually referenced.
+
+    Raises:
+        ValueError: If *config* references an unrecognized backend
+            name not in the known set (``subprocess``, ``docker``).
     """
     needed: set[str] = {config.default_backend}
     needed.update(config.overrides.values())
+
+    unknown = needed - _KNOWN_BACKENDS
+    if unknown:
+        msg = (
+            f"Unrecognized sandbox backend name(s): {sorted(unknown)}; "
+            f"known backends: {sorted(_KNOWN_BACKENDS)}"
+        )
+        logger.error(SANDBOX_FACTORY_BUILT, error=msg)
+        raise ValueError(msg)
 
     backends: dict[str, SandboxBackend] = {}
 
@@ -101,19 +118,19 @@ def resolve_sandbox_for_category(
     backend_name = config.backend_for_category(category.value)
     try:
         backend = backends[backend_name]
-    except KeyError:
+    except KeyError as exc:
         msg = (
             f"Backend {backend_name!r} resolved for category "
             f"{category.value!r} not found in backends mapping "
             f"(available: {sorted(backends.keys())})"
         )
         logger.warning(
-            SANDBOX_FACTORY_RESOLVE,
+            SANDBOX_FACTORY_RESOLVE_FAILED,
             category=category.value,
             backend=backend_name,
             error=msg,
         )
-        raise KeyError(msg) from None
+        raise KeyError(msg) from exc
 
     logger.debug(
         SANDBOX_FACTORY_RESOLVE,
@@ -124,13 +141,15 @@ def resolve_sandbox_for_category(
 
 
 async def cleanup_sandbox_backends(
+    *,
     backends: Mapping[str, SandboxBackend],
 ) -> None:
     """Clean up all backends by calling ``cleanup()`` on each.
 
     Errors from individual backends are logged but do not prevent
-    cleanup of remaining backends.  Uses ``asyncio.TaskGroup`` for
-    parallel cleanup.
+    cleanup of remaining backends.  Uses ``asyncio.gather`` with
+    ``return_exceptions=True`` for best-effort parallel cleanup
+    that is resilient to task cancellation.
 
     Args:
         backends: Mapping of backend name to backend instance.
@@ -142,12 +161,23 @@ async def cleanup_sandbox_backends(
             await backend.cleanup()
         except Exception:
             logger.warning(
-                SANDBOX_FACTORY_CLEANUP,
+                SANDBOX_FACTORY_CLEANUP_FAILED,
                 backend=name,
                 error=f"cleanup failed for backend {name!r}",
                 exc_info=True,
             )
 
-    async with asyncio.TaskGroup() as tg:
-        for name, backend in backends.items():
-            tg.create_task(_cleanup_one(name, backend))
+    backend_items = list(backends.items())
+    results = await asyncio.gather(
+        *(_cleanup_one(n, b) for n, b in backend_items),
+        return_exceptions=True,
+    )
+    # Log BaseException subclasses (CancelledError, KeyboardInterrupt)
+    # that escaped _cleanup_one's except Exception block
+    for (name, _), result in zip(backend_items, results, strict=True):
+        if isinstance(result, BaseException):
+            logger.error(
+                SANDBOX_FACTORY_CLEANUP_FAILED,
+                backend=name,
+                error=f"unhandled exception during cleanup: {result!r}",
+            )
