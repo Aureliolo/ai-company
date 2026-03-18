@@ -185,7 +185,7 @@ describe('useProviderStore', () => {
     const store = useProviderStore()
     await store.fetchProviders()
 
-    const stored = store.providers['test-provider'] as Record<string, unknown>
+    const stored = store.providers['test-provider'] as unknown as Record<string, unknown>
     expect(stored).toBeDefined()
     expect('api_key' in stored).toBe(false)
     expect('oauth_client_secret' in stored).toBe(false)
@@ -195,16 +195,18 @@ describe('useProviderStore', () => {
     expect(stored.has_api_key).toBe(false)
   })
 
-  it('sanitizer strips secrets across random provider shapes (property)', () => {
+  it('sanitizer strips secrets across random provider shapes (property)', async () => {
     const SECRET_KEYS = ['api_key', 'oauth_client_secret', 'custom_header_value'] as const
+    const UNSAFE_KEYS = ['__proto__', 'prototype', 'constructor']
+    const providersApi = await import('@/api/endpoints/providers')
 
-    fc.assert(
-      fc.property(
+    await fc.assert(
+      fc.asyncProperty(
         fc.dictionary(
-          fc.string({ minLength: 1, maxLength: 20 }).filter(k => !['__proto__', 'prototype', 'constructor'].includes(k)),
+          fc.string({ minLength: 1, maxLength: 20 }).filter(k => !UNSAFE_KEYS.includes(k)),
           fc.record({
             driver: fc.constant('litellm'),
-            auth_type: fc.constantFrom('api_key' as const, 'oauth' as const, 'none' as const),
+            auth_type: fc.constantFrom('api_key' as const, 'oauth' as const, 'none' as const, 'custom_header' as const),
             base_url: fc.constant(null),
             models: fc.constant([]),
             has_api_key: fc.boolean(),
@@ -220,29 +222,24 @@ describe('useProviderStore', () => {
           }),
           { minKeys: 1, maxKeys: 5 },
         ),
-        (rawProviders) => {
-          // Import the sanitizer indirectly by exercising the store
-          // We replicate the sanitizer logic inline since it's not exported
-          const UNSAFE = new Set(['__proto__', 'prototype', 'constructor'])
-          const result: Record<string, Record<string, unknown>> = {}
-          for (const [key, provider] of Object.entries(rawProviders)) {
-            if (UNSAFE.has(key)) continue
-            const cleaned = { ...provider }
-            for (const field of SECRET_KEYS) {
-              delete (cleaned as Record<string, unknown>)[field]
-            }
-            result[key] = cleaned as Record<string, unknown>
-          }
+        async (rawProviders) => {
+          // Exercise the real sanitizer via fetchProviders
+          vi.mocked(providersApi.listProviders).mockResolvedValue(
+            rawProviders as unknown as Record<string, ProviderConfig>,
+          )
+          const store = useProviderStore()
+          await store.fetchProviders()
 
-          // Assert no secret fields survive
-          for (const providerName of Object.keys(result)) {
+          // Assert no secret fields survive in the store
+          for (const providerName of Object.keys(store.providers)) {
+            const stored = store.providers[providerName] as unknown as Record<string, unknown>
             for (const secret of SECRET_KEYS) {
-              expect(result[providerName]).not.toHaveProperty(secret)
+              expect(stored).not.toHaveProperty(secret)
             }
           }
           // Assert no prototype-pollution keys
-          for (const unsafeKey of UNSAFE) {
-            expect(result).not.toHaveProperty(unsafeKey)
+          for (const unsafeKey of UNSAFE_KEYS) {
+            expect(store.providers).not.toHaveProperty(unsafeKey)
           }
         },
       ),
