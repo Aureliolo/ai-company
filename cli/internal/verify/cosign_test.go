@@ -144,7 +144,7 @@ func TestVerifyCosignSignatureInvalidBundle(t *testing.T) {
 		},
 		Layers: []ociLayerDescriptor{
 			{
-				MediaType: cosignArtifactType,
+				MediaType: cosignV2ArtifactType,
 				Digest:    "sha256:0000000000000000000000000000000000000000000000000000000000000001",
 				Size:      len(layerContent),
 				Annotations: map[string]string{
@@ -168,7 +168,7 @@ func TestVerifyCosignSignatureInvalidBundle(t *testing.T) {
 				MediaType:    "application/vnd.oci.image.manifest.v1+json",
 				Digest:       v1.Hash{Algorithm: "sha256", Hex: strings.TrimPrefix(sigDigest, "sha256:")},
 				Size:         int64(len(sigManifestJSON)),
-				ArtifactType: cosignArtifactType,
+				ArtifactType: cosignV2ArtifactType,
 			},
 		},
 	}
@@ -214,6 +214,25 @@ func TestVerifyCosignSignatureInvalidBundle(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "cosign signature") {
 		t.Errorf("expected cosign signature verification error, got: %v", err)
+	}
+}
+
+func TestIsCosignSignatureArtifact(t *testing.T) {
+	tests := []struct {
+		artifactType string
+		want         bool
+	}{
+		{cosignV3BundleArtifactType, true},
+		{cosignV2ArtifactType, true},
+		{"application/vnd.oci.empty.v1+json", false},
+		{"application/vnd.in-toto+json", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		desc := v1.Descriptor{ArtifactType: tt.artifactType}
+		if got := isCosignSignatureArtifact(desc); got != tt.want {
+			t.Errorf("isCosignSignatureArtifact(%q) = %v, want %v", tt.artifactType, got, tt.want)
+		}
 	}
 }
 
