@@ -460,7 +460,7 @@ class TestAutoWirePhase2:
         )
 
         assert app_state.has_settings_service
-        assert app_state.has_config_resolver
+        assert app_state.has_config_resolver  # type: ignore[unreachable]
         assert app_state.has_provider_management
         # Dispatcher is created when bus is available
         assert dispatcher is not None
@@ -568,7 +568,7 @@ class TestAppStateSetSettingsService:
         app_state.set_settings_service(settings_svc)
 
         assert app_state.has_settings_service
-        assert app_state.has_config_resolver
+        assert app_state.has_config_resolver  # type: ignore[unreachable]
         assert app_state.has_provider_management
 
     def test_raises_if_already_set(
