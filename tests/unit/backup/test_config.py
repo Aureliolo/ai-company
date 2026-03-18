@@ -181,19 +181,19 @@ class TestBackupConfigPathTraversal:
 class TestBackupConfigIncludeValidation:
     def test_rejects_unknown_component(self) -> None:
         with pytest.raises(ValidationError, match="Input should be"):
-            BackupConfig(include=("persistence", "invalid_thing"))
+            BackupConfig(include=(BackupComponent.PERSISTENCE, "invalid_thing"))  # type: ignore[arg-type]
 
     def test_rejects_all_unknown_components(self) -> None:
         with pytest.raises(ValidationError, match="Input should be"):
-            BackupConfig(include=("bogus",))
+            BackupConfig(include=("bogus",))  # type: ignore[arg-type]
 
-    @pytest.mark.parametrize("component", [c.value for c in BackupComponent])
-    def test_accepts_each_valid_component(self, component: str) -> None:
+    @pytest.mark.parametrize("component", list(BackupComponent))
+    def test_accepts_each_valid_component(self, component: BackupComponent) -> None:
         cfg = BackupConfig(include=(component,))
         assert component in cfg.include
 
     def test_accepts_all_components_together(self) -> None:
-        all_components = tuple(c.value for c in BackupComponent)
+        all_components = tuple(BackupComponent)
         cfg = BackupConfig(include=all_components)
         assert cfg.include == all_components
 

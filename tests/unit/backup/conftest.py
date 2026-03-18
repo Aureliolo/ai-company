@@ -22,7 +22,11 @@ def backup_config() -> BackupConfig:
         path="/data/backups",
         schedule_hours=6,
         compression=True,
-        include=("persistence", "memory", "config"),
+        include=(
+            BackupComponent.PERSISTENCE,
+            BackupComponent.MEMORY,
+            BackupComponent.CONFIG,
+        ),
     )
 
 

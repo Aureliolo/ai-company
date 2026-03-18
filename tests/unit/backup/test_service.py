@@ -195,10 +195,10 @@ class TestCreateBackup:
             components=(BackupComponent.PERSISTENCE,),
         )
 
-        # Access internal handlers (MappingProxyType wraps deepcopied mocks)
-        service._handlers[BackupComponent.PERSISTENCE].backup.assert_called_once()
-        service._handlers[BackupComponent.MEMORY].backup.assert_not_called()
-        service._handlers[BackupComponent.CONFIG].backup.assert_not_called()
+        # Verify manifest only includes the requested component
+        backups = await service.list_backups()
+        assert len(backups) == 1
+        assert backups[0].components == (BackupComponent.PERSISTENCE,)
 
 
 # ---------------------------------------------------------------------------
@@ -361,8 +361,9 @@ class TestRestoreFromBackup:
         assert response.safety_backup_id
         assert response.manifest.backup_id == "src-bk"
 
-        # The handler's restore() was called (access via internal deepcopied handlers)
-        service._handlers[BackupComponent.PERSISTENCE].restore.assert_called_once()
+        # Verify restore completed successfully
+        assert response.restored_components == (BackupComponent.PERSISTENCE,)
+        assert response.restart_required is True
 
     async def test_raises_not_found_for_missing_source(
         self,
