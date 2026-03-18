@@ -84,7 +84,7 @@ _ERROR_RESPONSES: Final[tuple[_ErrorResponseSpec, ...]] = (
     _ErrorResponseSpec(
         status=400,
         key="BadRequest",
-        description=("Validation error \u2014 request body or parameters are invalid."),
+        description="Validation error -- request body or parameters are invalid.",
         error_code=ErrorCode.REQUEST_VALIDATION_ERROR,
         error_category=ErrorCategory.VALIDATION,
         detail="Validation error",
@@ -93,7 +93,7 @@ _ERROR_RESPONSES: Final[tuple[_ErrorResponseSpec, ...]] = (
     _ErrorResponseSpec(
         status=401,
         key="Unauthorized",
-        description=("Authentication required \u2014 missing or invalid credentials."),
+        description="Authentication required -- missing or invalid credentials.",
         error_code=ErrorCode.UNAUTHORIZED,
         error_category=ErrorCategory.AUTH,
         detail="Authentication required",
@@ -120,7 +120,7 @@ _ERROR_RESPONSES: Final[tuple[_ErrorResponseSpec, ...]] = (
     _ErrorResponseSpec(
         status=409,
         key="Conflict",
-        description=("Resource conflict \u2014 duplicate or invalid state transition."),
+        description="Resource conflict -- duplicate or invalid state transition.",
         error_code=ErrorCode.RESOURCE_CONFLICT,
         error_category=ErrorCategory.CONFLICT,
         detail="Resource conflict",
@@ -129,7 +129,7 @@ _ERROR_RESPONSES: Final[tuple[_ErrorResponseSpec, ...]] = (
     _ErrorResponseSpec(
         status=429,
         key="TooManyRequests",
-        description="Rate limit exceeded \u2014 back off and retry.",
+        description="Rate limit exceeded -- back off and retry.",
         error_code=ErrorCode.RATE_LIMITED,
         error_category=ErrorCategory.RATE_LIMIT,
         detail="Rate limit exceeded",
@@ -162,7 +162,7 @@ All error responses support content negotiation between two formats:
 
 - **`application/json`** (default): Standard `ApiResponse` envelope with \
 `error`, `error_detail`, and `success` fields
-- **`application/problem+json`**: Bare RFC 9457 Problem Detail body \u2014 \
+- **`application/problem+json`**: Bare RFC 9457 Problem Detail body -- \
 send `Accept: application/problem+json`
 
 Every error includes machine-readable metadata: `error_code` \
