@@ -996,6 +996,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/analytics` | Performance metrics, dashboards |
 | `/api/v1/settings` | Runtime-editable configuration (9 namespaces), schema discovery |
 | `GET /api/v1/providers`, `POST /api/v1/providers`, `PUT /api/v1/providers/{name}`, `DELETE /api/v1/providers/{name}`, `POST /api/v1/providers/{name}/test`, `GET /api/v1/providers/presets`, `POST /api/v1/providers/from-preset` | Provider CRUD, connection testing, presets, 4 auth types (api_key, oauth, custom_header, none) |
+| `/api/v1/admin/backups` | Manual backup, list, detail, delete |
 | `/api/v1/ws` | WebSocket for real-time updates (ticket auth via `?ticket=`) |
 | `POST /api/v1/auth/ws-ticket` | Exchange JWT for one-time WebSocket connection ticket |
 

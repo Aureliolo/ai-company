@@ -193,7 +193,6 @@ def require_password_changed(
             ``AuthenticatedUser``.
     """
     path = str(connection.url.path)
-    scope_type = connection.scope.get("type", "unknown")
     if any(path.endswith(s) for s in _PWD_CHANGE_EXEMPT_SUFFIXES):
         logger.debug(
             API_AUTH_GUARD_SKIPPED,
@@ -204,6 +203,10 @@ def require_password_changed(
         return
     user = connection.scope.get("user")
     if user is None:
+        # Expected for WebSocket upgrade requests -- the auth
+        # middleware is HTTP-only, so WS connections arrive here
+        # without a user in scope.  Ticket auth runs in the handler.
+        scope_type = connection.scope.get("type", "unknown")
         logger.debug(
             API_AUTH_GUARD_SKIPPED,
             guard="require_password_changed",

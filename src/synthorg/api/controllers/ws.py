@@ -189,6 +189,9 @@ async def _on_event(
         await socket.close(code=1011, reason="Internal error")
 
 
+# Defense-in-depth: opt signals Litestar's auth middleware to skip
+# this handler.  The middleware is already HTTP-only (ScopeType.HTTP)
+# and the WS path is regex-excluded, so this is a tertiary safeguard.
 @websocket("/ws", opt={"exclude_from_auth": True})
 async def ws_handler(
     socket: WebSocket[Any, Any, Any],
@@ -224,9 +227,21 @@ async def ws_handler(
 
     # Resolve ChannelsPlugin from the app -- Litestar's DI does not
     # reliably inject plugin instances into WebSocket handlers (the
-    # parameter is misidentified as a query param, causing a 4500
-    # close before the handler runs).  See #549.
-    channels_plugin: ChannelsPlugin = socket.app.plugins.get(ChannelsPlugin)
+    # parameter is misidentified as a query param, causing a
+    # Litestar-internal 4500 close before the handler runs).  See #549.
+    # plugins.get() raises PluginRegistryException if the plugin is
+    # absent -- ChannelsPlugin is always registered in create_app().
+    try:
+        channels_plugin: ChannelsPlugin = socket.app.plugins.get(
+            ChannelsPlugin,
+        )
+    except KeyError:
+        logger.warning(
+            API_WS_SEND_FAILED,
+            reason="channels_plugin_not_registered",
+        )
+        await socket.close(code=1011, reason="Internal error")
+        return
     subscriber = await channels_plugin.subscribe(list(ALL_CHANNELS))
 
     async def _event_callback(event_data: bytes) -> None:

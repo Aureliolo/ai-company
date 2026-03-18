@@ -72,8 +72,8 @@ on resolution.
 - **Argon2id password hashing** (time_cost=3, memory_cost=64 MB, parallelism=4)
 - **Timing-attack prevention** — dummy hash computation for non-existent users
 - **Forced password change** — `must_change_password` flag blocks API access
-- **One-time WebSocket tickets** — short-lived (30 s), single-use, cryptographically random tokens exchanged via ``POST /api/v1/auth/ws-ticket`` (requires valid JWT). Prevents long-lived JWT leakage by replacing it with an ephemeral ticket in the WebSocket query parameter. In-memory store, monotonic clock expiry, per-process scope.
-- **Rate limiting** — configurable per-deployment (default: 100 req/min)
+- **One-time WebSocket tickets** -- short-lived (30 s), single-use, cryptographically random tokens exchanged via ``POST /api/v1/auth/ws-ticket`` (requires valid JWT). Prevents long-lived JWT leakage by replacing it with an ephemeral ticket in the WebSocket query parameter. In-memory store, monotonic clock expiry, per-process scope. JWT/API key auth middleware is scoped to HTTP requests only (`ScopeType.HTTP`) -- WebSocket connections bypass the middleware entirely and rely on handler-level ticket validation.
+- **Rate limiting** -- configurable per-deployment (default: 100 req/min). The WebSocket path is excluded from rate limiting -- HTTP-style per-request rate limiting is inappropriate for persistent WebSocket connections.
 
 ### Security Headers
 
