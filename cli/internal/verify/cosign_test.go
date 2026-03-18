@@ -150,7 +150,10 @@ func TestVerifyCosignSignatureInvalidBundle(t *testing.T) {
 		},
 	}
 
-	sigManifestJSON, _ := json.Marshal(sigManifest)
+	sigManifestJSON, err := json.Marshal(sigManifest)
+	if err != nil {
+		t.Fatalf("marshaling signature manifest: %v", err)
+	}
 
 	// Referrer index pointing to the signature manifest.
 	referrerIdx := v1.IndexManifest{
@@ -165,7 +168,10 @@ func TestVerifyCosignSignatureInvalidBundle(t *testing.T) {
 			},
 		},
 	}
-	referrerIdxJSON, _ := json.Marshal(referrerIdx)
+	referrerIdxJSON, err := json.Marshal(referrerIdx)
+	if err != nil {
+		t.Fatalf("marshaling referrer index: %v", err)
+	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -198,9 +204,12 @@ func TestVerifyCosignSignatureInvalidBundle(t *testing.T) {
 		Digest:     testDigest,
 	}
 
-	err := VerifyCosignSignature(context.Background(), ref, nil, sigverify.CertificateIdentity{})
+	err = VerifyCosignSignature(context.Background(), ref, nil, sigverify.CertificateIdentity{})
 	if err == nil {
 		t.Fatal("expected error for invalid bundle JSON")
+	}
+	if !strings.Contains(err.Error(), "cosign signature") {
+		t.Errorf("expected cosign signature verification error, got: %v", err)
 	}
 }
 
