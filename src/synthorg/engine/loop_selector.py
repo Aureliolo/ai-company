@@ -6,19 +6,26 @@ and optional budget utilization to a loop type string, and a
 
 The default rules follow the design spec (section 6.5):
 simple -> ReAct, medium -> Plan-and-Execute, complex/epic -> Hybrid.
+When budget utilization is at or above ``budget_tight_threshold``,
+hybrid selections are downgraded to plan_execute.  A configurable
+``hybrid_fallback`` replaces hybrid when the HybridLoop class is not
+yet implemented.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.enums import Complexity
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.observability import get_logger
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_DOWNGRADE,
     EXECUTION_LOOP_HYBRID_FALLBACK,
+    EXECUTION_LOOP_NO_RULE_MATCH,
+    EXECUTION_LOOP_UNKNOWN_TYPE,
 )
 
 if TYPE_CHECKING:
@@ -29,6 +36,9 @@ if TYPE_CHECKING:
     from synthorg.engine.stagnation import StagnationDetector
 
 logger = get_logger(__name__)
+
+_KNOWN_LOOP_TYPES: frozenset[str] = frozenset({"react", "plan_execute", "hybrid"})
+"""Valid loop type identifiers accepted by ``build_execution_loop``."""
 
 
 class AutoLoopRule(BaseModel):
@@ -43,7 +53,7 @@ class AutoLoopRule(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     complexity: Complexity = Field(description="Task complexity level")
-    loop_type: str = Field(description="Loop type identifier")
+    loop_type: NotBlankStr = Field(description="Loop type identifier")
 
 
 DEFAULT_AUTO_LOOP_RULES: tuple[AutoLoopRule, ...] = (
@@ -53,12 +63,22 @@ DEFAULT_AUTO_LOOP_RULES: tuple[AutoLoopRule, ...] = (
     AutoLoopRule(complexity=Complexity.EPIC, loop_type="hybrid"),
 )
 
+# Import-time completeness guard (follows _SENIORITY_ORDER pattern in
+# core/enums.py): ensures every Complexity member has a default rule.
+_covered = {r.complexity for r in DEFAULT_AUTO_LOOP_RULES}
+_all_complexities = set(Complexity)
+if _covered != _all_complexities:
+    _missing = _all_complexities - _covered
+    msg = f"DEFAULT_AUTO_LOOP_RULES missing complexities: {_missing}"
+    raise RuntimeError(msg)
+
 
 class AutoLoopConfig(BaseModel):
     """Configuration for automatic execution loop selection.
 
     Attributes:
         rules: Ordered rules mapping complexity to loop type.
+            Each complexity must appear at most once.
         budget_tight_threshold: Monthly budget utilization percentage
             at or above which the budget is considered tight.  When
             tight, hybrid selections are downgraded to plan_execute.
@@ -79,10 +99,21 @@ class AutoLoopConfig(BaseModel):
         le=100,
         description="Budget utilization % that triggers tight-budget mode",
     )
-    hybrid_fallback: str | None = Field(
+    hybrid_fallback: NotBlankStr | None = Field(
         default="plan_execute",
         description="Fallback loop when hybrid is selected but unavailable",
     )
+
+    @model_validator(mode="after")
+    def _validate_unique_complexities(self) -> Self:
+        """Reject duplicate complexity values in rules."""
+        seen: set[Complexity] = set()
+        for rule in self.rules:
+            if rule.complexity in seen:
+                msg = f"Duplicate complexity in rules: {rule.complexity.value!r}"
+                raise ValueError(msg)
+            seen.add(rule.complexity)
+        return self
 
 
 def select_loop_type(
@@ -121,11 +152,18 @@ def select_loop_type(
         ``"hybrid"``.
     """
     # 1. Rule matching
-    loop_type = "react"
-    for rule in rules:
-        if rule.complexity == complexity:
-            loop_type = rule.loop_type
-            break
+    loop_type = next(
+        (r.loop_type for r in rules if r.complexity == complexity),
+        "react",
+    )
+
+    if loop_type == "react" and not any(r.complexity == complexity for r in rules):
+        logger.warning(
+            EXECUTION_LOOP_NO_RULE_MATCH,
+            complexity=complexity.value,
+            fallback="react",
+            num_rules=len(rules),
+        )
 
     # 2. Budget-aware downgrade (hybrid only)
     if (
@@ -190,5 +228,9 @@ def build_execution_loop(
             stagnation_detector=stagnation_detector,
             compaction_callback=compaction_callback,
         )
+    logger.warning(
+        EXECUTION_LOOP_UNKNOWN_TYPE,
+        loop_type=loop_type,
+    )
     msg = f"Unknown loop type: {loop_type!r}"
     raise ValueError(msg)

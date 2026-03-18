@@ -74,6 +74,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_TASK_TRANSITION,
     EXECUTION_ENGINE_TIMEOUT,
     EXECUTION_LOOP_AUTO_SELECTED,
+    EXECUTION_LOOP_BUDGET_UNAVAILABLE,
     EXECUTION_RECOVERY_FAILED,
     EXECUTION_RESUME_COMPLETE,
     EXECUTION_RESUME_FAILED,
@@ -178,6 +179,10 @@ class AgentEngine:
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
+            logger.warning(
+                EXECUTION_ENGINE_ERROR,
+                reason=msg,
+            )
             raise ValueError(msg)
         self._provider = provider
         self._approval_store = approval_store
@@ -232,7 +237,11 @@ class AgentEngine:
         self._audit_log = AuditLog()
         logger.debug(
             EXECUTION_ENGINE_CREATED,
-            loop_type=self._loop.get_loop_type(),
+            loop_type=(
+                "auto"
+                if self._auto_loop_config is not None
+                else self._loop.get_loop_type()
+            ),
             has_tool_registry=self._tool_registry is not None,
             has_cost_tracker=self._cost_tracker is not None,
             has_budget_enforcer=self._budget_enforcer is not None,
@@ -990,6 +999,15 @@ class AgentEngine:
             budget_utilization_pct = (
                 await self._budget_enforcer.get_budget_utilization_pct()
             )
+            if budget_utilization_pct is None:
+                logger.warning(
+                    EXECUTION_LOOP_BUDGET_UNAVAILABLE,
+                    note=(
+                        "budget enforcer present but utilization "
+                        "unknown; proceeding without budget-aware "
+                        "loop downgrade"
+                    ),
+                )
 
         loop_type = select_loop_type(
             complexity=task.estimated_complexity,

@@ -1146,3 +1146,16 @@ class TestGetBudgetUtilizationPct:
             result = await enforcer.get_budget_utilization_pct()
 
         assert result is None
+
+    async def test_memory_error_propagates(self) -> None:
+        """MemoryError is re-raised, never swallowed."""
+        cfg = _make_budget_config(total_monthly=100.0)
+        tracker = CostTracker(budget_config=cfg)
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+
+        with (
+            _patch_periods(),
+            patch.object(tracker, "get_total_cost", side_effect=MemoryError),
+            pytest.raises(MemoryError),
+        ):
+            await enforcer.get_budget_utilization_pct()

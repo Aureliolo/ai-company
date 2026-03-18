@@ -2,6 +2,7 @@
 
 import pytest
 import structlog.testing
+from pydantic import ValidationError
 
 from synthorg.core.enums import Complexity
 from synthorg.engine.loop_selector import (
@@ -16,6 +17,7 @@ from synthorg.engine.react_loop import ReactLoop
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_BUDGET_DOWNGRADE,
     EXECUTION_LOOP_HYBRID_FALLBACK,
+    EXECUTION_LOOP_NO_RULE_MATCH,
 )
 
 pytestmark = pytest.mark.timeout(30)
@@ -57,6 +59,18 @@ class TestSelectLoopType:
             rules=(),
         )
         assert result == "react"
+
+    def test_no_matching_rule_logs_warning(self) -> None:
+        """Fallback to react emits a warning log."""
+        with structlog.testing.capture_logs() as logs:
+            select_loop_type(
+                complexity=Complexity.COMPLEX,
+                rules=(),
+            )
+        events = [e for e in logs if e["event"] == EXECUTION_LOOP_NO_RULE_MATCH]
+        assert len(events) == 1
+        assert events[0]["complexity"] == "complex"
+        assert events[0]["fallback"] == "react"
 
 
 # ── Budget-aware downgrade ───────────────────────────────────
@@ -193,8 +207,6 @@ class TestAutoLoopConfig:
         assert config.hybrid_fallback == "plan_execute"
 
     def test_frozen(self) -> None:
-        from pydantic import ValidationError
-
         config = AutoLoopConfig()
         with pytest.raises(ValidationError):
             config.budget_tight_threshold = 50  # type: ignore[misc]
@@ -206,6 +218,29 @@ class TestAutoLoopConfig:
         )
         config = AutoLoopConfig(rules=rules)
         assert config.rules == rules
+
+    def test_duplicate_complexity_rejected(self) -> None:
+        """Rules with duplicate complexity values are invalid."""
+        with pytest.raises(ValidationError, match="Duplicate complexity"):
+            AutoLoopConfig(
+                rules=(
+                    AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="react"),
+                    AutoLoopRule(
+                        complexity=Complexity.SIMPLE, loop_type="plan_execute"
+                    ),
+                ),
+            )
+
+    @pytest.mark.parametrize("value", [-1, 101])
+    def test_budget_tight_threshold_out_of_range(self, value: int) -> None:
+        """budget_tight_threshold must be 0-100."""
+        with pytest.raises(ValidationError):
+            AutoLoopConfig(budget_tight_threshold=value)
+
+    def test_blank_hybrid_fallback_rejected(self) -> None:
+        """Empty/whitespace hybrid_fallback is invalid (NotBlankStr)."""
+        with pytest.raises(ValidationError):
+            AutoLoopConfig(hybrid_fallback="   ")
 
 
 # ── AutoLoopRule model ───────────────────────────────────────
@@ -224,11 +259,14 @@ class TestAutoLoopRule:
         assert rule.loop_type == "react"
 
     def test_frozen(self) -> None:
-        from pydantic import ValidationError
-
         rule = AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="react")
         with pytest.raises(ValidationError):
             rule.loop_type = "plan_execute"  # type: ignore[misc]
+
+    def test_blank_loop_type_rejected(self) -> None:
+        """Empty/whitespace loop_type is invalid (NotBlankStr)."""
+        with pytest.raises(ValidationError):
+            AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="")
 
 
 # ── build_execution_loop factory ─────────────────────────────
