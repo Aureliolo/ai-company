@@ -18,7 +18,7 @@ def _make_manifest(
     backup_id: str,
     trigger: BackupTrigger,
     timestamp: str,
-) -> dict:
+) -> dict[str, object]:
     """Build a raw manifest dict for writing to disk."""
     return BackupManifest(
         version="1",

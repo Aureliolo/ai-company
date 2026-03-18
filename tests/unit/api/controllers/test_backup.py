@@ -81,7 +81,7 @@ def _make_state_and_service() -> tuple[MagicMock, AsyncMock]:
 
 def _controller() -> BackupController:
     """Create a BackupController instance for testing."""
-    return BackupController(owner=BackupController)
+    return BackupController(owner=BackupController)  # type: ignore[arg-type]
 
 
 @pytest.mark.unit
