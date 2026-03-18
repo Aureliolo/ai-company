@@ -118,6 +118,13 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
     TurnRecord,
 )
+from synthorg.engine.loop_selector import (
+    DEFAULT_AUTO_LOOP_RULES,
+    AutoLoopConfig,
+    AutoLoopRule,
+    build_execution_loop,
+    select_loop_type,
+)
 from synthorg.engine.metrics import TaskCompletionMetrics
 from synthorg.engine.parallel import ParallelExecutor, ProgressCallback
 from synthorg.engine.parallel_models import (
@@ -203,6 +210,7 @@ from synthorg.engine.workspace import (
 from synthorg.providers.models import ZERO_TOKEN_USAGE, add_token_usage
 
 __all__ = [
+    "DEFAULT_AUTO_LOOP_RULES",
     "DEFAULT_MAX_TURNS",
     "STRATEGY_MAP",
     "STRATEGY_NAME_AUCTION",
@@ -226,6 +234,8 @@ __all__ = [
     "AssignmentRequest",
     "AssignmentResult",
     "AuctionAssignmentStrategy",
+    "AutoLoopConfig",
+    "AutoLoopRule",
     "AutoTopologyConfig",
     "BudgetChecker",
     "CancelTaskMutation",
@@ -362,10 +372,12 @@ __all__ = [
     "WorkspaceRequest",
     "WorkspaceSetupError",
     "add_token_usage",
+    "build_execution_loop",
     "build_execution_waves",
     "build_strategy_map",
     "build_system_prompt",
     "classify_execution_errors",
     "make_checkpoint_callback",
     "select_dispatcher",
+    "select_loop_type",
 ]

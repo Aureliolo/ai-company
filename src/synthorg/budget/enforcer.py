@@ -31,6 +31,8 @@ from synthorg.observability.events.budget import (
     BUDGET_PREFLIGHT_ERROR,
     BUDGET_RESOLVE_MODEL_ERROR,
     BUDGET_TASK_LIMIT_HIT,
+    BUDGET_UTILIZATION_ERROR,
+    BUDGET_UTILIZATION_QUERIED,
 )
 from synthorg.observability.events.quota import (
     QUOTA_CHECK_ALLOWED,
@@ -90,6 +92,42 @@ class BudgetEnforcer:
     def cost_tracker(self) -> CostTracker:
         """The underlying cost tracker."""
         return self._cost_tracker
+
+    async def get_budget_utilization_pct(self) -> float | None:
+        """Return current monthly budget utilization as a percentage.
+
+        Returns the ratio of current-period spend to the monthly budget
+        (``total_monthly``), expressed as a percentage (0--100+).
+
+        Returns ``None`` when monthly budget is disabled
+        (``total_monthly <= 0``) or when the underlying cost query
+        fails (graceful degradation).
+        """
+        cfg = self._budget_config
+        if cfg.total_monthly <= 0:
+            return None
+        try:
+            period_start = billing_period_start(cfg.reset_day)
+            monthly_cost = await self._cost_tracker.get_total_cost(
+                start=period_start,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                BUDGET_UTILIZATION_ERROR,
+                reason="falling_back_to_none",
+            )
+            return None
+        else:
+            pct = monthly_cost / cfg.total_monthly * 100
+            logger.debug(
+                BUDGET_UTILIZATION_QUERIED,
+                monthly_cost=monthly_cost,
+                total_monthly=cfg.total_monthly,
+                utilization_pct=pct,
+            )
+            return pct
 
     async def check_can_execute(
         self,

@@ -35,6 +35,11 @@ from synthorg.engine.loop_protocol import (
     TerminationReason,
     make_budget_checker,
 )
+from synthorg.engine.loop_selector import (
+    AutoLoopConfig,
+    build_execution_loop,
+    select_loop_type,
+)
 from synthorg.engine.metrics import TaskCompletionMetrics
 from synthorg.engine.prompt import (
     SystemPrompt,
@@ -68,6 +73,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_TASK_METRICS,
     EXECUTION_ENGINE_TASK_TRANSITION,
     EXECUTION_ENGINE_TIMEOUT,
+    EXECUTION_LOOP_AUTO_SELECTED,
     EXECUTION_RECOVERY_FAILED,
     EXECUTION_RESUME_COMPLETE,
     EXECUTION_RESUME_FAILED,
@@ -168,11 +174,16 @@ class AgentEngine:
         checkpoint_config: CheckpointConfig | None = None,
         coordinator: MultiAgentCoordinator | None = None,
         stagnation_detector: StagnationDetector | None = None,
+        auto_loop_config: AutoLoopConfig | None = None,
     ) -> None:
+        if execution_loop is not None and auto_loop_config is not None:
+            msg = "execution_loop and auto_loop_config are mutually exclusive"
+            raise ValueError(msg)
         self._provider = provider
         self._approval_store = approval_store
         self._parked_context_repo = parked_context_repo
         self._stagnation_detector = stagnation_detector
+        self._auto_loop_config = auto_loop_config
         self._approval_gate = self._make_approval_gate()
         if execution_loop is not None and (
             self._approval_gate is not None or self._stagnation_detector is not None
@@ -289,11 +300,14 @@ class AgentEngine:
         validate_agent(identity, agent_id)
         validate_task(task, agent_id, task_id)
 
+        loop_mode = (
+            "auto" if self._auto_loop_config is not None else self._loop.get_loop_type()
+        )
         logger.info(
             EXECUTION_ENGINE_START,
             agent_id=agent_id,
             task_id=task_id,
-            loop_type=self._loop.get_loop_type(),
+            loop_type=loop_mode,
             max_turns=max_turns,
         )
 
@@ -399,7 +413,10 @@ class AgentEngine:
             estimated_tokens=system_prompt.estimated_tokens,
         )
 
+        loop = await self._resolve_loop(task)
+
         execution_result = await self._run_loop_with_timeout(
+            loop=loop,
             ctx=ctx,
             agent_id=agent_id,
             task_id=task_id,
@@ -564,12 +581,13 @@ class AgentEngine:
 
     def _make_loop_with_callback(
         self,
+        loop: ExecutionLoop,
         agent_id: str,
         task_id: str,
     ) -> ExecutionLoop:
         """Return the execution loop with a checkpoint callback if configured."""
         return make_loop_with_callback(
-            self._loop,
+            loop,
             self._checkpoint_repo,
             self._heartbeat_repo,
             self._checkpoint_config,
@@ -580,6 +598,7 @@ class AgentEngine:
     async def _run_loop_with_timeout(  # noqa: PLR0913
         self,
         *,
+        loop: ExecutionLoop,
         ctx: AgentContext,
         agent_id: str,
         task_id: str,
@@ -595,7 +614,7 @@ class AgentEngine:
         ``TimeoutError`` raised inside the loop propagates normally
         and is not conflated with the engine's wall-clock deadline.
         """
-        loop = self._make_loop_with_callback(agent_id, task_id)
+        loop = self._make_loop_with_callback(loop, agent_id, task_id)
         coro = loop.execute(
             context=ctx,
             provider=self._provider,
@@ -872,7 +891,7 @@ class AgentEngine:
                 checkpoint_ctx.task_execution.task,
             )
 
-        loop = self._make_loop_with_callback(agent_id, task_id)
+        loop = self._make_loop_with_callback(self._loop, agent_id, task_id)
         return await loop.execute(
             context=checkpoint_ctx,
             provider=self._provider,
@@ -952,6 +971,43 @@ class AgentEngine:
     def _make_default_loop(self) -> ReactLoop:
         """Build the default ReactLoop with approval gate and stagnation detector."""
         return ReactLoop(
+            approval_gate=self._approval_gate,
+            stagnation_detector=self._stagnation_detector,
+        )
+
+    async def _resolve_loop(self, task: Task) -> ExecutionLoop:
+        """Select the execution loop for a task.
+
+        When ``auto_loop_config`` is set, selects the loop based on
+        task complexity and optional budget state.  Otherwise returns
+        the statically configured loop (``self._loop``).
+        """
+        if self._auto_loop_config is None:
+            return self._loop
+
+        budget_utilization_pct: float | None = None
+        if self._budget_enforcer is not None:
+            budget_utilization_pct = (
+                await self._budget_enforcer.get_budget_utilization_pct()
+            )
+
+        loop_type = select_loop_type(
+            complexity=task.estimated_complexity,
+            rules=self._auto_loop_config.rules,
+            budget_utilization_pct=budget_utilization_pct,
+            budget_tight_threshold=self._auto_loop_config.budget_tight_threshold,
+            hybrid_fallback=self._auto_loop_config.hybrid_fallback,
+        )
+
+        logger.info(
+            EXECUTION_LOOP_AUTO_SELECTED,
+            complexity=task.estimated_complexity.value,
+            selected_loop=loop_type,
+            budget_utilization_pct=budget_utilization_pct,
+        )
+
+        return build_execution_loop(
+            loop_type,
             approval_gate=self._approval_gate,
             stagnation_detector=self._stagnation_detector,
         )
