@@ -21,9 +21,9 @@ logger = get_logger(__name__)
 def run_server(config: RootConfig) -> None:
     """Create and run the Litestar app via uvicorn.
 
-    Backend services (persistence, message bus, cost tracker) are
-    not passed — intended for development/demo use.  For production,
-    call ``create_app()`` directly with all services.
+    Backend services are auto-wired by ``create_app()`` from
+    configuration and environment variables (e.g. ``SYNTHORG_DB_PATH``).
+    Explicit service injection is only needed for testing.
 
     Args:
         config: Root company configuration containing server

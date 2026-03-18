@@ -25,8 +25,8 @@ from synthorg import __version__
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.controller import require_password_changed
 from synthorg.api.auth.middleware import create_auth_middleware_class
-from synthorg.api.auth.secret import resolve_jwt_secret
-from synthorg.api.auth.service import AuthService
+from synthorg.api.auth.service import AuthService  # noqa: TC001
+from synthorg.api.auto_wire import auto_wire_phase1, auto_wire_settings
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.channels import (
     CHANNEL_APPROVALS,
@@ -36,11 +36,11 @@ from synthorg.api.channels import (
 from synthorg.api.controllers import ALL_CONTROLLERS
 from synthorg.api.controllers.ws import ws_handler
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
+from synthorg.api.lifecycle import _safe_shutdown, _safe_startup, _try_stop
 from synthorg.api.middleware import RequestLoggingMiddleware, security_headers_hook
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.backup.factory import build_backup_service
-from synthorg.backup.models import BackupTrigger
 from synthorg.backup.service import BackupService  # noqa: TC001
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
@@ -64,6 +64,7 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
+from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
@@ -176,7 +177,7 @@ async def _ticket_cleanup_loop(app_state: AppState) -> None:
             )
 
 
-def _build_lifecycle(  # noqa: PLR0913
+def _build_lifecycle(  # noqa: PLR0913, C901
     persistence: PersistenceBackend | None,
     message_bus: MessageBus | None,
     bridge: MessageBusBridge | None,
@@ -185,16 +186,34 @@ def _build_lifecycle(  # noqa: PLR0913
     meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
     app_state: AppState,
+    *,
+    should_auto_wire_settings: bool = False,
+    effective_config: RootConfig | None = None,
 ) -> tuple[
     Sequence[Callable[[], Awaitable[None]]],
     Sequence[Callable[[], Awaitable[None]]],
 ]:
     """Build startup and shutdown hooks.
 
+    Args:
+        persistence: Persistence backend (``None`` when unconfigured).
+        message_bus: Internal message bus (``None`` when unconfigured).
+        bridge: Message bus bridge to WebSocket channels.
+        settings_dispatcher: Settings change dispatcher.
+        task_engine: Centralized task state engine.
+        meeting_scheduler: Meeting scheduler service.
+        backup_service: Backup and restore service.
+        app_state: Application state container.
+        should_auto_wire_settings: When ``True``, Phase 2 auto-wiring
+            creates ``SettingsService`` + dispatcher after persistence
+            connects.
+        effective_config: Root config needed for Phase 2 auto-wiring.
+
     Returns:
         A tuple of (on_startup, on_shutdown) callback lists.
     """
     _ticket_cleanup_task: asyncio.Task[None] | None = None
+    _auto_wired_dispatcher: SettingsChangeDispatcher | None = None
 
     def _on_cleanup_task_done(task: asyncio.Task[None]) -> None:
         """Log unexpected cleanup-task death."""
@@ -209,7 +228,7 @@ def _build_lifecycle(  # noqa: PLR0913
             )
 
     async def on_startup() -> None:
-        nonlocal _ticket_cleanup_task
+        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
         logger.info(API_APP_STARTUP, version=__version__)
         await _safe_startup(
             persistence,
@@ -221,6 +240,39 @@ def _build_lifecycle(  # noqa: PLR0913
             backup_service,
             app_state,
         )
+        # Phase 2 auto-wire: SettingsService (needs connected persistence)
+        if (
+            should_auto_wire_settings
+            and persistence is not None
+            and effective_config is not None
+            and not app_state.has_settings_service
+        ):
+            try:
+                _auto_wired_dispatcher = await auto_wire_settings(
+                    persistence,
+                    message_bus,
+                    effective_config,
+                    app_state,
+                    backup_service,
+                    _build_settings_dispatcher,
+                )
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Phase 2 auto-wire failed",
+                )
+                await _safe_shutdown(
+                    task_engine,
+                    meeting_scheduler,
+                    backup_service,
+                    settings_dispatcher,
+                    bridge,
+                    message_bus,
+                    persistence,
+                )
+                raise
         _ticket_cleanup_task = asyncio.create_task(
             _ticket_cleanup_loop(app_state),
             name="ws-ticket-cleanup",
@@ -228,13 +280,20 @@ def _build_lifecycle(  # noqa: PLR0913
         _ticket_cleanup_task.add_done_callback(_on_cleanup_task_done)
 
     async def on_shutdown() -> None:
-        nonlocal _ticket_cleanup_task
+        nonlocal _ticket_cleanup_task, _auto_wired_dispatcher
         if _ticket_cleanup_task is not None:
             _ticket_cleanup_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await _ticket_cleanup_task
             _ticket_cleanup_task = None
         logger.info(API_APP_SHUTDOWN, version=__version__)
+        if _auto_wired_dispatcher is not None:
+            await _try_stop(
+                _auto_wired_dispatcher.stop(),
+                API_APP_SHUTDOWN,
+                "Failed to stop auto-wired settings dispatcher",
+            )
+            _auto_wired_dispatcher = None
         await _safe_shutdown(
             task_engine,
             meeting_scheduler,
@@ -246,336 +305,6 @@ def _build_lifecycle(  # noqa: PLR0913
         )
 
     return [on_startup], [on_shutdown]
-
-
-async def _try_stop(
-    coro: Awaitable[None],
-    event: str,
-    error_msg: str,
-) -> None:
-    """Await *coro* inside a safe try/except, logging failures.
-
-    ``MemoryError`` and ``RecursionError`` are re-raised immediately;
-    all other exceptions are logged and swallowed so that sibling
-    shutdown steps can still run.
-    """
-    try:
-        await coro
-    except MemoryError, RecursionError:
-        raise
-    except Exception:
-        logger.exception(event, error=error_msg)
-
-
-async def _cleanup_on_failure(  # noqa: PLR0913
-    *,
-    persistence: PersistenceBackend | None,
-    started_persistence: bool,
-    message_bus: MessageBus | None,
-    started_bus: bool,
-    bridge: MessageBusBridge | None = None,
-    started_bridge: bool = False,
-    settings_dispatcher: SettingsChangeDispatcher | None = None,
-    started_settings_dispatcher: bool = False,
-    task_engine: TaskEngine | None = None,
-    started_task_engine: bool = False,
-    meeting_scheduler: MeetingScheduler | None = None,
-    started_meeting_scheduler: bool = False,
-    backup_service: BackupService | None = None,
-    started_backup_service: bool = False,
-) -> None:
-    """Reverse cleanup on startup failure."""
-    if started_backup_service and backup_service is not None:
-        await _try_stop(
-            backup_service.stop(),
-            API_APP_STARTUP,
-            "Cleanup: failed to stop backup service",
-        )
-    if started_meeting_scheduler and meeting_scheduler is not None:
-        await _try_stop(
-            meeting_scheduler.stop(),
-            API_APP_STARTUP,
-            "Cleanup: failed to stop meeting scheduler",
-        )
-    if started_task_engine and task_engine is not None:
-        await _try_stop(
-            task_engine.stop(),
-            API_APP_STARTUP,
-            "Cleanup: failed to stop task engine",
-        )
-    if started_settings_dispatcher and settings_dispatcher is not None:
-        await _try_stop(
-            settings_dispatcher.stop(),
-            API_APP_STARTUP,
-            "Cleanup: failed to stop settings dispatcher",
-        )
-    if started_bridge and bridge is not None:
-        await _try_stop(
-            bridge.stop(),
-            API_APP_STARTUP,
-            "Cleanup: failed to stop message bus bridge",
-        )
-    if started_bus and message_bus is not None:
-        await _try_stop(
-            message_bus.stop(),
-            API_APP_STARTUP,
-            "Cleanup: failed to stop message bus",
-        )
-    if started_persistence and persistence is not None:
-        await _try_stop(
-            persistence.disconnect(),
-            API_APP_STARTUP,
-            "Cleanup: failed to disconnect persistence",
-        )
-
-
-async def _init_persistence(
-    persistence: PersistenceBackend,
-    app_state: AppState,
-) -> None:
-    """Run migrations and resolve JWT secret on an already-connected backend.
-
-    Must only be called after ``persistence.connect()`` has succeeded.
-
-    Args:
-        persistence: Connected persistence backend.
-        app_state: Application state for auth service injection.
-    """
-    try:
-        await persistence.migrate()
-    except Exception:
-        logger.exception(
-            API_APP_STARTUP,
-            error="Failed to run persistence migrations",
-        )
-        raise
-
-    # Resolve JWT secret after persistence is up
-    if app_state.has_auth_service:
-        logger.info(
-            API_APP_STARTUP,
-            note="Auth service already configured, skipping JWT secret resolution",
-        )
-    else:
-        try:
-            secret = await resolve_jwt_secret(persistence)
-            auth_config = app_state.config.api.auth.with_secret(
-                secret,
-            )
-            app_state.set_auth_service(AuthService(auth_config))
-        except Exception:
-            logger.exception(
-                API_APP_STARTUP,
-                error="Failed to resolve JWT secret",
-            )
-            raise
-
-
-async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
-    persistence: PersistenceBackend | None,
-    message_bus: MessageBus | None,
-    bridge: MessageBusBridge | None,
-    settings_dispatcher: SettingsChangeDispatcher | None,
-    task_engine: TaskEngine | None,
-    meeting_scheduler: MeetingScheduler | None,
-    backup_service: BackupService | None,
-    app_state: AppState,
-) -> None:
-    """Start all services in order, with reverse cleanup on failure.
-
-    Executes in order; on failure, cleans up already-started
-    components in reverse order before re-raising.
-    """
-    started_bus = False
-    started_bridge = False
-    started_persistence = False
-    started_settings_dispatcher = False
-    started_task_engine = False
-    started_meeting_scheduler = False
-    started_backup_service = False
-    try:
-        if persistence is not None:
-            try:
-                await persistence.connect()
-            except Exception:
-                logger.exception(
-                    API_APP_STARTUP,
-                    error="Failed to connect persistence",
-                )
-                raise
-            # Mark connected immediately so cleanup can disconnect
-            # if migrate() or JWT resolution fails below.
-            started_persistence = True
-            await _init_persistence(persistence, app_state)
-
-        if message_bus is not None:
-            try:
-                await message_bus.start()
-            except Exception:
-                logger.exception(
-                    API_APP_STARTUP,
-                    error="Failed to start message bus",
-                )
-                raise
-            started_bus = True
-        if bridge is not None:
-            try:
-                await bridge.start()
-            except Exception:
-                logger.exception(
-                    API_APP_STARTUP,
-                    error="Failed to start message bus bridge",
-                )
-                raise
-            started_bridge = True
-        if settings_dispatcher is not None:
-            try:
-                await settings_dispatcher.start()
-            except Exception:
-                logger.exception(
-                    API_APP_STARTUP,
-                    error="Failed to start settings dispatcher",
-                )
-                raise
-            started_settings_dispatcher = True
-        if task_engine is not None:
-            try:
-                task_engine.start()
-            except Exception:
-                logger.exception(
-                    API_APP_STARTUP,
-                    error="Failed to start task engine",
-                )
-                raise
-            started_task_engine = True
-        if meeting_scheduler is not None:
-            try:
-                await meeting_scheduler.start()
-            except Exception:
-                logger.exception(
-                    API_APP_STARTUP,
-                    error="Failed to start meeting scheduler",
-                )
-                raise
-            started_meeting_scheduler = True
-        if backup_service is not None:
-            try:
-                app_state.set_backup_service(backup_service)
-                started_backup_service = True
-                await backup_service.start()
-            except Exception:
-                logger.exception(
-                    API_APP_STARTUP,
-                    error="Failed to start backup service",
-                )
-                raise
-
-            # Create startup backup if configured
-            if backup_service.on_startup:
-                try:
-                    await backup_service.create_backup(
-                        BackupTrigger.STARTUP,
-                    )
-                except MemoryError, RecursionError:
-                    raise
-                except Exception:
-                    logger.warning(
-                        API_APP_STARTUP,
-                        error="Startup backup failed (non-fatal)",
-                        exc_info=True,
-                    )
-    except Exception:
-        await _cleanup_on_failure(
-            persistence=persistence,
-            started_persistence=started_persistence,
-            message_bus=message_bus,
-            started_bus=started_bus,
-            bridge=bridge,
-            started_bridge=started_bridge,
-            settings_dispatcher=settings_dispatcher,
-            started_settings_dispatcher=started_settings_dispatcher,
-            task_engine=task_engine,
-            started_task_engine=started_task_engine,
-            meeting_scheduler=meeting_scheduler,
-            started_meeting_scheduler=started_meeting_scheduler,
-            backup_service=backup_service,
-            started_backup_service=started_backup_service,
-        )
-        raise
-
-
-async def _safe_shutdown(  # noqa: PLR0913, C901
-    task_engine: TaskEngine | None,
-    meeting_scheduler: MeetingScheduler | None,
-    backup_service: BackupService | None,
-    settings_dispatcher: SettingsChangeDispatcher | None,
-    bridge: MessageBusBridge | None,
-    message_bus: MessageBus | None,
-    persistence: PersistenceBackend | None,
-) -> None:
-    """Stop scheduler, task engine, backup, dispatcher, bridge, bus, persistence.
-
-    Mirrors ``_cleanup_on_failure`` reverse order: scheduler first (depends on
-    orchestrator), then task engine so it can drain queued mutations and
-    publish final snapshots through the still-running bridge.  Backup runs
-    before persistence disconnect so shutdown backup can still access the DB.
-    """
-    if meeting_scheduler is not None:
-        await _try_stop(
-            meeting_scheduler.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop meeting scheduler",
-        )
-    if task_engine is not None:
-        await _try_stop(
-            task_engine.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop task engine",
-        )
-    if backup_service is not None:
-        # Create shutdown backup before stopping the scheduler
-        if backup_service.on_shutdown:
-            try:
-                await backup_service.create_backup(
-                    BackupTrigger.SHUTDOWN,
-                )
-            except MemoryError, RecursionError:
-                raise
-            except Exception:
-                logger.warning(
-                    API_APP_SHUTDOWN,
-                    error="Shutdown backup failed (non-fatal)",
-                    exc_info=True,
-                )
-        await _try_stop(
-            backup_service.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop backup service",
-        )
-    if settings_dispatcher is not None:
-        await _try_stop(
-            settings_dispatcher.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop settings dispatcher",
-        )
-    if bridge is not None:
-        await _try_stop(
-            bridge.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop message bus bridge",
-        )
-    if message_bus is not None:
-        await _try_stop(
-            message_bus.stop(),
-            API_APP_SHUTDOWN,
-            "Failed to stop message bus",
-        )
-    if persistence is not None:
-        await _try_stop(
-            persistence.disconnect(),
-            API_APP_SHUTDOWN,
-            "Failed to disconnect persistence",
-        )
 
 
 # ── 2-Phase Initialisation ────────────────────────────────────────
@@ -614,16 +343,13 @@ def create_app(  # noqa: PLR0913
     meeting_scheduler: MeetingScheduler | None = None,
     performance_tracker: PerformanceTracker | None = None,
     settings_service: SettingsService | None = None,
+    provider_registry: ProviderRegistry | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
-    All parameters are optional for testing — provide fakes via
-    keyword arguments.
-
-    When ``persistence`` is not provided, the factory checks
-    ``SYNTHORG_DB_PATH`` in the environment and auto-creates a
-    SQLite backend if set (used by the Docker compose template).
-    Explicit ``persistence`` always takes precedence.
+    All parameters are optional for testing -- provide fakes via
+    keyword arguments.  Services not explicitly provided are
+    auto-wired from config and environment variables.
 
     Args:
         config: Root company configuration.
@@ -639,6 +365,7 @@ def create_app(  # noqa: PLR0913
         meeting_scheduler: Meeting scheduler.
         performance_tracker: Performance tracking service.
         settings_service: Settings service for runtime config.
+        provider_registry: Provider registry.
 
     Returns:
         Configured Litestar application.
@@ -667,30 +394,28 @@ def create_app(  # noqa: PLR0913
             except Exception:
                 logger.exception(
                     API_APP_STARTUP,
-                    error="Failed to create persistence backend from SYNTHORG_DB_PATH",
-                    db_path=db_path,
+                    error="Failed to create persistence backend from env",
                 )
                 raise
             logger.info(
                 API_APP_STARTUP,
                 note="Auto-wired SQLite persistence from SYNTHORG_DB_PATH",
-                db_path=db_path,
+                db_name=Path(db_path).name,
             )
 
-    if (
-        persistence is None
-        or message_bus is None
-        or cost_tracker is None
-        or task_engine is None
-        or settings_service is None
-    ):
-        msg = (
-            "create_app called without persistence, message_bus, "
-            "cost_tracker, task_engine, and/or settings_service — "
-            "controllers accessing missing services will return 503. "
-            "Use test fakes for testing."
-        )
-        logger.warning(API_APP_STARTUP, note=msg)
+    # ── Phase 1 auto-wire: services that don't need connected persistence ──
+    phase1 = auto_wire_phase1(
+        effective_config=effective_config,
+        persistence=persistence,
+        message_bus=message_bus,
+        cost_tracker=cost_tracker,
+        task_engine=task_engine,
+        provider_registry=provider_registry,
+    )
+    message_bus = phase1.message_bus
+    cost_tracker = phase1.cost_tracker
+    task_engine = phase1.task_engine
+    provider_registry = phase1.provider_registry
 
     channels_plugin = create_channels_plugin()
     expire_callback = _make_expire_callback(channels_plugin)
@@ -718,6 +443,7 @@ def create_app(  # noqa: PLR0913
         meeting_scheduler=meeting_scheduler,
         performance_tracker=performance_tracker,
         settings_service=settings_service,
+        provider_registry=provider_registry,
         startup_time=time.monotonic(),
     )
 
@@ -743,6 +469,11 @@ def create_app(  # noqa: PLR0913
         guards=[require_password_changed],
     )
 
+    # Phase 2 auto-wiring flag: persistence being non-None is the
+    # enabling condition -- SettingsService needs connected persistence
+    # and is created in on_startup after _init_persistence().
+    _should_auto_wire = settings_service is None and persistence is not None
+
     startup, shutdown = _build_lifecycle(
         persistence,
         message_bus,
@@ -752,6 +483,8 @@ def create_app(  # noqa: PLR0913
         meeting_scheduler,
         backup_service,
         app_state,
+        should_auto_wire_settings=_should_auto_wire,
+        effective_config=effective_config,
     )
 
     return Litestar(
