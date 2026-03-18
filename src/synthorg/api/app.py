@@ -477,7 +477,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             started_backup_service = True
 
             # Create startup backup if configured
-            if backup_service._config.on_startup:  # noqa: SLF001
+            if backup_service.on_startup:
                 try:
                     await backup_service.create_backup(
                         BackupTrigger.STARTUP,
@@ -538,7 +538,7 @@ async def _safe_shutdown(  # noqa: PLR0913
         )
     if backup_service is not None:
         # Create shutdown backup before stopping the scheduler
-        if backup_service._config.on_shutdown:  # noqa: SLF001
+        if backup_service.on_shutdown:
             try:
                 await backup_service.create_backup(
                     BackupTrigger.SHUTDOWN,
@@ -849,15 +849,23 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
     ]
 
 
-def _build_backup_service(config: RootConfig) -> BackupService | None:
-    """Create backup service from config if backup section is present.
+def _build_backup_service(
+    config: RootConfig,
+    *,
+    resolved_db_path: Path | None = None,
+    resolved_config_path: Path | None = None,
+) -> BackupService | None:
+    """Create backup service from config.
 
-    Builds component handlers based on ``config.backup.include`` and
-    wires them into the service alongside the current DB schema
-    version.
+    Uses resolved runtime paths when available so backups target
+    the actual files the application opened at startup.
 
     Args:
         config: Root company configuration.
+        resolved_db_path: Actual DB path used by the persistence
+            backend (falls back to config value).
+        resolved_config_path: Actual company YAML path loaded at
+            startup (falls back to SYNTHORG_CONFIG_PATH / company.yaml).
 
     Returns:
         Configured backup service, or ``None`` if construction fails.
@@ -865,26 +873,35 @@ def _build_backup_service(config: RootConfig) -> BackupService | None:
     backup_config = config.backup
     handlers: dict[BackupComponent, ComponentHandler] = {}
 
-    for component_name in backup_config.include:
-        component = BackupComponent(component_name)
-        if component is BackupComponent.PERSISTENCE:
-            handlers[component] = PersistenceComponentHandler(
-                db_path=Path(config.persistence.sqlite.path),
-            )
-        elif component is BackupComponent.MEMORY:
-            handlers[component] = MemoryComponentHandler(
-                data_dir=Path(config.memory.storage.data_dir),
-            )
-        elif component is BackupComponent.CONFIG:
-            config_path = Path(
-                os.environ.get("SYNTHORG_CONFIG_PATH", "company.yaml"),
-            )
-            handlers[component] = ConfigComponentHandler(
-                config_path=config_path,
-            )
+    try:
+        for component_name in backup_config.include:
+            component = BackupComponent(component_name)
+            if component is BackupComponent.PERSISTENCE:
+                db_path = resolved_db_path or Path(config.persistence.sqlite.path)
+                handlers[component] = PersistenceComponentHandler(
+                    db_path=db_path,
+                )
+            elif component is BackupComponent.MEMORY:
+                handlers[component] = MemoryComponentHandler(
+                    data_dir=Path(config.memory.storage.data_dir),
+                )
+            elif component is BackupComponent.CONFIG:
+                cfg_path = resolved_config_path or Path(
+                    os.environ.get("SYNTHORG_CONFIG_PATH", "company.yaml"),
+                )
+                handlers[component] = ConfigComponentHandler(
+                    config_path=cfg_path,
+                )
 
-    return BackupService(
-        backup_config,
-        handlers,
-        schema_version=SCHEMA_VERSION,
-    )
+        return BackupService(
+            backup_config,
+            handlers,
+            schema_version=SCHEMA_VERSION,
+        )
+    except Exception:
+        logger.warning(
+            API_APP_STARTUP,
+            error="Failed to build backup service",
+            exc_info=True,
+        )
+        return None

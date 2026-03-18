@@ -1067,7 +1067,7 @@ and retry guidance.
     - *Provider management*: Add/edit/delete providers, connection test, preset-based creation -- integrated as a tab alongside company config and user settings.
     - *DB-backed persistence*: 9 namespaces (api, company, providers, memory, budget, security, coordination, observability, backup). Setting types: `STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`. 4-layer resolution: DB > env > YAML > code defaults. Fernet encryption for `sensitive` values. REST API (`GET`/`PUT`/`DELETE` + schema endpoints for dynamic UI generation), change notifications via message bus.
     - *`ConfigResolver`*: Typed scalar accessors assemble full Pydantic config models from individually resolved settings (using `asyncio.TaskGroup` for parallel resolution). Structural data accessors (`get_agents`, `get_departments`, `get_provider_configs`) resolve JSON-typed settings with Pydantic schema validation and graceful fallback to `RootConfig` defaults on invalid data.
-    - *Hot-reload*: `SettingsChangeDispatcher` polls the `#settings` bus channel and routes change notifications to registered `SettingsSubscriber` implementations. Settings marked `restart_required=True` are filtered (logged as WARNING, not dispatched). Concrete subscribers: `ProviderSettingsSubscriber` (rebuilds `ModelRouter` on `routing_strategy` change via `AppState.swap_model_router`), `MemorySettingsSubscriber` (advisory logging for non-restart memory settings).
+    - *Hot-reload*: `SettingsChangeDispatcher` polls the `#settings` bus channel and routes change notifications to registered `SettingsSubscriber` implementations. Settings marked `restart_required=True` are filtered (logged as WARNING, not dispatched). Concrete subscribers: `ProviderSettingsSubscriber` (rebuilds `ModelRouter` on `routing_strategy` change via `AppState.swap_model_router`), `MemorySettingsSubscriber` (advisory logging for non-restart memory settings), `BackupSettingsSubscriber` (toggles `BackupScheduler` on `enabled` change, reschedules interval on `schedule_hours` change).
 
 ### Human Roles
 
@@ -1078,3 +1078,56 @@ and retry guidance.
 | **Manager** | Department-level authority | Manages one team/department directly |
 | **Observer** | Read-only | Watch the company operate, no intervention |
 | **Pair Programmer** | Direct collaboration with one agent | Work alongside a specific agent in real-time |
+
+## Backup and Restore
+
+The backup system protects persistent data -- persistence DB, agent memory, and company configuration -- through automated and manual backups with configurable retention policies and validated restore.
+
+### Architecture
+
+- **BackupService**: Central orchestrator coordinating component handlers, manifests, compression, and scheduling
+- **ComponentHandler protocol**: Pluggable interface for backing up and restoring individual data components
+  - `PersistenceComponentHandler`: SQLite `VACUUM INTO` for consistent point-in-time copies
+  - `MemoryComponentHandler`: `shutil.copytree` with `symlinks=True` for agent memory data directory
+  - `ConfigComponentHandler`: `shutil.copy2` for company YAML configuration
+- **BackupScheduler**: Background asyncio task for periodic backups with interruptible sleep via `asyncio.Event`
+- **RetentionManager**: Prunes old backups by count and age; never prunes the most recent backup or `pre_migration`-tagged backups
+
+### Backup Triggers
+
+| Trigger | When | Behavior |
+|---------|------|----------|
+| Scheduled | Configurable interval (default: 6h) | Background, non-blocking |
+| Pre-shutdown | `Company.shutdown()` / SIGTERM | Synchronous, skips compression |
+| Post-startup | After config load, before accepting tasks | Snapshot as recovery point |
+| Manual | `POST /api/v1/admin/backups` | On-demand, returns manifest |
+| Pre-migration | Before restore operations | Safety net, automatic |
+
+### Restore Flow
+
+1. Validate `backup_id` format (12-char hex)
+2. Load and verify manifest (schema version compatibility check)
+3. Re-compute and verify SHA-256 checksum against manifest
+4. Validate component sources (handler-specific checks)
+5. Create safety backup (pre-migration trigger)
+6. Atomic restore per component (`.bak` rollback on failure)
+7. Return `RestoreResponse` with safety backup ID
+
+### Configuration
+
+Backup settings live in the `backup` namespace with runtime editability via `BackupSettingsSubscriber`:
+
+- `enabled`: Toggle scheduler start/stop
+- `schedule_hours`: Reschedule interval (1--168 hours)
+- `compression`, `on_shutdown`, `on_startup`: Advisory (read at use time)
+- `path`: Requires restart (not dispatched)
+
+### REST API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/admin/backups` | Trigger manual backup |
+| `GET` | `/api/v1/admin/backups` | List available backups |
+| `GET` | `/api/v1/admin/backups/{id}` | Get backup details |
+| `DELETE` | `/api/v1/admin/backups/{id}` | Delete a specific backup |
+| `POST` | `/api/v1/admin/backups/restore` | Restore from backup (requires `confirm=true`) |

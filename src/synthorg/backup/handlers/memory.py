@@ -24,8 +24,9 @@ _MEMORY_SUBDIR = "memory"
 class MemoryComponentHandler:
     """Back up and restore the agent memory data directory.
 
-    Uses ``shutil.copytree`` for directory-level copies of the
-    Mem0 data directory (Qdrant + history DB).
+    Uses ``shutil.copytree`` with ``symlinks=True`` for
+    directory-level copies of the Mem0 data directory
+    (Qdrant + history DB).
 
     Args:
         data_dir: Path to the memory data directory.
@@ -90,7 +91,8 @@ class MemoryComponentHandler:
 
         Performs an atomic swap: renames current directory to
         ``.bak``, copies backup into place.  On failure, renames
-        ``.bak`` back.
+        ``.bak`` back.  If the target directory does not exist,
+        the backup is copied directly without a swap.
 
         Args:
             source_dir: Directory containing the backup memory data.
@@ -99,7 +101,13 @@ class MemoryComponentHandler:
             ComponentBackupError: If restore fails.
         """
         source = source_dir / _MEMORY_SUBDIR
-        if not source.exists():
+        exists = await asyncio.to_thread(source.exists)
+        if not exists:
+            logger.warning(
+                BACKUP_COMPONENT_FAILED,
+                component=self.component.value,
+                error=f"Backup memory directory not found: {source}",
+            )
             msg = f"Backup memory directory not found: {source}"
             raise ComponentBackupError(msg)
 
@@ -115,6 +123,12 @@ class MemoryComponentHandler:
         except ComponentBackupError:
             raise
         except Exception as exc:
+            logger.error(
+                BACKUP_COMPONENT_FAILED,
+                component=self.component.value,
+                error=str(exc),
+                exc_info=True,
+            )
             msg = f"Failed to restore memory data: {exc}"
             raise ComponentBackupError(msg) from exc
 
@@ -133,7 +147,7 @@ class MemoryComponentHandler:
     @staticmethod
     def _copy_tree(source: Path, target: Path) -> int:
         """Copy directory tree and return total bytes copied."""
-        shutil.copytree(source, target)
+        shutil.copytree(source, target, symlinks=True)
         total = 0
         for f in target.rglob("*"):
             if f.is_file():
@@ -151,7 +165,7 @@ class MemoryComponentHandler:
             shutil.move(data_path, bak_path)
 
         try:
-            shutil.copytree(source, data_path)
+            shutil.copytree(source, data_path, symlinks=True)
         except Exception:
             if bak_path.exists():
                 if data_path.exists():

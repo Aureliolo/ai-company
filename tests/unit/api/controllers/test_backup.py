@@ -31,6 +31,8 @@ from synthorg.backup.models import (
     RestoreResponse,
 )
 
+pytestmark = pytest.mark.timeout(30)
+
 
 def _make_manifest(
     *,
@@ -45,7 +47,7 @@ def _make_manifest(
         components=(BackupComponent.PERSISTENCE,),
         db_schema_version=1,
         size_bytes=4096,
-        checksum="sha256:abcdef1234567890",
+        checksum="sha256:" + "a" * 64,
         backup_id=backup_id,
     )
 
@@ -264,7 +266,7 @@ class TestRestoreBackup:
         )
 
         request = RestoreRequest(
-            backup_id="nonexistent",
+            backup_id="000000000099",
             confirm=True,
         )
         ctrl = _controller()
@@ -322,15 +324,13 @@ class TestRestoreBackup:
 class TestRestoreConfirmGate:
     """confirm=true safety gate is enforced before any service interaction."""
 
-    @pytest.mark.parametrize("confirm", [False])
     async def test_service_not_called_when_confirm_false(
         self,
-        confirm: bool,
     ) -> None:
         state, service = _make_state_and_service()
         request = RestoreRequest(
             backup_id="abc123def456",
-            confirm=confirm,
+            confirm=False,
         )
 
         ctrl = _controller()

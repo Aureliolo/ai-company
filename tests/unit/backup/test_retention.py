@@ -28,7 +28,7 @@ def _make_manifest(
         components=(BackupComponent.PERSISTENCE,),
         db_schema_version=1,
         size_bytes=100,
-        checksum="sha256:abc123",
+        checksum="sha256:" + "a" * 64,
         backup_id=backup_id,
     ).model_dump()
 
@@ -267,7 +267,7 @@ class TestRetentionPruneErrors:
         manager = RetentionManager(retention_config, backup_path)
         # Should not raise -- corrupt manifest is skipped
         result = await manager.prune()
-        assert isinstance(result, tuple)
+        assert result == ()
 
     async def test_prune_raises_retention_error_on_load_failure(
         self,

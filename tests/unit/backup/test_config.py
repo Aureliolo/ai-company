@@ -154,6 +154,8 @@ class TestBackupConfigPathTraversal:
             "../secrets",
             "/backup/../../root",
             "foo/../bar",
+            "..\\secrets",
+            "C:\\backup\\..\\escape",
         ],
     )
     def test_rejects_path_with_dotdot(self, path: str) -> None:
@@ -200,3 +202,12 @@ class TestBackupConfigIncludeValidation:
     def test_accepts_empty_include(self) -> None:
         cfg = BackupConfig(include=())
         assert cfg.include == ()
+
+    def test_rejects_duplicate_components(self) -> None:
+        with pytest.raises(ValidationError, match="Duplicate components"):
+            BackupConfig(
+                include=(
+                    BackupComponent.PERSISTENCE,
+                    BackupComponent.PERSISTENCE,
+                ),
+            )

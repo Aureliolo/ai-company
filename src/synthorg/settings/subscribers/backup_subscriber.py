@@ -11,6 +11,8 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# path is restart_required=True (filtered by dispatcher).
+# retention_days is not watched -- read at prune time.
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
         ("backup", "enabled"),
@@ -66,6 +68,16 @@ class BackupSettingsSubscriber:
             namespace: Changed setting namespace.
             key: Changed setting key.
         """
+        if namespace != "backup":
+            logger.warning(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace=namespace,
+                key=key,
+                note="ignored unexpected namespace",
+            )
+            return
+
         if key == "enabled":
             await self._toggle_scheduler()
         elif key == "schedule_hours":
@@ -81,7 +93,19 @@ class BackupSettingsSubscriber:
 
     async def _toggle_scheduler(self) -> None:
         """Start or stop the scheduler based on the current setting value."""
-        result = await self._settings_service.get("backup", "enabled")
+        try:
+            result = await self._settings_service.get("backup", "enabled")
+        except Exception:
+            logger.error(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace="backup",
+                key="enabled",
+                note="failed to read setting",
+                exc_info=True,
+            )
+            return
+
         scheduler = self._backup_service.scheduler
         enabled = str(result.value).lower() == "true"
 
@@ -106,9 +130,34 @@ class BackupSettingsSubscriber:
 
     async def _reschedule(self) -> None:
         """Update the scheduler interval from current settings."""
-        result = await self._settings_service.get("backup", "schedule_hours")
+        try:
+            result = await self._settings_service.get("backup", "schedule_hours")
+        except Exception:
+            logger.error(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace="backup",
+                key="schedule_hours",
+                note="failed to read setting",
+                exc_info=True,
+            )
+            return
+
         scheduler = self._backup_service.scheduler
-        scheduler.reschedule(int(result.value))
+        try:
+            hours = int(result.value)
+        except ValueError, TypeError:
+            logger.exception(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace="backup",
+                key="schedule_hours",
+                value=result.value,
+                note="invalid schedule value",
+            )
+            return
+
+        scheduler.reschedule(hours)
         logger.info(
             SETTINGS_SUBSCRIBER_NOTIFIED,
             subscriber=self.subscriber_name,

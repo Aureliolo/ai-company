@@ -494,6 +494,7 @@ class RootConfig(BaseModel):
         task_engine: Task engine configuration.
         coordination: Multi-agent coordination configuration.
         git_clone: Git clone SSRF prevention network policy.
+        backup: Backup and restore configuration.
     """
 
     model_config = ConfigDict(frozen=True)

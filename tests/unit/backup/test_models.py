@@ -76,7 +76,7 @@ class TestBackupManifest:
         assert sample_manifest.trigger == BackupTrigger.MANUAL
         assert sample_manifest.db_schema_version == 1
         assert sample_manifest.size_bytes == 1024
-        assert sample_manifest.backup_id == "backup-001"
+        assert sample_manifest.backup_id == "aabbccdd0011"
 
     def test_components_are_tuple(self, sample_manifest: BackupManifest) -> None:
         assert isinstance(sample_manifest.components, tuple)
@@ -100,39 +100,65 @@ class TestBackupManifest:
         with pytest.raises(ValidationError):
             BackupManifest(
                 synthorg_version="0.3.2",
-                timestamp="2026-03-18T12:00:00Z",
+                timestamp="2026-03-18T12:00:00+00:00",
                 trigger=BackupTrigger.MANUAL,
                 components=(BackupComponent.CONFIG,),
                 db_schema_version=1,
                 size_bytes=-1,
-                checksum="sha256:abc",
-                backup_id="backup-bad",
+                checksum="sha256:" + "b" * 64,
+                backup_id="aabbccdd0099",
             )
 
     def test_rejects_negative_db_schema_version(self) -> None:
         with pytest.raises(ValidationError):
             BackupManifest(
                 synthorg_version="0.3.2",
-                timestamp="2026-03-18T12:00:00Z",
+                timestamp="2026-03-18T12:00:00+00:00",
                 trigger=BackupTrigger.MANUAL,
                 components=(BackupComponent.CONFIG,),
                 db_schema_version=-1,
                 size_bytes=100,
-                checksum="sha256:abc",
-                backup_id="backup-bad",
+                checksum="sha256:" + "b" * 64,
+                backup_id="aabbccdd0099",
             )
 
     def test_rejects_blank_backup_id(self) -> None:
         with pytest.raises(ValidationError):
             BackupManifest(
                 synthorg_version="0.3.2",
-                timestamp="2026-03-18T12:00:00Z",
+                timestamp="2026-03-18T12:00:00+00:00",
                 trigger=BackupTrigger.MANUAL,
                 components=(BackupComponent.CONFIG,),
                 db_schema_version=1,
                 size_bytes=100,
-                checksum="sha256:abc",
+                checksum="sha256:" + "b" * 64,
                 backup_id="",
+            )
+
+    def test_rejects_invalid_timestamp(self) -> None:
+        with pytest.raises(ValidationError, match="Invalid ISO 8601"):
+            BackupManifest(
+                synthorg_version="0.3.2",
+                timestamp="not-a-date",
+                trigger=BackupTrigger.MANUAL,
+                components=(BackupComponent.CONFIG,),
+                db_schema_version=1,
+                size_bytes=100,
+                checksum="sha256:" + "b" * 64,
+                backup_id="aabbccdd0099",
+            )
+
+    def test_rejects_invalid_checksum_format(self) -> None:
+        with pytest.raises(ValidationError, match="sha256:<64-hex-chars>"):
+            BackupManifest(
+                synthorg_version="0.3.2",
+                timestamp="2026-03-18T12:00:00+00:00",
+                trigger=BackupTrigger.MANUAL,
+                components=(BackupComponent.CONFIG,),
+                db_schema_version=1,
+                size_bytes=100,
+                checksum="sha256:tooshort",
+                backup_id="aabbccdd0099",
             )
 
 
@@ -143,22 +169,22 @@ class TestBackupManifest:
 class TestBackupInfo:
     def test_creation(self) -> None:
         info = BackupInfo(
-            backup_id="backup-001",
-            timestamp="2026-03-18T12:00:00Z",
+            backup_id="aabbccdd0011",
+            timestamp="2026-03-18T12:00:00+00:00",
             trigger=BackupTrigger.SCHEDULED,
             components=(BackupComponent.PERSISTENCE,),
             size_bytes=2048,
             compressed=True,
         )
-        assert info.backup_id == "backup-001"
+        assert info.backup_id == "aabbccdd0011"
         assert info.trigger == BackupTrigger.SCHEDULED
         assert info.compressed is True
         assert info.size_bytes == 2048
 
     def test_frozen(self) -> None:
         info = BackupInfo(
-            backup_id="backup-001",
-            timestamp="2026-03-18T12:00:00Z",
+            backup_id="aabbccdd0011",
+            timestamp="2026-03-18T12:00:00+00:00",
             trigger=BackupTrigger.MANUAL,
             components=(BackupComponent.CONFIG,),
             size_bytes=0,
@@ -170,8 +196,8 @@ class TestBackupInfo:
     def test_rejects_negative_size_bytes(self) -> None:
         with pytest.raises(ValidationError):
             BackupInfo(
-                backup_id="backup-001",
-                timestamp="2026-03-18T12:00:00Z",
+                backup_id="aabbccdd0011",
+                timestamp="2026-03-18T12:00:00+00:00",
                 trigger=BackupTrigger.MANUAL,
                 components=(),
                 size_bytes=-10,
@@ -185,16 +211,16 @@ class TestBackupInfo:
 @pytest.mark.unit
 class TestRestoreRequest:
     def test_confirm_defaults_false(self) -> None:
-        req = RestoreRequest(backup_id="backup-001")
+        req = RestoreRequest(backup_id="aabbccdd0011")
         assert req.confirm is False
 
     def test_components_defaults_none(self) -> None:
-        req = RestoreRequest(backup_id="backup-001")
+        req = RestoreRequest(backup_id="aabbccdd0011")
         assert req.components is None
 
     def test_with_explicit_components(self) -> None:
         req = RestoreRequest(
-            backup_id="backup-001",
+            backup_id="aabbccdd0011",
             components=(BackupComponent.MEMORY, BackupComponent.CONFIG),
             confirm=True,
         )
@@ -202,13 +228,17 @@ class TestRestoreRequest:
         assert req.confirm is True
 
     def test_frozen(self) -> None:
-        req = RestoreRequest(backup_id="backup-001")
+        req = RestoreRequest(backup_id="aabbccdd0011")
         with pytest.raises(ValidationError):
             req.confirm = True  # type: ignore[misc]
 
     def test_rejects_blank_backup_id(self) -> None:
         with pytest.raises(ValidationError):
             RestoreRequest(backup_id="")
+
+    def test_rejects_invalid_backup_id_format(self) -> None:
+        with pytest.raises(ValidationError, match="12-character hex"):
+            RestoreRequest(backup_id="not-valid-id")
 
 
 # -- RestoreResponse ----------------------------------------------------------

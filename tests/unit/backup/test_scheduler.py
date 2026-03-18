@@ -18,6 +18,19 @@ def _make_mock_service() -> MagicMock:
     return service
 
 
+def _close_coro_side_effect(
+    mock_task: MagicMock,
+) -> object:
+    """Build a create_task side effect that closes the coroutine."""
+
+    def _side_effect(coro: object, **kwargs: object) -> MagicMock:
+        if hasattr(coro, "close"):
+            coro.close()
+        return mock_task
+
+    return _side_effect
+
+
 @pytest.mark.unit
 class TestSchedulerStart:
     """Tests for start() creating a background task."""
@@ -29,10 +42,13 @@ class TestSchedulerStart:
 
         assert not scheduler.is_running
 
-        with patch("synthorg.backup.scheduler.asyncio.create_task") as mock_ct:
-            mock_task = MagicMock(spec=asyncio.Task)
-            mock_task.done.return_value = False
-            mock_ct.return_value = mock_task
+        mock_task = MagicMock(spec=asyncio.Task)
+        mock_task.done.return_value = False
+
+        with patch(
+            "synthorg.backup.scheduler.asyncio.create_task",
+            side_effect=_close_coro_side_effect(mock_task),
+        ) as mock_ct:
             scheduler.start()
 
         assert scheduler.is_running
@@ -43,11 +59,13 @@ class TestSchedulerStart:
         service = _make_mock_service()
         scheduler = BackupScheduler(service, interval_hours=1)
 
-        with patch("synthorg.backup.scheduler.asyncio.create_task") as mock_ct:
-            mock_task = MagicMock(spec=asyncio.Task)
-            mock_task.done.return_value = False
-            mock_ct.return_value = mock_task
+        mock_task = MagicMock(spec=asyncio.Task)
+        mock_task.done.return_value = False
 
+        with patch(
+            "synthorg.backup.scheduler.asyncio.create_task",
+            side_effect=_close_coro_side_effect(mock_task),
+        ) as mock_ct:
             scheduler.start()
             scheduler.start()  # second call should be no-op
 
@@ -100,10 +118,13 @@ class TestSchedulerIsRunning:
         service = _make_mock_service()
         scheduler = BackupScheduler(service, interval_hours=1)
 
-        with patch("synthorg.backup.scheduler.asyncio.create_task") as mock_ct:
-            mock_task = MagicMock(spec=asyncio.Task)
-            mock_task.done.return_value = False
-            mock_ct.return_value = mock_task
+        mock_task = MagicMock(spec=asyncio.Task)
+        mock_task.done.return_value = False
+
+        with patch(
+            "synthorg.backup.scheduler.asyncio.create_task",
+            side_effect=_close_coro_side_effect(mock_task),
+        ):
             scheduler.start()
 
         assert scheduler.is_running
@@ -146,6 +167,18 @@ class TestSchedulerReschedule:
 
         assert scheduler._interval_seconds == expected_seconds
 
+    @pytest.mark.parametrize("hours", [0, -1, -100])
+    async def test_reschedule_rejects_invalid_interval(
+        self,
+        hours: int,
+    ) -> None:
+        """reschedule() raises ValueError for interval_hours < 1."""
+        service = _make_mock_service()
+        scheduler = BackupScheduler(service, interval_hours=1)
+
+        with pytest.raises(ValueError, match="interval_hours must be >= 1"):
+            scheduler.reschedule(hours)
+
 
 @pytest.mark.unit
 class TestSchedulerLoop:
@@ -154,20 +187,31 @@ class TestSchedulerLoop:
     async def test_loop_calls_create_backup_with_scheduled_trigger(
         self,
     ) -> None:
-        """The loop calls service.create_backup(SCHEDULED) after sleeping."""
+        """The loop calls service.create_backup(SCHEDULED) after waking."""
         service = _make_mock_service()
         scheduler = BackupScheduler(service, interval_hours=1)
 
         call_count = 0
 
-        async def _counting_sleep(seconds: float) -> None:
+        async def _counting_wait_for(
+            coro: object,
+            *,
+            timeout: float | None = None,  # noqa: ASYNC109
+        ) -> object:
             nonlocal call_count
             call_count += 1
+            # Close the unawaited coroutine to avoid RuntimeWarning
+            if hasattr(coro, "close"):
+                coro.close()
             if call_count >= 2:
                 raise asyncio.CancelledError
+            raise TimeoutError
 
         with (
-            patch("synthorg.backup.scheduler.asyncio.sleep", _counting_sleep),
+            patch(
+                "synthorg.backup.scheduler.asyncio.wait_for",
+                _counting_wait_for,
+            ),
             pytest.raises(asyncio.CancelledError),
         ):
             await scheduler._run_loop()
@@ -182,14 +226,24 @@ class TestSchedulerLoop:
 
         call_count = 0
 
-        async def _counting_sleep(seconds: float) -> None:
+        async def _counting_wait_for(
+            coro: object,
+            *,
+            timeout: float | None = None,  # noqa: ASYNC109
+        ) -> object:
             nonlocal call_count
             call_count += 1
+            if hasattr(coro, "close"):
+                coro.close()
             if call_count >= 3:
                 raise asyncio.CancelledError
+            raise TimeoutError
 
         with (
-            patch("synthorg.backup.scheduler.asyncio.sleep", _counting_sleep),
+            patch(
+                "synthorg.backup.scheduler.asyncio.wait_for",
+                _counting_wait_for,
+            ),
             pytest.raises(asyncio.CancelledError),
         ):
             await scheduler._run_loop()
@@ -203,35 +257,48 @@ class TestSchedulerLoop:
         service.create_backup.side_effect = MemoryError("out of memory")
         scheduler = BackupScheduler(service, interval_hours=1)
 
-        call_count = 0
-
-        async def _single_sleep(seconds: float) -> None:
-            nonlocal call_count
-            call_count += 1
-            if call_count >= 2:
-                raise asyncio.CancelledError
+        async def _single_wait_for(
+            coro: object,
+            *,
+            timeout: float | None = None,  # noqa: ASYNC109
+        ) -> object:
+            if hasattr(coro, "close"):
+                coro.close()
+            raise TimeoutError
 
         with (
-            patch("synthorg.backup.scheduler.asyncio.sleep", _single_sleep),
+            patch(
+                "synthorg.backup.scheduler.asyncio.wait_for",
+                _single_wait_for,
+            ),
             pytest.raises(MemoryError, match="out of memory"),
         ):
             await scheduler._run_loop()
 
-    async def test_loop_sleeps_for_configured_interval(self) -> None:
-        """The loop sleeps for the configured number of seconds."""
+    async def test_loop_uses_configured_interval_as_timeout(self) -> None:
+        """The loop passes the configured interval to wait_for timeout."""
         service = _make_mock_service()
         scheduler = BackupScheduler(service, interval_hours=3)
 
-        recorded_sleeps: list[float] = []
+        recorded_timeouts: list[float | None] = []
 
-        async def _recording_sleep(seconds: float) -> None:
-            recorded_sleeps.append(seconds)
+        async def _recording_wait_for(
+            coro: object,
+            *,
+            timeout: float | None = None,  # noqa: ASYNC109
+        ) -> object:
+            if hasattr(coro, "close"):
+                coro.close()
+            recorded_timeouts.append(timeout)
             raise asyncio.CancelledError
 
         with (
-            patch("synthorg.backup.scheduler.asyncio.sleep", _recording_sleep),
+            patch(
+                "synthorg.backup.scheduler.asyncio.wait_for",
+                _recording_wait_for,
+            ),
             pytest.raises(asyncio.CancelledError),
         ):
             await scheduler._run_loop()
 
-        assert recorded_sleeps == [3 * 3600]
+        assert recorded_timeouts == [3 * 3600]

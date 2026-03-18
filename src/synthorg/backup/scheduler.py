@@ -8,6 +8,7 @@ from synthorg.backup.models import BackupTrigger
 from synthorg.observability import get_logger
 from synthorg.observability.events.backup import (
     BACKUP_FAILED,
+    BACKUP_SCHEDULER_RESCHEDULED,
     BACKUP_SCHEDULER_STARTED,
     BACKUP_SCHEDULER_STOPPED,
     BACKUP_SCHEDULER_TICK,
@@ -22,8 +23,6 @@ logger = get_logger(__name__)
 class BackupScheduler:
     """Background asyncio task that triggers periodic backups.
 
-    Pattern follows ``_ticket_cleanup_loop`` in ``app.py``.
-
     Args:
         service: Backup service to delegate backup creation to.
         interval_hours: Hours between scheduled backups.
@@ -33,6 +32,7 @@ class BackupScheduler:
         self._service = service
         self._interval_seconds = interval_hours * 3600
         self._task: asyncio.Task[None] | None = None
+        self._wake_event = asyncio.Event()
 
     @property
     def is_running(self) -> bool:
@@ -47,6 +47,7 @@ class BackupScheduler:
         """
         if self.is_running:
             return
+        self._wake_event.clear()
         self._task = asyncio.create_task(
             self._run_loop(),
             name="backup-scheduler",
@@ -67,22 +68,40 @@ class BackupScheduler:
         logger.info(BACKUP_SCHEDULER_STOPPED)
 
     def reschedule(self, interval_hours: int) -> None:
-        """Update the interval (takes effect after current sleep).
+        """Update the interval and interrupt the current sleep.
+
+        The new interval takes effect immediately by waking the
+        sleeping loop.
 
         Args:
-            interval_hours: New interval in hours.
+            interval_hours: New interval in hours (must be >= 1).
+
+        Raises:
+            ValueError: If interval_hours is less than 1.
         """
+        if interval_hours < 1:
+            msg = "interval_hours must be >= 1"
+            raise ValueError(msg)
         self._interval_seconds = interval_hours * 3600
+        self._wake_event.set()
         logger.info(
-            BACKUP_SCHEDULER_STARTED,
+            BACKUP_SCHEDULER_RESCHEDULED,
             interval_hours=interval_hours,
-            note="rescheduled",
         )
 
     async def _run_loop(self) -> None:
-        """Sleep-and-backup loop. Logs errors but never crashes."""
+        """Sleep-and-backup loop.
+
+        Logs and suppresses errors except ``MemoryError`` and
+        ``RecursionError``.
+        """
         while True:
-            await asyncio.sleep(self._interval_seconds)
+            self._wake_event.clear()
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(
+                    self._wake_event.wait(),
+                    timeout=self._interval_seconds,
+                )
             logger.debug(BACKUP_SCHEDULER_TICK)
             try:
                 await self._service.create_backup(BackupTrigger.SCHEDULED)

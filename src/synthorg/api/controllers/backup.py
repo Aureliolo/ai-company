@@ -1,4 +1,7 @@
-"""Backup controller -- admin endpoints for backup/restore operations."""
+"""Backup controller -- admin endpoints for backup/restore operations.
+
+All endpoints require write access.
+"""
 
 from litestar import Controller, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -26,14 +29,22 @@ from synthorg.backup.models import (
     RestoreResponse,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.events.backup import (
+    BACKUP_FAILED,
+    BACKUP_NOT_FOUND,
+    BACKUP_RESTORE_FAILED,
+)
 
 logger = get_logger(__name__)
 
 
 class BackupController(Controller):
-    """Admin endpoints for backup and restore operations."""
+    """Admin endpoints for backup and restore operations.
 
-    path = "/admin/backup"
+    All endpoints require write access.
+    """
+
+    path = "/admin/backups"
     tags = ("admin", "backup")
     guards = [require_write_access]  # noqa: RUF012
 
@@ -56,15 +67,25 @@ class BackupController(Controller):
                 BackupTrigger.MANUAL,
             )
         except BackupInProgressError as exc:
+            logger.warning(
+                BACKUP_FAILED,
+                error=str(exc),
+            )
             raise ClientException(
                 str(exc),
                 status_code=409,
             ) from exc
         except BackupError as exc:
-            raise InternalServerException(str(exc)) from exc
+            logger.error(
+                BACKUP_FAILED,
+                error=str(exc),
+                exc_info=True,
+            )
+            msg = "Backup operation failed"
+            raise InternalServerException(msg) from exc
         return ApiResponse(data=manifest)
 
-    @get("/list")
+    @get()
     async def list_backups(
         self,
         state: State,
@@ -78,7 +99,16 @@ class BackupController(Controller):
             List of backup info summaries.
         """
         app_state: AppState = state.app_state
-        backups = await app_state.backup_service.list_backups()
+        try:
+            backups = await app_state.backup_service.list_backups()
+        except BackupError as exc:
+            logger.error(
+                BACKUP_FAILED,
+                error=str(exc),
+                exc_info=True,
+            )
+            msg = "Failed to list backups"
+            raise InternalServerException(msg) from exc
         return ApiResponse(data=backups)
 
     @get("/{backup_id:str}")
@@ -100,6 +130,10 @@ class BackupController(Controller):
         try:
             manifest = await app_state.backup_service.get_backup(backup_id)
         except BackupNotFoundError as exc:
+            logger.warning(
+                BACKUP_NOT_FOUND,
+                backup_id=backup_id,
+            )
             raise NotFoundException(str(exc)) from exc
         return ApiResponse(data=manifest)
 
@@ -122,6 +156,10 @@ class BackupController(Controller):
         try:
             await app_state.backup_service.delete_backup(backup_id)
         except BackupNotFoundError as exc:
+            logger.warning(
+                BACKUP_NOT_FOUND,
+                backup_id=backup_id,
+            )
             raise NotFoundException(str(exc)) from exc
         return ApiResponse(data=None)
 
@@ -141,6 +179,12 @@ class BackupController(Controller):
 
         Returns:
             Restore response with safety backup ID.
+
+        Raises:
+            ClientException: If confirm is false (400), backup in
+                progress (409), or manifest invalid (422).
+            NotFoundException: If the backup does not exist.
+            InternalServerException: If the restore fails.
         """
         if not data.confirm:
             msg = "Restore requires confirm=true"
@@ -153,11 +197,32 @@ class BackupController(Controller):
                 components=data.components,
             )
         except BackupNotFoundError as exc:
+            logger.warning(
+                BACKUP_NOT_FOUND,
+                backup_id=data.backup_id,
+            )
             raise NotFoundException(str(exc)) from exc
         except ManifestError as exc:
+            logger.warning(
+                BACKUP_RESTORE_FAILED,
+                backup_id=data.backup_id,
+                error=str(exc),
+            )
             raise ClientException(str(exc), status_code=422) from exc
         except BackupInProgressError as exc:
+            logger.warning(
+                BACKUP_FAILED,
+                backup_id=data.backup_id,
+                error=str(exc),
+            )
             raise ClientException(str(exc), status_code=409) from exc
         except RestoreError as exc:
-            raise InternalServerException(str(exc)) from exc
+            logger.error(
+                BACKUP_RESTORE_FAILED,
+                backup_id=data.backup_id,
+                error=str(exc),
+                exc_info=True,
+            )
+            msg = "Restore operation failed"
+            raise InternalServerException(msg) from exc
         return ApiResponse(data=response)

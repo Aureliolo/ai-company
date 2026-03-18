@@ -42,7 +42,7 @@ def sample_manifest() -> BackupManifest:
     return BackupManifest(
         version="1",
         synthorg_version="0.3.2",
-        timestamp="2026-03-18T12:00:00Z",
+        timestamp="2026-03-18T12:00:00+00:00",
         trigger=BackupTrigger.MANUAL,
         components=(
             BackupComponent.PERSISTENCE,
@@ -51,8 +51,8 @@ def sample_manifest() -> BackupManifest:
         ),
         db_schema_version=1,
         size_bytes=1024,
-        checksum="sha256:abc123def456",
-        backup_id="backup-001",
+        checksum="sha256:" + "a" * 64,
+        backup_id="aabbccdd0011",
     )
 
 

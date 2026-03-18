@@ -9,6 +9,8 @@ from synthorg.settings.subscribers.backup_subscriber import (
     BackupSettingsSubscriber,
 )
 
+pytestmark = pytest.mark.timeout(30)
+
 
 def _make_subscriber(
     *,
@@ -128,7 +130,6 @@ class TestBackupSubscriberAdvisory:
     @pytest.mark.parametrize(
         "key",
         [
-            "schedule_hours",
             "compression",
             "on_shutdown",
             "on_startup",
@@ -145,14 +146,15 @@ class TestBackupSubscriberAdvisory:
         service.scheduler.start.assert_not_called()
         service.scheduler.stop.assert_not_awaited()
 
-    async def test_schedule_hours_is_advisory(self) -> None:
-        """schedule_hours logs a reschedule advisory but does not stop/start."""
+    async def test_schedule_hours_reschedules_without_toggle(self) -> None:
+        """schedule_hours calls reschedule but does not stop/start scheduler."""
         sub, service = _make_subscriber(scheduler_running=True)
 
         await sub.on_settings_changed("backup", "schedule_hours")
 
         service.scheduler.start.assert_not_called()
         service.scheduler.stop.assert_not_awaited()
+        service.scheduler.reschedule.assert_called_once()
 
     @pytest.mark.parametrize(
         "key",

@@ -97,3 +97,11 @@ class BackupConfig(BaseModel):
             )
             raise ValueError(msg)
         return self
+
+    @model_validator(mode="after")
+    def _reject_duplicate_components(self) -> Self:
+        """Reject duplicate entries in the include tuple."""
+        if len(self.include) != len(set(self.include)):
+            msg = "Duplicate components in include"
+            raise ValueError(msg)
+        return self

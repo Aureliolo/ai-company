@@ -81,9 +81,11 @@ class PersistenceComponentHandler:
     async def restore(self, source_dir: Path) -> None:
         """Restore the database from a backup copy.
 
-        Performs an atomic swap: renames current DB to ``.bak``,
-        copies backup into place, validates.  On failure, renames
-        ``.bak`` back.
+        Copies backup into place and validates with
+        ``PRAGMA integrity_check``.  If the current DB exists, it
+        is renamed to ``.bak`` first for atomic rollback on failure.
+        Also removes stale WAL/SHM sidecar files to prevent
+        WAL replay corruption.
 
         Args:
             source_dir: Directory containing the backup database.
@@ -93,6 +95,11 @@ class PersistenceComponentHandler:
         """
         source_file = source_dir / _DB_FILENAME
         if not source_file.exists():
+            logger.warning(
+                BACKUP_COMPONENT_FAILED,
+                component=self.component.value,
+                error=f"Backup database not found: {source_file}",
+            )
             msg = f"Backup database not found: {source_file}"
             raise ComponentBackupError(msg)
 
@@ -105,6 +112,12 @@ class PersistenceComponentHandler:
         except ComponentBackupError:
             raise
         except Exception as exc:
+            logger.error(
+                BACKUP_COMPONENT_FAILED,
+                component=self.component.value,
+                error=str(exc),
+                exc_info=True,
+            )
             msg = f"Failed to restore persistence DB: {exc}"
             raise ComponentBackupError(msg) from exc
 
@@ -157,15 +170,29 @@ class PersistenceComponentHandler:
             return result is not None and result[0] == "ok"
 
     @staticmethod
+    def _remove_sidecars(db_path: Path) -> None:
+        """Remove WAL and SHM sidecar files for a database."""
+        for suffix in ("-wal", "-shm"):
+            sidecar = db_path.with_name(f"{db_path.name}{suffix}")
+            if sidecar.exists():
+                sidecar.unlink()
+
+    @staticmethod
     def _atomic_swap(
         db_path: Path,
         source_file: Path,
         bak_path: Path,
     ) -> None:
-        """Swap the live DB with the backup, rolling back on failure."""
-        # Move current to .bak
+        """Swap the live DB with the backup, rolling back on failure.
+
+        Removes WAL/SHM sidecar files before opening the restored
+        database to prevent stale WAL replay corruption.
+        """
+        # Move current to .bak (including sidecars)
         if db_path.exists():
             shutil.move(db_path, bak_path)
+        # Remove stale sidecars from the original location
+        PersistenceComponentHandler._remove_sidecars(db_path)
 
         try:
             shutil.copy2(source_file, db_path)
@@ -180,9 +207,12 @@ class PersistenceComponentHandler:
             if bak_path.exists():
                 if db_path.exists():
                     db_path.unlink()
+                PersistenceComponentHandler._remove_sidecars(db_path)
                 shutil.move(bak_path, db_path)
             raise
 
         # Cleanup .bak on success
         if bak_path.exists():
             bak_path.unlink()
+        # Remove any sidecars created during integrity check
+        PersistenceComponentHandler._remove_sidecars(db_path)

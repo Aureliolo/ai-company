@@ -24,7 +24,7 @@ _CONFIG_SUBDIR = "config"
 class ConfigComponentHandler:
     """Back up and restore the company YAML configuration file.
 
-    Uses ``shutil.copy2`` for single-file copies.
+    Uses ``shutil.copy2`` for single-file copies (backup and restore).
 
     Args:
         config_path: Path to the company configuration YAML file.
@@ -90,6 +90,9 @@ class ConfigComponentHandler:
     async def restore(self, source_dir: Path) -> None:
         """Restore the configuration file from a backup.
 
+        Looks up the original config filename rather than relying
+        on directory listing order.
+
         Args:
             source_dir: Directory containing the backup config.
 
@@ -97,16 +100,30 @@ class ConfigComponentHandler:
             ComponentBackupError: If restore fails.
         """
         config_dir = source_dir / _CONFIG_SUBDIR
-        if not config_dir.exists():
+        exists = await asyncio.to_thread(config_dir.exists)
+        if not exists:
+            logger.warning(
+                BACKUP_COMPONENT_FAILED,
+                component=self.component.value,
+                error=f"Backup config directory not found: {config_dir}",
+            )
             msg = f"Backup config directory not found: {config_dir}"
             raise ComponentBackupError(msg)
 
-        backup_files = list(config_dir.iterdir())
-        if not backup_files:
-            msg = f"No config files found in backup: {config_dir}"
-            raise ComponentBackupError(msg)
+        # Look for the original filename first, fall back to first file
+        source_file = config_dir / self._config_path.name
+        if not source_file.exists():
+            backup_files = list(config_dir.iterdir())
+            if not backup_files:
+                logger.warning(
+                    BACKUP_COMPONENT_FAILED,
+                    component=self.component.value,
+                    error=f"No config files found in backup: {config_dir}",
+                )
+                msg = f"No config files found in backup: {config_dir}"
+                raise ComponentBackupError(msg)
+            source_file = backup_files[0]
 
-        source_file = backup_files[0]
         try:
             await asyncio.to_thread(
                 shutil.copy2,
@@ -114,6 +131,12 @@ class ConfigComponentHandler:
                 self._config_path,
             )
         except Exception as exc:
+            logger.error(
+                BACKUP_COMPONENT_FAILED,
+                component=self.component.value,
+                error=str(exc),
+                exc_info=True,
+            )
             msg = f"Failed to restore config file: {exc}"
             raise ComponentBackupError(msg) from exc
 
@@ -127,6 +150,11 @@ class ConfigComponentHandler:
             ``True`` if the config backup subdirectory exists and
             contains at least one file.
         """
+        return await asyncio.to_thread(self._check_source, source_dir)
+
+    @staticmethod
+    def _check_source(source_dir: Path) -> bool:
+        """Synchronous check for config backup validity."""
         config_dir = source_dir / _CONFIG_SUBDIR
         if not config_dir.exists():
             return False

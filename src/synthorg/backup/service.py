@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+import re
 import shutil
 import tarfile
 from copy import deepcopy
@@ -42,9 +43,9 @@ from synthorg.observability.events.backup import (
     BACKUP_RESTORE_FAILED,
     BACKUP_RESTORE_ROLLBACK,
     BACKUP_RESTORE_STARTED,
+    BACKUP_RETENTION_FAILED,
     BACKUP_STARTED,
 )
-from synthorg.persistence.sqlite.migrations import SCHEMA_VERSION
 
 if TYPE_CHECKING:
     from synthorg.backup.config import BackupConfig
@@ -53,6 +54,18 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _CHECKSUM_CHUNK_SIZE = 65536
+_MANIFEST_MAX_SIZE = 65536
+_BACKUP_ID_RE = re.compile(r"^[0-9a-f]{12}$")
+
+
+def _validate_backup_id(backup_id: str) -> None:
+    """Validate backup_id format at service boundary."""
+    if not _BACKUP_ID_RE.match(backup_id):
+        msg = (
+            f"Invalid backup_id format: {backup_id!r}. "
+            "Expected 12-character hex string."
+        )
+        raise BackupNotFoundError(msg)
 
 
 class BackupService:
@@ -65,7 +78,9 @@ class BackupService:
     Args:
         config: Backup configuration.
         handlers: Component handlers keyed by component enum.
-        schema_version: Current persistence DB schema version.
+        schema_version: Current persistence DB schema version,
+            used for both backup manifest creation and restore
+            compatibility checks.
     """
 
     def __init__(
@@ -88,6 +103,16 @@ class BackupService:
     def scheduler(self) -> BackupScheduler:
         """Return the backup scheduler instance."""
         return self._scheduler
+
+    @property
+    def on_startup(self) -> bool:
+        """Whether to create a backup on application startup."""
+        return self._config.on_startup
+
+    @property
+    def on_shutdown(self) -> bool:
+        """Whether to create a backup on graceful shutdown."""
+        return self._config.on_shutdown
 
     async def start(self) -> None:
         """Start the backup scheduler if backups are enabled."""
@@ -134,12 +159,11 @@ class BackupService:
         *,
         compress: bool | None = None,
     ) -> BackupManifest:
-        """Execute the backup (called under lock)."""
+        """Execute the backup. Caller must hold ``_backup_lock``."""
         backup_id = uuid4().hex[:12]
         timestamp = datetime.now(UTC).isoformat()
         effective_components = components or self._config.include
 
-        # Shutdown backups skip compression for speed
         if compress is None:
             use_compression = (
                 self._config.compression if trigger != BackupTrigger.SHUTDOWN else False
@@ -167,8 +191,6 @@ class BackupService:
                 dir_name=dir_name,
                 backup_dir=backup_dir,
             )
-        except BackupInProgressError:
-            raise
         except Exception as exc:
             logger.error(
                 BACKUP_FAILED,
@@ -178,7 +200,7 @@ class BackupService:
             )
             # Clean up partial backup
             if backup_dir.exists():
-                shutil.rmtree(backup_dir)
+                await asyncio.to_thread(shutil.rmtree, backup_dir)
             raise
         return manifest
 
@@ -194,8 +216,8 @@ class BackupService:
         backup_dir: Path,
     ) -> BackupManifest:
         """Run the backup steps: create dirs, copy data, write manifest."""
-        self._backup_path.mkdir(parents=True, exist_ok=True)
-        backup_dir.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240
+        await asyncio.to_thread(self._backup_path.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread(backup_dir.mkdir, parents=True, exist_ok=True)
 
         backed_up_components: list[BackupComponent] = []
         total_size = 0
@@ -213,7 +235,6 @@ class BackupService:
             total_size += size
             backed_up_components.append(comp)
 
-        # Compute checksum of all files
         checksum = await asyncio.to_thread(
             self._compute_checksum,
             backup_dir,
@@ -230,11 +251,11 @@ class BackupService:
             backup_id=backup_id,
         )
 
-        # Write manifest
         manifest_path = backup_dir / "manifest.json"
-        manifest_path.write_text(
+        await asyncio.to_thread(
+            manifest_path.write_text,
             manifest.model_dump_json(indent=2),
-            encoding="utf-8",
+            "utf-8",
         )
         logger.debug(
             BACKUP_MANIFEST_WRITTEN,
@@ -270,7 +291,7 @@ class BackupService:
                 backup_dir,
                 archive_path,
             )
-            shutil.rmtree(backup_dir)
+            await asyncio.to_thread(shutil.rmtree, backup_dir)
 
         logger.info(
             BACKUP_COMPLETED,
@@ -280,12 +301,11 @@ class BackupService:
             compressed=use_compression,
         )
 
-        # Run retention pruning (best-effort)
         try:
             await self._retention.prune()
         except Exception:
             logger.error(
-                BACKUP_FAILED,
+                BACKUP_RETENTION_FAILED,
                 backup_id=backup_id,
                 error="Retention pruning failed",
                 exc_info=True,
@@ -310,7 +330,15 @@ class BackupService:
         Raises:
             BackupNotFoundError: If backup_id does not exist.
             RestoreError: If restore fails.
+            BackupError: If the pre-restore safety backup fails.
         """
+        _validate_backup_id(backup_id)
+
+        if self._backup_lock.locked():
+            logger.warning(BACKUP_IN_PROGRESS, backup_id=backup_id)
+            msg = "A backup or restore is already in progress"
+            raise BackupInProgressError(msg)
+
         async with self._backup_lock:
             return await self._do_restore(backup_id, components)
 
@@ -326,10 +354,17 @@ class BackupService:
         restore_components = components or manifest.components
 
         # Schema compatibility check
-        if manifest.db_schema_version > SCHEMA_VERSION:
+        if manifest.db_schema_version > self._schema_version:
+            logger.warning(
+                BACKUP_RESTORE_FAILED,
+                backup_id=backup_id,
+                reason="schema version mismatch",
+                backup_version=manifest.db_schema_version,
+                current_version=self._schema_version,
+            )
             msg = (
                 f"Backup schema version {manifest.db_schema_version} "
-                f"is newer than current {SCHEMA_VERSION}"
+                f"is newer than current {self._schema_version}"
             )
             raise RestoreError(msg)
 
@@ -343,6 +378,9 @@ class BackupService:
             temp_extracted = True
 
         try:
+            # Verify checksum before restoring
+            await self._verify_checksum(manifest, backup_dir)
+
             await self._validate_restore_components(restore_components, backup_dir)
 
             # Safety backup -- call _do_backup directly to avoid
@@ -368,10 +406,28 @@ class BackupService:
             )
             raise
         finally:
-            if temp_extracted and backup_dir is not None and backup_dir.exists():
-                shutil.rmtree(backup_dir)
+            if temp_extracted and backup_dir is not None:
+                exists = await asyncio.to_thread(backup_dir.exists)
+                if exists:
+                    await asyncio.to_thread(shutil.rmtree, backup_dir)
 
         return response
+
+    async def _verify_checksum(
+        self,
+        manifest: BackupManifest,
+        backup_dir: Path,
+    ) -> None:
+        """Re-compute checksum and compare against manifest."""
+        computed = await asyncio.to_thread(self._compute_checksum, backup_dir)
+        expected = manifest.checksum
+        actual = f"sha256:{computed}"
+        if actual != expected:
+            msg = (
+                f"Checksum mismatch for backup {manifest.backup_id}: "
+                f"expected {expected}, got {actual}"
+            )
+            raise ManifestError(msg)
 
     async def _perform_component_restore(
         self,
@@ -385,7 +441,10 @@ class BackupService:
         """Restore individual components and build the response."""
         try:
             for comp in restore_components:
-                handler = self._handlers[comp]
+                handler = self._handlers.get(comp)
+                if handler is None:
+                    msg = f"No handler for component: {comp.value}"
+                    raise RestoreError(msg)  # noqa: TRY301
                 await handler.restore(backup_dir)
         except Exception as exc:
             logger.exception(
@@ -419,10 +478,20 @@ class BackupService:
         for comp in restore_components:
             handler = self._handlers.get(comp)
             if handler is None:
+                logger.warning(
+                    BACKUP_RESTORE_FAILED,
+                    component=comp.value,
+                    reason="no handler",
+                )
                 msg = f"No handler for component: {comp.value}"
                 raise RestoreError(msg)
             valid = await handler.validate_source(backup_dir)
             if not valid:
+                logger.warning(
+                    BACKUP_RESTORE_FAILED,
+                    component=comp.value,
+                    reason="invalid backup source",
+                )
                 msg = f"Invalid backup source for component: {comp.value}"
                 raise RestoreError(msg)
 
@@ -440,9 +509,13 @@ class BackupService:
 
         for entry in self._backup_path.iterdir():
             if entry.is_dir():
-                self._try_load_dir_info(entry, infos)
+                info = self._try_load_dir_info(entry)
+                if info is not None:
+                    infos.append(info)
             elif entry.name.endswith(".tar.gz"):
-                await self._try_load_archive_info(entry, infos)
+                info = await self._try_load_archive_info(entry)
+                if info is not None:
+                    infos.append(info)
 
         infos.sort(key=lambda i: i.timestamp, reverse=True)
         logger.debug(BACKUP_LISTED, count=len(infos))
@@ -451,37 +524,27 @@ class BackupService:
     def _try_load_dir_info(
         self,
         entry: Path,
-        infos: list[BackupInfo],
-    ) -> None:
+    ) -> BackupInfo | None:
         """Try to load backup info from a directory manifest."""
         manifest_path = entry / "manifest.json"
         if not manifest_path.exists():
-            return
+            return None
         try:
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
             m = BackupManifest.model_validate(data)
-            infos.append(
-                BackupInfo(
-                    backup_id=m.backup_id,
-                    timestamp=m.timestamp,
-                    trigger=m.trigger,
-                    components=m.components,
-                    size_bytes=m.size_bytes,
-                    compressed=False,
-                )
-            )
+            return BackupInfo.from_manifest(m, compressed=False)
         except Exception:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(manifest_path),
                 exc_info=True,
             )
+            return None
 
     async def _try_load_archive_info(
         self,
         entry: Path,
-        infos: list[BackupInfo],
-    ) -> None:
+    ) -> BackupInfo | None:
         """Try to load backup info from a compressed archive."""
         try:
             m = await asyncio.to_thread(
@@ -489,22 +552,14 @@ class BackupService:
                 entry,
             )
             if m is not None:
-                infos.append(
-                    BackupInfo(
-                        backup_id=m.backup_id,
-                        timestamp=m.timestamp,
-                        trigger=m.trigger,
-                        components=m.components,
-                        size_bytes=m.size_bytes,
-                        compressed=True,
-                    )
-                )
+                return BackupInfo.from_manifest(m, compressed=True)
         except Exception:
             logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(entry),
                 exc_info=True,
             )
+        return None
 
     async def get_backup(self, backup_id: str) -> BackupManifest:
         """Get the full manifest for a specific backup.
@@ -518,6 +573,7 @@ class BackupService:
         Raises:
             BackupNotFoundError: If backup does not exist.
         """
+        _validate_backup_id(backup_id)
         return await self._load_manifest(backup_id)
 
     async def delete_backup(self, backup_id: str) -> None:
@@ -529,7 +585,8 @@ class BackupService:
         Raises:
             BackupNotFoundError: If backup does not exist.
         """
-        deleted = self._try_delete_backup(backup_id)
+        _validate_backup_id(backup_id)
+        deleted = await asyncio.to_thread(self._try_delete_backup, backup_id)
 
         if not deleted:
             logger.warning(BACKUP_NOT_FOUND, backup_id=backup_id)
@@ -551,7 +608,7 @@ class BackupService:
             elif (
                 entry.is_file()
                 and entry.name.endswith(".tar.gz")
-                and entry.name.startswith(backup_id)
+                and entry.name.startswith(f"{backup_id}_")
             ):
                 entry.unlink()
                 return True
@@ -566,7 +623,7 @@ class BackupService:
             data = json.loads(manifest_path.read_text(encoding="utf-8"))
             return bool(data.get("backup_id") == backup_id)
         except Exception:
-            logger.debug(
+            logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(manifest_path),
             )
@@ -589,7 +646,7 @@ class BackupService:
         entry: Path,
         backup_id: str,
     ) -> BackupManifest | None:
-        """Try to load a manifest matching backup_id from a directory or archive."""
+        """Try to load a manifest matching backup_id."""
         if entry.is_dir():  # noqa: ASYNC240
             manifest_path = entry / "manifest.json"
             if manifest_path.exists():
@@ -635,7 +692,12 @@ class BackupService:
         return None
 
     async def _extract_archive(self, backup_id: str) -> Path | None:
-        """Extract a compressed backup archive to a temp directory."""
+        """Extract a compressed backup archive to a temp directory.
+
+        Raises:
+            ManifestError: If the archive contains unsafe paths or
+                extraction fails.
+        """
         if not self._backup_path.exists():
             return None
         for entry in self._backup_path.iterdir():
@@ -644,7 +706,6 @@ class BackupService:
             if not self._archive_matches_backup(entry, backup_id):
                 continue
 
-            # Extract to temp directory
             temp_dir = self._backup_path / f"_restore_{backup_id}"
             try:
                 await asyncio.to_thread(
@@ -652,6 +713,8 @@ class BackupService:
                     entry,
                     temp_dir,
                 )
+            except ManifestError:
+                raise
             except Exception:
                 logger.warning(
                     BACKUP_FAILED,
@@ -660,8 +723,9 @@ class BackupService:
                     exc_info=True,
                 )
                 if temp_dir.exists():
-                    shutil.rmtree(temp_dir)
-                return None
+                    await asyncio.to_thread(shutil.rmtree, temp_dir)
+                msg = f"Failed to extract archive for backup: {backup_id}"
+                raise ManifestError(msg) from None
             else:
                 return temp_dir
         return None
@@ -672,11 +736,16 @@ class BackupService:
         backup_id: str,
     ) -> bool:
         """Check if an archive contains a manifest matching backup_id."""
-        if entry.name.startswith(backup_id):
+        if entry.name.startswith(f"{backup_id}_"):
             return True
         try:
             m = self._read_manifest_from_archive(entry)
         except Exception:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(entry),
+                error="Failed to read archive manifest for matching",
+            )
             return False
         else:
             return m is not None and m.backup_id == backup_id
@@ -686,7 +755,11 @@ class BackupService:
         """Compute SHA-256 checksum of all files in a directory."""
         hasher = hashlib.sha256()
         for filepath in sorted(directory.rglob("*")):
-            if filepath.is_file() and filepath.name != "manifest.json":
+            if (
+                filepath.is_file()
+                and not filepath.is_symlink()
+                and filepath.name != "manifest.json"
+            ):
                 rel = filepath.relative_to(directory).as_posix()
                 hasher.update(rel.encode("utf-8"))
                 with filepath.open("rb") as fh:
@@ -703,21 +776,38 @@ class BackupService:
 
     @staticmethod
     def _extract_tar(archive_path: Path, target_dir: Path) -> None:
-        """Extract a tar.gz archive to a target directory."""
+        """Extract a tar.gz archive to a target directory.
+
+        Validates member names, symlink targets, and uses
+        ``filter="data"`` for additional safety.
+        """
         target_dir.mkdir(parents=True, exist_ok=True)
         with tarfile.open(archive_path, "r:gz") as tar:
-            # Security: filter out absolute paths and path traversal
             for member in tar.getmembers():
-                if member.name.startswith("/") or ".." in member.name:
+                # Reject absolute paths and traversal in names
+                if member.name.startswith("/") or ".." in Path(member.name).parts:
                     msg = f"Unsafe path in archive: {member.name}"
                     raise ManifestError(msg)
+                # Reject symlinks with absolute or traversal targets
+                if member.issym() or member.islnk():
+                    linkname = member.linkname
+                    if linkname.startswith("/") or ".." in Path(linkname).parts:
+                        msg = (
+                            f"Unsafe symlink target in archive: "
+                            f"{member.name} -> {linkname}"
+                        )
+                        raise ManifestError(msg)
             tar.extractall(target_dir, filter="data")
 
     @staticmethod
     def _read_manifest_from_archive(
         archive_path: Path,
     ) -> BackupManifest | None:
-        """Read manifest.json from a tar.gz archive without full extraction."""
+        """Read manifest.json from a tar.gz archive.
+
+        Returns ``None`` if no manifest is found. Logs at WARNING
+        level for corrupted archives.
+        """
         try:
             with tarfile.open(archive_path, "r:gz") as tar:
                 try:
@@ -727,13 +817,22 @@ class BackupService:
                 f = tar.extractfile(member)
                 if f is None:
                     return None
-                data = json.loads(f.read())
+                raw = f.read(_MANIFEST_MAX_SIZE)
+                if len(raw) == _MANIFEST_MAX_SIZE:
+                    logger.warning(
+                        BACKUP_MANIFEST_INVALID,
+                        path=str(archive_path),
+                        error="manifest.json exceeds size limit",
+                    )
+                    return None
+                data = json.loads(raw)
                 return BackupManifest.model_validate(data)
         except MemoryError, RecursionError:
             raise
         except Exception:
-            logger.debug(
+            logger.warning(
                 BACKUP_MANIFEST_INVALID,
                 path=str(archive_path),
+                exc_info=True,
             )
             return None

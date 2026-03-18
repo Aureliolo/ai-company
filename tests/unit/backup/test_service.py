@@ -58,6 +58,11 @@ def _make_service(
     return BackupService(config, handlers, schema_version=1)
 
 
+_EMPTY_DIR_CHECKSUM = (
+    "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+)
+
+
 def _create_backup_on_disk(
     backup_path: Path,
     backup_id: str,
@@ -76,7 +81,7 @@ def _create_backup_on_disk(
         components=(BackupComponent.PERSISTENCE,),
         db_schema_version=1,
         size_bytes=100,
-        checksum="sha256:abc123",
+        checksum=_EMPTY_DIR_CHECKSUM,
         backup_id=backup_id,
     )
     (backup_dir / "manifest.json").write_text(
@@ -107,7 +112,7 @@ class TestCreateBackup:
 
         assert manifest.trigger == BackupTrigger.MANUAL
         assert manifest.backup_id
-        assert manifest.size_bytes > 0  # 3 handlers x 512 each
+        assert manifest.size_bytes == 1536  # 3 handlers x 512 each
         assert manifest.checksum.startswith("sha256:")
 
         # Handler backup methods were called
@@ -218,17 +223,20 @@ class TestListBackups:
         bp = tmp_path / "backups"
         bp.mkdir()
 
-        _create_backup_on_disk(bp, "old", BackupTrigger.MANUAL, "2026-03-01T00:00:00Z")
-        _create_backup_on_disk(bp, "new", BackupTrigger.MANUAL, "2026-03-18T00:00:00Z")
-        _create_backup_on_disk(bp, "mid", BackupTrigger.MANUAL, "2026-03-10T00:00:00Z")
+        ts1 = "2026-03-01T00:00:00Z"
+        ts2 = "2026-03-18T00:00:00Z"
+        ts3 = "2026-03-10T00:00:00Z"
+        _create_backup_on_disk(bp, "aabb00000001", BackupTrigger.MANUAL, ts1)
+        _create_backup_on_disk(bp, "aabb00000003", BackupTrigger.MANUAL, ts2)
+        _create_backup_on_disk(bp, "aabb00000002", BackupTrigger.MANUAL, ts3)
 
         service = _make_service(bp)
         infos = await service.list_backups()
 
         assert len(infos) == 3
-        assert infos[0].backup_id == "new"
-        assert infos[1].backup_id == "mid"
-        assert infos[2].backup_id == "old"
+        assert infos[0].backup_id == "aabb00000003"
+        assert infos[1].backup_id == "aabb00000002"
+        assert infos[2].backup_id == "aabb00000001"
 
     async def test_empty_when_no_backups(
         self,
@@ -271,12 +279,12 @@ class TestGetBackup:
         bp = tmp_path / "backups"
         bp.mkdir()
         ts = "2026-03-18T00:00:00Z"
-        _create_backup_on_disk(bp, "abc123", BackupTrigger.MANUAL, ts)
+        _create_backup_on_disk(bp, "aabb00000001", BackupTrigger.MANUAL, ts)
 
         service = _make_service(bp)
-        manifest = await service.get_backup("abc123")
+        manifest = await service.get_backup("aabb00000001")
 
-        assert manifest.backup_id == "abc123"
+        assert manifest.backup_id == "aabb00000001"
         assert manifest.trigger == BackupTrigger.MANUAL
 
     async def test_raises_not_found_for_missing_backup(
@@ -289,7 +297,7 @@ class TestGetBackup:
         service = _make_service(bp)
 
         with pytest.raises(BackupNotFoundError, match="not found"):
-            await service.get_backup("does-not-exist")
+            await service.get_backup("aabb00000099")
 
 
 # ---------------------------------------------------------------------------
@@ -309,12 +317,12 @@ class TestDeleteBackup:
         bp = tmp_path / "backups"
         bp.mkdir()
         backup_dir = _create_backup_on_disk(
-            bp, "to-delete", BackupTrigger.MANUAL, "2026-03-18T00:00:00Z"
+            bp, "aabb00000001", BackupTrigger.MANUAL, "2026-03-18T00:00:00Z"
         )
         assert backup_dir.exists()
 
         service = _make_service(bp)
-        await service.delete_backup("to-delete")
+        await service.delete_backup("aabb00000001")
 
         assert not backup_dir.exists()
 
@@ -328,7 +336,7 @@ class TestDeleteBackup:
         service = _make_service(bp)
 
         with pytest.raises(BackupNotFoundError, match="not found"):
-            await service.delete_backup("ghost")
+            await service.delete_backup("aabb00000099")
 
 
 # ---------------------------------------------------------------------------
@@ -351,15 +359,15 @@ class TestRestoreFromBackup:
             BackupComponent.PERSISTENCE: _make_handler(BackupComponent.PERSISTENCE),
         }
         _create_backup_on_disk(
-            bp, "src-bk", BackupTrigger.MANUAL, "2026-03-18T00:00:00Z"
+            bp, "aabb00000001", BackupTrigger.MANUAL, "2026-03-18T00:00:00Z"
         )
 
         service = _make_service(bp, handlers=handlers)
-        response = await service.restore_from_backup("src-bk")
+        response = await service.restore_from_backup("aabb00000001")
 
         # Safety backup was created with PRE_MIGRATION trigger
         assert response.safety_backup_id
-        assert response.manifest.backup_id == "src-bk"
+        assert response.manifest.backup_id == "aabb00000001"
 
         # Verify restore completed successfully
         assert response.restored_components == (BackupComponent.PERSISTENCE,)
@@ -375,7 +383,7 @@ class TestRestoreFromBackup:
         service = _make_service(bp)
 
         with pytest.raises(BackupNotFoundError, match="not found"):
-            await service.restore_from_backup("no-such-id")
+            await service.restore_from_backup("aabb00000099")
 
 
 # ---------------------------------------------------------------------------
