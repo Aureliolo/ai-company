@@ -167,6 +167,11 @@ async def cleanup_sandbox_backends(
                 exc_info=True,
             )
 
+    # NOTE: intentionally using gather(return_exceptions=True) instead of
+    # TaskGroup here.  TaskGroup cancels all siblings when one task raises
+    # a BaseException (e.g. CancelledError during shutdown), defeating
+    # the error-isolation guarantee this function promises.  gather keeps
+    # all tasks running independently.
     backend_items = list(backends.items())
     results = await asyncio.gather(
         *(_cleanup_one(n, b) for n, b in backend_items),
