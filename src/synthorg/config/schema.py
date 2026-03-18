@@ -189,7 +189,7 @@ class ProviderConfig(BaseModel):
                 )
                 raise ValueError(msg)
         elif self.auth_type == AuthType.CUSTOM_HEADER:
-            missing: list[str] = []
+            missing = []
             if self.custom_header_name is None:
                 missing.append("custom_header_name")
             if self.custom_header_value is None:
