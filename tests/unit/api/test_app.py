@@ -617,7 +617,7 @@ class TestAutoWirePhase1Details:
         app = create_app()
         state: AppState = app.state["app_state"]
         bus = state._message_bus
-        assert bus is not None
+        assert isinstance(bus, InMemoryMessageBus)
         # The bus config should include all API channels
         for ch in ALL_CHANNELS:
             assert ch in bus._config.channels
