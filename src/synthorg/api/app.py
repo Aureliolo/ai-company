@@ -461,6 +461,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
         if backup_service is not None:
             try:
                 app_state.set_backup_service(backup_service)
+                started_backup_service = True
                 await backup_service.start()
             except Exception:
                 logger.exception(
@@ -468,7 +469,6 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     error="Failed to start backup service",
                 )
                 raise
-            started_backup_service = True
 
             # Create startup backup if configured
             if backup_service.on_startup:
@@ -646,10 +646,16 @@ def create_app(  # noqa: PLR0913
     effective_config = config or RootConfig(company_name="default")
     api_config = effective_config.api
 
+    # Resolve runtime paths for backup service wiring.
+    resolved_db_path: Path | None = None
+    resolved_config_path_str = (os.environ.get("SYNTHORG_CONFIG_PATH") or "").strip()
+    resolved_config_path: Path | None = (
+        Path(resolved_config_path_str) if resolved_config_path_str else None
+    )
+
     # Auto-wire persistence from SYNTHORG_DB_PATH env var (set by CLI
     # compose template).  The startup lifecycle handles connect() +
     # migrate() + auth service creation.
-    resolved_db_path: Path | None = None
     if persistence is None:
         db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
         if db_path:
@@ -719,6 +725,7 @@ def create_app(  # noqa: PLR0913
     backup_service = build_backup_service(
         effective_config,
         resolved_db_path=resolved_db_path,
+        resolved_config_path=resolved_config_path,
     )
     settings_dispatcher = _build_settings_dispatcher(
         message_bus,

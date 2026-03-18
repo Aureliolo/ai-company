@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_never
 
 from synthorg.backup.handlers.config_handler import ConfigComponentHandler
 from synthorg.backup.handlers.memory import MemoryComponentHandler
@@ -61,6 +61,8 @@ def build_backup_handlers(
             handlers[component] = ConfigComponentHandler(
                 config_path=cfg_path,
             )
+        else:  # pragma: no cover
+            assert_never(component)
 
     return handlers
 
@@ -99,6 +101,8 @@ def build_backup_service(
             handlers,
             schema_version=SCHEMA_VERSION,
         )
+    except MemoryError, RecursionError:
+        raise
     except Exception:
         logger.warning(
             API_APP_STARTUP,
