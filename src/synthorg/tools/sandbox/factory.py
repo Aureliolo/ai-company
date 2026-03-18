@@ -35,6 +35,35 @@ logger = get_logger(__name__)
 _KNOWN_BACKENDS: frozenset[str] = frozenset({"subprocess", "docker"})
 
 
+def _instantiate_backend(
+    name: str,
+    config: SandboxingConfig,
+    workspace: Path,
+) -> SandboxBackend:
+    """Construct a single sandbox backend by name.
+
+    Logs and re-raises on construction failure.
+    """
+    try:
+        if name == "subprocess":
+            return SubprocessSandbox(
+                config=config.subprocess,
+                workspace=workspace,
+            )
+        return DockerSandbox(
+            config=config.docker,
+            workspace=workspace,
+        )
+    except Exception:
+        logger.error(
+            SANDBOX_FACTORY_BUILD_FAILED,
+            backend=name,
+            workspace=str(workspace),
+            exc_info=True,
+        )
+        raise
+
+
 def build_sandbox_backends(
     *,
     config: SandboxingConfig,
@@ -70,37 +99,9 @@ def build_sandbox_backends(
         logger.error(SANDBOX_FACTORY_BUILD_FAILED, error=msg)
         raise ValueError(msg)
 
-    backends: dict[str, SandboxBackend] = {}
-
-    if "subprocess" in needed:
-        try:
-            backends["subprocess"] = SubprocessSandbox(
-                config=config.subprocess,
-                workspace=workspace,
-            )
-        except Exception:
-            logger.error(
-                SANDBOX_FACTORY_BUILD_FAILED,
-                backend="subprocess",
-                workspace=str(workspace),
-                exc_info=True,
-            )
-            raise
-
-    if "docker" in needed:
-        try:
-            backends["docker"] = DockerSandbox(
-                config=config.docker,
-                workspace=workspace,
-            )
-        except Exception:
-            logger.error(
-                SANDBOX_FACTORY_BUILD_FAILED,
-                backend="docker",
-                workspace=str(workspace),
-                exc_info=True,
-            )
-            raise
+    backends: dict[str, SandboxBackend] = {
+        name: _instantiate_backend(name, config, workspace) for name in sorted(needed)
+    }
 
     logger.info(
         SANDBOX_FACTORY_BUILT,
