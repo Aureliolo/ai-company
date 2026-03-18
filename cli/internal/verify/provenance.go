@@ -177,11 +177,12 @@ func verifyProvenanceBundle(bundleJSON json.RawMessage, digest string, sev *veri
 	// sigstore-go does not validate the in-toto predicate type -- we must
 	// check it ourselves. Without this, an SBOM or other attestation signed
 	// by the same workflow identity would incorrectly pass as SLSA provenance.
-	if result != nil && result.Statement != nil {
-		pt := result.Statement.PredicateType
-		if !strings.HasPrefix(pt, SLSAProvenancePredicatePrefix) {
-			return fmt.Errorf("unexpected predicate type %q, want prefix %q", pt, SLSAProvenancePredicatePrefix)
-		}
+	if result == nil || result.Statement == nil {
+		return fmt.Errorf("verification succeeded but returned no statement for predicate check")
+	}
+	pt := result.Statement.PredicateType
+	if !strings.HasPrefix(pt, SLSAProvenancePredicatePrefix) {
+		return fmt.Errorf("unexpected predicate type %q, want prefix %q", pt, SLSAProvenancePredicatePrefix)
 	}
 
 	return nil
