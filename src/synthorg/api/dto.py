@@ -493,6 +493,31 @@ _PROVIDER_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$")
 _RESERVED_PROVIDER_NAMES: frozenset[str] = frozenset({"presets", "from-preset"})
 
 
+def _validate_provider_name(v: str) -> str:
+    """Validate a provider name against naming rules.
+
+    Args:
+        v: Candidate provider name.
+
+    Returns:
+        The validated name.
+
+    Raises:
+        ValueError: If the name is invalid or reserved.
+    """
+    if not _PROVIDER_NAME_PATTERN.match(v):
+        msg = (
+            "Provider name must be 2-64 chars, lowercase "
+            "alphanumeric and hyphens, starting/ending with "
+            "alphanumeric"
+        )
+        raise ValueError(msg)
+    if v in _RESERVED_PROVIDER_NAMES:
+        msg = f"Provider name {v!r} is reserved"
+        raise ValueError(msg)
+    return v
+
+
 class CreateProviderRequest(BaseModel):
     """Payload for creating a new provider.
 
@@ -529,17 +554,7 @@ class CreateProviderRequest(BaseModel):
     @field_validator("name")
     @classmethod
     def _validate_name(cls, v: str) -> str:
-        if not _PROVIDER_NAME_PATTERN.match(v):
-            msg = (
-                "Provider name must be 2-64 chars, lowercase "
-                "alphanumeric and hyphens, starting/ending with "
-                "alphanumeric"
-            )
-            raise ValueError(msg)
-        if v in _RESERVED_PROVIDER_NAMES:
-            msg = f"Provider name {v!r} is reserved"
-            raise ValueError(msg)
-        return v
+        return _validate_provider_name(v)
 
 
 class UpdateProviderRequest(BaseModel):
@@ -577,6 +592,14 @@ class UpdateProviderRequest(BaseModel):
     custom_header_value: NotBlankStr | None = None
     models: tuple[ProviderModelConfig, ...] | None = None
 
+    @model_validator(mode="after")
+    def _validate_api_key_clear_consistency(self) -> Self:
+        """Reject simultaneous api_key and clear_api_key."""
+        if self.api_key is not None and self.clear_api_key:
+            msg = "api_key and clear_api_key are mutually exclusive"
+            raise ValueError(msg)
+        return self
+
 
 class TestConnectionRequest(BaseModel):
     """Payload for testing a provider connection.
@@ -604,8 +627,16 @@ class TestConnectionResponse(BaseModel):
 
     success: bool
     latency_ms: float | None = None
-    error: str | None = None
-    model_tested: str | None = None
+    error: NotBlankStr | None = None
+    model_tested: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _validate_success_error_consistency(self) -> Self:
+        """Ensure success and error fields are consistent."""
+        if self.success and self.error is not None:
+            msg = "successful test must not have an error"
+            raise ValueError(msg)
+        return self
 
 
 class ProviderResponse(BaseModel):
@@ -654,17 +685,7 @@ class CreateFromPresetRequest(BaseModel):
     @field_validator("name")
     @classmethod
     def _validate_name(cls, v: str) -> str:
-        if not _PROVIDER_NAME_PATTERN.match(v):
-            msg = (
-                "Provider name must be 2-64 chars, lowercase "
-                "alphanumeric and hyphens, starting/ending with "
-                "alphanumeric"
-            )
-            raise ValueError(msg)
-        if v in _RESERVED_PROVIDER_NAMES:
-            msg = f"Provider name {v!r} is reserved"
-            raise ValueError(msg)
-        return v
+        return _validate_provider_name(v)
 
 
 def to_provider_response(config: ProviderConfig) -> ProviderResponse:
@@ -684,6 +705,10 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
         base_url=config.base_url,
         models=config.models,
         has_api_key=config.api_key is not None,
-        has_oauth_credentials=config.oauth_client_secret is not None,
+        has_oauth_credentials=(
+            config.oauth_client_id is not None
+            and config.oauth_client_secret is not None
+            and config.oauth_token_url is not None
+        ),
         has_custom_header=config.custom_header_value is not None,
     )

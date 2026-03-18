@@ -168,6 +168,12 @@ class ProviderAlreadyExistsError(ProviderError):
     is_retryable = False
 
 
+class ProviderNotFoundError(ProviderError):
+    """A provider with this name does not exist."""
+
+    is_retryable = False
+
+
 class ProviderValidationError(ProviderError):
     """Provider configuration failed validation."""
 

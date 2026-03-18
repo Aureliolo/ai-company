@@ -115,6 +115,7 @@ async function handleFormSave(data: CreateProviderRequest | UpdateProviderReques
       await providerStore.updateProvider(editingProviderName.value, data as UpdateProviderRequest)
       toast.add({ severity: 'success', summary: 'Provider updated', life: 3000 })
     }
+    formDialogVisible.value = false
   } catch (err) {
     toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
   }

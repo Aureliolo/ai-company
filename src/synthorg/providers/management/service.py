@@ -24,10 +24,11 @@ from synthorg.observability.events.provider import (
     PROVIDER_DELETED,
     PROVIDER_UPDATED,
 )
-from synthorg.providers.enums import MessageRole
+from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
     ProviderError,
+    ProviderNotFoundError,
     ProviderValidationError,
 )
 from synthorg.providers.models import ChatMessage
@@ -89,13 +90,14 @@ class ProviderManagementService:
             The provider configuration.
 
         Raises:
-            ProviderValidationError: If the provider does not exist.
+            ProviderNotFoundError: If the provider does not exist.
         """
         providers = await self._config_resolver.get_provider_configs()
         config = providers.get(name)
         if config is None:
             msg = f"Provider {name!r} not found"
-            raise ProviderValidationError(msg)
+            logger.warning(PROVIDER_UPDATED, provider=name, error=msg)
+            raise ProviderNotFoundError(msg)
         return config
 
     async def create_provider(
@@ -119,6 +121,11 @@ class ProviderManagementService:
             providers = await self._config_resolver.get_provider_configs()
             if request.name in providers:
                 msg = f"Provider {request.name!r} already exists"
+                logger.warning(
+                    PROVIDER_CREATED,
+                    provider=request.name,
+                    error=msg,
+                )
                 raise ProviderAlreadyExistsError(msg)
 
             new_config = _build_provider_config(request)
@@ -148,15 +155,16 @@ class ProviderManagementService:
             The updated provider configuration.
 
         Raises:
-            ProviderValidationError: If the provider does not exist
-                or the update fails validation.
+            ProviderNotFoundError: If the provider does not exist.
+            ProviderValidationError: If the update fails validation.
         """
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()
             existing = providers.get(name)
             if existing is None:
                 msg = f"Provider {name!r} not found"
-                raise ProviderValidationError(msg)
+                logger.warning(PROVIDER_UPDATED, provider=name, error=msg)
+                raise ProviderNotFoundError(msg)
 
             updated = _apply_update(existing, request)
             new_providers = {**providers, name: updated}
@@ -177,13 +185,14 @@ class ProviderManagementService:
             name: Provider name to delete.
 
         Raises:
-            ProviderValidationError: If the provider does not exist.
+            ProviderNotFoundError: If the provider does not exist.
         """
         async with self._lock:
             providers = await self._config_resolver.get_provider_configs()
             if name not in providers:
                 msg = f"Provider {name!r} not found"
-                raise ProviderValidationError(msg)
+                logger.warning(PROVIDER_DELETED, provider=name, error=msg)
+                raise ProviderNotFoundError(msg)
 
             new_providers = {k: v for k, v in providers.items() if k != name}
             await self._validate_and_persist(new_providers)
@@ -222,7 +231,24 @@ class ProviderManagementService:
             )
 
         model_id = request.model or config.models[0].id
+        return await self._do_test_connection(name, config, model_id)
 
+    async def _do_test_connection(
+        self,
+        name: str,
+        config: ProviderConfig,
+        model_id: str,
+    ) -> TestConnectionResponse:
+        """Execute the actual connection test probe.
+
+        Args:
+            name: Provider name.
+            config: Provider configuration.
+            model_id: Model ID to test.
+
+        Returns:
+            Connection test result.
+        """
         try:
             from synthorg.providers.drivers.litellm_driver import (  # noqa: PLC0415
                 LiteLLMDriver,
@@ -262,16 +288,17 @@ class ProviderManagementService:
                 model_tested=model_id,
             )
         except Exception as exc:
-            logger.warning(
+            logger.error(
                 PROVIDER_CONNECTION_TESTED,
                 provider=name,
                 model=model_id,
                 success=False,
                 error=str(exc),
+                exc_info=True,
             )
             return TestConnectionResponse(
                 success=False,
-                error=f"Unexpected error: {exc}",
+                error="Connection test failed unexpectedly",
                 model_tested=model_id,
             )
 
@@ -294,6 +321,7 @@ class ProviderManagementService:
         preset = get_preset(request.preset_name)
         if preset is None:
             msg = f"Unknown preset: {request.preset_name!r}"
+            logger.warning(PROVIDER_CREATED, error=msg)
             raise ProviderValidationError(msg)
 
         models = request.models if request.models is not None else preset.default_models
@@ -315,20 +343,30 @@ class ProviderManagementService:
     ) -> None:
         """Validate, persist, and hot-reload providers.
 
+        Build both registry and router before persisting to prevent
+        DB/AppState divergence on build failure.
+
         Args:
             new_providers: Complete new provider dict.
 
         Raises:
-            ProviderValidationError: If registry build fails.
+            ProviderValidationError: If registry or router build fails.
         """
-        # Validate: build a registry to catch config errors
+        # 1. Validate: build registry + router before any I/O
         try:
             registry = ProviderRegistry.from_config(new_providers)
         except Exception as exc:
-            msg = f"Provider configuration validation failed: {exc}"
+            msg = "Provider configuration validation failed"
+            logger.warning(
+                PROVIDER_UPDATED,
+                error=str(exc),
+                provider_count=len(new_providers),
+            )
             raise ProviderValidationError(msg) from exc
 
-        # Persist to settings
+        router = self._build_router(new_providers)
+
+        # 2. Persist to settings
         serialized = _serialize_providers(new_providers)
         await self._settings_service.set(
             "providers",
@@ -336,10 +374,7 @@ class ProviderManagementService:
             json.dumps(serialized),
         )
 
-        # Rebuild router
-        router = self._build_router(new_providers)
-
-        # Hot-reload: swap in AppState
+        # 3. Hot-reload: swap in AppState (both sync, no await gap)
         self._app_state.swap_provider_registry(registry)
         self._app_state.swap_model_router(router)
 
@@ -393,7 +428,6 @@ def _build_provider_config(
 
 _UPDATE_FIELDS: tuple[str, ...] = (
     "driver",
-    "auth_type",
     "base_url",
     "oauth_token_url",
     "oauth_client_id",
@@ -411,6 +445,9 @@ def _apply_update(
 ) -> ProviderConfig:
     """Apply partial update fields to an existing config.
 
+    When auth_type changes, orphaned credential fields from the
+    old auth type are automatically cleared.
+
     Args:
         existing: Current provider configuration.
         request: Partial update request.
@@ -423,6 +460,18 @@ def _apply_update(
         value = getattr(request, field)
         if value is not None:
             updates[field] = value
+
+    # auth_type change: clear orphaned credential fields
+    if request.auth_type is not None:
+        updates["auth_type"] = request.auth_type
+        if request.auth_type != AuthType.OAUTH:
+            updates.setdefault("oauth_client_secret", None)
+            updates.setdefault("oauth_token_url", None)
+            updates.setdefault("oauth_client_id", None)
+            updates.setdefault("oauth_scope", None)
+        if request.auth_type != AuthType.CUSTOM_HEADER:
+            updates.setdefault("custom_header_name", None)
+            updates.setdefault("custom_header_value", None)
 
     # api_key has special clear_api_key semantics
     if request.api_key is not None:

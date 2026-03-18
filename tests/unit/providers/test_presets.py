@@ -34,7 +34,7 @@ class TestProviderPresets:
     def test_list_presets_returns_all(self) -> None:
         presets = list_presets()
         assert len(presets) == len(PROVIDER_PRESETS)
-        assert presets is PROVIDER_PRESETS
+        assert presets == PROVIDER_PRESETS
 
     def test_presets_are_frozen(self) -> None:
         from pydantic import ValidationError

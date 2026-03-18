@@ -13,15 +13,22 @@ from synthorg.api.dto import (
     UpdateProviderRequest,
     to_provider_response,
 )
-from synthorg.api.dto import TestConnectionRequest as ConnTestRequest
-from synthorg.api.errors import ConflictError, NotFoundError
+from synthorg.api.dto import (
+    TestConnectionRequest as ConnTestRequest,
+)
+from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.config.schema import ProviderModelConfig  # noqa: TC001
 from synthorg.observability import get_logger
-from synthorg.observability.events.api import API_RESOURCE_NOT_FOUND
+from synthorg.observability.events.api import (
+    API_RESOURCE_CONFLICT,
+    API_RESOURCE_NOT_FOUND,
+    API_VALIDATION_FAILED,
+)
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
+    ProviderNotFoundError,
     ProviderValidationError,
 )
 from synthorg.providers.presets import ProviderPreset, list_presets
@@ -163,10 +170,18 @@ class ProviderController(Controller):
         try:
             config = await app_state.provider_management.create_provider(data)
         except ProviderAlreadyExistsError as exc:
+            logger.warning(
+                API_RESOURCE_CONFLICT,
+                resource="provider",
+                name=data.name,
+            )
             raise ConflictError(str(exc)) from exc
         except ProviderValidationError as exc:
-            from synthorg.api.errors import ApiValidationError  # noqa: PLC0415
-
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                error=str(exc),
+            )
             raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
 
@@ -197,10 +212,18 @@ class ProviderController(Controller):
                 data,
             )
         except ProviderAlreadyExistsError as exc:
+            logger.warning(
+                API_RESOURCE_CONFLICT,
+                resource="provider",
+                name=data.name,
+            )
             raise ConflictError(str(exc)) from exc
         except ProviderValidationError as exc:
-            from synthorg.api.errors import ApiValidationError  # noqa: PLC0415
-
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                error=str(exc),
+            )
             raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
 
@@ -226,6 +249,7 @@ class ProviderController(Controller):
 
         Raises:
             NotFoundError: If the provider does not exist.
+            ApiValidationError: If the update fails validation.
         """
         app_state: AppState = state.app_state
         try:
@@ -233,8 +257,20 @@ class ProviderController(Controller):
                 name,
                 data,
             )
-        except ProviderValidationError as exc:
+        except ProviderNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
             raise NotFoundError(str(exc)) from exc
+        except ProviderValidationError as exc:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="provider",
+                error=str(exc),
+            )
+            raise ApiValidationError(str(exc)) from exc
         return ApiResponse(data=to_provider_response(config))
 
     @delete(
@@ -259,7 +295,12 @@ class ProviderController(Controller):
         app_state: AppState = state.app_state
         try:
             await app_state.provider_management.delete_provider(name)
-        except ProviderValidationError as exc:
+        except ProviderNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
             raise NotFoundError(str(exc)) from exc
 
     @post(

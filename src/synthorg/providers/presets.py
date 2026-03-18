@@ -4,13 +4,13 @@ Presets provide sensible defaults for popular providers so users
 can add them with minimal configuration (e.g. just an API key).
 """
 
+from types import MappingProxyType
+
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.config.schema import ProviderModelConfig  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.providers.enums import AuthType
-
-PROVIDER_PRESETS: tuple[ProviderPreset, ...]
 
 
 class ProviderPreset(BaseModel):
@@ -37,7 +37,7 @@ class ProviderPreset(BaseModel):
     default_models: tuple[ProviderModelConfig, ...] = ()
 
 
-PROVIDER_PRESETS = (
+PROVIDER_PRESETS: tuple[ProviderPreset, ...] = (
     ProviderPreset(
         name="ollama",
         display_name="Ollama",
@@ -76,7 +76,9 @@ PROVIDER_PRESETS = (
     ),
 )
 
-_PRESET_LOOKUP: dict[str, ProviderPreset] = {p.name: p for p in PROVIDER_PRESETS}
+_PRESET_LOOKUP: MappingProxyType[str, ProviderPreset] = MappingProxyType(
+    {p.name: p for p in PROVIDER_PRESETS},
+)
 
 
 def get_preset(name: str) -> ProviderPreset | None:

@@ -65,6 +65,7 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
             estimated_latency_ms: 200
 
       openrouter:
+        auth_type: api_key           # api_key | oauth | custom_header | none
         api_key: "${OPENROUTER_API_KEY}"
         base_url: "https://openrouter.ai/api/v1"
         models:                        # example entries
@@ -76,6 +77,7 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
             alias: "or-reasoning"
 
       ollama:
+        auth_type: none
         base_url: "http://localhost:11434"
         models:                        # example entries
           - id: "llama3.3:70b"
@@ -97,6 +99,17 @@ The framework uses **LiteLLM** as the provider abstraction layer:
 - Automatic retries and fallbacks
 - Load balancing across providers
 - OpenAI-compatible interface (all providers normalized)
+
+### Provider Management
+
+Providers can be managed at runtime through the API without restarting:
+
+- **CRUD**: Create, update, delete providers via `POST/PUT/DELETE /api/v1/providers`
+- **Connection test**: `POST /api/v1/providers/{name}/test` -- sends a minimal probe and reports latency
+- **Presets**: `GET /api/v1/providers/presets` lists built-in templates (Ollama, LM Studio, OpenRouter, vLLM); `POST /api/v1/providers/from-preset` creates from a template
+- **Hot-reload**: On mutation, `ProviderManagementService` rebuilds `ProviderRegistry` + `ModelRouter` and atomically swaps them in `AppState` -- no downtime
+- **Auth types**: `api_key` (default), `oauth` (stores credentials, MVP uses pre-fetched token), `custom_header`, `none` (local providers)
+- **Credential safety**: Secrets are Fernet-encrypted at rest via the `providers.configs` sensitive setting; API responses use `ProviderResponse` DTO that strips all secrets and provides `has_api_key`/`has_oauth_credentials`/`has_custom_header` boolean indicators
 
 ### Model Routing Strategy
 
@@ -981,7 +994,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/approvals` | Pending human approvals queue |
 | `/api/v1/analytics` | Performance metrics, dashboards |
 | `/api/v1/settings` | Runtime-editable configuration (9 namespaces), schema discovery |
-| `/api/v1/providers` | Model provider status, config |
+| `/api/v1/providers` | Provider CRUD (create, update, delete), connection testing, presets, 4 auth types (api_key, oauth, custom_header, none) |
 | `/api/v1/ws` | WebSocket for real-time updates (ticket auth via `?ticket=`) |
 | `POST /api/v1/auth/ws-ticket` | Exchange JWT for one-time WebSocket connection ticket |
 

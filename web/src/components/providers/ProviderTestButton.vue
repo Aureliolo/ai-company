@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onUnmounted } from 'vue'
 import Button from 'primevue/button'
 import { useProviderStore } from '@/stores/providers'
+import { getErrorMessage } from '@/utils/errors'
 import type { TestConnectionResponse } from '@/api/types'
 
 const props = defineProps<{
@@ -13,6 +14,13 @@ const testing = ref(false)
 const result = ref<TestConnectionResponse | null>(null)
 let clearTimer: ReturnType<typeof setTimeout> | null = null
 
+onUnmounted(() => {
+  if (clearTimer) {
+    clearTimeout(clearTimer)
+    clearTimer = null
+  }
+})
+
 async function handleTest() {
   testing.value = true
   result.value = null
@@ -23,11 +31,11 @@ async function handleTest() {
 
   try {
     result.value = await store.testConnection(props.providerName)
-  } catch {
+  } catch (err) {
     result.value = {
       success: false,
       latency_ms: null,
-      error: 'Request failed',
+      error: getErrorMessage(err),
       model_tested: null,
     }
   } finally {

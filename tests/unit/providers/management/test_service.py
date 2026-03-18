@@ -17,6 +17,7 @@ from synthorg.config.schema import ProviderModelConfig, RootConfig
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
+    ProviderNotFoundError,
     ProviderValidationError,
 )
 from synthorg.providers.management.service import ProviderManagementService
@@ -190,7 +191,7 @@ class TestUpdateProvider:
         service: ProviderManagementService,
     ) -> None:
         update = UpdateProviderRequest(driver="litellm")
-        with pytest.raises(ProviderValidationError, match="not found"):
+        with pytest.raises(ProviderNotFoundError, match="not found"):
             await service.update_provider("nonexistent", update)
 
     async def test_update_provider_partial_fields(
@@ -228,7 +229,7 @@ class TestDeleteProvider:
         self,
         service: ProviderManagementService,
     ) -> None:
-        with pytest.raises(ProviderValidationError, match="not found"):
+        with pytest.raises(ProviderNotFoundError, match="not found"):
             await service.delete_provider("nonexistent")
 
 
@@ -381,3 +382,61 @@ class TestConcurrency:
         assert len(results) == 5
         providers = await service.list_providers()
         assert len(providers) == 5
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestClearApiKey:
+    async def test_clear_api_key_removes_key(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        await service.create_provider(
+            _make_create_request(
+                auth_type=AuthType.API_KEY,
+                api_key="sk-original",
+            ),
+        )
+        update = UpdateProviderRequest(clear_api_key=True)
+        result = await service.update_provider("test-provider", update)
+        assert result.api_key is None
+
+    async def test_api_key_takes_precedence_over_clear(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """api_key + clear_api_key is rejected by the DTO validator."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            UpdateProviderRequest(api_key="new-key", clear_api_key=True)
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestProviderNameValidation:
+    @pytest.mark.parametrize(
+        "name",
+        ["a", "-bad", "bad-", "My-Provider", "presets", "from-preset"],
+    )
+    def test_invalid_names_rejected(self, name: str) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            CreateProviderRequest(
+                name=name,
+                driver="litellm",
+                auth_type=AuthType.NONE,
+            )
+
+    @pytest.mark.parametrize(
+        "name",
+        ["ab", "my-provider", "test-01", "ollama-local"],
+    )
+    def test_valid_names_accepted(self, name: str) -> None:
+        request = CreateProviderRequest(
+            name=name,
+            driver="litellm",
+            auth_type=AuthType.NONE,
+        )
+        assert request.name == name

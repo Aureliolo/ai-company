@@ -114,7 +114,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 
 ```text
 src/synthorg/
-  api/            # Litestar REST + WebSocket API (controllers, guards, channels, JWT + API key + WS ticket auth, approval gate integration, coordination endpoint, collaboration endpoint, settings endpoint, RFC 9457 structured errors (ErrorCategory, ErrorCode, ErrorDetail, ProblemDetail, CATEGORY_TITLES, category_title, category_type_uri, content negotiation)), AppState hot-reload slots (provider_registry, model_router with swap methods), settings dispatcher lifecycle
+  api/            # Litestar REST + WebSocket API (controllers, guards, channels, JWT + API key + WS ticket auth, approval gate integration, coordination endpoint, collaboration endpoint, settings endpoint, provider management endpoint (CRUD + test + presets), RFC 9457 structured errors (ErrorCategory, ErrorCode, ErrorDetail, ProblemDetail, CATEGORY_TITLES, category_title, category_type_uri, content negotiation)), AppState hot-reload slots (provider_registry, model_router with swap methods, provider_management), settings dispatcher lifecycle
     auth/         # Authentication subpackage (controller, service, middleware, JWT + API key + WS ticket store, models, config)
   budget/         # Cost tracking, budget enforcement (pre-flight/in-flight checks, auto-downgrade), billing periods, cost tiers, quota/subscription tracking, CFO cost optimization (anomaly detection, efficiency analysis, downgrade recommendations, approval decisions), spending reports, budget errors (BudgetExhaustedError, DailyLimitExceededError, QuotaExhaustedError)
   cli/            # Python CLI module (superseded by top-level cli/ Go binary)
@@ -127,7 +127,7 @@ src/synthorg/
   memory/         # Persistent agent memory (pluggable MemoryBackend protocol), backends/ (Mem0 adapter: backends/mem0/), retrieval pipeline (ranking, RRF fusion, injection, context formatting, non-inferable filtering), shared org memory (org/), consolidation/archival (consolidation/, dual-mode density-aware archival: DensityClassifier, AbstractiveSummarizer, ExtractivePreserver, DualModeConsolidationStrategy)
   persistence/    # Operational data persistence — pluggable PersistenceBackend protocol, SQLite initial, SettingsRepository (namespaced settings CRUD) (see Memory & Persistence design page)
   observability/  # Structured logging, correlation tracking, log sinks
-  providers/      # LLM provider abstraction (LiteLLM adapter)
+  providers/      # LLM provider abstraction (LiteLLM adapter), auth types (AuthType enum: api_key/oauth/custom_header/none), presets (ProviderPreset, PROVIDER_PRESETS for Ollama/LM Studio/OpenRouter/vLLM), runtime CRUD (management/ -- ProviderManagementService, asyncio.Lock-serialized create/update/delete/test, hot-reload of ProviderRegistry + ModelRouter via AppState swap)
   settings/       # Runtime-editable settings persistence (DB > env > YAML > code defaults), typed definitions (9 namespaces, including JSON type for structural data), Fernet encryption for sensitive values, config bridge (JSON serialization for Pydantic models/collections), ConfigResolver (typed scalar + structural data accessors for controllers — get_agents, get_departments, get_provider_configs with validation fallbacks to YAML), validation, registry, change notifications via message bus, SettingsSubscriber protocol (subscriber.py), SettingsChangeDispatcher (dispatcher.py, polls #settings channel, routes to subscribers, restart_required filtering)
     definitions/  # Per-namespace setting definitions (api, company, providers, memory, budget, security, coordination, observability, backup)
     subscribers/  # Concrete settings subscribers (ProviderSettingsSubscriber — rebuilds ModelRouter on strategy change, MemorySettingsSubscriber — advisory logging for memory config)
@@ -138,7 +138,7 @@ src/synthorg/
 web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
   src/
     api/          # Axios client, endpoint modules, TypeScript types (mirrors backend Pydantic models)
-    components/   # Vue components organized by feature (agents/, approvals/, budget/, common/, dashboard/, layout/, messages/, org-chart/, tasks/)
+    components/   # Vue components organized by feature (agents/, approvals/, budget/, common/, dashboard/, layout/, messages/, org-chart/, providers/, tasks/)
     composables/  # Reusable composition functions (useAuth, useLoginLockout, usePolling, useOptimisticUpdate, useWebSocketSubscription)
     router/       # Vue Router config with auth guards
     stores/       # Pinia stores (auth, agents, tasks, budget, messages, meetings, approvals, websocket, analytics, company, providers)

@@ -82,7 +82,10 @@ watch(selectedPreset, (preset) => {
   driver.value = preset.driver
   authType.value = preset.auth_type
   baseUrl.value = preset.default_base_url ?? ''
-  name.value = preset.name
+  // Only set name if the user hasn't typed one yet
+  if (!name.value) {
+    name.value = preset.name
+  }
 })
 
 const isValid = computed(() => {
@@ -121,7 +124,7 @@ function handleSave() {
     if (customHeaderValue.value) data.custom_header_value = customHeaderValue.value
     emit('save', data)
   }
-  emit('update:visible', false)
+  // Dialog close is handled by the parent on success
 }
 </script>
 
@@ -136,9 +139,10 @@ function handleSave() {
     <div class="space-y-4">
       <!-- Preset selector (create only) -->
       <div v-if="mode === 'create' && store.presets.length > 0">
-        <label class="mb-1 block text-xs text-slate-400">From Preset</label>
+        <label for="pf-preset" class="mb-1 block text-xs text-slate-400">From Preset</label>
         <Select
           v-model="selectedPreset"
+          input-id="pf-preset"
           :options="store.presets"
           option-label="display_name"
           placeholder="Select a preset..."
@@ -148,21 +152,22 @@ function handleSave() {
 
       <!-- Name (create only) -->
       <div v-if="mode === 'create'">
-        <label class="mb-1 block text-xs text-slate-400">Name</label>
-        <InputText v-model="name" class="w-full" placeholder="my-provider" />
+        <label for="pf-name" class="mb-1 block text-xs text-slate-400">Name</label>
+        <InputText id="pf-name" v-model="name" class="w-full" placeholder="my-provider" />
       </div>
 
       <!-- Driver -->
       <div>
-        <label class="mb-1 block text-xs text-slate-400">Driver</label>
-        <InputText v-model="driver" class="w-full" placeholder="litellm" />
+        <label for="pf-driver" class="mb-1 block text-xs text-slate-400">Driver</label>
+        <InputText id="pf-driver" v-model="driver" class="w-full" placeholder="litellm" />
       </div>
 
       <!-- Auth Type -->
       <div>
-        <label class="mb-1 block text-xs text-slate-400">Auth Type</label>
+        <label for="pf-auth-type" class="mb-1 block text-xs text-slate-400">Auth Type</label>
         <Select
           v-model="authType"
+          input-id="pf-auth-type"
           :options="AUTH_TYPE_OPTIONS"
           option-label="label"
           option-value="value"
@@ -172,45 +177,45 @@ function handleSave() {
 
       <!-- Base URL -->
       <div>
-        <label class="mb-1 block text-xs text-slate-400">Base URL</label>
-        <InputText v-model="baseUrl" class="w-full" placeholder="http://localhost:11434" />
+        <label for="pf-base-url" class="mb-1 block text-xs text-slate-400">Base URL</label>
+        <InputText id="pf-base-url" v-model="baseUrl" class="w-full" placeholder="http://localhost:11434" />
       </div>
 
       <!-- API Key (api_key or oauth) -->
       <div v-if="authType === 'api_key' || authType === 'oauth'">
-        <label class="mb-1 block text-xs text-slate-400">API Key</label>
-        <InputText v-model="apiKey" type="password" class="w-full" placeholder="sk-..." />
+        <label for="pf-api-key" class="mb-1 block text-xs text-slate-400">API Key</label>
+        <InputText id="pf-api-key" v-model="apiKey" type="password" class="w-full" placeholder="sk-..." />
       </div>
 
       <!-- OAuth fields -->
       <template v-if="authType === 'oauth'">
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Token URL</label>
-          <InputText v-model="oauthTokenUrl" class="w-full" placeholder="https://auth.example.com/token" />
+          <label for="pf-oauth-url" class="mb-1 block text-xs text-slate-400">Token URL</label>
+          <InputText id="pf-oauth-url" v-model="oauthTokenUrl" class="w-full" placeholder="https://auth.example.com/token" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Client ID</label>
-          <InputText v-model="oauthClientId" class="w-full" />
+          <label for="pf-oauth-id" class="mb-1 block text-xs text-slate-400">Client ID</label>
+          <InputText id="pf-oauth-id" v-model="oauthClientId" class="w-full" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Client Secret</label>
-          <InputText v-model="oauthClientSecret" type="password" class="w-full" />
+          <label for="pf-oauth-secret" class="mb-1 block text-xs text-slate-400">Client Secret</label>
+          <InputText id="pf-oauth-secret" v-model="oauthClientSecret" type="password" class="w-full" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Scope (optional)</label>
-          <InputText v-model="oauthScope" class="w-full" placeholder="read write" />
+          <label for="pf-oauth-scope" class="mb-1 block text-xs text-slate-400">Scope (optional)</label>
+          <InputText id="pf-oauth-scope" v-model="oauthScope" class="w-full" placeholder="read write" />
         </div>
       </template>
 
       <!-- Custom Header fields -->
       <template v-if="authType === 'custom_header'">
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Header Name</label>
-          <InputText v-model="customHeaderName" class="w-full" placeholder="X-Api-Token" />
+          <label for="pf-header-name" class="mb-1 block text-xs text-slate-400">Header Name</label>
+          <InputText id="pf-header-name" v-model="customHeaderName" class="w-full" placeholder="X-Api-Token" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Header Value</label>
-          <InputText v-model="customHeaderValue" type="password" class="w-full" />
+          <label for="pf-header-value" class="mb-1 block text-xs text-slate-400">Header Value</label>
+          <InputText id="pf-header-value" v-model="customHeaderValue" type="password" class="w-full" />
         </div>
       </template>
     </div>
