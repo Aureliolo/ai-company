@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.sandbox import (
+    SANDBOX_FACTORY_BUILD_FAILED,
     SANDBOX_FACTORY_BUILT,
     SANDBOX_FACTORY_CLEANUP,
     SANDBOX_FACTORY_CLEANUP_FAILED,
@@ -66,22 +67,40 @@ def build_sandbox_backends(
             f"Unrecognized sandbox backend name(s): {sorted(unknown)}; "
             f"known backends: {sorted(_KNOWN_BACKENDS)}"
         )
-        logger.error(SANDBOX_FACTORY_BUILT, error=msg)
+        logger.error(SANDBOX_FACTORY_BUILD_FAILED, error=msg)
         raise ValueError(msg)
 
     backends: dict[str, SandboxBackend] = {}
 
     if "subprocess" in needed:
-        backends["subprocess"] = SubprocessSandbox(
-            config=config.subprocess,
-            workspace=workspace,
-        )
+        try:
+            backends["subprocess"] = SubprocessSandbox(
+                config=config.subprocess,
+                workspace=workspace,
+            )
+        except Exception:
+            logger.error(
+                SANDBOX_FACTORY_BUILD_FAILED,
+                backend="subprocess",
+                workspace=str(workspace),
+                exc_info=True,
+            )
+            raise
 
     if "docker" in needed:
-        backends["docker"] = DockerSandbox(
-            config=config.docker,
-            workspace=workspace,
-        )
+        try:
+            backends["docker"] = DockerSandbox(
+                config=config.docker,
+                workspace=workspace,
+            )
+        except Exception:
+            logger.error(
+                SANDBOX_FACTORY_BUILD_FAILED,
+                backend="docker",
+                workspace=str(workspace),
+                exc_info=True,
+            )
+            raise
 
     logger.info(
         SANDBOX_FACTORY_BUILT,
