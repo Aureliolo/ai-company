@@ -95,8 +95,8 @@ func TestVerifyCosignSignatureNoReferrers(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no cosign referrers exist")
 	}
-	if !strings.Contains(err.Error(), "no cosign signatures found") {
-		t.Errorf("expected ErrNoCosignSignatures, got: %v", err)
+	if !errors.Is(err, ErrNoCosignSignatures) {
+		t.Errorf("expected error to wrap ErrNoCosignSignatures, got: %v", err)
 	}
 }
 
