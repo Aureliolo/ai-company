@@ -58,7 +58,10 @@ class TestInFlightResolution:
 
         # The processing loop should be in _process_one with _in_flight set
         in_flight_before = eng._in_flight
-        assert in_flight_before is not None
+        assert in_flight_before is not None, (
+            "_in_flight was not set after 200 event-loop yields -- "
+            "engine did not enter _process_one"
+        )
 
         # Stop with very short timeout — triggers _fail_remaining_futures
         await eng.stop(timeout=0.05)
