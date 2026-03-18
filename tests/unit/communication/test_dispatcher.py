@@ -308,12 +308,12 @@ class TestConcurrentExecution:
 
         async def _slow(msg: Message) -> None:
             order.append("slow-start")
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0)
             order.append("slow-end")
 
         async def _fast(msg: Message) -> None:
             order.append("fast-start")
-            await asyncio.sleep(0.01)
+            await asyncio.sleep(0)
             order.append("fast-end")
 
         dispatcher = MessageDispatcher()

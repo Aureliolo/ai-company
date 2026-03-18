@@ -50,7 +50,11 @@ class TestInFlightResolution:
         blocked = asyncio.create_task(
             eng.create_task(make_create_data(), requested_by="alice"),
         )
-        await asyncio.sleep(0.05)
+        # Wait for the engine to enter _process_one and hit slow_save
+        for _ in range(200):
+            if eng._in_flight is not None:
+                break
+            await asyncio.sleep(0)
 
         # The processing loop should be in _process_one with _in_flight set
         in_flight_before = eng._in_flight

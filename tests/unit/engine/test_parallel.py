@@ -250,7 +250,7 @@ class TestParallelExecutorConcurrencyLimit:
             async with lock:
                 current_concurrent += 1
                 max_concurrent = max(max_concurrent, current_concurrent)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0)
             async with lock:
                 current_concurrent -= 1
             identity = kwargs.get("identity")
@@ -653,7 +653,7 @@ class TestParallelExecutorInProgressSemantics:
         max_in_progress = 0
 
         async def track_concurrency(**kwargs: object) -> AgentRunResult:
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0)
             identity = kwargs.get("identity")
             task = kwargs.get("task")
             return _make_run_result(identity, task)  # type: ignore[arg-type]

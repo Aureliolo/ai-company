@@ -279,7 +279,7 @@ class TestSubscription:
             received.append(result)
 
         async def unsubscriber() -> None:
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0)
             await bus.unsubscribe("#general", "agent-a")
 
         async with asyncio.TaskGroup() as tg:
@@ -302,7 +302,7 @@ class TestSubscription:
             received.append(result)
 
         async def unsubscriber() -> None:
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0)
             await bus.unsubscribe("#general", "agent-a")
 
         async with asyncio.TaskGroup() as tg:
@@ -395,7 +395,7 @@ class TestPublishReceive:
             received.append(envelope.message.content)
 
         async def publisher() -> None:
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0)
             msg = _make_message(channel="#general", content="delayed")
             await bus.publish(msg)
 
@@ -673,7 +673,7 @@ class TestReceiveValidation:
         await bus.subscribe("#general", "agent-a")
 
         async def stop_after_delay() -> None:
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0)
             await bus.stop()
 
         async with asyncio.TaskGroup() as tg:
