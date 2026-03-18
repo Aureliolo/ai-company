@@ -51,6 +51,7 @@ class ProviderModelConfigFactory(ModelFactory[ProviderModelConfig]):
 
 class ProviderConfigFactory(ModelFactory[ProviderConfig]):
     __model__ = ProviderConfig
+    auth_type = "api_key"
     models = ()
     retry = RetryConfig()
     rate_limiter = RateLimiterConfig()

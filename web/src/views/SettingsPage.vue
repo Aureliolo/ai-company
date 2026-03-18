@@ -5,20 +5,20 @@ import TabView from 'primevue/tabview'
 import TabPanel from 'primevue/tabpanel'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
-import DataTable from 'primevue/datatable'
-import Column from 'primevue/column'
 import { useToast } from 'primevue/usetoast'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
+import ProviderCard from '@/components/providers/ProviderCard.vue'
+import ProviderFormDialog from '@/components/providers/ProviderFormDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useCompanyStore } from '@/stores/company'
 import { useProviderStore } from '@/stores/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
 import { sanitizeForLog } from '@/utils/logging'
-import type { ProviderModelConfig } from '@/api/types'
+import type { CreateProviderRequest, UpdateProviderRequest } from '@/api/types'
 
 const route = useRoute()
 const toast = useToast()
@@ -48,10 +48,22 @@ const newPassword = ref('')
 const confirmPassword = ref('')
 const pwdError = ref<string | null>(null)
 
+// Provider form dialog state
+const formDialogVisible = ref(false)
+const formDialogMode = ref<'create' | 'edit'>('create')
+const editingProviderName = ref<string | undefined>(undefined)
+const editingProviderConfig = computed(() =>
+  editingProviderName.value ? providerStore.providers[editingProviderName.value] : undefined,
+)
+
 async function retryFetch() {
   loading.value = true
   try {
-    await Promise.all([companyStore.fetchConfig(), providerStore.fetchProviders()])
+    await Promise.all([
+      companyStore.fetchConfig(),
+      providerStore.fetchProviders(),
+      providerStore.fetchPresets(),
+    ])
   } catch (err) {
     console.error('Settings data fetch failed:', sanitizeForLog(err))
   } finally {
@@ -79,6 +91,41 @@ async function handleChangePassword() {
     confirmPassword.value = ''
   } catch (err) {
     pwdError.value = getErrorMessage(err)
+  }
+}
+
+function openCreateDialog() {
+  formDialogMode.value = 'create'
+  editingProviderName.value = undefined
+  formDialogVisible.value = true
+}
+
+function openEditDialog(name: string) {
+  formDialogMode.value = 'edit'
+  editingProviderName.value = name
+  formDialogVisible.value = true
+}
+
+async function handleFormSave(data: CreateProviderRequest | UpdateProviderRequest) {
+  try {
+    if (formDialogMode.value === 'create') {
+      await providerStore.createProvider(data as CreateProviderRequest)
+      toast.add({ severity: 'success', summary: 'Provider created', life: 3000 })
+    } else if (editingProviderName.value) {
+      await providerStore.updateProvider(editingProviderName.value, data as UpdateProviderRequest)
+      toast.add({ severity: 'success', summary: 'Provider updated', life: 3000 })
+    }
+  } catch (err) {
+    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+  }
+}
+
+async function handleDelete(name: string) {
+  try {
+    await providerStore.deleteProvider(name)
+    toast.add({ severity: 'success', summary: `Provider ${name} deleted`, life: 3000 })
+  } catch (err) {
+    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
   }
 }
 </script>
@@ -114,17 +161,36 @@ async function handleChangePassword() {
 
       <!-- Providers -->
       <TabPanel header="Providers" value="providers" :disabled="auth.mustChangePassword">
-        <DataTable :value="providerEntries" striped-rows class="text-sm">
-          <Column field="name" header="Provider" sortable />
-          <Column field="config.driver" header="Driver" />
-          <Column header="Models" style="width: 200px">
-            <template #body="{ data }">
-              <span class="text-xs text-slate-400">
-                {{ data.config.models?.map((m: ProviderModelConfig) => m.id).join(', ') }}
-              </span>
-            </template>
-          </Column>
-        </DataTable>
+        <div class="space-y-4">
+          <div class="flex items-center gap-2">
+            <Button label="Add Provider" size="small" @click="openCreateDialog" />
+          </div>
+
+          <!-- Empty state -->
+          <div v-if="providerEntries.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
+            <p class="text-sm text-slate-400">No providers configured. Add one to get started.</p>
+          </div>
+
+          <!-- Provider cards grid -->
+          <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <ProviderCard
+              v-for="entry in providerEntries"
+              :key="entry.name"
+              :name="entry.name"
+              :config="entry.config"
+              @edit="openEditDialog"
+              @delete="handleDelete"
+            />
+          </div>
+        </div>
+
+        <ProviderFormDialog
+          v-model:visible="formDialogVisible"
+          :mode="formDialogMode"
+          :provider-name="editingProviderName"
+          :provider-config="editingProviderConfig"
+          @save="handleFormSave"
+        />
       </TabPanel>
 
       <!-- User Settings -->

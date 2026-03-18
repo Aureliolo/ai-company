@@ -37,18 +37,86 @@ class TestProviderController:
 
 @pytest.mark.unit
 @pytest.mark.timeout(30)
-class TestProviderApiKeySecurity:
-    def test_provider_api_key_stripped(self) -> None:
-        """Verify api_key is stripped from provider responses."""
-        from synthorg.api.controllers.providers import _safe_provider
+class TestProviderResponseSecurity:
+    def test_to_provider_response_strips_secrets(self) -> None:
+        from synthorg.api.dto import to_provider_response
         from synthorg.config.schema import ProviderConfig
 
         provider = ProviderConfig(
             driver="test-driver",
             api_key="test-placeholder",
         )
-        safe = _safe_provider(provider)
-        assert safe.api_key is None
+        response = to_provider_response(provider)
+        assert response.has_api_key is True
+        # The response should not have api_key attribute at all
+        assert (
+            not hasattr(response, "api_key") or "api_key" not in response.model_fields
+        )
+
+    def test_response_has_credential_indicators(self) -> None:
+        from synthorg.api.dto import to_provider_response
+        from synthorg.config.schema import ProviderConfig
+        from synthorg.providers.enums import AuthType
+
+        provider = ProviderConfig(
+            driver="test-driver",
+            auth_type=AuthType.CUSTOM_HEADER,
+            custom_header_name="X-Auth",
+            custom_header_value="secret",
+        )
+        response = to_provider_response(provider)
+        assert response.has_custom_header is True
+        assert response.has_api_key is False
+        assert response.has_oauth_credentials is False
+
+    def test_response_never_contains_secrets(self) -> None:
+        from synthorg.api.dto import to_provider_response
+        from synthorg.config.schema import ProviderConfig
+        from synthorg.providers.enums import AuthType
+
+        provider = ProviderConfig(
+            driver="test-driver",
+            auth_type=AuthType.OAUTH,
+            api_key="secret-key",
+            oauth_token_url="https://auth.example.com/token",
+            oauth_client_id="client-id",
+            oauth_client_secret="secret-value",
+        )
+        response = to_provider_response(provider)
+        dumped = response.model_dump()
+        all_values = json.dumps(dumped)
+        assert "secret-key" not in all_values
+        assert "secret-value" not in all_values
+        assert "client-id" not in all_values
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestProviderCrudEndpoints:
+    def test_get_presets_returns_all(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.get("/api/v1/providers/presets")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["success"] is True
+        assert len(body["data"]) >= 4
+
+    def test_write_endpoints_require_write_access(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        test_client.headers.update(make_auth_headers("observer"))
+        resp = test_client.post(
+            "/api/v1/providers",
+            json={
+                "name": "test-provider",
+                "driver": "litellm",
+                "auth_type": "none",
+            },
+        )
+        assert resp.status_code == 403
 
 
 @pytest.mark.integration
@@ -100,11 +168,12 @@ class TestProviderControllerDbOverride:
             assert resp.status_code == 200
             body = resp.json()
             assert "db-provider" in body["data"]
-            # api_key should be stripped
-            assert body["data"]["db-provider"].get("api_key") is None
+            # Response should use ProviderResponse format
+            assert body["data"]["db-provider"]["driver"] == "litellm"
+            assert body["data"]["db-provider"]["auth_type"] == "api_key"
 
             detail_resp = client.get("/api/v1/providers/db-provider")
             assert detail_resp.status_code == 200
             detail = detail_resp.json()
             assert detail["data"]["driver"] == "litellm"
-            assert detail["data"].get("api_key") is None
+            assert "api_key" not in detail["data"]

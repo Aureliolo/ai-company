@@ -1,0 +1,45 @@
+"""Tests for provider presets."""
+
+import pytest
+
+from synthorg.providers.presets import (
+    PROVIDER_PRESETS,
+    get_preset,
+    list_presets,
+)
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestProviderPresets:
+    def test_all_presets_valid_provider_configs(self) -> None:
+        for preset in PROVIDER_PRESETS:
+            assert preset.name
+            assert preset.display_name
+            assert preset.description
+            assert preset.driver
+
+    def test_preset_names_unique(self) -> None:
+        names = [p.name for p in PROVIDER_PRESETS]
+        assert len(names) == len(set(names))
+
+    def test_get_preset_by_name(self) -> None:
+        preset = get_preset("ollama")
+        assert preset is not None
+        assert preset.display_name == "Ollama"
+
+    def test_get_preset_unknown_returns_none(self) -> None:
+        assert get_preset("nonexistent") is None
+
+    def test_list_presets_returns_all(self) -> None:
+        presets = list_presets()
+        assert len(presets) == len(PROVIDER_PRESETS)
+        assert presets is PROVIDER_PRESETS
+
+    def test_presets_are_frozen(self) -> None:
+        from pydantic import ValidationError
+
+        preset = get_preset("ollama")
+        assert preset is not None
+        with pytest.raises(ValidationError, match="frozen"):
+            preset.name = "changed"  # type: ignore[misc]

@@ -40,3 +40,10 @@ PROVIDER_RETRY_EXHAUSTED: Final[str] = "provider.retry.exhausted"
 PROVIDER_RETRY_SKIPPED: Final[str] = "provider.retry.skipped"
 PROVIDER_RATE_LIMITER_THROTTLED: Final[str] = "provider.rate_limiter.throttled"
 PROVIDER_RATE_LIMITER_PAUSED: Final[str] = "provider.rate_limiter.paused"
+
+# ── Provider management ─────────────────────────────────────
+
+PROVIDER_CREATED: Final[str] = "provider.management.created"
+PROVIDER_UPDATED: Final[str] = "provider.management.updated"
+PROVIDER_DELETED: Final[str] = "provider.management.deleted"
+PROVIDER_CONNECTION_TESTED: Final[str] = "provider.management.connection_tested"

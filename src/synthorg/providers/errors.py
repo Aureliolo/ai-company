@@ -160,3 +160,15 @@ class DriverFactoryNotFoundError(ProviderError):
     """No factory found for the requested driver type string."""
 
     is_retryable = False
+
+
+class ProviderAlreadyExistsError(ProviderError):
+    """A provider with this name already exists."""
+
+    is_retryable = False
+
+
+class ProviderValidationError(ProviderError):
+    """Provider configuration failed validation."""
+
+    is_retryable = False
