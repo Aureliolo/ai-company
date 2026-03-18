@@ -281,11 +281,20 @@ class TestWsTicketAuth:
         assert 4000 <= _WS_CLOSE_AUTH_FAILED <= 4999
         assert 4000 <= _WS_CLOSE_FORBIDDEN <= 4999
 
-    def test_ws_rejects_missing_ticket(
+    @pytest.mark.parametrize(
+        ("url", "scenario"),
+        [
+            ("/api/v1/ws", "missing_ticket"),
+            ("/api/v1/ws?ticket=bogus-ticket", "invalid_ticket"),
+        ],
+    )
+    def test_ws_rejects_bad_ticket(
         self,
         test_client: TestClient[Any],
+        url: str,
+        scenario: str,
     ) -> None:
-        """WS connection without ?ticket= is rejected with code 4001.
+        """WS connection with missing or invalid ticket is rejected.
 
         Verifying the close code (not just WebSocketDisconnect) ensures
         the rejection comes from the handler's ticket validation -- not
@@ -296,24 +305,13 @@ class TestWsTicketAuth:
 
         with (
             pytest.raises(WebSocketDisconnect) as exc_info,
-            test_client.websocket_connect("/api/v1/ws"),
+            test_client.websocket_connect(url),
         ):
             pass
-        assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED
-
-    def test_ws_rejects_invalid_ticket(
-        self,
-        test_client: TestClient[Any],
-    ) -> None:
-        """WS connection with a bogus ticket is rejected with code 4001."""
-        from litestar.exceptions import WebSocketDisconnect
-
-        with (
-            pytest.raises(WebSocketDisconnect) as exc_info,
-            test_client.websocket_connect("/api/v1/ws?ticket=bogus-ticket"),
-        ):
-            pass
-        assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED
+        assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED, (
+            f"Expected close code {_WS_CLOSE_AUTH_FAILED} for "
+            f"{scenario}, got {exc_info.value.code}"
+        )
 
     def test_ws_accepts_valid_ticket(
         self,

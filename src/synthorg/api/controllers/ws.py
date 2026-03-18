@@ -215,17 +215,6 @@ async def ws_handler(
     if not await _check_ws_role(socket, user):
         return
 
-    socket.scope["user"] = user
-    await socket.accept()
-    logger.info(
-        API_WS_CONNECTED,
-        client=str(socket.client),
-        user_id=user.user_id,
-    )
-
-    subscribed: set[str] = set()
-    filters: dict[str, dict[str, str]] = {}
-
     # Resolve ChannelsPlugin by iterating app.plugins -- the same
     # pattern used by get_channels_plugin() in channels.py.
     # Litestar's DI does not reliably inject plugin instances into
@@ -244,7 +233,22 @@ async def ws_handler(
         )
         await socket.close(code=1011, reason="Internal error")
         return
+
     subscriber = await channels_plugin.subscribe(list(ALL_CHANNELS))
+
+    # Accept only after auth, role check, plugin resolution, and
+    # subscription all succeed -- avoid accepting then immediately
+    # closing on infrastructure failures.
+    socket.scope["user"] = user
+    await socket.accept()
+    logger.info(
+        API_WS_CONNECTED,
+        client=str(socket.client),
+        user_id=user.user_id,
+    )
+
+    subscribed: set[str] = set()
+    filters: dict[str, dict[str, str]] = {}
 
     async def _event_callback(event_data: bytes) -> None:
         await _on_event(event_data, subscribed, filters, socket)
