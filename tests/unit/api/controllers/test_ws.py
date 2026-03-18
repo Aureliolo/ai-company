@@ -445,6 +445,7 @@ class TestWsTicketAuth:
         connection.url.path = "/api/v1/ws"
         connection.scope = {"type": "websocket"}
 
-        # Should not raise -- the guard passes through when user is
-        # absent, which is the expected state for WS connections.
-        require_password_changed(connection, MagicMock())
+        # The guard returns None (passes through) when user is absent,
+        # which is the expected state for WS connections.
+        result = require_password_changed(connection, MagicMock())
+        assert result is None

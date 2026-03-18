@@ -234,7 +234,18 @@ async def ws_handler(
         await socket.close(code=1011, reason="Internal error")
         return
 
-    subscriber = await channels_plugin.subscribe(list(ALL_CHANNELS))
+    try:
+        subscriber = await channels_plugin.subscribe(list(ALL_CHANNELS))
+    except Exception:
+        logger.warning(
+            API_WS_SEND_FAILED,
+            reason="subscribe_failed",
+            client=str(socket.client),
+            user_id=user.user_id,
+            exc_info=True,
+        )
+        await socket.close(code=1011, reason="Internal error")
+        return
 
     # Accept only after auth, role check, plugin resolution, and
     # subscription all succeed -- avoid accepting then immediately
