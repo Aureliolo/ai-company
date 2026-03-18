@@ -111,7 +111,7 @@ These conventions are used throughout the codebase. For full details on each, se
 | **Parallel tool execution** | Adopted | `asyncio.TaskGroup` in `ToolInvoker.invoke_all` with optional `max_concurrency` semaphore and structured error collection. |
 | **Parallel agent execution** | Adopted | `ParallelExecutor` with `TaskGroup` + `Semaphore` concurrency limits, `ResourceLock` for exclusive file-path claims, progress tracking, and shutdown awareness. |
 | **Tool permission checking** | Adopted | Category-level gating based on `ToolAccessLevel`. Priority-based resolution: denied list, allowed list, level categories, then deny. |
-| **Tool sandboxing** | Adopted | Layered: in-process path validation for file system tools, `SubprocessSandbox` for git tools, `DockerSandbox` planned for code execution. |
+| **Tool sandboxing** | Adopted | Layered: in-process path validation for file system tools, `SubprocessSandbox` for git tools, `DockerSandbox` for code execution. Per-category backend selection via `SandboxingConfig` and sandbox factory. |
 | **Crash recovery** | Adopted | Pluggable `RecoveryStrategy` protocol. Current: `FailAndReassignStrategy`. Planned: `CheckpointStrategy` for per-turn state persistence. |
 | **Personality compatibility** | Adopted | Weighted composite scoring: 60% Big Five similarity, 20% collaboration alignment, 20% conflict approach. |
 | **Agent behavior testing** | Planned | Scripted `FakeProvider` for unit tests; behavioral outcome assertions for integration tests. |

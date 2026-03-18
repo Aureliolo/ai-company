@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Final
 import aiodocker
 import aiodocker.containers
 
+from synthorg.core.types import NotBlankStr
 from synthorg.observability import get_logger
 from synthorg.observability.events.docker import (
     DOCKER_CLEANUP,
@@ -34,8 +35,6 @@ from synthorg.tools.sandbox.result import SandboxResult
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-
-    from synthorg.core.types import NotBlankStr
 
 logger = get_logger(__name__)
 
@@ -645,4 +644,4 @@ class DockerSandbox:
 
     def get_backend_type(self) -> NotBlankStr:
         """Return ``'docker'``."""
-        return "docker"
+        return NotBlankStr("docker")

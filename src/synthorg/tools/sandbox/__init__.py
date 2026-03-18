@@ -4,6 +4,11 @@ from .config import SubprocessSandboxConfig
 from .docker_config import DockerSandboxConfig
 from .docker_sandbox import DockerSandbox
 from .errors import SandboxError, SandboxStartError, SandboxTimeoutError
+from .factory import (
+    build_sandbox_backends,
+    cleanup_sandbox_backends,
+    resolve_sandbox_for_category,
+)
 from .protocol import SandboxBackend
 from .result import SandboxResult
 from .sandboxing_config import SandboxingConfig
@@ -20,4 +25,7 @@ __all__ = [
     "SandboxingConfig",
     "SubprocessSandbox",
     "SubprocessSandboxConfig",
+    "build_sandbox_backends",
+    "cleanup_sandbox_backends",
+    "resolve_sandbox_for_category",
 ]
