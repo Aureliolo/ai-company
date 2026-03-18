@@ -12,6 +12,7 @@ from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_write_access
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.backup.errors import (
+    BackupError,
     BackupInProgressError,
     BackupNotFoundError,
     ManifestError,
@@ -59,6 +60,8 @@ class BackupController(Controller):
                 str(exc),
                 status_code=409,
             ) from exc
+        except BackupError as exc:
+            raise InternalServerException(str(exc)) from exc
         return ApiResponse(data=manifest)
 
     @get("/list")

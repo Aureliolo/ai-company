@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from synthorg.backup.models import BackupTrigger
 from synthorg.observability import get_logger
 from synthorg.observability.events.backup import (
+    BACKUP_FAILED,
     BACKUP_SCHEDULER_STARTED,
     BACKUP_SCHEDULER_STOPPED,
     BACKUP_SCHEDULER_TICK,
@@ -89,7 +90,7 @@ class BackupScheduler:
                 raise
             except Exception:
                 logger.error(
-                    BACKUP_SCHEDULER_TICK,
+                    BACKUP_FAILED,
                     error="Scheduled backup failed",
                     exc_info=True,
                 )

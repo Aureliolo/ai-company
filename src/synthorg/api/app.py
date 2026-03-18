@@ -10,6 +10,7 @@ import contextlib
 import os
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from litestar import Litestar, Router
@@ -38,6 +39,14 @@ from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.middleware import RequestLoggingMiddleware, security_headers_hook
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
+from synthorg.backup.handlers import (
+    ComponentHandler,
+    ConfigComponentHandler,
+    MemoryComponentHandler,
+    PersistenceComponentHandler,
+)
+from synthorg.backup.models import BackupComponent, BackupTrigger
+from synthorg.backup.service import BackupService
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.meeting.orchestrator import (
@@ -60,8 +69,10 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
+from synthorg.persistence.sqlite.migrations import SCHEMA_VERSION
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.subscribers import (
+    BackupSettingsSubscriber,
     MemorySettingsSubscriber,
     ProviderSettingsSubscriber,
 )
@@ -74,6 +85,7 @@ if TYPE_CHECKING:
 
     from synthorg.api.config import ApiConfig
     from synthorg.settings.service import SettingsService
+    from synthorg.settings.subscriber import SettingsSubscriber
 
 logger = get_logger(__name__)
 
@@ -177,6 +189,7 @@ def _build_lifecycle(  # noqa: PLR0913
     settings_dispatcher: SettingsChangeDispatcher | None,
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
+    backup_service: BackupService | None,
     app_state: AppState,
 ) -> tuple[
     Sequence[Callable[[], Awaitable[None]]],
@@ -211,6 +224,7 @@ def _build_lifecycle(  # noqa: PLR0913
             settings_dispatcher,
             task_engine,
             meeting_scheduler,
+            backup_service,
             app_state,
         )
         _ticket_cleanup_task = asyncio.create_task(
@@ -230,6 +244,7 @@ def _build_lifecycle(  # noqa: PLR0913
         await _safe_shutdown(
             task_engine,
             meeting_scheduler,
+            backup_service,
             settings_dispatcher,
             bridge,
             message_bus,
@@ -272,8 +287,16 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     started_task_engine: bool = False,
     meeting_scheduler: MeetingScheduler | None = None,
     started_meeting_scheduler: bool = False,
+    backup_service: BackupService | None = None,
+    started_backup_service: bool = False,
 ) -> None:
     """Reverse cleanup on startup failure."""
+    if started_backup_service and backup_service is not None:
+        await _try_stop(
+            backup_service.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop backup service",
+        )
     if started_meeting_scheduler and meeting_scheduler is not None:
         await _try_stop(
             meeting_scheduler.stop(),
@@ -361,9 +384,10 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
     settings_dispatcher: SettingsChangeDispatcher | None,
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
+    backup_service: BackupService | None,
     app_state: AppState,
 ) -> None:
-    """Start all services: persistence, bus, bridge, dispatcher, task engine, scheduler.
+    """Start all services in order, with reverse cleanup on failure.
 
     Executes in order; on failure, cleans up already-started
     components in reverse order before re-raising.
@@ -374,6 +398,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
     started_settings_dispatcher = False
     started_task_engine = False
     started_meeting_scheduler = False
+    started_backup_service = False
     try:
         if persistence is not None:
             try:
@@ -439,6 +464,30 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                 )
                 raise
             started_meeting_scheduler = True
+        if backup_service is not None:
+            try:
+                app_state.set_backup_service(backup_service)
+                await backup_service.start()
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Failed to start backup service",
+                )
+                raise
+            started_backup_service = True
+
+            # Create startup backup if configured
+            if backup_service._config.on_startup:  # noqa: SLF001
+                try:
+                    await backup_service.create_backup(
+                        BackupTrigger.STARTUP,
+                    )
+                except Exception:
+                    logger.warning(
+                        API_APP_STARTUP,
+                        error="Startup backup failed (non-fatal)",
+                        exc_info=True,
+                    )
     except Exception:
         await _cleanup_on_failure(
             persistence=persistence,
@@ -453,6 +502,8 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             started_task_engine=started_task_engine,
             meeting_scheduler=meeting_scheduler,
             started_meeting_scheduler=started_meeting_scheduler,
+            backup_service=backup_service,
+            started_backup_service=started_backup_service,
         )
         raise
 
@@ -460,16 +511,18 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
 async def _safe_shutdown(  # noqa: PLR0913
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
+    backup_service: BackupService | None,
     settings_dispatcher: SettingsChangeDispatcher | None,
     bridge: MessageBusBridge | None,
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
 ) -> None:
-    """Stop scheduler, task engine, dispatcher, bridge, bus, persistence.
+    """Stop scheduler, task engine, backup, dispatcher, bridge, bus, persistence.
 
     Mirrors ``_cleanup_on_failure`` reverse order: scheduler first (depends on
     orchestrator), then task engine so it can drain queued mutations and
-    publish final snapshots through the still-running bridge.
+    publish final snapshots through the still-running bridge.  Backup runs
+    before persistence disconnect so shutdown backup can still access the DB.
     """
     if meeting_scheduler is not None:
         await _try_stop(
@@ -482,6 +535,24 @@ async def _safe_shutdown(  # noqa: PLR0913
             task_engine.stop(),
             API_APP_SHUTDOWN,
             "Failed to stop task engine",
+        )
+    if backup_service is not None:
+        # Create shutdown backup before stopping the scheduler
+        if backup_service._config.on_shutdown:  # noqa: SLF001
+            try:
+                await backup_service.create_backup(
+                    BackupTrigger.SHUTDOWN,
+                )
+            except Exception:
+                logger.warning(
+                    API_APP_SHUTDOWN,
+                    error="Shutdown backup failed (non-fatal)",
+                    exc_info=True,
+                )
+        await _try_stop(
+            backup_service.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop backup service",
         )
     if settings_dispatcher is not None:
         await _try_stop(
@@ -645,11 +716,13 @@ def create_app(  # noqa: PLR0913
     )
 
     bridge = _build_bridge(message_bus, channels_plugin)
+    backup_service = _build_backup_service(effective_config)
     settings_dispatcher = _build_settings_dispatcher(
         message_bus,
         settings_service,
         effective_config,
         app_state,
+        backup_service,
     )
     plugins: list[ChannelsPlugin] = [channels_plugin]
     middleware = _build_middleware(api_config)
@@ -667,6 +740,7 @@ def create_app(  # noqa: PLR0913
         settings_dispatcher,
         task_engine,
         meeting_scheduler,
+        backup_service,
         app_state,
     )
 
@@ -715,6 +789,7 @@ def _build_settings_dispatcher(
     settings_service: SettingsService | None,
     config: RootConfig,
     app_state: AppState,
+    backup_service: BackupService | None = None,
 ) -> SettingsChangeDispatcher | None:
     """Create settings change dispatcher if bus and settings are available."""
     if message_bus is None or settings_service is None:
@@ -725,9 +800,17 @@ def _build_settings_dispatcher(
         settings_service=settings_service,
     )
     memory_sub = MemorySettingsSubscriber()
+    subs: list[SettingsSubscriber] = [provider_sub, memory_sub]
+    if backup_service is not None:
+        subs.append(
+            BackupSettingsSubscriber(
+                backup_service=backup_service,
+                settings_service=settings_service,
+            ),
+        )
     return SettingsChangeDispatcher(
         message_bus=message_bus,
-        subscribers=(provider_sub, memory_sub),
+        subscribers=tuple(subs),
     )
 
 
@@ -764,3 +847,44 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
         RequestLoggingMiddleware,
         rate_limit.middleware,
     ]
+
+
+def _build_backup_service(config: RootConfig) -> BackupService | None:
+    """Create backup service from config if backup section is present.
+
+    Builds component handlers based on ``config.backup.include`` and
+    wires them into the service alongside the current DB schema
+    version.
+
+    Args:
+        config: Root company configuration.
+
+    Returns:
+        Configured backup service, or ``None`` if construction fails.
+    """
+    backup_config = config.backup
+    handlers: dict[BackupComponent, ComponentHandler] = {}
+
+    for component_name in backup_config.include:
+        component = BackupComponent(component_name)
+        if component is BackupComponent.PERSISTENCE:
+            handlers[component] = PersistenceComponentHandler(
+                db_path=Path(config.persistence.sqlite.path),
+            )
+        elif component is BackupComponent.MEMORY:
+            handlers[component] = MemoryComponentHandler(
+                data_dir=Path(config.memory.storage.data_dir),
+            )
+        elif component is BackupComponent.CONFIG:
+            config_path = Path(
+                os.environ.get("SYNTHORG_CONFIG_PATH", "company.yaml"),
+            )
+            handlers[component] = ConfigComponentHandler(
+                config_path=config_path,
+            )
+
+    return BackupService(
+        backup_config,
+        handlers,
+        schema_version=SCHEMA_VERSION,
+    )

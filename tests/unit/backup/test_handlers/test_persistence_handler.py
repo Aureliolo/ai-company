@@ -34,7 +34,7 @@ class TestComponentProperty:
     """PersistenceComponentHandler.component returns PERSISTENCE."""
 
     def test_returns_persistence(self, tmp_path: Path) -> None:
-        handler = PersistenceComponentHandler(str(tmp_path / "db.sqlite"))
+        handler = PersistenceComponentHandler(tmp_path / "db.sqlite")
         assert handler.component is BackupComponent.PERSISTENCE
 
 
@@ -53,7 +53,7 @@ class TestBackup:
         target_dir = tmp_path / "backup"
         target_dir.mkdir()
 
-        handler = PersistenceComponentHandler(str(db_path))
+        handler = PersistenceComponentHandler(db_path)
         size = await handler.backup(target_dir)
 
         backup_file = target_dir / "synthorg.db"
@@ -70,7 +70,7 @@ class TestBackup:
             conn.close()
 
     async def test_backup_raises_on_invalid_source(self, tmp_path: Path) -> None:
-        handler = PersistenceComponentHandler(str(tmp_path / "nonexistent" / "nope.db"))
+        handler = PersistenceComponentHandler(tmp_path / "nonexistent" / "nope.db")
         target_dir = tmp_path / "backup"
         target_dir.mkdir()
 
@@ -84,7 +84,7 @@ class TestBackup:
         target_dir = tmp_path / "backup"
         target_dir.mkdir()
 
-        handler = PersistenceComponentHandler(str(db_path))
+        handler = PersistenceComponentHandler(db_path)
         with pytest.raises(ComponentBackupError):
             await handler.backup(target_dir)
 
@@ -114,7 +114,7 @@ class TestRestore:
         finally:
             conn.close()
 
-        handler = PersistenceComponentHandler(str(live_db))
+        handler = PersistenceComponentHandler(live_db)
         await handler.restore(backup_dir)
 
         # Live DB now has the restored data
@@ -130,7 +130,7 @@ class TestRestore:
         assert not bak_path.exists()
 
     async def test_restore_raises_if_backup_missing(self, tmp_path: Path) -> None:
-        handler = PersistenceComponentHandler(str(tmp_path / "live.db"))
+        handler = PersistenceComponentHandler(tmp_path / "live.db")
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
 
@@ -149,7 +149,7 @@ class TestRestore:
         corrupt_backup = backup_dir / "synthorg.db"
         _corrupt_file(corrupt_backup)
 
-        handler = PersistenceComponentHandler(str(live_db))
+        handler = PersistenceComponentHandler(live_db)
 
         with pytest.raises(ComponentBackupError):
             await handler.restore(backup_dir)
@@ -173,7 +173,7 @@ class TestRestore:
         backup_db = backup_dir / "synthorg.db"
         _create_test_db(backup_db)
 
-        handler = PersistenceComponentHandler(str(live_db))
+        handler = PersistenceComponentHandler(live_db)
         await handler.restore(backup_dir)
 
         assert live_db.exists()
@@ -196,18 +196,18 @@ class TestValidateSource:
         db_file = tmp_path / "synthorg.db"
         _create_test_db(db_file)
 
-        handler = PersistenceComponentHandler(str(tmp_path / "unused.db"))
+        handler = PersistenceComponentHandler(tmp_path / "unused.db")
         assert await handler.validate_source(tmp_path) is True
 
     async def test_returns_false_for_missing_file(self, tmp_path: Path) -> None:
-        handler = PersistenceComponentHandler(str(tmp_path / "unused.db"))
+        handler = PersistenceComponentHandler(tmp_path / "unused.db")
         assert await handler.validate_source(tmp_path) is False
 
     async def test_returns_false_for_corrupt_file(self, tmp_path: Path) -> None:
         corrupt = tmp_path / "synthorg.db"
         _corrupt_file(corrupt)
 
-        handler = PersistenceComponentHandler(str(tmp_path / "unused.db"))
+        handler = PersistenceComponentHandler(tmp_path / "unused.db")
         assert await handler.validate_source(tmp_path) is False
 
 

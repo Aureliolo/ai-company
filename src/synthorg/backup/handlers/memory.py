@@ -2,7 +2,7 @@
 
 import asyncio
 import shutil
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.models import BackupComponent
@@ -12,6 +12,9 @@ from synthorg.observability.events.backup import (
     BACKUP_COMPONENT_FAILED,
     BACKUP_COMPONENT_STARTED,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = get_logger(__name__)
 
@@ -28,7 +31,7 @@ class MemoryComponentHandler:
         data_dir: Path to the memory data directory.
     """
 
-    def __init__(self, data_dir: str) -> None:
+    def __init__(self, data_dir: Path) -> None:
         self._data_dir = data_dir
 
     @property
@@ -51,10 +54,9 @@ class MemoryComponentHandler:
         logger.info(
             BACKUP_COMPONENT_STARTED,
             component=self.component.value,
-            data_dir=self._data_dir,
+            data_dir=str(self._data_dir),
         )
-        source = Path(self._data_dir)
-        exists = await asyncio.to_thread(source.exists)
+        exists = await asyncio.to_thread(self._data_dir.exists)
         if not exists:
             logger.info(
                 BACKUP_COMPONENT_COMPLETED,
@@ -66,7 +68,7 @@ class MemoryComponentHandler:
 
         target = target_dir / _MEMORY_SUBDIR
         try:
-            size = await asyncio.to_thread(self._copy_tree, source, target)
+            size = await asyncio.to_thread(self._copy_tree, self._data_dir, target)
         except Exception as exc:
             logger.error(
                 BACKUP_COMPONENT_FAILED,
@@ -101,13 +103,12 @@ class MemoryComponentHandler:
             msg = f"Backup memory directory not found: {source}"
             raise ComponentBackupError(msg)
 
-        data_path = Path(self._data_dir)
-        bak_path = data_path.with_name(f"{data_path.name}.bak")
+        bak_path = self._data_dir.with_name(f"{self._data_dir.name}.bak")
 
         try:
             await asyncio.to_thread(
                 self._atomic_swap,
-                data_path,
+                self._data_dir,
                 source,
                 bak_path,
             )
@@ -126,12 +127,13 @@ class MemoryComponentHandler:
         Returns:
             ``True`` if the memory backup subdirectory exists.
         """
-        return (source_dir / _MEMORY_SUBDIR).exists()
+        memory_path = source_dir / _MEMORY_SUBDIR
+        return await asyncio.to_thread(memory_path.exists)
 
     @staticmethod
     def _copy_tree(source: Path, target: Path) -> int:
         """Copy directory tree and return total bytes copied."""
-        shutil.copytree(str(source), str(target))
+        shutil.copytree(source, target)
         total = 0
         for f in target.rglob("*"):
             if f.is_file():
@@ -146,16 +148,16 @@ class MemoryComponentHandler:
     ) -> None:
         """Swap the live directory with the backup, rolling back on failure."""
         if data_path.exists():
-            shutil.move(str(data_path), str(bak_path))
+            shutil.move(data_path, bak_path)
 
         try:
-            shutil.copytree(str(source), str(data_path))
+            shutil.copytree(source, data_path)
         except Exception:
             if bak_path.exists():
                 if data_path.exists():
-                    shutil.rmtree(str(data_path))
-                shutil.move(str(bak_path), str(data_path))
+                    shutil.rmtree(data_path)
+                shutil.move(bak_path, data_path)
             raise
 
         if bak_path.exists():
-            shutil.rmtree(str(bak_path))
+            shutil.rmtree(bak_path)

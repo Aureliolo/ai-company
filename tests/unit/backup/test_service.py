@@ -42,7 +42,11 @@ def _make_service(
         path=str(backup_path),
         schedule_hours=schedule_hours,
         compression=compression,
-        include=("persistence", "memory", "config"),
+        include=(
+            BackupComponent.PERSISTENCE,
+            BackupComponent.MEMORY,
+            BackupComponent.CONFIG,
+        ),
         retention=RetentionConfig(max_count=10, max_age_days=30),
     )
     if handlers is None:
@@ -184,21 +188,17 @@ class TestCreateBackup:
     ) -> None:
         """Only specified components are backed up."""
         bp = tmp_path / "backups"
-        handlers = {
-            BackupComponent.PERSISTENCE: _make_handler(BackupComponent.PERSISTENCE),
-            BackupComponent.MEMORY: _make_handler(BackupComponent.MEMORY),
-            BackupComponent.CONFIG: _make_handler(BackupComponent.CONFIG),
-        }
-        service = _make_service(bp, handlers=handlers)
+        service = _make_service(bp)
 
         await service.create_backup(
             BackupTrigger.MANUAL,
             components=(BackupComponent.PERSISTENCE,),
         )
 
-        handlers[BackupComponent.PERSISTENCE].backup.assert_called_once()
-        handlers[BackupComponent.MEMORY].backup.assert_not_called()
-        handlers[BackupComponent.CONFIG].backup.assert_not_called()
+        # Access internal handlers (MappingProxyType wraps deepcopied mocks)
+        service._handlers[BackupComponent.PERSISTENCE].backup.assert_called_once()
+        service._handlers[BackupComponent.MEMORY].backup.assert_not_called()
+        service._handlers[BackupComponent.CONFIG].backup.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -361,8 +361,8 @@ class TestRestoreFromBackup:
         assert response.safety_backup_id
         assert response.manifest.backup_id == "src-bk"
 
-        # The handler's restore() was called
-        handlers[BackupComponent.PERSISTENCE].restore.assert_called_once()
+        # The handler's restore() was called (access via internal deepcopied handlers)
+        service._handlers[BackupComponent.PERSISTENCE].restore.assert_called_once()
 
     async def test_raises_not_found_for_missing_source(
         self,

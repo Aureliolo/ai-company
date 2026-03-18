@@ -110,8 +110,8 @@ class ConfigComponentHandler:
         try:
             await asyncio.to_thread(
                 shutil.copy2,
-                str(source_file),
-                str(self._config_path),
+                source_file,
+                self._config_path,
             )
         except Exception as exc:
             msg = f"Failed to restore config file: {exc}"
@@ -135,9 +135,7 @@ class ConfigComponentHandler:
     @staticmethod
     def _copy_config(config_path: Path, target_dir: Path) -> int:
         """Copy config file and return bytes written."""
-        from pathlib import Path as _Path  # noqa: PLC0415
-
-        _Path(str(target_dir)).mkdir(parents=True, exist_ok=True)
+        target_dir.mkdir(parents=True, exist_ok=True)
         dest = target_dir / config_path.name
-        shutil.copy2(str(config_path), str(dest))
+        shutil.copy2(config_path, dest)
         return dest.stat().st_size

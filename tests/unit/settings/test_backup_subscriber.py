@@ -13,11 +13,16 @@ from synthorg.settings.subscribers.backup_subscriber import (
 def _make_subscriber(
     *,
     scheduler_running: bool = False,
+    enabled: bool = True,
+    schedule_hours: int = 6,
 ) -> tuple[BackupSettingsSubscriber, MagicMock]:
-    """Create a subscriber with a mock BackupService.
+    """Create a subscriber with a mock BackupService and SettingsService.
 
     Args:
         scheduler_running: Initial ``is_running`` state of the mock scheduler.
+        enabled: Value returned by settings_service.get("backup", "enabled").
+        schedule_hours: Value returned by
+            settings_service.get("backup", "schedule_hours").
 
     Returns:
         Tuple of (subscriber, mock_backup_service).
@@ -26,11 +31,29 @@ def _make_subscriber(
     type(scheduler).is_running = PropertyMock(return_value=scheduler_running)
     scheduler.start = MagicMock()
     scheduler.stop = AsyncMock()
+    scheduler.reschedule = MagicMock()
 
     service = MagicMock()
     type(service).scheduler = PropertyMock(return_value=scheduler)
 
-    sub = BackupSettingsSubscriber(backup_service=service)
+    settings_service = MagicMock()
+
+    async def _mock_get(namespace: str, key: str) -> MagicMock:
+        result = MagicMock()
+        if key == "enabled":
+            result.value = str(enabled)
+        elif key == "schedule_hours":
+            result.value = str(schedule_hours)
+        else:
+            result.value = ""
+        return result
+
+    settings_service.get = AsyncMock(side_effect=_mock_get)
+
+    sub = BackupSettingsSubscriber(
+        backup_service=service,
+        settings_service=settings_service,
+    )
     return sub, service
 
 
@@ -65,7 +88,10 @@ class TestBackupSubscriberEnabled:
     """on_settings_changed('backup', 'enabled') toggles the scheduler."""
 
     async def test_enabled_starts_scheduler_when_stopped(self) -> None:
-        sub, service = _make_subscriber(scheduler_running=False)
+        sub, service = _make_subscriber(
+            scheduler_running=False,
+            enabled=True,
+        )
 
         await sub.on_settings_changed("backup", "enabled")
 
@@ -73,7 +99,10 @@ class TestBackupSubscriberEnabled:
         service.scheduler.stop.assert_not_awaited()
 
     async def test_enabled_stops_scheduler_when_running(self) -> None:
-        sub, service = _make_subscriber(scheduler_running=True)
+        sub, service = _make_subscriber(
+            scheduler_running=True,
+            enabled=False,
+        )
 
         await sub.on_settings_changed("backup", "enabled")
 
@@ -82,7 +111,10 @@ class TestBackupSubscriberEnabled:
 
     async def test_enabled_toggle_is_idempotent(self) -> None:
         """Calling twice with same state does not error."""
-        sub, service = _make_subscriber(scheduler_running=False)
+        sub, service = _make_subscriber(
+            scheduler_running=False,
+            enabled=True,
+        )
         await sub.on_settings_changed("backup", "enabled")
         await sub.on_settings_changed("backup", "enabled")
         # Two start() calls -- no crash, idempotent

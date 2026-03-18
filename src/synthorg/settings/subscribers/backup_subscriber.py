@@ -7,6 +7,7 @@ from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED
 
 if TYPE_CHECKING:
     from synthorg.backup.service import BackupService
+    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -30,10 +31,16 @@ class BackupSettingsSubscriber:
 
     Args:
         backup_service: Backup service managing the scheduler.
+        settings_service: Settings service for reading current values.
     """
 
-    def __init__(self, backup_service: BackupService) -> None:
+    def __init__(
+        self,
+        backup_service: BackupService,
+        settings_service: SettingsService,
+    ) -> None:
         self._backup_service = backup_service
+        self._settings_service = settings_service
 
     @property
     def watched_keys(self) -> frozenset[tuple[str, str]]:
@@ -73,18 +80,12 @@ class BackupSettingsSubscriber:
             )
 
     async def _toggle_scheduler(self) -> None:
-        """Start or stop the scheduler based on current state."""
+        """Start or stop the scheduler based on the current setting value."""
+        result = await self._settings_service.get("backup", "enabled")
         scheduler = self._backup_service.scheduler
-        if scheduler.is_running:
-            await scheduler.stop()
-            logger.info(
-                SETTINGS_SUBSCRIBER_NOTIFIED,
-                subscriber=self.subscriber_name,
-                namespace="backup",
-                key="enabled",
-                note="scheduler stopped",
-            )
-        else:
+        enabled = str(result.value).lower() == "true"
+
+        if enabled and not scheduler.is_running:
             scheduler.start()
             logger.info(
                 SETTINGS_SUBSCRIBER_NOTIFIED,
@@ -93,17 +94,25 @@ class BackupSettingsSubscriber:
                 key="enabled",
                 note="scheduler started",
             )
+        elif not enabled and scheduler.is_running:
+            await scheduler.stop()
+            logger.info(
+                SETTINGS_SUBSCRIBER_NOTIFIED,
+                subscriber=self.subscriber_name,
+                namespace="backup",
+                key="enabled",
+                note="scheduler stopped",
+            )
 
     async def _reschedule(self) -> None:
-        """Update the scheduler interval."""
-        # The actual value is read from settings at use time;
-        # we just need to inform the scheduler that it should
-        # re-read its interval.  For simplicity, the subscriber
-        # logs the notification.
+        """Update the scheduler interval from current settings."""
+        result = await self._settings_service.get("backup", "schedule_hours")
+        scheduler = self._backup_service.scheduler
+        scheduler.reschedule(int(result.value))
         logger.info(
             SETTINGS_SUBSCRIBER_NOTIFIED,
             subscriber=self.subscriber_name,
             namespace="backup",
             key="schedule_hours",
-            note="reschedule advisory -- takes effect after current interval",
+            note="rescheduled",
         )

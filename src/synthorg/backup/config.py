@@ -5,7 +5,7 @@ and component selection.
 """
 
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import ClassVar, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -47,10 +47,6 @@ class BackupConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    _VALID_COMPONENTS: ClassVar[frozenset[str]] = frozenset(
-        c.value for c in BackupComponent
-    )
-
     enabled: bool = False
     path: NotBlankStr = Field(
         default="/data/backups",
@@ -78,8 +74,12 @@ class BackupConfig(BaseModel):
         default=True,
         description="Compress backups as tar.gz archives",
     )
-    include: tuple[NotBlankStr, ...] = Field(
-        default=("persistence", "memory", "config"),
+    include: tuple[BackupComponent, ...] = Field(
+        default=(
+            BackupComponent.PERSISTENCE,
+            BackupComponent.MEMORY,
+            BackupComponent.CONFIG,
+        ),
         description="Components to include in backups",
     )
 
@@ -96,22 +96,4 @@ class BackupConfig(BaseModel):
                 reason=msg,
             )
             raise ValueError(msg)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_include_components(self) -> Self:
-        """Ensure all include values are valid component names."""
-        for component in self.include:
-            if component not in self._VALID_COMPONENTS:
-                msg = (
-                    f"Unknown backup component {component!r}. "
-                    f"Valid components: {sorted(self._VALID_COMPONENTS)}"
-                )
-                logger.warning(
-                    CONFIG_VALIDATION_FAILED,
-                    field="include",
-                    value=component,
-                    reason=msg,
-                )
-                raise ValueError(msg)
         return self

@@ -180,11 +180,11 @@ class TestBackupConfigPathTraversal:
 @pytest.mark.unit
 class TestBackupConfigIncludeValidation:
     def test_rejects_unknown_component(self) -> None:
-        with pytest.raises(ValidationError, match="Unknown backup component"):
+        with pytest.raises(ValidationError, match="Input should be"):
             BackupConfig(include=("persistence", "invalid_thing"))
 
     def test_rejects_all_unknown_components(self) -> None:
-        with pytest.raises(ValidationError, match="Unknown backup component"):
+        with pytest.raises(ValidationError, match="Input should be"):
             BackupConfig(include=("bogus",))
 
     @pytest.mark.parametrize("component", [c.value for c in BackupComponent])

@@ -1,6 +1,7 @@
 """Persistence component handler -- SQLite VACUUM INTO backup."""
 
 import asyncio
+import contextlib
 import shutil
 import sqlite3
 from pathlib import Path
@@ -29,7 +30,7 @@ class PersistenceComponentHandler:
         db_path: Path to the live SQLite database file.
     """
 
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
 
     @property
@@ -52,13 +53,13 @@ class PersistenceComponentHandler:
         logger.info(
             BACKUP_COMPONENT_STARTED,
             component=self.component.value,
-            db_path=self._db_path,
+            db_path=str(self._db_path),
         )
         target_file = target_dir / _DB_FILENAME
         try:
             size = await asyncio.to_thread(
                 self._vacuum_into,
-                self._db_path,
+                str(self._db_path),
                 str(target_file),
             )
         except Exception as exc:
@@ -95,11 +96,12 @@ class PersistenceComponentHandler:
             msg = f"Backup database not found: {source_file}"
             raise ComponentBackupError(msg)
 
-        db_path = Path(self._db_path)
-        bak_path = db_path.with_suffix(".db.bak")
+        bak_path = self._db_path.with_suffix(".db.bak")
 
         try:
-            await asyncio.to_thread(self._atomic_swap, db_path, source_file, bak_path)
+            await asyncio.to_thread(
+                self._atomic_swap, self._db_path, source_file, bak_path
+            )
         except ComponentBackupError:
             raise
         except Exception as exc:
@@ -124,6 +126,12 @@ class PersistenceComponentHandler:
                 str(source_file),
             )
         except Exception:
+            logger.warning(
+                BACKUP_COMPONENT_FAILED,
+                component=self.component.value,
+                error="Integrity check failed",
+                exc_info=True,
+            )
             return False
 
     @staticmethod
@@ -137,22 +145,16 @@ class PersistenceComponentHandler:
         Returns:
             Size of the resulting backup file in bytes.
         """
-        conn = sqlite3.connect(source_path)
-        try:
+        with contextlib.closing(sqlite3.connect(source_path)) as conn:
             conn.execute("VACUUM INTO ?", (target_path,))
-        finally:
-            conn.close()
         return Path(target_path).stat().st_size
 
     @staticmethod
     def _check_integrity(db_path: str) -> bool:
         """Run PRAGMA integrity_check on a database file."""
-        conn = sqlite3.connect(db_path)
-        try:
+        with contextlib.closing(sqlite3.connect(db_path)) as conn:
             result = conn.execute("PRAGMA integrity_check").fetchone()
             return result is not None and result[0] == "ok"
-        finally:
-            conn.close()
 
     @staticmethod
     def _atomic_swap(
@@ -163,25 +165,22 @@ class PersistenceComponentHandler:
         """Swap the live DB with the backup, rolling back on failure."""
         # Move current to .bak
         if db_path.exists():
-            shutil.move(str(db_path), str(bak_path))
+            shutil.move(db_path, bak_path)
 
         try:
-            shutil.copy2(str(source_file), str(db_path))
+            shutil.copy2(source_file, db_path)
             # Validate the restored copy
-            conn = sqlite3.connect(str(db_path))
-            try:
+            with contextlib.closing(sqlite3.connect(str(db_path))) as conn:
                 result = conn.execute("PRAGMA integrity_check").fetchone()
                 if result is None or result[0] != "ok":
                     msg = "Restored database failed integrity check"
-                    raise ComponentBackupError(msg)
-            finally:
-                conn.close()
+                    raise ComponentBackupError(msg)  # noqa: TRY301
         except Exception:
             # Rollback: restore the original
             if bak_path.exists():
                 if db_path.exists():
                     db_path.unlink()
-                shutil.move(str(bak_path), str(db_path))
+                shutil.move(bak_path, db_path)
             raise
 
         # Cleanup .bak on success

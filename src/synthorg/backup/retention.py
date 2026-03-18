@@ -1,7 +1,9 @@
 """Retention manager -- prune old backups by count and age."""
 
+import asyncio
 import json
 import shutil
+import tarfile
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -47,7 +49,7 @@ class RetentionManager:
             RetentionError: If pruning fails.
         """
         try:
-            manifests = self._load_manifests()
+            manifests = await asyncio.to_thread(self._load_manifests)
         except Exception as exc:
             logger.error(
                 BACKUP_RETENTION_FAILED,
@@ -63,7 +65,7 @@ class RetentionManager:
         # Sort by timestamp descending (newest first)
         manifests.sort(key=lambda m: m.timestamp, reverse=True)
         candidates = self._identify_prunable(manifests)
-        return self._execute_prune(candidates)
+        return await asyncio.to_thread(self._execute_prune, candidates)
 
     def _identify_prunable(
         self,
@@ -99,7 +101,12 @@ class RetentionManager:
             if now - backup_time > max_age:
                 return True
         except ValueError:
-            pass
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                backup_id=manifest.backup_id,
+                error="Invalid timestamp format",
+                timestamp=manifest.timestamp,
+            )
         return False
 
     def _execute_prune(
@@ -134,32 +141,61 @@ class RetentionManager:
             return manifests
 
         for entry in self._backup_path.iterdir():
-            manifest_path = None
             if entry.is_dir():
-                manifest_path = entry / "manifest.json"
+                self._load_dir_manifest(entry, manifests)
             elif entry.suffix == ".gz" and entry.stem.endswith(".tar"):
-                # Compressed backups -- manifest is inside the archive
-                # Skip for now; manifests from compressed backups are
-                # loaded during list_backups via tar extraction
-                continue
-
-            if manifest_path is not None and manifest_path.exists():
-                try:
-                    data = json.loads(manifest_path.read_text(encoding="utf-8"))
-                    manifests.append(BackupManifest.model_validate(data))
-                except Exception:
-                    logger.debug(
-                        BACKUP_MANIFEST_INVALID,
-                        path=str(manifest_path),
-                    )
+                self._load_archive_manifest(entry, manifests)
 
         return manifests
+
+    def _load_dir_manifest(
+        self,
+        entry: Path,
+        manifests: list[BackupManifest],
+    ) -> None:
+        """Load a manifest from a backup directory."""
+        manifest_path = entry / "manifest.json"
+        if not manifest_path.exists():
+            return
+        try:
+            data = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifests.append(BackupManifest.model_validate(data))
+        except Exception:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(manifest_path),
+                exc_info=True,
+            )
+
+    @staticmethod
+    def _load_archive_manifest(
+        entry: Path,
+        manifests: list[BackupManifest],
+    ) -> None:
+        """Load a manifest from a compressed tar.gz archive."""
+        try:
+            with tarfile.open(entry, "r:gz") as tar:
+                try:
+                    member = tar.getmember("manifest.json")
+                except KeyError:
+                    return
+                f = tar.extractfile(member)
+                if f is None:
+                    return
+                data = json.loads(f.read())
+                manifests.append(BackupManifest.model_validate(data))
+        except Exception:
+            logger.warning(
+                BACKUP_MANIFEST_INVALID,
+                path=str(entry),
+                exc_info=True,
+            )
 
     def _delete_backup(self, backup_id: str) -> None:
         """Delete a backup directory or archive by ID."""
         for entry in self._backup_path.iterdir():
             if entry.is_dir() and entry.name.startswith(backup_id):
-                shutil.rmtree(str(entry))
+                shutil.rmtree(entry)
                 return
             if entry.is_file() and entry.name.startswith(backup_id):
                 entry.unlink()
@@ -175,10 +211,11 @@ class RetentionManager:
             try:
                 data = json.loads(manifest_path.read_text(encoding="utf-8"))
                 if data.get("backup_id") == backup_id:
-                    shutil.rmtree(str(entry))
+                    shutil.rmtree(entry)
                     return
             except Exception:
-                logger.debug(
+                logger.warning(
                     BACKUP_MANIFEST_INVALID,
                     path=str(manifest_path),
+                    exc_info=True,
                 )

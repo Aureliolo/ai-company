@@ -30,7 +30,7 @@ class TestComponentProperty:
     """MemoryComponentHandler.component returns MEMORY."""
 
     def test_returns_memory(self) -> None:
-        handler = MemoryComponentHandler("/some/path")
+        handler = MemoryComponentHandler(Path("/some/path"))
         assert handler.component is BackupComponent.MEMORY
 
 
@@ -48,7 +48,7 @@ class TestBackup:
         target_dir = tmp_path / "backup"
         target_dir.mkdir()
 
-        handler = MemoryComponentHandler(str(data_dir))
+        handler = MemoryComponentHandler(data_dir)
         size = await handler.backup(target_dir)
 
         assert size == expected_size
@@ -57,7 +57,7 @@ class TestBackup:
         assert (target_dir / "memory" / "qdrant" / "collection.bin").exists()
 
     async def test_returns_zero_if_source_missing(self, tmp_path: Path) -> None:
-        handler = MemoryComponentHandler(str(tmp_path / "nonexistent"))
+        handler = MemoryComponentHandler(tmp_path / "nonexistent")
         target_dir = tmp_path / "backup"
         target_dir.mkdir()
 
@@ -71,7 +71,7 @@ class TestBackup:
         target_dir = tmp_path / "backup"
         target_dir.mkdir()
 
-        handler = MemoryComponentHandler(str(data_dir))
+        handler = MemoryComponentHandler(data_dir)
 
         with (
             patch(
@@ -101,7 +101,7 @@ class TestRestore:
         memory_backup = backup_dir / "memory"
         _populate_memory_dir(memory_backup)
 
-        handler = MemoryComponentHandler(str(live_dir))
+        handler = MemoryComponentHandler(live_dir)
         await handler.restore(backup_dir)
 
         # Live dir should now contain restored data
@@ -111,7 +111,7 @@ class TestRestore:
         assert not (live_dir / "old_file.txt").exists()
 
     async def test_raises_if_backup_dir_missing(self, tmp_path: Path) -> None:
-        handler = MemoryComponentHandler(str(tmp_path / "live"))
+        handler = MemoryComponentHandler(tmp_path / "live")
         empty_dir = tmp_path / "empty_backup"
         empty_dir.mkdir()
 
@@ -133,7 +133,7 @@ class TestRestore:
         memory_backup.mkdir(parents=True)
         (memory_backup / "data.bin").write_bytes(b"backup")
 
-        handler = MemoryComponentHandler(str(live_dir))
+        handler = MemoryComponentHandler(live_dir)
 
         with (
             patch(
@@ -158,7 +158,7 @@ class TestRestore:
         memory_backup = backup_dir / "memory"
         _populate_memory_dir(memory_backup)
 
-        handler = MemoryComponentHandler(str(live_dir))
+        handler = MemoryComponentHandler(live_dir)
         await handler.restore(backup_dir)
 
         assert live_dir.exists()
@@ -174,15 +174,15 @@ class TestValidateSource:
 
     async def test_returns_true_when_memory_subdir_exists(self, tmp_path: Path) -> None:
         (tmp_path / "memory").mkdir()
-        handler = MemoryComponentHandler("/unused")
+        handler = MemoryComponentHandler(Path("/unused"))
         assert await handler.validate_source(tmp_path) is True
 
     async def test_returns_false_when_memory_subdir_missing(
         self, tmp_path: Path
     ) -> None:
-        handler = MemoryComponentHandler("/unused")
+        handler = MemoryComponentHandler(Path("/unused"))
         assert await handler.validate_source(tmp_path) is False
 
     async def test_returns_false_for_nonexistent_dir(self, tmp_path: Path) -> None:
-        handler = MemoryComponentHandler("/unused")
+        handler = MemoryComponentHandler(Path("/unused"))
         assert await handler.validate_source(tmp_path / "nope") is False
