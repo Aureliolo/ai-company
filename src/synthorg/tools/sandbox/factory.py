@@ -44,6 +44,10 @@ def _instantiate_backend(
 
     Logs and re-raises on construction failure.
     """
+    if name not in _KNOWN_BACKENDS:
+        msg = f"No constructor for backend {name!r}"
+        raise ValueError(msg)
+
     try:
         if name == "subprocess":
             return SubprocessSandbox(
