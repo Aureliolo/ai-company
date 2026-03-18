@@ -23,6 +23,7 @@ from synthorg.api.channels import ALL_CHANNELS
 from synthorg.api.guards import _READ_ROLES, HumanRole
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
+    API_WS_AUTH_STAGE,
     API_WS_CONNECTED,
     API_WS_DISCONNECTED,
     API_WS_INVALID_MESSAGE,
@@ -56,7 +57,7 @@ async def _validate_ticket(
     """
     ticket = socket.query_params.get("ticket")
     logger.debug(
-        API_WS_CONNECTED,
+        API_WS_AUTH_STAGE,
         stage="ticket_check",
         has_ticket=bool(ticket),
         client=str(socket.client),
@@ -83,7 +84,7 @@ async def _validate_ticket(
         return None
 
     logger.debug(
-        API_WS_CONNECTED,
+        API_WS_AUTH_STAGE,
         stage="ticket_valid",
         user_id=user.user_id,
     )
@@ -100,7 +101,7 @@ async def _check_ws_role(
     socket with a forbidden code and returns ``False``.
     """
     logger.debug(
-        API_WS_CONNECTED,
+        API_WS_AUTH_STAGE,
         stage="role_check",
         user_id=user.user_id,
         role=str(user.role),
@@ -225,17 +226,18 @@ async def ws_handler(
     subscribed: set[str] = set()
     filters: dict[str, dict[str, str]] = {}
 
-    # Resolve ChannelsPlugin from the app -- Litestar's DI does not
-    # reliably inject plugin instances into WebSocket handlers (the
-    # parameter is misidentified as a query param, causing a
-    # Litestar-internal 4500 close before the handler runs).  See #549.
-    # plugins.get() raises PluginRegistryException if the plugin is
-    # absent -- ChannelsPlugin is always registered in create_app().
-    try:
-        channels_plugin: ChannelsPlugin = socket.app.plugins.get(
-            ChannelsPlugin,
-        )
-    except KeyError:
+    # Resolve ChannelsPlugin by iterating app.plugins -- the same
+    # pattern used by get_channels_plugin() in channels.py.
+    # Litestar's DI does not reliably inject plugin instances into
+    # WebSocket handlers (the parameter is misidentified as a query
+    # param, causing a Litestar-internal 4500 close before the
+    # handler runs).  See #549.
+    channels_plugin: ChannelsPlugin | None = None
+    for plugin in socket.app.plugins:
+        if isinstance(plugin, ChannelsPlugin):
+            channels_plugin = plugin
+            break
+    if channels_plugin is None:
         logger.warning(
             API_WS_SEND_FAILED,
             reason="channels_plugin_not_registered",

@@ -368,14 +368,31 @@ class TestWsTicketAuth:
         HTTP-style rate limiting makes no sense for persistent
         WebSocket connections and can cause spurious 403 rejections.
         """
+        from litestar.middleware import DefineMiddleware
+        from litestar.middleware.rate_limit import (
+            RateLimitConfig as LitestarRateLimitConfig,
+        )
+
         from synthorg.api.app import _build_middleware
         from synthorg.api.config import ApiConfig
 
         api_config = ApiConfig()
         middleware = _build_middleware(api_config)
-        rl_define_mw = middleware[2]  # rate limit is third in stack
-        # DefineMiddleware stores kwargs including the RateLimitConfig
-        rl_config = rl_define_mw.kwargs["config"]  # type: ignore[union-attr]
+
+        # Find the rate limit middleware by type -- don't rely on index.
+        rl_config = None
+        for mw in middleware:
+            if (
+                isinstance(mw, DefineMiddleware)
+                and "config" in mw.kwargs
+                and isinstance(mw.kwargs["config"], LitestarRateLimitConfig)
+            ):
+                rl_config = mw.kwargs["config"]
+                break
+        assert rl_config is not None, (
+            "Rate limit middleware not found in middleware stack"
+        )
+
         ws_path = f"^{api_config.api_prefix}/ws$"
         assert ws_path in (rl_config.exclude or []), (
             f"WS path '{ws_path}' not excluded from rate limit: {rl_config.exclude}"
