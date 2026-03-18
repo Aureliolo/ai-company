@@ -116,5 +116,10 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=30s \
 # directly instead of being passed as Python arguments.
 # Exec form (no shell) — works with distroless. Uvicorn reads UVICORN_HOST
 # and UVICORN_PORT env vars natively; compose bridges SYNTHORG_* to these.
+# Suppress Pydantic v1 compatibility warning from Litestar's plugin detection
+# on Python 3.14+ (harmless import-time check, not actual v1 usage).
+# Tracked: Litestar v3 will drop the v1 compat layer entirely (#551).
+ENV PYTHONWARNINGS="ignore::UserWarning:pydantic.v1"
+
 ENTRYPOINT []
 CMD ["/app/.venv/bin/uvicorn", "synthorg.api.app:create_app", "--factory"]
