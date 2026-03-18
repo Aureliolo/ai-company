@@ -651,9 +651,11 @@ def create_app(  # noqa: PLR0913
     # Auto-wire persistence from SYNTHORG_DB_PATH env var (set by CLI
     # compose template).  The startup lifecycle handles connect() +
     # migrate() + auth service creation.
+    resolved_db_path: Path | None = None
     if persistence is None:
         db_path = (os.environ.get("SYNTHORG_DB_PATH") or "").strip()
         if db_path:
+            resolved_db_path = Path(db_path)
             try:
                 persistence = create_backend(
                     PersistenceConfig(sqlite=SQLiteConfig(path=db_path)),
@@ -716,7 +718,10 @@ def create_app(  # noqa: PLR0913
     )
 
     bridge = _build_bridge(message_bus, channels_plugin)
-    backup_service = _build_backup_service(effective_config)
+    backup_service = _build_backup_service(
+        effective_config,
+        resolved_db_path=resolved_db_path,
+    )
     settings_dispatcher = _build_settings_dispatcher(
         message_bus,
         settings_service,

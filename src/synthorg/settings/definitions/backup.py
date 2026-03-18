@@ -20,18 +20,6 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.BACKUP,
-        key="frequency",
-        type=SettingType.ENUM,
-        default="daily",
-        description="How often to run automatic backups",
-        group="Schedule",
-        enum_values=("hourly", "daily", "weekly"),
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.BACKUP,
         key="retention_days",
         type=SettingType.INTEGER,
         default="30",
