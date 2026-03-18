@@ -29,25 +29,24 @@ func FuzzIsValidDigest(f *testing.F) {
 	})
 }
 
-// FuzzCosignSigTag verifies that cosignSigTag never panics and produces
-// deterministic output.
-func FuzzCosignSigTag(f *testing.F) {
+// FuzzParseDigest verifies that parseDigest never panics on arbitrary input
+// and that valid results have the expected structure.
+func FuzzParseDigest(f *testing.F) {
 	f.Add("sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
 	f.Add("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	f.Add("")
 	f.Add("no-colon")
+	f.Add("sha512:abcdef")
 
 	f.Fuzz(func(t *testing.T, digest string) {
-		tag := cosignSigTag(digest)
-
-		// Determinism: same input gives same output.
-		if tag != cosignSigTag(digest) {
-			t.Error("cosignSigTag is not deterministic")
-		}
-
-		// Must end with .sig suffix.
-		if !strings.HasSuffix(tag, ".sig") {
-			t.Errorf("cosignSigTag(%q) = %q, does not end with .sig", digest, tag)
+		algo, b, err := parseDigest(digest)
+		if err == nil {
+			if algo != "sha256" {
+				t.Errorf("parseDigest(%q) algo = %q, want sha256", digest, algo)
+			}
+			if len(b) == 0 {
+				t.Errorf("parseDigest(%q) returned empty bytes", digest)
+			}
 		}
 	})
 }
