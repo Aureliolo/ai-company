@@ -349,7 +349,8 @@ def _should_inject(
         # Inject on write methods or replace Litestar's incorrect default.
         "BadRequest": is_write or "400" in operation.get("responses", {}),
         "NotFound": has_params,
-        # DELETE excluded -- idempotent; conflicts are a create/update concern.
+        # DELETE excluded -- this API's deletes are unconditional removals
+        # with no state preconditions, so 409 Conflict does not apply.
         "Conflict": is_write and method != "delete",
         "TooManyRequests": not is_public,
     }
