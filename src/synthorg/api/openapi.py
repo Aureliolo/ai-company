@@ -9,7 +9,7 @@ This module provides :func:`inject_rfc9457_responses` which transforms
 the Litestar-generated schema dict to:
 
 1. Flatten nullable ``oneOf`` unions to JSON Schema 2020-12 ``type``
-   arrays (fixes Scalar UI *"Expected union value"* warnings)
+   arrays (fixes API doc renderers *"Expected union value"* warnings)
 2. Add the ``ProblemDetail`` schema (RFC 9457 bare response body)
 3. Define reusable error responses with dual content types
 4. Inject error response references into every operation
@@ -294,7 +294,7 @@ def _normalize_nullable_unions(
     """Flatten nullable union schemas to idiomatic JSON Schema 2020-12.
 
     Litestar wraps ``T | None`` fields in ``oneOf``, producing
-    ``oneOf: [{type: "string"}, {type: "null"}]``.  Scalar UI
+    ``oneOf: [{type: "string"}, {type: "null"}]``.  API doc renderers
     expects the compact ``type: ["string", "null"]`` form for
     primitives, and ``anyOf`` for ``$ref``-based nullables.
 
@@ -313,8 +313,8 @@ def _normalize_nullable_unions(
     * **Enum $ref nullable** -- non-null branch is a ``$ref`` to a
       simple enum: inline the enum values and flatten.
     * **Object $ref nullable** -- non-null branch is a ``$ref`` to
-      a complex schema: convert to ``anyOf`` (known Scalar bug
-      `#8369 <https://github.com/scalar/scalar/issues/8369>`_).
+      a complex schema: convert to ``anyOf`` (known renderer
+      bug -- see linked issue for details).
     * **Redundant union** -- one branch is an empty schema ``{}``:
       collapse to just the non-empty branch (Litestar emits this
       for ``tuple[T, ...]`` item schemas).
@@ -605,7 +605,7 @@ def _update_info_description(info: dict[str, Any]) -> None:
     """Store RFC 9457 documentation in an extension field.
 
     Uses ``x-documentation`` so the content is preserved in the
-    spec but not rendered inline by Scalar UI (which displays
+    spec but not rendered inline by API doc renderers (which displays
     ``info.description`` prominently at the top of the page).
     """
     x_doc: dict[str, Any] = info.setdefault("x-documentation", {})
@@ -622,7 +622,7 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
     ``app.openapi_schema.to_schema()`` and returns a **new** dict with:
 
     - Nullable ``oneOf`` unions flattened to JSON Schema 2020-12
-      ``type`` arrays (fixes Scalar UI validation warnings)
+      ``type`` arrays (fixes API doc renderers validation warnings)
     - ``ProblemDetail`` added to ``components.schemas``
     - Reusable error responses (dual content types) in
       ``components.responses``
@@ -651,7 +651,7 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
     _update_info_description(result.setdefault("info", {}))
 
     # Normalize after all schemas are in place (including ProblemDetail).
-    # Workaround for Scalar bug: https://github.com/scalar/scalar/issues/8369
+    # Workaround for Renderer bug workaround -- see issue #268 for details
     result = _normalize_nullable_unions(result, all_schemas=schemas)
 
     path_count = len(result.get("paths", {}))

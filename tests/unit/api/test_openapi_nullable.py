@@ -108,7 +108,7 @@ class TestNullableUnionNormalization:
         assert "description" not in result
 
     def test_object_ref_becomes_anyof(self) -> None:
-        """$ref to object + null uses anyOf (Scalar bug #8369)."""
+        """$ref to object + null uses anyOf (known renderer limitation)."""
         schema: dict[str, Any] = {
             "oneOf": [
                 {"$ref": "#/components/schemas/Minutes"},
