@@ -17,7 +17,6 @@ from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.auth.service import SecretNotConfiguredError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
-    API_AUTH_BYPASSED,
     API_AUTH_FAILED,
     API_AUTH_SUCCESS,
 )
@@ -97,15 +96,10 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
         Raises:
             NotAuthorizedException: If authentication fails.
         """
-        path = str(connection.url.path)
-        logger.debug(
-            API_AUTH_BYPASSED,
-            path=path,
-            note="authenticate_request called (path not excluded)",
-        )
         token = _validate_auth_header(connection)
         app_state = connection.app.state["app_state"]
         auth_service: AuthService = app_state.auth_service
+        path = str(connection.url.path)
 
         if "." in token:
             user = await _try_jwt_auth(

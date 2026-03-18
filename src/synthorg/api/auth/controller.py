@@ -20,8 +20,8 @@ from synthorg.api.guards import HumanRole
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
-    API_AUTH_BYPASSED,
     API_AUTH_FAILED,
+    API_AUTH_GUARD_SKIPPED,
     API_AUTH_PASSWORD_CHANGED,
     API_AUTH_SETUP_COMPLETE,
     API_AUTH_TOKEN_ISSUED,
@@ -196,7 +196,7 @@ def require_password_changed(
     scope_type = connection.scope.get("type", "unknown")
     if any(path.endswith(s) for s in _PWD_CHANGE_EXEMPT_SUFFIXES):
         logger.debug(
-            API_AUTH_BYPASSED,
+            API_AUTH_GUARD_SKIPPED,
             guard="require_password_changed",
             path=path,
             reason="exempt_suffix",
@@ -205,7 +205,7 @@ def require_password_changed(
     user = connection.scope.get("user")
     if user is None:
         logger.debug(
-            API_AUTH_BYPASSED,
+            API_AUTH_GUARD_SKIPPED,
             guard="require_password_changed",
             path=path,
             scope_type=scope_type,

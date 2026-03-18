@@ -360,3 +360,40 @@ class TestWsTicketAuth:
         dummy_app = Litestar(route_handlers=[])
         instance = auth_cls(dummy_app)  # type: ignore[operator,call-arg]
         assert instance.scopes == {ScopeType.HTTP}  # type: ignore[union-attr]
+
+    def test_ws_rate_limit_excludes_ws_path(self) -> None:
+        """Rate limit middleware must exclude the WS path.
+
+        HTTP-style rate limiting makes no sense for persistent
+        WebSocket connections and can cause spurious 403 rejections.
+        """
+        from synthorg.api.app import _build_middleware
+        from synthorg.api.config import ApiConfig
+
+        api_config = ApiConfig()
+        middleware = _build_middleware(api_config)
+        rl_define_mw = middleware[2]  # rate limit is third in stack
+        # DefineMiddleware stores kwargs including the RateLimitConfig
+        rl_config = rl_define_mw.kwargs["config"]  # type: ignore[union-attr]
+        assert any("/ws" in pat for pat in (rl_config.exclude or [])), (
+            f"WS path not excluded from rate limit: {rl_config.exclude}"
+        )
+
+    def test_ws_handler_signature_no_channels_plugin_param(self) -> None:
+        """ws_handler must NOT declare ChannelsPlugin as a parameter.
+
+        Litestar's DI misidentifies plugin params as query params
+        for WebSocket handlers, causing a 4500 close before the
+        handler runs (#549).  The handler must resolve the plugin
+        from ``socket.app.plugins`` instead.
+        """
+        import inspect
+
+        from synthorg.api.controllers.ws import ws_handler
+
+        sig = inspect.signature(ws_handler.fn)
+        param_names = list(sig.parameters.keys())
+        assert "channels_plugin" not in param_names, (
+            "channels_plugin must not be a handler parameter -- "
+            "resolve from socket.app.plugins instead (see #549)"
+        )
