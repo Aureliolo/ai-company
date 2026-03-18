@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -14,25 +15,46 @@ import (
 )
 
 const (
-	// cosignArtifactType is the OCI artifact type for cosign signatures
-	// stored as OCI referrers (via --registry-referrers-mode=oci-1-1).
-	cosignArtifactType = "application/vnd.dev.cosign.simplesigning.v1+json"
+	// cosignV3BundleArtifactType is the OCI artifact type for cosign v3
+	// signatures stored using the new bundle format (default in cosign v3).
+	// The bundle is stored as a layer, not in annotations.
+	cosignV3BundleArtifactType = "application/vnd.dev.sigstore.bundle.v0.3+json"
 
-	// cosignBundleAnnotation is the annotation key where cosign stores the
-	// Sigstore bundle in manifest or layer annotations.
+	// cosignV2ArtifactType is the legacy OCI artifact type for cosign v2
+	// signatures stored as simplesigning payloads with bundle in annotations.
+	cosignV2ArtifactType = "application/vnd.dev.cosign.simplesigning.v1+json"
+
+	// cosignBundleAnnotation is the annotation key where cosign v2 stores
+	// the Sigstore bundle in manifest or layer annotations.
 	cosignBundleAnnotation = "dev.sigstore.cosign/bundle"
+
+	// maxBundleBytes caps the size of a cosign bundle read from a registry
+	// layer to prevent memory exhaustion from malicious registries.
+	// Typical Sigstore bundles are ~10KB; 1MB is generous.
+	maxBundleBytes = 1 << 20
 )
 
 // ErrNoCosignSignatures indicates that no cosign signature referrers were
 // found for an image. This is distinct from a cryptographic verification
-// failure -- it means the image was published before OCI referrer-based
-// cosign signing was configured.
+// failure -- it means the image was not signed or signatures are not
+// discoverable via the OCI referrers API.
 var ErrNoCosignSignatures = errors.New("no cosign signatures found")
 
+// isCosignSignatureArtifact returns true if the descriptor's artifact type
+// matches a known cosign signature format (v3 bundle or v2 simplesigning).
+func isCosignSignatureArtifact(desc v1.Descriptor) bool {
+	return desc.ArtifactType == cosignV3BundleArtifactType || desc.ArtifactType == cosignV2ArtifactType
+}
+
 // VerifyCosignSignature fetches cosign keyless signatures for the given image
-// via the OCI referrers API and verifies them against the Sigstore public
-// transparency log. The image ref must have a resolved Digest.
-// The provided verifier and identity policy are reused across images.
+// via the OCI referrers API (with tag-based fallback) and verifies them
+// against the Sigstore public transparency log.
+//
+// Supports both cosign v3 (bundle as layer) and cosign v2 (bundle in
+// annotations) signature formats.
+//
+// The image ref must have a resolved Digest. The provided verifier and
+// identity policy are reused across images.
 func VerifyCosignSignature(ctx context.Context, ref ImageRef, sev *verify.Verifier, certID verify.CertificateIdentity) error {
 	if ref.Digest == "" {
 		return fmt.Errorf("image digest not resolved")
@@ -55,8 +77,9 @@ func VerifyCosignSignature(ctx context.Context, ref ImageRef, sev *verify.Verifi
 	return fmt.Errorf("no valid cosign signature for %s: %w", ref, errors.Join(errs...))
 }
 
-// findCosignSignatures queries OCI referrers and returns descriptors for
-// cosign signature artifacts associated with the given image.
+// findCosignSignatures queries OCI referrers (with tag-based fallback) and
+// returns descriptors for cosign signature artifacts associated with the
+// given image.
 func findCosignSignatures(ctx context.Context, ref ImageRef) ([]v1.Descriptor, error) {
 	digestRef := fmt.Sprintf("%s/%s@%s", ref.Registry, ref.Repository, ref.Digest)
 	parsed, err := name.NewDigest(digestRef)
@@ -76,7 +99,7 @@ func findCosignSignatures(ctx context.Context, ref ImageRef) ([]v1.Descriptor, e
 
 	var descs []v1.Descriptor
 	for _, desc := range manifest.Manifests {
-		if desc.ArtifactType == cosignArtifactType {
+		if isCosignSignatureArtifact(desc) {
 			descs = append(descs, desc)
 		}
 	}
@@ -87,7 +110,8 @@ func findCosignSignatures(ctx context.Context, ref ImageRef) ([]v1.Descriptor, e
 }
 
 // verifyCosignReferrer fetches a single cosign signature referrer image,
-// extracts the Sigstore bundle from annotations, and verifies it.
+// extracts the Sigstore bundle, and verifies it. Supports both v3 (bundle
+// as layer content) and v2 (bundle in annotations) formats.
 func verifyCosignReferrer(ctx context.Context, ref ImageRef, desc v1.Descriptor, sev *verify.Verifier, certID verify.CertificateIdentity) error {
 	sigRef := fmt.Sprintf("%s/%s@%s", ref.Registry, ref.Repository, desc.Digest.String())
 	parsed, err := name.NewDigest(sigRef)
@@ -100,17 +124,57 @@ func verifyCosignReferrer(ctx context.Context, ref ImageRef, desc v1.Descriptor,
 		return fmt.Errorf("fetching cosign signature image: %w", err)
 	}
 
+	// Try v3 bundle format first (bundle is raw layer content).
+	if desc.ArtifactType == cosignV3BundleArtifactType {
+		return verifyCosignV3Bundle(img, ref.Digest, sev, certID)
+	}
+
+	// Fall back to v2 format (bundle in annotations).
+	return verifyCosignV2Bundle(img, ref.Digest, sev, certID)
+}
+
+// verifyCosignV3Bundle extracts and verifies a cosign v3 Sigstore bundle
+// stored as the first layer of the referrer image.
+func verifyCosignV3Bundle(img v1.Image, digest string, sev *verify.Verifier, certID verify.CertificateIdentity) error {
+	layers, err := img.Layers()
+	if err != nil {
+		return fmt.Errorf("reading signature layers: %w", err)
+	}
+	if len(layers) == 0 {
+		return fmt.Errorf("cosign v3 signature has no layers")
+	}
+
+	// The bundle is the raw content of the first layer.
+	reader, err := layers[0].Uncompressed()
+	if err != nil {
+		return fmt.Errorf("reading bundle layer: %w", err)
+	}
+	defer func() { _ = reader.Close() }()
+
+	bundleJSON, err := io.ReadAll(io.LimitReader(reader, maxBundleBytes+1))
+	if err != nil {
+		return fmt.Errorf("reading bundle content: %w", err)
+	}
+	if int64(len(bundleJSON)) > maxBundleBytes {
+		return fmt.Errorf("cosign bundle too large (>%d bytes)", maxBundleBytes)
+	}
+
+	return verifyCosignBundleWith(bundleJSON, digest, sev, certID)
+}
+
+// verifyCosignV2Bundle extracts and verifies a cosign v2 Sigstore bundle
+// stored in manifest or layer annotations.
+func verifyCosignV2Bundle(img v1.Image, digest string, sev *verify.Verifier, certID verify.CertificateIdentity) error {
 	sigManifest, err := img.Manifest()
 	if err != nil {
 		return fmt.Errorf("reading cosign signature manifest: %w", err)
 	}
 
 	// Check manifest-level annotations first, then layer annotations.
-	// Accumulate errors so callers can diagnose verification failures.
 	var bundleErrs []error
 
 	if bundleJSON, ok := sigManifest.Annotations[cosignBundleAnnotation]; ok {
-		if err := verifyCosignBundleWith([]byte(bundleJSON), ref.Digest, sev, certID); err != nil {
+		if err := verifyCosignBundleWith([]byte(bundleJSON), digest, sev, certID); err != nil {
 			bundleErrs = append(bundleErrs, fmt.Errorf("manifest bundle: %w", err))
 		} else {
 			return nil
@@ -119,7 +183,7 @@ func verifyCosignReferrer(ctx context.Context, ref ImageRef, desc v1.Descriptor,
 
 	for i := range sigManifest.Layers {
 		if bundleJSON, ok := sigManifest.Layers[i].Annotations[cosignBundleAnnotation]; ok {
-			if err := verifyCosignBundleWith([]byte(bundleJSON), ref.Digest, sev, certID); err != nil {
+			if err := verifyCosignBundleWith([]byte(bundleJSON), digest, sev, certID); err != nil {
 				bundleErrs = append(bundleErrs, fmt.Errorf("layer[%d] bundle: %w", i, err))
 			} else {
 				return nil
@@ -128,9 +192,9 @@ func verifyCosignReferrer(ctx context.Context, ref ImageRef, desc v1.Descriptor,
 	}
 
 	if len(bundleErrs) > 0 {
-		return fmt.Errorf("cosign bundle verification failed in referrer %s: %w", desc.Digest, errors.Join(bundleErrs...))
+		return fmt.Errorf("cosign v2 bundle verification failed: %w", errors.Join(bundleErrs...))
 	}
-	return fmt.Errorf("no cosign bundle annotation in signature referrer %s", desc.Digest)
+	return fmt.Errorf("no cosign bundle annotation found in signature manifest")
 }
 
 // verifyCosignBundleWith verifies a cosign Sigstore bundle against the expected
