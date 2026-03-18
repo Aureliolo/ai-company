@@ -39,14 +39,9 @@ from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.middleware import RequestLoggingMiddleware, security_headers_hook
 from synthorg.api.state import AppState
 from synthorg.api.ws_models import WsEvent, WsEventType
-from synthorg.backup.handlers import (
-    ComponentHandler,
-    ConfigComponentHandler,
-    MemoryComponentHandler,
-    PersistenceComponentHandler,
-)
-from synthorg.backup.models import BackupComponent, BackupTrigger
-from synthorg.backup.service import BackupService
+from synthorg.backup.factory import build_backup_service
+from synthorg.backup.models import BackupTrigger
+from synthorg.backup.service import BackupService  # noqa: TC001
 from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.meeting.orchestrator import (
@@ -69,7 +64,6 @@ from synthorg.observability.events.api import (
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
-from synthorg.persistence.sqlite.migrations import SCHEMA_VERSION
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
@@ -482,6 +476,8 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                     await backup_service.create_backup(
                         BackupTrigger.STARTUP,
                     )
+                except MemoryError, RecursionError:
+                    raise
                 except Exception:
                     logger.warning(
                         API_APP_STARTUP,
@@ -508,7 +504,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
         raise
 
 
-async def _safe_shutdown(  # noqa: PLR0913
+async def _safe_shutdown(  # noqa: PLR0913, C901
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
@@ -543,6 +539,8 @@ async def _safe_shutdown(  # noqa: PLR0913
                 await backup_service.create_backup(
                     BackupTrigger.SHUTDOWN,
                 )
+            except MemoryError, RecursionError:
+                raise
             except Exception:
                 logger.warning(
                     API_APP_SHUTDOWN,
@@ -718,7 +716,7 @@ def create_app(  # noqa: PLR0913
     )
 
     bridge = _build_bridge(message_bus, channels_plugin)
-    backup_service = _build_backup_service(
+    backup_service = build_backup_service(
         effective_config,
         resolved_db_path=resolved_db_path,
     )
@@ -852,61 +850,3 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
         RequestLoggingMiddleware,
         rate_limit.middleware,
     ]
-
-
-def _build_backup_service(
-    config: RootConfig,
-    *,
-    resolved_db_path: Path | None = None,
-    resolved_config_path: Path | None = None,
-) -> BackupService | None:
-    """Create backup service from config.
-
-    Uses resolved runtime paths when available so backups target
-    the actual files the application opened at startup.
-
-    Args:
-        config: Root company configuration.
-        resolved_db_path: Actual DB path used by the persistence
-            backend (falls back to config value).
-        resolved_config_path: Actual company YAML path loaded at
-            startup (falls back to SYNTHORG_CONFIG_PATH / company.yaml).
-
-    Returns:
-        Configured backup service, or ``None`` if construction fails.
-    """
-    backup_config = config.backup
-    handlers: dict[BackupComponent, ComponentHandler] = {}
-
-    try:
-        for component_name in backup_config.include:
-            component = BackupComponent(component_name)
-            if component is BackupComponent.PERSISTENCE:
-                db_path = resolved_db_path or Path(config.persistence.sqlite.path)
-                handlers[component] = PersistenceComponentHandler(
-                    db_path=db_path,
-                )
-            elif component is BackupComponent.MEMORY:
-                handlers[component] = MemoryComponentHandler(
-                    data_dir=Path(config.memory.storage.data_dir),
-                )
-            elif component is BackupComponent.CONFIG:
-                cfg_path = resolved_config_path or Path(
-                    os.environ.get("SYNTHORG_CONFIG_PATH", "company.yaml"),
-                )
-                handlers[component] = ConfigComponentHandler(
-                    config_path=cfg_path,
-                )
-
-        return BackupService(
-            backup_config,
-            handlers,
-            schema_version=SCHEMA_VERSION,
-        )
-    except Exception:
-        logger.warning(
-            API_APP_STARTUP,
-            error="Failed to build backup service",
-            exc_info=True,
-        )
-        return None
