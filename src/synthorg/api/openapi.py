@@ -177,6 +177,11 @@ full error taxonomy and retry guidance.\
 
 
 # ── Nullable union normalization ──────────────────────────────
+#
+# The helpers below mutate ``result`` (a freshly constructed dict from
+# the enclosing comprehension in ``_normalize_nullable_unions``) in
+# place.  They must not be called on the original input schema --
+# ``inject_rfc9457_responses`` deep-copies it first.
 
 _SCHEMAS_PREFIX: Final[str] = "#/components/schemas/"
 
@@ -298,7 +303,8 @@ def _normalize_nullable_unions(
             schema dict).
         all_schemas: ``components.schemas`` dict used to resolve
             ``$ref`` targets for enum inlining.  When ``None``,
-            ``$ref``-based nullable enums are left as ``anyOf``.
+            ``$ref``-based nullable unions are converted to ``anyOf``
+            (enums cannot be inlined without schema resolution).
 
     Conversion rules (applied to both ``oneOf`` and ``anyOf``):
 
@@ -321,10 +327,10 @@ def _normalize_nullable_unions(
         for keyword in ("oneOf", "anyOf"):
             if keyword not in result or not isinstance(result[keyword], list):
                 continue
-            items: list[Any] = result[keyword]
-            _flatten_nullable(result, keyword, items, all_schemas)
+            _flatten_nullable(result, keyword, result[keyword], all_schemas)
             if keyword in result:
-                _collapse_redundant_union(result, keyword, items)
+                # Re-fetch: _flatten_nullable may have replaced the list.
+                _collapse_redundant_union(result, keyword, result[keyword])
 
         return result
 
