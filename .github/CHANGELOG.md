@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.3.5](https://github.com/Aureliolo/synthorg/compare/v0.3.4...v0.3.5) (2026-03-18)
+
+
+### Features
+
+* **api:** auto-wire backend services at startup ([#555](https://github.com/Aureliolo/synthorg/issues/555)) ([0e52c47](https://github.com/Aureliolo/synthorg/commit/0e52c471c43ea24392f0329f64580577b9c0cfff))
+
+
+### Bug Fixes
+
+* **api:** resolve WebSocket 403 rejection ([#549](https://github.com/Aureliolo/synthorg/issues/549)) ([#556](https://github.com/Aureliolo/synthorg/issues/556)) ([60453d2](https://github.com/Aureliolo/synthorg/commit/60453d2aca0b3d0a9715bcc479209c2a3b54b9c4))
+* **cli:** verify SLSA provenance via GitHub attestation API ([#548](https://github.com/Aureliolo/synthorg/issues/548)) ([91d4f79](https://github.com/Aureliolo/synthorg/commit/91d4f79eb946825ef4b0bffd133353e292a4cadb)), closes [#532](https://github.com/Aureliolo/synthorg/issues/532)
+
+
+### Performance
+
+* **test:** speed up test suite -- reduce Hypothesis examples and eliminate real sleeps ([#557](https://github.com/Aureliolo/synthorg/issues/557)) ([d5f3a41](https://github.com/Aureliolo/synthorg/commit/d5f3a411b48db3e69e6be822afc19e64c27d0ba8))
+
+
+### Refactoring
+
+* replace _ErrorResponseSpec NamedTuple with TypedDict ([#554](https://github.com/Aureliolo/synthorg/issues/554)) ([71cc6e1](https://github.com/Aureliolo/synthorg/commit/71cc6e10ef12fe2ab064b16bfccf8d9861d966c1))
+
+
+### Maintenance
+
+* **docker:** suppress pydantic v1 warning on Python 3.14 ([#552](https://github.com/Aureliolo/synthorg/issues/552)) ([cbe1f05](https://github.com/Aureliolo/synthorg/commit/cbe1f051ae36c4d6f6601444324f40309266e83c)), closes [#551](https://github.com/Aureliolo/synthorg/issues/551)
+
 ## [0.3.4](https://github.com/Aureliolo/synthorg/compare/v0.3.3...v0.3.4) (2026-03-18)
 
 
