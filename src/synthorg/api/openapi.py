@@ -608,8 +608,8 @@ def _update_info_description(info: dict[str, Any]) -> None:
     spec but not rendered inline by Scalar UI (which displays
     ``info.description`` prominently at the top of the page).
     """
-    if "x-documentation" not in info:
-        info["x-documentation"] = {"rfc9457": _RFC9457_DESCRIPTION_SECTION}
+    x_doc: dict[str, Any] = info.setdefault("x-documentation", {})
+    x_doc.setdefault("rfc9457", _RFC9457_DESCRIPTION_SECTION)
 
 
 # ── Main function ─────────────────────────────────────────────
