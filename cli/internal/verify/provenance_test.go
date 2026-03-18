@@ -71,9 +71,7 @@ func TestFetchGitHubAttestationsEmptyResponse(t *testing.T) {
 func TestFetchGitHubAttestationsSuccess(t *testing.T) {
 	bundle := json.RawMessage(`{"mediaType": "application/vnd.dev.sigstore.bundle.v0.3+json"}`)
 	resp := githubAttestationResponse{
-		Attestations: []struct {
-			Bundle json.RawMessage `json:"bundle"`
-		}{
+		Attestations: []githubAttestation{
 			{Bundle: bundle},
 		},
 	}

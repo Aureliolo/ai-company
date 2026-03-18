@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/sigstore/sigstore-go/pkg/verify"
@@ -24,8 +25,9 @@ const (
 	// defaultGitHubAPIBase is the base URL for the GitHub REST API.
 	defaultGitHubAPIBase = "https://api.github.com"
 
-	// githubAttestationOwnerRepo is the GitHub owner/repo for attestation lookups.
-	// Derived from the image repository prefix (aureliolo/synthorg-*).
+	// githubAttestationOwnerRepo is the GitHub owner/repo for attestation
+	// lookups. This is the canonical GitHub repository path (case-sensitive
+	// for the API), not derived from the image registry prefix.
 	githubAttestationOwnerRepo = "Aureliolo/synthorg"
 
 	// attestationHTTPTimeout bounds individual HTTP requests to the GitHub API.
@@ -44,6 +46,11 @@ var ErrNoProvenanceAttestations = errors.New("no SLSA provenance attestations fo
 // githubAPIBase is the effective base URL for the GitHub REST API.
 // Defaults to the production URL; tests override via setGitHubAPIBase.
 var githubAPIBase = defaultGitHubAPIBase //nolint:gochecknoglobals // test override
+
+// attestationHTTPClient is a dedicated client for GitHub attestation API
+// requests, isolated from http.DefaultClient to avoid side effects from
+// other packages modifying global state.
+var attestationHTTPClient = &http.Client{} //nolint:gochecknoglobals // package-scoped client
 
 // setGitHubAPIBase overrides the GitHub API base URL (for tests only).
 func setGitHubAPIBase(base string) { githubAPIBase = base }
@@ -75,12 +82,15 @@ func VerifyProvenance(ctx context.Context, ref ImageRef, sev *verify.Verifier, c
 	return fmt.Errorf("no valid SLSA provenance attestation for %s: %w", ref, errors.Join(errs...))
 }
 
+// githubAttestation represents a single attestation entry in the GitHub API response.
+type githubAttestation struct {
+	Bundle json.RawMessage `json:"bundle"`
+}
+
 // githubAttestationResponse is the structure returned by the GitHub
 // attestation API (GET /repos/OWNER/REPO/attestations/SUBJECT_DIGEST).
 type githubAttestationResponse struct {
-	Attestations []struct {
-		Bundle json.RawMessage `json:"bundle"`
-	} `json:"attestations"`
+	Attestations []githubAttestation `json:"attestations"`
 }
 
 // fetchGitHubAttestations queries the GitHub attestation API for Sigstore
@@ -97,7 +107,7 @@ func fetchGitHubAttestations(ctx context.Context, digest string) ([]json.RawMess
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := attestationHTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetching attestations from GitHub API: %w", err)
 	}
@@ -141,6 +151,8 @@ func fetchGitHubAttestations(ctx context.Context, digest string) ([]json.RawMess
 
 // verifyProvenanceBundle parses and verifies a single Sigstore bundle from
 // the GitHub attestation API against the expected identity and image digest.
+// After cryptographic verification, it also checks that the in-toto statement
+// has a SLSA provenance predicate type (not an SBOM or other attestation).
 func verifyProvenanceBundle(bundleJSON json.RawMessage, digest string, sev *verify.Verifier, certID verify.CertificateIdentity) error {
 	b, err := loadBundle(bundleJSON)
 	if err != nil {
@@ -154,12 +166,22 @@ func verifyProvenanceBundle(bundleJSON json.RawMessage, digest string, sev *veri
 
 	// Verify the bundle cryptographically: check the signature, certificate
 	// identity (must be our docker.yml workflow), and artifact digest.
-	_, err = sev.Verify(b, verify.NewPolicy(
+	result, err := sev.Verify(b, verify.NewPolicy(
 		verify.WithArtifactDigest(digestAlgo, digestHex),
 		verify.WithCertificateIdentity(certID),
 	))
 	if err != nil {
 		return fmt.Errorf("provenance bundle verification failed: %w", err)
+	}
+
+	// sigstore-go does not validate the in-toto predicate type -- we must
+	// check it ourselves. Without this, an SBOM or other attestation signed
+	// by the same workflow identity would incorrectly pass as SLSA provenance.
+	if result != nil && result.Statement != nil {
+		pt := result.Statement.PredicateType
+		if !strings.HasPrefix(pt, SLSAProvenancePredicatePrefix) {
+			return fmt.Errorf("unexpected predicate type %q, want prefix %q", pt, SLSAProvenancePredicatePrefix)
+		}
 	}
 
 	return nil
