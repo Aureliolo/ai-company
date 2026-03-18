@@ -3,79 +3,134 @@ package verify
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/name"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 )
 
-// cosignTagSuffix is the OCI tag suffix cosign uses to store signatures.
-// For an image with digest sha256:abcd..., cosign stores the signature
-// artifact at the tag sha256-abcd....sig in the same repository.
-const cosignTagSuffix = ".sig"
+const (
+	// cosignArtifactType is the OCI artifact type for cosign signatures
+	// stored as OCI referrers (via --registry-referrers-mode=oci-1-1).
+	cosignArtifactType = "application/vnd.dev.cosign.simplesigning.v1+json"
 
-// VerifyCosignSignature fetches the cosign keyless signature for the given
-// image (identified by ref.Digest) and verifies it against the Sigstore
-// public transparency log. The image ref must have a resolved Digest.
+	// cosignBundleAnnotation is the annotation key where cosign stores the
+	// Sigstore bundle in manifest or layer annotations.
+	cosignBundleAnnotation = "dev.sigstore.cosign/bundle"
+)
+
+// ErrNoCosignSignatures indicates that no cosign signature referrers were
+// found for an image. This is distinct from a cryptographic verification
+// failure -- it means the image was published before OCI referrer-based
+// cosign signing was configured.
+var ErrNoCosignSignatures = errors.New("no cosign signatures found")
+
+// VerifyCosignSignature fetches cosign keyless signatures for the given image
+// via the OCI referrers API and verifies them against the Sigstore public
+// transparency log. The image ref must have a resolved Digest.
 // The provided verifier and identity policy are reused across images.
 func VerifyCosignSignature(ctx context.Context, ref ImageRef, sev *verify.Verifier, certID verify.CertificateIdentity) error {
 	if ref.Digest == "" {
 		return fmt.Errorf("image digest not resolved")
 	}
 
-	// Cosign stores signatures at a deterministic tag derived from the digest.
-	// e.g. sha256:abcdef... → sha256-abcdef....sig
-	sigTag := cosignSigTag(ref.Digest)
-	sigRef := fmt.Sprintf("%s/%s:%s", ref.Registry, ref.Repository, sigTag)
-
-	tagRef, err := name.ParseReference(sigRef)
+	sigDescs, err := findCosignSignatures(ctx, ref)
 	if err != nil {
-		return fmt.Errorf("parsing signature reference %q: %w", sigRef, err)
+		return err
 	}
 
-	// Fetch the cosign signature manifest.
-	img, err := remote.Image(tagRef, remote.WithContext(ctx))
-	if err != nil {
-		return fmt.Errorf("fetching cosign signature for %s: %w", ref, err)
-	}
-
-	// Extract the signature bundle from the image layers.
-	manifest, err := img.Manifest()
-	if err != nil {
-		return fmt.Errorf("reading signature manifest: %w", err)
-	}
-
-	layers, err := img.Layers()
-	if err != nil {
-		return fmt.Errorf("reading signature layers: %w", err)
-	}
-
-	if len(layers) == 0 || len(manifest.Layers) == 0 {
-		return fmt.Errorf("no cosign signature layers found for %s", ref)
-	}
-
-	// Try each layer — cosign may store the bundle in layer annotations.
-	var lastErr error
-	for i := range layers {
-		annotations := manifest.Layers[i].Annotations
-		bundleJSON, ok := annotations["dev.sigstore.cosign/bundle"]
-		if !ok {
+	// Try each signature referrer -- first successful verification wins.
+	var errs []error
+	for i, desc := range sigDescs {
+		if err := verifyCosignReferrer(ctx, ref, desc, sev, certID); err != nil {
+			errs = append(errs, fmt.Errorf("referrer[%d]: %w", i, err))
 			continue
 		}
+		return nil
+	}
+	return fmt.Errorf("no valid cosign signature for %s: %w", ref, errors.Join(errs...))
+}
 
+// findCosignSignatures queries OCI referrers and returns descriptors for
+// cosign signature artifacts associated with the given image.
+func findCosignSignatures(ctx context.Context, ref ImageRef) ([]v1.Descriptor, error) {
+	digestRef := fmt.Sprintf("%s/%s@%s", ref.Registry, ref.Repository, ref.Digest)
+	parsed, err := name.NewDigest(digestRef)
+	if err != nil {
+		return nil, fmt.Errorf("parsing digest reference %q: %w", digestRef, err)
+	}
+
+	referrerIdx, err := remote.Referrers(parsed, remote.WithContext(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("querying referrers for cosign signatures of %s: %w", ref, err)
+	}
+
+	manifest, err := referrerIdx.IndexManifest()
+	if err != nil {
+		return nil, fmt.Errorf("reading referrer index manifest: %w", err)
+	}
+
+	var descs []v1.Descriptor
+	for _, desc := range manifest.Manifests {
+		if desc.ArtifactType == cosignArtifactType {
+			descs = append(descs, desc)
+		}
+	}
+	if len(descs) == 0 {
+		return nil, fmt.Errorf("%w for %s", ErrNoCosignSignatures, ref)
+	}
+	return descs, nil
+}
+
+// verifyCosignReferrer fetches a single cosign signature referrer image,
+// extracts the Sigstore bundle from annotations, and verifies it.
+func verifyCosignReferrer(ctx context.Context, ref ImageRef, desc v1.Descriptor, sev *verify.Verifier, certID verify.CertificateIdentity) error {
+	sigRef := fmt.Sprintf("%s/%s@%s", ref.Registry, ref.Repository, desc.Digest.String())
+	parsed, err := name.NewDigest(sigRef)
+	if err != nil {
+		return fmt.Errorf("parsing signature reference: %w", err)
+	}
+
+	img, err := remote.Image(parsed, remote.WithContext(ctx))
+	if err != nil {
+		return fmt.Errorf("fetching cosign signature image: %w", err)
+	}
+
+	sigManifest, err := img.Manifest()
+	if err != nil {
+		return fmt.Errorf("reading cosign signature manifest: %w", err)
+	}
+
+	// Check manifest-level annotations first, then layer annotations.
+	// Accumulate errors so callers can diagnose verification failures.
+	var bundleErrs []error
+
+	if bundleJSON, ok := sigManifest.Annotations[cosignBundleAnnotation]; ok {
 		if err := verifyCosignBundleWith([]byte(bundleJSON), ref.Digest, sev, certID); err != nil {
-			lastErr = err
-			continue
+			bundleErrs = append(bundleErrs, fmt.Errorf("manifest bundle: %w", err))
+		} else {
+			return nil
 		}
-		return nil // verified successfully
 	}
 
-	if lastErr != nil {
-		return fmt.Errorf("cosign signature verification failed for %s: %w", ref, lastErr)
+	for i := range sigManifest.Layers {
+		if bundleJSON, ok := sigManifest.Layers[i].Annotations[cosignBundleAnnotation]; ok {
+			if err := verifyCosignBundleWith([]byte(bundleJSON), ref.Digest, sev, certID); err != nil {
+				bundleErrs = append(bundleErrs, fmt.Errorf("layer[%d] bundle: %w", i, err))
+			} else {
+				return nil
+			}
+		}
 	}
-	return fmt.Errorf("no cosign signature bundle found for %s", ref)
+
+	if len(bundleErrs) > 0 {
+		return fmt.Errorf("cosign bundle verification failed in referrer %s: %w", desc.Digest, errors.Join(bundleErrs...))
+	}
+	return fmt.Errorf("no cosign bundle annotation in signature referrer %s", desc.Digest)
 }
 
 // verifyCosignBundleWith verifies a cosign Sigstore bundle against the expected
@@ -100,13 +155,6 @@ func verifyCosignBundleWith(bundleJSON []byte, digest string, sev *verify.Verifi
 	}
 
 	return nil
-}
-
-// cosignSigTag converts a digest to the cosign signature tag.
-// "sha256:abcdef..." → "sha256-abcdef....sig"
-func cosignSigTag(digest string) string {
-	tag := strings.ReplaceAll(digest, ":", "-")
-	return tag + cosignTagSuffix
 }
 
 // parseDigest splits a digest string into algorithm and hex bytes.
