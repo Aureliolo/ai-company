@@ -275,8 +275,8 @@ func TestBackupCreate_Conflict(t *testing.T) {
 	})
 
 	out, err := runBackupCmd(t, dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error for conflict response")
 	}
 	if !strings.Contains(out, "already in progress") {
 		t.Errorf("output missing conflict message:\n%s", out)
@@ -291,8 +291,8 @@ func TestBackupCreate_ServerError(t *testing.T) {
 	})
 
 	out, err := runBackupCmd(t, dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error for server error response")
 	}
 	if !strings.Contains(out, "Backup operation failed") {
 		t.Errorf("output missing error message:\n%s", out)
@@ -394,8 +394,8 @@ func TestBackupList_ServerError(t *testing.T) {
 	})
 
 	out, err := runBackupCmd(t, dir, "list")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error for server error response")
 	}
 	if !strings.Contains(out, "Failed to list backups") {
 		t.Errorf("output missing error message:\n%s", out)
@@ -466,8 +466,8 @@ func TestBackupRestore_NotFound(t *testing.T) {
 	})
 
 	out, err := runBackupCmd(t, dir, "restore", "abcdef012345", "--confirm")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error for not-found response")
 	}
 	if !strings.Contains(out, "not found") {
 		t.Errorf("output missing not-found message:\n%s", out)
@@ -485,8 +485,8 @@ func TestBackupRestore_Conflict(t *testing.T) {
 	})
 
 	out, err := runBackupCmd(t, dir, "restore", "abcdef012345", "--confirm")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error for conflict response")
 	}
 	if !strings.Contains(out, "already in progress") {
 		t.Errorf("output missing conflict message:\n%s", out)
@@ -501,8 +501,8 @@ func TestBackupRestore_InvalidManifest(t *testing.T) {
 	})
 
 	out, err := runBackupCmd(t, dir, "restore", "abcdef012345", "--confirm")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error for unprocessable entity response")
 	}
 	if !strings.Contains(out, "Manifest schema version mismatch") {
 		t.Errorf("output missing invalid manifest message:\n%s", out)

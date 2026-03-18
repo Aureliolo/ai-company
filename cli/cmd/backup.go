@@ -266,14 +266,15 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	}
 
 	if statusCode < 200 || statusCode >= 300 {
-		out.Error(apiErrorMessage(body, "backup failed"))
-		return nil
+		msg := apiErrorMessage(body, "backup failed")
+		out.Error(msg)
+		return errors.New(msg)
 	}
 
 	data, err := parseAPIResponse(body)
 	if err != nil {
 		out.Error(err.Error())
-		return nil
+		return err
 	}
 
 	var manifest backupManifest
@@ -303,14 +304,15 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if statusCode < 200 || statusCode >= 300 {
-		out.Error(apiErrorMessage(body, "failed to list backups"))
-		return nil
+		msg := apiErrorMessage(body, "failed to list backups")
+		out.Error(msg)
+		return errors.New(msg)
 	}
 
 	data, err := parseAPIResponse(body)
 	if err != nil {
 		out.Error(err.Error())
-		return nil
+		return err
 	}
 
 	var backups []backupInfo
@@ -385,7 +387,7 @@ func renderRestoreSuccess(cmd *cobra.Command, out *ui.UI, body []byte, safeDir s
 	data, err := parseAPIResponse(body)
 	if err != nil {
 		out.Error(err.Error())
-		return nil
+		return err
 	}
 
 	var resp restoreResponse
@@ -403,19 +405,19 @@ func renderRestoreSuccess(cmd *cobra.Command, out *ui.UI, body []byte, safeDir s
 	return nil
 }
 
-// handleRestoreError displays a user-friendly error for restore API failures.
-// Always returns nil -- the error is displayed to the user, not propagated as
-// a Go error, because the CLI successfully communicated with the backend.
+// handleRestoreError displays a user-friendly error for restore API failures
+// and returns a non-nil error so the CLI exits non-zero.
 func handleRestoreError(out *ui.UI, body []byte, statusCode int, backupID string) error {
 	msg := apiErrorMessage(body, "restore failed")
 
 	if statusCode == http.StatusNotFound {
-		out.Error(fmt.Sprintf("Backup not found: %s", backupID))
+		notFoundMsg := fmt.Sprintf("Backup not found: %s", backupID)
+		out.Error(notFoundMsg)
 		out.Hint("Run 'synthorg backup list' to see available backups")
-	} else {
-		out.Error(msg)
+		return errors.New(notFoundMsg)
 	}
-	return nil
+	out.Error(msg)
+	return errors.New(msg)
 }
 
 // handleRestartAfterRestore stops containers when a restore requires restart.
