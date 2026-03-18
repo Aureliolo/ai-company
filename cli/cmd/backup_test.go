@@ -13,6 +13,9 @@ import (
 	"testing"
 )
 
+// NOTE: Tests in this file share the global rootCmd and must NOT call t.Parallel().
+// See runBackupCmd for the flag-reset workaround.
+
 // --- Unit tests for helper functions ---
 
 func TestFormatSize(t *testing.T) {
@@ -176,6 +179,30 @@ func setupBackupTest(t *testing.T, handler http.HandlerFunc) string {
 	return dir
 }
 
+// writeTestConfig creates a temp dir with a config.json file pointing at the
+// given backend port. Used for tests that don't need a real HTTP server.
+func writeTestConfig(t *testing.T, backendPort int) string {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := map[string]any{
+		"data_dir":            dir,
+		"image_tag":           "latest",
+		"backend_port":        backendPort,
+		"web_port":            3000,
+		"log_level":           "info",
+		"persistence_backend": "sqlite",
+		"memory_backend":      "mem0",
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatalf("marshaling config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), data, 0o600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+	return dir
+}
+
 // runBackupCmd executes a backup subcommand and returns stdout output.
 // Resets the --confirm flag between runs to avoid stale state from prior tests
 // (Cobra does not reset flag values between Execute() calls on global commands).
@@ -274,18 +301,7 @@ func TestBackupCreate_ServerError(t *testing.T) {
 
 func TestBackupCreate_Unreachable(t *testing.T) {
 	// Use a port where nothing is listening.
-	dir := t.TempDir()
-	cfg := map[string]any{
-		"data_dir":            dir,
-		"image_tag":           "latest",
-		"backend_port":        19999,
-		"web_port":            3000,
-		"log_level":           "info",
-		"persistence_backend": "sqlite",
-		"memory_backend":      "mem0",
-	}
-	data, _ := json.MarshalIndent(cfg, "", "  ")
-	_ = os.WriteFile(filepath.Join(dir, "config.json"), data, 0o600)
+	dir := writeTestConfig(t, 19999)
 
 	_, err := runBackupCmd(t, dir)
 	if err == nil {
@@ -505,18 +521,7 @@ func TestBackupRestore_InvalidID(t *testing.T) {
 
 func TestBackupRestore_MissingConfirm(t *testing.T) {
 	// No server needed -- validation happens before API call.
-	dir := t.TempDir()
-	cfg := map[string]any{
-		"data_dir":            dir,
-		"image_tag":           "latest",
-		"backend_port":        8000,
-		"web_port":            3000,
-		"log_level":           "info",
-		"persistence_backend": "sqlite",
-		"memory_backend":      "mem0",
-	}
-	data, _ := json.MarshalIndent(cfg, "", "  ")
-	_ = os.WriteFile(filepath.Join(dir, "config.json"), data, 0o600)
+	dir := writeTestConfig(t, 8000)
 
 	out, err := runBackupCmd(t, dir, "restore", "abcdef012345")
 	if err != nil {
@@ -524,5 +529,50 @@ func TestBackupRestore_MissingConfirm(t *testing.T) {
 	}
 	if !strings.Contains(out, "--confirm") {
 		t.Errorf("output missing --confirm hint:\n%s", out)
+	}
+}
+
+func TestBackupRestore_RestartRequired(t *testing.T) {
+	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/admin/backups/restore" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"data": {
+				"manifest": {
+					"backup_id": "abcdef012345",
+					"version": "1",
+					"synthorg_version": "0.3.5",
+					"timestamp": "2026-03-18T10:00:00Z",
+					"trigger": "manual",
+					"components": ["persistence"],
+					"db_schema_version": 1,
+					"size_bytes": 1024,
+					"checksum": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+				},
+				"restored_components": ["persistence"],
+				"safety_backup_id": "fedcba543210",
+				"restart_required": true
+			},
+			"error": null,
+			"success": true
+		}`))
+	})
+
+	out, err := runBackupCmd(t, dir, "restore", "abcdef012345", "--confirm")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		"Restore completed successfully",
+		"fedcba543210",
+		"Restart required",
+		"yes",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
 	}
 }

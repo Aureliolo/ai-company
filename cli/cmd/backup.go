@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -150,8 +151,14 @@ func formatSize(b int64) string {
 
 // backupAPIRequest performs an HTTP request to the backup API and returns
 // the response body, HTTP status code, and any transport-level error.
+// The timeout bounds the overall request; the caller's context may also
+// cancel the request independently (whichever fires first wins).
 func backupAPIRequest(ctx context.Context, port int, method, path string, body []byte, timeout time.Duration) ([]byte, int, error) {
-	apiURL := fmt.Sprintf("http://localhost:%d/api/v1/admin/backups%s", port, path)
+	base := fmt.Sprintf("http://localhost:%d/api/v1/admin/backups", port)
+	apiURL, err := url.JoinPath(base, path)
+	if err != nil {
+		return nil, 0, fmt.Errorf("building URL: %w", err)
+	}
 	client := &http.Client{Timeout: timeout}
 
 	var bodyReader io.Reader
@@ -197,6 +204,48 @@ func parseAPIResponse(raw []byte) (json.RawMessage, error) {
 	return env.Data, nil
 }
 
+// apiErrorMessage extracts a human-readable error from a non-2xx API response.
+func apiErrorMessage(body []byte, fallback string) string {
+	_, parseErr := parseAPIResponse(body)
+	if parseErr != nil {
+		return parseErr.Error()
+	}
+	return fallback
+}
+
+// printManifest renders a backup manifest as key-value pairs.
+func printManifest(out *ui.UI, m backupManifest) {
+	out.KeyValue("Backup ID", m.BackupID)
+	out.KeyValue("Timestamp", m.Timestamp)
+	out.KeyValue("Trigger", m.Trigger)
+	out.KeyValue("Components", componentsString(m.Components))
+	out.KeyValue("Size", formatSize(m.SizeBytes))
+	out.KeyValue("Checksum", m.Checksum)
+	out.KeyValue("SynthOrg version", m.SynthorgVersion)
+	out.KeyValue("DB schema version", fmt.Sprintf("%d", m.DBSchemaVersion))
+}
+
+// printBackupTable renders a list of backups as a formatted table.
+func printBackupTable(out *ui.UI, backups []backupInfo) {
+	headers := []string{"ID", "TIMESTAMP", "TRIGGER", "COMPONENTS", "SIZE", "COMPRESSED"}
+	rows := make([][]string, 0, len(backups))
+	for _, b := range backups {
+		compressed := "no"
+		if b.Compressed {
+			compressed = "yes"
+		}
+		rows = append(rows, []string{
+			b.BackupID,
+			b.Timestamp,
+			b.Trigger,
+			componentsString(b.Components),
+			formatSize(b.SizeBytes),
+			compressed,
+		})
+	}
+	out.Table(headers, rows)
+}
+
 // --- Command implementations ---
 
 func runBackupCreate(cmd *cobra.Command, _ []string) error {
@@ -217,13 +266,7 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	}
 
 	if statusCode < 200 || statusCode >= 300 {
-		data, parseErr := parseAPIResponse(body)
-		_ = data
-		msg := "backup failed"
-		if parseErr != nil {
-			msg = parseErr.Error()
-		}
-		out.Error(msg)
+		out.Error(apiErrorMessage(body, "backup failed"))
 		return nil
 	}
 
@@ -239,15 +282,7 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	}
 
 	out.Success("Backup created successfully")
-	out.KeyValue("Backup ID", manifest.BackupID)
-	out.KeyValue("Timestamp", manifest.Timestamp)
-	out.KeyValue("Trigger", manifest.Trigger)
-	out.KeyValue("Components", componentsString(manifest.Components))
-	out.KeyValue("Size", formatSize(manifest.SizeBytes))
-	out.KeyValue("Checksum", manifest.Checksum)
-	out.KeyValue("SynthOrg version", manifest.SynthorgVersion)
-	out.KeyValue("DB schema version", fmt.Sprintf("%d", manifest.DBSchemaVersion))
-
+	printManifest(out, manifest)
 	return nil
 }
 
@@ -268,13 +303,7 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if statusCode < 200 || statusCode >= 300 {
-		data, parseErr := parseAPIResponse(body)
-		_ = data
-		msg := "failed to list backups"
-		if parseErr != nil {
-			msg = parseErr.Error()
-		}
-		out.Error(msg)
+		out.Error(apiErrorMessage(body, "failed to list backups"))
 		return nil
 	}
 
@@ -295,29 +324,11 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	headers := []string{"ID", "TIMESTAMP", "TRIGGER", "COMPONENTS", "SIZE", "COMPRESSED"}
-	rows := make([][]string, 0, len(backups))
-	for _, b := range backups {
-		compressed := "no"
-		if b.Compressed {
-			compressed = "yes"
-		}
-		rows = append(rows, []string{
-			b.BackupID,
-			b.Timestamp,
-			b.Trigger,
-			componentsString(b.Components),
-			formatSize(b.SizeBytes),
-			compressed,
-		})
-	}
-	out.Table(headers, rows)
-
+	printBackupTable(out, backups)
 	return nil
 }
 
 func runBackupRestore(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
 	backupID := args[0]
 
 	// Validate backup ID format before anything else.
@@ -341,17 +352,22 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	// Validate paths early, consistent with stop.go.
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return err
+	}
+
 	out.Step("Restoring from backup " + backupID + "...")
 
-	reqBody, err := json.Marshal(restoreRequest{
-		BackupID: backupID,
-		Confirm:  true,
-	})
+	reqBody, err := json.Marshal(restoreRequest{BackupID: backupID, Confirm: true})
 	if err != nil {
 		return fmt.Errorf("building restore request: %w", err)
 	}
 
-	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodPost, "/restore", reqBody, 30*time.Second)
+	body, statusCode, err := backupAPIRequest(
+		cmd.Context(), state.BackendPort, http.MethodPost, "/restore", reqBody, 30*time.Second,
+	)
 	if err != nil {
 		return fmt.Errorf("restoring backup: %w", err)
 	}
@@ -360,6 +376,12 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		return handleRestoreError(out, body, statusCode, backupID)
 	}
 
+	return renderRestoreSuccess(cmd, out, body, safeDir)
+}
+
+// renderRestoreSuccess parses and displays a successful restore response,
+// then stops containers if a restart is required.
+func renderRestoreSuccess(cmd *cobra.Command, out *ui.UI, body []byte, safeDir string) error {
 	data, err := parseAPIResponse(body)
 	if err != nil {
 		out.Error(err.Error())
@@ -376,44 +398,30 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 	out.KeyValue("Restored components", componentsString(resp.RestoredComponents))
 
 	if resp.RestartRequired {
-		return handleRestartAfterRestore(ctx, cmd, out, state)
+		return handleRestartAfterRestore(cmd.Context(), cmd, out, safeDir)
 	}
-
 	return nil
 }
 
 // handleRestoreError displays a user-friendly error for restore API failures.
+// Always returns nil -- the error is displayed to the user, not propagated as
+// a Go error, because the CLI successfully communicated with the backend.
 func handleRestoreError(out *ui.UI, body []byte, statusCode int, backupID string) error {
-	_, parseErr := parseAPIResponse(body)
-	msg := "restore failed"
-	if parseErr != nil {
-		msg = parseErr.Error()
-	}
+	msg := apiErrorMessage(body, "restore failed")
 
-	switch statusCode {
-	case http.StatusNotFound:
+	if statusCode == http.StatusNotFound {
 		out.Error(fmt.Sprintf("Backup not found: %s", backupID))
 		out.Hint("Run 'synthorg backup list' to see available backups")
-	case http.StatusConflict:
-		out.Error(msg)
-	case http.StatusUnprocessableEntity:
-		out.Error(msg)
-	default:
+	} else {
 		out.Error(msg)
 	}
 	return nil
 }
 
 // handleRestartAfterRestore stops containers when a restore requires restart.
-func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out *ui.UI, state config.State) error {
+func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out *ui.UI, safeDir string) error {
 	out.KeyValue("Restart required", "yes")
 
-	safeDir, err := safeStateDir(state)
-	if err != nil {
-		out.Warn("Could not determine data directory for container stop")
-		out.Hint("Run 'synthorg stop' then 'synthorg start' manually")
-		return nil
-	}
 	composePath := filepath.Join(safeDir, "compose.yml")
 	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
 		out.Hint("Run 'synthorg start' to bring the stack back up")

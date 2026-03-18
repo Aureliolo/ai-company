@@ -151,7 +151,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 
 cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
   main.go           # Entry point
-  cmd/              # Cobra commands (init, start, stop, status, logs, doctor, update, uninstall, version, config, completion-install); root flags: --data-dir, --skip-verify
+  cmd/              # Cobra commands (init, start, stop, status, logs, doctor, update, uninstall, version, config, completion-install, backup); root flags: --data-dir, --skip-verify
   internal/
     version/        # Build-time version vars (ldflags-injected)
     config/         # Data dir resolution (XDG/macOS/Windows), persisted state (JSON)
