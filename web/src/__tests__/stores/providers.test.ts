@@ -124,6 +124,39 @@ describe('useProviderStore', () => {
     expect(store.providers['test-provider']).toBeUndefined()
   })
 
+  it('updateProvider calls api and refreshes', async () => {
+    const providersApi = await import('@/api/endpoints/providers')
+    const updatedProvider = { ...mockProvider, driver: 'custom-driver' }
+    vi.mocked(providersApi.updateProvider).mockResolvedValue(updatedProvider)
+    vi.mocked(providersApi.listProviders).mockResolvedValue({
+      'test-provider': updatedProvider,
+    })
+
+    const store = useProviderStore()
+    await store.updateProvider('test-provider', { driver: 'custom-driver' })
+
+    expect(providersApi.updateProvider).toHaveBeenCalledOnce()
+    expect(providersApi.updateProvider).toHaveBeenCalledWith('test-provider', { driver: 'custom-driver' })
+    expect(providersApi.listProviders).toHaveBeenCalledOnce()
+    expect(store.providers['test-provider'].driver).toBe('custom-driver')
+  })
+
+  it('createFromPreset calls api and refreshes', async () => {
+    const providersApi = await import('@/api/endpoints/providers')
+    vi.mocked(providersApi.createFromPreset).mockResolvedValue(mockProvider)
+    vi.mocked(providersApi.listProviders).mockResolvedValue({
+      'my-ollama': mockProvider,
+    })
+
+    const store = useProviderStore()
+    await store.createFromPreset({ preset_name: 'ollama', name: 'my-ollama' })
+
+    expect(providersApi.createFromPreset).toHaveBeenCalledOnce()
+    expect(providersApi.createFromPreset).toHaveBeenCalledWith({ preset_name: 'ollama', name: 'my-ollama' })
+    expect(providersApi.listProviders).toHaveBeenCalledOnce()
+    expect(store.providers['my-ollama']).toBeDefined()
+  })
+
   it('handles fetch error gracefully', async () => {
     const providersApi = await import('@/api/endpoints/providers')
     vi.mocked(providersApi.listProviders).mockRejectedValue(new Error('Network error'))

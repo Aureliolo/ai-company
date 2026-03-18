@@ -59,6 +59,7 @@ export const useProviderStore = defineStore('providers', () => {
   }
 
   async function fetchPresets() {
+    error.value = null
     try {
       presets.value = await providersApi.listPresets()
     } catch (err) {
