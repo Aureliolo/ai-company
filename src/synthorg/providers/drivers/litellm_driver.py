@@ -6,6 +6,7 @@ API.
 """
 
 import json
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 import litellm as _litellm
@@ -139,7 +140,9 @@ class LiteLLMDriver(BaseCompletionProvider):
         )
         self._provider_name = provider_name
         self._config = config
-        self._model_lookup = self._build_model_lookup(config.models)
+        self._model_lookup: MappingProxyType[str, ProviderModelConfig] = (
+            MappingProxyType(self._build_model_lookup(config.models))
+        )
 
     # ── Hook implementations ─────────────────────────────────────
 

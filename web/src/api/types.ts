@@ -469,6 +469,10 @@ export interface ProviderConfig {
   has_api_key: boolean
   has_oauth_credentials: boolean
   has_custom_header: boolean
+  oauth_token_url: string | null
+  oauth_client_id: string | null
+  oauth_scope: string | null
+  custom_header_name: string | null
 }
 
 export interface CreateProviderRequest {

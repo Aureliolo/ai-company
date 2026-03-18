@@ -636,11 +636,16 @@ class TestConnectionResponse(BaseModel):
         if self.success and self.error is not None:
             msg = "successful test must not have an error"
             raise ValueError(msg)
+        if not self.success and self.error is None:
+            msg = "failed test must have an error message"
+            raise ValueError(msg)
         return self
 
 
 class ProviderResponse(BaseModel):
     """Safe provider config for API responses -- secrets stripped.
+
+    Non-secret auth fields are included for frontend edit form UX.
 
     Attributes:
         driver: Driver backend name.
@@ -650,6 +655,10 @@ class ProviderResponse(BaseModel):
         has_api_key: Whether an API key is configured.
         has_oauth_credentials: Whether OAuth credentials are configured.
         has_custom_header: Whether a custom header is configured.
+        oauth_token_url: OAuth token endpoint URL (non-secret).
+        oauth_client_id: OAuth client identifier (non-secret).
+        oauth_scope: OAuth scope string (non-secret).
+        custom_header_name: Name of custom auth header (non-secret).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -661,6 +670,10 @@ class ProviderResponse(BaseModel):
     has_api_key: bool
     has_oauth_credentials: bool
     has_custom_header: bool
+    oauth_token_url: NotBlankStr | None = None
+    oauth_client_id: NotBlankStr | None = None
+    oauth_scope: NotBlankStr | None = None
+    custom_header_name: NotBlankStr | None = None
 
 
 class CreateFromPresetRequest(BaseModel):
@@ -668,7 +681,7 @@ class CreateFromPresetRequest(BaseModel):
 
     Attributes:
         preset_name: Preset identifier to use.
-        name: Provider name to create.
+        name: Provider name (lowercase alphanumeric + hyphens, 2-64 chars).
         api_key: Override API key for presets that need one.
         base_url: Override default base URL.
         models: Override default models.
@@ -710,5 +723,12 @@ def to_provider_response(config: ProviderConfig) -> ProviderResponse:
             and config.oauth_client_secret is not None
             and config.oauth_token_url is not None
         ),
-        has_custom_header=config.custom_header_value is not None,
+        has_custom_header=(
+            config.custom_header_name is not None
+            and config.custom_header_value is not None
+        ),
+        oauth_token_url=config.oauth_token_url,
+        oauth_client_id=config.oauth_client_id,
+        oauth_scope=config.oauth_scope,
+        custom_header_name=config.custom_header_name,
     )

@@ -34,39 +34,17 @@ describe('ProviderCard', () => {
     setActivePinia(createPinia())
   })
 
-  it('renders provider name', () => {
+  it.each([
+    ['provider name', 'test-provider'],
+    ['driver badge', 'litellm'],
+    ['auth type badge', 'none'],
+    ['model count', '1 model'],
+    ['base url', 'http://localhost:11434'],
+  ])('renders %s', (_label, expected) => {
     const wrapper = mount(ProviderCard, {
       props: { name: 'test-provider', config: mockConfig },
     })
-    expect(wrapper.text()).toContain('test-provider')
-  })
-
-  it('renders driver badge', () => {
-    const wrapper = mount(ProviderCard, {
-      props: { name: 'test-provider', config: mockConfig },
-    })
-    expect(wrapper.text()).toContain('litellm')
-  })
-
-  it('renders auth type badge', () => {
-    const wrapper = mount(ProviderCard, {
-      props: { name: 'test-provider', config: mockConfig },
-    })
-    expect(wrapper.text()).toContain('none')
-  })
-
-  it('renders model count', () => {
-    const wrapper = mount(ProviderCard, {
-      props: { name: 'test-provider', config: mockConfig },
-    })
-    expect(wrapper.text()).toContain('1 model')
-  })
-
-  it('renders base url', () => {
-    const wrapper = mount(ProviderCard, {
-      props: { name: 'test-provider', config: mockConfig },
-    })
-    expect(wrapper.text()).toContain('http://localhost:11434')
+    expect(wrapper.text()).toContain(expected)
   })
 
   it('emits edit event', async () => {

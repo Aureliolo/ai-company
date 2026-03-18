@@ -108,3 +108,15 @@ class TestLiteLLMDriverAuth:
         config = _make_config(auth_type=AuthType.NONE)
         kwargs = _build_kwargs(config)
         assert "api_base" not in kwargs
+
+    def test_build_kwargs_oauth_no_token_omits_api_key(self) -> None:
+        """OAuth auth without a pre-fetched token omits api_key from kwargs."""
+        config = _make_config(
+            auth_type=AuthType.OAUTH,
+            api_key=None,
+            oauth_token_url="https://auth.example.com/token",
+            oauth_client_id="client-id",
+            oauth_client_secret="client-secret",
+        )
+        kwargs = _build_kwargs(config)
+        assert "api_key" not in kwargs

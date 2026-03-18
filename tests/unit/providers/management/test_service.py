@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.dto import (
     CreateFromPresetRequest,
     CreateProviderRequest,
@@ -13,7 +14,7 @@ from synthorg.api.dto import (
 )
 from synthorg.api.dto import TestConnectionRequest as ConnTestRequest
 from synthorg.api.state import AppState
-from synthorg.config.schema import ProviderModelConfig, RootConfig
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig, RootConfig
 from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
@@ -24,11 +25,12 @@ from synthorg.providers.management.service import ProviderManagementService
 from synthorg.settings.encryption import SettingsEncryptor
 from synthorg.settings.registry import get_registry
 from synthorg.settings.service import SettingsService
-from tests.unit.api.conftest import FakeMessageBus, FakePersistenceBackend
+from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 
 @pytest.fixture
 async def fake_persistence() -> FakePersistenceBackend:
+    """In-memory persistence backend for provider management tests."""
     backend = FakePersistenceBackend()
     await backend.connect()
     return backend
@@ -36,6 +38,7 @@ async def fake_persistence() -> FakePersistenceBackend:
 
 @pytest.fixture
 async def fake_message_bus() -> FakeMessageBus:
+    """In-memory message bus for provider management tests."""
     bus = FakeMessageBus()
     await bus.start()
     return bus
@@ -258,9 +261,8 @@ class TestTestConnection:
         service: ProviderManagementService,
     ) -> None:
         request = ConnTestRequest()
-        result = await service.test_connection("nonexistent", request)
-        assert result.success is False
-        assert "not found" in (result.error or "").lower()
+        with pytest.raises(ProviderNotFoundError, match="not found"):
+            await service.test_connection("nonexistent", request)
 
     async def test_test_connection_success(
         self,
@@ -440,3 +442,218 @@ class TestProviderNameValidation:
             auth_type=AuthType.NONE,
         )
         assert request.name == name
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestAuthTypeTransitions:
+    """Tests for auth-type transition credential cleanup."""
+
+    async def test_switch_to_api_key_clears_oauth_fields(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Switching from oauth to api_key clears all OAuth fields."""
+        await service.create_provider(
+            _make_create_request(
+                auth_type=AuthType.OAUTH,
+                api_key="oauth-token",
+                oauth_token_url="https://auth.example.com/token",
+                oauth_client_id="client-123",
+                oauth_client_secret="secret-456",
+            ),
+        )
+        update = UpdateProviderRequest(
+            auth_type=AuthType.API_KEY,
+        )
+        result = await service.update_provider("test-provider", update)
+        assert result.auth_type == AuthType.API_KEY
+        assert result.oauth_token_url is None
+        assert result.oauth_client_id is None
+        assert result.oauth_client_secret is None
+        assert result.oauth_scope is None
+
+    async def test_switch_to_none_clears_all_credentials(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Switching to none auth clears API key and all credential fields."""
+        await service.create_provider(
+            _make_create_request(
+                auth_type=AuthType.API_KEY,
+                api_key="sk-test-key",
+            ),
+        )
+        update = UpdateProviderRequest(
+            auth_type=AuthType.NONE,
+        )
+        result = await service.update_provider("test-provider", update)
+        assert result.auth_type == AuthType.NONE
+        assert result.api_key is None
+
+    async def test_switch_to_custom_header_clears_oauth_fields(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Switching from oauth to custom_header clears all OAuth fields."""
+        await service.create_provider(
+            _make_create_request(
+                auth_type=AuthType.OAUTH,
+                api_key="oauth-token",
+                oauth_token_url="https://auth.example.com/token",
+                oauth_client_id="client-123",
+                oauth_client_secret="secret-456",
+            ),
+        )
+        update = UpdateProviderRequest(
+            auth_type=AuthType.CUSTOM_HEADER,
+            custom_header_name="X-Auth",
+            custom_header_value="header-val",
+        )
+        result = await service.update_provider("test-provider", update)
+        assert result.auth_type == AuthType.CUSTOM_HEADER
+        assert result.oauth_token_url is None
+        assert result.oauth_client_id is None
+        assert result.oauth_client_secret is None
+        assert result.oauth_scope is None
+
+    async def test_explicit_credential_overrides_clear(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Explicit credentials win over auth-type-transition clearing."""
+        await service.create_provider(
+            _make_create_request(
+                auth_type=AuthType.OAUTH,
+                api_key="old-token",
+                oauth_token_url="https://auth.example.com/token",
+                oauth_client_id="client-123",
+                oauth_client_secret="secret-456",
+            ),
+        )
+        # Switch to api_key but also provide an explicit key
+        update = UpdateProviderRequest(
+            auth_type=AuthType.API_KEY,
+            api_key="sk-new-explicit-key",
+        )
+        result = await service.update_provider("test-provider", update)
+        assert result.auth_type == AuthType.API_KEY
+        assert result.api_key == "sk-new-explicit-key"
+        # OAuth fields should still be cleared
+        assert result.oauth_token_url is None
+        assert result.oauth_client_id is None
+        assert result.oauth_client_secret is None
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestValidateAndPersistFailure:
+    """Tests for _validate_and_persist error paths."""
+
+    async def test_create_provider_raises_on_registry_build_failure(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """ProviderRegistry.from_config failure wraps into ProviderValidationError."""
+        request = _make_create_request()
+        with (
+            patch(
+                "synthorg.providers.management.service.ProviderRegistry.from_config",
+                side_effect=RuntimeError("boom"),
+            ),
+            pytest.raises(
+                ProviderValidationError,
+                match="validation failed",
+            ),
+        ):
+            await service.create_provider(request)
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestTestConnectionExtended:
+    """Extended connection test coverage."""
+
+    async def test_test_connection_explicit_model(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """test_connection uses request.model when provided."""
+        await service.create_provider(
+            CreateProviderRequest(
+                name="test-provider",
+                driver="litellm",
+                auth_type=AuthType.NONE,
+                models=(
+                    ProviderModelConfig(id="model-a", alias="primary"),
+                    ProviderModelConfig(id="model-b", alias="secondary"),
+                ),
+            ),
+        )
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "pong"
+        mock_response.choices[0].finish_reason = "stop"
+        mock_response.usage = MagicMock()
+        mock_response.usage.prompt_tokens = 1
+        mock_response.usage.completion_tokens = 1
+        mock_response.id = "test-id"
+
+        with patch(
+            "synthorg.providers.drivers.litellm_driver._litellm.acompletion",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            request = ConnTestRequest(model="model-b")
+            result = await service.test_connection("test-provider", request)
+            assert result.success is True
+            assert result.model_tested == "model-b"
+
+    async def test_do_test_connection_generic_exception(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Generic exceptions are caught and include the type name in error."""
+        await service.create_provider(_make_create_request())
+
+        with patch(
+            "synthorg.providers.drivers.litellm_driver.LiteLLMDriver.__init__",
+            side_effect=RuntimeError("driver init failed"),
+        ):
+            request = ConnTestRequest()
+            result = await service.test_connection("test-provider", request)
+            assert result.success is False
+            assert result.error is not None
+            assert "RuntimeError" in result.error
+
+
+@pytest.mark.unit
+@pytest.mark.timeout(30)
+class TestSerializeRoundTrip:
+    """Tests for provider serialization round-trip fidelity."""
+
+    async def test_serialize_round_trip(
+        self,
+        service: ProviderManagementService,
+        settings_service: SettingsService,
+    ) -> None:
+        """Providers survive a serialize -> deserialize cycle."""
+        await service.create_provider(
+            _make_create_request(
+                auth_type=AuthType.API_KEY,
+                api_key="sk-round-trip",
+                base_url="http://localhost:8080",
+            ),
+        )
+        # Read the serialized blob from settings
+        setting = await settings_service.get("providers", "configs")
+        serialized = json.loads(setting.value)
+        assert "test-provider" in serialized
+
+        # Deserialize back to ProviderConfig
+        raw = serialized["test-provider"]
+        restored = ProviderConfig.model_validate(raw)
+        assert restored.driver == "litellm"
+        assert restored.auth_type == AuthType.API_KEY
+        assert restored.api_key == "sk-round-trip"
+        assert restored.base_url == "http://localhost:8080"

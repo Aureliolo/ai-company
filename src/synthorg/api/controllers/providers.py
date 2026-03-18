@@ -165,6 +165,8 @@ class ProviderController(Controller):
 
         Raises:
             ConflictError: If a provider with this name already exists.
+            ApiValidationError: If the provider configuration fails
+                validation.
         """
         app_state: AppState = state.app_state
         try:
@@ -205,6 +207,8 @@ class ProviderController(Controller):
 
         Raises:
             ConflictError: If a provider with this name already exists.
+            ApiValidationError: If the preset is unknown or config
+                validation fails.
         """
         app_state: AppState = state.app_state
         try:
@@ -318,14 +322,25 @@ class ProviderController(Controller):
         Args:
             state: Application state.
             name: Provider name.
-            data: Optional model selection.
+            data: Test connection request (includes optional model selection).
 
         Returns:
             Connection test result.
+
+        Raises:
+            NotFoundError: If the provider does not exist.
         """
         app_state: AppState = state.app_state
-        result = await app_state.provider_management.test_connection(
-            name,
-            data,
-        )
+        try:
+            result = await app_state.provider_management.test_connection(
+                name,
+                data,
+            )
+        except ProviderNotFoundError as exc:
+            logger.warning(
+                API_RESOURCE_NOT_FOUND,
+                resource="provider",
+                name=name,
+            )
+            raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=result)

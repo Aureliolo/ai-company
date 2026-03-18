@@ -55,11 +55,11 @@ watch(() => props.visible, (v) => {
     authType.value = props.providerConfig.auth_type
     baseUrl.value = props.providerConfig.base_url ?? ''
     apiKey.value = ''
-    oauthTokenUrl.value = ''
-    oauthClientId.value = ''
+    oauthTokenUrl.value = props.providerConfig.oauth_token_url ?? ''
+    oauthClientId.value = props.providerConfig.oauth_client_id ?? ''
     oauthClientSecret.value = ''
-    oauthScope.value = ''
-    customHeaderName.value = ''
+    oauthScope.value = props.providerConfig.oauth_scope ?? ''
+    customHeaderName.value = props.providerConfig.custom_header_name ?? ''
     customHeaderValue.value = ''
   } else {
     name.value = ''
@@ -91,6 +91,16 @@ watch(selectedPreset, (preset) => {
 const isValid = computed(() => {
   if (props.mode === 'create' && !name.value.trim()) return false
   if (!driver.value.trim()) return false
+  if (authType.value === 'oauth') {
+    if (!oauthTokenUrl.value.trim() || !oauthClientId.value.trim() || !oauthClientSecret.value.trim()) {
+      return false
+    }
+  }
+  if (authType.value === 'custom_header') {
+    if (!customHeaderName.value.trim() || !customHeaderValue.value.trim()) {
+      return false
+    }
+  }
   return true
 })
 
@@ -114,7 +124,9 @@ function handleSave() {
     const data: UpdateProviderRequest = {}
     if (driver.value !== props.providerConfig?.driver) data.driver = driver.value
     if (authType.value !== props.providerConfig?.auth_type) data.auth_type = authType.value
-    if (baseUrl.value) data.base_url = baseUrl.value
+    if (baseUrl.value !== (props.providerConfig?.base_url ?? '')) {
+      data.base_url = baseUrl.value || undefined
+    }
     if (apiKey.value) data.api_key = apiKey.value
     if (oauthTokenUrl.value) data.oauth_token_url = oauthTokenUrl.value
     if (oauthClientId.value) data.oauth_client_id = oauthClientId.value
@@ -183,7 +195,9 @@ function handleSave() {
 
       <!-- API Key (api_key or oauth) -->
       <div v-if="authType === 'api_key' || authType === 'oauth'">
-        <label for="pf-api-key" class="mb-1 block text-xs text-slate-400">API Key</label>
+        <label for="pf-api-key" class="mb-1 block text-xs text-slate-400">
+          {{ authType === 'oauth' ? 'Access Token (pre-fetched)' : 'API Key' }}
+        </label>
         <InputText id="pf-api-key" v-model="apiKey" type="password" class="w-full" placeholder="sk-..." />
       </div>
 

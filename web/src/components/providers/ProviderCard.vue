@@ -77,30 +77,32 @@ function authBadgeSeverity(authType: string): 'success' | 'info' | 'warn' | 'sec
         text
         @click="emit('edit', name)"
       />
-      <template v-if="!confirmingDelete">
-        <Button
-          label="Delete"
-          size="small"
-          severity="danger"
-          text
-          @click="handleDelete"
-        />
-      </template>
-      <template v-else>
-        <Button
-          label="Confirm"
-          size="small"
-          severity="danger"
-          @click="handleDelete"
-        />
-        <Button
-          label="Cancel"
-          size="small"
-          severity="secondary"
-          text
-          @click="cancelDelete"
-        />
-      </template>
+      <div aria-live="polite">
+        <template v-if="!confirmingDelete">
+          <Button
+            label="Delete"
+            size="small"
+            severity="danger"
+            text
+            @click="handleDelete"
+          />
+        </template>
+        <template v-else>
+          <Button
+            label="Confirm"
+            size="small"
+            severity="danger"
+            @click="handleDelete"
+          />
+          <Button
+            label="Cancel"
+            size="small"
+            severity="secondary"
+            text
+            @click="cancelDelete"
+          />
+        </template>
+      </div>
     </div>
   </div>
 </template>

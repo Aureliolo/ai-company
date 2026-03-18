@@ -13,13 +13,20 @@ import type {
 } from '@/api/types'
 
 const UNSAFE_KEYS = new Set(['__proto__', 'prototype', 'constructor'])
+const SECRET_FIELDS = new Set(['api_key', 'oauth_client_secret', 'custom_header_value'])
 
-/** Strip any accidentally-serialized secrets before storing in reactive state. */
+/** Strip prototype-pollution keys and any accidentally-serialized secrets. */
 function sanitizeProviders(raw: Record<string, ProviderConfig>): Record<string, ProviderConfig> {
   const result = Object.create(null) as Record<string, ProviderConfig>
   for (const [key, provider] of Object.entries(raw)) {
     if (UNSAFE_KEYS.has(key)) continue
-    result[key] = provider
+    const cleaned = { ...provider }
+    for (const field of SECRET_FIELDS) {
+      if (field in cleaned) {
+        delete (cleaned as Record<string, unknown>)[field]
+      }
+    }
+    result[key] = cleaned
   }
   return result
 }
@@ -60,18 +67,33 @@ export const useProviderStore = defineStore('providers', () => {
   }
 
   async function createProvider(data: CreateProviderRequest) {
-    await providersApi.createProvider(data)
-    await fetchProviders()
+    try {
+      await providersApi.createProvider(data)
+      await fetchProviders()
+    } catch (err) {
+      error.value = getErrorMessage(err)
+      throw err
+    }
   }
 
   async function updateProvider(name: string, data: UpdateProviderRequest) {
-    await providersApi.updateProvider(name, data)
-    await fetchProviders()
+    try {
+      await providersApi.updateProvider(name, data)
+      await fetchProviders()
+    } catch (err) {
+      error.value = getErrorMessage(err)
+      throw err
+    }
   }
 
   async function deleteProvider(name: string) {
-    await providersApi.deleteProvider(name)
-    await fetchProviders()
+    try {
+      await providersApi.deleteProvider(name)
+      await fetchProviders()
+    } catch (err) {
+      error.value = getErrorMessage(err)
+      throw err
+    }
   }
 
   async function testConnectionAction(name: string, data?: TestConnectionRequest): Promise<TestConnectionResponse> {

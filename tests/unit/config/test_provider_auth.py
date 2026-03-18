@@ -114,3 +114,13 @@ class TestProviderConfigAuth:
             oauth_scope="read write",
         )
         assert config.oauth_scope == "read write"
+
+    def test_api_key_auth_stores_key(self) -> None:
+        """API key auth stores the provided key on the config."""
+        config = ProviderConfig(
+            driver="litellm",
+            auth_type=AuthType.API_KEY,
+            api_key="sk-test-key-001",
+        )
+        assert config.auth_type == AuthType.API_KEY
+        assert config.api_key == "sk-test-key-001"

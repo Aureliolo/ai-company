@@ -19,10 +19,13 @@ from synthorg.api.dto import (
 from synthorg.config.schema import ProviderConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
+    PROVIDER_ALREADY_EXISTS,
     PROVIDER_CONNECTION_TESTED,
     PROVIDER_CREATED,
     PROVIDER_DELETED,
+    PROVIDER_NOT_FOUND,
     PROVIDER_UPDATED,
+    PROVIDER_VALIDATION_FAILED,
 )
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.errors import (
@@ -96,7 +99,7 @@ class ProviderManagementService:
         config = providers.get(name)
         if config is None:
             msg = f"Provider {name!r} not found"
-            logger.warning(PROVIDER_UPDATED, provider=name, error=msg)
+            logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
             raise ProviderNotFoundError(msg)
         return config
 
@@ -122,7 +125,7 @@ class ProviderManagementService:
             if request.name in providers:
                 msg = f"Provider {request.name!r} already exists"
                 logger.warning(
-                    PROVIDER_CREATED,
+                    PROVIDER_ALREADY_EXISTS,
                     provider=request.name,
                     error=msg,
                 )
@@ -163,7 +166,7 @@ class ProviderManagementService:
             existing = providers.get(name)
             if existing is None:
                 msg = f"Provider {name!r} not found"
-                logger.warning(PROVIDER_UPDATED, provider=name, error=msg)
+                logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
 
             updated = _apply_update(existing, request)
@@ -191,7 +194,7 @@ class ProviderManagementService:
             providers = await self._config_resolver.get_provider_configs()
             if name not in providers:
                 msg = f"Provider {name!r} not found"
-                logger.warning(PROVIDER_DELETED, provider=name, error=msg)
+                logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
 
             new_providers = {k: v for k, v in providers.items() if k != name}
@@ -219,10 +222,9 @@ class ProviderManagementService:
         providers = await self._config_resolver.get_provider_configs()
         config = providers.get(name)
         if config is None:
-            return TestConnectionResponse(
-                success=False,
-                error=f"Provider {name!r} not found",
-            )
+            msg = f"Provider {name!r} not found"
+            logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
+            raise ProviderNotFoundError(msg)
 
         if not config.models:
             return TestConnectionResponse(
@@ -298,7 +300,7 @@ class ProviderManagementService:
             )
             return TestConnectionResponse(
                 success=False,
-                error="Connection test failed unexpectedly",
+                error=f"Connection test failed: {type(exc).__name__}",
                 model_tested=model_id,
             )
 
@@ -321,7 +323,11 @@ class ProviderManagementService:
         preset = get_preset(request.preset_name)
         if preset is None:
             msg = f"Unknown preset: {request.preset_name!r}"
-            logger.warning(PROVIDER_CREATED, error=msg)
+            logger.warning(
+                PROVIDER_VALIDATION_FAILED,
+                preset=request.preset_name,
+                error=msg,
+            )
             raise ProviderValidationError(msg)
 
         models = request.models if request.models is not None else preset.default_models
@@ -355,24 +361,32 @@ class ProviderManagementService:
         # 1. Validate: build registry + router before any I/O
         try:
             registry = ProviderRegistry.from_config(new_providers)
+            router = self._build_router(new_providers)
         except Exception as exc:
-            msg = "Provider configuration validation failed"
+            msg = f"Provider configuration validation failed: {exc}"
             logger.warning(
-                PROVIDER_UPDATED,
+                PROVIDER_VALIDATION_FAILED,
                 error=str(exc),
                 provider_count=len(new_providers),
             )
             raise ProviderValidationError(msg) from exc
 
-        router = self._build_router(new_providers)
-
         # 2. Persist to settings
-        serialized = _serialize_providers(new_providers)
-        await self._settings_service.set(
-            "providers",
-            "configs",
-            json.dumps(serialized),
-        )
+        try:
+            serialized = _serialize_providers(new_providers)
+            await self._settings_service.set(
+                "providers",
+                "configs",
+                json.dumps(serialized),
+            )
+        except Exception as exc:
+            msg = f"Failed to persist provider configuration: {type(exc).__name__}"
+            logger.exception(
+                PROVIDER_VALIDATION_FAILED,
+                error=str(exc),
+                provider_count=len(new_providers),
+            )
+            raise ProviderValidationError(msg) from exc
 
         # 3. Hot-reload: swap in AppState (both sync, no await gap)
         self._app_state.swap_provider_registry(registry)
@@ -461,25 +475,29 @@ def _apply_update(
         if value is not None:
             updates[field] = value
 
-    # auth_type change: clear orphaned credential fields
+    # auth_type change: unconditionally clear incompatible credentials
     if request.auth_type is not None:
         updates["auth_type"] = request.auth_type
+        if request.auth_type not in (AuthType.API_KEY, AuthType.OAUTH):
+            updates["api_key"] = None
         if request.auth_type != AuthType.OAUTH:
-            updates.setdefault("oauth_client_secret", None)
-            updates.setdefault("oauth_token_url", None)
-            updates.setdefault("oauth_client_id", None)
-            updates.setdefault("oauth_scope", None)
+            updates["oauth_client_secret"] = None
+            updates["oauth_token_url"] = None
+            updates["oauth_client_id"] = None
+            updates["oauth_scope"] = None
         if request.auth_type != AuthType.CUSTOM_HEADER:
-            updates.setdefault("custom_header_name", None)
-            updates.setdefault("custom_header_value", None)
+            updates["custom_header_name"] = None
+            updates["custom_header_value"] = None
 
-    # api_key has special clear_api_key semantics
+    # api_key has special clear_api_key semantics (overrides above)
     if request.api_key is not None:
         updates["api_key"] = request.api_key
     elif request.clear_api_key:
         updates["api_key"] = None
 
-    return existing.model_copy(update=updates)
+    # Re-validate the merged config (model_copy skips validators)
+    merged = {**existing.model_dump(mode="python"), **updates}
+    return ProviderConfig.model_validate(merged)
 
 
 def _serialize_providers(

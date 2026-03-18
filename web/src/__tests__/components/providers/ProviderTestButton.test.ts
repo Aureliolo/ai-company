@@ -43,6 +43,7 @@ describe('ProviderTestButton', () => {
     await btn.trigger('click')
     // Wait for async
     await vi.dynamicImportSettled()
-    expect(providersApi.testConnection).toHaveBeenCalled()
+    expect(providersApi.testConnection).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(providersApi.testConnection).mock.calls[0]?.[0]).toBe('test-provider')
   })
 })
