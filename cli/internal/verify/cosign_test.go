@@ -62,21 +62,25 @@ func TestVerifyCosignSignatureEmptyDigest(t *testing.T) {
 }
 
 func TestVerifyCosignSignatureNoReferrers(t *testing.T) {
+	// Precompute empty referrer index JSON outside the handler.
+	emptyIdx := v1.IndexManifest{
+		SchemaVersion: 2,
+		MediaType:     "application/vnd.oci.image.index.v1+json",
+		Manifests:     []v1.Descriptor{},
+	}
+	emptyIdxJSON, err := json.Marshal(emptyIdx)
+	if err != nil {
+		t.Fatalf("marshaling empty referrer index: %v", err)
+	}
+
 	// Mock registry that returns an empty referrer index.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/v2/":
 			w.WriteHeader(http.StatusOK)
 		case strings.Contains(r.URL.Path, "/referrers/"):
-			// Empty referrer index -- no cosign signatures.
 			w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
-			idx := v1.IndexManifest{
-				SchemaVersion: 2,
-				MediaType:     "application/vnd.oci.image.index.v1+json",
-				Manifests:     []v1.Descriptor{},
-			}
-			data, _ := json.Marshal(idx)
-			_, _ = w.Write(data)
+			_, _ = w.Write(emptyIdxJSON)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -91,12 +95,12 @@ func TestVerifyCosignSignatureNoReferrers(t *testing.T) {
 		Digest:     testDigest,
 	}
 
-	err := VerifyCosignSignature(context.Background(), ref, nil, sigverify.CertificateIdentity{})
-	if err == nil {
+	verifyErr := VerifyCosignSignature(context.Background(), ref, nil, sigverify.CertificateIdentity{})
+	if verifyErr == nil {
 		t.Fatal("expected error when no cosign referrers exist")
 	}
-	if !errors.Is(err, ErrNoCosignSignatures) {
-		t.Errorf("expected error to wrap ErrNoCosignSignatures, got: %v", err)
+	if !errors.Is(verifyErr, ErrNoCosignSignatures) {
+		t.Errorf("expected error to wrap ErrNoCosignSignatures, got: %v", verifyErr)
 	}
 }
 
