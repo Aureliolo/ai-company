@@ -25,7 +25,7 @@ Called by ``scripts/export_openapi.py`` after schema generation.
 """
 
 import copy
-from typing import Any, Final, NamedTuple
+from typing import Any, Final, TypedDict
 
 from synthorg.api.dto import ProblemDetail
 from synthorg.api.errors import (
@@ -68,7 +68,7 @@ _EXAMPLE_INSTANCE_ID: Final[str] = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 # ── Error response definitions ────────────────────────────────
 
 
-class _ErrorResponseSpec(NamedTuple):
+class _ErrorResponseSpec(TypedDict):
     """Specification for a reusable error response definition."""
 
     status: int
@@ -282,25 +282,25 @@ def _problem_detail_example(
 def _build_reusable_response(spec: _ErrorResponseSpec) -> dict[str, Any]:
     """Build a reusable response object with dual content types."""
     return {
-        "description": spec.description,
+        "description": spec["description"],
         "content": {
             _APP_JSON: {
                 "schema": {"$ref": _ENVELOPE_REF},
                 "example": _envelope_example(
-                    detail=spec.detail,
-                    error_code=spec.error_code,
-                    error_category=spec.error_category,
-                    retryable=spec.retryable,
+                    detail=spec["detail"],
+                    error_code=spec["error_code"],
+                    error_category=spec["error_category"],
+                    retryable=spec["retryable"],
                 ),
             },
             _PROBLEM_JSON: {
                 "schema": {"$ref": _PROBLEM_DETAIL_REF},
                 "example": _problem_detail_example(
-                    status=spec.status,
-                    detail=spec.detail,
-                    error_code=spec.error_code,
-                    error_category=spec.error_category,
-                    retryable=spec.retryable,
+                    status=spec["status"],
+                    detail=spec["detail"],
+                    error_code=spec["error_code"],
+                    error_category=spec["error_category"],
+                    retryable=spec["retryable"],
                 ),
             },
         },
@@ -429,9 +429,9 @@ def _build_all_responses(
     response_keys: list[str] = []
     status_for_key: dict[str, str] = {}
     for spec in _ERROR_RESPONSES:
-        responses[spec.key] = _build_reusable_response(spec)
-        response_keys.append(spec.key)
-        status_for_key[spec.key] = str(spec.status)
+        responses[spec["key"]] = _build_reusable_response(spec)
+        response_keys.append(spec["key"])
+        status_for_key[spec["key"]] = str(spec["status"])
     return response_keys, status_for_key
 
 
