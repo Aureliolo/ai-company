@@ -209,9 +209,10 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
+          COSIGN_EXPERIMENTAL: "1"
         run: |
           if [ -z "$DIGEST" ]; then
-            echo "::error::Push step did not produce a digest — cannot sign image"
+            echo "::error::Push step did not produce a digest -- cannot sign image"
             exit 1
           fi
           cosign sign --yes --registry-referrers-mode=oci-1-1 ghcr.io/aureliolo/synthorg-backend@${DIGEST}
@@ -376,9 +377,10 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
+          COSIGN_EXPERIMENTAL: "1"
         run: |
           if [ -z "$DIGEST" ]; then
-            echo "::error::Push step did not produce a digest — cannot sign image"
+            echo "::error::Push step did not produce a digest -- cannot sign image"
             exit 1
           fi
           cosign sign --yes --registry-referrers-mode=oci-1-1 ghcr.io/aureliolo/synthorg-web@${DIGEST}
@@ -543,9 +545,10 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
+          COSIGN_EXPERIMENTAL: "1"
         run: |
           if [ -z "$DIGEST" ]; then
-            echo "::error::Push step did not produce a digest — cannot sign image"
+            echo "::error::Push step did not produce a digest -- cannot sign image"
             exit 1
           fi
           cosign sign --yes --registry-referrers-mode=oci-1-1 ghcr.io/aureliolo/synthorg-sandbox@${DIGEST}
