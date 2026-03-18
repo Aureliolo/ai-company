@@ -2,7 +2,6 @@ package verify
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -162,33 +161,17 @@ func verifyOneImage(ctx context.Context, ref ImageRef, sev *verify.Verifier, cer
 	}
 	_, _ = fmt.Fprintf(w, "  Cosign signature: verified\n")
 
-	// Step 3: Verify SLSA provenance.
-	// Missing attestations are warn-only (pre-SLSA images may not have them).
-	// Cryptographic failures (tampered attestation, wrong identity) are hard errors.
-	provenanceVerified := true
+	// Step 3: Verify SLSA provenance via GitHub attestation API.
+	// Both missing attestations and cryptographic failures are hard errors.
 	if err := VerifyProvenance(ctx, ref, sev, certID); err != nil {
-		if isProvenanceMissing(err) {
-			provenanceVerified = false
-			_, _ = fmt.Fprintf(w, "  SLSA provenance:  not available (warn)\n")
-		} else {
-			return VerifyResult{}, fmt.Errorf("SLSA provenance verification: %w", err)
-		}
-	} else {
-		_, _ = fmt.Fprintf(w, "  SLSA provenance:  verified\n")
+		return VerifyResult{}, fmt.Errorf("SLSA provenance: %w", err)
 	}
+	_, _ = fmt.Fprintf(w, "  SLSA provenance:  verified\n")
 
 	_, _ = fmt.Fprintf(w, "  %s: OK\n", ref.Name())
 
 	return VerifyResult{
 		Ref:                ref,
-		ProvenanceVerified: provenanceVerified,
+		ProvenanceVerified: true,
 	}, nil
-}
-
-// isProvenanceMissing returns true when the provenance error indicates that
-// attestations are absent (the image was published before SLSA provenance was
-// configured), as opposed to a cryptographic or structural verification
-// failure that indicates tampering.
-func isProvenanceMissing(err error) bool {
-	return errors.Is(err, ErrNoProvenanceAttestations)
 }
