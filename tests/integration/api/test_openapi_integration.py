@@ -59,5 +59,45 @@ def test_full_app_schema_enhancement() -> None:
     health = result["paths"]["/api/v1/health"]["get"]["responses"]
     assert "401" not in health
 
-    # Info description updated.
-    assert "RFC 9457" in result["info"]["description"]
+    # RFC 9457 docs in x-documentation, not info.description.
+    assert "RFC 9457" not in result["info"].get("description", "")
+    assert "rfc9457" in result["info"]["x-documentation"]
+
+
+def _find_oneof_with_null(
+    obj: Any,
+    path: str = "$",
+) -> list[str]:
+    """Find all ``oneOf`` arrays containing a null type."""
+    violations: list[str] = []
+    if isinstance(obj, dict):
+        if "oneOf" in obj and isinstance(obj["oneOf"], list):
+            for item in obj["oneOf"]:
+                if isinstance(item, dict) and item.get("type") == "null":
+                    violations.append(path)
+                    break
+        for key, value in obj.items():
+            violations.extend(_find_oneof_with_null(value, f"{path}.{key}"))
+    elif isinstance(obj, list):
+        for i, item in enumerate(obj):
+            violations.extend(_find_oneof_with_null(item, f"{path}[{i}]"))
+    return violations
+
+
+@pytest.mark.integration
+def test_no_oneof_with_null_after_processing() -> None:
+    """No ``oneOf``-with-null survives post-processing.
+
+    Catches regressions when new models with optional fields are
+    added.
+    """
+    from synthorg.api.app import create_app
+
+    app = create_app()
+    schema: dict[str, Any] = app.openapi_schema.to_schema()
+    result = inject_rfc9457_responses(schema)
+
+    violations = _find_oneof_with_null(result)
+    assert violations == [], (
+        f"oneOf-with-null found after post-processing: {violations}"
+    )

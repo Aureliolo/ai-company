@@ -8,11 +8,13 @@ bodies) are invisible to the generator.
 This module provides :func:`inject_rfc9457_responses` which transforms
 the Litestar-generated schema dict to:
 
-1. Add the ``ProblemDetail`` schema (RFC 9457 bare response body)
-2. Define reusable error responses with dual content types
-3. Inject error response references into every operation
-4. Replace Litestar's default 400 schema with the actual envelope
-5. Append content negotiation docs to ``info.description``
+1. Flatten nullable ``oneOf`` unions to JSON Schema 2020-12 ``type``
+   arrays (fixes Scalar UI *"Expected union value"* warnings)
+2. Add the ``ProblemDetail`` schema (RFC 9457 bare response body)
+3. Define reusable error responses with dual content types
+4. Inject error response references into every operation
+5. Replace Litestar's default 400 schema with the actual envelope
+6. Store content negotiation docs in ``info.x-documentation``
 
 Called by ``scripts/export_openapi.py`` after schema generation.
 
@@ -172,6 +174,163 @@ Every error includes machine-readable metadata: `error_code` \
 See the [Error Reference](https://synthorg.io/docs/errors) for the \
 full error taxonomy and retry guidance.\
 """
+
+
+# ── Nullable union normalization ──────────────────────────────
+
+_SCHEMAS_PREFIX: Final[str] = "#/components/schemas/"
+
+
+def _flatten_nullable_ref(
+    result: dict[str, Any],
+    keyword: str,
+    branch: dict[str, Any],
+    all_schemas: dict[str, Any],
+) -> bool:
+    """Inline a nullable ``$ref`` to an enum schema.
+
+    When the ``$ref`` target is a simple enum (has ``type`` and
+    ``enum``), inlines the enum values and flattens to
+    ``{type: [T, "null"], enum: [..., null]}``.
+
+    Returns ``True`` if the union was handled, ``False`` otherwise.
+    """
+    ref: str = branch.get("$ref", "")
+    if not ref.startswith(_SCHEMAS_PREFIX):
+        return False
+
+    target_name = ref.removeprefix(_SCHEMAS_PREFIX)
+    target = all_schemas.get(target_name, {})
+
+    if "enum" not in target or "type" not in target:
+        return False
+
+    prop_desc = result.get("description")
+    merged = {k: v for k, v in target.items() if k not in ("title", "description")}
+    merged["type"] = [target["type"], "null"]
+    merged["enum"] = [*target["enum"], None]
+    del result[keyword]
+    result.update(merged)
+    if prop_desc:
+        result["description"] = prop_desc
+    return True
+
+
+def _flatten_nullable(
+    result: dict[str, Any],
+    keyword: str,
+    items: list[Any],
+    all_schemas: dict[str, Any] | None = None,
+) -> None:
+    """Flatten a nullable union (``T | None``) in *result* in place.
+
+    * Primitive branch (has ``type``): collapses to
+      ``{type: [T, "null"], ...extras}``.
+    * ``$ref`` to enum: delegates to :func:`_flatten_nullable_ref`.
+    * Other ``$ref``: swaps ``oneOf`` to ``anyOf``.
+    """
+    null_entries = [i for i in items if isinstance(i, dict) and i.get("type") == "null"]
+    if len(null_entries) != 1:
+        return
+
+    non_null = [i for i in items if i is not null_entries[0]]
+    if len(non_null) != 1:
+        return
+
+    branch = non_null[0]
+    if isinstance(branch, dict) and "type" in branch:
+        merged = {k: v for k, v in branch.items() if k != "type"}
+        merged["type"] = [branch["type"], "null"]
+        del result[keyword]
+        result.update(merged)
+        return
+
+    if (
+        isinstance(branch, dict)
+        and "$ref" in branch
+        and all_schemas
+        and _flatten_nullable_ref(result, keyword, branch, all_schemas)
+    ):
+        return
+
+    if keyword == "oneOf":
+        result["anyOf"] = result.pop("oneOf")
+
+
+_EXPECTED_UNION_BRANCHES: Final[int] = 2
+
+
+def _collapse_redundant_union(
+    result: dict[str, Any],
+    keyword: str,
+    items: list[Any],
+) -> None:
+    """Collapse a redundant ``oneOf``/``anyOf`` with an empty schema.
+
+    Litestar emits ``oneOf: [{$ref: ...}, {}]`` for tuple item
+    schemas.  The empty ``{}`` matches anything, making the union
+    redundant -- collapse to just the concrete branch.
+    """
+    if len(items) != _EXPECTED_UNION_BRANCHES:
+        return
+    empty_entries = [i for i in items if isinstance(i, dict) and not i]
+    if len(empty_entries) != 1:
+        return
+    concrete = [i for i in items if i is not empty_entries[0]]
+    if concrete:
+        del result[keyword]
+        result.update(concrete[0])
+
+
+def _normalize_nullable_unions(
+    obj: Any,
+    all_schemas: dict[str, Any] | None = None,
+) -> Any:
+    """Flatten nullable union schemas to idiomatic JSON Schema 2020-12.
+
+    Litestar wraps ``T | None`` fields in ``oneOf``, producing
+    ``oneOf: [{type: "string"}, {type: "null"}]``.  Scalar UI
+    expects the compact ``type: ["string", "null"]`` form for
+    primitives, and ``anyOf`` for ``$ref``-based nullables.
+
+    Args:
+        obj: Any JSON-serialisable value (typically the full OpenAPI
+            schema dict).
+        all_schemas: ``components.schemas`` dict used to resolve
+            ``$ref`` targets for enum inlining.  When ``None``,
+            ``$ref``-based nullable enums are left as ``anyOf``.
+
+    Conversion rules (applied to both ``oneOf`` and ``anyOf``):
+
+    * **Primitive nullable** -- non-null branch has a ``type`` key:
+      merge into ``{type: [T, "null"], ...extras}``.
+    * **Enum $ref nullable** -- non-null branch is a ``$ref`` to a
+      simple enum: inline the enum values and flatten.
+    * **Object $ref nullable** -- non-null branch is a ``$ref`` to
+      a complex schema: convert to ``anyOf`` (known Scalar bug
+      `#8369 <https://github.com/scalar/scalar/issues/8369>`_).
+    * **Redundant union** -- one branch is an empty schema ``{}``:
+      collapse to just the non-empty branch (Litestar emits this
+      for ``tuple[T, ...]`` item schemas).
+    * **Discriminated unions** -- no ``{"type": "null"}`` entry and
+      no empty-schema branch: left unchanged.
+    """
+    if isinstance(obj, dict):
+        result = {k: _normalize_nullable_unions(v, all_schemas) for k, v in obj.items()}
+
+        for keyword in ("oneOf", "anyOf"):
+            if keyword not in result or not isinstance(result[keyword], list):
+                continue
+            items: list[Any] = result[keyword]
+            _flatten_nullable(result, keyword, items, all_schemas)
+            if keyword in result:
+                _collapse_redundant_union(result, keyword, items)
+
+        return result
+
+    if isinstance(obj, list):
+        return [_normalize_nullable_unions(item, all_schemas) for item in obj]
+    return obj
 
 
 # ── Helpers ───────────────────────────────────────────────────
@@ -437,11 +596,14 @@ def _build_all_responses(
 
 
 def _update_info_description(info: dict[str, Any]) -> None:
-    """Append RFC 9457 documentation to ``info.description`` idempotently."""
-    existing = info.get("description", "")
-    if "## Error Handling (RFC 9457)" not in existing:
-        separator = "\n\n" if existing else ""
-        info["description"] = f"{existing}{separator}{_RFC9457_DESCRIPTION_SECTION}"
+    """Store RFC 9457 documentation in an extension field.
+
+    Uses ``x-documentation`` so the content is preserved in the
+    spec but not rendered inline by Scalar UI (which displays
+    ``info.description`` prominently at the top of the page).
+    """
+    if "x-documentation" not in info:
+        info["x-documentation"] = {"rfc9457": _RFC9457_DESCRIPTION_SECTION}
 
 
 # ── Main function ─────────────────────────────────────────────
@@ -453,11 +615,13 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
     Takes the raw schema dict produced by Litestar's
     ``app.openapi_schema.to_schema()`` and returns a **new** dict with:
 
+    - Nullable ``oneOf`` unions flattened to JSON Schema 2020-12
+      ``type`` arrays (fixes Scalar UI validation warnings)
     - ``ProblemDetail`` added to ``components.schemas``
     - Reusable error responses (dual content types) in
       ``components.responses``
     - Error response refs injected into every operation
-    - RFC 9457 docs appended to ``info.description``
+    - RFC 9457 docs stored in ``info.x-documentation``
 
     Args:
         schema: OpenAPI schema dict (not modified).
@@ -465,7 +629,7 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Enhanced copy of the schema.
     """
-    result = copy.deepcopy(schema)
+    result: dict[str, Any] = copy.deepcopy(schema)
 
     components = result.setdefault("components", {})
     schemas = components.setdefault("schemas", {})
@@ -479,6 +643,10 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
         status_for_key,
     )
     _update_info_description(result.setdefault("info", {}))
+
+    # Normalize after all schemas are in place (including ProblemDetail).
+    # Workaround for Scalar bug: https://github.com/scalar/scalar/issues/8369
+    result = _normalize_nullable_unions(result, all_schemas=schemas)
 
     path_count = len(result.get("paths", {}))
     logger.debug(

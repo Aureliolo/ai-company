@@ -10,7 +10,11 @@ from typing import Any
 
 import pytest
 
-from synthorg.api.openapi import _should_inject, inject_rfc9457_responses
+from synthorg.api.openapi import (
+    _normalize_nullable_unions,
+    _should_inject,
+    inject_rfc9457_responses,
+)
 
 # ── Fixtures ──────────────────────────────────────────────────
 
@@ -585,32 +589,32 @@ class TestOperationInjection:
 
 @pytest.mark.unit
 class TestInfoDescription:
-    """info.description is updated with RFC 9457 documentation."""
+    """RFC 9457 documentation is stored in x-documentation extension."""
 
-    def test_mentions_rfc_9457(self, base_schema: dict[str, Any]) -> None:
+    def test_rfc9457_in_x_documentation(self, base_schema: dict[str, Any]) -> None:
         result = inject_rfc9457_responses(base_schema)
-        desc = result["info"]["description"]
-        assert "RFC 9457" in desc
+        xdoc = result["info"]["x-documentation"]
+        assert "rfc9457" in xdoc
+        assert "RFC 9457" in xdoc["rfc9457"]
+
+    def test_not_in_description(self, base_schema: dict[str, Any]) -> None:
+        """RFC 9457 docs should not pollute info.description."""
+        result = inject_rfc9457_responses(base_schema)
+        desc = result["info"].get("description", "")
+        assert "RFC 9457" not in desc
 
     def test_mentions_content_negotiation(self, base_schema: dict[str, Any]) -> None:
         result = inject_rfc9457_responses(base_schema)
-        desc = result["info"]["description"]
-        assert "application/problem+json" in desc
-        assert "application/json" in desc
-
-    def test_mentions_error_reference(self, base_schema: dict[str, Any]) -> None:
-        result = inject_rfc9457_responses(base_schema)
-        desc = result["info"]["description"]
-        assert "synthorg.io/docs/errors" in desc
+        rfc_doc = result["info"]["x-documentation"]["rfc9457"]
+        assert "application/problem+json" in rfc_doc
+        assert "application/json" in rfc_doc
 
     def test_preserves_existing_description(self) -> None:
-        """Existing info.description is preserved with RFC section appended."""
+        """Existing info.description is not modified."""
         schema = _minimal_schema()
         schema["info"]["description"] = "My custom API description."
         result = inject_rfc9457_responses(schema)
-        desc = result["info"]["description"]
-        assert desc.startswith("My custom API description.")
-        assert "RFC 9457" in desc
+        assert result["info"]["description"] == "My custom API description."
 
 
 # ── Idempotency and immutability ──────────────────────────────
@@ -645,3 +649,160 @@ class TestIdempotencyAndImmutability:
         }
         result = inject_rfc9457_responses(schema)
         assert "ProblemDetail" in result["components"]["schemas"]
+
+
+# ── Nullable union normalization ─────────────────────────────
+
+
+@pytest.mark.unit
+class TestNullableUnionNormalization:
+    """Nullable oneOf/anyOf unions are flattened to type arrays."""
+
+    def test_primitive_oneof_flattened(self) -> None:
+        """oneOf with primitive + null becomes type array."""
+        schema: dict[str, Any] = {
+            "oneOf": [{"type": "string"}, {"type": "null"}],
+        }
+        result = _normalize_nullable_unions(schema)
+        assert result == {"type": ["string", "null"]}
+
+    def test_primitive_anyof_flattened(self) -> None:
+        """anyOf with primitive + null becomes type array."""
+        schema: dict[str, Any] = {
+            "anyOf": [{"type": "integer"}, {"type": "null"}],
+        }
+        result = _normalize_nullable_unions(schema)
+        assert result == {"type": ["integer", "null"]}
+
+    def test_constraints_preserved(self) -> None:
+        """Extra properties (minLength, format) are kept."""
+        schema: dict[str, Any] = {
+            "oneOf": [
+                {"type": "string", "format": "date-time"},
+                {"type": "null"},
+            ],
+        }
+        result = _normalize_nullable_unions(schema)
+        assert result == {"type": ["string", "null"], "format": "date-time"}
+
+    def test_enum_ref_inlined(self) -> None:
+        """$ref to enum + null inlines enum values and flattens."""
+        all_schemas: dict[str, Any] = {
+            "Status": {
+                "type": "string",
+                "enum": ["active", "inactive"],
+                "title": "Status",
+            },
+        }
+        schema: dict[str, Any] = {
+            "description": "Current status",
+            "oneOf": [
+                {"$ref": "#/components/schemas/Status"},
+                {"type": "null"},
+            ],
+        }
+        result = _normalize_nullable_unions(schema, all_schemas=all_schemas)
+        assert result["type"] == ["string", "null"]
+        assert result["enum"] == ["active", "inactive", None]
+        assert result["description"] == "Current status"
+
+    def test_object_ref_becomes_anyof(self) -> None:
+        """$ref to object + null uses anyOf (Scalar bug #8369)."""
+        schema: dict[str, Any] = {
+            "oneOf": [
+                {"$ref": "#/components/schemas/Minutes"},
+                {"type": "null"},
+            ],
+        }
+        result = _normalize_nullable_unions(schema)
+        assert "anyOf" in result
+        assert "oneOf" not in result
+
+    def test_discriminated_union_preserved(self) -> None:
+        """oneOf without null stays oneOf."""
+        schema: dict[str, Any] = {
+            "oneOf": [
+                {"$ref": "#/components/schemas/TypeA"},
+                {"$ref": "#/components/schemas/TypeB"},
+            ],
+        }
+        result = _normalize_nullable_unions(schema)
+        assert "oneOf" in result
+        assert "anyOf" not in result
+
+    def test_nested_properties_normalized(self) -> None:
+        """Nullable unions inside properties are flattened."""
+        schema: dict[str, Any] = {
+            "type": "object",
+            "properties": {
+                "deadline": {
+                    "oneOf": [{"type": "string"}, {"type": "null"}],
+                },
+            },
+        }
+        result = _normalize_nullable_unions(schema)
+        assert result["properties"]["deadline"] == {
+            "type": ["string", "null"],
+        }
+
+    def test_redundant_empty_schema_collapsed(self) -> None:
+        """oneOf with $ref + empty {} collapses to just the $ref."""
+        schema: dict[str, Any] = {
+            "items": {
+                "oneOf": [
+                    {"$ref": "#/components/schemas/Phase"},
+                    {},
+                ],
+            },
+            "type": "array",
+        }
+        result = _normalize_nullable_unions(schema)
+        assert result["items"] == {
+            "$ref": "#/components/schemas/Phase",
+        }
+
+    def test_idempotent(self) -> None:
+        """Running normalization twice produces the same result."""
+        schema: dict[str, Any] = {
+            "oneOf": [{"type": "string"}, {"type": "null"}],
+        }
+        first = _normalize_nullable_unions(schema)
+        second = _normalize_nullable_unions(first)
+        assert first == second
+
+    def test_full_pipeline(self) -> None:
+        """Full inject_rfc9457_responses pipeline normalizes unions."""
+        schema = _minimal_schema(
+            extra_schemas={
+                "TaskStatus": {
+                    "type": "string",
+                    "enum": ["pending", "done"],
+                    "title": "TaskStatus",
+                },
+                "Task": {
+                    "type": "object",
+                    "properties": {
+                        "assigned_to": {
+                            "oneOf": [
+                                {"type": "string"},
+                                {"type": "null"},
+                            ],
+                        },
+                        "status": {
+                            "oneOf": [
+                                {"$ref": "#/components/schemas/TaskStatus"},
+                                {"type": "null"},
+                            ],
+                        },
+                    },
+                },
+            },
+        )
+        result = inject_rfc9457_responses(schema)
+        task = result["components"]["schemas"]["Task"]
+        assert task["properties"]["assigned_to"] == {
+            "type": ["string", "null"],
+        }
+        status = task["properties"]["status"]
+        assert status["type"] == ["string", "null"]
+        assert status["enum"] == ["pending", "done", None]
