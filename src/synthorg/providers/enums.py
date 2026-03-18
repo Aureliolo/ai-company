@@ -3,6 +3,15 @@
 from enum import StrEnum
 
 
+class AuthType(StrEnum):
+    """Authentication type for an LLM provider."""
+
+    API_KEY = "api_key"
+    OAUTH = "oauth"
+    CUSTOM_HEADER = "custom_header"
+    NONE = "none"
+
+
 class MessageRole(StrEnum):
     """Role of a message participant in a chat completion."""
 

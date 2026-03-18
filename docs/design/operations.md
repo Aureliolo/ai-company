@@ -43,6 +43,7 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
     ```yaml
     providers:
       example-provider:
+        auth_type: api_key             # api_key | oauth | custom_header | none
         api_key: "${PROVIDER_API_KEY}"
         models:                        # example entries -- real list loaded from provider
           - id: "example-large-001"
@@ -65,6 +66,7 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
             estimated_latency_ms: 200
 
       openrouter:
+        auth_type: api_key           # api_key | oauth | custom_header | none
         api_key: "${OPENROUTER_API_KEY}"
         base_url: "https://openrouter.ai/api/v1"
         models:                        # example entries
@@ -76,6 +78,7 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
             alias: "or-reasoning"
 
       ollama:
+        auth_type: none
         base_url: "http://localhost:11434"
         models:                        # example entries
           - id: "llama3.3:70b"
@@ -97,6 +100,17 @@ The framework uses **LiteLLM** as the provider abstraction layer:
 - Automatic retries and fallbacks
 - Load balancing across providers
 - OpenAI-compatible interface (all providers normalized)
+
+### Provider Management
+
+Providers can be managed at runtime through the API without restarting:
+
+- **CRUD**: `POST /api/v1/providers` (create), `PUT /api/v1/providers/{name}` (update), `DELETE /api/v1/providers/{name}` (delete)
+- **Connection test**: `POST /api/v1/providers/{name}/test` -- sends a minimal probe and reports latency
+- **Presets**: `GET /api/v1/providers/presets` lists built-in templates (Ollama, LM Studio, OpenRouter, vLLM); `POST /api/v1/providers/from-preset` creates from a template
+- **Hot-reload**: On mutation, `ProviderManagementService` rebuilds `ProviderRegistry` + `ModelRouter` and atomically swaps them in `AppState` -- no downtime
+- **Auth types**: `api_key` (default), `oauth` (stores credentials, MVP uses pre-fetched token), `custom_header`, `none` (local providers)
+- **Credential safety**: Secrets are Fernet-encrypted at rest via the `providers.configs` sensitive setting; API responses use `ProviderResponse` DTO that strips all secrets and provides `has_api_key`/`has_oauth_credentials`/`has_custom_header` boolean indicators
 
 ### Model Routing Strategy
 
@@ -981,7 +995,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/approvals` | Pending human approvals queue |
 | `/api/v1/analytics` | Performance metrics, dashboards |
 | `/api/v1/settings` | Runtime-editable configuration (9 namespaces), schema discovery |
-| `/api/v1/providers` | Model provider status, config |
+| `GET /api/v1/providers`, `POST /api/v1/providers`, `PUT /api/v1/providers/{name}`, `DELETE /api/v1/providers/{name}`, `POST /api/v1/providers/{name}/test`, `GET /api/v1/providers/presets`, `POST /api/v1/providers/from-preset` | Provider CRUD, connection testing, presets, 4 auth types (api_key, oauth, custom_header, none) |
 | `/api/v1/ws` | WebSocket for real-time updates (ticket auth via `?ticket=`) |
 | `POST /api/v1/auth/ws-ticket` | Exchange JWT for one-time WebSocket connection ticket |
 
@@ -1049,7 +1063,11 @@ and retry guidance.
 - **Budget Panel**: Spending charts, per-agent breakdown (projections/alerts planned)
 - **Meeting Logs**: Placeholder — coming soon
 - **Artifact Browser**: Placeholder — coming soon
-- **Settings**: Runtime-editable configuration via DB-backed settings persistence (9 namespaces: api, company, providers, memory, budget, security, coordination, observability, backup). Setting types: STRING, INTEGER, FLOAT, BOOLEAN, ENUM, JSON. 4-layer resolution (DB > env > YAML > code defaults), Fernet encryption for sensitive values, REST API (GET/PUT/DELETE + schema endpoints for dynamic UI generation), change notifications via message bus. `ConfigResolver` provides typed scalar accessors and structural data accessors for API controllers: scalar reads assemble full Pydantic config models from individually resolved settings (using `asyncio.TaskGroup` for parallel resolution); structural reads (`get_agents`, `get_departments`, `get_provider_configs`) resolve JSON-typed settings with Pydantic schema validation and graceful fallback to `RootConfig` defaults on invalid data. **Hot-reload**: `SettingsChangeDispatcher` polls the `#settings` bus channel and routes change notifications to registered `SettingsSubscriber` implementations. Settings marked `restart_required=True` are filtered (logged as WARNING, not dispatched). Concrete subscribers: `ProviderSettingsSubscriber` (rebuilds `ModelRouter` on `routing_strategy` change via `AppState.swap_model_router`), `MemorySettingsSubscriber` (advisory logging for non-restart memory settings).
+- **Settings**:
+    - *Provider management*: Add/edit/delete providers, connection test, preset-based creation -- integrated as a tab alongside company config and user settings.
+    - *DB-backed persistence*: 9 namespaces (api, company, providers, memory, budget, security, coordination, observability, backup). Setting types: `STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`. 4-layer resolution: DB > env > YAML > code defaults. Fernet encryption for `sensitive` values. REST API (`GET`/`PUT`/`DELETE` + schema endpoints for dynamic UI generation), change notifications via message bus.
+    - *`ConfigResolver`*: Typed scalar accessors assemble full Pydantic config models from individually resolved settings (using `asyncio.TaskGroup` for parallel resolution). Structural data accessors (`get_agents`, `get_departments`, `get_provider_configs`) resolve JSON-typed settings with Pydantic schema validation and graceful fallback to `RootConfig` defaults on invalid data.
+    - *Hot-reload*: `SettingsChangeDispatcher` polls the `#settings` bus channel and routes change notifications to registered `SettingsSubscriber` implementations. Settings marked `restart_required=True` are filtered (logged as WARNING, not dispatched). Concrete subscribers: `ProviderSettingsSubscriber` (rebuilds `ModelRouter` on `routing_strategy` change via `AppState.swap_model_router`), `MemorySettingsSubscriber` (advisory logging for non-restart memory settings).
 
 ### Human Roles
 

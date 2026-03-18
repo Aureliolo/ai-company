@@ -5,6 +5,7 @@ Request DTOs define write-operation payloads (separate from domain
 models because they omit server-generated fields).
 """
 
+import re
 from typing import Self
 
 from pydantic import (
@@ -17,6 +18,7 @@ from pydantic import (
 )
 
 from synthorg.api.errors import ErrorCategory, ErrorCode  # noqa: TC001
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig  # noqa: TC001
 from synthorg.core.enums import (
     ApprovalRiskLevel,
     Complexity,
@@ -26,6 +28,7 @@ from synthorg.core.enums import (
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.core.validation import is_valid_action_type
+from synthorg.providers.enums import AuthType
 
 DEFAULT_LIMIT: int = 50
 MAX_LIMIT: int = 200
@@ -482,3 +485,250 @@ class CoordinationResultResponse(BaseModel):
     def is_success(self) -> bool:
         """True when every phase completed successfully."""
         return all(p.success for p in self.phases)
+
+
+# ── Provider management DTOs ────────────────────────────────
+
+_PROVIDER_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$")
+_RESERVED_PROVIDER_NAMES: frozenset[str] = frozenset({"presets", "from-preset"})
+
+
+def _validate_provider_name(v: str) -> str:
+    """Validate a provider name against naming rules.
+
+    Args:
+        v: Candidate provider name.
+
+    Returns:
+        The validated name.
+
+    Raises:
+        ValueError: If the name is invalid or reserved.
+    """
+    if not _PROVIDER_NAME_PATTERN.match(v):
+        msg = (
+            "Provider name must be 2-64 chars, lowercase "
+            "alphanumeric and hyphens, starting/ending with "
+            "alphanumeric"
+        )
+        raise ValueError(msg)
+    if v in _RESERVED_PROVIDER_NAMES:
+        msg = f"Provider name {v!r} is reserved"
+        raise ValueError(msg)
+    return v
+
+
+class CreateProviderRequest(BaseModel):
+    """Payload for creating a new provider.
+
+    Attributes:
+        name: Provider name (lowercase alphanumeric + hyphens, 2-64 chars).
+        driver: Driver backend name.
+        auth_type: Authentication type.
+        api_key: API key for api_key/oauth auth types.
+        base_url: Provider API base URL.
+        oauth_token_url: OAuth token endpoint.
+        oauth_client_id: OAuth client identifier.
+        oauth_client_secret: OAuth client secret.
+        oauth_scope: OAuth scope string.
+        custom_header_name: Custom auth header name.
+        custom_header_value: Custom auth header value.
+        models: Model configurations.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: NotBlankStr = Field(max_length=64)
+    driver: NotBlankStr = "litellm"
+    auth_type: AuthType = AuthType.API_KEY
+    api_key: NotBlankStr | None = None
+    base_url: NotBlankStr | None = None
+    oauth_token_url: NotBlankStr | None = None
+    oauth_client_id: NotBlankStr | None = None
+    oauth_client_secret: NotBlankStr | None = None
+    oauth_scope: NotBlankStr | None = None
+    custom_header_name: NotBlankStr | None = None
+    custom_header_value: NotBlankStr | None = None
+    models: tuple[ProviderModelConfig, ...] = ()
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str) -> str:
+        return _validate_provider_name(v)
+
+
+class UpdateProviderRequest(BaseModel):
+    """Payload for updating a provider (partial update).
+
+    All fields are optional -- only provided fields are updated.
+
+    Attributes:
+        driver: New driver name.
+        auth_type: New authentication type.
+        api_key: New API key.
+        clear_api_key: Explicitly clear the API key.
+        base_url: New base URL.
+        oauth_token_url: New OAuth token URL.
+        oauth_client_id: New OAuth client ID.
+        oauth_client_secret: New OAuth client secret.
+        oauth_scope: New OAuth scope.
+        custom_header_name: New custom header name.
+        custom_header_value: New custom header value.
+        models: New model configurations.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    driver: NotBlankStr | None = None
+    auth_type: AuthType | None = None
+    api_key: NotBlankStr | None = None
+    clear_api_key: bool = False
+    base_url: NotBlankStr | None = None
+    oauth_token_url: NotBlankStr | None = None
+    oauth_client_id: NotBlankStr | None = None
+    oauth_client_secret: NotBlankStr | None = None
+    oauth_scope: NotBlankStr | None = None
+    custom_header_name: NotBlankStr | None = None
+    custom_header_value: NotBlankStr | None = None
+    models: tuple[ProviderModelConfig, ...] | None = None
+
+    @model_validator(mode="after")
+    def _validate_api_key_clear_consistency(self) -> Self:
+        """Reject simultaneous api_key and clear_api_key."""
+        if self.api_key is not None and self.clear_api_key:
+            msg = "api_key and clear_api_key are mutually exclusive"
+            raise ValueError(msg)
+        return self
+
+
+class TestConnectionRequest(BaseModel):
+    """Payload for testing a provider connection.
+
+    Attributes:
+        model: Model to test (defaults to first model in config).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    model: NotBlankStr | None = None
+
+
+class TestConnectionResponse(BaseModel):
+    """Result of a provider connection test.
+
+    Attributes:
+        success: Whether the connection test succeeded.
+        latency_ms: Round-trip latency in milliseconds.
+        error: Error message on failure.
+        model_tested: Model ID that was tested.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    success: bool
+    latency_ms: float | None = None
+    error: NotBlankStr | None = None
+    model_tested: NotBlankStr | None = None
+
+    @model_validator(mode="after")
+    def _validate_success_error_consistency(self) -> Self:
+        """Ensure success and error fields are consistent."""
+        if self.success and self.error is not None:
+            msg = "successful test must not have an error"
+            raise ValueError(msg)
+        if not self.success and self.error is None:
+            msg = "failed test must have an error message"
+            raise ValueError(msg)
+        return self
+
+
+class ProviderResponse(BaseModel):
+    """Safe provider config for API responses -- secrets stripped.
+
+    Non-secret auth fields are included for frontend edit form UX.
+
+    Attributes:
+        driver: Driver backend name.
+        auth_type: Authentication type.
+        base_url: Provider API base URL.
+        models: Model configurations.
+        has_api_key: Whether an API key is configured.
+        has_oauth_credentials: Whether OAuth credentials are configured.
+        has_custom_header: Whether a custom header is configured.
+        oauth_token_url: OAuth token endpoint URL (non-secret).
+        oauth_client_id: OAuth client identifier (non-secret).
+        oauth_scope: OAuth scope string (non-secret).
+        custom_header_name: Name of custom auth header (non-secret).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    driver: NotBlankStr
+    auth_type: AuthType
+    base_url: NotBlankStr | None
+    models: tuple[ProviderModelConfig, ...]
+    has_api_key: bool
+    has_oauth_credentials: bool
+    has_custom_header: bool
+    oauth_token_url: NotBlankStr | None = None
+    oauth_client_id: NotBlankStr | None = None
+    oauth_scope: NotBlankStr | None = None
+    custom_header_name: NotBlankStr | None = None
+
+
+class CreateFromPresetRequest(BaseModel):
+    """Payload for creating a provider from a preset.
+
+    Attributes:
+        preset_name: Preset identifier to use.
+        name: Provider name (lowercase alphanumeric + hyphens, 2-64 chars).
+        api_key: Override API key for presets that need one.
+        base_url: Override default base URL.
+        models: Override default models.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    preset_name: NotBlankStr
+    name: NotBlankStr = Field(max_length=64)
+    api_key: NotBlankStr | None = None
+    base_url: NotBlankStr | None = None
+    models: tuple[ProviderModelConfig, ...] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, v: str) -> str:
+        return _validate_provider_name(v)
+
+
+def to_provider_response(config: ProviderConfig) -> ProviderResponse:
+    """Convert a ProviderConfig to a safe ProviderResponse.
+
+    Strips all secrets and provides boolean credential indicators.
+
+    Args:
+        config: Provider configuration (may contain secrets).
+
+    Returns:
+        Safe response DTO with secrets stripped.
+    """
+    return ProviderResponse(
+        driver=config.driver,
+        auth_type=config.auth_type,
+        base_url=config.base_url,
+        models=config.models,
+        has_api_key=config.api_key is not None,
+        has_oauth_credentials=(
+            config.oauth_client_id is not None
+            and config.oauth_client_secret is not None
+            and config.oauth_token_url is not None
+        ),
+        has_custom_header=(
+            config.custom_header_name is not None
+            and config.custom_header_value is not None
+        ),
+        oauth_token_url=config.oauth_token_url,
+        oauth_client_id=config.oauth_client_id,
+        oauth_scope=config.oauth_scope,
+        custom_header_name=config.custom_header_name,
+    )

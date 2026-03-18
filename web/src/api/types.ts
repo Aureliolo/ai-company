@@ -447,6 +447,8 @@ export interface CompanyConfig {
 
 // ── Providers ────────────────────────────────────────────────
 
+export type AuthType = 'api_key' | 'oauth' | 'custom_header' | 'none'
+
 export interface ProviderModelConfig {
   id: string
   alias: string | null
@@ -457,14 +459,79 @@ export interface ProviderModelConfig {
 }
 
 /**
- * Provider configuration as returned by the listing endpoint.
- * The backend MUST NOT serialize `api_key` to the frontend.
- * If it does, the provider store strips it before storing.
+ * Provider response DTO -- secrets stripped, credential indicators provided.
  */
 export interface ProviderConfig {
   driver: string
+  auth_type: AuthType
   base_url: string | null
   models: ProviderModelConfig[]
+  has_api_key: boolean
+  has_oauth_credentials: boolean
+  has_custom_header: boolean
+  oauth_token_url: string | null
+  oauth_client_id: string | null
+  oauth_scope: string | null
+  custom_header_name: string | null
+}
+
+export interface CreateProviderRequest {
+  name: string
+  driver?: string
+  auth_type?: AuthType
+  api_key?: string
+  base_url?: string
+  oauth_token_url?: string
+  oauth_client_id?: string
+  oauth_client_secret?: string
+  oauth_scope?: string
+  custom_header_name?: string
+  custom_header_value?: string
+  models?: ProviderModelConfig[]
+}
+
+export interface UpdateProviderRequest {
+  driver?: string
+  auth_type?: AuthType
+  api_key?: string
+  clear_api_key?: boolean
+  base_url?: string | null
+  oauth_token_url?: string | null
+  oauth_client_id?: string | null
+  oauth_client_secret?: string | null
+  oauth_scope?: string | null
+  custom_header_name?: string | null
+  custom_header_value?: string | null
+  models?: ProviderModelConfig[]
+}
+
+export interface TestConnectionRequest {
+  model?: string
+}
+
+export interface TestConnectionResponse {
+  success: boolean
+  latency_ms: number | null
+  error: string | null
+  model_tested: string | null
+}
+
+export interface ProviderPreset {
+  name: string
+  display_name: string
+  description: string
+  driver: string
+  auth_type: AuthType
+  default_base_url: string | null
+  default_models: ProviderModelConfig[]
+}
+
+export interface CreateFromPresetRequest {
+  preset_name: string
+  name: string
+  api_key?: string
+  base_url?: string
+  models?: ProviderModelConfig[]
 }
 
 // ── Messages ─────────────────────────────────────────────────

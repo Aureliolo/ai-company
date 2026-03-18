@@ -25,6 +25,9 @@ from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP, API_SERVICE_UNAVAILABLE
 from synthorg.observability.events.settings import SETTINGS_SERVICE_SWAPPED
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
+from synthorg.providers.management.service import (
+    ProviderManagementService,
+)
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
 from synthorg.settings.resolver import ConfigResolver
@@ -63,6 +66,7 @@ class AppState:
         "_model_router",
         "_performance_tracker",
         "_persistence",
+        "_provider_management",
         "_provider_registry",
         "_settings_service",
         "_task_engine",
@@ -112,6 +116,16 @@ class AppState:
         self._config_resolver: ConfigResolver | None = (
             ConfigResolver(settings_service=settings_service, config=config)
             if settings_service is not None
+            else None
+        )
+        self._provider_management: ProviderManagementService | None = (
+            ProviderManagementService(
+                settings_service=settings_service,
+                config_resolver=self._config_resolver,
+                app_state=self,
+                config=config,
+            )
+            if settings_service is not None and self._config_resolver is not None
             else None
         )
         self._ticket_store = WsTicketStore()
@@ -259,6 +273,19 @@ class AppState:
     def config_resolver(self) -> ConfigResolver:
         """Return the cached config resolver or raise 503."""
         return self._require_service(self._config_resolver, "config_resolver")
+
+    @property
+    def provider_management(self) -> ProviderManagementService:
+        """Return provider management service or raise 503."""
+        return self._require_service(
+            self._provider_management,
+            "provider_management",
+        )
+
+    @property
+    def has_provider_management(self) -> bool:
+        """Check whether the provider management service is configured."""
+        return self._provider_management is not None
 
     @property
     def has_auth_service(self) -> bool:

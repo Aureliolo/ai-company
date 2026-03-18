@@ -30,6 +30,7 @@ from synthorg.observability import get_logger
 from synthorg.observability.config import LogConfig  # noqa: TC001
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 from synthorg.persistence.config import PersistenceConfig
+from synthorg.providers.enums import AuthType
 from synthorg.security.config import SecurityConfig
 from synthorg.security.trust.config import TrustConfig
 from synthorg.tools.git_url_validator import GitCloneNetworkPolicy
@@ -86,8 +87,15 @@ class ProviderConfig(BaseModel):
 
     Attributes:
         driver: Driver backend name (e.g. ``"litellm"``).
+        auth_type: Authentication type for this provider.
         api_key: API key (typically injected by secret management).
         base_url: Base URL for the provider API.
+        oauth_token_url: OAuth token endpoint URL.
+        oauth_client_id: OAuth client identifier.
+        oauth_client_secret: OAuth client secret.
+        oauth_scope: OAuth scope string.
+        custom_header_name: Name of custom auth header.
+        custom_header_value: Value of custom auth header.
         models: Available models for this provider.
         retry: Retry configuration for transient errors.
         rate_limiter: Client-side rate limiting configuration.
@@ -101,6 +109,10 @@ class ProviderConfig(BaseModel):
         default="litellm",
         description="Driver backend name",
     )
+    auth_type: AuthType = Field(
+        default=AuthType.API_KEY,
+        description="Authentication type",
+    )
     api_key: NotBlankStr | None = Field(
         default=None,
         repr=False,
@@ -109,6 +121,32 @@ class ProviderConfig(BaseModel):
     base_url: NotBlankStr | None = Field(
         default=None,
         description="Base URL for the provider API",
+    )
+    oauth_token_url: NotBlankStr | None = Field(
+        default=None,
+        description="OAuth token endpoint URL",
+    )
+    oauth_client_id: NotBlankStr | None = Field(
+        default=None,
+        description="OAuth client identifier",
+    )
+    oauth_client_secret: NotBlankStr | None = Field(
+        default=None,
+        repr=False,
+        description="OAuth client secret",
+    )
+    oauth_scope: NotBlankStr | None = Field(
+        default=None,
+        description="OAuth scope string",
+    )
+    custom_header_name: NotBlankStr | None = Field(
+        default=None,
+        description="Name of custom auth header",
+    )
+    custom_header_value: NotBlankStr | None = Field(
+        default=None,
+        repr=False,
+        description="Value of custom auth header",
     )
     models: tuple[ProviderModelConfig, ...] = Field(
         default=(),
@@ -130,6 +168,41 @@ class ProviderConfig(BaseModel):
         default_factory=DegradationConfig,
         description="Degradation strategy when quota exhausted",
     )
+
+    @model_validator(mode="after")
+    def _validate_auth_fields(self) -> Self:
+        """Validate auth fields based on auth_type."""
+        if self.auth_type == AuthType.OAUTH:
+            missing: list[str] = []
+            if self.oauth_token_url is None:
+                missing.append("oauth_token_url")
+            if self.oauth_client_id is None:
+                missing.append("oauth_client_id")
+            if self.oauth_client_secret is None:
+                missing.append("oauth_client_secret")
+            if missing:
+                msg = f"OAuth auth_type requires: {', '.join(missing)}"
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    model="ProviderConfig",
+                    error=msg,
+                )
+                raise ValueError(msg)
+        elif self.auth_type == AuthType.CUSTOM_HEADER:
+            missing = []
+            if self.custom_header_name is None:
+                missing.append("custom_header_name")
+            if self.custom_header_value is None:
+                missing.append("custom_header_value")
+            if missing:
+                msg = f"Custom header auth_type requires: {', '.join(missing)}"
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    model="ProviderConfig",
+                    error=msg,
+                )
+                raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _validate_unique_model_identifiers(self) -> Self:
