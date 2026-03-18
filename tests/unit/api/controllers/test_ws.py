@@ -285,24 +285,78 @@ class TestWsTicketAuth:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """WS connection without ?ticket= is rejected (close before accept)."""
+        """WS connection without ?ticket= is rejected with code 4001.
+
+        Verifying the close code (not just WebSocketDisconnect) ensures
+        the rejection comes from the handler's ticket validation -- not
+        from a middleware or DI failure (which would produce code 4500).
+        """
         from litestar.exceptions import WebSocketDisconnect
 
         with (
-            pytest.raises(WebSocketDisconnect),
+            pytest.raises(WebSocketDisconnect) as exc_info,
             test_client.websocket_connect("/api/v1/ws"),
         ):
             pass
+        assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED
 
     def test_ws_rejects_invalid_ticket(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """WS connection with a bogus ticket is rejected."""
+        """WS connection with a bogus ticket is rejected with code 4001."""
         from litestar.exceptions import WebSocketDisconnect
 
         with (
-            pytest.raises(WebSocketDisconnect),
+            pytest.raises(WebSocketDisconnect) as exc_info,
             test_client.websocket_connect("/api/v1/ws?ticket=bogus-ticket"),
         ):
             pass
+        assert exc_info.value.code == _WS_CLOSE_AUTH_FAILED
+
+    def test_ws_accepts_valid_ticket(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """WS connection with a valid ticket is accepted."""
+        from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
+
+        app_state = test_client.app.state["app_state"]
+        user = AuthenticatedUser(
+            user_id="test-ws-user",
+            username="test-ceo",
+            role=HumanRole.CEO,
+            auth_method=AuthMethod.WS_TICKET,
+            must_change_password=False,
+        )
+        ticket = app_state.ticket_store.create(user)
+
+        with test_client.websocket_connect(
+            f"/api/v1/ws?ticket={ticket}",
+        ) as ws:
+            ws.send_text(
+                json.dumps({"action": "subscribe", "channels": ["tasks"]}),
+            )
+            resp = json.loads(ws.receive_text())
+            assert resp["action"] == "subscribed"
+            assert "tasks" in resp["channels"]
+
+    def test_ws_auth_middleware_scopes_http_only(self) -> None:
+        """Auth middleware must use HTTP-only scopes.
+
+        WebSocket connections use ticket-based auth in the handler,
+        not JWT/API key auth from the middleware.
+        """
+        from litestar import Litestar
+        from litestar.enums import ScopeType
+
+        from synthorg.api.app import _build_middleware
+        from synthorg.api.config import ApiConfig
+
+        api_config = ApiConfig()
+        middleware = _build_middleware(api_config)
+        auth_cls = middleware[0]
+
+        dummy_app = Litestar(route_handlers=[])
+        instance = auth_cls(dummy_app)  # type: ignore[operator,call-arg]
+        assert instance.scopes == {ScopeType.HTTP}  # type: ignore[union-attr]

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import jwt
+from litestar.enums import ScopeType
 from litestar.exceptions import NotAuthorizedException
 from litestar.middleware import (
     AbstractAuthenticationMiddleware,
@@ -16,6 +17,7 @@ from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.auth.service import SecretNotConfiguredError
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
+    API_AUTH_BYPASSED,
     API_AUTH_FAILED,
     API_AUTH_SUCCESS,
 )
@@ -95,10 +97,15 @@ class ApiAuthMiddleware(AbstractAuthenticationMiddleware):
         Raises:
             NotAuthorizedException: If authentication fails.
         """
+        path = str(connection.url.path)
+        logger.debug(
+            API_AUTH_BYPASSED,
+            path=path,
+            note="authenticate_request called (path not excluded)",
+        )
         token = _validate_auth_header(connection)
         app_state = connection.app.state["app_state"]
         auth_service: AuthService = app_state.auth_service
-        path = str(connection.url.path)
 
         if "." in token:
             user = await _try_jwt_auth(
@@ -314,6 +321,10 @@ def create_auth_middleware_class(
     subclass whose ``__init__`` forwards the configured exclude
     list to ``super().__init__``.
 
+    The middleware is restricted to ``ScopeType.HTTP`` only --
+    WebSocket connections use ticket-based auth handled entirely
+    inside the WS handler (see ``controllers/ws.py``).
+
     Args:
         auth_config: Auth configuration with exclude_paths.
 
@@ -328,6 +339,10 @@ def create_auth_middleware_class(
         """Auth middleware with pre-configured exclude paths."""
 
         def __init__(self, app: Any) -> None:
-            super().__init__(app, exclude=exclude_paths)
+            super().__init__(
+                app,
+                exclude=exclude_paths,
+                scopes={ScopeType.HTTP},
+            )
 
     return ConfiguredAuthMiddleware

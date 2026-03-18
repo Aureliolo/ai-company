@@ -560,13 +560,19 @@ def _build_settings_dispatcher(
 def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
     """Build the middleware stack from configuration."""
     rl = api_config.rate_limit
-    rate_limit = LitestarRateLimitConfig(
-        rate_limit=(rl.time_unit, rl.max_requests),  # type: ignore[arg-type]
-        exclude=list(rl.exclude_paths),
-    )
-    auth = api_config.auth
     prefix = api_config.api_prefix
     ws_path = f"^{prefix}/ws$"
+
+    # Exclude the WS path from rate limiting -- rate limiting
+    # HTTP-style makes no sense for persistent WebSocket connections.
+    rl_exclude = list(rl.exclude_paths)
+    if ws_path not in rl_exclude:
+        rl_exclude.append(ws_path)
+    rate_limit = LitestarRateLimitConfig(
+        rate_limit=(rl.time_unit, rl.max_requests),  # type: ignore[arg-type]
+        exclude=rl_exclude,
+    )
+    auth = api_config.auth
     exclude_paths = (
         auth.exclude_paths
         if auth.exclude_paths is not None
