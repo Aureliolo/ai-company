@@ -214,7 +214,7 @@ jobs:
             echo "::error::Push step did not produce a digest — cannot sign image"
             exit 1
           fi
-          cosign sign --yes ghcr.io/aureliolo/synthorg-backend@${DIGEST}
+          cosign sign --yes --registry-referrers-mode=oci-1-1 ghcr.io/aureliolo/synthorg-backend@${DIGEST}
 
       - name: Attest build provenance (SLSA Level 3)
         if: github.event_name != 'pull_request'
@@ -381,7 +381,7 @@ jobs:
             echo "::error::Push step did not produce a digest — cannot sign image"
             exit 1
           fi
-          cosign sign --yes ghcr.io/aureliolo/synthorg-web@${DIGEST}
+          cosign sign --yes --registry-referrers-mode=oci-1-1 ghcr.io/aureliolo/synthorg-web@${DIGEST}
 
       - name: Attest build provenance (SLSA Level 3)
         if: github.event_name != 'pull_request'
@@ -548,7 +548,7 @@ jobs:
             echo "::error::Push step did not produce a digest — cannot sign image"
             exit 1
           fi
-          cosign sign --yes ghcr.io/aureliolo/synthorg-sandbox@${DIGEST}
+          cosign sign --yes --registry-referrers-mode=oci-1-1 ghcr.io/aureliolo/synthorg-sandbox@${DIGEST}
 
       - name: Attest build provenance (SLSA Level 3)
         if: github.event_name != 'pull_request'

@@ -183,14 +183,14 @@ func verifyAttestationBundle(img v1.Image, digest string, sev *verify.Verifier, 
 	}
 
 	// Look for Sigstore bundle in manifest annotations.
-	if bundleJSON, ok := attestManifest.Annotations["dev.sigstore.cosign/bundle"]; ok {
+	if bundleJSON, ok := attestManifest.Annotations[cosignBundleAnnotation]; ok {
 		return verifyProvenanceBundleWith([]byte(bundleJSON), digest, sev, certID)
 	}
 
 	// Also check layer annotations — iterate all layers, not just the first,
 	// since cosign may store the bundle in any layer's annotations.
 	for i := range attestManifest.Layers {
-		if bundleJSON, ok := attestManifest.Layers[i].Annotations["dev.sigstore.cosign/bundle"]; ok {
+		if bundleJSON, ok := attestManifest.Layers[i].Annotations[cosignBundleAnnotation]; ok {
 			return verifyProvenanceBundleWith([]byte(bundleJSON), digest, sev, certID)
 		}
 	}
