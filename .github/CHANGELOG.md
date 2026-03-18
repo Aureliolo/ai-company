@@ -1,31 +1,5 @@
 # Changelog
 
-## [0.3.3](https://github.com/Aureliolo/synthorg/compare/v0.3.2...v0.3.3) (2026-03-18)
-
-
-### Features
-
-* **backup:** implement automated backup and restore system ([#541](https://github.com/Aureliolo/synthorg/issues/541)) ([867b7c1](https://github.com/Aureliolo/synthorg/commit/867b7c1b473a4da7472e6982cc971de9fffd9416))
-* **providers:** runtime provider management with CRUD, presets, and multi-auth ([#540](https://github.com/Aureliolo/synthorg/issues/540)) ([936c345](https://github.com/Aureliolo/synthorg/commit/936c3455f635fe72da87230ae3d57f18a889f36e)), closes [#451](https://github.com/Aureliolo/synthorg/issues/451)
-* **tools:** wire per-category sandbox backend selection ([#534](https://github.com/Aureliolo/synthorg/issues/534)) ([311a1ab](https://github.com/Aureliolo/synthorg/commit/311a1abd6978ecbb268b844ab711bd0e199c6dc3))
-
-
-### Bug Fixes
-
-* **cli:** switch cosign verification from .sig tags to OCI referrers ([#533](https://github.com/Aureliolo/synthorg/issues/533)) ([8ee5471](https://github.com/Aureliolo/synthorg/commit/8ee547140ab9c06c5ed900f2b3171fc2bbc26572)), closes [#532](https://github.com/Aureliolo/synthorg/issues/532)
-
-
-### CI/CD
-
-* bump wrangler from 4.74.0 to 4.75.0 in /.github in the minor-and-patch group ([#535](https://github.com/Aureliolo/synthorg/issues/535)) ([de15867](https://github.com/Aureliolo/synthorg/commit/de158670810dd25e2fdceb3191af302e5c299245))
-
-
-### Maintenance
-
-* bump github.com/google/go-containerregistry from 0.21.2 to 0.21.3 in /cli in the minor-and-patch group ([#536](https://github.com/Aureliolo/synthorg/issues/536)) ([4a09aed](https://github.com/Aureliolo/synthorg/commit/4a09aed16e4ec0ef557690041f8b35fa44a3a733))
-* bump litellm from 1.82.3 to 1.82.4 in the minor-and-patch group ([#538](https://github.com/Aureliolo/synthorg/issues/538)) ([9f7f83d](https://github.com/Aureliolo/synthorg/commit/9f7f83d8cf31d44ae8f08108b64e60857785dbd3))
-* bump vue-tsc from 3.2.5 to 3.2.6 in /web in the minor-and-patch group across 1 directory ([#537](https://github.com/Aureliolo/synthorg/issues/537)) ([eb3dc4e](https://github.com/Aureliolo/synthorg/commit/eb3dc4ea7e46e62729bab26a87a2ed849e09f564))
-
 ## [0.3.2](https://github.com/Aureliolo/synthorg/compare/v0.3.1...v0.3.2) (2026-03-17)
 
 
