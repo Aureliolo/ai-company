@@ -439,9 +439,10 @@ class TestAutoWirePhase2:
         fake_message_bus: Any,
         root_config: Any,
     ) -> None:
-        """_auto_wire_settings creates SettingsService on AppState."""
-        from synthorg.api.app import _auto_wire_settings
+        """auto_wire_settings creates SettingsService on AppState."""
+        from synthorg.api.app import _build_settings_dispatcher
         from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.auto_wire import auto_wire_settings
 
         app_state = AppState(
             config=root_config,
@@ -451,12 +452,13 @@ class TestAutoWirePhase2:
         )
         assert not app_state.has_settings_service
 
-        dispatcher = await _auto_wire_settings(
+        dispatcher = await auto_wire_settings(
             fake_persistence,
             fake_message_bus,
             root_config,
             app_state,
             None,
+            _build_settings_dispatcher,
         )
 
         assert app_state.has_settings_service
@@ -473,21 +475,23 @@ class TestAutoWirePhase2:
         fake_persistence: Any,
         root_config: Any,
     ) -> None:
-        """_auto_wire_settings works without a message bus."""
-        from synthorg.api.app import _auto_wire_settings
+        """auto_wire_settings works without a message bus."""
+        from synthorg.api.app import _build_settings_dispatcher
         from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.auto_wire import auto_wire_settings
 
         app_state = AppState(
             config=root_config,
             approval_store=ApprovalStore(),
             persistence=fake_persistence,
         )
-        dispatcher = await _auto_wire_settings(
+        dispatcher = await auto_wire_settings(
             fake_persistence,
             None,
             root_config,
             app_state,
             None,
+            _build_settings_dispatcher,
         )
 
         assert app_state.has_settings_service
@@ -596,3 +600,49 @@ class TestAppStateSetSettingsService:
 
         with pytest.raises(RuntimeError, match="already configured"):
             app_state.set_settings_service(settings_svc)
+
+
+@pytest.mark.unit
+class TestAutoWirePhase1Details:
+    """Detailed Phase 1 auto-wiring tests for edge cases."""
+
+    def test_auto_wired_bus_includes_api_channels(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Auto-wired message bus includes API channels for bridge compat."""
+        from synthorg.api.channels import ALL_CHANNELS
+
+        monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
+        app = create_app()
+        state: AppState = app.state["app_state"]
+        bus = state._message_bus
+        assert bus is not None
+        # The bus config should include all API channels
+        for ch in ALL_CHANNELS:
+            assert ch in bus._config.channels
+
+    def test_provider_registry_not_created_without_providers(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Provider registry is None when no providers configured."""
+        monkeypatch.setenv("SYNTHORG_DB_PATH", ":memory:")
+        app = create_app()
+        state: AppState = app.state["app_state"]
+        assert not state.has_provider_registry
+
+    def test_provider_registry_param_not_overridden(
+        self,
+        root_config: Any,
+    ) -> None:
+        """Explicit provider_registry is preserved by auto-wiring."""
+        from unittest.mock import MagicMock
+
+        fake_registry = MagicMock()
+        app = create_app(
+            config=root_config,
+            provider_registry=fake_registry,
+        )
+        state: AppState = app.state["app_state"]
+        assert state._provider_registry is fake_registry

@@ -27,9 +27,9 @@ from synthorg.api.auth.controller import require_password_changed
 from synthorg.api.auth.middleware import create_auth_middleware_class
 from synthorg.api.auth.secret import resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
+from synthorg.api.auto_wire import auto_wire_phase1, auto_wire_settings
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.channels import (
-    ALL_CHANNELS,
     CHANNEL_APPROVALS,
     CHANNEL_MEETINGS,
     create_channels_plugin,
@@ -43,7 +43,7 @@ from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.backup.factory import build_backup_service
 from synthorg.backup.models import BackupTrigger
 from synthorg.backup.service import BackupService  # noqa: TC001
-from synthorg.budget.tracker import CostTracker
+from synthorg.budget.tracker import CostTracker  # noqa: TC001
 from synthorg.communication.bus_protocol import MessageBus  # noqa: TC001
 from synthorg.communication.meeting.orchestrator import (
     MeetingOrchestrator,  # noqa: TC001
@@ -52,7 +52,7 @@ from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: T
 from synthorg.config.schema import RootConfig
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
-from synthorg.engine.task_engine import TaskEngine
+from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
@@ -60,13 +60,12 @@ from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
     API_APPROVAL_PUBLISH_FAILED,
-    API_SERVICE_AUTO_WIRED,
     API_WS_TICKET_CLEANUP,
 )
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
-from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
@@ -189,7 +188,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901, D417
     backup_service: BackupService | None,
     app_state: AppState,
     *,
-    auto_wire_settings: bool = False,
+    should_auto_wire_settings: bool = False,
     effective_config: RootConfig | None = None,
 ) -> tuple[
     Sequence[Callable[[], Awaitable[None]]],
@@ -198,8 +197,9 @@ def _build_lifecycle(  # noqa: PLR0913, C901, D417
     """Build startup and shutdown hooks.
 
     Args:
-        auto_wire_settings: When ``True``, Phase 2 auto-wiring creates
-            ``SettingsService`` + dispatcher after persistence connects.
+        should_auto_wire_settings: When ``True``, Phase 2 auto-wiring
+            creates ``SettingsService`` + dispatcher after persistence
+            connects.
         effective_config: Root config needed for Phase 2 auto-wiring.
 
     Returns:
@@ -235,18 +235,19 @@ def _build_lifecycle(  # noqa: PLR0913, C901, D417
         )
         # Phase 2 auto-wire: SettingsService (needs connected persistence)
         if (
-            auto_wire_settings
+            should_auto_wire_settings
             and persistence is not None
             and effective_config is not None
             and not app_state.has_settings_service
         ):
             try:
-                _auto_wired_dispatcher = await _auto_wire_settings(
+                _auto_wired_dispatcher = await auto_wire_settings(
                     persistence,
                     message_bus,
                     effective_config,
                     app_state,
                     backup_service,
+                    _build_settings_dispatcher,
                 )
             except MemoryError, RecursionError:
                 raise
@@ -255,13 +256,6 @@ def _build_lifecycle(  # noqa: PLR0913, C901, D417
                     API_APP_STARTUP,
                     error="Phase 2 auto-wire failed",
                 )
-                if _auto_wired_dispatcher is not None:
-                    await _try_stop(
-                        _auto_wired_dispatcher.stop(),
-                        API_APP_STARTUP,
-                        "Cleanup: failed to stop auto-wired dispatcher",
-                    )
-                    _auto_wired_dispatcher = None
                 await _safe_shutdown(
                     task_engine,
                     meeting_scheduler,
@@ -427,66 +421,6 @@ async def _init_persistence(
                 error="Failed to resolve JWT secret",
             )
             raise
-
-
-async def _auto_wire_settings(
-    persistence: PersistenceBackend,
-    message_bus: MessageBus | None,
-    effective_config: RootConfig,
-    app_state: AppState,
-    backup_service: BackupService | None,
-) -> SettingsChangeDispatcher | None:
-    """Phase 2 auto-wire: create SettingsService after persistence connects.
-
-    Called from ``on_startup`` after ``_init_persistence()``.  Creates
-    the settings service, injects it into *app_state* (which also
-    creates ``ConfigResolver`` + ``ProviderManagementService``), then
-    creates and starts the settings change dispatcher.
-
-    Args:
-        persistence: Connected persistence backend.
-        message_bus: Message bus instance (may be ``None``).
-        effective_config: Root company configuration.
-        app_state: Application state container.
-        backup_service: Backup service (for settings subscriber wiring).
-
-    Returns:
-        The started dispatcher, or ``None`` if bus is unavailable.
-    """
-    import synthorg.settings.definitions  # noqa: F401, PLC0415
-    from synthorg.settings.encryption import SettingsEncryptor  # noqa: PLC0415
-    from synthorg.settings.registry import get_registry  # noqa: PLC0415
-    from synthorg.settings.service import SettingsService  # noqa: PLC0415
-
-    encryptor = SettingsEncryptor.from_env()
-    settings_svc = SettingsService(
-        repository=persistence.settings,
-        registry=get_registry(),
-        config=effective_config,
-        encryptor=encryptor,
-        message_bus=message_bus,
-    )
-    app_state.set_settings_service(settings_svc)
-    logger.info(API_SERVICE_AUTO_WIRED, service="settings_service")
-
-    dispatcher = _build_settings_dispatcher(
-        message_bus,
-        settings_svc,
-        effective_config,
-        app_state,
-        backup_service,
-    )
-    if dispatcher is not None:
-        try:
-            await dispatcher.start()
-        except Exception:
-            logger.exception(
-                API_APP_STARTUP,
-                error="Failed to start auto-wired settings dispatcher",
-            )
-            raise
-        logger.info(API_SERVICE_AUTO_WIRED, service="settings_dispatcher")
-    return dispatcher
 
 
 async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
@@ -717,7 +651,7 @@ async def _safe_shutdown(  # noqa: PLR0913, C901
 #   to code calling get_api_config(), not to the middleware itself.
 
 
-def create_app(  # noqa: PLR0913, C901
+def create_app(  # noqa: PLR0913
     *,
     config: RootConfig | None = None,
     persistence: PersistenceBackend | None = None,
@@ -732,16 +666,13 @@ def create_app(  # noqa: PLR0913, C901
     meeting_scheduler: MeetingScheduler | None = None,
     performance_tracker: PerformanceTracker | None = None,
     settings_service: SettingsService | None = None,
+    provider_registry: ProviderRegistry | None = None,
 ) -> Litestar:
     """Create and configure the Litestar application.
 
-    All parameters are optional for testing — provide fakes via
-    keyword arguments.
-
-    When ``persistence`` is not provided, the factory checks
-    ``SYNTHORG_DB_PATH`` in the environment and auto-creates a
-    SQLite backend if set (used by the Docker compose template).
-    Explicit ``persistence`` always takes precedence.
+    All parameters are optional for testing -- provide fakes via
+    keyword arguments.  Services not explicitly provided are
+    auto-wired from config and environment variables.
 
     Args:
         config: Root company configuration.
@@ -757,6 +688,7 @@ def create_app(  # noqa: PLR0913, C901
         meeting_scheduler: Meeting scheduler.
         performance_tracker: Performance tracking service.
         settings_service: Settings service for runtime config.
+        provider_registry: Provider registry.
 
     Returns:
         Configured Litestar application.
@@ -796,53 +728,18 @@ def create_app(  # noqa: PLR0913, C901
             )
 
     # ── Phase 1 auto-wire: services that don't need connected persistence ──
-
-    if message_bus is None:
-        from synthorg.communication.bus_memory import (  # noqa: PLC0415
-            InMemoryMessageBus,
-        )
-
-        # Merge API channels (tasks, agents, budget, ...) into the bus
-        # config so the MessageBusBridge can subscribe to them.
-        bus_config = effective_config.communication.message_bus
-        extra = tuple(ch for ch in ALL_CHANNELS if ch not in bus_config.channels)
-        if extra:
-            bus_config = bus_config.model_copy(
-                update={"channels": (*bus_config.channels, *extra)},
-            )
-        message_bus = InMemoryMessageBus(config=bus_config)
-        logger.info(API_SERVICE_AUTO_WIRED, service="message_bus")
-
-    if cost_tracker is None:
-        cost_tracker = CostTracker(budget_config=effective_config.budget)
-        logger.info(API_SERVICE_AUTO_WIRED, service="cost_tracker")
-
-    provider_registry: ProviderRegistry | None = None
-    if effective_config.providers:
-        provider_registry = ProviderRegistry.from_config(
-            effective_config.providers,
-        )
-        logger.info(API_SERVICE_AUTO_WIRED, service="provider_registry")
-
-    if task_engine is None and persistence is not None:
-        task_engine = TaskEngine(
-            persistence=persistence,
-            message_bus=message_bus,
-        )
-        logger.info(API_SERVICE_AUTO_WIRED, service="task_engine")
-
-    # Warn only if persistence is unavailable (the one thing we can't
-    # auto-wire without SYNTHORG_DB_PATH).  Phase 2 handles settings.
-    if persistence is None:
-        logger.warning(
-            API_APP_STARTUP,
-            note=(
-                "No persistence backend available (SYNTHORG_DB_PATH not set) "
-                "-- persistence-dependent services (task_engine, "
-                "settings_service) will not be auto-wired; affected "
-                "controllers will return 503"
-            ),
-        )
+    phase1 = auto_wire_phase1(
+        effective_config=effective_config,
+        persistence=persistence,
+        message_bus=message_bus,
+        cost_tracker=cost_tracker,
+        task_engine=task_engine,
+        provider_registry=provider_registry,
+    )
+    message_bus = phase1.message_bus
+    cost_tracker = phase1.cost_tracker
+    task_engine = phase1.task_engine
+    provider_registry = phase1.provider_registry
 
     channels_plugin = create_channels_plugin()
     expire_callback = _make_expire_callback(channels_plugin)
@@ -898,7 +795,7 @@ def create_app(  # noqa: PLR0913, C901
 
     # Phase 2 auto-wiring flag: SettingsService needs connected persistence
     # and is created in on_startup after _init_persistence().
-    _auto_wire_settings = settings_service is None and persistence is not None
+    _should_auto_wire = settings_service is None and persistence is not None
 
     startup, shutdown = _build_lifecycle(
         persistence,
@@ -909,7 +806,7 @@ def create_app(  # noqa: PLR0913, C901
         meeting_scheduler,
         backup_service,
         app_state,
-        auto_wire_settings=_auto_wire_settings,
+        should_auto_wire_settings=_should_auto_wire,
         effective_config=effective_config,
     )
 

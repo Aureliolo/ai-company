@@ -449,3 +449,7 @@ class AppState:
             app_state=self,
             config=self.config,
         )
+        logger.debug(
+            API_APP_STARTUP,
+            note="Created ConfigResolver and ProviderManagementService",
+        )
