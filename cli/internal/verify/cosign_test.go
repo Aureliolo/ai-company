@@ -4,35 +4,16 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	sigverify "github.com/sigstore/sigstore-go/pkg/verify"
 )
-
-func TestCosignSigTag(t *testing.T) {
-	tests := []struct {
-		digest string
-		want   string
-	}{
-		{
-			"sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-			"sha256-e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.sig",
-		},
-		{
-			"sha256:0000000000000000000000000000000000000000000000000000000000000000",
-			"sha256-0000000000000000000000000000000000000000000000000000000000000000.sig",
-		},
-	}
-	for _, tt := range tests {
-		if got := cosignSigTag(tt.digest); got != tt.want {
-			t.Errorf("cosignSigTag(%q) = %q, want %q", tt.digest, got, tt.want)
-		}
-	}
-}
 
 func TestParseDigest(t *testing.T) {
 	tests := []struct {
@@ -42,6 +23,7 @@ func TestParseDigest(t *testing.T) {
 	}{
 		{"valid", "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", false},
 		{"no colon", "sha256abcdef", true},
+		{"unsupported algo", "sha512:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", true},
 		{"invalid hex", "sha256:xyz", true},
 	}
 	for _, tt := range tests {
@@ -79,14 +61,29 @@ func TestVerifyCosignSignatureEmptyDigest(t *testing.T) {
 	}
 }
 
-func TestVerifyCosignSignatureNoSigArtifact(t *testing.T) {
-	// Mock registry that returns 404 for the signature tag.
+func TestVerifyCosignSignatureNoReferrers(t *testing.T) {
+	// Precompute empty referrer index JSON outside the handler.
+	emptyIdx := v1.IndexManifest{
+		SchemaVersion: 2,
+		MediaType:     "application/vnd.oci.image.index.v1+json",
+		Manifests:     []v1.Descriptor{},
+	}
+	emptyIdxJSON, err := json.Marshal(emptyIdx)
+	if err != nil {
+		t.Fatalf("marshaling empty referrer index: %v", err)
+	}
+
+	// Mock registry that returns an empty referrer index.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v2/" {
+		switch {
+		case r.URL.Path == "/v2/":
 			w.WriteHeader(http.StatusOK)
-			return
+		case strings.Contains(r.URL.Path, "/referrers/"):
+			w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
+			_, _ = w.Write(emptyIdxJSON)
+		default:
+			w.WriteHeader(http.StatusNotFound)
 		}
-		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
 
@@ -98,9 +95,12 @@ func TestVerifyCosignSignatureNoSigArtifact(t *testing.T) {
 		Digest:     testDigest,
 	}
 
-	err := VerifyCosignSignature(context.Background(), ref, nil, sigverify.CertificateIdentity{})
-	if err == nil {
-		t.Fatal("expected error when no signature artifact exists")
+	verifyErr := VerifyCosignSignature(context.Background(), ref, nil, sigverify.CertificateIdentity{})
+	if verifyErr == nil {
+		t.Fatal("expected error when no cosign referrers exist")
+	}
+	if !errors.Is(verifyErr, ErrNoCosignSignatures) {
+		t.Errorf("expected error to wrap ErrNoCosignSignatures, got: %v", verifyErr)
 	}
 }
 
@@ -110,6 +110,7 @@ type ociManifest struct {
 	MediaType     string               `json:"mediaType"`
 	Config        ociDescriptor        `json:"config"`
 	Layers        []ociLayerDescriptor `json:"layers"`
+	Annotations   map[string]string    `json:"annotations,omitempty"`
 }
 
 type ociDescriptor struct {
@@ -126,14 +127,14 @@ type ociLayerDescriptor struct {
 }
 
 func TestVerifyCosignSignatureInvalidBundle(t *testing.T) {
-	// Mock registry that returns a cosign signature image with an invalid bundle.
+	// Mock registry that returns a cosign signature as an OCI referrer with invalid bundle.
 	repo := "test/image"
-	sigTag := cosignSigTag(testDigest)
+	sigDigest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 	configJSON := `{}`
 	layerContent := "dummy-layer-content"
 
-	manifest := ociManifest{
+	sigManifest := ociManifest{
 		SchemaVersion: 2,
 		MediaType:     "application/vnd.oci.image.manifest.v1+json",
 		Config: ociDescriptor{
@@ -143,28 +144,51 @@ func TestVerifyCosignSignatureInvalidBundle(t *testing.T) {
 		},
 		Layers: []ociLayerDescriptor{
 			{
-				MediaType: "application/vnd.dev.cosign.simplesigning.v1+json",
+				MediaType: cosignArtifactType,
 				Digest:    "sha256:0000000000000000000000000000000000000000000000000000000000000001",
 				Size:      len(layerContent),
 				Annotations: map[string]string{
-					"dev.sigstore.cosign/bundle": `{"invalid": "bundle"}`,
+					cosignBundleAnnotation: `{"invalid": "bundle"}`,
 				},
 			},
 		},
 	}
 
-	manifestJSON, _ := json.Marshal(manifest)
+	sigManifestJSON, err := json.Marshal(sigManifest)
+	if err != nil {
+		t.Fatalf("marshaling signature manifest: %v", err)
+	}
+
+	// Referrer index pointing to the signature manifest.
+	referrerIdx := v1.IndexManifest{
+		SchemaVersion: 2,
+		MediaType:     "application/vnd.oci.image.index.v1+json",
+		Manifests: []v1.Descriptor{
+			{
+				MediaType:    "application/vnd.oci.image.manifest.v1+json",
+				Digest:       v1.Hash{Algorithm: "sha256", Hex: strings.TrimPrefix(sigDigest, "sha256:")},
+				Size:         int64(len(sigManifestJSON)),
+				ArtifactType: cosignArtifactType,
+			},
+		},
+	}
+	referrerIdxJSON, err := json.Marshal(referrerIdx)
+	if err != nil {
+		t.Fatalf("marshaling referrer index: %v", err)
+	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/v2/":
 			w.WriteHeader(http.StatusOK)
-		case r.URL.Path == fmt.Sprintf("/v2/%s/manifests/%s", repo, sigTag):
+		case strings.Contains(r.URL.Path, "/referrers/"):
+			w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
+			_, _ = w.Write(referrerIdxJSON)
+		case r.URL.Path == fmt.Sprintf("/v2/%s/manifests/%s", repo, sigDigest):
 			w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
-			w.Header().Set("Docker-Content-Digest", testDigest)
-			_, _ = w.Write(manifestJSON)
+			w.Header().Set("Docker-Content-Digest", sigDigest)
+			_, _ = w.Write(sigManifestJSON)
 		case strings.Contains(r.URL.Path, "/blobs/"):
-			// Return config or layer content.
 			if strings.Contains(r.URL.Path, "44136fa") {
 				_, _ = w.Write([]byte(configJSON))
 			} else {
@@ -184,8 +208,18 @@ func TestVerifyCosignSignatureInvalidBundle(t *testing.T) {
 		Digest:     testDigest,
 	}
 
-	err := VerifyCosignSignature(context.Background(), ref, nil, sigverify.CertificateIdentity{})
+	err = VerifyCosignSignature(context.Background(), ref, nil, sigverify.CertificateIdentity{})
 	if err == nil {
 		t.Fatal("expected error for invalid bundle JSON")
+	}
+	if !strings.Contains(err.Error(), "cosign signature") {
+		t.Errorf("expected cosign signature verification error, got: %v", err)
+	}
+}
+
+func TestErrNoCosignSignaturesIs(t *testing.T) {
+	wrapped := fmt.Errorf("%w for ghcr.io/test:1.0", ErrNoCosignSignatures)
+	if !errors.Is(wrapped, ErrNoCosignSignatures) {
+		t.Errorf("errors.Is(%v, ErrNoCosignSignatures) = false, want true", wrapped)
 	}
 }

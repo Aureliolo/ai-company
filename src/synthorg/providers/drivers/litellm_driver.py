@@ -6,6 +6,7 @@ API.
 """
 
 import json
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 import litellm as _litellm
@@ -59,7 +60,7 @@ from synthorg.observability.events.provider import (
 from synthorg.providers import errors
 from synthorg.providers.base import BaseCompletionProvider
 from synthorg.providers.capabilities import ModelCapabilities
-from synthorg.providers.enums import StreamEventType
+from synthorg.providers.enums import AuthType, StreamEventType
 from synthorg.providers.models import (
     CompletionResponse,
     StreamChunk,
@@ -139,7 +140,9 @@ class LiteLLMDriver(BaseCompletionProvider):
         )
         self._provider_name = provider_name
         self._config = config
-        self._model_lookup = self._build_model_lookup(config.models)
+        self._model_lookup: MappingProxyType[str, ProviderModelConfig] = (
+            MappingProxyType(self._build_model_lookup(config.models))
+        )
 
     # ── Hook implementations ─────────────────────────────────────
 
@@ -308,7 +311,7 @@ class LiteLLMDriver(BaseCompletionProvider):
 
     # ── Request building ─────────────────────────────────────────
 
-    def _build_kwargs(
+    def _build_kwargs(  # noqa: C901
         self,
         messages: list[ChatMessage],
         litellm_model: str,
@@ -327,8 +330,27 @@ class LiteLLMDriver(BaseCompletionProvider):
         if stream:
             kwargs["stream"] = True
             kwargs["stream_options"] = {"include_usage": True}
-        if self._config.api_key is not None:
-            kwargs["api_key"] = self._config.api_key
+
+        match self._config.auth_type:
+            case AuthType.API_KEY:
+                if self._config.api_key is not None:
+                    kwargs["api_key"] = self._config.api_key
+            case AuthType.OAUTH:
+                # MVP: OAuth credentials stored; user provides
+                # pre-fetched token via api_key field. Full
+                # client_credentials token exchange is future work.
+                if self._config.api_key is not None:
+                    kwargs["api_key"] = self._config.api_key
+            case AuthType.CUSTOM_HEADER:
+                if self._config.custom_header_name and self._config.custom_header_value:
+                    kwargs["extra_headers"] = {
+                        self._config.custom_header_name: (
+                            self._config.custom_header_value
+                        ),
+                    }
+            case AuthType.NONE:
+                pass
+
         if self._config.base_url is not None:
             kwargs["api_base"] = self._config.base_url
         return _apply_completion_config(kwargs, config)
