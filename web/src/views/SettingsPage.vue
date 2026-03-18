@@ -18,7 +18,7 @@ import { useProviderStore } from '@/stores/providers'
 import { getErrorMessage } from '@/utils/errors'
 import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
 import { sanitizeForLog } from '@/utils/logging'
-import type { CreateProviderRequest, UpdateProviderRequest } from '@/api/types'
+import type { CreateFromPresetRequest, CreateProviderRequest, UpdateProviderRequest } from '@/api/types'
 
 const route = useRoute()
 const toast = useToast()
@@ -121,6 +121,16 @@ async function handleFormSave(data: CreateProviderRequest | UpdateProviderReques
   }
 }
 
+async function handleFormSavePreset(data: CreateFromPresetRequest) {
+  try {
+    await providerStore.createFromPreset(data)
+    toast.add({ severity: 'success', summary: 'Provider created from preset', life: 3000 })
+    formDialogVisible.value = false
+  } catch (err) {
+    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+  }
+}
+
 async function handleDelete(name: string) {
   try {
     await providerStore.deleteProvider(name)
@@ -191,6 +201,7 @@ async function handleDelete(name: string) {
           :provider-name="editingProviderName"
           :provider-config="editingProviderConfig"
           @save="handleFormSave"
+          @save-preset="handleFormSavePreset"
         />
       </TabPanel>
 

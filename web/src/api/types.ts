@@ -495,13 +495,13 @@ export interface UpdateProviderRequest {
   auth_type?: AuthType
   api_key?: string
   clear_api_key?: boolean
-  base_url?: string
-  oauth_token_url?: string
-  oauth_client_id?: string
-  oauth_client_secret?: string
-  oauth_scope?: string
-  custom_header_name?: string
-  custom_header_value?: string
+  base_url?: string | null
+  oauth_token_url?: string | null
+  oauth_client_id?: string | null
+  oauth_client_secret?: string | null
+  oauth_scope?: string | null
+  custom_header_name?: string | null
+  custom_header_value?: string | null
   models?: ProviderModelConfig[]
 }
 

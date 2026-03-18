@@ -7,6 +7,7 @@ import Button from 'primevue/button'
 import { useProviderStore } from '@/stores/providers'
 import type {
   AuthType,
+  CreateFromPresetRequest,
   CreateProviderRequest,
   ProviderConfig,
   ProviderPreset,
@@ -23,6 +24,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:visible': [value: boolean]
   save: [data: CreateProviderRequest | UpdateProviderRequest]
+  savePreset: [data: CreateFromPresetRequest]
 }>()
 
 const store = useProviderStore()
@@ -88,52 +90,110 @@ watch(selectedPreset, (preset) => {
   }
 })
 
+const isEditing = computed(() => props.mode === 'edit')
+
 const isValid = computed(() => {
   if (props.mode === 'create' && !name.value.trim()) return false
   if (!driver.value.trim()) return false
   if (authType.value === 'oauth') {
-    if (!oauthTokenUrl.value.trim() || !oauthClientId.value.trim() || !oauthClientSecret.value.trim()) {
-      return false
-    }
+    if (!oauthTokenUrl.value.trim() || !oauthClientId.value.trim()) return false
+    // In create mode, secret is required; in edit mode, empty means "keep existing"
+    if (!isEditing.value && !oauthClientSecret.value.trim()) return false
   }
   if (authType.value === 'custom_header') {
-    if (!customHeaderName.value.trim() || !customHeaderValue.value.trim()) {
-      return false
-    }
+    if (!customHeaderName.value.trim()) return false
+    // In create mode, secret is required; in edit mode, empty means "keep existing"
+    if (!isEditing.value && !customHeaderValue.value.trim()) return false
   }
   return true
 })
 
 function handleSave() {
   if (props.mode === 'create') {
+    // Use preset flow when a preset was selected
+    if (selectedPreset.value) {
+      const data: CreateFromPresetRequest = {
+        preset_name: selectedPreset.value.name,
+        name: name.value,
+      }
+      if (apiKey.value) data.api_key = apiKey.value
+      if (baseUrl.value && baseUrl.value !== (selectedPreset.value.default_base_url ?? '')) {
+        data.base_url = baseUrl.value
+      }
+      emit('savePreset', data)
+      return
+    }
+
     const data: CreateProviderRequest = {
       name: name.value,
       driver: driver.value,
       auth_type: authType.value,
     }
     if (baseUrl.value) data.base_url = baseUrl.value
-    if (apiKey.value) data.api_key = apiKey.value
-    if (oauthTokenUrl.value) data.oauth_token_url = oauthTokenUrl.value
-    if (oauthClientId.value) data.oauth_client_id = oauthClientId.value
-    if (oauthClientSecret.value) data.oauth_client_secret = oauthClientSecret.value
-    if (oauthScope.value) data.oauth_scope = oauthScope.value
-    if (customHeaderName.value) data.custom_header_name = customHeaderName.value
-    if (customHeaderValue.value) data.custom_header_value = customHeaderValue.value
+    // Only include fields relevant to the active auth type
+    if (authType.value === 'api_key' || authType.value === 'oauth') {
+      if (apiKey.value) data.api_key = apiKey.value
+    }
+    if (authType.value === 'oauth') {
+      if (oauthTokenUrl.value) data.oauth_token_url = oauthTokenUrl.value
+      if (oauthClientId.value) data.oauth_client_id = oauthClientId.value
+      if (oauthClientSecret.value) data.oauth_client_secret = oauthClientSecret.value
+      if (oauthScope.value) data.oauth_scope = oauthScope.value
+    }
+    if (authType.value === 'custom_header') {
+      if (customHeaderName.value) data.custom_header_name = customHeaderName.value
+      if (customHeaderValue.value) data.custom_header_value = customHeaderValue.value
+    }
     emit('save', data)
   } else {
     const data: UpdateProviderRequest = {}
-    if (driver.value !== props.providerConfig?.driver) data.driver = driver.value
-    if (authType.value !== props.providerConfig?.auth_type) data.auth_type = authType.value
-    if (baseUrl.value !== (props.providerConfig?.base_url ?? '')) {
-      data.base_url = baseUrl.value || undefined
+    const prev = props.providerConfig
+    if (driver.value !== prev?.driver) data.driver = driver.value
+    if (authType.value !== prev?.auth_type) data.auth_type = authType.value
+    if (baseUrl.value !== (prev?.base_url ?? '')) {
+      data.base_url = baseUrl.value === '' ? null : baseUrl.value
     }
-    if (apiKey.value) data.api_key = apiKey.value
-    if (oauthTokenUrl.value) data.oauth_token_url = oauthTokenUrl.value
-    if (oauthClientId.value) data.oauth_client_id = oauthClientId.value
-    if (oauthClientSecret.value) data.oauth_client_secret = oauthClientSecret.value
-    if (oauthScope.value) data.oauth_scope = oauthScope.value
-    if (customHeaderName.value) data.custom_header_name = customHeaderName.value
-    if (customHeaderValue.value) data.custom_header_value = customHeaderValue.value
+
+    // Include fields for the active auth type only
+    if (authType.value === 'api_key' || authType.value === 'oauth') {
+      if (apiKey.value) data.api_key = apiKey.value
+    }
+    if (authType.value === 'oauth') {
+      if (oauthTokenUrl.value !== (prev?.oauth_token_url ?? '')) {
+        data.oauth_token_url = oauthTokenUrl.value || null
+      }
+      if (oauthClientId.value !== (prev?.oauth_client_id ?? '')) {
+        data.oauth_client_id = oauthClientId.value || null
+      }
+      if (oauthClientSecret.value) data.oauth_client_secret = oauthClientSecret.value
+      if (oauthScope.value !== (prev?.oauth_scope ?? '')) {
+        data.oauth_scope = oauthScope.value || null
+      }
+    }
+    if (authType.value === 'custom_header') {
+      if (customHeaderName.value !== (prev?.custom_header_name ?? '')) {
+        data.custom_header_name = customHeaderName.value || null
+      }
+      if (customHeaderValue.value) data.custom_header_value = customHeaderValue.value
+    }
+
+    // When switching away from an auth type, clear its fields
+    if (prev?.auth_type && authType.value !== prev.auth_type) {
+      if (prev.auth_type === 'api_key' && authType.value !== 'oauth') {
+        data.clear_api_key = true
+      }
+      if (prev.auth_type === 'oauth') {
+        data.oauth_token_url = null
+        data.oauth_client_id = null
+        data.oauth_client_secret = null
+        data.oauth_scope = null
+      }
+      if (prev.auth_type === 'custom_header') {
+        data.custom_header_name = null
+        data.custom_header_value = null
+      }
+    }
+
     emit('save', data)
   }
   // Dialog close is handled by the parent on success

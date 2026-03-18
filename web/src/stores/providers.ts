@@ -101,8 +101,13 @@ export const useProviderStore = defineStore('providers', () => {
   }
 
   async function createFromPreset(data: CreateFromPresetRequest) {
-    await providersApi.createFromPreset(data)
-    await fetchProviders()
+    try {
+      await providersApi.createFromPreset(data)
+      await fetchProviders()
+    } catch (err) {
+      error.value = getErrorMessage(err)
+      throw err
+    }
   }
 
   return {

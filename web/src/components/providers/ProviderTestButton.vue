@@ -13,8 +13,10 @@ const store = useProviderStore()
 const testing = ref(false)
 const result = ref<TestConnectionResponse | null>(null)
 let clearTimer: ReturnType<typeof setTimeout> | null = null
+let isUnmounted = false
 
 onUnmounted(() => {
+  isUnmounted = true
   if (clearTimer) {
     clearTimeout(clearTimer)
     clearTimer = null
@@ -30,8 +32,11 @@ async function handleTest() {
   }
 
   try {
-    result.value = await store.testConnection(props.providerName)
+    const res = await store.testConnection(props.providerName)
+    if (isUnmounted) return
+    result.value = res
   } catch (err) {
+    if (isUnmounted) return
     result.value = {
       success: false,
       latency_ms: null,
@@ -39,9 +44,12 @@ async function handleTest() {
       model_tested: null,
     }
   } finally {
-    testing.value = false
+    if (!isUnmounted) {
+      testing.value = false
+    }
   }
 
+  if (isUnmounted) return
   clearTimer = setTimeout(() => {
     result.value = null
     clearTimer = null

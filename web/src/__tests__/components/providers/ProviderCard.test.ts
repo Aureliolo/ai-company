@@ -27,6 +27,10 @@ const mockConfig: ProviderConfig = {
   has_api_key: false,
   has_oauth_credentials: false,
   has_custom_header: false,
+  oauth_token_url: null,
+  oauth_client_id: null,
+  oauth_scope: null,
+  custom_header_name: null,
 }
 
 describe('ProviderCard', () => {

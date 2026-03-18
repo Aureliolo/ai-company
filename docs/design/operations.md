@@ -105,7 +105,7 @@ The framework uses **LiteLLM** as the provider abstraction layer:
 
 Providers can be managed at runtime through the API without restarting:
 
-- **CRUD**: Create, update, delete providers via `POST/PUT/DELETE /api/v1/providers`
+- **CRUD**: `POST /api/v1/providers` (create), `PUT /api/v1/providers/{name}` (update), `DELETE /api/v1/providers/{name}` (delete)
 - **Connection test**: `POST /api/v1/providers/{name}/test` -- sends a minimal probe and reports latency
 - **Presets**: `GET /api/v1/providers/presets` lists built-in templates (Ollama, LM Studio, OpenRouter, vLLM); `POST /api/v1/providers/from-preset` creates from a template
 - **Hot-reload**: On mutation, `ProviderManagementService` rebuilds `ProviderRegistry` + `ModelRouter` and atomically swaps them in `AppState` -- no downtime
