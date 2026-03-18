@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/Aureliolo/synthorg/compare/v0.3.3...v0.3.4) (2026-03-18)
+
+
+### Bug Fixes
+
+* **cli:** support cosign v3 bundle format for signature verification ([#546](https://github.com/Aureliolo/synthorg/issues/546)) ([6115eff](https://github.com/Aureliolo/synthorg/commit/6115eff5de14b5a18ebbe789f8a77d21f38e7f8c)), closes [#532](https://github.com/Aureliolo/synthorg/issues/532)
+
 ## [0.3.3](https://github.com/Aureliolo/synthorg/compare/v0.3.2...v0.3.3) (2026-03-18)
 
 
