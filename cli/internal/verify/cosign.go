@@ -27,6 +27,11 @@ const (
 	// cosignBundleAnnotation is the annotation key where cosign v2 stores
 	// the Sigstore bundle in manifest or layer annotations.
 	cosignBundleAnnotation = "dev.sigstore.cosign/bundle"
+
+	// maxBundleBytes caps the size of a cosign bundle read from a registry
+	// layer to prevent memory exhaustion from malicious registries.
+	// Typical Sigstore bundles are ~10KB; 1MB is generous.
+	maxBundleBytes = 1 << 20
 )
 
 // ErrNoCosignSignatures indicates that no cosign signature referrers were
@@ -146,9 +151,12 @@ func verifyCosignV3Bundle(img v1.Image, digest string, sev *verify.Verifier, cer
 	}
 	defer func() { _ = reader.Close() }()
 
-	bundleJSON, err := io.ReadAll(reader)
+	bundleJSON, err := io.ReadAll(io.LimitReader(reader, maxBundleBytes+1))
 	if err != nil {
 		return fmt.Errorf("reading bundle content: %w", err)
+	}
+	if int64(len(bundleJSON)) > maxBundleBytes {
+		return fmt.Errorf("cosign bundle too large (>%d bytes)", maxBundleBytes)
 	}
 
 	return verifyCosignBundleWith(bundleJSON, digest, sev, certID)
