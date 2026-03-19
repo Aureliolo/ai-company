@@ -29,7 +29,10 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
   }
 
   if (type === 'bool') {
-    if (value !== 'true' && value !== 'false') return 'Must be true or false'
+    const lower = value.toLowerCase()
+    if (lower !== 'true' && lower !== 'false' && lower !== '1' && lower !== '0') {
+      return 'Must be true or false'
+    }
   }
 
   if (type === 'enum') {
@@ -46,7 +49,7 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
 
   if (validator_pattern !== null) {
     try {
-      if (!new RegExp(validator_pattern).test(value)) {
+      if (!new RegExp(`^(?:${validator_pattern})$`).test(value)) {
         return `Must match pattern: ${validator_pattern}`
       }
     } catch {

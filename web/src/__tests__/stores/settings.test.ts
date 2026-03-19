@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useSettingsStore } from '@/stores/settings'
+import { useSettingsStore, validateSettingValue } from '@/stores/settings'
 import type { SettingDefinition, SettingEntry } from '@/api/types'
 
 vi.mock('@/api/endpoints/settings', () => ({
@@ -280,5 +280,128 @@ describe('useSettingsStore', () => {
     localStorage.setItem('settings_show_advanced', 'garbage')
     const store = useSettingsStore()
     expect(store.showAdvanced).toBe(false)
+  })
+
+  it('resetSetting propagates errors and clears savingKey', async () => {
+    const settingsApi = await import('@/api/endpoints/settings')
+    vi.mocked(settingsApi.getSchema).mockResolvedValue([mockDefinition])
+    vi.mocked(settingsApi.getAllSettings).mockResolvedValue([mockEntry])
+    vi.mocked(settingsApi.resetSetting).mockRejectedValue(new Error('Not found'))
+
+    const store = useSettingsStore()
+    await store.fetchAll()
+
+    await expect(store.resetSetting('budget', 'total_monthly'))
+      .rejects.toThrow('Not found')
+    expect(store.savingKey).toBeNull()
+  })
+})
+
+describe('validateSettingValue', () => {
+  function makeDef(overrides: Partial<SettingDefinition> = {}): SettingDefinition {
+    return {
+      namespace: 'budget',
+      key: 'test',
+      type: 'str',
+      default: null,
+      description: 'Test',
+      group: 'Test',
+      level: 'basic',
+      sensitive: false,
+      restart_required: false,
+      enum_values: [],
+      validator_pattern: null,
+      min_value: null,
+      max_value: null,
+      yaml_path: null,
+      ...overrides,
+    }
+  }
+
+  // ── Float validation ──────────────────────────────────────
+
+  it('accepts valid float', () => {
+    expect(validateSettingValue('3.14', makeDef({ type: 'float' }))).toBeNull()
+  })
+
+  it('rejects empty string for float', () => {
+    expect(validateSettingValue('', makeDef({ type: 'float' }))).not.toBeNull()
+  })
+
+  it('rejects non-numeric string for float', () => {
+    expect(validateSettingValue('abc', makeDef({ type: 'float' }))).not.toBeNull()
+  })
+
+  it('rejects Infinity for float', () => {
+    expect(validateSettingValue('Infinity', makeDef({ type: 'float' }))).not.toBeNull()
+  })
+
+  it('enforces float min_value', () => {
+    expect(validateSettingValue('-1', makeDef({ type: 'float', min_value: 0 }))).not.toBeNull()
+  })
+
+  it('enforces float max_value', () => {
+    expect(validateSettingValue('200', makeDef({ type: 'float', max_value: 100 }))).not.toBeNull()
+  })
+
+  // ── Bool validation ───────────────────────────────────────
+
+  it('accepts "true" and "false" for bool', () => {
+    expect(validateSettingValue('true', makeDef({ type: 'bool' }))).toBeNull()
+    expect(validateSettingValue('false', makeDef({ type: 'bool' }))).toBeNull()
+  })
+
+  it('accepts "1" and "0" for bool (backend compatibility)', () => {
+    expect(validateSettingValue('1', makeDef({ type: 'bool' }))).toBeNull()
+    expect(validateSettingValue('0', makeDef({ type: 'bool' }))).toBeNull()
+  })
+
+  it('accepts case-insensitive bool values', () => {
+    expect(validateSettingValue('True', makeDef({ type: 'bool' }))).toBeNull()
+    expect(validateSettingValue('FALSE', makeDef({ type: 'bool' }))).toBeNull()
+  })
+
+  it('rejects invalid bool value', () => {
+    expect(validateSettingValue('yes', makeDef({ type: 'bool' }))).not.toBeNull()
+  })
+
+  // ── Enum validation ───────────────────────────────────────
+
+  it('accepts value in enum_values', () => {
+    expect(validateSettingValue('a', makeDef({ type: 'enum', enum_values: ['a', 'b'] }))).toBeNull()
+  })
+
+  it('rejects value not in enum_values', () => {
+    expect(validateSettingValue('c', makeDef({ type: 'enum', enum_values: ['a', 'b'] }))).not.toBeNull()
+  })
+
+  // ── JSON validation ───────────────────────────────────────
+
+  it('accepts valid JSON', () => {
+    expect(validateSettingValue('{"key": "value"}', makeDef({ type: 'json' }))).toBeNull()
+  })
+
+  it('accepts JSON array', () => {
+    expect(validateSettingValue('[1, 2, 3]', makeDef({ type: 'json' }))).toBeNull()
+  })
+
+  it('rejects invalid JSON', () => {
+    expect(validateSettingValue('{bad json', makeDef({ type: 'json' }))).not.toBeNull()
+  })
+
+  // ── Pattern validation ────────────────────────────────────
+
+  it('accepts value matching validator_pattern (fullmatch)', () => {
+    expect(validateSettingValue('abc', makeDef({ type: 'str', validator_pattern: '[a-z]+' }))).toBeNull()
+  })
+
+  it('rejects partial match (fullmatch semantics)', () => {
+    // "abc123" partially matches \d+ but should fail fullmatch
+    expect(validateSettingValue('abc123', makeDef({ type: 'str', validator_pattern: '\\d+' }))).not.toBeNull()
+  })
+
+  it('handles invalid regex in definition gracefully', () => {
+    // Invalid regex should not throw -- just skip validation
+    expect(validateSettingValue('anything', makeDef({ type: 'str', validator_pattern: '[invalid' }))).toBeNull()
   })
 })

@@ -140,10 +140,10 @@ src/synthorg/
 web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
   src/
     api/          # Axios client, endpoint modules, TypeScript types (mirrors backend Pydantic models)
-    components/   # Vue components organized by feature (agents/, approvals/, budget/, common/, dashboard/, layout/, messages/, org-chart/, providers/, setup/, tasks/)
+    components/   # Vue components organized by feature (agents/, approvals/, budget/, common/, dashboard/, layout/, messages/, org-chart/, providers/, settings/, setup/, tasks/)
     composables/  # Reusable composition functions (useAuth, useLoginLockout, usePolling, useOptimisticUpdate, useWebSocketSubscription)
     router/       # Vue Router config with auth guards
-    stores/       # Pinia stores (auth, agents, tasks, budget, messages, meetings, approvals, websocket, analytics, company, providers, setup)
+    stores/       # Pinia stores (auth, agents, tasks, budget, messages, meetings, approvals, websocket, analytics, company, providers, settings, setup)
     styles/       # Global CSS and PrimeVue theme configuration
     utils/        # Constants, formatters, error helpers
     views/        # Page-level components (LoginPage, SetupPage, DashboardPage, OrgChartPage, TaskBoardPage, MessageFeedPage, ApprovalQueuePage, AgentProfilesPage, AgentDetailPage, BudgetPanelPage, MeetingLogsPage, ArtifactBrowserPage, SettingsPage)

@@ -213,8 +213,9 @@ describe('SettingField', () => {
     await flushPromises()
 
     const saveBtn = wrapper.findAll('button').find((b) => b.text() === 'Save')
-    // The button should now be enabled since value changed from 100.0 to 200
     expect(saveBtn).toBeDefined()
+    // The button should now be enabled since value changed from 100.0 to 200
+    expect(saveBtn!.attributes('disabled')).toBeUndefined()
   })
 
   // ── Events ────────────────────────────────────────────────
@@ -293,10 +294,9 @@ describe('SettingField', () => {
     const eyeBtn = wrapper.findAll('button').find(
       (b) => b.text() !== 'Save' && b.text() !== 'Reset',
     )
-    if (eyeBtn) {
-      await eyeBtn.trigger('click')
-      await flushPromises()
-      expect(wrapper.find('input[type="text"]').exists()).toBe(true)
-    }
+    expect(eyeBtn).toBeDefined()
+    await eyeBtn!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('input[type="text"]').exists()).toBe(true)
   })
 })

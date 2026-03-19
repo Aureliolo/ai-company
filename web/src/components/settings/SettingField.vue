@@ -117,6 +117,7 @@ function formatJson() {
         />
         <Button
           :icon="showPassword ? 'pi pi-eye-slash' : 'pi pi-eye'"
+          :aria-label="showPassword ? 'Hide password' : 'Show password'"
           text
           size="small"
           @click="showPassword = !showPassword"
