@@ -1,8 +1,8 @@
 """Request middleware and before-send hooks.
 
 Provides ASGI middleware for request logging, and a ``before_send``
-hook that injects security headers (CSP, CORP, HSTS, etc.) into
-**every** HTTP response — including exception-handler and
+hook that injects security headers (CSP, CORP, HSTS, Cache-Control,
+etc.) into **every** HTTP response -- including exception-handler and
 unmatched-route (404/405) responses.
 
 Why ``before_send`` instead of ASGI middleware?
@@ -63,15 +63,15 @@ _DOCS_CSP: Final[str] = (
     "frame-ancestors 'none'"
 )
 
+# Cache-Control for API data endpoints (named constant for test
+# clarity; applied via _SECURITY_HEADERS).
+_API_CACHE_CONTROL: Final[str] = "no-store"
+
 # Cache-Control for documentation paths -- OpenAPI spec and Scalar UI
 # are public, unauthenticated, non-user-specific content safe for
 # brief caching.  public: shared caches (proxies) may store;
-# max-age=300: revalidate after 5 minutes.
+# max-age=300: fresh for 5 minutes, then stale (cache should revalidate).
 _DOCS_CACHE_CONTROL: Final[str] = "public, max-age=300"
-
-# Cache-Control for API data endpoints (named constant for test
-# clarity; the runtime default comes from _SECURITY_HEADERS).
-_API_CACHE_CONTROL: Final[str] = "no-store"
 
 # Static security headers (path-independent, immutable at runtime).
 _SECURITY_HEADERS: Final[MappingProxyType[str, str]] = MappingProxyType(
@@ -126,11 +126,14 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
     is_docs = path == "/docs" or path.startswith("/docs/")
     headers["Content-Security-Policy"] = _DOCS_CSP if is_docs else _API_CSP
 
-    # Relax COOP for /docs — Scalar UI may use cross-origin popups
+    # Relax COOP for /docs -- Scalar UI may open cross-origin popups
     # for OAuth/API proxy features via proxy.scalar.com.
-    # Allow brief caching for docs — public, non-user-specific content.
+    # same-origin-allow-popups: allows the page to open popups but
+    # blocks cross-origin pages from retaining an opener reference,
+    # preventing XS-Leak side-channel attacks via window.opener.
+    # Allow brief caching for docs -- public, non-user-specific content.
     if is_docs:
-        headers["Cross-Origin-Opener-Policy"] = "unsafe-none"
+        headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
         headers["Cache-Control"] = _DOCS_CACHE_CONTROL
 
 

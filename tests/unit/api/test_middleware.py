@@ -171,9 +171,12 @@ class TestCSPPathSelection:
         assert csp == expected_csp
 
     def test_docs_path_relaxes_coop(self, test_client: TestClient[Any]) -> None:
-        """Docs paths get COOP unsafe-none for Scalar UI compatibility."""
+        """Docs paths get COOP same-origin-allow-popups for Scalar UI."""
         response = test_client.get("/docs/openapi.json")
-        assert response.headers.get("cross-origin-opener-policy") == "unsafe-none"
+        assert (
+            response.headers.get("cross-origin-opener-policy")
+            == "same-origin-allow-popups"
+        )
 
     def test_api_path_keeps_strict_coop(self, test_client: TestClient[Any]) -> None:
         """API paths keep COOP same-origin."""
@@ -227,7 +230,10 @@ class TestCacheControlPathSelection:
         """Cache-Control and COOP relaxation both apply to /docs paths."""
         response = test_client.get("/docs/openapi.json")
         assert response.headers.get("cache-control") == _DOCS_CACHE_CONTROL
-        assert response.headers.get("cross-origin-opener-policy") == "unsafe-none"
+        assert (
+            response.headers.get("cross-origin-opener-policy")
+            == "same-origin-allow-popups"
+        )
 
 
 # ── Request logging middleware ─────────────────────────────────

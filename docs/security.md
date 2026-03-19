@@ -87,6 +87,7 @@ All API responses include:
 | `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` |
 | `Permissions-Policy` | `geolocation=(), camera=(), microphone=()` |
 | `Cross-Origin-Resource-Policy` | `same-origin` |
+| `Cross-Origin-Opener-Policy` | `same-origin` (API); `same-origin-allow-popups` (docs) |
 | `Cache-Control` | `no-store` (API); `public, max-age=300` (docs) |
 | `Content-Security-Policy` | Strict default; relaxed only for docs UI |
 
@@ -199,7 +200,7 @@ Pre-push hooks run **mypy type checking** and **unit tests** as a fast gate.
 | **gitleaks** | Secret detection (push/PR + weekly) | Continuous |
 | **CodeQL** | Static analysis (GitHub Advanced Security) | On push/PR |
 | **zizmor** | GitHub Actions workflow security | On push/PR |
-| **ZAP DAST** | Dynamic API scan against OpenAPI spec | Weekly + on-demand |
+| **ZAP DAST** | Dynamic API scan against OpenAPI spec | On push to main + weekly |
 | **OSSF Scorecard** | Supply chain maturity scoring | Weekly + on push |
 | **Trivy + Grype** | Container vulnerability scanning | On image build |
 | **Socket.dev** | Supply chain attack detection | On PR |
