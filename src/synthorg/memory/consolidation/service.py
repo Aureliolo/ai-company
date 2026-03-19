@@ -81,7 +81,7 @@ class MemoryConsolidationService:
         Retrieves up to 1000 entries per invocation and applies the
         consolidation strategy, then archives removed entries if archival
         is configured and enabled.  Per-entry archival failures are
-        logged and skipped --they do not abort the entire batch.
+        logged and skipped -- they do not abort the entire batch.
 
         Args:
             agent_id: Agent whose memories to consolidate.
@@ -144,7 +144,7 @@ class MemoryConsolidationService:
         Retrieves excess entries in batches (up to 1000 per query,
         the ``MemoryQuery.limit`` cap) and deletes them.  The entries
         selected for deletion depend on the backend's default query
-        ordering --typically oldest-first, but consult the concrete
+        ordering -- typically oldest-first, but consult the concrete
         backend for specifics.
 
         Args:

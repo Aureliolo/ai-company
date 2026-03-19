@@ -4,7 +4,7 @@ Implements a two-pass loading strategy:
 
 - **Pass 1**: YAML-parse the template to extract metadata and the
   ``variables`` section (which uses plain YAML, no Jinja2).
-- **Pass 2**: Performed later by the renderer --Jinja2-renders the raw
+- **Pass 2**: Performed later by the renderer -- Jinja2-renders the raw
   YAML text, then YAML-parses the result.
 
 Both are returned bundled as a :class:`LoadedTemplate` dataclass.

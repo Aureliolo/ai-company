@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Module-level Jinja2 environment --stateless and safe to reuse.
+# Module-level Jinja2 environment -- stateless and safe to reuse.
 _JINJA_ENV = SandboxedEnvironment(keep_trailing_newline=True)
 _JINJA_ENV.filters["auto"] = lambda value: value or ""
 
@@ -628,7 +628,7 @@ def _expand_single_agent(
         if not has_extends:
             msg = (
                 f"Agent {name!r} uses '_remove' but the template "
-                "has no 'extends' --directive has no effect"
+                "has no 'extends' -- directive has no effect"
             )
             logger.warning(
                 TEMPLATE_RENDER_VARIABLE_ERROR,
@@ -638,7 +638,7 @@ def _expand_single_agent(
             raise TemplateRenderError(msg)
         agent_dict["_remove"] = True
 
-    # Preserve merge_id only when inheritance is active --standalone
+    # Preserve merge_id only when inheritance is active -- standalone
     # templates have no merge step to strip it later.
     merge_id = str(agent.get("merge_id", "")).strip()
     if has_extends and merge_id:

@@ -280,7 +280,7 @@ class SQLitePersistenceBackend:
             PersistenceConnectionError: If *repo* is ``None``.
         """
         if repo is None:
-            msg = f"Not connected --call connect() before accessing {name}"
+            msg = f"Not connected -- call connect() before accessing {name}"
             logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
             raise PersistenceConnectionError(msg)
         return repo

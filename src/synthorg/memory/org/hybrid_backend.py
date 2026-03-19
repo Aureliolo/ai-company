@@ -111,12 +111,12 @@ class HybridPromptRetrievalBackend:
     def _require_connected(self) -> None:
         """Raise if not connected."""
         if not self._connected:
-            msg = "Not connected --call connect() first"
+            msg = "Not connected -- call connect() first"
             logger.warning(ORG_MEMORY_NOT_CONNECTED, backend="hybrid_prompt_retrieval")
             raise OrgMemoryConnectionError(msg)
 
     async def list_policies(self) -> tuple[OrgFact, ...]:
-        """Return all core policies --static config *and* dynamically written.
+        """Return all core policies -- static config *and* dynamically written.
 
         Static policies (from ``core_policies`` config) are returned
         first as synthetic ``OrgFact`` objects.  Dynamically written

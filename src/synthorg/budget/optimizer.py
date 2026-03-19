@@ -5,7 +5,7 @@ downgrade recommendations, routing optimization suggestions, and
 operation approval decisions.  Composes
 :class:`~synthorg.budget.tracker.CostTracker` and
 :class:`~synthorg.budget.config.BudgetConfig` for read-only analytical
-queries --the advisory complement to
+queries -- the advisory complement to
 :class:`~synthorg.budget.enforcer.BudgetEnforcer`.
 
 Service layer backing the CFO role (see Operations design page).
@@ -359,7 +359,7 @@ class CostOptimizer:
 
         Unlike ``recommend_downgrades`` which only targets INEFFICIENT
         agents, this method analyzes all agents and suggests cheaper
-        alternatives regardless of efficiency rating --any agent that
+        alternatives regardless of efficiency rating -- any agent that
         could use a cheaper model is a candidate.
 
         Args:

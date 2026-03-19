@@ -219,7 +219,7 @@ def classify_model_tier(
     Matches the first tier whose price range contains the given cost.
     Range check: ``min <= cost < max`` (or ``min <= cost`` if max is
     ``None``).  If tiers have overlapping ranges, the first match in
-    iteration order wins --callers should ensure tiers are sorted by
+    iteration order wins -- callers should ensure tiers are sorted by
     ``sort_order``.
 
     Args:
