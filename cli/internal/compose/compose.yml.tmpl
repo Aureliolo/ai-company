@@ -15,6 +15,7 @@ services:
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_PERSISTENCE_BACKEND: {{yamlStr .PersistenceBackend}}
       SYNTHORG_MEMORY_BACKEND: {{yamlStr .MemoryBackend}}
+      SYNTHORG_LOG_DIR: "/data/logs"
       MEM0_TELEMETRY: "false"
       SYNTHORG_LOG_LEVEL: {{yamlStr .LogLevel}}
 {{- if .JWTSecret}}

@@ -16,6 +16,7 @@ from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.setup import (
     _DEFAULT_LOGGER_LEVELS,
     _apply_console_level_override,
+    _attach_handlers,
     configure_logging,
 )
 
@@ -275,3 +276,135 @@ class TestApplyConsoleLevelOverride:
         assert result.sinks[0].level == LogLevel.INFO
         captured = capsys.readouterr()
         assert "no CONSOLE sink found" in captured.err
+
+
+@pytest.mark.unit
+class TestCriticalSinkFailure:
+    """Tests for critical sink failure enforcement in _attach_handlers."""
+
+    def test_non_critical_sink_failure_skipped(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Non-critical sink failure is tolerated."""
+        import synthorg.observability.setup as _setup
+
+        config = LogConfig(
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.DEBUG,
+                    file_path="debug.log",
+                    json_format=True,
+                ),
+            ),
+        )
+
+        def _boom(**_kwargs: object) -> None:
+            msg = "disk full"
+            raise OSError(msg)
+
+        monkeypatch.setattr(_setup, "build_handler", _boom)
+        root = logging.getLogger()
+        initial_count = len(root.handlers)
+        # Should not raise -- non-critical sink failures are skipped.
+        _attach_handlers(config, root, [])
+        assert len(root.handlers) == initial_count
+
+    def test_critical_audit_sink_failure_raises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """audit.log failure raises RuntimeError."""
+        import synthorg.observability.setup as _setup
+
+        config = LogConfig(
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.INFO,
+                    file_path="audit.log",
+                    json_format=True,
+                ),
+            ),
+        )
+
+        def _boom(**_kwargs: object) -> None:
+            msg = "permission denied"
+            raise OSError(msg)
+
+        monkeypatch.setattr(_setup, "build_handler", _boom)
+        root = logging.getLogger()
+        with pytest.raises(RuntimeError, match=r"audit\.log"):
+            _attach_handlers(config, root, [])
+
+    def test_critical_access_sink_failure_raises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """access.log failure raises RuntimeError."""
+        import synthorg.observability.setup as _setup
+
+        config = LogConfig(
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.INFO,
+                    file_path="access.log",
+                    json_format=True,
+                ),
+            ),
+        )
+
+        def _boom(**_kwargs: object) -> None:
+            msg = "permission denied"
+            raise OSError(msg)
+
+        monkeypatch.setattr(_setup, "build_handler", _boom)
+        root = logging.getLogger()
+        with pytest.raises(RuntimeError, match=r"access\.log"):
+            _attach_handlers(config, root, [])
+
+    def test_critical_sink_failure_chains_original_cause(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """RuntimeError chains the original OS error."""
+        import synthorg.observability.setup as _setup
+
+        config = LogConfig(
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.INFO,
+                    file_path="audit.log",
+                    json_format=True,
+                ),
+            ),
+        )
+
+        def _boom(**_kwargs: object) -> None:
+            msg = "permission denied"
+            raise OSError(msg)
+
+        monkeypatch.setattr(_setup, "build_handler", _boom)
+        root = logging.getLogger()
+        with pytest.raises(RuntimeError) as exc_info:
+            _attach_handlers(config, root, [])
+        assert isinstance(exc_info.value.__cause__, OSError)
+
+
+@pytest.mark.unit
+class TestConfigureLoggingIntegration:
+    """Integration tests for configure_logging with env var overrides."""
+
+    def test_synthorg_log_level_applied_end_to_end(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """SYNTHORG_LOG_LEVEL env var takes effect through configure_logging."""
+        monkeypatch.setenv("SYNTHORG_LOG_LEVEL", "warning")
+        configure_logging(_console_only_config())
+        root = logging.getLogger()
+        # The console handler level should reflect the override.
+        assert any(h.level == logging.WARNING for h in root.handlers)

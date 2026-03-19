@@ -1173,7 +1173,7 @@ File sinks use `RotatingFileHandler` by default (10 MB max, 5 backup files). Alt
 The `sanitize_sensitive_fields` processor automatically redacts values for keys matching:
 `password`, `secret`, `token`, `api_key`, `api_secret`, `authorization`, `credential`,
 `private_key`, `bearer`, `session`. Redaction applies at all nesting depths in structured
-log events. Redacted values are replaced with `"[REDACTED]"`.
+log events. Redacted values are replaced with `"**REDACTED**"`.
 
 ### Correlation Tracking
 
@@ -1202,6 +1202,7 @@ Default levels per domain module (overridable via `LogConfig.logger_levels`):
 | `synthorg.security` | INFO |
 | `synthorg.tools` | INFO |
 | `synthorg.api` | INFO |
+| `synthorg.cli` | INFO |
 | `synthorg.config` | INFO |
 | `synthorg.templates` | INFO |
 

@@ -20,6 +20,7 @@ services:
       SYNTHORG_DB_PATH: "/data/synthorg.db"
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_LOG_DIR: "${SYNTHORG_LOG_DIR:-/data/logs}"
+      SYNTHORG_LOG_LEVEL: "${SYNTHORG_LOG_LEVEL:-info}"
       # Disable Mem0 telemetry by default. Override in .env to enable.
       MEM0_TELEMETRY: "${MEM0_TELEMETRY:-false}"
       # Bridge SYNTHORG_* to uvicorn's native env vars (exec form CMD, no shell)

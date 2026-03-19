@@ -12,7 +12,7 @@ from typing import Any
 
 import structlog
 
-from synthorg.observability.config import DEFAULT_SINKS, LogConfig
+from synthorg.observability.config import DEFAULT_SINKS, LogConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.processors import sanitize_sensitive_fields
 from synthorg.observability.sinks import build_handler
@@ -85,6 +85,7 @@ def _clear_root_handlers(root_logger: logging.Logger) -> None:
             print(  # noqa: T201
                 f"WARNING: Failed to close log handler {handler!r}",
                 file=sys.stderr,
+                flush=True,
             )
 
 
@@ -141,10 +142,10 @@ def _attach_handlers(
                 foreign_pre_chain=shared_processors,
             )
             root_logger.addHandler(handler)
-        except OSError, RuntimeError, ValueError:
+        except (OSError, RuntimeError, ValueError) as exc:
             print(  # noqa: T201
                 f"WARNING: Failed to initialise log sink "
-                f"{sink!r}. This sink will be skipped.",
+                f"{sink!r}: {exc}. This sink will be skipped.",
                 file=sys.stderr,
                 flush=True,
             )
@@ -154,7 +155,7 @@ def _attach_handlers(
                     "initialised. Refusing to start with missing "
                     "audit/access logs."
                 )
-                raise RuntimeError(msg) from None
+                raise RuntimeError(msg) from exc
 
 
 def _apply_logger_levels(config: LogConfig) -> None:
@@ -202,20 +203,22 @@ def _apply_console_level_override(config: LogConfig) -> LogConfig:
         )
         level = LogLevel.INFO
 
-    new_sinks = tuple(
-        sink.model_copy(update={"level": level})
-        if sink.sink_type == SinkType.CONSOLE
-        else sink
-        for sink in config.sinks
-    )
-    if new_sinks == config.sinks:
+    found_console = False
+    new_sinks: list[SinkConfig] = []
+    for sink in config.sinks:
+        if sink.sink_type == SinkType.CONSOLE:
+            found_console = True
+            new_sinks.append(sink.model_copy(update={"level": level}))
+        else:
+            new_sinks.append(sink)
+    if not found_console:
         print(  # noqa: T201
             f"WARNING: SYNTHORG_LOG_LEVEL={raw!r} set but no CONSOLE "
             "sink found in config -- env var has no effect.",
             file=sys.stderr,
             flush=True,
         )
-    return config.model_copy(update={"sinks": new_sinks})
+    return config.model_copy(update={"sinks": tuple(new_sinks)})
 
 
 def configure_logging(config: LogConfig | None = None) -> None:
@@ -231,6 +234,12 @@ def configure_logging(config: LogConfig | None = None) -> None:
     Args:
         config: Logging configuration.  When ``None``, uses sensible
             defaults with all standard sinks.
+
+    Raises:
+        RuntimeError: If a critical sink (``audit.log`` or
+            ``access.log``) fails to initialise.  The logging system
+            may be in a partially configured state (structlog reset,
+            old handlers cleared, some new handlers attached).
     """
     if config is None:
         config = LogConfig(sinks=DEFAULT_SINKS)

@@ -971,3 +971,53 @@ class TestBootstrapAppLogging:
         assert calls[0].logging is not None
         assert calls[0].logging.log_dir == "/data/logs"
         assert len(calls[0].logging.sinks) == len(DEFAULT_SINKS)
+
+    def test_whitespace_only_log_dir_treated_as_unset(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Whitespace-only SYNTHORG_LOG_DIR behaves like unset."""
+        monkeypatch.setenv("SYNTHORG_LOG_DIR", "   ")
+        calls: list[object] = []
+        monkeypatch.setattr(
+            "synthorg.api.app.bootstrap_logging",
+            calls.append,
+        )
+        config = RootConfig(company_name="test-co")
+        _bootstrap_app_logging(config)
+        assert len(calls) == 1
+        assert calls[0] is config
+
+    def test_path_traversal_in_log_dir_raises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """SYNTHORG_LOG_DIR with '..' raises ValueError."""
+        monkeypatch.setenv("SYNTHORG_LOG_DIR", "../../etc")
+        monkeypatch.setattr(
+            "synthorg.api.app.bootstrap_logging",
+            lambda _: None,
+        )
+        config = RootConfig(company_name="test-co")
+        with pytest.raises(ValueError, match="path traversal"):
+            _bootstrap_app_logging(config)
+
+    def test_bootstrap_failure_prints_critical_and_reraises(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """create_app re-raises and prints CRITICAL on logging failure."""
+        monkeypatch.setattr(
+            "synthorg.api.app._bootstrap_app_logging",
+            _raise_runtime_error,
+        )
+        with pytest.raises(RuntimeError, match="boom"):
+            create_app()
+        captured = capsys.readouterr()
+        assert "CRITICAL" in captured.err
+
+
+def _raise_runtime_error(_config: object) -> None:
+    msg = "boom"
+    raise RuntimeError(msg)

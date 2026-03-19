@@ -84,6 +84,10 @@ class TestSinkRoutingTable:
         assert "synthorg.engine." in prefixes
         assert "synthorg.core." in prefixes
 
+    def test_access_routes_api(self) -> None:
+        assert "access.log" in _SINK_ROUTING
+        assert "synthorg.api." in _SINK_ROUTING["access.log"]
+
     def test_catchall_sinks_not_in_routing(self) -> None:
         for name in ("synthorg.log", "errors.log", "debug.log"):
             assert name not in _SINK_ROUTING

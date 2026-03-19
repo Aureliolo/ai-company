@@ -15,6 +15,7 @@ services:
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_PERSISTENCE_BACKEND: "sqlite"
       SYNTHORG_MEMORY_BACKEND: "mem0"
+      SYNTHORG_LOG_DIR: "/data/logs"
       MEM0_TELEMETRY: "false"
       SYNTHORG_LOG_LEVEL: "info"
     user: "65532:65532"

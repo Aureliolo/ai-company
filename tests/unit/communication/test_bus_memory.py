@@ -739,14 +739,20 @@ class TestHistoryEdgeCases:
 class TestIdleSummary:
     """Tests for the periodic idle channel summary log."""
 
-    async def test_idle_polls_increment_without_logging(self) -> None:
+    async def test_idle_polls_increment_without_logging(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """Idle polls below the time threshold do not emit a summary."""
+        from synthorg.communication import bus_memory as _bm
+
+        clock = 1000.0
+        monkeypatch.setattr(_bm.time, "monotonic", lambda: clock)
         bus = InMemoryMessageBus(config=_make_config())
         await bus.start()
         await bus.subscribe("#general", "agent-a")
-        # Short timeouts to accumulate idle polls quickly.
         for _ in range(5):
-            result = await bus.receive("#general", "agent-a", timeout=0.01)
+            result = await bus.receive("#general", "agent-a", timeout=0.0)
             assert result is None
         assert bus._idle_poll_count == 5
 
@@ -755,14 +761,24 @@ class TestIdleSummary:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Summary fires when time interval elapses."""
-        import time
+        from synthorg.communication import bus_memory as _bm
+        from synthorg.communication.bus_memory import (
+            _IDLE_SUMMARY_INTERVAL_SECONDS,
+        )
 
+        clock = 1000.0
+        monkeypatch.setattr(_bm.time, "monotonic", lambda: clock)
         bus = InMemoryMessageBus(config=_make_config())
         await bus.start()
         await bus.subscribe("#general", "agent-a")
-        # Fast-forward the last summary timestamp to trigger summary.
-        bus._last_idle_summary = time.monotonic() - 61.0
-        await bus.receive("#general", "agent-a", timeout=0.01)
+        # First idle poll -- counter increments.
+        await bus.receive("#general", "agent-a", timeout=0.0)
+        assert bus._idle_poll_count == 1
+
+        # Advance past the summary interval.
+        clock = 1000.0 + _IDLE_SUMMARY_INTERVAL_SECONDS + 1.0
+        monkeypatch.setattr(_bm.time, "monotonic", lambda: clock)
+        await bus.receive("#general", "agent-a", timeout=0.0)
         # Counter should have been reset after summary.
         assert bus._idle_poll_count == 0
 
@@ -777,3 +793,24 @@ class TestIdleSummary:
         envelope = await bus.receive("#general", "agent-a", timeout=0.5)
         assert envelope is not None
         assert envelope.message.content == "hello"
+
+    async def test_idle_state_reset_on_restart(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Idle counters reset when the bus is restarted."""
+        from synthorg.communication import bus_memory as _bm
+
+        clock = 1000.0
+        monkeypatch.setattr(_bm.time, "monotonic", lambda: clock)
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        await bus.subscribe("#general", "agent-a")
+        await bus.receive("#general", "agent-a", timeout=0.0)
+        assert bus._idle_poll_count == 1
+
+        await bus.stop()
+        clock = 2000.0
+        monkeypatch.setattr(_bm.time, "monotonic", lambda: clock)
+        await bus.start()
+        assert bus._idle_poll_count == 0

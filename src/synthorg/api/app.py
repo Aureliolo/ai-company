@@ -11,7 +11,7 @@ import os
 import sys
 import time
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any
 
 from litestar import Litestar, Router
@@ -336,26 +336,38 @@ def _bootstrap_app_logging(effective_config: RootConfig) -> None:
 
     Applies the ``SYNTHORG_LOG_DIR`` env var override (for Docker
     volume paths) before calling :func:`bootstrap_logging`.
+
+    When the env var is set with an existing logging config, patches
+    ``log_dir``.  When set without a logging config, creates a
+    default config with ``DEFAULT_SINKS``.  Otherwise, delegates
+    directly to ``bootstrap_logging``.
+
+    Raises:
+        ValueError: If ``SYNTHORG_LOG_DIR`` contains ``..`` path
+            traversal components.
     """
     log_dir = os.environ.get("SYNTHORG_LOG_DIR", "").strip()
-    if log_dir and effective_config.logging is not None:
-        patched = effective_config.model_copy(
-            update={
-                "logging": effective_config.logging.model_copy(
-                    update={"log_dir": log_dir},
-                ),
-            },
-        )
-        bootstrap_logging(patched)
-    elif log_dir:
-        bootstrap_logging(
-            RootConfig(
-                company_name=effective_config.company_name,
-                logging=LogConfig(sinks=DEFAULT_SINKS, log_dir=log_dir),
-            ),
-        )
-    else:
+    if not log_dir:
         bootstrap_logging(effective_config)
+        return
+
+    # Validate before model_copy -- Pydantic validators do not run
+    # on model_copy(update=...), so we must check manually.
+    if ".." in PurePath(log_dir).parts:
+        msg = f"SYNTHORG_LOG_DIR contains '..' path traversal component: {log_dir!r}"
+        raise ValueError(msg)
+
+    base_log_cfg = effective_config.logging or LogConfig(
+        sinks=DEFAULT_SINKS,
+    )
+    patched = effective_config.model_copy(
+        update={
+            "logging": base_log_cfg.model_copy(
+                update={"log_dir": log_dir},
+            ),
+        },
+    )
+    bootstrap_logging(patched)
 
 
 def create_app(  # noqa: PLR0913
@@ -402,7 +414,7 @@ def create_app(  # noqa: PLR0913
     """
     effective_config = config or RootConfig(company_name="default")
 
-    # Activate the structured logging pipeline (7+1 sinks) before any
+    # Activate the structured logging pipeline (8 sinks) before any
     # other setup so that auto-wiring, persistence, and bus logs all
     # flow through the configured sinks.  Respects SYNTHORG_LOG_DIR
     # env var for Docker log directory override.

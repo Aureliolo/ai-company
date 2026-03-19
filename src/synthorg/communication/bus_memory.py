@@ -127,6 +127,8 @@ class InMemoryMessageBus:
                 raise MessageBusAlreadyRunningError(msg)
             self._running = True
             self._shutdown_event.clear()
+            self._idle_poll_count = 0
+            self._last_idle_summary = time.monotonic()
             maxlen = self._config.retention.max_messages_per_channel
             for name in self._config.channels:
                 ch = Channel(name=name, type=ChannelType.TOPIC)
