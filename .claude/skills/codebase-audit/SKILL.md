@@ -1,7 +1,7 @@
 ---
 description: "Deep codebase audit: launches specialized parallel agents to find issues, validates findings, groups into work packages, and creates GitHub issues"
-argument-hint: "<scope: full | src/ | web/ | cli/ | docs/ | .github/> [--report-only] [--skip-issues]"
-allowed-tools: ["Agent", "Bash", "Read", "Glob", "Grep", "Edit", "Write", "WebFetch", "WebSearch", "AskUserQuestion", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
+argument-hint: "<scope: full | src/ | web/ | cli/ | docs/ | site/ | .github/ | ci | docker/> [--report-only] [--quick]"
+allowed-tools: ["Agent", "Bash", "Read", "Glob", "Grep", "WebFetch", "WebSearch", "AskUserQuestion", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
 ---
 
 # /codebase-audit -- Deep Codebase Audit
@@ -10,7 +10,7 @@ Launch a swarm of specialized agents to find issues across the entire codebase (
 
 ## Key Principles (from battle-tested sessions)
 
-1. **Never present unvalidated findings** -- validation is mandatory before ANY output to the user
+1. **Never present unvalidated findings** -- validation is mandatory before presenting findings to the user
 2. **Research architecture BEFORE auditing** -- agents that don't understand the system produce false positives
 3. **Skepticism is required** -- "100% clean" results are suspicious and trigger deeper investigation
 4. **Group by code proximity, NOT severity** -- work packages are what a developer would naturally fix together
@@ -32,8 +32,9 @@ Parse the user's argument to determine audit scope:
 | `cli/` | Go CLI only | Go categories |
 | `docs/` or `site/` | Documentation/site | Docs/content categories |
 | `.github/` or `ci` | CI/CD only | CI/workflow categories |
+| `docker/` | Docker/compose only | Infrastructure categories |
 | `--report-only` | Any scope | Skip issue creation, report only |
-| `--skip-issues` | Any scope | Same as --report-only |
+| `--quick` | Any scope | Skip Phase 5 deep dive on zero-finding categories |
 
 If no argument given, default to `full`.
 
@@ -91,7 +92,7 @@ Select agents based on scope. Each agent searches for ONE type of issue only.
 | `test-coverage` | Public modules with no corresponding test file, empty test files |
 | `flaky-tests` | Unmocked time, real asyncio.sleep in tests, timing-dependent assertions, skipped tests |
 | `wiring-lifecycle` | Incorrectly wired services, missing DI, lifecycle gaps, protocol implementations incomplete |
-| `security-gaps` | Hardcoded secrets, missing auth guards, injection vectors, SSRF, XSS |
+| `security-gaps` | Hardcoded secrets, missing auth guards, injection vectors in Python backend code |
 | `dead-code` | Unreachable functions, unused imports, orphaned modules |
 | `todo-fixme` | Unresolved TODOs that should be tracked as issues |
 | `spec-drift` | Implementation diverging from design spec behavior |
@@ -133,6 +134,7 @@ Select agents based on scope. Each agent searches for ONE type of issue only.
 
 | Agent | What It Searches For |
 |-------|---------------------|
+| `security-gaps` | Cross-stack security issues: SSRF, XSS, injection vectors, hardcoded secrets across all languages |
 | `dependency-issues` | Unused deps, missing deps, version conflicts across all package managers |
 | `docstring-gaps` | Public classes/functions missing Google-style docstrings |
 
@@ -140,7 +142,7 @@ Select agents based on scope. Each agent searches for ONE type of issue only.
 
 Every agent receives this structure:
 
-```
+```text
 ## Task
 You are searching the codebase for ONE specific type of issue: {ISSUE_TYPE}.
 
@@ -219,7 +221,7 @@ Launch validation agents in parallel. Each validation agent gets a batch of 8-12
 
 ### Validation Agent Prompt Template
 
-```
+```text
 Validate these audit findings by reading the ACTUAL SOURCE CODE.
 For each finding, determine: CONFIRMED, LIKELY CONFIRMED, LIKELY FALSE, or FALSE POSITIVE.
 
@@ -263,7 +265,7 @@ Present the validated, deduplicated findings to the user. Format:
 
 ### Summary Table
 
-```
+```text
 | # | Finding | File:Line | Category | Verdict |
 |---|---------|-----------|----------|---------|
 | 1 | Description | path:123 | category | CONFIRMED |
@@ -280,7 +282,9 @@ Present the validated, deduplicated findings to the user. Format:
 
 ### User Gate
 
-Ask the user:
+If `--report-only` was passed, skip this gate and go directly to the markdown report (option 3 below).
+
+Otherwise, ask the user:
 1. **"Proceed to group into work packages and create issues" (Recommended)**
 2. "Show me the full detail for each finding first"
 3. "Export as markdown report only (no issues)"
@@ -318,7 +322,7 @@ If a finding is a "feature not yet implemented" (spec drift with TODO/stub), it 
 
 Show the proposed work packages:
 
-```
+```text
 ## Proposed Work Packages (N total)
 
 ### WP1: Name
@@ -326,8 +330,11 @@ Show the proposed work packages:
 |---|---------|
 | 1 | ... |
 | 2 | ... |
+```
+
 **Rationale:** Why these go together.
 
+```text
 ### WP2: Name
 ...
 ```
@@ -370,7 +377,7 @@ Use the `mcp__github__issue_write` tool or `gh issue create` via Bash.
 
 Present the complete list of created issues:
 
-```
+```text
 | WP | Issue | Title |
 |----|-------|-------|
 | 1 | #NNN | ... |
