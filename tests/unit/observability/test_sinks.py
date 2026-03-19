@@ -11,7 +11,12 @@ from structlog.stdlib import ProcessorFormatter
 
 from synthorg.observability.config import RotationConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
-from synthorg.observability.sinks import _build_file_handler, build_handler
+from synthorg.observability.sinks import (
+    _build_file_handler,
+    _FlushingRotatingFileHandler,
+    _FlushingWatchedFileHandler,
+    build_handler,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -238,3 +243,66 @@ class TestBuildFileHandlerErrors:
         object.__setattr__(sink, "file_path", None)
         with pytest.raises(ValueError, match="FILE sink is missing 'file_path'"):
             _build_file_handler(sink, tmp_path)
+
+
+@pytest.mark.unit
+class TestFlushAfterEmit:
+    """File handlers flush to disk after every emit."""
+
+    def test_rotating_handler_flushes_on_emit(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
+        sink = SinkConfig(
+            sink_type=SinkType.FILE,
+            file_path="flush.log",
+            rotation=RotationConfig(strategy=RotationStrategy.BUILTIN),
+        )
+        handler = _build_file_handler(sink, tmp_path)
+        handler_cleanup.append(handler)
+
+        assert isinstance(handler, _FlushingRotatingFileHandler)
+
+        formatter = logging.Formatter("%(message)s")
+        handler.setFormatter(formatter)
+        record = logging.LogRecord(
+            name="test",
+            level=logging.ERROR,
+            pathname="",
+            lineno=0,
+            msg="flush-test-message",
+            args=(),
+            exc_info=None,
+        )
+        handler.emit(record)
+
+        content = (tmp_path / "flush.log").read_text()
+        assert "flush-test-message" in content
+
+    def test_watched_handler_flushes_on_emit(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
+        sink = SinkConfig(
+            sink_type=SinkType.FILE,
+            file_path="flush-watched.log",
+            rotation=RotationConfig(strategy=RotationStrategy.EXTERNAL),
+        )
+        handler = _build_file_handler(sink, tmp_path)
+        handler_cleanup.append(handler)
+
+        assert isinstance(handler, _FlushingWatchedFileHandler)
+
+        formatter = logging.Formatter("%(message)s")
+        handler.setFormatter(formatter)
+        record = logging.LogRecord(
+            name="test",
+            level=logging.ERROR,
+            pathname="",
+            lineno=0,
+            msg="flush-watched-message",
+            args=(),
+            exc_info=None,
+        )
+        handler.emit(record)
+
+        content = (tmp_path / "flush-watched.log").read_text()
+        assert "flush-watched-message" in content

@@ -290,7 +290,7 @@ func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []
 // Covers common secret naming conventions to prevent leaking credentials
 // in terminal scrollback or CI logs when the compose template changes.
 var secretKeyPattern = regexp.MustCompile(
-	`(?i)^\s*\w*(SECRET|PASSWORD|TOKEN|API_KEY|CREDENTIALS)\w*\s*:`,
+	`(?i)^\s*\w*(SECRET|PASSWORD|TOKEN|API_KEY|CREDENTIALS|_KEY)\w*\s*:`,
 )
 
 // lineDiff produces a bag-based diff showing added (+) and removed (-) lines

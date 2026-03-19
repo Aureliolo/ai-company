@@ -54,6 +54,7 @@ func TestConfigShowDisplaysFields(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		LogLevel:           "debug",
 		JWTSecret:          "super-secret",
+		SettingsKey:        "super-settings-key",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 	}
@@ -91,8 +92,16 @@ func TestConfigShowDisplaysFields(t *testing.T) {
 		}
 	}
 
-	// JWT secret must not appear in output.
+	// Secrets must not appear in output.
 	if bytes.Contains([]byte(out), []byte("super-secret")) {
 		t.Error("JWT secret leaked in output")
+	}
+	if bytes.Contains([]byte(out), []byte("super-settings-key")) {
+		t.Error("Settings key leaked in output")
+	}
+
+	// Settings key label must be present.
+	if !bytes.Contains([]byte(out), []byte("Settings key")) {
+		t.Error("expected 'Settings key' label in output")
 	}
 }

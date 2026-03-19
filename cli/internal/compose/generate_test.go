@@ -42,9 +42,12 @@ func TestGenerateDefault(t *testing.T) {
 		t.Error("default output should not contain sandbox service")
 	}
 
-	// No JWT secret by default.
+	// No secrets by default.
 	if strings.Contains(yaml, "JWT_SECRET") {
 		t.Error("default output should not contain JWT_SECRET")
+	}
+	if strings.Contains(yaml, "SETTINGS_KEY") {
+		t.Error("default output should not contain SETTINGS_KEY")
 	}
 
 	compareGolden(t, "compose_default.yml", out)
@@ -58,6 +61,7 @@ func TestGenerateCustomPorts(t *testing.T) {
 		WebPort:            4000,
 		LogLevel:           "debug",
 		JWTSecret:          "test-secret-value",
+		SettingsKey:        "test-settings-key",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 	}
@@ -72,6 +76,8 @@ func TestGenerateCustomPorts(t *testing.T) {
 	assertContains(t, yaml, "synthorg-backend:v0.2.0")
 	assertContains(t, yaml, "SYNTHORG_JWT_SECRET")
 	assertContains(t, yaml, "test-secret-value")
+	assertContains(t, yaml, "SYNTHORG_SETTINGS_KEY")
+	assertContains(t, yaml, "test-settings-key")
 
 	compareGolden(t, "compose_custom_ports.yml", out)
 }
@@ -221,6 +227,7 @@ func TestParamsFromState(t *testing.T) {
 		WebPort:            4000,
 		LogLevel:           "debug",
 		JWTSecret:          "secret",
+		SettingsKey:        "settings-key",
 		Sandbox:            true,
 		DockerSock:         "/var/run/docker.sock",
 		PersistenceBackend: "sqlite",
@@ -248,6 +255,9 @@ func TestParamsFromState(t *testing.T) {
 	}
 	if p.MemoryBackend != "mem0" {
 		t.Errorf("MemoryBackend = %q, want mem0", p.MemoryBackend)
+	}
+	if p.SettingsKey != "settings-key" {
+		t.Errorf("SettingsKey = %q, want settings-key", p.SettingsKey)
 	}
 }
 

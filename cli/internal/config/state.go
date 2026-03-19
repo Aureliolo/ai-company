@@ -22,6 +22,7 @@ type State struct {
 	DockerSock         string            `json:"docker_sock,omitempty"`
 	LogLevel           string            `json:"log_level"`
 	JWTSecret          string            `json:"jwt_secret,omitempty"`
+	SettingsKey        string            `json:"settings_key,omitempty"`
 	PersistenceBackend string            `json:"persistence_backend"`
 	MemoryBackend      string            `json:"memory_backend"`
 	VerifiedDigests    map[string]string `json:"verified_digests,omitempty"`

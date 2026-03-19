@@ -19,6 +19,7 @@ services:
       MEM0_TELEMETRY: "false"
       SYNTHORG_LOG_LEVEL: "debug"
       SYNTHORG_JWT_SECRET: "test-secret-value"
+      SYNTHORG_SETTINGS_KEY: "test-settings-key"
     user: "65532:65532"
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
     security_opt:

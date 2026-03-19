@@ -147,7 +147,7 @@ async def _init_persistence(
         )
     else:
         try:
-            secret = await resolve_jwt_secret(persistence)
+            secret = resolve_jwt_secret()
             auth_config = app_state.config.api.auth.with_secret(
                 secret,
             )

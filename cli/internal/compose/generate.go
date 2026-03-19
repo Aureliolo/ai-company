@@ -38,6 +38,7 @@ type Params struct {
 	WebPort            int
 	LogLevel           string
 	JWTSecret          string
+	SettingsKey        string
 	Sandbox            bool
 	DockerSock         string
 	PersistenceBackend string
@@ -54,6 +55,7 @@ func ParamsFromState(s config.State) Params {
 		WebPort:            s.WebPort,
 		LogLevel:           s.LogLevel,
 		JWTSecret:          s.JWTSecret,
+		SettingsKey:        s.SettingsKey,
 		Sandbox:            s.Sandbox,
 		DockerSock:         s.DockerSock,
 		PersistenceBackend: s.PersistenceBackend,

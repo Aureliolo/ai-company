@@ -6,10 +6,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
+from cryptography.fernet import Fernet
 from litestar import Litestar
 from litestar.testing import TestClient
 
-import synthorg.settings.definitions  # noqa: F401 — trigger registration
+import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.app import create_app
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.config import AuthConfig
@@ -35,6 +36,19 @@ from tests.unit.api.fakes import (
 )
 
 __all__ = ["FakeMessageBus", "FakePersistenceBackend"]
+
+# Pre-generate a stable Fernet key for the test session.
+_TEST_SETTINGS_KEY = Fernet.generate_key().decode("ascii")
+
+
+@pytest.fixture(autouse=True)
+def _required_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Set SYNTHORG_JWT_SECRET and SYNTHORG_SETTINGS_KEY for API tests.
+
+    The backend now requires both env vars at startup (no auto-generation).
+    """
+    monkeypatch.setenv("SYNTHORG_JWT_SECRET", _TEST_JWT_SECRET)
+    monkeypatch.setenv("SYNTHORG_SETTINGS_KEY", _TEST_SETTINGS_KEY)
 
 
 def make_exception_handler_app(handler: Any) -> Litestar:

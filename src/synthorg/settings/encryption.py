@@ -76,7 +76,7 @@ class SettingsEncryptor:
                 operation="decrypt",
                 error="invalid token or wrong key",
             )
-            msg = "Failed to decrypt setting value — wrong key or corrupted data"
+            msg = "Failed to decrypt setting value -- wrong key or corrupted data"
             raise SettingsEncryptionError(msg) from exc
         except (ValueError, TypeError, UnicodeDecodeError) as exc:
             logger.exception(
@@ -88,25 +88,36 @@ class SettingsEncryptor:
             raise SettingsEncryptionError(msg) from exc
 
     @classmethod
-    def from_env(cls) -> SettingsEncryptor | None:
+    def from_env(cls) -> SettingsEncryptor:
         """Create an encryptor from the ``SYNTHORG_SETTINGS_KEY`` env var.
 
+        The encryption key is required for the application to start.
+        It must be set explicitly via the environment variable --
+        ``synthorg init`` generates one automatically.
+
         Returns:
-            An encryptor instance, or ``None`` if the env var is not set.
+            An encryptor instance.
 
         Raises:
-            SettingsEncryptionError: If the env var is set but the key
-                is invalid.
+            SettingsEncryptionError: If the env var is not set, empty,
+                or contains an invalid key.
         """
         raw_or_none = os.environ.get(_ENV_VAR)
         if raw_or_none is None:
-            return None
+            msg = (
+                f"{_ENV_VAR} is not set -- the encryption key is "
+                f"required. Run 'synthorg init' to generate one, or set "
+                f"it manually (32 bytes, URL-safe base64)."
+            )
+            logger.error(
+                SETTINGS_ENCRYPTION_ERROR,
+                operation="from_env",
+                error=msg,
+            )
+            raise SettingsEncryptionError(msg)
         raw = raw_or_none.strip()
         if not raw:
-            msg = (
-                f"{_ENV_VAR} is set but empty — "
-                f"provide a valid Fernet key or unset the variable"
-            )
+            msg = f"{_ENV_VAR} is set but empty -- provide a valid Fernet key"
             logger.error(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="from_env",

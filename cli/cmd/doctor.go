@@ -175,6 +175,9 @@ func renderDoctorConfig(out *ui.UI, state config.State) {
 	if state.JWTSecret != "" {
 		out.KeyValue("JWT secret", "****")
 	}
+	if state.SettingsKey != "" {
+		out.KeyValue("Settings key", "****")
+	}
 }
 
 func renderDoctorDisk(out *ui.UI, r diagnostics.Report) {

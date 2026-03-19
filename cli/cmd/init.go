@@ -49,7 +49,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	if existing := config.StatePath(state.DataDir); fileExists(existing) {
 		errOut := ui.NewUI(cmd.ErrOrStderr())
 		errOut.Warn("Existing config at " + existing + " will be overwritten.")
-		errOut.Warn("A new JWT secret will be generated — running containers will need a restart.")
+		errOut.Warn("New secrets (JWT + encryption key) will be generated -- running containers will need a restart.")
 		var proceed bool
 		form := huh.NewForm(huh.NewGroup(
 			huh.NewConfirm().Title("Overwrite existing configuration?").Value(&proceed),
@@ -73,7 +73,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	out.KeyValue("Data dir", safeDir)
 	out.KeyValue("Compose file", filepath.Join(safeDir, "compose.yml"))
 	out.KeyValue("Config", config.StatePath(safeDir))
-	out.Warn("Keep compose.yml and config.json private — they contain your JWT secret.")
+	out.Warn("Keep compose.yml and config.json private -- they contain your secrets.")
 	out.Hint("Run 'synthorg start' to launch.")
 
 	return nil
@@ -87,7 +87,6 @@ type setupAnswers struct {
 	sandbox            bool
 	dockerSock         string
 	logLevel           string
-	genJWT             bool
 	persistenceBackend string
 	memoryBackend      string
 }
@@ -101,7 +100,6 @@ func runSetupForm() (setupAnswers, error) {
 		sandbox:            defaults.Sandbox,
 		dockerSock:         defaultDockerSock(),
 		logLevel:           defaults.LogLevel,
-		genJWT:             true,
 		persistenceBackend: defaults.PersistenceBackend,
 		memoryBackend:      defaults.MemoryBackend,
 	}
@@ -127,8 +125,6 @@ func runSetupForm() (setupAnswers, error) {
 				huh.NewOption("Warning", "warn"),
 				huh.NewOption("Error", "error"),
 			).Value(&a.logLevel),
-			huh.NewConfirm().Title("Generate JWT secret?").
-				Description("Recommended for API authentication").Value(&a.genJWT),
 		),
 		huh.NewGroup(
 			huh.NewNote().Title("Backends").
@@ -167,13 +163,14 @@ func buildState(a setupAnswers) (config.State, error) {
 		}
 	}
 
-	var jwtSecret string
-	if a.genJWT {
-		secret, err := generateSecret(48)
-		if err != nil {
-			return config.State{}, fmt.Errorf("generating JWT secret: %w", err)
-		}
-		jwtSecret = secret
+	jwtSecret, err := generateSecret(48)
+	if err != nil {
+		return config.State{}, fmt.Errorf("generating JWT secret: %w", err)
+	}
+
+	settingsKey, err := generateSecret(32)
+	if err != nil {
+		return config.State{}, fmt.Errorf("generating settings encryption key: %w", err)
 	}
 
 	// Use the CLI's build version as the default image tag.
@@ -192,6 +189,7 @@ func buildState(a setupAnswers) (config.State, error) {
 		DockerSock:         dockerSock,
 		LogLevel:           a.logLevel,
 		JWTSecret:          jwtSecret,
+		SettingsKey:        settingsKey,
 		PersistenceBackend: a.persistenceBackend,
 		MemoryBackend:      a.memoryBackend,
 	}, nil
