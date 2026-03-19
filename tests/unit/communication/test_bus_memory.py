@@ -744,10 +744,10 @@ class TestIdleSummary:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Idle polls below the time threshold do not emit a summary."""
-        from synthorg.communication import bus_memory as _bm
+        import time as _time
 
         clock = 1000.0
-        monkeypatch.setattr(_bm.time, "monotonic", lambda: clock)
+        monkeypatch.setattr(_time, "monotonic", lambda: clock)
         bus = InMemoryMessageBus(config=_make_config())
         await bus.start()
         await bus.subscribe("#general", "agent-a")
@@ -761,13 +761,14 @@ class TestIdleSummary:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Summary fires when time interval elapses."""
-        from synthorg.communication import bus_memory as _bm
+        import time as _time
+
         from synthorg.communication.bus_memory import (
             _IDLE_SUMMARY_INTERVAL_SECONDS,
         )
 
         clock = 1000.0
-        monkeypatch.setattr(_bm.time, "monotonic", lambda: clock)
+        monkeypatch.setattr(_time, "monotonic", lambda: clock)
         bus = InMemoryMessageBus(config=_make_config())
         await bus.start()
         await bus.subscribe("#general", "agent-a")
@@ -777,7 +778,7 @@ class TestIdleSummary:
 
         # Advance past the summary interval.
         clock = 1000.0 + _IDLE_SUMMARY_INTERVAL_SECONDS + 1.0
-        monkeypatch.setattr(_bm.time, "monotonic", lambda: clock)
+        monkeypatch.setattr(_time, "monotonic", lambda: clock)
         await bus.receive("#general", "agent-a", timeout=0.0)
         # Counter should have been reset after summary.
         assert bus._idle_poll_count == 0
@@ -799,10 +800,10 @@ class TestIdleSummary:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Idle counters reset when the bus is restarted."""
-        from synthorg.communication import bus_memory as _bm
+        import time as _time
 
         clock = 1000.0
-        monkeypatch.setattr(_bm.time, "monotonic", lambda: clock)
+        monkeypatch.setattr(_time, "monotonic", lambda: clock)
         bus = InMemoryMessageBus(config=_make_config())
         await bus.start()
         await bus.subscribe("#general", "agent-a")
@@ -811,6 +812,6 @@ class TestIdleSummary:
 
         await bus.stop()
         clock = 2000.0
-        monkeypatch.setattr(_bm.time, "monotonic", lambda: clock)
+        monkeypatch.setattr(_time, "monotonic", lambda: clock)
         await bus.start()
         assert bus._idle_poll_count == 0
