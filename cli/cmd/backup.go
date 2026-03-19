@@ -479,8 +479,13 @@ func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out, err
 	out.KeyValue("Restart required", "yes")
 
 	composePath := filepath.Join(safeDir, "compose.yml")
-	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
-		out.Hint("Run 'synthorg start' to bring the stack back up")
+	if _, err := os.Stat(composePath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			out.Hint("Run 'synthorg start' to bring the stack back up")
+			return nil
+		}
+		errOut.Warn(fmt.Sprintf("Could not inspect compose file: %v", err))
+		errOut.Hint("Run 'synthorg stop' then 'synthorg start' manually")
 		return nil
 	}
 

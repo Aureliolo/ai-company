@@ -249,7 +249,9 @@ func writeTestConfig(t *testing.T, backendPort int) string {
 func runBackupCmd(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
 	// Reset sticky boolean flags before each execution.
-	_ = backupRestoreCmd.Flags().Set("confirm", "false")
+	if err := backupRestoreCmd.Flags().Set("confirm", "false"); err != nil {
+		t.Fatalf("resetting --confirm flag: %v", err)
+	}
 
 	var buf bytes.Buffer
 	rootCmd.SetOut(&buf)
