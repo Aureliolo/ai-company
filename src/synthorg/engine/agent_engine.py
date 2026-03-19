@@ -428,7 +428,7 @@ class AgentEngine:
             estimated_tokens=system_prompt.estimated_tokens,
         )
 
-        loop = await self._resolve_loop(task)
+        loop = await self._resolve_loop(task, agent_id, task_id)
 
         execution_result = await self._run_loop_with_timeout(
             loop=loop,
@@ -910,6 +910,8 @@ class AgentEngine:
         if checkpoint_ctx.task_execution is not None:
             base_loop = await self._resolve_loop(
                 checkpoint_ctx.task_execution.task,
+                agent_id,
+                task_id,
             )
         loop = self._make_loop_with_callback(base_loop, agent_id, task_id)
         return await loop.execute(
@@ -995,7 +997,12 @@ class AgentEngine:
             stagnation_detector=self._stagnation_detector,
         )
 
-    async def _resolve_loop(self, task: Task) -> ExecutionLoop:
+    async def _resolve_loop(
+        self,
+        task: Task,
+        agent_id: str = "",
+        task_id: str = "",
+    ) -> ExecutionLoop:
         """Select the execution loop for a task.
 
         When ``auto_loop_config`` is set, selects the loop based on
@@ -1045,6 +1052,8 @@ class AgentEngine:
 
         logger.info(
             EXECUTION_LOOP_AUTO_SELECTED,
+            agent_id=agent_id,
+            task_id=task_id,
             complexity=task.estimated_complexity.value,
             selected_loop=loop_type,
             budget_utilization_pct=budget_utilization_pct,
