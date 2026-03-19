@@ -75,7 +75,7 @@ class TestHybridLoopConfigValidation:
     )
     def test_range_violations(self, field: str, bad_value: int) -> None:
         with pytest.raises(ValidationError):
-            HybridLoopConfig(**{field: bad_value})
+            HybridLoopConfig(**{field: bad_value})  # type: ignore[arg-type]
 
     @pytest.mark.parametrize(
         ("field", "good_value"),
@@ -89,7 +89,7 @@ class TestHybridLoopConfigValidation:
         ],
     )
     def test_range_boundaries_accepted(self, field: str, good_value: int) -> None:
-        cfg = HybridLoopConfig(**{field: good_value})
+        cfg = HybridLoopConfig(**{field: good_value})  # type: ignore[arg-type]
         assert getattr(cfg, field) == good_value
 
     def test_blank_planner_model_rejected(self) -> None:

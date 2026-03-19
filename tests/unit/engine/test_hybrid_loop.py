@@ -409,6 +409,7 @@ class TestHybridLoopProgressSummary:
         assert result.termination_reason == TerminationReason.COMPLETED
         assert result.metadata["replans_used"] == 1
         plans = result.metadata["plans"]
+        assert isinstance(plans, list)
         assert len(plans) == 2  # original + replanned
 
     async def test_no_replan_when_disabled(
@@ -874,4 +875,5 @@ class TestHybridLoopPlanParsing:
         assert result.termination_reason == TerminationReason.COMPLETED
         # Only 2 steps executed (not 3)
         final_plan = result.metadata["final_plan"]
+        assert isinstance(final_plan, dict)
         assert len(final_plan["steps"]) == 2
