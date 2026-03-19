@@ -224,7 +224,7 @@ class TestCacheControlPathSelection:
         response = test_client.get(path)
         assert response.headers.get("cache-control") == expected
 
-    def test_docs_cache_does_not_suppress_coop_relaxation(
+    def test_docs_path_applies_cache_and_coop_relaxations(
         self, test_client: TestClient[Any]
     ) -> None:
         """Cache-Control and COOP relaxation both apply to /docs paths."""
