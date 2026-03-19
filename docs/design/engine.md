@@ -428,8 +428,9 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     2. **Budget-aware downgrade** -- when monthly budget utilization is at
        or above `budget_tight_threshold` (default 80%), hybrid selections
        are downgraded to plan_execute to conserve budget.
-    3. **Hybrid fallback** -- when the hybrid loop is not yet implemented,
-       falls back to `hybrid_fallback` (default: plan_execute).
+    3. **Hybrid fallback** -- when `hybrid_fallback` is set (default:
+       `None`), redirects hybrid selections to the specified loop type.
+       With `None` (default), the hybrid loop runs directly.
 
 ### AgentEngine Orchestrator
 
@@ -480,9 +481,9 @@ async run(
    `select_loop_type()` with the task's `estimated_complexity` and current
    budget utilization (via `BudgetEnforcer.get_budget_utilization_pct()`).
    Budget-aware downgrade: hybrid is downgraded to plan_execute when
-   utilization >= threshold.  Hybrid fallback applies when the hybrid loop
-   is not yet implemented.  When no auto config is set, uses the statically
-   configured loop.
+   utilization >= threshold.  Optional hybrid fallback applies when
+   `hybrid_fallback` is configured.  When no auto config is set, uses
+   the statically configured loop.
 9. **Delegate to loop** -- calls `ExecutionLoop.execute()` with context,
    provider, tool invoker, budget checker, and completion config. If
    `timeout_seconds` is set, wraps the call in `asyncio.wait`; on expiry
@@ -599,6 +600,9 @@ sorted per-turn for order-independent comparison.
 - **PlanExecuteLoop**: stagnation checked per step (different steps
   legitimately repeat similar patterns like read→edit→test); corrections
   counter is step-scoped, window resets across step boundaries
+- **HybridLoop**: same per-step semantics as PlanExecuteLoop; stagnation
+  checked within the mini-ReAct sub-loop, corrections counter and
+  window are step-scoped
 - `STAGNATION` termination leaves the task in its current state (like
   `MAX_TURNS` — the task is not failed, it's returned to the caller)
 
@@ -678,8 +682,10 @@ previously compacted (archived 12 turns). Previous error: ...
   boundaries (between completed turns)
 - **PlanExecuteLoop**: compaction checked within step execution at turn
   boundaries, before stagnation detection
+- **HybridLoop**: compaction checked at turn boundaries within the
+  mini-ReAct sub-loop, same as PlanExecuteLoop
 
-Both loops use the shared `invoke_compaction()` helper from `loop_helpers.py`.
+All loops use the shared `invoke_compaction()` helper from `loop_helpers.py`.
 
 ---
 

@@ -85,7 +85,6 @@ EXECUTION_LOOP_BUDGET_UNAVAILABLE: Final[str] = "execution.loop.budget_unavailab
 EXECUTION_HYBRID_STEP_TURN_LIMIT: Final[str] = "execution.hybrid.step_turn_limit"
 EXECUTION_HYBRID_PROGRESS_SUMMARY: Final[str] = "execution.hybrid.progress_summary"
 EXECUTION_HYBRID_REPLAN_DECIDED: Final[str] = "execution.hybrid.replan_decided"
-EXECUTION_HYBRID_STEP_CHECKPOINT: Final[str] = "execution.hybrid.step_checkpoint"
 EXECUTION_HYBRID_TURN_BUDGET_WARNING: Final[str] = (
     "execution.hybrid.turn_budget_warning"
 )

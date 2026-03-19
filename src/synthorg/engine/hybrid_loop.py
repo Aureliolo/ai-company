@@ -320,62 +320,26 @@ class HybridLoop:
             ctx, step_ok = step_result
 
             if step_ok:
-                plan = update_step_status(plan, step_idx, StepStatus.COMPLETED)
-                logger.info(
-                    EXECUTION_PLAN_STEP_COMPLETE,
-                    execution_id=ctx.execution_id,
-                    step_number=step.step_number,
+                outcome = await self._handle_completed_step(
+                    ctx,
+                    provider,
+                    planner_model,
+                    config,
+                    plan,
+                    step,
+                    step_idx,
+                    turns,
+                    all_plans,
+                    replans_used,
+                    budget_checker,
+                    shutdown_checker,
                 )
-
-                # Progress summary + optional replan
-                if self._config.checkpoint_after_each_step:
-                    summary_result = await self._run_progress_summary(
-                        ctx,
-                        provider,
-                        planner_model,
-                        config,
-                        plan,
-                        step_idx,
-                        turns,
-                        budget_checker,
-                        shutdown_checker,
-                    )
-                    if isinstance(summary_result, ExecutionResult):
-                        return self._finalize(summary_result, all_plans, replans_used)
-                    ctx, should_replan = summary_result
-
-                    if (
-                        should_replan
-                        and self._config.allow_replan_on_completion
-                        and replans_used < self._config.max_replans
-                        and step_idx < len(plan.steps) - 1
-                        and ctx.has_turns_remaining
-                    ):
-                        replan_result = await self._do_replan(
-                            ctx,
-                            provider,
-                            planner_model,
-                            config,
-                            plan,
-                            step,
-                            turns,
-                        )
-                        if isinstance(replan_result, ExecutionResult):
-                            return self._finalize(
-                                replan_result, all_plans, replans_used
-                            )
-                        ctx, plan = replan_result
-                        replans_used += 1
-                        all_plans.append(plan)
-                        logger.info(
-                            EXECUTION_HYBRID_REPLAN_DECIDED,
-                            execution_id=ctx.execution_id,
-                            trigger="completion_summary",
-                            replans_used=replans_used,
-                        )
-                        step_idx = 0
-                        continue
-
+                if isinstance(outcome, ExecutionResult):
+                    return outcome
+                ctx, plan, replans_used, should_restart = outcome
+                if should_restart:
+                    step_idx = 0
+                    continue
                 step_idx += 1
                 continue
 
@@ -402,6 +366,86 @@ class HybridLoop:
         return self._build_final_result(
             ctx, plan, step_idx, turns, all_plans, replans_used
         )
+
+    async def _handle_completed_step(  # noqa: PLR0913
+        self,
+        ctx: AgentContext,
+        provider: CompletionProvider,
+        planner_model: str,
+        config: CompletionConfig,
+        plan: ExecutionPlan,
+        step: PlanStep,
+        step_idx: int,
+        turns: list[TurnRecord],
+        all_plans: list[ExecutionPlan],
+        replans_used: int,
+        budget_checker: BudgetChecker | None,
+        shutdown_checker: ShutdownChecker | None,
+    ) -> tuple[AgentContext, ExecutionPlan, int, bool] | ExecutionResult:
+        """Handle a successfully completed step with optional checkpoint.
+
+        Returns:
+            ``(ctx, plan, replans_used, should_restart)`` where
+            *should_restart* is ``True`` when replanning occurred and
+            the step loop should restart from index 0, or
+            ``ExecutionResult`` for termination conditions.
+        """
+        plan = update_step_status(plan, step_idx, StepStatus.COMPLETED)
+        logger.info(
+            EXECUTION_PLAN_STEP_COMPLETE,
+            execution_id=ctx.execution_id,
+            step_number=step.step_number,
+        )
+
+        if not self._config.checkpoint_after_each_step:
+            return ctx, plan, replans_used, False
+
+        summary_result = await self._run_progress_summary(
+            ctx,
+            provider,
+            planner_model,
+            config,
+            plan,
+            step_idx,
+            turns,
+            budget_checker,
+            shutdown_checker,
+        )
+        if isinstance(summary_result, ExecutionResult):
+            return self._finalize(summary_result, all_plans, replans_used)
+        ctx, should_replan = summary_result
+
+        if not (
+            should_replan
+            and self._config.allow_replan_on_completion
+            and replans_used < self._config.max_replans
+            and step_idx < len(plan.steps) - 1
+            and ctx.has_turns_remaining
+        ):
+            return ctx, plan, replans_used, False
+
+        replan_result = await self._do_replan(
+            ctx,
+            provider,
+            planner_model,
+            config,
+            plan,
+            step,
+            turns,
+            step_failed=False,
+        )
+        if isinstance(replan_result, ExecutionResult):
+            return self._finalize(replan_result, all_plans, replans_used)
+        ctx, plan = replan_result
+        replans_used += 1
+        all_plans.append(plan)
+        logger.info(
+            EXECUTION_HYBRID_REPLAN_DECIDED,
+            execution_id=ctx.execution_id,
+            trigger="completion_summary",
+            replans_used=replans_used,
+        )
+        return ctx, plan, replans_used, True
 
     async def _attempt_replan(  # noqa: PLR0913
         self,
@@ -556,14 +600,17 @@ class HybridLoop:
         planner_model: str,
         config: CompletionConfig,
         current_plan: ExecutionPlan,
-        failed_step: PlanStep,
+        trigger_step: PlanStep,
         turns: list[TurnRecord],
+        *,
+        step_failed: bool = True,
     ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
         """Generate a revised plan after a step failure or replan trigger."""
         logger.info(
             EXECUTION_PLAN_REPLAN_START,
             execution_id=ctx.execution_id,
-            failed_step=failed_step.step_number,
+            trigger_step=trigger_step.step_number,
+            step_failed=step_failed,
             revision=current_plan.revision_number,
         )
 
@@ -576,9 +623,19 @@ class HybridLoop:
             or "  (none)"
         )
 
+        if step_failed:
+            trigger_line = (
+                f"Step {trigger_step.step_number} failed: {trigger_step.description}"
+            )
+        else:
+            trigger_line = (
+                f"Step {trigger_step.step_number} completed "
+                f"successfully, but the remaining plan needs "
+                f"adjustment based on what was learned"
+            )
+
         replan_content = (
-            f"Step {failed_step.step_number} failed: "
-            f"{failed_step.description}\n\n"
+            f"{trigger_line}\n\n"
             f"Completed steps so far:\n{completed_summary}\n\n"
             f"Create a revised plan for the REMAINING work. "
             f"Return your revised plan as a JSON object with the "
@@ -756,6 +813,8 @@ class HybridLoop:
                 step_number=step.step_number,
             )
             if isinstance(stag_outcome, ExecutionResult):
+                # Stagnation detector received step-scoped turns;
+                # replace with the full execution's turns for the result.
                 return stag_outcome.model_copy(
                     update={"turns": tuple(turns)},
                 )
@@ -915,30 +974,16 @@ class HybridLoop:
         if budget_result is not None:
             return budget_result
 
-        step_status_lines = "\n".join(
-            f"  Step {s.step_number}: {s.description} -> {s.status.value}"
-            for s in plan.steps
-        )
-
-        remaining = len(plan.steps) - step_idx - 1
-        prompt = (
-            f"You completed step {step_idx + 1} of {len(plan.steps)}. "
-            f"Plan status:\n{step_status_lines}\n\n"
-            f"Provide a brief progress summary. "
-        )
-        if self._config.allow_replan_on_completion and remaining > 0:
-            prompt += (
-                f"If the remaining {remaining} step(s) need adjustment "
-                f"based on what you learned, respond with a JSON object "
-                f'containing "replan": true. Otherwise "replan": false.'
-                f'\nFormat: {{"summary": "...", "replan": true/false}}'
-            )
-        else:
-            prompt += "Summarize what was accomplished."
-
         summary_msg = ChatMessage(
             role=MessageRole.USER,
-            content=prompt,
+            content=_build_summary_prompt(
+                plan,
+                step_idx,
+                ask_replan=(
+                    self._config.allow_replan_on_completion
+                    and step_idx < len(plan.steps) - 1
+                ),
+            ),
         )
         ctx = ctx.with_message(summary_msg)
         turn_number = ctx.turn_count + 1
@@ -974,33 +1019,15 @@ class HybridLoop:
 
         await self._invoke_checkpoint_callback(ctx, turn_number)
 
-        should_replan = self._parse_replan_decision(
-            response.content or "",
-        )
+        raw_content = response.content or ""
+        if not raw_content.strip():
+            logger.warning(
+                EXECUTION_HYBRID_PROGRESS_SUMMARY,
+                execution_id=ctx.execution_id,
+                note="empty progress summary response",
+            )
+        should_replan = _parse_replan_decision(raw_content)
         return ctx, should_replan
-
-    @staticmethod
-    def _parse_replan_decision(content: str) -> bool:
-        """Extract replan decision from summary response.
-
-        Tries JSON extraction first, then text heuristics.
-        Defaults to ``False`` on parse failure.
-        """
-        stripped = content.strip()
-        # Try JSON extraction (with optional markdown fence)
-        fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", stripped, re.DOTALL)
-        json_str = fence_match.group(1).strip() if fence_match else stripped
-
-        try:
-            data = json.loads(json_str)
-            if isinstance(data, dict):
-                return bool(data.get("replan", False))
-        except json.JSONDecodeError, ValueError:
-            pass
-
-        # Text heuristic fallback
-        lower = content.lower()
-        return '"replan": true' in lower or '"replan":true' in lower
 
     # -- Checkpoint --------------------------------------------------------
 
@@ -1085,3 +1112,70 @@ class HybridLoop:
             }
         )
         return result.model_copy(update={"metadata": metadata})
+
+
+# -- Module-level helpers --------------------------------------------------
+
+
+def _build_summary_prompt(
+    plan: ExecutionPlan,
+    step_idx: int,
+    *,
+    ask_replan: bool,
+) -> str:
+    """Build the progress-summary prompt for a completed step."""
+    step_status_lines = "\n".join(
+        f"  Step {s.step_number}: {s.description} -> {s.status.value}"
+        for s in plan.steps
+    )
+    remaining = len(plan.steps) - step_idx - 1
+    prompt = (
+        f"You completed step {step_idx + 1} of {len(plan.steps)}. "
+        f"Plan status:\n{step_status_lines}\n\n"
+        f"Provide a brief progress summary. "
+    )
+    if ask_replan and remaining > 0:
+        prompt += (
+            f"If the remaining {remaining} step(s) need adjustment "
+            f"based on what you learned, respond with a JSON object "
+            f'containing "replan": true. Otherwise "replan": false.'
+            f'\nFormat: {{"summary": "...", "replan": true/false}}'
+        )
+    else:
+        prompt += "Summarize what was accomplished."
+    return prompt
+
+
+def _parse_replan_decision(content: str) -> bool:
+    """Extract replan decision from summary response.
+
+    Tries JSON extraction first, then text heuristics.
+    Defaults to ``False`` on parse failure.
+    """
+    stripped = content.strip()
+    if not stripped:
+        return False
+
+    # Try JSON extraction (with optional markdown fence)
+    fence_match = re.search(r"```(?:json)?\s*\n?(.*?)```", stripped, re.DOTALL)
+    json_str = fence_match.group(1).strip() if fence_match else stripped
+
+    try:
+        data = json.loads(json_str)
+        if isinstance(data, dict):
+            return bool(data.get("replan", False))
+        logger.debug(
+            EXECUTION_HYBRID_REPLAN_DECIDED,
+            parser="json",
+            note="parsed JSON is not a dict",
+        )
+    except json.JSONDecodeError, ValueError:
+        logger.debug(
+            EXECUTION_HYBRID_REPLAN_DECIDED,
+            parser="json",
+            note="JSON parse failed, trying text heuristic",
+        )
+
+    # Text heuristic fallback
+    lower = content.lower()
+    return '"replan": true' in lower or '"replan":true' in lower

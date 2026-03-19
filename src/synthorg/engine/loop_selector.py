@@ -100,10 +100,9 @@ class AutoLoopConfig(BaseModel):
         budget_tight_threshold: Monthly budget utilization percentage
             at or above which the budget is considered tight.  When
             tight, hybrid selections are downgraded to plan_execute.
-        hybrid_fallback: Loop type to use when hybrid is selected but
-            not yet implemented.  Set to ``None`` to keep hybrid
-            (useful once the HybridLoop class exists).  Must be a
-            known loop type when not ``None``.
+        hybrid_fallback: Optional override loop type when hybrid is
+            selected.  ``None`` keeps the hybrid selection (default).
+            Must be a known loop type when not ``None``.
         default_loop_type: Fallback loop type when no rule matches a
             task's complexity.  Must be a known loop type.
     """
@@ -215,7 +214,7 @@ def _apply_hybrid_fallback(
     loop_type: str,
     hybrid_fallback: str | None,
 ) -> str:
-    """Replace hybrid with fallback when HybridLoop is not implemented."""
+    """Replace hybrid with the configured fallback when set."""
     if loop_type == "hybrid" and hybrid_fallback is not None:
         logger.info(
             EXECUTION_LOOP_HYBRID_FALLBACK,
@@ -247,8 +246,8 @@ def select_loop_type(  # noqa: PLR0913
             as a percentage (0--100+).  ``None`` means unknown.
         budget_tight_threshold: Percentage at or above which budget
             is considered tight.
-        hybrid_fallback: Replacement loop type when hybrid is selected
-            but unavailable.  ``None`` preserves the hybrid selection.
+        hybrid_fallback: Optional override when hybrid is selected.
+            ``None`` preserves the hybrid selection.
         default_loop_type: Fallback loop type when no rule matches.
 
     Returns:

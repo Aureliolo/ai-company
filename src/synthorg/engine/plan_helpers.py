@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING
 
 from synthorg.providers.enums import FinishReason, MessageRole
 
+_MAX_TASK_SUMMARY_LENGTH = 200
+"""Maximum character length for task summary strings."""
+
 if TYPE_CHECKING:
     from synthorg.engine.context import AgentContext
     from synthorg.providers.models import CompletionResponse
@@ -50,10 +53,10 @@ def extract_task_summary(ctx: AgentContext) -> str:
         A short summary string.
     """
     if ctx.task_execution is not None:
-        return ctx.task_execution.task.title[:200]
+        return ctx.task_execution.task.title[:_MAX_TASK_SUMMARY_LENGTH]
     for msg in ctx.conversation:
         if msg.role == MessageRole.USER and msg.content:
-            return msg.content[:200]
+            return msg.content[:_MAX_TASK_SUMMARY_LENGTH]
     return "task"
 
 

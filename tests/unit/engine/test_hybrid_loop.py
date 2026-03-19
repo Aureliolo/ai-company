@@ -877,3 +877,147 @@ class TestHybridLoopPlanParsing:
         final_plan = result.metadata["final_plan"]
         assert isinstance(final_plan, dict)
         assert len(final_plan["steps"]) == 2
+
+
+@pytest.mark.unit
+class TestParseReplanDecision:
+    """Unit tests for the module-level _parse_replan_decision helper."""
+
+    def test_json_replan_true(self) -> None:
+        from synthorg.engine.hybrid_loop import _parse_replan_decision
+
+        assert _parse_replan_decision('{"summary": "ok", "replan": true}') is True
+
+    def test_json_replan_false(self) -> None:
+        from synthorg.engine.hybrid_loop import _parse_replan_decision
+
+        assert _parse_replan_decision('{"summary": "ok", "replan": false}') is False
+
+    def test_json_in_markdown_fence(self) -> None:
+        from synthorg.engine.hybrid_loop import _parse_replan_decision
+
+        content = '```json\n{"summary": "ok", "replan": true}\n```'
+        assert _parse_replan_decision(content) is True
+
+    def test_text_heuristic_fallback(self) -> None:
+        from synthorg.engine.hybrid_loop import _parse_replan_decision
+
+        content = 'I think we need "replan": true based on results.'
+        assert _parse_replan_decision(content) is True
+
+    def test_malformed_json_defaults_false(self) -> None:
+        from synthorg.engine.hybrid_loop import _parse_replan_decision
+
+        assert _parse_replan_decision("This is not JSON at all.") is False
+
+    def test_empty_content_defaults_false(self) -> None:
+        from synthorg.engine.hybrid_loop import _parse_replan_decision
+
+        assert _parse_replan_decision("") is False
+        assert _parse_replan_decision("   ") is False
+
+    def test_json_non_dict_defaults_false(self) -> None:
+        from synthorg.engine.hybrid_loop import _parse_replan_decision
+
+        assert _parse_replan_decision("[true]") is False
+
+    def test_json_missing_replan_key_defaults_false(self) -> None:
+        from synthorg.engine.hybrid_loop import _parse_replan_decision
+
+        assert _parse_replan_decision('{"summary": "ok"}') is False
+
+
+@pytest.mark.unit
+class TestHybridLoopCheckpointCallback:
+    """Checkpoint callback integration."""
+
+    async def test_checkpoint_callback_invoked(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        call_count = 0
+
+        async def checkpoint_cb(_ctx: AgentContext) -> None:
+            nonlocal call_count
+            call_count += 1
+
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory(
+            [
+                _single_step_plan(),
+                _stop_response("Done."),
+                _summary_response(),
+            ]
+        )
+        loop = HybridLoop(checkpoint_callback=checkpoint_cb)
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        # Checkpoint called for each LLM turn: plan + step + summary
+        assert call_count == 3
+
+    async def test_checkpoint_callback_failure_does_not_propagate(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        async def failing_cb(_ctx: AgentContext) -> None:
+            msg = "checkpoint storage unavailable"
+            raise OSError(msg)
+
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory(
+            [
+                _single_step_plan(),
+                _stop_response("Done."),
+                _summary_response(),
+            ]
+        )
+        loop = HybridLoop(checkpoint_callback=failing_cb)
+
+        # Should complete despite checkpoint failures
+        result = await loop.execute(context=ctx, provider=provider)
+        assert result.termination_reason == TerminationReason.COMPLETED
+
+
+@pytest.mark.unit
+class TestHybridLoopProviderException:
+    """Provider error handling."""
+
+    async def test_provider_error_during_planning(
+        self,
+        sample_agent_context: AgentContext,
+    ) -> None:
+        class FailingProvider:
+            async def complete(self, *_args: Any, **_kwargs: Any) -> None:
+                msg = "provider unreachable"
+                raise ConnectionError(msg)
+
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        loop = HybridLoop()
+
+        result = await loop.execute(
+            context=ctx,
+            provider=FailingProvider(),  # type: ignore[arg-type]
+        )
+        assert result.termination_reason == TerminationReason.ERROR
+
+    async def test_provider_error_during_step(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        provider = mock_provider_factory(
+            [
+                _single_step_plan(),
+                # Step execution: provider raises
+            ]
+        )
+        # Exhaust the mock so next call raises IndexError
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        loop = HybridLoop()
+
+        result = await loop.execute(context=ctx, provider=provider)
+        assert result.termination_reason == TerminationReason.ERROR
