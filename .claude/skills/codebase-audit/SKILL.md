@@ -1,6 +1,6 @@
 ---
 description: "Deep codebase audit: launches specialized parallel agents to find issues, validates findings, groups into work packages, and creates GitHub issues"
-argument-hint: "<scope: full | src/ | web/ | cli/ | docs/ | site/ | .github/ | ci | docker/> [--report-only] [--quick]"
+argument-hint: "<scope: full | src/ | src/synthorg/ | web/ | cli/ | docs/ | site/ | .github/ | ci | docker/> [--report-only] [--quick]"
 allowed-tools: ["Agent", "Bash", "Read", "Glob", "Grep", "WebFetch", "WebSearch", "AskUserQuestion", "mcp__github__issue_write", "mcp__github__issue_read", "mcp__github__list_issues", "mcp__github__search_issues"]
 ---
 
@@ -92,7 +92,7 @@ Select agents based on scope. Each agent searches for ONE type of issue only.
 | `test-coverage` | Public modules with no corresponding test file, empty test files |
 | `flaky-tests` | Unmocked time, real asyncio.sleep in tests, timing-dependent assertions, skipped tests |
 | `wiring-lifecycle` | Incorrectly wired services, missing DI, lifecycle gaps, protocol implementations incomplete |
-| `security-gaps` | Hardcoded secrets, missing auth guards, injection vectors in Python backend code |
+
 | `dead-code` | Unreachable functions, unused imports, orphaned modules |
 | `todo-fixme` | Unresolved TODOs that should be tracked as issues |
 | `spec-drift` | Implementation diverging from design spec behavior |
@@ -116,12 +116,12 @@ Select agents based on scope. Each agent searches for ONE type of issue only.
 |-------|---------------------|
 | `go-cli` | Ignored errors, resource leaks, missing error wrapping, cross-platform issues |
 
-#### Infrastructure Agents (scope includes `.github/` or `docker/`)
+#### Infrastructure Agents
 
 | Agent | What It Searches For |
 |-------|---------------------|
-| `docker-infra` | Dockerfile issues, compose config, port security, healthchecks |
-| `ci-workflows` | Missing timeouts, script injection, permissions gaps, silent failures |
+| `docker-infra` | Dockerfile issues, compose config, port security, healthchecks (run when scope includes `docker/`) |
+| `ci-workflows` | Missing timeouts, script injection, permissions gaps, silent failures (run when scope includes `.github/` or `ci`) |
 
 #### Documentation Agents (scope includes `docs/` or `site/`)
 
