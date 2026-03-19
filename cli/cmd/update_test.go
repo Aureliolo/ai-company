@@ -204,6 +204,11 @@ func TestRedactSecret(t *testing.T) {
 			want: `SECRET_KEY: [REDACTED]`,
 		},
 		{
+			name: "settings key redacted",
+			line: `      SYNTHORG_SETTINGS_KEY: "b64value=="`,
+			want: `      SYNTHORG_SETTINGS_KEY: [REDACTED]`,
+		},
+		{
 			name: "non-secret with colon in value unchanged",
 			line: `      SYNTHORG_HOST: "0.0.0.0"`,
 			want: `      SYNTHORG_HOST: "0.0.0.0"`,

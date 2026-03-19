@@ -6,7 +6,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from cryptography.fernet import Fernet
 from litestar import Litestar
 from litestar.testing import TestClient
 
@@ -37,8 +36,14 @@ from tests.unit.api.fakes import (
 
 __all__ = ["FakeMessageBus", "FakePersistenceBackend"]
 
-# Pre-generate a stable Fernet key for the test session.
-_TEST_SETTINGS_KEY = Fernet.generate_key().decode("ascii")
+
+# ── Test auth constants ───────────────────────────────────────
+
+_TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
+# Hardcoded valid Fernet key (deterministic across xdist workers).
+_TEST_SETTINGS_KEY = "lKzZcMznksIF8A_2HFFUnKxhxhz9_bxTvVJoZ6mvZrk="
+_TEST_USER_ID = "test-user-001"
+_TEST_USERNAME = "testadmin"
 
 
 @pytest.fixture(autouse=True)
@@ -57,13 +62,6 @@ def make_exception_handler_app(handler: Any) -> Litestar:
         route_handlers=[handler],
         exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
     )
-
-
-# ── Test auth constants ───────────────────────────────────────
-
-_TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
-_TEST_USER_ID = "test-user-001"
-_TEST_USERNAME = "testadmin"
 
 
 # ── Auth helpers ────────────────────────────────────────────────

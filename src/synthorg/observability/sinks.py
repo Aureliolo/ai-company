@@ -31,7 +31,10 @@ class _FlushingRotatingFileHandler(logging.handlers.RotatingFileHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         super().emit(record)
-        self.flush()
+        try:
+            self.flush()
+        except OSError:
+            self.handleError(record)
 
 
 class _FlushingWatchedFileHandler(logging.handlers.WatchedFileHandler):
@@ -39,7 +42,10 @@ class _FlushingWatchedFileHandler(logging.handlers.WatchedFileHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         super().emit(record)
-        self.flush()
+        try:
+            self.flush()
+        except OSError:
+            self.handleError(record)
 
 
 # ── Logger name routing ───────────────────────────────────────────

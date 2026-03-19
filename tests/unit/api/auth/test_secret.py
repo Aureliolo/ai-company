@@ -23,6 +23,23 @@ class TestResolveJwtSecret:
 
         assert result == secret.strip()
 
+    def test_exact_min_length_accepted(self) -> None:
+        from synthorg.api.auth.config import MIN_SECRET_LENGTH
+
+        secret = "x" * MIN_SECRET_LENGTH
+        with patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": secret}):
+            assert resolve_jwt_secret() == secret
+
+    def test_one_below_min_length_raises(self) -> None:
+        from synthorg.api.auth.config import MIN_SECRET_LENGTH
+
+        short = "x" * (MIN_SECRET_LENGTH - 1)
+        with (
+            patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": short}),
+            pytest.raises(ValueError, match="at least 32 characters"),
+        ):
+            resolve_jwt_secret()
+
     def test_env_var_too_short_raises(self) -> None:
         with (
             patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": "short"}),
