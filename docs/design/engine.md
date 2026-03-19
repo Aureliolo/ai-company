@@ -421,6 +421,10 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     1. **Rule matching** -- maps `estimated_complexity` to a loop type:
        simple -> ReAct, medium -> Plan-and-Execute, complex/epic -> Hybrid.
        Configurable via `AutoLoopConfig.rules` (a tuple of `AutoLoopRule`).
+       When no rule matches, falls back to `default_loop_type` (default:
+       react).  All loop types in rules, `hybrid_fallback`, and
+       `default_loop_type` are validated against the known set at
+       construction time.
     2. **Budget-aware downgrade** -- when monthly budget utilization is at
        or above `budget_tight_threshold` (default 80%), hybrid selections
        are downgraded to plan_execute to conserve budget.

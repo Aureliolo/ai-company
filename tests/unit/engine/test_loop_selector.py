@@ -61,7 +61,7 @@ class TestSelectLoopType:
         assert result == "react"
 
     def test_no_matching_rule_logs_warning(self) -> None:
-        """Fallback to react emits a warning log."""
+        """Fallback to default emits a warning log."""
         with structlog.testing.capture_logs() as logs:
             select_loop_type(
                 complexity=Complexity.COMPLEX,
@@ -71,6 +71,29 @@ class TestSelectLoopType:
         assert len(events) == 1
         assert events[0]["complexity"] == "complex"
         assert events[0]["fallback"] == "react"
+
+    def test_rule_mapping_to_react_does_not_warn(self) -> None:
+        """When a rule explicitly maps to react, no NO_RULE_MATCH warning."""
+        rules = (AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="react"),)
+        with structlog.testing.capture_logs() as logs:
+            result = select_loop_type(
+                complexity=Complexity.SIMPLE,
+                rules=rules,
+            )
+        assert result == "react"
+        no_match_events = [
+            e for e in logs if e["event"] == EXECUTION_LOOP_NO_RULE_MATCH
+        ]
+        assert len(no_match_events) == 0
+
+    def test_custom_default_loop_type(self) -> None:
+        """Empty rules with custom default_loop_type."""
+        result = select_loop_type(
+            complexity=Complexity.COMPLEX,
+            rules=(),
+            default_loop_type="plan_execute",
+        )
+        assert result == "plan_execute"
 
 
 # ── Budget-aware downgrade ───────────────────────────────────
@@ -241,6 +264,33 @@ class TestAutoLoopConfig:
         """Empty/whitespace hybrid_fallback is invalid (NotBlankStr)."""
         with pytest.raises(ValidationError):
             AutoLoopConfig(hybrid_fallback="   ")
+
+    def test_unknown_loop_type_in_rules_rejected(self) -> None:
+        """Rules with unknown loop types are invalid."""
+        with pytest.raises(ValidationError, match="Unknown loop type in rules"):
+            AutoLoopConfig(
+                rules=(
+                    AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="nonexistent"),
+                ),
+            )
+
+    def test_unknown_hybrid_fallback_rejected(self) -> None:
+        """hybrid_fallback must be a known loop type."""
+        with pytest.raises(ValidationError, match="Unknown hybrid_fallback"):
+            AutoLoopConfig(hybrid_fallback="nonexistent")
+
+    def test_unknown_default_loop_type_rejected(self) -> None:
+        """default_loop_type must be a known loop type."""
+        with pytest.raises(ValidationError, match="Unknown default_loop_type"):
+            AutoLoopConfig(default_loop_type="nonexistent")
+
+    def test_default_loop_type_defaults_to_react(self) -> None:
+        config = AutoLoopConfig()
+        assert config.default_loop_type == "react"
+
+    def test_custom_default_loop_type(self) -> None:
+        config = AutoLoopConfig(default_loop_type="plan_execute")
+        assert config.default_loop_type == "plan_execute"
 
 
 # ── AutoLoopRule model ───────────────────────────────────────

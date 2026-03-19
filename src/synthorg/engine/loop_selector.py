@@ -1,8 +1,10 @@
 """Execution loop auto-selection based on task complexity and budget state.
 
-Provides a pure ``select_loop_type`` function that maps task complexity
-and optional budget utilization to a loop type string, and a
-``build_execution_loop`` factory that instantiates the concrete loop.
+Provides ``AutoLoopConfig`` and ``AutoLoopRule`` Pydantic models for
+configuring selection rules, a pure ``select_loop_type`` function that
+maps task complexity and optional budget utilization to a loop type
+string, and a ``build_execution_loop`` factory that instantiates the
+concrete loop.
 
 The default rules follow the design spec (section 6.5):
 simple -> ReAct, medium -> Plan-and-Execute, complex/epic -> Hybrid.
@@ -38,7 +40,12 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _KNOWN_LOOP_TYPES: frozenset[str] = frozenset({"react", "plan_execute", "hybrid"})
-"""Valid loop type identifiers accepted by ``build_execution_loop``."""
+"""Loop type identifiers recognized by the auto-selection system.
+
+``build_execution_loop`` currently supports ``"react"`` and
+``"plan_execute"``; ``"hybrid"`` is accepted in rules and config
+but falls back via ``hybrid_fallback`` until HybridLoop is implemented.
+"""
 
 
 class AutoLoopRule(BaseModel):
@@ -46,7 +53,7 @@ class AutoLoopRule(BaseModel):
 
     Attributes:
         complexity: The task complexity this rule matches.
-        loop_type: The loop type to use (e.g. ``"react"``,
+        loop_type: One of the known loop types (``"react"``,
             ``"plan_execute"``, ``"hybrid"``).
     """
 
@@ -78,13 +85,17 @@ class AutoLoopConfig(BaseModel):
 
     Attributes:
         rules: Ordered rules mapping complexity to loop type.
-            Each complexity must appear at most once.
+            Each complexity must appear at most once.  All
+            ``loop_type`` values must be in ``_KNOWN_LOOP_TYPES``.
         budget_tight_threshold: Monthly budget utilization percentage
             at or above which the budget is considered tight.  When
             tight, hybrid selections are downgraded to plan_execute.
         hybrid_fallback: Loop type to use when hybrid is selected but
             not yet implemented.  Set to ``None`` to keep hybrid
-            (useful once the HybridLoop class exists).
+            (useful once the HybridLoop class exists).  Must be a
+            known loop type when not ``None``.
+        default_loop_type: Fallback loop type when no rule matches a
+            task's complexity.  Must be a known loop type.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -103,33 +114,50 @@ class AutoLoopConfig(BaseModel):
         default="plan_execute",
         description="Fallback loop when hybrid is selected but unavailable",
     )
+    default_loop_type: NotBlankStr = Field(
+        default="react",
+        description="Fallback loop when no rule matches a task complexity",
+    )
 
     @model_validator(mode="after")
-    def _validate_unique_complexities(self) -> Self:
-        """Reject duplicate complexity values in rules."""
+    def _validate_rules_and_fallbacks(self) -> Self:
+        """Validate unique complexities and known loop types."""
         seen: set[Complexity] = set()
         for rule in self.rules:
             if rule.complexity in seen:
                 msg = f"Duplicate complexity in rules: {rule.complexity.value!r}"
                 raise ValueError(msg)
+            if rule.loop_type not in _KNOWN_LOOP_TYPES:
+                msg = f"Unknown loop type in rules: {rule.loop_type!r}"
+                raise ValueError(msg)
             seen.add(rule.complexity)
+        if (
+            self.hybrid_fallback is not None
+            and self.hybrid_fallback not in _KNOWN_LOOP_TYPES
+        ):
+            msg = f"Unknown hybrid_fallback: {self.hybrid_fallback!r}"
+            raise ValueError(msg)
+        if self.default_loop_type not in _KNOWN_LOOP_TYPES:
+            msg = f"Unknown default_loop_type: {self.default_loop_type!r}"
+            raise ValueError(msg)
         return self
 
 
-def select_loop_type(
+def select_loop_type(  # noqa: PLR0913
     *,
     complexity: Complexity,
     rules: tuple[AutoLoopRule, ...],
     budget_utilization_pct: float | None = None,
     budget_tight_threshold: int = 80,
     hybrid_fallback: str | None = "plan_execute",
+    default_loop_type: str = "react",
 ) -> str:
     """Select the execution loop type for a task.
 
     Applies three layers of logic in order:
 
     1. **Rule matching** -- find the first rule whose complexity matches.
-       Falls back to ``"react"`` when no rule matches.
+       Falls back to ``default_loop_type`` when no rule matches.
     2. **Budget-aware downgrade** -- if the matched type is ``"hybrid"``
        and the monthly budget utilization is at or above
        ``budget_tight_threshold``, downgrade to ``"plan_execute"``.
@@ -146,24 +174,30 @@ def select_loop_type(
             is considered tight.
         hybrid_fallback: Replacement loop type when hybrid is selected
             but unavailable.  ``None`` preserves the hybrid selection.
+        default_loop_type: Fallback loop type when no rule matches.
 
     Returns:
-        Loop type string: ``"react"``, ``"plan_execute"``, or
-        ``"hybrid"``.
+        A loop type string.  Typically ``"react"`` or
+        ``"plan_execute"``; may return ``"hybrid"`` when
+        ``hybrid_fallback`` is ``None``, or the ``hybrid_fallback``
+        value when hybrid is selected but redirected.
     """
     # 1. Rule matching
-    loop_type = next(
+    matched = next(
         (r.loop_type for r in rules if r.complexity == complexity),
-        "react",
+        None,
     )
 
-    if loop_type == "react" and not any(r.complexity == complexity for r in rules):
+    if matched is None:
         logger.warning(
             EXECUTION_LOOP_NO_RULE_MATCH,
             complexity=complexity.value,
-            fallback="react",
+            fallback=default_loop_type,
             num_rules=len(rules),
         )
+        loop_type = default_loop_type
+    else:
+        loop_type = matched
 
     # 2. Budget-aware downgrade (hybrid only)
     if (
@@ -203,6 +237,8 @@ def build_execution_loop(
 
     Args:
         loop_type: One of ``"react"`` or ``"plan_execute"``.
+            ``"hybrid"`` is not yet supported -- use
+            ``select_loop_type`` with ``hybrid_fallback`` to redirect.
         approval_gate: Optional approval gate to wire into the loop.
         stagnation_detector: Optional stagnation detector.
         compaction_callback: Optional compaction callback.

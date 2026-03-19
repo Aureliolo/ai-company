@@ -56,15 +56,12 @@ logger = get_logger(__name__)
 class BudgetEnforcer:
     """Budget enforcement service composing CostTracker + BudgetConfig.
 
-    Provides pre-flight checks (can this agent start?), in-flight budget
-    checking (monthly + daily + task limits with alert emission), and
-    task-boundary auto-downgrade.  Concurrency-safe via CostTracker's
-    asyncio.Lock.
+    Provides pre-flight checks, in-flight budget checking (monthly +
+    daily + task limits with alert emission), and task-boundary
+    auto-downgrade.  Concurrency-safe via CostTracker's asyncio.Lock.
 
     Note: Pre-flight checks are best-effort under concurrency (TOCTOU).
-    The in-flight checker is the true safety net, though it also uses
-    pre-computed baselines that are snapshot-in-time and will not
-    reflect concurrent spend by other agents.
+    The in-flight checker is the true safety net.
 
     Args:
         budget_config: Budget configuration for limits and thresholds.
@@ -94,14 +91,10 @@ class BudgetEnforcer:
         return self._cost_tracker
 
     async def get_budget_utilization_pct(self) -> float | None:
-        """Return current monthly budget utilization as a percentage.
+        """Return monthly budget utilization as a percentage (0--100+).
 
-        Returns the ratio of current-period spend to the monthly budget
-        (``total_monthly``), expressed as a percentage (0--100+).
-
-        Returns ``None`` when monthly budget is disabled
-        (``total_monthly <= 0``) or when the underlying cost query
-        fails (graceful degradation).
+        Returns ``None`` when disabled (``total_monthly <= 0``) or
+        when the cost query fails (graceful degradation).
         """
         cfg = self._budget_config
         if cfg.total_monthly <= 0:

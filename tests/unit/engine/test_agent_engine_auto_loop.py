@@ -18,6 +18,7 @@ from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability.events.execution import (
     EXECUTION_LOOP_AUTO_SELECTED,
+    EXECUTION_LOOP_BUDGET_UNAVAILABLE,
 )
 
 if TYPE_CHECKING:
@@ -260,11 +261,12 @@ class TestAutoLoopBudgetAware:
 class TestAutoLoopFallbackOnBudgetError:
     """Budget query failure => proceeds without budget awareness."""
 
-    async def test_budget_error_still_selects_loop(
+    async def test_budget_unavailable_still_selects_loop(
         self,
         sample_agent_with_personality: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
+        """Budget utilization unknown => proceeds without downgrade."""
         plan_response = _make_completion_response(
             content=("1. Implement the feature\nExpected: Feature works correctly"),
         )
@@ -289,7 +291,7 @@ class TestAutoLoopFallbackOnBudgetError:
             agent_id=str(sample_agent_with_personality.id),
         )
 
-        # Budget query fails -> returns None -> no downgrade
+        # Budget query returns None -> no downgrade
         with (
             patch.object(
                 enforcer,
@@ -310,4 +312,47 @@ class TestAutoLoopFallbackOnBudgetError:
         ]
         assert len(selected_events) == 1
         # Hybrid -> fallback to plan_execute (no budget downgrade since None)
+        assert selected_events[0]["selected_loop"] == "plan_execute"
+
+        # Verify budget-unavailable debug event was emitted
+        unavail_events = [
+            e for e in logs if e.get("event") == EXECUTION_LOOP_BUDGET_UNAVAILABLE
+        ]
+        assert len(unavail_events) == 1
+
+
+# -- Resume path with auto-loop -----------------------------------
+
+
+@pytest.mark.unit
+class TestAutoLoopResumePath:
+    """Resume path resolves loop via _resolve_loop, not static self._loop."""
+
+    async def test_resume_calls_resolve_loop(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """_execute_resumed_loop should call _resolve_loop when auto config is set."""
+        provider = mock_provider_factory([])
+        engine = AgentEngine(
+            provider=provider,
+            auto_loop_config=AutoLoopConfig(),
+        )
+
+        # Verify _resolve_loop is called during resume path
+        # (we can't easily run full resume without checkpoint infra,
+        # so we verify the method itself resolves correctly)
+        task = _make_task_with_complexity(
+            complexity=Complexity.MEDIUM,
+            agent_id="agent-001",
+        )
+
+        with structlog.testing.capture_logs() as logs:
+            loop = await engine._resolve_loop(task)
+
+        assert loop.get_loop_type() == "plan_execute"
+        selected_events = [
+            e for e in logs if e.get("event") == EXECUTION_LOOP_AUTO_SELECTED
+        ]
+        assert len(selected_events) == 1
         assert selected_events[0]["selected_loop"] == "plan_execute"

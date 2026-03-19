@@ -136,7 +136,9 @@ class AgentEngine:
 
     Args:
         provider: LLM completion provider (required).
-        execution_loop: Defaults to ``ReactLoop()``.
+        execution_loop: Static execution loop.  Defaults to
+            ``ReactLoop()``.  Mutually exclusive with
+            ``auto_loop_config``.
         tool_registry: Optional tools available to the agent.
         cost_tracker: Falls back to ``budget_enforcer.cost_tracker``
             when ``None`` and ``budget_enforcer`` is provided. Must
@@ -153,6 +155,10 @@ class AgentEngine:
             point, best-effort).
         coordinator: Optional multi-agent coordinator for delegated
             coordination via :meth:`coordinate`.
+        auto_loop_config: Optional auto-loop selection configuration.
+            Selects the execution loop per-task based on complexity
+            and budget state.  Mutually exclusive with
+            ``execution_loop``.
     """
 
     def __init__(  # noqa: PLR0913
@@ -900,7 +906,12 @@ class AgentEngine:
                 checkpoint_ctx.task_execution.task,
             )
 
-        loop = self._make_loop_with_callback(self._loop, agent_id, task_id)
+        base_loop = self._loop
+        if checkpoint_ctx.task_execution is not None:
+            base_loop = await self._resolve_loop(
+                checkpoint_ctx.task_execution.task,
+            )
+        loop = self._make_loop_with_callback(base_loop, agent_id, task_id)
         return await loop.execute(
             context=checkpoint_ctx,
             provider=self._provider,
@@ -990,6 +1001,11 @@ class AgentEngine:
         When ``auto_loop_config`` is set, selects the loop based on
         task complexity and optional budget state.  Otherwise returns
         the statically configured loop (``self._loop``).
+
+        Note: auto-selected loops use default ``PlanExecuteConfig``
+        and do not receive a compaction callback.  Provide an
+        ``execution_loop`` directly for custom plan-execute config
+        or compaction.
         """
         if self._auto_loop_config is None:
             return self._loop
@@ -1000,13 +1016,9 @@ class AgentEngine:
                 await self._budget_enforcer.get_budget_utilization_pct()
             )
             if budget_utilization_pct is None:
-                logger.warning(
+                logger.debug(
                     EXECUTION_LOOP_BUDGET_UNAVAILABLE,
-                    note=(
-                        "budget enforcer present but utilization "
-                        "unknown; proceeding without budget-aware "
-                        "loop downgrade"
-                    ),
+                    note="budget utilization unknown; skipping budget-aware downgrade",
                 )
 
         loop_type = select_loop_type(
@@ -1015,6 +1027,7 @@ class AgentEngine:
             budget_utilization_pct=budget_utilization_pct,
             budget_tight_threshold=self._auto_loop_config.budget_tight_threshold,
             hybrid_fallback=self._auto_loop_config.hybrid_fallback,
+            default_loop_type=self._auto_loop_config.default_loop_type,
         )
 
         logger.info(
