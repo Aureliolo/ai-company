@@ -80,3 +80,13 @@ EXECUTION_LOOP_HYBRID_FALLBACK: Final[str] = "execution.loop.hybrid_fallback"
 EXECUTION_LOOP_NO_RULE_MATCH: Final[str] = "execution.loop.no_rule_match"
 EXECUTION_LOOP_UNKNOWN_TYPE: Final[str] = "execution.loop.unknown_type"
 EXECUTION_LOOP_BUDGET_UNAVAILABLE: Final[str] = "execution.loop.budget_unavailable"
+
+# Hybrid loop events
+EXECUTION_HYBRID_STEP_TURN_LIMIT: Final[str] = "execution.hybrid.step_turn_limit"
+EXECUTION_HYBRID_PROGRESS_SUMMARY: Final[str] = "execution.hybrid.progress_summary"
+EXECUTION_HYBRID_REPLAN_DECIDED: Final[str] = "execution.hybrid.replan_decided"
+EXECUTION_HYBRID_STEP_CHECKPOINT: Final[str] = "execution.hybrid.step_checkpoint"
+EXECUTION_HYBRID_TURN_BUDGET_WARNING: Final[str] = (
+    "execution.hybrid.turn_budget_warning"
+)
+EXECUTION_HYBRID_PLAN_TRUNCATED: Final[str] = "execution.hybrid.plan_truncated"

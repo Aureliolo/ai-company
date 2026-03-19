@@ -110,6 +110,8 @@ from synthorg.engine.errors import (
     WorkspaceMergeError,
     WorkspaceSetupError,
 )
+from synthorg.engine.hybrid_loop import HybridLoop
+from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_protocol import (
     BudgetChecker,
     ExecutionLoop,
@@ -282,6 +284,8 @@ __all__ = [
     "FailAndReassignStrategy",
     "Heartbeat",
     "HierarchicalAssignmentStrategy",
+    "HybridLoop",
+    "HybridLoopConfig",
     "InMemoryResourceLock",
     "LlmDecompositionConfig",
     "LlmDecompositionStrategy",

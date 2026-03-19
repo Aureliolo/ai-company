@@ -9,9 +9,8 @@ concrete loop.
 The default rules follow the design spec (section 6.5):
 simple -> ReAct, medium -> Plan-and-Execute, complex/epic -> Hybrid.
 When budget utilization is at or above ``budget_tight_threshold``,
-hybrid selections are downgraded to plan_execute.  A configurable
-``hybrid_fallback`` replaces hybrid when the HybridLoop class is not
-yet implemented.
+hybrid selections are downgraded to plan_execute.  An optional
+``hybrid_fallback`` can redirect hybrid to another loop type.
 """
 
 from typing import TYPE_CHECKING, Self
@@ -20,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from synthorg.core.enums import Complexity
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.observability import get_logger
@@ -33,6 +33,7 @@ from synthorg.observability.events.execution import (
 if TYPE_CHECKING:
     from synthorg.engine.approval_gate import ApprovalGate
     from synthorg.engine.compaction import CompactionCallback
+    from synthorg.engine.hybrid_models import HybridLoopConfig
     from synthorg.engine.loop_protocol import ExecutionLoop
     from synthorg.engine.plan_models import PlanExecuteConfig
     from synthorg.engine.stagnation import StagnationDetector
@@ -42,12 +43,10 @@ logger = get_logger(__name__)
 _KNOWN_LOOP_TYPES: frozenset[str] = frozenset({"react", "plan_execute", "hybrid"})
 """Loop type identifiers recognized by the auto-selection system."""
 
-_BUILDABLE_LOOP_TYPES: frozenset[str] = frozenset({"react", "plan_execute"})
-"""Loop types that ``build_execution_loop`` can currently instantiate.
-
-``"hybrid"`` is accepted in rules but redirected via
-``hybrid_fallback`` until HybridLoop is implemented.
-"""
+_BUILDABLE_LOOP_TYPES: frozenset[str] = frozenset(
+    {"react", "plan_execute", "hybrid"},
+)
+"""Loop types that ``build_execution_loop`` can instantiate."""
 
 
 class AutoLoopRule(BaseModel):
@@ -122,8 +121,11 @@ class AutoLoopConfig(BaseModel):
         description="Budget utilization % that triggers tight-budget mode",
     )
     hybrid_fallback: NotBlankStr | None = Field(
-        default="plan_execute",
-        description="Fallback loop when hybrid is selected but unavailable",
+        default=None,
+        description=(
+            "Optional fallback loop when hybrid is selected. "
+            "``None`` keeps the hybrid selection (default)."
+        ),
     )
     default_loop_type: NotBlankStr = Field(
         default="react",
@@ -134,7 +136,6 @@ class AutoLoopConfig(BaseModel):
     def _validate_rules_and_fallbacks(self) -> Self:
         """Validate unique complexities, known types, and buildability."""
         seen: set[Complexity] = set()
-        has_hybrid_rule = False
         for rule in self.rules:
             if rule.complexity in seen:
                 msg = f"Duplicate complexity in rules: {rule.complexity.value!r}"
@@ -142,8 +143,6 @@ class AutoLoopConfig(BaseModel):
             if rule.loop_type not in _KNOWN_LOOP_TYPES:
                 msg = f"Unknown loop type in rules: {rule.loop_type!r}"
                 raise ValueError(msg)
-            if rule.loop_type not in _BUILDABLE_LOOP_TYPES:
-                has_hybrid_rule = True
             seen.add(rule.complexity)
         if (
             self.hybrid_fallback is not None
@@ -162,19 +161,8 @@ class AutoLoopConfig(BaseModel):
         ):
             msg = f"hybrid_fallback {self.hybrid_fallback!r} is not buildable"
             raise ValueError(msg)
-        # Unbuildable rule loop types require a fallback redirect.
-        if has_hybrid_rule and self.hybrid_fallback is None:
-            msg = (
-                "hybrid_fallback must not be None while rules contain "
-                "unbuildable loop types (HybridLoop is not yet implemented)"
-            )
-            raise ValueError(msg)
-        # default_loop_type must be buildable, either directly or via
-        # hybrid_fallback redirect (e.g. default="hybrid" with fallback).
-        if self.default_loop_type not in _BUILDABLE_LOOP_TYPES and not (
-            self.default_loop_type == "hybrid"
-            and self.hybrid_fallback in _BUILDABLE_LOOP_TYPES
-        ):
+        # default_loop_type must be buildable.
+        if self.default_loop_type not in _BUILDABLE_LOOP_TYPES:
             msg = f"default_loop_type {self.default_loop_type!r} is not buildable"
             raise ValueError(msg)
         return self
@@ -243,7 +231,7 @@ def select_loop_type(  # noqa: PLR0913
     rules: tuple[AutoLoopRule, ...],
     budget_utilization_pct: float | None = None,
     budget_tight_threshold: int = 80,
-    hybrid_fallback: str | None = "plan_execute",
+    hybrid_fallback: str | None = None,
     default_loop_type: str = "react",
 ) -> str:
     """Select the execution loop type for a task.
@@ -276,25 +264,27 @@ def select_loop_type(  # noqa: PLR0913
     return _apply_hybrid_fallback(loop_type, hybrid_fallback)
 
 
-def build_execution_loop(
+def build_execution_loop(  # noqa: PLR0913
     loop_type: str,
     *,
     approval_gate: ApprovalGate | None = None,
     stagnation_detector: StagnationDetector | None = None,
     compaction_callback: CompactionCallback | None = None,
     plan_execute_config: PlanExecuteConfig | None = None,
+    hybrid_loop_config: HybridLoopConfig | None = None,
 ) -> ExecutionLoop:
     """Build an ``ExecutionLoop`` instance from a loop type string.
 
     Args:
-        loop_type: One of ``"react"`` or ``"plan_execute"``.
-            ``"hybrid"`` is not yet supported -- use
-            ``select_loop_type`` with ``hybrid_fallback`` to redirect.
+        loop_type: One of ``"react"``, ``"plan_execute"``, or
+            ``"hybrid"``.
         approval_gate: Optional approval gate to wire into the loop.
         stagnation_detector: Optional stagnation detector.
         compaction_callback: Optional compaction callback.
         plan_execute_config: Configuration for the plan-execute loop
             (ignored when ``loop_type`` is not ``"plan_execute"``).
+        hybrid_loop_config: Configuration for the hybrid loop
+            (ignored when ``loop_type`` is not ``"hybrid"``).
 
     Returns:
         A concrete ``ExecutionLoop`` implementation.
@@ -311,6 +301,13 @@ def build_execution_loop(
     if loop_type == "plan_execute":
         return PlanExecuteLoop(
             config=plan_execute_config,
+            approval_gate=approval_gate,
+            stagnation_detector=stagnation_detector,
+            compaction_callback=compaction_callback,
+        )
+    if loop_type == "hybrid":
+        return HybridLoop(
+            config=hybrid_loop_config,
             approval_gate=approval_gate,
             stagnation_detector=stagnation_detector,
             compaction_callback=compaction_callback,

@@ -100,6 +100,7 @@ if TYPE_CHECKING:
         CoordinationResult,
     )
     from synthorg.engine.coordination.service import MultiAgentCoordinator
+    from synthorg.engine.hybrid_models import HybridLoopConfig
     from synthorg.engine.loop_protocol import (
         BudgetChecker,
         ExecutionLoop,
@@ -182,6 +183,7 @@ class AgentEngine:
         coordinator: MultiAgentCoordinator | None = None,
         stagnation_detector: StagnationDetector | None = None,
         auto_loop_config: AutoLoopConfig | None = None,
+        hybrid_loop_config: HybridLoopConfig | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -195,6 +197,7 @@ class AgentEngine:
         self._parked_context_repo = parked_context_repo
         self._stagnation_detector = stagnation_detector
         self._auto_loop_config = auto_loop_config
+        self._hybrid_loop_config = hybrid_loop_config
         self._approval_gate = self._make_approval_gate()
         if execution_loop is not None and (
             self._approval_gate is not None or self._stagnation_detector is not None
@@ -1063,6 +1066,7 @@ class AgentEngine:
             loop_type,
             approval_gate=self._approval_gate,
             stagnation_detector=self._stagnation_detector,
+            hybrid_loop_config=self._hybrid_loop_config,
         )
 
     def _make_security_interceptor(

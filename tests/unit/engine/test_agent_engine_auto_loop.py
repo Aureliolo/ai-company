@@ -201,17 +201,22 @@ class TestAutoLoopBudgetAware:
         assert len(selected_events) == 1
         assert selected_events[0]["selected_loop"] == "plan_execute"
 
-    async def test_complex_ok_budget_uses_hybrid_fallback(
+    async def test_complex_ok_budget_uses_hybrid(
         self,
         sample_agent_with_personality: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """Complex + OK budget => hybrid -> fallback to plan_execute."""
+        """Complex + OK budget => hybrid loop selected."""
         plan_response = _make_completion_response(
             content=("1. Implement the feature\nExpected: Feature works correctly"),
         )
         exec_response = _make_completion_response(content="Done.")
-        provider = mock_provider_factory([plan_response, exec_response])
+        summary_response = _make_completion_response(
+            content='{"summary": "Done", "replan": false}',
+        )
+        provider = mock_provider_factory(
+            [plan_response, exec_response, summary_response],
+        )
 
         cfg = BudgetConfig(
             total_monthly=100.0,
@@ -251,8 +256,7 @@ class TestAutoLoopBudgetAware:
             e for e in logs if e.get("event") == EXECUTION_LOOP_AUTO_SELECTED
         ]
         assert len(selected_events) == 1
-        # Hybrid not implemented -> falls back to plan_execute
-        assert selected_events[0]["selected_loop"] == "plan_execute"
+        assert selected_events[0]["selected_loop"] == "hybrid"
 
 
 # ── Budget error fallback ────────────────────────────────────
@@ -272,7 +276,12 @@ class TestAutoLoopFallbackOnBudgetError:
             content=("1. Implement the feature\nExpected: Feature works correctly"),
         )
         exec_response = _make_completion_response(content="Done.")
-        provider = mock_provider_factory([plan_response, exec_response])
+        summary_response = _make_completion_response(
+            content='{"summary": "Done", "replan": false}',
+        )
+        provider = mock_provider_factory(
+            [plan_response, exec_response, summary_response],
+        )
 
         cfg = BudgetConfig(
             total_monthly=100.0,
@@ -292,7 +301,7 @@ class TestAutoLoopFallbackOnBudgetError:
             agent_id=str(sample_agent_with_personality.id),
         )
 
-        # Budget query returns None -> no downgrade
+        # Budget query returns None -> no downgrade, hybrid stays
         with (
             patch.object(
                 enforcer,
@@ -312,8 +321,8 @@ class TestAutoLoopFallbackOnBudgetError:
             e for e in logs if e.get("event") == EXECUTION_LOOP_AUTO_SELECTED
         ]
         assert len(selected_events) == 1
-        # Hybrid -> fallback to plan_execute (no budget downgrade since None)
-        assert selected_events[0]["selected_loop"] == "plan_execute"
+        # Hybrid selected (no budget downgrade since None, no fallback)
+        assert selected_events[0]["selected_loop"] == "hybrid"
 
         # Verify budget-unavailable debug event was emitted
         unavail_events = [

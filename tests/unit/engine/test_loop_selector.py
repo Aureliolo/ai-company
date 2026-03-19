@@ -5,6 +5,7 @@ import structlog.testing
 from pydantic import ValidationError
 
 from synthorg.core.enums import Complexity
+from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.loop_selector import (
     DEFAULT_AUTO_LOOP_RULES,
     AutoLoopConfig,
@@ -159,14 +160,15 @@ class TestBudgetAwareDowngrade:
 
 @pytest.mark.unit
 class TestHybridFallback:
-    """Hybrid loop not yet implemented -> fall back."""
+    """Hybrid fallback behavior."""
 
-    def test_default_fallback_is_plan_execute(self) -> None:
+    def test_default_no_fallback_preserves_hybrid(self) -> None:
+        """Default hybrid_fallback=None keeps hybrid selection."""
         result = select_loop_type(
             complexity=Complexity.COMPLEX,
             rules=DEFAULT_AUTO_LOOP_RULES,
         )
-        assert result == "plan_execute"
+        assert result == "hybrid"
 
     def test_custom_fallback_value(self) -> None:
         result = select_loop_type(
@@ -205,7 +207,7 @@ class TestBudgetAndHybridInteraction:
         assert result == "plan_execute"
 
     def test_budget_ok_falls_through_to_hybrid_fallback(self) -> None:
-        """Budget OK -> hybrid selected -> then hybrid fallback applies."""
+        """Budget OK -> hybrid selected -> then explicit hybrid fallback applies."""
         result = select_loop_type(
             complexity=Complexity.COMPLEX,
             rules=DEFAULT_AUTO_LOOP_RULES,
@@ -214,6 +216,17 @@ class TestBudgetAndHybridInteraction:
             hybrid_fallback="react",
         )
         assert result == "react"
+
+    def test_budget_ok_no_fallback_keeps_hybrid(self) -> None:
+        """Budget OK + no fallback -> hybrid stays."""
+        result = select_loop_type(
+            complexity=Complexity.COMPLEX,
+            rules=DEFAULT_AUTO_LOOP_RULES,
+            budget_utilization_pct=50.0,
+            budget_tight_threshold=80,
+            hybrid_fallback=None,
+        )
+        assert result == "hybrid"
 
 
 # ── AutoLoopConfig model ─────────────────────────────────────
@@ -227,7 +240,7 @@ class TestAutoLoopConfig:
         config = AutoLoopConfig()
         assert config.rules == DEFAULT_AUTO_LOOP_RULES
         assert config.budget_tight_threshold == 80
-        assert config.hybrid_fallback == "plan_execute"
+        assert config.hybrid_fallback is None
 
     def test_frozen(self) -> None:
         config = AutoLoopConfig()
@@ -297,45 +310,18 @@ class TestAutoLoopConfig:
         config = AutoLoopConfig(default_loop_type="plan_execute")
         assert config.default_loop_type == "plan_execute"
 
-    def test_hybrid_fallback_none_with_hybrid_rules_rejected(self) -> None:
-        """hybrid_fallback=None is invalid when rules map to hybrid."""
-        with pytest.raises(ValidationError, match="hybrid_fallback must not be None"):
-            AutoLoopConfig(hybrid_fallback=None)
-
-    def test_hybrid_fallback_none_without_hybrid_rules_accepted(self) -> None:
-        """hybrid_fallback=None is valid when no rules map to hybrid."""
-        config = AutoLoopConfig(
-            rules=(
-                AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="react"),
-                AutoLoopRule(complexity=Complexity.MEDIUM, loop_type="plan_execute"),
-            ),
-            hybrid_fallback=None,
-        )
+    def test_hybrid_fallback_none_with_hybrid_rules_accepted(self) -> None:
+        """hybrid_fallback=None is valid with hybrid rules."""
+        config = AutoLoopConfig(hybrid_fallback=None)
         assert config.hybrid_fallback is None
 
-    def test_unbuildable_default_loop_type_rejected_without_fallback(self) -> None:
-        """default_loop_type=hybrid is rejected when fallback is None."""
-        with pytest.raises(ValidationError, match="not buildable"):
-            AutoLoopConfig(
-                rules=(AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="react"),),
-                default_loop_type="hybrid",
-                hybrid_fallback=None,
-            )
-
-    def test_unbuildable_default_loop_type_accepted_with_fallback(self) -> None:
-        """default_loop_type=hybrid is valid when hybrid_fallback redirects."""
+    def test_hybrid_default_loop_type_accepted(self) -> None:
+        """default_loop_type=hybrid is valid since hybrid is buildable."""
         config = AutoLoopConfig(
             rules=(AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="react"),),
             default_loop_type="hybrid",
-            hybrid_fallback="plan_execute",
         )
         assert config.default_loop_type == "hybrid"
-        assert config.hybrid_fallback == "plan_execute"
-
-    def test_unbuildable_hybrid_fallback_rejected(self) -> None:
-        """hybrid_fallback cannot be an unbuildable type."""
-        with pytest.raises(ValidationError, match="not buildable"):
-            AutoLoopConfig(hybrid_fallback="hybrid")
 
 
 # ── AutoLoopRule model ───────────────────────────────────────
@@ -419,6 +405,37 @@ class TestBuildExecutionLoop:
         )
         assert isinstance(loop, PlanExecuteLoop)
         assert loop.config.max_replans == 5
+
+    def test_build_hybrid(self) -> None:
+        loop = build_execution_loop("hybrid")
+        assert isinstance(loop, HybridLoop)
+        assert loop.get_loop_type() == "hybrid"
+
+    def test_build_hybrid_with_config(self) -> None:
+        from synthorg.engine.hybrid_models import HybridLoopConfig
+
+        config = HybridLoopConfig(max_plan_steps=3, max_turns_per_step=10)
+        loop = build_execution_loop(
+            "hybrid",
+            hybrid_loop_config=config,
+        )
+        assert isinstance(loop, HybridLoop)
+        assert loop.config.max_plan_steps == 3
+        assert loop.config.max_turns_per_step == 10
+
+    def test_build_hybrid_with_gates(self) -> None:
+        from unittest.mock import MagicMock
+
+        gate = MagicMock()
+        detector = MagicMock()
+        loop = build_execution_loop(
+            "hybrid",
+            approval_gate=gate,
+            stagnation_detector=detector,
+        )
+        assert isinstance(loop, HybridLoop)
+        assert loop.approval_gate is gate
+        assert loop.stagnation_detector is detector
 
     def test_unknown_type_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown loop type"):
