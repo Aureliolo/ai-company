@@ -206,6 +206,11 @@ func TestLoadAndGenerate_PermissionError(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(composePath, 0o600) })
 
+	// Verify the environment actually enforces mode bits (root/containers may bypass).
+	if _, readErr := os.ReadFile(composePath); readErr == nil {
+		t.Skip("environment bypasses file mode bits (likely running as root)")
+	}
+
 	_, _, err := loadAndGenerate(composePath, config.State{})
 
 	// Restore permissions before assertions so temp dir cleanup succeeds
@@ -284,6 +289,8 @@ func TestPatchComposeImageRefs_TagFallback(t *testing.T) {
 	const oldCompose = `services:
   backend:
     image: ghcr.io/aureliolo/synthorg-backend:0.3.5
+  web:
+    image: ghcr.io/aureliolo/synthorg-web:0.3.5
 `
 	dir := t.TempDir()
 	composePath := filepath.Join(dir, "compose.yml")
@@ -300,7 +307,52 @@ func TestPatchComposeImageRefs_TagFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading patched compose: %v", err)
 	}
-	if !strings.Contains(string(result), "ghcr.io/aureliolo/synthorg-backend:0.3.6") {
-		t.Errorf("expected tag-based image ref, got: %s", result)
+	got := string(result)
+	if !strings.Contains(got, "ghcr.io/aureliolo/synthorg-backend:0.3.6") {
+		t.Errorf("expected tag-based backend ref, got: %s", got)
+	}
+	if !strings.Contains(got, "ghcr.io/aureliolo/synthorg-web:0.3.6") {
+		t.Errorf("expected tag-based web ref, got: %s", got)
+	}
+}
+
+func TestPatchComposeImageRefs_NoMatchesError(t *testing.T) {
+	const customCompose = `services:
+  myapp:
+    image: registry.example.com/myapp:latest
+`
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yml")
+	if err := os.WriteFile(composePath, []byte(customCompose), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	err := patchComposeImageRefs("0.3.6", nil, dir)
+	if err == nil {
+		t.Fatal("expected error when no synthorg image refs found")
+	}
+	if !strings.Contains(err.Error(), "no synthorg image references found") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestPatchComposeImageRefs_MissingRequiredService(t *testing.T) {
+	// Only backend, no web -- should fail validation.
+	const partialCompose = `services:
+  backend:
+    image: ghcr.io/aureliolo/synthorg-backend:0.3.5
+`
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yml")
+	if err := os.WriteFile(composePath, []byte(partialCompose), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	err := patchComposeImageRefs("0.3.6", nil, dir)
+	if err == nil {
+		t.Fatal("expected error when web service not found")
+	}
+	if !strings.Contains(err.Error(), `"web" not found`) {
+		t.Errorf("unexpected error: %v", err)
 	}
 }

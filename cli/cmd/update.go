@@ -64,7 +64,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 			"Warning: new images may not work correctly with your current compose configuration.")
 		forceImages := false
 		ok, confirmErr := confirmUpdateWithDefault(
-			"Still update container images? (Your compose.yml will NOT be modified.)",
+			"Still update container images? (Only image references in compose.yml will be updated, template changes will not be applied.)",
 			forceImages,
 		)
 		if confirmErr != nil {
@@ -555,6 +555,10 @@ var imageLinePattern = regexp.MustCompile(
 // patchComposeImageRefs updates only the image references in an existing
 // compose.yml without regenerating from the template. This preserves the
 // user's compose configuration while allowing image updates.
+//
+// Returns an error if no image references were found or if not all expected
+// services (backend, web, and optionally sandbox) were patched -- this
+// prevents config.Save from advancing state when compose is unpatched.
 func patchComposeImageRefs(tag string, digestPins map[string]string, safeDir string) error {
 	composePath := filepath.Join(safeDir, "compose.yml")
 	existing, err := os.ReadFile(composePath)
@@ -562,21 +566,33 @@ func patchComposeImageRefs(tag string, digestPins map[string]string, safeDir str
 		return fmt.Errorf("reading compose for image patching: %w", err)
 	}
 
+	replaced := make(map[string]bool)
 	patched := imageLinePattern.ReplaceAllStringFunc(string(existing), func(match string) string {
-		// Extract the indentation + "image:" prefix and service name.
 		sub := imageLinePattern.FindStringSubmatch(match)
 		if len(sub) < 3 {
-			return match // no match, keep as-is
+			return match
 		}
 		prefix := sub[1] // e.g. "    image: "
 		name := sub[2]   // e.g. "backend"
 		repo := "ghcr.io/aureliolo/synthorg-" + name
+		replaced[name] = true
 
 		if d, ok := digestPins[name]; ok && d != "" {
 			return prefix + repo + "@" + d
 		}
 		return prefix + repo + ":" + tag
 	})
+
+	if len(replaced) == 0 {
+		return fmt.Errorf("no synthorg image references found in %s -- compose may be manually edited; run 'synthorg init' to regenerate", composePath)
+	}
+
+	// At minimum, backend and web must be patched.
+	for _, required := range []string{"backend", "web"} {
+		if !replaced[required] {
+			return fmt.Errorf("image reference for %q not found in %s -- compose may be manually edited; run 'synthorg init' to regenerate", required, composePath)
+		}
+	}
 
 	return atomicWriteFile(composePath, []byte(patched), safeDir)
 }
