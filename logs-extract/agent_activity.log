@@ -1,0 +1,1 @@
+{"max_queue_size": 1000, "publish_snapshots": true, "event": "task_engine.created", "logger": "synthorg.engine.task_engine", "level": "debug", "timestamp": "2026-03-19T09:34:34.380896Z"}

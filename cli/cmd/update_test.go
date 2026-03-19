@@ -83,6 +83,12 @@ func TestLineDiff(t *testing.T) {
 			updated:      "line1\nline2\n",
 			wantContains: []string{"+ "},
 		},
+		{
+			name:         "trailing newline removed",
+			old:          "line1\nline2\n",
+			updated:      "line1\nline2",
+			wantContains: []string{"- "},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
