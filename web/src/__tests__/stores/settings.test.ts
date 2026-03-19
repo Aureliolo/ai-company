@@ -398,6 +398,41 @@ describe('validateSettingValue', () => {
     }
   }
 
+  // ── Integer validation ───────────────────────────────────
+
+  it('accepts valid integer', () => {
+    expect(validateSettingValue('42', makeDef({ type: 'int' }))).toBeNull()
+  })
+
+  it('accepts negative integer', () => {
+    expect(validateSettingValue('-7', makeDef({ type: 'int' }))).toBeNull()
+  })
+
+  it('rejects decimal for int (Number.isInteger check)', () => {
+    expect(validateSettingValue('3.5', makeDef({ type: 'int' }))).not.toBeNull()
+  })
+
+  it('rejects empty string for int', () => {
+    expect(validateSettingValue('', makeDef({ type: 'int' }))).not.toBeNull()
+  })
+
+  it('rejects non-numeric string for int', () => {
+    expect(validateSettingValue('abc', makeDef({ type: 'int' }))).not.toBeNull()
+  })
+
+  it('enforces int min_value', () => {
+    expect(validateSettingValue('-1', makeDef({ type: 'int', min_value: 0 }))).not.toBeNull()
+  })
+
+  it('enforces int max_value', () => {
+    expect(validateSettingValue('200', makeDef({ type: 'int', max_value: 100 }))).not.toBeNull()
+  })
+
+  it('accepts int at boundary values', () => {
+    expect(validateSettingValue('0', makeDef({ type: 'int', min_value: 0, max_value: 100 }))).toBeNull()
+    expect(validateSettingValue('100', makeDef({ type: 'int', min_value: 0, max_value: 100 }))).toBeNull()
+  })
+
   // ── Float validation ──────────────────────────────────────
 
   it('accepts valid float', () => {
