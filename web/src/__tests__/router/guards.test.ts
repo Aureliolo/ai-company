@@ -201,7 +201,7 @@ describe('authGuard', () => {
     expect(next).toHaveBeenCalledWith({ name: 'setup' })
   })
 
-  it('allows /setup and /login when setup is needed', async () => {
+  it('allows /setup when setup is needed', async () => {
     const setup = useSetupStore()
     setup.$patch({
       status: { needs_admin: true, needs_setup: true, has_providers: false },
@@ -277,8 +277,9 @@ describe('authGuard', () => {
     const from = createRoute()
 
     await authGuard(to, from, next)
-    // fetchStatus caught the error internally; status remains null
-    // but statusLoaded stays false. Guard falls through to auth routing.
+    // fetchStatus caught the error internally; status remains null,
+    // statusLoaded stays false. Guard falls through to auth routing.
+    expect(setup.statusLoaded).toBe(false)
     expect(next).toHaveBeenCalledWith({ path: '/login', query: { redirect: '/dashboard' } })
   })
 })
