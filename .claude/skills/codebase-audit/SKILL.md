@@ -92,7 +92,6 @@ Select agents based on scope. Each agent searches for ONE type of issue only.
 | `test-coverage` | Public modules with no corresponding test file, empty test files |
 | `flaky-tests` | Unmocked time, real asyncio.sleep in tests, timing-dependent assertions, skipped tests |
 | `wiring-lifecycle` | Incorrectly wired services, missing DI, lifecycle gaps, protocol implementations incomplete |
-
 | `dead-code` | Unreachable functions, unused imports, orphaned modules |
 | `todo-fixme` | Unresolved TODOs that should be tracked as issues |
 | `spec-drift` | Implementation diverging from design spec behavior |
