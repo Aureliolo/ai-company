@@ -249,4 +249,36 @@ describe('authGuard', () => {
     expect(setup.statusLoaded).toBe(true)
     expect(next).toHaveBeenCalledWith({ path: '/login', query: { redirect: '/dashboard' } })
   })
+
+  it('allows /login when setup is needed', async () => {
+    const setup = useSetupStore()
+    setup.$patch({
+      status: { needs_admin: true, needs_setup: true, has_providers: false },
+    })
+    setup.statusLoaded = true
+
+    const to = createRoute({ path: '/login', name: 'login' as never, meta: { requiresAuth: false } })
+    const from = createRoute()
+
+    await authGuard(to, from, next)
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('falls back to auth routing when fetchStatus rejects', async () => {
+    const { getSetupStatus } = await import('@/api/endpoints/setup')
+    const mocked = vi.mocked(getSetupStatus)
+    mocked.mockRejectedValueOnce(new Error('network error'))
+
+    const setup = useSetupStore()
+    setup.statusLoaded = false
+    setup.$patch({ status: null })
+
+    const to = createRoute({ path: '/dashboard', fullPath: '/dashboard', meta: {} })
+    const from = createRoute()
+
+    await authGuard(to, from, next)
+    // fetchStatus caught the error internally; status remains null
+    // but statusLoaded stays false. Guard falls through to auth routing.
+    expect(next).toHaveBeenCalledWith({ path: '/login', query: { redirect: '/dashboard' } })
+  })
 })

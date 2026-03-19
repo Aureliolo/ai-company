@@ -246,7 +246,7 @@ onMounted(async () => {
         icon="pi pi-user-plus"
         class="w-full"
         :loading="creating"
-        :disabled="!isValid"
+        :disabled="!isValid || creating"
       />
     </form>
   </div>
