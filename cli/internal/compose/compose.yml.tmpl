@@ -21,6 +21,9 @@ services:
 {{- if .JWTSecret}}
       SYNTHORG_JWT_SECRET: {{yamlStr .JWTSecret}}
 {{- end}}
+{{- if .SettingsKey}}
+      SYNTHORG_SETTINGS_KEY: {{yamlStr .SettingsKey}}
+{{- end}}
     user: "65532:65532"
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
     security_opt:

@@ -71,6 +71,7 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	out.KeyValue("Persistence backend", state.PersistenceBackend)
 	out.KeyValue("Memory backend", state.MemoryBackend)
 	out.KeyValue("JWT secret", maskSecret(state.JWTSecret))
+	out.KeyValue("Settings key", maskSecret(state.SettingsKey))
 
 	return nil
 }

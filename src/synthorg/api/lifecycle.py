@@ -130,16 +130,8 @@ async def _init_persistence(
         persistence: Connected persistence backend.
         app_state: Application state for auth service injection.
     """
-    try:
-        await persistence.migrate()
-    except Exception:
-        logger.exception(
-            API_APP_STARTUP,
-            error="Failed to run persistence migrations",
-        )
-        raise
-
-    # Resolve JWT secret after persistence is up
+    # Resolve JWT secret before migrations so missing env vars fail fast
+    # (no point running migrations if startup will abort anyway).
     if app_state.has_auth_service:
         logger.info(
             API_APP_STARTUP,
@@ -147,7 +139,7 @@ async def _init_persistence(
         )
     else:
         try:
-            secret = await resolve_jwt_secret(persistence)
+            secret = resolve_jwt_secret()
             auth_config = app_state.config.api.auth.with_secret(
                 secret,
             )
@@ -158,6 +150,15 @@ async def _init_persistence(
                 error="Failed to resolve JWT secret",
             )
             raise
+
+    try:
+        await persistence.migrate()
+    except Exception:
+        logger.exception(
+            API_APP_STARTUP,
+            error="Failed to run persistence migrations",
+        )
+        raise
 
 
 async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901

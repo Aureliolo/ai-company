@@ -142,6 +142,9 @@ func collectConfig(r *Report, state config.State) {
 	if redacted.JWTSecret != "" {
 		redacted.JWTSecret = "[REDACTED]"
 	}
+	if redacted.SettingsKey != "" {
+		redacted.SettingsKey = "[REDACTED]"
+	}
 	if b, err := json.MarshalIndent(redacted, "", "  "); err == nil {
 		r.ConfigRedacted = string(b)
 	}

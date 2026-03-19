@@ -38,6 +38,7 @@ type Params struct {
 	WebPort            int
 	LogLevel           string
 	JWTSecret          string
+	SettingsKey        string
 	Sandbox            bool
 	DockerSock         string
 	PersistenceBackend string
@@ -54,6 +55,7 @@ func ParamsFromState(s config.State) Params {
 		WebPort:            s.WebPort,
 		LogLevel:           s.LogLevel,
 		JWTSecret:          s.JWTSecret,
+		SettingsKey:        s.SettingsKey,
 		Sandbox:            s.Sandbox,
 		DockerSock:         s.DockerSock,
 		PersistenceBackend: s.PersistenceBackend,
@@ -114,6 +116,16 @@ func validateParams(p Params) error {
 	}
 	if !config.IsValidMemoryBackend(p.MemoryBackend) {
 		return fmt.Errorf("invalid memory backend %q: must be one of %s", p.MemoryBackend, config.MemoryBackendNames())
+	}
+	// Cross-validate secrets: if one is set, both must be set.
+	// Both-empty is valid for development/testing (template omits env vars).
+	hasJWT := strings.TrimSpace(p.JWTSecret) != ""
+	hasKey := strings.TrimSpace(p.SettingsKey) != ""
+	if hasJWT && !hasKey {
+		return fmt.Errorf("SYNTHORG_SETTINGS_KEY is required when JWT secret is set")
+	}
+	if hasKey && !hasJWT {
+		return fmt.Errorf("JWT secret is required when SYNTHORG_SETTINGS_KEY is set")
 	}
 	for name, d := range p.DigestPins {
 		if !verify.IsValidDigest(d) {

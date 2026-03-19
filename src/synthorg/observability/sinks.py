@@ -20,6 +20,34 @@ from structlog.stdlib import ProcessorFormatter
 from synthorg.observability.config import RotationConfig, SinkConfig
 from synthorg.observability.enums import RotationStrategy, SinkType
 
+# ── Flushing file handlers ────────────────────────────────────────
+# Standard RotatingFileHandler and WatchedFileHandler buffer writes,
+# so log entries may never reach disk in a long-running server with
+# infrequent events.  These subclasses flush after every emit.
+
+
+class _FlushingRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """RotatingFileHandler that flushes to disk after every emit."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        super().emit(record)
+        try:
+            self.flush()
+        except Exception:  # mirrors StreamHandler.emit
+            self.handleError(record)
+
+
+class _FlushingWatchedFileHandler(logging.handlers.WatchedFileHandler):
+    """WatchedFileHandler that flushes to disk after every emit."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        super().emit(record)
+        try:
+            self.flush()
+        except Exception:  # mirrors StreamHandler.emit
+            self.handleError(record)
+
+
 # ── Logger name routing ───────────────────────────────────────────
 
 # Maps sink file_path to the logger name prefixes that should be
@@ -113,12 +141,12 @@ def _build_file_handler(
 
     try:
         if rotation.strategy == RotationStrategy.BUILTIN:
-            return logging.handlers.RotatingFileHandler(
+            return _FlushingRotatingFileHandler(
                 filename=str(file_path),
                 maxBytes=rotation.max_bytes,
                 backupCount=rotation.backup_count,
             )
-        return logging.handlers.WatchedFileHandler(
+        return _FlushingWatchedFileHandler(
             filename=str(file_path),
         )
     except OSError as exc:

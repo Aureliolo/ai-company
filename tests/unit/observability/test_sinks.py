@@ -11,7 +11,12 @@ from structlog.stdlib import ProcessorFormatter
 
 from synthorg.observability.config import RotationConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
-from synthorg.observability.sinks import _build_file_handler, build_handler
+from synthorg.observability.sinks import (
+    _build_file_handler,
+    _FlushingRotatingFileHandler,
+    _FlushingWatchedFileHandler,
+    build_handler,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -238,3 +243,121 @@ class TestBuildFileHandlerErrors:
         object.__setattr__(sink, "file_path", None)
         with pytest.raises(ValueError, match="FILE sink is missing 'file_path'"):
             _build_file_handler(sink, tmp_path)
+
+
+@pytest.mark.unit
+class TestFlushAfterEmit:
+    """File handlers flush to disk after every emit."""
+
+    @pytest.mark.parametrize(
+        ("strategy", "handler_cls", "log_file"),
+        [
+            (
+                RotationStrategy.BUILTIN,
+                _FlushingRotatingFileHandler,
+                "flush-builtin.log",
+            ),
+            (
+                RotationStrategy.EXTERNAL,
+                _FlushingWatchedFileHandler,
+                "flush-external.log",
+            ),
+        ],
+        ids=["builtin-rotating", "external-watched"],
+    )
+    def test_emit_flushes_to_disk(
+        self,
+        tmp_path: Path,
+        handler_cleanup: list[logging.Handler],
+        strategy: RotationStrategy,
+        handler_cls: type,
+        log_file: str,
+    ) -> None:
+        sink = SinkConfig(
+            sink_type=SinkType.FILE,
+            file_path=log_file,
+            rotation=RotationConfig(strategy=strategy),
+        )
+        handler = _build_file_handler(sink, tmp_path)
+        handler_cleanup.append(handler)
+
+        assert isinstance(handler, handler_cls)
+
+        formatter = logging.Formatter("%(message)s")
+        handler.setFormatter(formatter)
+        record = logging.LogRecord(
+            name="test",
+            level=logging.ERROR,
+            pathname="",
+            lineno=0,
+            msg="flush-test-message",
+            args=(),
+            exc_info=None,
+        )
+        handler.emit(record)
+
+        content = (tmp_path / log_file).read_text()
+        assert "flush-test-message" in content
+
+    @pytest.mark.parametrize(
+        ("strategy", "log_file", "exc"),
+        [
+            (RotationStrategy.BUILTIN, "flush-err-builtin.log", OSError("disk full")),
+            (RotationStrategy.EXTERNAL, "flush-err-ext.log", OSError("disk full")),
+            (RotationStrategy.BUILTIN, "flush-val-builtin.log", ValueError("closed")),
+            (RotationStrategy.EXTERNAL, "flush-val-ext.log", ValueError("closed")),
+        ],
+        ids=[
+            "builtin-oserror",
+            "external-oserror",
+            "builtin-valueerror",
+            "external-valueerror",
+        ],
+    )
+    def test_flush_exception_delegates_to_handle_error(
+        self,
+        tmp_path: Path,
+        handler_cleanup: list[logging.Handler],
+        strategy: RotationStrategy,
+        log_file: str,
+        exc: Exception,
+    ) -> None:
+        """Any exception during flush delegates to handleError, not crash."""
+        sink = SinkConfig(
+            sink_type=SinkType.FILE,
+            file_path=log_file,
+            rotation=RotationConfig(strategy=strategy),
+        )
+        handler = _build_file_handler(sink, tmp_path)
+        handler_cleanup.append(handler)
+
+        formatter = logging.Formatter("%(message)s")
+        handler.setFormatter(formatter)
+        record = logging.LogRecord(
+            name="test",
+            level=logging.ERROR,
+            pathname="",
+            lineno=0,
+            msg="before-flush-error",
+            args=(),
+            exc_info=None,
+        )
+
+        original_flush = handler.flush
+        call_count = 0
+
+        def flush_fails_on_second_call() -> None:
+            """Let super().emit()'s internal flush succeed; fail on ours."""
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise exc
+            original_flush()
+
+        with (
+            patch.object(handler, "flush", side_effect=flush_fails_on_second_call),
+            patch.object(handler, "handleError") as mock_handle_error,
+        ):
+            handler.emit(record)
+
+        mock_handle_error.assert_called_once_with(record)

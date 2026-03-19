@@ -44,7 +44,7 @@ class TestSettingsEncryptor:
     def test_decrypt_invalid_ciphertext_raises(
         self, encryptor: SettingsEncryptor
     ) -> None:
-        with pytest.raises(SettingsEncryptionError):
+        with pytest.raises(SettingsEncryptionError, match="wrong key"):
             encryptor.decrypt("not-valid-ciphertext")
 
     def test_from_env_returns_encryptor(
@@ -55,11 +55,10 @@ class TestSettingsEncryptor:
         assert enc is not None
         assert enc.decrypt(enc.encrypt("test")) == "test"
 
-    def test_from_env_returns_none_when_unset(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_from_env_raises_when_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("SYNTHORG_SETTINGS_KEY", raising=False)
-        assert SettingsEncryptor.from_env() is None
+        with pytest.raises(SettingsEncryptionError, match="is not set"):
+            SettingsEncryptor.from_env()
 
     def test_from_env_raises_for_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SYNTHORG_SETTINGS_KEY", "   ")

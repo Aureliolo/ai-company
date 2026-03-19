@@ -9,7 +9,7 @@ import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
-import synthorg.settings.definitions  # noqa: F401 — trigger registration
+import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.api.app import create_app
 from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.config import AuthConfig
@@ -37,19 +37,31 @@ from tests.unit.api.fakes import (
 __all__ = ["FakeMessageBus", "FakePersistenceBackend"]
 
 
+# ── Test auth constants ───────────────────────────────────────
+
+_TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
+# Hardcoded valid Fernet key (deterministic across xdist workers).
+_TEST_SETTINGS_KEY = "lKzZcMznksIF8A_2HFFUnKxhxhz9_bxTvVJoZ6mvZrk="
+_TEST_USER_ID = "test-user-001"
+_TEST_USERNAME = "testadmin"
+
+
+@pytest.fixture(autouse=True)
+def _required_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Set SYNTHORG_JWT_SECRET and SYNTHORG_SETTINGS_KEY for API tests.
+
+    The backend now requires both env vars at startup (no auto-generation).
+    """
+    monkeypatch.setenv("SYNTHORG_JWT_SECRET", _TEST_JWT_SECRET)
+    monkeypatch.setenv("SYNTHORG_SETTINGS_KEY", _TEST_SETTINGS_KEY)
+
+
 def make_exception_handler_app(handler: Any) -> Litestar:
     """Build a minimal Litestar app with project exception handlers."""
     return Litestar(
         route_handlers=[handler],
         exception_handlers=dict(EXCEPTION_HANDLERS),  # type: ignore[arg-type]
     )
-
-
-# ── Test auth constants ───────────────────────────────────────
-
-_TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
-_TEST_USER_ID = "test-user-001"
-_TEST_USERNAME = "testadmin"
 
 
 # ── Auth helpers ────────────────────────────────────────────────

@@ -34,6 +34,9 @@ func TestDefaultState(t *testing.T) {
 	if s.MemoryBackend != "mem0" {
 		t.Errorf("MemoryBackend = %q, want mem0", s.MemoryBackend)
 	}
+	if s.SettingsKey != "" {
+		t.Errorf("SettingsKey should default to empty, got %q", s.SettingsKey)
+	}
 }
 
 func TestSaveAndLoad(t *testing.T) {
@@ -45,6 +48,7 @@ func TestSaveAndLoad(t *testing.T) {
 		WebPort:            3001,
 		LogLevel:           "debug",
 		JWTSecret:          "test-secret",
+		SettingsKey:        "test-settings-key",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 	}
@@ -66,6 +70,9 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 	if loaded.JWTSecret != s.JWTSecret {
 		t.Errorf("JWTSecret = %q, want %q", loaded.JWTSecret, s.JWTSecret)
+	}
+	if loaded.SettingsKey != s.SettingsKey {
+		t.Errorf("SettingsKey = %q, want %q", loaded.SettingsKey, s.SettingsKey)
 	}
 	if loaded.WebPort != s.WebPort {
 		t.Errorf("WebPort = %d, want %d", loaded.WebPort, s.WebPort)
@@ -215,6 +222,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		DockerSock:         "/custom/docker.sock",
 		LogLevel:           "warn",
 		JWTSecret:          "super-secret-key",
+		SettingsKey:        "super-settings-key",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 	}

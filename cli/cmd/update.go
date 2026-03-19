@@ -51,6 +51,21 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	// Migrate: generate settings encryption key if missing (pre-v0.3.9 installs).
+	// 32 bytes -> 44-char URL-safe base64 = valid Fernet key.
+	if state.SettingsKey == "" {
+		key, genErr := generateSecret(32)
+		if genErr != nil {
+			return fmt.Errorf("generating settings encryption key: %w", genErr)
+		}
+		state.SettingsKey = key
+		if saveErr := config.Save(state); saveErr != nil {
+			return fmt.Errorf("saving updated config: %w", saveErr)
+		}
+		out := ui.NewUI(cmd.OutOrStdout())
+		out.Success("Generated settings encryption key for this installation.")
+	}
+
 	// Regenerate compose.yml from the current template to pick up any
 	// template changes (new env vars, hardening tweaks, service config).
 	applied, err := refreshCompose(cmd, state)
@@ -290,7 +305,7 @@ func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []
 // Covers common secret naming conventions to prevent leaking credentials
 // in terminal scrollback or CI logs when the compose template changes.
 var secretKeyPattern = regexp.MustCompile(
-	`(?i)^\s*\w*(SECRET|PASSWORD|TOKEN|API_KEY|CREDENTIALS)\w*\s*:`,
+	`(?i)^\s*\w*(SECRET|PASSWORD|TOKEN|API_KEY|CREDENTIALS|ENCRYPTION_KEY|SETTINGS_KEY)\w*\s*:`,
 )
 
 // lineDiff produces a bag-based diff showing added (+) and removed (-) lines

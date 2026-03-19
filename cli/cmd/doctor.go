@@ -172,9 +172,8 @@ func renderDoctorConfig(out *ui.UI, state config.State) {
 	out.KeyValue("Persistence", state.PersistenceBackend)
 	out.KeyValue("Memory", state.MemoryBackend)
 	out.KeyValue("Log level", state.LogLevel)
-	if state.JWTSecret != "" {
-		out.KeyValue("JWT secret", "****")
-	}
+	out.KeyValue("JWT secret", maskSecret(state.JWTSecret))
+	out.KeyValue("Settings key", maskSecret(state.SettingsKey))
 }
 
 func renderDoctorDisk(out *ui.UI, r diagnostics.Report) {

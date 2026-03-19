@@ -54,6 +54,7 @@ func TestConfigShowDisplaysFields(t *testing.T) {
 		DockerSock:         "/var/run/docker.sock",
 		LogLevel:           "debug",
 		JWTSecret:          "super-secret",
+		SettingsKey:        "super-settings-key",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 	}
@@ -91,8 +92,24 @@ func TestConfigShowDisplaysFields(t *testing.T) {
 		}
 	}
 
-	// JWT secret must not appear in output.
+	// Secrets must not appear in output.
 	if bytes.Contains([]byte(out), []byte("super-secret")) {
 		t.Error("JWT secret leaked in output")
+	}
+	if bytes.Contains([]byte(out), []byte("super-settings-key")) {
+		t.Error("Settings key leaked in output")
+	}
+
+	// Both secret labels must be present with masked values.
+	if !bytes.Contains([]byte(out), []byte("Settings key")) {
+		t.Error("expected 'Settings key' label in output")
+	}
+	if !bytes.Contains([]byte(out), []byte("JWT secret")) {
+		t.Error("expected 'JWT secret' label in output")
+	}
+	// Count "****" occurrences -- must appear at least twice (JWT + Settings key).
+	maskCount := bytes.Count([]byte(out), []byte("****"))
+	if maskCount < 2 {
+		t.Errorf("expected at least 2 masked secrets (****), got %d", maskCount)
 	}
 }

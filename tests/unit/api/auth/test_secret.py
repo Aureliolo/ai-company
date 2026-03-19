@@ -1,75 +1,63 @@
-"""Tests for JWT secret resolution chain."""
+"""Tests for JWT secret resolution."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from synthorg.api.auth.secret import resolve_jwt_secret
 
 
-def _make_persistence(stored_secret: str | None = None) -> AsyncMock:
-    """Build a fake persistence backend for secret resolution tests."""
-    persistence = AsyncMock()
-    persistence.get_setting = AsyncMock(return_value=stored_secret)
-    persistence.set_setting = AsyncMock()
-    return persistence
-
-
 @pytest.mark.unit
 class TestResolveJwtSecret:
-    async def test_env_var_takes_priority(self) -> None:
+    def test_env_var_returns_secret(self) -> None:
         secret = "env-secret-that-is-at-least-32-characters!!"
-        persistence = _make_persistence(stored_secret="stored-secret-32-chars-long!!!!")
         with patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": secret}):
-            result = await resolve_jwt_secret(persistence)
+            result = resolve_jwt_secret()
 
         assert result == secret
-        persistence.get_setting.assert_not_called()
 
-    async def test_stored_secret_used_when_no_env_var(self) -> None:
-        stored = "stored-secret-that-is-at-least-32-chars!!"
-        persistence = _make_persistence(stored_secret=stored)
-        with patch.dict("os.environ", {}, clear=True):
-            result = await resolve_jwt_secret(persistence)
-
-        assert result == stored
-
-    async def test_generates_and_persists_when_nothing_stored(self) -> None:
-        persistence = _make_persistence(stored_secret=None)
-        with patch.dict("os.environ", {}, clear=True):
-            result = await resolve_jwt_secret(persistence)
-
-        assert len(result) >= 32
-        persistence.set_setting.assert_awaited_once_with("jwt_secret", result)
-
-    async def test_env_var_too_short_raises(self) -> None:
-        persistence = _make_persistence()
-        with (
-            patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": "short"}),
-            pytest.raises(ValueError, match="at least 32 characters"),
-        ):
-            await resolve_jwt_secret(persistence)
-
-    async def test_env_var_whitespace_stripped(self) -> None:
+    def test_env_var_whitespace_stripped(self) -> None:
         secret = "  env-secret-that-is-at-least-32-characters!!  "
-        persistence = _make_persistence()
         with patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": secret}):
-            result = await resolve_jwt_secret(persistence)
+            result = resolve_jwt_secret()
 
         assert result == secret.strip()
 
-    async def test_empty_env_var_falls_through(self) -> None:
-        stored = "stored-secret-that-is-at-least-32-chars!!"
-        persistence = _make_persistence(stored_secret=stored)
-        with patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": ""}):
-            result = await resolve_jwt_secret(persistence)
+    def test_exact_min_length_accepted(self) -> None:
+        from synthorg.api.auth.config import MIN_SECRET_LENGTH
 
-        assert result == stored
+        secret = "x" * MIN_SECRET_LENGTH
+        with patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": secret}):
+            assert resolve_jwt_secret() == secret
 
-    async def test_whitespace_only_env_var_falls_through(self) -> None:
-        stored = "stored-secret-that-is-at-least-32-chars!!"
-        persistence = _make_persistence(stored_secret=stored)
-        with patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": "   "}):
-            result = await resolve_jwt_secret(persistence)
+    def test_one_below_min_length_raises(self) -> None:
+        from synthorg.api.auth.config import MIN_SECRET_LENGTH
 
-        assert result == stored
+        short = "x" * (MIN_SECRET_LENGTH - 1)
+        with (
+            patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": short}),
+            pytest.raises(ValueError, match="at least 32 characters"),
+        ):
+            resolve_jwt_secret()
+
+    @pytest.mark.parametrize(
+        ("env_value", "match_text"),
+        [
+            ("short", "at least 32 characters"),
+            (None, "is not set"),
+            ("", "set but empty"),
+            ("   ", "set but empty"),
+        ],
+        ids=["too-short", "missing", "empty", "whitespace-only"],
+    )
+    def test_invalid_env_var_raises(
+        self,
+        env_value: str | None,
+        match_text: str,
+    ) -> None:
+        env = {} if env_value is None else {"SYNTHORG_JWT_SECRET": env_value}
+        with (
+            patch.dict("os.environ", env, clear=(env_value is None)),
+            pytest.raises(ValueError, match=match_text),
+        ):
+            resolve_jwt_secret()
