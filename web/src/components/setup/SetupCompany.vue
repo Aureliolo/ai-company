@@ -1,0 +1,124 @@
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import InputText from 'primevue/inputtext'
+import Button from 'primevue/button'
+import { useSetupStore } from '@/stores/setup'
+import * as setupApi from '@/api/endpoints/setup'
+import { getErrorMessage } from '@/utils/errors'
+
+const emit = defineEmits<{
+  next: [companyName: string]
+}>()
+
+const setup = useSetupStore()
+
+const companyName = ref('')
+const selectedTemplate = ref<string | null>(null)
+const error = ref<string | null>(null)
+const creating = ref(false)
+
+const isValid = computed(() => companyName.value.trim().length > 0)
+
+function selectTemplate(templateName: string | null) {
+  selectedTemplate.value = templateName
+}
+
+async function handleCreate() {
+  if (!isValid.value) return
+  creating.value = true
+  error.value = null
+  try {
+    await setupApi.createCompany({
+      company_name: companyName.value.trim(),
+      template_name: selectedTemplate.value,
+    })
+    emit('next', companyName.value.trim())
+  } catch (err) {
+    error.value = getErrorMessage(err)
+  } finally {
+    creating.value = false
+  }
+}
+
+onMounted(() => {
+  setup.fetchTemplates()
+})
+</script>
+
+<template>
+  <div class="mx-auto w-full max-w-lg">
+    <div class="mb-6 text-center">
+      <h2 class="text-2xl font-semibold text-slate-100">Create Your Company</h2>
+      <p class="mt-1 text-sm text-slate-400">
+        Name your synthetic organization and optionally start from a template.
+      </p>
+    </div>
+
+    <form class="space-y-6" @submit.prevent="handleCreate">
+      <div>
+        <label for="sc-name" class="mb-1 block text-sm text-slate-300">Company Name</label>
+        <InputText
+          id="sc-name"
+          v-model="companyName"
+          class="w-full"
+          placeholder="My AI Company"
+        />
+      </div>
+
+      <!-- Template selector -->
+      <div>
+        <p class="mb-3 text-sm text-slate-300">Choose a template (optional)</p>
+        <div class="grid gap-3" :class="setup.templates.length > 2 ? 'grid-cols-2' : 'grid-cols-1'">
+          <!-- Start blank option -->
+          <button
+            type="button"
+            class="rounded-lg border p-4 text-left transition-colors"
+            :class="
+              selectedTemplate === null
+                ? 'border-brand-600 bg-brand-600/10'
+                : 'border-slate-700 bg-slate-900 hover:border-slate-500'
+            "
+            @click="selectTemplate(null)"
+          >
+            <div class="mb-1 text-sm font-medium text-slate-100">Start Blank</div>
+            <p class="text-xs text-slate-400">Begin with an empty organization.</p>
+          </button>
+
+          <!-- Template cards -->
+          <button
+            v-for="tmpl in setup.templates"
+            :key="tmpl.name"
+            type="button"
+            class="rounded-lg border p-4 text-left transition-colors"
+            :class="
+              selectedTemplate === tmpl.name
+                ? 'border-brand-600 bg-brand-600/10'
+                : 'border-slate-700 bg-slate-900 hover:border-slate-500'
+            "
+            @click="selectTemplate(tmpl.name)"
+          >
+            <div class="mb-1 text-sm font-medium text-slate-100">{{ tmpl.display_name }}</div>
+            <p class="text-xs text-slate-400">{{ tmpl.description }}</p>
+          </button>
+        </div>
+      </div>
+
+      <div
+        v-if="error"
+        role="alert"
+        class="rounded bg-red-500/10 p-3 text-sm text-red-400"
+      >
+        {{ error }}
+      </div>
+
+      <Button
+        type="submit"
+        label="Create Company"
+        icon="pi pi-building"
+        class="w-full"
+        :loading="creating"
+        :disabled="!isValid"
+      />
+    </form>
+  </div>
+</template>

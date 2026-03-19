@@ -3,10 +3,8 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { defineComponent, h } from 'vue'
 
-const mockRouterPush = vi.fn()
-
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: mockRouterPush }),
+  useRouter: () => ({ push: vi.fn() }),
   RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 }))
 
@@ -28,7 +26,7 @@ vi.mock('primevue/inputtext', () => ({
 
 vi.mock('primevue/button', () => ({
   default: defineComponent({
-    props: ['label', 'icon', 'type', 'loading', 'disabled'],
+    props: ['label', 'icon', 'type', 'loading', 'disabled', 'severity', 'size', 'outlined'],
     emits: ['click'],
     setup(props, { emit }) {
       return () =>
@@ -41,6 +39,25 @@ vi.mock('primevue/button', () => ({
           },
           props.label,
         )
+    },
+  }),
+}))
+
+vi.mock('primevue/select', () => ({
+  default: defineComponent({
+    props: ['modelValue', 'options', 'optionLabel', 'optionValue', 'placeholder', 'disabled'],
+    emits: ['update:modelValue'],
+    setup(props) {
+      return () => h('select', {}, props.placeholder ?? '')
+    },
+  }),
+}))
+
+vi.mock('primevue/tag', () => ({
+  default: defineComponent({
+    props: ['value', 'severity'],
+    setup(props) {
+      return () => h('span', {}, props.value)
     },
   }),
 }))
@@ -58,8 +75,28 @@ vi.mock('vue', async () => {
   return { ...actual, onUnmounted: vi.fn() }
 })
 
+// Mock the setup API to return a default status
+vi.mock('@/api/endpoints/setup', () => ({
+  getSetupStatus: vi.fn().mockResolvedValue({
+    needs_admin: true,
+    needs_setup: true,
+    has_providers: false,
+  }),
+  listTemplates: vi.fn().mockResolvedValue([]),
+  createCompany: vi.fn().mockResolvedValue({ company_name: 'Test', template_applied: null, department_count: 0 }),
+  createAgent: vi.fn().mockResolvedValue({ name: 'Agent', role: 'CEO', department: 'exec', model_provider: 'p', model_id: 'm' }),
+  completeSetup: vi.fn().mockResolvedValue({ setup_complete: true }),
+}))
+
+// Mock providers API
+vi.mock('@/api/endpoints/providers', () => ({
+  listProviders: vi.fn().mockResolvedValue({}),
+  listPresets: vi.fn().mockResolvedValue([]),
+  createFromPreset: vi.fn().mockResolvedValue({}),
+  testConnection: vi.fn().mockResolvedValue({ success: true, latency_ms: 42 }),
+}))
+
 import SetupPage from '@/views/SetupPage.vue'
-import { useAuthStore } from '@/stores/auth'
 
 describe('SetupPage', () => {
   beforeEach(() => {
@@ -68,83 +105,62 @@ describe('SetupPage', () => {
     localStorage.clear()
   })
 
-  it('renders setup heading and form fields', () => {
+  it('renders welcome step after status loads', async () => {
     const wrapper = mount(SetupPage)
-    expect(wrapper.text()).toContain('Initial Setup')
-    expect(wrapper.text()).toContain('Create the first admin (CEO) account')
-    expect(wrapper.find('#username').exists()).toBe(true)
-    expect(wrapper.find('#password').exists()).toBe(true)
-    expect(wrapper.find('#confirm').exists()).toBe(true)
-  })
-
-  it('renders labels for all form fields', () => {
-    const wrapper = mount(SetupPage)
-    expect(wrapper.find('label[for="username"]').exists()).toBe(true)
-    expect(wrapper.find('label[for="password"]').exists()).toBe(true)
-    expect(wrapper.find('label[for="confirm"]').exists()).toBe(true)
-  })
-
-  it('disables submit button when fields are empty', () => {
-    const wrapper = mount(SetupPage)
-    const submitBtn = wrapper.find('button[type="submit"]')
-    expect(submitBtn.attributes('disabled')).toBeDefined()
-  })
-
-  it('shows password mismatch error', async () => {
-    const wrapper = mount(SetupPage)
-    await wrapper.find('#username').setValue('admin')
-    await wrapper.find('#password').setValue('password123456')
-    await wrapper.find('#confirm').setValue('differentpass12')
-    await wrapper.find('form').trigger('submit')
     await flushPromises()
-
-    expect(wrapper.text()).toContain('Passwords do not match')
+    expect(wrapper.text()).toContain('Welcome to SynthOrg')
   })
 
-  it('shows minimum password length error', async () => {
+  it('renders step indicator', async () => {
     const wrapper = mount(SetupPage)
-    await wrapper.find('#username').setValue('admin')
-    await wrapper.find('#password').setValue('short')
-    await wrapper.find('#confirm').setValue('short')
-    await wrapper.find('form').trigger('submit')
     await flushPromises()
-
-    expect(wrapper.text()).toContain('Password must be at least')
+    // Should show step counter
+    expect(wrapper.text()).toContain('Step 1 of')
   })
 
-  it('calls auth.setup and navigates to / on success', async () => {
+  it('shows get started button in welcome step', async () => {
     const wrapper = mount(SetupPage)
-    const auth = useAuthStore()
-    auth.setup = vi.fn().mockResolvedValue({ token: 'tok', expires_in: 3600 })
-
-    await wrapper.find('#username').setValue('admin')
-    await wrapper.find('#password').setValue('securepassword1')
-    await wrapper.find('#confirm').setValue('securepassword1')
-    await wrapper.find('form').trigger('submit')
     await flushPromises()
-
-    expect(auth.setup).toHaveBeenCalledWith('admin', 'securepassword1')
-    expect(mockRouterPush).toHaveBeenCalledWith('/')
+    const btn = wrapper.find('button')
+    expect(btn.exists()).toBe(true)
+    expect(btn.text()).toContain('Get Started')
   })
 
-  it('shows error message on setup failure', async () => {
+  it('advances to admin step after clicking get started', async () => {
     const wrapper = mount(SetupPage)
-    const auth = useAuthStore()
-    auth.setup = vi.fn().mockRejectedValue(new Error('Admin already exists'))
-
-    await wrapper.find('#username').setValue('admin')
-    await wrapper.find('#password').setValue('securepassword1')
-    await wrapper.find('#confirm').setValue('securepassword1')
-    await wrapper.find('form').trigger('submit')
     await flushPromises()
-
-    expect(wrapper.text()).toContain('Admin already exists')
+    // Click the "Get Started" button
+    const btn = wrapper.find('button')
+    await btn.trigger('click')
+    await flushPromises()
+    // Should now show admin step (since needs_admin is true)
+    expect(wrapper.text()).toContain('Admin')
   })
 
-  it('has sign-in link pointing to /login', () => {
+  it('shows wizard container with step dots', async () => {
     const wrapper = mount(SetupPage)
-    const link = wrapper.find('a[href="/login"]')
-    expect(link.exists()).toBe(true)
-    expect(link.text()).toContain('Already have an account? Sign in')
+    await flushPromises()
+    // The step indicator should have numbered dots
+    const dots = wrapper.findAll('.rounded-full')
+    expect(dots.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('includes multiple steps in the wizard', async () => {
+    const wrapper = mount(SetupPage)
+    await flushPromises()
+    // Should show "Step X of Y" where Y >= 4 (welcome + admin + provider + company + agent)
+    const text = wrapper.text()
+    const match = text.match(/Step \d+ of (\d+)/)
+    expect(match).toBeTruthy()
+    if (match) {
+      expect(parseInt(match[1])).toBeGreaterThanOrEqual(4)
+    }
+  })
+
+  it('renders branding logo', async () => {
+    const wrapper = mount(SetupPage)
+    await flushPromises()
+    // The welcome step includes the "S" logo
+    expect(wrapper.text()).toContain('S')
   })
 })

@@ -653,6 +653,7 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
             "^/api$",
             f"^{prefix}/auth/setup$",
             f"^{prefix}/auth/login$",
+            f"^{prefix}/setup/status$",
         )
     )
     # Always ensure the WS upgrade path is excluded — the WS handler

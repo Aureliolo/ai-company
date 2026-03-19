@@ -157,3 +157,16 @@ _r.register(
         yaml_path="api.auth.exclude_paths",
     )
 )
+
+# ── Setup ──────────────────────────────────────────────────────
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.API,
+        key="setup_complete",
+        type=SettingType.BOOLEAN,
+        default="false",
+        description="Whether first-run setup has been completed",
+        group="Setup",
+    )
+)

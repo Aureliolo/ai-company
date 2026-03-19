@@ -51,6 +51,7 @@ _PUBLIC_PATH_SUFFIXES: Final[tuple[str, ...]] = (
     "/health",
     "/auth/setup",
     "/auth/login",
+    "/setup/status",
 )
 
 # HTTP methods that mutate state.  Includes DELETE for 400/403 injection;
