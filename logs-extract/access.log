@@ -1,4 +1,0 @@
-{"note": "Auto-wired SQLite persistence from SYNTHORG_DB_PATH", "db_name": "synthorg.db", "event": "api.app.startup", "logger": "synthorg.api.app", "level": "info", "timestamp": "2026-03-19T09:34:34.380018Z"}
-{"service": "message_bus", "event": "api.service.auto_wired", "logger": "synthorg.api.auto_wire", "level": "info", "timestamp": "2026-03-19T09:34:34.380293Z"}
-{"service": "cost_tracker", "event": "api.service.auto_wired", "logger": "synthorg.api.auto_wire", "level": "info", "timestamp": "2026-03-19T09:34:34.380594Z"}
-{"service": "task_engine", "event": "api.service.auto_wired", "logger": "synthorg.api.auto_wire", "level": "info", "timestamp": "2026-03-19T09:34:34.381151Z"}
