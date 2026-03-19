@@ -40,11 +40,13 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 _KNOWN_LOOP_TYPES: frozenset[str] = frozenset({"react", "plan_execute", "hybrid"})
-"""Loop type identifiers recognized by the auto-selection system.
+"""Loop type identifiers recognized by the auto-selection system."""
 
-``build_execution_loop`` currently supports ``"react"`` and
-``"plan_execute"``; ``"hybrid"`` is accepted in rules and config
-but falls back via ``hybrid_fallback`` until HybridLoop is implemented.
+_BUILDABLE_LOOP_TYPES: frozenset[str] = frozenset({"react", "plan_execute"})
+"""Loop types that ``build_execution_loop`` can currently instantiate.
+
+``"hybrid"`` is accepted in rules but redirected via
+``hybrid_fallback`` until HybridLoop is implemented.
 """
 
 
@@ -121,8 +123,9 @@ class AutoLoopConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_rules_and_fallbacks(self) -> Self:
-        """Validate unique complexities and known loop types."""
+        """Validate unique complexities, known types, and buildability."""
         seen: set[Complexity] = set()
+        has_hybrid_rule = False
         for rule in self.rules:
             if rule.complexity in seen:
                 msg = f"Duplicate complexity in rules: {rule.complexity.value!r}"
@@ -130,6 +133,8 @@ class AutoLoopConfig(BaseModel):
             if rule.loop_type not in _KNOWN_LOOP_TYPES:
                 msg = f"Unknown loop type in rules: {rule.loop_type!r}"
                 raise ValueError(msg)
+            if rule.loop_type not in _BUILDABLE_LOOP_TYPES:
+                has_hybrid_rule = True
             seen.add(rule.complexity)
         if (
             self.hybrid_fallback is not None
@@ -139,6 +144,22 @@ class AutoLoopConfig(BaseModel):
             raise ValueError(msg)
         if self.default_loop_type not in _KNOWN_LOOP_TYPES:
             msg = f"Unknown default_loop_type: {self.default_loop_type!r}"
+            raise ValueError(msg)
+        # Ensure unbuildable loop types are always redirected
+        if has_hybrid_rule and self.hybrid_fallback is None:
+            msg = (
+                "hybrid_fallback must not be None while rules contain "
+                "unbuildable loop types (HybridLoop is not yet implemented)"
+            )
+            raise ValueError(msg)
+        if self.default_loop_type not in _BUILDABLE_LOOP_TYPES:
+            msg = f"default_loop_type {self.default_loop_type!r} is not buildable"
+            raise ValueError(msg)
+        if (
+            self.hybrid_fallback is not None
+            and self.hybrid_fallback not in _BUILDABLE_LOOP_TYPES
+        ):
+            msg = f"hybrid_fallback {self.hybrid_fallback!r} is not buildable"
             raise ValueError(msg)
         return self
 

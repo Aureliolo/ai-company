@@ -1,7 +1,7 @@
 """Unit tests for AgentEngine auto-loop selection integration."""
 
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import structlog.testing
@@ -13,7 +13,9 @@ from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import Complexity, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
+from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_selector import AutoLoopConfig
+from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability.events.execution import (
@@ -22,6 +24,8 @@ from synthorg.observability.events.execution import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.engine.loop_protocol import ExecutionLoop
+
     from .conftest import MockCompletionProvider
 
 from .conftest import make_completion_response as _make_completion_response
@@ -326,33 +330,57 @@ class TestAutoLoopFallbackOnBudgetError:
 
 @pytest.mark.unit
 class TestAutoLoopResumePath:
-    """Resume path resolves loop via _resolve_loop, not static self._loop."""
+    """Resume path calls _resolve_loop, not static self._loop."""
 
-    async def test_resume_calls_resolve_loop(
+    async def test_execute_resumed_loop_calls_resolve_loop(
         self,
+        sample_agent_with_personality: AgentIdentity,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """_execute_resumed_loop should call _resolve_loop when auto config is set."""
-        provider = mock_provider_factory([])
+        """_execute_resumed_loop delegates to _resolve_loop for auto mode."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
         engine = AgentEngine(
             provider=provider,
             auto_loop_config=AutoLoopConfig(),
         )
 
-        # Verify _resolve_loop is called during resume path
-        # (we can't easily run full resume without checkpoint infra,
-        # so we verify the method itself resolves correctly)
         task = _make_task_with_complexity(
             complexity=Complexity.MEDIUM,
-            agent_id="agent-001",
+            agent_id=str(sample_agent_with_personality.id),
+        )
+        checkpoint_ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=task,
         )
 
-        with structlog.testing.capture_logs() as logs:
-            loop = await engine._resolve_loop(task)
+        # Mock _resolve_loop to track that it is called, and return
+        # a real PlanExecuteLoop so the downstream flow is exercised.
+        resolved_loop: ExecutionLoop = PlanExecuteLoop()
+        resolve_mock = AsyncMock(return_value=resolved_loop)
 
-        assert loop.get_loop_type() == "plan_execute"
-        selected_events = [
-            e for e in logs if e.get("event") == EXECUTION_LOOP_AUTO_SELECTED
-        ]
-        assert len(selected_events) == 1
-        assert selected_events[0]["selected_loop"] == "plan_execute"
+        # Mock loop.execute so _execute_resumed_loop doesn't need
+        # a real provider interaction.
+        exec_result = MagicMock()
+        exec_result.termination_reason = MagicMock()
+        exec_result.termination_reason.value = "completed"
+
+        with (
+            patch.object(engine, "_resolve_loop", resolve_mock),
+            patch.object(
+                PlanExecuteLoop,
+                "execute",
+                new_callable=AsyncMock,
+                return_value=exec_result,
+            ),
+        ):
+            await engine._execute_resumed_loop(
+                checkpoint_ctx,
+                str(sample_agent_with_personality.id),
+                str(task.id),
+            )
+
+        # _resolve_loop was called with the checkpoint's task
+        resolve_mock.assert_awaited_once()
+        call_task = resolve_mock.call_args[0][0]
+        assert call_task.estimated_complexity == Complexity.MEDIUM

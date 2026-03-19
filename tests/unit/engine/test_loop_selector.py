@@ -292,6 +292,32 @@ class TestAutoLoopConfig:
         config = AutoLoopConfig(default_loop_type="plan_execute")
         assert config.default_loop_type == "plan_execute"
 
+    def test_hybrid_fallback_none_with_hybrid_rules_rejected(self) -> None:
+        """hybrid_fallback=None is invalid when rules map to hybrid."""
+        with pytest.raises(ValidationError, match="hybrid_fallback must not be None"):
+            AutoLoopConfig(hybrid_fallback=None)
+
+    def test_hybrid_fallback_none_without_hybrid_rules_accepted(self) -> None:
+        """hybrid_fallback=None is valid when no rules map to hybrid."""
+        config = AutoLoopConfig(
+            rules=(
+                AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="react"),
+                AutoLoopRule(complexity=Complexity.MEDIUM, loop_type="plan_execute"),
+            ),
+            hybrid_fallback=None,
+        )
+        assert config.hybrid_fallback is None
+
+    def test_unbuildable_default_loop_type_rejected(self) -> None:
+        """default_loop_type cannot be an unbuildable type."""
+        with pytest.raises(ValidationError, match="not buildable"):
+            AutoLoopConfig(default_loop_type="hybrid")
+
+    def test_unbuildable_hybrid_fallback_rejected(self) -> None:
+        """hybrid_fallback cannot be an unbuildable type."""
+        with pytest.raises(ValidationError, match="not buildable"):
+            AutoLoopConfig(hybrid_fallback="hybrid")
+
 
 # ── AutoLoopRule model ───────────────────────────────────────
 
