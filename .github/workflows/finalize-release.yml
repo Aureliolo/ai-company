@@ -122,6 +122,24 @@ jobs:
             fi
           fi
 
+          CLI_SBOM=""
+          if grep -q "CLI_SBOM_DATA" <<< "$BODY"; then
+            CLI_SBOM=$(sed -n '/<!-- CLI_SBOM_DATA/,/CLI_SBOM_DATA -->/p' <<< "$BODY" \
+              | sed '1d;$d' | grep -E '^\- ' || true)
+            if [ -z "$CLI_SBOM" ]; then
+              echo "::warning::CLI SBOM data not found in release body"
+            fi
+          fi
+
+          CONTAINER_SBOM=""
+          if grep -q "CONTAINER_SBOM_DATA" <<< "$BODY"; then
+            CONTAINER_SBOM=$(sed -n '/<!-- CONTAINER_SBOM_DATA/,/CONTAINER_SBOM_DATA -->/p' <<< "$BODY" \
+              | sed '1d;$d' | grep -E '^\- ' || true)
+            if [ -z "$CONTAINER_SBOM" ]; then
+              echo "::warning::Container SBOM data not found in release body"
+            fi
+          fi
+
           CONTAINER_COSIGN=""
           CONTAINER_SLSA=""
           if grep -q "CONTAINER_VERIFICATION_DATA" <<< "$BODY"; then
@@ -148,7 +166,7 @@ jobs:
 
           # Build the combined Verification section
           VERIFICATION=""
-          if [ -n "$CLI_CHECKSUMS" ] || [ -n "$CLI_COSIGN" ] || [ -n "$CLI_SLSA_BUNDLE" ] || [ -n "$CONTAINER_COSIGN" ] || [ -n "$CLI_SLSA" ] || [ -n "$CONTAINER_SLSA" ]; then
+          if [ -n "$CLI_CHECKSUMS" ] || [ -n "$CLI_COSIGN" ] || [ -n "$CLI_SLSA_BUNDLE" ] || [ -n "$CONTAINER_COSIGN" ] || [ -n "$CLI_SLSA" ] || [ -n "$CONTAINER_SLSA" ] || [ -n "$CLI_SBOM" ] || [ -n "$CONTAINER_SBOM" ]; then
             VERIFICATION="$(printf '\n<!-- FINALIZE_VERIFICATION -->\n\n---\n\n## Verification\n')"
 
             if [ -n "$CLI_CHECKSUMS" ]; then
@@ -186,6 +204,22 @@ jobs:
             if [ -n "$SLSA_BLOCK" ]; then
               VERIFICATION="$(printf '%s\n\n### Provenance (SLSA Level 3)\n\nVerify with the [GitHub CLI](https://cli.github.com/):\n\n%s\n' "$VERIFICATION" "$SLSA_BLOCK")"
             fi
+
+            # SBOM subsection
+            SBOM_ITEMS=""
+            if [ -n "$CLI_SBOM" ]; then
+              SBOM_ITEMS="$(printf '**CLI binaries:**\n%s\n' "$CLI_SBOM")"
+            fi
+            if [ -n "$CONTAINER_SBOM" ]; then
+              if [ -n "$SBOM_ITEMS" ]; then
+                SBOM_ITEMS="$(printf '%s\n\n**Container images:**\n%s\n' "$SBOM_ITEMS" "$CONTAINER_SBOM")"
+              else
+                SBOM_ITEMS="$(printf '**Container images:**\n%s\n' "$CONTAINER_SBOM")"
+              fi
+            fi
+            if [ -n "$SBOM_ITEMS" ]; then
+              VERIFICATION="$(printf '%s\n\n### Software Bill of Materials (SBOM)\n\nCycloneDX JSON SBOMs are attached to this release as downloadable assets.\n\n%s\n' "$VERIFICATION" "$SBOM_ITEMS")"
+            fi
           fi
 
           # Strip and re-append only when we have a replacement. If VERIFICATION
@@ -196,7 +230,9 @@ jobs:
               | sed '/<!-- CLI_VERIFICATION_DATA/,/CLI_VERIFICATION_DATA -->/d' \
               | sed '/<!-- CLI_COSIGN_DATA/,/CLI_COSIGN_DATA -->/d' \
               | sed '/<!-- CLI_SLSA_BUNDLE_DATA/,/CLI_SLSA_BUNDLE_DATA -->/d' \
+              | sed '/<!-- CLI_SBOM_DATA/,/CLI_SBOM_DATA -->/d' \
               | sed '/<!-- CONTAINER_VERIFICATION_DATA/,/CONTAINER_VERIFICATION_DATA -->/d' \
+              | sed '/<!-- CONTAINER_SBOM_DATA/,/CONTAINER_SBOM_DATA -->/d' \
               | sed '/^<!-- FINALIZE_VERIFICATION -->/,$d')
             FINAL="${CLEANED}${VERIFICATION}"
           else
