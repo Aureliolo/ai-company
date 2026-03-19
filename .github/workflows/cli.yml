@@ -262,6 +262,9 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
 
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0.23.1
+
       - name: Wait for GitHub Release to exist
         env:
           GH_TOKEN: ${{ github.token }}
@@ -307,7 +310,7 @@ jobs:
           # gh release upload finds draft releases (unlike GoReleaser's API).
           # --clobber overwrites if assets already exist (idempotent on re-run).
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-            cli/dist/*.tar.gz cli/dist/*.zip \
+            cli/dist/*.tar.gz cli/dist/*.zip cli/dist/*.cdx.json \
             cli/dist/checksums.txt cli/dist/checksums.txt.cosign.bundle
 
       - name: Attest build provenance (SLSA Level 3)
@@ -421,6 +424,16 @@ jobs:
             --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
           \`\`\`
           CLI_SLSA_BUNDLE_DATA -->
+
+          <!-- CLI_SBOM_DATA
+          CLI binary SBOMs (CycloneDX JSON):
+          - \`synthorg_linux_amd64.tar.gz.cdx.json\`
+          - \`synthorg_linux_arm64.tar.gz.cdx.json\`
+          - \`synthorg_darwin_amd64.tar.gz.cdx.json\`
+          - \`synthorg_darwin_arm64.tar.gz.cdx.json\`
+          - \`synthorg_windows_amd64.zip.cdx.json\`
+          - \`synthorg_windows_arm64.zip.cdx.json\`
+          CLI_SBOM_DATA -->
           NOTES
           )"
 

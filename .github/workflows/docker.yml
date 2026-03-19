@@ -224,6 +224,22 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
+      - name: Generate SBOM
+        if: github.event_name != 'pull_request'
+        uses: anchore/sbom-action@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0.23.1
+        with:
+          image: ghcr.io/aureliolo/synthorg-backend@${{ steps.push.outputs.digest }}
+          format: cyclonedx-json
+          output-file: sbom-backend.cdx.json
+
+      - name: Upload SBOM artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: sbom-backend
+          path: sbom-backend.cdx.json
+          retention-days: 30
+
   build-web:
     name: Build Web
     needs: [version]
@@ -390,6 +406,22 @@ jobs:
           subject-name: ghcr.io/aureliolo/synthorg-web
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+      - name: Generate SBOM
+        if: github.event_name != 'pull_request'
+        uses: anchore/sbom-action@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0.23.1
+        with:
+          image: ghcr.io/aureliolo/synthorg-web@${{ steps.push.outputs.digest }}
+          format: cyclonedx-json
+          output-file: sbom-web.cdx.json
+
+      - name: Upload SBOM artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: sbom-web
+          path: sbom-web.cdx.json
+          retention-days: 30
 
   build-sandbox:
     name: Build Sandbox
@@ -558,6 +590,22 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
+      - name: Generate SBOM
+        if: github.event_name != 'pull_request'
+        uses: anchore/sbom-action@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0.23.1
+        with:
+          image: ghcr.io/aureliolo/synthorg-sandbox@${{ steps.push.outputs.digest }}
+          format: cyclonedx-json
+          output-file: sbom-sandbox.cdx.json
+
+      - name: Upload SBOM artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: sbom-sandbox
+          path: sbom-sandbox.cdx.json
+          retention-days: 30
+
   # Append container image references to the GitHub Release (version tags only)
   update-release:
     name: Update Release Notes
@@ -567,6 +615,13 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Download SBOM artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: sbom-*
+          merge-multiple: true
+          path: sboms
+
       - name: Append container images to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -637,6 +692,13 @@ jobs:
           gh attestation verify oci://ghcr.io/aureliolo/synthorg-sandbox@SANDBOX_DIGEST_PH -R Aureliolo/synthorg
           ```
           CONTAINER_VERIFICATION_DATA -->
+
+          <!-- CONTAINER_SBOM_DATA
+          Container image SBOMs (CycloneDX JSON):
+          - \`sbom-backend.cdx.json\`
+          - \`sbom-web.cdx.json\`
+          - \`sbom-sandbox.cdx.json\`
+          CONTAINER_SBOM_DATA -->
           BLOCK
           )
           # Substitute placeholders
@@ -644,6 +706,14 @@ jobs:
           IMAGES=${IMAGES//BACKEND_DIGEST_PH/$BACKEND_DIGEST}
           IMAGES=${IMAGES//WEB_DIGEST_PH/$WEB_DIGEST}
           IMAGES=${IMAGES//SANDBOX_DIGEST_PH/$SANDBOX_DIGEST}
+
+          # Upload container SBOMs to the draft release
+          if ls sboms/sbom-*.cdx.json 1>/dev/null 2>&1; then
+            gh release upload "$TAG" --clobber sboms/sbom-*.cdx.json
+            echo "Container SBOMs uploaded to release."
+          else
+            echo "::warning::No SBOM files found in sboms/ directory"
+          fi
 
           # Idempotent: strip existing Container Images section before appending.
           # Uses awk to delete only this section (up to the next ## heading), not to EOF.

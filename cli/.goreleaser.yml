@@ -30,10 +30,22 @@ archives:
         formats:
           - zip
     name_template: "synthorg_{{ .Os }}_{{ .Arch }}"
+    files:
+      - src: ../LICENSE
+        dst: .
+        info:
+          mtime: "{{ .CommitDate }}"
 
 checksum:
   name_template: checksums.txt
   algorithm: sha256
+
+sboms:
+  - artifacts: archive
+    cmd: syft
+    args: ["scan", "$artifact", "--output", "cyclonedx-json=$document"]
+    documents:
+      - "{{ .ArtifactName }}.cdx.json"
 
 release:
   # Skip GoReleaser's release management — Release Please owns the GitHub
