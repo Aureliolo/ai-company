@@ -15,7 +15,6 @@ from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
 from synthorg.engine.loop_selector import AutoLoopConfig
-from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability.events.execution import (
@@ -24,8 +23,6 @@ from synthorg.observability.events.execution import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.engine.loop_protocol import ExecutionLoop
-
     from .conftest import MockCompletionProvider
 
 from .conftest import make_completion_response as _make_completion_response
@@ -354,26 +351,16 @@ class TestAutoLoopResumePath:
             task=task,
         )
 
-        # Mock _resolve_loop to track that it is called, and return
-        # a real PlanExecuteLoop so the downstream flow is exercised.
-        resolved_loop: ExecutionLoop = PlanExecuteLoop()
-        resolve_mock = AsyncMock(return_value=resolved_loop)
-
-        # Mock loop.execute so _execute_resumed_loop doesn't need
-        # a real provider interaction.
+        # Build a mock loop whose execute we can assert on.
         exec_result = MagicMock()
         exec_result.termination_reason = MagicMock()
         exec_result.termination_reason.value = "completed"
 
-        with (
-            patch.object(engine, "_resolve_loop", resolve_mock),
-            patch.object(
-                PlanExecuteLoop,
-                "execute",
-                new_callable=AsyncMock,
-                return_value=exec_result,
-            ),
-        ):
+        resolved_loop = MagicMock()
+        resolved_loop.execute = AsyncMock(return_value=exec_result)
+        resolve_mock = AsyncMock(return_value=resolved_loop)
+
+        with patch.object(engine, "_resolve_loop", resolve_mock):
             await engine._execute_resumed_loop(
                 checkpoint_ctx,
                 str(sample_agent_with_personality.id),
@@ -384,3 +371,6 @@ class TestAutoLoopResumePath:
         resolve_mock.assert_awaited_once()
         call_task = resolve_mock.call_args[0][0]
         assert call_task.estimated_complexity == Complexity.MEDIUM
+
+        # The resolved loop instance was actually executed
+        resolved_loop.execute.assert_awaited_once()

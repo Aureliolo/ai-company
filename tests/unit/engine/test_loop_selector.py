@@ -308,10 +308,24 @@ class TestAutoLoopConfig:
         )
         assert config.hybrid_fallback is None
 
-    def test_unbuildable_default_loop_type_rejected(self) -> None:
-        """default_loop_type cannot be an unbuildable type."""
+    def test_unbuildable_default_loop_type_rejected_without_fallback(self) -> None:
+        """default_loop_type=hybrid is rejected when fallback is None."""
         with pytest.raises(ValidationError, match="not buildable"):
-            AutoLoopConfig(default_loop_type="hybrid")
+            AutoLoopConfig(
+                rules=(AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="react"),),
+                default_loop_type="hybrid",
+                hybrid_fallback=None,
+            )
+
+    def test_unbuildable_default_loop_type_accepted_with_fallback(self) -> None:
+        """default_loop_type=hybrid is valid when hybrid_fallback redirects."""
+        config = AutoLoopConfig(
+            rules=(AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="react"),),
+            default_loop_type="hybrid",
+            hybrid_fallback="plan_execute",
+        )
+        assert config.default_loop_type == "hybrid"
+        assert config.hybrid_fallback == "plan_execute"
 
     def test_unbuildable_hybrid_fallback_rejected(self) -> None:
         """hybrid_fallback cannot be an unbuildable type."""

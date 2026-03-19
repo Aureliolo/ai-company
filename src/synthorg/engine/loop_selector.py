@@ -145,23 +145,87 @@ class AutoLoopConfig(BaseModel):
         if self.default_loop_type not in _KNOWN_LOOP_TYPES:
             msg = f"Unknown default_loop_type: {self.default_loop_type!r}"
             raise ValueError(msg)
-        # Ensure unbuildable loop types are always redirected
-        if has_hybrid_rule and self.hybrid_fallback is None:
-            msg = (
-                "hybrid_fallback must not be None while rules contain "
-                "unbuildable loop types (HybridLoop is not yet implemented)"
-            )
-            raise ValueError(msg)
-        if self.default_loop_type not in _BUILDABLE_LOOP_TYPES:
-            msg = f"default_loop_type {self.default_loop_type!r} is not buildable"
-            raise ValueError(msg)
+        # hybrid_fallback itself must be buildable (it is the redirect
+        # target -- an unbuildable fallback would loop forever).
         if (
             self.hybrid_fallback is not None
             and self.hybrid_fallback not in _BUILDABLE_LOOP_TYPES
         ):
             msg = f"hybrid_fallback {self.hybrid_fallback!r} is not buildable"
             raise ValueError(msg)
+        # Unbuildable rule loop types require a fallback redirect.
+        if has_hybrid_rule and self.hybrid_fallback is None:
+            msg = (
+                "hybrid_fallback must not be None while rules contain "
+                "unbuildable loop types (HybridLoop is not yet implemented)"
+            )
+            raise ValueError(msg)
+        # default_loop_type must be buildable, either directly or via
+        # hybrid_fallback redirect (e.g. default="hybrid" with fallback).
+        if self.default_loop_type not in _BUILDABLE_LOOP_TYPES and not (
+            self.default_loop_type == "hybrid"
+            and self.hybrid_fallback in _BUILDABLE_LOOP_TYPES
+        ):
+            msg = f"default_loop_type {self.default_loop_type!r} is not buildable"
+            raise ValueError(msg)
         return self
+
+
+def _match_loop_type(
+    rules: tuple[AutoLoopRule, ...],
+    complexity: Complexity,
+    default_loop_type: str,
+) -> str:
+    """Find the first rule matching *complexity*, or fall back to default."""
+    matched = next(
+        (r.loop_type for r in rules if r.complexity == complexity),
+        None,
+    )
+    if matched is None:
+        logger.warning(
+            EXECUTION_LOOP_NO_RULE_MATCH,
+            complexity=complexity.value,
+            fallback=default_loop_type,
+            num_rules=len(rules),
+        )
+        return default_loop_type
+    return matched
+
+
+def _downgrade_for_budget(
+    loop_type: str,
+    budget_utilization_pct: float | None,
+    budget_tight_threshold: int,
+) -> str:
+    """Downgrade hybrid to plan_execute when budget is tight."""
+    if (
+        loop_type == "hybrid"
+        and budget_utilization_pct is not None
+        and budget_utilization_pct >= budget_tight_threshold
+    ):
+        logger.info(
+            EXECUTION_LOOP_BUDGET_DOWNGRADE,
+            original=loop_type,
+            downgraded_to="plan_execute",
+            budget_utilization_pct=budget_utilization_pct,
+            budget_tight_threshold=budget_tight_threshold,
+        )
+        return "plan_execute"
+    return loop_type
+
+
+def _apply_hybrid_fallback(
+    loop_type: str,
+    hybrid_fallback: str | None,
+) -> str:
+    """Replace hybrid with fallback when HybridLoop is not implemented."""
+    if loop_type == "hybrid" and hybrid_fallback is not None:
+        logger.info(
+            EXECUTION_LOOP_HYBRID_FALLBACK,
+            fallback_to=hybrid_fallback,
+        )
+        return hybrid_fallback
+    return loop_type
 
 
 def select_loop_type(  # noqa: PLR0913
@@ -175,16 +239,9 @@ def select_loop_type(  # noqa: PLR0913
 ) -> str:
     """Select the execution loop type for a task.
 
-    Applies three layers of logic in order:
-
-    1. **Rule matching** -- find the first rule whose complexity matches.
-       Falls back to ``default_loop_type`` when no rule matches.
-    2. **Budget-aware downgrade** -- if the matched type is ``"hybrid"``
-       and the monthly budget utilization is at or above
-       ``budget_tight_threshold``, downgrade to ``"plan_execute"``.
-    3. **Hybrid fallback** -- if the type is still ``"hybrid"`` and
-       ``hybrid_fallback`` is not ``None``, replace with the fallback
-       (the Hybrid loop class is not yet implemented).
+    Applies three layers in order: rule matching, budget-aware
+    downgrade, and hybrid fallback.  See ``_match_loop_type``,
+    ``_downgrade_for_budget``, and ``_apply_hybrid_fallback``.
 
     Args:
         complexity: Task's estimated complexity.
@@ -203,47 +260,11 @@ def select_loop_type(  # noqa: PLR0913
         ``hybrid_fallback`` is ``None``, or the ``hybrid_fallback``
         value when hybrid is selected but redirected.
     """
-    # 1. Rule matching
-    matched = next(
-        (r.loop_type for r in rules if r.complexity == complexity),
-        None,
+    loop_type = _match_loop_type(rules, complexity, default_loop_type)
+    loop_type = _downgrade_for_budget(
+        loop_type, budget_utilization_pct, budget_tight_threshold
     )
-
-    if matched is None:
-        logger.warning(
-            EXECUTION_LOOP_NO_RULE_MATCH,
-            complexity=complexity.value,
-            fallback=default_loop_type,
-            num_rules=len(rules),
-        )
-        loop_type = default_loop_type
-    else:
-        loop_type = matched
-
-    # 2. Budget-aware downgrade (hybrid only)
-    if (
-        loop_type == "hybrid"
-        and budget_utilization_pct is not None
-        and budget_utilization_pct >= budget_tight_threshold
-    ):
-        logger.info(
-            EXECUTION_LOOP_BUDGET_DOWNGRADE,
-            original=loop_type,
-            downgraded_to="plan_execute",
-            budget_utilization_pct=budget_utilization_pct,
-            budget_tight_threshold=budget_tight_threshold,
-        )
-        loop_type = "plan_execute"
-
-    # 3. Hybrid fallback (not yet implemented)
-    if loop_type == "hybrid" and hybrid_fallback is not None:
-        logger.info(
-            EXECUTION_LOOP_HYBRID_FALLBACK,
-            fallback_to=hybrid_fallback,
-        )
-        loop_type = hybrid_fallback
-
-    return loop_type
+    return _apply_hybrid_fallback(loop_type, hybrid_fallback)
 
 
 def build_execution_loop(
