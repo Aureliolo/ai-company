@@ -25,6 +25,7 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_AUTO_SELECTED,
     EXECUTION_LOOP_BUDGET_UNAVAILABLE,
 )
+from synthorg.providers.models import CompletionResponse
 
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
@@ -57,7 +58,7 @@ def _make_task_with_complexity(
     )
 
 
-def _make_plan_exec_responses() -> list:
+def _make_plan_exec_responses() -> list[CompletionResponse]:
     """Build provider responses for a plan-execute loop run."""
     return [
         _make_completion_response(
@@ -67,7 +68,7 @@ def _make_plan_exec_responses() -> list:
     ]
 
 
-def _make_hybrid_responses() -> list:
+def _make_hybrid_responses() -> list[CompletionResponse]:
     """Build provider responses for a hybrid loop run."""
     return [
         _make_completion_response(
