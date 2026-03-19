@@ -230,3 +230,82 @@ class TestMakeCompactionCallback:
         assert result2 is not None
         assert result2.compression_metadata is not None
         assert result2.compression_metadata.compactions_performed == 2
+
+
+@pytest.mark.unit
+class TestCompactionSanitization:
+    """Assistant content snippets are sanitized in compaction summaries."""
+
+    async def test_assistant_snippet_with_path_is_sanitized(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        config = CompactionConfig(
+            fill_threshold_percent=80.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+        )
+        callback = make_compaction_callback(config=config)
+
+        messages = (
+            _msg(MessageRole.SYSTEM, "system prompt"),
+            _msg(MessageRole.USER, "read the config"),
+            _msg(
+                MessageRole.ASSISTANT,
+                r"I read C:\Users\dev\project\secrets.yaml and found credentials",
+            ),
+            _msg(MessageRole.USER, "what next"),
+            _msg(MessageRole.ASSISTANT, "processing the data now"),
+            _msg(MessageRole.USER, "continue"),
+            _msg(MessageRole.ASSISTANT, "done with the task"),
+            _msg(MessageRole.USER, "thanks"),
+        )
+        ctx = _build_context(
+            sample_agent_with_personality,
+            messages=messages,
+            capacity=1000,
+            fill=850,
+        )
+        result = await callback(ctx)
+        assert result is not None
+        summary_msg = result.conversation[1]
+        assert summary_msg.content is not None
+        assert "C:\\Users" not in summary_msg.content
+        assert "[REDACTED_PATH]" in summary_msg.content
+
+    async def test_assistant_snippet_with_url_is_sanitized(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        config = CompactionConfig(
+            fill_threshold_percent=80.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+        )
+        callback = make_compaction_callback(config=config)
+
+        messages = (
+            _msg(MessageRole.SYSTEM, "system prompt"),
+            _msg(MessageRole.USER, "call the API"),
+            _msg(
+                MessageRole.ASSISTANT,
+                "Called https://api.internal.io/v1/secret?key=abc123 successfully",
+            ),
+            _msg(MessageRole.USER, "what next"),
+            _msg(MessageRole.ASSISTANT, "processing response data"),
+            _msg(MessageRole.USER, "continue"),
+            _msg(MessageRole.ASSISTANT, "finished processing"),
+            _msg(MessageRole.USER, "thanks"),
+        )
+        ctx = _build_context(
+            sample_agent_with_personality,
+            messages=messages,
+            capacity=1000,
+            fill=850,
+        )
+        result = await callback(ctx)
+        assert result is not None
+        summary_msg = result.conversation[1]
+        assert summary_msg.content is not None
+        assert "https://" not in summary_msg.content
+        assert "[REDACTED_URL]" in summary_msg.content

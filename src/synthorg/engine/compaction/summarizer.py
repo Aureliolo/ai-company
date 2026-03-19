@@ -11,6 +11,7 @@ from synthorg.engine.compaction.models import (
     CompactionConfig,
     CompressionMetadata,
 )
+from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.token_estimation import (
     DefaultTokenEstimator,
     PromptTokenEstimator,
@@ -226,6 +227,7 @@ def _build_summary(
         if msg.role == MessageRole.ASSISTANT and msg.content:
             snippet = msg.content[:100].replace("\n", " ").strip()
             if snippet:
+                snippet = sanitize_message(snippet, max_length=100)
                 snippets.append(snippet)
 
     if not snippets:

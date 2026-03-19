@@ -6,7 +6,6 @@ tool invocation, and budget tracking into a single ``run()`` entry point.
 
 import asyncio
 import contextlib
-import re
 import time
 from typing import TYPE_CHECKING
 
@@ -55,6 +54,7 @@ from synthorg.engine.recovery import (
     RecoveryStrategy,
 )
 from synthorg.engine.run_result import AgentRunResult
+from synthorg.engine.sanitization import sanitize_message
 from synthorg.engine.task_sync import (
     apply_post_execution_transitions,
     sync_to_task_engine,
@@ -1260,19 +1260,7 @@ class AgentEngine:
         exception is re-raised so it is never silently lost.
         """
         raw_msg = str(exc)
-        # Sanitize: redact paths/URLs, strip non-printable chars,
-        # and limit length to prevent internal details leaking.
-        sanitized = re.sub(
-            r"[A-Za-z]:\\[^\s,;)\"']+"
-            r"|/(?:home|usr|var|tmp|etc|opt|root|srv|app|data)[^\s,;)\"']+"
-            r"|\.\.?/[^\s,;)\"']+",
-            "[REDACTED_PATH]",
-            raw_msg,
-        )
-        sanitized = re.sub(r"https?://[^\s,;)\"']+", "[REDACTED_URL]", sanitized)
-        sanitized = "".join(c for c in sanitized[:200] if c.isprintable())
-        if not any(c.isalnum() for c in sanitized):
-            sanitized = "details redacted"
+        sanitized = sanitize_message(raw_msg)
         error_msg = f"{type(exc).__name__}: {sanitized}"
         logger.exception(
             EXECUTION_ENGINE_ERROR,

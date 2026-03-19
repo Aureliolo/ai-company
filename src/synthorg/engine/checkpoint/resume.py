@@ -14,6 +14,7 @@ from synthorg.engine.context import AgentContext
 from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
+from synthorg.engine.sanitization import sanitize_message
 from synthorg.observability import get_logger
 from synthorg.observability.events.checkpoint import (
     CHECKPOINT_DELETE_FAILED,
@@ -77,10 +78,11 @@ def deserialize_and_reconcile(
         if compression is not None
         else ""
     )
+    safe_error = sanitize_message(error_message)
     reconciliation_content = (
         f"Execution resumed from checkpoint at turn "
         f"{checkpoint_ctx.turn_count}. {compaction_note}"
-        f"Previous error: {error_message}. "
+        f"Previous error: {safe_error}. "
         "Review progress and continue."
     )
 
