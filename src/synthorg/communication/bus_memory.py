@@ -6,9 +6,10 @@ deployments and testing.
 
 import asyncio
 import contextlib
+import time
 from collections import deque
 from datetime import UTC, datetime
-from typing import NoReturn
+from typing import Final, NoReturn
 
 from synthorg.communication.channel import Channel
 from synthorg.communication.config import MessageBusConfig  # noqa: TC001
@@ -52,6 +53,9 @@ logger = get_logger(__name__)
 
 _DM_SEPARATOR = ":"
 """Separator used in deterministic direct-channel names."""
+
+_IDLE_SUMMARY_INTERVAL_SECONDS: Final[float] = 60.0
+"""Minimum seconds between idle-channel summary log emissions."""
 
 
 def _raise_channel_not_found(channel_name: str) -> NoReturn:
@@ -103,7 +107,7 @@ class InMemoryMessageBus:
         self._running = False
         self._shutdown_event = asyncio.Event()
         self._idle_poll_count: int = 0
-        self._idle_summary_interval: int = 60
+        self._last_idle_summary: float = time.monotonic()
 
     @property
     def is_running(self) -> bool:
@@ -513,13 +517,16 @@ class InMemoryMessageBus:
             )
         else:
             self._idle_poll_count += 1
-            if self._idle_poll_count >= self._idle_summary_interval:
+            now = time.monotonic()
+            if now - self._last_idle_summary >= _IDLE_SUMMARY_INTERVAL_SECONDS:
                 logger.debug(
                     COMM_CHANNELS_IDLE_SUMMARY,
                     idle_polls=self._idle_poll_count,
                     subscriber_count=len(self._queues),
+                    interval_seconds=round(now - self._last_idle_summary, 1),
                 )
                 self._idle_poll_count = 0
+                self._last_idle_summary = now
 
     async def _await_with_shutdown(
         self,

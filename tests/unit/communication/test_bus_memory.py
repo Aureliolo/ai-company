@@ -733,3 +733,47 @@ class TestHistoryEdgeCases:
         )
         history = await bus.get_channel_history("#general", limit=-5)
         assert history == ()
+
+
+@pytest.mark.unit
+class TestIdleSummary:
+    """Tests for the periodic idle channel summary log."""
+
+    async def test_idle_polls_increment_without_logging(self) -> None:
+        """Idle polls below the time threshold do not emit a summary."""
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        await bus.subscribe("#general", "agent-a")
+        # Short timeouts to accumulate idle polls quickly.
+        for _ in range(5):
+            result = await bus.receive("#general", "agent-a", timeout=0.01)
+            assert result is None
+        assert bus._idle_poll_count == 5
+
+    async def test_summary_emits_after_time_interval(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Summary fires when time interval elapses."""
+        import time
+
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        await bus.subscribe("#general", "agent-a")
+        # Fast-forward the last summary timestamp to trigger summary.
+        bus._last_idle_summary = time.monotonic() - 61.0
+        await bus.receive("#general", "agent-a", timeout=0.01)
+        # Counter should have been reset after summary.
+        assert bus._idle_poll_count == 0
+
+    async def test_message_delivery_still_works(self) -> None:
+        """Message delivery is not affected by idle summary changes."""
+        bus = InMemoryMessageBus(config=_make_config())
+        await bus.start()
+        await bus.subscribe("#general", "agent-a")
+        await bus.publish(
+            _make_message(channel="#general", content="hello"),
+        )
+        envelope = await bus.receive("#general", "agent-a", timeout=0.5)
+        assert envelope is not None
+        assert envelope.message.content == "hello"

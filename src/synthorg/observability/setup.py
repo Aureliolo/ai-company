@@ -117,13 +117,21 @@ def _attach_handlers(
     """Build and attach a handler for each configured sink.
 
     Failures on individual sinks are logged to stderr and skipped so
-    that the remaining sinks can still be initialised.
+    that the remaining sinks can still be initialised.  Critical sinks
+    (``audit.log``, ``access.log``) cause a hard failure if they cannot
+    be created -- silently dropping security audit or access records is
+    not acceptable.
 
     Args:
         config: The logging configuration.
         root_logger: The stdlib root logger.
         shared_processors: Processor chain for the foreign pre-chain.
+
+    Raises:
+        RuntimeError: If a critical sink (audit or access) fails to
+            initialise.
     """
+    _critical_sinks = frozenset({"audit.log", "access.log"})
     log_dir = Path(config.log_dir)
     for sink in config.sinks:
         try:
@@ -138,7 +146,15 @@ def _attach_handlers(
                 f"WARNING: Failed to initialise log sink "
                 f"{sink!r}. This sink will be skipped.",
                 file=sys.stderr,
+                flush=True,
             )
+            if sink.file_path in _critical_sinks:
+                msg = (
+                    f"Critical log sink '{sink.file_path}' could not be "
+                    "initialised. Refusing to start with missing "
+                    "audit/access logs."
+                )
+                raise RuntimeError(msg) from None
 
 
 def _apply_logger_levels(config: LogConfig) -> None:
@@ -182,6 +198,7 @@ def _apply_console_level_override(config: LogConfig) -> LogConfig:
             f"WARNING: Invalid SYNTHORG_LOG_LEVEL={raw!r}. "
             f"Valid values: {valid}. Falling back to INFO.",
             file=sys.stderr,
+            flush=True,
         )
         level = LogLevel.INFO
 
@@ -191,6 +208,13 @@ def _apply_console_level_override(config: LogConfig) -> LogConfig:
         else sink
         for sink in config.sinks
     )
+    if new_sinks == config.sinks:
+        print(  # noqa: T201
+            f"WARNING: SYNTHORG_LOG_LEVEL={raw!r} set but no CONSOLE "
+            "sink found in config -- env var has no effect.",
+            file=sys.stderr,
+            flush=True,
+        )
     return config.model_copy(update={"sinks": new_sinks})
 
 

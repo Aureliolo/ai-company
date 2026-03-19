@@ -13,7 +13,11 @@ if TYPE_CHECKING:
 from synthorg.observability.config import LogConfig, SinkConfig
 from synthorg.observability.correlation import bind_correlation_id
 from synthorg.observability.enums import LogLevel, SinkType
-from synthorg.observability.setup import _DEFAULT_LOGGER_LEVELS, configure_logging
+from synthorg.observability.setup import (
+    _DEFAULT_LOGGER_LEVELS,
+    _apply_console_level_override,
+    configure_logging,
+)
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -191,3 +195,83 @@ class TestCorrelationPipeline:
         assert content
         record = json.loads(content)
         assert record["request_id"] == "test-req-123"
+
+
+@pytest.mark.unit
+class TestApplyConsoleLevelOverride:
+    """Tests for _apply_console_level_override."""
+
+    def test_no_env_var_returns_unchanged(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("SYNTHORG_LOG_LEVEL", raising=False)
+        config = _console_only_config()
+        result = _apply_console_level_override(config)
+        assert result is config
+
+    def test_valid_level_overrides_console_sink(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_LOG_LEVEL", "warning")
+        config = _console_only_config()
+        result = _apply_console_level_override(config)
+        assert result.sinks[0].level == LogLevel.WARNING
+
+    def test_invalid_level_falls_back_to_info(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_LOG_LEVEL", "bogus")
+        config = _console_only_config()
+        result = _apply_console_level_override(config)
+        assert result.sinks[0].level == LogLevel.INFO
+        captured = capsys.readouterr()
+        assert "Invalid SYNTHORG_LOG_LEVEL" in captured.err
+
+    def test_file_sinks_unaffected(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_LOG_LEVEL", "error")
+        config = LogConfig(
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.CONSOLE,
+                    level=LogLevel.INFO,
+                    json_format=False,
+                ),
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.DEBUG,
+                    file_path="test.log",
+                    json_format=True,
+                ),
+            ),
+        )
+        result = _apply_console_level_override(config)
+        assert result.sinks[0].level == LogLevel.ERROR
+        assert result.sinks[1].level == LogLevel.DEBUG
+
+    def test_no_console_sink_warns(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setenv("SYNTHORG_LOG_LEVEL", "debug")
+        config = LogConfig(
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.INFO,
+                    file_path="only-file.log",
+                    json_format=True,
+                ),
+            ),
+        )
+        result = _apply_console_level_override(config)
+        assert result.sinks[0].level == LogLevel.INFO
+        captured = capsys.readouterr()
+        assert "no CONSOLE sink found" in captured.err

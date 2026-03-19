@@ -8,6 +8,7 @@ lifecycle hooks (startup/shutdown).
 import asyncio
 import contextlib
 import os
+import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,6 +57,7 @@ from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
 from synthorg.observability import get_logger
+from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
@@ -346,11 +348,6 @@ def _bootstrap_app_logging(effective_config: RootConfig) -> None:
         )
         bootstrap_logging(patched)
     elif log_dir:
-        from synthorg.observability.config import (  # noqa: PLC0415
-            DEFAULT_SINKS,
-            LogConfig,
-        )
-
         bootstrap_logging(
             RootConfig(
                 company_name=effective_config.company_name,
@@ -409,7 +406,17 @@ def create_app(  # noqa: PLR0913
     # other setup so that auto-wiring, persistence, and bus logs all
     # flow through the configured sinks.  Respects SYNTHORG_LOG_DIR
     # env var for Docker log directory override.
-    _bootstrap_app_logging(effective_config)
+    try:
+        _bootstrap_app_logging(effective_config)
+    except Exception as exc:
+        print(  # noqa: T201
+            f"CRITICAL: Failed to initialise logging pipeline: {exc}. "
+            "Check SYNTHORG_LOG_DIR, SYNTHORG_LOG_LEVEL, and the "
+            "'logging' section of your config file.",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise
 
     api_config = effective_config.api
 

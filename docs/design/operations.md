@@ -1152,7 +1152,7 @@ Eight default sinks, activated at startup via `bootstrap_logging()`:
 | `agent_activity.log` | File | DEBUG | JSON | `synthorg.engine.*`, `synthorg.core.*` | Agent execution and task lifecycle |
 | `cost_usage.log` | File | INFO | JSON | `synthorg.budget.*`, `synthorg.providers.*` | Cost records and provider calls |
 | `debug.log` | File | DEBUG | JSON | All loggers | Full debug trace (catch-all) |
-| `access.log` | File | DEBUG | JSON | `synthorg.api.*` | HTTP request/response access log |
+| `access.log` | File | INFO | JSON | `synthorg.api.*` | HTTP request/response access log |
 
 Logger name routing is implemented via `_LoggerNameFilter` on file handlers. Sinks without
 explicit routing are catch-all (accept all loggers at their configured level).
@@ -1207,7 +1207,7 @@ Default levels per domain module (overridable via `LogConfig.logger_levels`):
 
 ### Event Taxonomy
 
-54 domain-specific event constant modules under `observability/events/` (one per subsystem:
+50 domain-specific event constant modules under `observability/events/` (one per subsystem:
 api, budget, tool, git, engine, communication, etc.). Every log call uses a typed constant
 (e.g., `API_REQUEST_STARTED`, `BUDGET_RECORD_ADDED`) for consistent, grep-friendly event
 names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).

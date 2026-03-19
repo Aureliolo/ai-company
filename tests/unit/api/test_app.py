@@ -6,12 +6,14 @@ import pytest
 from litestar import Litestar
 from litestar.testing import TestClient
 
-from synthorg.api.app import create_app
+from synthorg.api.app import _bootstrap_app_logging, create_app
 from synthorg.api.middleware import _SECURITY_HEADERS
 from synthorg.api.state import AppState
 from synthorg.budget.tracker import CostTracker
 from synthorg.communication.bus_memory import InMemoryMessageBus
+from synthorg.config.schema import RootConfig
 from synthorg.engine.task_engine import TaskEngine
+from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 
 
 @pytest.mark.unit
@@ -909,3 +911,63 @@ class TestAutoWirePhase1ErrorPaths:
                 task_engine=None,
                 provider_registry=None,
             )
+
+
+@pytest.mark.unit
+class TestBootstrapAppLogging:
+    """Tests for _bootstrap_app_logging env var branches."""
+
+    def test_no_log_dir_calls_bootstrap(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Without SYNTHORG_LOG_DIR, bootstrap_logging is called unchanged."""
+        monkeypatch.delenv("SYNTHORG_LOG_DIR", raising=False)
+        calls: list[object] = []
+        monkeypatch.setattr(
+            "synthorg.api.app.bootstrap_logging",
+            calls.append,
+        )
+        config = RootConfig(company_name="test-co")
+        _bootstrap_app_logging(config)
+        assert len(calls) == 1
+        assert calls[0] is config
+
+    def test_log_dir_with_existing_logging_config(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """SYNTHORG_LOG_DIR overrides log_dir in existing logging config."""
+        monkeypatch.setenv("SYNTHORG_LOG_DIR", "/custom/logs")
+        calls: list[RootConfig] = []
+        monkeypatch.setattr(
+            "synthorg.api.app.bootstrap_logging",
+            calls.append,
+        )
+        config = RootConfig(
+            company_name="test-co",
+            logging=LogConfig(sinks=DEFAULT_SINKS, log_dir="original"),
+        )
+        _bootstrap_app_logging(config)
+        assert len(calls) == 1
+        assert calls[0].logging is not None
+        assert calls[0].logging.log_dir == "/custom/logs"
+
+    def test_log_dir_without_logging_config(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """SYNTHORG_LOG_DIR creates a LogConfig when none exists."""
+        monkeypatch.setenv("SYNTHORG_LOG_DIR", "/data/logs")
+        calls: list[RootConfig] = []
+        monkeypatch.setattr(
+            "synthorg.api.app.bootstrap_logging",
+            calls.append,
+        )
+        config = RootConfig(company_name="test-co")
+        assert config.logging is None
+        _bootstrap_app_logging(config)
+        assert len(calls) == 1
+        assert calls[0].logging is not None
+        assert calls[0].logging.log_dir == "/data/logs"
+        assert len(calls[0].logging.sinks) == len(DEFAULT_SINKS)
