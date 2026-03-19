@@ -629,8 +629,8 @@ class AgentEngine:
         ``TimeoutError`` raised inside the loop propagates normally
         and is not conflated with the engine's wall-clock deadline.
         """
-        loop = self._make_loop_with_callback(loop, agent_id, task_id)
-        coro = loop.execute(
+        wrapped_loop = self._make_loop_with_callback(loop, agent_id, task_id)
+        coro = wrapped_loop.execute(
             context=ctx,
             provider=self._provider,
             tool_invoker=tool_invoker,
