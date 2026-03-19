@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -126,9 +127,10 @@ func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
-	// List SynthOrg images. The repo prefix is ghcr.io/aureliolo/synthorg-*.
+	// List SynthOrg images using the Docker CLI directly (not docker-compose,
+	// which doesn't support --filter/--format for image listing).
 	imageRef := verify.RegistryHost + "/" + verify.ImageRepoPrefix
-	listOut, err := docker.RunCmd(ctx, info.ComposeCmd[0], "images",
+	listOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
 		"--filter", "reference="+imageRef+"*",
 		"--format", "{{.Repository}}:{{.Tag}} ({{.Size}})",
 	)
@@ -164,7 +166,7 @@ func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info) error {
 	}
 
 	// Get image IDs for removal (more reliable than names for rmi).
-	idsOut, err := docker.RunCmd(ctx, info.ComposeCmd[0], "images",
+	idsOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
 		"--filter", "reference="+imageRef+"*",
 		"--format", "{{.ID}}",
 	)
@@ -180,7 +182,7 @@ func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info) error {
 
 	_, _ = fmt.Fprintln(out, "Removing SynthOrg images...")
 	rmiArgs := append([]string{"rmi", "--force"}, ids...)
-	if _, rmiErr := docker.RunCmd(ctx, info.ComposeCmd[0], rmiArgs...); rmiErr != nil {
+	if _, rmiErr := docker.RunCmd(ctx, info.DockerPath, rmiArgs...); rmiErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: some images could not be removed: %v\n", rmiErr)
 	} else {
 		_, _ = fmt.Fprintf(out, "Removed %d image(s).\n", len(ids))
@@ -311,54 +313,73 @@ func removeUnixBinary(cmd *cobra.Command, execPath string) error {
 	return nil
 }
 
-// scheduleWindowsCleanup spawns a detached cmd.exe process that waits for
-// the current process to exit, then deletes the binary and its parent
-// directory (if empty). Uses tasklist polling instead of a fixed sleep
-// to handle variable shutdown times.
+// scheduleWindowsCleanup writes a temporary .bat file that waits for the
+// current process to exit, then deletes the binary, empty parent dirs,
+// and the .bat file itself. Uses a temp .bat instead of inline cmd /c
+// because goto/labels don't work in single-line cmd /c commands.
 func scheduleWindowsCleanup(cmd *cobra.Command, execPath, dataDir string) error {
 	out := cmd.OutOrStdout()
 	pid := os.Getpid()
-
-	// Build a cmd.exe /c command that:
-	// 1. Polls until our PID is gone (tasklist, 1-second intervals, max 30 checks)
-	// 2. Deletes the binary
-	// 3. Removes the bin/ directory if empty
-	// 4. Removes the data directory if empty
-	//
-	// Using cmd.exe /c with a for loop -- no PowerShell dependency.
-	// The /b flag on del suppresses "Are you sure?" prompts.
 	binDir := filepath.Dir(execPath)
-	script := fmt.Sprintf(
-		`for /L %%i in (1,1,30) do (`+
-			`tasklist /fi "PID eq %d" 2>nul | find "%d" >nul || goto :cleanup & `+
-			`ping -n 2 127.0.0.1 >nul`+
-			`) & goto :done`+
-			` & :cleanup`+
-			` & del /f /q "%s"`+
-			` & rmdir "%s" 2>nul`+
-			` & rmdir "%s" 2>nul`+
-			` & :done`,
+
+	// Write cleanup script to a temp .bat file next to the binary
+	// (same filesystem, survives after this process exits).
+	batContent := fmt.Sprintf(
+		"@echo off\r\n"+
+			"for /L %%%%i in (1,1,30) do (\r\n"+
+			"  tasklist /fi \"PID eq %d\" 2>nul | find \"%d\" >nul || goto :cleanup\r\n"+
+			"  timeout /t 1 /nobreak >nul\r\n"+
+			")\r\n"+
+			"goto :done\r\n"+
+			":cleanup\r\n"+
+			"del /f /q \"%s\"\r\n"+
+			"rmdir \"%s\" 2>nul\r\n"+
+			"rmdir \"%s\" 2>nul\r\n"+
+			":done\r\n"+
+			"del /f /q \"%%~f0\"\r\n",
 		pid, pid,
 		execPath,
 		binDir,
 		dataDir,
 	)
 
-	c := exec.CommandContext(cmd.Context(), "cmd.exe", "/c", script)
+	batFile, err := os.CreateTemp(binDir, "synthorg-cleanup-*.bat")
+	if err != nil {
+		return fallbackManualCleanup(cmd, execPath, err)
+	}
+	batPath := batFile.Name()
+	if _, err := batFile.WriteString(batContent); err != nil {
+		_ = batFile.Close()
+		_ = os.Remove(batPath)
+		return fallbackManualCleanup(cmd, execPath, err)
+	}
+	if err := batFile.Close(); err != nil {
+		_ = os.Remove(batPath)
+		return fallbackManualCleanup(cmd, execPath, err)
+	}
+
+	// Spawn detached -- use context.Background so parent context
+	// cancellation doesn't kill the cleanup process.
+	c := exec.CommandContext(context.Background(), "cmd.exe", "/c", batPath) //nolint:noctx // intentionally detached
 	c.SysProcAttr = windowsDetachedProcAttr()
 	if err := c.Start(); err != nil {
-		// Fall back to manual instructions if spawn fails.
-		_, _ = fmt.Fprintln(out, "Could not schedule automatic cleanup.")
-		_, _ = fmt.Fprintln(out, "To finish cleanup after exit, run:")
-		escaped := strings.ReplaceAll(execPath, "'", "''")
-		_, _ = fmt.Fprintf(out, "  powershell -Command \"Remove-Item -LiteralPath '%s'\"\n", escaped)
-		return nil
+		_ = os.Remove(batPath)
+		return fallbackManualCleanup(cmd, execPath, err)
 	}
 
 	// Detach -- don't wait for the cleanup process.
 	_ = c.Process.Release()
 
 	_, _ = fmt.Fprintln(out, "CLI binary will be removed automatically after exit.")
+	return nil
+}
+
+func fallbackManualCleanup(cmd *cobra.Command, execPath string, cause error) error {
+	out := cmd.OutOrStdout()
+	_, _ = fmt.Fprintf(out, "Could not schedule automatic cleanup: %v\n", cause)
+	_, _ = fmt.Fprintln(out, "To finish cleanup after exit, run:")
+	escaped := strings.ReplaceAll(execPath, "'", "''")
+	_, _ = fmt.Fprintf(out, "  powershell -Command \"Remove-Item -LiteralPath '%s'\"\n", escaped)
 	return nil
 }
 
