@@ -18,6 +18,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
+	"go.yaml.in/yaml/v3"
 )
 
 // ContainerDetail summarises a single container's state from compose ps JSON.
@@ -328,36 +329,55 @@ func checkImages(ctx context.Context, imageTag string, sandbox bool, composePath
 	return status
 }
 
+// composeFile is the minimal subset of a Docker Compose file needed to
+// extract image references. Only the services.*.image field is used.
+type composeFile struct {
+	Services map[string]struct {
+		Image string `yaml:"image"`
+	} `yaml:"services"`
+}
+
 // parseComposeImageRefs extracts image references from a compose file
-// by matching "image: ghcr.io/aureliolo/synthorg-<service>..." lines.
-// Returns a map of service name (backend, web, sandbox) to full image ref.
+// using YAML parsing. Returns a map of service name (backend, web,
+// sandbox) to full image ref for SynthOrg images only.
 func parseComposeImageRefs(composePath string) map[string]string {
 	refs := make(map[string]string)
 	if composePath == "" {
 		return refs
 	}
-	data, err := os.ReadFile(composePath)
+
+	// Validate and canonicalize the path before reading.
+	cleaned := filepath.Clean(composePath)
+	if strings.Contains(cleaned, "..") {
+		return refs
+	}
+	if _, err := os.Stat(cleaned); err != nil {
+		return refs
+	}
+
+	data, err := os.ReadFile(cleaned)
 	if err != nil {
 		return refs
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "image:") {
-			continue
-		}
-		ref := strings.TrimSpace(strings.TrimPrefix(line, "image:"))
-		if !strings.HasPrefix(ref, imagePrefix) {
+
+	var cf composeFile
+	if err := yaml.Unmarshal(data, &cf); err != nil {
+		return refs
+	}
+
+	for _, svc := range cf.Services {
+		if !strings.HasPrefix(svc.Image, imagePrefix) {
 			continue
 		}
 		// Extract service name: "ghcr.io/aureliolo/synthorg-backend@sha256:..." -> "backend"
-		suffix := strings.TrimPrefix(ref, imagePrefix)
-		var svc string
+		suffix := strings.TrimPrefix(svc.Image, imagePrefix)
+		var name string
 		if i := strings.IndexAny(suffix, ":@"); i > 0 {
-			svc = suffix[:i]
+			name = suffix[:i]
 		} else {
-			svc = suffix
+			name = suffix
 		}
-		refs[svc] = ref
+		refs[name] = svc.Image
 	}
 	return refs
 }
