@@ -116,6 +116,27 @@ func updateCLI(cmd *cobra.Command) error {
 	return errReexec
 }
 
+// ChildExitError carries the exit code from a re-exec'd child process.
+// The program entrypoint inspects this via ChildExitCode to call os.Exit
+// with the child's code instead of printing a generic error message.
+type ChildExitError struct {
+	Code int
+}
+
+func (e *ChildExitError) Error() string {
+	return fmt.Sprintf("re-launched CLI exited with code %d", e.Code)
+}
+
+// ChildExitCode extracts the exit code from err if it is a ChildExitError.
+// Returns (code, true) if found, (0, false) otherwise.
+func ChildExitCode(err error) (int, bool) {
+	var ce *ChildExitError
+	if errors.As(err, &ce) {
+		return ce.Code, true
+	}
+	return 0, false
+}
+
 // reexecUpdate spawns the new binary with the same arguments so the rest
 // of the update (compose refresh, image pull) uses the new embedded template.
 // The CLI update step already ran, so the new binary will see "up to date"
@@ -123,6 +144,9 @@ func updateCLI(cmd *cobra.Command) error {
 //
 // Arguments are reconstructed from known flag values rather than forwarding
 // raw os.Args to avoid silently propagating unexpected flags.
+//
+// Returns a *childExitError if the child exits non-zero, so the caller
+// can propagate the exit code rather than printing a generic error.
 func reexecUpdate(cmd *cobra.Command) error {
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Re-launching updated CLI to continue...")
 
@@ -153,7 +177,16 @@ func reexecUpdate(cmd *cobra.Command) error {
 	c.Stdin = os.Stdin
 	c.Stdout = cmd.OutOrStdout()
 	c.Stderr = cmd.ErrOrStderr()
-	return c.Run()
+
+	if runErr := c.Run(); runErr != nil {
+		// Preserve the child's exit code so the parent can propagate it.
+		var exitErr *exec.ExitError
+		if errors.As(runErr, &exitErr) {
+			return &ChildExitError{Code: exitErr.ExitCode()}
+		}
+		return fmt.Errorf("re-launching updated CLI: %w", runErr)
+	}
+	return nil
 }
 
 // refreshCompose regenerates compose.yml from the current embedded template.

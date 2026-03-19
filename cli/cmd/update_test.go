@@ -207,6 +207,13 @@ func TestLoadAndGenerate_PermissionError(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(composePath, 0o600) })
 
 	_, _, err := loadAndGenerate(composePath, config.State{})
+
+	// Restore permissions before assertions so temp dir cleanup succeeds
+	// even if an assertion panics or fails early.
+	if chmodErr := os.Chmod(composePath, 0o600); chmodErr != nil {
+		t.Fatalf("restoring permissions: %v", chmodErr)
+	}
+
 	if err == nil {
 		t.Fatal("expected error for permission-denied compose.yml")
 	}
