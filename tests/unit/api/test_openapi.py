@@ -585,32 +585,32 @@ class TestOperationInjection:
 
 @pytest.mark.unit
 class TestInfoDescription:
-    """info.description is updated with RFC 9457 documentation."""
+    """RFC 9457 documentation is stored in x-documentation extension."""
 
-    def test_mentions_rfc_9457(self, base_schema: dict[str, Any]) -> None:
+    def test_rfc9457_in_x_documentation(self, base_schema: dict[str, Any]) -> None:
         result = inject_rfc9457_responses(base_schema)
-        desc = result["info"]["description"]
-        assert "RFC 9457" in desc
+        xdoc = result["info"]["x-documentation"]
+        assert "rfc9457" in xdoc
+        assert "RFC 9457" in xdoc["rfc9457"]
+
+    def test_not_in_description(self, base_schema: dict[str, Any]) -> None:
+        """RFC 9457 docs should not pollute info.description."""
+        result = inject_rfc9457_responses(base_schema)
+        desc = result["info"].get("description", "")
+        assert "RFC 9457" not in desc
 
     def test_mentions_content_negotiation(self, base_schema: dict[str, Any]) -> None:
         result = inject_rfc9457_responses(base_schema)
-        desc = result["info"]["description"]
-        assert "application/problem+json" in desc
-        assert "application/json" in desc
-
-    def test_mentions_error_reference(self, base_schema: dict[str, Any]) -> None:
-        result = inject_rfc9457_responses(base_schema)
-        desc = result["info"]["description"]
-        assert "synthorg.io/docs/errors" in desc
+        rfc_doc = result["info"]["x-documentation"]["rfc9457"]
+        assert "application/problem+json" in rfc_doc
+        assert "application/json" in rfc_doc
 
     def test_preserves_existing_description(self) -> None:
-        """Existing info.description is preserved with RFC section appended."""
+        """Existing info.description is not modified."""
         schema = _minimal_schema()
         schema["info"]["description"] = "My custom API description."
         result = inject_rfc9457_responses(schema)
-        desc = result["info"]["description"]
-        assert desc.startswith("My custom API description.")
-        assert "RFC 9457" in desc
+        assert result["info"]["description"] == "My custom API description."
 
 
 # ── Idempotency and immutability ──────────────────────────────
