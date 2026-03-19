@@ -227,7 +227,7 @@ class TestSetupCompany:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Whitespace-only description is accepted but treated as empty."""
+        """Whitespace-only description is accepted but normalized to None."""
         resp = test_client.post(
             "/api/v1/setup/company",
             json={
@@ -236,6 +236,56 @@ class TestSetupCompany:
             },
         )
         assert resp.status_code == 201
+        data = resp.json()["data"]
+        assert data["description"] is None
+
+    def test_description_whitespace_stripped(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Leading/trailing whitespace is stripped from description."""
+        resp = test_client.post(
+            "/api/v1/setup/company",
+            json={
+                "company_name": "Test Corp",
+                "description": "  hello world  ",
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()["data"]
+        assert data["description"] == "hello world"
+
+    def test_empty_string_description_normalized_to_none(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Empty string description is normalized to None."""
+        resp = test_client.post(
+            "/api/v1/setup/company",
+            json={
+                "company_name": "Test Corp",
+                "description": "",
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()["data"]
+        assert data["description"] is None
+
+    def test_description_at_max_length_accepted(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Description of exactly 1000 characters is accepted."""
+        resp = test_client.post(
+            "/api/v1/setup/company",
+            json={
+                "company_name": "Test Corp",
+                "description": "x" * 1000,
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()["data"]
+        assert data["description"] == "x" * 1000
 
     def test_company_with_template(
         self,

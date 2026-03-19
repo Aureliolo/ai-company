@@ -376,13 +376,12 @@ class SetupController(Controller):
                 department_count = len(json.loads(departments_json))
 
         # Normalize description: strip whitespace, treat blank as None.
-        description = data.description.strip() if data.description else None
-        description = description or None
+        description = data.description.strip() or None if data.description else None
 
         # Persist company name, description, and departments after validation.
         await settings_svc.set("company", "company_name", data.company_name)
-        if description:
-            await settings_svc.set("company", "description", description)
+        # Always write description -- clears stale data from previous runs.
+        await settings_svc.set("company", "description", description or "")
         # Always write departments -- clears stale data from previous runs.
         await settings_svc.set(
             "company",
