@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.3.6](https://github.com/Aureliolo/synthorg/compare/v0.3.5...v0.3.6) (2026-03-19)
+
+
+### Features
+
+* **cli:** add backup subcommands (backup, backup list, backup restore) ([#568](https://github.com/Aureliolo/synthorg/issues/568)) ([4c06b1d](https://github.com/Aureliolo/synthorg/commit/4c06b1d6bbe21a45cb7a83591afc824c4cc7b9a8))
+* **engine:** implement execution loop auto-selection based on task complexity ([#567](https://github.com/Aureliolo/synthorg/issues/567)) ([5bfc2c6](https://github.com/Aureliolo/synthorg/commit/5bfc2c6b9bb8f2909596a3336f6056de81b8cb2b))
+
+
+### Bug Fixes
+
+* activate structured logging pipeline -- wire 8-sink system, integrate Uvicorn, suppress spam ([#572](https://github.com/Aureliolo/synthorg/issues/572)) ([9b6bf33](https://github.com/Aureliolo/synthorg/commit/9b6bf332954984d099c5967768581d70534a379d))
+* **cli:** bump grpc-go v1.79.3 -- CVE-2026-33186 auth bypass ([#574](https://github.com/Aureliolo/synthorg/issues/574)) ([f0171c9](https://github.com/Aureliolo/synthorg/commit/f0171c932d4fa8fa32ebae71988ddeded82b4b9a))
+* resolve OpenAPI schema validation warnings for union/optional fields ([#558](https://github.com/Aureliolo/synthorg/issues/558)) ([5d96b2b](https://github.com/Aureliolo/synthorg/commit/5d96b2bdb4cec91b762a97820e0100324e7651fc))
+
+
+### CI/CD
+
+* bump codecov/codecov-action from 5.5.2 to 5.5.3 in the minor-and-patch group ([#571](https://github.com/Aureliolo/synthorg/issues/571)) ([267f685](https://github.com/Aureliolo/synthorg/commit/267f6858d999a0653047dd57a196907fafd1a0d8))
+* ignore chainguard/python in Dependabot docker updates ([#575](https://github.com/Aureliolo/synthorg/issues/575)) ([1935eaa](https://github.com/Aureliolo/synthorg/commit/1935eaaf357d7b01ff5c47903be7e3aa7f7ff79f))
+
+
+### Maintenance
+
+* bump the major group across 1 directory with 2 updates ([#570](https://github.com/Aureliolo/synthorg/issues/570)) ([b98f82c](https://github.com/Aureliolo/synthorg/commit/b98f82c55e1375fd3ffafbd1b941f62dbc8b49d6))
+* bump the minor-and-patch group across 2 directories with 4 updates ([#569](https://github.com/Aureliolo/synthorg/issues/569)) ([3295168](https://github.com/Aureliolo/synthorg/commit/32951688f1e8b7f715ab1f0bf6bf33cf8d23b8f0))
+
 ## [0.3.5](https://github.com/Aureliolo/synthorg/compare/v0.3.4...v0.3.5) (2026-03-18)
 
 
