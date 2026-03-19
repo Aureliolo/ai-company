@@ -9,6 +9,7 @@ import { getErrorMessage } from '@/utils/errors'
 
 const emit = defineEmits<{
   next: [companyName: string]
+  previous: []
 }>()
 
 const setup = useSetupStore()
@@ -132,14 +133,24 @@ onMounted(async () => {
         {{ error }}
       </div>
 
-      <Button
-        type="submit"
-        label="Create Company"
-        icon="pi pi-building"
-        class="w-full"
-        :loading="creating"
-        :disabled="!isValid"
-      />
+      <div class="flex items-center gap-3">
+        <Button
+          type="button"
+          label="Back"
+          icon="pi pi-arrow-left"
+          severity="secondary"
+          outlined
+          @click="emit('previous')"
+        />
+        <Button
+          type="submit"
+          label="Create Company"
+          icon="pi pi-building"
+          class="flex-1"
+          :loading="creating"
+          :disabled="!isValid"
+        />
+      </div>
     </form>
   </div>
 </template>

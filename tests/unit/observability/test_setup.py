@@ -395,6 +395,116 @@ class TestCriticalSinkFailure:
 
 
 @pytest.mark.unit
+@pytest.mark.unit
+class TestReconfigurationLogRouting:
+    """Regression tests: log routing after configure_logging() is called twice.
+
+    Reproduces the production scenario where _bootstrap_app_logging()
+    reconfigures logging after an initial configuration, and
+    module-level loggers must route to the new handlers.
+    """
+
+    def test_module_level_logger_routes_to_new_handlers(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Logger created BEFORE config routes to handlers from the SECOND config."""
+        from synthorg.observability import get_logger
+
+        # Create logger before any configuration (simulates module-level).
+        test_logger = get_logger("test.reconfigure.module_level")
+
+        # First configuration with one file sink.
+        first_config = LogConfig(
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.DEBUG,
+                    file_path="first.log",
+                    json_format=True,
+                ),
+            ),
+            log_dir=str(tmp_path),
+        )
+        configure_logging(first_config)
+
+        # Second configuration with a different file sink.
+        second_config = LogConfig(
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.DEBUG,
+                    file_path="second.log",
+                    json_format=True,
+                ),
+            ),
+            log_dir=str(tmp_path),
+        )
+        configure_logging(second_config)
+
+        # Emit through the pre-existing logger.
+        test_logger.info("post-reconfigure-event")
+
+        for h in logging.getLogger().handlers:
+            h.flush()
+
+        second_log = tmp_path / "second.log"
+        content = second_log.read_text().strip()
+        assert content, "Expected log output in second.log"
+        record = json.loads(content)
+        assert record["event"] == "post-reconfigure-event"
+
+    def test_reconfiguration_old_handlers_disconnected(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Old file sink receives no events after reconfiguration."""
+        from synthorg.observability import get_logger
+
+        configure_logging(
+            LogConfig(
+                sinks=(
+                    SinkConfig(
+                        sink_type=SinkType.FILE,
+                        level=LogLevel.DEBUG,
+                        file_path="old.log",
+                        json_format=True,
+                    ),
+                ),
+                log_dir=str(tmp_path),
+            ),
+        )
+
+        configure_logging(
+            LogConfig(
+                sinks=(
+                    SinkConfig(
+                        sink_type=SinkType.FILE,
+                        level=LogLevel.DEBUG,
+                        file_path="new.log",
+                        json_format=True,
+                    ),
+                ),
+                log_dir=str(tmp_path),
+            ),
+        )
+
+        test_logger = get_logger("test.reconfigure.disconnect")
+        test_logger.info("after-reconfig")
+
+        for h in logging.getLogger().handlers:
+            h.flush()
+
+        old_log = tmp_path / "old.log"
+        assert not old_log.exists() or old_log.read_text().strip() == ""
+
+    def test_structlog_cache_disabled(self) -> None:
+        """configure_logging must set cache_logger_on_first_use=False."""
+        configure_logging(_console_only_config())
+        cfg = structlog.get_config()
+        assert cfg["cache_logger_on_first_use"] is False
+
+
 class TestConfigureLoggingIntegration:
     """Integration tests for configure_logging with env var overrides."""
 

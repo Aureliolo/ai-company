@@ -639,6 +639,8 @@ class TestSetupDTOs:
             needs_admin=True,
             needs_setup=True,
             has_providers=False,
+            has_company=False,
+            has_agents=False,
             min_password_length=12,
         )
         with pytest.raises(ValidationError):

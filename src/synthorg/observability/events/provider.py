@@ -50,3 +50,8 @@ PROVIDER_CONNECTION_TESTED: Final[str] = "provider.management.connection_tested"
 PROVIDER_NOT_FOUND: Final[str] = "provider.management.not_found"
 PROVIDER_ALREADY_EXISTS: Final[str] = "provider.management.already_exists"
 PROVIDER_VALIDATION_FAILED: Final[str] = "provider.management.validation_failed"
+
+# ── Provider model discovery ───────────────────────────────
+
+PROVIDER_MODELS_DISCOVERED: Final[str] = "provider.management.models_discovered"
+PROVIDER_DISCOVERY_FAILED: Final[str] = "provider.management.discovery_failed"

@@ -701,6 +701,20 @@ class CreateFromPresetRequest(BaseModel):
         return _validate_provider_name(v)
 
 
+class DiscoverModelsResponse(BaseModel):
+    """Result of provider model auto-discovery.
+
+    Attributes:
+        discovered_models: Models found on the provider endpoint.
+        provider_name: Name of the provider that was queried.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    discovered_models: tuple[ProviderModelConfig, ...]
+    provider_name: NotBlankStr
+
+
 def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     """Convert a ProviderConfig to a safe ProviderResponse.
 

@@ -16,7 +16,7 @@ from synthorg.api.dto import (
     TestConnectionResponse,
     UpdateProviderRequest,
 )
-from synthorg.config.schema import ProviderConfig
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_ALREADY_EXISTS,
@@ -27,6 +27,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_UPDATED,
     PROVIDER_VALIDATION_FAILED,
 )
+from synthorg.providers.discovery import discover_models
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
@@ -310,6 +311,9 @@ class ProviderManagementService:
     ) -> ProviderConfig:
         """Create a provider from a preset template.
 
+        When the preset has ``auth_type=none`` and a base URL but no
+        models, attempts auto-discovery before creating the provider.
+
         Args:
             request: Preset-based creation request.
 
@@ -333,6 +337,12 @@ class ProviderManagementService:
         models = request.models if request.models is not None else preset.default_models
         base_url = request.base_url or preset.default_base_url
 
+        # Auto-discover models for no-auth presets with a base URL.
+        if not models and preset.auth_type == AuthType.NONE and base_url:
+            discovered = await discover_models(base_url, preset.name)
+            if discovered:
+                models = discovered
+
         create_request = CreateProviderRequest(
             name=request.name,
             driver=preset.driver,
@@ -342,6 +352,39 @@ class ProviderManagementService:
             models=models,
         )
         return await self.create_provider(create_request)
+
+    async def discover_models_for_provider(
+        self,
+        name: str,
+    ) -> tuple[ProviderModelConfig, ...]:
+        """Discover and update models for an existing provider.
+
+        Queries the provider's endpoint for available models and
+        updates the provider configuration if models are found.
+
+        Args:
+            name: Provider name.
+
+        Returns:
+            Tuple of discovered model configs (may be empty).
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+        """
+        config = await self.get_provider(name)
+
+        if config.base_url is None:
+            return ()
+
+        # Infer preset hint from base URL patterns.
+        preset_hint = _infer_preset_hint(config.base_url)
+        discovered = await discover_models(config.base_url, preset_hint)
+
+        if discovered:
+            update_req = UpdateProviderRequest(models=discovered)
+            await self.update_provider(name, update_req)
+
+        return discovered
 
     async def _validate_and_persist(
         self,
@@ -512,3 +555,24 @@ def _serialize_providers(
         JSON-safe dict of serialized provider configs.
     """
     return {name: config.model_dump(mode="json") for name, config in providers.items()}
+
+
+def _infer_preset_hint(base_url: str) -> str | None:
+    """Infer the preset name from a provider base URL.
+
+    Uses port-based heuristics for common local providers.
+
+    Args:
+        base_url: Provider base URL.
+
+    Returns:
+        Preset name hint, or ``None`` if unrecognized.
+    """
+    url_lower = base_url.lower()
+    if ":11434" in url_lower:
+        return "ollama"
+    if ":1234" in url_lower:
+        return "lm-studio"
+    if ":8000" in url_lower:
+        return "vllm"
+    return None

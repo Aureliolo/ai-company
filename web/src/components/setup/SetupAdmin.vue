@@ -9,6 +9,7 @@ import { useLoginLockout } from '@/composables/useLoginLockout'
 
 const emit = defineEmits<{
   next: []
+  previous: []
 }>()
 
 const auth = useAuthStore()
@@ -105,14 +106,24 @@ async function handleSetup() {
         {{ error }}
       </div>
 
-      <Button
-        type="submit"
-        label="Create Admin Account"
-        icon="pi pi-check"
-        class="w-full"
-        :loading="auth.loading"
-        :disabled="!username || !password || !confirmPassword || locked"
-      />
+      <div class="flex items-center gap-3">
+        <Button
+          type="button"
+          label="Back"
+          icon="pi pi-arrow-left"
+          severity="secondary"
+          outlined
+          @click="emit('previous')"
+        />
+        <Button
+          type="submit"
+          label="Create Admin Account"
+          icon="pi pi-check"
+          class="flex-1"
+          :loading="auth.loading"
+          :disabled="!username || !password || !confirmPassword || locked"
+        />
+      </div>
     </form>
   </div>
 </template>

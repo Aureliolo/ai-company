@@ -3,6 +3,7 @@ import type {
   ApiResponse,
   CreateFromPresetRequest,
   CreateProviderRequest,
+  DiscoverModelsResponse,
   ProviderConfig,
   ProviderModelConfig,
   ProviderPreset,
@@ -58,5 +59,12 @@ export async function listPresets(): Promise<ProviderPreset[]> {
 
 export async function createFromPreset(data: CreateFromPresetRequest): Promise<ProviderConfig> {
   const response = await apiClient.post<ApiResponse<ProviderConfig>>('/providers/from-preset', data)
+  return unwrap(response)
+}
+
+export async function discoverModels(name: string): Promise<DiscoverModelsResponse> {
+  const response = await apiClient.post<ApiResponse<DiscoverModelsResponse>>(
+    `/providers/${encodeURIComponent(name)}/discover-models`,
+  )
   return unwrap(response)
 }

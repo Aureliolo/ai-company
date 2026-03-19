@@ -63,6 +63,8 @@ class SetupStatusResponse(BaseModel):
         needs_admin: True if no user with the CEO role exists yet.
         needs_setup: True if setup has not been completed.
         has_providers: True if at least one provider is configured.
+        has_company: True if a company name has been set.
+        has_agents: True if at least one agent has been created.
         min_password_length: Backend-configured minimum password length.
     """
 
@@ -71,6 +73,8 @@ class SetupStatusResponse(BaseModel):
     needs_admin: bool
     needs_setup: bool
     has_providers: bool
+    has_company: bool
+    has_agents: bool
     min_password_length: int = Field(ge=8)
 
 
@@ -258,6 +262,9 @@ class SetupController(Controller):
             app_state.has_provider_registry and len(app_state.provider_registry) > 0
         )
 
+        has_company = await _check_has_company(settings_svc)
+        has_agents = await _check_has_agents(settings_svc)
+
         min_password_length = _DEFAULT_MIN_PASSWORD_LENGTH
         raw_pw_value: str | None = None
         try:
@@ -298,6 +305,8 @@ class SetupController(Controller):
                 needs_admin=needs_admin,
                 needs_setup=needs_setup,
                 has_providers=has_providers,
+                has_company=has_company,
+                has_agents=has_agents,
                 min_password_length=min_password_length,
             ),
         )
@@ -521,6 +530,51 @@ class SetupController(Controller):
 
 
 # ── Helpers ──────────────────────────────────────────────────
+
+
+async def _check_has_company(settings_svc: SettingsService) -> bool:
+    """Check whether a company name has been configured.
+
+    Args:
+        settings_svc: Settings service instance.
+
+    Returns:
+        True if a non-empty company name is stored, False otherwise.
+    """
+    try:
+        entry = await settings_svc.get_entry("company", "company_name")
+        return bool(entry.value and entry.value.strip())
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.debug(
+            SETUP_STATUS_SETTINGS_DEFAULT_USED,
+            setting="company_name",
+        )
+        return False
+
+
+async def _check_has_agents(settings_svc: SettingsService) -> bool:
+    """Check whether any agents have been created.
+
+    Args:
+        settings_svc: Settings service instance.
+
+    Returns:
+        True if a non-empty agents list is stored, False otherwise.
+    """
+    try:
+        entry = await settings_svc.get_entry("company", "agents")
+        parsed = json.loads(entry.value)
+        return isinstance(parsed, list) and len(parsed) > 0
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.debug(
+            SETUP_STATUS_SETTINGS_DEFAULT_USED,
+            setting="agents",
+        )
+        return False
 
 
 async def _check_setup_not_complete(settings_svc: SettingsService) -> None:

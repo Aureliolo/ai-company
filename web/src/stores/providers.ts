@@ -5,6 +5,7 @@ import { getErrorMessage } from '@/utils/errors'
 import type {
   CreateFromPresetRequest,
   CreateProviderRequest,
+  DiscoverModelsResponse,
   ProviderConfig,
   ProviderPreset,
   TestConnectionRequest,
@@ -111,6 +112,17 @@ export const useProviderStore = defineStore('providers', () => {
     }
   }
 
+  async function discoverModelsAction(name: string): Promise<DiscoverModelsResponse> {
+    try {
+      const result = await providersApi.discoverModels(name)
+      await fetchProviders()
+      return result
+    } catch (err) {
+      error.value = getErrorMessage(err)
+      throw err
+    }
+  }
+
   return {
     providers,
     presets,
@@ -123,5 +135,6 @@ export const useProviderStore = defineStore('providers', () => {
     deleteProvider,
     testConnection: testConnectionAction,
     createFromPreset,
+    discoverModels: discoverModelsAction,
   }
 })
