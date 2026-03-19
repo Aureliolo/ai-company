@@ -231,4 +231,22 @@ describe('authGuard', () => {
     await authGuard(to, from, next)
     expect(next).toHaveBeenCalledWith('/')
   })
+
+  it('fetches status and redirects when statusLoaded is false', async () => {
+    // When statusLoaded is false, the guard fetches status first.
+    // The mock returns needs_setup: false, so after fetch the guard
+    // proceeds to auth routing (unauthenticated -> /login).
+    const setup = useSetupStore()
+    setup.statusLoaded = false
+    setup.$patch({ status: null })
+
+    const to = createRoute({ path: '/dashboard', fullPath: '/dashboard', meta: {} })
+    const from = createRoute()
+
+    await authGuard(to, from, next)
+    // After fetch, statusLoaded becomes true, needs_setup is false,
+    // so auth routing applies: unauthenticated -> /login.
+    expect(setup.statusLoaded).toBe(true)
+    expect(next).toHaveBeenCalledWith({ path: '/login', query: { redirect: '/dashboard' } })
+  })
 })

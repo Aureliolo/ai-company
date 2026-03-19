@@ -115,6 +115,7 @@ watch(selectedProvider, () => {
 })
 
 async function handleCreate() {
+  if (creating.value) return
   if (!isValid.value || !selectedRole.value || !selectedModel.value || !selectedPersonality.value) {
     return
   }

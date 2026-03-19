@@ -480,8 +480,8 @@ async def _is_setup_complete(settings_svc: SettingsService) -> bool:
         entry = await settings_svc.get_entry("api", "setup_complete")
     except MemoryError, RecursionError:
         raise
-    except Exception:
-        # Settings not available -- allow setup to proceed.
+    except SettingNotFoundError:
+        # Key does not exist yet -- setup has not been completed.
         return False
     else:
         return entry.value == "true"
