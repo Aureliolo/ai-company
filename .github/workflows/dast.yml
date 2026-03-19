@@ -28,9 +28,12 @@ jobs:
         with:
           persist-credentials: false
 
-      # Create env file before any compose commands (compose requires env_file: .env)
+      # Create env file with generated secrets (compose requires env_file: .env)
       - name: Create env file
-        run: cp docker/.env.example docker/.env
+        run: |
+          cp docker/.env.example docker/.env
+          echo "SYNTHORG_JWT_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')" >> docker/.env
+          echo "SYNTHORG_SETTINGS_KEY=$(python3 -c 'import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> docker/.env
 
       # Build backend image locally (no push, no registry credentials)
       - name: Build backend image
