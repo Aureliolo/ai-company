@@ -270,13 +270,14 @@ def _collapse_redundant_union(
     keyword: str,
     items: list[Any],
 ) -> None:
-    """Collapse a redundant ``oneOf``/``anyOf`` with an empty schema.
+    """Collapse a redundant ``oneOf`` with an empty schema.
 
     Litestar emits ``oneOf: [{$ref: ...}, {}]`` for tuple item
-    schemas.  The empty ``{}`` matches anything, making the union
-    redundant -- collapse to just the concrete branch.
+    schemas.  Only applies to ``oneOf`` -- collapsing ``anyOf``
+    with ``{}`` would change semantics (``{}`` matches anything,
+    so ``anyOf`` with ``{}`` means "accept anything").
     """
-    if len(items) != _EXPECTED_UNION_BRANCHES:
+    if keyword != "oneOf" or len(items) != _EXPECTED_UNION_BRANCHES:
         return
     empty_entries = [i for i in items if isinstance(i, dict) and not i]
     if len(empty_entries) != 1:
