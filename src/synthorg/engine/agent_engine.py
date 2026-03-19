@@ -1010,8 +1010,21 @@ class AgentEngine:
         if self._auto_loop_config is None:
             return self._loop
 
+        cfg = self._auto_loop_config
+        # Dry-run without budget and without hybrid fallback to see the
+        # raw rule result.  Only query budget when "hybrid" is the raw
+        # match (budget downgrade applies before hybrid fallback).
+        preliminary = select_loop_type(
+            complexity=task.estimated_complexity,
+            rules=cfg.rules,
+            budget_utilization_pct=None,
+            budget_tight_threshold=cfg.budget_tight_threshold,
+            hybrid_fallback=None,
+            default_loop_type=cfg.default_loop_type,
+        )
+
         budget_utilization_pct: float | None = None
-        if self._budget_enforcer is not None:
+        if preliminary == "hybrid" and self._budget_enforcer is not None:
             budget_utilization_pct = (
                 await self._budget_enforcer.get_budget_utilization_pct()
             )
@@ -1023,11 +1036,11 @@ class AgentEngine:
 
         loop_type = select_loop_type(
             complexity=task.estimated_complexity,
-            rules=self._auto_loop_config.rules,
+            rules=cfg.rules,
             budget_utilization_pct=budget_utilization_pct,
-            budget_tight_threshold=self._auto_loop_config.budget_tight_threshold,
-            hybrid_fallback=self._auto_loop_config.hybrid_fallback,
-            default_loop_type=self._auto_loop_config.default_loop_type,
+            budget_tight_threshold=cfg.budget_tight_threshold,
+            hybrid_fallback=cfg.hybrid_fallback,
+            default_loop_type=cfg.default_loop_type,
         )
 
         logger.info(

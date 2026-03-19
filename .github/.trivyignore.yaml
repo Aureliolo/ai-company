@@ -13,7 +13,7 @@ vulnerabilities:
   - id: CVE-2026-32767
     purls:
       - "pkg:apk/alpine/libexpat"
-    expired_at: "2026-06-17T00:00:00Z"
+    expired_at: "2026-06-17"
     statement: >-
       False positive: CVE-2026-32767 is a SiYuan Note authorization bypass
       (CWE-863, arbitrary SQL execution in /api/search/fullTextSearchBlock),
