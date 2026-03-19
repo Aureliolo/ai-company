@@ -65,7 +65,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Section("Links")
 	out.Link("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
-	out.Link("API docs", fmt.Sprintf("http://localhost:%d/api", state.BackendPort))
+	out.Link("API docs", fmt.Sprintf("http://localhost:%d/docs/api", state.BackendPort))
 
 	_, _ = fmt.Fprintln(out.Writer())
 	out.Hint("Run 'synthorg doctor report' to file a bug report")

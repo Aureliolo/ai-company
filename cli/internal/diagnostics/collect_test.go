@@ -3,6 +3,8 @@ package diagnostics
 import (
 	"context"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -242,6 +244,67 @@ func TestFormatTextNewSections(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("FormatText missing %q", want)
 		}
+	}
+}
+
+func TestParseComposeImageRefs(t *testing.T) {
+	compose := `services:
+  backend:
+    image: ghcr.io/aureliolo/synthorg-backend@sha256:abc123
+    ports:
+      - "8000:8000"
+  web:
+    image: ghcr.io/aureliolo/synthorg-web@sha256:def456
+  sandbox:
+    image: ghcr.io/aureliolo/synthorg-sandbox@sha256:ghi789
+`
+	tmp := filepath.Join(t.TempDir(), "compose.yml")
+	if err := os.WriteFile(tmp, []byte(compose), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	refs := parseComposeImageRefs(tmp)
+	if len(refs) != 3 {
+		t.Fatalf("expected 3 refs, got %d: %v", len(refs), refs)
+	}
+	if refs["backend"] != "ghcr.io/aureliolo/synthorg-backend@sha256:abc123" {
+		t.Errorf("backend = %q", refs["backend"])
+	}
+	if refs["web"] != "ghcr.io/aureliolo/synthorg-web@sha256:def456" {
+		t.Errorf("web = %q", refs["web"])
+	}
+	if refs["sandbox"] != "ghcr.io/aureliolo/synthorg-sandbox@sha256:ghi789" {
+		t.Errorf("sandbox = %q", refs["sandbox"])
+	}
+}
+
+func TestParseComposeImageRefs_TagFormat(t *testing.T) {
+	compose := `services:
+  backend:
+    image: ghcr.io/aureliolo/synthorg-backend:0.3.9
+`
+	tmp := filepath.Join(t.TempDir(), "compose.yml")
+	if err := os.WriteFile(tmp, []byte(compose), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	refs := parseComposeImageRefs(tmp)
+	if refs["backend"] != "ghcr.io/aureliolo/synthorg-backend:0.3.9" {
+		t.Errorf("backend = %q", refs["backend"])
+	}
+}
+
+func TestParseComposeImageRefs_EmptyPath(t *testing.T) {
+	refs := parseComposeImageRefs("")
+	if len(refs) != 0 {
+		t.Errorf("expected empty map, got %v", refs)
+	}
+}
+
+func TestParseComposeImageRefs_MissingFile(t *testing.T) {
+	refs := parseComposeImageRefs("/nonexistent/compose.yml")
+	if len(refs) != 0 {
+		t.Errorf("expected empty map, got %v", refs)
 	}
 }
 
