@@ -15,7 +15,6 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/health"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/verify"
-	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -121,7 +120,7 @@ func verifyAndPinImages(ctx context.Context, cmd *cobra.Command, state config.St
 		return fmt.Errorf("digest pin map: %w", err)
 	}
 
-	if err := writeDigestPinnedCompose(state, pins, safeDir, version.Version); err != nil {
+	if err := writeDigestPinnedCompose(state, pins, safeDir); err != nil {
 		return fmt.Errorf("pinning verified digests: %w", err)
 	}
 
@@ -137,9 +136,8 @@ func verifyAndPinImages(ctx context.Context, cmd *cobra.Command, state config.St
 //
 // Uses atomic write (temp file + rename) to prevent a partial write from
 // corrupting the compose file if the process is interrupted.
-func writeDigestPinnedCompose(state config.State, digestPins map[string]string, safeDir, cliVersion string) error {
+func writeDigestPinnedCompose(state config.State, digestPins map[string]string, safeDir string) error {
 	params := compose.ParamsFromState(state)
-	params.CLIVersion = cliVersion
 	params.DigestPins = digestPins
 
 	composeYAML, err := compose.Generate(params)
