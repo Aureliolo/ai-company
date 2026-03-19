@@ -160,6 +160,9 @@ class AgentEngine:
             Selects the execution loop per-task based on complexity
             and budget state.  Mutually exclusive with
             ``execution_loop``.
+        hybrid_loop_config: Optional configuration for the hybrid
+            plan+ReAct loop.  Passed to ``build_execution_loop``
+            when auto-selection picks ``"hybrid"``.
     """
 
     def __init__(  # noqa: PLR0913

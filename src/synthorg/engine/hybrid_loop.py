@@ -1,10 +1,8 @@
 """Hybrid Plan + ReAct execution loop.
 
-Three-phase approach: plan, execute (mini-ReAct per step with per-step
-turn limits), and checkpoint (progress summary + optional replanning).
-
-See ``hybrid_helpers`` for extracted free-function helpers (plan
-truncation, budget warnings, progress summaries, replanning).
+Three-phase approach: plan, execute (mini-ReAct per step with
+per-step turn limits), and checkpoint (progress summary + optional
+replanning).  See ``hybrid_helpers`` for extracted helpers.
 """
 
 import copy
@@ -86,18 +84,17 @@ logger = get_logger(__name__)
 class HybridLoop:
     """Hybrid Plan + ReAct execution loop.
 
-    Creates a high-level plan and executes each step as a mini-ReAct
-    loop with its own turn limit.  After each step, the agent
-    checkpoints -- summarizing progress and optionally replanning.
+    Plans, then executes each step as a mini-ReAct loop with a
+    per-step turn limit.  Checkpoints after each step with optional
+    replanning.
 
     Args:
         config: Loop configuration (defaults to ``HybridLoopConfig()``).
         checkpoint_callback: Optional per-turn checkpoint callback.
         approval_gate: Optional escalation gate (``None`` disables).
-        stagnation_detector: Optional repetition detector
-            (``None`` disables).
-        compaction_callback: Optional context compaction callback
-            (``None`` disables).
+        stagnation_detector: Repetition detector (``None`` disables).
+        compaction_callback: Context compaction callback (``None``
+            disables).
     """
 
     def __init__(
@@ -340,6 +337,7 @@ class HybridLoop:
                 budget_checker,
                 shutdown_checker,
                 finalize=self._finalize,
+                checkpoint_callback=self._checkpoint_callback,
             )
             if isinstance(replan_out, ExecutionResult):
                 return replan_out
@@ -370,19 +368,14 @@ class HybridLoop:
         budget_checker: BudgetChecker | None,
         shutdown_checker: ShutdownChecker | None,
     ) -> tuple[AgentContext, ExecutionPlan, int, bool] | ExecutionResult:
-        """Handle a successfully completed step with checkpoint.
-
-        Returns:
-            ``(ctx, plan, replans_used, should_restart)`` where
-            *should_restart* is ``True`` when replanning occurred
-            and the step loop should restart from index 0, or
-            ``ExecutionResult`` for termination conditions.
-        """
+        """Handle a completed step: update status, checkpoint, replan."""
         plan = update_step_status(
             plan,
             step_idx,
             StepStatus.COMPLETED,
         )
+        if all_plans:
+            all_plans[-1] = plan
         logger.info(
             EXECUTION_PLAN_STEP_COMPLETE,
             execution_id=ctx.execution_id,
@@ -424,6 +417,8 @@ class HybridLoop:
             turns,
             all_plans,
             replans_used,
+            budget_checker,
+            shutdown_checker,
             should_replan=should_replan,
         )
 
@@ -439,6 +434,8 @@ class HybridLoop:
         turns: list[TurnRecord],
         all_plans: list[ExecutionPlan],
         replans_used: int,
+        budget_checker: BudgetChecker | None,
+        shutdown_checker: ShutdownChecker | None,
         *,
         should_replan: bool,
     ) -> tuple[AgentContext, ExecutionPlan, int, bool] | ExecutionResult:
@@ -457,6 +454,13 @@ class HybridLoop:
         ):
             return ctx, plan, replans_used, False
 
+        shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
+        if shutdown_result is not None:
+            return self._finalize(shutdown_result, all_plans, replans_used)
+        budget_result = check_budget(ctx, budget_checker, turns)
+        if budget_result is not None:
+            return self._finalize(budget_result, all_plans, replans_used)
+
         replan_result = await do_replan(
             self._config,
             ctx,
@@ -467,6 +471,7 @@ class HybridLoop:
             step,
             turns,
             step_failed=False,
+            checkpoint_callback=self._checkpoint_callback,
         )
         if isinstance(replan_result, ExecutionResult):
             return self._finalize(
@@ -495,6 +500,11 @@ class HybridLoop:
         replans_used: int,
     ) -> ExecutionResult:
         """Build the final result after step iteration completes."""
+        # Sync live plan into all_plans so final_plan reflects
+        # step status changes (COMPLETED, IN_PROGRESS, etc.).
+        if all_plans:
+            all_plans[-1] = plan
+
         if not ctx.has_turns_remaining and step_idx < len(plan.steps):
             logger.info(
                 EXECUTION_LOOP_TERMINATED,

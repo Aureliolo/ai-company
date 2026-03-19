@@ -93,3 +93,4 @@ EXECUTION_HYBRID_REPLAN_PARSE_TRACE: Final[str] = "execution.hybrid.replan_parse
 EXECUTION_HYBRID_PROGRESS_SUMMARY_EMPTY: Final[str] = (
     "execution.hybrid.progress_summary_empty"
 )
+EXECUTION_PLAN_SUMMARY_FALLBACK: Final[str] = "execution.plan.summary_fallback"

@@ -7,6 +7,7 @@ for common plan-step operations.
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
+from synthorg.observability.events.execution import EXECUTION_PLAN_SUMMARY_FALLBACK
 from synthorg.providers.enums import FinishReason, MessageRole
 
 logger = get_logger(__name__)
@@ -70,7 +71,7 @@ def extract_task_summary(ctx: AgentContext) -> str:
         if msg.role == MessageRole.USER and msg.content:
             return msg.content[:_MAX_TASK_SUMMARY_LENGTH]
     logger.warning(
-        "plan_helpers.extract_task_summary_fallback",
+        EXECUTION_PLAN_SUMMARY_FALLBACK,
         execution_id=ctx.execution_id,
         note="No task_execution or user messages; using default summary",
     )

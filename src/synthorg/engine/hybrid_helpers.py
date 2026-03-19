@@ -251,6 +251,10 @@ async def call_planner(  # noqa: PLR0913
     Returns:
         ``(ctx, plan)`` on success, or ``ExecutionResult`` on error.
     """
+    if not ctx.has_turns_remaining:
+        return build_result(ctx, TerminationReason.MAX_TURNS, turns)
+
+    task_summary = extract_task_summary(ctx)
     ctx = ctx.with_message(message)
     turn_number = ctx.turn_count + 1
 
@@ -289,7 +293,7 @@ async def call_planner(  # noqa: PLR0913
     plan = parse_plan(
         response,
         ctx.execution_id,
-        extract_task_summary(ctx),
+        task_summary,
         revision_number=revision_number,
     )
     if plan is None:
@@ -373,7 +377,13 @@ def _parse_replan_decision(content: str) -> bool:
     try:
         data = json.loads(json_str)
         if isinstance(data, dict):
-            return bool(data.get("replan", False))
+            raw = data.get("replan")
+            if isinstance(raw, bool):
+                return raw
+            if isinstance(raw, str):
+                return raw.lower() == "true"
+            # Non-bool, non-str, or missing -- treat as no-replan
+            return False
         logger.debug(
             EXECUTION_HYBRID_REPLAN_PARSE_TRACE,
             parser="json",
@@ -435,6 +445,9 @@ async def run_progress_summary(  # noqa: PLR0913
         ``(ctx, should_replan)`` on success, or ``ExecutionResult``
         for termination conditions.
     """
+    if not ctx.has_turns_remaining:
+        return build_result(ctx, TerminationReason.MAX_TURNS, turns)
+
     shutdown_result = check_shutdown(ctx, shutdown_checker, turns)
     if shutdown_result is not None:
         return shutdown_result
@@ -522,6 +535,7 @@ async def attempt_replan(  # noqa: PLR0913
     shutdown_checker: ShutdownChecker | None,
     *,
     finalize: _Finalize,
+    checkpoint_callback: CheckpointCallback | None = None,
 ) -> tuple[AgentContext, ExecutionPlan, int] | ExecutionResult:
     """Handle a failed step: mark it, check replan budget, replan.
 
@@ -540,6 +554,8 @@ async def attempt_replan(  # noqa: PLR0913
         budget_checker: Optional budget exhaustion callback.
         shutdown_checker: Optional shutdown callback.
         finalize: Callable that attaches hybrid metadata to a result.
+        checkpoint_callback: Optional checkpoint callback to thread
+            to the replanning call.
 
     Returns:
         ``(ctx, new_plan, replans_used)`` on success, or
@@ -597,6 +613,7 @@ async def attempt_replan(  # noqa: PLR0913
         plan,
         step,
         turns,
+        checkpoint_callback=checkpoint_callback,
     )
     if isinstance(replan_result, ExecutionResult):
         return finalize(replan_result, all_plans, replans_used)
@@ -618,6 +635,7 @@ async def do_replan(  # noqa: PLR0913
     turns: list[TurnRecord],
     *,
     step_failed: bool = True,
+    checkpoint_callback: CheckpointCallback | None = None,
 ) -> tuple[AgentContext, ExecutionPlan] | ExecutionResult:
     """Generate a revised plan after a step failure or replan trigger.
 
@@ -631,6 +649,8 @@ async def do_replan(  # noqa: PLR0913
         trigger_step: The step that triggered replanning.
         turns: Mutable list of turn records.
         step_failed: Whether the trigger step failed.
+        checkpoint_callback: Optional checkpoint callback to thread
+            to the planner call.
 
     Returns:
         ``(ctx, new_plan)`` on success, or ``ExecutionResult``
@@ -684,6 +704,7 @@ async def do_replan(  # noqa: PLR0913
         turns,
         replan_msg,
         revision_number=current_plan.revision_number + 1,
+        checkpoint_callback=checkpoint_callback,
     )
     if isinstance(result, ExecutionResult):
         return result

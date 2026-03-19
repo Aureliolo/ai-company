@@ -425,14 +425,20 @@ class TestBuildExecutionLoop:
 
         gate = MagicMock()
         detector = MagicMock()
+        ckpt_cb = MagicMock()
+        compact_cb = MagicMock()
         loop = build_execution_loop(
             "hybrid",
+            checkpoint_callback=ckpt_cb,
             approval_gate=gate,
             stagnation_detector=detector,
+            compaction_callback=compact_cb,
         )
         assert isinstance(loop, HybridLoop)
         assert loop.approval_gate is gate
         assert loop.stagnation_detector is detector
+        assert loop._checkpoint_callback is ckpt_cb
+        assert loop.compaction_callback is compact_cb
 
     def test_unknown_type_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown loop type"):

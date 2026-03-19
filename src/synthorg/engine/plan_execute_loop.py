@@ -577,6 +577,7 @@ class PlanExecuteLoop:
         response errors, parses the plan, and returns either
         ``(ctx, plan)`` or an error result.
         """
+        task_summary = extract_task_summary(ctx)
         ctx = ctx.with_message(message)
         turn_number = ctx.turn_count + 1
 
@@ -621,7 +622,7 @@ class PlanExecuteLoop:
         plan = parse_plan(
             response,
             ctx.execution_id,
-            extract_task_summary(ctx),
+            task_summary,
             revision_number=revision_number,
         )
         if plan is None:
