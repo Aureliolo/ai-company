@@ -30,7 +30,6 @@ from synthorg.providers.models import (
 )
 
 from .hybrid_helpers import (
-    _parse_replan_decision,  # noqa: F401 (re-export for tests)
     attempt_replan,
     build_step_message,
     call_planner,

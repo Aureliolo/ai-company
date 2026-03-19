@@ -8,7 +8,8 @@ import pytest
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.context import AgentContext
-from synthorg.engine.hybrid_loop import HybridLoop, _parse_replan_decision
+from synthorg.engine.hybrid_helpers import _parse_replan_decision
+from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
 from synthorg.engine.plan_models import ExecutionPlan
@@ -19,6 +20,7 @@ from synthorg.engine.stagnation.models import (
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import (
     ChatMessage,
+    CompletionConfig,
     CompletionResponse,
     TokenUsage,
     ToolCall,
@@ -1065,6 +1067,8 @@ class TestHybridLoopReplanPromptContent:
         step = plan.steps[0]
         cfg = HybridLoopConfig(max_replans=2)
 
+        default_config = CompletionConfig()
+
         # Capture messages for step_failed=True
         failure_provider = mock_provider_factory([_single_step_plan()])
         ctx_fail = _ctx_with_user_msg(sample_agent_context)
@@ -1073,7 +1077,7 @@ class TestHybridLoopReplanPromptContent:
             ctx_fail,
             failure_provider,
             "test-model-001",
-            None,
+            default_config,
             plan,
             step,
             [],
@@ -1089,7 +1093,7 @@ class TestHybridLoopReplanPromptContent:
             ctx_ok,
             success_provider,
             "test-model-001",
-            None,
+            default_config,
             plan,
             step,
             [],
