@@ -5,11 +5,21 @@ import { getErrorMessage } from '@/utils/errors'
 import { NAMESPACE_ORDER, SETTINGS_ADVANCED_KEY } from '@/utils/constants'
 import type { SettingDefinition, SettingEntry, SettingNamespace } from '@/api/types'
 
+/** Skip regex validation for inputs longer than this to mitigate ReDoS risk. */
+const MAX_VALIDATION_INPUT_LENGTH = 10_000
+
+/** Backend max_length on UpdateSettingRequest.value. */
+const MAX_SETTING_VALUE_LENGTH = 8192
+
 /**
  * Validate a value against a setting definition's constraints.
  * Returns null if valid, or an error message string if invalid.
  */
 export function validateSettingValue(value: string, definition: SettingDefinition): string | null {
+  if (value.length > MAX_SETTING_VALUE_LENGTH) {
+    return `Value must be at most ${MAX_SETTING_VALUE_LENGTH} characters`
+  }
+
   const { type, min_value, max_value, enum_values, validator_pattern } = definition
 
   if (type === 'int') {
@@ -48,12 +58,16 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
   }
 
   if (validator_pattern !== null) {
+    if (value.length > MAX_VALIDATION_INPUT_LENGTH) return null
     try {
       if (!new RegExp(`^(?:${validator_pattern})$`).test(value)) {
         return `Must match pattern: ${validator_pattern}`
       }
-    } catch {
-      // Invalid regex in definition -- skip client-side validation
+    } catch (err) {
+      console.warn(
+        `Invalid validator_pattern for ${definition.namespace}/${definition.key}:`,
+        validator_pattern, err,
+      )
     }
   }
 
@@ -66,7 +80,13 @@ export const useSettingsStore = defineStore('settings', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const savingKey = ref<string | null>(null)
-  const showAdvanced = ref(localStorage.getItem(SETTINGS_ADVANCED_KEY) === 'true')
+  let initialAdvanced = false
+  try {
+    initialAdvanced = localStorage.getItem(SETTINGS_ADVANCED_KEY) === 'true'
+  } catch {
+    // localStorage not available (restricted context) -- use default
+  }
+  const showAdvanced = ref(initialAdvanced)
   let generation = 0
 
   const namespaces = computed<SettingNamespace[]>(() => {
@@ -102,7 +122,7 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function updateSetting(namespace: string, key: string, value: string): Promise<void> {
+  async function updateSetting(namespace: SettingNamespace, key: string, value: string): Promise<void> {
     savingKey.value = `${namespace}/${key}`
     try {
       await settingsApi.updateSetting(namespace, key, { value })
@@ -113,15 +133,15 @@ export const useSettingsStore = defineStore('settings', () => {
         if (gen === generation) {
           entries.value = entriesData
         }
-      } catch {
-        // Refresh failed but the update itself succeeded -- non-fatal
+      } catch (refreshErr) {
+        console.warn('Settings refresh failed after update:', refreshErr)
       }
     } finally {
       savingKey.value = null
     }
   }
 
-  async function resetSetting(namespace: string, key: string): Promise<void> {
+  async function resetSetting(namespace: SettingNamespace, key: string): Promise<void> {
     savingKey.value = `${namespace}/${key}`
     try {
       await settingsApi.resetSetting(namespace, key)
@@ -132,8 +152,8 @@ export const useSettingsStore = defineStore('settings', () => {
         if (gen === generation) {
           entries.value = entriesData
         }
-      } catch {
-        // Refresh failed but the reset itself succeeded -- non-fatal
+      } catch (refreshErr) {
+        console.warn('Settings refresh failed after reset:', refreshErr)
       }
     } finally {
       savingKey.value = null
@@ -142,7 +162,11 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function toggleAdvanced(): void {
     showAdvanced.value = !showAdvanced.value
-    localStorage.setItem(SETTINGS_ADVANCED_KEY, String(showAdvanced.value))
+    try {
+      localStorage.setItem(SETTINGS_ADVANCED_KEY, String(showAdvanced.value))
+    } catch {
+      // localStorage not available -- preference won't persist
+    }
   }
 
   return {

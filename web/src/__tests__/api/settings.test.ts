@@ -120,7 +120,7 @@ describe('settings API endpoints', () => {
     unwrap.mockReturnValue(data)
 
     const { getNamespaceSchema } = await import('@/api/endpoints/settings')
-    await getNamespaceSchema('a/b')
+    await getNamespaceSchema('a/b' as never)
 
     expect(apiClient.get).toHaveBeenCalledWith('/settings/_schema/a%2Fb')
   })

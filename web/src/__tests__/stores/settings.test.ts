@@ -282,6 +282,46 @@ describe('useSettingsStore', () => {
     expect(store.showAdvanced).toBe(false)
   })
 
+  it('updateSetting succeeds even when post-update refresh fails', async () => {
+    const settingsApi = await import('@/api/endpoints/settings')
+    vi.mocked(settingsApi.getSchema).mockResolvedValue([mockDefinition])
+    vi.mocked(settingsApi.getAllSettings)
+      .mockResolvedValueOnce([mockEntry]) // initial fetch
+      .mockRejectedValueOnce(new Error('Network error')) // refresh after update
+    vi.mocked(settingsApi.updateSetting).mockResolvedValue(mockEntry)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const store = useSettingsStore()
+    await store.fetchAll()
+
+    // Should NOT throw -- the update itself succeeded
+    await store.updateSetting('budget', 'total_monthly', '200.0')
+    expect(store.savingKey).toBeNull()
+    // Entries remain at old value since refresh failed
+    expect(store.entries[0].value).toBe('100.0')
+    expect(warnSpy).toHaveBeenCalledWith('Settings refresh failed after update:', expect.any(Error))
+    warnSpy.mockRestore()
+  })
+
+  it('resetSetting succeeds even when post-reset refresh fails', async () => {
+    const settingsApi = await import('@/api/endpoints/settings')
+    vi.mocked(settingsApi.getSchema).mockResolvedValue([mockDefinition])
+    vi.mocked(settingsApi.getAllSettings)
+      .mockResolvedValueOnce([mockEntry]) // initial fetch
+      .mockRejectedValueOnce(new Error('Network error')) // refresh after reset
+    vi.mocked(settingsApi.resetSetting).mockResolvedValue(undefined)
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const store = useSettingsStore()
+    await store.fetchAll()
+
+    // Should NOT throw -- the reset itself succeeded
+    await store.resetSetting('budget', 'total_monthly')
+    expect(store.savingKey).toBeNull()
+    expect(warnSpy).toHaveBeenCalledWith('Settings refresh failed after reset:', expect.any(Error))
+    warnSpy.mockRestore()
+  })
+
   it('resetSetting propagates errors and clears savingKey', async () => {
     const settingsApi = await import('@/api/endpoints/settings')
     vi.mocked(settingsApi.getSchema).mockResolvedValue([mockDefinition])
@@ -401,7 +441,20 @@ describe('validateSettingValue', () => {
   })
 
   it('handles invalid regex in definition gracefully', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     // Invalid regex should not throw -- just skip validation
     expect(validateSettingValue('anything', makeDef({ type: 'str', validator_pattern: '[invalid' }))).toBeNull()
+    expect(warnSpy).toHaveBeenCalled()
+    warnSpy.mockRestore()
+  })
+
+  it('rejects values exceeding max length', () => {
+    const longValue = 'a'.repeat(8193)
+    expect(validateSettingValue(longValue, makeDef({ type: 'str' }))).not.toBeNull()
+  })
+
+  it('accepts values within max length', () => {
+    const okValue = 'a'.repeat(8192)
+    expect(validateSettingValue(okValue, makeDef({ type: 'str' }))).toBeNull()
   })
 })

@@ -88,28 +88,39 @@ function makeEntry(defOverrides: Partial<SettingDefinition> = {}, entryOverrides
   }
 }
 
-const basicLimits = makeEntry({ key: 'total_monthly', group: 'Limits' })
-const basicLimits2 = makeEntry({ key: 'per_task_limit', group: 'Limits', default: '5.0' }, { value: '5.0' })
-const advancedAlerts = makeEntry({
-  key: 'alert_warn_at',
-  group: 'Alerts',
-  level: 'advanced',
-  type: 'int',
-  default: '75',
-}, { value: '75' })
-const advancedDowngrade = makeEntry({
-  key: 'auto_downgrade_enabled',
-  group: 'Auto-Downgrade',
-  level: 'advanced',
-  type: 'bool',
-  default: 'false',
-}, { value: 'false' })
+function basicLimits() {
+  return makeEntry({ key: 'total_monthly', group: 'Limits' })
+}
+
+function basicLimits2() {
+  return makeEntry({ key: 'per_task_limit', group: 'Limits', default: '5.0' }, { value: '5.0' })
+}
+
+function advancedAlerts() {
+  return makeEntry({
+    key: 'alert_warn_at',
+    group: 'Alerts',
+    level: 'advanced',
+    type: 'int',
+    default: '75',
+  }, { value: '75' })
+}
+
+function advancedDowngrade() {
+  return makeEntry({
+    key: 'auto_downgrade_enabled',
+    group: 'Auto-Downgrade',
+    level: 'advanced',
+    type: 'bool',
+    default: 'false',
+  }, { value: 'false' })
+}
 
 describe('SettingGroupRenderer', () => {
   it('renders group headings', () => {
     const wrapper = mount(SettingGroupRenderer, {
       props: {
-        entries: [basicLimits, basicLimits2],
+        entries: [basicLimits(), basicLimits2()],
         showAdvanced: false,
       },
     })
@@ -119,7 +130,7 @@ describe('SettingGroupRenderer', () => {
   it('renders multiple groups when entries span groups', () => {
     const wrapper = mount(SettingGroupRenderer, {
       props: {
-        entries: [basicLimits, advancedAlerts],
+        entries: [basicLimits(), advancedAlerts()],
         showAdvanced: true,
       },
     })
@@ -130,7 +141,7 @@ describe('SettingGroupRenderer', () => {
   it('filters out advanced settings when showAdvanced is false', () => {
     const wrapper = mount(SettingGroupRenderer, {
       props: {
-        entries: [basicLimits, advancedAlerts],
+        entries: [basicLimits(), advancedAlerts()],
         showAdvanced: false,
       },
     })
@@ -141,7 +152,7 @@ describe('SettingGroupRenderer', () => {
   it('shows advanced settings when showAdvanced is true', () => {
     const wrapper = mount(SettingGroupRenderer, {
       props: {
-        entries: [basicLimits, advancedAlerts],
+        entries: [basicLimits(), advancedAlerts()],
         showAdvanced: true,
       },
     })
@@ -152,7 +163,7 @@ describe('SettingGroupRenderer', () => {
   it('hides group headings that have no visible settings in basic mode', () => {
     const wrapper = mount(SettingGroupRenderer, {
       props: {
-        entries: [advancedAlerts, advancedDowngrade],
+        entries: [advancedAlerts(), advancedDowngrade()],
         showAdvanced: false,
       },
     })
@@ -172,9 +183,10 @@ describe('SettingGroupRenderer', () => {
   })
 
   it('emits save event from child SettingField', async () => {
+    const entry = basicLimits()
     const wrapper = mount(SettingGroupRenderer, {
       props: {
-        entries: [basicLimits],
+        entries: [entry],
         showAdvanced: false,
       },
     })
@@ -183,13 +195,14 @@ describe('SettingGroupRenderer', () => {
     settingField.vm.$emit('save', '200.0')
 
     expect(wrapper.emitted('save')).toBeTruthy()
-    expect(wrapper.emitted('save')![0]).toEqual([basicLimits, '200.0'])
+    expect(wrapper.emitted('save')![0]).toEqual([entry, '200.0'])
   })
 
   it('emits reset event from child SettingField', async () => {
+    const entry = basicLimits()
     const wrapper = mount(SettingGroupRenderer, {
       props: {
-        entries: [basicLimits],
+        entries: [entry],
         showAdvanced: false,
       },
     })
@@ -197,6 +210,6 @@ describe('SettingGroupRenderer', () => {
     settingField.vm.$emit('reset')
 
     expect(wrapper.emitted('reset')).toBeTruthy()
-    expect(wrapper.emitted('reset')![0]).toEqual([basicLimits])
+    expect(wrapper.emitted('reset')![0]).toEqual([entry])
   })
 })

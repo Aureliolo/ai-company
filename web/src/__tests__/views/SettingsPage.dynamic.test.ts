@@ -21,17 +21,32 @@ vi.mock('primevue/usetoast', () => ({
   useToast: () => ({ add: vi.fn() }),
 }))
 
-vi.mock('primevue/tabview', () => ({
+vi.mock('primevue/tabs', () => ({
   default: {
     props: ['value'],
     emits: ['update:value'],
-    template: '<div data-testid="tabview"><slot /></div>',
+    template: '<div data-testid="tabs"><slot /></div>',
   },
+}))
+
+vi.mock('primevue/tablist', () => ({
+  default: { template: '<div><slot /></div>' },
+}))
+
+vi.mock('primevue/tab', () => ({
+  default: {
+    props: ['value', 'disabled'],
+    template: '<div :data-tab-header="value"><slot /></div>',
+  },
+}))
+
+vi.mock('primevue/tabpanels', () => ({
+  default: { template: '<div><slot /></div>' },
 }))
 
 vi.mock('primevue/tabpanel', () => ({
   default: {
-    props: ['header', 'value', 'disabled'],
+    props: ['value'],
     template: '<div :data-tab="value"><slot /></div>',
   },
 }))

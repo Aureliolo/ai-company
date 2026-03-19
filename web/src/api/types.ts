@@ -893,7 +893,7 @@ export interface SettingDefinition {
   level: SettingLevel
   sensitive: boolean
   restart_required: boolean
-  enum_values: string[]
+  enum_values: readonly string[]
   validator_pattern: string | null
   min_value: number | null
   max_value: number | null
@@ -907,6 +907,7 @@ export interface SettingEntry {
   updated_at: string | null
 }
 
+/** Backend enforces max_length=8192 on value. */
 export interface UpdateSettingRequest {
   value: string
 }

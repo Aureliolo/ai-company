@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import TabView from 'primevue/tabview'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
@@ -86,6 +89,8 @@ async function retryFetch() {
     ])
     activeTab.value = resolveTab(route.query.tab)
   } catch (err) {
+    // Surface fetch failure in the error boundary so the user sees it
+    settingsStore.error = getErrorMessage(err)
     console.error('Settings data fetch failed:', sanitizeForLog(err))
   } finally {
     loading.value = false
@@ -195,6 +200,7 @@ function namespaceLabel(ns: SettingNamespace): string {
           <span>Basic</span>
           <ToggleSwitch
             :model-value="settingsStore.showAdvanced"
+            aria-label="Toggle advanced settings"
             @update:model-value="settingsStore.toggleAdvanced()"
           />
           <span>Advanced</span>
@@ -204,115 +210,128 @@ function namespaceLabel(ns: SettingNamespace): string {
 
     <ErrorBoundary :error="companyStore.configError ?? providerStore.error ?? settingsStore.error" @retry="retryFetch">
     <LoadingSkeleton v-if="loading" :lines="6" />
-    <TabView v-else :value="activeTab" @update:value="auth.mustChangePassword ? undefined : (activeTab = $event)">
-      <!-- Dynamic namespace tabs (except providers) -->
-      <TabPanel
-        v-for="ns in settingsStore.namespaces.filter((n) => n !== 'providers')"
-        :key="ns"
-        :header="namespaceLabel(ns as SettingNamespace)"
-        :value="ns"
-        :disabled="auth.mustChangePassword"
-      >
-        <SettingGroupRenderer
-          :entries="settingsStore.entriesByNamespace(ns as SettingNamespace)"
-          :show-advanced="settingsStore.showAdvanced"
-          :saving-key="settingsStore.savingKey"
-          @save="handleSettingSave"
-          @reset="handleSettingReset"
-        />
-      </TabPanel>
+    <Tabs v-else :value="activeTab" @update:value="activeTab = String($event)">
+      <TabList>
+        <Tab
+          v-for="ns in settingsStore.namespaces.filter((n) => n !== 'providers')"
+          :key="ns"
+          :value="ns"
+          :disabled="auth.mustChangePassword"
+        >
+          {{ namespaceLabel(ns as SettingNamespace) }}
+        </Tab>
+        <Tab value="providers" :disabled="auth.mustChangePassword">Providers</Tab>
+        <Tab value="user">User</Tab>
+      </TabList>
 
-      <!-- Providers tab (custom UI + dynamic settings) -->
-      <TabPanel header="Providers" value="providers" :disabled="auth.mustChangePassword">
-        <div class="space-y-6">
-          <!-- Provider cards (custom CRUD UI) -->
-          <div class="space-y-4">
-            <div class="flex items-center gap-2">
-              <Button label="Add Provider" size="small" @click="openCreateDialog" />
-            </div>
-
-            <div v-if="providerEntries.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
-              <p class="text-sm text-slate-400">No providers configured. Add one to get started.</p>
-            </div>
-
-            <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <ProviderCard
-                v-for="entry in providerEntries"
-                :key="entry.name"
-                :name="entry.name"
-                :config="entry.config"
-                @edit="openEditDialog"
-                @delete="handleDelete"
-              />
-            </div>
-          </div>
-
-          <!-- Dynamic provider settings (routing strategy, retry, etc.) -->
+      <TabPanels>
+        <!-- Dynamic namespace tabs (except providers) -->
+        <TabPanel
+          v-for="ns in settingsStore.namespaces.filter((n) => n !== 'providers')"
+          :key="ns"
+          :value="ns"
+        >
           <SettingGroupRenderer
-            v-if="providerSettings.length > 0"
-            :entries="providerSettings"
+            :entries="settingsStore.entriesByNamespace(ns as SettingNamespace)"
             :show-advanced="settingsStore.showAdvanced"
             :saving-key="settingsStore.savingKey"
             @save="handleSettingSave"
             @reset="handleSettingReset"
           />
-        </div>
+        </TabPanel>
 
-        <ProviderFormDialog
-          v-model:visible="formDialogVisible"
-          :mode="formDialogMode"
-          :provider-name="editingProviderName"
-          :provider-config="editingProviderConfig"
-          @save="handleFormSave"
-          @save-preset="handleFormSavePreset"
-        />
-      </TabPanel>
-
-      <!-- User Settings -->
-      <TabPanel header="User" value="user">
-        <div class="max-w-md space-y-4">
-          <div class="rounded-lg border border-slate-800 p-4">
-            <h4 class="mb-3 text-sm font-medium text-slate-300">Account Info</h4>
-            <div class="space-y-2 text-sm">
-              <div class="flex justify-between">
-                <span class="text-slate-400">Username</span>
-                <span class="text-slate-200">{{ auth.user?.username }}</span>
+        <!-- Providers tab (custom UI + dynamic settings) -->
+        <TabPanel value="providers">
+          <div class="space-y-6">
+            <!-- Provider cards (custom CRUD UI) -->
+            <div class="space-y-4">
+              <div class="flex items-center gap-2">
+                <Button label="Add Provider" size="small" @click="openCreateDialog" />
               </div>
-              <div class="flex justify-between">
-                <span class="text-slate-400">Role</span>
-                <span class="text-slate-200">{{ auth.user?.role }}</span>
+
+              <div v-if="providerEntries.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
+                <p class="text-sm text-slate-400">No providers configured. Add one to get started.</p>
+              </div>
+
+              <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <ProviderCard
+                  v-for="entry in providerEntries"
+                  :key="entry.name"
+                  :name="entry.name"
+                  :config="entry.config"
+                  @edit="openEditDialog"
+                  @delete="handleDelete"
+                />
               </div>
             </div>
+
+            <!-- Dynamic provider settings (routing strategy, retry, etc.) -->
+            <SettingGroupRenderer
+              v-if="providerSettings.length > 0"
+              :entries="providerSettings"
+              :show-advanced="settingsStore.showAdvanced"
+              :saving-key="settingsStore.savingKey"
+              @save="handleSettingSave"
+              @reset="handleSettingReset"
+            />
           </div>
 
-          <div class="rounded-lg border border-slate-800 p-4">
-            <h4 class="mb-3 text-sm font-medium text-slate-300">Change Password</h4>
-            <form class="space-y-3" @submit.prevent="handleChangePassword">
-              <div>
-                <label for="current-password" class="mb-1 block text-xs text-slate-400">Current Password</label>
-                <InputText id="current-password" v-model="currentPassword" type="password" class="w-full" placeholder="Current password" aria-required="true" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+          <ProviderFormDialog
+            v-model:visible="formDialogVisible"
+            :mode="formDialogMode"
+            :provider-name="editingProviderName"
+            :provider-config="editingProviderConfig"
+            @save="handleFormSave"
+            @save-preset="handleFormSavePreset"
+          />
+        </TabPanel>
+
+        <!-- User Settings -->
+        <TabPanel value="user">
+          <div class="max-w-md space-y-4">
+            <div class="rounded-lg border border-slate-800 p-4">
+              <h4 class="mb-3 text-sm font-medium text-slate-300">Account Info</h4>
+              <div class="space-y-2 text-sm">
+                <div class="flex justify-between">
+                  <span class="text-slate-400">Username</span>
+                  <span class="text-slate-200">{{ auth.user?.username }}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-slate-400">Role</span>
+                  <span class="text-slate-200">{{ auth.user?.role }}</span>
+                </div>
               </div>
-              <div>
-                <label for="new-password" class="mb-1 block text-xs text-slate-400">New Password</label>
-                <InputText id="new-password" v-model="newPassword" type="password" class="w-full" :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`" aria-required="true" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
-              </div>
-              <div>
-                <label for="confirm-password" class="mb-1 block text-xs text-slate-400">Confirm Password</label>
-                <InputText id="confirm-password" v-model="confirmPassword" type="password" class="w-full" placeholder="Confirm new password" aria-required="true" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
-              </div>
-              <div v-if="pwdError" id="pwd-error" role="alert" class="rounded bg-red-500/10 p-2 text-sm text-red-400">{{ pwdError }}</div>
-              <Button
-                type="submit"
-                label="Change Password"
-                size="small"
-                :loading="auth.loading"
-                :disabled="!currentPassword || !newPassword || !confirmPassword"
-              />
-            </form>
+            </div>
+
+            <div class="rounded-lg border border-slate-800 p-4">
+              <h4 class="mb-3 text-sm font-medium text-slate-300">Change Password</h4>
+              <form class="space-y-3" @submit.prevent="handleChangePassword">
+                <div>
+                  <label for="current-password" class="mb-1 block text-xs text-slate-400">Current Password</label>
+                  <InputText id="current-password" v-model="currentPassword" type="password" class="w-full" placeholder="Current password" aria-required="true" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+                </div>
+                <div>
+                  <label for="new-password" class="mb-1 block text-xs text-slate-400">New Password</label>
+                  <InputText id="new-password" v-model="newPassword" type="password" class="w-full" :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`" aria-required="true" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+                </div>
+                <div>
+                  <label for="confirm-password" class="mb-1 block text-xs text-slate-400">Confirm Password</label>
+                  <InputText id="confirm-password" v-model="confirmPassword" type="password" class="w-full" placeholder="Confirm new password" aria-required="true" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+                </div>
+                <div v-if="pwdError" id="pwd-error" role="alert" class="rounded bg-red-500/10 p-2 text-sm text-red-400">{{ pwdError }}</div>
+                <Button
+                  type="submit"
+                  label="Change Password"
+                  size="small"
+                  :loading="auth.loading"
+                  :disabled="!currentPassword || !newPassword || !confirmPassword"
+                />
+              </form>
+            </div>
           </div>
-        </div>
-      </TabPanel>
-    </TabView>
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
     </ErrorBoundary>
   </AppShell>
 </template>

@@ -153,13 +153,14 @@ function formatJson() {
         v-else-if="def.type === 'bool'"
         v-model="boolValue"
         :disabled="saving"
+        :aria-label="def.key"
       />
 
       <!-- Enum -->
       <Select
         v-else-if="def.type === 'enum'"
         v-model="localValue"
-        :options="def.enum_values"
+        :options="[...def.enum_values]"
         class="w-full"
         :disabled="saving"
       />

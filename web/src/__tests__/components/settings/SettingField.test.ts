@@ -299,4 +299,90 @@ describe('SettingField', () => {
     await flushPromises()
     expect(wrapper.find('input[type="text"]').exists()).toBe(true)
   })
+
+  // ── Format JSON ───────────────────────────────────────────
+
+  it('formats valid JSON on Format JSON button click', async () => {
+    const wrapper = mount(SettingField, {
+      props: {
+        entry: makeEntry({ value: '{"a":1}' }, { type: 'json', default: '{}' }),
+        saving: false,
+      },
+    })
+    const formatBtn = wrapper.findAll('button').find((b) => b.text() === 'Format JSON')
+    expect(formatBtn).toBeDefined()
+    await formatBtn!.trigger('click')
+    await flushPromises()
+
+    const textarea = wrapper.find('textarea')
+    expect(textarea.element.value).toBe('{\n  "a": 1\n}')
+  })
+
+  it('does nothing when formatting invalid JSON', async () => {
+    const wrapper = mount(SettingField, {
+      props: {
+        entry: makeEntry({ value: '{bad json' }, { type: 'json', default: '{}' }),
+        saving: false,
+      },
+    })
+    const formatBtn = wrapper.findAll('button').find((b) => b.text() === 'Format JSON')
+    await formatBtn!.trigger('click')
+    await flushPromises()
+
+    const textarea = wrapper.find('textarea')
+    expect(textarea.element.value).toBe('{bad json')
+  })
+
+  // ── Reset disabled state ──────────────────────────────────
+
+  it.each(['default', 'yaml', 'env'] as const)(
+    'disables reset button when source is %s',
+    (source) => {
+      const wrapper = mount(SettingField, {
+        props: { entry: makeEntry({ source }), saving: false },
+      })
+      const resetBtn = wrapper.findAll('button').find((b) => b.text() === 'Reset')
+      expect(resetBtn?.attributes('disabled')).toBeDefined()
+    },
+  )
+
+  // ── Watch re-sync ─────────────────────────────────────────
+
+  it('resets local value when entry prop changes externally', async () => {
+    const entry = makeEntry({ value: '100.0' })
+    const wrapper = mount(SettingField, {
+      props: { entry, saving: false },
+    })
+    // Dirty the local value
+    const input = wrapper.find('input[type="number"]')
+    await input.setValue(999)
+    await flushPromises()
+
+    // Simulate prop update (server returns new value after save)
+    const updatedEntry = makeEntry({ value: '200.0' })
+    await wrapper.setProps({ entry: updatedEntry })
+    await flushPromises()
+
+    // Local value should re-sync to the new server value
+    expect((wrapper.find('input[type="number"]').element as HTMLInputElement).value).toBe('200')
+  })
+
+  // ── handleSave guard ──────────────────────────────────────
+
+  it('does not emit save when validation fails', async () => {
+    const entry = makeEntry({ value: '50' }, { type: 'int', default: '50', min_value: 1, max_value: 100 })
+    const wrapper = mount(SettingField, {
+      props: { entry, saving: false },
+    })
+    // Set an out-of-range value
+    const input = wrapper.find('input[type="number"]')
+    await input.setValue(200)
+    await flushPromises()
+
+    // Try to save via button click
+    const saveBtn = wrapper.findAll('button').find((b) => b.text() === 'Save')
+    await saveBtn?.trigger('click')
+
+    expect(wrapper.emitted('save')).toBeFalsy()
+  })
 })

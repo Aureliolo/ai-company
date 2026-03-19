@@ -1,12 +1,12 @@
 import { apiClient, unwrap, unwrapVoid } from '../client'
-import type { ApiResponse, SettingDefinition, SettingEntry, UpdateSettingRequest } from '../types'
+import type { ApiResponse, SettingDefinition, SettingEntry, SettingNamespace, UpdateSettingRequest } from '../types'
 
 export async function getSchema(): Promise<SettingDefinition[]> {
   const response = await apiClient.get<ApiResponse<SettingDefinition[]>>('/settings/_schema')
   return unwrap(response)
 }
 
-export async function getNamespaceSchema(namespace: string): Promise<SettingDefinition[]> {
+export async function getNamespaceSchema(namespace: SettingNamespace): Promise<SettingDefinition[]> {
   const response = await apiClient.get<ApiResponse<SettingDefinition[]>>(
     `/settings/_schema/${encodeURIComponent(namespace)}`,
   )
@@ -18,7 +18,7 @@ export async function getAllSettings(): Promise<SettingEntry[]> {
   return unwrap(response)
 }
 
-export async function getNamespaceSettings(namespace: string): Promise<SettingEntry[]> {
+export async function getNamespaceSettings(namespace: SettingNamespace): Promise<SettingEntry[]> {
   const response = await apiClient.get<ApiResponse<SettingEntry[]>>(
     `/settings/${encodeURIComponent(namespace)}`,
   )
@@ -26,7 +26,7 @@ export async function getNamespaceSettings(namespace: string): Promise<SettingEn
 }
 
 export async function updateSetting(
-  namespace: string,
+  namespace: SettingNamespace,
   key: string,
   data: UpdateSettingRequest,
 ): Promise<SettingEntry> {
@@ -37,7 +37,7 @@ export async function updateSetting(
   return unwrap(response)
 }
 
-export async function resetSetting(namespace: string, key: string): Promise<void> {
+export async function resetSetting(namespace: SettingNamespace, key: string): Promise<void> {
   const response = await apiClient.delete<ApiResponse<null>>(
     `/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`,
   )
