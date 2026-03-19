@@ -14,7 +14,10 @@ from synthorg.core.enums import Complexity, TaskStatus, TaskType
 from synthorg.core.task import Task
 from synthorg.engine.agent_engine import AgentEngine
 from synthorg.engine.context import AgentContext
+from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.loop_selector import AutoLoopConfig
+from synthorg.engine.plan_execute_loop import PlanExecuteLoop
+from synthorg.engine.plan_models import PlanExecuteConfig
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.observability.events.execution import (
@@ -383,3 +386,113 @@ class TestAutoLoopResumePath:
 
         # The resolved loop instance was actually executed
         resolved_loop.execute.assert_awaited_once()
+
+
+# -- Config wiring through auto-selection path -------------------
+
+
+@pytest.mark.unit
+class TestAutoLoopConfigWiring:
+    """compaction_callback and plan_execute_config are wired through."""
+
+    async def test_compaction_callback_wired_to_react_via_auto_selection(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """SIMPLE task -> ReactLoop receives compaction_callback."""
+        provider = mock_provider_factory([])
+        compact_cb = AsyncMock()
+        engine = AgentEngine(
+            provider=provider,
+            auto_loop_config=AutoLoopConfig(),
+            compaction_callback=compact_cb,
+        )
+        task = _make_task_with_complexity(
+            complexity=Complexity.SIMPLE,
+            agent_id="agent-wire-001",
+        )
+        loop = await engine._resolve_loop(task, "agent-wire-001", "task-wire-001")
+        assert isinstance(loop, ReactLoop)
+        assert loop.compaction_callback is compact_cb
+
+    async def test_compaction_callback_wired_to_plan_execute_via_auto_selection(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """MEDIUM task -> PlanExecuteLoop receives compaction_callback."""
+        provider = mock_provider_factory([])
+        compact_cb = AsyncMock()
+        engine = AgentEngine(
+            provider=provider,
+            auto_loop_config=AutoLoopConfig(),
+            compaction_callback=compact_cb,
+        )
+        task = _make_task_with_complexity(
+            complexity=Complexity.MEDIUM,
+            agent_id="agent-wire-002",
+        )
+        loop = await engine._resolve_loop(task, "agent-wire-002", "task-wire-002")
+        assert isinstance(loop, PlanExecuteLoop)
+        assert loop.compaction_callback is compact_cb
+
+    async def test_compaction_callback_wired_to_hybrid_via_auto_selection(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """COMPLEX task + OK budget -> HybridLoop receives compaction_callback."""
+        provider = mock_provider_factory([])
+        compact_cb = AsyncMock()
+        enforcer = _make_budget_enforcer()
+        engine = AgentEngine(
+            provider=provider,
+            auto_loop_config=AutoLoopConfig(),
+            compaction_callback=compact_cb,
+            budget_enforcer=enforcer,
+        )
+        task = _make_task_with_complexity(
+            complexity=Complexity.COMPLEX,
+            agent_id="agent-wire-003",
+        )
+        with patch.object(
+            enforcer,
+            "get_budget_utilization_pct",
+            new_callable=AsyncMock,
+            return_value=30.0,
+        ):
+            loop = await engine._resolve_loop(task, "agent-wire-003", "task-wire-003")
+        assert isinstance(loop, HybridLoop)
+        assert loop.compaction_callback is compact_cb
+
+    async def test_plan_execute_config_wired_via_auto_selection(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """MEDIUM task -> PlanExecuteLoop receives plan_execute_config."""
+        provider = mock_provider_factory([])
+        pe_config = PlanExecuteConfig(max_replans=7)
+        engine = AgentEngine(
+            provider=provider,
+            auto_loop_config=AutoLoopConfig(),
+            plan_execute_config=pe_config,
+        )
+        task = _make_task_with_complexity(
+            complexity=Complexity.MEDIUM,
+            agent_id="agent-wire-004",
+        )
+        loop = await engine._resolve_loop(task, "agent-wire-004", "task-wire-004")
+        assert isinstance(loop, PlanExecuteLoop)
+        assert loop.config.max_replans == 7
+
+    def test_compaction_callback_wired_to_default_loop(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Without auto_loop_config, default ReactLoop receives callback."""
+        provider = mock_provider_factory([])
+        compact_cb = AsyncMock()
+        engine = AgentEngine(
+            provider=provider,
+            compaction_callback=compact_cb,
+        )
+        assert isinstance(engine._loop, ReactLoop)
+        assert engine._loop.compaction_callback is compact_cb

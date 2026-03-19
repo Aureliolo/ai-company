@@ -440,6 +440,28 @@ class TestBuildExecutionLoop:
         assert loop._checkpoint_callback is ckpt_cb
         assert loop.compaction_callback is compact_cb
 
+    def test_build_react_with_compaction_callback(self) -> None:
+        from unittest.mock import MagicMock
+
+        compact_cb = MagicMock()
+        loop = build_execution_loop(
+            "react",
+            compaction_callback=compact_cb,
+        )
+        assert isinstance(loop, ReactLoop)
+        assert loop.compaction_callback is compact_cb
+
+    def test_build_plan_execute_with_compaction_callback(self) -> None:
+        from unittest.mock import MagicMock
+
+        compact_cb = MagicMock()
+        loop = build_execution_loop(
+            "plan_execute",
+            compaction_callback=compact_cb,
+        )
+        assert isinstance(loop, PlanExecuteLoop)
+        assert loop.compaction_callback is compact_cb
+
     def test_unknown_type_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown loop type"):
             build_execution_loop("nonexistent")

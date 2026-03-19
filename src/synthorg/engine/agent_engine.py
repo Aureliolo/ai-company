@@ -96,6 +96,7 @@ if TYPE_CHECKING:
     from synthorg.budget.tracker import CostTracker
     from synthorg.core.agent import AgentIdentity
     from synthorg.core.task import Task
+    from synthorg.engine.compaction import CompactionCallback
     from synthorg.engine.coordination.models import (
         CoordinationContext,
         CoordinationResult,
@@ -107,6 +108,7 @@ if TYPE_CHECKING:
         ExecutionLoop,
         ShutdownChecker,
     )
+    from synthorg.engine.plan_models import PlanExecuteConfig
     from synthorg.engine.stagnation.protocol import StagnationDetector
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.persistence.repositories import (
@@ -164,6 +166,13 @@ class AgentEngine:
         hybrid_loop_config: Optional configuration for the hybrid
             plan+ReAct loop.  Passed to ``build_execution_loop``
             when auto-selection picks ``"hybrid"``.
+        compaction_callback: Optional async callback invoked at turn
+            boundaries to compress older conversation turns.  Passed
+            to the execution loop (both static default and
+            auto-selected).
+        plan_execute_config: Optional configuration for the
+            plan-execute loop.  Passed to ``build_execution_loop``
+            when auto-selection picks ``"plan_execute"``.
     """
 
     def __init__(  # noqa: PLR0913
@@ -188,6 +197,8 @@ class AgentEngine:
         stagnation_detector: StagnationDetector | None = None,
         auto_loop_config: AutoLoopConfig | None = None,
         hybrid_loop_config: HybridLoopConfig | None = None,
+        compaction_callback: CompactionCallback | None = None,
+        plan_execute_config: PlanExecuteConfig | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -202,6 +213,8 @@ class AgentEngine:
         self._stagnation_detector = stagnation_detector
         self._auto_loop_config = auto_loop_config
         self._hybrid_loop_config = hybrid_loop_config
+        self._compaction_callback = compaction_callback
+        self._plan_execute_config = plan_execute_config
         self._approval_gate = self._make_approval_gate()
         if execution_loop is not None and (
             self._approval_gate is not None or self._stagnation_detector is not None
@@ -1002,6 +1015,7 @@ class AgentEngine:
         return ReactLoop(
             approval_gate=self._approval_gate,
             stagnation_detector=self._stagnation_detector,
+            compaction_callback=self._compaction_callback,
         )
 
     async def _resolve_loop(
@@ -1015,11 +1029,6 @@ class AgentEngine:
         When ``auto_loop_config`` is set, selects the loop based on
         task complexity and optional budget state.  Otherwise returns
         the statically configured loop (``self._loop``).
-
-        Note: auto-selected loops use default ``PlanExecuteConfig``
-        and do not receive a compaction callback.  Provide an
-        ``execution_loop`` directly for custom plan-execute config
-        or compaction.
         """
         if self._auto_loop_config is None:
             return self._loop
@@ -1070,6 +1079,8 @@ class AgentEngine:
             loop_type,
             approval_gate=self._approval_gate,
             stagnation_detector=self._stagnation_detector,
+            compaction_callback=self._compaction_callback,
+            plan_execute_config=self._plan_execute_config,
             hybrid_loop_config=self._hybrid_loop_config,
         )
 
