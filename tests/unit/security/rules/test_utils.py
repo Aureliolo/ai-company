@@ -1,5 +1,7 @@
 """Tests for walk_string_values utility."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from synthorg.security.rules._utils import walk_string_values
@@ -76,11 +78,9 @@ class TestWalkStringValuesNested:
 class TestWalkStringValuesDepthLimit:
     """Depth limit prevents infinite recursion."""
 
-    def test_stops_at_max_depth(
-        self,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """Build a structure deeper than 20 levels — truncated with warning."""
+    @patch("synthorg.security.rules._utils.logger")
+    def test_stops_at_max_depth(self, mock_logger: MagicMock) -> None:
+        """Build a structure deeper than 20 levels -- truncated with warning."""
         data: dict[str, object] = {"val": "leaf"}
         for _ in range(25):
             data = {"nested": data}
@@ -89,8 +89,10 @@ class TestWalkStringValuesDepthLimit:
 
         # "leaf" is beyond depth limit and should be skipped.
         assert result == []
-        captured = capsys.readouterr()
-        assert "depth" in captured.out.lower()
+        # Logger.warning should have been called with the depth event.
+        mock_logger.warning.assert_called()
+        call_kwargs = mock_logger.warning.call_args
+        assert call_kwargs.kwargs.get("depth") is not None
 
     def test_list_recursion_respects_depth_limit(self) -> None:
         """Deeply nested lists stop at max depth without RecursionError."""
