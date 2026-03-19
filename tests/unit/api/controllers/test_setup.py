@@ -411,26 +411,34 @@ class TestSetupComplete:
         assert "agent" in resp.json()["error"].lower()
 
         # 2. Agents set, no providers -- rejected.
+        agents_key = ("company", "agents")
+        original_agents = settings_repo._store.get(agents_key)
         agents_json = json.dumps([{"name": "agent-001", "role": "CEO"}])
-        settings_repo._store[("company", "agents")] = (agents_json, now)
-        resp = test_client.post("/api/v1/setup/complete")
-        assert resp.status_code == 422
-        assert "provider" in resp.json()["error"].lower()
-
-        # 3. All present -- success.
-        stub = MagicMock(spec=BaseCompletionProvider)
-        original = app_state._provider_registry
-        app_state._provider_registry = ProviderRegistry(
-            {"test-provider": stub},
-        )
+        settings_repo._store[agents_key] = (agents_json, now)
         try:
             resp = test_client.post("/api/v1/setup/complete")
-            assert resp.status_code == 201
-            body = resp.json()
-            assert body["success"] is True
-            assert body["data"]["setup_complete"] is True
+            assert resp.status_code == 422
+            assert "provider" in resp.json()["error"].lower()
+
+            # 3. All present -- success.
+            stub = MagicMock(spec=BaseCompletionProvider)
+            original_registry = app_state._provider_registry
+            app_state._provider_registry = ProviderRegistry(
+                {"test-provider": stub},
+            )
+            try:
+                resp = test_client.post("/api/v1/setup/complete")
+                assert resp.status_code == 201
+                body = resp.json()
+                assert body["success"] is True
+                assert body["data"]["setup_complete"] is True
+            finally:
+                app_state._provider_registry = original_registry
         finally:
-            app_state._provider_registry = original
+            if original_agents is None:
+                settings_repo._store.pop(agents_key, None)
+            else:
+                settings_repo._store[agents_key] = original_agents
 
 
 @pytest.mark.unit

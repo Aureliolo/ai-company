@@ -36,6 +36,7 @@ from synthorg.observability.events.setup import (
     SETUP_TEMPLATE_NOT_FOUND,
     SETUP_TEMPLATES_LISTED,
 )
+from synthorg.persistence.errors import QueryError
 from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
@@ -226,7 +227,14 @@ class SetupController(Controller):
         app_state: AppState = state.app_state
         persistence = app_state.persistence
 
-        admin_count = await persistence.users.count_by_role(HumanRole.CEO)
+        try:
+            admin_count = await persistence.users.count_by_role(HumanRole.CEO)
+        except QueryError:
+            logger.warning(
+                SETUP_STATUS_SETTINGS_UNAVAILABLE,
+                exc_info=True,
+            )
+            admin_count = 0
         needs_admin = admin_count == 0
 
         settings_svc = app_state.settings_service
@@ -486,7 +494,7 @@ class SetupController(Controller):
         except MemoryError, RecursionError:
             raise
         except SettingNotFoundError:
-            logger.debug(SETUP_NO_COMPANY, reason="setting_not_found")
+            pass
         if not has_company:
             msg = "A company must be created before completing setup"
             logger.warning(SETUP_NO_COMPANY)
