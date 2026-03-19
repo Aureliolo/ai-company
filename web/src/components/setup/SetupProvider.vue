@@ -126,8 +126,11 @@ async function handleTestComplete() {
 }
 
 onMounted(async () => {
-  await Promise.all([store.fetchPresets(), store.fetchProviders()])
-  // If providers already exist, check if we can skip
+  try {
+    await Promise.all([store.fetchPresets(), store.fetchProviders()])
+  } catch (err) {
+    error.value = getErrorMessage(err)
+  }
   if (hasProviders.value) {
     testPassed.value = true
     const names = Object.keys(store.providers)

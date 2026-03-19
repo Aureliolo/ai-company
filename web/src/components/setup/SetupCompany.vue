@@ -41,7 +41,11 @@ async function handleCreate() {
 }
 
 onMounted(async () => {
-  await setup.fetchTemplates()
+  try {
+    await setup.fetchTemplates()
+  } catch (err) {
+    error.value = getErrorMessage(err)
+  }
 })
 </script>
 

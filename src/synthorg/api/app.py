@@ -644,6 +644,7 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
         exclude=rl_exclude,
     )
     auth = api_config.auth
+    setup_status_path = f"^{prefix}/setup/status$"
     exclude_paths = (
         auth.exclude_paths
         if auth.exclude_paths is not None
@@ -653,10 +654,14 @@ def _build_middleware(api_config: ApiConfig) -> list[Middleware]:
             "^/api$",
             f"^{prefix}/auth/setup$",
             f"^{prefix}/auth/login$",
-            f"^{prefix}/setup/status$",
+            setup_status_path,
         )
     )
-    # Always ensure the WS upgrade path is excluded — the WS handler
+    # Always ensure the setup status endpoint is publicly accessible
+    # even when custom exclude_paths are provided via config.
+    if setup_status_path not in exclude_paths:
+        exclude_paths = (*exclude_paths, setup_status_path)
+    # Always ensure the WS upgrade path is excluded -- the WS handler
     # performs its own ticket-based auth, so the JWT middleware must
     # not run on the upgrade request.
     if ws_path not in exclude_paths:

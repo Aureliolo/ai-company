@@ -61,6 +61,8 @@ const selectedModel = ref<string | null>(null)
 const selectedPersonality = ref<string | null>(null)
 const error = ref<string | null>(null)
 const creating = ref(false)
+// Cached agent creation result so markComplete retries skip re-creation.
+let savedAgent: import('@/api/types').SetupAgentResponse | null = null
 
 /** All models across all configured providers, with provider name prefix. */
 const modelOptions = computed(() => {
@@ -105,6 +107,12 @@ watch(selectedRole, (newRole) => {
   }
 })
 
+// Clear model selection when provider changes so the form never submits
+// a model that is no longer visible in the filtered dropdown.
+watch(selectedProvider, () => {
+  selectedModel.value = null
+})
+
 async function handleCreate() {
   if (!isValid.value || !selectedRole.value || !selectedModel.value || !selectedPersonality.value) {
     return
@@ -117,7 +125,9 @@ async function handleCreate() {
   const modelId = modelParts.join('::')
 
   try {
-    const result = await setupApi.createAgent({
+    // Create the agent first; store the result so a markComplete retry
+    // does not re-create the agent (non-idempotent).
+    const result = savedAgent ?? await setupApi.createAgent({
       name: agentName.value.trim(),
       role: selectedRole.value,
       level: ROLE_LEVELS[selectedRole.value] ?? 'mid',
@@ -125,8 +135,10 @@ async function handleCreate() {
       model_provider: provider,
       model_id: modelId,
       department: ROLE_DEPARTMENTS[selectedRole.value] ?? 'engineering',
-      budget_limit_monthly: null,
+      budget_limit_monthly: undefined as unknown as null,
     })
+    savedAgent = result
+
     await setupStore.markComplete()
     emit('complete', result.name, result.model_provider)
   } catch (err) {
@@ -136,8 +148,12 @@ async function handleCreate() {
   }
 }
 
-onMounted(() => {
-  providerStore.fetchProviders()
+onMounted(async () => {
+  try {
+    await providerStore.fetchProviders()
+  } catch (err) {
+    error.value = getErrorMessage(err)
+  }
 })
 </script>
 

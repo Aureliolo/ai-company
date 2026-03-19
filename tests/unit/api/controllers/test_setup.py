@@ -1,6 +1,8 @@
 """Tests for the first-run setup controller."""
 
+import json
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from litestar.testing import TestClient
@@ -89,13 +91,18 @@ class TestSetupTemplates:
             assert "description" in template
             assert "source" in template
 
-    def test_requires_auth(
+    def test_observer_can_read_templates(
         self,
         test_client: TestClient[Any],
     ) -> None:
+        """Observer role has read access to templates."""
+        saved_headers = dict(test_client.headers)
         test_client.headers.update(make_auth_headers("observer"))
-        resp = test_client.get("/api/v1/setup/templates")
-        assert resp.status_code == 200
+        try:
+            resp = test_client.get("/api/v1/setup/templates")
+            assert resp.status_code == 200
+        finally:
+            test_client.headers.update(saved_headers)
 
 
 @pytest.mark.unit
@@ -166,18 +173,22 @@ class TestSetupCompany:
         self,
         test_client: TestClient[Any],
     ) -> None:
+        saved_headers = dict(test_client.headers)
         test_client.headers.update(make_auth_headers("observer"))
-        resp = test_client.post(
-            "/api/v1/setup/company",
-            json={"company_name": "Test Corp"},
-        )
-        assert resp.status_code == 403
+        try:
+            resp = test_client.post(
+                "/api/v1/setup/company",
+                json={"company_name": "Test Corp"},
+            )
+            assert resp.status_code == 403
+        finally:
+            test_client.headers.update(saved_headers)
 
 
 @pytest.mark.unit
 @pytest.mark.timeout(30)
 class TestSetupAgent:
-    """POST /api/v1/setup/agent -- create first agent."""
+    """POST /api/v1/setup/agent -- create agent."""
 
     def test_nonexistent_provider(
         self,
@@ -215,17 +226,63 @@ class TestSetupAgent:
         self,
         test_client: TestClient[Any],
     ) -> None:
+        saved_headers = dict(test_client.headers)
         test_client.headers.update(make_auth_headers("observer"))
-        resp = test_client.post(
-            "/api/v1/setup/agent",
-            json={
-                "name": "Alice Chen",
-                "role": "CEO",
-                "model_provider": "test",
-                "model_id": "model-001",
-            },
+        try:
+            resp = test_client.post(
+                "/api/v1/setup/agent",
+                json={
+                    "name": "Alice Chen",
+                    "role": "CEO",
+                    "model_provider": "test",
+                    "model_id": "model-001",
+                },
+            )
+            assert resp.status_code == 403
+        finally:
+            test_client.headers.update(saved_headers)
+
+    def test_successful_agent_creation(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Happy path: provider and model exist, agent is created."""
+        # Build a mock provider config with a test model.
+        mock_model = MagicMock()
+        mock_model.id = "test-small-001"
+        mock_model.alias = None
+        mock_provider_config = MagicMock()
+        mock_provider_config.models = [mock_model]
+
+        mock_mgmt = MagicMock()
+        mock_mgmt.list_providers = AsyncMock(
+            return_value={"test-provider": mock_provider_config},
         )
-        assert resp.status_code == 403
+
+        app_state = test_client.app.state.app_state
+        original_mgmt = app_state._provider_management
+        app_state._provider_management = mock_mgmt
+        try:
+            resp = test_client.post(
+                "/api/v1/setup/agent",
+                json={
+                    "name": "agent-ceo-001",
+                    "role": "CEO",
+                    "model_provider": "test-provider",
+                    "model_id": "test-small-001",
+                },
+            )
+            assert resp.status_code == 201
+            body = resp.json()
+            assert body["success"] is True
+            data = body["data"]
+            assert data["name"] == "agent-ceo-001"
+            assert data["role"] == "CEO"
+            assert data["department"] == "engineering"
+            assert data["model_provider"] == "test-provider"
+            assert data["model_id"] == "test-small-001"
+        finally:
+            app_state._provider_management = original_mgmt
 
 
 @pytest.mark.unit
@@ -237,7 +294,7 @@ class TestSetupComplete:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Completing setup without providers returns 400."""
+        """Completing setup without providers returns 422."""
         resp = test_client.post("/api/v1/setup/complete")
         assert resp.status_code == 422
 
@@ -245,9 +302,21 @@ class TestSetupComplete:
         self,
         test_client: TestClient[Any],
     ) -> None:
+        saved_headers = dict(test_client.headers)
         test_client.headers.update(make_auth_headers("observer"))
-        resp = test_client.post("/api/v1/setup/complete")
-        assert resp.status_code == 403
+        try:
+            resp = test_client.post("/api/v1/setup/complete")
+            assert resp.status_code == 403
+        finally:
+            test_client.headers.update(saved_headers)
+
+    # Note: Happy-path test for successful completion requires a real
+    # ProviderRegistry with drivers, which the current test fixture does
+    # not set up.  Mocking _provider_registry crashes xdist workers
+    # during app shutdown.  The completion endpoint logic is simple
+    # (provider check + settings write) and is covered by the DTO and
+    # agent creation tests.  A proper integration test should be added
+    # when the test fixture supports provider setup.
 
 
 @pytest.mark.unit
@@ -265,11 +334,10 @@ class TestSetupDTOs:
             model_provider="test-provider",
             model_id="model-001",
         )
+        # Validator normalizes to lowercase
         assert req.personality_preset == "visionary_leader"
 
     def test_setup_agent_request_invalid_preset(self) -> None:
-        from pydantic import ValidationError
-
         from synthorg.api.controllers.setup import SetupAgentRequest
 
         with pytest.raises(ValidationError, match="personality preset"):
@@ -309,8 +377,6 @@ class TestExtractTemplateDepartments:
 
         result = _extract_template_departments("solo_founder")
         assert result != ""
-        import json
-
         departments = json.loads(result)
         assert len(departments) >= 1
         assert departments[0]["name"] in {"executive", "engineering"}

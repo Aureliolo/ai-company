@@ -30,3 +30,24 @@ SETUP_AGENTS_READ_FALLBACK: Final[str] = "setup.agents.read_fallback"
 
 # Status check fallback (settings service unavailable)
 SETUP_STATUS_SETTINGS_UNAVAILABLE: Final[str] = "setup.status.settings_unavailable"
+
+# Provider not found during agent creation
+SETUP_PROVIDER_NOT_FOUND: Final[str] = "setup.agent.provider_not_found"
+
+# Model not found in provider during agent creation
+SETUP_MODEL_NOT_FOUND: Final[str] = "setup.agent.model_not_found"
+
+# No providers configured when attempting to complete setup
+SETUP_NO_PROVIDERS: Final[str] = "setup.flow.no_providers"
+
+# Template not found during company creation
+SETUP_TEMPLATE_NOT_FOUND: Final[str] = "setup.company.template_not_found"
+
+# Template invalid during company creation
+SETUP_TEMPLATE_INVALID: Final[str] = "setup.company.template_invalid"
+
+# Mutating endpoint called after setup is already complete
+SETUP_ALREADY_COMPLETE: Final[str] = "setup.flow.already_complete"
+
+# Agents list corrupted in settings (JSON parse failure)
+SETUP_AGENTS_CORRUPTED: Final[str] = "setup.agents.corrupted"

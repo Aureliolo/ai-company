@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupStore } from '@/stores/setup'
 import SetupWelcome from '@/components/setup/SetupWelcome.vue'
@@ -9,6 +10,7 @@ import SetupCompany from '@/components/setup/SetupCompany.vue'
 import SetupAgent from '@/components/setup/SetupAgent.vue'
 import SetupComplete from '@/components/setup/SetupComplete.vue'
 
+const router = useRouter()
 const auth = useAuthStore()
 const setup = useSetupStore()
 
@@ -51,12 +53,12 @@ const needsLogin = computed(
 )
 
 function handleNext() {
-  setup.nextStep()
+  setup.nextStep(steps.value.length)
 }
 
 function handleCompanyCreated(companyName: string) {
   createdCompanyName.value = companyName
-  setup.nextStep()
+  setup.nextStep(steps.value.length)
 }
 
 function handleAgentComplete(agentName: string, providerName: string) {
@@ -67,9 +69,10 @@ function handleAgentComplete(agentName: string, providerName: string) {
 
 onMounted(async () => {
   await setup.fetchStatus()
-  // If setup is not needed, redirect could happen via router guard.
-  // If admin is already done but user is not authenticated, they need to log in
-  // before continuing with provider/company/agent steps.
+  // If setup is already complete, redirect to dashboard.
+  if (setup.statusLoaded && !setup.isSetupNeeded) {
+    router.replace('/')
+  }
 })
 </script>
 

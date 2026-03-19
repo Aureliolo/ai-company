@@ -6,25 +6,31 @@ import { useSetupStore } from '@/stores/setup'
  * Navigation guard that handles setup flow and authentication.
  *
  * Priority order:
- * 1. Setup check -- if setup is needed, redirect non-setup routes to /setup
- * 2. Auth check -- unauthenticated users go to /login for protected routes
- * 3. Password change enforcement -- mustChangePassword forces settings page
+ * 1. Setup check -- if status not yet fetched, fetch it first (fail-closed)
+ * 2. Setup redirect -- if setup is needed, redirect non-setup routes to /setup
+ * 3. Auth check -- unauthenticated users go to /login for protected routes
+ * 4. Password change enforcement -- mustChangePassword forces settings page
  *
  * The /setup route is always accessible when setup is needed, regardless of
  * auth status. When setup is complete, /setup redirects to /.
+ * When status is null (not yet fetched), the guard fetches it before deciding.
  */
-export function authGuard(
+export async function authGuard(
   to: RouteLocationNormalized,
   _from: RouteLocationNormalized,
   next: NavigationGuardNext,
-): void {
+): Promise<void> {
   const auth = useAuthStore()
   const setup = useSetupStore()
 
   // ── Setup routing ────────────────────────────────────────
-  // If status hasn't been fetched yet (null), allow navigation to proceed.
-  // The setup page will fetch on mount; other pages work normally until
-  // status is known.
+  // Eagerly fetch setup status so routing decisions are never based
+  // on stale/missing data.  Errors are logged inside the store;
+  // fail-closed (isSetupNeeded defaults to true when fetch fails).
+
+  if (setup.status === null && !setup.loading) {
+    await setup.fetchStatus()
+  }
 
   if (setup.status !== null) {
     // Setup is needed -- funnel everything to /setup

@@ -24,7 +24,7 @@ synthorg status   # Show container health and versions
 
 The web dashboard is at [http://localhost:3000](http://localhost:3000) (default port).
 
-Other CLI commands: `synthorg stop`, `synthorg logs`, `synthorg update`, `synthorg doctor`, `synthorg uninstall`, `synthorg backup`. When updating, the CLI re-launches itself after binary replacement so the remaining steps (compose refresh, image pull) use the new version. If the compose template has changed (new environment variables, hardening tweaks), the diff is shown for approval before applying.
+Other CLI commands: `synthorg stop`, `synthorg logs`, `synthorg update`, `synthorg doctor`, `synthorg uninstall`, `synthorg backup`, `synthorg setup`. When updating, the CLI re-launches itself after binary replacement so the remaining steps (compose refresh, image pull) use the new version. If the compose template has changed (new environment variables, hardening tweaks), the diff is shown for approval before applying.
 
 ## Quick Start (Docker Compose — manual)
 
@@ -61,21 +61,16 @@ Configuration is in `docker/.env` (copy from `docker/.env.example`):
 
 ### First-Run Setup
 
-After the containers are running:
+After the containers are running, open the web dashboard at [http://localhost:3000](http://localhost:3000). On a fresh install, the **setup wizard** will appear automatically and guide you through:
 
-1. **Create an admin account** by sending a POST request to the setup endpoint:
+1. **Create an admin account** -- set up the first admin (CEO) user.
+2. **Configure an LLM provider** -- select a preset (Ollama, OpenRouter, etc.) or add a custom provider. Test the connection inline.
+3. **Create your company** -- name your synthetic organization and optionally start from a template.
+4. **Hire your first agent** -- choose a role, model, and personality for the first AI agent.
 
-    ```bash
-    curl -X POST http://localhost:8000/api/v1/auth/setup \
-      -H "Content-Type: application/json" \
-      -d '{"username": "admin", "password": "your-secure-password"}'
-    ```
+After completing the wizard, the dashboard appears and the setup wizard is not shown again.
 
-2. **Access the dashboard** at [http://localhost:3000](http://localhost:3000) and log in with your admin credentials.
-
-3. **Verify health** with `curl http://localhost:8000/api/v1/health`.
-
-Organization setup (choosing templates, configuring agents) is done via the dashboard. Custom template editing through the UI is planned for a future release.
+To re-run the wizard later, use `synthorg setup` (resets the flag and opens the browser) or delete the `api.setup_complete` setting via the settings API.
 
 !!! info "Active Development"
     SynthOrg is under active development. The web dashboard is available for monitoring and managing the organization. Templates and some features described here may evolve. Check the [GitHub repository](https://github.com/Aureliolo/synthorg) for current status.
