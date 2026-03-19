@@ -331,7 +331,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
 #   to code calling get_api_config(), not to the middleware itself.
 
 
-def _bootstrap_app_logging(effective_config: RootConfig) -> None:
+def _bootstrap_app_logging(effective_config: RootConfig) -> RootConfig:
     """Activate the structured logging pipeline.
 
     Applies the ``SYNTHORG_LOG_DIR`` env var override (for Docker
@@ -342,6 +342,17 @@ def _bootstrap_app_logging(effective_config: RootConfig) -> None:
     default config with ``DEFAULT_SINKS``.  Otherwise, delegates
     directly to ``bootstrap_logging``.
 
+    Args:
+        effective_config: Root config (possibly without a logging
+            section).
+
+    Returns:
+        The config actually used for logging -- either the original
+        ``effective_config`` or a patched copy with the
+        ``SYNTHORG_LOG_DIR`` override applied.  Callers should use
+        the returned value so that ``AppState.config.logging``
+        reflects the active logging configuration.
+
     Raises:
         ValueError: If ``SYNTHORG_LOG_DIR`` contains ``..`` path
             traversal components.
@@ -349,7 +360,7 @@ def _bootstrap_app_logging(effective_config: RootConfig) -> None:
     log_dir = os.environ.get("SYNTHORG_LOG_DIR", "").strip()
     if not log_dir:
         bootstrap_logging(effective_config)
-        return
+        return effective_config
 
     # Validate before model_copy -- Pydantic validators do not run
     # on model_copy(update=...), so we must check manually.
@@ -368,6 +379,7 @@ def _bootstrap_app_logging(effective_config: RootConfig) -> None:
         },
     )
     bootstrap_logging(patched)
+    return patched
 
 
 def create_app(  # noqa: PLR0913
@@ -419,7 +431,7 @@ def create_app(  # noqa: PLR0913
     # flow through the configured sinks.  Respects SYNTHORG_LOG_DIR
     # env var for Docker log directory override.
     try:
-        _bootstrap_app_logging(effective_config)
+        effective_config = _bootstrap_app_logging(effective_config)
     except Exception as exc:
         print(  # noqa: T201
             f"CRITICAL: Failed to initialise logging pipeline: {exc}. "

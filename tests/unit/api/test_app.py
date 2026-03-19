@@ -421,7 +421,7 @@ class TestAutoWirePhase1:
         # capture_logs context during create_app().
         monkeypatch.setattr(
             "synthorg.api.app._bootstrap_app_logging",
-            lambda _config: None,
+            lambda config: config,
         )
         import structlog
 
@@ -929,9 +929,10 @@ class TestBootstrapAppLogging:
             calls.append,
         )
         config = RootConfig(company_name="test-co")
-        _bootstrap_app_logging(config)
+        result = _bootstrap_app_logging(config)
         assert len(calls) == 1
         assert calls[0] is config
+        assert result is config
 
     def test_log_dir_with_existing_logging_config(
         self,
@@ -948,10 +949,14 @@ class TestBootstrapAppLogging:
             company_name="test-co",
             logging=LogConfig(sinks=DEFAULT_SINKS, log_dir="original"),
         )
-        _bootstrap_app_logging(config)
+        result = _bootstrap_app_logging(config)
         assert len(calls) == 1
         assert calls[0].logging is not None
         assert calls[0].logging.log_dir == "/custom/logs"
+        # Return value is the patched config, not the original.
+        assert result is not config
+        assert result.logging is not None
+        assert result.logging.log_dir == "/custom/logs"
 
     def test_log_dir_without_logging_config(
         self,
@@ -966,11 +971,14 @@ class TestBootstrapAppLogging:
         )
         config = RootConfig(company_name="test-co")
         assert config.logging is None
-        _bootstrap_app_logging(config)
+        result = _bootstrap_app_logging(config)
         assert len(calls) == 1
         assert calls[0].logging is not None
         assert calls[0].logging.log_dir == "/data/logs"
         assert len(calls[0].logging.sinks) == len(DEFAULT_SINKS)
+        # Return value carries the new logging config.
+        assert result.logging is not None
+        assert result.logging.log_dir == "/data/logs"
 
     def test_whitespace_only_log_dir_treated_as_unset(
         self,
@@ -984,9 +992,10 @@ class TestBootstrapAppLogging:
             calls.append,
         )
         config = RootConfig(company_name="test-co")
-        _bootstrap_app_logging(config)
+        result = _bootstrap_app_logging(config)
         assert len(calls) == 1
         assert calls[0] is config
+        assert result is config
 
     def test_path_traversal_in_log_dir_raises(
         self,

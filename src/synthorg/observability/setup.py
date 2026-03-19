@@ -143,19 +143,26 @@ def _attach_handlers(
             )
             root_logger.addHandler(handler)
         except (OSError, RuntimeError, ValueError) as exc:
-            print(  # noqa: T201
-                f"WARNING: Failed to initialise log sink "
-                f"{sink!r}: {exc}. This sink will be skipped.",
-                file=sys.stderr,
-                flush=True,
-            )
             if sink.file_path in _critical_sinks:
+                print(  # noqa: T201
+                    f"CRITICAL: Log sink '{sink.file_path}' could not "
+                    f"be initialised: {exc}. Refusing to start with "
+                    "missing audit/access logs.",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 msg = (
                     f"Critical log sink '{sink.file_path}' could not be "
                     "initialised. Refusing to start with missing "
                     "audit/access logs."
                 )
                 raise RuntimeError(msg) from exc
+            print(  # noqa: T201
+                f"WARNING: Failed to initialise log sink "
+                f"{sink!r}: {exc}. This sink will be skipped.",
+                file=sys.stderr,
+                flush=True,
+            )
 
 
 def _apply_logger_levels(config: LogConfig) -> None:
