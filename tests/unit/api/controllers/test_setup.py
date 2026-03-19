@@ -6,6 +6,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from hypothesis import HealthCheck, given
+from hypothesis import settings as hsettings
+from hypothesis import strategies as st
 from litestar.testing import TestClient
 from pydantic import ValidationError
 
@@ -239,6 +242,38 @@ class TestSetupCompany:
         settings_repo = app_state.persistence._settings_repo
         stored = settings_repo._store.get(("company", "description"))
         assert stored is not None
+        assert stored[0] == expected_stored
+
+    @given(description=st.text(max_size=1000))
+    @hsettings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+    def test_description_normalization_invariants(
+        self,
+        test_client: TestClient[Any],
+        description: str,
+    ) -> None:
+        """Normalization invariant: blank -> None, non-blank -> stripped."""
+        resp = test_client.post(
+            "/api/v1/setup/company",
+            json={
+                "company_name": "Test Corp",
+                "description": description,
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()["data"]
+
+        stripped = description.strip()
+        if stripped == "":
+            assert data["description"] is None
+        else:
+            assert data["description"] == stripped
+
+        # Verify persistence matches.
+        app_state = test_client.app.state.app_state
+        settings_repo = app_state.persistence._settings_repo
+        stored = settings_repo._store.get(("company", "description"))
+        assert stored is not None
+        expected_stored = stripped or ""
         assert stored[0] == expected_stored
 
     def test_company_description_too_long(

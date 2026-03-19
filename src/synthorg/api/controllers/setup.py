@@ -365,37 +365,23 @@ class SetupController(Controller):
         settings_svc = app_state.settings_service
         await _check_setup_not_complete(settings_svc)
 
-        # Validate template first (may raise) before persisting anything.
-        department_count = 0
-        template_applied: str | None = None
-        departments_json = ""
+        departments_json, department_count, template_applied = _resolve_template(
+            data.template_name
+        )
+        description = _normalize_description(data.description)
 
-        if data.template_name is not None:
-            template_applied = data.template_name
-            departments_json = _extract_template_departments(data.template_name)
-            if departments_json:
-                department_count = len(json.loads(departments_json))
-
-        # Normalize description: strip whitespace, treat blank as None.
-        description = (data.description.strip() or None) if data.description else None
-
-        # Persist company name, description, and departments after validation.
-        await settings_svc.set("company", "company_name", data.company_name)
-        # Always write description -- clears stale data from previous runs.
-        # Stores "" when description is None (settings values are strings);
-        # consumers should treat "" as absent.
-        await settings_svc.set("company", "description", description or "")
-        # Always write departments -- clears stale data from previous runs.
-        await settings_svc.set(
-            "company",
-            "departments",
-            departments_json or "[]",
+        await _persist_company_settings(
+            settings_svc,
+            data.company_name,
+            description,
+            departments_json,
         )
 
         logger.info(
             SETUP_COMPANY_CREATED,
             company_name=data.company_name,
-            description=description,
+            description_present=description is not None,
+            description_length=len(description) if description else 0,
             template=template_applied,
             department_count=department_count,
         )
@@ -635,6 +621,48 @@ def _build_agent_config(data: SetupAgentRequest) -> dict[str, Any]:
     if data.budget_limit_monthly is not None:
         agent_config["budget_limit_monthly"] = data.budget_limit_monthly
     return agent_config
+
+
+def _normalize_description(raw: str | None) -> str | None:
+    """Strip whitespace from description, treating blank as None."""
+    return (raw.strip() or None) if raw else None
+
+
+def _resolve_template(
+    template_name: str | None,
+) -> tuple[str, int, str | None]:
+    """Validate template and extract department data.
+
+    Returns:
+        Tuple of (departments_json, department_count, template_applied).
+    """
+    if template_name is None:
+        return ("", 0, None)
+
+    departments_json = _extract_template_departments(template_name)
+    department_count = len(json.loads(departments_json)) if departments_json else 0
+    return (departments_json, department_count, template_name)
+
+
+async def _persist_company_settings(
+    settings_svc: SettingsService,
+    company_name: str,
+    description: str | None,
+    departments_json: str,
+) -> None:
+    """Write company name, description, and departments to settings.
+
+    Always writes all three keys to clear stale data from previous runs.
+    Stores ``""`` when description is None (settings values are strings);
+    consumers should treat ``""`` as absent.
+    """
+    await settings_svc.set("company", "company_name", company_name)
+    await settings_svc.set("company", "description", description or "")
+    await settings_svc.set(
+        "company",
+        "departments",
+        departments_json or "[]",
+    )
 
 
 def _extract_template_departments(template_name: str) -> str:
