@@ -1,7 +1,7 @@
 """Approvals controller — human approval queue CRUD."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from litestar import Controller, Request, get, post
@@ -42,6 +42,10 @@ from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_GATE_RESUME_TRIGGERED,
 )
+
+if TYPE_CHECKING:
+    from synthorg.engine.approval_gate import ApprovalGate
+    from synthorg.engine.review_gate import ReviewGateService
 
 logger = get_logger(__name__)
 
@@ -164,9 +168,8 @@ def _log_approval_decision(
 ) -> None:
     """Log the approval decision for observability.
 
-    Context resumption is not handled by the approval controller.
-    A future scheduling component will observe status changes and
-    call ``ApprovalGate.resume_context()`` to resume the parked agent.
+    Context resumption and review-gate transitions are handled
+    separately by ``_signal_resume_intent``.
     """
     event = API_APPROVAL_APPROVED if approved else API_APPROVAL_REJECTED
     logger.info(
@@ -174,6 +177,79 @@ def _log_approval_decision(
         approval_id=approval_id,
         decided_by=decided_by,
     )
+
+
+async def _try_mid_execution_resume(
+    approval_gate: ApprovalGate,
+    approval_id: str,
+    *,
+    approved: bool,
+) -> bool:
+    """Attempt to resume a mid-execution parked context.
+
+    Returns ``True`` if the flow was handled (context found or
+    error -- caller should not fall through to the review gate).
+    Returns ``False`` if no parked context exists.
+    """
+    try:
+        resumed = await approval_gate.resume_context(approval_id)
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            APPROVAL_GATE_RESUME_FAILED,
+            approval_id=approval_id,
+            error="Failed to resume parked context",
+            exc_info=True,
+        )
+        # Resume lookup failed -- do NOT fall through to review
+        # gate, because the parked context may still exist.
+        return True
+
+    if resumed is not None:
+        _context, parked_id = resumed
+        logger.info(
+            APPROVAL_GATE_RESUME_CONTEXT_LOADED,
+            approval_id=approval_id,
+            parked_id=parked_id,
+            approved=approved,
+            note=(
+                "Parked context loaded -- agent re-execution "
+                "requires external orchestration"
+            ),
+        )
+        return True
+    return False
+
+
+async def _try_review_gate_transition(  # noqa: PLR0913
+    review_gate: ReviewGateService,
+    approval_id: str,
+    task_id: str,
+    *,
+    approved: bool,
+    decided_by: str,
+    decision_reason: str | None,
+) -> None:
+    """Delegate a review decision to the review gate service."""
+    try:
+        await review_gate.complete_review(
+            task_id=task_id,
+            requested_by=decided_by,
+            approved=approved,
+            decided_by=decided_by,
+            reason=decision_reason,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            APPROVAL_GATE_RESUME_FAILED,
+            approval_id=approval_id,
+            task_id=task_id,
+            error="Review gate transition failed (non-fatal)",
+            exc_info=True,
+        )
 
 
 async def _signal_resume_intent(  # noqa: PLR0913
@@ -189,16 +265,10 @@ async def _signal_resume_intent(  # noqa: PLR0913
 
     Two flows depending on whether a parked context exists:
 
-    1. **Mid-execution parking**: If ``ApprovalGate.resume_context()``
-       finds a parked context, this is a mid-execution resume.  The
-       context is deserialized and the parked record deleted, but
-       re-execution is NOT performed here (requires an external
-       orchestrator).
-
-    2. **Review gate**: If no parked context exists and ``task_id``
-       is provided, this is a post-execution review decision.
-       Delegates to ``ReviewGateService`` to transition the task
-       from IN_REVIEW to COMPLETED (approve) or IN_PROGRESS (reject).
+    1. **Mid-execution parking** (``_try_mid_execution_resume``):
+       resume a parked context if one exists.
+    2. **Review gate** (``_try_review_gate_transition``):
+       transition the task from IN_REVIEW on approval/rejection.
 
     Args:
         app_state: Application state containing services.
@@ -208,8 +278,6 @@ async def _signal_resume_intent(  # noqa: PLR0913
         decision_reason: Optional reason for the decision.
         task_id: Optional task identifier for review-gate flow.
     """
-    approval_gate = app_state.approval_gate
-
     logger.info(
         APPROVAL_GATE_RESUME_TRIGGERED,
         approval_id=approval_id,
@@ -218,58 +286,26 @@ async def _signal_resume_intent(  # noqa: PLR0913
         has_reason=decision_reason is not None,
     )
 
-    # Flow 1: mid-execution parking -- try to resume parked context.
+    # Flow 1: mid-execution parking.
+    approval_gate = app_state.approval_gate
     if approval_gate is not None:
-        try:
-            resumed = await approval_gate.resume_context(approval_id)
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                APPROVAL_GATE_RESUME_FAILED,
-                approval_id=approval_id,
-                error="Failed to resume parked context",
-                exc_info=True,
-            )
-            # Resume lookup failed -- do NOT fall through to review
-            # gate, because the parked context may still exist.
-            return
-
-        if resumed is not None:
-            _context, parked_id = resumed
-            logger.info(
-                APPROVAL_GATE_RESUME_CONTEXT_LOADED,
-                approval_id=approval_id,
-                parked_id=parked_id,
-                approved=approved,
-                note=(
-                    "Parked context loaded -- agent re-execution "
-                    "requires external orchestration"
-                ),
-            )
+        handled = await _try_mid_execution_resume(
+            approval_gate, approval_id, approved=approved
+        )
+        if handled:
             return
 
     # Flow 2: review gate -- transition task status.
     review_gate = app_state.review_gate_service
     if review_gate is not None and task_id is not None:
-        try:
-            await review_gate.complete_review(
-                task_id=task_id,
-                requested_by=decided_by,
-                approved=approved,
-                decided_by=decided_by,
-                reason=decision_reason,
-            )
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                APPROVAL_GATE_RESUME_TRIGGERED,
-                approval_id=approval_id,
-                task_id=task_id,
-                error="Review gate transition failed (non-fatal)",
-                exc_info=True,
-            )
+        await _try_review_gate_transition(
+            review_gate,
+            approval_id,
+            task_id,
+            approved=approved,
+            decided_by=decided_by,
+            decision_reason=decision_reason,
+        )
 
 
 class ApprovalsController(Controller):
@@ -485,7 +521,7 @@ class ApprovalsController(Controller):
             approved=True,
             decided_by=auth_user.username,
             decision_reason=data.comment,
-            task_id=item.task_id,
+            task_id=saved.task_id,
         )
 
         return ApiResponse(data=saved)
@@ -567,7 +603,7 @@ class ApprovalsController(Controller):
             approved=False,
             decided_by=auth_user.username,
             decision_reason=data.reason,
-            task_id=item.task_id,
+            task_id=saved.task_id,
         )
 
         return ApiResponse(data=saved)

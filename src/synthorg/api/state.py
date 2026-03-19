@@ -245,8 +245,16 @@ class AppState:
 
         Args:
             service: Configured review gate service.
+
+        Raises:
+            RuntimeError: If the review gate service was already configured.
         """
+        if self._review_gate_service is not None:
+            msg = "Review gate service already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
         self._review_gate_service = service
+        logger.debug(API_APP_STARTUP, note="Review gate service configured")
 
     @property
     def approval_timeout_scheduler(self) -> ApprovalTimeoutScheduler | None:
@@ -261,8 +269,16 @@ class AppState:
 
         Args:
             scheduler: Configured scheduler instance.
+
+        Raises:
+            RuntimeError: If the scheduler was already configured.
         """
+        if self._approval_timeout_scheduler is not None:
+            msg = "Approval timeout scheduler already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
         self._approval_timeout_scheduler = scheduler
+        logger.debug(API_APP_STARTUP, note="Approval timeout scheduler configured")
 
     @property
     def coordinator(self) -> MultiAgentCoordinator:

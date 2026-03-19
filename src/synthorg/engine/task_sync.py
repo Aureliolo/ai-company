@@ -183,7 +183,8 @@ async def apply_post_execution_transitions(
 ) -> ExecutionResult:
     """Apply post-execution task transitions based on termination reason.
 
-    COMPLETED triggers IN_PROGRESS -> IN_REVIEW (awaits human review).
+    COMPLETED termination triggers the stepwise transitions defined
+    in ``_COMPLETION_STEPS`` (currently: -> IN_REVIEW, awaiting review).
     SHUTDOWN triggers current status -> INTERRUPTED.
     Each transition is synced to TaskEngine incrementally.
     Transition failures are logged but never discard the result.

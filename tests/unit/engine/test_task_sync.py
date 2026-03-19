@@ -468,6 +468,32 @@ class TestApplyPostExecutionTransitions:
 
         assert out is result
 
+    async def test_error_reason_returns_unchanged(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """ERROR termination reason leaves task state unchanged."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(
+            ctx,
+            reason=TerminationReason.ERROR,
+            error_message="Simulated error",
+        )
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=sample_task_with_criteria.id,
+            task_engine=None,
+        )
+
+        assert out is result
+
     async def test_completed_transition_failure_returns_original(
         self,
         sample_agent_with_personality: AgentIdentity,
@@ -714,3 +740,34 @@ class TestReviewApprovalCreation:
         # Transition still succeeded despite store error
         assert out.context.task_execution is not None
         assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_approval_creation_memory_error_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        error_cls: type[BaseException],
+    ) -> None:
+        """MemoryError/RecursionError from approval store propagates."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
+
+        mock_store = MagicMock()
+        mock_store.add = AsyncMock(side_effect=error_cls("fatal"))
+
+        with pytest.raises(error_cls):
+            await apply_post_execution_transitions(
+                result,
+                agent_id=str(sample_agent_with_personality.id),
+                task_id=sample_task_with_criteria.id,
+                task_engine=None,
+                approval_store=mock_store,
+            )

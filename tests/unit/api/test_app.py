@@ -288,6 +288,49 @@ class TestAppLifecycle:
         await _safe_shutdown(None, mock_sched, None, None, None, None, None, None)
         mock_sched.stop.assert_awaited_once()
 
+    async def test_approval_timeout_scheduler_lifecycle(
+        self,
+        root_config: Any,
+    ) -> None:
+        """Approval timeout scheduler start/stop are called during lifecycle."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from synthorg.api.approval_store import ApprovalStore
+        from synthorg.api.lifecycle import _safe_shutdown, _safe_startup
+        from synthorg.api.state import AppState
+        from tests.unit.api.conftest import (
+            FakeMessageBus,
+            FakePersistenceBackend,
+        )
+
+        persistence = FakePersistenceBackend()
+        bus = FakeMessageBus()
+        mock_sched = MagicMock()
+        mock_sched.start = MagicMock()  # start() is sync
+        mock_sched.stop = AsyncMock()
+
+        app_state = AppState(
+            config=root_config,
+            approval_store=ApprovalStore(),
+            persistence=persistence,
+        )
+
+        await _safe_startup(
+            persistence,
+            bus,
+            None,
+            None,
+            None,
+            None,
+            None,
+            mock_sched,
+            app_state,
+        )
+        mock_sched.start.assert_called_once()
+
+        await _safe_shutdown(None, None, None, mock_sched, None, None, None, None)
+        mock_sched.stop.assert_awaited_once()
+
 
 @pytest.mark.unit
 class TestTryStop:

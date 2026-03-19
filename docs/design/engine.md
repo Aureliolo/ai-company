@@ -238,7 +238,7 @@ at `ASSIGNED`).
 
 | Path | Synced transitions |
 |------|--------------------|
-| Happy (COMPLETED) | `IN_PROGRESS` → `IN_REVIEW` (review gate) |
+| Happy (review-gated) | `IN_PROGRESS` → `IN_REVIEW` (review gate) |
 | Shutdown | `IN_PROGRESS` → `INTERRUPTED` |
 | Error | `IN_PROGRESS` → `FAILED` (after recovery) |
 | MAX_TURNS / BUDGET | `IN_PROGRESS` only |

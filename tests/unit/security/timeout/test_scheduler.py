@@ -418,3 +418,104 @@ class TestApprovalTimeoutScheduler:
 
         store.list_items.assert_awaited_once()
         checker.check_and_resolve.assert_awaited_once()
+
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_poll_memory_error_propagates(
+        self, error_cls: type[BaseException]
+    ) -> None:
+        """MemoryError/RecursionError from list_items propagates."""
+        store = _make_mock_store()
+        store.list_items = AsyncMock(side_effect=error_cls("fatal"))
+        checker = _make_mock_checker()
+        scheduler = ApprovalTimeoutScheduler(
+            approval_store=store,
+            timeout_checker=checker,
+            interval_seconds=60.0,
+        )
+
+        with pytest.raises(error_cls):
+            await scheduler._check_pending_approvals()
+
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_check_memory_error_propagates(
+        self, error_cls: type[BaseException]
+    ) -> None:
+        """MemoryError/RecursionError from check_and_resolve propagates."""
+        item = _make_pending_item()
+        store = _make_mock_store(items=(item,))
+        checker = _make_mock_checker()
+        checker.check_and_resolve = AsyncMock(side_effect=error_cls("fatal"))
+        scheduler = ApprovalTimeoutScheduler(
+            approval_store=store,
+            timeout_checker=checker,
+            interval_seconds=60.0,
+        )
+
+        with pytest.raises(error_cls):
+            await scheduler._check_pending_approvals()
+
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_save_memory_error_propagates(
+        self, error_cls: type[BaseException]
+    ) -> None:
+        """MemoryError/RecursionError from save_if_pending propagates."""
+        item = _make_pending_item()
+        store = _make_mock_store(items=(item,))
+        store.save_if_pending = AsyncMock(side_effect=error_cls("fatal"))
+        checker = _make_mock_checker(_make_approve_action())
+        scheduler = ApprovalTimeoutScheduler(
+            approval_store=store,
+            timeout_checker=checker,
+            interval_seconds=60.0,
+        )
+
+        with pytest.raises(error_cls):
+            await scheduler._check_pending_approvals()
+
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_callback_memory_error_propagates(
+        self, error_cls: type[BaseException]
+    ) -> None:
+        """MemoryError/RecursionError from on_timeout_resolve propagates."""
+        item = _make_pending_item()
+        store = _make_mock_store(items=(item,))
+        checker = _make_mock_checker(_make_approve_action())
+        callback = AsyncMock(side_effect=error_cls("fatal"))
+        scheduler = ApprovalTimeoutScheduler(
+            approval_store=store,
+            timeout_checker=checker,
+            interval_seconds=60.0,
+            on_timeout_resolve=callback,
+        )
+
+        with pytest.raises(error_cls):
+            await scheduler._check_pending_approvals()
+
+    def test_reschedule_sets_wake_event(self) -> None:
+        """reschedule() sets the wake event to interrupt the sleep loop."""
+        store = _make_mock_store()
+        checker = _make_mock_checker()
+        scheduler = ApprovalTimeoutScheduler(
+            approval_store=store,
+            timeout_checker=checker,
+            interval_seconds=60.0,
+        )
+
+        scheduler.reschedule(120.0)
+        assert scheduler._wake_event.is_set()

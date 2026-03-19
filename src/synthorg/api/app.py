@@ -556,8 +556,9 @@ def create_app(  # noqa: PLR0913
     review_gate_service = ReviewGateService(task_engine=task_engine)
     app_state.set_review_gate_service(review_gate_service)
 
-    # Approval timeout scheduler -- None here; created during startup
-    # if a timeout policy is configured via settings (future work).
+    # Approval timeout scheduler -- None here; auto-creation from
+    # settings at startup is not yet wired.  Pass explicitly via the
+    # lifecycle when a TimeoutChecker is available.
     approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
 
     startup, shutdown = _build_lifecycle(

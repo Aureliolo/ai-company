@@ -258,6 +258,59 @@ class TestSignalResumeIntent:
 
         mock_review.complete_review.assert_awaited_once()
 
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_flow1_memory_error_propagates(
+        self, error_cls: type[BaseException]
+    ) -> None:
+        """MemoryError/RecursionError from resume_context propagates."""
+        mock_gate = MagicMock()
+        mock_gate.resume_context = AsyncMock(
+            side_effect=error_cls("fatal"),
+        )
+
+        app_state = MagicMock(spec=AppState)
+        app_state.approval_gate = mock_gate
+        app_state.review_gate_service = None
+
+        with pytest.raises(error_cls):
+            await _signal_resume_intent(
+                app_state,
+                "approval-1",
+                approved=True,
+                decided_by="admin",
+            )
+
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_flow2_memory_error_propagates(
+        self, error_cls: type[BaseException]
+    ) -> None:
+        """MemoryError/RecursionError from review gate propagates."""
+        mock_review = MagicMock()
+        mock_review.complete_review = AsyncMock(
+            side_effect=error_cls("fatal"),
+        )
+
+        app_state = MagicMock(spec=AppState)
+        app_state.approval_gate = None
+        app_state.review_gate_service = mock_review
+
+        with pytest.raises(error_cls):
+            await _signal_resume_intent(
+                app_state,
+                "approval-1",
+                approved=True,
+                decided_by="admin",
+                task_id="task-1",
+            )
+
 
 class TestPublishApprovalEvent:
     """_publish_approval_event() best-effort WebSocket publishing."""

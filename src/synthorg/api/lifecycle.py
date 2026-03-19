@@ -320,12 +320,13 @@ async def _safe_shutdown(  # noqa: PLR0913, C901
     message_bus: MessageBus | None,
     persistence: PersistenceBackend | None,
 ) -> None:
-    """Stop scheduler, task engine, backup, dispatcher, bridge, bus, persistence.
+    """Stop services in reverse startup order.
 
-    Mirrors ``_cleanup_on_failure`` reverse order: scheduler first (depends on
-    orchestrator), then task engine so it can drain queued mutations and
-    publish final snapshots through the still-running bridge.  Backup runs
-    before persistence disconnect so shutdown backup can still access the DB.
+    Approval timeout scheduler first, then meeting scheduler
+    (depends on orchestrator), then task engine so it can drain queued
+    mutations and publish final snapshots through the still-running
+    bridge.  Backup runs before persistence disconnect so shutdown
+    backup can still access the DB.
     """
     if approval_timeout_scheduler is not None:
         await _try_stop(
@@ -346,7 +347,7 @@ async def _safe_shutdown(  # noqa: PLR0913, C901
             "Failed to stop task engine",
         )
     if backup_service is not None:
-        # Create shutdown backup before stopping the scheduler
+        # Create shutdown backup before stopping the backup scheduler
         if backup_service.on_shutdown:
             try:
                 await backup_service.create_backup(

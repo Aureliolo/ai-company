@@ -187,6 +187,9 @@ class ApprovalTimeoutScheduler:
         if action.action in {TimeoutActionType.APPROVE, TimeoutActionType.DENY}:
             await self._resolve_item(updated, action)
         elif action.action == TimeoutActionType.ESCALATE:
+            # TODO: Wire escalation to a notification sink so the
+            # escalate_to target is actually notified.  Currently
+            # log-only with no downstream effect.
             logger.info(
                 TIMEOUT_SCHEDULER_RESOLVED,
                 approval_id=item.id,

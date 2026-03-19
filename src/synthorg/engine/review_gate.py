@@ -83,6 +83,6 @@ class ReviewGateService:
             self._task_engine,
             target_status=target,
             task_id=task_id,
-            agent_id=requested_by,
+            agent_id="review-gate-service",
             reason=transition_reason,
         )
