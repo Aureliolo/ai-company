@@ -39,6 +39,7 @@ from synthorg.observability.events.api import (
 )
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_RESUME_CONTEXT_LOADED,
+    APPROVAL_GATE_RESUME_FAILED,
     APPROVAL_GATE_RESUME_TRIGGERED,
 )
 
@@ -225,12 +226,14 @@ async def _signal_resume_intent(  # noqa: PLR0913
             raise
         except Exception:
             logger.warning(
-                APPROVAL_GATE_RESUME_CONTEXT_LOADED,
+                APPROVAL_GATE_RESUME_FAILED,
                 approval_id=approval_id,
                 error="Failed to resume parked context",
                 exc_info=True,
             )
-            resumed = None
+            # Resume lookup failed -- do NOT fall through to review
+            # gate, because the parked context may still exist.
+            return
 
         if resumed is not None:
             _context, parked_id = resumed
@@ -249,13 +252,24 @@ async def _signal_resume_intent(  # noqa: PLR0913
     # Flow 2: review gate -- transition task status.
     review_gate = app_state.review_gate_service
     if review_gate is not None and task_id is not None:
-        await review_gate.complete_review(
-            task_id=task_id,
-            agent_id=decided_by,
-            approved=approved,
-            decided_by=decided_by,
-            reason=decision_reason,
-        )
+        try:
+            await review_gate.complete_review(
+                task_id=task_id,
+                requested_by=decided_by,
+                approved=approved,
+                decided_by=decided_by,
+                reason=decision_reason,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                APPROVAL_GATE_RESUME_TRIGGERED,
+                approval_id=approval_id,
+                task_id=task_id,
+                error="Review gate transition failed (non-fatal)",
+                exc_info=True,
+            )
 
 
 class ApprovalsController(Controller):

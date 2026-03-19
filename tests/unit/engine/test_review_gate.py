@@ -38,7 +38,7 @@ class TestReviewGateService:
 
         await service.complete_review(
             task_id="task-1",
-            agent_id="agent-1",
+            requested_by="reviewer-1",
             approved=True,
             decided_by="reviewer-1",
         )
@@ -56,7 +56,7 @@ class TestReviewGateService:
 
         await service.complete_review(
             task_id="task-1",
-            agent_id="agent-1",
+            requested_by="reviewer-1",
             approved=False,
             decided_by="reviewer-1",
             reason="needs rework on error handling",
@@ -76,7 +76,7 @@ class TestReviewGateService:
 
         await service.complete_review(
             task_id="task-1",
-            agent_id="agent-1",
+            requested_by="reviewer-1",
             approved=False,
             decided_by="reviewer-1",
         )
@@ -93,7 +93,7 @@ class TestReviewGateService:
         # Should not raise
         await service.complete_review(
             task_id="task-1",
-            agent_id="agent-1",
+            requested_by="reviewer-1",
             approved=True,
             decided_by="reviewer-1",
         )

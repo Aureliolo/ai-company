@@ -28,6 +28,9 @@ class ReviewGateService:
     is approved or rejected.  Delegates to ``sync_to_task_engine``
     for best-effort TaskEngine sync.
 
+    When ``task_engine`` is ``None``, ``complete_review`` is a
+    no-op (the sync call returns immediately).
+
     Args:
         task_engine: Optional centralized task engine for status sync.
     """
@@ -39,7 +42,7 @@ class ReviewGateService:
         self,
         *,
         task_id: str,
-        agent_id: str,
+        requested_by: str,
         approved: bool,
         decided_by: str,
         reason: str | None = None,
@@ -51,7 +54,8 @@ class ReviewGateService:
 
         Args:
             task_id: The task identifier.
-            agent_id: The agent that executed the task.
+            requested_by: Identity requesting the transition (the
+                reviewer, not the original executing agent).
             approved: Whether the review was approved.
             decided_by: Who made the decision.
             reason: Optional reason for the decision.
@@ -70,7 +74,7 @@ class ReviewGateService:
         logger.info(
             event,
             task_id=task_id,
-            agent_id=agent_id,
+            requested_by=requested_by,
             decided_by=decided_by,
             target_status=target.value,
         )
@@ -79,6 +83,6 @@ class ReviewGateService:
             self._task_engine,
             target_status=target,
             task_id=task_id,
-            agent_id=agent_id,
+            agent_id=requested_by,
             reason=transition_reason,
         )

@@ -8,7 +8,7 @@ execution is never blocked by a ``TaskEngine`` issue.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 from uuid import uuid4
 
 from synthorg.core.approval import ApprovalItem
@@ -43,7 +43,7 @@ _COMPLETION_STEPS: tuple[tuple[TaskStatus, str], ...] = (
     (TaskStatus.IN_REVIEW, "Agent completed execution -- awaiting review"),
 )
 
-_REVIEW_ACTION_TYPE = "review:task_completion"
+_REVIEW_ACTION_TYPE: Final[str] = "review:task_completion"
 
 
 async def sync_to_task_engine(  # noqa: PLR0913
@@ -323,11 +323,11 @@ async def _create_review_approval(
         raise
     except Exception:
         logger.warning(
-            APPROVAL_GATE_REVIEW_CREATED,
+            EXECUTION_ENGINE_ERROR,
             approval_id=approval_id,
             task_id=task_id,
             agent_id=agent_id,
-            note="Failed to create review approval (non-fatal)",
+            error="Failed to create review approval (non-fatal)",
             exc_info=True,
         )
         return None

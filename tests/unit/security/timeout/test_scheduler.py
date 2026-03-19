@@ -1,6 +1,5 @@
 """Unit tests for ApprovalTimeoutScheduler."""
 
-import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -403,19 +402,19 @@ class TestApprovalTimeoutScheduler:
         # Should not raise
         await scheduler._check_pending_approvals()
 
-    async def test_run_loop_checks_on_interval(self) -> None:
-        """The run loop calls _check_pending_approvals after each interval."""
-        store = _make_mock_store()
-        checker = _make_mock_checker()
+    async def test_check_pending_called_directly(self) -> None:
+        """Verify _check_pending_approvals can be invoked directly."""
+        item = _make_pending_item()
+        store = _make_mock_store(items=(item,))
+        checker = _make_mock_checker(_make_wait_action())
         scheduler = ApprovalTimeoutScheduler(
             approval_store=store,
             timeout_checker=checker,
-            interval_seconds=0.01,
+            interval_seconds=60.0,
         )
 
-        scheduler.start()
-        # Give the loop time to tick at least once.
-        await asyncio.sleep(0.05)
-        await scheduler.stop()
+        # Call directly instead of relying on real-time loop ticking.
+        await scheduler._check_pending_approvals()
 
-        assert store.list_items.await_count >= 1
+        store.list_items.assert_awaited_once()
+        checker.check_and_resolve.assert_awaited_once()

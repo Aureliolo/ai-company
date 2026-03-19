@@ -136,7 +136,16 @@ class ApprovalTimeoutScheduler:
                     timeout=self._interval,
                 )
             logger.debug(TIMEOUT_SCHEDULER_TICK)
-            await self._check_pending_approvals()
+            try:
+                await self._check_pending_approvals()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.error(
+                    TIMEOUT_SCHEDULER_ERROR,
+                    error="Unexpected error in scheduler loop",
+                    exc_info=True,
+                )
 
     async def _check_pending_approvals(self) -> None:
         """Poll PENDING items and apply timeout policy."""
