@@ -6,8 +6,9 @@ import pytest
 
 from synthorg.config.schema import RootConfig
 
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
-@pytest.mark.unit
+
 class TestRunServerUvicornParams:
     """Verify that run_server passes correct params to uvicorn.run."""
 
@@ -28,9 +29,6 @@ class TestRunServerUvicornParams:
 
         mock_run.assert_called_once()
         call_kwargs = mock_run.call_args
-        assert call_kwargs.kwargs.get("access_log") is False or (
-            len(call_kwargs.args) > 0
-        )
         # access_log and log_config are keyword args to uvicorn.run.
         assert call_kwargs.kwargs["access_log"] is False
         assert call_kwargs.kwargs["log_config"] is None

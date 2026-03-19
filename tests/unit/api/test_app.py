@@ -1026,6 +1026,22 @@ class TestBootstrapAppLogging:
         captured = capsys.readouterr()
         assert "CRITICAL" in captured.err
 
+    def test_patched_config_preserved_on_app_state(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """create_app stores the SYNTHORG_LOG_DIR-patched config on AppState."""
+        monkeypatch.setenv("SYNTHORG_LOG_DIR", "/custom/volume/logs")
+        # Prevent bootstrap_logging from actually reconfiguring structlog.
+        monkeypatch.setattr(
+            "synthorg.api.app.bootstrap_logging",
+            lambda _config: None,
+        )
+        app = create_app()
+        app_state = app.state["app_state"]
+        assert app_state.config.logging is not None
+        assert app_state.config.logging.log_dir == "/custom/volume/logs"
+
 
 def _raise_runtime_error(_config: object) -> None:
     msg = "boom"
