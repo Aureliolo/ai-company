@@ -81,7 +81,7 @@ class MemoryConsolidationService:
         Retrieves up to 1000 entries per invocation and applies the
         consolidation strategy, then archives removed entries if archival
         is configured and enabled.  Per-entry archival failures are
-        logged and skipped — they do not abort the entire batch.
+        logged and skipped --they do not abort the entire batch.
 
         Args:
             agent_id: Agent whose memories to consolidate.
@@ -144,7 +144,7 @@ class MemoryConsolidationService:
         Retrieves excess entries in batches (up to 1000 per query,
         the ``MemoryQuery.limit`` cap) and deletes them.  The entries
         selected for deletion depend on the backend's default query
-        ordering — typically oldest-first, but consult the concrete
+        ordering --typically oldest-first, but consult the concrete
         backend for specifics.
 
         Args:
@@ -279,16 +279,15 @@ class MemoryConsolidationService:
                     error_type="KeyError",
                 )
                 continue
-            success, idx = await self._archive_single_entry(
+            idx = await self._archive_single_entry(
                 entry,
                 agent_id,
                 mode_map,
                 now,
             )
-            if success:
+            if idx is not None:
                 archived += 1
-                if idx is not None:
-                    index_entries.append(idx)
+                index_entries.append(idx)
 
         index = tuple(index_entries)
         if index:
@@ -306,7 +305,7 @@ class MemoryConsolidationService:
         agent_id: NotBlankStr,
         mode_map: dict[NotBlankStr, ArchivalMode],
         now: datetime,
-    ) -> tuple[bool, ArchivalIndexEntry | None]:
+    ) -> ArchivalIndexEntry | None:
         """Archive a single entry to cold storage.
 
         Args:
@@ -316,7 +315,7 @@ class MemoryConsolidationService:
             now: Current timestamp for archival.
 
         Returns:
-            Tuple of (success flag, index entry or ``None``).
+            Index entry on success, ``None`` on failure.
         """
         assert self._archival_store is not None  # noqa: S101
         archival_mode = mode_map.get(entry.id, ArchivalMode.EXTRACTIVE)
@@ -340,16 +339,15 @@ class MemoryConsolidationService:
                 error=str(exc),
                 error_type=type(exc).__name__,
             )
-            return False, None
+            return None
         logger.debug(
             ARCHIVAL_ENTRY_STORED,
             original_id=entry.id,
             agent_id=agent_id,
             archival_mode=archival_mode,
         )
-        index_entry = ArchivalIndexEntry(
+        return ArchivalIndexEntry(
             original_id=entry.id,
             archival_id=archival_id,
             mode=archival_mode,
         )
-        return True, index_entry

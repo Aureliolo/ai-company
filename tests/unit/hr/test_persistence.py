@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 async def db() -> AsyncGenerator[aiosqlite.Connection]:
-    """In-memory SQLite connection with all migrations applied."""
+    """In-memory SQLite connection with schema applied."""
     conn = await aiosqlite.connect(":memory:")
     conn.row_factory = aiosqlite.Row
     await apply_schema(conn)

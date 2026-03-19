@@ -483,7 +483,7 @@ persistence:
 ### Schema Strategy
 
 - Schema is applied at startup via `PersistenceBackend.migrate()` which calls `apply_schema()`
-- The canonical schema lives in `persistence/sqlite/schema.sql` (single source of truth)
+- The canonical schema lives in `src/synthorg/persistence/sqlite/schema.sql` (single source of truth)
 - All DDL uses `IF NOT EXISTS` guards, making application idempotent
 - No sequential migrations exist yet -- when data stability is declared, adopt Atlas for declarative migrations (diff `schema.sql` against the live DB)
 

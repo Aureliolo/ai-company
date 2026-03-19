@@ -11,7 +11,7 @@ from synthorg.persistence.sqlite.settings_repo import SQLiteSettingsRepository
 
 @pytest.fixture
 async def repo() -> AsyncGenerator[SQLiteSettingsRepository]:
-    """Create an in-memory SQLite DB with migrations and return repo."""
+    """Create an in-memory SQLite DB with schema applied and return repo."""
     db = await aiosqlite.connect(":memory:")
     db.row_factory = aiosqlite.Row
     await apply_schema(db)

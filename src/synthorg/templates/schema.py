@@ -18,7 +18,7 @@ class TemplateVariable(BaseModel):
 
     Variables declared here are extracted from the template YAML during
     the first parsing pass (before Jinja2 rendering).  The ``variables``
-    section must use plain YAML — no Jinja2 expressions.
+    section must use plain YAML --no Jinja2 expressions.
 
     Attributes:
         name: Variable name (used in ``{{ name }}`` placeholders).
@@ -104,7 +104,7 @@ class TemplateAgentConfig(BaseModel):
             template has multiple agents with the same ``(role,
             department)`` pair, ``merge_id`` disambiguates them so
             child templates can target a specific agent.
-        remove: Merge directive — when ``True``, removes matching
+        remove: Merge directive --when ``True``, removes matching
             parent agent during inheritance.
     """
 
@@ -155,7 +155,7 @@ class TemplateAgentConfig(BaseModel):
 class TemplateDepartmentConfig(BaseModel):
     """Department definition within a template.
 
-    Provides structural information — department names, budget
+    Provides structural information --department names, budget
     allocations, the head role, reporting lines, and operational policies.
 
     Attributes:

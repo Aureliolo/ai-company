@@ -37,7 +37,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project);
 CREATE TABLE IF NOT EXISTS cost_records (
     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id TEXT NOT NULL,
-    task_id TEXT NOT NULL,
+    task_id TEXT NOT NULL REFERENCES tasks(id),
     provider TEXT NOT NULL,
     model TEXT NOT NULL,
     input_tokens INTEGER NOT NULL,
@@ -87,7 +87,7 @@ CREATE INDEX IF NOT EXISTS idx_le_timestamp ON lifecycle_events(timestamp);
 CREATE TABLE IF NOT EXISTS task_metrics (
     id TEXT PRIMARY KEY,
     agent_id TEXT NOT NULL,
-    task_id TEXT NOT NULL,
+    task_id TEXT NOT NULL REFERENCES tasks(id),
     task_type TEXT NOT NULL,
     completed_at TEXT NOT NULL,
     is_success INTEGER NOT NULL,
@@ -188,7 +188,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     key_hash TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     role TEXT NOT NULL,
-    user_id TEXT NOT NULL REFERENCES users(id),
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TEXT NOT NULL,
     expires_at TEXT,
     revoked INTEGER NOT NULL DEFAULT 0

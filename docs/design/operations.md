@@ -1110,7 +1110,7 @@ The backup system protects persistent data -- persistence DB, agent memory, and 
 ### Restore Flow
 
 1. Validate `backup_id` format (12-char hex)
-2. Load and verify manifest (schema version compatibility check)
+2. Load and verify manifest (structural validation)
 3. Re-compute and verify SHA-256 checksum against manifest
 4. Validate component sources (handler-specific checks)
 5. Create safety backup (pre-migration trigger)

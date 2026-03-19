@@ -1,6 +1,6 @@
 """Org memory domain models.
 
-Frozen Pydantic models for organizational facts — shared company-wide
+Frozen Pydantic models for organizational facts -- shared company-wide
 knowledge such as policies, ADRs, procedures, and conventions.
 """
 

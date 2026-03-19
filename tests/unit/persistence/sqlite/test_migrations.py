@@ -112,11 +112,16 @@ class TestApplySchema:
     async def test_settings_has_composite_key(
         self, memory_db: aiosqlite.Connection
     ) -> None:
-        """settings table has namespace + key columns."""
+        """settings table has namespace + key as composite primary key."""
         await apply_schema(memory_db)
         cursor = await memory_db.execute("PRAGMA table_info('settings')")
-        columns = {row[1] for row in await cursor.fetchall()}
+        rows = await cursor.fetchall()
+        columns = {row[1] for row in rows}
         assert {"namespace", "key", "value", "updated_at"} == columns
+        # row[5] is the pk ordinal (1-based); 0 means not part of PK.
+        pk_columns = {row[1]: row[5] for row in rows}
+        assert pk_columns["namespace"] == 1
+        assert pk_columns["key"] == 2
 
     async def test_agent_states_ddl_has_check_constraints(
         self, memory_db: aiosqlite.Connection

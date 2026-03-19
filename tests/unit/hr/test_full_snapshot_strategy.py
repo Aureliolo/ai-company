@@ -9,7 +9,7 @@ from synthorg.core.enums import MemoryCategory, SeniorityLevel
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.errors import MemoryArchivalError
 from synthorg.hr.full_snapshot_strategy import FullSnapshotStrategy
-from synthorg.memory.consolidation.models import ArchivalEntry
+from synthorg.memory.consolidation.models import ArchivalEntry, ArchivalMode
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 from synthorg.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
 
@@ -174,6 +174,8 @@ class TestFullSnapshotStrategy:
         assert result.hot_store_cleaned is True
         assert result.strategy_name == "full_snapshot"
         assert len(archival_store.archived) == 3
+        for entry in archival_store.archived:
+            assert entry.archival_mode == ArchivalMode.EXTRACTIVE
         assert len(org_backend.written) == 2
 
     async def test_empty_memories_zero_archived(self) -> None:

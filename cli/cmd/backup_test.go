@@ -531,18 +531,18 @@ func TestBackupRestore_Conflict(t *testing.T) {
 	}
 }
 
-func TestBackupRestore_InvalidManifest(t *testing.T) {
+func TestBackupRestore_InvalidManifestPayload(t *testing.T) {
 	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		_, _ = w.Write([]byte(`{"data":null,"error":"Manifest schema version mismatch","success":false}`))
+		_, _ = w.Write([]byte(`{"data":null,"error":"Manifest validation failed","success":false}`))
 	})
 
 	out, err := runBackupCmd(t, dir, "restore", "abcdef012345", "--confirm")
 	if err == nil {
 		t.Fatal("expected error for unprocessable entity response")
 	}
-	if !strings.Contains(out, "Manifest schema version mismatch") {
+	if !strings.Contains(out, "Manifest validation failed") {
 		t.Errorf("output missing invalid manifest message:\n%s", out)
 	}
 }

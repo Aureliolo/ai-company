@@ -1,4 +1,4 @@
-"""Org fact store — protocol and SQLite implementation.
+"""Org fact store --protocol and SQLite implementation.
 
 Self-contained storage for organizational facts, separate from the
 operational persistence layer.
@@ -300,7 +300,7 @@ class SQLiteOrgFactStore:
             OrgMemoryConnectionError: If not connected.
         """
         if self._db is None:
-            msg = "Not connected — call connect() first"
+            msg = "Not connected --call connect() first"
             logger.warning(ORG_MEMORY_NOT_CONNECTED, db_path=self._db_path)
             raise OrgMemoryConnectionError(msg)
         return self._db
@@ -389,7 +389,7 @@ class SQLiteOrgFactStore:
 
         All dynamic values are passed as parameterized query parameters.
         The ``WHERE`` clause is constructed from safe column/operator
-        constants only — no user input is interpolated into SQL.
+        constants only --no user input is interpolated into SQL.
 
         Args:
             categories: Category filter.

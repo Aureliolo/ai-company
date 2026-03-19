@@ -141,7 +141,8 @@ template:
   company:
     type: "startup"
     budget_monthly: "{{ budget | default(50.00) }}"
-    autonomy: 0.5
+    autonomy:
+      level: "semi"
 
   agents:
     - role: "CEO"
