@@ -442,6 +442,9 @@ composes the execution loop with prompt construction, context management, tool
 invocation, and cost tracking into a single `run()` call. When an
 `auto_loop_config` is provided (mutually exclusive with `execution_loop`),
 the engine dynamically selects the loop per task via `_resolve_loop()`.
+Optional `plan_execute_config`, `hybrid_loop_config`, and
+`compaction_callback` are forwarded to the auto-selected loop so it
+receives the same configuration as a statically configured loop.
 
 The engine also exposes an optional ``coordinate()`` method that delegates to a
 ``MultiAgentCoordinator`` when one is configured (see :doc:`coordination`).
@@ -486,7 +489,10 @@ async run(
    Budget-aware downgrade: hybrid is downgraded to plan_execute when
    utilization >= threshold.  Optional hybrid fallback applies when
    `hybrid_fallback` is configured.  When no auto config is set, uses
-   the statically configured loop.
+   the statically configured loop.  The auto-selected loop receives the
+   engine's `compaction_callback`, `plan_execute_config` (for
+   plan-execute), and `hybrid_loop_config` (for hybrid), along with the
+   approval gate and stagnation detector.
 9. **Delegate to loop** -- calls `ExecutionLoop.execute()` with context,
    provider, tool invoker, budget checker, and completion config. If
    `timeout_seconds` is set, wraps the call in `asyncio.wait`; on expiry

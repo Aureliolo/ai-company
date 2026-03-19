@@ -1,5 +1,7 @@
 """Unit tests for execution loop auto-selection."""
 
+from unittest.mock import MagicMock
+
 import pytest
 import structlog.testing
 from pydantic import ValidationError
@@ -379,8 +381,6 @@ class TestBuildExecutionLoop:
         assert loop.get_loop_type() == "plan_execute"
 
     def test_build_react_with_gates(self) -> None:
-        from unittest.mock import MagicMock
-
         gate = MagicMock()
         detector = MagicMock()
         loop = build_execution_loop(
@@ -421,8 +421,6 @@ class TestBuildExecutionLoop:
         assert loop.config.max_turns_per_step == 10
 
     def test_build_hybrid_with_gates(self) -> None:
-        from unittest.mock import MagicMock
-
         gate = MagicMock()
         detector = MagicMock()
         ckpt_cb = MagicMock()
@@ -438,6 +436,26 @@ class TestBuildExecutionLoop:
         assert loop.approval_gate is gate
         assert loop.stagnation_detector is detector
         assert loop._checkpoint_callback is ckpt_cb
+        assert loop.compaction_callback is compact_cb
+
+    def test_build_react_with_compaction_callback(self) -> None:
+        """ReactLoop receives compaction_callback when provided."""
+        compact_cb = MagicMock()
+        loop = build_execution_loop(
+            "react",
+            compaction_callback=compact_cb,
+        )
+        assert isinstance(loop, ReactLoop)
+        assert loop.compaction_callback is compact_cb
+
+    def test_build_plan_execute_with_compaction_callback(self) -> None:
+        """PlanExecuteLoop receives compaction_callback when provided."""
+        compact_cb = MagicMock()
+        loop = build_execution_loop(
+            "plan_execute",
+            compaction_callback=compact_cb,
+        )
+        assert isinstance(loop, PlanExecuteLoop)
         assert loop.compaction_callback is compact_cb
 
     def test_unknown_type_raises(self) -> None:
