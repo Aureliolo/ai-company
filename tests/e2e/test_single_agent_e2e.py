@@ -99,14 +99,13 @@ class TestFileToolAgent:
         assert tool_msgs[0].tool_result.is_error is False
         assert "Created output.txt" in tool_msgs[0].tool_result.content
 
-        # Task lifecycle: ASSIGNED -> IN_PROGRESS -> IN_REVIEW -> COMPLETED
+        # Task lifecycle: ASSIGNED -> IN_PROGRESS -> IN_REVIEW (review gate)
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.status == TaskStatus.COMPLETED
-        assert len(te.transition_log) == 3
+        assert te.status == TaskStatus.IN_REVIEW
+        assert len(te.transition_log) == 2
         assert te.transition_log[0].to_status == TaskStatus.IN_PROGRESS
         assert te.transition_log[1].to_status == TaskStatus.IN_REVIEW
-        assert te.transition_log[2].to_status == TaskStatus.COMPLETED
 
         # Cost tracking matches result
         total_cost = await cost_tracker.get_total_cost()
@@ -166,11 +165,11 @@ class TestTextOnlyAgent:
         tool_msgs = [m for m in conversation if m.role == MessageRole.TOOL]
         assert len(tool_msgs) == 0
 
-        # Task lifecycle: ASSIGNED -> IN_PROGRESS -> IN_REVIEW -> COMPLETED
+        # Task lifecycle: ASSIGNED -> IN_PROGRESS -> IN_REVIEW (review gate)
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.status == TaskStatus.COMPLETED
-        assert len(te.transition_log) == 3
+        assert te.status == TaskStatus.IN_REVIEW
+        assert len(te.transition_log) == 2
 
         # Cost tracking
         total_cost = await cost_tracker.get_total_cost()
@@ -256,10 +255,10 @@ class TestPermissionDeniedRecovery:
         # File was NOT created on disk
         assert not (e2e_workspace / "output.txt").exists()
 
-        # Task completed (agent recovered)
+        # Task at IN_REVIEW (agent completed, awaiting review)
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.status == TaskStatus.COMPLETED
+        assert te.status == TaskStatus.IN_REVIEW
 
         # Cost tracking records both turns
         assert await cost_tracker.get_record_count() == 2

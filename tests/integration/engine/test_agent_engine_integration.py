@@ -210,17 +210,17 @@ class TestAgentEngineToolCallIntegration:
         assert tool_results[0].tool_result is not None
         assert tool_results[0].tool_result.content == "HELLO WORLD"
 
-        # Verify task auto-completed: ASSIGNED → IP → IR → COMPLETED
+        # Verify task parks at IN_REVIEW: ASSIGNED -> IP -> IR
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.status == TaskStatus.COMPLETED
+        assert te.status == TaskStatus.IN_REVIEW
 
 
 class TestAgentEngineFullLifecycle:
-    """Full task lifecycle: ASSIGNED → IN_PROGRESS → IN_REVIEW → COMPLETED."""
+    """Full task lifecycle: ASSIGNED -> IN_PROGRESS -> IN_REVIEW (review gate)."""
 
-    async def test_full_lifecycle_assigned_to_completed(self) -> None:
-        """Verify complete lifecycle with transitions, summary, and metrics."""
+    async def test_full_lifecycle_assigned_to_in_review(self) -> None:
+        """Verify lifecycle parks at IN_REVIEW (review gate)."""
         identity = AgentIdentity(
             id=uuid4(),
             name="Lifecycle Agent",
@@ -279,17 +279,16 @@ class TestAgentEngineFullLifecycle:
         assert result.is_success is True
         assert result.termination_reason == TerminationReason.COMPLETED
 
-        # Verify transition log: ASSIGNED→IP, IP→IR, IR→COMPLETED
+        # Verify transition log: ASSIGNED->IP, IP->IR (review gate)
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.status == TaskStatus.COMPLETED
-        assert len(te.transition_log) == 3
+        assert te.status == TaskStatus.IN_REVIEW
+        assert len(te.transition_log) == 2
         assert te.transition_log[0].to_status == TaskStatus.IN_PROGRESS
         assert te.transition_log[1].to_status == TaskStatus.IN_REVIEW
-        assert te.transition_log[2].to_status == TaskStatus.COMPLETED
 
-        # Verify completed_at is set
-        assert te.completed_at is not None
+        # completed_at is NOT set -- task awaits human review
+        assert te.completed_at is None
 
         # Verify completion_summary is non-empty
         assert result.completion_summary is not None
