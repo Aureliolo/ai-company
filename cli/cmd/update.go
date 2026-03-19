@@ -53,11 +53,32 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 
 	// Regenerate compose.yml from the current template to pick up any
 	// template changes (new env vars, hardening tweaks, service config).
-	if err := refreshCompose(cmd, state); err != nil {
+	applied, err := refreshCompose(cmd, state)
+	if err != nil {
 		return err
 	}
+	if !applied {
+		// User declined compose changes. New images may not work with
+		// old compose (e.g. missing env vars). Let them force it.
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(),
+			"Warning: new images may not work correctly with your current compose configuration.")
+		forceImages := false
+		ok, confirmErr := confirmUpdateWithDefault(
+			"Still update container images? (Your compose.yml will NOT be modified.)",
+			forceImages,
+		)
+		if confirmErr != nil {
+			return confirmErr
+		}
+		if !ok {
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Image update skipped. Run 'synthorg init' then 'synthorg update' when ready.")
+			return nil
+		}
+		// User insisted -- update images but preserve their compose.
+		return updateContainerImages(cmd, state, true)
+	}
 
-	return updateContainerImages(cmd, state)
+	return updateContainerImages(cmd, state, false)
 }
 
 // errReexec is a sentinel error returned by updateCLI when the binary was
@@ -191,28 +212,28 @@ func reexecUpdate(cmd *cobra.Command) error {
 
 // refreshCompose regenerates compose.yml from the current embedded template.
 // If the regenerated compose differs from what is on disk, it shows the diff
-// and asks the user to approve. This ensures template changes are picked up
-// on upgrade even when the image tag hasn't changed.
-func refreshCompose(cmd *cobra.Command, state config.State) error {
+// and asks the user to approve. Returns true if compose is up to date or
+// changes were applied; false if the user declined.
+func refreshCompose(cmd *cobra.Command, state config.State) (bool, error) {
 	out := cmd.OutOrStdout()
 
 	safeDir, err := safeStateDir(state)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	composePath := filepath.Join(safeDir, "compose.yml")
 	existing, fresh, err := loadAndGenerate(composePath, state)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if existing == nil {
-		return nil // no compose.yml on disk
+		return true, nil // no compose.yml on disk -- nothing to refresh
 	}
 
 	if bytes.Equal(existing, fresh) {
 		_, _ = fmt.Fprintln(out, "Compose configuration is up to date.")
-		return nil
+		return true, nil
 	}
 
 	return applyComposeDiff(cmd, composePath, existing, fresh, safeDir)
@@ -240,7 +261,8 @@ func loadAndGenerate(composePath string, state config.State) ([]byte, []byte, er
 
 // applyComposeDiff shows the diff between existing and fresh compose,
 // asks the user to approve, and writes the fresh compose if approved.
-func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []byte, safeDir string) error {
+// Returns true if applied, false if declined.
+func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []byte, safeDir string) (bool, error) {
 	out := cmd.OutOrStdout()
 
 	diff := lineDiff(string(existing), string(fresh))
@@ -249,18 +271,18 @@ func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []
 
 	ok, err := confirmUpdate("Apply compose configuration changes?")
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !ok {
-		_, _ = fmt.Fprintln(out, "Compose changes skipped. You can apply later with 'synthorg init'.")
-		return nil
+		_, _ = fmt.Fprintln(out, "Compose changes skipped.")
+		return false, nil
 	}
 
 	if err := atomicWriteFile(composePath, fresh, safeDir); err != nil {
-		return fmt.Errorf("writing updated compose: %w", err)
+		return false, fmt.Errorf("writing updated compose: %w", err)
 	}
 	_, _ = fmt.Fprintln(out, "Compose configuration updated.")
-	return nil
+	return true, nil
 }
 
 // secretKeyPattern matches YAML lines containing known sensitive keys.
@@ -363,8 +385,10 @@ func isAlphaNum(c byte) bool {
 }
 
 // updateContainerImages offers to update container images to match the
-// current CLI version. Skips if images already match.
-func updateContainerImages(cmd *cobra.Command, state config.State) error {
+// current CLI version. Skips if images already match. When preserveCompose
+// is true, only image references are patched in the existing compose
+// instead of regenerating from the template.
+func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompose bool) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
@@ -395,7 +419,7 @@ func updateContainerImages(cmd *cobra.Command, state config.State) error {
 		return nil
 	}
 
-	if err := pullAndPersist(ctx, cmd, info, state, tag, safeDir); err != nil {
+	if err := pullAndPersist(ctx, cmd, info, state, tag, safeDir, preserveCompose); err != nil {
 		return err
 	}
 
@@ -406,11 +430,17 @@ func updateContainerImages(cmd *cobra.Command, state config.State) error {
 
 // confirmUpdate prompts the user to confirm an update action.
 // Returns (true, nil) if non-interactive (auto-accept) or user confirms.
+// Default is yes.
 func confirmUpdate(title string) (bool, error) {
+	return confirmUpdateWithDefault(title, true)
+}
+
+// confirmUpdateWithDefault prompts the user with a configurable default.
+func confirmUpdateWithDefault(title string, defaultVal bool) (bool, error) {
 	if !isInteractive() {
-		return true, nil
+		return defaultVal, nil
 	}
-	proceed := true // default yes
+	proceed := defaultVal
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().Title(title).Value(&proceed),
 	))
@@ -420,10 +450,11 @@ func confirmUpdate(title string) (bool, error) {
 	return proceed, nil
 }
 
-// pullAndPersist regenerates compose.yml, pulls images, and persists config.
-// If any step fails, the previous compose.yml is restored (or removed if it
-// did not exist before) so that the on-disk state remains consistent.
-func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, tag, safeDir string) error {
+// pullAndPersist verifies images, updates compose, pulls, and persists config.
+// If any step fails, the previous compose.yml is restored. When
+// preserveCompose is true, only image references are patched in the
+// existing compose instead of regenerating from the template.
+func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, state config.State, tag, safeDir string, preserveCompose bool) error {
 	out := ui.NewUI(cmd.OutOrStdout())
 
 	// Back up existing compose.yml for rollback on failure.
@@ -443,8 +474,7 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 
 	// Verify + write compose atomically: compose.yml is only updated after
 	// verification succeeds (or when --skip-verify explicitly skips it).
-	// This prevents a crash from leaving an unverified tag on disk.
-	digestPins, err := verifyAndPinForUpdate(ctx, state, tag, safeDir, out, errOut)
+	digestPins, err := verifyAndPinForUpdate(ctx, state, tag, safeDir, preserveCompose, out, errOut)
 	if err != nil {
 		rollback()
 		return err
@@ -468,23 +498,22 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 	return nil
 }
 
-// verifyAndPinForUpdate runs image verification and regenerates the compose
-// file with digest pins. Returns the digest pin map (nil if --skip-verify).
-func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir string, out *ui.UI, errOut *ui.UI) (map[string]string, error) {
+// verifyAndPinForUpdate runs image verification and updates the compose
+// file with new image references. When preserveCompose is true, only
+// image lines are patched; otherwise the full compose is regenerated.
+func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir string, preserveCompose bool, out *ui.UI, errOut *ui.UI) (map[string]string, error) {
 	updatedState := state
 	updatedState.ImageTag = tag
 
 	if skipVerify {
 		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
-		// Write compose with the new tag but no digest pins.
-		if err := writeDigestPinnedCompose(updatedState, nil, safeDir); err != nil {
+		if err := writeOrPatchCompose(updatedState, nil, safeDir, preserveCompose); err != nil {
 			return nil, err
 		}
 		return nil, nil
 	}
 
 	out.Step("Verifying container image signatures...")
-	// Bound OCI registry calls to prevent indefinite hangs.
 	verifyCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
@@ -502,11 +531,54 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 		return nil, fmt.Errorf("digest pin map: %w", err)
 	}
 
-	// Write compose with verified digest pins.
-	if err := writeDigestPinnedCompose(updatedState, pins, safeDir); err != nil {
+	if err := writeOrPatchCompose(updatedState, pins, safeDir, preserveCompose); err != nil {
 		return nil, err
 	}
 	return pins, nil
+}
+
+// writeOrPatchCompose either regenerates compose from the template or
+// patches only image references in the existing file.
+func writeOrPatchCompose(state config.State, digestPins map[string]string, safeDir string, preserveCompose bool) error {
+	if !preserveCompose {
+		return writeDigestPinnedCompose(state, digestPins, safeDir)
+	}
+	return patchComposeImageRefs(state.ImageTag, digestPins, safeDir)
+}
+
+// imageLinePattern matches Docker image references in compose YAML.
+// Handles both digest-pinned (repo@sha256:...) and tag-based (repo:tag).
+var imageLinePattern = regexp.MustCompile(
+	`(\s+image:\s+)ghcr\.io/aureliolo/synthorg-(backend|web|sandbox)[\S]*`,
+)
+
+// patchComposeImageRefs updates only the image references in an existing
+// compose.yml without regenerating from the template. This preserves the
+// user's compose configuration while allowing image updates.
+func patchComposeImageRefs(tag string, digestPins map[string]string, safeDir string) error {
+	composePath := filepath.Join(safeDir, "compose.yml")
+	existing, err := os.ReadFile(composePath)
+	if err != nil {
+		return fmt.Errorf("reading compose for image patching: %w", err)
+	}
+
+	patched := imageLinePattern.ReplaceAllStringFunc(string(existing), func(match string) string {
+		// Extract the indentation + "image:" prefix and service name.
+		sub := imageLinePattern.FindStringSubmatch(match)
+		if len(sub) < 3 {
+			return match // no match, keep as-is
+		}
+		prefix := sub[1] // e.g. "    image: "
+		name := sub[2]   // e.g. "backend"
+		repo := "ghcr.io/aureliolo/synthorg-" + name
+
+		if d, ok := digestPins[name]; ok && d != "" {
+			return prefix + repo + "@" + d
+		}
+		return prefix + repo + ":" + tag
+	})
+
+	return atomicWriteFile(composePath, []byte(patched), safeDir)
 }
 
 // restartIfRunning checks if containers are running and offers a restart.
