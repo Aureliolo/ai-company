@@ -53,6 +53,7 @@ from synthorg.config import bootstrap_logging
 from synthorg.config.schema import RootConfig
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
+from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
@@ -68,6 +69,7 @@ from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
 from synthorg.persistence.factory import create_backend
 from synthorg.persistence.protocol import PersistenceBackend  # noqa: TC001
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
 from synthorg.settings.dispatcher import SettingsChangeDispatcher
 from synthorg.settings.subscribers import (
     BackupSettingsSubscriber,
@@ -188,6 +190,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
+    approval_timeout_scheduler: ApprovalTimeoutScheduler | None,
     app_state: AppState,
     *,
     should_auto_wire_settings: bool = False,
@@ -206,6 +209,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
         task_engine: Centralized task state engine.
         meeting_scheduler: Meeting scheduler service.
         backup_service: Backup and restore service.
+        approval_timeout_scheduler: Background approval timeout checker.
         app_state: Application state container.
         should_auto_wire_settings: When ``True``, Phase 2 auto-wiring
             creates ``SettingsService`` + dispatcher after persistence
@@ -241,6 +245,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
             task_engine,
             meeting_scheduler,
             backup_service,
+            approval_timeout_scheduler,
             app_state,
         )
         # Phase 2 auto-wire: SettingsService (needs connected persistence)
@@ -270,6 +275,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
                     task_engine,
                     meeting_scheduler,
                     backup_service,
+                    approval_timeout_scheduler,
                     settings_dispatcher,
                     bridge,
                     message_bus,
@@ -301,6 +307,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
             task_engine,
             meeting_scheduler,
             backup_service,
+            approval_timeout_scheduler,
             settings_dispatcher,
             bridge,
             message_bus,
@@ -545,6 +552,14 @@ def create_app(  # noqa: PLR0913
     # and is created in on_startup after _init_persistence().
     _should_auto_wire = settings_service is None and persistence is not None
 
+    # Review gate service -- transitions tasks from IN_REVIEW on approval.
+    review_gate_service = ReviewGateService(task_engine=task_engine)
+    app_state.set_review_gate_service(review_gate_service)
+
+    # Approval timeout scheduler -- None here; created during startup
+    # if a timeout policy is configured via settings (future work).
+    approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
+
     startup, shutdown = _build_lifecycle(
         persistence,
         message_bus,
@@ -553,6 +568,7 @@ def create_app(  # noqa: PLR0913
         task_engine,
         meeting_scheduler,
         backup_service,
+        approval_timeout_scheduler,
         app_state,
         should_auto_wire_settings=_should_auto_wire,
         effective_config=effective_config,

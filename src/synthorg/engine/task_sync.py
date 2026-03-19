@@ -7,14 +7,19 @@ execution is never blocked by a ``TaskEngine`` issue.
 """
 
 import asyncio
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.approval import ApprovalItem
+from synthorg.core.enums import ApprovalRiskLevel, TaskStatus
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import TerminationReason
 from synthorg.engine.task_engine_models import TransitionTaskMutation
 from synthorg.observability import get_logger
+from synthorg.observability.events.approval_gate import (
+    APPROVAL_GATE_REVIEW_CREATED,
+)
 from synthorg.observability.events.execution import (
     EXECUTION_ENGINE_ERROR,
     EXECUTION_ENGINE_SYNC_FAILED,
@@ -23,6 +28,7 @@ from synthorg.observability.events.execution import (
 )
 
 if TYPE_CHECKING:
+    from synthorg.api.approval_store import ApprovalStore
     from synthorg.engine.context import AgentContext
     from synthorg.engine.loop_protocol import ExecutionResult
     from synthorg.engine.task_engine import TaskEngine
@@ -34,10 +40,10 @@ logger = get_logger(__name__)
 # ``ctx`` after each step so partial-failure always reflects the
 # furthest-reached state.
 _COMPLETION_STEPS: tuple[tuple[TaskStatus, str], ...] = (
-    (TaskStatus.IN_REVIEW, "Agent completed execution"),
-    # TODO: Replace auto-complete with review gate (engine.md, step 10)
-    (TaskStatus.COMPLETED, "Auto-completed (review gate not implemented)"),
+    (TaskStatus.IN_REVIEW, "Agent completed execution -- awaiting review"),
 )
+
+_REVIEW_ACTION_TYPE = "review:task_completion"
 
 
 async def sync_to_task_engine(  # noqa: PLR0913
@@ -173,14 +179,19 @@ async def apply_post_execution_transitions(
     agent_id: str,
     task_id: str,
     task_engine: TaskEngine | None,
+    approval_store: ApprovalStore | None = None,
 ) -> ExecutionResult:
     """Apply post-execution task transitions based on termination reason.
 
-    COMPLETED triggers IN_PROGRESS -> IN_REVIEW -> COMPLETED.
+    COMPLETED triggers IN_PROGRESS -> IN_REVIEW (awaits human review).
     SHUTDOWN triggers current status -> INTERRUPTED.
     Each transition is synced to TaskEngine incrementally.
     Transition failures are logged but never discard the result.
     ``MemoryError`` and ``RecursionError`` propagate unconditionally.
+
+    When an ``approval_store`` is provided and the task reaches
+    IN_REVIEW, an ``ApprovalItem`` is created so the human knows
+    there is a task to review.
 
     Returns the original ``execution_result`` unchanged if no
     transitions apply, or a copy with updated context reflecting
@@ -200,9 +211,9 @@ async def apply_post_execution_transitions(
     if reason != TerminationReason.COMPLETED:
         return execution_result
 
-    # Apply IN_PROGRESS -> IN_REVIEW -> COMPLETED stepwise so that
-    # ``ctx`` always reflects the furthest-reached state, even when
-    # one step raises (partial-completion safety).
+    # Apply IN_PROGRESS -> IN_REVIEW stepwise so that ``ctx`` always
+    # reflects the furthest-reached state, even when one step raises
+    # (partial-completion safety).
     for target, step_reason in _COMPLETION_STEPS:
         try:
             ctx = await _transition_and_sync(
@@ -221,6 +232,15 @@ async def apply_post_execution_transitions(
                 error=f"Post-execution transition failed: {exc}",
             )
             break
+
+    # Create a review approval if the task reached IN_REVIEW.
+    if (
+        ctx.task_execution is not None
+        and ctx.task_execution.status == TaskStatus.IN_REVIEW
+    ):
+        await _create_review_approval(
+            approval_store, agent_id=agent_id, task_id=task_id
+        )
 
     if ctx is execution_result.context:
         return execution_result
@@ -261,6 +281,64 @@ async def _transition_and_sync(  # noqa: PLR0913
         critical=critical,
     )
     return ctx
+
+
+async def _create_review_approval(
+    approval_store: ApprovalStore | None,
+    *,
+    agent_id: str,
+    task_id: str,
+) -> str | None:
+    """Create an ApprovalItem for a task entering IN_REVIEW.
+
+    Best-effort: failures are logged and swallowed so the
+    execution result is never lost.
+
+    Args:
+        approval_store: Store to create the item in, or ``None``.
+        agent_id: Agent that completed the task.
+        task_id: Task identifier.
+
+    Returns:
+        The approval_id on success, or ``None`` if no store or on error.
+    """
+    if approval_store is None:
+        return None
+
+    now = datetime.now(UTC)
+    approval_id = f"approval-{uuid4().hex}"
+    item = ApprovalItem(
+        id=approval_id,
+        action_type=_REVIEW_ACTION_TYPE,
+        title=f"Review task {task_id} completion",
+        description=f"Agent {agent_id} completed task {task_id}",
+        requested_by=agent_id,
+        risk_level=ApprovalRiskLevel.LOW,
+        created_at=now,
+        task_id=task_id,
+    )
+    try:
+        await approval_store.add(item)
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            APPROVAL_GATE_REVIEW_CREATED,
+            approval_id=approval_id,
+            task_id=task_id,
+            agent_id=agent_id,
+            note="Failed to create review approval (non-fatal)",
+            exc_info=True,
+        )
+        return None
+
+    logger.info(
+        APPROVAL_GATE_REVIEW_CREATED,
+        approval_id=approval_id,
+        task_id=task_id,
+        agent_id=agent_id,
+    )
+    return approval_id
 
 
 async def _transition_to_interrupted(

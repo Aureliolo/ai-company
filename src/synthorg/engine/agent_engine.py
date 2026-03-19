@@ -532,6 +532,7 @@ class AgentEngine:
             agent_id,
             task_id,
             self._task_engine,
+            approval_store=self._approval_store,
         )
         if execution_result.termination_reason == TerminationReason.ERROR:
             pre_recovery_ctx = execution_result.context

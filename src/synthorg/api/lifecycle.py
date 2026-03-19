@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from synthorg.communication.meeting.scheduler import MeetingScheduler
     from synthorg.engine.task_engine import TaskEngine
     from synthorg.persistence.protocol import PersistenceBackend
+    from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
     from synthorg.settings.dispatcher import SettingsChangeDispatcher
 
 logger = get_logger(__name__)
@@ -63,8 +64,16 @@ async def _cleanup_on_failure(  # noqa: PLR0913
     started_meeting_scheduler: bool = False,
     backup_service: BackupService | None = None,
     started_backup_service: bool = False,
+    approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None,
+    started_approval_timeout_scheduler: bool = False,
 ) -> None:
     """Reverse cleanup on startup failure."""
+    if started_approval_timeout_scheduler and approval_timeout_scheduler is not None:
+        await _try_stop(
+            approval_timeout_scheduler.stop(),
+            API_APP_STARTUP,
+            "Cleanup: failed to stop approval timeout scheduler",
+        )
     if started_backup_service and backup_service is not None:
         await _try_stop(
             backup_service.stop(),
@@ -159,6 +168,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
+    approval_timeout_scheduler: ApprovalTimeoutScheduler | None,
     app_state: AppState,
 ) -> None:
     """Start all services in order, with reverse cleanup on failure.
@@ -173,6 +183,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
     started_task_engine = False
     started_meeting_scheduler = False
     started_backup_service = False
+    started_approval_timeout_scheduler = False
     try:
         if persistence is not None:
             try:
@@ -264,6 +275,19 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
                         error="Startup backup failed (non-fatal)",
                         exc_info=True,
                     )
+        if approval_timeout_scheduler is not None:
+            try:
+                app_state.set_approval_timeout_scheduler(
+                    approval_timeout_scheduler,
+                )
+                approval_timeout_scheduler.start()
+                started_approval_timeout_scheduler = True
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Failed to start approval timeout scheduler",
+                )
+                raise
     except Exception:
         await _cleanup_on_failure(
             persistence=persistence,
@@ -280,6 +304,8 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             started_meeting_scheduler=started_meeting_scheduler,
             backup_service=backup_service,
             started_backup_service=started_backup_service,
+            approval_timeout_scheduler=approval_timeout_scheduler,
+            started_approval_timeout_scheduler=started_approval_timeout_scheduler,
         )
         raise
 
@@ -288,6 +314,7 @@ async def _safe_shutdown(  # noqa: PLR0913, C901
     task_engine: TaskEngine | None,
     meeting_scheduler: MeetingScheduler | None,
     backup_service: BackupService | None,
+    approval_timeout_scheduler: ApprovalTimeoutScheduler | None,
     settings_dispatcher: SettingsChangeDispatcher | None,
     bridge: MessageBusBridge | None,
     message_bus: MessageBus | None,
@@ -300,6 +327,12 @@ async def _safe_shutdown(  # noqa: PLR0913, C901
     publish final snapshots through the still-running bridge.  Backup runs
     before persistence disconnect so shutdown backup can still access the DB.
     """
+    if approval_timeout_scheduler is not None:
+        await _try_stop(
+            approval_timeout_scheduler.stop(),
+            API_APP_SHUTDOWN,
+            "Failed to stop approval timeout scheduler",
+        )
     if meeting_scheduler is not None:
         await _try_stop(
             meeting_scheduler.stop(),

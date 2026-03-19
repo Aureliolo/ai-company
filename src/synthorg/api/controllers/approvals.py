@@ -38,6 +38,7 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
 )
 from synthorg.observability.events.approval_gate import (
+    APPROVAL_GATE_RESUME_CONTEXT_LOADED,
     APPROVAL_GATE_RESUME_TRIGGERED,
 )
 
@@ -174,34 +175,39 @@ def _log_approval_decision(
     )
 
 
-async def _signal_resume_intent(
+async def _signal_resume_intent(  # noqa: PLR0913
     app_state: AppState,
     approval_id: str,
     *,
     approved: bool,
     decided_by: str,
     decision_reason: str | None = None,
+    task_id: str | None = None,
 ) -> None:
-    """Log that a decision was made so a scheduler can resume the agent.
+    """Execute the resume or review-gate flow for a decided approval.
 
-    This is intentionally a **signalling-only stub**.  It does NOT call
-    ``ApprovalGate.resume_context()`` or re-enqueue the parked agent —
-    that is the responsibility of a future scheduling component that
-    will observe status changes (via log events or store polling) and
-    perform the actual resume.
+    Two flows depending on whether a parked context exists:
 
-    .. todo:: Wire to a real scheduler once one exists (see §12.4).
+    1. **Mid-execution parking**: If ``ApprovalGate.resume_context()``
+       finds a parked context, this is a mid-execution resume.  The
+       context is deserialized and the parked record deleted, but
+       re-execution is NOT performed here (requires an external
+       orchestrator).
+
+    2. **Review gate**: If no parked context exists and ``task_id``
+       is provided, this is a post-execution review decision.
+       Delegates to ``ReviewGateService`` to transition the task
+       from IN_REVIEW to COMPLETED (approve) or IN_PROGRESS (reject).
 
     Args:
-        app_state: Application state containing the approval gate.
+        app_state: Application state containing services.
         approval_id: The approval item identifier.
         approved: Whether the action was approved.
         decided_by: Who made the decision.
         decision_reason: Optional reason for the decision.
+        task_id: Optional task identifier for review-gate flow.
     """
     approval_gate = app_state.approval_gate
-    if approval_gate is None:
-        return
 
     logger.info(
         APPROVAL_GATE_RESUME_TRIGGERED,
@@ -210,6 +216,46 @@ async def _signal_resume_intent(
         decided_by=decided_by,
         has_reason=decision_reason is not None,
     )
+
+    # Flow 1: mid-execution parking -- try to resume parked context.
+    if approval_gate is not None:
+        try:
+            resumed = await approval_gate.resume_context(approval_id)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                APPROVAL_GATE_RESUME_CONTEXT_LOADED,
+                approval_id=approval_id,
+                error="Failed to resume parked context",
+                exc_info=True,
+            )
+            resumed = None
+
+        if resumed is not None:
+            _context, parked_id = resumed
+            logger.info(
+                APPROVAL_GATE_RESUME_CONTEXT_LOADED,
+                approval_id=approval_id,
+                parked_id=parked_id,
+                approved=approved,
+                note=(
+                    "Parked context loaded -- agent re-execution "
+                    "requires external orchestration"
+                ),
+            )
+            return
+
+    # Flow 2: review gate -- transition task status.
+    review_gate = app_state.review_gate_service
+    if review_gate is not None and task_id is not None:
+        await review_gate.complete_review(
+            task_id=task_id,
+            agent_id=decided_by,
+            approved=approved,
+            decided_by=decided_by,
+            reason=decision_reason,
+        )
 
 
 class ApprovalsController(Controller):
@@ -425,6 +471,7 @@ class ApprovalsController(Controller):
             approved=True,
             decided_by=auth_user.username,
             decision_reason=data.comment,
+            task_id=item.task_id,
         )
 
         return ApiResponse(data=saved)
@@ -506,6 +553,7 @@ class ApprovalsController(Controller):
             approved=False,
             decided_by=auth_user.username,
             decision_reason=data.reason,
+            task_id=item.task_id,
         )
 
         return ApiResponse(data=saved)

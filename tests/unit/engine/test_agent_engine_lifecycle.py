@@ -28,13 +28,13 @@ pytestmark = pytest.mark.timeout(30)
 class TestAgentEnginePostExecutionTransitions:
     """Post-execution task transitions based on termination reason."""
 
-    async def test_completed_auto_completes_task(
+    async def test_completed_parks_at_in_review(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """COMPLETED → two-hop: IP → IR → COMPLETED."""
+        """COMPLETED termination parks at IN_REVIEW (awaits human review)."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider)
@@ -46,15 +46,15 @@ class TestAgentEnginePostExecutionTransitions:
 
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.status == TaskStatus.COMPLETED
+        assert te.status == TaskStatus.IN_REVIEW
 
-    async def test_completed_transition_log_has_three_entries(
+    async def test_completed_transition_log_has_two_entries(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """ASSIGNED→IP, IP→IR, IR→COMPLETED = 3 transitions."""
+        """ASSIGNED->IP, IP->IR = 2 transitions (review gate stops here)."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider)
@@ -66,20 +66,19 @@ class TestAgentEnginePostExecutionTransitions:
 
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert len(te.transition_log) == 3
+        assert len(te.transition_log) == 2
         assert te.transition_log[0].from_status == TaskStatus.ASSIGNED
         assert te.transition_log[0].to_status == TaskStatus.IN_PROGRESS
         assert te.transition_log[1].from_status == TaskStatus.IN_PROGRESS
         assert te.transition_log[1].to_status == TaskStatus.IN_REVIEW
-        assert te.transition_log[2].from_status == TaskStatus.IN_REVIEW
-        assert te.transition_log[2].to_status == TaskStatus.COMPLETED
 
-    async def test_completed_sets_completed_at(
+    async def test_completed_does_not_set_completed_at(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
+        """Task stays at IN_REVIEW so completed_at is not set yet."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider)
@@ -91,7 +90,8 @@ class TestAgentEnginePostExecutionTransitions:
 
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.completed_at is not None
+        # completed_at is only set on COMPLETED transition
+        assert te.completed_at is None
 
     async def test_max_turns_stays_in_progress(
         self,

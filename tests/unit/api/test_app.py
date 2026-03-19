@@ -121,6 +121,7 @@ class TestAppLifecycle:
                 None,
                 None,
                 None,
+                None,
                 app_state,
             )
         # Persistence should have been disconnected during cleanup
@@ -140,7 +141,7 @@ class TestAppLifecycle:
         persistence.disconnect = failing_disconnect  # type: ignore[method-assign]
 
         # Should not raise even when disconnect fails
-        await _safe_shutdown(None, None, None, None, None, None, persistence)
+        await _safe_shutdown(None, None, None, None, None, None, None, persistence)
 
     async def test_task_engine_failure_cleans_up(
         self,
@@ -176,6 +177,7 @@ class TestAppLifecycle:
                 None,
                 None,
                 mock_te,
+                None,
                 None,
                 None,
                 app_state,
@@ -223,6 +225,7 @@ class TestAppLifecycle:
                 None,
                 None,
                 None,
+                None,
                 app_state,
             )
 
@@ -240,7 +243,7 @@ class TestAppLifecycle:
         mock_te.stop = AsyncMock(side_effect=RuntimeError("stop boom"))
 
         # Should not raise even when task engine stop fails
-        await _safe_shutdown(mock_te, None, None, None, None, None, None)
+        await _safe_shutdown(mock_te, None, None, None, None, None, None, None)
 
     async def test_meeting_scheduler_lifecycle(
         self,
@@ -277,11 +280,12 @@ class TestAppLifecycle:
             None,
             mock_sched,
             None,
+            None,
             app_state,
         )
         mock_sched.start.assert_awaited_once()
 
-        await _safe_shutdown(None, mock_sched, None, None, None, None, None)
+        await _safe_shutdown(None, mock_sched, None, None, None, None, None, None)
         mock_sched.stop.assert_awaited_once()
 
 
@@ -695,6 +699,7 @@ class TestAutoWirePhase2ErrorPaths:
         startup, _shutdown = _build_lifecycle(
             persistence,
             bus,
+            None,
             None,
             None,
             None,
