@@ -295,6 +295,7 @@ def build_execution_loop(  # noqa: PLR0913
     """
     if loop_type == "react":
         return ReactLoop(
+            checkpoint_callback=checkpoint_callback,
             approval_gate=approval_gate,
             stagnation_detector=stagnation_detector,
             compaction_callback=compaction_callback,
