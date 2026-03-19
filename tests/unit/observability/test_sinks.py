@@ -300,21 +300,29 @@ class TestFlushAfterEmit:
         assert "flush-test-message" in content
 
     @pytest.mark.parametrize(
-        ("strategy", "log_file"),
+        ("strategy", "log_file", "exc"),
         [
-            (RotationStrategy.BUILTIN, "flush-err-builtin.log"),
-            (RotationStrategy.EXTERNAL, "flush-err-external.log"),
+            (RotationStrategy.BUILTIN, "flush-err-builtin.log", OSError("disk full")),
+            (RotationStrategy.EXTERNAL, "flush-err-ext.log", OSError("disk full")),
+            (RotationStrategy.BUILTIN, "flush-val-builtin.log", ValueError("closed")),
+            (RotationStrategy.EXTERNAL, "flush-val-ext.log", ValueError("closed")),
         ],
-        ids=["builtin-rotating", "external-watched"],
+        ids=[
+            "builtin-oserror",
+            "external-oserror",
+            "builtin-valueerror",
+            "external-valueerror",
+        ],
     )
-    def test_flush_oserror_delegates_to_handle_error(
+    def test_flush_exception_delegates_to_handle_error(
         self,
         tmp_path: Path,
         handler_cleanup: list[logging.Handler],
         strategy: RotationStrategy,
         log_file: str,
+        exc: Exception,
     ) -> None:
-        """OSError during flush delegates to handleError, not crash."""
+        """Any exception during flush delegates to handleError, not crash."""
         sink = SinkConfig(
             sink_type=SinkType.FILE,
             file_path=log_file,
@@ -338,14 +346,12 @@ class TestFlushAfterEmit:
         original_flush = handler.flush
         call_count = 0
 
-        disk_full = OSError("disk full")
-
         def flush_fails_on_second_call() -> None:
             """Let super().emit()'s internal flush succeed; fail on ours."""
             nonlocal call_count
             call_count += 1
             if call_count > 1:
-                raise disk_full
+                raise exc
             original_flush()
 
         with (

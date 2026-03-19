@@ -33,7 +33,7 @@ class _FlushingRotatingFileHandler(logging.handlers.RotatingFileHandler):
         super().emit(record)
         try:
             self.flush()
-        except OSError:
+        except Exception:  # mirrors StreamHandler.emit
             self.handleError(record)
 
 
@@ -44,7 +44,7 @@ class _FlushingWatchedFileHandler(logging.handlers.WatchedFileHandler):
         super().emit(record)
         try:
             self.flush()
-        except OSError:
+        except Exception:  # mirrors StreamHandler.emit
             self.handleError(record)
 
 

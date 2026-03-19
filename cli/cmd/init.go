@@ -50,9 +50,11 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	// in the database undecryptable after re-init.
 	var existingSettingsKey string
 	if existing := config.StatePath(state.DataDir); fileExists(existing) {
-		if oldState, loadErr := config.Load(state.DataDir); loadErr == nil {
-			existingSettingsKey = oldState.SettingsKey
+		oldState, loadErr := config.Load(state.DataDir)
+		if loadErr != nil {
+			return fmt.Errorf("existing config at %s is unreadable: %w (delete it manually to force a fresh init)", existing, loadErr)
 		}
+		existingSettingsKey = oldState.SettingsKey
 		errOut := ui.NewUI(cmd.ErrOrStderr())
 		errOut.Warn("Existing config at " + existing + " will be overwritten.")
 		errOut.Warn("A new JWT secret will be generated -- running containers will need a restart.")

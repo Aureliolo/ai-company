@@ -107,7 +107,8 @@ class SettingsEncryptor:
             msg = (
                 f"{_ENV_VAR} is not set -- the encryption key is "
                 f"required. Run 'synthorg init' to generate one, or set "
-                f"it manually (32 bytes, URL-safe base64)."
+                f"it manually (URL-safe base64 encoding of 32 raw bytes, "
+                f"i.e. a 44-character string)."
             )
             logger.error(
                 SETTINGS_ENCRYPTION_ERROR,
@@ -117,7 +118,10 @@ class SettingsEncryptor:
             raise SettingsEncryptionError(msg)
         raw = raw_or_none.strip()
         if not raw:
-            msg = f"{_ENV_VAR} is set but empty -- provide a valid Fernet key"
+            msg = (
+                f"{_ENV_VAR} is set but empty -- provide a valid Fernet "
+                f"key (URL-safe base64 encoding of 32 raw bytes)"
+            )
             logger.error(
                 SETTINGS_ENCRYPTION_ERROR,
                 operation="from_env",
