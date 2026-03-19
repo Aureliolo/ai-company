@@ -2,8 +2,14 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Aureliolo/synthorg/cli/internal/config"
 )
 
 func TestTargetImageTag(t *testing.T) {
@@ -98,6 +104,17 @@ func TestLineDiff(t *testing.T) {
 	}
 }
 
+func FuzzLineDiff(f *testing.F) {
+	f.Add("line1\nline2", "line1\nline3")
+	f.Add("", "new content")
+	f.Add("a\nb\nc", "a\nb\nc")
+	f.Add("", "")
+	f.Fuzz(func(t *testing.T, old, updated string) {
+		// Should not panic on any input.
+		_ = lineDiff(old, updated)
+	})
+}
+
 func TestRedactSecret(t *testing.T) {
 	tests := []struct {
 		name string
@@ -119,6 +136,26 @@ func TestRedactSecret(t *testing.T) {
 			line: `      synthorg_jwt_secret: "abc"`,
 			want: `      synthorg_jwt_secret: [REDACTED]`,
 		},
+		{
+			name: "token key redacted",
+			line: `      AUTH_TOKEN: "mytoken"`,
+			want: `      AUTH_TOKEN: [REDACTED]`,
+		},
+		{
+			name: "password key redacted",
+			line: `      DB_PASSWORD: "hunter2"`,
+			want: `      DB_PASSWORD: [REDACTED]`,
+		},
+		{
+			name: "api key redacted",
+			line: `      EXTERNAL_API_KEY: "key123"`,
+			want: `      EXTERNAL_API_KEY: [REDACTED]`,
+		},
+		{
+			name: "credentials key redacted",
+			line: `      SERVICE_CREDENTIALS: "creds"`,
+			want: `      SERVICE_CREDENTIALS: [REDACTED]`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -131,11 +168,49 @@ func TestRedactSecret(t *testing.T) {
 }
 
 func TestErrReexec_Identity(t *testing.T) {
+	// Verify sentinel identity via errors.Is.
 	if !errors.Is(errReexec, errReexec) {
 		t.Fatal("errors.Is(errReexec, errReexec) should be true")
 	}
 	other := errors.New("other error")
 	if errors.Is(other, errReexec) {
 		t.Fatal("errors.Is(other, errReexec) should be false")
+	}
+	// Verify sentinel survives wrapping via %w.
+	wrapped := fmt.Errorf("context: %w", errReexec)
+	if !errors.Is(wrapped, errReexec) {
+		t.Fatal("errors.Is(wrapped, errReexec) should be true")
+	}
+}
+
+func TestLoadAndGenerate_NoCompose(t *testing.T) {
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yml")
+	existing, fresh, err := loadAndGenerate(composePath, config.State{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if existing != nil || fresh != nil {
+		t.Fatal("expected nil results when compose.yml does not exist")
+	}
+}
+
+func TestLoadAndGenerate_PermissionError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission-based test not reliable on Windows")
+	}
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yml")
+	if err := os.WriteFile(composePath, []byte("test"), 0o000); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(composePath, 0o600) })
+
+	_, _, err := loadAndGenerate(composePath, config.State{})
+	if err == nil {
+		t.Fatal("expected error for permission-denied compose.yml")
+	}
+	if !strings.Contains(err.Error(), "reading existing compose") {
+		t.Errorf("error should mention reading compose, got: %v", err)
 	}
 }

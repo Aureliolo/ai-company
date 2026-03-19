@@ -26,7 +26,7 @@ import (
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Update CLI binary and pull new container images",
+	Short: "Update CLI, refresh compose template, and pull new container images",
 	RunE:  runUpdate,
 }
 
@@ -43,13 +43,21 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	// Load state once and thread through both steps to avoid
+	// double config.Load and TOCTOU gaps between them.
+	dir := resolveDataDir()
+	state, err := config.Load(dir)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
 	// Regenerate compose.yml from the current template to pick up any
 	// template changes (new env vars, hardening tweaks, service config).
-	if err := refreshCompose(cmd); err != nil {
+	if err := refreshCompose(cmd, state); err != nil {
 		return err
 	}
 
-	return updateContainerImages(cmd)
+	return updateContainerImages(cmd, state)
 }
 
 // errReexec is a sentinel error returned by updateCLI when the binary was
@@ -112,6 +120,9 @@ func updateCLI(cmd *cobra.Command) error {
 // of the update (compose refresh, image pull) uses the new embedded template.
 // The CLI update step already ran, so the new binary will see "up to date"
 // and proceed directly to compose + images.
+//
+// Arguments are reconstructed from known flag values rather than forwarding
+// raw os.Args to avoid silently propagating unexpected flags.
 func reexecUpdate(cmd *cobra.Command) error {
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Re-launching updated CLI to continue...")
 
@@ -123,28 +134,34 @@ func reexecUpdate(cmd *cobra.Command) error {
 	// selfupdate.Replace writes to the resolved path.
 	if resolved, resolveErr := filepath.EvalSymlinks(execPath); resolveErr == nil {
 		execPath = resolved
+	} else {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not resolve executable symlink: %v\n", resolveErr)
 	}
 
-	c := exec.CommandContext(cmd.Context(), execPath, os.Args[1:]...)
+	// Reconstruct args from known flags instead of forwarding os.Args
+	// to avoid silently propagating unexpected flags.
+	reArgs := []string{"update"}
+	if dataDir != "" {
+		reArgs = append(reArgs, "--data-dir", dataDir)
+	}
+	if skipVerify {
+		reArgs = append(reArgs, "--skip-verify")
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "Warning: --skip-verify is being carried forward to the re-launched CLI.")
+	}
+
+	c := exec.CommandContext(cmd.Context(), execPath, reArgs...)
 	c.Stdin = os.Stdin
 	c.Stdout = cmd.OutOrStdout()
 	c.Stderr = cmd.ErrOrStderr()
 	return c.Run()
 }
 
-// refreshCompose regenerates compose.yml from the current embedded template
-// using the existing persisted state. If the regenerated compose differs from
-// what is on disk, it shows the diff and asks the user to approve.
-// This ensures template changes (new env vars, hardening, service config)
-// are picked up on upgrade even when the image tag hasn't changed.
-func refreshCompose(cmd *cobra.Command) error {
+// refreshCompose regenerates compose.yml from the current embedded template.
+// If the regenerated compose differs from what is on disk, it shows the diff
+// and asks the user to approve. This ensures template changes are picked up
+// on upgrade even when the image tag hasn't changed.
+func refreshCompose(cmd *cobra.Command, state config.State) error {
 	out := cmd.OutOrStdout()
-
-	dir := resolveDataDir()
-	state, err := config.Load(dir)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
 
 	safeDir, err := safeStateDir(state)
 	if err != nil {
@@ -213,9 +230,13 @@ func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []
 	return nil
 }
 
-// secretKeyPattern matches YAML lines containing known secret keys.
+// secretKeyPattern matches YAML lines containing known sensitive keys.
 // Used by lineDiff to redact sensitive values before displaying.
-var secretKeyPattern = regexp.MustCompile(`(?i)^\s*(SYNTHORG_JWT_SECRET|JWT_SECRET|SECRET_KEY)\s*:`)
+// Covers common secret naming conventions to prevent leaking credentials
+// in terminal scrollback or CI logs when the compose template changes.
+var secretKeyPattern = regexp.MustCompile(
+	`(?i)^\s*\w*(SECRET|PASSWORD|TOKEN|API_KEY|CREDENTIALS)\w*\s*:`,
+)
 
 // lineDiff produces a bag-based diff showing added (+) and removed (-) lines
 // between two strings. Lines containing secret keys are redacted.
@@ -260,12 +281,13 @@ func lineDiff(oldText, updated string) string {
 }
 
 // redactSecret replaces secret values with [REDACTED] in diff output.
+// Uses the regex submatch end position to find the colon reliably,
+// rather than scanning from the start of the line.
 func redactSecret(line string) string {
-	if secretKeyPattern.MatchString(line) {
-		idx := strings.Index(line, ":")
-		if idx >= 0 {
-			return line[:idx+1] + " [REDACTED]"
-		}
+	loc := secretKeyPattern.FindStringIndex(line)
+	if loc != nil {
+		// loc[1] is past the trailing ":", so the key + colon is line[:loc[1]].
+		return line[:loc[1]] + " [REDACTED]"
 	}
 	return line
 }
@@ -309,17 +331,11 @@ func isAlphaNum(c byte) bool {
 
 // updateContainerImages offers to update container images to match the
 // current CLI version. Skips if images already match.
-func updateContainerImages(cmd *cobra.Command) error {
+func updateContainerImages(cmd *cobra.Command, state config.State) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
 	tag := targetImageTag(version.Version)
-
-	dir := resolveDataDir()
-	state, err := config.Load(dir)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
 
 	safeDir, err := safeStateDir(state)
 	if err != nil {
