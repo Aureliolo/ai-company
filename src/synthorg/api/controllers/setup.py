@@ -627,9 +627,6 @@ async def _get_existing_agents(
         logger.debug(SETUP_AGENTS_READ_FALLBACK, reason="entry_not_found")
         return []
 
-    if entry.value is None:
-        return []
-
     try:
         parsed = json.loads(entry.value)
     except json.JSONDecodeError as exc:
