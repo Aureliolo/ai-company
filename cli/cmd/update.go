@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -34,13 +35,11 @@ func init() {
 }
 
 func runUpdate(cmd *cobra.Command, _ []string) error {
-	_, err := updateCLI(cmd)
-	if errors.Is(err, errReexec) {
+	if err := updateCLI(cmd); errors.Is(err, errReexec) {
 		// Binary was replaced. Re-exec the new binary so compose refresh
 		// and image pull use the new embedded template and logic.
 		return reexecUpdate(cmd)
-	}
-	if err != nil {
+	} else if err != nil {
 		return err
 	}
 
@@ -60,8 +59,7 @@ var errReexec = errors.New("cli updated, re-exec required")
 
 // updateCLI checks for a new CLI release and optionally applies it.
 // Returns errReexec if the binary was replaced (caller must re-exec).
-// Returns the effective CLI version otherwise.
-func updateCLI(cmd *cobra.Command) (string, error) {
+func updateCLI(cmd *cobra.Command) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
@@ -74,32 +72,32 @@ func updateCLI(cmd *cobra.Command) (string, error) {
 	result, err := selfupdate.Check(ctx)
 	if err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check for updates: %v\n", err)
-		return version.Version, nil
+		return nil
 	}
 
 	if !result.UpdateAvail {
 		_, _ = fmt.Fprintf(out, "CLI is up to date (%s)\n", result.CurrentVersion)
-		return version.Version, nil
+		return nil
 	}
 
 	_, _ = fmt.Fprintf(out, "New version available: %s (current: %s)\n", result.LatestVersion, result.CurrentVersion)
 
 	ok, err := confirmUpdate(fmt.Sprintf("Update CLI from %s to %s?", result.CurrentVersion, result.LatestVersion))
 	if err != nil {
-		return "", err
+		return err
 	}
 	if !ok {
-		return version.Version, nil
+		return nil
 	}
 
 	_, _ = fmt.Fprintln(out, "Downloading...")
 	binary, err := selfupdate.Download(ctx, result.AssetURL, result.ChecksumURL, result.SigstoreBundURL)
 	if err != nil {
-		return "", fmt.Errorf("downloading update: %w", err)
+		return fmt.Errorf("downloading update: %w", err)
 	}
 
 	if err := selfupdate.Replace(binary); err != nil {
-		return "", fmt.Errorf("replacing binary: %w", err)
+		return fmt.Errorf("replacing binary: %w", err)
 	}
 	_, _ = fmt.Fprintf(out, "CLI updated to %s\n", result.LatestVersion)
 	_, _ = fmt.Fprintf(out, "Release notes: %s/releases/tag/v%s\n",
@@ -107,7 +105,7 @@ func updateCLI(cmd *cobra.Command) (string, error) {
 
 	// Signal the caller to re-exec the new binary so the rest of the
 	// update (compose refresh, image pull) uses the new embedded template.
-	return result.LatestVersion, errReexec
+	return errReexec
 }
 
 // reexecUpdate spawns the new binary with the same arguments so the rest
@@ -120,6 +118,11 @@ func reexecUpdate(cmd *cobra.Command) error {
 	execPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("finding executable path: %w", err)
+	}
+	// Resolve symlinks to match the pattern in uninstall.go --
+	// selfupdate.Replace writes to the resolved path.
+	if resolved, resolveErr := filepath.EvalSymlinks(execPath); resolveErr == nil {
+		execPath = resolved
 	}
 
 	c := exec.CommandContext(cmd.Context(), execPath, os.Args[1:]...)
@@ -149,18 +152,12 @@ func refreshCompose(cmd *cobra.Command) error {
 	}
 
 	composePath := filepath.Join(safeDir, "compose.yml")
-	existing, err := os.ReadFile(composePath)
+	existing, fresh, err := loadAndGenerate(composePath, state)
 	if err != nil {
-		// No compose.yml on disk -- nothing to refresh (user needs 'synthorg init').
-		return nil
+		return err
 	}
-
-	// Generate a fresh compose from the current template with existing config.
-	params := compose.ParamsFromState(state)
-	params.DigestPins = state.VerifiedDigests
-	fresh, err := compose.Generate(params)
-	if err != nil {
-		return fmt.Errorf("generating compose from template: %w", err)
+	if existing == nil {
+		return nil // no compose.yml on disk
 	}
 
 	if bytes.Equal(existing, fresh) {
@@ -168,7 +165,34 @@ func refreshCompose(cmd *cobra.Command) error {
 		return nil
 	}
 
-	// Show what changed and ask for approval.
+	return applyComposeDiff(cmd, composePath, existing, fresh, safeDir)
+}
+
+// loadAndGenerate reads the existing compose and generates a fresh one from
+// the template. Returns (nil, nil, nil) if no compose.yml exists on disk.
+func loadAndGenerate(composePath string, state config.State) ([]byte, []byte, error) {
+	existing, err := os.ReadFile(composePath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil, nil
+		}
+		return nil, nil, fmt.Errorf("reading existing compose: %w", err)
+	}
+
+	params := compose.ParamsFromState(state)
+	params.DigestPins = state.VerifiedDigests
+	fresh, err := compose.Generate(params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("generating compose from template: %w", err)
+	}
+	return existing, fresh, nil
+}
+
+// applyComposeDiff shows the diff between existing and fresh compose,
+// asks the user to approve, and writes the fresh compose if approved.
+func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []byte, safeDir string) error {
+	out := cmd.OutOrStdout()
+
 	diff := lineDiff(string(existing), string(fresh))
 	_, _ = fmt.Fprintln(out, "Compose template has changed:")
 	_, _ = fmt.Fprintln(out, diff)
@@ -189,20 +213,28 @@ func refreshCompose(cmd *cobra.Command) error {
 	return nil
 }
 
-// lineDiff produces a unified-style diff showing added (+) and removed (-)
-// lines between two strings. Only changed lines are shown with context.
-func lineDiff(old, new string) string {
-	oldLines := strings.Split(old, "\n")
-	newLines := strings.Split(new, "\n")
+// secretKeyPattern matches YAML lines containing known secret keys.
+// Used by lineDiff to redact sensitive values before displaying.
+var secretKeyPattern = regexp.MustCompile(`(?i)^\s*(SYNTHORG_JWT_SECRET|JWT_SECRET|SECRET_KEY)\s*:`)
 
-	// Build a set of lines in each for quick lookup.
-	oldSet := make(map[string]int, len(oldLines))
-	for _, l := range oldLines {
-		oldSet[l]++
-	}
+// lineDiff produces a bag-based diff showing added (+) and removed (-) lines
+// between two strings. Lines containing secret keys are redacted.
+//
+// Note: this uses multiset membership, not positional diffing. Reordered
+// lines are not reported as changes. This is acceptable for compose files
+// where the user approves structural additions/removals, not reorderings.
+func lineDiff(oldText, updated string) string {
+	oldLines := strings.Split(oldText, "\n")
+	newLines := strings.Split(updated, "\n")
+
 	newSet := make(map[string]int, len(newLines))
 	for _, l := range newLines {
 		newSet[l]++
+	}
+
+	oldSet := make(map[string]int, len(oldLines))
+	for _, l := range oldLines {
+		oldSet[l]++
 	}
 
 	var b strings.Builder
@@ -212,24 +244,30 @@ func lineDiff(old, new string) string {
 			continue
 		}
 		b.WriteString("  - ")
-		b.WriteString(l)
+		b.WriteString(redactSecret(l))
 		b.WriteByte('\n')
 	}
-	// Reset newSet for removed-line counting.
-	oldSet2 := make(map[string]int, len(oldLines))
-	for _, l := range oldLines {
-		oldSet2[l]++
-	}
 	for _, l := range newLines {
-		if oldSet2[l] > 0 {
-			oldSet2[l]--
+		if oldSet[l] > 0 {
+			oldSet[l]--
 			continue
 		}
 		b.WriteString("  + ")
-		b.WriteString(l)
+		b.WriteString(redactSecret(l))
 		b.WriteByte('\n')
 	}
 	return b.String()
+}
+
+// redactSecret replaces secret values with [REDACTED] in diff output.
+func redactSecret(line string) string {
+	if secretKeyPattern.MatchString(line) {
+		idx := strings.Index(line, ":")
+		if idx >= 0 {
+			return line[:idx+1] + " [REDACTED]"
+		}
+	}
+	return line
 }
 
 // targetImageTag converts a CLI version string to a Docker image tag.

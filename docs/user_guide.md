@@ -24,7 +24,7 @@ synthorg status   # Show container health and versions
 
 The web dashboard is at [http://localhost:3000](http://localhost:3000) (default port).
 
-Other CLI commands: `synthorg stop`, `synthorg logs`, `synthorg update`, `synthorg doctor`, `synthorg uninstall`, `synthorg backup`.
+Other CLI commands: `synthorg stop`, `synthorg logs`, `synthorg update`, `synthorg doctor`, `synthorg uninstall`, `synthorg backup`. When updating, the CLI re-launches itself after binary replacement so the remaining steps (compose refresh, image pull) use the new version. If the compose template has changed (new environment variables, hardening tweaks), the diff is shown for approval before applying.
 
 ## Quick Start (Docker Compose — manual)
 

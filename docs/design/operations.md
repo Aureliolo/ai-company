@@ -971,7 +971,8 @@ future CLI tool are thin clients that call the API -- they contain no business l
 
     Cross-platform Go binary (`cli/`) for Docker lifecycle management. Commands: `init`
     (interactive setup wizard), `start`, `stop`, `status`, `logs`, `update` (CLI self-update
-    from GitHub Releases + container image update with version matching), `doctor`
+    from GitHub Releases with automatic re-exec, compose template refresh with diff
+    approval, container image update with version matching), `doctor`
     (diagnostics + bug report URL), `uninstall`, `version`, `config`, `completion-install`,
     `backup` (create/list/restore via backend API).
     Built with Cobra + charmbracelet/huh. Distributed via GoReleaser + install scripts

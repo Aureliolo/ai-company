@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -29,56 +30,112 @@ func TestTargetImageTag(t *testing.T) {
 	}
 }
 
-func TestLineDiff_NoDifference(t *testing.T) {
-	text := "line1\nline2\nline3"
-	got := lineDiff(text, text)
-	if got != "" {
-		t.Errorf("lineDiff with identical input should be empty, got %q", got)
+func TestLineDiff(t *testing.T) {
+	tests := []struct {
+		name         string
+		old          string
+		updated      string
+		wantContains []string
+		wantAbsent   []string
+		wantEmpty    bool
+	}{
+		{
+			name:      "identical input",
+			old:       "line1\nline2\nline3",
+			updated:   "line1\nline2\nline3",
+			wantEmpty: true,
+		},
+		{
+			name:         "added lines",
+			old:          "line1\nline2",
+			updated:      "line1\nline2\nline3",
+			wantContains: []string{"+ line3"},
+			wantAbsent:   []string{"- "},
+		},
+		{
+			name:         "removed lines",
+			old:          "line1\nline2\nline3",
+			updated:      "line1\nline2",
+			wantContains: []string{"- line3"},
+			wantAbsent:   []string{"+ "},
+		},
+		{
+			name:         "changed lines",
+			old:          "aaa\nbbb",
+			updated:      "aaa\nccc",
+			wantContains: []string{"- bbb", "+ ccc"},
+		},
+		{
+			name:      "trailing newline identical",
+			old:       "line1\nline2\n",
+			updated:   "line1\nline2\n",
+			wantEmpty: true,
+		},
+		{
+			name:         "trailing newline added",
+			old:          "line1\nline2",
+			updated:      "line1\nline2\n",
+			wantContains: []string{"+ "},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := lineDiff(tt.old, tt.updated)
+			if tt.wantEmpty && got != "" {
+				t.Errorf("expected empty diff, got %q", got)
+			}
+			for _, s := range tt.wantContains {
+				if !strings.Contains(got, s) {
+					t.Errorf("diff should contain %q, got %q", s, got)
+				}
+			}
+			for _, s := range tt.wantAbsent {
+				if strings.Contains(got, s) {
+					t.Errorf("diff should not contain %q, got %q", s, got)
+				}
+			}
+		})
 	}
 }
 
-func TestLineDiff_AddedLines(t *testing.T) {
-	old := "line1\nline2"
-	new := "line1\nline2\nline3"
-	got := lineDiff(old, new)
-	if !strings.Contains(got, "+ line3") {
-		t.Errorf("lineDiff should show added line3, got %q", got)
+func TestRedactSecret(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want string
+	}{
+		{
+			name: "jwt secret redacted",
+			line: `      SYNTHORG_JWT_SECRET: "supersecret123"`,
+			want: `      SYNTHORG_JWT_SECRET: [REDACTED]`,
+		},
+		{
+			name: "non-secret line unchanged",
+			line: `      SYNTHORG_LOG_DIR: "/data/logs"`,
+			want: `      SYNTHORG_LOG_DIR: "/data/logs"`,
+		},
+		{
+			name: "case insensitive match",
+			line: `      synthorg_jwt_secret: "abc"`,
+			want: `      synthorg_jwt_secret: [REDACTED]`,
+		},
 	}
-	// No removed lines.
-	if strings.Contains(got, "- ") {
-		t.Errorf("lineDiff should have no removed lines, got %q", got)
-	}
-}
-
-func TestLineDiff_RemovedLines(t *testing.T) {
-	old := "line1\nline2\nline3"
-	new := "line1\nline2"
-	got := lineDiff(old, new)
-	if !strings.Contains(got, "- line3") {
-		t.Errorf("lineDiff should show removed line3, got %q", got)
-	}
-	if strings.Contains(got, "+ ") {
-		t.Errorf("lineDiff should have no added lines, got %q", got)
-	}
-}
-
-func TestLineDiff_ChangedLines(t *testing.T) {
-	old := "aaa\nbbb"
-	new := "aaa\nccc"
-	got := lineDiff(old, new)
-	if !strings.Contains(got, "- bbb") {
-		t.Errorf("lineDiff should show removed bbb, got %q", got)
-	}
-	if !strings.Contains(got, "+ ccc") {
-		t.Errorf("lineDiff should show added ccc, got %q", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := redactSecret(tt.line)
+			if got != tt.want {
+				t.Errorf("redactSecret(%q) = %q, want %q", tt.line, got, tt.want)
+			}
+		})
 	}
 }
 
-func TestErrReexec_IsSentinel(t *testing.T) {
-	if errReexec == nil {
-		t.Fatal("errReexec should not be nil")
+func TestErrReexec_Identity(t *testing.T) {
+	if !errors.Is(errReexec, errReexec) {
+		t.Fatal("errors.Is(errReexec, errReexec) should be true")
 	}
-	if errReexec.Error() == "" {
-		t.Fatal("errReexec should have a message")
+	other := errors.New("other error")
+	if errors.Is(other, errReexec) {
+		t.Fatal("errors.Is(other, errReexec) should be false")
 	}
 }
