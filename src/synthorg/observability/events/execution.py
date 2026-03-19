@@ -59,6 +59,9 @@ EXECUTION_PLAN_REPLAN_COMPLETE: Final[str] = "execution.plan.replan_complete"
 EXECUTION_PLAN_REPLAN_EXHAUSTED: Final[str] = "execution.plan.replan_exhausted"
 EXECUTION_PLAN_PARSE_ERROR: Final[str] = "execution.plan.parse_error"
 EXECUTION_PLAN_STEP_TRUNCATED: Final[str] = "execution.plan.step_truncated"
+EXECUTION_PLAN_STEP_INDEX_OUT_OF_RANGE: Final[str] = (
+    "execution.plan.step_index_out_of_range"
+)
 
 EXECUTION_RECOVERY_START: Final[str] = "execution.recovery.start"
 EXECUTION_RECOVERY_COMPLETE: Final[str] = "execution.recovery.complete"

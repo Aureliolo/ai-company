@@ -311,44 +311,37 @@ class TestHybridLoopCompaction:
 class TestParseReplanDecision:
     """Unit tests for the module-level _parse_replan_decision helper."""
 
-    def test_json_replan_true(self) -> None:
-        assert _parse_replan_decision('{"summary": "ok", "replan": true}') is True
-
-    def test_json_replan_false(self) -> None:
-        assert _parse_replan_decision('{"summary": "ok", "replan": false}') is False
-
-    def test_json_in_markdown_fence(self) -> None:
-        content = '```json\n{"summary": "ok", "replan": true}\n```'
-        assert _parse_replan_decision(content) is True
-
-    def test_text_heuristic_fallback(self) -> None:
-        content = 'I think we need "replan": true based on results.'
-        assert _parse_replan_decision(content) is True
-
-    def test_malformed_json_defaults_false(self) -> None:
-        assert _parse_replan_decision("This is not JSON at all.") is False
-
-    def test_empty_content_defaults_false(self) -> None:
-        assert _parse_replan_decision("") is False
-        assert _parse_replan_decision("   ") is False
-
-    def test_json_non_dict_defaults_false(self) -> None:
-        assert _parse_replan_decision("[true]") is False
-
-    def test_json_missing_replan_key_defaults_false(self) -> None:
-        assert _parse_replan_decision('{"summary": "ok"}') is False
-
-    def test_json_replan_string_true(self) -> None:
-        """String 'true' is parsed correctly."""
-        assert _parse_replan_decision('{"replan": "true"}') is True
-
-    def test_json_replan_string_false(self) -> None:
-        """String 'false' is parsed correctly."""
-        assert _parse_replan_decision('{"replan": "false"}') is False
-
-    def test_json_replan_int_treated_as_no_replan(self) -> None:
-        """Non-bool, non-str values treated as no-replan."""
-        assert _parse_replan_decision('{"replan": 1}') is False
+    @pytest.mark.parametrize(
+        ("content", "expected"),
+        [
+            pytest.param('{"summary": "ok", "replan": true}', True, id="json-true"),
+            pytest.param('{"summary": "ok", "replan": false}', False, id="json-false"),
+            pytest.param(
+                '```json\n{"summary": "ok", "replan": true}\n```',
+                True,
+                id="markdown-fence",
+            ),
+            pytest.param(
+                'I think we need "replan": true based on results.',
+                True,
+                id="text-heuristic",
+            ),
+            pytest.param("This is not JSON at all.", False, id="malformed-json"),
+            pytest.param("", False, id="empty-string"),
+            pytest.param("   ", False, id="whitespace-only"),
+            pytest.param("[true]", False, id="non-dict-json"),
+            pytest.param('{"summary": "ok"}', False, id="missing-replan-key"),
+            pytest.param('{"replan": "true"}', True, id="string-true"),
+            pytest.param('{"replan": "false"}', False, id="string-false"),
+            pytest.param('{"replan": 1}', False, id="int-treated-as-no-replan"),
+        ],
+    )
+    def test_parse_replan_decision(
+        self,
+        content: str,
+        expected: bool,
+    ) -> None:
+        assert _parse_replan_decision(content) is expected
 
 
 @pytest.mark.unit

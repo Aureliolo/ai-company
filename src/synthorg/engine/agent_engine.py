@@ -6,6 +6,7 @@ tool invocation, and budget tracking into a single ``run()`` entry point.
 
 import asyncio
 import contextlib
+import re
 import time
 from typing import TYPE_CHECKING
 
@@ -1222,9 +1223,17 @@ class AgentEngine:
         exception is re-raised so it is never silently lost.
         """
         raw_msg = str(exc)
-        # Sanitize: limit length and strip non-printable chars to
-        # prevent internal paths from leaking into error_message.
-        sanitized = "".join(c for c in raw_msg[:200] if c.isprintable())
+        # Sanitize: redact paths/URLs, strip non-printable chars,
+        # and limit length to prevent internal details leaking.
+        sanitized = re.sub(
+            r"[A-Za-z]:\\[^\s,;)\"']+|/(?:home|usr|var|tmp|etc|opt)[^\s,;)\"']+",
+            "[REDACTED_PATH]",
+            raw_msg,
+        )
+        sanitized = re.sub(r"https?://[^\s,;)\"']+", "[REDACTED_URL]", sanitized)
+        sanitized = "".join(c for c in sanitized[:200] if c.isprintable())
+        if not any(c.isalnum() for c in sanitized):
+            sanitized = "details redacted"
         error_msg = f"{type(exc).__name__}: {sanitized}"
         logger.exception(
             EXECUTION_ENGINE_ERROR,

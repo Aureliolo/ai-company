@@ -441,6 +441,9 @@ class PlanExecuteLoop:
         replans_used: int,
     ) -> ExecutionResult:
         """Build the final result after step iteration completes."""
+        # Sync live plan so final_plan metadata reflects step statuses
+        if all_plans:
+            all_plans[-1] = plan
         if not ctx.has_turns_remaining and step_idx < len(plan.steps):
             logger.info(
                 EXECUTION_LOOP_TERMINATED,

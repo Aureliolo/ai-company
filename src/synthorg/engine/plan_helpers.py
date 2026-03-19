@@ -7,7 +7,10 @@ for common plan-step operations.
 from typing import TYPE_CHECKING
 
 from synthorg.observability import get_logger
-from synthorg.observability.events.execution import EXECUTION_PLAN_SUMMARY_FALLBACK
+from synthorg.observability.events.execution import (
+    EXECUTION_PLAN_STEP_INDEX_OUT_OF_RANGE,
+    EXECUTION_PLAN_SUMMARY_FALLBACK,
+)
 from synthorg.providers.enums import FinishReason, MessageRole
 
 logger = get_logger(__name__)
@@ -41,9 +44,16 @@ def update_step_status(
         IndexError: If *step_idx* is out of range.
     """
     if step_idx < 0 or step_idx >= len(plan.steps):
+        step_count = len(plan.steps)
+        logger.warning(
+            EXECUTION_PLAN_STEP_INDEX_OUT_OF_RANGE,
+            step_idx=step_idx,
+            step_count=step_count,
+            revision=plan.revision_number,
+        )
         msg = (
             f"step_idx {step_idx} out of range for plan with "
-            f"{len(plan.steps)} steps (revision {plan.revision_number})"
+            f"{step_count} steps (revision {plan.revision_number})"
         )
         raise IndexError(msg)
     steps = list(plan.steps)
