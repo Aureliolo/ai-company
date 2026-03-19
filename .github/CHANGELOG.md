@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.9](https://github.com/Aureliolo/synthorg/compare/v0.3.8...v0.3.9) (2026-03-19)
+
+
+### Features
+
+* add company description field to setup wizard ([#617](https://github.com/Aureliolo/synthorg/issues/617)) ([7c43693](https://github.com/Aureliolo/synthorg/commit/7c43693c8db1dd651760abe320ca416d576dcd5a))
+* implement approval review gate and timeout scheduler ([#620](https://github.com/Aureliolo/synthorg/issues/620)) ([229d366](https://github.com/Aureliolo/synthorg/commit/229d366e9248b3afcbe3f238b9ef7910618976b5))
+
+
+### Bug Fixes
+
+* generate settings encryption key on init and flush log file handlers ([#621](https://github.com/Aureliolo/synthorg/issues/621)) ([60c5744](https://github.com/Aureliolo/synthorg/commit/60c574448c6bbb1e06761111f8eaae87c7c4462d))
+
+
+### Maintenance
+
+* remove premature versioning, migrations, and backward-compat scaffolding ([#618](https://github.com/Aureliolo/synthorg/issues/618)) ([5f6550b](https://github.com/Aureliolo/synthorg/commit/5f6550b1f9d41e97af50e121717dabde9bf82c72))
+
 ## [0.3.8](https://github.com/Aureliolo/synthorg/compare/v0.3.7...v0.3.8) (2026-03-19)
 
 
