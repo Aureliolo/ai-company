@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from synthorg.engine.checkpoint.callback_factory import make_checkpoint_callback
 from synthorg.engine.checkpoint.models import CheckpointConfig  # noqa: TC001
 from synthorg.engine.context import AgentContext
+from synthorg.engine.hybrid_loop import HybridLoop
 from synthorg.engine.plan_execute_loop import PlanExecuteLoop
 from synthorg.engine.react_loop import ReactLoop
 from synthorg.observability import get_logger
@@ -130,6 +131,14 @@ def make_loop_with_callback(  # noqa: PLR0913
         )
     if isinstance(loop, PlanExecuteLoop):
         return PlanExecuteLoop(
+            config=loop.config,
+            checkpoint_callback=callback,
+            approval_gate=loop.approval_gate,
+            stagnation_detector=loop.stagnation_detector,
+            compaction_callback=loop.compaction_callback,
+        )
+    if isinstance(loop, HybridLoop):
+        return HybridLoop(
             config=loop.config,
             checkpoint_callback=callback,
             approval_gate=loop.approval_gate,

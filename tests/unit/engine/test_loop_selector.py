@@ -381,7 +381,6 @@ class TestBuildExecutionLoop:
         assert loop.get_loop_type() == "plan_execute"
 
     def test_build_react_with_gates(self) -> None:
-
         gate = MagicMock()
         detector = MagicMock()
         loop = build_execution_loop(
@@ -422,7 +421,6 @@ class TestBuildExecutionLoop:
         assert loop.config.max_turns_per_step == 10
 
     def test_build_hybrid_with_gates(self) -> None:
-
         gate = MagicMock()
         detector = MagicMock()
         ckpt_cb = MagicMock()
@@ -441,7 +439,7 @@ class TestBuildExecutionLoop:
         assert loop.compaction_callback is compact_cb
 
     def test_build_react_with_compaction_callback(self) -> None:
-
+        """ReactLoop receives compaction_callback when provided."""
         compact_cb = MagicMock()
         loop = build_execution_loop(
             "react",
@@ -451,7 +449,7 @@ class TestBuildExecutionLoop:
         assert loop.compaction_callback is compact_cb
 
     def test_build_plan_execute_with_compaction_callback(self) -> None:
-
+        """PlanExecuteLoop receives compaction_callback when provided."""
         compact_cb = MagicMock()
         loop = build_execution_loop(
             "plan_execute",

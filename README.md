@@ -32,7 +32,7 @@ The framework is provider-agnostic (any LLM via LiteLLM), configuration-driven (
 
 **Agent Orchestration**
 
-Define agents with roles, models, and tools. The engine handles task decomposition, routing, execution loops (ReAct, Plan-and-Execute, auto-selection by complexity), crash recovery (checkpoint resume), and multi-agent coordination.
+Define agents with roles, models, and tools. The engine handles task decomposition, routing, execution loops (ReAct, Plan-and-Execute, Hybrid, auto-selection by complexity), crash recovery (checkpoint resume), and multi-agent coordination.
 
 </td>
 <td width="33%">

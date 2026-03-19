@@ -154,11 +154,24 @@ class AgentEngine:
             enhanced in-flight budget checking.
         security_config: Optional security subsystem configuration.
         approval_store: Optional approval queue store.
+        parked_context_repo: Optional repository for parking
+            execution contexts during approval escalation.
         task_engine: Optional centralized task engine for real-time
             status sync (incremental transitions at each lifecycle
             point, best-effort).
+        checkpoint_repo: Optional checkpoint repository for
+            persisting execution state at turn boundaries.
+            Must be paired with ``heartbeat_repo``.
+        heartbeat_repo: Optional heartbeat repository for
+            crash detection during execution.  Must be paired
+            with ``checkpoint_repo``.
+        checkpoint_config: Checkpoint tuning (interval, max size).
+            Defaults to ``CheckpointConfig()``.
         coordinator: Optional multi-agent coordinator for delegated
             coordination via :meth:`coordinate`.
+        stagnation_detector: Optional detector for repetitive
+            tool-call patterns.  Wired into the execution loop
+            when using auto-selection or the default loop.
         auto_loop_config: Optional auto-loop selection configuration.
             Selects the execution loop per-task based on complexity
             and budget state.  Mutually exclusive with
@@ -169,7 +182,9 @@ class AgentEngine:
         compaction_callback: Optional async callback invoked at turn
             boundaries to compress older conversation turns.  Passed
             to the execution loop (both static default and
-            auto-selected).
+            auto-selected).  When ``execution_loop`` is provided
+            directly, the caller is responsible for wiring this
+            callback into the loop.
         plan_execute_config: Optional configuration for the
             plan-execute loop.  Passed to ``build_execution_loop``
             when auto-selection picks ``"plan_execute"``.
@@ -217,15 +232,18 @@ class AgentEngine:
         self._plan_execute_config = plan_execute_config
         self._approval_gate = self._make_approval_gate()
         if execution_loop is not None and (
-            self._approval_gate is not None or self._stagnation_detector is not None
+            self._approval_gate is not None
+            or self._stagnation_detector is not None
+            or self._compaction_callback is not None
         ):
             logger.warning(
                 APPROVAL_GATE_LOOP_WIRING_WARNING,
                 note=(
-                    "execution_loop provided externally — approval_gate "
-                    "and stagnation_detector will NOT be wired "
-                    "automatically. Configure the loop with "
-                    "approval_gate= and stagnation_detector= explicitly."
+                    "execution_loop provided externally -- approval_gate, "
+                    "stagnation_detector, and compaction_callback will NOT "
+                    "be wired automatically. Configure the loop with "
+                    "approval_gate=, stagnation_detector=, and "
+                    "compaction_callback= explicitly."
                 ),
             )
         self._loop: ExecutionLoop = execution_loop or self._make_default_loop()
