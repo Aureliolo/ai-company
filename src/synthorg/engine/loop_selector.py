@@ -32,6 +32,7 @@ from synthorg.observability.events.execution import (
 
 if TYPE_CHECKING:
     from synthorg.engine.approval_gate import ApprovalGate
+    from synthorg.engine.checkpoint.callback import CheckpointCallback
     from synthorg.engine.compaction import CompactionCallback
     from synthorg.engine.hybrid_models import HybridLoopConfig
     from synthorg.engine.loop_protocol import ExecutionLoop
@@ -251,10 +252,9 @@ def select_loop_type(  # noqa: PLR0913
         default_loop_type: Fallback loop type when no rule matches.
 
     Returns:
-        A loop type string.  Typically ``"react"`` or
-        ``"plan_execute"``; may return ``"hybrid"`` when
-        ``hybrid_fallback`` is ``None``, or the ``hybrid_fallback``
-        value when hybrid is selected but redirected.
+        One of ``"react"``, ``"plan_execute"``, or ``"hybrid"``,
+        depending on the matched rule and active fallback/downgrade
+        settings.
     """
     loop_type = _match_loop_type(rules, complexity, default_loop_type)
     loop_type = _downgrade_for_budget(
@@ -266,6 +266,7 @@ def select_loop_type(  # noqa: PLR0913
 def build_execution_loop(  # noqa: PLR0913
     loop_type: str,
     *,
+    checkpoint_callback: CheckpointCallback | None = None,
     approval_gate: ApprovalGate | None = None,
     stagnation_detector: StagnationDetector | None = None,
     compaction_callback: CompactionCallback | None = None,
@@ -277,6 +278,7 @@ def build_execution_loop(  # noqa: PLR0913
     Args:
         loop_type: One of ``"react"``, ``"plan_execute"``, or
             ``"hybrid"``.
+        checkpoint_callback: Optional per-turn checkpoint callback.
         approval_gate: Optional approval gate to wire into the loop.
         stagnation_detector: Optional stagnation detector.
         compaction_callback: Optional compaction callback.
@@ -300,6 +302,7 @@ def build_execution_loop(  # noqa: PLR0913
     if loop_type == "plan_execute":
         return PlanExecuteLoop(
             config=plan_execute_config,
+            checkpoint_callback=checkpoint_callback,
             approval_gate=approval_gate,
             stagnation_detector=stagnation_detector,
             compaction_callback=compaction_callback,
@@ -307,13 +310,15 @@ def build_execution_loop(  # noqa: PLR0913
     if loop_type == "hybrid":
         return HybridLoop(
             config=hybrid_loop_config,
+            checkpoint_callback=checkpoint_callback,
             approval_gate=approval_gate,
             stagnation_detector=stagnation_detector,
             compaction_callback=compaction_callback,
         )
     logger.warning(
         EXECUTION_LOOP_UNKNOWN_TYPE,
-        loop_type=loop_type,
+        loop_type=repr(loop_type),
+        valid_types=sorted(_BUILDABLE_LOOP_TYPES),
     )
     msg = f"Unknown loop type: {loop_type!r}"
     raise ValueError(msg)

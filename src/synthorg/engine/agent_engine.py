@@ -1218,7 +1218,11 @@ class AgentEngine:
         If constructing the error result itself fails, the original
         exception is re-raised so it is never silently lost.
         """
-        error_msg = f"{type(exc).__name__}: {exc}"
+        raw_msg = str(exc)
+        # Sanitize: limit length and strip non-printable chars to
+        # prevent internal paths from leaking into error_message.
+        sanitized = "".join(c for c in raw_msg[:200] if c.isprintable())
+        error_msg = f"{type(exc).__name__}: {sanitized}"
         logger.exception(
             EXECUTION_ENGINE_ERROR,
             agent_id=agent_id,

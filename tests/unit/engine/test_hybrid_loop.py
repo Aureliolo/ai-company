@@ -8,9 +8,10 @@ import pytest
 from synthorg.budget.call_category import LLMCallCategory
 from synthorg.core.enums import ToolCategory
 from synthorg.engine.context import AgentContext
-from synthorg.engine.hybrid_loop import HybridLoop
+from synthorg.engine.hybrid_loop import HybridLoop, _parse_replan_decision
 from synthorg.engine.hybrid_models import HybridLoopConfig
 from synthorg.engine.loop_protocol import TerminationReason, TurnRecord
+from synthorg.engine.plan_models import ExecutionPlan
 from synthorg.engine.stagnation.models import (
     StagnationResult,
     StagnationVerdict,
@@ -690,7 +691,8 @@ class TestHybridLoopMetadata:
 
         assert result.metadata["loop_type"] == "hybrid"
         assert result.metadata["replans_used"] == 0
-        assert result.metadata["final_plan"] is not None
+        assert isinstance(result.metadata["final_plan"], dict)
+        assert "steps" in result.metadata["final_plan"]
         plans = result.metadata["plans"]
         assert isinstance(plans, list)
         assert len(plans) == 1
@@ -884,46 +886,30 @@ class TestParseReplanDecision:
     """Unit tests for the module-level _parse_replan_decision helper."""
 
     def test_json_replan_true(self) -> None:
-        from synthorg.engine.hybrid_loop import _parse_replan_decision
-
         assert _parse_replan_decision('{"summary": "ok", "replan": true}') is True
 
     def test_json_replan_false(self) -> None:
-        from synthorg.engine.hybrid_loop import _parse_replan_decision
-
         assert _parse_replan_decision('{"summary": "ok", "replan": false}') is False
 
     def test_json_in_markdown_fence(self) -> None:
-        from synthorg.engine.hybrid_loop import _parse_replan_decision
-
         content = '```json\n{"summary": "ok", "replan": true}\n```'
         assert _parse_replan_decision(content) is True
 
     def test_text_heuristic_fallback(self) -> None:
-        from synthorg.engine.hybrid_loop import _parse_replan_decision
-
         content = 'I think we need "replan": true based on results.'
         assert _parse_replan_decision(content) is True
 
     def test_malformed_json_defaults_false(self) -> None:
-        from synthorg.engine.hybrid_loop import _parse_replan_decision
-
         assert _parse_replan_decision("This is not JSON at all.") is False
 
     def test_empty_content_defaults_false(self) -> None:
-        from synthorg.engine.hybrid_loop import _parse_replan_decision
-
         assert _parse_replan_decision("") is False
         assert _parse_replan_decision("   ") is False
 
     def test_json_non_dict_defaults_false(self) -> None:
-        from synthorg.engine.hybrid_loop import _parse_replan_decision
-
         assert _parse_replan_decision("[true]") is False
 
     def test_json_missing_replan_key_defaults_false(self) -> None:
-        from synthorg.engine.hybrid_loop import _parse_replan_decision
-
         assert _parse_replan_decision('{"summary": "ok"}') is False
 
 
@@ -1007,17 +993,221 @@ class TestHybridLoopProviderException:
     async def test_provider_error_during_step(
         self,
         sample_agent_context: AgentContext,
-        mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        provider = mock_provider_factory(
-            [
-                _single_step_plan(),
-                # Step execution: provider raises
-            ]
-        )
-        # Exhaust the mock so next call raises IndexError
+        call_count = 0
+
+        class FailingProvider:
+            async def complete(self, *_args: Any, **_kwargs: Any) -> CompletionResponse:
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    return _single_step_plan()
+                msg = "provider unreachable"
+                raise ConnectionError(msg)
+
         ctx = _ctx_with_user_msg(sample_agent_context)
         loop = HybridLoop()
 
-        result = await loop.execute(context=ctx, provider=provider)
+        result = await loop.execute(
+            context=ctx,
+            provider=FailingProvider(),  # type: ignore[arg-type]
+        )
         assert result.termination_reason == TerminationReason.ERROR
+
+
+# ---------------------------------------------------------------------------
+# Additional helpers for new tests below
+# ---------------------------------------------------------------------------
+
+
+def _make_plan_model() -> ExecutionPlan:
+    """Build an ExecutionPlan model for direct helper tests."""
+    from synthorg.engine.plan_models import PlanStep
+
+    return ExecutionPlan(
+        steps=(
+            PlanStep(
+                step_number=1,
+                description="Research the topic",
+                expected_outcome="Understanding gained",
+            ),
+            PlanStep(
+                step_number=2,
+                description="Implement solution",
+                expected_outcome="Code written",
+            ),
+        ),
+        original_task_summary="test task",
+    )
+
+
+# ---------------------------------------------------------------------------
+# #14: Missing tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestHybridLoopReplanPromptContent:
+    """Verify replan prompt differs for success vs failure triggers."""
+
+    async def test_do_replan_on_success_path(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """do_replan with step_failed=False produces a different prompt
+        than step_failed=True, verifying the content differs for
+        success vs failure triggers.
+        """
+        from synthorg.engine.hybrid_helpers import do_replan
+
+        plan = _make_plan_model()
+        step = plan.steps[0]
+        cfg = HybridLoopConfig(max_replans=2)
+
+        # Capture messages for step_failed=True
+        failure_provider = mock_provider_factory([_single_step_plan()])
+        ctx_fail = _ctx_with_user_msg(sample_agent_context)
+        await do_replan(
+            cfg,
+            ctx_fail,
+            failure_provider,
+            "test-model-001",
+            None,
+            plan,
+            step,
+            [],
+            step_failed=True,
+        )
+        failure_messages = failure_provider.recorded_messages[0]
+
+        # Capture messages for step_failed=False
+        success_provider = mock_provider_factory([_single_step_plan()])
+        ctx_ok = _ctx_with_user_msg(sample_agent_context)
+        await do_replan(
+            cfg,
+            ctx_ok,
+            success_provider,
+            "test-model-001",
+            None,
+            plan,
+            step,
+            [],
+            step_failed=False,
+        )
+        success_messages = success_provider.recorded_messages[0]
+
+        # The replan message is the last user message in each call
+        fail_prompt = failure_messages[-1].content or ""
+        ok_prompt = success_messages[-1].content or ""
+
+        # Both prompts should exist and differ
+        assert fail_prompt
+        assert ok_prompt
+        assert fail_prompt != ok_prompt
+        assert "failed" in fail_prompt.lower()
+        assert "successfully" in ok_prompt.lower()
+
+
+@pytest.mark.unit
+class TestHybridLoopCompaction:
+    """Compaction callback integration."""
+
+    async def test_compaction_callback_invoked(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """When a compaction_callback is provided, it gets called
+        during step execution.
+        """
+        compaction_calls: list[int] = []
+
+        async def compaction_cb(ctx: AgentContext) -> AgentContext | None:
+            compaction_calls.append(ctx.turn_count)
+            return None  # no compaction performed
+
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        provider = mock_provider_factory(
+            [
+                _single_step_plan(),
+                _stop_response("Done."),
+                _summary_response(),
+            ]
+        )
+        loop = HybridLoop(compaction_callback=compaction_cb)
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        # Compaction is called at least once during step execution
+        assert len(compaction_calls) >= 1
+
+
+@pytest.mark.unit
+class TestHybridLoopReplanBudgetShared:
+    """Replan budget shared between failure and completion triggers."""
+
+    async def test_replan_budget_shared_between_failure_and_completion(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """max_replans applies across both failure and completion replans.
+
+        After using 1 replan on completion, only max_replans-1 remain
+        for failures.
+        """
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        cfg = HybridLoopConfig(
+            max_replans=1,
+            allow_replan_on_completion=True,
+        )
+        provider = mock_provider_factory(
+            [
+                _multi_step_plan(),  # initial 3-step plan
+                _stop_response("Step 1 done."),  # step 1 completes
+                _summary_response(replan=True),  # triggers completion replan (uses 1)
+                _single_step_plan(),  # new plan from completion replan
+                _step_fail_response(),  # new step fails
+                # max_replans exhausted (1 used on completion) -> ERROR
+            ]
+        )
+        loop = HybridLoop(config=cfg)
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.ERROR
+        assert "Max replans" in (result.error_message or "")
+        assert result.metadata["replans_used"] == 1
+
+    async def test_last_step_no_replan_on_completion(
+        self,
+        sample_agent_context: AgentContext,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Completion-triggered replanning is skipped on the last step.
+
+        When the last step completes, even if the LLM says replan=true,
+        no replan occurs because there are no remaining steps.
+        """
+        ctx = _ctx_with_user_msg(sample_agent_context)
+        cfg = HybridLoopConfig(
+            allow_replan_on_completion=True,
+            max_replans=3,
+        )
+        provider = mock_provider_factory(
+            [
+                _single_step_plan(),  # 1-step plan
+                _stop_response("All done."),  # step 1 completes
+                # Summary says replan, but it's the last step
+                _summary_response(replan=True),
+            ]
+        )
+        loop = HybridLoop(config=cfg)
+
+        result = await loop.execute(context=ctx, provider=provider)
+
+        assert result.termination_reason == TerminationReason.COMPLETED
+        # No replans used even though LLM requested one
+        assert result.metadata["replans_used"] == 0

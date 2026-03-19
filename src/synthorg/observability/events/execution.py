@@ -89,3 +89,7 @@ EXECUTION_HYBRID_TURN_BUDGET_WARNING: Final[str] = (
     "execution.hybrid.turn_budget_warning"
 )
 EXECUTION_HYBRID_PLAN_TRUNCATED: Final[str] = "execution.hybrid.plan_truncated"
+EXECUTION_HYBRID_REPLAN_PARSE_TRACE: Final[str] = "execution.hybrid.replan_parse_trace"
+EXECUTION_HYBRID_PROGRESS_SUMMARY_EMPTY: Final[str] = (
+    "execution.hybrid.progress_summary_empty"
+)

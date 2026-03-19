@@ -100,7 +100,7 @@ class PlanExecuteConfig(BaseModel):
             step failure.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     planner_model: NotBlankStr | None = Field(
         default=None,

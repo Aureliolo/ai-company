@@ -207,6 +207,19 @@ def _data_to_plan(
         )
         return None
 
+    # Cap step count at parse time to prevent unbounded allocation
+    # from misbehaving LLM output (individual loop configs may
+    # truncate further).
+    _MAX_PARSE_STEPS = 50  # noqa: N806
+    if len(raw_steps) > _MAX_PARSE_STEPS:
+        logger.warning(
+            EXECUTION_PLAN_PARSE_ERROR,
+            parser="json_data",
+            reason=f"LLM returned {len(raw_steps)} steps; "
+            f"capping at {_MAX_PARSE_STEPS}",
+        )
+        raw_steps = raw_steps[:_MAX_PARSE_STEPS]
+
     steps: list[PlanStep] = []
     for i, raw_step in enumerate(raw_steps, start=1):
         if not isinstance(raw_step, dict):

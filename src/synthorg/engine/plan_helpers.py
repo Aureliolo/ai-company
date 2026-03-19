@@ -6,7 +6,10 @@ for common plan-step operations.
 
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
 from synthorg.providers.enums import FinishReason, MessageRole
+
+logger = get_logger(__name__)
 
 _MAX_TASK_SUMMARY_LENGTH = 200
 """Maximum character length for task summary strings."""
@@ -32,7 +35,16 @@ def update_step_status(
 
     Returns:
         A copy of *plan* with the step at *step_idx* updated.
+
+    Raises:
+        IndexError: If *step_idx* is out of range.
     """
+    if step_idx < 0 or step_idx >= len(plan.steps):
+        msg = (
+            f"step_idx {step_idx} out of range for plan with "
+            f"{len(plan.steps)} steps (revision {plan.revision_number})"
+        )
+        raise IndexError(msg)
     steps = list(plan.steps)
     steps[step_idx] = steps[step_idx].model_copy(
         update={"status": status},
@@ -57,6 +69,11 @@ def extract_task_summary(ctx: AgentContext) -> str:
     for msg in ctx.conversation:
         if msg.role == MessageRole.USER and msg.content:
             return msg.content[:_MAX_TASK_SUMMARY_LENGTH]
+    logger.warning(
+        "plan_helpers.extract_task_summary_fallback",
+        execution_id=ctx.execution_id,
+        note="No task_execution or user messages; using default summary",
+    )
     return "task"
 
 

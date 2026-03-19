@@ -402,10 +402,13 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     ```yaml
     execution_loop: "hybrid"
     hybrid:
+      planner_model: null
+      executor_model: null
       max_plan_steps: 7
       max_turns_per_step: 5
+      max_replans: 3
       checkpoint_after_each_step: true
-      allow_replan: true
+      allow_replan_on_completion: true
     ```
 
     | | |
@@ -644,8 +647,8 @@ is derived from `CompressionMetadata.compactions_performed`.
 ### Compaction Hook
 
 `CompactionCallback` is a type alias (`Callable[[AgentContext], Coroutine[...,
-AgentContext | None]]`) wired into both `ReactLoop` and `PlanExecuteLoop` via
-their constructors — the same injection pattern as `checkpoint_callback`,
+AgentContext | None]]`) wired into `ReactLoop`, `PlanExecuteLoop`, and
+`HybridLoop` via their constructors — the same injection pattern as `checkpoint_callback`,
 `stagnation_detector`, and `approval_gate`.
 
 The default implementation (`make_compaction_callback` in

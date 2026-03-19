@@ -162,29 +162,26 @@ class TestBudgetAwareDowngrade:
 class TestHybridFallback:
     """Hybrid fallback behavior."""
 
-    def test_default_no_fallback_preserves_hybrid(self) -> None:
-        """Default hybrid_fallback=None keeps hybrid selection."""
+    @pytest.mark.parametrize(
+        ("fallback", "expected"),
+        [
+            (None, "hybrid"),
+            ("react", "react"),
+        ],
+        ids=["none_preserves_hybrid", "custom_fallback_value"],
+    )
+    def test_fallback_behavior(
+        self,
+        fallback: str | None,
+        expected: str,
+    ) -> None:
+        """hybrid_fallback=None preserves hybrid; a value replaces it."""
         result = select_loop_type(
             complexity=Complexity.COMPLEX,
             rules=DEFAULT_AUTO_LOOP_RULES,
+            hybrid_fallback=fallback,
         )
-        assert result == "hybrid"
-
-    def test_custom_fallback_value(self) -> None:
-        result = select_loop_type(
-            complexity=Complexity.COMPLEX,
-            rules=DEFAULT_AUTO_LOOP_RULES,
-            hybrid_fallback="react",
-        )
-        assert result == "react"
-
-    def test_none_fallback_preserves_hybrid(self) -> None:
-        result = select_loop_type(
-            complexity=Complexity.COMPLEX,
-            rules=DEFAULT_AUTO_LOOP_RULES,
-            hybrid_fallback=None,
-        )
-        assert result == "hybrid"
+        assert result == expected
 
 
 # ── Budget downgrade + hybrid fallback interaction ───────────

@@ -1,9 +1,9 @@
 """Plan-and-Execute execution loop.
 
 Implements the ``ExecutionLoop`` protocol using a two-phase approach:
-1. **Plan** — ask the LLM to decompose the task into ordered steps.
+1. **Plan** -- ask the LLM to decompose the task into ordered steps.
    Planning calls pass ``tools=None`` (no tool access during planning).
-2. **Execute** — run each step via a mini-ReAct sub-loop with tools.
+2. **Execute** -- run each step via a mini-ReAct sub-loop with tools.
 
 Re-planning is triggered when a step fails, up to a configurable
 limit.  When re-planning is exhausted, the loop terminates with ERROR.
@@ -320,7 +320,7 @@ class PlanExecuteLoop:
                 step_idx += 1
                 continue
 
-            # Step failed — attempt re-planning
+            # Step failed -- attempt re-planning
             replan_out = await self._attempt_replan(
                 ctx,
                 provider,
@@ -600,7 +600,6 @@ class PlanExecuteLoop:
             )
         )
 
-        # Check for CONTENT_FILTER / ERROR finish reasons
         error = check_response_errors(ctx, response, turn_number, turns)
         if error is not None:
             return error
@@ -690,7 +689,6 @@ class PlanExecuteLoop:
                 return result
             if isinstance(result, tuple):
                 ctx, step_ok = result
-                # Run compaction on step-completion turns too
                 compacted = await invoke_compaction(
                     ctx,
                     self._compaction_callback,
@@ -859,7 +857,7 @@ class PlanExecuteLoop:
     ) -> None:
         """Invoke the checkpoint callback if configured.
 
-        Errors are logged but never propagated — checkpointing must
+        Errors are logged but never propagated -- checkpointing must
         not interrupt execution.
         """
         if self._checkpoint_callback is None:
