@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/completion"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/verify"
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 )
@@ -53,6 +55,10 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 		if err := stopAndRemoveVolumes(cmd, info, safeDir); err != nil {
 			return err
 		}
+		// Offer to remove SynthOrg container images.
+		if err := confirmAndRemoveImages(cmd, info); err != nil {
+			return err
+		}
 	}
 
 	// Remove data directory.
@@ -72,7 +78,7 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Optionally remove CLI binary.
-	if err := confirmAndRemoveBinary(cmd); err != nil {
+	if err := confirmAndRemoveBinary(cmd, safeDir); err != nil {
 		return err
 	}
 
@@ -113,6 +119,76 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string) 
 	return nil
 }
 
+// confirmAndRemoveImages offers to remove SynthOrg container images from
+// the local Docker cache. Lists matching images first so the user sees
+// what will be removed.
+func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info) error {
+	ctx := cmd.Context()
+	out := cmd.OutOrStdout()
+
+	// List SynthOrg images. The repo prefix is ghcr.io/aureliolo/synthorg-*.
+	imageRef := verify.RegistryHost + "/" + verify.ImageRepoPrefix
+	listOut, err := docker.RunCmd(ctx, info.ComposeCmd[0], "images",
+		"--filter", "reference="+imageRef+"*",
+		"--format", "{{.Repository}}:{{.Tag}} ({{.Size}})",
+	)
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not list images: %v\n", err)
+		return nil
+	}
+
+	images := strings.TrimSpace(listOut)
+	if images == "" {
+		_, _ = fmt.Fprintln(out, "No SynthOrg images found locally.")
+		return nil
+	}
+
+	_, _ = fmt.Fprintln(out, "SynthOrg images found locally:")
+	for _, line := range strings.Split(images, "\n") {
+		_, _ = fmt.Fprintf(out, "  %s\n", line)
+	}
+
+	var removeImages bool
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Remove these container images?").
+				Value(&removeImages),
+		),
+	)
+	if err := form.Run(); err != nil {
+		return err
+	}
+	if !removeImages {
+		return nil
+	}
+
+	// Get image IDs for removal (more reliable than names for rmi).
+	idsOut, err := docker.RunCmd(ctx, info.ComposeCmd[0], "images",
+		"--filter", "reference="+imageRef+"*",
+		"--format", "{{.ID}}",
+	)
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not get image IDs: %v\n", err)
+		return nil
+	}
+
+	ids := strings.Fields(strings.TrimSpace(idsOut))
+	if len(ids) == 0 {
+		return nil
+	}
+
+	_, _ = fmt.Fprintln(out, "Removing SynthOrg images...")
+	rmiArgs := append([]string{"rmi", "--force"}, ids...)
+	if _, rmiErr := docker.RunCmd(ctx, info.ComposeCmd[0], rmiArgs...); rmiErr != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: some images could not be removed: %v\n", rmiErr)
+	} else {
+		_, _ = fmt.Fprintf(out, "Removed %d image(s).\n", len(ids))
+	}
+
+	return nil
+}
+
 func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 	var removeData bool
 	form := huh.NewForm(
@@ -138,7 +214,7 @@ func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {
 // rejectUnsafeDir refuses to remove root, home, relative, UNC share roots, or drive roots.
 func rejectUnsafeDir(dir string) error {
 	if dir == "" || dir == "." || !filepath.IsAbs(dir) {
-		return fmt.Errorf("refusing to remove %q — must be an absolute path", dir)
+		return fmt.Errorf("refusing to remove %q -- must be an absolute path", dir)
 	}
 	home, homeErr := os.UserHomeDir()
 	isHomeDir := false
@@ -158,7 +234,7 @@ func rejectUnsafeDir(dir string) error {
 		(dir == vol || dir == vol+`\` || dir == vol+"/")
 	isDriveRoot := len(dir) == 3 && dir[1] == ':' && (dir[2] == '\\' || dir[2] == '/')
 	if dir == "/" || isHomeDir || isDriveRoot || isUNCRoot {
-		return fmt.Errorf("refusing to remove %q — does not look like an app data directory", dir)
+		return fmt.Errorf("refusing to remove %q -- does not look like an app data directory", dir)
 	}
 	return nil
 }
@@ -179,7 +255,7 @@ func removeDataDir(cmd *cobra.Command, dir string) error {
 		if err := removeAllExcept(dir, execPath); err != nil {
 			return fmt.Errorf("removing config directory: %w", err)
 		}
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed contents of %s (binary skipped — still running)\n", dir)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed contents of %s (binary skipped -- still running)\n", dir)
 	} else {
 		if err := os.RemoveAll(dir); err != nil {
 			return fmt.Errorf("removing config directory: %w", err)
@@ -189,7 +265,10 @@ func removeDataDir(cmd *cobra.Command, dir string) error {
 	return nil
 }
 
-func confirmAndRemoveBinary(cmd *cobra.Command) error {
+// confirmAndRemoveBinary asks to remove the CLI binary. On Windows, spawns
+// a detached process that waits for the current process to exit, then
+// deletes the binary and cleans up empty parent directories.
+func confirmAndRemoveBinary(cmd *cobra.Command, dataDir string) error {
 	var removeBinary bool
 	form := huh.NewForm(
 		huh.NewGroup(
@@ -203,31 +282,83 @@ func confirmAndRemoveBinary(cmd *cobra.Command) error {
 		return err
 	}
 
-	if removeBinary {
-		execPath, err := os.Executable()
-		if err != nil {
-			return fmt.Errorf("finding executable: %w", err)
-		}
-		// Resolve symlinks so we remove the actual binary.
-		if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
-			execPath = resolved
-		}
-		if runtime.GOOS == "windows" {
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Cannot delete running binary on Windows.")
-			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "To finish cleanup after exit, run:")
-			// Use PowerShell Remove-Item -LiteralPath which does not interpret
-			// wildcards or cmd.exe metacharacters (%, ^, &, |, <, >).
-			escaped := strings.ReplaceAll(execPath, "'", "''")
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  powershell -Command \"Remove-Item -LiteralPath '%s'\"\n", escaped)
-		} else {
-			if err := os.Remove(execPath); err != nil {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove binary: %v\n", err)
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Manually remove: %s\n", execPath)
-			} else {
-				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "CLI binary removed.")
-			}
-		}
+	if !removeBinary {
+		return nil
 	}
+
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("finding executable: %w", err)
+	}
+	// Resolve symlinks so we remove the actual binary.
+	if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
+		execPath = resolved
+	}
+
+	if runtime.GOOS != "windows" {
+		return removeUnixBinary(cmd, execPath)
+	}
+	return scheduleWindowsCleanup(cmd, execPath, dataDir)
+}
+
+func removeUnixBinary(cmd *cobra.Command, execPath string) error {
+	if err := os.Remove(execPath); err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove binary: %v\n", err)
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Manually remove: %s\n", execPath)
+	} else {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "CLI binary removed.")
+	}
+	return nil
+}
+
+// scheduleWindowsCleanup spawns a detached cmd.exe process that waits for
+// the current process to exit, then deletes the binary and its parent
+// directory (if empty). Uses tasklist polling instead of a fixed sleep
+// to handle variable shutdown times.
+func scheduleWindowsCleanup(cmd *cobra.Command, execPath, dataDir string) error {
+	out := cmd.OutOrStdout()
+	pid := os.Getpid()
+
+	// Build a cmd.exe /c command that:
+	// 1. Polls until our PID is gone (tasklist, 1-second intervals, max 30 checks)
+	// 2. Deletes the binary
+	// 3. Removes the bin/ directory if empty
+	// 4. Removes the data directory if empty
+	//
+	// Using cmd.exe /c with a for loop -- no PowerShell dependency.
+	// The /b flag on del suppresses "Are you sure?" prompts.
+	binDir := filepath.Dir(execPath)
+	script := fmt.Sprintf(
+		`for /L %%i in (1,1,30) do (`+
+			`tasklist /fi "PID eq %d" 2>nul | find "%d" >nul || goto :cleanup & `+
+			`ping -n 2 127.0.0.1 >nul`+
+			`) & goto :done`+
+			` & :cleanup`+
+			` & del /f /q "%s"`+
+			` & rmdir "%s" 2>nul`+
+			` & rmdir "%s" 2>nul`+
+			` & :done`,
+		pid, pid,
+		execPath,
+		binDir,
+		dataDir,
+	)
+
+	c := exec.CommandContext(cmd.Context(), "cmd.exe", "/c", script)
+	c.SysProcAttr = windowsDetachedProcAttr()
+	if err := c.Start(); err != nil {
+		// Fall back to manual instructions if spawn fails.
+		_, _ = fmt.Fprintln(out, "Could not schedule automatic cleanup.")
+		_, _ = fmt.Fprintln(out, "To finish cleanup after exit, run:")
+		escaped := strings.ReplaceAll(execPath, "'", "''")
+		_, _ = fmt.Fprintf(out, "  powershell -Command \"Remove-Item -LiteralPath '%s'\"\n", escaped)
+		return nil
+	}
+
+	// Detach -- don't wait for the cleanup process.
+	_ = c.Process.Release()
+
+	_, _ = fmt.Fprintln(out, "CLI binary will be removed automatically after exit.")
 	return nil
 }
 
@@ -276,7 +407,7 @@ func removeAllExcept(root, except string) error {
 			return err
 		}
 		cleanPath := filepath.Clean(path)
-		// Skip root itself — we only remove contents, not the root directory.
+		// Skip root itself -- we only remove contents, not the root directory.
 		if cleanPath == root {
 			return nil
 		}

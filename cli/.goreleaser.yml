@@ -31,7 +31,7 @@ archives:
           - zip
     name_template: "synthorg_{{ .Os }}_{{ .Arch }}"
     files:
-      - src: ../LICENSE
+      - src: LICENSE
         dst: .
         info:
           mtime: "{{ .CommitDate }}"
