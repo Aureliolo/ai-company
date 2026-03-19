@@ -1226,7 +1226,9 @@ class AgentEngine:
         # Sanitize: redact paths/URLs, strip non-printable chars,
         # and limit length to prevent internal details leaking.
         sanitized = re.sub(
-            r"[A-Za-z]:\\[^\s,;)\"']+|/(?:home|usr|var|tmp|etc|opt)[^\s,;)\"']+",
+            r"[A-Za-z]:\\[^\s,;)\"']+"
+            r"|/(?:home|usr|var|tmp|etc|opt|root|srv|app|data)[^\s,;)\"']+"
+            r"|\.\.?/[^\s,;)\"']+",
             "[REDACTED_PATH]",
             raw_msg,
         )
