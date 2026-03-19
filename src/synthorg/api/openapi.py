@@ -295,7 +295,7 @@ def _normalize_nullable_unions(
 
     Litestar wraps ``T | None`` fields in ``oneOf``, producing
     ``oneOf: [{type: "string"}, {type: "null"}]``.  API doc renderers
-    expects the compact ``type: ["string", "null"]`` form for
+    expect the compact ``type: ["string", "null"]`` form for
     primitives, and ``anyOf`` for ``$ref``-based nullables.
 
     Args:
@@ -654,7 +654,7 @@ def inject_rfc9457_responses(schema: dict[str, Any]) -> dict[str, Any]:
     _update_info_description(result.setdefault("info", {}))
 
     # Normalize after all schemas are in place (including ProblemDetail).
-    # Workaround for Renderer bug workaround -- see issue #268 for details
+    # Workaround for renderer bug -- see issue #268 for details
     result = _normalize_nullable_unions(result, all_schemas=schemas)
 
     path_count = len(result.get("paths", {}))
