@@ -346,9 +346,10 @@ class SetupController(Controller):
     ) -> ApiResponse[SetupCompanyResponse]:
         """Create company configuration during first-run setup.
 
-        Persists the company name and optionally applies a template
-        to create department structure. Calling this endpoint again
-        overwrites the previously set company name and departments.
+        Persists the company name, optional description, and optionally
+        applies a template to create department structure. Calling this
+        endpoint again overwrites the previously set company name,
+        description, and departments.
 
         Args:
             data: Company creation payload.
@@ -376,11 +377,13 @@ class SetupController(Controller):
                 department_count = len(json.loads(departments_json))
 
         # Normalize description: strip whitespace, treat blank as None.
-        description = data.description.strip() or None if data.description else None
+        description = (data.description.strip() or None) if data.description else None
 
         # Persist company name, description, and departments after validation.
         await settings_svc.set("company", "company_name", data.company_name)
         # Always write description -- clears stale data from previous runs.
+        # Stores "" when description is None (settings values are strings);
+        # consumers should treat "" as absent.
         await settings_svc.set("company", "description", description or "")
         # Always write departments -- clears stale data from previous runs.
         await settings_svc.set(

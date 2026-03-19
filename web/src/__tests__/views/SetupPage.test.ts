@@ -43,6 +43,21 @@ vi.mock('primevue/button', () => ({
   }),
 }))
 
+vi.mock('primevue/textarea', () => ({
+  default: defineComponent({
+    props: ['modelValue', 'id', 'rows', 'placeholder'],
+    emits: ['update:modelValue'],
+    setup(props, { emit }) {
+      return () =>
+        h('textarea', {
+          id: props.id,
+          value: props.modelValue,
+          onInput: (e: Event) => emit('update:modelValue', (e.target as HTMLTextAreaElement).value),
+        })
+    },
+  }),
+}))
+
 vi.mock('primevue/select', () => ({
   default: defineComponent({
     props: ['modelValue', 'options', 'optionLabel', 'optionValue', 'placeholder', 'disabled'],
