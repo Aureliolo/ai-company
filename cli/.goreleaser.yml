@@ -32,7 +32,6 @@ archives:
     name_template: "synthorg_{{ .Os }}_{{ .Arch }}"
     files:
       - src: LICENSE
-        dst: .
         info:
           mtime: "{{ .CommitDate }}"
 
