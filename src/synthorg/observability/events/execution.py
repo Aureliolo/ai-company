@@ -72,3 +72,11 @@ EXECUTION_CHECKPOINT_CALLBACK_FAILED: Final[str] = (
 EXECUTION_RESUME_START: Final[str] = "execution.resume.start"
 EXECUTION_RESUME_COMPLETE: Final[str] = "execution.resume.complete"
 EXECUTION_RESUME_FAILED: Final[str] = "execution.resume.failed"
+
+# Loop auto-selection events
+EXECUTION_LOOP_AUTO_SELECTED: Final[str] = "execution.loop.auto_selected"
+EXECUTION_LOOP_BUDGET_DOWNGRADE: Final[str] = "execution.loop.budget_downgrade"
+EXECUTION_LOOP_HYBRID_FALLBACK: Final[str] = "execution.loop.hybrid_fallback"
+EXECUTION_LOOP_NO_RULE_MATCH: Final[str] = "execution.loop.no_rule_match"
+EXECUTION_LOOP_UNKNOWN_TYPE: Final[str] = "execution.loop.unknown_type"
+EXECUTION_LOOP_BUDGET_UNAVAILABLE: Final[str] = "execution.loop.budget_unavailable"

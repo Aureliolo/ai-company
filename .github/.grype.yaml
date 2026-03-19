@@ -6,3 +6,13 @@ ignore:
     reason: >-
       Disputed zlib vulnerability affecting only the untgz demo utility
       in contrib/, not core zlib. Upstream disputes CVE validity.
+
+  # Audit: 2026-03-19 -- review after 90 days (no native expiration in Grype)
+  - vulnerability: CVE-2026-32767
+    package:
+      name: libexpat
+      type: apk
+    reason: >-
+      False positive: SiYuan Note auth bypass, not a libexpat vulnerability.
+      Trivy incorrectly maps this CVE to libexpat. Web image is nginx
+      serving static files -- SiYuan and SQL are not present.

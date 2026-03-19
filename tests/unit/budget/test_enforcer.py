@@ -1080,3 +1080,82 @@ class TestCostTrackerProperty:
         tracker = CostTracker(budget_config=cfg)
         enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
         assert enforcer.cost_tracker is tracker
+
+
+# ── get_budget_utilization_pct ──────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestGetBudgetUtilizationPct:
+    """Tests for BudgetEnforcer.get_budget_utilization_pct."""
+
+    async def test_returns_correct_percentage(self) -> None:
+        """50 spent out of 100 monthly => 50.0%."""
+        cfg = _make_budget_config(total_monthly=100.0)
+        tracker = CostTracker(budget_config=cfg)
+        await tracker.record(make_cost_record(cost_usd=50.0, timestamp=_RECORD_TS))
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+
+        with _patch_periods():
+            result = await enforcer.get_budget_utilization_pct()
+
+        assert result == pytest.approx(50.0)
+
+    async def test_returns_none_when_monthly_budget_disabled(self) -> None:
+        """total_monthly=0 means disabled => None."""
+        cfg = _make_budget_config(total_monthly=0.0)
+        tracker = CostTracker(budget_config=cfg)
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+
+        result = await enforcer.get_budget_utilization_pct()
+        assert result is None
+
+    async def test_zero_spend_returns_zero(self) -> None:
+        """No records => 0.0%."""
+        cfg = _make_budget_config(total_monthly=100.0)
+        tracker = CostTracker(budget_config=cfg)
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+
+        with _patch_periods():
+            result = await enforcer.get_budget_utilization_pct()
+
+        assert result == pytest.approx(0.0)
+
+    async def test_over_budget_returns_above_100(self) -> None:
+        """Spending > budget => percentage > 100."""
+        cfg = _make_budget_config(total_monthly=50.0)
+        tracker = CostTracker(budget_config=cfg)
+        await tracker.record(make_cost_record(cost_usd=75.0, timestamp=_RECORD_TS))
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+
+        with _patch_periods():
+            result = await enforcer.get_budget_utilization_pct()
+
+        assert result == pytest.approx(150.0)
+
+    async def test_returns_none_on_tracker_failure(self) -> None:
+        """CostTracker error => None (graceful degradation)."""
+        cfg = _make_budget_config(total_monthly=100.0)
+        tracker = CostTracker(budget_config=cfg)
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+
+        with (
+            _patch_periods(),
+            patch.object(tracker, "get_total_cost", side_effect=RuntimeError("boom")),
+        ):
+            result = await enforcer.get_budget_utilization_pct()
+
+        assert result is None
+
+    async def test_memory_error_propagates(self) -> None:
+        """MemoryError is re-raised, never swallowed."""
+        cfg = _make_budget_config(total_monthly=100.0)
+        tracker = CostTracker(budget_config=cfg)
+        enforcer = BudgetEnforcer(budget_config=cfg, cost_tracker=tracker)
+
+        with (
+            _patch_periods(),
+            patch.object(tracker, "get_total_cost", side_effect=MemoryError),
+            pytest.raises(MemoryError),
+        ):
+            await enforcer.get_budget_utilization_pct()

@@ -9,3 +9,14 @@ vulnerabilities:
       https://github.com/madler/zlib/issues/1148
       nginx-unprivileged maintainer closed as not-zlib:
       https://github.com/nginx/docker-nginx-unprivileged/issues/381
+
+  - id: CVE-2026-32767
+    purls:
+      - "pkg:apk/alpine/libexpat"
+    expired_at: "2026-06-17T00:00:00Z"
+    statement: >-
+      False positive: CVE-2026-32767 is a SiYuan Note authorization bypass
+      (CWE-863, arbitrary SQL execution in /api/search/fullTextSearchBlock),
+      not a libexpat vulnerability. Trivy incorrectly maps this CVE to
+      libexpat 2.7.4. Our nginx-unprivileged web image does not run SiYuan,
+      execute SQL, or use libexpat for security-critical operations.

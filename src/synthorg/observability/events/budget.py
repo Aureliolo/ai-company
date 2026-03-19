@@ -31,3 +31,6 @@ BUDGET_TIER_RESOLVED: Final[str] = "budget.tier.resolved"
 BUDGET_TIER_CLASSIFY_MISS: Final[str] = "budget.tier.classify_miss"
 
 BUDGET_RECORDS_QUERIED: Final[str] = "budget.records.queried"
+
+BUDGET_UTILIZATION_QUERIED: Final[str] = "budget.utilization.queried"
+BUDGET_UTILIZATION_ERROR: Final[str] = "budget.utilization.error"

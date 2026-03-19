@@ -415,16 +415,29 @@ All loop implementations satisfy the `ExecutionLoop` runtime-checkable protocol:
     | **Best for** | Complex tasks, multi-file refactoring, tasks requiring both planning and adaptivity. |
 
 !!! tip "Auto-selection"
-    When `execution_loop: "auto"`, the framework selects the loop based on
-    `estimated_complexity`: simple -> ReAct, medium -> Plan-and-Execute,
-    complex/epic -> Hybrid. Configurable via `auto_loop_rules` -- a mapping
-    of complexity thresholds to loop implementations.
+    When `execution_loop: "auto"`, the framework selects the loop via three
+    layers:
+
+    1. **Rule matching** -- maps `estimated_complexity` to a loop type:
+       simple -> ReAct, medium -> Plan-and-Execute, complex/epic -> Hybrid.
+       Configurable via `AutoLoopConfig.rules` (a tuple of `AutoLoopRule`).
+       When no rule matches, falls back to `default_loop_type` (default:
+       react).  All loop types in rules, `hybrid_fallback`, and
+       `default_loop_type` are validated against the known set at
+       construction time.
+    2. **Budget-aware downgrade** -- when monthly budget utilization is at
+       or above `budget_tight_threshold` (default 80%), hybrid selections
+       are downgraded to plan_execute to conserve budget.
+    3. **Hybrid fallback** -- when the hybrid loop is not yet implemented,
+       falls back to `hybrid_fallback` (default: plan_execute).
 
 ### AgentEngine Orchestrator
 
 `AgentEngine` is the top-level entry point for running an agent on a task. It
 composes the execution loop with prompt construction, context management, tool
-invocation, and cost tracking into a single `run()` call.
+invocation, and cost tracking into a single `run()` call. When an
+`auto_loop_config` is provided (mutually exclusive with `execution_loop`),
+the engine dynamically selects the loop per task via `_resolve_loop()`.
 
 The engine also exposes an optional ``coordinate()`` method that delegates to a
 ``MultiAgentCoordinator`` when one is configured (see :doc:`coordination`).
@@ -463,7 +476,14 @@ async run(
    `BudgetChecker` from `BudgetEnforcer` (task + monthly + daily limits with
    pre-computed baselines and alert deduplication) or from task budget limit
    alone when no enforcer is configured.
-8. **Delegate to loop** -- calls `ExecutionLoop.execute()` with context,
+8. **Resolve execution loop** -- if `auto_loop_config` is set, calls
+   `select_loop_type()` with the task's `estimated_complexity` and current
+   budget utilization (via `BudgetEnforcer.get_budget_utilization_pct()`).
+   Budget-aware downgrade: hybrid is downgraded to plan_execute when
+   utilization >= threshold.  Hybrid fallback applies when the hybrid loop
+   is not yet implemented.  When no auto config is set, uses the statically
+   configured loop.
+9. **Delegate to loop** -- calls `ExecutionLoop.execute()` with context,
    provider, tool invoker, budget checker, and completion config. If
    `timeout_seconds` is set, wraps the call in `asyncio.wait`; on expiry
    the run returns with `TerminationReason.ERROR` but cost recording and
@@ -473,9 +493,9 @@ async run(
    parking is needed. If so, the context is serialized via `ParkService`
    and persisted when a `ParkedContextRepository` is configured; the loop
    then returns a `PARKED` result.
-9. **Record costs** -- records accumulated `TokenUsage` to `CostTracker` (if
-   available). Cost recording failures are logged but do not affect the result.
-10. **Apply post-execution transitions:**
+10. **Record costs** -- records accumulated `TokenUsage` to `CostTracker` (if
+    available). Cost recording failures are logged but do not affect the result.
+11. **Apply post-execution transitions:**
     - `COMPLETED` termination: IN_PROGRESS -> IN_REVIEW -> COMPLETED (two-hop
       auto-complete; reviewers planned).
     - `SHUTDOWN` termination: current status -> INTERRUPTED
@@ -493,7 +513,7 @@ async run(
       [AgentEngine ↔ TaskEngine Incremental Sync](#agentengine--taskengine-incremental-sync)).
     - Transition failures are logged but do not discard the successful execution
       result.
-11. **Return result** -- wraps `ExecutionResult` in `AgentRunResult` with
+12. **Return result** -- wraps `ExecutionResult` in `AgentRunResult` with
     engine-level metadata.
 
 **Error handling:** `MemoryError` and `RecursionError` propagate
