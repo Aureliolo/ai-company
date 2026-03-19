@@ -29,6 +29,12 @@ async def apply_schema(db: aiosqlite.Connection) -> None:
     statements via ``executescript``.  All statements use
     ``IF NOT EXISTS`` guards, making this call idempotent.
 
+    .. warning::
+
+       ``executescript`` commits any open transaction before
+       executing.  Call only on a freshly opened connection
+       with no pending writes.
+
     Args:
         db: An open aiosqlite connection.
 

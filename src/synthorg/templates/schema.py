@@ -206,6 +206,8 @@ class TemplateMetadata(BaseModel):
 
     name: NotBlankStr = Field(description="Template display name")
     description: str = Field(default="", description="Template description")
+    # Frozen at "1.0.0" -- no template versioning consumers exist yet.
+    # Start maintaining when templates are distributed or cached externally.
     version: NotBlankStr = Field(default="1.0.0", description="Semantic version")
     company_type: CompanyType = Field(
         description="Company type this template creates",

@@ -28,7 +28,6 @@ PERSISTENCE_BACKEND_NOT_CONNECTED: Final[str] = "persistence.backend.not_connect
 
 PERSISTENCE_MIGRATION_STARTED: Final[str] = "persistence.migration.started"
 PERSISTENCE_MIGRATION_COMPLETED: Final[str] = "persistence.migration.completed"
-PERSISTENCE_MIGRATION_SKIPPED: Final[str] = "persistence.migration.skipped"
 PERSISTENCE_MIGRATION_FAILED: Final[str] = "persistence.migration.failed"
 
 PERSISTENCE_TASK_SAVED: Final[str] = "persistence.task.saved"

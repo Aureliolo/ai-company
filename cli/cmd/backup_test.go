@@ -277,12 +277,10 @@ func TestBackupCreate_Success(t *testing.T) {
 		_, _ = w.Write([]byte(`{
 			"data": {
 				"backup_id": "abcdef012345",
-				"version": "1",
 				"synthorg_version": "0.3.5",
 				"timestamp": "2026-03-18T10:00:00Z",
 				"trigger": "manual",
 				"components": ["persistence", "memory", "config"],
-				"db_schema_version": 1,
 				"size_bytes": 1048576,
 				"checksum": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 			},
@@ -467,12 +465,10 @@ func TestBackupRestore_Success(t *testing.T) {
 			"data": {
 				"manifest": {
 					"backup_id": "abcdef012345",
-					"version": "1",
 					"synthorg_version": "0.3.5",
 					"timestamp": "2026-03-18T10:00:00Z",
 					"trigger": "manual",
 					"components": ["persistence", "memory", "config"],
-					"db_schema_version": 1,
 					"size_bytes": 1048576,
 					"checksum": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 				},
@@ -589,12 +585,10 @@ func TestBackupRestore_RestartRequired(t *testing.T) {
 			"data": {
 				"manifest": {
 					"backup_id": "abcdef012345",
-					"version": "1",
 					"synthorg_version": "0.3.5",
 					"timestamp": "2026-03-18T10:00:00Z",
 					"trigger": "manual",
 					"components": ["persistence"],
-					"db_schema_version": 1,
 					"size_bytes": 1024,
 					"checksum": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 				},

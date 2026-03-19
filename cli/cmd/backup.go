@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -86,12 +85,10 @@ type apiEnvelope struct {
 // backupManifest mirrors the Python BackupManifest model.
 type backupManifest struct {
 	BackupID        string   `json:"backup_id"`
-	Version         string   `json:"version"`
 	SynthorgVersion string   `json:"synthorg_version"`
 	Timestamp       string   `json:"timestamp"`
 	Trigger         string   `json:"trigger"`
 	Components      []string `json:"components"`
-	DBSchemaVersion int      `json:"db_schema_version"`
 	SizeBytes       int64    `json:"size_bytes"`
 	Checksum        string   `json:"checksum"`
 }
@@ -264,7 +261,6 @@ func printManifest(out *ui.UI, m backupManifest) {
 	out.KeyValue("Size", formatSize(m.SizeBytes))
 	out.KeyValue("Checksum", m.Checksum)
 	out.KeyValue("SynthOrg version", m.SynthorgVersion)
-	out.KeyValue("DB schema version", strconv.Itoa(m.DBSchemaVersion))
 }
 
 // printBackupTable renders a list of backups as a formatted table.

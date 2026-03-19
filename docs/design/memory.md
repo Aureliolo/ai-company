@@ -171,7 +171,7 @@ implementation effort for the research direction backends.
 !!! tip "Write Access Control"
 
     Core policies are human-only. ADRs and procedures can be written by senior+ agents. All
-    writes are versioned and auditable. This prevents agents from corrupting shared organizational
+    writes are append-only and auditable. This prevents agents from corrupting shared organizational
     knowledge while allowing senior agents to document decisions.
 
 ---
@@ -480,12 +480,12 @@ persistence:
 | `AgentRuntimeState` | `engine/agent_state.py` | `AgentStateRepository` | by agent_id, active agents |
 | Setting | `settings/models.py` | `SettingsRepository` | by namespace+key, by namespace, all |
 
-### Migration Strategy
+### Schema Strategy
 
-- Migrations run programmatically at startup via `PersistenceBackend.migrate()`
-- Initial migration creates all tables
-- Versioned migrations implemented per-backend (e.g., `persistence/sqlite/migrations.py` for SQLite)
-- SQLite uses `user_version` pragma for version tracking; PostgreSQL/MariaDB use a migrations table
+- Schema is applied at startup via `PersistenceBackend.migrate()` which calls `apply_schema()`
+- The canonical schema lives in `persistence/sqlite/schema.sql` (single source of truth)
+- All DDL uses `IF NOT EXISTS` guards, making application idempotent
+- No sequential migrations exist yet -- when data stability is declared, adopt Atlas for declarative migrations (diff `schema.sql` against the live DB)
 
 ### Key Principles
 

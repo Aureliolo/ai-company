@@ -532,7 +532,6 @@ class TestEventConstants:
             ),
             ("PERSISTENCE_MIGRATION_STARTED", "persistence.migration.started"),
             ("PERSISTENCE_MIGRATION_COMPLETED", "persistence.migration.completed"),
-            ("PERSISTENCE_MIGRATION_SKIPPED", "persistence.migration.skipped"),
             ("PERSISTENCE_TASK_SAVED", "persistence.task.saved"),
             ("PERSISTENCE_TASK_FETCHED", "persistence.task.fetched"),
             ("PERSISTENCE_TASK_LISTED", "persistence.task.listed"),

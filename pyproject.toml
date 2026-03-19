@@ -38,6 +38,7 @@ path = "src/synthorg/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/synthorg"]
+artifacts = ["src/synthorg/**/*.sql"]
 
 [dependency-groups]
 test = [

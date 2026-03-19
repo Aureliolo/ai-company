@@ -516,13 +516,13 @@ def _extract_numeric_config(
 ) -> tuple[dict[str, Any], float]:
     """Extract autonomy and budget_monthly.
 
-    Autonomy is always a dict (AutonomyConfig-compatible). A deep copy
+    Autonomy is always a dict (AutonomyConfig-compatible). A copy
     is returned to prevent mutation of the original rendered data.
     """
     source_name = template.metadata.name
     raw_autonomy = company.get("autonomy", template.autonomy)
     try:
-        # Deep-copy to prevent mutation of the original rendered data.
+        # Shallow copy -- autonomy dicts have only scalar values.
         autonomy: dict[str, Any] = dict(raw_autonomy)
         budget_monthly = to_float(
             company.get("budget_monthly", template.budget_monthly),
