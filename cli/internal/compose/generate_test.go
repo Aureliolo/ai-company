@@ -61,7 +61,7 @@ func TestGenerateCustomPorts(t *testing.T) {
 		WebPort:            4000,
 		LogLevel:           "debug",
 		JWTSecret:          "test-secret-value",
-		SettingsKey:        "test-settings-key",
+		SettingsKey:        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
 	}
@@ -77,7 +77,7 @@ func TestGenerateCustomPorts(t *testing.T) {
 	assertContains(t, yaml, "SYNTHORG_JWT_SECRET")
 	assertContains(t, yaml, "test-secret-value")
 	assertContains(t, yaml, "SYNTHORG_SETTINGS_KEY")
-	assertContains(t, yaml, "test-settings-key")
+	assertContains(t, yaml, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
 
 	compareGolden(t, "compose_custom_ports.yml", out)
 }
@@ -255,6 +255,9 @@ func TestParamsFromState(t *testing.T) {
 	}
 	if p.MemoryBackend != "mem0" {
 		t.Errorf("MemoryBackend = %q, want mem0", p.MemoryBackend)
+	}
+	if p.JWTSecret != "secret" {
+		t.Errorf("JWTSecret = %q, want secret", p.JWTSecret)
 	}
 	if p.SettingsKey != "settings-key" {
 		t.Errorf("SettingsKey = %q, want settings-key", p.SettingsKey)

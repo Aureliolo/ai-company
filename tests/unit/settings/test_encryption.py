@@ -44,7 +44,7 @@ class TestSettingsEncryptor:
     def test_decrypt_invalid_ciphertext_raises(
         self, encryptor: SettingsEncryptor
     ) -> None:
-        with pytest.raises(SettingsEncryptionError):
+        with pytest.raises(SettingsEncryptionError, match="wrong key"):
             encryptor.decrypt("not-valid-ciphertext")
 
     def test_from_env_returns_encryptor(

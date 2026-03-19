@@ -100,8 +100,16 @@ func TestConfigShowDisplaysFields(t *testing.T) {
 		t.Error("Settings key leaked in output")
 	}
 
-	// Settings key label must be present.
+	// Both secret labels must be present with masked values.
 	if !bytes.Contains([]byte(out), []byte("Settings key")) {
 		t.Error("expected 'Settings key' label in output")
+	}
+	if !bytes.Contains([]byte(out), []byte("JWT secret")) {
+		t.Error("expected 'JWT secret' label in output")
+	}
+	// Count "****" occurrences -- must appear at least twice (JWT + Settings key).
+	maskCount := bytes.Count([]byte(out), []byte("****"))
+	if maskCount < 2 {
+		t.Errorf("expected at least 2 masked secrets (****), got %d", maskCount)
 	}
 }

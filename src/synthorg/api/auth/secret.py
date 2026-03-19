@@ -23,12 +23,20 @@ def resolve_jwt_secret() -> str:
     Raises:
         ValueError: If the env var is not set, empty, or too short.
     """
-    raw = os.environ.get(_ENV_VAR, "").strip()
-    if not raw:
+    raw_or_none = os.environ.get(_ENV_VAR)
+    if raw_or_none is None:
         msg = (
             f"{_ENV_VAR} is not set -- the JWT secret is required. "
             f"Run 'synthorg init' to generate one, or set it manually "
             f"(>= {MIN_SECRET_LENGTH} characters)."
+        )
+        logger.error(API_APP_STARTUP, error=msg)
+        raise ValueError(msg)
+    raw = raw_or_none.strip()
+    if not raw:
+        msg = (
+            f"{_ENV_VAR} is set but empty -- "
+            f"provide a value >= {MIN_SECRET_LENGTH} characters"
         )
         logger.error(API_APP_STARTUP, error=msg)
         raise ValueError(msg)

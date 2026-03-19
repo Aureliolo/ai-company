@@ -40,30 +40,24 @@ class TestResolveJwtSecret:
         ):
             resolve_jwt_secret()
 
-    def test_env_var_too_short_raises(self) -> None:
+    @pytest.mark.parametrize(
+        ("env_value", "match_text"),
+        [
+            ("short", "at least 32 characters"),
+            (None, "is not set"),
+            ("", "set but empty"),
+            ("   ", "set but empty"),
+        ],
+        ids=["too-short", "missing", "empty", "whitespace-only"],
+    )
+    def test_invalid_env_var_raises(
+        self,
+        env_value: str | None,
+        match_text: str,
+    ) -> None:
+        env = {} if env_value is None else {"SYNTHORG_JWT_SECRET": env_value}
         with (
-            patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": "short"}),
-            pytest.raises(ValueError, match="at least 32 characters"),
-        ):
-            resolve_jwt_secret()
-
-    def test_missing_env_var_raises(self) -> None:
-        with (
-            patch.dict("os.environ", {}, clear=True),
-            pytest.raises(ValueError, match="is not set"),
-        ):
-            resolve_jwt_secret()
-
-    def test_empty_env_var_raises(self) -> None:
-        with (
-            patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": ""}),
-            pytest.raises(ValueError, match="is not set"),
-        ):
-            resolve_jwt_secret()
-
-    def test_whitespace_only_env_var_raises(self) -> None:
-        with (
-            patch.dict("os.environ", {"SYNTHORG_JWT_SECRET": "   "}),
-            pytest.raises(ValueError, match="is not set"),
+            patch.dict("os.environ", env, clear=(env_value is None)),
+            pytest.raises(ValueError, match=match_text),
         ):
             resolve_jwt_secret()

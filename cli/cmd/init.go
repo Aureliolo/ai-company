@@ -44,12 +44,21 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// Warn if re-initializing over existing config (JWT secret will change).
+	// Warn if re-initializing over existing config (secrets will change).
 	// isInteractive() is already checked at function entry, so prompt is safe.
+	// Preserve the existing SettingsKey to avoid making encrypted settings
+	// in the database undecryptable after re-init.
+	var existingSettingsKey string
 	if existing := config.StatePath(state.DataDir); fileExists(existing) {
+		if oldState, loadErr := config.Load(state.DataDir); loadErr == nil {
+			existingSettingsKey = oldState.SettingsKey
+		}
 		errOut := ui.NewUI(cmd.ErrOrStderr())
 		errOut.Warn("Existing config at " + existing + " will be overwritten.")
-		errOut.Warn("New secrets (JWT + encryption key) will be generated -- running containers will need a restart.")
+		errOut.Warn("A new JWT secret will be generated -- running containers will need a restart.")
+		if existingSettingsKey == "" {
+			errOut.Warn("A new settings encryption key will also be generated.")
+		}
 		var proceed bool
 		form := huh.NewForm(huh.NewGroup(
 			huh.NewConfirm().Title("Overwrite existing configuration?").Value(&proceed),
@@ -59,6 +68,9 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		}
 		if !proceed {
 			return nil
+		}
+		if existingSettingsKey != "" {
+			state.SettingsKey = existingSettingsKey
 		}
 	}
 
@@ -168,6 +180,9 @@ func buildState(a setupAnswers) (config.State, error) {
 		return config.State{}, fmt.Errorf("generating JWT secret: %w", err)
 	}
 
+	// 32 bytes produces a 44-char URL-safe base64 string, which is the
+	// exact format required by Python cryptography.fernet.Fernet (equivalent
+	// to Fernet.generate_key()). Do NOT change the byte count.
 	settingsKey, err := generateSecret(32)
 	if err != nil {
 		return config.State{}, fmt.Errorf("generating settings encryption key: %w", err)

@@ -393,6 +393,60 @@ func TestPatchComposeImageRefs_NoMatchesError(t *testing.T) {
 	}
 }
 
+func TestMigrateSettingsKey(t *testing.T) {
+	dir := t.TempDir()
+
+	// Simulate a pre-v0.3.9 config without SettingsKey.
+	state := config.State{
+		DataDir:            dir,
+		ImageTag:           "v0.3.8",
+		BackendPort:        8000,
+		WebPort:            3000,
+		LogLevel:           "info",
+		JWTSecret:          "test-jwt-secret-at-least-32-chars-long!!",
+		SettingsKey:        "", // intentionally empty
+		PersistenceBackend: "sqlite",
+		MemoryBackend:      "mem0",
+	}
+	if err := config.Save(state); err != nil {
+		t.Fatalf("saving initial config: %v", err)
+	}
+
+	// Verify key is initially empty.
+	loaded, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("loading config: %v", err)
+	}
+	if loaded.SettingsKey != "" {
+		t.Fatalf("expected empty SettingsKey before migration, got %q", loaded.SettingsKey)
+	}
+
+	// Run the migration inline (extracted from runUpdate).
+	if loaded.SettingsKey == "" {
+		key, genErr := generateSecret(32)
+		if genErr != nil {
+			t.Fatalf("generating settings key: %v", genErr)
+		}
+		loaded.SettingsKey = key
+		if saveErr := config.Save(loaded); saveErr != nil {
+			t.Fatalf("saving migrated config: %v", saveErr)
+		}
+	}
+
+	// Reload and verify the key was persisted.
+	reloaded, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("reloading config: %v", err)
+	}
+	if reloaded.SettingsKey == "" {
+		t.Fatal("expected non-empty SettingsKey after migration")
+	}
+	// Fernet keys are 44 chars (32 bytes, URL-safe base64 with padding).
+	if len(reloaded.SettingsKey) != 44 {
+		t.Errorf("SettingsKey length = %d, want 44 (Fernet key)", len(reloaded.SettingsKey))
+	}
+}
+
 func TestPatchComposeImageRefs_MissingRequiredService(t *testing.T) {
 	// Only backend, no web -- should fail validation.
 	const partialCompose = `services:

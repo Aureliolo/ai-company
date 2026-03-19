@@ -306,3 +306,59 @@ class TestFlushAfterEmit:
 
         content = (tmp_path / "flush-watched.log").read_text()
         assert "flush-watched-message" in content
+
+    def test_rotating_handler_handles_flush_oserror(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
+        """OSError during flush delegates to handleError, not crash."""
+        sink = SinkConfig(
+            sink_type=SinkType.FILE,
+            file_path="flush-err.log",
+            rotation=RotationConfig(strategy=RotationStrategy.BUILTIN),
+        )
+        handler = _build_file_handler(sink, tmp_path)
+        handler_cleanup.append(handler)
+
+        formatter = logging.Formatter("%(message)s")
+        handler.setFormatter(formatter)
+        record = logging.LogRecord(
+            name="test",
+            level=logging.ERROR,
+            pathname="",
+            lineno=0,
+            msg="before-flush-error",
+            args=(),
+            exc_info=None,
+        )
+
+        with patch.object(handler, "flush", side_effect=OSError("disk full")):
+            # Should not raise -- delegates to handleError.
+            handler.emit(record)
+
+    def test_watched_handler_handles_flush_oserror(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
+        """OSError during flush delegates to handleError, not crash."""
+        sink = SinkConfig(
+            sink_type=SinkType.FILE,
+            file_path="flush-watched-err.log",
+            rotation=RotationConfig(strategy=RotationStrategy.EXTERNAL),
+        )
+        handler = _build_file_handler(sink, tmp_path)
+        handler_cleanup.append(handler)
+
+        formatter = logging.Formatter("%(message)s")
+        handler.setFormatter(formatter)
+        record = logging.LogRecord(
+            name="test",
+            level=logging.ERROR,
+            pathname="",
+            lineno=0,
+            msg="before-flush-error",
+            args=(),
+            exc_info=None,
+        )
+
+        with patch.object(handler, "flush", side_effect=OSError("disk full")):
+            # Should not raise -- delegates to handleError.
+            handler.emit(record)

@@ -52,6 +52,7 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Migrate: generate settings encryption key if missing (pre-v0.3.9 installs).
+	// 32 bytes -> 44-char URL-safe base64 = valid Fernet key.
 	if state.SettingsKey == "" {
 		key, genErr := generateSecret(32)
 		if genErr != nil {
