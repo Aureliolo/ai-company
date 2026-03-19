@@ -1,0 +1,624 @@
+package cmd
+
+import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+)
+
+// NOTE: Tests in this file share the global rootCmd and must NOT call t.Parallel().
+// See runBackupCmd for the flag-reset workaround.
+
+// --- Unit tests for helper functions ---
+
+func TestFormatSize(t *testing.T) {
+	tests := []struct {
+		bytes int64
+		want  string
+	}{
+		{0, "0 B"},
+		{1, "1 B"},
+		{512, "512 B"},
+		{1023, "1023 B"},
+		{1024, "1.0 KB"},
+		{1536, "1.5 KB"},
+		{1048576, "1.0 MB"},
+		{1572864, "1.5 MB"},
+		{1073741824, "1.0 GB"},
+		{2684354560, "2.5 GB"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := formatSize(tt.bytes); got != tt.want {
+				t.Errorf("formatSize(%d) = %q, want %q", tt.bytes, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsValidBackupID(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		want bool
+	}{
+		{"valid 12-char hex", "abcdef012345", true},
+		{"valid all digits", "012345678901", true},
+		{"valid all a-f", "aabbccddeeff", true},
+		{"uppercase not allowed", "ABCDEF012345", false},
+		{"too short (11 chars)", "abcdef01234", false},
+		{"too long (13 chars)", "abcdef0123456", false},
+		{"empty string", "", false},
+		{"non-hex chars", "abcdefghijkl", false},
+		{"special char", "abcdef01234!", false},
+		{"mixed case", "aBcDeF012345", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isValidBackupID(tt.id); got != tt.want {
+				t.Errorf("isValidBackupID(%q) = %v, want %v", tt.id, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestComponentsString(t *testing.T) {
+	tests := []struct {
+		name       string
+		components []string
+		want       string
+	}{
+		{"multiple", []string{"persistence", "memory", "config"}, "persistence, memory, config"},
+		{"single", []string{"persistence"}, "persistence"},
+		{"empty", []string{}, ""},
+		{"nil", nil, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := componentsString(tt.components); got != tt.want {
+				t.Errorf("componentsString(%v) = %q, want %q", tt.components, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseAPIResponse(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "success envelope",
+			raw:     `{"data":{"backup_id":"abc123def456"},"error":null,"success":true}`,
+			wantErr: false,
+		},
+		{
+			name:    "error envelope",
+			raw:     `{"data":null,"error":"something went wrong","success":false}`,
+			wantErr: true,
+			errMsg:  "something went wrong",
+		},
+		{
+			name:    "error envelope with null error field",
+			raw:     `{"data":null,"error":null,"success":false}`,
+			wantErr: true,
+			errMsg:  "unknown error",
+		},
+		{
+			name:    "malformed JSON",
+			raw:     `not json at all`,
+			wantErr: true,
+			errMsg:  "parsing response",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := parseAPIResponse([]byte(tt.raw))
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.errMsg)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if data == nil {
+				t.Fatal("expected data, got nil")
+			}
+		})
+	}
+}
+
+func TestSanitizeAPIMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want string
+	}{
+		{"no escape sequences", "simple error", "simple error"},
+		{"with ANSI color", "\x1b[31merror\x1b[0m", "error"},
+		{"with cursor move", "\x1b[2Aoverwrite", "overwrite"},
+		{"empty string", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sanitizeAPIMessage(tt.msg); got != tt.want {
+				t.Errorf("sanitizeAPIMessage(%q) = %q, want %q", tt.msg, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildLocalJWT(t *testing.T) {
+	token := buildLocalJWT("test-secret")
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected 3 JWT parts, got %d", len(parts))
+	}
+	// Verify header is valid base64url-encoded JSON.
+	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatalf("decoding header: %v", err)
+	}
+	if !strings.Contains(string(headerJSON), `"alg":"HS256"`) {
+		t.Errorf("header missing HS256 alg: %s", headerJSON)
+	}
+	// Verify payload contains expected claims.
+	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decoding payload: %v", err)
+	}
+	if !strings.Contains(string(payloadJSON), `"sub":"synthorg-cli"`) {
+		t.Errorf("payload missing synthorg-cli sub: %s", payloadJSON)
+	}
+}
+
+// --- Test helper: create temp dir with config.json ---
+
+// writeConfigJSON creates a config.json file in dir with the given backend port.
+func writeConfigJSON(t *testing.T, dir string, backendPort int) {
+	t.Helper()
+	cfg := map[string]any{
+		"data_dir":            dir,
+		"image_tag":           "latest",
+		"backend_port":        backendPort,
+		"web_port":            3000,
+		"log_level":           "info",
+		"persistence_backend": "sqlite",
+		"memory_backend":      "mem0",
+		"jwt_secret":          "test-backup-secret",
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatalf("marshaling config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), data, 0o600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+}
+
+// setupBackupTest creates an HTTP test server and a temp dir with config.json
+// pointing at the server's port.
+func setupBackupTest(t *testing.T, handler http.HandlerFunc) string {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	// Extract port from server URL.
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parsing test server URL: %v", err)
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatalf("parsing test server port: %v", err)
+	}
+
+	dir := t.TempDir()
+	writeConfigJSON(t, dir, port)
+	return dir
+}
+
+// writeTestConfig creates a temp dir with a config.json file pointing at the
+// given backend port. Used for tests that don't need a real HTTP server.
+func writeTestConfig(t *testing.T, backendPort int) string {
+	t.Helper()
+	dir := t.TempDir()
+	writeConfigJSON(t, dir, backendPort)
+	return dir
+}
+
+// runBackupCmd executes a backup subcommand and returns stdout+stderr output.
+// Resets the --confirm flag between runs to avoid stale state from prior tests
+// (Cobra does not reset flag values between Execute() calls on global commands).
+// NOTE: If new persistent boolean flags are added to backup commands, add them here.
+func runBackupCmd(t *testing.T, dir string, args ...string) (string, error) {
+	t.Helper()
+	// Reset sticky boolean flags before each execution.
+	if err := backupRestoreCmd.Flags().Set("confirm", "false"); err != nil {
+		t.Fatalf("resetting --confirm flag: %v", err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	fullArgs := append([]string{"backup"}, args...)
+	if dir != "" {
+		fullArgs = append([]string{"--data-dir", dir}, fullArgs...)
+	}
+	rootCmd.SetArgs(fullArgs)
+	err := rootCmd.Execute()
+	return buf.String(), err
+}
+
+// --- Integration tests: backup create ---
+
+func TestBackupCreate_Success(t *testing.T) {
+	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/admin/backups" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"data": {
+				"backup_id": "abcdef012345",
+				"version": "1",
+				"synthorg_version": "0.3.5",
+				"timestamp": "2026-03-18T10:00:00Z",
+				"trigger": "manual",
+				"components": ["persistence", "memory", "config"],
+				"db_schema_version": 1,
+				"size_bytes": 1048576,
+				"checksum": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+			},
+			"error": null,
+			"success": true
+		}`))
+	})
+
+	out, err := runBackupCmd(t, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		"Backup created successfully",
+		"abcdef012345",
+		"2026-03-18T10:00:00Z",
+		"manual",
+		"persistence, memory, config",
+		"1.0 MB",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestBackupCreate_Conflict(t *testing.T) {
+	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"data":null,"error":"A backup is already in progress","success":false}`))
+	})
+
+	out, err := runBackupCmd(t, dir)
+	if err == nil {
+		t.Fatal("expected error for conflict response")
+	}
+	if !strings.Contains(out, "already in progress") {
+		t.Errorf("output missing conflict message:\n%s", out)
+	}
+}
+
+func TestBackupCreate_ServerError(t *testing.T) {
+	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"data":null,"error":"Backup operation failed","success":false}`))
+	})
+
+	out, err := runBackupCmd(t, dir)
+	if err == nil {
+		t.Fatal("expected error for server error response")
+	}
+	if !strings.Contains(out, "Backup operation failed") {
+		t.Errorf("output missing error message:\n%s", out)
+	}
+}
+
+func TestBackupCreate_Unreachable(t *testing.T) {
+	// Use a port where nothing is listening.
+	dir := writeTestConfig(t, 19999)
+
+	_, err := runBackupCmd(t, dir)
+	if err == nil {
+		t.Fatal("expected error for unreachable backend")
+	}
+	if !strings.Contains(err.Error(), "backend unreachable") {
+		t.Errorf("error %q does not mention unreachable backend", err.Error())
+	}
+}
+
+// --- Integration tests: backup list ---
+
+func TestBackupList_Success(t *testing.T) {
+	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/admin/backups" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"data": [
+				{
+					"backup_id": "abcdef012345",
+					"timestamp": "2026-03-18T10:00:00Z",
+					"trigger": "manual",
+					"components": ["persistence", "memory", "config"],
+					"size_bytes": 1048576,
+					"compressed": true
+				},
+				{
+					"backup_id": "123456abcdef",
+					"timestamp": "2026-03-17T08:00:00Z",
+					"trigger": "scheduled",
+					"components": ["persistence"],
+					"size_bytes": 512,
+					"compressed": false
+				}
+			],
+			"error": null,
+			"success": true
+		}`))
+	})
+
+	out, err := runBackupCmd(t, dir, "list")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		"ID",
+		"TIMESTAMP",
+		"TRIGGER",
+		"COMPONENTS",
+		"SIZE",
+		"COMPRESSED",
+		"abcdef012345",
+		"123456abcdef",
+		"manual",
+		"scheduled",
+		"1.0 MB",
+		"512 B",
+		"yes",
+		"no",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestBackupList_Empty(t *testing.T) {
+	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[],"error":null,"success":true}`))
+	})
+
+	out, err := runBackupCmd(t, dir, "list")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "No backups found") {
+		t.Errorf("output missing empty list message:\n%s", out)
+	}
+}
+
+func TestBackupList_ServerError(t *testing.T) {
+	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"data":null,"error":"Failed to list backups","success":false}`))
+	})
+
+	out, err := runBackupCmd(t, dir, "list")
+	if err == nil {
+		t.Fatal("expected error for server error response")
+	}
+	if !strings.Contains(out, "Failed to list backups") {
+		t.Errorf("output missing error message:\n%s", out)
+	}
+}
+
+// --- Integration tests: backup restore ---
+
+func TestBackupRestore_Success(t *testing.T) {
+	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/admin/backups/restore" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		// Verify request body.
+		var req restoreRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if req.BackupID != "abcdef012345" || !req.Confirm {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"data": {
+				"manifest": {
+					"backup_id": "abcdef012345",
+					"version": "1",
+					"synthorg_version": "0.3.5",
+					"timestamp": "2026-03-18T10:00:00Z",
+					"trigger": "manual",
+					"components": ["persistence", "memory", "config"],
+					"db_schema_version": 1,
+					"size_bytes": 1048576,
+					"checksum": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+				},
+				"restored_components": ["persistence", "memory", "config"],
+				"safety_backup_id": "fedcba543210",
+				"restart_required": false
+			},
+			"error": null,
+			"success": true
+		}`))
+	})
+
+	out, err := runBackupCmd(t, dir, "restore", "abcdef012345", "--confirm")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		"Restore completed successfully",
+		"fedcba543210",
+		"persistence, memory, config",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestBackupRestore_NotFound(t *testing.T) {
+	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"data":null,"error":"Backup not found: abcdef012345","success":false}`))
+	})
+
+	out, err := runBackupCmd(t, dir, "restore", "abcdef012345", "--confirm")
+	if err == nil {
+		t.Fatal("expected error for not-found response")
+	}
+	if !strings.Contains(out, "not found") {
+		t.Errorf("output missing not-found message:\n%s", out)
+	}
+	if !strings.Contains(out, "backup list") {
+		t.Errorf("output missing hint about backup list:\n%s", out)
+	}
+}
+
+func TestBackupRestore_Conflict(t *testing.T) {
+	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"data":null,"error":"A backup or restore is already in progress","success":false}`))
+	})
+
+	out, err := runBackupCmd(t, dir, "restore", "abcdef012345", "--confirm")
+	if err == nil {
+		t.Fatal("expected error for conflict response")
+	}
+	if !strings.Contains(out, "already in progress") {
+		t.Errorf("output missing conflict message:\n%s", out)
+	}
+}
+
+func TestBackupRestore_InvalidManifest(t *testing.T) {
+	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"data":null,"error":"Manifest schema version mismatch","success":false}`))
+	})
+
+	out, err := runBackupCmd(t, dir, "restore", "abcdef012345", "--confirm")
+	if err == nil {
+		t.Fatal("expected error for unprocessable entity response")
+	}
+	if !strings.Contains(out, "Manifest schema version mismatch") {
+		t.Errorf("output missing invalid manifest message:\n%s", out)
+	}
+}
+
+func TestBackupRestore_InvalidID(t *testing.T) {
+	_, err := runBackupCmd(t, "", "restore", "not-valid-id", "--confirm")
+	if err == nil {
+		t.Fatal("expected error for invalid backup ID")
+	}
+	if !strings.Contains(err.Error(), "invalid backup ID") {
+		t.Errorf("error %q does not mention invalid backup ID", err.Error())
+	}
+}
+
+func TestBackupRestore_MissingConfirm(t *testing.T) {
+	// No server needed -- validation happens before API call.
+	// Port 0 signals no real server (conventional for no-network tests).
+	dir := writeTestConfig(t, 0)
+
+	out, err := runBackupCmd(t, dir, "restore", "abcdef012345")
+	if err == nil {
+		t.Fatal("expected error for missing --confirm flag")
+	}
+	if !strings.Contains(err.Error(), "--confirm") {
+		t.Errorf("error %q does not mention --confirm", err.Error())
+	}
+	if !strings.Contains(out, "--confirm") {
+		t.Errorf("output missing --confirm hint:\n%s", out)
+	}
+}
+
+func TestBackupRestore_RestartRequired(t *testing.T) {
+	dir := setupBackupTest(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/admin/backups/restore" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"data": {
+				"manifest": {
+					"backup_id": "abcdef012345",
+					"version": "1",
+					"synthorg_version": "0.3.5",
+					"timestamp": "2026-03-18T10:00:00Z",
+					"trigger": "manual",
+					"components": ["persistence"],
+					"db_schema_version": 1,
+					"size_bytes": 1024,
+					"checksum": "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+				},
+				"restored_components": ["persistence"],
+				"safety_backup_id": "fedcba543210",
+				"restart_required": true
+			},
+			"error": null,
+			"success": true
+		}`))
+	})
+
+	out, err := runBackupCmd(t, dir, "restore", "abcdef012345", "--confirm")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		"Restore completed successfully",
+		"fedcba543210",
+		"Restart required",
+		"yes",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}
