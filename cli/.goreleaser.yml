@@ -43,7 +43,7 @@ checksum:
 sboms:
   - artifacts: archive
     cmd: syft
-    args: ["scan", "$artifact", "--output", "cyclonedx-json=$document"]
+    args: ["scan", "file:$artifact", "--output", "cyclonedx-json=$document"]
     documents:
       - "{{ .ArtifactName }}.cdx.json"
 
