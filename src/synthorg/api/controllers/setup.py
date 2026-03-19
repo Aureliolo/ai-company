@@ -9,6 +9,7 @@ from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_201_CREATED
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.api.auth.config import AuthConfig
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import HumanRole, require_read_access, require_write_access
@@ -29,6 +30,7 @@ from synthorg.observability.events.setup import (
     SETUP_NO_PROVIDERS,
     SETUP_PROVIDER_NOT_FOUND,
     SETUP_STATUS_CHECKED,
+    SETUP_STATUS_SETTINGS_DEFAULT_USED,
     SETUP_STATUS_SETTINGS_UNAVAILABLE,
     SETUP_TEMPLATE_INVALID,
     SETUP_TEMPLATE_NOT_FOUND,
@@ -41,8 +43,10 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Fallback when the settings service cannot resolve the configured value.
-_DEFAULT_MIN_PASSWORD_LENGTH: int = 12
+# Derive from AuthConfig default to prevent silent divergence.
+_DEFAULT_MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields[
+    "min_password_length"
+].default
 
 # Serializes read-modify-write on the agents settings blob.
 _AGENT_LOCK = asyncio.Lock()
@@ -55,7 +59,7 @@ class SetupStatusResponse(BaseModel):
     """First-run setup status.
 
     Attributes:
-        needs_admin: True if no admin user exists yet.
+        needs_admin: True if no user with the CEO role exists yet.
         needs_setup: True if setup has not been completed.
         has_providers: True if at least one provider is configured.
         min_password_length: Backend-configured minimum password length.
@@ -66,7 +70,7 @@ class SetupStatusResponse(BaseModel):
     needs_admin: bool
     needs_setup: bool
     has_providers: bool
-    min_password_length: int
+    min_password_length: int = Field(ge=8)
 
 
 class TemplateInfoResponse(BaseModel):
@@ -243,15 +247,31 @@ class SetupController(Controller):
         )
 
         min_password_length = _DEFAULT_MIN_PASSWORD_LENGTH
+        raw_pw_value: str | None = None
         try:
             pw_entry = await settings_svc.get_entry("api", "min_password_length")
-            min_password_length = int(pw_entry.value)
+            raw_pw_value = pw_entry.value
+            parsed = int(raw_pw_value)
+            min_password_length = max(parsed, _DEFAULT_MIN_PASSWORD_LENGTH)
         except MemoryError, RecursionError:
             raise
-        except Exception:
+        except SettingNotFoundError:
             logger.debug(
+                SETUP_STATUS_SETTINGS_DEFAULT_USED,
+                setting="min_password_length",
+            )
+        except ValueError:
+            logger.warning(
                 SETUP_STATUS_SETTINGS_UNAVAILABLE,
                 setting="min_password_length",
+                reason="non_integer_value",
+                raw=raw_pw_value,
+            )
+        except Exception:
+            logger.warning(
+                SETUP_STATUS_SETTINGS_UNAVAILABLE,
+                setting="min_password_length",
+                exc_info=True,
             )
 
         logger.debug(
@@ -451,10 +471,12 @@ class SetupController(Controller):
             Success envelope.
 
         Raises:
+            ConflictError: If setup has already been completed.
             ApiValidationError: If company, agents, or providers are missing.
         """
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
+        await _check_setup_not_complete(settings_svc)
 
         # Verify company has been created.
         has_company = False
@@ -464,7 +486,7 @@ class SetupController(Controller):
         except MemoryError, RecursionError:
             raise
         except SettingNotFoundError:
-            pass
+            logger.debug(SETUP_NO_COMPANY, reason="setting_not_found")
         if not has_company:
             msg = "A company must be created before completing setup"
             logger.warning(SETUP_NO_COMPANY)

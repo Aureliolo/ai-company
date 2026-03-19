@@ -22,7 +22,7 @@ export const useSetupStore = defineStore('setup', () => {
     statusLoaded.value ? !!status.value?.needs_admin : true,
   )
   const minPasswordLength = computed(() =>
-    status.value?.min_password_length ?? MIN_PASSWORD_LENGTH,
+    Math.max(MIN_PASSWORD_LENGTH, status.value?.min_password_length ?? MIN_PASSWORD_LENGTH),
   )
 
   async function fetchStatus() {

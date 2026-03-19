@@ -1,6 +1,7 @@
 """Tests for the first-run setup controller."""
 
 import json
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -9,6 +10,8 @@ from litestar.testing import TestClient
 from pydantic import ValidationError
 
 from synthorg.api.guards import HumanRole
+from synthorg.providers.base import BaseCompletionProvider
+from synthorg.providers.registry import ProviderRegistry
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -69,16 +72,19 @@ class TestSetupStatus:
         users_repo = app_state.persistence._users
 
         # Remove all CEO users, keep only observers
-        ceo_ids = [
-            uid for uid, u in users_repo._users.items() if u.role == HumanRole.CEO
-        ]
-        for uid in ceo_ids:
-            del users_repo._users[uid]
-
-        resp = test_client.get("/api/v1/setup/status")
-        assert resp.status_code == 200
-        data = resp.json()["data"]
-        assert data["needs_admin"] is True
+        removed = {
+            uid: users_repo._users.pop(uid)
+            for uid in [
+                uid for uid, u in users_repo._users.items() if u.role == HumanRole.CEO
+            ]
+        }
+        try:
+            resp = test_client.get("/api/v1/setup/status")
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["needs_admin"] is True
+        finally:
+            users_repo._users.update(removed)
 
     def test_needs_admin_false_when_ceo_exists(
         self,
@@ -94,13 +100,31 @@ class TestSetupStatus:
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Status response includes the backend-configured min_password_length."""
+        """Status response includes min_password_length (falls back to default)."""
         resp = test_client.get("/api/v1/setup/status")
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert "min_password_length" in data
         assert isinstance(data["min_password_length"], int)
         assert data["min_password_length"] == 12
+
+    def test_status_returns_configured_min_password_length(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Status response returns non-default min_password_length from settings."""
+        app_state = test_client.app.state.app_state
+        settings_repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+
+        settings_repo._store[("api", "min_password_length")] = ("16", now)
+        try:
+            resp = test_client.get("/api/v1/setup/status")
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["min_password_length"] == 16
+        finally:
+            settings_repo._store.pop(("api", "min_password_length"), None)
 
 
 @pytest.mark.unit
@@ -345,23 +369,38 @@ class TestSetupComplete:
         finally:
             test_client.headers.update(saved_headers)
 
+    def test_complete_rejects_without_company(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Completion rejects when no company name is set."""
+        app_state = test_client.app.state.app_state
+        settings_repo = app_state.persistence._settings_repo
+
+        # Remove company_name from the settings store so the YAML
+        # fallback chain also yields nothing.  The fixture's root_config
+        # provides company_name, so we need to override at the DB level
+        # with an empty string to simulate "not configured".
+        now = datetime.now(UTC).isoformat()
+        settings_repo._store[("company", "company_name")] = ("", now)
+        try:
+            resp = test_client.post("/api/v1/setup/complete")
+            assert resp.status_code == 422
+            assert "company" in resp.json()["error"].lower()
+        finally:
+            settings_repo._store.pop(("company", "company_name"), None)
+
     def test_complete_validates_all_prerequisites(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Completion requires agents and providers.
+        """Completion requires company, agents, and providers.
 
         The test fixture's root_config provides company_name, so the
         company check passes automatically. This test walks through
         the remaining prerequisite checks: agents, then providers,
         then confirms success once all are satisfied.
         """
-        from datetime import UTC, datetime
-        from typing import cast
-
-        from synthorg.providers.base import BaseCompletionProvider
-        from synthorg.providers.registry import ProviderRegistry
-
         app_state = test_client.app.state.app_state
         settings_repo = app_state.persistence._settings_repo
         now = datetime.now(UTC).isoformat()
@@ -379,7 +418,7 @@ class TestSetupComplete:
         assert "provider" in resp.json()["error"].lower()
 
         # 3. All present -- success.
-        stub = cast(BaseCompletionProvider, object())
+        stub = MagicMock(spec=BaseCompletionProvider)
         original = app_state._provider_registry
         app_state._provider_registry = ProviderRegistry(
             {"test-provider": stub},

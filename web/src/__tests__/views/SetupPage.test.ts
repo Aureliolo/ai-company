@@ -81,6 +81,7 @@ vi.mock('@/api/endpoints/setup', () => ({
     needs_admin: true,
     needs_setup: true,
     has_providers: false,
+    min_password_length: 12,
   }),
   listTemplates: vi.fn().mockResolvedValue([]),
   createCompany: vi.fn().mockResolvedValue({ company_name: 'Test', template_applied: null, department_count: 0 }),

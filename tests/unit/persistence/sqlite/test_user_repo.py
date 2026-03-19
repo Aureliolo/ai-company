@@ -94,6 +94,26 @@ class TestSQLiteUserRepository:
         await user_repo.save(_make_user())
         assert await user_repo.count() == 1
 
+    async def test_count_by_role_empty(self, user_repo: SQLiteUserRepository) -> None:
+        assert await user_repo.count_by_role(HumanRole.CEO) == 0
+
+    async def test_count_by_role_filters_correctly(
+        self, user_repo: SQLiteUserRepository
+    ) -> None:
+        await user_repo.save(
+            _make_user(user_id="ceo-1", username="alice", role=HumanRole.CEO),
+        )
+        await user_repo.save(
+            _make_user(user_id="obs-1", username="bob", role=HumanRole.OBSERVER),
+        )
+        await user_repo.save(
+            _make_user(user_id="ceo-2", username="carol", role=HumanRole.CEO),
+        )
+
+        assert await user_repo.count_by_role(HumanRole.CEO) == 2
+        assert await user_repo.count_by_role(HumanRole.OBSERVER) == 1
+        assert await user_repo.count_by_role(HumanRole.MANAGER) == 0
+
     async def test_delete(self, user_repo: SQLiteUserRepository) -> None:
         await user_repo.save(_make_user())
         deleted = await user_repo.delete("user-001")

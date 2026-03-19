@@ -68,7 +68,7 @@ After the containers are running, open the web dashboard at [http://localhost:30
 3. **Create your company** -- name your synthetic organization and optionally start from a template.
 4. **Hire your first agent** -- choose a role, model, and personality for the first AI agent.
 
-After completing the wizard, the dashboard appears and the setup wizard is not shown again.
+All four steps must be completed -- the backend validates that a company, at least one agent, and at least one provider exist before allowing setup to finish. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
 
 To re-run the wizard later, use `synthorg setup` (resets the flag and opens the browser) or delete the `api.setup_complete` setting via the settings API.
 

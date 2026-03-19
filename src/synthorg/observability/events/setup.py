@@ -31,6 +31,9 @@ SETUP_AGENTS_READ_FALLBACK: Final[str] = "setup.agents.read_fallback"
 # Status check fallback (settings service unavailable)
 SETUP_STATUS_SETTINGS_UNAVAILABLE: Final[str] = "setup.status.settings_unavailable"
 
+# Status check used a default value for a setting (entry absent or not configured)
+SETUP_STATUS_SETTINGS_DEFAULT_USED: Final[str] = "setup.status.settings_default_used"
+
 # Provider not found during agent creation
 SETUP_PROVIDER_NOT_FOUND: Final[str] = "setup.agent.provider_not_found"
 
