@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useSettingsStore, validateSettingValue } from '@/stores/settings'
+import { SETTINGS_ADVANCED_KEY } from '@/utils/constants'
 import type { SettingDefinition, SettingEntry } from '@/api/types'
 
 vi.mock('@/api/endpoints/settings', () => ({
@@ -295,21 +296,21 @@ describe('useSettingsStore', () => {
 
     store.toggleAdvanced()
     expect(store.showAdvanced).toBe(true)
-    expect(localStorage.getItem('settings_show_advanced')).toBe('true')
+    expect(localStorage.getItem(SETTINGS_ADVANCED_KEY)).toBe('true')
 
     store.toggleAdvanced()
     expect(store.showAdvanced).toBe(false)
-    expect(localStorage.getItem('settings_show_advanced')).toBe('false')
+    expect(localStorage.getItem(SETTINGS_ADVANCED_KEY)).toBe('false')
   })
 
   it('reads showAdvanced from localStorage on init', () => {
-    localStorage.setItem('settings_show_advanced', 'true')
+    localStorage.setItem(SETTINGS_ADVANCED_KEY, 'true')
     const store = useSettingsStore()
     expect(store.showAdvanced).toBe(true)
   })
 
   it('handles invalid localStorage value gracefully', () => {
-    localStorage.setItem('settings_show_advanced', 'garbage')
+    localStorage.setItem(SETTINGS_ADVANCED_KEY, 'garbage')
     const store = useSettingsStore()
     expect(store.showAdvanced).toBe(false)
   })

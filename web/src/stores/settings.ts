@@ -5,10 +5,7 @@ import { getErrorMessage } from '@/utils/errors'
 import { NAMESPACE_ORDER, SETTINGS_ADVANCED_KEY } from '@/utils/constants'
 import type { SettingDefinition, SettingEntry, SettingNamespace } from '@/api/types'
 
-/** Skip regex validation for inputs longer than this to mitigate ReDoS risk. */
-const MAX_VALIDATION_INPUT_LENGTH = 10_000
-
-/** Backend max_length on UpdateSettingRequest.value. */
+/** Backend max_length on UpdateSettingRequest.value. Also serves as ReDoS guard for regex validation. */
 const MAX_SETTING_VALUE_LENGTH = 8192
 
 /**
@@ -61,7 +58,6 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
   }
 
   if (validator_pattern !== null) {
-    if (value.length > MAX_VALIDATION_INPUT_LENGTH) return null
     try {
       if (!new RegExp(`^(?:${validator_pattern})$`).test(value)) {
         return `Must match pattern: ${validator_pattern}`
@@ -134,9 +130,14 @@ export const useSettingsStore = defineStore('settings', () => {
       const updatedEntry = await settingsApi.updateSetting(namespace, key, { value })
       // Immediately apply the returned entry so the UI reflects the change
       const gen = ++generation
-      entries.value = entries.value.map((e) =>
-        e.definition.namespace === namespace && e.definition.key === key ? updatedEntry : e,
+      const idx = entries.value.findIndex(
+        (e) => e.definition.namespace === namespace && e.definition.key === key,
       )
+      if (idx >= 0) {
+        entries.value = entries.value.map((e, i) => i === idx ? updatedEntry : e)
+      } else {
+        entries.value = [...entries.value, updatedEntry]
+      }
       // Best-effort full refresh to get all resolved values
       try {
         const entriesData = await settingsApi.getAllSettings()
