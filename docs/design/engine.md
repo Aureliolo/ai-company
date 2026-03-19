@@ -507,9 +507,12 @@ async run(
     available). Cost recording failures are logged but do not affect the result.
 11. **Apply post-execution transitions:**
     - `COMPLETED` termination: IN_PROGRESS -> IN_REVIEW (review gate).
-      The task parks at IN_REVIEW until a human approves (-> COMPLETED)
-      or rejects (-> IN_PROGRESS for rework) via the approval API.
-      A ``ReviewGateService`` handles the post-review transition.
+      The task parks at IN_REVIEW until resolved by one of two paths:
+      (a) a human approves (-> COMPLETED) or rejects (-> IN_PROGRESS
+      for rework) via the approval API, or (b) the
+      ``ApprovalTimeoutScheduler`` applies a configured timeout policy
+      (auto-approve, auto-deny, or escalate).  Both paths delegate to
+      ``ReviewGateService`` for the actual state transition.
     - `SHUTDOWN` termination: current status -> INTERRUPTED
       (see [Graceful Shutdown](#graceful-shutdown-protocol)).
     - `ERROR` termination: recovery strategy is applied (default
