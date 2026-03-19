@@ -864,3 +864,51 @@ export interface SetupAgentResponse {
   model_provider: string
   model_id: string
 }
+
+// ── Settings ────────────────────────────────────────────────
+
+export type SettingNamespace =
+  | 'api'
+  | 'company'
+  | 'providers'
+  | 'memory'
+  | 'budget'
+  | 'security'
+  | 'coordination'
+  | 'observability'
+  | 'backup'
+
+export type SettingType = 'str' | 'int' | 'float' | 'bool' | 'enum' | 'json'
+
+export type SettingLevel = 'basic' | 'advanced'
+
+export type SettingSource = 'db' | 'env' | 'yaml' | 'default'
+
+export interface SettingDefinition {
+  namespace: SettingNamespace
+  key: string
+  type: SettingType
+  default: string | null
+  description: string
+  group: string
+  level: SettingLevel
+  sensitive: boolean
+  restart_required: boolean
+  enum_values: readonly string[]
+  validator_pattern: string | null
+  min_value: number | null
+  max_value: number | null
+  yaml_path: string | null
+}
+
+export interface SettingEntry {
+  definition: SettingDefinition
+  value: string
+  source: SettingSource
+  updated_at: string | null
+}
+
+/** Backend enforces max_length=8192 on value. */
+export interface UpdateSettingRequest {
+  value: string
+}
