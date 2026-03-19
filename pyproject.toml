@@ -217,7 +217,7 @@ venv = ".venv"
 # ---------------------------------------------------------------------------
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.3.7" # x-release-please-version
+version = "0.3.8" # x-release-please-version
 tag_format = "v$version"
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.8](https://github.com/Aureliolo/synthorg/compare/v0.3.7...v0.3.8) (2026-03-19)
+
+
+### Features
+
+* dynamic settings UI with auto-discovery and basic/advanced toggle ([#600](https://github.com/Aureliolo/synthorg/issues/600)) ([11b32b7](https://github.com/Aureliolo/synthorg/commit/11b32b7b486e7a9145cb14a63067d04b63150235))
+
+
+### Bug Fixes
+
+* **ci:** remove dst: . from GoReleaser archive config ([#598](https://github.com/Aureliolo/synthorg/issues/598)) ([c8bf862](https://github.com/Aureliolo/synthorg/commit/c8bf862ae4a17680911241b2f543628054cfe9c4))
+* **engine:** wire compaction_callback and plan_execute_config through auto-selection ([#601](https://github.com/Aureliolo/synthorg/issues/601)) ([795327f](https://github.com/Aureliolo/synthorg/commit/795327f33364d276c723aea1dc5ff93f4fa0226e))
+* harden setup wizard completion and status checks ([#616](https://github.com/Aureliolo/synthorg/issues/616)) ([d99d7b7](https://github.com/Aureliolo/synthorg/commit/d99d7b7f22de60113fda657ab7fe39e83dcbd0ba))
+
+
+### Maintenance
+
+* add /codebase-audit skill for deep parallel codebase auditing ([#613](https://github.com/Aureliolo/synthorg/issues/613)) ([db02320](https://github.com/Aureliolo/synthorg/commit/db0232081b0c24a61784538d430a84167587f023))
+
 ## [0.3.7](https://github.com/Aureliolo/synthorg/compare/v0.3.6...v0.3.7) (2026-03-19)
 
 
