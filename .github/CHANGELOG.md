@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.3.7](https://github.com/Aureliolo/synthorg/compare/v0.3.6...v0.3.7) (2026-03-19)
+
+
+### Features
+
+* **engine:** implement Hybrid Plan + ReAct execution loop ([#582](https://github.com/Aureliolo/synthorg/issues/582)) ([008147c](https://github.com/Aureliolo/synthorg/commit/008147c698d3443c95618be4d783a5d3d3813005))
+* implement first-run setup wizard ([#584](https://github.com/Aureliolo/synthorg/issues/584)) ([dfed931](https://github.com/Aureliolo/synthorg/commit/dfed93123bfd24fabc50bc52d46211343835efea))
+
+
+### Bug Fixes
+
+* **api:** address ZAP DAST scan findings ([#579](https://github.com/Aureliolo/synthorg/issues/579)) ([ce9a3e0](https://github.com/Aureliolo/synthorg/commit/ce9a3e077ab6af5743a8150333d225d0de9ab0d3))
+* **ci:** remove CLI SBOM generation, reset failed v0.3.7 ([#595](https://github.com/Aureliolo/synthorg/issues/595)) ([d0f4992](https://github.com/Aureliolo/synthorg/commit/d0f4992e3a495e70ffeb43d1e1af6cdf6ba78130))
+* **ci:** reset failed v0.3.7 release and fix syft SBOM scan ([#593](https://github.com/Aureliolo/synthorg/issues/593)) ([d1508c2](https://github.com/Aureliolo/synthorg/commit/d1508c2f1414d5e9a7dd07753581038584febee0))
+* **cli:** auto-delete binary on Windows, prune images, fix GoReleaser ([#590](https://github.com/Aureliolo/synthorg/issues/590)) ([eb7c691](https://github.com/Aureliolo/synthorg/commit/eb7c691c333f36f2123fea68a8a4d9637111442d))
+* **cli:** regenerate compose and re-exec binary on update ([#576](https://github.com/Aureliolo/synthorg/issues/576)) ([3f226eb](https://github.com/Aureliolo/synthorg/commit/3f226eb79b46de59c1e94319a046765353392de4))
+
+
+### CI/CD
+
+* add SBOM generation to Docker and CLI releases ([#580](https://github.com/Aureliolo/synthorg/issues/580)) ([db459cf](https://github.com/Aureliolo/synthorg/commit/db459cf0892c46f9a887126edd70aeaafe6b70d8))
+
+
+### Maintenance
+
+* **main:** release 0.3.7 ([#583](https://github.com/Aureliolo/synthorg/issues/583)) ([bf58779](https://github.com/Aureliolo/synthorg/commit/bf587792d8a5fb5508fb373d45e01648dc732dec))
+* **main:** release 0.3.7 ([#592](https://github.com/Aureliolo/synthorg/issues/592)) ([2e8e633](https://github.com/Aureliolo/synthorg/commit/2e8e633afee489f4288f09a86580e50eb1e32d3f))
+* **main:** release 0.3.7 ([#594](https://github.com/Aureliolo/synthorg/issues/594)) ([139dfc1](https://github.com/Aureliolo/synthorg/commit/139dfc1ab4d0cee3dc2b5d8be1a473761011fc8f))
+* reset failed v0.3.7 release ([#591](https://github.com/Aureliolo/synthorg/issues/591)) ([b69000d](https://github.com/Aureliolo/synthorg/commit/b69000da37ae9092ff59698a15cf10abd3d06ebb))
+
 ## [0.3.6](https://github.com/Aureliolo/synthorg/compare/v0.3.5...v0.3.6) (2026-03-19)
 
 
