@@ -16,6 +16,7 @@ from synthorg.tools.git_tools import (
     GitLogTool,
     GitStatusTool,
 )
+from synthorg.tools.git_url_validator import DnsValidationOk
 
 _GIT_ENV = {
     **os.environ,
@@ -189,8 +190,11 @@ def allow_local_clone(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda url: True,
     )
 
-    async def _allow_all_hosts(url: str, policy: object) -> None:
-        return None
+    async def _allow_all_hosts(
+        url: str,
+        policy: object,
+    ) -> DnsValidationOk:
+        return DnsValidationOk(hostname="localhost")
 
     monkeypatch.setattr(
         git_tools_module,

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Final
 from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.git import (
+    GIT_CLONE_DNS_PINNED,
     GIT_CLONE_URL_REJECTED,
     GIT_COMMAND_START,
 )
@@ -22,11 +23,14 @@ from synthorg.tools.git_url_validator import (
     _CREDENTIAL_RE,
     ALLOWED_CLONE_SCHEMES,
     GitCloneNetworkPolicy,
+    _build_curl_resolve_value,
     is_allowed_clone_scheme,
     validate_clone_url_host,
+    verify_dns_consistency,
 )
 
 if TYPE_CHECKING:
+    from synthorg.tools.git_url_validator import DnsValidationOk
     from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
@@ -658,6 +662,56 @@ class GitCloneTool(_BaseGitTool):
             network_policy if network_policy is not None else GitCloneNetworkPolicy()
         )
 
+    async def _apply_toctou_mitigation(
+        self,
+        args: list[str],
+        validation: DnsValidationOk,
+    ) -> list[str] | ToolExecutionResult:
+        """Apply DNS rebinding mitigation based on transport type.
+
+        For HTTPS URLs, prepends ``-c http.curloptResolve=...`` to
+        *args* to pin git to the validated IPs.  For SSH/SCP URLs,
+        performs a double-resolve consistency check.
+
+        Args:
+            args: Git command arguments (``["clone", ...]``).
+            validation: Successful DNS validation result.
+
+        Returns:
+            Updated *args* list on success, or a
+            ``ToolExecutionResult`` with ``is_error=True`` if DNS
+            rebinding is detected.
+        """
+        if not validation.resolved_ips:
+            return args
+
+        if validation.is_https:
+            # Pin git to validated IPs via curloptResolve (git >= 2.22)
+            resolve_value = _build_curl_resolve_value(
+                validation.hostname,
+                validation.port or 443,
+                validation.resolved_ips,
+            )
+            logger.info(
+                GIT_CLONE_DNS_PINNED,
+                hostname=validation.hostname,
+                resolve_value=resolve_value,
+            )
+            return ["-c", f"http.curloptResolve={resolve_value}", *args]
+
+        # SSH/SCP: double-resolve and compare before execution
+        rebind_err = await verify_dns_consistency(
+            validation.hostname,
+            frozenset(validation.resolved_ips),
+            self._network_policy.dns_resolution_timeout,
+        )
+        if rebind_err:
+            return ToolExecutionResult(
+                content=rebind_err,
+                is_error=True,
+            )
+        return args
+
     async def execute(
         self,
         *,
@@ -665,8 +719,8 @@ class GitCloneTool(_BaseGitTool):
     ) -> ToolExecutionResult:
         """Clone a repository.
 
-        Validation order: scheme check → argument checks (branch,
-        depth, directory) → SSRF host/IP check → ``git clone``.
+        Validation order: scheme check -> argument checks (branch,
+        depth, directory) -> SSRF host/IP check -> ``git clone``.
         All cheap local checks run before the async DNS lookup.
 
         Args:
@@ -711,10 +765,14 @@ class GitCloneTool(_BaseGitTool):
             args.append(directory)
 
         # SSRF prevention: validate hostname/IP after all local checks.
-        # NOTE: TOCTOU gap — DNS could change between this check and
-        # git's own resolution.  For high-security deployments, combine
-        # with network-level egress controls (see module docstring).
-        if ssrf_err := await validate_clone_url_host(url, self._network_policy):
-            return ToolExecutionResult(content=ssrf_err, is_error=True)
+        validation = await validate_clone_url_host(url, self._network_policy)
+        if isinstance(validation, str):
+            return ToolExecutionResult(content=validation, is_error=True)
+
+        # TOCTOU DNS rebinding mitigation
+        result = await self._apply_toctou_mitigation(args, validation)
+        if isinstance(result, ToolExecutionResult):
+            return result
+        args = result
 
         return await self._run_git(args, deadline=_CLONE_TIMEOUT)
