@@ -1,6 +1,6 @@
 /** Application-wide constants. */
 
-import type { TaskStatus } from '@/api/types'
+import type { SettingNamespace, TaskStatus } from '@/api/types'
 
 export const APP_NAME = 'SynthOrg'
 
@@ -67,3 +67,34 @@ export const NAV_ITEMS = [
 
 /** Type of a single navigation item derived from NAV_ITEMS. */
 export type NavItem = (typeof NAV_ITEMS)[number]
+
+// ── Settings ────────────────────────────────────────────────
+
+/** localStorage key for the basic/advanced toggle state. */
+export const SETTINGS_ADVANCED_KEY = 'settings_show_advanced'
+
+/** Display order for setting namespaces (matches backend enum order). */
+export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
+  'api',
+  'company',
+  'providers',
+  'memory',
+  'budget',
+  'security',
+  'coordination',
+  'observability',
+  'backup',
+] as const
+
+/** Human-readable display names for setting namespaces. */
+export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>> = {
+  api: 'API',
+  company: 'Company',
+  providers: 'Providers',
+  memory: 'Memory',
+  budget: 'Budget',
+  security: 'Security',
+  coordination: 'Coordination',
+  observability: 'Observability',
+  backup: 'Backup',
+}
