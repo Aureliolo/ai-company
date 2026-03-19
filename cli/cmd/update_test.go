@@ -255,7 +255,7 @@ services:
 		"web":     "sha256:newdigest222",
 		"sandbox": "sha256:newdigest333",
 	}
-	if err := patchComposeImageRefs("0.3.6", pins, dir); err != nil {
+	if err := patchComposeImageRefs("0.3.6", pins, true, dir); err != nil {
 		t.Fatalf("patchComposeImageRefs: %v", err)
 	}
 
@@ -299,7 +299,7 @@ func TestPatchComposeImageRefs_TagFallback(t *testing.T) {
 	}
 
 	// No digest pins -- should fall back to tag.
-	if err := patchComposeImageRefs("0.3.6", nil, dir); err != nil {
+	if err := patchComposeImageRefs("0.3.6", nil, false, dir); err != nil {
 		t.Fatalf("patchComposeImageRefs: %v", err)
 	}
 
@@ -327,7 +327,7 @@ func TestPatchComposeImageRefs_NoMatchesError(t *testing.T) {
 		t.Fatalf("setup: %v", err)
 	}
 
-	err := patchComposeImageRefs("0.3.6", nil, dir)
+	err := patchComposeImageRefs("0.3.6", nil, false, dir)
 	if err == nil {
 		t.Fatal("expected error when no synthorg image refs found")
 	}
@@ -348,7 +348,7 @@ func TestPatchComposeImageRefs_MissingRequiredService(t *testing.T) {
 		t.Fatalf("setup: %v", err)
 	}
 
-	err := patchComposeImageRefs("0.3.6", nil, dir)
+	err := patchComposeImageRefs("0.3.6", nil, false, dir)
 	if err == nil {
 		t.Fatal("expected error when web service not found")
 	}

@@ -543,7 +543,7 @@ func writeOrPatchCompose(state config.State, digestPins map[string]string, safeD
 	if !preserveCompose {
 		return writeDigestPinnedCompose(state, digestPins, safeDir)
 	}
-	return patchComposeImageRefs(state.ImageTag, digestPins, safeDir)
+	return patchComposeImageRefs(state.ImageTag, digestPins, state.Sandbox, safeDir)
 }
 
 // imageLinePattern matches Docker image references in compose YAML.
@@ -559,7 +559,7 @@ var imageLinePattern = regexp.MustCompile(
 // Returns an error if no image references were found or if not all expected
 // services (backend, web, and optionally sandbox) were patched -- this
 // prevents config.Save from advancing state when compose is unpatched.
-func patchComposeImageRefs(tag string, digestPins map[string]string, safeDir string) error {
+func patchComposeImageRefs(tag string, digestPins map[string]string, sandboxEnabled bool, safeDir string) error {
 	composePath := filepath.Join(safeDir, "compose.yml")
 	existing, err := os.ReadFile(composePath)
 	if err != nil {
@@ -587,10 +587,14 @@ func patchComposeImageRefs(tag string, digestPins map[string]string, safeDir str
 		return fmt.Errorf("no synthorg image references found in %s -- compose may be manually edited; run 'synthorg init' to regenerate", composePath)
 	}
 
-	// At minimum, backend and web must be patched.
-	for _, required := range []string{"backend", "web"} {
-		if !replaced[required] {
-			return fmt.Errorf("image reference for %q not found in %s -- compose may be manually edited; run 'synthorg init' to regenerate", required, composePath)
+	// Backend and web are always required; sandbox only when enabled.
+	required := []string{"backend", "web"}
+	if sandboxEnabled {
+		required = append(required, "sandbox")
+	}
+	for _, svc := range required {
+		if !replaced[svc] {
+			return fmt.Errorf("image reference for %q not found in %s -- compose may be manually edited; run 'synthorg init' to regenerate", svc, composePath)
 		}
 	}
 
