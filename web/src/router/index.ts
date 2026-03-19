@@ -14,6 +14,7 @@ const router = createRouter({
       path: '/setup',
       name: 'setup',
       component: () => import('@/views/SetupPage.vue'),
+      meta: { requiresAuth: false },
     },
     {
       path: '/',

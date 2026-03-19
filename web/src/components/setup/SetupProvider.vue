@@ -6,7 +6,6 @@ import Tag from 'primevue/tag'
 import { useProviderStore } from '@/stores/providers'
 import { getErrorMessage } from '@/utils/errors'
 import type { ProviderPreset, TestConnectionResponse } from '@/api/types'
-import ProviderTestButton from '@/components/providers/ProviderTestButton.vue'
 
 const emit = defineEmits<{
   next: []
@@ -20,6 +19,7 @@ const baseUrl = ref('')
 const apiKey = ref('')
 const error = ref<string | null>(null)
 const creating = ref(false)
+const testing = ref(false)
 const createdProviderName = ref<string | null>(null)
 const testPassed = ref(false)
 const testResult = ref<TestConnectionResponse | null>(null)
@@ -101,6 +101,7 @@ async function handleAddProvider() {
 
 async function handleTestComplete() {
   if (!createdProviderName.value) return
+  testing.value = true
   try {
     const res = await store.testConnection(createdProviderName.value)
     testResult.value = res
@@ -119,6 +120,8 @@ async function handleTestComplete() {
     }
     testPassed.value = false
     error.value = getErrorMessage(err)
+  } finally {
+    testing.value = false
   }
 }
 
@@ -244,13 +247,12 @@ onMounted(async () => {
     <template v-if="createdProviderName">
       <div class="mt-4 flex flex-col items-center gap-3">
         <div v-if="!testPassed" class="flex items-center gap-3">
-          <ProviderTestButton :provider-name="createdProviderName" />
           <Button
             label="Test Connection"
             icon="pi pi-bolt"
             severity="info"
             size="small"
-            :loading="creating"
+            :loading="testing"
             @click="handleTestComplete"
           />
         </div>

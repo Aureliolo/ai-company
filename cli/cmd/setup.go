@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -55,7 +56,7 @@ func runSetup(cmd *cobra.Command, _ []string) error {
 	// Verify Docker is available and containers are running.
 	info, err := docker.Detect(ctx)
 	if err != nil {
-		return fmt.Errorf("docker not available: %w", err)
+		return err
 	}
 
 	psOut, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "--format", "json")
@@ -100,7 +101,10 @@ func resetSetupFlag(ctx context.Context, state config.State) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("API returned status %d", resp.StatusCode)
@@ -119,5 +123,9 @@ func openBrowser(ctx context.Context, url string) error {
 	default:
 		cmd = exec.CommandContext(ctx, "xdg-open", url)
 	}
-	return cmd.Start()
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() { _ = cmd.Wait() }() // reap child, prevent zombie
+	return nil
 }

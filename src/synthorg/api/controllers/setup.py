@@ -1,7 +1,7 @@
 """First-run setup controller -- status, templates, company, agent, complete."""
 
 import json
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -17,11 +17,16 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_AGENT_CREATED,
+    SETUP_AGENTS_READ_FALLBACK,
     SETUP_COMPANY_CREATED,
     SETUP_COMPLETED,
     SETUP_STATUS_CHECKED,
+    SETUP_STATUS_SETTINGS_UNAVAILABLE,
     SETUP_TEMPLATES_LISTED,
 )
+
+if TYPE_CHECKING:
+    from synthorg.settings.service import SettingsService
 
 logger = get_logger(__name__)
 
@@ -189,8 +194,13 @@ class SetupController(Controller):
         try:
             entry = await settings_svc.get_entry("api", "setup_complete")
             needs_setup = entry.value != "true"
+        except MemoryError, RecursionError:
+            raise
         except Exception:
-            # If settings service is unavailable, assume setup needed.
+            logger.warning(
+                SETUP_STATUS_SETTINGS_UNAVAILABLE,
+                exc_info=True,
+            )
             needs_setup = True
 
         has_providers = (
@@ -359,14 +369,16 @@ class SetupController(Controller):
                 "model_id": data.model_id,
             },
         }
+        if data.budget_limit_monthly is not None:
+            agent_config["budget_limit_monthly"] = data.budget_limit_monthly
 
-        # Append to existing agents list in settings.
+        # Create new list with the agent appended (immutability convention).
         existing_agents = await _get_existing_agents(settings_svc)
-        existing_agents.append(agent_config)
+        updated_agents = [*existing_agents, agent_config]
         await settings_svc.set(
             "company",
             "agents",
-            json.dumps(existing_agents),
+            json.dumps(updated_agents),
         )
 
         logger.info(
@@ -469,7 +481,7 @@ def _extract_template_departments(template_name: str) -> str:
 
 
 async def _get_existing_agents(
-    settings_svc: Any,
+    settings_svc: SettingsService,
 ) -> list[dict[str, Any]]:
     """Read the current agents list from settings.
 
@@ -485,6 +497,8 @@ async def _get_existing_agents(
             parsed = json.loads(entry.value)
             if isinstance(parsed, list):
                 return parsed
+    except MemoryError, RecursionError:
+        raise
     except Exception:
-        logger.debug("setup.agents.read_fallback", reason="no_existing_agents")
+        logger.debug(SETUP_AGENTS_READ_FALLBACK, reason="no_existing_agents")
     return []

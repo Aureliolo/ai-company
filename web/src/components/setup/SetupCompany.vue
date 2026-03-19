@@ -40,8 +40,8 @@ async function handleCreate() {
   }
 }
 
-onMounted(() => {
-  setup.fetchTemplates()
+onMounted(async () => {
+  await setup.fetchTemplates()
 })
 </script>
 

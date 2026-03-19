@@ -24,3 +24,9 @@ SETUP_RESET: Final[str] = "setup.flow.reset"
 
 # Template listing
 SETUP_TEMPLATES_LISTED: Final[str] = "setup.templates.listed"
+
+# Agents list read fallback (no existing agents in settings)
+SETUP_AGENTS_READ_FALLBACK: Final[str] = "setup.agents.read_fallback"
+
+# Status check fallback (settings service unavailable)
+SETUP_STATUS_SETTINGS_UNAVAILABLE: Final[str] = "setup.status.settings_unavailable"

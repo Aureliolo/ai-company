@@ -2,7 +2,9 @@ import { apiClient, unwrap } from '../client'
 import type {
   ApiResponse,
   SetupAgentRequest,
+  SetupAgentResponse,
   SetupCompanyRequest,
+  SetupCompanyResponse,
   SetupStatusResponse,
   TemplateInfoResponse,
 } from '../types'
@@ -19,13 +21,13 @@ export async function listTemplates(): Promise<TemplateInfoResponse[]> {
   return unwrap(response)
 }
 
-export async function createCompany(data: SetupCompanyRequest): Promise<{ company_name: string; template_applied: string | null; department_count: number }> {
-  const response = await apiClient.post<ApiResponse<{ company_name: string; template_applied: string | null; department_count: number }>>('/setup/company', data)
+export async function createCompany(data: SetupCompanyRequest): Promise<SetupCompanyResponse> {
+  const response = await apiClient.post<ApiResponse<SetupCompanyResponse>>('/setup/company', data)
   return unwrap(response)
 }
 
-export async function createAgent(data: SetupAgentRequest): Promise<{ name: string; role: string; department: string; model_provider: string; model_id: string }> {
-  const response = await apiClient.post<ApiResponse<{ name: string; role: string; department: string; model_provider: string; model_id: string }>>('/setup/agent', data)
+export async function createAgent(data: SetupAgentRequest): Promise<SetupAgentResponse> {
+  const response = await apiClient.post<ApiResponse<SetupAgentResponse>>('/setup/agent', data)
   return unwrap(response)
 }
 

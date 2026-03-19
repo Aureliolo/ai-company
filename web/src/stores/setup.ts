@@ -11,6 +11,8 @@ export const useSetupStore = defineStore('setup', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
+  const MAX_STEPS = 10
+
   const isSetupNeeded = computed(() => !!status.value?.needs_setup)
   const isAdminNeeded = computed(() => !!status.value?.needs_admin)
 
@@ -36,7 +38,9 @@ export const useSetupStore = defineStore('setup', () => {
   }
 
   function nextStep() {
-    currentStep.value++
+    if (currentStep.value < MAX_STEPS) {
+      currentStep.value++
+    }
   }
 
   function prevStep() {

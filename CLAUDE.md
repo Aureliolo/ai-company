@@ -114,7 +114,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 
 ```text
 src/synthorg/
-  api/            # Litestar REST + WebSocket API (controllers, guards, channels, JWT + API key + WS ticket auth, approval gate integration, coordination endpoint, collaboration endpoint, settings endpoint, provider management endpoint (CRUD + test + presets), backup endpoint, RFC 9457 structured errors (ErrorCategory, ErrorCode, ErrorDetail, ProblemDetail, CATEGORY_TITLES, category_title, category_type_uri, content negotiation)), AppState hot-reload slots (provider_registry, model_router with swap methods, provider_management), settings dispatcher lifecycle, logging bootstrap (_bootstrap_app_logging, SYNTHORG_LOG_DIR env var override, called before all other setup in create_app), service auto-wiring (auto_wire.py: Phase 1 at construction -- message bus/cost tracker/provider registry/task engine; Phase 2 in on_startup after persistence connects -- settings service + config resolver + provider management), lifecycle helpers (lifecycle.py: _safe_startup, _safe_shutdown, _cleanup_on_failure, _init_persistence, _try_stop)
+  api/            # Litestar REST + WebSocket API (controllers, guards, channels, JWT + API key + WS ticket auth, approval gate integration, coordination endpoint, collaboration endpoint, settings endpoint, provider management endpoint (CRUD + test + presets), backup endpoint, setup endpoint (first-run wizard: status check, template listing, company/agent creation, completion gate), RFC 9457 structured errors (ErrorCategory, ErrorCode, ErrorDetail, ProblemDetail, CATEGORY_TITLES, category_title, category_type_uri, content negotiation)), AppState hot-reload slots (provider_registry, model_router with swap methods, provider_management), settings dispatcher lifecycle, logging bootstrap (_bootstrap_app_logging, SYNTHORG_LOG_DIR env var override, called before all other setup in create_app), service auto-wiring (auto_wire.py: Phase 1 at construction -- message bus/cost tracker/provider registry/task engine; Phase 2 in on_startup after persistence connects -- settings service + config resolver + provider management), lifecycle helpers (lifecycle.py: _safe_startup, _safe_shutdown, _cleanup_on_failure, _init_persistence, _try_stop)
     auth/         # Authentication subpackage (controller, service, middleware, JWT + API key + WS ticket store, models, config, secret resolution)
   backup/         # Backup and restore -- scheduled/manual/lifecycle backups of persistence DB, agent memory, and company config. BackupService orchestrator, BackupScheduler (periodic asyncio task), RetentionManager (count + age pruning), tar.gz compression, SHA-256 checksums, manifest tracking, validated restore with atomic rollback and safety backup
     handlers/     # ComponentHandler protocol + concrete handlers: PersistenceComponentHandler (SQLite VACUUM INTO), MemoryComponentHandler (copytree), ConfigComponentHandler (copy2)
@@ -140,10 +140,10 @@ src/synthorg/
 web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
   src/
     api/          # Axios client, endpoint modules, TypeScript types (mirrors backend Pydantic models)
-    components/   # Vue components organized by feature (agents/, approvals/, budget/, common/, dashboard/, layout/, messages/, org-chart/, providers/, tasks/)
+    components/   # Vue components organized by feature (agents/, approvals/, budget/, common/, dashboard/, layout/, messages/, org-chart/, providers/, setup/, tasks/)
     composables/  # Reusable composition functions (useAuth, useLoginLockout, usePolling, useOptimisticUpdate, useWebSocketSubscription)
     router/       # Vue Router config with auth guards
-    stores/       # Pinia stores (auth, agents, tasks, budget, messages, meetings, approvals, websocket, analytics, company, providers)
+    stores/       # Pinia stores (auth, agents, tasks, budget, messages, meetings, approvals, websocket, analytics, company, providers, setup)
     styles/       # Global CSS and PrimeVue theme configuration
     utils/        # Constants, formatters, error helpers
     views/        # Page-level components (LoginPage, SetupPage, DashboardPage, OrgChartPage, TaskBoardPage, MessageFeedPage, ApprovalQueuePage, AgentProfilesPage, AgentDetailPage, BudgetPanelPage, MeetingLogsPage, ArtifactBrowserPage, SettingsPage)
@@ -151,7 +151,7 @@ web/              # Vue 3 + PrimeVue + Tailwind CSS dashboard
 
 cli/                # Go CLI binary (cross-platform, manages Docker lifecycle)
   main.go           # Entry point
-  cmd/              # Cobra commands (init, start, stop, status, logs, doctor, update, uninstall, version, config, completion-install, backup); root flags: --data-dir, --skip-verify
+  cmd/              # Cobra commands (init, start, stop, status, logs, doctor, update, uninstall, version, config, completion-install, backup, setup); root flags: --data-dir, --skip-verify
   internal/
     version/        # Build-time version vars (ldflags-injected)
     config/         # Data dir resolution (XDG/macOS/Windows), persisted state (JSON)
@@ -199,7 +199,7 @@ site/               # Astro landing page (synthorg.io)
 - **Every module** with business logic MUST have: `from synthorg.observability import get_logger` then `logger = get_logger(__name__)`
 - **Never** use `import logging` / `logging.getLogger()` / `print()` in application code
 - **Variable name**: always `logger` (not `_logger`, not `log`)
-- **Event names**: always use constants from the domain-specific module under `synthorg.observability.events` (e.g., `API_REQUEST_STARTED` from `events.api`, `TOOL_INVOKE_START` from `events.tool`, `GIT_COMMAND_START` from `events.git`, `CONTEXT_BUDGET_FILL_UPDATED` from `events.context_budget`, `BACKUP_STARTED` from `events.backup`). Each domain has its own module -- see `src/synthorg/observability/events/` for the full inventory of constants. Import directly: `from synthorg.observability.events.<domain> import EVENT_CONSTANT`
+- **Event names**: always use constants from the domain-specific module under `synthorg.observability.events` (e.g., `API_REQUEST_STARTED` from `events.api`, `TOOL_INVOKE_START` from `events.tool`, `GIT_COMMAND_START` from `events.git`, `CONTEXT_BUDGET_FILL_UPDATED` from `events.context_budget`, `BACKUP_STARTED` from `events.backup`, `SETUP_COMPLETED` from `events.setup`). Each domain has its own module -- see `src/synthorg/observability/events/` for the full inventory of constants. Import directly: `from synthorg.observability.events.<domain> import EVENT_CONSTANT`
 - **Structured kwargs**: always `logger.info(EVENT, key=value)` — never `logger.info("msg %s", val)`
 - **All error paths** must log at WARNING or ERROR with context before raising
 - **All state transitions** must log at INFO

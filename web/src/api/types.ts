@@ -849,3 +849,17 @@ export interface SetupAgentRequest {
   department: string
   budget_limit_monthly: number | null
 }
+
+export interface SetupCompanyResponse {
+  company_name: string
+  template_applied: string | null
+  department_count: number
+}
+
+export interface SetupAgentResponse {
+  name: string
+  role: string
+  department: string
+  model_provider: string
+  model_id: string
+}

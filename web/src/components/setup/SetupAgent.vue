@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
@@ -98,13 +98,12 @@ const isValid = computed(
     selectedPersonality.value !== null,
 )
 
-function onRoleChange() {
-  if (selectedRole.value && !agentName.value.trim()) {
-    // Auto-suggest a name based on role
-    const roleSlug = selectedRole.value.replace(/\s+/g, '-').toLowerCase()
+watch(selectedRole, (newRole) => {
+  if (newRole && !agentName.value.trim()) {
+    const roleSlug = newRole.replace(/\s+/g, '-').toLowerCase()
     agentName.value = `agent-${roleSlug}-001`
   }
-}
+})
 
 async function handleCreate() {
   if (!isValid.value || !selectedRole.value || !selectedModel.value || !selectedPersonality.value) {
@@ -162,7 +161,6 @@ onMounted(() => {
           option-value="value"
           placeholder="Select a role..."
           class="w-full"
-          @change="onRoleChange"
         />
       </div>
 
