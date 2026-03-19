@@ -429,6 +429,13 @@ describe('validateSettingValue', () => {
     expect(validateSettingValue('{bad json', makeDef({ type: 'json' }))).not.toBeNull()
   })
 
+  it('rejects JSON primitives (only objects and arrays allowed)', () => {
+    expect(validateSettingValue('"hello"', makeDef({ type: 'json' }))).not.toBeNull()
+    expect(validateSettingValue('123', makeDef({ type: 'json' }))).not.toBeNull()
+    expect(validateSettingValue('true', makeDef({ type: 'json' }))).not.toBeNull()
+    expect(validateSettingValue('null', makeDef({ type: 'json' }))).not.toBeNull()
+  })
+
   // ── Pattern validation ────────────────────────────────────
 
   it('accepts value matching validator_pattern (fullmatch)', () => {

@@ -46,15 +46,8 @@ export const TagMock = {
 }
 
 /**
- * Register all PrimeVue mocks via vi.mock calls.
- * Import this in test files before importing components under test.
+ * Note: vi.mock() factories are hoisted above imports by Vitest, so these
+ * exports cannot be used via a registerPrimeVueMocks() helper function.
+ * Instead, copy the vi.mock() calls directly into each test file that needs
+ * them, using the mock objects above as a reference for consistent behavior.
  */
-export function registerPrimeVueMocks(vi: { mock: (path: string, factory: () => unknown) => void }): void {
-  vi.mock('primevue/inputtext', () => ({ default: InputTextMock }))
-  vi.mock('primevue/inputnumber', () => ({ default: InputNumberMock }))
-  vi.mock('primevue/toggleswitch', () => ({ default: ToggleSwitchMock }))
-  vi.mock('primevue/select', () => ({ default: SelectMock }))
-  vi.mock('primevue/textarea', () => ({ default: TextareaMock }))
-  vi.mock('primevue/button', () => ({ default: ButtonMock }))
-  vi.mock('primevue/tag', () => ({ default: TagMock }))
-}

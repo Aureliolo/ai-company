@@ -51,7 +51,10 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
 
   if (type === 'json') {
     try {
-      JSON.parse(value)
+      const parsed = JSON.parse(value)
+      if (typeof parsed !== 'object' || parsed === null) {
+        return 'Must be a JSON object or array'
+      }
     } catch {
       return 'Must be valid JSON'
     }
