@@ -184,23 +184,21 @@ class TestRateLimiterPause:
         config = RateLimiterConfig(max_concurrent=10)
         limiter = RateLimiter(config, provider_name="test-provider")
 
-        base_t = 700_000.0
-        call_count = 0
+        # Use a mutable clock instead of call-count to avoid flakiness
+        # when logging or asyncio internals call time.monotonic().
+        current_time = 700_000.0
 
         def time_fn() -> float:
-            nonlocal call_count
-            call_count += 1
-            if call_count <= 3:
-                return base_t
-            if call_count == 4:
-                return base_t + 0.01
-            return base_t + 0.2
+            return current_time
 
         slept_for: float | None = None
 
         async def fake_sleep(seconds: float) -> None:
-            nonlocal slept_for
+            nonlocal current_time, slept_for
             slept_for = seconds
+            # Advance the clock by the sleep duration so the
+            # acquire() loop converges deterministically.
+            current_time += seconds
 
         with (
             mock.patch(
@@ -216,7 +214,7 @@ class TestRateLimiterPause:
             limiter.pause(0.01)  # shorter, should not reduce
             await limiter.acquire()
 
-        # Should have waited ~0.14s (the original longer pause minus elapsed)
+        # Should have waited 0.15s (the original longer pause, not reduced)
         assert slept_for is not None
         assert slept_for > 0.10
         limiter.release()
