@@ -16,7 +16,7 @@ yet implemented.
 
 from typing import TYPE_CHECKING, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from synthorg.core.enums import Complexity
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -59,10 +59,19 @@ class AutoLoopRule(BaseModel):
             ``"plan_execute"``, ``"hybrid"``).
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     complexity: Complexity = Field(description="Task complexity level")
     loop_type: NotBlankStr = Field(description="Loop type identifier")
+
+    @field_validator("loop_type")
+    @classmethod
+    def _validate_known_loop_type(cls, v: str) -> str:
+        """Reject loop types not in the known set."""
+        if v not in _KNOWN_LOOP_TYPES:
+            msg = f"Unknown loop_type {v!r}; allowed: {sorted(_KNOWN_LOOP_TYPES)}"
+            raise ValueError(msg)
+        return v
 
 
 DEFAULT_AUTO_LOOP_RULES: tuple[AutoLoopRule, ...] = (
@@ -100,7 +109,7 @@ class AutoLoopConfig(BaseModel):
             task's complexity.  Must be a known loop type.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     rules: tuple[AutoLoopRule, ...] = Field(
         default=DEFAULT_AUTO_LOOP_RULES,

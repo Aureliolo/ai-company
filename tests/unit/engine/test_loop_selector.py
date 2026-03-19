@@ -267,12 +267,17 @@ class TestAutoLoopConfig:
 
     def test_unknown_loop_type_in_rules_rejected(self) -> None:
         """Rules with unknown loop types are invalid."""
-        with pytest.raises(ValidationError, match="Unknown loop type in rules"):
+        with pytest.raises(ValidationError, match="Unknown loop_type"):
             AutoLoopConfig(
                 rules=(
                     AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="nonexistent"),
                 ),
             )
+
+    def test_extra_fields_rejected(self) -> None:
+        """Unknown config keys raise instead of being silently dropped."""
+        with pytest.raises(ValidationError, match="extra"):
+            AutoLoopConfig(nonexistent_key="value")  # type: ignore[call-arg]
 
     def test_unknown_hybrid_fallback_rejected(self) -> None:
         """hybrid_fallback must be a known loop type."""
@@ -357,6 +362,20 @@ class TestAutoLoopRule:
         """Empty/whitespace loop_type is invalid (NotBlankStr)."""
         with pytest.raises(ValidationError):
             AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="")
+
+    def test_unknown_loop_type_rejected(self) -> None:
+        """Unknown loop_type is rejected at rule construction."""
+        with pytest.raises(ValidationError, match="Unknown loop_type"):
+            AutoLoopRule(complexity=Complexity.SIMPLE, loop_type="typo")
+
+    def test_extra_fields_rejected(self) -> None:
+        """Unknown fields raise instead of being silently dropped."""
+        with pytest.raises(ValidationError, match="extra"):
+            AutoLoopRule(
+                complexity=Complexity.SIMPLE,
+                loop_type="react",
+                typo="value",  # type: ignore[call-arg]
+            )
 
 
 # ── build_execution_loop factory ─────────────────────────────
