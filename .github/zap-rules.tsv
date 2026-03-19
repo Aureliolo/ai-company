@@ -1,0 +1,8 @@
+# ZAP DAST rules -- see docs/security.md "DAST Tuning" for rationale.
+# Format: rule_id<TAB>action<TAB>description (description is informational only).
+# Valid actions: PASS, IGNORE, INFO, WARN, FAIL.
+100001	IGNORE	Unexpected Content-Type was returned
+100000	IGNORE	A Client Error response code was returned by the server
+10094	IGNORE	Base64 Disclosure
+90005	IGNORE	Sec-Fetch-Dest Header is Missing
+10049	WARN	Non-Storable Content

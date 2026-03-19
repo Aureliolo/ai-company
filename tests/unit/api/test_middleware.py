@@ -10,7 +10,9 @@ from litestar.testing import TestClient
 
 from synthorg.api.exception_handlers import EXCEPTION_HANDLERS
 from synthorg.api.middleware import (
+    _API_CACHE_CONTROL,
     _API_CSP,
+    _DOCS_CACHE_CONTROL,
     _DOCS_CSP,
     _SECURITY_HEADERS,
     RequestLoggingMiddleware,
@@ -138,58 +140,100 @@ class TestSecurityHeadersHook:
 class TestCSPPathSelection:
     """Verify path-aware CSP via the before_send hook."""
 
-    def test_api_route_gets_strict_csp(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get("/api/v1/health")
-        csp = response.headers.get("content-security-policy")
-        assert csp == _API_CSP
-
-    def test_docs_route_gets_relaxed_csp(self, test_client: TestClient[Any]) -> None:
-        response = test_client.get("/docs/api")
-        csp = response.headers.get("content-security-policy")
-        assert csp == _DOCS_CSP
-
-    def test_docs_exact_path_gets_relaxed_csp(
-        self, test_client: TestClient[Any]
-    ) -> None:
-        response = test_client.get("/docs")
-        csp = response.headers.get("content-security-policy")
-        assert csp == _DOCS_CSP
-
     @pytest.mark.parametrize(
         ("path", "expected_csp"),
         [
+            ("/api/v1/health", _API_CSP),
             ("/documents", _API_CSP),
             ("/docsearch", _API_CSP),
+            ("/docs", _DOCS_CSP),
             ("/docs/api", _DOCS_CSP),
             ("/docs/openapi.json", _DOCS_CSP),
         ],
         ids=[
+            "api-strict",
             "documents-strict",
             "docsearch-strict",
+            "docs-exact-relaxed",
             "docs-subpath-relaxed",
             "docs-openapi-relaxed",
         ],
     )
-    def test_csp_path_boundary(
+    def test_csp_path_selection(
         self,
         test_client: TestClient[Any],
         path: str,
         expected_csp: str,
     ) -> None:
-        """Verify CSP assignment for boundary paths."""
+        """Verify CSP assignment: strict for API, relaxed for /docs."""
         response = test_client.get(path)
         csp = response.headers.get("content-security-policy")
         assert csp == expected_csp
 
     def test_docs_path_relaxes_coop(self, test_client: TestClient[Any]) -> None:
-        """Docs paths get COOP unsafe-none for Scalar UI compatibility."""
+        """Docs paths get COOP same-origin-allow-popups for Scalar UI."""
         response = test_client.get("/docs/openapi.json")
-        assert response.headers.get("cross-origin-opener-policy") == "unsafe-none"
+        assert (
+            response.headers.get("cross-origin-opener-policy")
+            == "same-origin-allow-popups"
+        )
 
     def test_api_path_keeps_strict_coop(self, test_client: TestClient[Any]) -> None:
         """API paths keep COOP same-origin."""
         response = test_client.get("/api/v1/health")
         assert response.headers.get("cross-origin-opener-policy") == "same-origin"
+
+
+# ── Cache-Control path selection ──────────────────────────────
+
+
+class TestCacheControlPathSelection:
+    """Verify path-aware Cache-Control via the before_send hook.
+
+    API data endpoints get ``no-store`` (sensitive dynamic data).
+    Documentation endpoints get ``public, max-age=300`` (static,
+    unauthenticated, non-user-specific content).
+    """
+
+    @pytest.mark.parametrize(
+        ("path", "expected"),
+        [
+            ("/api/v1/health", _API_CACHE_CONTROL),
+            ("/documents", _API_CACHE_CONTROL),
+            ("/docsearch", _API_CACHE_CONTROL),
+            ("/docs", _DOCS_CACHE_CONTROL),
+            ("/docs/api", _DOCS_CACHE_CONTROL),
+            ("/docs/openapi.json", _DOCS_CACHE_CONTROL),
+        ],
+        ids=[
+            "api-no-store",
+            "documents-no-store",
+            "docsearch-no-store",
+            "docs-exact-cached",
+            "docs-subpath-cached",
+            "docs-openapi-cached",
+        ],
+    )
+    def test_cache_control_path_selection(
+        self,
+        test_client: TestClient[Any],
+        path: str,
+        expected: str,
+    ) -> None:
+        """Verify cache-control: no-store for API, brief caching for /docs."""
+        response = test_client.get(path)
+        assert response.headers.get("cache-control") == expected
+
+    def test_docs_path_applies_cache_and_coop_relaxations(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        """Cache-Control and COOP relaxation both apply to /docs paths."""
+        response = test_client.get("/docs/openapi.json")
+        assert response.headers.get("cache-control") == _DOCS_CACHE_CONTROL
+        assert (
+            response.headers.get("cross-origin-opener-policy")
+            == "same-origin-allow-popups"
+        )
 
 
 # ── Request logging middleware ─────────────────────────────────

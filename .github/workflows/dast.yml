@@ -54,7 +54,9 @@ jobs:
           exit 1
 
       # -a enables alpha passive scan rules for broader coverage;
-      # findings are non-blocking (artifact-only, no SARIF gate)
+      # findings are non-blocking (artifact-only, no SARIF gate).
+      # Rules file suppresses validated false positives -- see
+      # docs/security.md "DAST Tuning" for rationale.
       - name: ZAP API Scan
         uses: zaproxy/action-api-scan@5158fe4d9d8fcc75ea204db81317cce7f9e5453d # v0.10.0
         with:
@@ -62,6 +64,7 @@ jobs:
           format: openapi
           fail_action: false
           cmd_options: "-a"
+          rules_file_name: .github/zap-rules.tsv
 
       - name: Stop backend
         if: always()
