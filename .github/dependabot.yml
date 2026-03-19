@@ -133,6 +133,8 @@ updates:
     open-pull-requests-limit: 5
     reviewers:
       - Aureliolo
+    ignore:
+      - dependency-name: chainguard/python
     labels:
       - type:chore
 
