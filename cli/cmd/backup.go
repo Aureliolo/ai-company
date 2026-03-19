@@ -3,6 +3,9 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -149,17 +153,52 @@ func formatSize(b int64) string {
 	}
 }
 
+// ansiRe matches ANSI escape sequences used for terminal control.
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+// sanitizeAPIMessage strips ANSI escape sequences from server-originated
+// strings before displaying them in the terminal (defense-in-depth).
+func sanitizeAPIMessage(msg string) string {
+	return ansiRe.ReplaceAllString(msg, "")
+}
+
+// backupClient is the shared HTTP client for backup API requests.
+// Per-request timeouts are controlled via context.WithTimeout.
+var backupClient = &http.Client{}
+
+// buildLocalJWT generates a short-lived JWT signed with the shared secret so
+// the CLI can authenticate against the backend's admin endpoints. The token
+// uses HMAC-SHA256 (HS256) and expires after 60 seconds.
+func buildLocalJWT(secret string) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
+	now := time.Now().Unix()
+	payload := base64.RawURLEncoding.EncodeToString(
+		fmt.Appendf(nil, `{"sub":"synthorg-cli","iat":%d,"exp":%d}`, now, now+60),
+	)
+	signingInput := header + "." + payload
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(signingInput))
+	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return signingInput + "." + sig
+}
+
 // backupAPIRequest performs an HTTP request to the backup API and returns
 // the response body, HTTP status code, and any transport-level error.
-// The timeout bounds the overall request; the caller's context may also
-// cancel the request independently (whichever fires first wins).
-func backupAPIRequest(ctx context.Context, port int, method, path string, body []byte, timeout time.Duration) ([]byte, int, error) {
+// The path must be either "" (root) or "/restore". If jwtSecret is non-empty,
+// a short-lived Bearer token is attached for admin endpoint authentication.
+func backupAPIRequest(ctx context.Context, port int, method, path string, body []byte, timeout time.Duration, jwtSecret string) ([]byte, int, error) {
+	if path != "" && path != "/restore" {
+		return nil, 0, fmt.Errorf("unexpected API path %q", path)
+	}
+
 	base := fmt.Sprintf("http://localhost:%d/api/v1/admin/backups", port)
 	apiURL, err := url.JoinPath(base, path)
 	if err != nil {
 		return nil, 0, fmt.Errorf("building URL: %w", err)
 	}
-	client := &http.Client{Timeout: timeout}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	var bodyReader io.Reader
 	if body != nil {
@@ -173,8 +212,11 @@ func backupAPIRequest(ctx context.Context, port int, method, path string, body [
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if jwtSecret != "" {
+		req.Header.Set("Authorization", "Bearer "+buildLocalJWT(jwtSecret))
+	}
 
-	resp, err := client.Do(req)
+	resp, err := backupClient.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("backend unreachable: %w", err)
 	}
@@ -222,7 +264,7 @@ func printManifest(out *ui.UI, m backupManifest) {
 	out.KeyValue("Size", formatSize(m.SizeBytes))
 	out.KeyValue("Checksum", m.Checksum)
 	out.KeyValue("SynthOrg version", m.SynthorgVersion)
-	out.KeyValue("DB schema version", fmt.Sprintf("%d", m.DBSchemaVersion))
+	out.KeyValue("DB schema version", strconv.Itoa(m.DBSchemaVersion))
 }
 
 // printBackupTable renders a list of backups as a formatted table.
@@ -258,27 +300,29 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	}
 
 	out := ui.NewUI(cmd.OutOrStdout())
+	errOut := ui.NewUI(cmd.ErrOrStderr())
 	out.Step("Creating backup...")
 
-	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodPost, "", nil, 30*time.Second)
+	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodPost, "", nil, 30*time.Second, state.JWTSecret)
 	if err != nil {
 		return fmt.Errorf("creating backup: %w", err)
 	}
 
 	if statusCode < 200 || statusCode >= 300 {
 		msg := apiErrorMessage(body, "backup failed")
-		out.Error(msg)
+		errOut.Error(sanitizeAPIMessage(msg))
 		return errors.New(msg)
 	}
 
 	data, err := parseAPIResponse(body)
 	if err != nil {
-		out.Error(err.Error())
+		errOut.Error(sanitizeAPIMessage(err.Error()))
 		return err
 	}
 
 	var manifest backupManifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
+		errOut.Error(fmt.Sprintf("parsing backup manifest: %v", err))
 		return fmt.Errorf("parsing backup manifest: %w", err)
 	}
 
@@ -297,32 +341,34 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 	}
 
 	out := ui.NewUI(cmd.OutOrStdout())
+	errOut := ui.NewUI(cmd.ErrOrStderr())
 
-	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodGet, "", nil, 10*time.Second)
+	body, statusCode, err := backupAPIRequest(ctx, state.BackendPort, http.MethodGet, "", nil, 10*time.Second, state.JWTSecret)
 	if err != nil {
 		return fmt.Errorf("listing backups: %w", err)
 	}
 
 	if statusCode < 200 || statusCode >= 300 {
 		msg := apiErrorMessage(body, "failed to list backups")
-		out.Error(msg)
+		errOut.Error(sanitizeAPIMessage(msg))
 		return errors.New(msg)
 	}
 
 	data, err := parseAPIResponse(body)
 	if err != nil {
-		out.Error(err.Error())
+		errOut.Error(sanitizeAPIMessage(err.Error()))
 		return err
 	}
 
 	var backups []backupInfo
 	if err := json.Unmarshal(data, &backups); err != nil {
+		errOut.Error(fmt.Sprintf("parsing backup list: %v", err))
 		return fmt.Errorf("parsing backup list: %w", err)
 	}
 
 	if len(backups) == 0 {
-		out.Warn("No backups found")
-		out.Hint("Run 'synthorg backup' to create one")
+		errOut.Warn("No backups found")
+		errOut.Hint("Run 'synthorg backup' to create one")
 		return nil
 	}
 
@@ -338,14 +384,17 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid backup ID %q: must be a 12-character hex string", backupID)
 	}
 
-	out := ui.NewUI(cmd.OutOrStdout())
+	errOut := ui.NewUI(cmd.ErrOrStderr())
 
 	// Check --confirm flag.
-	confirm, _ := cmd.Flags().GetBool("confirm")
+	confirm, err := cmd.Flags().GetBool("confirm")
+	if err != nil {
+		return fmt.Errorf("reading --confirm flag: %w", err)
+	}
 	if !confirm {
-		out.Error("Restore requires the --confirm flag as a safety gate")
-		out.Hint(fmt.Sprintf("Run 'synthorg backup restore %s --confirm' to proceed", backupID))
-		return nil
+		errOut.Error("Restore requires the --confirm flag as a safety gate")
+		errOut.Hint(fmt.Sprintf("Run 'synthorg backup restore %s --confirm' to proceed", backupID))
+		return errors.New("--confirm flag is required")
 	}
 
 	dir := resolveDataDir()
@@ -360,6 +409,7 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	out := ui.NewUI(cmd.OutOrStdout())
 	out.Step("Restoring from backup " + backupID + "...")
 
 	reqBody, err := json.Marshal(restoreRequest{BackupID: backupID, Confirm: true})
@@ -368,30 +418,31 @@ func runBackupRestore(cmd *cobra.Command, args []string) error {
 	}
 
 	body, statusCode, err := backupAPIRequest(
-		cmd.Context(), state.BackendPort, http.MethodPost, "/restore", reqBody, 30*time.Second,
+		cmd.Context(), state.BackendPort, http.MethodPost, "/restore", reqBody, 30*time.Second, state.JWTSecret,
 	)
 	if err != nil {
 		return fmt.Errorf("restoring backup: %w", err)
 	}
 
 	if statusCode < 200 || statusCode >= 300 {
-		return handleRestoreError(out, body, statusCode, backupID)
+		return handleRestoreError(errOut, body, statusCode, backupID)
 	}
 
-	return renderRestoreSuccess(cmd, out, body, safeDir)
+	return renderRestoreSuccess(cmd, out, errOut, body, safeDir)
 }
 
 // renderRestoreSuccess parses and displays a successful restore response,
 // then stops containers if a restart is required.
-func renderRestoreSuccess(cmd *cobra.Command, out *ui.UI, body []byte, safeDir string) error {
+func renderRestoreSuccess(cmd *cobra.Command, out, errOut *ui.UI, body []byte, safeDir string) error {
 	data, err := parseAPIResponse(body)
 	if err != nil {
-		out.Error(err.Error())
+		errOut.Error(sanitizeAPIMessage(err.Error()))
 		return err
 	}
 
 	var resp restoreResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
+		errOut.Error(fmt.Sprintf("parsing restore response: %v", err))
 		return fmt.Errorf("parsing restore response: %w", err)
 	}
 
@@ -400,28 +451,31 @@ func renderRestoreSuccess(cmd *cobra.Command, out *ui.UI, body []byte, safeDir s
 	out.KeyValue("Restored components", componentsString(resp.RestoredComponents))
 
 	if resp.RestartRequired {
-		return handleRestartAfterRestore(cmd.Context(), cmd, out, safeDir)
+		return handleRestartAfterRestore(cmd.Context(), cmd, out, errOut, safeDir)
 	}
 	return nil
 }
 
 // handleRestoreError displays a user-friendly error for restore API failures
 // and returns a non-nil error so the CLI exits non-zero.
-func handleRestoreError(out *ui.UI, body []byte, statusCode int, backupID string) error {
+func handleRestoreError(errOut *ui.UI, body []byte, statusCode int, backupID string) error {
 	msg := apiErrorMessage(body, "restore failed")
 
 	if statusCode == http.StatusNotFound {
-		notFoundMsg := fmt.Sprintf("Backup not found: %s", backupID)
-		out.Error(notFoundMsg)
-		out.Hint("Run 'synthorg backup list' to see available backups")
-		return errors.New(notFoundMsg)
+		displayMsg := fmt.Sprintf("Backup not found: %s", backupID)
+		if msg != "restore failed" {
+			displayMsg = msg
+		}
+		errOut.Error(sanitizeAPIMessage(displayMsg))
+		errOut.Hint("Run 'synthorg backup list' to see available backups")
+		return fmt.Errorf("backup not found: %s", backupID)
 	}
-	out.Error(msg)
+	errOut.Error(sanitizeAPIMessage(msg))
 	return errors.New(msg)
 }
 
 // handleRestartAfterRestore stops containers when a restore requires restart.
-func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out *ui.UI, safeDir string) error {
+func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out, errOut *ui.UI, safeDir string) error {
 	out.KeyValue("Restart required", "yes")
 
 	composePath := filepath.Join(safeDir, "compose.yml")
@@ -432,15 +486,15 @@ func handleRestartAfterRestore(ctx context.Context, cmd *cobra.Command, out *ui.
 
 	info, err := docker.Detect(ctx)
 	if err != nil {
-		out.Warn(fmt.Sprintf("Could not detect Docker: %v", err))
-		out.Hint("Run 'synthorg stop' then 'synthorg start' manually")
+		errOut.Warn(fmt.Sprintf("Could not detect Docker: %v", err))
+		errOut.Hint("Run 'synthorg stop' then 'synthorg start' manually")
 		return nil
 	}
 
 	out.Step("Stopping containers for restart...")
 	if err := composeRun(ctx, cmd, info, safeDir, "down"); err != nil {
-		out.Warn(fmt.Sprintf("Could not stop containers: %v", err))
-		out.Hint("Run 'synthorg stop' then 'synthorg start' manually")
+		errOut.Warn(fmt.Sprintf("Could not stop containers: %v", err))
+		errOut.Hint("Run 'synthorg stop' then 'synthorg start' manually")
 		return nil
 	}
 

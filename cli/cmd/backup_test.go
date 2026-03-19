@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -142,8 +143,76 @@ func TestParseAPIResponse(t *testing.T) {
 	}
 }
 
-// --- Test helper: create temp dir with config.json pointing at test server ---
+func TestSanitizeAPIMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want string
+	}{
+		{"no escape sequences", "simple error", "simple error"},
+		{"with ANSI color", "\x1b[31merror\x1b[0m", "error"},
+		{"with cursor move", "\x1b[2Aoverwrite", "overwrite"},
+		{"empty string", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sanitizeAPIMessage(tt.msg); got != tt.want {
+				t.Errorf("sanitizeAPIMessage(%q) = %q, want %q", tt.msg, got, tt.want)
+			}
+		})
+	}
+}
 
+func TestBuildLocalJWT(t *testing.T) {
+	token := buildLocalJWT("test-secret")
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected 3 JWT parts, got %d", len(parts))
+	}
+	// Verify header is valid base64url-encoded JSON.
+	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatalf("decoding header: %v", err)
+	}
+	if !strings.Contains(string(headerJSON), `"alg":"HS256"`) {
+		t.Errorf("header missing HS256 alg: %s", headerJSON)
+	}
+	// Verify payload contains expected claims.
+	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decoding payload: %v", err)
+	}
+	if !strings.Contains(string(payloadJSON), `"sub":"synthorg-cli"`) {
+		t.Errorf("payload missing synthorg-cli sub: %s", payloadJSON)
+	}
+}
+
+// --- Test helper: create temp dir with config.json ---
+
+// writeConfigJSON creates a config.json file in dir with the given backend port.
+func writeConfigJSON(t *testing.T, dir string, backendPort int) {
+	t.Helper()
+	cfg := map[string]any{
+		"data_dir":            dir,
+		"image_tag":           "latest",
+		"backend_port":        backendPort,
+		"web_port":            3000,
+		"log_level":           "info",
+		"persistence_backend": "sqlite",
+		"memory_backend":      "mem0",
+		"jwt_secret":          "test-backup-secret",
+	}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatalf("marshaling config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), data, 0o600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+}
+
+// setupBackupTest creates an HTTP test server and a temp dir with config.json
+// pointing at the server's port.
 func setupBackupTest(t *testing.T, handler http.HandlerFunc) string {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -160,22 +229,7 @@ func setupBackupTest(t *testing.T, handler http.HandlerFunc) string {
 	}
 
 	dir := t.TempDir()
-	cfg := map[string]any{
-		"data_dir":            dir,
-		"image_tag":           "latest",
-		"backend_port":        port,
-		"web_port":            3000,
-		"log_level":           "info",
-		"persistence_backend": "sqlite",
-		"memory_backend":      "mem0",
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		t.Fatalf("marshaling config: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), data, 0o600); err != nil {
-		t.Fatalf("writing config: %v", err)
-	}
+	writeConfigJSON(t, dir, port)
 	return dir
 }
 
@@ -184,28 +238,14 @@ func setupBackupTest(t *testing.T, handler http.HandlerFunc) string {
 func writeTestConfig(t *testing.T, backendPort int) string {
 	t.Helper()
 	dir := t.TempDir()
-	cfg := map[string]any{
-		"data_dir":            dir,
-		"image_tag":           "latest",
-		"backend_port":        backendPort,
-		"web_port":            3000,
-		"log_level":           "info",
-		"persistence_backend": "sqlite",
-		"memory_backend":      "mem0",
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		t.Fatalf("marshaling config: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), data, 0o600); err != nil {
-		t.Fatalf("writing config: %v", err)
-	}
+	writeConfigJSON(t, dir, backendPort)
 	return dir
 }
 
-// runBackupCmd executes a backup subcommand and returns stdout output.
+// runBackupCmd executes a backup subcommand and returns stdout+stderr output.
 // Resets the --confirm flag between runs to avoid stale state from prior tests
 // (Cobra does not reset flag values between Execute() calls on global commands).
+// NOTE: If new persistent boolean flags are added to backup commands, add them here.
 func runBackupCmd(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
 	// Reset sticky boolean flags before each execution.
@@ -521,11 +561,15 @@ func TestBackupRestore_InvalidID(t *testing.T) {
 
 func TestBackupRestore_MissingConfirm(t *testing.T) {
 	// No server needed -- validation happens before API call.
-	dir := writeTestConfig(t, 8000)
+	// Port 0 signals no real server (conventional for no-network tests).
+	dir := writeTestConfig(t, 0)
 
 	out, err := runBackupCmd(t, dir, "restore", "abcdef012345")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error for missing --confirm flag")
+	}
+	if !strings.Contains(err.Error(), "--confirm") {
+		t.Errorf("error %q does not mention --confirm", err.Error())
 	}
 	if !strings.Contains(out, "--confirm") {
 		t.Errorf("output missing --confirm hint:\n%s", out)
