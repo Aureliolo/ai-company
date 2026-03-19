@@ -40,10 +40,11 @@ def _make_task_with_complexity(
     *,
     complexity: Complexity,
     agent_id: str,
+    task_id: str = "task-auto-001",
 ) -> Task:
     """Build a task with specific complexity for auto-loop tests."""
     return Task(
-        id="task-auto-001",
+        id=task_id,
         title="Auto-loop test task",
         description="A task for testing auto-loop selection.",
         type=TaskType.DEVELOPMENT,
@@ -410,8 +411,9 @@ class TestAutoLoopConfigWiring:
         task = _make_task_with_complexity(
             complexity=Complexity.SIMPLE,
             agent_id="agent-wire-001",
+            task_id="task-wire-001",
         )
-        loop = await engine._resolve_loop(task, "agent-wire-001", "task-wire-001")
+        loop = await engine._resolve_loop(task, "agent-wire-001", task.id)
         assert isinstance(loop, ReactLoop)
         assert loop.compaction_callback is compact_cb
 
@@ -430,8 +432,9 @@ class TestAutoLoopConfigWiring:
         task = _make_task_with_complexity(
             complexity=Complexity.MEDIUM,
             agent_id="agent-wire-002",
+            task_id="task-wire-002",
         )
-        loop = await engine._resolve_loop(task, "agent-wire-002", "task-wire-002")
+        loop = await engine._resolve_loop(task, "agent-wire-002", task.id)
         assert isinstance(loop, PlanExecuteLoop)
         assert loop.compaction_callback is compact_cb
 
@@ -452,6 +455,7 @@ class TestAutoLoopConfigWiring:
         task = _make_task_with_complexity(
             complexity=Complexity.COMPLEX,
             agent_id="agent-wire-003",
+            task_id="task-wire-003",
         )
         with patch.object(
             enforcer,
@@ -459,7 +463,7 @@ class TestAutoLoopConfigWiring:
             new_callable=AsyncMock,
             return_value=30.0,
         ):
-            loop = await engine._resolve_loop(task, "agent-wire-003", "task-wire-003")
+            loop = await engine._resolve_loop(task, "agent-wire-003", task.id)
         assert isinstance(loop, HybridLoop)
         assert loop.compaction_callback is compact_cb
 
@@ -478,8 +482,9 @@ class TestAutoLoopConfigWiring:
         task = _make_task_with_complexity(
             complexity=Complexity.MEDIUM,
             agent_id="agent-wire-004",
+            task_id="task-wire-004",
         )
-        loop = await engine._resolve_loop(task, "agent-wire-004", "task-wire-004")
+        loop = await engine._resolve_loop(task, "agent-wire-004", task.id)
         assert isinstance(loop, PlanExecuteLoop)
         assert loop.config.max_replans == 7
 
@@ -489,10 +494,52 @@ class TestAutoLoopConfigWiring:
     ) -> None:
         """Without auto_loop_config, default ReactLoop receives callback."""
         provider = mock_provider_factory([])
-        compact_cb = AsyncMock()
+        compact_cb = MagicMock()
         engine = AgentEngine(
             provider=provider,
             compaction_callback=compact_cb,
         )
         assert isinstance(engine._loop, ReactLoop)
         assert engine._loop.compaction_callback is compact_cb
+
+    def test_compaction_callback_defaults_to_none(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Omitting compaction_callback leaves loop attribute None."""
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider)
+        assert isinstance(engine._loop, ReactLoop)
+        assert engine._loop.compaction_callback is None
+
+    async def test_hybrid_loop_config_wired_via_auto_selection(
+        self,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """COMPLEX task + OK budget -> HybridLoop receives hybrid_loop_config."""
+        from synthorg.engine.hybrid_models import HybridLoopConfig
+
+        provider = mock_provider_factory([])
+        hl_config = HybridLoopConfig(max_plan_steps=3, max_turns_per_step=8)
+        enforcer = _make_budget_enforcer()
+        engine = AgentEngine(
+            provider=provider,
+            auto_loop_config=AutoLoopConfig(),
+            hybrid_loop_config=hl_config,
+            budget_enforcer=enforcer,
+        )
+        task = _make_task_with_complexity(
+            complexity=Complexity.COMPLEX,
+            agent_id="agent-wire-005",
+            task_id="task-wire-005",
+        )
+        with patch.object(
+            enforcer,
+            "get_budget_utilization_pct",
+            new_callable=AsyncMock,
+            return_value=30.0,
+        ):
+            loop = await engine._resolve_loop(task, "agent-wire-005", task.id)
+        assert isinstance(loop, HybridLoop)
+        assert loop.config.max_plan_steps == 3
+        assert loop.config.max_turns_per_step == 8

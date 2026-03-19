@@ -272,6 +272,9 @@ class AgentEngine:
             has_cost_tracker=self._cost_tracker is not None,
             has_budget_enforcer=self._budget_enforcer is not None,
             has_coordinator=self._coordinator is not None,
+            has_compaction_callback=self._compaction_callback is not None,
+            has_plan_execute_config=self._plan_execute_config is not None,
+            has_hybrid_loop_config=self._hybrid_loop_config is not None,
         )
 
     @property
