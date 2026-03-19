@@ -249,9 +249,10 @@ func truncate(s string, max int) string {
 }
 
 // composeFileNames are the default Compose file names in search order.
+// Matches Docker Compose's documented preference: .yaml before .yml.
 var composeFileNames = []string{
-	"compose.yml", "compose.yaml",
-	"docker-compose.yml", "docker-compose.yaml",
+	"compose.yaml", "compose.yml",
+	"docker-compose.yaml", "docker-compose.yml",
 }
 
 // checkComposeFile verifies that a compose file exists and is valid.
@@ -365,19 +366,11 @@ func parseComposeImageRefs(composePath string) map[string]string {
 		return refs
 	}
 
-	for _, svc := range cf.Services {
+	for svcName, svc := range cf.Services {
 		if !strings.HasPrefix(svc.Image, imagePrefix) {
 			continue
 		}
-		// Extract service name: "ghcr.io/aureliolo/synthorg-backend@sha256:..." -> "backend"
-		suffix := strings.TrimPrefix(svc.Image, imagePrefix)
-		var name string
-		if i := strings.IndexAny(suffix, ":@"); i > 0 {
-			name = suffix[:i]
-		} else {
-			name = suffix
-		}
-		refs[name] = svc.Image
+		refs[svcName] = svc.Image
 	}
 	return refs
 }
