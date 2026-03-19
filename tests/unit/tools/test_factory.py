@@ -1,7 +1,7 @@
 """Unit tests for the tool factory module."""
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -205,18 +205,22 @@ class TestBuildDefaultToolsFromConfig:
         assert clone._network_policy.hostname_allowlist == ()
         assert clone._network_policy.block_private_ips is True
 
-    def test_sandbox_passed_through_config_wrapper(
+    @patch(
+        "synthorg.tools.sandbox.factory.SubprocessSandbox",
+    )
+    def test_sandbox_resolved_from_config(
         self,
+        mock_subprocess_cls: MagicMock,
         tmp_path: Path,
     ) -> None:
-        """Sandbox arg is forwarded by build_default_tools_from_config."""
-        mock_sandbox = MagicMock()
+        """Sandbox resolved from config flows to git tools."""
+        mock_instance = MagicMock()
+        mock_subprocess_cls.return_value = mock_instance
         config = RootConfig(company_name="test-corp")
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            sandbox=mock_sandbox,
         )
         clone = next(t for t in tools if t.name == "git_clone")
         assert isinstance(clone, _BaseGitTool)
-        assert clone._sandbox is mock_sandbox
+        assert clone._sandbox is mock_instance

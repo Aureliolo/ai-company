@@ -77,22 +77,9 @@ class TestOrgFact:
             category=OrgFactCategory.CORE_POLICY,
             author=author,
             created_at=_NOW,
-            version=1,
         )
         assert fact.id == "fact-1"
         assert fact.category == OrgFactCategory.CORE_POLICY
-        assert fact.version == 1
-
-    def test_version_must_be_positive(self) -> None:
-        with pytest.raises(ValidationError):
-            OrgFact(
-                id="fact-1",
-                content="test",
-                category=OrgFactCategory.ADR,
-                author=OrgFactAuthor(is_human=True),
-                created_at=_NOW,
-                version=0,
-            )
 
     def test_frozen(self) -> None:
         fact = OrgFact(
@@ -101,7 +88,6 @@ class TestOrgFact:
             category=OrgFactCategory.ADR,
             author=OrgFactAuthor(is_human=True),
             created_at=_NOW,
-            version=1,
         )
         with pytest.raises(ValidationError):
             fact.content = "modified"  # type: ignore[misc]

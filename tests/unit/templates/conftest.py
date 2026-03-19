@@ -49,7 +49,8 @@ template:
   company:
     type: "startup"
     budget_monthly: {{ budget | default(42.0) }}
-    autonomy: 0.7
+    autonomy:
+      level: "semi"
 
   departments:
     - name: "engineering"

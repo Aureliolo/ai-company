@@ -30,7 +30,6 @@ def _make_fact(
     fact_id: str = "fact-1",
     content: str = "Test fact",
     category: OrgFactCategory = OrgFactCategory.ADR,
-    version: int = 1,
 ) -> OrgFact:
     return OrgFact(
         id=fact_id,
@@ -38,7 +37,6 @@ def _make_fact(
         category=category,
         author=_HUMAN_AUTHOR,
         created_at=_NOW,
-        version=version,
     )
 
 
@@ -84,7 +82,6 @@ class TestSQLiteOrgFactStoreOperations:
             assert retrieved.id == "fact-1"
             assert retrieved.content == "Test fact"
             assert retrieved.category == OrgFactCategory.ADR
-            assert retrieved.version == 1
         finally:
             await store.disconnect()
 
@@ -178,7 +175,6 @@ class TestSQLiteOrgFactStoreOperations:
                 category=OrgFactCategory.ADR,
                 author=_AGENT_AUTHOR,
                 created_at=_NOW,
-                version=1,
             )
             await store.save(fact)
             retrieved = await store.get("f1")
@@ -361,7 +357,6 @@ class TestSQLiteOrgFactStoreOperations:
             "author_seniority": None,
             "author_is_human": 1,
             "created_at": _NOW.isoformat(),
-            "version": 1,
         }
         mock_row = AsyncMock()
         mock_row.__getitem__ = lambda self, key: malformed_row[key]

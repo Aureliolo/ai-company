@@ -205,32 +205,6 @@ class TestHybridBackendWrite:
         assert fact_id
         await backend.disconnect()
 
-    async def test_version_increments(self) -> None:
-        backend = await _make_backend()
-        await backend.write(
-            OrgFactWriteRequest(
-                content="Convention v1",
-                category=OrgFactCategory.CONVENTION,
-            ),
-            author=_SENIOR,
-        )
-        await backend.write(
-            OrgFactWriteRequest(
-                content="Convention v2",
-                category=OrgFactCategory.CONVENTION,
-            ),
-            author=_SENIOR,
-        )
-        results = await backend.query(
-            OrgMemoryQuery(
-                categories=frozenset({OrgFactCategory.CONVENTION}),
-                limit=10,
-            ),
-        )
-        versions = sorted(r.version for r in results)
-        assert versions == [1, 2]
-        await backend.disconnect()
-
     async def test_write_when_not_connected(self) -> None:
         backend = await _make_backend()
         await backend.disconnect()
@@ -247,7 +221,6 @@ class TestHybridBackendWrite:
         mock_store = AsyncMock()
         mock_store.connect = AsyncMock()
         mock_store.is_connected = True
-        mock_store.list_by_category = AsyncMock(return_value=())
         mock_store.save = AsyncMock(
             side_effect=RuntimeError("unexpected failure"),
         )
@@ -273,7 +246,6 @@ class TestHybridBackendWrite:
         mock_store = AsyncMock()
         mock_store.connect = AsyncMock()
         mock_store.is_connected = True
-        mock_store.list_by_category = AsyncMock(return_value=())
         mock_store.save = AsyncMock(side_effect=original_error)
 
         backend = HybridPromptRetrievalBackend(

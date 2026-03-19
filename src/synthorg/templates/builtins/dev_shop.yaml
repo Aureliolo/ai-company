@@ -21,7 +21,8 @@ template:
   company:
     type: "dev_shop"
     budget_monthly: {{ budget | default(75.0) }}
-    autonomy: 0.5
+    autonomy:
+      level: "semi"
 
   departments:
     - name: "engineering"

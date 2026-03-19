@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING
 from synthorg.budget._optimizer_helpers import (
     _build_downgrade_recommendation,
     _build_efficiency_from_records,
-    _classify_severity,
     _compute_alert_level,
     _compute_window_costs,
     _detect_spike_anomaly,
@@ -746,6 +745,4 @@ class CostOptimizer:
         )
 
 
-# Re-export _classify_severity for backwards compatibility with tests
-# that import it directly from optimizer.
-__all__ = ["CostOptimizer", "_classify_severity"]
+__all__ = ["CostOptimizer"]

@@ -134,7 +134,6 @@ class HybridPromptRetrievalBackend:
                 category=OrgFactCategory.CORE_POLICY,
                 author=_HUMAN_AUTHOR,
                 created_at=now,
-                version=1,
             )
             for i, policy in enumerate(self._core_policies)
         )
@@ -222,15 +221,12 @@ class HybridPromptRetrievalBackend:
             author_agent_id=author.agent_id,
         )
 
-        version = await self._compute_next_version(request.category)
-
         fact = OrgFact(
             id=fact_id,
             content=request.content,
             category=request.category,
             author=author,
             created_at=now,
-            version=version,
         )
 
         try:
@@ -253,45 +249,5 @@ class HybridPromptRetrievalBackend:
             logger.info(
                 ORG_MEMORY_WRITE_COMPLETE,
                 fact_id=fact_id,
-                version=version,
             )
             return fact_id
-
-    async def _compute_next_version(
-        self,
-        category: OrgFactCategory,
-    ) -> int:
-        """Compute the next version number for facts in this category.
-
-        Fetches all existing facts in the category and computes
-        ``max(version) + 1`` in Python.  Note: this loads all rows,
-        which may be inefficient for categories with many facts.
-
-        Concurrent writers in the same category may produce duplicate
-        versions because the read-then-write is not atomic.  The
-        ``OrgFactStore`` protocol does not expose transaction primitives,
-        so strict uniqueness cannot be guaranteed at this layer.
-
-        Args:
-            category: The fact category.
-
-        Returns:
-            Next version number (max existing + 1, or 1 if none).
-
-        Raises:
-            OrgMemoryQueryError: If the version lookup fails.
-        """
-        try:
-            existing = await self._store.list_by_category(category)
-        except Exception as exc:
-            logger.warning(
-                ORG_MEMORY_QUERY_FAILED,
-                operation="compute_next_version",
-                category=category.value,
-                error=str(exc),
-                error_type=type(exc).__name__,
-            )
-            raise
-        if not existing:
-            return 1
-        return max(f.version for f in existing) + 1

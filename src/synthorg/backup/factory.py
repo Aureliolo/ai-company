@@ -11,7 +11,6 @@ from synthorg.backup.models import BackupComponent
 from synthorg.backup.service import BackupService
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_STARTUP
-from synthorg.persistence.sqlite.migrations import SCHEMA_VERSION
 
 if TYPE_CHECKING:
     from synthorg.backup.config import BackupConfig
@@ -96,11 +95,7 @@ def build_backup_service(
             resolved_db_path=resolved_db_path,
             resolved_config_path=resolved_config_path,
         )
-        return BackupService(
-            backup_config,
-            handlers,
-            schema_version=SCHEMA_VERSION,
-        )
+        return BackupService(backup_config, handlers)
     except MemoryError, RecursionError:
         raise
     except Exception:

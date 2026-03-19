@@ -40,19 +40,13 @@ CREATE TABLE IF NOT EXISTS org_facts (
     author_agent_id TEXT,
     author_seniority TEXT,
     author_is_human INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL,
-    version INTEGER NOT NULL DEFAULT 1
+    created_at TEXT NOT NULL
 )
 """
 
 _CREATE_CATEGORY_INDEX_SQL = """\
 CREATE INDEX IF NOT EXISTS idx_org_facts_category
 ON org_facts (category)
-"""
-
-_CREATE_VERSION_INDEX_SQL = """\
-CREATE INDEX IF NOT EXISTS idx_org_facts_version
-ON org_facts (version)
 """
 
 
@@ -212,7 +206,6 @@ def _row_to_org_fact(row: aiosqlite.Row) -> OrgFact:
             category=OrgFactCategory(row["category"]),
             author=author,
             created_at=created_at,
-            version=row["version"],
         )
     except (KeyError, ValueError, ValidationError) as exc:
         logger.warning(
@@ -282,7 +275,6 @@ class SQLiteOrgFactStore:
         db = self._require_connected()
         await db.execute(_CREATE_TABLE_SQL)
         await db.execute(_CREATE_CATEGORY_INDEX_SQL)
-        await db.execute(_CREATE_VERSION_INDEX_SQL)
         await db.commit()
 
     async def disconnect(self) -> None:
@@ -317,7 +309,7 @@ class SQLiteOrgFactStore:
         """Persist a fact to the database.
 
         Uses ``INSERT`` (not ``INSERT OR REPLACE``) to preserve the
-        append-only, versioned audit trail.  Duplicate IDs raise
+        append-only audit trail.  Duplicate IDs raise
         ``OrgMemoryWriteError``.
 
         Args:
@@ -332,8 +324,8 @@ class SQLiteOrgFactStore:
             await db.execute(
                 "INSERT INTO org_facts "
                 "(id, content, category, author_agent_id, "
-                "author_seniority, author_is_human, created_at, version) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "author_seniority, author_is_human, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (
                     fact.id,
                     fact.content,
@@ -342,7 +334,6 @@ class SQLiteOrgFactStore:
                     fact.author.seniority.value if fact.author.seniority else None,
                     int(fact.author.is_human),
                     fact.created_at.isoformat(),
-                    fact.version,
                 ),
             )
             await db.commit()

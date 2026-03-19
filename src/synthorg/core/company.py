@@ -331,29 +331,11 @@ class Department(BaseModel):
         return self
 
 
-def _float_to_autonomy_level(value: float) -> AutonomyLevel:
-    """Map a 0.0-1.0 float to an AutonomyLevel for backward compatibility.
-
-    Thresholds: 0.0-0.24 → locked, 0.25-0.49 → supervised,
-    0.5-0.79 → semi, 0.8-1.0 → full.
-    """
-    if value < 0.25:  # noqa: PLR2004
-        return AutonomyLevel.LOCKED
-    if value < 0.5:  # noqa: PLR2004
-        return AutonomyLevel.SUPERVISED
-    if value < 0.8:  # noqa: PLR2004
-        return AutonomyLevel.SEMI
-    return AutonomyLevel.FULL
-
-
 class CompanyConfig(BaseModel):
     """Company-wide configuration settings.
 
     Attributes:
         autonomy: Autonomy configuration (level + presets).
-            Accepts a bare float (0.0-1.0) for backward compatibility;
-            the float is converted to an ``AutonomyConfig`` via a
-            before-validator.
         budget_monthly: Monthly budget in USD.
         communication_pattern: Default communication pattern name.
         tool_access_default: Default tool access for all agents.
@@ -369,22 +351,6 @@ class CompanyConfig(BaseModel):
         default_factory=WaitForeverConfig,
         description="Timeout policy for pending approval items",
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _coerce_autonomy_float(cls, data: object) -> object:
-        """Accept a bare float for autonomy and convert to AutonomyConfig."""
-        if not isinstance(data, dict):
-            return data
-        raw = data.get("autonomy")
-        if isinstance(raw, (int, float)) and not isinstance(raw, bool):
-            value = float(raw)
-            if not (0.0 <= value <= 1.0):
-                msg = f"autonomy float must be 0.0-1.0, got {value}"
-                raise ValueError(msg)
-            level = _float_to_autonomy_level(value)
-            return {**data, "autonomy": {"level": level.value}}
-        return data
 
     budget_monthly: float = Field(
         default=100.0,

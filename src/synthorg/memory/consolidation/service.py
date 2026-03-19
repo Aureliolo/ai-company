@@ -319,7 +319,7 @@ class MemoryConsolidationService:
             Tuple of (success flag, index entry or ``None``).
         """
         assert self._archival_store is not None  # noqa: S101
-        archival_mode = mode_map.get(entry.id)
+        archival_mode = mode_map.get(entry.id, ArchivalMode.EXTRACTIVE)
         archival_entry = ArchivalEntry(
             original_id=entry.id,
             agent_id=entry.agent_id,
@@ -347,13 +347,9 @@ class MemoryConsolidationService:
             agent_id=agent_id,
             archival_mode=archival_mode,
         )
-        index_entry = (
-            ArchivalIndexEntry(
-                original_id=entry.id,
-                archival_id=archival_id,
-                mode=archival_mode,
-            )
-            if archival_mode is not None
-            else None
+        index_entry = ArchivalIndexEntry(
+            original_id=entry.id,
+            archival_id=archival_id,
+            mode=archival_mode,
         )
         return True, index_entry

@@ -71,10 +71,8 @@ class TestBackupComponent:
 @pytest.mark.unit
 class TestBackupManifest:
     def test_creation_with_all_fields(self, sample_manifest: BackupManifest) -> None:
-        assert sample_manifest.version == "1"
         assert sample_manifest.synthorg_version == "0.3.2"
         assert sample_manifest.trigger == BackupTrigger.MANUAL
-        assert sample_manifest.db_schema_version == 1
         assert sample_manifest.size_bytes == 1024
         assert sample_manifest.backup_id == "aabbccdd0011"
 
@@ -94,7 +92,7 @@ class TestBackupManifest:
 
     def test_frozen(self, sample_manifest: BackupManifest) -> None:
         with pytest.raises(ValidationError):
-            sample_manifest.version = "2"  # type: ignore[misc]
+            sample_manifest.synthorg_version = "99"  # type: ignore[misc]
 
     def test_rejects_negative_size_bytes(self) -> None:
         with pytest.raises(ValidationError):
@@ -103,21 +101,7 @@ class TestBackupManifest:
                 timestamp="2026-03-18T12:00:00+00:00",
                 trigger=BackupTrigger.MANUAL,
                 components=(BackupComponent.CONFIG,),
-                db_schema_version=1,
                 size_bytes=-1,
-                checksum="sha256:" + "b" * 64,
-                backup_id="aabbccdd0099",
-            )
-
-    def test_rejects_negative_db_schema_version(self) -> None:
-        with pytest.raises(ValidationError):
-            BackupManifest(
-                synthorg_version="0.3.2",
-                timestamp="2026-03-18T12:00:00+00:00",
-                trigger=BackupTrigger.MANUAL,
-                components=(BackupComponent.CONFIG,),
-                db_schema_version=-1,
-                size_bytes=100,
                 checksum="sha256:" + "b" * 64,
                 backup_id="aabbccdd0099",
             )
@@ -129,7 +113,6 @@ class TestBackupManifest:
                 timestamp="2026-03-18T12:00:00+00:00",
                 trigger=BackupTrigger.MANUAL,
                 components=(BackupComponent.CONFIG,),
-                db_schema_version=1,
                 size_bytes=100,
                 checksum="sha256:" + "b" * 64,
                 backup_id="",
@@ -142,7 +125,6 @@ class TestBackupManifest:
                 timestamp="not-a-date",
                 trigger=BackupTrigger.MANUAL,
                 components=(BackupComponent.CONFIG,),
-                db_schema_version=1,
                 size_bytes=100,
                 checksum="sha256:" + "b" * 64,
                 backup_id="aabbccdd0099",
@@ -155,7 +137,6 @@ class TestBackupManifest:
                 timestamp="2026-03-18T12:00:00+00:00",
                 trigger=BackupTrigger.MANUAL,
                 components=(BackupComponent.CONFIG,),
-                db_schema_version=1,
                 size_bytes=100,
                 checksum="sha256:tooshort",
                 backup_id="aabbccdd0099",

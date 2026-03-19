@@ -89,7 +89,7 @@ class OrgFactAuthor(BaseModel):
 
 
 class OrgFact(BaseModel):
-    """An organizational fact — a piece of shared company-wide knowledge.
+    """An organizational fact -- a piece of shared company-wide knowledge.
 
     Attributes:
         id: Unique identifier for this fact.
@@ -97,7 +97,6 @@ class OrgFact(BaseModel):
         category: Category classification.
         author: Who created this fact.
         created_at: Creation timestamp.
-        version: Monotonically increasing version number.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -107,7 +106,6 @@ class OrgFact(BaseModel):
     category: OrgFactCategory = Field(description="Category classification")
     author: OrgFactAuthor = Field(description="Who created this fact")
     created_at: AwareDatetime = Field(description="Creation timestamp")
-    version: int = Field(ge=1, description="Fact version number")
 
 
 class OrgFactWriteRequest(BaseModel):

@@ -21,7 +21,8 @@ template:
   company:
     type: "research_lab"
     budget_monthly: {{ budget | default(60.0) }}
-    autonomy: 0.5
+    autonomy:
+      level: "semi"
 
   departments:
     - name: "engineering"

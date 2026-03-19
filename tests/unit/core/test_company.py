@@ -229,16 +229,10 @@ class TestCompanyConfig:
         assert cfg.communication_pattern == "hybrid"
         assert cfg.tool_access_default == ()
 
-    def test_autonomy_float_backward_compat(self) -> None:
-        """Accept bare float and convert to AutonomyConfig via before-validator."""
-        low = CompanyConfig(autonomy=0.0)  # type: ignore[arg-type]
-        high = CompanyConfig(autonomy=1.0)  # type: ignore[arg-type]
-        mid = CompanyConfig(autonomy=0.5)  # type: ignore[arg-type]
-        supervised = CompanyConfig(autonomy=0.3)  # type: ignore[arg-type]
-        assert low.autonomy.level == AutonomyLevel.LOCKED
-        assert high.autonomy.level == AutonomyLevel.FULL
-        assert mid.autonomy.level == AutonomyLevel.SEMI
-        assert supervised.autonomy.level == AutonomyLevel.SUPERVISED
+    def test_autonomy_float_rejected(self) -> None:
+        """Bare float for autonomy is no longer accepted."""
+        with pytest.raises(ValidationError):
+            CompanyConfig(autonomy=0.5)  # type: ignore[arg-type]
 
     def test_autonomy_config_direct(self) -> None:
         """Accept AutonomyConfig dict directly."""

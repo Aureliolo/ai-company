@@ -40,7 +40,6 @@ def retention_config() -> RetentionConfig:
 def sample_manifest() -> BackupManifest:
     """A fully-populated BackupManifest for testing."""
     return BackupManifest(
-        version="1",
         synthorg_version="0.3.2",
         timestamp="2026-03-18T12:00:00+00:00",
         trigger=BackupTrigger.MANUAL,
@@ -49,7 +48,6 @@ def sample_manifest() -> BackupManifest:
             BackupComponent.MEMORY,
             BackupComponent.CONFIG,
         ),
-        db_schema_version=1,
         size_bytes=1024,
         checksum="sha256:" + "a" * 64,
         backup_id="aabbccdd0011",

@@ -243,8 +243,7 @@ class CompanyTemplate(BaseModel):
         workflow: Workflow name.
         communication: Communication pattern name.
         budget_monthly: Default monthly budget in USD.
-        autonomy: Autonomy level (0.0 = full human oversight,
-            1.0 = fully autonomous).
+        autonomy: Autonomy configuration dict (e.g. ``{"level": "semi"}``).
         workflow_handoffs: Cross-department workflow handoff definitions.
         escalation_paths: Cross-department escalation path definitions.
         extends: Parent template name for inheritance (``None`` for
@@ -278,11 +277,9 @@ class CompanyTemplate(BaseModel):
         ge=0.0,
         description="Default monthly budget in USD",
     )
-    autonomy: float = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="Autonomy level",
+    autonomy: dict[str, Any] = Field(
+        default_factory=lambda: {"level": "semi"},
+        description="Autonomy configuration",
     )
     workflow_handoffs: tuple[dict[str, Any], ...] = Field(
         default=(),

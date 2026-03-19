@@ -178,8 +178,7 @@ class ArchivalEntry(BaseModel):
         metadata: Associated metadata.
         created_at: Original creation timestamp.
         archived_at: When this entry was archived.
-        archival_mode: How this entry was archived (``None`` for
-            legacy entries created before dual-mode archival).
+        archival_mode: How this entry was archived.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -194,9 +193,8 @@ class ArchivalEntry(BaseModel):
     )
     created_at: AwareDatetime = Field(description="Original creation timestamp")
     archived_at: AwareDatetime = Field(description="When this entry was archived")
-    archival_mode: ArchivalMode | None = Field(
-        default=None,
-        description="Archival mode used (None for legacy entries)",
+    archival_mode: ArchivalMode = Field(
+        description="Archival mode used for this entry",
     )
 
     @model_validator(mode="after")

@@ -247,7 +247,7 @@ class TestCompanyTemplate:
         assert t.workflow == "agile_kanban"
         assert t.communication == "hybrid"
         assert t.budget_monthly == 50.0
-        assert t.autonomy == 0.5
+        assert t.autonomy == {"level": "semi"}
 
     def test_agent_count_below_min_rejected(
         self,
@@ -324,12 +324,13 @@ class TestCompanyTemplate:
         )
         assert len(t.variables) == 2
 
-    def test_autonomy_out_of_range_rejected(
+    def test_autonomy_float_rejected(
         self,
         make_template_dict: Callable[..., dict[str, Any]],
     ) -> None:
+        """Bare float for autonomy is no longer accepted."""
         with pytest.raises(ValidationError):
-            CompanyTemplate(**make_template_dict(autonomy=1.5))
+            CompanyTemplate(**make_template_dict(autonomy=0.5))
 
     def test_negative_budget_rejected(
         self,

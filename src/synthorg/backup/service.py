@@ -78,22 +78,17 @@ class BackupService:
     Args:
         config: Backup configuration.
         handlers: Component handlers keyed by component enum.
-        schema_version: Current persistence DB schema version,
-            used for both backup manifest creation and restore
-            compatibility checks.
     """
 
     def __init__(
         self,
         config: BackupConfig,
         handlers: dict[BackupComponent, ComponentHandler],
-        schema_version: int,
     ) -> None:
         self._config = config
         self._handlers: MappingProxyType[BackupComponent, ComponentHandler] = (
             MappingProxyType(deepcopy(handlers))
         )
-        self._schema_version = schema_version
         self._backup_lock = asyncio.Lock()
         self._backup_path = Path(config.path)
         self._retention = RetentionManager(config.retention, self._backup_path)
@@ -245,7 +240,6 @@ class BackupService:
             timestamp=timestamp,
             trigger=trigger,
             components=tuple(backed_up_components),
-            db_schema_version=self._schema_version,
             size_bytes=total_size,
             checksum=f"sha256:{checksum}",
             backup_id=backup_id,
@@ -352,21 +346,6 @@ class BackupService:
 
         manifest = await self._load_manifest(backup_id)
         restore_components = components or manifest.components
-
-        # Schema compatibility check
-        if manifest.db_schema_version > self._schema_version:
-            logger.warning(
-                BACKUP_RESTORE_FAILED,
-                backup_id=backup_id,
-                reason="schema version mismatch",
-                backup_version=manifest.db_schema_version,
-                current_version=self._schema_version,
-            )
-            msg = (
-                f"Backup schema version {manifest.db_schema_version} "
-                f"is newer than current {self._schema_version}"
-            )
-            raise RestoreError(msg)
 
         backup_dir = self._find_backup_dir(backup_id)
         temp_extracted = False

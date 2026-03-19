@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 import aiosqlite
 import pytest
 
-from synthorg.persistence.sqlite.migrations import run_migrations
+from synthorg.persistence.sqlite.migrations import apply_schema
 from synthorg.persistence.sqlite.settings_repo import SQLiteSettingsRepository
 
 
@@ -14,7 +14,7 @@ async def repo() -> AsyncGenerator[SQLiteSettingsRepository]:
     """Create an in-memory SQLite DB with migrations and return repo."""
     db = await aiosqlite.connect(":memory:")
     db.row_factory = aiosqlite.Row
-    await run_migrations(db)
+    await apply_schema(db)
     repo = SQLiteSettingsRepository(db)
     yield repo
     await db.close()

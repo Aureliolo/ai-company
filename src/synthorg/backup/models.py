@@ -42,12 +42,10 @@ class BackupManifest(BaseModel):
     or archive.
 
     Attributes:
-        version: Manifest schema version.
         synthorg_version: SynthOrg application version at backup time.
         timestamp: ISO 8601 timestamp of backup creation.
         trigger: What initiated the backup.
         components: Components included in this backup.
-        db_schema_version: Persistence DB schema version at backup time.
         size_bytes: Total backup size in bytes.
         checksum: SHA-256 checksum of backup contents (``sha256:<hex>``).
         backup_id: Unique identifier for this backup (12-char hex).
@@ -55,12 +53,10 @@ class BackupManifest(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    version: NotBlankStr = "1"
     synthorg_version: NotBlankStr
     timestamp: NotBlankStr
     trigger: BackupTrigger
     components: tuple[BackupComponent, ...]
-    db_schema_version: int = Field(ge=0)
     size_bytes: int = Field(ge=0)
     checksum: NotBlankStr
     backup_id: NotBlankStr

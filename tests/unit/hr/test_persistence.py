@@ -19,7 +19,7 @@ from synthorg.persistence.sqlite.hr_repositories import (
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
-from synthorg.persistence.sqlite.migrations import run_migrations
+from synthorg.persistence.sqlite.migrations import apply_schema
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -30,7 +30,7 @@ async def db() -> AsyncGenerator[aiosqlite.Connection]:
     """In-memory SQLite connection with all migrations applied."""
     conn = await aiosqlite.connect(":memory:")
     conn.row_factory = aiosqlite.Row
-    await run_migrations(conn)
+    await apply_schema(conn)
     yield conn
     await conn.close()
 

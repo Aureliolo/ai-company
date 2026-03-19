@@ -64,6 +64,7 @@ class TestArchivalEntry:
             category=MemoryCategory.EPISODIC,
             created_at=_NOW,
             archived_at=_NOW,
+            archival_mode=ArchivalMode.EXTRACTIVE,
         )
         assert entry.original_id == "mem-1"
         assert entry.category == MemoryCategory.EPISODIC
@@ -77,6 +78,7 @@ class TestArchivalEntry:
             metadata=MemoryMetadata(source="task-123", confidence=0.9),
             created_at=_NOW,
             archived_at=_NOW,
+            archival_mode=ArchivalMode.EXTRACTIVE,
         )
         assert entry.metadata.source == "task-123"
 
@@ -88,6 +90,7 @@ class TestArchivalEntry:
             category=MemoryCategory.WORKING,
             created_at=_NOW,
             archived_at=_NOW,
+            archival_mode=ArchivalMode.EXTRACTIVE,
         )
         with pytest.raises(ValidationError):
             entry.content = "changed"  # type: ignore[misc]
@@ -106,6 +109,7 @@ class TestArchivalEntry:
                 category=MemoryCategory.EPISODIC,
                 created_at=created,
                 archived_at=archived,
+                archival_mode=ArchivalMode.EXTRACTIVE,
             )
 
 
@@ -362,17 +366,17 @@ class TestConsolidationResultDualMode:
 class TestArchivalEntryDualMode:
     """ArchivalEntry new archival_mode field."""
 
-    def test_backward_compatible_default(self) -> None:
-        """Existing code creating ArchivalEntry without mode still works."""
-        entry = ArchivalEntry(
-            original_id="mem-1",
-            agent_id="agent-1",
-            content="test",
-            category=MemoryCategory.EPISODIC,
-            created_at=_NOW,
-            archived_at=_NOW,
-        )
-        assert entry.archival_mode is None
+    def test_archival_mode_required(self) -> None:
+        """Omitting archival_mode raises ValidationError."""
+        with pytest.raises(ValidationError):
+            ArchivalEntry(  # type: ignore[call-arg]
+                original_id="mem-1",
+                agent_id="agent-1",
+                content="test",
+                category=MemoryCategory.EPISODIC,
+                created_at=_NOW,
+                archived_at=_NOW,
+            )
 
     def test_with_archival_mode(self) -> None:
         entry = ArchivalEntry(

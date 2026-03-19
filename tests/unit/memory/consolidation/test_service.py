@@ -435,8 +435,10 @@ class TestArchivalModeAware:
         assert index_map["m3"].mode == ArchivalMode.EXTRACTIVE
         assert "m2" not in index_map
 
-    async def test_archival_no_mode_assignments_backward_compat(self) -> None:
-        """Strategy without dual-mode returns empty mode_assignments."""
+    async def test_archival_no_mode_assignments_uses_extractive(
+        self,
+    ) -> None:
+        """Strategy without mode_assignments defaults to EXTRACTIVE."""
         entries = (_make_entry("m1"),)
         backend = _make_backend_mock(entries=entries)
 
@@ -461,8 +463,7 @@ class TestArchivalModeAware:
         )
         result = await service.run_consolidation(_AGENT_ID)
 
-        # Entry archived with archival_mode=None (legacy)
         call_args = archival.archive.call_args[0][0]
-        assert call_args.archival_mode is None
-        # No index entries for entries without mode assignments
-        assert result.archival_index == ()
+        assert call_args.archival_mode == ArchivalMode.EXTRACTIVE
+        assert len(result.archival_index) == 1
+        assert result.archival_index[0].mode == ArchivalMode.EXTRACTIVE

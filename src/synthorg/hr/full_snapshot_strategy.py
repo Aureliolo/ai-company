@@ -17,7 +17,7 @@ from synthorg.core.types import NotBlankStr
 from synthorg.hr.archival_protocol import ArchivalResult
 from synthorg.hr.errors import MemoryArchivalError
 from synthorg.memory.consolidation.archival import ArchivalStore  # noqa: TC001
-from synthorg.memory.consolidation.models import ArchivalEntry
+from synthorg.memory.consolidation.models import ArchivalEntry, ArchivalMode
 from synthorg.memory.models import MemoryEntry, MemoryQuery
 from synthorg.memory.org.models import OrgFactAuthor, OrgFactWriteRequest
 from synthorg.memory.org.protocol import OrgMemoryBackend  # noqa: TC001
@@ -169,6 +169,7 @@ class FullSnapshotStrategy:
                     metadata=entry.metadata,
                     created_at=entry.created_at,
                     archived_at=now,
+                    archival_mode=ArchivalMode.EXTRACTIVE,
                 )
                 await archival_store.archive(archival_entry)
                 archived_count += 1

@@ -45,7 +45,6 @@ def _make_manifest(
         timestamp="2026-03-18T12:00:00+00:00",
         trigger=trigger,
         components=(BackupComponent.PERSISTENCE,),
-        db_schema_version=1,
         size_bytes=4096,
         checksum="sha256:" + "a" * 64,
         backup_id=backup_id,

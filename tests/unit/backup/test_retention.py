@@ -21,12 +21,10 @@ def _make_manifest(
 ) -> dict[str, object]:
     """Build a raw manifest dict for writing to disk."""
     return BackupManifest(
-        version="1",
         synthorg_version="0.3.2",
         timestamp=timestamp,
         trigger=trigger,
         components=(BackupComponent.PERSISTENCE,),
-        db_schema_version=1,
         size_bytes=100,
         checksum="sha256:" + "a" * 64,
         backup_id=backup_id,

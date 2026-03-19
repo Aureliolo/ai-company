@@ -21,7 +21,8 @@ template:
   company:
     type: "agency"
     budget_monthly: {{ budget | default(100.0) }}
-    autonomy: 0.5
+    autonomy:
+      level: "semi"
 
   departments:
     - name: "operations"

@@ -39,7 +39,7 @@ from synthorg.persistence.sqlite.hr_repositories import (
     SQLiteLifecycleEventRepository,
     SQLiteTaskMetricRepository,
 )
-from synthorg.persistence.sqlite.migrations import run_migrations
+from synthorg.persistence.sqlite.migrations import apply_schema
 from synthorg.persistence.sqlite.parked_context_repo import (
     SQLiteParkedContextRepository,
 )
@@ -247,17 +247,17 @@ class SQLitePersistenceBackend:
         return healthy
 
     async def migrate(self) -> None:
-        """Run pending schema migrations.
+        """Apply the database schema.
 
         Raises:
             PersistenceConnectionError: If not connected.
-            MigrationError: If migration fails.
+            MigrationError: If schema application fails.
         """
         if self._db is None:
             msg = "Cannot migrate: not connected"
             logger.warning(PERSISTENCE_BACKEND_NOT_CONNECTED, error=msg)
             raise PersistenceConnectionError(msg)
-        await run_migrations(self._db)
+        await apply_schema(self._db)
 
     @property
     def is_connected(self) -> bool:

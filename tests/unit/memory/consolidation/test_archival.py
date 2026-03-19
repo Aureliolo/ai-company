@@ -6,7 +6,7 @@ import pytest
 
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.consolidation.archival import ArchivalStore
-from synthorg.memory.consolidation.models import ArchivalEntry
+from synthorg.memory.consolidation.models import ArchivalEntry, ArchivalMode
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -69,6 +69,7 @@ class TestMockArchivalStoreRoundTrip:
             category=MemoryCategory.EPISODIC,
             created_at=_NOW,
             archived_at=_NOW,
+            archival_mode=ArchivalMode.EXTRACTIVE,
         )
         archive_id = await store.archive(entry)
         assert archive_id == "archive-1"
@@ -86,6 +87,7 @@ class TestMockArchivalStoreRoundTrip:
             category=MemoryCategory.WORKING,
             created_at=_NOW,
             archived_at=_NOW,
+            archival_mode=ArchivalMode.EXTRACTIVE,
         )
         archive_id = await store.archive(entry)
         restored = await store.restore("agent-1", archive_id)
@@ -105,6 +107,7 @@ class TestMockArchivalStoreRoundTrip:
             category=MemoryCategory.WORKING,
             created_at=_NOW,
             archived_at=_NOW,
+            archival_mode=ArchivalMode.EXTRACTIVE,
         )
         await store.archive(entry)
         assert await store.count("agent-1") == 1

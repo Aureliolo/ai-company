@@ -21,7 +21,8 @@ template:
   company:
     type: "product_team"
     budget_monthly: {{ budget | default(80.0) }}
-    autonomy: 0.5
+    autonomy:
+      level: "semi"
 
   departments:
     - name: "product"

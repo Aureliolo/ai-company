@@ -55,7 +55,7 @@ def _make_service(
             BackupComponent.MEMORY: _make_handler(BackupComponent.MEMORY),
             BackupComponent.CONFIG: _make_handler(BackupComponent.CONFIG),
         }
-    return BackupService(config, handlers, schema_version=1)
+    return BackupService(config, handlers)
 
 
 _EMPTY_DIR_CHECKSUM = (
@@ -74,12 +74,10 @@ def _create_backup_on_disk(
     backup_dir = backup_path / dir_name
     backup_dir.mkdir(parents=True, exist_ok=True)
     manifest = BackupManifest(
-        version="1",
         synthorg_version="0.3.2",
         timestamp=timestamp,
         trigger=trigger,
         components=(BackupComponent.PERSISTENCE,),
-        db_schema_version=1,
         size_bytes=100,
         checksum=_EMPTY_DIR_CHECKSUM,
         backup_id=backup_id,

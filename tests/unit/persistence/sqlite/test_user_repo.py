@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 from synthorg.api.auth.models import ApiKey, User
 from synthorg.api.guards import HumanRole
-from synthorg.persistence.sqlite.migrations import run_migrations
+from synthorg.persistence.sqlite.migrations import apply_schema
 from synthorg.persistence.sqlite.user_repo import (
     SQLiteApiKeyRepository,
     SQLiteUserRepository,
@@ -23,7 +23,7 @@ async def db() -> AsyncGenerator[aiosqlite.Connection]:
     """Create an in-memory SQLite DB with schema applied."""
     conn = await aiosqlite.connect(":memory:")
     conn.row_factory = aiosqlite.Row
-    await run_migrations(conn)
+    await apply_schema(conn)
     yield conn
     await conn.close()
 

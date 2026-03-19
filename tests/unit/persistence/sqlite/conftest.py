@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import aiosqlite
 import pytest
 
-from synthorg.persistence.sqlite.migrations import run_migrations
+from synthorg.persistence.sqlite.migrations import apply_schema
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -24,11 +24,11 @@ async def memory_db() -> AsyncGenerator[aiosqlite.Connection]:
 
 @pytest.fixture
 async def migrated_db() -> AsyncGenerator[aiosqlite.Connection]:
-    """In-memory SQLite connection with all schema migrations applied."""
+    """In-memory SQLite connection with schema applied."""
     db = await aiosqlite.connect(":memory:")
     try:
         db.row_factory = aiosqlite.Row
-        await run_migrations(db)
+        await apply_schema(db)
         yield db
     finally:
         await db.close()

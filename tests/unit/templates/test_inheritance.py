@@ -161,13 +161,16 @@ class TestMergeTemplateConfigs:
     def test_config_deep_merge(self) -> None:
         """Config dicts are deep-merged."""
         parent: dict[str, Any] = {
-            "config": {"autonomy": 0.5, "budget_monthly": 100.0},
+            "config": {
+                "autonomy": {"level": "semi"},
+                "budget_monthly": 100.0,
+            },
         }
         child: dict[str, Any] = {
-            "config": {"autonomy": 0.8},
+            "config": {"autonomy": {"level": "full"}},
         }
         result = merge_template_configs(parent, child)
-        assert result["config"]["autonomy"] == 0.8
+        assert result["config"]["autonomy"] == {"level": "full"}
         assert result["config"]["budget_monthly"] == 100.0
 
     def test_full_merge_integration(self) -> None:
@@ -176,7 +179,7 @@ class TestMergeTemplateConfigs:
             "company_name": "Parent",
             "agents": [{"role": "CEO", "department": "exec"}],
             "departments": [{"name": "exec"}],
-            "config": {"autonomy": 0.5},
+            "config": {"autonomy": {"level": "semi"}},
         }
         child: dict[str, Any] = {
             "company_name": "Child",
@@ -188,7 +191,7 @@ class TestMergeTemplateConfigs:
         assert result["company_name"] == "Child"
         assert len(result["agents"]) == 2
         assert len(result["departments"]) == 2
-        assert result["config"]["autonomy"] == 0.5
+        assert result["config"]["autonomy"] == {"level": "semi"}
         assert result["config"]["budget_monthly"] == 200.0
 
     def test_workflow_handoffs_child_replaces(self) -> None:

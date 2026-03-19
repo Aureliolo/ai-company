@@ -159,7 +159,6 @@ def build_default_tools_from_config(
     *,
     workspace: Path,
     config: RootConfig,
-    sandbox: SandboxBackend | None = None,
     sandbox_backends: Mapping[str, SandboxBackend] | None = None,
 ) -> tuple[BaseTool, ...]:
     """Build default tools using parameters from a ``RootConfig``.
@@ -172,15 +171,13 @@ def build_default_tools_from_config(
     their respective tool builders are added to the factory.
 
     Sandbox resolution priority:
-        1. Explicit *sandbox* -- backward-compat single backend for all tools.
-        2. Explicit *sandbox_backends* -- per-category resolution via config.
-        3. Neither -- auto-build backends from ``config.sandboxing``.
+        1. Explicit *sandbox_backends* -- per-category resolution
+           via config.
+        2. Auto-build backends from ``config.sandboxing``.
 
     Args:
         workspace: Absolute path to the agent workspace root.
         config: Validated root configuration.
-        sandbox: Optional single sandbox backend (overrides per-category
-            resolution when provided).
         sandbox_backends: Pre-built mapping of backend name to instance.
             When provided, per-category resolution uses this map
             instead of auto-building backends.
@@ -197,14 +194,6 @@ def build_default_tools_from_config(
         TOOL_FACTORY_CONFIG_ENTRY,
         source="config",
     )
-
-    if sandbox is not None:
-        # Explicit single backend -- backward compat
-        return build_default_tools(
-            workspace=workspace,
-            git_clone_policy=config.git_clone,
-            sandbox=sandbox,
-        )
 
     vc_sandbox = _resolve_vc_sandbox(
         config=config,

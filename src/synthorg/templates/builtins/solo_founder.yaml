@@ -21,7 +21,8 @@ template:
   company:
     type: "solo_founder"
     budget_monthly: {{ budget | default(25.0) }}
-    autonomy: 0.5
+    autonomy:
+      level: "semi"
 
   departments:
     - name: "executive"

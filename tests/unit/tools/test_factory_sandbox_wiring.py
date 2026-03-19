@@ -96,42 +96,6 @@ class TestFactorySandboxWiring:
         for tool in _git_tools(tools):
             assert tool._sandbox is mock_instance
 
-    def test_explicit_sandbox_param_takes_precedence(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        """Explicit sandbox= param overrides config-based resolution."""
-        explicit_sandbox = MagicMock(spec=SandboxBackend)
-        config = RootConfig(company_name="test-corp")
-
-        tools = build_default_tools_from_config(
-            workspace=tmp_path,
-            config=config,
-            sandbox=explicit_sandbox,
-        )
-
-        for tool in _git_tools(tools):
-            assert tool._sandbox is explicit_sandbox
-
-    def test_explicit_sandbox_overrides_sandbox_backends(
-        self,
-        tmp_path: Path,
-    ) -> None:
-        """sandbox= takes precedence even when sandbox_backends= also provided."""
-        explicit = MagicMock(spec=SandboxBackend)
-        backends_map = {"subprocess": MagicMock(spec=SandboxBackend)}
-        config = RootConfig(company_name="test-corp")
-
-        tools = build_default_tools_from_config(
-            workspace=tmp_path,
-            config=config,
-            sandbox=explicit,
-            sandbox_backends=backends_map,
-        )
-
-        for tool in _git_tools(tools):
-            assert tool._sandbox is explicit
-
     @patch(
         "synthorg.tools.sandbox.factory.SubprocessSandbox",
     )
@@ -179,18 +143,23 @@ class TestFactorySandboxWiring:
         for tool in _git_tools(tools):
             assert tool._sandbox is mock_instance
 
+    @patch(
+        "synthorg.tools.sandbox.factory.SubprocessSandbox",
+    )
     def test_file_system_tools_unaffected(
         self,
+        mock_subprocess_cls: MagicMock,
         tmp_path: Path,
     ) -> None:
         """File system tools have no sandbox attribute regardless of config."""
-        mock_sandbox = MagicMock(spec=SandboxBackend)
+        mock_subprocess_cls.return_value = MagicMock(
+            spec=SandboxBackend,
+        )
         config = RootConfig(company_name="test-corp")
 
         tools = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            sandbox=mock_sandbox,
         )
 
         fs_tools = [t for t in tools if t.name in _FS_TOOL_NAMES]
@@ -211,11 +180,13 @@ class TestFactorySandboxWiring:
         mock_subprocess_cls.return_value = MagicMock(spec=SandboxBackend)
         config = RootConfig(company_name="test-corp")
 
-        # Explicit sandbox path
+        # Explicit sandbox_backends path
         tools_explicit = build_default_tools_from_config(
             workspace=tmp_path,
             config=config,
-            sandbox=MagicMock(spec=SandboxBackend),
+            sandbox_backends={
+                "subprocess": MagicMock(spec=SandboxBackend),
+            },
         )
 
         # Auto-build from config path

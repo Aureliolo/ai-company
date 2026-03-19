@@ -29,7 +29,8 @@ template:
   company:
     type: "full_company"
     budget_monthly: {{ budget | default(200.0) }}
-    autonomy: 0.5
+    autonomy:
+      level: "semi"
 
   departments:
     - name: "executive"
