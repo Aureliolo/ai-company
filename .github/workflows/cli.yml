@@ -313,7 +313,7 @@ jobs:
           # gh release upload finds draft releases (unlike GoReleaser's API).
           # --clobber overwrites if assets already exist (idempotent on re-run).
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-            cli/dist/*.tar.gz cli/dist/*.zip cli/dist/*.cdx.json \
+            cli/dist/*.tar.gz cli/dist/*.zip \
             cli/dist/checksums.txt cli/dist/checksums.txt.cosign.bundle
 
       - name: Attest build provenance (SLSA Level 3)
@@ -427,16 +427,6 @@ jobs:
             --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
           \`\`\`
           CLI_SLSA_BUNDLE_DATA -->
-
-          <!-- CLI_SBOM_DATA
-          CLI binary SBOMs (CycloneDX JSON):
-          - \`synthorg_linux_amd64.tar.gz.cdx.json\`
-          - \`synthorg_linux_arm64.tar.gz.cdx.json\`
-          - \`synthorg_darwin_amd64.tar.gz.cdx.json\`
-          - \`synthorg_darwin_arm64.tar.gz.cdx.json\`
-          - \`synthorg_windows_amd64.zip.cdx.json\`
-          - \`synthorg_windows_arm64.zip.cdx.json\`
-          CLI_SBOM_DATA -->
           NOTES
           )"
 

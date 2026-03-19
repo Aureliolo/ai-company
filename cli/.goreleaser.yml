@@ -40,13 +40,6 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
-sboms:
-  - artifacts: archive
-    cmd: syft
-    args: ["scan", "file:$artifact", "--output", "cyclonedx-json=$document"]
-    documents:
-      - "{{ .ArtifactName }}.cdx.json"
-
 release:
   # Skip GoReleaser's release management — Release Please owns the GitHub
   # Release (created as draft). Assets are uploaded via gh release upload
