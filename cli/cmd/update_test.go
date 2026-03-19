@@ -162,6 +162,52 @@ func TestRedactSecret(t *testing.T) {
 			line: `      SERVICE_CREDENTIALS: "creds"`,
 			want: `      SERVICE_CREDENTIALS: [REDACTED]`,
 		},
+		// Edge cases
+		{
+			name: "empty value after colon",
+			line: `      JWT_SECRET:`,
+			want: `      JWT_SECRET: [REDACTED]`,
+		},
+		{
+			name: "single-quoted value",
+			line: `      JWT_SECRET: 'single-quoted'`,
+			want: `      JWT_SECRET: [REDACTED]`,
+		},
+		{
+			name: "keyword as substring still redacts",
+			line: `      NOT_A_SECRET_KEY: "value"`,
+			want: `      NOT_A_SECRET_KEY: [REDACTED]`,
+		},
+		{
+			name: "tab indentation",
+			line: "\t\tDB_PASSWORD: \"pass\"",
+			want: "\t\tDB_PASSWORD: [REDACTED]",
+		},
+		{
+			name: "value with inline comment",
+			line: `      JWT_SECRET: "val" # this is a comment`,
+			want: `      JWT_SECRET: [REDACTED]`,
+		},
+		{
+			name: "multiple colons in value",
+			line: `      JWT_SECRET: "host:port:extra"`,
+			want: `      JWT_SECRET: [REDACTED]`,
+		},
+		{
+			name: "mixed case keyword",
+			line: `      My_SeCrEt_Key: "mixed"`,
+			want: `      My_SeCrEt_Key: [REDACTED]`,
+		},
+		{
+			name: "no leading whitespace",
+			line: `SECRET_KEY: "toplevel"`,
+			want: `SECRET_KEY: [REDACTED]`,
+		},
+		{
+			name: "non-secret with colon in value unchanged",
+			line: `      SYNTHORG_HOST: "0.0.0.0"`,
+			want: `      SYNTHORG_HOST: "0.0.0.0"`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
