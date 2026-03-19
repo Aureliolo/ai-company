@@ -24,7 +24,7 @@ synthorg status   # Show container health and versions
 
 The web dashboard is at [http://localhost:3000](http://localhost:3000) (default port).
 
-Other CLI commands: `synthorg stop`, `synthorg logs`, `synthorg update`, `synthorg doctor`, `synthorg uninstall`.
+Other CLI commands: `synthorg stop`, `synthorg logs`, `synthorg update`, `synthorg doctor`, `synthorg uninstall`, `synthorg backup`.
 
 ## Quick Start (Docker Compose — manual)
 
