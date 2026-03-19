@@ -3,8 +3,8 @@ import { ref } from 'vue'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import { useAuthStore } from '@/stores/auth'
+import { useSetupStore } from '@/stores/setup'
 import { getErrorMessage } from '@/utils/errors'
-import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
 import { useLoginLockout } from '@/composables/useLoginLockout'
 
 const emit = defineEmits<{
@@ -12,6 +12,7 @@ const emit = defineEmits<{
 }>()
 
 const auth = useAuthStore()
+const setupStore = useSetupStore()
 const { locked, checkAndClearLockout, recordFailure } = useLoginLockout()
 
 const username = ref('')
@@ -29,8 +30,8 @@ async function handleSetup() {
     error.value = 'Passwords do not match'
     return
   }
-  if (password.value.length < MIN_PASSWORD_LENGTH) {
-    error.value = `Password must be at least ${MIN_PASSWORD_LENGTH} characters`
+  if (password.value.length < setupStore.minPasswordLength) {
+    error.value = `Password must be at least ${setupStore.minPasswordLength} characters`
     return
   }
   try {
@@ -75,7 +76,7 @@ async function handleSetup() {
           v-model="password"
           type="password"
           class="w-full"
-          :placeholder="`Min ${MIN_PASSWORD_LENGTH} characters`"
+          :placeholder="`Min ${setupStore.minPasswordLength} characters`"
           autocomplete="new-password"
           :aria-describedby="error ? 'setup-error' : undefined"
         />

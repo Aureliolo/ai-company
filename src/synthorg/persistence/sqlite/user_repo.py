@@ -24,8 +24,10 @@ from synthorg.observability.events.persistence import (
     PERSISTENCE_API_KEY_LISTED,
     PERSISTENCE_API_KEY_SAVE_FAILED,
     PERSISTENCE_API_KEY_SAVED,
+    PERSISTENCE_USER_COUNT_BY_ROLE_FAILED,
     PERSISTENCE_USER_COUNT_FAILED,
     PERSISTENCE_USER_COUNTED,
+    PERSISTENCE_USER_COUNTED_BY_ROLE,
     PERSISTENCE_USER_DELETE_FAILED,
     PERSISTENCE_USER_DELETED,
     PERSISTENCE_USER_FETCH_FAILED,
@@ -260,6 +262,40 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
         result = int(row[0]) if row else 0
         logger.debug(PERSISTENCE_USER_COUNTED, count=result)
+        return result
+
+    async def count_by_role(self, role: HumanRole) -> int:
+        """Return the number of users with the given role.
+
+        Args:
+            role: The role to filter by.
+
+        Returns:
+            Non-negative integer count.
+
+        Raises:
+            QueryError: If the database query fails.
+        """
+        try:
+            cursor = await self._db.execute(
+                "SELECT COUNT(*) FROM users WHERE role = ?",
+                (role.value,),
+            )
+            row = await cursor.fetchone()
+        except (sqlite3.Error, aiosqlite.Error) as exc:
+            msg = "Failed to count users by role"
+            logger.exception(
+                PERSISTENCE_USER_COUNT_BY_ROLE_FAILED,
+                role=role.value,
+                error=str(exc),
+            )
+            raise QueryError(msg) from exc
+        result = int(row[0]) if row else 0
+        logger.debug(
+            PERSISTENCE_USER_COUNTED_BY_ROLE,
+            role=role.value,
+            count=result,
+        )
         return result
 
     async def delete(self, user_id: NotBlankStr) -> bool:

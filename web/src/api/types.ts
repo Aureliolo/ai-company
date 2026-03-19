@@ -825,6 +825,7 @@ export interface SetupStatusResponse {
   needs_admin: boolean
   needs_setup: boolean
   has_providers: boolean
+  min_password_length: number
 }
 
 export interface TemplateInfoResponse {

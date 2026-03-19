@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from synthorg.api.auth.models import ApiKey, User
+from synthorg.api.guards import HumanRole
 from synthorg.budget.cost_record import CostRecord
 from synthorg.communication.channel import Channel
 from synthorg.communication.message import Message
@@ -296,6 +297,9 @@ class FakeUserRepository:
 
     async def count(self) -> int:
         return len(self._users)
+
+    async def count_by_role(self, role: HumanRole) -> int:
+        return sum(1 for u in self._users.values() if u.role == role)
 
     async def delete(self, user_id: str) -> bool:
         return self._users.pop(user_id, None) is not None

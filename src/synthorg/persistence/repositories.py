@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from pydantic import AwareDatetime  # noqa: TC002
 
 from synthorg.api.auth.models import ApiKey, User  # noqa: TC001
+from synthorg.api.guards import HumanRole  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
 from synthorg.communication.message import Message  # noqa: TC001
 from synthorg.core.enums import ApprovalRiskLevel, TaskStatus  # noqa: TC001
@@ -390,6 +391,20 @@ class UserRepository(Protocol):
 
         Returns:
             Total user count.
+
+        Raises:
+            PersistenceError: If the operation fails.
+        """
+        ...
+
+    async def count_by_role(self, role: HumanRole) -> int:
+        """Count users with a specific role.
+
+        Args:
+            role: The role to filter by.
+
+        Returns:
+            Number of users with the given role.
 
         Raises:
             PersistenceError: If the operation fails.

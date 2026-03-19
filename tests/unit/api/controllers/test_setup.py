@@ -8,6 +8,7 @@ import pytest
 from litestar.testing import TestClient
 from pydantic import ValidationError
 
+from synthorg.api.guards import HumanRole
 from tests.unit.api.conftest import make_auth_headers
 
 
@@ -58,6 +59,48 @@ class TestSetupStatus:
         assert isinstance(data["needs_admin"], bool)
         assert isinstance(data["needs_setup"], bool)
         assert isinstance(data["has_providers"], bool)
+
+    def test_needs_admin_true_when_only_non_admin_exists(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """needs_admin is True when only non-CEO users exist."""
+        app_state = test_client.app.state.app_state
+        users_repo = app_state.persistence._users
+
+        # Remove all CEO users, keep only observers
+        ceo_ids = [
+            uid for uid, u in users_repo._users.items() if u.role == HumanRole.CEO
+        ]
+        for uid in ceo_ids:
+            del users_repo._users[uid]
+
+        resp = test_client.get("/api/v1/setup/status")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["needs_admin"] is True
+
+    def test_needs_admin_false_when_ceo_exists(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """needs_admin is False when a CEO user exists (default fixture)."""
+        resp = test_client.get("/api/v1/setup/status")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["needs_admin"] is False
+
+    def test_status_includes_min_password_length(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Status response includes the backend-configured min_password_length."""
+        resp = test_client.get("/api/v1/setup/status")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert "min_password_length" in data
+        assert isinstance(data["min_password_length"], int)
+        assert data["min_password_length"] == 12
 
 
 @pytest.mark.unit
@@ -290,14 +333,6 @@ class TestSetupAgent:
 class TestSetupComplete:
     """POST /api/v1/setup/complete -- mark setup as done."""
 
-    def test_complete_without_provider_fails(
-        self,
-        test_client: TestClient[Any],
-    ) -> None:
-        """Completing setup without providers returns 422."""
-        resp = test_client.post("/api/v1/setup/complete")
-        assert resp.status_code == 422
-
     def test_requires_write_access(
         self,
         test_client: TestClient[Any],
@@ -310,13 +345,53 @@ class TestSetupComplete:
         finally:
             test_client.headers.update(saved_headers)
 
-    # Note: Happy-path test for successful completion requires a real
-    # ProviderRegistry with drivers, which the current test fixture does
-    # not set up.  Mocking _provider_registry crashes xdist workers
-    # during app shutdown.  The completion endpoint logic is simple
-    # (provider check + settings write) and is covered by the DTO and
-    # agent creation tests.  A proper integration test should be added
-    # when the test fixture supports provider setup.
+    def test_complete_validates_all_prerequisites(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Completion requires agents and providers.
+
+        The test fixture's root_config provides company_name, so the
+        company check passes automatically. This test walks through
+        the remaining prerequisite checks: agents, then providers,
+        then confirms success once all are satisfied.
+        """
+        from datetime import UTC, datetime
+        from typing import cast
+
+        from synthorg.providers.base import BaseCompletionProvider
+        from synthorg.providers.registry import ProviderRegistry
+
+        app_state = test_client.app.state.app_state
+        settings_repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+
+        # 1. No agents -- rejected (company comes from root_config).
+        resp = test_client.post("/api/v1/setup/complete")
+        assert resp.status_code == 422
+        assert "agent" in resp.json()["error"].lower()
+
+        # 2. Agents set, no providers -- rejected.
+        agents_json = json.dumps([{"name": "agent-001", "role": "CEO"}])
+        settings_repo._store[("company", "agents")] = (agents_json, now)
+        resp = test_client.post("/api/v1/setup/complete")
+        assert resp.status_code == 422
+        assert "provider" in resp.json()["error"].lower()
+
+        # 3. All present -- success.
+        stub = cast(BaseCompletionProvider, object())
+        original = app_state._provider_registry
+        app_state._provider_registry = ProviderRegistry(
+            {"test-provider": stub},
+        )
+        try:
+            resp = test_client.post("/api/v1/setup/complete")
+            assert resp.status_code == 201
+            body = resp.json()
+            assert body["success"] is True
+            assert body["data"]["setup_complete"] is True
+        finally:
+            app_state._provider_registry = original
 
 
 @pytest.mark.unit
@@ -362,6 +437,7 @@ class TestSetupDTOs:
             needs_admin=True,
             needs_setup=True,
             has_providers=False,
+            min_password_length=12,
         )
         with pytest.raises(ValidationError):
             resp.needs_admin = False  # type: ignore[misc]

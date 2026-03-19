@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from synthorg.api.guards import HumanRole
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.persistence_protocol import (
     CollaborationMetricRepository,
@@ -191,6 +192,9 @@ class _FakeUserRepository:
         return ()
 
     async def count(self) -> int:
+        return 0
+
+    async def count_by_role(self, role: HumanRole) -> int:
         return 0
 
     async def delete(self, user_id: str) -> bool:

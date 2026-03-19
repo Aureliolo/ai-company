@@ -40,6 +40,12 @@ SETUP_MODEL_NOT_FOUND: Final[str] = "setup.agent.model_not_found"
 # No providers configured when attempting to complete setup
 SETUP_NO_PROVIDERS: Final[str] = "setup.flow.no_providers"
 
+# No company created when attempting to complete setup
+SETUP_NO_COMPANY: Final[str] = "setup.flow.no_company"
+
+# No agents created when attempting to complete setup
+SETUP_NO_AGENTS: Final[str] = "setup.flow.no_agents"
+
 # Template not found during company creation
 SETUP_TEMPLATE_NOT_FOUND: Final[str] = "setup.company.template_not_found"
 

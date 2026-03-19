@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as setupApi from '@/api/endpoints/setup'
 import { getErrorMessage } from '@/utils/errors'
+import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
 import type { SetupStatusResponse, TemplateInfoResponse } from '@/api/types'
 
 export const useSetupStore = defineStore('setup', () => {
@@ -19,6 +20,9 @@ export const useSetupStore = defineStore('setup', () => {
   )
   const isAdminNeeded = computed(() =>
     statusLoaded.value ? !!status.value?.needs_admin : true,
+  )
+  const minPasswordLength = computed(() =>
+    status.value?.min_password_length ?? MIN_PASSWORD_LENGTH,
   )
 
   async function fetchStatus() {
@@ -87,6 +91,7 @@ export const useSetupStore = defineStore('setup', () => {
     error,
     isSetupNeeded,
     isAdminNeeded,
+    minPasswordLength,
     fetchStatus,
     fetchTemplates,
     nextStep,
