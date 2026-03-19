@@ -19,6 +19,7 @@ from synthorg.communication.meeting.scheduler import MeetingScheduler  # noqa: T
 from synthorg.config.schema import RootConfig  # noqa: TC001
 from synthorg.engine.approval_gate import ApprovalGate  # noqa: TC001
 from synthorg.engine.coordination.service import MultiAgentCoordinator  # noqa: TC001
+from synthorg.engine.review_gate import ReviewGateService  # noqa: TC001
 from synthorg.engine.task_engine import TaskEngine  # noqa: TC001
 from synthorg.hr.performance.tracker import PerformanceTracker  # noqa: TC001
 from synthorg.hr.registry import AgentRegistryService  # noqa: TC001
@@ -31,6 +32,7 @@ from synthorg.providers.management.service import (
 )
 from synthorg.providers.registry import ProviderRegistry  # noqa: TC001
 from synthorg.providers.routing.router import ModelRouter  # noqa: TC001
+from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler  # noqa: TC001
 from synthorg.settings.resolver import ConfigResolver
 from synthorg.settings.service import SettingsService  # noqa: TC001
 
@@ -57,6 +59,7 @@ class AppState:
     __slots__ = (
         "_agent_registry",
         "_approval_gate",
+        "_approval_timeout_scheduler",
         "_auth_service",
         "_backup_service",
         "_config_resolver",
@@ -70,6 +73,7 @@ class AppState:
         "_persistence",
         "_provider_management",
         "_provider_registry",
+        "_review_gate_service",
         "_settings_service",
         "_task_engine",
         "_ticket_store",
@@ -131,6 +135,8 @@ class AppState:
             if settings_service is not None and self._config_resolver is not None
             else None
         )
+        self._review_gate_service: ReviewGateService | None = None
+        self._approval_timeout_scheduler: ApprovalTimeoutScheduler | None = None
         self._ticket_store = WsTicketStore()
         self.startup_time = startup_time
 
@@ -228,6 +234,51 @@ class AppState:
     def approval_gate(self) -> ApprovalGate | None:
         """Return approval gate, or None if not configured."""
         return self._approval_gate
+
+    @property
+    def review_gate_service(self) -> ReviewGateService | None:
+        """Return review gate service, or None if not configured."""
+        return self._review_gate_service
+
+    def set_review_gate_service(self, service: ReviewGateService) -> None:
+        """Set the review gate service (deferred initialisation).
+
+        Args:
+            service: Configured review gate service.
+
+        Raises:
+            RuntimeError: If the review gate service was already configured.
+        """
+        if self._review_gate_service is not None:
+            msg = "Review gate service already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
+        self._review_gate_service = service
+        logger.debug(API_APP_STARTUP, note="Review gate service configured")
+
+    @property
+    def approval_timeout_scheduler(self) -> ApprovalTimeoutScheduler | None:
+        """Return approval timeout scheduler, or None if not configured."""
+        return self._approval_timeout_scheduler
+
+    def set_approval_timeout_scheduler(
+        self,
+        scheduler: ApprovalTimeoutScheduler,
+    ) -> None:
+        """Set the approval timeout scheduler (deferred initialisation).
+
+        Args:
+            scheduler: Configured scheduler instance.
+
+        Raises:
+            RuntimeError: If the scheduler was already configured.
+        """
+        if self._approval_timeout_scheduler is not None:
+            msg = "Approval timeout scheduler already configured"
+            logger.error(API_APP_STARTUP, error=msg)
+            raise RuntimeError(msg)
+        self._approval_timeout_scheduler = scheduler
+        logger.debug(API_APP_STARTUP, note="Approval timeout scheduler configured")
 
     @property
     def coordinator(self) -> MultiAgentCoordinator:

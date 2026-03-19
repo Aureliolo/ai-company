@@ -124,10 +124,10 @@ class TestAgentEngineTaskTransition:
             task=sample_task_with_criteria,
         )
 
-        # Successful run auto-completes: ASSIGNED → IP → IR → COMPLETED
+        # Successful run parks at IN_REVIEW: ASSIGNED -> IP -> IR
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.status == TaskStatus.COMPLETED
+        assert te.status == TaskStatus.IN_REVIEW
 
 
 @pytest.mark.unit
@@ -151,10 +151,10 @@ class TestAgentEngineAlreadyInProgress:
         )
 
         assert result.is_success is True
-        # Successful run auto-completes: IP → IR → COMPLETED
+        # Successful run parks at IN_REVIEW: IP -> IR
         te = result.execution_result.context.task_execution
         assert te is not None
-        assert te.status == TaskStatus.COMPLETED
+        assert te.status == TaskStatus.IN_REVIEW
 
 
 @pytest.mark.unit
@@ -1002,13 +1002,13 @@ class TestSyncToTaskEngine:
 
         assert result.is_success is True
 
-    async def test_completed_path_produces_three_syncs(
+    async def test_completed_path_produces_two_syncs(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """COMPLETED path syncs IN_PROGRESS, IN_REVIEW, COMPLETED."""
+        """COMPLETED path syncs IN_PROGRESS then IN_REVIEW (awaits review)."""
         response = _make_completion_response()
         provider = mock_provider_factory([response])
 
@@ -1023,14 +1023,13 @@ class TestSyncToTaskEngine:
         )
 
         assert result.is_success is True
-        assert mock_te.submit.await_count == 3
+        assert mock_te.submit.await_count == 2
         synced_statuses = [
             call.args[0].target_status for call in mock_te.submit.call_args_list
         ]
         assert synced_statuses == [
             TaskStatus.IN_PROGRESS,
             TaskStatus.IN_REVIEW,
-            TaskStatus.COMPLETED,
         ]
 
     async def test_shutdown_path_produces_two_syncs(
@@ -1216,7 +1215,6 @@ class TestSyncToTaskEngine:
             side_effect=[
                 _make_sync_failure(),
                 _make_sync_success(),
-                _make_sync_success(),
             ],
         )
 
@@ -1229,7 +1227,7 @@ class TestSyncToTaskEngine:
 
         # Run still succeeds despite first sync failure
         assert result.is_success is True
-        assert mock_te.submit.await_count == 3
+        assert mock_te.submit.await_count == 2
 
     async def test_task_engine_error_swallowed(
         self,

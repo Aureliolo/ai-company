@@ -1,6 +1,6 @@
 """Tests for approvals controller helper functions."""
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -99,12 +99,13 @@ class TestLogApprovalDecision:
 
 
 class TestSignalResumeIntent:
-    """_signal_resume_intent() logging stub."""
+    """_signal_resume_intent() resume + review-gate dispatch."""
 
-    async def test_noop_when_no_gate(self) -> None:
+    async def test_no_gate_no_review_gate_is_noop(self) -> None:
+        """When both gates are None, function is a no-op."""
         app_state = MagicMock(spec=AppState)
         app_state.approval_gate = None
-        # Should return without error
+        app_state.review_gate_service = None
         await _signal_resume_intent(
             app_state,
             "approval-1",
@@ -112,27 +113,203 @@ class TestSignalResumeIntent:
             decided_by="admin",
         )
 
-    async def test_logs_when_gate_present(self) -> None:
+    async def test_flow1_parked_context_found_returns_early(self) -> None:
+        """When resume_context returns a context, Flow 2 is skipped."""
+        mock_context = MagicMock()
+        mock_gate = MagicMock()
+        mock_gate.resume_context = AsyncMock(
+            return_value=(mock_context, "parked-1"),
+        )
+        mock_review = MagicMock()
+        mock_review.complete_review = AsyncMock()
+
         app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = MagicMock()
+        app_state.approval_gate = mock_gate
+        app_state.review_gate_service = mock_review
+
         await _signal_resume_intent(
             app_state,
             "approval-1",
             approved=True,
             decided_by="admin",
-            decision_reason="LGTM",
+            task_id="task-1",
         )
 
-    async def test_logs_reject_with_reason(self) -> None:
+        mock_gate.resume_context.assert_awaited_once_with("approval-1")
+        # Flow 2 should NOT be called
+        mock_review.complete_review.assert_not_awaited()
+
+    async def test_flow1_no_parked_context_falls_through(self) -> None:
+        """When resume_context returns None, Flow 2 runs."""
+        mock_gate = MagicMock()
+        mock_gate.resume_context = AsyncMock(return_value=None)
+        mock_review = MagicMock()
+        mock_review.complete_review = AsyncMock()
+
         app_state = MagicMock(spec=AppState)
-        app_state.approval_gate = MagicMock()
+        app_state.approval_gate = mock_gate
+        app_state.review_gate_service = mock_review
+
+        await _signal_resume_intent(
+            app_state,
+            "approval-1",
+            approved=True,
+            decided_by="admin",
+            task_id="task-1",
+        )
+
+        mock_review.complete_review.assert_awaited_once_with(
+            task_id="task-1",
+            requested_by="admin",
+            approved=True,
+            decided_by="admin",
+            reason=None,
+        )
+
+    async def test_flow1_exception_returns_early(self) -> None:
+        """When resume_context raises, function returns early (no fall-through)."""
+        mock_gate = MagicMock()
+        mock_gate.resume_context = AsyncMock(
+            side_effect=RuntimeError("db error"),
+        )
+        mock_review = MagicMock()
+        mock_review.complete_review = AsyncMock()
+
+        app_state = MagicMock(spec=AppState)
+        app_state.approval_gate = mock_gate
+        app_state.review_gate_service = mock_review
+
+        await _signal_resume_intent(
+            app_state,
+            "approval-1",
+            approved=True,
+            decided_by="admin",
+            task_id="task-1",
+        )
+
+        # Flow 2 should NOT run -- resume error means parked context
+        # may still exist, so review gate transition is unsafe.
+        mock_review.complete_review.assert_not_awaited()
+
+    async def test_flow2_review_gate_called_with_task_id(self) -> None:
+        """When no approval_gate and task_id provided, review gate runs."""
+        mock_review = MagicMock()
+        mock_review.complete_review = AsyncMock()
+
+        app_state = MagicMock(spec=AppState)
+        app_state.approval_gate = None
+        app_state.review_gate_service = mock_review
+
         await _signal_resume_intent(
             app_state,
             "approval-1",
             approved=False,
             decided_by="reviewer",
-            decision_reason="Too risky",
+            decision_reason="Needs rework",
+            task_id="task-42",
         )
+
+        mock_review.complete_review.assert_awaited_once_with(
+            task_id="task-42",
+            requested_by="reviewer",
+            approved=False,
+            decided_by="reviewer",
+            reason="Needs rework",
+        )
+
+    async def test_flow2_skipped_when_no_task_id(self) -> None:
+        """When task_id is None, review gate is not called."""
+        mock_review = MagicMock()
+        mock_review.complete_review = AsyncMock()
+
+        app_state = MagicMock(spec=AppState)
+        app_state.approval_gate = None
+        app_state.review_gate_service = mock_review
+
+        await _signal_resume_intent(
+            app_state,
+            "approval-1",
+            approved=True,
+            decided_by="admin",
+            task_id=None,
+        )
+
+        mock_review.complete_review.assert_not_awaited()
+
+    async def test_flow2_exception_swallowed(self) -> None:
+        """Errors from review gate are logged and swallowed."""
+        mock_review = MagicMock()
+        mock_review.complete_review = AsyncMock(
+            side_effect=RuntimeError("transition failed"),
+        )
+
+        app_state = MagicMock(spec=AppState)
+        app_state.approval_gate = None
+        app_state.review_gate_service = mock_review
+
+        # Should not raise
+        await _signal_resume_intent(
+            app_state,
+            "approval-1",
+            approved=True,
+            decided_by="admin",
+            task_id="task-1",
+        )
+
+        mock_review.complete_review.assert_awaited_once()
+
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_flow1_memory_error_propagates(
+        self, error_cls: type[BaseException]
+    ) -> None:
+        """MemoryError/RecursionError from resume_context propagates."""
+        mock_gate = MagicMock()
+        mock_gate.resume_context = AsyncMock(
+            side_effect=error_cls("fatal"),
+        )
+
+        app_state = MagicMock(spec=AppState)
+        app_state.approval_gate = mock_gate
+        app_state.review_gate_service = None
+
+        with pytest.raises(error_cls):
+            await _signal_resume_intent(
+                app_state,
+                "approval-1",
+                approved=True,
+                decided_by="admin",
+            )
+
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_flow2_memory_error_propagates(
+        self, error_cls: type[BaseException]
+    ) -> None:
+        """MemoryError/RecursionError from review gate propagates."""
+        mock_review = MagicMock()
+        mock_review.complete_review = AsyncMock(
+            side_effect=error_cls("fatal"),
+        )
+
+        app_state = MagicMock(spec=AppState)
+        app_state.approval_gate = None
+        app_state.review_gate_service = mock_review
+
+        with pytest.raises(error_cls):
+            await _signal_resume_intent(
+                app_state,
+                "approval-1",
+                approved=True,
+                decided_by="admin",
+                task_id="task-1",
+            )
 
 
 class TestPublishApprovalEvent:

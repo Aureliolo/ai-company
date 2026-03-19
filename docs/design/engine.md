@@ -234,11 +234,11 @@ real-time visibility into execution progress and improves crash recovery
 (a crash mid-execution leaves the task at the last-reached stage, not stuck
 at `ASSIGNED`).
 
-**Transition sequences** (1–3 `submit()` calls per execution, bounded):
+**Transition sequences** (1--2 `submit()` calls per execution, bounded):
 
 | Path | Synced transitions |
 |------|--------------------|
-| Happy (COMPLETED) | `IN_PROGRESS` → `IN_REVIEW` → `COMPLETED` |
+| Happy (review-gated) | `IN_PROGRESS` → `IN_REVIEW` (review gate) |
 | Shutdown | `IN_PROGRESS` → `INTERRUPTED` |
 | Error | `IN_PROGRESS` → `FAILED` (after recovery) |
 | MAX_TURNS / BUDGET | `IN_PROGRESS` only |
@@ -506,8 +506,13 @@ async run(
 10. **Record costs** -- records accumulated `TokenUsage` to `CostTracker` (if
     available). Cost recording failures are logged but do not affect the result.
 11. **Apply post-execution transitions:**
-    - `COMPLETED` termination: IN_PROGRESS -> IN_REVIEW -> COMPLETED (two-hop
-      auto-complete; reviewers planned).
+    - `COMPLETED` termination: IN_PROGRESS -> IN_REVIEW (review gate).
+      The task parks at IN_REVIEW until resolved by one of two paths:
+      (a) a human approves (-> COMPLETED) or rejects (-> IN_PROGRESS
+      for rework) via the approval API, or (b) the
+      ``ApprovalTimeoutScheduler`` applies a configured timeout policy
+      (auto-approve, auto-deny, or escalate).  Both paths delegate to
+      ``ReviewGateService`` for the actual state transition.
     - `SHUTDOWN` termination: current status -> INTERRUPTED
       (see [Graceful Shutdown](#graceful-shutdown-protocol)).
     - `ERROR` termination: recovery strategy is applied (default

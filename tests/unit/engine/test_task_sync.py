@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from synthorg.core.enums import TaskStatus
+from synthorg.core.enums import ApprovalStatus, TaskStatus
 from synthorg.engine.context import AgentContext
 from synthorg.engine.errors import ExecutionStateError, TaskEngineError
 from synthorg.engine.loop_protocol import (
@@ -19,6 +19,7 @@ from synthorg.engine.task_engine_models import (
     TaskMutationResult,
 )
 from synthorg.engine.task_sync import (
+    _REVIEW_ACTION_TYPE,
     apply_post_execution_transitions,
     sync_to_task_engine,
     transition_task_if_needed,
@@ -383,12 +384,12 @@ class TestApplyPostExecutionTransitions:
 
         assert out is result
 
-    async def test_completed_transitions_through_in_review_to_completed(
+    async def test_completed_transitions_to_in_review(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """COMPLETED termination: IN_PROGRESS -> IN_REVIEW -> COMPLETED."""
+        """COMPLETED termination: IN_PROGRESS -> IN_REVIEW (awaits review)."""
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
             task=sample_task_with_criteria,
@@ -406,12 +407,12 @@ class TestApplyPostExecutionTransitions:
         )
 
         assert out.context.task_execution is not None
-        assert out.context.task_execution.status == TaskStatus.COMPLETED
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
 
-        # Two syncs: IN_REVIEW and COMPLETED
-        assert mock_te.submit.await_count == 2
+        # One sync: IN_REVIEW only (no auto-complete to COMPLETED)
+        assert mock_te.submit.await_count == 1
         synced = [call.args[0].target_status for call in mock_te.submit.call_args_list]
-        assert synced == [TaskStatus.IN_REVIEW, TaskStatus.COMPLETED]
+        assert synced == [TaskStatus.IN_REVIEW]
 
     async def test_shutdown_transitions_to_interrupted(
         self,
@@ -467,17 +468,42 @@ class TestApplyPostExecutionTransitions:
 
         assert out is result
 
-    async def test_completed_partial_failure_returns_furthest_state(
+    async def test_error_reason_returns_unchanged(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
     ) -> None:
-        """Partial failure: IN_REVIEW succeeds locally, COMPLETED raises.
+        """ERROR termination reason leaves task state unchanged."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(
+            ctx,
+            reason=TerminationReason.ERROR,
+            error_message="Simulated error",
+        )
 
-        The stepwise loop in ``apply_post_execution_transitions`` captures
-        the intermediate ``ctx`` after each successful step.  When the
-        second step raises, the returned context reflects IN_REVIEW
-        (the furthest-reached state), not the original IN_PROGRESS.
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=sample_task_with_criteria.id,
+            task_engine=None,
+        )
+
+        assert out is result
+
+    async def test_completed_transition_failure_returns_original(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """When IN_REVIEW transition fails, original result is returned.
+
+        Since the only completion step is IN_REVIEW, a failure on
+        that step means the context remains at IN_PROGRESS (the
+        original state).
         """
         ctx = AgentContext.from_identity(
             sample_agent_with_personality,
@@ -486,24 +512,16 @@ class TestApplyPostExecutionTransitions:
         ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
         result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
 
-        # Patch with_task_transition to raise on second call
-        call_count = 0
-        original_transition = AgentContext.with_task_transition
-
-        def patched_transition(
+        def raise_on_transition(
             self: AgentContext,
             target: TaskStatus,
             *,
             reason: str = "",
         ) -> AgentContext:
-            nonlocal call_count
-            call_count += 1
-            if call_count == 2:
-                msg = "Simulated transition failure"
-                raise ExecutionStateError(msg)
-            return original_transition(self, target, reason=reason)
+            msg = "Simulated transition failure"
+            raise ExecutionStateError(msg)
 
-        with patch.object(AgentContext, "with_task_transition", patched_transition):
+        with patch.object(AgentContext, "with_task_transition", raise_on_transition):
             mock_te = _make_mock_task_engine()
 
             out = await apply_post_execution_transitions(
@@ -513,12 +531,10 @@ class TestApplyPostExecutionTransitions:
                 task_engine=mock_te,
             )
 
-            # Context reflects IN_REVIEW — the furthest-reached state
-            # before the second transition failed.
+            # Original result returned when transition fails
+            assert out is result
             assert out.context.task_execution is not None
-            assert out.context.task_execution.status == TaskStatus.IN_REVIEW
-            # Result is a model_copy, not the bare original
-            assert out is not result
+            assert out.context.task_execution.status == TaskStatus.IN_PROGRESS
 
     async def test_shutdown_transition_failure_returns_original(
         self,
@@ -576,7 +592,7 @@ class TestApplyPostExecutionTransitions:
         )
 
         assert out.context.task_execution is not None
-        assert out.context.task_execution.status == TaskStatus.COMPLETED
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
 
     async def test_sync_failure_does_not_block_transitions(
         self,
@@ -604,7 +620,7 @@ class TestApplyPostExecutionTransitions:
         )
 
         assert out.context.task_execution is not None
-        assert out.context.task_execution.status == TaskStatus.COMPLETED
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
 
     async def test_task_engine_exception_does_not_block_transitions(
         self,
@@ -631,4 +647,127 @@ class TestApplyPostExecutionTransitions:
         )
 
         assert out.context.task_execution is not None
-        assert out.context.task_execution.status == TaskStatus.COMPLETED
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+
+
+# ===================================================================
+# Review approval creation
+# ===================================================================
+
+
+@pytest.mark.unit
+class TestReviewApprovalCreation:
+    """Tests for review approval auto-creation on IN_REVIEW transition."""
+
+    async def test_creates_approval_with_store(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """When approval_store is provided, a review approval is created."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
+
+        mock_store = MagicMock()
+        mock_store.add = AsyncMock()
+
+        await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=sample_task_with_criteria.id,
+            task_engine=None,
+            approval_store=mock_store,
+        )
+
+        mock_store.add.assert_awaited_once()
+        item = mock_store.add.call_args.args[0]
+        assert item.action_type == _REVIEW_ACTION_TYPE
+        assert item.task_id == sample_task_with_criteria.id
+        assert item.status == ApprovalStatus.PENDING
+
+    async def test_no_approval_without_store(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """When approval_store is None, no approval is created."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=sample_task_with_criteria.id,
+            task_engine=None,
+            approval_store=None,
+        )
+
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+
+    async def test_approval_creation_failure_swallowed(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Failure to create approval does not affect task transition."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
+
+        mock_store = MagicMock()
+        mock_store.add = AsyncMock(side_effect=RuntimeError("store error"))
+
+        out = await apply_post_execution_transitions(
+            result,
+            agent_id=str(sample_agent_with_personality.id),
+            task_id=sample_task_with_criteria.id,
+            task_engine=None,
+            approval_store=mock_store,
+        )
+
+        # Transition still succeeded despite store error
+        assert out.context.task_execution is not None
+        assert out.context.task_execution.status == TaskStatus.IN_REVIEW
+
+    @pytest.mark.parametrize(
+        "error_cls",
+        [MemoryError, RecursionError],
+        ids=["MemoryError", "RecursionError"],
+    )
+    async def test_approval_creation_memory_error_propagates(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        error_cls: type[BaseException],
+    ) -> None:
+        """MemoryError/RecursionError from approval store propagates."""
+        ctx = AgentContext.from_identity(
+            sample_agent_with_personality,
+            task=sample_task_with_criteria,
+        )
+        ctx = ctx.with_task_transition(TaskStatus.IN_PROGRESS, reason="started")
+        result = _make_execution_result(ctx, reason=TerminationReason.COMPLETED)
+
+        mock_store = MagicMock()
+        mock_store.add = AsyncMock(side_effect=error_cls("fatal"))
+
+        with pytest.raises(error_cls):
+            await apply_post_execution_transitions(
+                result,
+                agent_id=str(sample_agent_with_personality.id),
+                task_id=sample_task_with_criteria.id,
+                task_engine=None,
+                approval_store=mock_store,
+            )

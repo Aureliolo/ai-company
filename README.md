@@ -155,7 +155,7 @@ graph TB
 
 ## Status
 
-Core framework complete — agent engine, multi-agent coordination, API, security, HR, memory (including Mem0 backend adapter), budget systems, and approval workflow gates are implemented. Web dashboard (Vue 3 + PrimeVue + Tailwind CSS) is built. CLI (Go binary) provides install, setup wizard, container lifecycle, backup management, self-updates, and diagnostics. Remaining: approval resume scheduler (approvals can park agents; re-enqueue after decision requires a future scheduler). See the [roadmap](docs/roadmap/index.md) for details.
+Core framework complete -- agent engine, multi-agent coordination, API, security, HR, memory (including Mem0 backend adapter), budget systems, approval workflow gates, review gate, and timeout scheduler are implemented. Web dashboard (Vue 3 + PrimeVue + Tailwind CSS) is built. CLI (Go binary) provides install, setup wizard, container lifecycle, backup management, self-updates, and diagnostics. Remaining: agent re-execution orchestrator (parked context loading is implemented; re-enqueueing an agent after resume requires a future orchestrator). See the [roadmap](docs/roadmap/index.md) for details.
 
 ## License
 

@@ -1,0 +1,242 @@
+"""Approval timeout scheduler -- periodic background approval checking.
+
+Polls the ``ApprovalStore`` for PENDING items and evaluates each
+against the configured ``TimeoutPolicy`` via ``TimeoutChecker``.
+When an item times out, the scheduler applies the policy action
+(approve, deny, or escalate) and invokes an optional callback
+for downstream resume/review-gate logic.
+"""
+
+import asyncio
+import contextlib
+from collections.abc import Awaitable, Callable  # noqa: TC003
+from typing import TYPE_CHECKING
+
+from synthorg.core.enums import ApprovalStatus, TimeoutActionType
+from synthorg.observability import get_logger
+from synthorg.observability.events.timeout import (
+    TIMEOUT_SCHEDULER_ERROR,
+    TIMEOUT_SCHEDULER_RESCHEDULED,
+    TIMEOUT_SCHEDULER_RESOLVED,
+    TIMEOUT_SCHEDULER_STARTED,
+    TIMEOUT_SCHEDULER_STOPPED,
+    TIMEOUT_SCHEDULER_TICK,
+)
+
+if TYPE_CHECKING:
+    from synthorg.api.approval_store import ApprovalStore
+    from synthorg.core.approval import ApprovalItem
+    from synthorg.security.timeout.models import TimeoutAction
+    from synthorg.security.timeout.timeout_checker import TimeoutChecker
+
+logger = get_logger(__name__)
+
+
+class ApprovalTimeoutScheduler:
+    """Background asyncio task that checks pending approvals for timeout.
+
+    Periodically polls the ``ApprovalStore`` for PENDING items and
+    evaluates each against the configured ``TimeoutPolicy`` via
+    ``TimeoutChecker``.
+
+    Args:
+        approval_store: Store to poll for pending items.
+        timeout_checker: Evaluates items against the timeout policy.
+        interval_seconds: Seconds between poll cycles.
+        on_timeout_resolve: Async callback invoked when a timeout
+            action resolves an approval (APPROVE or DENY).
+    """
+
+    def __init__(
+        self,
+        *,
+        approval_store: ApprovalStore,
+        timeout_checker: TimeoutChecker,
+        interval_seconds: float = 60.0,
+        on_timeout_resolve: (
+            Callable[[ApprovalItem, TimeoutAction], Awaitable[None]] | None
+        ) = None,
+    ) -> None:
+        if interval_seconds <= 0:
+            msg = f"interval_seconds must be positive, got {interval_seconds}"
+            raise ValueError(msg)
+        self._store = approval_store
+        self._checker = timeout_checker
+        self._interval = interval_seconds
+        self._on_resolve = on_timeout_resolve
+        self._task: asyncio.Task[None] | None = None
+        self._wake_event = asyncio.Event()
+
+    @property
+    def is_running(self) -> bool:
+        """Whether the scheduler loop is currently active."""
+        return self._task is not None and not self._task.done()
+
+    def start(self) -> None:
+        """Start the background scheduler loop.
+
+        Creates an ``asyncio.Task`` running ``_run_loop``.
+        No-op if already running.
+        """
+        if self.is_running:
+            return
+        self._wake_event.clear()
+        self._task = asyncio.create_task(
+            self._run_loop(),
+            name="approval-timeout-scheduler",
+        )
+        logger.info(
+            TIMEOUT_SCHEDULER_STARTED,
+            interval_seconds=self._interval,
+        )
+
+    async def stop(self) -> None:
+        """Cancel the background scheduler and wait for it to finish."""
+        if self._task is None:
+            return
+        self._task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await self._task
+        self._task = None
+        logger.info(TIMEOUT_SCHEDULER_STOPPED)
+
+    def reschedule(self, interval_seconds: float) -> None:
+        """Update the interval and interrupt the current sleep.
+
+        The new interval takes effect immediately by waking the
+        sleeping loop.
+
+        Args:
+            interval_seconds: New interval in seconds (must be > 0).
+
+        Raises:
+            ValueError: If interval_seconds is not positive.
+        """
+        if interval_seconds <= 0:
+            msg = f"interval_seconds must be positive, got {interval_seconds}"
+            raise ValueError(msg)
+        self._interval = interval_seconds
+        self._wake_event.set()
+        logger.info(
+            TIMEOUT_SCHEDULER_RESCHEDULED,
+            interval_seconds=interval_seconds,
+        )
+
+    async def _run_loop(self) -> None:
+        """Sleep-and-check loop.
+
+        Logs and suppresses errors except ``MemoryError`` and
+        ``RecursionError``.
+        """
+        while True:
+            self._wake_event.clear()
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(
+                    self._wake_event.wait(),
+                    timeout=self._interval,
+                )
+            logger.debug(TIMEOUT_SCHEDULER_TICK)
+            try:
+                await self._check_pending_approvals()
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.error(
+                    TIMEOUT_SCHEDULER_ERROR,
+                    error="Unexpected error in scheduler loop",
+                    exc_info=True,
+                )
+
+    async def _check_pending_approvals(self) -> None:
+        """Poll PENDING items and apply timeout policy."""
+        try:
+            items = await self._store.list_items(
+                status=ApprovalStatus.PENDING,
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.error(
+                TIMEOUT_SCHEDULER_ERROR,
+                error="Failed to list pending approvals",
+                exc_info=True,
+            )
+            return
+
+        for item in items:
+            await self._evaluate_item(item)
+
+    async def _evaluate_item(self, item: ApprovalItem) -> None:
+        """Evaluate a single item and apply the action if decisive."""
+        try:
+            updated, action = await self._checker.check_and_resolve(item)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                TIMEOUT_SCHEDULER_ERROR,
+                approval_id=item.id,
+                error="Failed to evaluate item",
+                exc_info=True,
+            )
+            return
+
+        if action.action == TimeoutActionType.WAIT:
+            return
+
+        if action.action in {TimeoutActionType.APPROVE, TimeoutActionType.DENY}:
+            await self._resolve_item(updated, action)
+        elif action.action == TimeoutActionType.ESCALATE:
+            # TODO: Wire escalation to a notification sink so the
+            # escalate_to target is actually notified.  Currently
+            # log-only with no downstream effect.
+            logger.info(
+                TIMEOUT_SCHEDULER_RESOLVED,
+                approval_id=item.id,
+                action=action.action.value,
+                escalate_to=action.escalate_to,
+                reason=action.reason,
+            )
+
+    async def _resolve_item(
+        self,
+        item: ApprovalItem,
+        action: TimeoutAction,
+    ) -> None:
+        """Persist an APPROVE/DENY resolution and invoke callback."""
+        try:
+            saved = await self._store.save_if_pending(item)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.error(
+                TIMEOUT_SCHEDULER_ERROR,
+                approval_id=item.id,
+                error="Failed to persist timeout resolution",
+                exc_info=True,
+            )
+            return
+
+        if saved is None:
+            # Already decided concurrently -- nothing to do.
+            return
+
+        logger.info(
+            TIMEOUT_SCHEDULER_RESOLVED,
+            approval_id=item.id,
+            action=action.action.value,
+            reason=action.reason,
+        )
+
+        if self._on_resolve is not None:
+            try:
+                await self._on_resolve(saved, action)
+            except MemoryError, RecursionError:
+                raise
+            except Exception:
+                logger.error(
+                    TIMEOUT_SCHEDULER_ERROR,
+                    approval_id=item.id,
+                    error="on_timeout_resolve callback failed",
+                    exc_info=True,
+                )

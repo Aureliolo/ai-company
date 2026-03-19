@@ -239,6 +239,58 @@ class TestAppStateSettingsServiceFlag:
 
 
 @pytest.mark.unit
+class TestAppStateReviewGateService:
+    """Tests for review_gate_service property and set_review_gate_service."""
+
+    def test_review_gate_service_none_by_default(self) -> None:
+        state = _make_state()
+        assert state.review_gate_service is None
+
+    def test_set_review_gate_service_succeeds_once(self) -> None:
+        from unittest.mock import MagicMock
+
+        svc = MagicMock()
+        state = _make_state()
+        state.set_review_gate_service(svc)
+        assert state.review_gate_service is svc
+
+    def test_set_review_gate_service_twice_raises(self) -> None:
+        from unittest.mock import MagicMock
+
+        svc = MagicMock()
+        state = _make_state()
+        state.set_review_gate_service(svc)
+        with pytest.raises(RuntimeError, match="already configured"):
+            state.set_review_gate_service(svc)
+
+
+@pytest.mark.unit
+class TestAppStateApprovalTimeoutScheduler:
+    """Tests for approval_timeout_scheduler and set_approval_timeout_scheduler."""
+
+    def test_approval_timeout_scheduler_none_by_default(self) -> None:
+        state = _make_state()
+        assert state.approval_timeout_scheduler is None
+
+    def test_set_approval_timeout_scheduler_succeeds_once(self) -> None:
+        from unittest.mock import MagicMock
+
+        scheduler = MagicMock()
+        state = _make_state()
+        state.set_approval_timeout_scheduler(scheduler)
+        assert state.approval_timeout_scheduler is scheduler
+
+    def test_set_approval_timeout_scheduler_twice_raises(self) -> None:
+        from unittest.mock import MagicMock
+
+        scheduler = MagicMock()
+        state = _make_state()
+        state.set_approval_timeout_scheduler(scheduler)
+        with pytest.raises(RuntimeError, match="already configured"):
+            state.set_approval_timeout_scheduler(scheduler)
+
+
+@pytest.mark.unit
 class TestAppStateConfigResolver:
     """Tests for config_resolver property."""
 

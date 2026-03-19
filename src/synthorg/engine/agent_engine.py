@@ -532,6 +532,7 @@ class AgentEngine:
             agent_id,
             task_id,
             self._task_engine,
+            approval_store=self._approval_store,
         )
         if execution_result.termination_reason == TerminationReason.ERROR:
             pre_recovery_ctx = execution_result.context
@@ -573,7 +574,7 @@ class AgentEngine:
         # Clean up checkpoints and heartbeat on non-ERROR exits.
         # The ERROR path is handled inside _finalize_resume (resume)
         # and _delegate_to_fallback (fallback).  Normal completions
-        # (COMPLETED, MAX_TURNS, BUDGET_EXHAUSTED, SHUTDOWN, PARKED)
+        # (COMPLETED, MAX_TURNS, BUDGET_EXHAUSTED, SHUTDOWN, PARKED, STAGNATION)
         # bypass recovery entirely, so cleanup runs here.
         if execution_result.termination_reason != TerminationReason.ERROR:
             exec_id = execution_result.context.execution_id
@@ -991,6 +992,10 @@ class AgentEngine:
             task_id,
             tracker=self._cost_tracker,
         )
+        # Deliberately omit approval_store: the pre-crash execution
+        # already created review approval items if the task reached
+        # IN_REVIEW.  Passing approval_store here would create
+        # duplicates because approval IDs are random UUIDs.
         result = await apply_post_execution_transitions(
             result,
             agent_id,
