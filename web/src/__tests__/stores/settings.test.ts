@@ -47,6 +47,17 @@ const mockSecurityDefinition: SettingDefinition = {
   group: 'General',
 }
 
+const mockAdvancedOnlyDefinition: SettingDefinition = {
+  ...mockDefinition,
+  namespace: 'coordination',
+  key: 'wave_timeout',
+  type: 'int',
+  default: '30',
+  description: 'Wave execution timeout in seconds',
+  group: 'Waves',
+  level: 'advanced',
+}
+
 const mockEntry: SettingEntry = {
   definition: mockDefinition,
   value: '100.0',
@@ -171,6 +182,27 @@ describe('useSettingsStore', () => {
     expect(store.namespaces).toEqual(['budget', 'security'])
   })
 
+  it('namespaces excludes advanced-only namespaces in basic mode', async () => {
+    const settingsApi = await import('@/api/endpoints/settings')
+    vi.mocked(settingsApi.getSchema).mockResolvedValue([
+      mockDefinition, // budget, basic
+      mockAdvancedOnlyDefinition, // coordination, advanced
+    ])
+    vi.mocked(settingsApi.getAllSettings).mockResolvedValue([])
+
+    const store = useSettingsStore()
+    await store.fetchAll()
+
+    // In basic mode, coordination (all-advanced) should be hidden
+    expect(store.showAdvanced).toBe(false)
+    expect(store.namespaces).toEqual(['budget'])
+    expect(store.namespaces).not.toContain('coordination')
+
+    // Toggle to advanced -- coordination should appear
+    store.toggleAdvanced()
+    expect(store.namespaces).toEqual(['budget', 'coordination'])
+  })
+
   it('entriesByNamespace filters entries by namespace', async () => {
     const settingsApi = await import('@/api/endpoints/settings')
     vi.mocked(settingsApi.getSchema).mockResolvedValue([mockDefinition, mockSecurityDefinition])
@@ -282,13 +314,14 @@ describe('useSettingsStore', () => {
     expect(store.showAdvanced).toBe(false)
   })
 
-  it('updateSetting succeeds even when post-update refresh fails', async () => {
+  it('updateSetting applies returned entry even when refresh fails', async () => {
     const settingsApi = await import('@/api/endpoints/settings')
+    const updatedEntry: SettingEntry = { ...mockEntry, value: '200.0', source: 'db' }
     vi.mocked(settingsApi.getSchema).mockResolvedValue([mockDefinition])
     vi.mocked(settingsApi.getAllSettings)
       .mockResolvedValueOnce([mockEntry]) // initial fetch
       .mockRejectedValueOnce(new Error('Network error')) // refresh after update
-    vi.mocked(settingsApi.updateSetting).mockResolvedValue(mockEntry)
+    vi.mocked(settingsApi.updateSetting).mockResolvedValue(updatedEntry)
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const store = useSettingsStore()
@@ -297,27 +330,33 @@ describe('useSettingsStore', () => {
     // Should NOT throw -- the update itself succeeded
     await store.updateSetting('budget', 'total_monthly', '200.0')
     expect(store.savingKey).toBeNull()
-    // Entries remain at old value since refresh failed
-    expect(store.entries[0].value).toBe('100.0')
+    // Entries reflect the returned entry despite refresh failure
+    expect(store.entries[0].value).toBe('200.0')
+    expect(store.entries[0].source).toBe('db')
     expect(warnSpy).toHaveBeenCalledWith('Settings refresh failed after update:', expect.any(Error))
     warnSpy.mockRestore()
   })
 
-  it('resetSetting succeeds even when post-reset refresh fails', async () => {
+  it('resetSetting optimistically reverts to default when refresh fails', async () => {
     const settingsApi = await import('@/api/endpoints/settings')
+    const dbEntry: SettingEntry = { ...mockEntry, value: '200.0', source: 'db' }
     vi.mocked(settingsApi.getSchema).mockResolvedValue([mockDefinition])
     vi.mocked(settingsApi.getAllSettings)
-      .mockResolvedValueOnce([mockEntry]) // initial fetch
+      .mockResolvedValueOnce([dbEntry]) // initial fetch
       .mockRejectedValueOnce(new Error('Network error')) // refresh after reset
     vi.mocked(settingsApi.resetSetting).mockResolvedValue(undefined)
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const store = useSettingsStore()
     await store.fetchAll()
+    expect(store.entries[0].source).toBe('db')
 
     // Should NOT throw -- the reset itself succeeded
     await store.resetSetting('budget', 'total_monthly')
     expect(store.savingKey).toBeNull()
+    // Entry optimistically reverted to default despite refresh failure
+    expect(store.entries[0].value).toBe('100.0')
+    expect(store.entries[0].source).toBe('default')
     expect(warnSpy).toHaveBeenCalledWith('Settings refresh failed after reset:', expect.any(Error))
     warnSpy.mockRestore()
   })

@@ -93,7 +93,10 @@ export const useSettingsStore = defineStore('settings', () => {
   let generation = 0
 
   const namespaces = computed<SettingNamespace[]>(() => {
-    const present = new Set(schema.value.map((d) => d.namespace))
+    const visible = schema.value.filter(
+      (d) => showAdvanced.value || d.level !== 'advanced',
+    )
+    const present = new Set(visible.map((d) => d.namespace))
     return NAMESPACE_ORDER.filter((ns) => present.has(ns))
   })
 
@@ -128,9 +131,13 @@ export const useSettingsStore = defineStore('settings', () => {
   async function updateSetting(namespace: SettingNamespace, key: string, value: string): Promise<void> {
     savingKey.value = `${namespace}/${key}`
     try {
-      await settingsApi.updateSetting(namespace, key, { value })
-      // Re-fetch all entries to get updated resolved values
+      const updatedEntry = await settingsApi.updateSetting(namespace, key, { value })
+      // Immediately apply the returned entry so the UI reflects the change
       const gen = ++generation
+      entries.value = entries.value.map((e) =>
+        e.definition.namespace === namespace && e.definition.key === key ? updatedEntry : e,
+      )
+      // Best-effort full refresh to get all resolved values
       try {
         const entriesData = await settingsApi.getAllSettings()
         if (gen === generation) {
@@ -148,8 +155,15 @@ export const useSettingsStore = defineStore('settings', () => {
     savingKey.value = `${namespace}/${key}`
     try {
       await settingsApi.resetSetting(namespace, key)
-      // Re-fetch all entries to get updated resolved values
+      // Optimistically revert entry to default since the DB override is deleted
       const gen = ++generation
+      entries.value = entries.value.map((e) => {
+        if (e.definition.namespace === namespace && e.definition.key === key) {
+          return { ...e, value: e.definition.default ?? '', source: 'default' as const }
+        }
+        return e
+      })
+      // Best-effort full refresh to get actual resolved values (env/yaml may override default)
       try {
         const entriesData = await settingsApi.getAllSettings()
         if (gen === generation) {
