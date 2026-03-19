@@ -192,6 +192,50 @@ class TestSetupCompany:
         assert data["company_name"] == "Test Corp"
         assert data["template_applied"] is None
         assert data["department_count"] == 0
+        assert data["description"] is None
+
+    def test_company_with_description(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.post(
+            "/api/v1/setup/company",
+            json={
+                "company_name": "Test Corp",
+                "description": "An AI-powered test organization",
+            },
+        )
+        assert resp.status_code == 201
+        data = resp.json()["data"]
+        assert data["company_name"] == "Test Corp"
+        assert data["description"] == "An AI-powered test organization"
+
+    def test_company_description_too_long(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        resp = test_client.post(
+            "/api/v1/setup/company",
+            json={
+                "company_name": "Test Corp",
+                "description": "x" * 1001,
+            },
+        )
+        assert resp.status_code == 400
+
+    def test_whitespace_only_description_accepted(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Whitespace-only description is accepted but treated as empty."""
+        resp = test_client.post(
+            "/api/v1/setup/company",
+            json={
+                "company_name": "Test Corp",
+                "description": "   ",
+            },
+        )
+        assert resp.status_code == 201
 
     def test_company_with_template(
         self,
@@ -476,6 +520,7 @@ class TestSetupDTOs:
 
         req = SetupCompanyRequest(company_name="Test Corp")
         assert req.template_name is None
+        assert req.description is None
 
     def test_setup_status_response_frozen(self) -> None:
         from synthorg.api.controllers.setup import SetupStatusResponse

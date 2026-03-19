@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import InputText from 'primevue/inputtext'
+import Textarea from 'primevue/textarea'
 import Button from 'primevue/button'
 import { useSetupStore } from '@/stores/setup'
 import * as setupApi from '@/api/endpoints/setup'
@@ -13,6 +14,7 @@ const emit = defineEmits<{
 const setup = useSetupStore()
 
 const companyName = ref('')
+const companyDescription = ref('')
 const selectedTemplate = ref<string | null>(null)
 const error = ref<string | null>(null)
 const creating = ref(false)
@@ -30,6 +32,7 @@ async function handleCreate() {
   try {
     await setupApi.createCompany({
       company_name: companyName.value.trim(),
+      description: companyDescription.value.trim() || null,
       template_name: selectedTemplate.value,
     })
     emit('next', companyName.value.trim())
@@ -66,6 +69,20 @@ onMounted(async () => {
           v-model="companyName"
           class="w-full"
           placeholder="My AI Company"
+        />
+      </div>
+
+      <div>
+        <label for="sc-description" class="mb-1 block text-sm text-slate-300">
+          Description <span class="text-slate-500">(optional)</span>
+        </label>
+        <Textarea
+          id="sc-description"
+          v-model="companyDescription"
+          class="w-full"
+          rows="3"
+          maxlength="1000"
+          placeholder="Describe what your organization does..."
         />
       </div>
 

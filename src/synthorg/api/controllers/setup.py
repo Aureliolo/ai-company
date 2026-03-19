@@ -97,12 +97,14 @@ class SetupCompanyRequest(BaseModel):
 
     Attributes:
         company_name: Company display name.
+        description: Optional company description.
         template_name: Optional template to apply (None = blank company).
     """
 
     model_config = ConfigDict(frozen=True)
 
     company_name: NotBlankStr = Field(max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
     template_name: NotBlankStr | None = Field(default=None, max_length=100)
 
 
@@ -111,6 +113,7 @@ class SetupCompanyResponse(BaseModel):
 
     Attributes:
         company_name: The company name that was set.
+        description: The company description that was set, if any.
         template_applied: Name of the template that was applied, if any.
         department_count: Number of departments created.
     """
@@ -118,6 +121,7 @@ class SetupCompanyResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     company_name: NotBlankStr
+    description: str | None
     template_applied: NotBlankStr | None
     department_count: int = Field(ge=0)
 
@@ -371,8 +375,14 @@ class SetupController(Controller):
             if departments_json:
                 department_count = len(json.loads(departments_json))
 
-        # Persist company name and departments atomically after validation.
+        # Normalize description: strip whitespace, treat blank as None.
+        description = data.description.strip() if data.description else None
+        description = description or None
+
+        # Persist company name, description, and departments after validation.
         await settings_svc.set("company", "company_name", data.company_name)
+        if description:
+            await settings_svc.set("company", "description", description)
         # Always write departments -- clears stale data from previous runs.
         await settings_svc.set(
             "company",
@@ -383,6 +393,7 @@ class SetupController(Controller):
         logger.info(
             SETUP_COMPANY_CREATED,
             company_name=data.company_name,
+            description=description,
             template=template_applied,
             department_count=department_count,
         )
@@ -390,6 +401,7 @@ class SetupController(Controller):
         return ApiResponse(
             data=SetupCompanyResponse(
                 company_name=data.company_name,
+                description=description,
                 template_applied=template_applied,
                 department_count=department_count,
             ),

@@ -837,6 +837,7 @@ export interface TemplateInfoResponse {
 
 export interface SetupCompanyRequest {
   company_name: string
+  description: string | null
   template_name: string | null
 }
 
@@ -853,6 +854,7 @@ export interface SetupAgentRequest {
 
 export interface SetupCompanyResponse {
   company_name: string
+  description: string | null
   template_applied: string | null
   department_count: number
 }

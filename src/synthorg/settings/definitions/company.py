@@ -21,6 +21,18 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMPANY,
+        key="description",
+        type=SettingType.STRING,
+        default=None,
+        description="Company description",
+        group="General",
+        yaml_path="description",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMPANY,
         key="autonomy_level",
         type=SettingType.ENUM,
         default="semi",
