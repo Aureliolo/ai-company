@@ -87,7 +87,7 @@ All API responses include:
 | `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` |
 | `Permissions-Policy` | `geolocation=(), camera=(), microphone=()` |
 | `Cross-Origin-Resource-Policy` | `same-origin` |
-| `Cache-Control` | `no-store` |
+| `Cache-Control` | `no-store` (API); `public, max-age=300` (docs) |
 | `Content-Security-Policy` | Strict default; relaxed only for docs UI |
 
 ---
@@ -204,6 +204,24 @@ Pre-push hooks run **mypy type checking** and **unit tests** as a fast gate.
 | **Trivy + Grype** | Container vulnerability scanning | On image build |
 | **Socket.dev** | Supply chain attack detection | On PR |
 | **dependency-review** | License + vulnerability review | On PR |
+
+### DAST Tuning
+
+The ZAP API scan runs with a rules file (`.github/zap-rules.tsv`) that
+suppresses validated false positives and informational findings:
+
+| Rule | ID | Action | Rationale |
+|------|----|--------|-----------|
+| Unexpected Content-Type | 100001 | Ignore | `/docs` intentionally serves Scalar UI HTML |
+| Client Error Responses | 100000 | Ignore | ZAP sends literal path params, expected 4xx |
+| Base64 Disclosure | 10094 | Ignore | OpenAPI schema contains UUID/JWT-format refs, not secrets |
+| Sec-Fetch-* Missing | 90005 | Ignore | JWT auth (not cookies) -- no CSRF risk, would break non-browser clients |
+| Non-Storable Content | 10049 | Warn | API endpoints correctly use `no-store`; docs use `public, max-age=300` |
+
+The rules file is reviewed when ZAP or the API surface changes.
+Cache-Control is path-aware: API data endpoints use `no-store` to prevent
+sensitive data caching, while documentation endpoints (`/docs/*`) allow brief
+client and proxy caching since they serve public, non-user-specific content.
 
 ### Branch Protection
 

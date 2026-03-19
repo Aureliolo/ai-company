@@ -28,6 +28,7 @@ from synthorg.observability.correlation import (
     generate_correlation_id,
 )
 from synthorg.observability.events.api import (
+    API_ASGI_MISSING_STATUS,
     API_REQUEST_COMPLETED,
     API_REQUEST_STARTED,
 )
@@ -62,6 +63,16 @@ _DOCS_CSP: Final[str] = (
     "frame-ancestors 'none'"
 )
 
+# Cache-Control for documentation paths -- OpenAPI spec and Scalar UI
+# are public, unauthenticated, non-user-specific content safe for
+# brief caching.  public: shared caches (proxies) may store;
+# max-age=300: revalidate after 5 minutes.
+_DOCS_CACHE_CONTROL: Final[str] = "public, max-age=300"
+
+# Cache-Control for API data endpoints (named constant for test
+# clarity; the runtime default comes from _SECURITY_HEADERS).
+_API_CACHE_CONTROL: Final[str] = "no-store"
+
 # Static security headers (path-independent, immutable at runtime).
 _SECURITY_HEADERS: Final[MappingProxyType[str, str]] = MappingProxyType(
     {
@@ -72,7 +83,7 @@ _SECURITY_HEADERS: Final[MappingProxyType[str, str]] = MappingProxyType(
         "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
         "Cross-Origin-Resource-Policy": "same-origin",
         "Cross-Origin-Opener-Policy": "same-origin",
-        "Cache-Control": "no-store",
+        "Cache-Control": _API_CACHE_CONTROL,
     }
 )
 
@@ -85,8 +96,10 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
     router-level 404/405.
 
     Adds static security headers (CORP, HSTS, X-Content-Type-Options,
-    etc.) and a path-aware Content-Security-Policy (strict for API,
-    relaxed for ``/docs/`` to allow Scalar UI resources).
+    etc.) and path-aware Content-Security-Policy (strict for API,
+    relaxed for ``/docs/`` to allow Scalar UI resources) and
+    Cache-Control (``no-store`` for API, ``public, max-age=300``
+    for ``/docs/`` since it serves public, non-user-specific content).
 
     Uses ``__setitem__`` (not ``add``) so that if any handler or
     middleware already set a header, the known-good value overwrites
@@ -115,8 +128,10 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
 
     # Relax COOP for /docs — Scalar UI may use cross-origin popups
     # for OAuth/API proxy features via proxy.scalar.com.
+    # Allow brief caching for docs — public, non-user-specific content.
     if is_docs:
         headers["Cross-Origin-Opener-Policy"] = "unsafe-none"
+        headers["Cache-Control"] = _DOCS_CACHE_CONTROL
 
 
 def _log_request_completion(
@@ -187,7 +202,7 @@ class RequestLoggingMiddleware:
                 raw_status = message.get("status")
                 if raw_status is None:
                     logger.warning(
-                        "asgi_missing_status",
+                        API_ASGI_MISSING_STATUS,
                         type=message.get("type"),
                     )
                     status_code = 500
