@@ -32,6 +32,7 @@ from synthorg.observability.events.setup import (
     SETUP_TEMPLATE_NOT_FOUND,
     SETUP_TEMPLATES_LISTED,
 )
+from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
     from synthorg.settings.service import SettingsService
@@ -623,7 +624,7 @@ async def _get_existing_agents(
         entry = await settings_svc.get_entry("company", "agents")
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except SettingNotFoundError:
         logger.debug(SETUP_AGENTS_READ_FALLBACK, reason="entry_not_found")
         return []
 

@@ -24,7 +24,7 @@ function selectTemplate(templateName: string | null) {
 }
 
 async function handleCreate() {
-  if (!isValid.value) return
+  if (!isValid.value || creating.value) return
   creating.value = true
   error.value = null
   try {
@@ -41,10 +41,10 @@ async function handleCreate() {
 }
 
 onMounted(async () => {
-  try {
-    await setup.fetchTemplates()
-  } catch (err) {
-    error.value = getErrorMessage(err)
+  await setup.fetchTemplates()
+  // fetchTemplates catches errors internally; surface to component.
+  if (setup.error) {
+    error.value = setup.error
   }
 })
 </script>

@@ -184,4 +184,51 @@ describe('authGuard', () => {
     await authGuard(to, from, next)
     expect(next).toHaveBeenCalledWith()
   })
+
+  // ── Setup routing tests ──────────────────────────────────
+
+  it('redirects to /setup when setup is needed', async () => {
+    const setup = useSetupStore()
+    setup.$patch({
+      status: { needs_admin: true, needs_setup: true, has_providers: false },
+    })
+    setup.statusLoaded = true
+
+    const to = createRoute({ path: '/dashboard', name: 'dashboard' as never, meta: {} })
+    const from = createRoute()
+
+    await authGuard(to, from, next)
+    expect(next).toHaveBeenCalledWith({ name: 'setup' })
+  })
+
+  it('allows /setup and /login when setup is needed', async () => {
+    const setup = useSetupStore()
+    setup.$patch({
+      status: { needs_admin: true, needs_setup: true, has_providers: false },
+    })
+    setup.statusLoaded = true
+
+    const toSetup = createRoute({ path: '/setup', name: 'setup' as never, meta: { requiresAuth: false } })
+    const from = createRoute()
+
+    await authGuard(toSetup, from, next)
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('redirects /setup to / when setup is complete', async () => {
+    localStorage.setItem('auth_token', 'test-token')
+    localStorage.setItem('auth_token_expires_at', String(Date.now() + 3600_000))
+    setActivePinia(createPinia())
+    const setup = useSetupStore()
+    setup.$patch({
+      status: { needs_admin: false, needs_setup: false, has_providers: true },
+    })
+    setup.statusLoaded = true
+
+    const to = createRoute({ path: '/setup', name: 'setup' as never, meta: { requiresAuth: false } })
+    const from = createRoute()
+
+    await authGuard(to, from, next)
+    expect(next).toHaveBeenCalledWith('/')
+  })
 })

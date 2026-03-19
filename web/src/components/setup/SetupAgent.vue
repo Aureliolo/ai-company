@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, type Ref } from 'vue'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
@@ -7,7 +7,7 @@ import { useProviderStore } from '@/stores/providers'
 import { useSetupStore } from '@/stores/setup'
 import * as setupApi from '@/api/endpoints/setup'
 import { getErrorMessage } from '@/utils/errors'
-import type { SeniorityLevel } from '@/api/types'
+import type { SeniorityLevel, SetupAgentResponse } from '@/api/types'
 
 const emit = defineEmits<{
   complete: [agentName: string, providerName: string]
@@ -62,7 +62,8 @@ const selectedPersonality = ref<string | null>(null)
 const error = ref<string | null>(null)
 const creating = ref(false)
 // Cached agent creation result so markComplete retries skip re-creation.
-let savedAgent: import('@/api/types').SetupAgentResponse | null = null
+// Component-scoped ref prevents leaking across mounts.
+const savedAgent: Ref<SetupAgentResponse | null> = ref(null)
 
 /** All models across all configured providers, with provider name prefix. */
 const modelOptions = computed(() => {
@@ -127,7 +128,7 @@ async function handleCreate() {
   try {
     // Create the agent first; store the result so a markComplete retry
     // does not re-create the agent (non-idempotent).
-    const result = savedAgent ?? await setupApi.createAgent({
+    const result = savedAgent.value ?? await setupApi.createAgent({
       name: agentName.value.trim(),
       role: selectedRole.value,
       level: ROLE_LEVELS[selectedRole.value] ?? 'mid',
@@ -135,9 +136,9 @@ async function handleCreate() {
       model_provider: provider,
       model_id: modelId,
       department: ROLE_DEPARTMENTS[selectedRole.value] ?? 'engineering',
-      budget_limit_monthly: undefined as unknown as null,
+      budget_limit_monthly: null,
     })
-    savedAgent = result
+    savedAgent.value = result
 
     await setupStore.markComplete()
     emit('complete', result.name, result.model_provider)
