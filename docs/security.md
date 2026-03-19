@@ -151,7 +151,7 @@ Every container image is scanned by **two independent tools** before push:
 
 - **Trivy** — CRITICAL = hard fail, HIGH = warn-only (`.trivyignore.yaml` for vetted CVEs)
 - **Grype** — critical severity cutoff (`.grype.yaml` for overrides)
-- **CIS Docker Benchmark** — `trivy image --compliance docker-cis-1.6.0` run against both images (informational; will become enforced once baseline is clean)
+- **CIS Docker Benchmark** — `trivy image --compliance docker-cis-1.6.0` run against all three images (informational; will become enforced once baseline is clean)
 
 Images are **only pushed to GHCR after both vulnerability scanners pass**.
 
