@@ -1250,14 +1250,22 @@ class AgentEngine:
             return provider, identity
 
         # FALLBACK: need a different provider driver
+        original = identity.model.provider
         if self._provider_registry is None:
+            logger.warning(
+                DEGRADATION_PROVIDER_SWAPPED,
+                original_provider=original,
+                fallback_provider=effective,
+                error="no provider_registry available",
+                result="failed",
+            )
             msg = (
                 f"FALLBACK selected provider {effective!r} "
                 f"but no provider_registry available"
             )
             raise QuotaExhaustedError(
                 msg,
-                provider_name=effective,
+                provider_name=original,
                 degradation_action=DegradationAction.FALLBACK,
             )
 
@@ -1266,7 +1274,7 @@ class AgentEngine:
         except DriverNotRegisteredError as exc:
             logger.warning(
                 DEGRADATION_PROVIDER_SWAPPED,
-                original_provider=identity.model.provider,
+                original_provider=original,
                 fallback_provider=effective,
                 error=str(exc),
                 result="failed",
@@ -1274,7 +1282,7 @@ class AgentEngine:
             msg = f"Fallback provider {effective!r} not found in registry"
             raise QuotaExhaustedError(
                 msg,
-                provider_name=effective,
+                provider_name=original,
                 degradation_action=DegradationAction.FALLBACK,
             ) from exc
 

@@ -160,9 +160,7 @@ class TestEngineDegradation:
             patch.object(
                 enforcer,
                 "resolve_model",
-                new=AsyncMock(
-                    return_value=sample_agent_with_personality,
-                ),
+                new=AsyncMock(side_effect=lambda ident: ident),
             ),
         ):
             await engine.run(
