@@ -370,6 +370,7 @@ class AgentEngine:
             start = time.monotonic()
             ctx: AgentContext | None = None
             system_prompt: SystemPrompt | None = None
+            provider: CompletionProvider = self._provider
             try:
                 loop_mode = (
                     "auto"
@@ -384,88 +385,83 @@ class AgentEngine:
                     max_turns=max_turns,
                 )
 
-        start = time.monotonic()
-        ctx: AgentContext | None = None
-        system_prompt: SystemPrompt | None = None
-        provider: CompletionProvider = self._provider
-        try:
-            # Pre-flight budget enforcement + degradation
-            if self._budget_enforcer:
-                preflight = await self._budget_enforcer.check_can_execute(
-                    agent_id,
-                    provider_name=identity.model.provider,
-                )
-                provider, identity = self._apply_degradation(
-                    preflight,
-                    identity,
-                    provider,
-                )
-                identity = await self._budget_enforcer.resolve_model(
-                    identity,
-                )
+                # Pre-flight budget enforcement + degradation
+                if self._budget_enforcer:
+                    preflight = await self._budget_enforcer.check_can_execute(
+                        agent_id,
+                        provider_name=identity.model.provider,
+                    )
+                    provider, identity = self._apply_degradation(
+                        preflight,
+                        identity,
+                        provider,
+                    )
+                    identity = await self._budget_enforcer.resolve_model(
+                        identity,
+                    )
 
-            tool_invoker = self._make_tool_invoker(
-                identity,
-                task_id=task_id,
-                effective_autonomy=effective_autonomy,
-            )
-            ctx, system_prompt = await self._prepare_context(
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                max_turns=max_turns,
-                memory_messages=memory_messages,
-                tool_invoker=tool_invoker,
-                effective_autonomy=effective_autonomy,
-            )
-            return await self._execute(
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                completion_config=completion_config,
-                ctx=ctx,
-                system_prompt=system_prompt,
-                start=start,
-                timeout_seconds=timeout_seconds,
-                tool_invoker=tool_invoker,
-                effective_autonomy=effective_autonomy,
-                provider=provider,
-            )
-        except MemoryError, RecursionError:
-            logger.exception(
-                EXECUTION_ENGINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                error="non-recoverable error in run()",
-            )
-            raise
-        except BudgetExhaustedError as exc:
-            return self._handle_budget_error(
-                exc=exc,
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                duration_seconds=time.monotonic() - start,
-                ctx=ctx,
-                system_prompt=system_prompt,
-            )
-        except Exception as exc:
-            return await self._handle_fatal_error(
-                exc=exc,
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                duration_seconds=time.monotonic() - start,
-                ctx=ctx,
-                system_prompt=system_prompt,
-                completion_config=completion_config,
-                effective_autonomy=effective_autonomy,
-                provider=provider,
-            )
+                tool_invoker = self._make_tool_invoker(
+                    identity,
+                    task_id=task_id,
+                    effective_autonomy=effective_autonomy,
+                )
+                ctx, system_prompt = await self._prepare_context(
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    max_turns=max_turns,
+                    memory_messages=memory_messages,
+                    tool_invoker=tool_invoker,
+                    effective_autonomy=effective_autonomy,
+                )
+                return await self._execute(
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    completion_config=completion_config,
+                    ctx=ctx,
+                    system_prompt=system_prompt,
+                    start=start,
+                    timeout_seconds=timeout_seconds,
+                    tool_invoker=tool_invoker,
+                    effective_autonomy=effective_autonomy,
+                    provider=provider,
+                )
+            except MemoryError, RecursionError:
+                logger.exception(
+                    EXECUTION_ENGINE_ERROR,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    error="non-recoverable error in run()",
+                )
+                raise
+            except BudgetExhaustedError as exc:
+                return self._handle_budget_error(
+                    exc=exc,
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    duration_seconds=time.monotonic() - start,
+                    ctx=ctx,
+                    system_prompt=system_prompt,
+                )
+            except Exception as exc:
+                return await self._handle_fatal_error(
+                    exc=exc,
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    duration_seconds=time.monotonic() - start,
+                    ctx=ctx,
+                    system_prompt=system_prompt,
+                    completion_config=completion_config,
+                    effective_autonomy=effective_autonomy,
+                    provider=provider,
+                )
 
     async def _execute(  # noqa: PLR0913
         self,
