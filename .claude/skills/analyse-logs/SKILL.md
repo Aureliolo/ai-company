@@ -302,7 +302,7 @@ Status: X entries in Docker logs missing from file sinks
 Remove the temporary files:
 
 ```bash
-rm -rf logs/ logs/docker-stdout.txt
+rm -rf logs/
 ```
 
 ---

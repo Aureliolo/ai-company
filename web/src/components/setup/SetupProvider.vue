@@ -57,10 +57,12 @@ const isFormValid = computed(() => {
   return true
 })
 
-// Clear stale probe banner when the user manually edits baseUrl
-// away from the probed value.
+// Clear stale probe banner when the user manually edits baseUrl.
+// Covers both success (probedUrl set, user changes it) and failure
+// (probedUrl null, "Not detected" message, user types a URL).
 watch(baseUrl, (val) => {
-  if (probedUrl.value && val !== probedUrl.value) {
+  if (!probeMessage.value) return
+  if (probedUrl.value ? val !== probedUrl.value : val) {
     probeMessage.value = null
     probedUrl.value = null
   }
