@@ -542,6 +542,34 @@ class ProbeResult(BaseModel):
     candidates_tried: int = Field(default=0, ge=0)
 
 
+def _log_probe_miss(
+    preset_name: str,
+    reason: str,
+    url: str,
+    *,
+    status_code: int | None = None,
+    exc_info: bool = False,
+) -> None:
+    """Log a probe miss at DEBUG (or WARNING for unexpected errors).
+
+    Args:
+        preset_name: Preset name for context.
+        reason: Short reason tag.
+        url: URL that was probed (will be redacted).
+        status_code: HTTP status code, if applicable.
+        exc_info: Whether to include traceback.
+    """
+    level = logger.warning if exc_info else logger.debug
+    kwargs: dict[str, Any] = {
+        "preset": preset_name,
+        "reason": reason,
+        "url": _redact_url(url),
+    }
+    if status_code is not None:
+        kwargs["status_code"] = status_code
+    level(PROVIDER_PROBE_MISS, exc_info=exc_info, **kwargs)
+
+
 async def _probe_and_fetch(
     url: str,
     preset_name: str,
@@ -568,55 +596,28 @@ async def _probe_and_fetch(
         ) as client:
             response = await client.get(url)
             if not response.is_success:
-                logger.debug(
-                    PROVIDER_PROBE_MISS,
-                    preset=preset_name,
-                    reason="http_error",
-                    url=_redact_url(url),
+                _log_probe_miss(
+                    preset_name,
+                    "http_error",
+                    url,
                     status_code=response.status_code,
                 )
                 return None
             data = response.json()
             if not isinstance(data, dict):
-                logger.debug(
-                    PROVIDER_PROBE_MISS,
-                    preset=preset_name,
-                    reason="unexpected_json_type",
-                    url=_redact_url(url),
-                )
+                _log_probe_miss(preset_name, "unexpected_json_type", url)
                 return None
             return data
     except MemoryError, RecursionError:
         raise
     except httpx.ConnectError:
-        logger.debug(
-            PROVIDER_PROBE_MISS,
-            preset=preset_name,
-            reason="connection_refused",
-            url=_redact_url(url),
-        )
+        _log_probe_miss(preset_name, "connection_refused", url)
     except httpx.TimeoutException:
-        logger.debug(
-            PROVIDER_PROBE_MISS,
-            preset=preset_name,
-            reason="timeout",
-            url=_redact_url(url),
-        )
+        _log_probe_miss(preset_name, "timeout", url)
     except json.JSONDecodeError:
-        logger.debug(
-            PROVIDER_PROBE_MISS,
-            preset=preset_name,
-            reason="invalid_json",
-            url=_redact_url(url),
-        )
+        _log_probe_miss(preset_name, "invalid_json", url)
     except Exception:
-        logger.warning(
-            PROVIDER_PROBE_MISS,
-            preset=preset_name,
-            reason="unexpected_error",
-            url=_redact_url(url),
-            exc_info=True,
-        )
+        _log_probe_miss(preset_name, "unexpected_error", url, exc_info=True)
     return None
 
 
@@ -641,8 +642,12 @@ def _build_probe_hit(
     url: str,
     idx: int,
     preset_name: str,
-) -> ProbeResult:
-    """Build a successful probe result from fetched data.
+) -> ProbeResult | None:
+    """Build a probe result from fetched data, or ``None`` on parse failure.
+
+    If the JSON does not match the expected provider schema (e.g. an
+    unrelated health-check response), this returns ``None`` so the
+    caller continues probing the next candidate URL.
 
     Args:
         data: Parsed JSON response body.
@@ -651,19 +656,23 @@ def _build_probe_hit(
         preset_name: Preset name for parser selection and logging.
 
     Returns:
-        Probe result with URL, model count, and candidates tried.
+        Probe result on success, ``None`` if the payload is not a
+        recognizable model-listing response.
     """
-    logger.info(
-        PROVIDER_PROBE_HIT,
-        preset=preset_name,
-        url=_redact_url(url),
-    )
-
     if preset_name == "ollama":
         models = _parse_ollama_models(data)
     else:
         models = _parse_standard_models(data)
 
+    if models is None:
+        _log_probe_miss(preset_name, "unrecognized_schema", url)
+        return None
+
+    logger.info(
+        PROVIDER_PROBE_HIT,
+        preset=preset_name,
+        url=_redact_url(url),
+    )
     result = ProbeResult(
         url=url,
         model_count=len(models),
@@ -717,12 +726,9 @@ async def probe_preset_urls(
         if data is None:
             continue
 
-        return _build_probe_hit(
-            data,
-            url,
-            idx,
-            preset_name,
-        )
+        result = _build_probe_hit(data, url, idx, preset_name)
+        if result is not None:
+            return result
 
     logger.info(
         PROVIDER_PROBE_COMPLETED,
@@ -736,23 +742,19 @@ async def probe_preset_urls(
 
 def _parse_ollama_models(
     data: dict[str, Any],
-) -> tuple[ProviderModelConfig, ...]:
+) -> tuple[ProviderModelConfig, ...] | None:
     """Parse Ollama model list response.
 
     Args:
         data: Parsed JSON response from ``/api/tags``.
 
     Returns:
-        Tuple of model configs.
+        Tuple of model configs, or ``None`` if the response does not
+        contain a ``models`` list (unrecognized schema).
     """
     raw_models = data.get("models")
     if not isinstance(raw_models, list):
-        logger.debug(
-            PROVIDER_PROBE_MISS,
-            preset="ollama",
-            reason="unexpected_response_structure",
-        )
-        return ()
+        return None
     models: list[ProviderModelConfig] = []
     for entry in raw_models:
         if not isinstance(entry, dict):
@@ -766,23 +768,19 @@ def _parse_ollama_models(
 
 def _parse_standard_models(
     data: dict[str, Any],
-) -> tuple[ProviderModelConfig, ...]:
+) -> tuple[ProviderModelConfig, ...] | None:
     """Parse standard ``/models`` list response.
 
     Args:
         data: Parsed JSON response from ``/models``.
 
     Returns:
-        Tuple of model configs.
+        Tuple of model configs, or ``None`` if the response does not
+        contain a ``data`` list (unrecognized schema).
     """
     raw_data = data.get("data")
     if not isinstance(raw_data, list):
-        logger.debug(
-            PROVIDER_PROBE_MISS,
-            preset="standard",
-            reason="unexpected_response_structure",
-        )
-        return ()
+        return None
     models: list[ProviderModelConfig] = []
     for entry in raw_data:
         if not isinstance(entry, dict):

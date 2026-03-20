@@ -58,8 +58,10 @@ ls -lh logs/
 Only fetch Docker logs if running discrepancy mode or default (summary + discrepancy). Requires the container to be running:
 
 ```bash
-docker logs synthorg-backend-1 --timestamps --tail 1000 > logs/docker-stdout.txt 2>&1
+docker logs synthorg-backend-1 --tail 1000 > logs/docker-stdout.txt 2>&1
 ```
+
+Do **not** pass `--timestamps` -- Docker's RFC 3339 prefix would prepend a second timestamp before the app's own timestamp, breaking the parsing regex in Step 4.
 
 If the container is stopped, skip the discrepancy check and report: "Container is stopped -- file log analysis only (no discrepancy check)."
 
@@ -132,13 +134,13 @@ This is the critical check. Every INFO+ message in Docker logs must also exist i
 
 ### Method
 
-1. **Parse Docker logs** into structured records. The console sink outputs colored text, not JSON. Each line typically looks like:
+1. **Parse Docker logs** into structured records. The console sink outputs colored text, not JSON. Each line (captured without `--timestamps`) typically looks like:
 
    ```text
    2026-03-20T10:15:30.123456Z [info     ] event_name                     [synthorg.module] key=value key2=value2
    ```
 
-   Extract: timestamp, level, event, logger name.
+   Extract: timestamp, level, event, logger name. If `--timestamps` was accidentally used, strip the Docker-added RFC 3339 prefix (everything up to and including the first space before the app timestamp) before parsing.
 
 2. **Parse `synthorg.log`** (the INFO+ catch-all) into a set of `(event, logger, approximate_timestamp)` tuples.
 
