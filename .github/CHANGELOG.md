@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/Aureliolo/synthorg/compare/v0.4.0...v0.4.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* CLI update resilience + setup wizard UX overhaul ([#642](https://github.com/Aureliolo/synthorg/issues/642)) ([774e4e4](https://github.com/Aureliolo/synthorg/commit/774e4e461a832c6bad1d04a56aeaea75262b7856))
+
 ## [0.4.0](https://github.com/Aureliolo/synthorg/compare/v0.3.10...v0.4.0) (2026-03-20)
 
 
