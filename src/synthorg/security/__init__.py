@@ -32,6 +32,7 @@ from synthorg.security.config import (
 )
 from synthorg.security.models import (
     AuditEntry,
+    EvaluationConfidence,
     OutputScanResult,
     ScanOutcome,
     SecurityContext,
@@ -60,6 +61,7 @@ __all__ = [
     "AuditEntry",
     "AuditLog",
     "AutonomyTieredPolicy",
+    "EvaluationConfidence",
     "LogOnlyPolicy",
     "OutputScanPolicyType",
     "OutputScanResponsePolicy",

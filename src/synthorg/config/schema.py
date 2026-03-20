@@ -110,6 +110,14 @@ class ProviderConfig(BaseModel):
         default="litellm",
         description="Driver backend name",
     )
+    family: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Provider family for cross-validation grouping "
+            "(e.g. 'anthropic', 'openai').  When None, the "
+            "provider name is used as the family."
+        ),
+    )
     auth_type: AuthType = Field(
         default=AuthType.API_KEY,
         description="Authentication type",

@@ -36,6 +36,46 @@ class OutputScanPolicyType(StrEnum):
     AUTONOMY_TIERED = "autonomy_tiered"
 
 
+class LlmFallbackErrorPolicy(StrEnum):
+    """What to do when the LLM security evaluation fails.
+
+    Attributes:
+        USE_RULE_VERDICT: Fall back to the original rule engine verdict.
+        ESCALATE: Send the action to the human approval queue.
+        DENY: Deny the action (fail-closed).
+    """
+
+    USE_RULE_VERDICT = "use_rule_verdict"
+    ESCALATE = "escalate"
+    DENY = "deny"
+
+
+class LlmFallbackConfig(BaseModel):
+    """Configuration for LLM-based security evaluation fallback.
+
+    When enabled, actions that the rule engine cannot classify
+    (no rule matched, low confidence) are routed to an LLM from
+    a different provider family for cross-validation.
+
+    Attributes:
+        enabled: Whether LLM fallback is active.
+        model: Explicit model ID for security evaluation.  When
+            ``None``, the evaluator picks the first available model
+            from a cross-family provider.
+        timeout_seconds: Maximum time for the LLM call.
+        max_input_tokens: Token budget cap for security eval prompts.
+        on_error: Policy when the LLM call fails.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = False
+    model: NotBlankStr | None = None
+    timeout_seconds: float = Field(default=10.0, gt=0.0)
+    max_input_tokens: int = Field(default=2000, gt=0)
+    on_error: LlmFallbackErrorPolicy = LlmFallbackErrorPolicy.USE_RULE_VERDICT
+
+
 class SecurityPolicyRule(BaseModel):
     """A single configurable security policy rule.
 
@@ -96,6 +136,7 @@ class SecurityConfig(BaseModel):
     Attributes:
         enabled: Master switch for the security subsystem.
         rule_engine: Rule engine configuration.
+        llm_fallback: LLM-based fallback for uncertain evaluations.
         audit_enabled: Whether to record audit entries.
         post_tool_scanning_enabled: Scan tool output for secrets.
         hard_deny_action_types: Action types always denied.
@@ -110,6 +151,9 @@ class SecurityConfig(BaseModel):
     enabled: bool = True
     rule_engine: RuleEngineConfig = Field(
         default_factory=RuleEngineConfig,
+    )
+    llm_fallback: LlmFallbackConfig = Field(
+        default_factory=LlmFallbackConfig,
     )
     audit_enabled: bool = True
     post_tool_scanning_enabled: bool = True

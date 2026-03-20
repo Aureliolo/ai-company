@@ -44,6 +44,23 @@ class ScanOutcome(StrEnum):
     LOG_ONLY = "log_only"
 
 
+class EvaluationConfidence(StrEnum):
+    """Confidence level of a security evaluation.
+
+    Indicates whether the verdict came from a matched rule (high
+    confidence) or the fallback risk classifier (low confidence).
+    Low-confidence verdicts may trigger LLM-based re-evaluation.
+
+    Attributes:
+        HIGH: A specific security rule matched and produced the verdict.
+        LOW: No rule matched; verdict came from fallback risk
+            classification.
+    """
+
+    HIGH = "high"
+    LOW = "low"
+
+
 class SecurityVerdictType(StrEnum):
     """Security verdict constants.
 
@@ -63,6 +80,8 @@ class SecurityVerdict(BaseModel):
         verdict: One of ``allow``, ``deny``, ``escalate``.
         reason: Human-readable explanation.
         risk_level: Assessed risk level for the action.
+        confidence: Whether a rule matched (``HIGH``) or the verdict
+            came from fallback risk classification (``LOW``).
         matched_rules: Names of rules that triggered.
         evaluated_at: Timestamp of evaluation.
         evaluation_duration_ms: How long the evaluation took.
@@ -74,6 +93,7 @@ class SecurityVerdict(BaseModel):
     verdict: SecurityVerdictType
     reason: NotBlankStr
     risk_level: ApprovalRiskLevel
+    confidence: EvaluationConfidence = EvaluationConfidence.HIGH
     matched_rules: tuple[NotBlankStr, ...] = ()
     evaluated_at: AwareDatetime
     evaluation_duration_ms: float = Field(ge=0.0)
@@ -101,6 +121,9 @@ class SecurityContext(BaseModel):
         arguments: Tool call arguments for inspection.
         agent_id: ID of the agent requesting the tool.
         task_id: ID of the task being executed.
+        agent_provider_name: Name of the provider the agent is
+            currently using.  Used by the LLM security evaluator
+            for cross-family model selection.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -111,6 +134,7 @@ class SecurityContext(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
     agent_id: NotBlankStr | None = None
     task_id: NotBlankStr | None = None
+    agent_provider_name: NotBlankStr | None = None
 
     @model_validator(mode="after")
     def _check_action_type_format(self) -> SecurityContext:
