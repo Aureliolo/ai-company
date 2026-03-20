@@ -1,12 +1,14 @@
-"""Model auto-discovery for LLM providers.
+"""Model auto-discovery and URL probing for LLM providers.
 
-Discovers available models from provider endpoints in two scenarios:
-(1) auto-discovery when a preset is created with no explicit model list
-(e.g. Ollama, LM Studio, vLLM), and (2) on-demand discovery for
-existing providers via the ``POST /{name}/discover-models`` endpoint.
+Three capabilities:
 
-Also provides URL probing: given a preset's candidate URLs, tries each
-in order and returns the first reachable one with discovered models.
+1. Auto-discovery when a preset is created with no explicit model list
+   (e.g. Ollama, LM Studio, vLLM).
+2. On-demand discovery for existing providers via the
+   ``POST /{name}/discover-models`` endpoint.
+3. URL probing: given a preset's candidate URLs, tries each in
+   priority order and returns the first reachable one with discovered
+   model count (single round-trip per candidate).
 """
 
 import asyncio
@@ -17,7 +19,7 @@ from typing import Any, Final, NamedTuple
 from urllib.parse import urlparse, urlunparse
 
 import httpx
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -407,7 +409,7 @@ async def _fetch_json(
     """
     safe_url = _redact_url(url)
     check = await _validate_discovery_url(url)
-    if check.error:
+    if check.error is not None:
         logger.warning(
             PROVIDER_DISCOVERY_FAILED,
             preset=preset_name,
@@ -421,6 +423,13 @@ async def _fetch_json(
     pinned_ip = check.pinned_ip
     if pinned_ip is None:
         # Defensive: should not happen when error is None.
+        logger.error(
+            PROVIDER_DISCOVERY_FAILED,
+            preset=preset_name,
+            reason="ssrf_check_inconsistency",
+            url=safe_url,
+            detail="SSRF check passed but returned no pinned IP",
+        )
         return None
     pinned_url, original_host = _build_pinned_url(url, pinned_ip)
 
@@ -529,8 +538,8 @@ class ProbeResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     url: NotBlankStr | None = None
-    model_count: int = 0
-    candidates_tried: int = 0
+    model_count: int = Field(default=0, ge=0)
+    candidates_tried: int = Field(default=0, ge=0)
 
 
 async def _probe_and_fetch(
@@ -541,9 +550,12 @@ async def _probe_and_fetch(
 
     Uses a short timeout and does not validate SSRF -- the caller
     is responsible for using only preset-defined candidate URLs.
+    Candidate URLs must come from the hardcoded preset definitions
+    in ``presets.py`` (``PROVIDER_PRESETS``), never from user input.
 
     Args:
-        url: URL to probe (health or model-listing endpoint).
+        url: Full URL to probe (model-listing endpoint --
+            ``/api/tags`` for Ollama, ``/models`` for standard API).
         preset_name: Preset name for logging context.
 
     Returns:
@@ -556,9 +568,24 @@ async def _probe_and_fetch(
         ) as client:
             response = await client.get(url)
             if not response.is_success:
+                logger.debug(
+                    PROVIDER_PROBE_MISS,
+                    preset=preset_name,
+                    reason="http_error",
+                    url=_redact_url(url),
+                    status_code=response.status_code,
+                )
                 return None
             data = response.json()
-            return data if isinstance(data, dict) else None
+            if not isinstance(data, dict):
+                logger.debug(
+                    PROVIDER_PROBE_MISS,
+                    preset=preset_name,
+                    reason="unexpected_json_type",
+                    url=_redact_url(url),
+                )
+                return None
+            return data
     except MemoryError, RecursionError:
         raise
     except httpx.ConnectError:
@@ -593,6 +620,65 @@ async def _probe_and_fetch(
     return None
 
 
+def _build_probe_endpoint(base_url: str, preset_name: str) -> str:
+    """Build the model-listing endpoint URL for probing.
+
+    Args:
+        base_url: Provider base URL.
+        preset_name: Preset name (determines endpoint path).
+
+    Returns:
+        Full URL to the model-listing endpoint.
+    """
+    stripped = base_url.rstrip("/")
+    if preset_name == "ollama":
+        return f"{stripped}/api/tags"
+    return f"{stripped}/models"
+
+
+def _build_probe_hit(
+    data: dict[str, Any],
+    url: str,
+    idx: int,
+    preset_name: str,
+) -> ProbeResult:
+    """Build a successful probe result from fetched data.
+
+    Args:
+        data: Parsed JSON response body.
+        url: The reachable base URL.
+        idx: 1-based index of this candidate in the list.
+        preset_name: Preset name for parser selection and logging.
+
+    Returns:
+        Probe result with URL, model count, and candidates tried.
+    """
+    logger.info(
+        PROVIDER_PROBE_HIT,
+        preset=preset_name,
+        url=_redact_url(url),
+    )
+
+    if preset_name == "ollama":
+        models = _parse_ollama_models(data)
+    else:
+        models = _parse_standard_models(data)
+
+    result = ProbeResult(
+        url=url,
+        model_count=len(models),
+        candidates_tried=idx,
+    )
+    logger.info(
+        PROVIDER_PROBE_COMPLETED,
+        preset=preset_name,
+        url=_redact_url(url),
+        model_count=result.model_count,
+        candidates_tried=result.candidates_tried,
+    )
+    return result
+
+
 async def probe_preset_urls(
     candidate_urls: tuple[str, ...],
     preset_name: str,
@@ -604,7 +690,10 @@ async def probe_preset_urls(
     (single round-trip per candidate).
 
     SSRF validation is intentionally skipped here because candidate URLs
-    come from the hardcoded preset definitions, not user input.
+    come from the hardcoded preset definitions (``PROVIDER_PRESETS`` in
+    ``presets.py``), not user input.  The caller must validate the preset
+    name against the preset registry before passing ``candidate_urls``
+    to this function.
 
     Args:
         candidate_urls: URLs to probe in priority order.
@@ -622,46 +711,18 @@ async def probe_preset_urls(
     )
 
     for idx, url in enumerate(candidate_urls, start=1):
-        # Build the endpoint to probe depending on preset type.
-        if preset_name == "ollama":
-            probe_endpoint = f"{url.rstrip('/')}/api/tags"
-        else:
-            probe_endpoint = f"{url.rstrip('/')}/models"
+        probe_endpoint = _build_probe_endpoint(url, preset_name)
 
         data = await _probe_and_fetch(probe_endpoint, preset_name)
         if data is None:
-            logger.debug(
-                PROVIDER_PROBE_MISS,
-                preset=preset_name,
-                url=_redact_url(url),
-            )
             continue
 
-        logger.info(
-            PROVIDER_PROBE_HIT,
-            preset=preset_name,
-            url=_redact_url(url),
+        return _build_probe_hit(
+            data,
+            url,
+            idx,
+            preset_name,
         )
-
-        # Parse models from the already-fetched response body.
-        if preset_name == "ollama":
-            models = _parse_ollama_models(data)
-        else:
-            models = _parse_standard_models(data)
-
-        result = ProbeResult(
-            url=url,
-            model_count=len(models),
-            candidates_tried=idx,
-        )
-        logger.info(
-            PROVIDER_PROBE_COMPLETED,
-            preset=preset_name,
-            url=_redact_url(url),
-            model_count=result.model_count,
-            candidates_tried=result.candidates_tried,
-        )
-        return result
 
     logger.info(
         PROVIDER_PROBE_COMPLETED,
@@ -686,6 +747,11 @@ def _parse_ollama_models(
     """
     raw_models = data.get("models")
     if not isinstance(raw_models, list):
+        logger.debug(
+            PROVIDER_PROBE_MISS,
+            preset="ollama",
+            reason="unexpected_response_structure",
+        )
         return ()
     models: list[ProviderModelConfig] = []
     for entry in raw_models:
@@ -711,6 +777,11 @@ def _parse_standard_models(
     """
     raw_data = data.get("data")
     if not isinstance(raw_data, list):
+        logger.debug(
+            PROVIDER_PROBE_MISS,
+            preset="standard",
+            reason="unexpected_response_structure",
+        )
         return ()
     models: list[ProviderModelConfig] = []
     for entry in raw_data:

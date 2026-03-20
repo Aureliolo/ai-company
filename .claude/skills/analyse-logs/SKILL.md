@@ -133,9 +133,11 @@ This is the critical check. Every INFO+ message in Docker logs must also exist i
 ### Method
 
 1. **Parse Docker logs** into structured records. The console sink outputs colored text, not JSON. Each line typically looks like:
-   ```
+
+   ```text
    2026-03-20T10:15:30.123456Z [info     ] event_name                     [synthorg.module] key=value key2=value2
    ```
+
    Extract: timestamp, level, event, logger name.
 
 2. **Parse `synthorg.log`** (the INFO+ catch-all) into a set of `(event, logger, approximate_timestamp)` tuples.
@@ -174,22 +176,40 @@ with open('logs/docker-stdout.txt') as f:
         else:
             docker_entries.append({'ts': '', 'level': '?', 'event': '?', 'logger': '?', 'raw': line})
 
-# Parse synthorg.log (JSON catch-all)
-file_events = set()
+# Parse synthorg.log (JSON catch-all) with timestamps
+file_events = {}  # (event, logger) -> [timestamps]
 with open('logs/synthorg.log') as f:
     for line in f:
         try:
             rec = json.loads(line.strip())
-            file_events.add((rec.get('event', ''), rec.get('logger', '')))
+            key = (rec.get('event', ''), rec.get('logger', ''))
+            ts_str = rec.get('timestamp', '')
+            try:
+                ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+            except (ValueError, AttributeError):
+                ts = None
+            file_events.setdefault(key, []).append(ts)
         except (json.JSONDecodeError, ValueError):
             pass
 
-# Find discrepancies
+# Find discrepancies (within 1-second timestamp window)
 missing = []
 for entry in docker_entries:
     key = (entry['event'], entry['logger'])
-    if key not in file_events and entry['event'] != '?':
+    if entry['event'] == '?':
+        continue
+    if key not in file_events:
         missing.append(entry)
+        continue
+    # Check timestamp proximity if both sides have timestamps
+    if entry['ts']:
+        try:
+            d_ts = datetime.fromisoformat(entry['ts'].replace('Z', '+00:00'))
+            if not any(f_ts and abs((d_ts - f_ts).total_seconds()) <= 1.0
+                       for f_ts in file_events[key]):
+                missing.append(entry)
+        except (ValueError, AttributeError):
+            pass  # fall back to key-only match (already matched above)
 
 if missing:
     print(f'DISCREPANCY: {len(missing)} Docker log entries not found in file sinks:')
@@ -292,5 +312,5 @@ rm -rf logs/ logs/docker-stdout.txt
 - **Timestamps**: all file logs are ISO 8601 UTC. Docker log timestamps may include timezone -- normalize before comparing
 - **Rotation**: log files may have rotated copies (`.1`, `.2`, etc.) -- include them in analysis if `--since` spans beyond current file
 - **Sensitive data**: the logs have already been through `sanitize_sensitive_fields` (passwords, tokens, API keys are `**REDACTED**`), but still avoid dumping large volumes of log data into the conversation unnecessarily
-- **Container access**: use `docker ps -a --filter "name=synthorg"` for discovery and `docker cp`/`docker exec`/`docker logs` with the container name (`synthorg-backend-1`) directly. Use `synthorg logs` CLI when available. Do NOT use `docker compose -f docker/compose.yml` -- the running compose file is in the CLI data dir, not the repo's `docker/` directory.
+- **Container access**: use `docker ps -a --filter "name=synthorg"` for discovery and `docker cp`/`docker exec`/`docker logs` with the container name (`synthorg-backend-1`) directly. Use `synthorg logs` CLI when available. Do NOT use `docker compose -f docker/compose.yml` -- the running compose file is in the CLI data directory (e.g. `~/.synthorg/` on Linux/macOS, `%LOCALAPPDATA%\synthorg\` on Windows), not the repo's `docker/` directory. Volumes and container metadata live in the Docker VM, so accessing repo files directly will target the wrong or non-existent containers.
 - **If containers are down**: report clearly and stop -- don't try to access volumes directly (they may be on a Docker VM)

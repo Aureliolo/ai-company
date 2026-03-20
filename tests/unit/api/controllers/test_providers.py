@@ -122,6 +122,18 @@ class TestProviderCrudEndpoints:
         )
         assert resp.status_code == 403
 
+    def test_probe_preset_requires_write_access(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """POST /providers/probe-preset is guarded by write access."""
+        resp = test_client.post(
+            "/api/v1/providers/probe-preset",
+            json={"preset_name": "ollama"},
+            headers=make_auth_headers("observer"),
+        )
+        assert resp.status_code == 403
+
 
 def _make_provider_state_and_mgmt() -> tuple[MagicMock, AsyncMock]:
     """Create a mock Litestar State with a mock provider management service.

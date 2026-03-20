@@ -588,6 +588,13 @@ def create_app(  # noqa: PLR0913
 
     return Litestar(
         route_handlers=[api_router],
+        # Disable Litestar's built-in logging config to preserve the
+        # structlog multi-file-sink pipeline set up by
+        # _bootstrap_app_logging() above.  Without this, Litestar calls
+        # dictConfig() at startup which triggers _clearExistingHandlers
+        # and replaces structlog's file sinks with a stdlib
+        # queue_listener, causing all runtime logs to go only to Docker
+        # stdout.
         logging_config=None,
         state=State({"app_state": app_state}),
         cors_config=CORSConfig(

@@ -86,7 +86,7 @@ class ProviderController(Controller):
         discovered.
 
         Args:
-            state: Application state.
+            state: Application state (injected by Litestar, unused).
             data: Probe request with preset name.
 
         Returns:

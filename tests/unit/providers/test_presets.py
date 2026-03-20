@@ -35,6 +35,25 @@ class TestProviderPresets:
         assert len(presets) == len(PROVIDER_PRESETS)
         assert presets == PROVIDER_PRESETS
 
+    def test_local_presets_have_candidate_urls(self) -> None:
+        """Local presets (ollama, lm-studio, vllm) must have candidate URLs."""
+        for name in ("ollama", "lm-studio", "vllm"):
+            preset = get_preset(name)
+            assert preset is not None, f"Preset {name!r} not found"
+            assert len(preset.candidate_urls) > 0, (
+                f"Preset {name!r} should have candidate_urls for auto-detection"
+            )
+            for url in preset.candidate_urls:
+                assert url.startswith(("http://", "https://")), (
+                    f"candidate_url {url!r} in preset {name!r} must have http(s) scheme"
+                )
+
+    def test_cloud_presets_have_no_candidate_urls(self) -> None:
+        """Cloud presets (openrouter) should not have candidate URLs."""
+        preset = get_preset("openrouter")
+        assert preset is not None
+        assert len(preset.candidate_urls) == 0
+
     def test_presets_are_frozen(self) -> None:
         from pydantic import ValidationError
 

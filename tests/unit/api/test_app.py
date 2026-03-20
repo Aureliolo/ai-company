@@ -33,6 +33,22 @@ class TestCreateApp:
         )
         assert isinstance(app, Litestar)
 
+    def test_logging_config_is_disabled(
+        self,
+        fake_persistence: Any,
+        fake_message_bus: Any,
+        cost_tracker: Any,
+        root_config: Any,
+    ) -> None:
+        """Litestar must NOT manage logging (structlog owns the pipeline)."""
+        app = create_app(
+            config=root_config,
+            persistence=fake_persistence,
+            message_bus=fake_message_bus,
+            cost_tracker=cost_tracker,
+        )
+        assert app.logging_config is None
+
     def test_openapi_schema_accessible(self, test_client: TestClient[Any]) -> None:
         response = test_client.get("/docs/openapi.json")
         assert response.status_code == 200

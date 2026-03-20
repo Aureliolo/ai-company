@@ -109,6 +109,7 @@ Providers can be managed at runtime through the API without restarting:
 - **Connection test**: `POST /api/v1/providers/{name}/test` -- sends a minimal probe and reports latency
 - **Model discovery**: `POST /api/v1/providers/{name}/discover-models` -- queries the provider endpoint for available models (Ollama `/api/tags`, standard `/models`) and updates the provider config. Also auto-triggered on preset creation for no-auth providers with empty model lists. SSRF-safe URL validation applied before outbound requests.
 - **Presets**: `GET /api/v1/providers/presets` lists built-in templates (Ollama, LM Studio, OpenRouter, vLLM); `POST /api/v1/providers/from-preset` creates from a template
+- **Preset auto-probe**: `POST /api/v1/providers/probe-preset` -- for presets with `candidate_urls` (local providers: Ollama, LM Studio, vLLM), probes each URL in priority order (`host.docker.internal`, Docker bridge IP, `localhost`) with a 5-second timeout. Returns the first reachable URL and discovered model count. Used by the setup wizard to auto-detect local providers running on the host machine. SSRF validation is intentionally skipped because only hardcoded preset URLs are probed, never user input.
 - **Hot-reload**: On mutation, `ProviderManagementService` rebuilds `ProviderRegistry` + `ModelRouter` and atomically swaps them in `AppState` -- no downtime
 - **Auth types**: `api_key` (default), `oauth` (stores credentials, MVP uses pre-fetched token), `custom_header`, `none` (local providers)
 - **Credential safety**: Secrets are Fernet-encrypted at rest via the `providers.configs` sensitive setting; API responses use `ProviderResponse` DTO that strips all secrets and provides `has_api_key`/`has_oauth_credentials`/`has_custom_header` boolean indicators
@@ -1021,7 +1022,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/approvals` | Pending human approvals queue |
 | `/api/v1/analytics` | Performance metrics, dashboards |
 | `/api/v1/settings` | Runtime-editable configuration (9 namespaces), schema discovery |
-| `GET /api/v1/providers`, `POST /api/v1/providers`, `PUT /api/v1/providers/{name}`, `DELETE /api/v1/providers/{name}`, `POST /api/v1/providers/{name}/test`, `GET /api/v1/providers/presets`, `POST /api/v1/providers/from-preset`, `POST /api/v1/providers/{name}/discover-models` | Provider CRUD, connection testing, presets, model discovery, 4 auth types (api_key, oauth, custom_header, none) |
+| `GET /api/v1/providers`, `POST /api/v1/providers`, `PUT /api/v1/providers/{name}`, `DELETE /api/v1/providers/{name}`, `POST /api/v1/providers/{name}/test`, `GET /api/v1/providers/presets`, `POST /api/v1/providers/from-preset`, `POST /api/v1/providers/{name}/discover-models`, `POST /api/v1/providers/probe-preset` | Provider CRUD, connection testing, presets, preset auto-probe, model discovery, 4 auth types (api_key, oauth, custom_header, none) |
 | `/api/v1/setup` | First-run setup wizard: status check (public, reports `has_company`/`has_agents`/`has_providers` for step resume), template listing, company/agent creation, completion gate (requires company + agent + provider) |
 | `/api/v1/admin/backups` | Manual backup, list, detail, delete |
 | `/api/v1/ws` | WebSocket for real-time updates (ticket auth via `?ticket=`) |
@@ -1246,6 +1247,15 @@ HTTP access logging is handled by `RequestLoggingMiddleware`, which provides ric
 fields (method, path, status_code, duration_ms, request_id) through structlog. Uvicorn's own
 startup/error messages propagate through stdlib's root handler (which structlog wraps via
 `ProcessorFormatter`).
+
+### Litestar Integration
+
+Litestar's built-in logging configuration is **disabled** (`logging_config=None` in the
+`Litestar()` constructor). Without this, Litestar reconfigures stdlib's root handler on
+startup via `dictConfig()`, which triggers `_clearExistingHandlers` and destroys the structlog
+file sink handlers attached by `_bootstrap_app_logging()`. The bootstrap call in `create_app`
+runs before the Litestar constructor and sets up all 8 sinks; `logging_config=None` ensures
+they survive.
 
 ### Docker Logging
 
