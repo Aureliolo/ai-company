@@ -172,13 +172,6 @@ class BudgetEnforcer:
             if cfg.total_monthly > 0:
                 await self._check_monthly_hard_stop(cfg, agent_id)
             await self._check_daily_limit(cfg, agent_id)
-
-            if provider_name is not None:
-                degradation_result = await self._check_provider_quota(
-                    agent_id,
-                    provider_name,
-                    estimated_tokens=estimated_tokens,
-                )
         except BudgetExhaustedError:
             raise
         except MemoryError, RecursionError:
@@ -190,6 +183,16 @@ class BudgetEnforcer:
                 reason="falling_back_to_allow_execution",
             )
             return PreFlightResult()
+
+        # Provider quota + degradation is separate: once quota is
+        # confirmed denied, unexpected errors during degradation
+        # resolution must NOT fall back to allow execution.
+        if provider_name is not None:
+            degradation_result = await self._check_provider_quota(
+                agent_id,
+                provider_name,
+                estimated_tokens=estimated_tokens,
+            )
 
         logger.debug(
             BUDGET_ENFORCEMENT_CHECK,

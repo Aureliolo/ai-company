@@ -329,8 +329,12 @@ class TestEnforcerPreFlightResult:
                 provider_name="primary",
             )
 
-    async def test_degradation_error_falls_through(self) -> None:
-        """Unexpected error in degradation is caught by check_can_execute."""
+    async def test_degradation_error_propagates(self) -> None:
+        """Unexpected error in degradation propagates (not swallowed).
+
+        After quota is confirmed denied, unexpected errors during
+        degradation resolution must NOT fall back to allow execution.
+        """
         cfg = _make_budget_config()
         tracker = CostTracker(budget_config=cfg)
         quota_tracker = _make_quota_tracker({"primary": 5})
@@ -359,15 +363,9 @@ class TestEnforcerPreFlightResult:
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("unexpected"),
             ),
+            pytest.raises(RuntimeError, match="unexpected"),
         ):
-            # Unexpected errors fall through to the generic handler
-            # in check_can_execute which allows execution
-            result = await enforcer.check_can_execute(
+            await enforcer.check_can_execute(
                 "alice",
                 provider_name="primary",
             )
-
-        # Falls through to allow execution (graceful degradation)
-        assert isinstance(result, PreFlightResult)
-        assert result.degradation is None
-        assert result.effective_provider is None
