@@ -113,6 +113,7 @@ export const useProviderStore = defineStore('providers', () => {
     }
   }
 
+  /** Probe is best-effort -- errors propagate to caller, not stored in error.value. */
   async function probePresetAction(presetName: string): Promise<ProbePresetResponse> {
     return await providersApi.probePreset(presetName)
   }

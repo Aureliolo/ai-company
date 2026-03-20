@@ -20,6 +20,7 @@ import httpx
 from pydantic import BaseModel, ConfigDict
 
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_FAILED,
@@ -527,22 +528,26 @@ class ProbeResult(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    url: str | None = None
+    url: NotBlankStr | None = None
     model_count: int = 0
     candidates_tried: int = 0
 
 
-async def _probe_url_reachable(url: str) -> bool:
-    """Check if a URL responds with a non-error status.
+async def _probe_and_fetch(
+    url: str,
+    preset_name: str,
+) -> dict[str, Any] | None:
+    """Probe a URL and return its JSON body in a single request.
 
     Uses a short timeout and does not validate SSRF -- the caller
     is responsible for using only preset-defined candidate URLs.
 
     Args:
         url: URL to probe (health or model-listing endpoint).
+        preset_name: Preset name for logging context.
 
     Returns:
-        ``True`` if the URL responded with 2xx, ``False`` otherwise.
+        Parsed JSON dict on 2xx success, ``None`` otherwise.
     """
     try:
         async with httpx.AsyncClient(
@@ -550,9 +555,42 @@ async def _probe_url_reachable(url: str) -> bool:
             follow_redirects=False,
         ) as client:
             response = await client.get(url)
-            return response.is_success
+            if not response.is_success:
+                return None
+            data = response.json()
+            return data if isinstance(data, dict) else None
+    except MemoryError, RecursionError:
+        raise
+    except httpx.ConnectError:
+        logger.debug(
+            PROVIDER_PROBE_MISS,
+            preset=preset_name,
+            reason="connection_refused",
+            url=_redact_url(url),
+        )
+    except httpx.TimeoutException:
+        logger.debug(
+            PROVIDER_PROBE_MISS,
+            preset=preset_name,
+            reason="timeout",
+            url=_redact_url(url),
+        )
+    except json.JSONDecodeError:
+        logger.debug(
+            PROVIDER_PROBE_MISS,
+            preset=preset_name,
+            reason="invalid_json",
+            url=_redact_url(url),
+        )
     except Exception:
-        return False
+        logger.warning(
+            PROVIDER_PROBE_MISS,
+            preset=preset_name,
+            reason="unexpected_error",
+            url=_redact_url(url),
+            exc_info=True,
+        )
+    return None
 
 
 async def probe_preset_urls(
@@ -562,7 +600,8 @@ async def probe_preset_urls(
     """Probe candidate URLs for a preset and return the first reachable one.
 
     Tries each URL sequentially (short timeout per URL). For the first
-    URL that responds, attempts model discovery and returns the result.
+    URL that responds, parses the model list from the same response
+    (single round-trip per candidate).
 
     SSRF validation is intentionally skipped here because candidate URLs
     come from the hardcoded preset definitions, not user input.
@@ -582,15 +621,15 @@ async def probe_preset_urls(
         candidate_count=len(candidate_urls),
     )
 
-    for url in candidate_urls:
+    for idx, url in enumerate(candidate_urls, start=1):
         # Build the endpoint to probe depending on preset type.
         if preset_name == "ollama":
             probe_endpoint = f"{url.rstrip('/')}/api/tags"
         else:
             probe_endpoint = f"{url.rstrip('/')}/models"
 
-        reachable = await _probe_url_reachable(probe_endpoint)
-        if not reachable:
+        data = await _probe_and_fetch(probe_endpoint, preset_name)
+        if data is None:
             logger.debug(
                 PROVIDER_PROBE_MISS,
                 preset=preset_name,
@@ -604,17 +643,16 @@ async def probe_preset_urls(
             url=_redact_url(url),
         )
 
-        # Discovered a reachable URL -- try to get model count.
-        # Use direct fetch (bypass SSRF check since these are
-        # preset-defined URLs, not user input).
-        models = await _discover_from_probe(
-            preset_name,
-            probe_endpoint,
-        )
+        # Parse models from the already-fetched response body.
+        if preset_name == "ollama":
+            models = _parse_ollama_models(data)
+        else:
+            models = _parse_standard_models(data)
+
         result = ProbeResult(
             url=url,
             model_count=len(models),
-            candidates_tried=candidate_urls.index(url) + 1,
+            candidates_tried=idx,
         )
         logger.info(
             PROVIDER_PROBE_COMPLETED,
@@ -633,41 +671,6 @@ async def probe_preset_urls(
         candidates_tried=len(candidate_urls),
     )
     return ProbeResult(candidates_tried=len(candidate_urls))
-
-
-async def _discover_from_probe(
-    preset_name: str,
-    probe_endpoint: str,
-) -> tuple[ProviderModelConfig, ...]:
-    """Discover models from an already-probed URL.
-
-    Skips SSRF validation since the URL was already confirmed reachable
-    from a preset-defined candidate list.
-
-    Args:
-        preset_name: Preset name for parsing the response format.
-        probe_endpoint: The endpoint URL already confirmed reachable.
-
-    Returns:
-        Discovered model configs, or empty tuple on failure.
-    """
-    try:
-        async with httpx.AsyncClient(
-            timeout=_DISCOVERY_TIMEOUT_SECONDS,
-            follow_redirects=False,
-        ) as client:
-            response = await client.get(probe_endpoint)
-            response.raise_for_status()
-            data = response.json()
-    except Exception:
-        return ()
-
-    if not isinstance(data, dict):
-        return ()
-
-    if preset_name == "ollama":
-        return _parse_ollama_models(data)
-    return _parse_standard_models(data)
 
 
 def _parse_ollama_models(

@@ -738,7 +738,7 @@ class ProbePresetResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    url: str | None = None
+    url: NotBlankStr | None = None
     model_count: int = 0
     candidates_tried: int = 0
 

@@ -456,22 +456,19 @@ class TestProbePresetUrls:
         ok_response = _mock_response(
             {"models": [{"name": "phi3"}, {"name": "llama3"}]},
         )
-        call_count = 0
-        original_client = _mock_client(ok_response)
 
         async def side_effect_get(url: str, **kwargs: Any) -> httpx.Response:
-            nonlocal call_count
-            call_count += 1
-            if call_count <= 1:
+            if "host.docker.internal" in url:
                 msg = "refused"
                 raise httpx.ConnectError(msg)
             return ok_response
 
-        original_client.get.side_effect = side_effect_get
+        client = _mock_client(ok_response)
+        client.get.side_effect = side_effect_get
 
         with patch(
             "synthorg.providers.discovery.httpx.AsyncClient",
-            return_value=original_client,
+            return_value=client,
         ):
             result = await probe_preset_urls(
                 (

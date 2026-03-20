@@ -93,11 +93,15 @@ class ProviderController(Controller):
             Probe result envelope.
 
         Raises:
-            ApiValidationError: If the preset is unknown or has no
-                candidate URLs.
+            ApiValidationError: If the preset is unknown.
         """
         preset = get_preset(data.preset_name)
         if preset is None:
+            logger.warning(
+                API_VALIDATION_FAILED,
+                resource="preset",
+                name=data.preset_name,
+            )
             msg = f"Unknown preset: {data.preset_name!r}"
             raise ApiValidationError(msg)
         if not preset.candidate_urls:

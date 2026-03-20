@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import * as fc from 'fast-check'
 import { setActivePinia, createPinia } from 'pinia'
 import { useProviderStore } from '@/stores/providers'
-import type { DiscoverModelsResponse, ProviderConfig, ProviderPreset } from '@/api/types'
+import type { DiscoverModelsResponse, ProbePresetResponse, ProviderConfig, ProviderPreset } from '@/api/types'
 
 vi.mock('@/api/endpoints/providers', () => ({
   listProviders: vi.fn(),
@@ -15,6 +15,7 @@ vi.mock('@/api/endpoints/providers', () => ({
   listPresets: vi.fn(),
   createFromPreset: vi.fn(),
   discoverModels: vi.fn(),
+  probePreset: vi.fn(),
 }))
 
 const mockProvider: ProviderConfig = {
@@ -304,6 +305,35 @@ describe('useProviderStore', () => {
     await expect(store.discoverModels('test-provider')).rejects.toThrow('Discovery failed')
 
     expect(store.error).toBe('Discovery failed')
+  })
+
+  it('probePreset returns response from api', async () => {
+    const providersApi = await import('@/api/endpoints/providers')
+    const probeResponse: ProbePresetResponse = {
+      url: 'http://host.docker.internal:11434',
+      model_count: 3,
+      candidates_tried: 1,
+    }
+    vi.mocked(providersApi.probePreset).mockResolvedValue(probeResponse)
+
+    const store = useProviderStore()
+    const result = await store.probePreset('ollama')
+
+    expect(providersApi.probePreset).toHaveBeenCalledWith('ollama')
+    expect(result.url).toBe('http://host.docker.internal:11434')
+    expect(result.model_count).toBe(3)
+    expect(result.candidates_tried).toBe(1)
+  })
+
+  it('probePreset propagates errors without setting store error', async () => {
+    const providersApi = await import('@/api/endpoints/providers')
+    vi.mocked(providersApi.probePreset).mockRejectedValue(new Error('timeout'))
+
+    const store = useProviderStore()
+    await expect(store.probePreset('ollama')).rejects.toThrow('timeout')
+
+    // Best-effort: error is NOT stored (unlike discoverModels)
+    expect(store.error).toBeNull()
   })
 
   it('stale fetch is discarded when newer fetch completes first', async () => {

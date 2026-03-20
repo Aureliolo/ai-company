@@ -36,7 +36,7 @@ class ProviderPreset(BaseModel):
     driver: NotBlankStr
     auth_type: AuthType
     default_base_url: NotBlankStr | None = None
-    candidate_urls: tuple[str, ...] = ()
+    candidate_urls: tuple[NotBlankStr, ...] = ()
     default_models: tuple[ProviderModelConfig, ...] = ()
 
 

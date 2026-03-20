@@ -14,6 +14,7 @@ vi.mock('@/api/endpoints/providers', () => ({
   testConnection: vi.fn().mockResolvedValue({ success: true, latency_ms: 42, error: null, model_tested: 'test-small-001' }),
   createFromPreset: vi.fn(),
   discoverModels: vi.fn(),
+  probePreset: vi.fn().mockResolvedValue({ url: null, model_count: 0, candidates_tried: 0 }),
 }))
 
 import * as providersApi from '@/api/endpoints/providers'
@@ -83,6 +84,7 @@ const mockPreset: ProviderPreset = {
   driver: 'litellm',
   auth_type: 'none',
   default_base_url: 'http://localhost:11434',
+  candidate_urls: ['http://host.docker.internal:11434', 'http://localhost:11434'],
   default_models: [],
 }
 
@@ -93,6 +95,7 @@ const mockApiKeyPreset: ProviderPreset = {
   driver: 'litellm',
   auth_type: 'api_key',
   default_base_url: 'https://openrouter.ai/api/v1',
+  candidate_urls: [],
   default_models: [],
 }
 

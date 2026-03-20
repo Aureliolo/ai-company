@@ -24,6 +24,7 @@ const testing = ref(false)
 const discovering = ref(false)
 const probing = ref(false)
 const probeMessage = ref<string | null>(null)
+let probeGeneration = 0
 const createdProviderName = ref<string | null>(null)
 const testPassed = ref(false)
 const testResult = ref<TestConnectionResponse | null>(null)
@@ -90,6 +91,7 @@ function authTypeSeverity(authType: string): 'info' | 'warn' | 'success' | 'seco
 }
 
 async function selectPreset(preset: ProviderPreset) {
+  const myGen = ++probeGeneration
   selectedPreset.value = preset
   providerName.value = preset.name
   baseUrl.value = preset.default_base_url ?? ''
@@ -103,9 +105,9 @@ async function selectPreset(preset: ProviderPreset) {
   // Auto-probe candidate URLs for no-auth local presets.
   if (preset.auth_type === 'none' && preset.candidate_urls.length > 0) {
     probing.value = true
-    probeMessage.value = null
     try {
       const result = await store.probePreset(preset.name)
+      if (myGen !== probeGeneration) return
       if (result.url) {
         baseUrl.value = result.url
         const modelText = result.model_count > 0
@@ -118,7 +120,9 @@ async function selectPreset(preset: ProviderPreset) {
     } catch {
       // Probe is best-effort; fall back to default URL silently.
     } finally {
-      probing.value = false
+      if (myGen === probeGeneration) {
+        probing.value = false
+      }
     }
   }
 }
@@ -291,12 +295,14 @@ onMounted(async () => {
             :disabled="probing"
             :placeholder="selectedPreset.default_base_url ?? 'https://api.example.com'"
           />
-          <div v-if="probing" class="mt-1 flex items-center gap-2 text-xs text-slate-400">
-            <i class="pi pi-spin pi-spinner" />
-            Detecting provider...
+          <div v-if="probing" aria-live="polite" class="mt-1 flex items-center gap-2 text-xs text-slate-400">
+            <i class="pi pi-spin pi-spinner" aria-hidden="true" />
+            <span>Detecting provider...</span>
           </div>
           <div
             v-else-if="probeMessage"
+            role="status"
+            aria-live="polite"
             class="mt-1 text-xs"
             :class="baseUrl && baseUrl !== (selectedPreset.default_base_url ?? '')
               ? 'text-green-400'
