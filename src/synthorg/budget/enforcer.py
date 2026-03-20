@@ -172,6 +172,13 @@ class BudgetEnforcer:
             if cfg.total_monthly > 0:
                 await self._check_monthly_hard_stop(cfg, agent_id)
             await self._check_daily_limit(cfg, agent_id)
+
+            if provider_name is not None:
+                degradation_result = await self._check_provider_quota(
+                    agent_id,
+                    provider_name,
+                    estimated_tokens=estimated_tokens,
+                )
         except BudgetExhaustedError:
             raise
         except MemoryError, RecursionError:
@@ -183,16 +190,6 @@ class BudgetEnforcer:
                 reason="falling_back_to_allow_execution",
             )
             return PreFlightResult()
-
-        # Provider quota + degradation is separate: once quota is
-        # confirmed denied, unexpected errors during degradation
-        # resolution must NOT fall back to allow execution.
-        if provider_name is not None:
-            degradation_result = await self._check_provider_quota(
-                agent_id,
-                provider_name,
-                estimated_tokens=estimated_tokens,
-            )
 
         logger.debug(
             BUDGET_ENFORCEMENT_CHECK,
@@ -282,13 +279,30 @@ class BudgetEnforcer:
         if self._quota_tracker is None:
             msg = "Degradation strategy requires quota_tracker but none is configured"
             raise RuntimeError(msg)
-        return await resolve_degradation(
-            provider_name=provider_name,
-            quota_result=quota_result,
-            degradation_config=deg_config,
-            quota_tracker=self._quota_tracker,
-            estimated_tokens=estimated_tokens,
-        )
+
+        # Quota is confirmed denied past this point.  Unexpected
+        # errors during degradation resolution must NOT fall back to
+        # allow execution -- wrap as QuotaExhaustedError so the
+        # BudgetExhaustedError handler in check_can_execute re-raises.
+        try:
+            return await resolve_degradation(
+                provider_name=provider_name,
+                quota_result=quota_result,
+                degradation_config=deg_config,
+                quota_tracker=self._quota_tracker,
+                estimated_tokens=estimated_tokens,
+            )
+        except BudgetExhaustedError:
+            raise
+        except MemoryError, RecursionError:
+            raise
+        except Exception as exc:
+            msg = f"Degradation resolution failed for provider {provider_name!r}: {exc}"
+            raise QuotaExhaustedError(
+                msg,
+                provider_name=provider_name,
+                degradation_action=deg_config.strategy,
+            ) from exc
 
     def _get_degradation_config(
         self,

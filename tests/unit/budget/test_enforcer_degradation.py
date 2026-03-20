@@ -329,11 +329,12 @@ class TestEnforcerPreFlightResult:
                 provider_name="primary",
             )
 
-    async def test_degradation_error_propagates(self) -> None:
-        """Unexpected error in degradation propagates (not swallowed).
+    async def test_degradation_error_raises_quota_exhausted(self) -> None:
+        """Unexpected error in degradation raises QuotaExhaustedError.
 
         After quota is confirmed denied, unexpected errors during
-        degradation resolution must NOT fall back to allow execution.
+        degradation resolution are wrapped as QuotaExhaustedError
+        (not swallowed).
         """
         cfg = _make_budget_config()
         tracker = CostTracker(budget_config=cfg)
@@ -363,7 +364,10 @@ class TestEnforcerPreFlightResult:
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("unexpected"),
             ),
-            pytest.raises(RuntimeError, match="unexpected"),
+            pytest.raises(
+                QuotaExhaustedError,
+                match="Degradation resolution failed",
+            ),
         ):
             await enforcer.check_can_execute(
                 "alice",
