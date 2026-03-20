@@ -446,7 +446,7 @@ class ProviderManagementService:
 
         resolved_hint = preset_hint or _infer_preset_hint(config.base_url)
         headers = _build_discovery_headers(config)
-        trust = self._resolve_discovery_trust(preset_hint)
+        trust = self._resolve_discovery_trust(preset_hint, config.base_url)
         discovered = await discover_models(
             config.base_url,
             resolved_hint,
@@ -465,25 +465,40 @@ class ProviderManagementService:
 
         return discovered
 
+    @staticmethod
     def _resolve_discovery_trust(
-        self,
         preset_hint: str | None,
+        base_url: str,
     ) -> bool:
-        """Determine whether to trust the provider URL for discovery.
+        """Determine whether to trust a URL for SSRF-free discovery.
 
-        Only known preset names qualify for trust elevation.
-        Validates ``preset_hint`` against the preset registry to
-        prevent arbitrary strings from bypassing SSRF validation.
+        Trust is granted only when both conditions are met:
+
+        1. ``preset_hint`` resolves to a known preset in the registry.
+        2. ``base_url`` matches one of the preset's ``candidate_urls``
+           or its ``default_base_url`` (trailing-slash-insensitive).
+
+        This prevents an attacker from storing an arbitrary URL in
+        the provider config and passing a valid ``preset_hint`` to
+        bypass SSRF validation.
 
         Args:
             preset_hint: Optional preset name hint.
+            base_url: The stored provider base URL.
 
         Returns:
-            True if the preset hint is a known preset, False otherwise.
+            True if the URL is trusted, False otherwise.
         """
         if preset_hint is None:
             return False
-        return get_preset(preset_hint) is not None
+        preset = get_preset(preset_hint)
+        if preset is None:
+            return False
+        normalized = base_url.rstrip("/")
+        trusted_urls = {u.rstrip("/") for u in preset.candidate_urls}
+        if preset.default_base_url:
+            trusted_urls.add(preset.default_base_url.rstrip("/"))
+        return normalized in trusted_urls
 
     async def _apply_discovered_models(
         self,

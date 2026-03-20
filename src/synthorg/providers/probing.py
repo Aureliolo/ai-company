@@ -193,23 +193,19 @@ def _build_probe_hit(
 
 
 async def probe_preset_urls(
-    candidate_urls: tuple[str, ...],
     preset_name: str,
 ) -> ProbeResult:
     """Probe candidate URLs for a preset and return the first reachable one.
 
-    Tries each URL sequentially (short timeout per URL). For the first
+    Resolves candidate URLs from the preset registry internally so that
+    only hardcoded preset URLs are probed (SSRF validation is skipped).
+    Returns an empty result if the preset name is unknown.
+
+    Tries each URL sequentially (short timeout per URL).  For the first
     URL that responds, parses the model list from the same response
     (single round-trip per candidate).
 
-    SSRF validation is intentionally skipped here because candidate URLs
-    come from the hardcoded preset definitions (``PROVIDER_PRESETS`` in
-    ``presets.py``), not user input.  The caller must validate the preset
-    name against the preset registry before passing ``candidate_urls``
-    to this function.
-
     Args:
-        candidate_urls: URLs to probe in priority order.
         preset_name: Preset name for discovery endpoint selection
             and logging.
 
@@ -217,6 +213,15 @@ async def probe_preset_urls(
         Probe result with the reachable URL and model count,
         or an empty result if no URL responded.
     """
+    from synthorg.providers.presets import get_preset  # noqa: PLC0415
+
+    preset = get_preset(preset_name)
+    if preset is None:
+        return ProbeResult()
+    candidate_urls = preset.candidate_urls
+    if not candidate_urls:
+        return ProbeResult()
+
     logger.info(
         PROVIDER_PROBE_STARTED,
         preset=preset_name,

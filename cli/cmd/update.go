@@ -51,15 +51,26 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Detect dirty installation state (e.g. after partial uninstall).
-	if abort, healthErr := checkInstallationHealth(cmd, state); healthErr != nil {
-		return healthErr
-	} else if abort {
-		return nil
-	}
-
+	// Migrate settings key before health check so pre-v0.3.9 installs
+	// don't trigger recovery for a missing key that migration would fix.
 	if err := migrateSettingsKey(cmd, &state); err != nil {
 		return err
+	}
+
+	// Detect dirty installation state (e.g. after partial uninstall).
+	// When recovery is chosen, force compose + image refresh even if the
+	// stored version matches the target (artifacts may be missing).
+	abort, recovered, healthErr := checkInstallationHealth(cmd, state)
+	if healthErr != nil {
+		return healthErr
+	}
+	if abort {
+		return nil
+	}
+	if recovered {
+		// Clear stored tag so updateContainerImages does not short-circuit
+		// when the CLI version matches the stored tag but images are gone.
+		state.ImageTag = ""
 	}
 
 	// Regenerate compose.yml from the current template to pick up any

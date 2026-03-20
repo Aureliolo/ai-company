@@ -16,11 +16,12 @@ import (
 
 // checkInstallationHealth detects inconsistent state between config and the
 // actual Docker/filesystem state (e.g. after a partial uninstall). Returns
-// (true, nil) if the user chose to abort, (false, nil) to continue.
-func checkInstallationHealth(cmd *cobra.Command, state config.State) (bool, error) {
+// (abort, recovered, error): abort=true if the user declined recovery,
+// recovered=true if recovery was chosen (caller should force refresh).
+func checkInstallationHealth(cmd *cobra.Command, state config.State) (bool, bool, error) {
 	issues := detectInstallationIssues(cmd.Context(), state)
 	if len(issues) == 0 {
-		return false, nil
+		return false, false, nil
 	}
 
 	out := ui.NewUI(cmd.OutOrStdout())
@@ -29,7 +30,14 @@ func checkInstallationHealth(cmd *cobra.Command, state config.State) (bool, erro
 		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", issue)
 	}
 
-	return promptHealthRecover(cmd)
+	abort, err := promptHealthRecover(cmd)
+	if err != nil {
+		return false, false, err
+	}
+	if abort {
+		return true, false, nil
+	}
+	return false, true, nil
 }
 
 // detectInstallationIssues checks config, secrets, compose, and Docker
@@ -62,7 +70,8 @@ func detectInstallationIssues(ctx context.Context, state config.State) []string 
 
 		info, dockerErr := docker.Detect(healthCtx)
 		if dockerErr != nil {
-			issues = append(issues, fmt.Sprintf("Docker not available: %v", dockerErr))
+			// Docker unavailability is handled gracefully by updateContainerImages
+			// (warns and skips). Don't trigger recovery for a missing Docker daemon.
 		} else if missing := detectMissingImages(healthCtx, info, state); len(missing) > 0 {
 			issues = append(issues, fmt.Sprintf("container images missing locally for %s (%s)",
 				state.ImageTag, strings.Join(missing, ", ")))

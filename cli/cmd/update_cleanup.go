@@ -92,7 +92,11 @@ func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.
 		if err != nil {
 			return nil, fmt.Errorf("resolving image ID for %s: %w", svc, err)
 		}
-		for _, id := range strings.Fields(strings.TrimSpace(idOut)) {
+		ids := strings.Fields(strings.TrimSpace(idOut))
+		if len(ids) == 0 {
+			return nil, fmt.Errorf("no image ID found for %s (image may not be pulled)", svc)
+		}
+		for _, id := range ids {
 			currentIDs[id] = true
 		}
 	}

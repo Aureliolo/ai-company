@@ -108,10 +108,7 @@ class ProviderController(Controller):
             return ApiResponse(
                 data=ProbePresetResponse(candidates_tried=0),
             )
-        result = await probe_preset_urls(
-            preset.candidate_urls,
-            preset.name,
-        )
+        result = await probe_preset_urls(preset.name)
         return ApiResponse(
             data=ProbePresetResponse(
                 url=result.url,

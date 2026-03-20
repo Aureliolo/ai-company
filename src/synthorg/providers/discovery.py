@@ -331,11 +331,14 @@ def _parse_and_log(
     skipped = len(raw_entries) - len(models)
     _log_skip_counts(preset_name, raw_entries, skipped, len(models))
 
-    logger.info(
-        PROVIDER_MODELS_DISCOVERED,
-        preset=preset_name,
-        model_count=len(models),
-    )
+    # Only log success when at least some models were parsed. If all
+    # entries were malformed, _log_skip_counts already logged a warning.
+    if models:
+        logger.info(
+            PROVIDER_MODELS_DISCOVERED,
+            preset=preset_name,
+            model_count=len(models),
+        )
     return models
 
 
