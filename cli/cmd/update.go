@@ -62,12 +62,6 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	if recovered {
-		// Clear stored tag so updateContainerImages does not short-circuit
-		// when the CLI version matches the stored tag but images are gone.
-		state.ImageTag = ""
-	}
-
 	// Regenerate compose.yml from the current template to pick up any
 	// template changes (new env vars, hardening tweaks, service config).
 	// In recovery mode, also generate a missing compose.yml from the template.
@@ -93,10 +87,10 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 			return nil
 		}
 		// User insisted -- update images but preserve their compose.
-		return updateContainerImages(cmd, state, true)
+		return updateContainerImages(cmd, state, true, recovered)
 	}
 
-	return updateContainerImages(cmd, state, false)
+	return updateContainerImages(cmd, state, false, recovered)
 }
 
 // errReexec is a sentinel error returned by updateCLI when the binary was
@@ -416,10 +410,11 @@ func targetImageTag(ver string) string {
 }
 
 // updateContainerImages offers to update container images to match the
-// current CLI version. Skips if images already match. When preserveCompose
-// is true, only image references are patched in the existing compose
-// instead of regenerating from the template.
-func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompose bool) error {
+// current CLI version. Skips if images already match unless forceRefresh
+// is true (recovery mode -- images may be missing despite matching tag).
+// When preserveCompose is true, only image references are patched in the
+// existing compose instead of regenerating from the template.
+func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompose bool, forceRefresh bool) error {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 
@@ -431,7 +426,7 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 	}
 
 	// Check if container images already match the target version.
-	if state.ImageTag == tag {
+	if state.ImageTag == tag && !forceRefresh {
 		_, _ = fmt.Fprintf(out, "Container images already at %s\n", tag)
 		return nil
 	}
