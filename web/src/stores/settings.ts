@@ -58,15 +58,21 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
   }
 
   if (validator_pattern !== null) {
-    try {
-      if (!new RegExp(`^(?:${validator_pattern})$`).test(value)) { // eslint-disable-line security/detect-non-literal-regexp
-        return `Must match pattern: ${validator_pattern}`
-      }
-    } catch (err) {
+    if (validator_pattern.length > 256) {
       console.warn(
-        `Invalid validator_pattern for ${definition.namespace}/${definition.key}:`,
-        validator_pattern, err,
+        `validator_pattern for ${definition.namespace}/${definition.key} exceeds 256 chars, skipping`,
       )
+    } else {
+      try {
+        if (!new RegExp(`^(?:${validator_pattern})$`).test(value)) { // eslint-disable-line security/detect-non-literal-regexp
+          return `Must match pattern: ${validator_pattern}`
+        }
+      } catch (err) {
+        console.warn(
+          `Invalid validator_pattern for ${definition.namespace}/${definition.key}:`,
+          validator_pattern, err,
+        )
+      }
     }
   }
 

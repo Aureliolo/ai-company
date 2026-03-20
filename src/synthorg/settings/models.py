@@ -83,6 +83,7 @@ class SettingDefinition(BaseModel):
     )
     validator_pattern: NotBlankStr | None = Field(
         default=None,
+        max_length=256,
         description="Regex pattern for string validation",
     )
     min_value: float | None = Field(
