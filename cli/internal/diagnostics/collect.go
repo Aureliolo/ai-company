@@ -330,7 +330,7 @@ func checkImages(ctx context.Context, dockerPath, imageTag string, sandbox bool,
 		image := imageRefForDiagnostics(name, imageTag, composeRefs, verifiedDigests)
 		_, err := docker.RunCmd(ctx, dockerPath, "image", "inspect", image, "--format", "{{.ID}}")
 		if err != nil {
-			status = append(status, fmt.Sprintf("%s: not found locally", image))
+			status = append(status, fmt.Sprintf("%s: inspect failed: %v", image, err))
 		} else {
 			status = append(status, fmt.Sprintf("%s: available", image))
 		}
