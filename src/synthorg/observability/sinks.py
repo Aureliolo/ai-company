@@ -55,9 +55,20 @@ class _FlushingWatchedFileHandler(logging.handlers.WatchedFileHandler):
 # (no name filter attached).
 _SINK_ROUTING: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
     {
-        "audit.log": ("synthorg.security.",),
+        "audit.log": (
+            "synthorg.security.",
+            "synthorg.hr.",
+            "synthorg.backup.",
+            "synthorg.settings.",
+        ),
         "cost_usage.log": ("synthorg.budget.", "synthorg.providers."),
-        "agent_activity.log": ("synthorg.engine.", "synthorg.core."),
+        "agent_activity.log": (
+            "synthorg.engine.",
+            "synthorg.core.",
+            "synthorg.communication.",
+            "synthorg.tools.",
+            "synthorg.memory.",
+        ),
         "access.log": ("synthorg.api.",),
     }
 )

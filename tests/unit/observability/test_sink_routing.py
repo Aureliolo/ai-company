@@ -88,6 +88,24 @@ class TestSinkRoutingTable:
         assert "access.log" in _SINK_ROUTING
         assert "synthorg.api." in _SINK_ROUTING["access.log"]
 
+    def test_audit_routes_hr(self) -> None:
+        assert "synthorg.hr." in _SINK_ROUTING["audit.log"]
+
+    def test_audit_routes_backup(self) -> None:
+        assert "synthorg.backup." in _SINK_ROUTING["audit.log"]
+
+    def test_audit_routes_settings(self) -> None:
+        assert "synthorg.settings." in _SINK_ROUTING["audit.log"]
+
+    def test_agent_activity_routes_communication(self) -> None:
+        assert "synthorg.communication." in _SINK_ROUTING["agent_activity.log"]
+
+    def test_agent_activity_routes_tools(self) -> None:
+        assert "synthorg.tools." in _SINK_ROUTING["agent_activity.log"]
+
+    def test_agent_activity_routes_memory(self) -> None:
+        assert "synthorg.memory." in _SINK_ROUTING["agent_activity.log"]
+
     def test_catchall_sinks_not_in_routing(self) -> None:
         for name in ("synthorg.log", "errors.log", "debug.log"):
             assert name not in _SINK_ROUTING

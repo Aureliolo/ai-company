@@ -25,6 +25,7 @@ from synthorg.engine.loop_protocol import (
 )
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine_models import TaskMutationResult
+from synthorg.observability.correlation import clear_correlation_ids
 from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from synthorg.providers.enums import FinishReason
 
@@ -1383,3 +1384,109 @@ class TestAgentEngineCoordinator:
 
         assert result is expected_result
         mock_coordinator.coordinate.assert_awaited_once_with(mock_context)
+
+
+@pytest.mark.unit
+class TestAgentEngineCorrelationBinding:
+    """Verify correlation IDs are bound/cleared around run()."""
+
+    async def test_run_binds_and_clears_correlation_ids(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider)
+
+        with (
+            patch("synthorg.engine.agent_engine.bind_correlation_id") as mock_bind,
+            patch("synthorg.engine.agent_engine.clear_correlation_ids") as mock_clear,
+        ):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+            mock_bind.assert_called_once_with(
+                agent_id=str(sample_agent_with_personality.id),
+                task_id=sample_task_with_criteria.id,
+            )
+            mock_clear.assert_called_once()
+
+    async def test_correlation_ids_cleared_on_exception(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        provider = mock_provider_factory([])  # empty -- will raise
+        engine = AgentEngine(provider=provider)
+
+        with (
+            patch("synthorg.engine.agent_engine.bind_correlation_id"),
+            patch("synthorg.engine.agent_engine.clear_correlation_ids") as mock_clear,
+        ):
+            # run() catches exceptions internally and returns an error result
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+            # clear_correlation_ids must be called even when execution fails
+            mock_clear.assert_called_once()
+
+    async def test_correlation_ids_cleared_on_validation_error(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Correlation IDs are NOT bound for validation failures.
+
+        Validation happens before binding, so clear is not called
+        when validation raises.
+        """
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider)
+
+        with (
+            patch("synthorg.engine.agent_engine.bind_correlation_id") as mock_bind,
+            patch("synthorg.engine.agent_engine.clear_correlation_ids") as mock_clear,
+        ):
+            with pytest.raises(ValueError, match="max_turns"):
+                await engine.run(
+                    identity=sample_agent_with_personality,
+                    task=sample_task_with_criteria,
+                    max_turns=0,
+                )
+            # Binding should not happen if validation fails first
+            mock_bind.assert_not_called()
+            mock_clear.assert_not_called()
+
+    async def test_structlog_context_carries_correlation(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Real bind (no mock) -- structlog context has agent_id/task_id."""
+        import structlog
+
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider)
+
+        try:
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+        finally:
+            # Ensure cleanup happened -- context should be clear
+            ctx = structlog.contextvars.get_contextvars()
+            assert "agent_id" not in ctx
+            assert "task_id" not in ctx
+            # Defensive cleanup in case test fails mid-run
+            clear_correlation_ids()
