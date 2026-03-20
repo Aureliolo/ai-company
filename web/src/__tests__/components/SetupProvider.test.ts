@@ -115,7 +115,11 @@ describe('SetupProvider', () => {
 
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.clearAllMocks()
+    vi.resetAllMocks()
+    // Re-establish factory defaults after resetAllMocks clears implementations
+    vi.mocked(providersApi.listProviders).mockResolvedValue({})
+    vi.mocked(providersApi.listPresets).mockResolvedValue([])
+    vi.mocked(providersApi.testConnection).mockResolvedValue({ success: true, latency_ms: 42, error: null, model_tested: 'test-small-001' })
   })
 
   afterEach(() => {
@@ -178,6 +182,7 @@ describe('SetupProvider', () => {
 
       expect(wrapper.text()).toContain('Network error')
       const nextBtn = findButton(wrapper, 'Next')
+      expect(nextBtn).toBeTruthy()
       expect(nextBtn!.attributes('disabled')).toBe('')
     })
 
@@ -243,6 +248,7 @@ describe('SetupProvider', () => {
       await nameInput.setValue('')
 
       const addBtn = findButton(wrapper, 'Add Provider')
+      expect(addBtn).toBeTruthy()
       expect(addBtn!.attributes('disabled')).toBe('')
     })
   })
@@ -260,6 +266,7 @@ describe('SetupProvider', () => {
       await flushPromises()
 
       const nextBtn = findButton(wrapper, 'Next')
+      expect(nextBtn).toBeTruthy()
       expect(nextBtn!.attributes('disabled')).toBeUndefined()
       await nextBtn!.trigger('click')
 
@@ -274,6 +281,7 @@ describe('SetupProvider', () => {
       await flushPromises()
 
       const backBtn = findButton(wrapper, 'Back')
+      expect(backBtn).toBeTruthy()
       await backBtn!.trigger('click')
 
       expect(wrapper.emitted('previous')).toBeTruthy()
