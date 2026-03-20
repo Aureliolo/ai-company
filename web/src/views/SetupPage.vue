@@ -194,10 +194,10 @@ onMounted(async () => {
               data-testid="step-indicator"
               class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-colors"
               :class="[
-                isStepDone(index)
-                  ? 'bg-brand-600 text-white cursor-pointer hover:bg-brand-500'
-                  : index === setup.currentStep
-                    ? 'border-2 border-brand-600 text-brand-400'
+                index === setup.currentStep
+                  ? 'border-2 border-brand-600 text-brand-400'
+                  : isStepDone(index)
+                    ? 'bg-brand-600 text-white cursor-pointer hover:bg-brand-500'
                     : 'border border-slate-700 text-slate-500',
               ]"
               :role="isStepDone(index) ? 'button' : undefined"
@@ -207,11 +207,7 @@ onMounted(async () => {
               @keydown.enter="handleStepClick(index)"
               @keydown.space.prevent="handleStepClick(index)"
             >
-              <i
-                v-if="isStepDone(index)"
-                class="pi pi-check text-xs"
-              />
-              <span v-else>{{ index + 1 }}</span>
+              <span>{{ index + 1 }}</span>
             </div>
             <div
               v-if="index < steps.length - 1"

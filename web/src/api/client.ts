@@ -52,6 +52,13 @@ apiClient.interceptors.response.use(
           window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`
         }
       })
+      // On setup page, re-fetch status to handle backend reset or token expiry
+      if (window.location.pathname === '/setup') {
+        import('@/stores/setup').then(({ useSetupStore }) => {
+          const setup = useSetupStore()
+          setup.fetchStatus()
+        }).catch(() => {})
+      }
     }
     return Promise.reject(error)
   },

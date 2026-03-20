@@ -175,6 +175,27 @@ describe('SetupPage', () => {
     }
   })
 
+  it('step indicators always show numbers, never empty dots', async () => {
+    const wrapper = mount(SetupPage)
+    await flushPromises()
+    const dots = wrapper.findAll('[data-testid="step-indicator"]')
+    expect(dots.length).toBeGreaterThanOrEqual(1)
+    for (let i = 0; i < dots.length; i++) {
+      expect(dots[i].text()).toBe(String(i + 1))
+    }
+  })
+
+  it('current step shows current styling, not done styling', async () => {
+    const wrapper = mount(SetupPage)
+    await flushPromises()
+    // Step 1 is current (index 0)
+    const dots = wrapper.findAll('[data-testid="step-indicator"]')
+    expect(dots.length).toBeGreaterThanOrEqual(1)
+    // Current step should have border-2 (current), not bg-brand-600 (done)
+    expect(dots[0].classes()).toContain('border-2')
+    expect(dots[0].classes()).not.toContain('bg-brand-600')
+  })
+
   it('renders branding logo', async () => {
     const wrapper = mount(SetupPage)
     await flushPromises()

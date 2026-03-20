@@ -291,10 +291,36 @@ describe('useProviderStore', () => {
     const result = await store.discoverModels('test-provider')
 
     expect(providersApi.discoverModels).toHaveBeenCalledOnce()
-    expect(providersApi.discoverModels).toHaveBeenCalledWith('test-provider')
+    expect(providersApi.discoverModels).toHaveBeenCalledWith('test-provider', undefined)
     expect(providersApi.listProviders).toHaveBeenCalledOnce()
     expect(result).toEqual(discoverResponse)
     expect(store.providers['test-provider']).toBeDefined()
+  })
+
+  it('discoverModels passes presetHint to API', async () => {
+    const providersApi = await import('@/api/endpoints/providers')
+    const discoverResponse: DiscoverModelsResponse = {
+      discovered_models: [
+        {
+          id: 'discovered-model-001',
+          alias: null,
+          cost_per_1k_input: 0,
+          cost_per_1k_output: 0,
+          max_context: 128000,
+          estimated_latency_ms: null,
+        },
+      ],
+      provider_name: 'test-provider',
+    }
+    vi.mocked(providersApi.discoverModels).mockResolvedValue(discoverResponse)
+    vi.mocked(providersApi.listProviders).mockResolvedValue({
+      'test-provider': mockProvider,
+    })
+
+    const store = useProviderStore()
+    await store.discoverModels('test-provider', 'ollama')
+
+    expect(providersApi.discoverModels).toHaveBeenCalledWith('test-provider', 'ollama')
   })
 
   it('discoverModels sets error and rethrows on failure', async () => {

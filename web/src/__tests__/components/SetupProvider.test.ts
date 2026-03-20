@@ -258,6 +258,35 @@ describe('SetupProvider', () => {
     })
   })
 
+  describe('model discovery', () => {
+    it('passes preset name as hint when discovering models after creation', async () => {
+      vi.mocked(providersApi.listProviders).mockResolvedValue({})
+      vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
+      vi.mocked(providersApi.createFromPreset).mockResolvedValue(mockProvider)
+      vi.mocked(providersApi.discoverModels).mockResolvedValue({
+        discovered_models: mockProvider.models,
+        provider_name: 'ollama',
+      })
+
+      wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
+      await flushPromises()
+
+      // Select the Ollama preset (triggers async auto-probe)
+      const presetBtn = wrapper.findAll('button').find((b) => b.text().includes('Ollama'))
+      expect(presetBtn).toBeTruthy()
+      await presetBtn!.trigger('click')
+      await flushPromises()
+
+      // Submit the form (triggers create + discover)
+      const form = wrapper.find('form')
+      expect(form.exists()).toBe(true)
+      await form.trigger('submit')
+      await flushPromises()
+
+      expect(providersApi.discoverModels).toHaveBeenCalledWith('ollama', 'ollama')
+    })
+  })
+
   describe('navigation events', () => {
     it('emits next when Next button is clicked and canProceed is true', async () => {
       vi.mocked(providersApi.testConnection).mockResolvedValue({

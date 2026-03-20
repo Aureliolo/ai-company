@@ -118,9 +118,9 @@ export const useProviderStore = defineStore('providers', () => {
     return await providersApi.probePreset(presetName)
   }
 
-  async function discoverModelsAction(name: string): Promise<DiscoverModelsResponse> {
+  async function discoverModelsAction(name: string, presetHint?: string): Promise<DiscoverModelsResponse> {
     try {
-      const result = await providersApi.discoverModels(name)
+      const result = await providersApi.discoverModels(name, presetHint)
       await fetchProviders()
       return result
     } catch (err) {

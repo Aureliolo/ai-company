@@ -213,7 +213,7 @@ async function handleDiscoverModels() {
   discovering.value = true
   error.value = null
   try {
-    await store.discoverModels(createdProviderName.value)
+    await store.discoverModels(createdProviderName.value, selectedPreset.value?.name)
   } catch (err) {
     error.value = getErrorMessage(err)
   } finally {

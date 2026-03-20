@@ -80,6 +80,70 @@ describe('useSetupStore', () => {
     })
   })
 
+  describe('syncCompletionFromStatus', () => {
+    it('maps backend status fields to step completion', async () => {
+      mockGetSetupStatus.mockResolvedValue({
+        needs_admin: false,
+        needs_setup: true,
+        has_providers: true,
+        has_company: true,
+        has_agents: false,
+        min_password_length: 12,
+      })
+
+      const store = useSetupStore()
+      await store.fetchStatus()
+
+      expect(store.isStepComplete('admin')).toBe(true)
+      expect(store.isStepComplete('provider')).toBe(true)
+      expect(store.isStepComplete('company')).toBe(true)
+      expect(store.isStepComplete('agent')).toBe(false)
+    })
+
+    it('marks welcome as complete when currentStep > 0', async () => {
+      mockGetSetupStatus.mockResolvedValue({
+        needs_admin: false,
+        needs_setup: true,
+        has_providers: false,
+        has_company: false,
+        has_agents: false,
+        min_password_length: 12,
+      })
+
+      const store = useSetupStore()
+      store.currentStep = 2
+      await store.fetchStatus()
+
+      expect(store.isStepComplete('welcome')).toBe(true)
+    })
+
+    it('leaves welcome incomplete when currentStep is 0', async () => {
+      mockGetSetupStatus.mockResolvedValue({
+        needs_admin: true,
+        needs_setup: true,
+        has_providers: false,
+        has_company: false,
+        has_agents: false,
+        min_password_length: 12,
+      })
+
+      const store = useSetupStore()
+      await store.fetchStatus()
+
+      expect(store.isStepComplete('welcome')).toBe(false)
+    })
+
+    it('returns false for all steps before any sync', () => {
+      const store = useSetupStore()
+
+      expect(store.isStepComplete('welcome')).toBe(false)
+      expect(store.isStepComplete('admin')).toBe(false)
+      expect(store.isStepComplete('provider')).toBe(false)
+      expect(store.isStepComplete('company')).toBe(false)
+      expect(store.isStepComplete('agent')).toBe(false)
+    })
+  })
+
   describe('setStep', () => {
     it('sets currentStep to the given index', () => {
       const store = useSetupStore()
