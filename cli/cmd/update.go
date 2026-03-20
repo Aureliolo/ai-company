@@ -251,11 +251,16 @@ func refreshCompose(cmd *cobra.Command, state config.State, force bool) (bool, e
 		if !force {
 			return true, nil // no compose.yml on disk -- nothing to refresh
 		}
-		// Recovery mode: generate compose from template.
-		if fresh == nil {
-			return false, fmt.Errorf("cannot generate compose.yml: template error")
+		// Recovery mode: compose.yml is missing, generate from template.
+		// loadAndGenerate returns (nil, nil, nil) when the file is absent,
+		// so we must generate the content explicitly.
+		params := compose.ParamsFromState(state)
+		params.DigestPins = state.VerifiedDigests
+		generated, genErr := compose.Generate(params)
+		if genErr != nil {
+			return false, fmt.Errorf("generating compose.yml during recovery: %w", genErr)
 		}
-		if wErr := atomicWriteFile(composePath, fresh, safeDir); wErr != nil {
+		if wErr := atomicWriteFile(composePath, generated, safeDir); wErr != nil {
 			return false, fmt.Errorf("writing compose.yml during recovery: %w", wErr)
 		}
 		_, _ = fmt.Fprintln(out, "Generated compose.yml from template.")

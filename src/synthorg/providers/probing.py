@@ -166,7 +166,7 @@ def _build_probe_hit(
     else:
         models = _parse_standard_models(data)
 
-    if models is None:
+    if not models:
         _log_probe_miss(preset_name, "unrecognized_schema", url)
         return None
 
