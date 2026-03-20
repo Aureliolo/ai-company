@@ -420,14 +420,16 @@ class ProviderManagementService:
 
         resolved_hint = preset_hint or _infer_preset_hint(config.base_url)
         headers = _build_discovery_headers(config)
-        # Trust URL when a preset hint is provided -- the URL was originally
-        # sourced from a preset's candidate_urls or admin-entered during
-        # setup, so SSRF validation would block valid localhost/private IPs.
+        # Trust URL when the provider uses no auth (local provider like
+        # Ollama/LM Studio) or has a preset hint -- the admin explicitly
+        # configured this URL and SSRF validation would block valid
+        # localhost/private IPs.
+        trust = preset_hint is not None or config.auth_type == AuthType.NONE
         discovered = await discover_models(
             config.base_url,
             resolved_hint,
             headers=headers,
-            trust_url=preset_hint is not None,
+            trust_url=trust,
         )
 
         if discovered:
