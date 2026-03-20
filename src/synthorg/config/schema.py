@@ -102,6 +102,7 @@ class ProviderConfig(BaseModel):
         rate_limiter: Client-side rate limiting configuration.
         subscription: Subscription and quota configuration.
         degradation: Degradation strategy when quota exhausted.
+        family: Provider family for cross-validation grouping.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -109,6 +110,14 @@ class ProviderConfig(BaseModel):
     driver: NotBlankStr = Field(
         default="litellm",
         description="Driver backend name",
+    )
+    family: NotBlankStr | None = Field(
+        default=None,
+        description=(
+            "Provider family for cross-validation grouping "
+            "(e.g. 'provider-family-a', 'provider-family-b').  "
+            "When None, the provider name is used as the family."
+        ),
     )
     auth_type: AuthType = Field(
         default=AuthType.API_KEY,
@@ -404,7 +413,7 @@ class TaskAssignmentConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    # Known strategy names — must stay in sync with
+    # Known strategy names -- must stay in sync with
     # ``STRATEGY_NAME_*`` constants in ``engine.assignment.strategies``.
     # ``"hierarchical"`` requires a ``HierarchyResolver`` at runtime.
     _VALID_STRATEGIES: ClassVar[frozenset[str]] = frozenset(
@@ -459,7 +468,7 @@ class TaskAssignmentConfig(BaseModel):
 
 
 class RootConfig(BaseModel):
-    """Root company configuration — the top-level validation target.
+    """Root company configuration -- the top-level validation target.
 
     Aggregates all sub-configurations into a single frozen model that
     represents a fully validated company setup.

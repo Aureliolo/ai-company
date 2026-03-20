@@ -33,7 +33,7 @@ class ScanOutcome(StrEnum):
         WITHHELD: Content intentionally withheld by policy.
         LOG_ONLY: Findings discarded by policy, original content passed
             through.  Always emitted with ``has_sensitive_data=False``
-            because the policy resets the result — the audit log
+            because the policy resets the result -- the audit log
             (written by ``SecOpsService`` before the policy runs) is
             the source of truth for what was actually detected.
     """
@@ -42,6 +42,23 @@ class ScanOutcome(StrEnum):
     REDACTED = "redacted"
     WITHHELD = "withheld"
     LOG_ONLY = "log_only"
+
+
+class EvaluationConfidence(StrEnum):
+    """Confidence level of a security evaluation.
+
+    Indicates whether the verdict came from a matched rule (high
+    confidence) or the fallback risk classifier (low confidence).
+    Low-confidence verdicts may trigger LLM-based re-evaluation.
+
+    Attributes:
+        HIGH: A specific security rule matched and produced the verdict.
+        LOW: No rule matched; verdict came from fallback risk
+            classification.
+    """
+
+    HIGH = "high"
+    LOW = "low"
 
 
 class SecurityVerdictType(StrEnum):
@@ -63,10 +80,15 @@ class SecurityVerdict(BaseModel):
         verdict: One of ``allow``, ``deny``, ``escalate``.
         reason: Human-readable explanation.
         risk_level: Assessed risk level for the action.
+        confidence: Whether a rule matched (``HIGH``) or the verdict
+            came from fallback risk classification (``LOW``).
         matched_rules: Names of rules that triggered.
         evaluated_at: Timestamp of evaluation.
         evaluation_duration_ms: How long the evaluation took.
         approval_id: Set only when verdict is ``escalate``.
+        agent_visible_reason: Reason string visible to the evaluated
+            agent.  When ``None``, ``reason`` is used.  Set by the
+            LLM evaluator based on ``VerdictReasonVisibility`` config.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -74,10 +96,12 @@ class SecurityVerdict(BaseModel):
     verdict: SecurityVerdictType
     reason: NotBlankStr
     risk_level: ApprovalRiskLevel
+    confidence: EvaluationConfidence = EvaluationConfidence.HIGH
     matched_rules: tuple[NotBlankStr, ...] = ()
     evaluated_at: AwareDatetime
     evaluation_duration_ms: float = Field(ge=0.0)
     approval_id: NotBlankStr | None = None
+    agent_visible_reason: NotBlankStr | None = None
 
     @model_validator(mode="after")
     def _check_approval_id(self) -> SecurityVerdict:
@@ -101,6 +125,9 @@ class SecurityContext(BaseModel):
         arguments: Tool call arguments for inspection.
         agent_id: ID of the agent requesting the tool.
         task_id: ID of the task being executed.
+        agent_provider_name: Name of the provider the agent is
+            currently using.  Used by the LLM security evaluator
+            for cross-family model selection.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -111,6 +138,7 @@ class SecurityContext(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
     agent_id: NotBlankStr | None = None
     task_id: NotBlankStr | None = None
+    agent_provider_name: NotBlankStr | None = None
 
     @model_validator(mode="after")
     def _check_action_type_format(self) -> SecurityContext:
@@ -152,6 +180,7 @@ class AuditEntry(BaseModel):
         reason: Explanation of the verdict.
         matched_rules: Rules that triggered.
         evaluation_duration_ms: Duration of evaluation.
+        confidence: Confidence level of the evaluation source.
         approval_id: Set when verdict is escalate.
     """
 
@@ -170,6 +199,7 @@ class AuditEntry(BaseModel):
     reason: NotBlankStr
     matched_rules: tuple[NotBlankStr, ...] = ()
     evaluation_duration_ms: float = Field(ge=0.0)
+    confidence: EvaluationConfidence = EvaluationConfidence.HIGH
     approval_id: NotBlankStr | None = None
 
 

@@ -92,7 +92,7 @@ class ToolInvoker:
             results = await invoker.invoke_all(tool_calls, max_concurrency=3)
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         registry: ToolRegistry,
         *,
@@ -100,6 +100,7 @@ class ToolInvoker:
         security_interceptor: SecurityInterceptionStrategy | None = None,
         agent_id: str | None = None,
         task_id: str | None = None,
+        agent_provider_name: str | None = None,
     ) -> None:
         """Initialize with a tool registry and optional checkers.
 
@@ -110,12 +111,15 @@ class ToolInvoker:
             security_interceptor: Optional pre/post-tool security layer.
             agent_id: Agent ID for security context.
             task_id: Task ID for security context.
+            agent_provider_name: Provider name the agent is using,
+                for cross-family LLM security evaluation.
         """
         self._registry = registry
         self._permission_checker = permission_checker
         self._security_interceptor = security_interceptor
         self._agent_id = agent_id
         self._task_id = task_id
+        self._agent_provider_name = agent_provider_name
 
         self._pending_escalations: list[EscalationInfo] = []
 
@@ -187,6 +191,7 @@ class ToolInvoker:
             arguments=copy.deepcopy(dict(tool_call.arguments)),
             agent_id=self._agent_id,
             task_id=self._task_id,
+            agent_provider_name=self._agent_provider_name,
         )
 
     async def _check_security(
@@ -249,8 +254,9 @@ class ToolInvoker:
                         reason=verdict.reason,
                     ),
                 )
+            agent_reason = verdict.agent_visible_reason or verdict.reason
             msg = (
-                f"Security escalation: {verdict.reason}. "
+                f"Security escalation: {agent_reason}. "
                 f"Approval required (id={verdict.approval_id})"
             )
             return context, ToolResult(
@@ -265,9 +271,10 @@ class ToolInvoker:
             tool_name=tool_call.name,
             reason=verdict.reason,
         )
+        deny_reason = verdict.agent_visible_reason or verdict.reason
         return context, ToolResult(
             tool_call_id=tool_call.id,
-            content=f"Security denied: {verdict.reason}",
+            content=f"Security denied: {deny_reason}",
             is_error=True,
         )
 

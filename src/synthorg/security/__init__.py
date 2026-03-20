@@ -25,13 +25,18 @@ from synthorg.security.action_types import (
 )
 from synthorg.security.audit import AuditLog
 from synthorg.security.config import (
+    ArgumentTruncationStrategy,
+    LlmFallbackConfig,
+    LlmFallbackErrorPolicy,
     OutputScanPolicyType,
     RuleEngineConfig,
     SecurityConfig,
     SecurityPolicyRule,
+    VerdictReasonVisibility,
 )
 from synthorg.security.models import (
     AuditEntry,
+    EvaluationConfidence,
     OutputScanResult,
     ScanOutcome,
     SecurityContext,
@@ -57,9 +62,13 @@ from synthorg.security.service import SecOpsService
 __all__ = [
     "ActionTypeCategory",
     "ActionTypeRegistry",
+    "ArgumentTruncationStrategy",
     "AuditEntry",
     "AuditLog",
     "AutonomyTieredPolicy",
+    "EvaluationConfidence",
+    "LlmFallbackConfig",
+    "LlmFallbackErrorPolicy",
     "LogOnlyPolicy",
     "OutputScanPolicyType",
     "OutputScanResponsePolicy",
@@ -77,6 +86,7 @@ __all__ = [
     "SecurityRule",
     "SecurityVerdict",
     "SecurityVerdictType",
+    "VerdictReasonVisibility",
     "WithholdPolicy",
     "build_output_scan_policy",
 ]

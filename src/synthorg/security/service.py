@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from synthorg.core.approval import ApprovalItem
-from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
+from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, AutonomyLevel
 from synthorg.observability import get_logger
 from synthorg.observability.events.autonomy import (
     AUTONOMY_ACTION_AUTO_APPROVED,
@@ -28,16 +28,21 @@ from synthorg.observability.events.security import (
     SECURITY_EVALUATE_COMPLETE,
     SECURITY_EVALUATE_START,
     SECURITY_INTERCEPTOR_ERROR,
+    SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY,
     SECURITY_VERDICT_ALLOW,
     SECURITY_VERDICT_DENY,
     SECURITY_VERDICT_ESCALATE,
 )
 from synthorg.security.audit import AuditLog  # noqa: TC001
 from synthorg.security.autonomy.models import EffectiveAutonomy  # noqa: TC001
-from synthorg.security.config import SecurityConfig  # noqa: TC001
+from synthorg.security.config import (
+    LlmFallbackErrorPolicy,
+    SecurityConfig,
+)
 from synthorg.security.models import (
     OUTPUT_SCAN_VERDICT,
     AuditEntry,
+    EvaluationConfidence,
     OutputScanResult,
     SecurityContext,
     SecurityVerdict,
@@ -55,6 +60,7 @@ from synthorg.security.timeout.protocol import RiskTierClassifier  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.api.approval_store import ApprovalStore
+    from synthorg.security.llm_evaluator import LlmSecurityEvaluator
 
 logger = get_logger(__name__)
 
@@ -94,6 +100,7 @@ class SecOpsService:
         effective_autonomy: EffectiveAutonomy | None = None,
         risk_classifier: RiskTierClassifier | None = None,
         output_scan_policy: OutputScanResponsePolicy | None = None,
+        llm_evaluator: LlmSecurityEvaluator | None = None,
     ) -> None:
         """Initialize the SecOps service.
 
@@ -113,6 +120,11 @@ class SecOpsService:
                 returning.  When ``None``, a default policy is built
                 from ``config.output_scan_policy_type`` via the
                 factory.  Pass an explicit instance to override.
+            llm_evaluator: Optional LLM-based security evaluator for
+                uncertain verdicts (``EvaluationConfidence.LOW``).
+                When provided and ``config.llm_fallback.enabled`` is
+                ``True``, low-confidence verdicts are re-evaluated
+                by an LLM from a different provider family.
         """
         self._config = config
         self._rule_engine = rule_engine
@@ -121,6 +133,7 @@ class SecOpsService:
         self._approval_store = approval_store
         self._effective_autonomy = effective_autonomy
         self._risk_classifier = risk_classifier
+        self._llm_evaluator = llm_evaluator
         self._output_scan_policy: OutputScanResponsePolicy = (
             output_scan_policy
             if output_scan_policy is not None
@@ -192,9 +205,13 @@ class SecOpsService:
                 evaluation_duration_ms=0.0,
             )
 
-        # Apply autonomy augmentation *after* the rule engine.
-        # Autonomy can only add stricter requirements (ALLOW → ESCALATE),
-        # never weaken a DENY or ESCALATE from security detectors.
+        # LLM fallback for uncertain evaluations (~5% of cases).
+        verdict = await self._maybe_llm_fallback(context, verdict)
+
+        # Apply autonomy augmentation *after* the rule engine (and
+        # optional LLM fallback).  Autonomy can only add stricter
+        # requirements (ALLOW -> ESCALATE), never weaken a DENY or
+        # ESCALATE from security detectors.
         verdict = self._apply_autonomy_augmentation(context, verdict)
 
         # Handle escalation.
@@ -292,6 +309,80 @@ class SecOpsService:
 
         return result
 
+    async def _maybe_llm_fallback(  # noqa: PLR0911
+        self,
+        context: SecurityContext,
+        verdict: SecurityVerdict,
+    ) -> SecurityVerdict:
+        """Run LLM fallback if the verdict is uncertain.
+
+        Triggers when confidence is LOW, LLM fallback is enabled, an
+        evaluator is injected, and autonomy is not FULL.  Full-autonomy
+        mode skips LLM evaluation (rules + audit only, per spec D4).
+
+        Returns the (possibly re-evaluated) verdict.
+        """
+        if verdict.confidence != EvaluationConfidence.LOW:
+            return verdict
+        # Safety net: never re-evaluate non-ALLOW verdicts through LLM,
+        # regardless of confidence (defensive against buggy custom rules
+        # that might return DENY/ESCALATE with LOW confidence).
+        if verdict.verdict != SecurityVerdictType.ALLOW:
+            return verdict
+        if not self._config.llm_fallback.enabled:
+            return verdict
+        if self._llm_evaluator is None:
+            return verdict
+
+        # Full autonomy: rules + audit only, no LLM path.
+        if (
+            self._effective_autonomy is not None
+            and self._effective_autonomy.level == AutonomyLevel.FULL
+        ):
+            logger.debug(
+                SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY,
+                tool_name=context.tool_name,
+                action_type=context.action_type,
+            )
+            return verdict
+
+        try:
+            return await self._llm_evaluator.evaluate(context, verdict)
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.exception(
+                SECURITY_INTERCEPTOR_ERROR,
+                tool_name=context.tool_name,
+                note="LLM security evaluation failed (applying error policy)",
+            )
+            # Respect the configured error policy rather than
+            # unconditionally returning the rule verdict.
+            policy = self._config.llm_fallback.on_error
+            if policy == LlmFallbackErrorPolicy.DENY:
+                return verdict.model_copy(
+                    update={
+                        "verdict": SecurityVerdictType.DENY,
+                        "reason": (
+                            f"{verdict.reason} "
+                            "(LLM evaluator error -- denied per policy)"
+                        ),
+                        "risk_level": ApprovalRiskLevel.HIGH,
+                    },
+                )
+            if policy == LlmFallbackErrorPolicy.ESCALATE:
+                return verdict.model_copy(
+                    update={
+                        "verdict": SecurityVerdictType.ESCALATE,
+                        "reason": (
+                            f"{verdict.reason} "
+                            "(LLM evaluator error -- escalated per policy)"
+                        ),
+                        "risk_level": ApprovalRiskLevel.HIGH,
+                    },
+                )
+            return verdict
+
     def _apply_autonomy_augmentation(
         self,
         context: SecurityContext,
@@ -376,6 +467,7 @@ class SecOpsService:
             reason=verdict.reason,
             matched_rules=verdict.matched_rules,
             evaluation_duration_ms=verdict.evaluation_duration_ms,
+            confidence=verdict.confidence,
             approval_id=verdict.approval_id,
         )
         try:

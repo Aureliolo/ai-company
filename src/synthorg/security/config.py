@@ -26,7 +26,7 @@ class OutputScanPolicyType(StrEnum):
         WITHHOLD: Clear redacted content, forcing fail-closed.
         LOG_ONLY: Log findings but pass output through.
         AUTONOMY_TIERED: Delegate based on effective autonomy level
-            (default — falls back to ``REDACT`` when no autonomy
+            (default -- falls back to ``REDACT`` when no autonomy
             is configured).
     """
 
@@ -34,6 +34,85 @@ class OutputScanPolicyType(StrEnum):
     WITHHOLD = "withhold"
     LOG_ONLY = "log_only"
     AUTONOMY_TIERED = "autonomy_tiered"
+
+
+class VerdictReasonVisibility(StrEnum):
+    """Controls how much of the LLM evaluator's reason is visible to agents.
+
+    Attributes:
+        FULL: Return the full LLM reason to the agent.
+        GENERIC: Return a generic denial/escalation message.
+        CATEGORY: Return verdict type and risk level only.
+    """
+
+    FULL = "full"
+    GENERIC = "generic"
+    CATEGORY = "category"
+
+
+class ArgumentTruncationStrategy(StrEnum):
+    """How to truncate large tool arguments for the LLM security prompt.
+
+    Attributes:
+        WHOLE_STRING: Truncate the serialized JSON at a character limit.
+        PER_VALUE: Truncate each argument value individually before
+            serialization, preserving all key names.
+        KEYS_AND_VALUES: Include all keys with individually capped
+            values (explicit about key preservation).
+    """
+
+    WHOLE_STRING = "whole_string"
+    PER_VALUE = "per_value"
+    KEYS_AND_VALUES = "keys_and_values"
+
+
+class LlmFallbackErrorPolicy(StrEnum):
+    """What to do when the LLM security evaluation fails.
+
+    Attributes:
+        USE_RULE_VERDICT: Fall back to the original rule engine verdict.
+        ESCALATE: Send the action to the human approval queue.
+        DENY: Deny the action (fail-closed).
+    """
+
+    USE_RULE_VERDICT = "use_rule_verdict"
+    ESCALATE = "escalate"
+    DENY = "deny"
+
+
+class LlmFallbackConfig(BaseModel):
+    """Configuration for LLM-based security evaluation fallback.
+
+    When enabled, actions that the rule engine cannot classify
+    (no rule matched, low confidence) are routed to an LLM from
+    a different provider family for cross-validation.
+
+    Attributes:
+        enabled: Whether LLM fallback is active.
+        model: Explicit model ID for security evaluation.  When
+            ``None``, the evaluator picks the first model from
+            the selected provider (cross-family preferred,
+            same-family fallback).
+        timeout_seconds: Maximum time for the LLM call.
+        max_input_tokens: Token budget cap for security eval prompts.
+        on_error: Policy when the LLM call fails.
+        reason_visibility: How much of the LLM reason is visible
+            to the evaluated agent.
+        argument_truncation: Strategy for truncating large tool
+            arguments in the LLM prompt.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = False
+    model: NotBlankStr | None = None
+    timeout_seconds: float = Field(default=10.0, gt=0.0)
+    max_input_tokens: int = Field(default=2000, gt=0)
+    on_error: LlmFallbackErrorPolicy = LlmFallbackErrorPolicy.ESCALATE
+    reason_visibility: VerdictReasonVisibility = VerdictReasonVisibility.GENERIC
+    argument_truncation: ArgumentTruncationStrategy = (
+        ArgumentTruncationStrategy.PER_VALUE
+    )
 
 
 class SecurityPolicyRule(BaseModel):
@@ -96,6 +175,7 @@ class SecurityConfig(BaseModel):
     Attributes:
         enabled: Master switch for the security subsystem.
         rule_engine: Rule engine configuration.
+        llm_fallback: LLM-based fallback for uncertain evaluations.
         audit_enabled: Whether to record audit entries.
         post_tool_scanning_enabled: Scan tool output for secrets.
         hard_deny_action_types: Action types always denied.
@@ -110,6 +190,9 @@ class SecurityConfig(BaseModel):
     enabled: bool = True
     rule_engine: RuleEngineConfig = Field(
         default_factory=RuleEngineConfig,
+    )
+    llm_fallback: LlmFallbackConfig = Field(
+        default_factory=LlmFallbackConfig,
     )
     audit_enabled: bool = True
     post_tool_scanning_enabled: bool = True

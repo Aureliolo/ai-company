@@ -31,3 +31,17 @@ SECURITY_SCAN_DEPTH_EXCEEDED: Final[str] = "security.scan.depth_exceeded"
 SECURITY_AUDIT_RECORD_ERROR: Final[str] = "security.audit.record_error"
 SECURITY_ACTION_TYPE_INVALID: Final[str] = "security.action_type.invalid"
 SECURITY_OUTPUT_SCAN_POLICY_APPLIED: Final[str] = "security.output_scan.policy_applied"
+
+# LLM fallback evaluation events.
+SECURITY_LLM_EVAL_START: Final[str] = "security.llm_eval.start"
+SECURITY_LLM_EVAL_COMPLETE: Final[str] = "security.llm_eval.complete"
+SECURITY_LLM_EVAL_ERROR: Final[str] = "security.llm_eval.error"
+SECURITY_LLM_EVAL_TIMEOUT: Final[str] = "security.llm_eval.timeout"
+SECURITY_LLM_EVAL_CROSS_FAMILY: Final[str] = "security.llm_eval.cross_family"
+SECURITY_LLM_EVAL_SAME_FAMILY_FALLBACK: Final[str] = (
+    "security.llm_eval.same_family_fallback"
+)
+SECURITY_LLM_EVAL_NO_PROVIDER: Final[str] = "security.llm_eval.no_provider"
+SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY: Final[str] = (
+    "security.llm_eval.skipped_full_autonomy"
+)

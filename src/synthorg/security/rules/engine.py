@@ -13,6 +13,7 @@ from synthorg.observability.events.security import (
 )
 from synthorg.security.config import RuleEngineConfig  # noqa: TC001
 from synthorg.security.models import (
+    EvaluationConfidence,
     SecurityContext,
     SecurityVerdict,
     SecurityVerdictType,
@@ -131,11 +132,14 @@ class RuleEngine:
             )
 
         # Fallback: ALLOW with risk from classifier.
+        # Low confidence — no rule matched, only risk-classified.
+        # This is the ~5% of cases where LLM fallback may trigger.
         risk = self._risk_classifier.classify(context.action_type)
         logger.debug(
             SECURITY_VERDICT_ALLOW,
             tool_name=context.tool_name,
             risk_level=risk.value,
+            confidence=EvaluationConfidence.LOW.value,
         )
         logger.debug(
             SECURITY_EVALUATE_COMPLETE,
@@ -146,6 +150,7 @@ class RuleEngine:
             verdict=SecurityVerdictType.ALLOW,
             reason="No security rule triggered",
             risk_level=risk,
+            confidence=EvaluationConfidence.LOW,
             evaluated_at=datetime.now(UTC),
             evaluation_duration_ms=duration_ms,
         )
@@ -158,6 +163,8 @@ class RuleEngine:
         """Evaluate a single rule, catching exceptions (fail-closed)."""
         try:
             return rule.evaluate(context)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 SECURITY_RULE_ERROR,
