@@ -155,23 +155,59 @@ func TestCheckMinVersions(t *testing.T) {
 
 func TestVersionAtLeast(t *testing.T) {
 	tests := []struct {
-		got  string
-		min  string
-		want bool
+		got     string
+		min     string
+		want    bool
+		wantErr bool
 	}{
-		{"27.5.1", "20.10.0", true},
-		{"20.10.0", "20.10.0", true},
-		{"20.10.1", "20.10.0", true},
-		{"20.9.0", "20.10.0", false},
-		{"19.3.0", "20.10.0", false},
-		{"v2.32.1", "2.0.0", true},
-		{"1.29.0", "2.0.0", false},
+		{"27.5.1", "20.10.0", true, false},
+		{"20.10.0", "20.10.0", true, false},
+		{"20.10.1", "20.10.0", true, false},
+		{"20.9.0", "20.10.0", false, false},
+		{"19.3.0", "20.10.0", false, false},
+		{"v2.32.1", "2.0.0", true, false},
+		{"1.29.0", "2.0.0", false, false},
+		{"1.0.0-rc1", "1.0.0", true, false},
+		{"", "", true, false},
+		{"99999999999999999999.0.0", "1.0.0", false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.got+">="+tt.min, func(t *testing.T) {
-			if got := versionAtLeast(tt.got, tt.min); got != tt.want {
+			got, err := versionAtLeast(tt.got, tt.min)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
 				t.Errorf("versionAtLeast(%q, %q) = %v, want %v", tt.got, tt.min, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestCheckMinVersions_UnparseableVersion(t *testing.T) {
+	// Use an overflow number to trigger strconv.Atoi error.
+	info := Info{
+		DockerVersion:  "27.5.1",
+		ComposeVersion: "99999999999999999999.0.0",
+	}
+	warnings := CheckMinVersions(info)
+	if len(warnings) == 0 {
+		t.Fatal("expected at least one warning for unparseable version")
+	}
+	found := false
+	for _, w := range warnings {
+		if strings.Contains(w, "could not parse") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'could not parse' warning, got: %v", warnings)
 	}
 }

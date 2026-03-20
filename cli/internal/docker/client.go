@@ -68,10 +68,16 @@ func Detect(ctx context.Context) (Info, error) {
 // CheckMinVersions returns warnings for Docker/Compose versions below minimum.
 func CheckMinVersions(info Info) []string {
 	var warnings []string
-	if !versionAtLeast(info.DockerVersion, MinDockerVersion) {
+	ok, err := versionAtLeast(info.DockerVersion, MinDockerVersion)
+	if err != nil {
+		warnings = append(warnings, fmt.Sprintf("could not parse Docker version %q: %v", info.DockerVersion, err))
+	} else if !ok {
 		warnings = append(warnings, fmt.Sprintf("Docker %s is below minimum %s", info.DockerVersion, MinDockerVersion))
 	}
-	if !versionAtLeast(info.ComposeVersion, MinComposeVersion) {
+	ok, err = versionAtLeast(info.ComposeVersion, MinComposeVersion)
+	if err != nil {
+		warnings = append(warnings, fmt.Sprintf("could not parse Compose version %q: %v", info.ComposeVersion, err))
+	} else if !ok {
 		warnings = append(warnings, fmt.Sprintf("Docker Compose %s is below minimum %s", info.ComposeVersion, MinComposeVersion))
 	}
 	return warnings
@@ -141,33 +147,47 @@ func DaemonHint(goos string) string {
 }
 
 // versionAtLeast returns true if got >= min using semver-like comparison.
-func versionAtLeast(got, min string) bool {
+func versionAtLeast(got, min string) (bool, error) {
 	got = strings.TrimPrefix(got, "v")
 	min = strings.TrimPrefix(min, "v")
 
 	gParts := strings.SplitN(got, ".", 3)
 	mParts := strings.SplitN(min, ".", 3)
 
-	for i := range 3 {
-		var g, m int
-		if i < len(gParts) {
-			// Strip non-numeric suffixes (e.g. "1-rc1").
-			numStr := strings.FieldsFunc(gParts[i], func(r rune) bool {
-				return r < '0' || r > '9'
-			})
-			if len(numStr) > 0 {
-				g, _ = strconv.Atoi(numStr[0])
-			}
+	// parsePart extracts the leading integer from a version component,
+	// stripping non-numeric suffixes (e.g. "1-rc1" -> 1).
+	parsePart := func(parts []string, i int, ver string) (int, error) {
+		if i >= len(parts) {
+			return 0, nil
 		}
-		if i < len(mParts) {
-			m, _ = strconv.Atoi(mParts[i])
+		numStr := strings.FieldsFunc(parts[i], func(r rune) bool {
+			return r < '0' || r > '9'
+		})
+		if len(numStr) == 0 {
+			return 0, nil
+		}
+		v, err := strconv.Atoi(numStr[0])
+		if err != nil {
+			return 0, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], ver, err)
+		}
+		return v, nil
+	}
+
+	for i := range 3 {
+		g, err := parsePart(gParts, i, got)
+		if err != nil {
+			return false, err
+		}
+		m, err := parsePart(mParts, i, min)
+		if err != nil {
+			return false, err
 		}
 		if g > m {
-			return true
+			return true, nil
 		}
 		if g < m {
-			return false
+			return false, nil
 		}
 	}
-	return true // equal
+	return true, nil // equal
 }
