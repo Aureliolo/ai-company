@@ -242,7 +242,7 @@ class TestProbePresetEndpoint:
         from unittest.mock import patch
 
         from synthorg.api.dto import ProbePresetRequest
-        from synthorg.providers.discovery import ProbeResult
+        from synthorg.providers.probing import ProbeResult
 
         state, _ = _make_provider_state_and_mgmt()
         ctrl = _provider_controller()

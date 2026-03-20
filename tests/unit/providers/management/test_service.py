@@ -761,3 +761,129 @@ class TestCreateFromPresetAutoDiscovery:
             trust_url=True,
         )
         assert result.models == discovered
+
+    async def test_create_from_preset_user_base_url_not_trusted(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """User-supplied base_url is NOT trusted (trust_url=False)."""
+        discovered = (ProviderModelConfig(id="ollama/test-model-z"),)
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=discovered,
+        ) as mock_discover:
+            request = CreateFromPresetRequest(
+                preset_name="ollama",
+                name="my-ollama",
+                base_url="http://custom-host:11434",
+            )
+            result = await service.create_from_preset(request)
+
+        mock_discover.assert_awaited_once_with(
+            "http://custom-host:11434",
+            "ollama",
+            trust_url=False,
+        )
+        assert result.models == discovered
+
+
+@pytest.mark.unit
+class TestDiscoverModelsForProviderTrust:
+    """Tests for trust logic in discover_models_for_provider."""
+
+    async def test_valid_preset_hint_trusts_url(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Valid preset_hint='ollama' results in trust_url=True."""
+        await service.create_provider(
+            _make_create_request(
+                base_url="http://localhost:11434",
+            ),
+        )
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=(),
+        ) as mock_discover:
+            await service.discover_models_for_provider(
+                "test-provider",
+                preset_hint="ollama",
+            )
+
+        mock_discover.assert_awaited_once()
+        call_kwargs = mock_discover.call_args
+        assert call_kwargs.kwargs["trust_url"] is True
+
+    async def test_invalid_preset_hint_does_not_trust_url(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Invalid preset_hint='fake' results in trust_url=False."""
+        await service.create_provider(
+            _make_create_request(
+                base_url="http://localhost:11434",
+            ),
+        )
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=(),
+        ) as mock_discover:
+            await service.discover_models_for_provider(
+                "test-provider",
+                preset_hint="fake",
+            )
+
+        mock_discover.assert_awaited_once()
+        call_kwargs = mock_discover.call_args
+        assert call_kwargs.kwargs["trust_url"] is False
+
+    async def test_no_preset_hint_does_not_trust_url(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """No preset_hint results in trust_url=False."""
+        await service.create_provider(
+            _make_create_request(
+                base_url="http://localhost:11434",
+            ),
+        )
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=(),
+        ) as mock_discover:
+            await service.discover_models_for_provider(
+                "test-provider",
+            )
+
+        mock_discover.assert_awaited_once()
+        call_kwargs = mock_discover.call_args
+        assert call_kwargs.kwargs["trust_url"] is False
+
+    async def test_auth_type_none_without_preset_hint_does_not_trust(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """auth_type=none alone (without valid preset_hint) does NOT trust the URL."""
+        await service.create_provider(
+            _make_create_request(
+                auth_type=AuthType.NONE,
+                base_url="http://localhost:11434",
+            ),
+        )
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=(),
+        ) as mock_discover:
+            await service.discover_models_for_provider(
+                "test-provider",
+            )
+
+        mock_discover.assert_awaited_once()
+        call_kwargs = mock_discover.call_args
+        # After SSRF fix: auth_type=none alone must NOT bypass SSRF
+        assert call_kwargs.kwargs["trust_url"] is False

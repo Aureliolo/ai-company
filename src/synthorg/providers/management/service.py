@@ -38,7 +38,7 @@ from synthorg.providers.errors import (
     ProviderValidationError,
 )
 from synthorg.providers.models import ChatMessage
-from synthorg.providers.presets import get_preset
+from synthorg.providers.presets import ProviderPreset, get_preset
 from synthorg.providers.registry import ProviderRegistry
 
 if TYPE_CHECKING:
@@ -359,19 +359,12 @@ class ProviderManagementService:
 
         models = request.models if request.models is not None else preset.default_models
         base_url = request.base_url or preset.default_base_url
-
-        # Auto-discover models for no-auth presets with a base URL.
-        # Only trust the URL (skip SSRF) when using the preset's own
-        # default -- user-supplied overrides go through normal validation.
-        url_is_preset_default = request.base_url is None
-        if not models and preset.auth_type == AuthType.NONE and base_url:
-            discovered = await discover_models(
-                base_url,
-                preset.name,
-                trust_url=url_is_preset_default,
-            )
-            if discovered:
-                models = discovered
+        models = await self._maybe_discover_preset_models(
+            preset,
+            base_url,
+            models,
+            trust_url=request.base_url is None,
+        )
 
         create_request = CreateProviderRequest(
             name=request.name,
@@ -382,6 +375,39 @@ class ProviderManagementService:
             models=models,
         )
         return await self.create_provider(create_request)
+
+    async def _maybe_discover_preset_models(
+        self,
+        preset: ProviderPreset,
+        base_url: str | None,
+        models: tuple[ProviderModelConfig, ...],
+        *,
+        trust_url: bool,
+    ) -> tuple[ProviderModelConfig, ...]:
+        """Auto-discover models for no-auth presets when none are provided.
+
+        Only attempts discovery when the preset uses ``AuthType.NONE``,
+        a base URL is available, and no models were explicitly provided.
+        Only trusts the URL (skips SSRF) when using the preset's own
+        default -- user-supplied overrides go through normal validation.
+
+        Args:
+            preset: Resolved preset definition.
+            base_url: Provider base URL (may be user-overridden).
+            models: Explicitly provided models (may be empty).
+            trust_url: Whether to skip SSRF validation.
+
+        Returns:
+            Discovered models if any, otherwise the original models.
+        """
+        if models or preset.auth_type != AuthType.NONE or not base_url:
+            return models
+        discovered = await discover_models(
+            base_url,
+            preset.name,
+            trust_url=trust_url,
+        )
+        return discovered or models
 
     async def discover_models_for_provider(
         self,
@@ -420,15 +446,7 @@ class ProviderManagementService:
 
         resolved_hint = preset_hint or _infer_preset_hint(config.base_url)
         headers = _build_discovery_headers(config)
-        # Trust URL when a validated preset hint is provided (URL
-        # originated from a preset) or the provider uses no auth (local
-        # provider explicitly configured by admin). Validate preset_hint
-        # against the registry to prevent arbitrary strings from elevating
-        # trust -- only known preset names qualify.
-        validated_preset = (
-            preset_hint is not None and get_preset(preset_hint) is not None
-        )
-        trust = validated_preset or config.auth_type == AuthType.NONE
+        trust = self._resolve_discovery_trust(preset_hint)
         discovered = await discover_models(
             config.base_url,
             resolved_hint,
@@ -446,6 +464,26 @@ class ProviderManagementService:
                 return ()
 
         return discovered
+
+    def _resolve_discovery_trust(
+        self,
+        preset_hint: str | None,
+    ) -> bool:
+        """Determine whether to trust the provider URL for discovery.
+
+        Only known preset names qualify for trust elevation.
+        Validates ``preset_hint`` against the preset registry to
+        prevent arbitrary strings from bypassing SSRF validation.
+
+        Args:
+            preset_hint: Optional preset name hint.
+
+        Returns:
+            True if the preset hint is a known preset, False otherwise.
+        """
+        if preset_hint is None:
+            return False
+        return get_preset(preset_hint) is not None
 
     async def _apply_discovered_models(
         self,

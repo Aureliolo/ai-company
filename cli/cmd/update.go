@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,19 +58,8 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
-	// Migrate: generate settings encryption key if missing (pre-v0.3.9 installs).
-	// 32 bytes -> 44-char URL-safe base64 = valid Fernet key.
-	if state.SettingsKey == "" {
-		key, genErr := generateSecret(32)
-		if genErr != nil {
-			return fmt.Errorf("generating settings encryption key: %w", genErr)
-		}
-		state.SettingsKey = key
-		if saveErr := config.Save(state); saveErr != nil {
-			return fmt.Errorf("saving updated config: %w", saveErr)
-		}
-		out := ui.NewUI(cmd.OutOrStdout())
-		out.Success("Generated settings encryption key for this installation.")
+	if err := migrateSettingsKey(cmd, &state); err != nil {
+		return err
 	}
 
 	// Regenerate compose.yml from the current template to pick up any
@@ -189,7 +177,7 @@ func ChildExitCode(err error) (int, bool) {
 // Arguments are reconstructed from known flag values rather than forwarding
 // raw os.Args to avoid silently propagating unexpected flags.
 //
-// Returns a *childExitError if the child exits non-zero, so the caller
+// Returns a *ChildExitError if the child exits non-zero, so the caller
 // can propagate the exit code rather than printing a generic error.
 func reexecUpdate(cmd *cobra.Command) error {
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Re-launching updated CLI to continue...")
@@ -330,7 +318,7 @@ func applyComposeDiff(cmd *cobra.Command, composePath string, existing, fresh []
 // Covers common secret naming conventions to prevent leaking credentials
 // in terminal scrollback or CI logs when the compose template changes.
 var secretKeyPattern = regexp.MustCompile(
-	`(?i)^\s*\w*(SECRET|PASSWORD|TOKEN|API_KEY|CREDENTIALS|ENCRYPTION_KEY|SETTINGS_KEY)\w*\s*:`,
+	`(?i)^\s*\w*(SECRET|PASSWORD|TOKEN|API_KEY|CREDENTIALS|ENCRYPTION_KEY|SETTINGS_KEY|PRIVATE_KEY|CERT)\w*\s*:`,
 )
 
 // lineDiff produces a bag-based diff showing added (+) and removed (-) lines
@@ -396,16 +384,10 @@ func targetImageTag(ver string) string {
 	if tag == "" || tag == "dev" {
 		return "latest"
 	}
-	if !isValidImageTag(tag) {
+	if !config.IsValidImageTag(tag) {
 		return "latest"
 	}
 	return tag
-}
-
-// isValidImageTag delegates to config.IsValidImageTag.
-// Kept as a package-local alias for readability at call sites.
-func isValidImageTag(tag string) bool {
-	return config.IsValidImageTag(tag)
 }
 
 // updateContainerImages offers to update container images to match the
@@ -493,9 +475,15 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 
 	rollback := func() {
 		if backupExists {
-			_ = os.WriteFile(composePath, backup, 0o600)
+			if wErr := os.WriteFile(composePath, backup, 0o600); wErr != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"Warning: failed to restore compose.yml backup: %v\n", wErr)
+			}
 		} else {
-			_ = os.Remove(composePath)
+			if rErr := os.Remove(composePath); rErr != nil && !errors.Is(rErr, os.ErrNotExist) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"Warning: failed to clean up compose.yml: %v\n", rErr)
+			}
 		}
 	}
 
@@ -678,252 +666,24 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 	return nil
 }
 
-// checkInstallationHealth detects inconsistent state between config and the
-// actual Docker/filesystem state (e.g. after a partial uninstall). Returns
-// (true, nil) if the user chose to abort, (false, nil) to continue.
-func checkInstallationHealth(cmd *cobra.Command, state config.State) (bool, error) {
-	issues := detectInstallationIssues(cmd.Context(), state)
-	if len(issues) == 0 {
-		return false, nil
+// migrateSettingsKey generates a settings encryption key if missing
+// (pre-v0.3.9 installs). 32 bytes -> 44-char URL-safe base64 = valid
+// Fernet key.
+func migrateSettingsKey(cmd *cobra.Command, state *config.State) error {
+	if state.SettingsKey != "" {
+		return nil
 	}
-
+	key, genErr := generateSecret(32)
+	if genErr != nil {
+		return fmt.Errorf("generating settings encryption key: %w", genErr)
+	}
+	state.SettingsKey = key
+	if saveErr := config.Save(*state); saveErr != nil {
+		return fmt.Errorf("saving updated config: %w", saveErr)
+	}
 	out := ui.NewUI(cmd.OutOrStdout())
-	out.Warn("Installation appears incomplete:")
-	for _, issue := range issues {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", issue)
-	}
-
-	return promptHealthRecover(cmd)
-}
-
-// detectInstallationIssues checks config, secrets, compose, and Docker
-// images for inconsistencies. Returns a list of human-readable issues.
-func detectInstallationIssues(ctx context.Context, state config.State) []string {
-	var issues []string
-
-	if !fileExists(config.StatePath(state.DataDir)) {
-		issues = append(issues, "config.json is missing (no previous init)")
-	}
-	if state.JWTSecret == "" {
-		issues = append(issues, "JWT secret is not configured")
-	}
-	if state.SettingsKey == "" {
-		issues = append(issues, "settings encryption key is not configured")
-	}
-
-	safeDir, err := safeStateDir(state)
-	if err == nil && !fileExists(filepath.Join(safeDir, "compose.yml")) {
-		issues = append(issues, "compose.yml is missing")
-	}
-
-	if state.ImageTag != "" {
-		info, dockerErr := docker.Detect(ctx)
-		if dockerErr != nil {
-			issues = append(issues, fmt.Sprintf("Docker not available: %v", dockerErr))
-		} else if missing := detectMissingImages(ctx, info, state); len(missing) > 0 {
-			issues = append(issues, fmt.Sprintf("container images missing locally for %s (%s)",
-				state.ImageTag, strings.Join(missing, ", ")))
-		}
-	}
-
-	return issues
-}
-
-// promptHealthRecover asks the user whether to recover or run init.
-// Returns (true, nil) if the user chose to abort.
-func promptHealthRecover(cmd *cobra.Command) (bool, error) {
-	if !isInteractive() {
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(),
-			"\nNon-interactive mode: run 'synthorg init' to restore a clean installation.")
-		return true, nil
-	}
-
-	var recover bool
-	form := huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title("Recover by pulling images and regenerating compose?").
-			Description("Choose 'No' to run 'synthorg init' for a fresh setup instead.").
-			Value(&recover),
-	))
-	if err := form.Run(); err != nil {
-		return false, err
-	}
-	if !recover {
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Run 'synthorg init' to restore a clean installation.")
-		return true, nil
-	}
-	return false, nil
-}
-
-// detectMissingImages checks which SynthOrg service images are missing locally
-// for the given state's image tag. Only reports images as missing when Docker
-// confirms they are absent -- Docker command errors are not conflated.
-func detectMissingImages(ctx context.Context, info docker.Info, state config.State) []string {
-	services := []string{"backend", "web"}
-	if state.Sandbox {
-		services = append(services, "sandbox")
-	}
-
-	var missing []string
-	for _, svc := range services {
-		ref := fmt.Sprintf("ghcr.io/aureliolo/synthorg-%s:%s", svc, state.ImageTag)
-		idsOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
-			"--filter", "reference="+ref,
-			"--format", "{{.ID}}")
-		if err != nil {
-			// Docker command failed -- we can't determine the state,
-			// so don't report the image as missing.
-			continue
-		}
-		if strings.TrimSpace(idsOut) == "" {
-			missing = append(missing, svc)
-		}
-	}
-	return missing
-}
-
-type oldImage struct {
-	display string
-	id      string
-}
-
-// cleanupOldImages offers to remove non-current SynthOrg images after a
-// successful upgrade. Identifies current images by their Docker image ID
-// (handles both tagged and digest-pinned references).
-func cleanupOldImages(cmd *cobra.Command, info docker.Info, state config.State) error {
-	old, err := findOldImages(cmd.Context(), cmd.ErrOrStderr(), info, state)
-	if err != nil || len(old) == 0 {
-		return nil
-	}
-
-	out := cmd.OutOrStdout()
-	_, _ = fmt.Fprintln(out, "\nOld SynthOrg images found locally:")
-	for _, img := range old {
-		_, _ = fmt.Fprintf(out, "  %s\n", img.display)
-	}
-
-	return promptAndRemoveImages(cmd, info, old)
-}
-
-// findOldImages lists SynthOrg images that don't match the current version.
-// Returns nil if current image IDs cannot be reliably determined.
-func findOldImages(ctx context.Context, errOut io.Writer, info docker.Info, state config.State) ([]oldImage, error) {
-	currentIDs, err := collectCurrentImageIDs(ctx, info, state)
-	if err != nil {
-		_, _ = fmt.Fprintf(errOut, "Note: could not determine current image IDs, skipping cleanup: %v\n", err)
-		return nil, err
-	}
-
-	imageRef := "ghcr.io/aureliolo/synthorg-*"
-	allOut, listErr := docker.RunCmd(ctx, info.DockerPath, "images",
-		"--filter", "reference="+imageRef,
-		"--format", "{{.Repository}}:{{.Tag}} ({{.Size}})\t{{.ID}}")
-	if listErr != nil {
-		_, _ = fmt.Fprintf(errOut, "Note: could not list images for cleanup: %v\n", listErr)
-		return nil, listErr
-	}
-
-	var old []oldImage
-	seen := make(map[string]bool)
-	for _, line := range strings.Split(strings.TrimSpace(allOut), "\n") {
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) < 2 {
-			continue
-		}
-		display, id := parts[0], parts[1]
-		if !isValidDockerID(id) || currentIDs[id] || seen[id] {
-			continue
-		}
-		seen[id] = true
-		old = append(old, oldImage{display: display, id: id})
-	}
-	return old, nil
-}
-
-// collectCurrentImageIDs resolves Docker image IDs for the services at the
-// current version. Returns an error if any service ID cannot be resolved
-// (to avoid accidentally deleting current images).
-func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.State) (map[string]bool, error) {
-	services := []string{"backend", "web"}
-	if state.Sandbox {
-		services = append(services, "sandbox")
-	}
-
-	currentIDs := make(map[string]bool, len(services))
-	for _, svc := range services {
-		ref := fmt.Sprintf("ghcr.io/aureliolo/synthorg-%s:%s", svc, state.ImageTag)
-		idOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
-			"--filter", "reference="+ref,
-			"--format", "{{.ID}}")
-		if err != nil {
-			return nil, fmt.Errorf("resolving image ID for %s: %w", svc, err)
-		}
-		for _, id := range strings.Fields(strings.TrimSpace(idOut)) {
-			currentIDs[id] = true
-		}
-	}
-	return currentIDs, nil
-}
-
-// promptAndRemoveImages asks the user and removes old images.
-func promptAndRemoveImages(cmd *cobra.Command, info docker.Info, old []oldImage) error {
-	if !isInteractive() {
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Non-interactive mode: skipping image cleanup. Remove manually with 'docker rmi'.")
-		return nil
-	}
-
-	var remove bool
-	form := huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title(fmt.Sprintf("Remove %d old image(s)?", len(old))).
-			Value(&remove),
-	))
-	if err := form.Run(); err != nil {
-		return err
-	}
-	if !remove {
-		return nil
-	}
-
-	ids := make([]string, 0, len(old))
-	for _, img := range old {
-		ids = append(ids, img.id)
-	}
-	rmiArgs := make([]string, 0, 2+len(ids))
-	rmiArgs = append(rmiArgs, "rmi", "--force")
-	rmiArgs = append(rmiArgs, ids...)
-	if _, rmiErr := docker.RunCmd(cmd.Context(), info.DockerPath, rmiArgs...); rmiErr != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: some images could not be removed: %v\n", rmiErr)
-	} else {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed %d old image(s).\n", len(old))
-	}
+	out.Success("Generated settings encryption key for this installation.")
 	return nil
-}
-
-// isValidDockerID checks that id looks like a Docker short ID (12 hex chars)
-// or a long digest (sha256:64 hex chars). Prevents passing malformed values
-// to docker rmi.
-func isValidDockerID(id string) bool {
-	if len(id) == 12 {
-		return isAllHex(id)
-	}
-	if len(id) == 71 && id[:7] == "sha256:" {
-		return isAllHex(id[7:])
-	}
-	return false
-}
-
-func isAllHex(s string) bool {
-	for i := range len(s) {
-		c := s[i]
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return false
-		}
-	}
-	return true
 }
 
 func confirmRestart() (bool, error) {

@@ -33,13 +33,13 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
 )
-from synthorg.providers.discovery import probe_preset_urls
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
     ProviderNotFoundError,
     ProviderValidationError,
 )
 from synthorg.providers.presets import ProviderPreset, get_preset, list_presets
+from synthorg.providers.probing import probe_preset_urls
 
 logger = get_logger(__name__)
 

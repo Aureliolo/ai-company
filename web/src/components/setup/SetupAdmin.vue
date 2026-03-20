@@ -128,6 +128,7 @@ async function handleSetup() {
               type="button"
               class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
               :title="showPassword ? 'Hide password' : 'Show password'"
+              :aria-label="showPassword ? 'Hide password' : 'Show password'"
               @click="showPassword = !showPassword"
             >
               <i :class="showPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" />
@@ -152,7 +153,8 @@ async function handleSetup() {
             <button
               type="button"
               class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200"
-              :title="showConfirmPassword ? 'Hide password' : 'Show password'"
+              :title="showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'"
+              :aria-label="showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'"
               @click="showConfirmPassword = !showConfirmPassword"
             >
               <i :class="showConfirmPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" />

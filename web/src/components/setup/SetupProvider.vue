@@ -145,7 +145,6 @@ async function selectPreset(preset: ProviderPreset) {
       if (myGen === probeGeneration) {
         probeMessage.value = 'Auto-detection unavailable -- enter the URL manually'
       }
-      console.warn('Provider probe failed:', err)
     } finally {
       if (myGen === probeGeneration) {
         probing.value = false
@@ -196,6 +195,7 @@ async function handleAddProvider() {
         : {}),
     })
     createdProviderName.value = providerName.value
+    changingProvider.value = false
 
     // Always run model discovery after creation to ensure consistent
     // state. The backend auto-discovers during creation for no-auth

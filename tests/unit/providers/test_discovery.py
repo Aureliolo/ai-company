@@ -9,10 +9,12 @@ import httpx
 import pytest
 
 from synthorg.providers.discovery import (
-    ProbeResult,
     _SsrfCheckResult,
     _validate_discovery_url,
     discover_models,
+)
+from synthorg.providers.probing import (
+    ProbeResult,
     probe_preset_urls,
 )
 
@@ -437,7 +439,7 @@ class TestProbePresetUrls:
         client = _mock_client(ollama_response)
 
         with patch(
-            "synthorg.providers.discovery.httpx.AsyncClient",
+            "synthorg.providers.probing.httpx.AsyncClient",
             return_value=client,
         ):
             result = await probe_preset_urls(
@@ -467,7 +469,7 @@ class TestProbePresetUrls:
         client.get.side_effect = side_effect_get
 
         with patch(
-            "synthorg.providers.discovery.httpx.AsyncClient",
+            "synthorg.providers.probing.httpx.AsyncClient",
             return_value=client,
         ):
             result = await probe_preset_urls(
@@ -486,7 +488,7 @@ class TestProbePresetUrls:
         client = _mock_client(side_effect=httpx.ConnectError("refused"))
 
         with patch(
-            "synthorg.providers.discovery.httpx.AsyncClient",
+            "synthorg.providers.probing.httpx.AsyncClient",
             return_value=client,
         ):
             result = await probe_preset_urls(
@@ -510,7 +512,7 @@ class TestProbePresetUrls:
         client = _mock_client(response)
 
         with patch(
-            "synthorg.providers.discovery.httpx.AsyncClient",
+            "synthorg.providers.probing.httpx.AsyncClient",
             return_value=client,
         ):
             result = await probe_preset_urls(
@@ -526,7 +528,7 @@ class TestProbePresetUrls:
         client = _mock_client(side_effect=httpx.TimeoutException("timed out"))
 
         with patch(
-            "synthorg.providers.discovery.httpx.AsyncClient",
+            "synthorg.providers.probing.httpx.AsyncClient",
             return_value=client,
         ):
             result = await probe_preset_urls(
@@ -542,7 +544,7 @@ class TestProbePresetUrls:
         client = _mock_client(response)
 
         with patch(
-            "synthorg.providers.discovery.httpx.AsyncClient",
+            "synthorg.providers.probing.httpx.AsyncClient",
             return_value=client,
         ):
             result = await probe_preset_urls(
@@ -564,7 +566,7 @@ class TestProbePresetUrls:
         client = _mock_client(html_response)
 
         with patch(
-            "synthorg.providers.discovery.httpx.AsyncClient",
+            "synthorg.providers.probing.httpx.AsyncClient",
             return_value=client,
         ):
             result = await probe_preset_urls(
@@ -580,7 +582,7 @@ class TestProbePresetUrls:
         client = _mock_client(response)
 
         with patch(
-            "synthorg.providers.discovery.httpx.AsyncClient",
+            "synthorg.providers.probing.httpx.AsyncClient",
             return_value=client,
         ):
             result = await probe_preset_urls(
@@ -589,3 +591,91 @@ class TestProbePresetUrls:
             )
         assert result.url is None
         assert result.candidates_tried == 1
+
+
+class TestDiscoverModelsTrustedUrl:
+    """Tests for discover_models with trust_url=True (SSRF bypass)."""
+
+    async def test_trusted_url_skips_ssrf_validation(self) -> None:
+        """trust_url=True bypasses SSRF validation entirely."""
+        response = _mock_response(
+            {"data": [{"id": "test-model-001"}]},
+        )
+        with (
+            patch(
+                "synthorg.providers.discovery.httpx.AsyncClient",
+            ) as mock_cls,
+            patch(
+                "synthorg.providers.discovery._validate_discovery_url",
+            ) as mock_ssrf,
+        ):
+            mock_cls.return_value = _mock_client(response)
+
+            result = await discover_models(
+                "http://localhost:1234/v1",
+                "lm-studio",
+                trust_url=True,
+            )
+
+        # SSRF validation must NOT have been called.
+        mock_ssrf.assert_not_called()
+        assert len(result) == 1
+        assert result[0].id == "test-model-001"
+
+    async def test_trusted_url_uses_original_url(self) -> None:
+        """trust_url=True sends the request to the original URL (no IP pinning)."""
+        response = _mock_response(
+            {"data": [{"id": "test-model-001"}]},
+        )
+        with patch(
+            "synthorg.providers.discovery.httpx.AsyncClient",
+        ) as mock_cls:
+            client = _mock_client(response)
+            mock_cls.return_value = client
+
+            await discover_models(
+                "http://localhost:1234/v1",
+                "lm-studio",
+                trust_url=True,
+            )
+
+            # The request should go to the original URL, not an IP-pinned one.
+            client.get.assert_called_once()
+            call_args = client.get.call_args
+            url = call_args[0][0]
+            assert "localhost" in url
+            # No Host header rewriting when trusted.
+            headers = call_args[1].get("headers", call_args.kwargs.get("headers", {}))
+            assert "Host" not in headers
+
+    async def test_trusted_url_logs_ssrf_bypass(self) -> None:
+        """trust_url=True logs the SSRF bypass event."""
+        response = _mock_response(
+            {"data": [{"id": "test-model-001"}]},
+        )
+        with (
+            patch(
+                "synthorg.providers.discovery.httpx.AsyncClient",
+            ) as mock_cls,
+            patch(
+                "synthorg.providers.discovery.logger",
+            ) as mock_logger,
+        ):
+            mock_cls.return_value = _mock_client(response)
+
+            await discover_models(
+                "http://localhost:1234/v1",
+                "lm-studio",
+                trust_url=True,
+            )
+
+        # Verify the SSRF bypass event was logged.
+        from synthorg.observability.events.provider import (
+            PROVIDER_DISCOVERY_SSRF_BYPASSED,
+        )
+
+        mock_logger.warning.assert_any_call(
+            PROVIDER_DISCOVERY_SSRF_BYPASSED,
+            preset="lm-studio",
+            url="http://localhost:1234/v1/models",
+        )

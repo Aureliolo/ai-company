@@ -145,9 +145,10 @@ func (s State) validate() error {
 	return nil
 }
 
-// IsValidImageTag checks that tag matches [a-zA-Z0-9][a-zA-Z0-9._-]*.
+// IsValidImageTag checks that tag matches [a-zA-Z0-9][a-zA-Z0-9._-]*
+// and is at most 128 characters long (Docker tag length limit).
 func IsValidImageTag(tag string) bool {
-	if len(tag) == 0 {
+	if len(tag) == 0 || len(tag) > 128 {
 		return false
 	}
 	first := tag[0]

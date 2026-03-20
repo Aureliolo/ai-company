@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupStore } from '@/stores/setup'
 import SetupWelcome from '@/components/setup/SetupWelcome.vue'
@@ -67,33 +67,40 @@ function handlePrevious() {
 }
 
 function handleStepClick(index: number) {
-  // Allow navigating to any completed step or the current step.
-  if (isStepDone(index) || index < setup.currentStep) {
+  if (isStepDone(index) || index === setup.currentStep) {
     setup.setStep(index, steps.value.length)
   }
 }
 
 async function handleAdminComplete() {
   await setup.fetchStatus()
-  setup.nextStep(steps.value.length)
+  if (setup.statusLoaded) {
+    setup.nextStep(steps.value.length)
+  }
 }
 
 async function handleProviderComplete() {
   await setup.fetchStatus()
-  setup.nextStep(steps.value.length)
+  if (setup.statusLoaded) {
+    setup.nextStep(steps.value.length)
+  }
 }
 
 async function handleCompanyCreated(companyName: string) {
   createdCompanyName.value = companyName
   await setup.fetchStatus()
-  setup.nextStep(steps.value.length)
+  if (setup.statusLoaded) {
+    setup.nextStep(steps.value.length)
+  }
 }
 
 async function handleAgentComplete(agentName: string, providerName: string) {
   createdAgentName.value = agentName
   createdProviderName.value = providerName
   await setup.fetchStatus()
-  showComplete.value = true
+  if (setup.statusLoaded) {
+    showComplete.value = true
+  }
 }
 
 /**

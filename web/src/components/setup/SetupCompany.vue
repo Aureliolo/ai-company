@@ -32,7 +32,7 @@ const isValid = computed(() => companyName.value.trim().length > 0)
 
 /** Whether to show the completed summary. */
 const showSummary = computed(() =>
-  setup.isStepComplete('company') && !editing.value,
+  setup.isStepComplete('company') && !editing.value && createdResult.value !== null,
 )
 
 function selectTemplate(templateName: string | null) {
@@ -40,6 +40,9 @@ function selectTemplate(templateName: string | null) {
 }
 
 function startEditing() {
+  if (createdResult.value) {
+    companyName.value = createdResult.value.companyName
+  }
   editing.value = true
 }
 

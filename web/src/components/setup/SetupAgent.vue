@@ -123,8 +123,12 @@ watch(selectedProvider, () => {
 })
 
 function startEditing() {
+  if (savedAgent.value) {
+    agentName.value = savedAgent.value.name
+    selectedRole.value = savedAgent.value.role
+    selectedModel.value = `${savedAgent.value.model_provider}::${savedAgent.value.model_id}`
+  }
   editing.value = true
-  savedAgent.value = null
 }
 
 async function handleCreate() {
