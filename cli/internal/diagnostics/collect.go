@@ -163,7 +163,7 @@ func collectInfra(ctx context.Context, r *Report, info docker.Info, state config
 		r.PortConflicts = checkPorts(ctx, state.BackendPort, state.WebPort)
 	}
 	if info.DockerPath != "" {
-		r.ImageStatus = checkImages(ctx, state.ImageTag, state.Sandbox, composePath, state.VerifiedDigests)
+		r.ImageStatus = checkImages(ctx, info.DockerPath, state.ImageTag, state.Sandbox, composePath, state.VerifiedDigests)
 	}
 }
 
@@ -316,7 +316,7 @@ func imageRefForDiagnostics(name, imageTag string, composeRefs, verifiedDigests 
 // It reads the actual compose file to get the image references (which
 // may be digest-pinned), falling back to verified digests from state,
 // then to tag-based lookup if neither is available.
-func checkImages(ctx context.Context, imageTag string, sandbox bool, composePath string, verifiedDigests map[string]string) []string {
+func checkImages(ctx context.Context, dockerPath, imageTag string, sandbox bool, composePath string, verifiedDigests map[string]string) []string {
 	names := []string{"backend", "web"}
 	if sandbox {
 		names = append(names, "sandbox")
@@ -328,7 +328,7 @@ func checkImages(ctx context.Context, imageTag string, sandbox bool, composePath
 	var status []string
 	for _, name := range names {
 		image := imageRefForDiagnostics(name, imageTag, composeRefs, verifiedDigests)
-		_, err := docker.RunCmd(ctx, "docker", "image", "inspect", image, "--format", "{{.ID}}")
+		_, err := docker.RunCmd(ctx, dockerPath, "image", "inspect", image, "--format", "{{.ID}}")
 		if err != nil {
 			status = append(status, fmt.Sprintf("%s: not found locally", image))
 		} else {

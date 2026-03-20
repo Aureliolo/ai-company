@@ -110,6 +110,14 @@ func TestImageRefForService(t *testing.T) {
 			},
 			want: "ghcr.io/aureliolo/synthorg-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		},
+		{
+			name: "empty image tag produces colon-only ref when no digest",
+			svc:  "backend",
+			state: config.State{
+				ImageTag: "",
+			},
+			want: "ghcr.io/aureliolo/synthorg-backend:",
+		},
 	}
 
 	for _, tt := range tests {
