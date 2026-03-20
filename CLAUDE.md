@@ -254,6 +254,28 @@ site/               # Astro landing page (synthorg.io)
 - The `/commit-push-pr` command is effectively blocked (it calls `gh pr create` internally)
 - **Fix everything valid — never skip**: When review agents find valid issues (including pre-existing issues in surrounding code, suggestions, and findings adjacent to the PR's changes), fix them all. No deferring, no "out of scope" skipping.
 
+## Releasing
+
+- **Automated by Release Please**: every push to `main` triggers the release workflow, which creates/updates a release PR with an auto-generated changelog
+- **Version bumping** (pre-1.0, due to `bump-minor-pre-major` + `bump-patch-for-minor-pre-major`): `fix:` = patch, `feat:` = patch, `feat!:` or `BREAKING CHANGE` footer = minor. Post-1.0: standard semver (fix=patch, feat=minor, breaking=major)
+- **Override version with `Release-As` trailer**: to force a specific version (e.g. 0.4.0), add `Release-As: 0.4.0` as a **git trailer** in the commit message. It MUST be in the **final paragraph** of the commit body alongside other trailers (e.g. `Co-authored-by:`), separated from body text by a blank line. Placing it mid-body will be **silently ignored** by the Conventional Commits parser.
+
+  Correct format:
+  ```
+  feat: add new feature (#123)
+
+  Description of changes...
+
+  Release-As: 0.4.0
+  Co-authored-by: Someone <someone@example.com>
+  ```
+
+- **Release flow**: merge release PR -> draft GitHub Release + tag created -> tag triggers Docker + CLI workflows (build, sign, attach assets) -> finalize-release workflow publishes the draft once both complete
+- **Config files**: `.github/release-please-config.json` (settings, changelog sections, extra-files), `.github/.release-please-manifest.json` (current version -- do not edit manually)
+- **Fixing wrong version on open release PR**: push a commit to main with `Release-As: X.Y.Z` as a proper trailer -- RP will regenerate the PR with the correct version on its next run
+- **Changelog**: `.github/CHANGELOG.md` (auto-generated, do not edit manually)
+- **Version locations updated by RP**: `pyproject.toml` (`[tool.commitizen].version`), `src/synthorg/__init__.py` (`__version__`)
+
 ## CI
 
 - **Path filtering**: `dorny/paths-filter` detects Python/dashboard/docker changes; jobs only run when their domain is affected. CLI has its own workflow (`cli.yml`).
