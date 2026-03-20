@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from synthorg.budget.errors import BudgetExhaustedError
 from synthorg.core.agent import AgentIdentity
 from synthorg.core.enums import TaskStatus
 from synthorg.core.task import Task
@@ -312,9 +313,10 @@ class TestAgentEngineFatalErrorResult:
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,
             )
-        # raise exc from None suppresses the secondary error chain
-        # so the original exception propagates cleanly
-        assert exc_info.value.__cause__ is None
+        # exc.add_note() preserves the secondary failure info
+        # without inverting the exception chain semantics
+        assert hasattr(exc_info.value, "__notes__")
+        assert any("secondary failure" in note for note in exc_info.value.__notes__)
 
 
 @pytest.mark.unit
@@ -346,6 +348,46 @@ class TestAgentEngineFatalErrorNonRecoverable:
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,
             )
+
+
+@pytest.mark.unit
+class TestAgentEngineBudgetErrorSecondaryFailure:
+    """Secondary failure in _handle_budget_error preserves context via note."""
+
+    async def test_handle_budget_error_secondary_failure_preserves_note(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """If _handle_budget_error itself fails, original exception has note."""
+        provider = mock_provider_factory([])
+        budget_enforcer = AsyncMock()
+        budget_enforcer.check_can_execute = AsyncMock(
+            side_effect=BudgetExhaustedError("budget exceeded"),
+        )
+        engine = AgentEngine(
+            provider=provider,
+            budget_enforcer=budget_enforcer,
+        )
+
+        with (
+            patch(
+                "synthorg.engine.agent_engine.AgentContext.from_identity",
+                side_effect=ValueError("secondary failure"),
+            ),
+            pytest.raises(
+                BudgetExhaustedError,
+                match="budget exceeded",
+            ) as exc_info,
+        ):
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+        assert hasattr(exc_info.value, "__notes__")
+        assert any("secondary failure" in note for note in exc_info.value.__notes__)
 
 
 @pytest.mark.unit

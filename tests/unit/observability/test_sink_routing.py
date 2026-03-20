@@ -88,6 +88,38 @@ class TestSinkRoutingTable:
         assert "access.log" in _SINK_ROUTING
         assert "synthorg.api." in _SINK_ROUTING["access.log"]
 
+    @pytest.mark.parametrize(
+        ("sink", "prefix"),
+        [
+            ("audit.log", "synthorg.hr."),
+            ("audit.log", "synthorg.backup."),
+            ("audit.log", "synthorg.settings."),
+            ("audit.log", "synthorg.observability."),
+            ("agent_activity.log", "synthorg.communication."),
+            ("agent_activity.log", "synthorg.tools."),
+            ("agent_activity.log", "synthorg.memory."),
+        ],
+        ids=[
+            "audit-hr",
+            "audit-backup",
+            "audit-settings",
+            "audit-observability",
+            "activity-communication",
+            "activity-tools",
+            "activity-memory",
+        ],
+    )
+    def test_sink_routes_prefix(self, sink: str, prefix: str) -> None:
+        assert prefix in _SINK_ROUTING[sink]
+
+    def test_routing_table_has_exactly_expected_sinks(self) -> None:
+        assert set(_SINK_ROUTING.keys()) == {
+            "audit.log",
+            "cost_usage.log",
+            "agent_activity.log",
+            "access.log",
+        }
+
     def test_catchall_sinks_not_in_routing(self) -> None:
         for name in ("synthorg.log", "errors.log", "debug.log"):
             assert name not in _SINK_ROUTING

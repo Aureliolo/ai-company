@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import structlog
 import structlog.testing
 
 from synthorg.budget.coordination_config import ErrorTaxonomyConfig
@@ -25,6 +26,10 @@ from synthorg.engine.loop_protocol import (
 )
 from synthorg.engine.run_result import AgentRunResult
 from synthorg.engine.task_engine_models import TaskMutationResult
+from synthorg.observability.correlation import (
+    bind_correlation_id,
+    clear_correlation_ids,
+)
 from synthorg.observability.events.prompt import PROMPT_TOKEN_RATIO_HIGH
 from synthorg.providers.enums import FinishReason
 
@@ -1383,3 +1388,121 @@ class TestAgentEngineCoordinator:
 
         assert result is expected_result
         mock_coordinator.coordinate.assert_awaited_once_with(mock_context)
+
+
+@pytest.mark.unit
+class TestAgentEngineCorrelationBinding:
+    """Verify correlation IDs are bound/unbound around run()."""
+
+    async def test_run_uses_correlation_scope(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """run() wraps execution in correlation_scope."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider)
+
+        with patch(
+            "synthorg.engine.agent_engine.correlation_scope",
+        ) as mock_scope:
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+            mock_scope.assert_called_once_with(
+                agent_id=str(sample_agent_with_personality.id),
+                task_id=sample_task_with_criteria.id,
+            )
+
+    async def test_correlation_context_clean_after_error(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Context is clean after execution fails (scoped binding)."""
+        # first complete() call fails and engine returns error result
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider)
+
+        try:
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+            ctx = structlog.contextvars.get_contextvars()
+            assert "agent_id" not in ctx
+            assert "task_id" not in ctx
+        finally:
+            clear_correlation_ids()
+
+    async def test_correlation_scope_not_entered_on_validation_error(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Validation happens before binding, so correlation_scope
+        is not entered when validation raises.
+        """
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider)
+
+        with patch(
+            "synthorg.engine.agent_engine.correlation_scope",
+        ) as mock_scope:
+            with pytest.raises(ValueError, match="max_turns"):
+                await engine.run(
+                    identity=sample_agent_with_personality,
+                    task=sample_task_with_criteria,
+                    max_turns=0,
+                )
+            mock_scope.assert_not_called()
+
+    async def test_structlog_context_carries_correlation(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Correlation IDs visible during execution, parent context preserved."""
+        response = _make_completion_response()
+        provider = mock_provider_factory([response])
+        engine = AgentEngine(provider=provider)
+
+        # Pre-bind a request_id to verify parent context is preserved
+        bind_correlation_id(request_id="test-request-123")
+
+        captured_ctx: dict[str, Any] = {}
+        original_complete = provider.complete
+
+        async def capturing_complete(*args: Any, **kwargs: Any) -> Any:
+            captured_ctx.update(structlog.contextvars.get_contextvars())
+            return await original_complete(*args, **kwargs)
+
+        provider.complete = capturing_complete  # type: ignore[method-assign]
+
+        try:
+            await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+        finally:
+            # Scoped binding should restore parent context
+            ctx = structlog.contextvars.get_contextvars()
+            assert "agent_id" not in ctx
+            assert "task_id" not in ctx
+            assert ctx.get("request_id") == "test-request-123"
+            clear_correlation_ids()
+
+        # Correlation IDs were present during execution
+        assert captured_ctx.get("agent_id") == str(
+            sample_agent_with_personality.id,
+        )
+        assert captured_ctx.get("task_id") == sample_task_with_criteria.id
+        assert captured_ctx.get("request_id") == "test-request-123"
