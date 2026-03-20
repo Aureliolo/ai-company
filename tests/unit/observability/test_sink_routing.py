@@ -88,23 +88,29 @@ class TestSinkRoutingTable:
         assert "access.log" in _SINK_ROUTING
         assert "synthorg.api." in _SINK_ROUTING["access.log"]
 
-    def test_audit_routes_hr(self) -> None:
-        assert "synthorg.hr." in _SINK_ROUTING["audit.log"]
-
-    def test_audit_routes_backup(self) -> None:
-        assert "synthorg.backup." in _SINK_ROUTING["audit.log"]
-
-    def test_audit_routes_settings(self) -> None:
-        assert "synthorg.settings." in _SINK_ROUTING["audit.log"]
-
-    def test_agent_activity_routes_communication(self) -> None:
-        assert "synthorg.communication." in _SINK_ROUTING["agent_activity.log"]
-
-    def test_agent_activity_routes_tools(self) -> None:
-        assert "synthorg.tools." in _SINK_ROUTING["agent_activity.log"]
-
-    def test_agent_activity_routes_memory(self) -> None:
-        assert "synthorg.memory." in _SINK_ROUTING["agent_activity.log"]
+    @pytest.mark.parametrize(
+        ("sink", "prefix"),
+        [
+            ("audit.log", "synthorg.hr."),
+            ("audit.log", "synthorg.backup."),
+            ("audit.log", "synthorg.settings."),
+            ("audit.log", "synthorg.observability."),
+            ("agent_activity.log", "synthorg.communication."),
+            ("agent_activity.log", "synthorg.tools."),
+            ("agent_activity.log", "synthorg.memory."),
+        ],
+        ids=[
+            "audit-hr",
+            "audit-backup",
+            "audit-settings",
+            "audit-observability",
+            "activity-communication",
+            "activity-tools",
+            "activity-memory",
+        ],
+    )
+    def test_sink_routes_prefix(self, sink: str, prefix: str) -> None:
+        assert prefix in _SINK_ROUTING[sink]
 
     def test_routing_table_has_exactly_expected_sinks(self) -> None:
         assert set(_SINK_ROUTING.keys()) == {

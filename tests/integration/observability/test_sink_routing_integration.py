@@ -22,6 +22,28 @@ def _read_log(path: Path) -> str:
     return ""
 
 
+def _configure_single_sink(
+    log_dir: Path,
+    file_path: str,
+    *,
+    level: LogLevel = LogLevel.DEBUG,
+) -> None:
+    """Configure logging with a single file sink for routing tests."""
+    config = LogConfig(
+        root_level=LogLevel.DEBUG,
+        log_dir=str(log_dir),
+        sinks=(
+            SinkConfig(
+                sink_type=SinkType.FILE,
+                level=level,
+                file_path=file_path,
+                json_format=True,
+            ),
+        ),
+    )
+    configure_logging(config)
+
+
 @pytest.fixture
 def log_dir(tmp_path: Path) -> Path:
     """Provide a temp directory for log files."""
@@ -94,19 +116,7 @@ class TestSinkRoutingIntegration:
         assert "engine event" not in cost_content
 
     def test_providers_routed_to_cost_usage_log(self, log_dir: Path) -> None:
-        config = LogConfig(
-            root_level=LogLevel.DEBUG,
-            log_dir=str(log_dir),
-            sinks=(
-                SinkConfig(
-                    sink_type=SinkType.FILE,
-                    level=LogLevel.DEBUG,
-                    file_path="cost_usage.log",
-                    json_format=True,
-                ),
-            ),
-        )
-        configure_logging(config)
+        _configure_single_sink(log_dir, "cost_usage.log")
 
         providers_logger = logging.getLogger("synthorg.providers.litellm")
         engine_logger = logging.getLogger("synthorg.engine.run")
@@ -119,19 +129,7 @@ class TestSinkRoutingIntegration:
         assert "engine event" not in content
 
     def test_engine_routed_to_agent_activity_log(self, log_dir: Path) -> None:
-        config = LogConfig(
-            root_level=LogLevel.DEBUG,
-            log_dir=str(log_dir),
-            sinks=(
-                SinkConfig(
-                    sink_type=SinkType.FILE,
-                    level=LogLevel.DEBUG,
-                    file_path="agent_activity.log",
-                    json_format=True,
-                ),
-            ),
-        )
-        configure_logging(config)
+        _configure_single_sink(log_dir, "agent_activity.log")
 
         engine_logger = logging.getLogger("synthorg.engine.runner")
         core_logger = logging.getLogger("synthorg.core.task")
@@ -147,19 +145,7 @@ class TestSinkRoutingIntegration:
         assert "not here" not in content
 
     def test_hr_routed_to_audit_log(self, log_dir: Path) -> None:
-        config = LogConfig(
-            root_level=LogLevel.DEBUG,
-            log_dir=str(log_dir),
-            sinks=(
-                SinkConfig(
-                    sink_type=SinkType.FILE,
-                    level=LogLevel.DEBUG,
-                    file_path="audit.log",
-                    json_format=True,
-                ),
-            ),
-        )
-        configure_logging(config)
+        _configure_single_sink(log_dir, "audit.log")
 
         hr_logger = logging.getLogger("synthorg.hr.hiring")
         engine_logger = logging.getLogger("synthorg.engine.run")
@@ -172,19 +158,7 @@ class TestSinkRoutingIntegration:
         assert "engine event" not in content
 
     def test_backup_routed_to_audit_log(self, log_dir: Path) -> None:
-        config = LogConfig(
-            root_level=LogLevel.DEBUG,
-            log_dir=str(log_dir),
-            sinks=(
-                SinkConfig(
-                    sink_type=SinkType.FILE,
-                    level=LogLevel.DEBUG,
-                    file_path="audit.log",
-                    json_format=True,
-                ),
-            ),
-        )
-        configure_logging(config)
+        _configure_single_sink(log_dir, "audit.log")
 
         backup_logger = logging.getLogger("synthorg.backup.scheduler")
         engine_logger = logging.getLogger("synthorg.engine.run")
@@ -197,19 +171,7 @@ class TestSinkRoutingIntegration:
         assert "engine event" not in content
 
     def test_settings_routed_to_audit_log(self, log_dir: Path) -> None:
-        config = LogConfig(
-            root_level=LogLevel.DEBUG,
-            log_dir=str(log_dir),
-            sinks=(
-                SinkConfig(
-                    sink_type=SinkType.FILE,
-                    level=LogLevel.DEBUG,
-                    file_path="audit.log",
-                    json_format=True,
-                ),
-            ),
-        )
-        configure_logging(config)
+        _configure_single_sink(log_dir, "audit.log")
 
         settings_logger = logging.getLogger("synthorg.settings.service")
         engine_logger = logging.getLogger("synthorg.engine.run")
@@ -221,20 +183,24 @@ class TestSinkRoutingIntegration:
         assert "setting changed" in content
         assert "engine event" not in content
 
-    def test_communication_routed_to_agent_activity_log(self, log_dir: Path) -> None:
-        config = LogConfig(
-            root_level=LogLevel.DEBUG,
-            log_dir=str(log_dir),
-            sinks=(
-                SinkConfig(
-                    sink_type=SinkType.FILE,
-                    level=LogLevel.DEBUG,
-                    file_path="agent_activity.log",
-                    json_format=True,
-                ),
-            ),
-        )
-        configure_logging(config)
+    def test_observability_routed_to_audit_log(self, log_dir: Path) -> None:
+        _configure_single_sink(log_dir, "audit.log")
+
+        obs_logger = logging.getLogger("synthorg.observability.correlation")
+        engine_logger = logging.getLogger("synthorg.engine.run")
+
+        obs_logger.info("correlation misuse")
+        engine_logger.info("engine event")
+
+        content = _read_log(log_dir / "audit.log")
+        assert "correlation misuse" in content
+        assert "engine event" not in content
+
+    def test_communication_routed_to_agent_activity_log(
+        self,
+        log_dir: Path,
+    ) -> None:
+        _configure_single_sink(log_dir, "agent_activity.log")
 
         comm_logger = logging.getLogger("synthorg.communication.bus")
         security_logger = logging.getLogger("synthorg.security.ops")
@@ -247,19 +213,7 @@ class TestSinkRoutingIntegration:
         assert "not here" not in content
 
     def test_tools_routed_to_agent_activity_log(self, log_dir: Path) -> None:
-        config = LogConfig(
-            root_level=LogLevel.DEBUG,
-            log_dir=str(log_dir),
-            sinks=(
-                SinkConfig(
-                    sink_type=SinkType.FILE,
-                    level=LogLevel.DEBUG,
-                    file_path="agent_activity.log",
-                    json_format=True,
-                ),
-            ),
-        )
-        configure_logging(config)
+        _configure_single_sink(log_dir, "agent_activity.log")
 
         tools_logger = logging.getLogger("synthorg.tools.invoker")
         security_logger = logging.getLogger("synthorg.security.ops")
@@ -272,19 +226,7 @@ class TestSinkRoutingIntegration:
         assert "not here" not in content
 
     def test_memory_routed_to_agent_activity_log(self, log_dir: Path) -> None:
-        config = LogConfig(
-            root_level=LogLevel.DEBUG,
-            log_dir=str(log_dir),
-            sinks=(
-                SinkConfig(
-                    sink_type=SinkType.FILE,
-                    level=LogLevel.DEBUG,
-                    file_path="agent_activity.log",
-                    json_format=True,
-                ),
-            ),
-        )
-        configure_logging(config)
+        _configure_single_sink(log_dir, "agent_activity.log")
 
         memory_logger = logging.getLogger("synthorg.memory.retrieval")
         security_logger = logging.getLogger("synthorg.security.ops")
@@ -296,20 +238,11 @@ class TestSinkRoutingIntegration:
         assert "memory retrieved" in content
         assert "not here" not in content
 
-    def test_errors_log_only_catches_error_and_above(self, log_dir: Path) -> None:
-        config = LogConfig(
-            root_level=LogLevel.DEBUG,
-            log_dir=str(log_dir),
-            sinks=(
-                SinkConfig(
-                    sink_type=SinkType.FILE,
-                    level=LogLevel.ERROR,
-                    file_path="errors.log",
-                    json_format=True,
-                ),
-            ),
-        )
-        configure_logging(config)
+    def test_errors_log_only_catches_error_and_above(
+        self,
+        log_dir: Path,
+    ) -> None:
+        _configure_single_sink(log_dir, "errors.log", level=LogLevel.ERROR)
 
         test_logger = logging.getLogger("synthorg.test")
         test_logger.info("info message")
