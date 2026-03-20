@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.10](https://github.com/Aureliolo/synthorg/compare/v0.3.9...v0.3.10) (2026-03-20)
+
+
+### Bug Fixes
+
+* **ci:** generate required secrets in DAST workflow ([#623](https://github.com/Aureliolo/synthorg/issues/623)) ([6ae297f](https://github.com/Aureliolo/synthorg/commit/6ae297f881ba102cf73dd59f5b1b5bd723008279))
+* **cli:** doctor image check reads compose file and fix API docs URL ([#625](https://github.com/Aureliolo/synthorg/issues/625)) ([5202e53](https://github.com/Aureliolo/synthorg/commit/5202e53771d6210712fb5e8f581bca3dee0e6ece))
+* **engine:** sanitize error messages in checkpoint reconciliation and compaction summaries ([#632](https://github.com/Aureliolo/synthorg/issues/632)) ([5394ed7](https://github.com/Aureliolo/synthorg/commit/5394ed72f78a2b5439c98e25144d69005d36cea6))
+* mitigate TOCTOU DNS rebinding gap in git clone SSRF prevention ([#633](https://github.com/Aureliolo/synthorg/issues/633)) ([1846f6e](https://github.com/Aureliolo/synthorg/commit/1846f6eef0650968e19b97c4c66002d04104006e))
+* resolve post-startup log loss, add provider model discovery, and improve setup wizard UX ([#634](https://github.com/Aureliolo/synthorg/issues/634)) ([2df8d11](https://github.com/Aureliolo/synthorg/commit/2df8d1137caebbfca0e9819c33a29a867821e5c1))
+
+
+### Maintenance
+
+* bump https://github.com/astral-sh/ruff-pre-commit from v0.15.6 to 0.15.7 ([#628](https://github.com/Aureliolo/synthorg/issues/628)) ([c641d2c](https://github.com/Aureliolo/synthorg/commit/c641d2c35e0e8f43e2cc3f21253b656a580441f1))
+* bump python from `584e89d` to `fb83750` in /docker/backend ([#627](https://github.com/Aureliolo/synthorg/issues/627)) ([1a36eca](https://github.com/Aureliolo/synthorg/commit/1a36ecab3783108b27c1d58038fb3cfee8671ac9))
+* bump python from `584e89d` to `fb83750` in /docker/sandbox ([#629](https://github.com/Aureliolo/synthorg/issues/629)) ([fd3e69a](https://github.com/Aureliolo/synthorg/commit/fd3e69aa0ec8c8d43d5660d270b13372f81a4109))
+* bump the minor-and-patch group across 2 directories with 3 updates ([#630](https://github.com/Aureliolo/synthorg/issues/630)) ([67d14c4](https://github.com/Aureliolo/synthorg/commit/67d14c4f95f9ce3621254ea2c214ae31a5949349))
+* bump the minor-and-patch group with 2 updates ([#631](https://github.com/Aureliolo/synthorg/issues/631)) ([2e51b60](https://github.com/Aureliolo/synthorg/commit/2e51b60e9bdd2cedb7631c28aad38bc381303b13))
+* **ci:** add timeout-minutes, harden fuzz script, extend CVE audit ([#626](https://github.com/Aureliolo/synthorg/issues/626)) ([25420e2](https://github.com/Aureliolo/synthorg/commit/25420e2714e5f4d94d78b877d16d4653a462dc47))
+
 ## [0.3.9](https://github.com/Aureliolo/synthorg/compare/v0.3.8...v0.3.9) (2026-03-19)
 
 
