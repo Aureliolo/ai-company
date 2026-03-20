@@ -106,6 +106,14 @@ class TestSinkRoutingTable:
     def test_agent_activity_routes_memory(self) -> None:
         assert "synthorg.memory." in _SINK_ROUTING["agent_activity.log"]
 
+    def test_routing_table_has_exactly_expected_sinks(self) -> None:
+        assert set(_SINK_ROUTING.keys()) == {
+            "audit.log",
+            "cost_usage.log",
+            "agent_activity.log",
+            "access.log",
+        }
+
     def test_catchall_sinks_not_in_routing(self) -> None:
         for name in ("synthorg.log", "errors.log", "debug.log"):
             assert name not in _SINK_ROUTING

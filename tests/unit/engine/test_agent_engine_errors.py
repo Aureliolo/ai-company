@@ -312,9 +312,10 @@ class TestAgentEngineFatalErrorResult:
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,
             )
-        # raise exc from None suppresses the secondary error chain
-        # so the original exception propagates cleanly
-        assert exc_info.value.__cause__ is None
+        # raise exc from build_exc preserves the error chain so
+        # the secondary failure is available for debugging
+        assert isinstance(exc_info.value.__cause__, ValueError)
+        assert "secondary failure" in str(exc_info.value.__cause__)
 
 
 @pytest.mark.unit

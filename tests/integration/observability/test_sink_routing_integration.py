@@ -93,6 +93,31 @@ class TestSinkRoutingIntegration:
         assert "cost recorded" in cost_content
         assert "engine event" not in cost_content
 
+    def test_providers_routed_to_cost_usage_log(self, log_dir: Path) -> None:
+        config = LogConfig(
+            root_level=LogLevel.DEBUG,
+            log_dir=str(log_dir),
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.DEBUG,
+                    file_path="cost_usage.log",
+                    json_format=True,
+                ),
+            ),
+        )
+        configure_logging(config)
+
+        providers_logger = logging.getLogger("synthorg.providers.litellm")
+        engine_logger = logging.getLogger("synthorg.engine.run")
+
+        providers_logger.info("provider call")
+        engine_logger.info("engine event")
+
+        content = _read_log(log_dir / "cost_usage.log")
+        assert "provider call" in content
+        assert "engine event" not in content
+
     def test_engine_routed_to_agent_activity_log(self, log_dir: Path) -> None:
         config = LogConfig(
             root_level=LogLevel.DEBUG,

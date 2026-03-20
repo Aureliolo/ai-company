@@ -72,13 +72,7 @@ def bind_correlation_id(
         task_id: Task correlation identifier.
         agent_id: Agent correlation identifier.
     """
-    bindings: dict[str, str] = {}
-    if request_id is not None:
-        bindings["request_id"] = request_id
-    if task_id is not None:
-        bindings["task_id"] = task_id
-    if agent_id is not None:
-        bindings["agent_id"] = agent_id
+    bindings = _build_bindings(request_id, task_id, agent_id)
     if bindings:
         structlog.contextvars.bind_contextvars(**bindings)
 

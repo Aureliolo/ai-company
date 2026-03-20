@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import structlog
 import structlog.testing
 
 from synthorg.budget.coordination_config import ErrorTaxonomyConfig
@@ -1390,7 +1391,7 @@ class TestAgentEngineCoordinator:
 class TestAgentEngineCorrelationBinding:
     """Verify correlation IDs are bound/cleared around run()."""
 
-    async def test_run_binds_and_clears_correlation_ids(
+    async def test_run_binds_and_unbinds_correlation_ids(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
@@ -1402,7 +1403,7 @@ class TestAgentEngineCorrelationBinding:
 
         with (
             patch("synthorg.engine.agent_engine.bind_correlation_id") as mock_bind,
-            patch("synthorg.engine.agent_engine.clear_correlation_ids") as mock_clear,
+            patch("synthorg.engine.agent_engine.unbind_correlation_id") as mock_unbind,
         ):
             await engine.run(
                 identity=sample_agent_with_personality,
@@ -1413,39 +1414,38 @@ class TestAgentEngineCorrelationBinding:
                 agent_id=str(sample_agent_with_personality.id),
                 task_id=sample_task_with_criteria.id,
             )
-            mock_clear.assert_called_once()
+            mock_unbind.assert_called_once_with(agent_id=True, task_id=True)
 
-    async def test_correlation_ids_cleared_on_exception(
+    async def test_correlation_ids_unbound_on_exception(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        provider = mock_provider_factory([])  # empty -- will raise
+        # empty provider -- loop exhausts and engine returns error result
+        provider = mock_provider_factory([])
         engine = AgentEngine(provider=provider)
 
         with (
             patch("synthorg.engine.agent_engine.bind_correlation_id"),
-            patch("synthorg.engine.agent_engine.clear_correlation_ids") as mock_clear,
+            patch("synthorg.engine.agent_engine.unbind_correlation_id") as mock_unbind,
         ):
             # run() catches exceptions internally and returns an error result
             await engine.run(
                 identity=sample_agent_with_personality,
                 task=sample_task_with_criteria,
             )
-            # clear_correlation_ids must be called even when execution fails
-            mock_clear.assert_called_once()
+            # unbind must be called even when execution fails
+            mock_unbind.assert_called_once_with(agent_id=True, task_id=True)
 
-    async def test_correlation_ids_cleared_on_validation_error(
+    async def test_correlation_ids_not_bound_on_validation_error(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
-        """Correlation IDs are NOT bound for validation failures.
-
-        Validation happens before binding, so clear is not called
-        when validation raises.
+        """Validation happens before binding, so neither bind nor unbind
+        is called when validation raises.
         """
         response = _make_completion_response()
         provider = mock_provider_factory([response])
@@ -1453,7 +1453,7 @@ class TestAgentEngineCorrelationBinding:
 
         with (
             patch("synthorg.engine.agent_engine.bind_correlation_id") as mock_bind,
-            patch("synthorg.engine.agent_engine.clear_correlation_ids") as mock_clear,
+            patch("synthorg.engine.agent_engine.unbind_correlation_id") as mock_unbind,
         ):
             with pytest.raises(ValueError, match="max_turns"):
                 await engine.run(
@@ -1461,9 +1461,8 @@ class TestAgentEngineCorrelationBinding:
                     task=sample_task_with_criteria,
                     max_turns=0,
                 )
-            # Binding should not happen if validation fails first
             mock_bind.assert_not_called()
-            mock_clear.assert_not_called()
+            mock_unbind.assert_not_called()
 
     async def test_structlog_context_carries_correlation(
         self,
@@ -1472,8 +1471,6 @@ class TestAgentEngineCorrelationBinding:
         mock_provider_factory: type[MockCompletionProvider],
     ) -> None:
         """Real bind (no mock) -- structlog context has agent_id/task_id."""
-        import structlog
-
         response = _make_completion_response()
         provider = mock_provider_factory([response])
         engine = AgentEngine(provider=provider)

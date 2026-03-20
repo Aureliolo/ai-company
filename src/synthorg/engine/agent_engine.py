@@ -63,7 +63,7 @@ from synthorg.engine.task_sync import (
 from synthorg.observability import get_logger
 from synthorg.observability.correlation import (
     bind_correlation_id,
-    clear_correlation_ids,
+    unbind_correlation_id,
 )
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_LOOP_WIRING_WARNING,
@@ -445,7 +445,7 @@ class AgentEngine:
                     effective_autonomy=effective_autonomy,
                 )
         finally:
-            clear_correlation_ids()
+            unbind_correlation_id(agent_id=True, task_id=True)
 
     async def _execute(  # noqa: PLR0913
         self,
@@ -1248,7 +1248,7 @@ class AgentEngine:
                 task_id=task_id,
                 error=f"Failed to build budget-exhausted result: {build_exc}",
             )
-            raise exc from None
+            raise exc from build_exc
 
     async def _handle_fatal_error(  # noqa: PLR0913
         self,
@@ -1344,7 +1344,7 @@ class AgentEngine:
                 error=f"Failed to build error result: {build_exc}",
                 original_error=error_msg,
             )
-            raise exc from None
+            raise exc from build_exc
 
     async def _build_error_execution(  # noqa: PLR0913
         self,
