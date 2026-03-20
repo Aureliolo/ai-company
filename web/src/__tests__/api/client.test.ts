@@ -117,8 +117,21 @@ describe('unwrapPaginated', () => {
   })
 })
 
+const { mockLogout, mockFetchStatus } = vi.hoisted(() => ({
+  mockLogout: vi.fn(),
+  mockFetchStatus: vi.fn(),
+}))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({ logout: mockLogout }),
+}))
+
+vi.mock('@/stores/setup', () => ({
+  useSetupStore: () => ({ fetchStatus: mockFetchStatus }),
+}))
+
 describe('response interceptor (401 handling)', () => {
-  const originalPathname = window.location.pathname
+  const originalUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`
 
   function getErrorInterceptor() {
     const handlers = (apiClient.interceptors.response as unknown as {
@@ -130,79 +143,79 @@ describe('response interceptor (401 handling)', () => {
   }
 
   function make401Error(url?: string): AxiosError {
-    const error = new AxiosError('Unauthorized', '401', undefined, undefined, {
+    const config = { url, headers: new AxiosHeaders() } as InternalAxiosRequestConfig
+    return new AxiosError('Unauthorized', '401', config, undefined, {
       status: 401,
       statusText: 'Unauthorized',
       data: { error: 'Unauthorized' },
       headers: {},
-      config: { url, headers: new AxiosHeaders() } as InternalAxiosRequestConfig,
+      config,
     })
-    error.config = { url, headers: new AxiosHeaders() } as InternalAxiosRequestConfig
-    return error
+  }
+
+  /** Wait for fire-and-forget promise chains in the interceptor to settle. */
+  async function flushMicrotasks() {
+    await new Promise((resolve) => setTimeout(resolve, 0))
   }
 
   beforeEach(() => {
     localStorage.setItem('auth_token', 'stale-token')
     localStorage.setItem('auth_token_expires_at', '9999999999999')
+    localStorage.setItem('auth_must_change_password', 'true')
+    mockLogout.mockClear()
+    mockFetchStatus.mockClear()
   })
 
   afterEach(() => {
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, pathname: originalPathname },
-      writable: true,
-    })
+    window.history.pushState({}, '', originalUrl)
     localStorage.clear()
     vi.restoreAllMocks()
   })
 
-  it('clears auth tokens from localStorage on 401', async () => {
+  it('clears all auth tokens from localStorage on 401', async () => {
     const interceptor = getErrorInterceptor()
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, pathname: '/dashboard' },
-      writable: true,
-    })
+    window.history.pushState({}, '', '/dashboard')
 
     await expect(interceptor(make401Error('/api/v1/agents'))).rejects.toThrow()
 
     expect(localStorage.getItem('auth_token')).toBeNull()
     expect(localStorage.getItem('auth_token_expires_at')).toBeNull()
+    expect(localStorage.getItem('auth_must_change_password')).toBeNull()
   })
 
   it('does not re-fetch setup status when not on /setup', async () => {
     const interceptor = getErrorInterceptor()
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, pathname: '/dashboard' },
-      writable: true,
-    })
+    window.history.pushState({}, '', '/dashboard')
 
     await expect(interceptor(make401Error('/api/v1/agents'))).rejects.toThrow()
+    await flushMicrotasks()
 
-    // The guard condition prevents setup store import when not on /setup.
-    // We verify the pathname is '/dashboard' (the guard checks this).
-    expect(window.location.pathname).toBe('/dashboard')
+    expect(mockFetchStatus).not.toHaveBeenCalled()
   })
 
   it('skips setup re-fetch when failing request is /setup/status (loop guard)', async () => {
     const interceptor = getErrorInterceptor()
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, pathname: '/setup' },
-      writable: true,
-    })
+    window.history.pushState({}, '', '/setup')
 
-    // The 401 is from the setup/status endpoint itself -- should NOT trigger re-fetch
-    const error = make401Error('/api/v1/setup/status')
-    await expect(interceptor(error)).rejects.toThrow()
+    await expect(interceptor(make401Error('/api/v1/setup/status'))).rejects.toThrow()
+    await flushMicrotasks()
 
-    // Verify the guard: error.config.url includes '/setup/status'
-    expect(error.config?.url).toContain('/setup/status')
+    expect(mockFetchStatus).not.toHaveBeenCalled()
+  })
+
+  it('triggers setup status re-fetch on 401 when on /setup page', async () => {
+    const interceptor = getErrorInterceptor()
+    window.history.pushState({}, '', '/setup')
+
+    await expect(interceptor(make401Error('/api/v1/providers'))).rejects.toThrow()
+    await flushMicrotasks()
+
+    expect(mockFetchStatus).toHaveBeenCalledOnce()
   })
 
   it('rejects the error promise on 401', async () => {
     const interceptor = getErrorInterceptor()
-    Object.defineProperty(window, 'location', {
-      value: { ...window.location, pathname: '/setup' },
-      writable: true,
-    })
+    window.history.pushState({}, '', '/setup')
 
     await expect(interceptor(make401Error('/api/v1/providers'))).rejects.toThrow('Unauthorized')
   })

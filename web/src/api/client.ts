@@ -4,6 +4,7 @@
 
 import axios, { type AxiosError, type AxiosResponse } from 'axios'
 import type { ApiResponse, ErrorDetail, PaginatedResponse } from './types'
+import { sanitizeForLog } from '@/utils/logging'
 
 // Normalize: strip trailing slashes and any existing /api/v1 suffix
 const RAW_BASE = (import.meta.env.VITE_API_BASE_URL as string) || ''
@@ -41,31 +42,34 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('auth_token')
       localStorage.removeItem('auth_token_expires_at')
-      // Sync Pinia auth state — dynamic import avoids circular dependency
+      localStorage.removeItem('auth_must_change_password')
+      // Sync Pinia auth state -- dynamic import avoids circular dependency
       import('@/stores/auth').then(({ useAuthStore }) => {
         const auth = useAuthStore()
         // clearAuth() also handles redirect to /login
         auth.logout()
-      }).catch(() => {
+      }).catch((importErr: unknown) => {
+        console.error('Failed to import auth store after 401:', sanitizeForLog(importErr))
         // Fallback if store import fails: redirect directly
         if (window.location.pathname !== '/login' && window.location.pathname !== '/setup') {
-          window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`
+          window.location.href = '/login'
         }
       })
       // On setup page, re-fetch status to handle backend reset or token expiry.
       // Guard: skip if the failing request was itself /setup/status to prevent
       // unbounded 401 loops (the status endpoint is normally unauthenticated,
       // but a misconfigured backend could still return 401).
+      const requestUrl = error.config?.url ?? ''
       if (
         window.location.pathname === '/setup' &&
-        !error.config?.url?.includes('/setup/status')
+        !/\/setup\/status(\?|$)/.test(requestUrl)
       ) {
         import('@/stores/setup').then(({ useSetupStore }) => {
           const setup = useSetupStore()
-          setup.fetchStatus()
+          return setup.fetchStatus()
         }).catch((err: unknown) => {
           // Best-effort: setup status re-fetch is non-critical after 401
-          console.warn('Failed to re-fetch setup status after 401:', err)
+          console.warn('Failed to re-fetch setup status after 401:', sanitizeForLog(err))
         })
       }
     }

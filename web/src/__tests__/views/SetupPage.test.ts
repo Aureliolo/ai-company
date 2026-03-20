@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mount, flushPromises, type VueWrapper } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { defineComponent, h } from 'vue'
 
@@ -117,27 +117,34 @@ vi.mock('@/api/endpoints/providers', () => ({
 import SetupPage from '@/views/SetupPage.vue'
 
 describe('SetupPage', () => {
+  let wrapper: VueWrapper | undefined
+
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     localStorage.clear()
   })
 
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = undefined
+  })
+
   it('renders welcome step after status loads', async () => {
-    const wrapper = mount(SetupPage)
+    wrapper = mount(SetupPage)
     await flushPromises()
     expect(wrapper.text()).toContain('Welcome to SynthOrg')
   })
 
   it('renders step indicator', async () => {
-    const wrapper = mount(SetupPage)
+    wrapper = mount(SetupPage)
     await flushPromises()
     // Should show step counter
     expect(wrapper.text()).toContain('Step 1 of')
   })
 
   it('shows get started button in welcome step', async () => {
-    const wrapper = mount(SetupPage)
+    wrapper = mount(SetupPage)
     await flushPromises()
     const btn = wrapper.find('button')
     expect(btn.exists()).toBe(true)
@@ -145,7 +152,7 @@ describe('SetupPage', () => {
   })
 
   it('advances to admin step after clicking get started', async () => {
-    const wrapper = mount(SetupPage)
+    wrapper = mount(SetupPage)
     await flushPromises()
     // Click the "Get Started" button
     const btn = wrapper.find('button')
@@ -156,7 +163,7 @@ describe('SetupPage', () => {
   })
 
   it('shows wizard container with step dots', async () => {
-    const wrapper = mount(SetupPage)
+    wrapper = mount(SetupPage)
     await flushPromises()
     // The step indicator should have numbered dots
     const dots = wrapper.findAll('[data-testid="step-indicator"]')
@@ -164,7 +171,7 @@ describe('SetupPage', () => {
   })
 
   it('includes multiple steps in the wizard', async () => {
-    const wrapper = mount(SetupPage)
+    wrapper = mount(SetupPage)
     await flushPromises()
     // Should show "Step X of Y" where Y >= 4 (welcome + admin + provider + company + agent)
     const text = wrapper.text()
@@ -176,7 +183,7 @@ describe('SetupPage', () => {
   })
 
   it('step indicators always show numbers, never empty dots', async () => {
-    const wrapper = mount(SetupPage)
+    wrapper = mount(SetupPage)
     await flushPromises()
     const dots = wrapper.findAll('[data-testid="step-indicator"]')
     expect(dots.length).toBeGreaterThanOrEqual(1)
@@ -186,7 +193,7 @@ describe('SetupPage', () => {
   })
 
   it('current step shows current styling, not done styling', async () => {
-    const wrapper = mount(SetupPage)
+    wrapper = mount(SetupPage)
     await flushPromises()
     // Step 1 is current (index 0)
     const dots = wrapper.findAll('[data-testid="step-indicator"]')
@@ -196,8 +203,28 @@ describe('SetupPage', () => {
     expect(dots[0].classes()).not.toContain('bg-brand-600')
   })
 
+  it('current step has role="button" and tabindex for keyboard access', async () => {
+    wrapper = mount(SetupPage)
+    await flushPromises()
+    const dots = wrapper.findAll('[data-testid="step-indicator"]')
+    expect(dots.length).toBeGreaterThanOrEqual(1)
+    // Current step (index 0) should be keyboard-accessible
+    expect(dots[0].attributes('role')).toBe('button')
+    expect(dots[0].attributes('tabindex')).toBe('0')
+  })
+
+  it('future incomplete steps do not have role="button"', async () => {
+    wrapper = mount(SetupPage)
+    await flushPromises()
+    const dots = wrapper.findAll('[data-testid="step-indicator"]')
+    // Last step (incomplete, not current) should not be interactive
+    const lastDot = dots[dots.length - 1]
+    expect(lastDot.attributes('role')).toBeUndefined()
+    expect(lastDot.attributes('tabindex')).toBeUndefined()
+  })
+
   it('renders branding logo', async () => {
-    const wrapper = mount(SetupPage)
+    wrapper = mount(SetupPage)
     await flushPromises()
     // The welcome step renders the branded "S" logo inside a styled container
     const logo = wrapper.find('[data-testid="brand-logo"]')
