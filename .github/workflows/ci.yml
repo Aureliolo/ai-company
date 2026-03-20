@@ -18,6 +18,7 @@ jobs:
   changes:
     name: Detect Changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
     outputs:
@@ -50,6 +51,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -70,6 +72,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -87,6 +90,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: ci
     permissions:
       contents: read
@@ -144,6 +148,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.python == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -161,6 +166,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docker == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -189,6 +195,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -211,6 +218,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -233,6 +241,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -255,6 +264,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -278,6 +288,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.dashboard == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -301,6 +312,7 @@ jobs:
     if: always()
     needs: [changes, lint, type-check, test, python-audit, dockerfile-lint, dashboard-lint, dashboard-type-check, dashboard-test, dashboard-build, dashboard-audit]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions: {}
     steps:
       - name: Check results
