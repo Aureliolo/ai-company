@@ -758,5 +758,6 @@ class TestCreateFromPresetAutoDiscovery:
         mock_discover.assert_awaited_once_with(
             "http://localhost:11434",
             "ollama",
+            trust_url=True,
         )
         assert result.models == discovered
