@@ -1,9 +1,12 @@
 """Integration tests for GitCloneTool (clone + SSRF prevention)."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+import synthorg.tools.git_tools as git_tools_module
+from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.git_tools import GitCloneTool
 from synthorg.tools.git_url_validator import (
     DnsValidationOk,
@@ -159,6 +162,37 @@ class TestGitCloneToolSsrf:
 # ── TOCTOU DNS rebinding mitigation in clone ─────────────────────
 
 
+def _mock_validate(
+    validation: DnsValidationOk,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Patch validate_clone_url_host to return *validation*."""
+
+    async def _inner(url: str, policy: Any) -> DnsValidationOk:
+        return validation
+
+    monkeypatch.setattr(git_tools_module, "validate_clone_url_host", _inner)
+
+
+def _mock_run_git(
+    captured: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Patch GitCloneTool._run_git to capture args."""
+
+    async def _inner(
+        self_: Any,
+        args: list[str],
+        *,
+        cwd: Any = None,
+        deadline: float = 30.0,
+    ) -> ToolExecutionResult:
+        captured.extend(args)
+        return ToolExecutionResult(content="ok")
+
+    monkeypatch.setattr(GitCloneTool, "_run_git", _inner)
+
+
 @pytest.mark.unit
 class TestGitCloneToolToctou:
     """TOCTOU DNS rebinding mitigation wiring tests."""
@@ -169,50 +203,26 @@ class TestGitCloneToolToctou:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """HTTPS clone prepends -c http.curloptResolve to args."""
-        import synthorg.tools.git_tools as module
-
-        # Mock validate_clone_url_host to return resolved IPs
-        validation = DnsValidationOk(
-            hostname="example.com",
-            port=443,
-            resolved_ips=("93.184.216.34",),
-            is_https=True,
+        _mock_validate(
+            DnsValidationOk(
+                hostname="example.com",
+                port=443,
+                resolved_ips=("93.184.216.34",),
+                is_https=True,
+            ),
+            monkeypatch,
         )
-
-        async def mock_validate(url: str, policy: object) -> DnsValidationOk:
-            return validation
-
-        monkeypatch.setattr(module, "validate_clone_url_host", mock_validate)
-
-        # Capture args passed to _run_git
-        captured_args: list[str] = []
-
-        async def mock_run_git(
-            self_: object,
-            args: list[str],
-            *,
-            cwd: object = None,
-            deadline: float = 30.0,
-        ) -> object:
-            captured_args.extend(args)
-            from synthorg.tools.base import ToolExecutionResult
-
-            return ToolExecutionResult(content="ok")
-
-        monkeypatch.setattr(
-            GitCloneTool,
-            "_run_git",
-            mock_run_git,
-        )
+        captured: list[str] = []
+        _mock_run_git(captured, monkeypatch)
 
         tool = GitCloneTool(workspace=workspace)
         result = await tool.execute(
             arguments={"url": "https://example.com/repo.git"},
         )
         assert not result.is_error
-        assert captured_args[0] == "-c"
-        assert captured_args[1] == "http.curloptResolve=example.com:443:93.184.216.34"
-        assert captured_args[2] == "clone"
+        assert captured[0] == "-c"
+        assert captured[1] == "http.curloptResolve=example.com:443:93.184.216.34"
+        assert captured[2] == "clone"
 
     async def test_https_custom_port_in_resolve(
         self,
@@ -220,41 +230,23 @@ class TestGitCloneToolToctou:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Custom HTTPS port is reflected in curloptResolve."""
-        import synthorg.tools.git_tools as module
-
-        validation = DnsValidationOk(
-            hostname="example.com",
-            port=8443,
-            resolved_ips=("1.2.3.4",),
-            is_https=True,
+        _mock_validate(
+            DnsValidationOk(
+                hostname="example.com",
+                port=8443,
+                resolved_ips=("1.2.3.4",),
+                is_https=True,
+            ),
+            monkeypatch,
         )
-
-        async def mock_validate(url: str, policy: object) -> DnsValidationOk:
-            return validation
-
-        monkeypatch.setattr(module, "validate_clone_url_host", mock_validate)
-
-        captured_args: list[str] = []
-
-        async def mock_run_git(
-            self_: object,
-            args: list[str],
-            *,
-            cwd: object = None,
-            deadline: float = 30.0,
-        ) -> object:
-            captured_args.extend(args)
-            from synthorg.tools.base import ToolExecutionResult
-
-            return ToolExecutionResult(content="ok")
-
-        monkeypatch.setattr(GitCloneTool, "_run_git", mock_run_git)
+        captured: list[str] = []
+        _mock_run_git(captured, monkeypatch)
 
         tool = GitCloneTool(workspace=workspace)
         await tool.execute(
             arguments={"url": "https://example.com:8443/repo.git"},
         )
-        assert "http.curloptResolve=example.com:8443:1.2.3.4" in captured_args[1]
+        assert "http.curloptResolve=example.com:8443:1.2.3.4" in captured[1]
 
     async def test_ssh_double_resolve_passes(
         self,
@@ -262,20 +254,15 @@ class TestGitCloneToolToctou:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """SSH clone with consistent DNS proceeds normally."""
-        import synthorg.tools.git_tools as module
-
-        validation = DnsValidationOk(
-            hostname="example.com",
-            resolved_ips=("93.184.216.34",),
-            is_https=False,
+        _mock_validate(
+            DnsValidationOk(
+                hostname="example.com",
+                resolved_ips=("93.184.216.34",),
+                is_https=False,
+            ),
+            monkeypatch,
         )
 
-        async def mock_validate(url: str, policy: object) -> DnsValidationOk:
-            return validation
-
-        monkeypatch.setattr(module, "validate_clone_url_host", mock_validate)
-
-        # verify_dns_consistency returns None (consistent)
         async def mock_verify(
             hostname: str,
             expected_ips: frozenset[str],
@@ -283,31 +270,16 @@ class TestGitCloneToolToctou:
         ) -> None:
             return None
 
-        monkeypatch.setattr(module, "verify_dns_consistency", mock_verify)
-
-        captured_args: list[str] = []
-
-        async def mock_run_git(
-            self_: object,
-            args: list[str],
-            *,
-            cwd: object = None,
-            deadline: float = 30.0,
-        ) -> object:
-            captured_args.extend(args)
-            from synthorg.tools.base import ToolExecutionResult
-
-            return ToolExecutionResult(content="ok")
-
-        monkeypatch.setattr(GitCloneTool, "_run_git", mock_run_git)
+        monkeypatch.setattr(git_tools_module, "verify_dns_consistency", mock_verify)
+        captured: list[str] = []
+        _mock_run_git(captured, monkeypatch)
 
         tool = GitCloneTool(workspace=workspace)
         result = await tool.execute(
             arguments={"url": "ssh://git@example.com/repo.git"},
         )
         assert not result.is_error
-        # No -c flag for SSH
-        assert captured_args[0] == "clone"
+        assert captured[0] == "clone"
 
     async def test_ssh_double_resolve_detects_rebinding(
         self,
@@ -315,18 +287,14 @@ class TestGitCloneToolToctou:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """SSH clone blocked when double-resolve detects rebinding."""
-        import synthorg.tools.git_tools as module
-
-        validation = DnsValidationOk(
-            hostname="evil.example.com",
-            resolved_ips=("93.184.216.34",),
-            is_https=False,
+        _mock_validate(
+            DnsValidationOk(
+                hostname="evil.example.com",
+                resolved_ips=("93.184.216.34",),
+                is_https=False,
+            ),
+            monkeypatch,
         )
-
-        async def mock_validate(url: str, policy: object) -> DnsValidationOk:
-            return validation
-
-        monkeypatch.setattr(module, "validate_clone_url_host", mock_validate)
 
         async def mock_verify(
             hostname: str,
@@ -335,7 +303,7 @@ class TestGitCloneToolToctou:
         ) -> str:
             return "DNS rebinding detected for 'evil.example.com'"
 
-        monkeypatch.setattr(module, "verify_dns_consistency", mock_verify)
+        monkeypatch.setattr(git_tools_module, "verify_dns_consistency", mock_verify)
 
         tool = GitCloneTool(workspace=workspace)
         result = await tool.execute(
@@ -350,44 +318,25 @@ class TestGitCloneToolToctou:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Literal IP URL skips TOCTOU mitigation (no DNS to rebind)."""
-        import synthorg.tools.git_tools as module
-
-        validation = DnsValidationOk(
-            hostname="93.184.216.34",
-            port=443,
-            resolved_ips=(),  # empty = literal IP, no pinning
-            is_https=True,
+        _mock_validate(
+            DnsValidationOk(
+                hostname="93.184.216.34",
+                port=443,
+                resolved_ips=(),
+                is_https=True,
+            ),
+            monkeypatch,
         )
-
-        async def mock_validate(url: str, policy: object) -> DnsValidationOk:
-            return validation
-
-        monkeypatch.setattr(module, "validate_clone_url_host", mock_validate)
-
-        captured_args: list[str] = []
-
-        async def mock_run_git(
-            self_: object,
-            args: list[str],
-            *,
-            cwd: object = None,
-            deadline: float = 30.0,
-        ) -> object:
-            captured_args.extend(args)
-            from synthorg.tools.base import ToolExecutionResult
-
-            return ToolExecutionResult(content="ok")
-
-        monkeypatch.setattr(GitCloneTool, "_run_git", mock_run_git)
+        captured: list[str] = []
+        _mock_run_git(captured, monkeypatch)
 
         tool = GitCloneTool(workspace=workspace)
         result = await tool.execute(
             arguments={"url": "https://93.184.216.34/repo.git"},
         )
         assert not result.is_error
-        # No -c flag for literal IPs
-        assert captured_args[0] == "clone"
-        assert "-c" not in captured_args
+        assert captured[0] == "clone"
+        assert "-c" not in captured
 
     async def test_mitigation_disabled_skips_pinning(
         self,
@@ -395,35 +344,17 @@ class TestGitCloneToolToctou:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Disabled mitigation skips DNS pinning even for HTTPS."""
-        import synthorg.tools.git_tools as module
-
-        validation = DnsValidationOk(
-            hostname="example.com",
-            port=443,
-            resolved_ips=(),  # empty when mitigation disabled
-            is_https=True,
+        _mock_validate(
+            DnsValidationOk(
+                hostname="example.com",
+                port=443,
+                resolved_ips=(),
+                is_https=True,
+            ),
+            monkeypatch,
         )
-
-        async def mock_validate(url: str, policy: object) -> DnsValidationOk:
-            return validation
-
-        monkeypatch.setattr(module, "validate_clone_url_host", mock_validate)
-
-        captured_args: list[str] = []
-
-        async def mock_run_git(
-            self_: object,
-            args: list[str],
-            *,
-            cwd: object = None,
-            deadline: float = 30.0,
-        ) -> object:
-            captured_args.extend(args)
-            from synthorg.tools.base import ToolExecutionResult
-
-            return ToolExecutionResult(content="ok")
-
-        monkeypatch.setattr(GitCloneTool, "_run_git", mock_run_git)
+        captured: list[str] = []
+        _mock_run_git(captured, monkeypatch)
 
         policy = GitCloneNetworkPolicy(dns_rebinding_mitigation=False)
         tool = GitCloneTool(workspace=workspace, network_policy=policy)
@@ -431,5 +362,5 @@ class TestGitCloneToolToctou:
             arguments={"url": "https://example.com/repo.git"},
         )
         assert not result.is_error
-        assert captured_args[0] == "clone"
-        assert "-c" not in captured_args
+        assert captured[0] == "clone"
+        assert "-c" not in captured

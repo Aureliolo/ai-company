@@ -500,6 +500,29 @@ fails with a clear error -- no unsafe subprocess fallback for code execution
     execute within the agent's isolated pod. The `SandboxBackend` protocol makes this
     transition seamless.
 
+### Git Clone SSRF Prevention
+
+The `git_clone` tool validates clone URLs against SSRF attacks via hostname/IP
+validation with async DNS resolution (`git_url_validator` module). All resolved
+IPs must be public; private, loopback, link-local, and reserved addresses are
+blocked by default. A configurable `hostname_allowlist` lets legitimate internal
+Git servers bypass the private-IP check.
+
+**TOCTOU DNS rebinding mitigation** closes the gap between DNS validation and
+`git clone`'s own resolution:
+
+- **HTTPS URLs:** Validated IPs are pinned via `git -c http.curloptResolve=host:port:ip`
+  (git >= 2.22), so git uses the same addresses the validator checked.
+- **SSH / SCP-like URLs:** A second DNS resolution runs immediately before execution;
+  if the re-resolved IP set is not a subset of the validated set, the clone is blocked.
+- **Literal IP URLs:** Immune (no DNS resolution occurs).
+
+Both mitigations are configurable via `GitCloneNetworkPolicy.dns_rebinding_mitigation`
+(default: enabled). Disable for hosts behind CDNs or geo-DNS where resolved IPs
+legitimately vary between queries. For full defense-in-depth, combine with
+network-level egress controls (firewall, HTTP CONNECT proxy) or container
+network isolation (see Tool Sandboxing above).
+
 ### MCP Integration
 
 External tools are integrated via the **Model Context Protocol** (MCP).

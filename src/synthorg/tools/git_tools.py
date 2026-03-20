@@ -23,7 +23,7 @@ from synthorg.tools.git_url_validator import (
     _CREDENTIAL_RE,
     ALLOWED_CLONE_SCHEMES,
     GitCloneNetworkPolicy,
-    _build_curl_resolve_value,
+    build_curl_resolve_value,
     is_allowed_clone_scheme,
     validate_clone_url_host,
     verify_dns_consistency,
@@ -683,11 +683,17 @@ class GitCloneTool(_BaseGitTool):
             rebinding is detected.
         """
         if not validation.resolved_ips:
+            # Literal IP, allowlisted host, or mitigation disabled
+            logger.debug(
+                GIT_COMMAND_START,
+                hostname=validation.hostname,
+                note="toctou_mitigation_skipped",
+            )
             return args
 
         if validation.is_https:
             # Pin git to validated IPs via curloptResolve (git >= 2.22)
-            resolve_value = _build_curl_resolve_value(
+            resolve_value = build_curl_resolve_value(
                 validation.hostname,
                 validation.port or 443,
                 validation.resolved_ips,

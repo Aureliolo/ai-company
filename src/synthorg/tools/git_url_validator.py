@@ -172,8 +172,8 @@ class DnsValidationOk(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    hostname: str
-    port: int | None = None
+    hostname: NotBlankStr
+    port: int | None = Field(default=None, gt=0, le=65535)
     resolved_ips: tuple[str, ...] = ()
     is_https: bool = False
 
@@ -284,7 +284,7 @@ def is_allowed_clone_scheme(url: str) -> bool:
     return bool(host) and "::" not in host
 
 
-def _build_curl_resolve_value(
+def build_curl_resolve_value(
     hostname: str,
     port: int,
     ips: tuple[str, ...],
@@ -299,11 +299,17 @@ def _build_curl_resolve_value(
     Args:
         hostname: Hostname to pin.
         port: Port number (e.g. 443 for default HTTPS).
-        ips: Validated IP addresses to pin to.
+        ips: Non-empty tuple of validated IP addresses to pin to.
 
     Returns:
         The curloptResolve config string.
+
+    Raises:
+        ValueError: If *ips* is empty.
     """
+    if not ips:
+        msg = "ips must not be empty"
+        raise ValueError(msg)
     return f"{hostname}:{port}:{','.join(ips)}"
 
 
@@ -477,6 +483,22 @@ async def verify_dns_consistency(
 # ── Main validator ───────────────────────────────────────────────
 
 
+def _ok(
+    hostname: str,
+    port: int | None,
+    *,
+    is_https: bool,
+    resolved_ips: tuple[str, ...] = (),
+) -> DnsValidationOk:
+    """Construct a successful validation result."""
+    return DnsValidationOk(
+        hostname=hostname,
+        port=port,
+        resolved_ips=resolved_ips,
+        is_https=is_https,
+    )
+
+
 async def validate_clone_url_host(  # noqa: PLR0911
     url: str,
     policy: GitCloneNetworkPolicy,
@@ -512,16 +534,12 @@ async def validate_clone_url_host(  # noqa: PLR0911
     normalized = hostname.lower()
     is_https = url.startswith("https://")
     port: int | None = None
-    if is_https and "://" in url:
+    if is_https:
         port = urlparse(url).port or 443
 
     # Allowlist bypass (pre-normalized to lowercase at construction)
     if normalized in policy.hostname_allowlist:
-        return DnsValidationOk(
-            hostname=normalized,
-            port=port,
-            is_https=is_https,
-        )
+        return _ok(normalized, port, is_https=is_https)
 
     # Master switch
     if not policy.block_private_ips:
@@ -530,11 +548,7 @@ async def validate_clone_url_host(  # noqa: PLR0911
             hostname=normalized,
             reason="block_private_ips_disabled",
         )
-        return DnsValidationOk(
-            hostname=normalized,
-            port=port,
-            is_https=is_https,
-        )
+        return _ok(normalized, port, is_https=is_https)
 
     # Literal IP -- no DNS needed, no TOCTOU gap
     try:
@@ -549,22 +563,12 @@ async def validate_clone_url_host(  # noqa: PLR0911
                 reason="literal_private_ip",
             )
             return f"Clone URL host {normalized!r} is a blocked private/reserved IP"
-        return DnsValidationOk(
-            hostname=normalized,
-            port=port,
-            is_https=is_https,
-        )
+        return _ok(normalized, port, is_https=is_https)
 
     # DNS resolution + IP check
     result = await _resolve_and_check(normalized, policy.dns_resolution_timeout)
     if isinstance(result, str):
         return result
 
-    # result is a tuple of validated public IPs
     resolved_ips = result if policy.dns_rebinding_mitigation else ()
-    return DnsValidationOk(
-        hostname=normalized,
-        port=port,
-        resolved_ips=resolved_ips,
-        is_https=is_https,
-    )
+    return _ok(normalized, port, is_https=is_https, resolved_ips=resolved_ips)
