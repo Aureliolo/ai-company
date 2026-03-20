@@ -9,7 +9,7 @@ import contextlib
 import time
 from typing import TYPE_CHECKING
 
-from synthorg.budget.errors import BudgetExhaustedError
+from synthorg.budget.errors import BudgetExhaustedError, QuotaExhaustedError
 from synthorg.engine._security_factory import (
     make_security_interceptor,
     registry_with_approval_tool,
@@ -93,6 +93,7 @@ from synthorg.tools.permissions import ToolPermissionChecker
 if TYPE_CHECKING:
     from synthorg.api.approval_store import ApprovalStore
     from synthorg.budget.coordination_config import ErrorTaxonomyConfig
+    from synthorg.budget.degradation import PreFlightResult
     from synthorg.budget.enforcer import BudgetEnforcer
     from synthorg.budget.tracker import CostTracker
     from synthorg.core.agent import AgentIdentity
@@ -119,6 +120,7 @@ if TYPE_CHECKING:
     )
     from synthorg.providers.models import CompletionConfig
     from synthorg.providers.protocol import CompletionProvider
+    from synthorg.providers.registry import ProviderRegistry
     from synthorg.security.config import SecurityConfig
     from synthorg.security.protocol import SecurityInterceptionStrategy
     from synthorg.tools.registry import ToolRegistry
@@ -215,6 +217,7 @@ class AgentEngine:
         hybrid_loop_config: HybridLoopConfig | None = None,
         compaction_callback: CompactionCallback | None = None,
         plan_execute_config: PlanExecuteConfig | None = None,
+        provider_registry: ProviderRegistry | None = None,
     ) -> None:
         if execution_loop is not None and auto_loop_config is not None:
             msg = "execution_loop and auto_loop_config are mutually exclusive"
@@ -224,6 +227,7 @@ class AgentEngine:
             )
             raise ValueError(msg)
         self._provider = provider
+        self._provider_registry = provider_registry
         self._approval_store = approval_store
         self._parked_context_repo = parked_context_repo
         self._stagnation_detector = stagnation_detector
@@ -375,73 +379,88 @@ class AgentEngine:
                     max_turns=max_turns,
                 )
 
-                # Pre-flight budget enforcement
-                if self._budget_enforcer:
-                    await self._budget_enforcer.check_can_execute(agent_id)
-                    identity = await self._budget_enforcer.resolve_model(
-                        identity,
-                    )
-
-                tool_invoker = self._make_tool_invoker(
+        start = time.monotonic()
+        ctx: AgentContext | None = None
+        system_prompt: SystemPrompt | None = None
+        provider: CompletionProvider = self._provider
+        try:
+            # Pre-flight budget enforcement + degradation
+            if self._budget_enforcer:
+                preflight = await self._budget_enforcer.check_can_execute(
+                    agent_id,
+                    provider_name=identity.model.provider,
+                )
+                provider, identity = self._apply_degradation(
+                    preflight,
                     identity,
-                    task_id=task_id,
-                    effective_autonomy=effective_autonomy,
+                    provider,
                 )
-                ctx, system_prompt = await self._prepare_context(
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    max_turns=max_turns,
-                    memory_messages=memory_messages,
-                    tool_invoker=tool_invoker,
-                    effective_autonomy=effective_autonomy,
+                identity = await self._budget_enforcer.resolve_model(
+                    identity,
                 )
-                return await self._execute(
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    completion_config=completion_config,
-                    ctx=ctx,
-                    system_prompt=system_prompt,
-                    start=start,
-                    timeout_seconds=timeout_seconds,
-                    tool_invoker=tool_invoker,
-                    effective_autonomy=effective_autonomy,
-                )
-            except MemoryError, RecursionError:
-                logger.exception(
-                    EXECUTION_ENGINE_ERROR,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    error="non-recoverable error in run()",
-                )
-                raise
-            except BudgetExhaustedError as exc:
-                return self._handle_budget_error(
-                    exc=exc,
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    duration_seconds=time.monotonic() - start,
-                    ctx=ctx,
-                    system_prompt=system_prompt,
-                )
-            except Exception as exc:
-                return await self._handle_fatal_error(
-                    exc=exc,
-                    identity=identity,
-                    task=task,
-                    agent_id=agent_id,
-                    task_id=task_id,
-                    duration_seconds=time.monotonic() - start,
-                    ctx=ctx,
-                    system_prompt=system_prompt,
-                    completion_config=completion_config,
-                    effective_autonomy=effective_autonomy,
-                )
+
+            tool_invoker = self._make_tool_invoker(
+                identity,
+                task_id=task_id,
+                effective_autonomy=effective_autonomy,
+            )
+            ctx, system_prompt = await self._prepare_context(
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                max_turns=max_turns,
+                memory_messages=memory_messages,
+                tool_invoker=tool_invoker,
+                effective_autonomy=effective_autonomy,
+            )
+            return await self._execute(
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                completion_config=completion_config,
+                ctx=ctx,
+                system_prompt=system_prompt,
+                start=start,
+                timeout_seconds=timeout_seconds,
+                tool_invoker=tool_invoker,
+                effective_autonomy=effective_autonomy,
+                provider=provider,
+            )
+        except MemoryError, RecursionError:
+            logger.exception(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="non-recoverable error in run()",
+            )
+            raise
+        except BudgetExhaustedError as exc:
+            return self._handle_budget_error(
+                exc=exc,
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                duration_seconds=time.monotonic() - start,
+                ctx=ctx,
+                system_prompt=system_prompt,
+            )
+        except Exception as exc:
+            return await self._handle_fatal_error(
+                exc=exc,
+                identity=identity,
+                task=task,
+                agent_id=agent_id,
+                task_id=task_id,
+                duration_seconds=time.monotonic() - start,
+                ctx=ctx,
+                system_prompt=system_prompt,
+                completion_config=completion_config,
+                effective_autonomy=effective_autonomy,
+                provider=provider,
+            )
 
     async def _execute(  # noqa: PLR0913
         self,
@@ -457,6 +476,7 @@ class AgentEngine:
         timeout_seconds: float | None = None,
         tool_invoker: ToolInvoker | None = None,
         effective_autonomy: EffectiveAutonomy | None = None,
+        provider: CompletionProvider | None = None,
     ) -> AgentRunResult:
         """Run execution loop, record costs, apply transitions, and build result."""
         budget_checker: BudgetChecker | None
@@ -487,6 +507,7 @@ class AgentEngine:
             tool_invoker=tool_invoker,
             start=start,
             timeout_seconds=timeout_seconds,
+            provider=provider or self._provider,
         )
 
         execution_result = await self._post_execution_pipeline(
@@ -670,6 +691,7 @@ class AgentEngine:
         tool_invoker: ToolInvoker | None,
         start: float,
         timeout_seconds: float | None,
+        provider: CompletionProvider | None = None,
     ) -> ExecutionResult:
         """Execute the loop, using ``asyncio.wait`` for timeout control.
 
@@ -680,7 +702,7 @@ class AgentEngine:
         wrapped_loop = self._make_loop_with_callback(loop, agent_id, task_id)
         coro = wrapped_loop.execute(
             context=ctx,
-            provider=self._provider,
+            provider=provider or self._provider,
             tool_invoker=tool_invoker,
             budget_checker=budget_checker,
             shutdown_checker=self._shutdown_checker,
@@ -1197,6 +1219,42 @@ class AgentEngine:
                 prompt_tokens=metrics.prompt_tokens,
                 total_tokens=metrics.tokens_per_task,
             )
+
+    def _apply_degradation(
+        self,
+        preflight: PreFlightResult,
+        identity: AgentIdentity,
+        provider: CompletionProvider,
+    ) -> tuple[CompletionProvider, AgentIdentity]:
+        """Apply degradation result: swap provider if FALLBACK selected."""
+        if (
+            preflight.effective_provider is None
+            or preflight.effective_provider == identity.model.provider
+        ):
+            return provider, identity
+
+        # FALLBACK: need a different provider driver
+        if self._provider_registry is None:
+            msg = (
+                f"FALLBACK selected provider "
+                f"{preflight.effective_provider!r} but no "
+                f"provider_registry available"
+            )
+            raise QuotaExhaustedError(msg)
+
+        new_provider = self._provider_registry.get(
+            preflight.effective_provider,
+        )
+        new_identity = identity.model_copy(
+            update={
+                "model": identity.model.model_copy(
+                    update={
+                        "provider": preflight.effective_provider,
+                    },
+                ),
+            },
+        )
+        return new_provider, new_identity
 
     def _handle_budget_error(  # noqa: PLR0913
         self,

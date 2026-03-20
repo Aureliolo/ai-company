@@ -9,6 +9,7 @@ from synthorg.budget.config import (
     BudgetAlertConfig,
     BudgetConfig,
 )
+from synthorg.budget.degradation import PreFlightResult
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.errors import (
     BudgetExhaustedError,
@@ -123,7 +124,7 @@ class TestEngineWithEnforcer:
             patch.object(
                 enforcer,
                 "check_can_execute",
-                new=AsyncMock(),
+                new=AsyncMock(return_value=PreFlightResult()),
             ),
             patch.object(
                 enforcer,
@@ -186,7 +187,7 @@ class TestEngineWithEnforcer:
             patch.object(
                 enforcer,
                 "check_can_execute",
-                new=AsyncMock(),
+                new=AsyncMock(return_value=PreFlightResult()),
             ),
             patch.object(
                 enforcer,

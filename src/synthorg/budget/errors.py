@@ -1,9 +1,15 @@
 """Budget-layer error hierarchy.
 
-Defines budget-specific exceptions in a leaf module with no intra-project
-imports, preventing circular dependency chains when these exceptions are
-needed by both the budget enforcer and the engine layer.
+Defines budget-specific exceptions in a leaf module with minimal
+intra-project imports, preventing circular dependency chains when
+these exceptions are needed by both the budget enforcer and the
+engine layer.
 """
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from synthorg.budget.quota import DegradationAction
 
 
 class BudgetExhaustedError(Exception):
@@ -25,8 +31,24 @@ class DailyLimitExceededError(BudgetExhaustedError):
 
 
 class QuotaExhaustedError(BudgetExhaustedError):
-    """Raised when provider quota is exhausted.
+    """Raised when provider quota is exhausted and degradation failed.
 
-    Raised for all degradation strategies. Degradation routing
-    (FALLBACK/QUEUE) is not yet implemented.
+    Carries structured context about the exhaustion for logging and
+    diagnostics.
+
+    Attributes:
+        provider_name: The provider whose quota was exhausted.
+        degradation_action: The degradation strategy that was attempted,
+            or ``None`` when no degradation config was available.
     """
+
+    def __init__(
+        self,
+        msg: str,
+        *,
+        provider_name: str = "",
+        degradation_action: DegradationAction | None = None,
+    ) -> None:
+        super().__init__(msg)
+        self.provider_name = provider_name
+        self.degradation_action = degradation_action

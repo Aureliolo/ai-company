@@ -36,6 +36,7 @@ from synthorg.budget.cost_tiers import (
     classify_model_tier,
     resolve_tiers,
 )
+from synthorg.budget.degradation import DegradationResult, PreFlightResult
 from synthorg.budget.enforcer import BudgetEnforcer
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.errors import (
@@ -122,6 +123,7 @@ __all__ = [
     "DailyLimitExceededError",
     "DegradationAction",
     "DegradationConfig",
+    "DegradationResult",
     "DepartmentBudget",
     "DepartmentSpending",
     "DowngradeAnalysis",
@@ -139,6 +141,7 @@ __all__ = [
     "OrchestrationRatio",
     "PeriodComparison",
     "PeriodSpending",
+    "PreFlightResult",
     "ProviderCostModel",
     "ProviderDistribution",
     "QuotaCheckResult",

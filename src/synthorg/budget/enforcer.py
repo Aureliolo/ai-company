@@ -9,13 +9,18 @@ as described in the Cost Controls section of the Operations design page.
 from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.budget.billing import billing_period_start, daily_period_start
+from synthorg.budget.degradation import (
+    PreFlightResult,
+    always_allowed_result,
+    resolve_degradation,
+)
 from synthorg.budget.enums import BudgetAlertLevel
 from synthorg.budget.errors import (
     BudgetExhaustedError,
     DailyLimitExceededError,
     QuotaExhaustedError,
 )
-from synthorg.budget.quota import QuotaCheckResult
+from synthorg.budget.quota import DegradationAction, DegradationConfig
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
@@ -40,7 +45,11 @@ from synthorg.observability.events.quota import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.budget.config import BudgetConfig
+    from synthorg.budget.degradation import DegradationResult
+    from synthorg.budget.quota import QuotaCheckResult
     from synthorg.budget.quota_tracker import QuotaTracker
     from synthorg.budget.tracker import CostTracker
     from synthorg.core.agent import AgentIdentity, ModelConfig
@@ -54,22 +63,18 @@ logger = get_logger(__name__)
 
 
 class BudgetEnforcer:
-    """Budget enforcement service composing CostTracker + BudgetConfig.
+    """Budget enforcement: pre-flight, in-flight, and auto-downgrade.
 
-    Provides pre-flight checks, in-flight budget checking (monthly +
-    daily + task limits with alert emission), and task-boundary
-    auto-downgrade.  Concurrency-safe via CostTracker's asyncio.Lock.
-
-    Note: Pre-flight checks are best-effort under concurrency (TOCTOU).
-    The in-flight checker is the true safety net.
+    Concurrency-safe via CostTracker's asyncio.Lock.  Pre-flight
+    checks are best-effort under concurrency (TOCTOU); the in-flight
+    checker is the true safety net.
 
     Args:
-        budget_config: Budget configuration for limits and thresholds.
-        cost_tracker: Cost tracking service for querying spend.
-        model_resolver: Optional model resolver for auto-downgrade
-            alias lookup.
-        quota_tracker: Optional quota tracker for provider-level
-            quota enforcement.
+        budget_config: Limits and thresholds.
+        cost_tracker: Spend queries.
+        model_resolver: Auto-downgrade alias lookup.
+        quota_tracker: Provider-level quota enforcement.
+        degradation_configs: Per-provider degradation strategies.
     """
 
     def __init__(
@@ -79,11 +84,13 @@ class BudgetEnforcer:
         cost_tracker: CostTracker,
         model_resolver: ModelResolver | None = None,
         quota_tracker: QuotaTracker | None = None,
+        degradation_configs: Mapping[str, DegradationConfig] | None = None,
     ) -> None:
         self._budget_config = budget_config
         self._cost_tracker = cost_tracker
         self._model_resolver = model_resolver
         self._quota_tracker = quota_tracker
+        self._degradation_configs = degradation_configs
 
     @property
     def cost_tracker(self) -> CostTracker:
@@ -128,7 +135,7 @@ class BudgetEnforcer:
         *,
         provider_name: str | None = None,
         estimated_tokens: int = 0,
-    ) -> None:
+    ) -> PreFlightResult:
         """Pre-flight: verify monthly + daily + quota limits allow execution.
 
         Args:
@@ -138,15 +145,19 @@ class BudgetEnforcer:
             estimated_tokens: Estimated tokens for the upcoming request.
                 Forwarded to the quota tracker for token-based checks.
 
+        Returns:
+            Pre-flight result with effective provider info and
+            degradation details when applicable.
+
         Raises:
             BudgetExhaustedError: Monthly hard stop exceeded.
             DailyLimitExceededError: Agent daily limit exceeded
                 (subclass of ``BudgetExhaustedError``).
-            QuotaExhaustedError: Provider quota exhausted.
-                Degradation routing (FALLBACK/QUEUE) is not yet
-                implemented; currently always raises.
+            QuotaExhaustedError: Provider quota exhausted and
+                degradation could not resolve.
         """
         cfg = self._budget_config
+        degradation_result: DegradationResult | None = None
 
         try:
             if cfg.total_monthly > 0:
@@ -154,14 +165,14 @@ class BudgetEnforcer:
             await self._check_daily_limit(cfg, agent_id)
 
             if provider_name is not None:
-                await self._check_provider_quota(
+                degradation_result = await self._check_provider_quota(
                     agent_id,
                     provider_name,
                     estimated_tokens=estimated_tokens,
                 )
         except BudgetExhaustedError:
             raise
-        except MemoryError, RecursionError:  # builtin MemoryError (OOM)
+        except MemoryError, RecursionError:
             raise
         except Exception:
             logger.exception(
@@ -169,13 +180,19 @@ class BudgetEnforcer:
                 agent_id=agent_id,
                 reason="falling_back_to_allow_execution",
             )
-            return
+            return PreFlightResult()
 
         logger.debug(
             BUDGET_ENFORCEMENT_CHECK,
             agent_id=agent_id,
             result="pass",
         )
+        if degradation_result is not None:
+            return PreFlightResult(
+                effective_provider=degradation_result.effective_provider,
+                degradation=degradation_result,
+            )
+        return PreFlightResult()
 
     async def check_quota(
         self,
@@ -183,24 +200,9 @@ class BudgetEnforcer:
         *,
         estimated_tokens: int = 0,
     ) -> QuotaCheckResult:
-        """Check provider quota, delegating to QuotaTracker.
+        """Check provider quota via QuotaTracker.
 
         Returns always-allowed when no quota tracker is configured.
-
-        Note:
-            Unlike ``check_can_execute``, this method does **not** catch
-            unexpected exceptions from the underlying ``QuotaTracker``.
-            ``check_can_execute`` wraps quota checks in a try/except
-            that falls back to allowing execution on unexpected errors
-            (graceful degradation), but direct callers of ``check_quota``
-            are responsible for their own error handling.
-
-        Args:
-            provider_name: Provider to check.
-            estimated_tokens: Estimated tokens for the request.
-
-        Returns:
-            Quota check result.
         """
         if self._quota_tracker is None:
             logger.debug(
@@ -208,7 +210,7 @@ class BudgetEnforcer:
                 provider=provider_name,
                 reason="no_quota_tracker",
             )
-            return _always_allowed_result(provider_name)
+            return always_allowed_result(provider_name)
 
         return await self._quota_tracker.check_quota(
             provider_name,
@@ -221,21 +223,56 @@ class BudgetEnforcer:
         provider_name: str,
         *,
         estimated_tokens: int = 0,
-    ) -> None:
-        """Check provider quota, raising on exhaustion."""
+    ) -> DegradationResult | None:
+        """Check provider quota; apply degradation if exhausted.
+
+        Returns ``None`` when quota is fine.  Returns a
+        ``DegradationResult`` when a non-ALERT degradation strategy
+        resolves the exhaustion.  Raises ``QuotaExhaustedError`` for
+        ALERT or when degradation fails.
+        """
         quota_result = await self.check_quota(
             provider_name,
             estimated_tokens=estimated_tokens,
         )
-        if not quota_result.allowed:
-            logger.warning(
-                QUOTA_CHECK_DENIED,
-                agent_id=agent_id,
-                provider=provider_name,
-                reason=quota_result.reason,
-            )
+        if quota_result.allowed:
+            return None
+
+        logger.warning(
+            QUOTA_CHECK_DENIED,
+            agent_id=agent_id,
+            provider=provider_name,
+            reason=quota_result.reason,
+        )
+
+        deg_config = self._get_degradation_config(provider_name)
+        if deg_config.strategy == DegradationAction.ALERT:
             msg = f"Provider {provider_name!r} quota exhausted: {quota_result.reason}"
-            raise QuotaExhaustedError(msg)
+            raise QuotaExhaustedError(
+                msg,
+                provider_name=provider_name,
+                degradation_action=DegradationAction.ALERT,
+            )
+
+        return await resolve_degradation(
+            provider_name=provider_name,
+            quota_result=quota_result,
+            degradation_config=deg_config,
+            quota_tracker=self._quota_tracker,  # type: ignore[arg-type]
+            estimated_tokens=estimated_tokens,
+        )
+
+    def _get_degradation_config(
+        self,
+        provider_name: str,
+    ) -> DegradationConfig:
+        """Look up degradation config for a provider, defaulting to ALERT."""
+        if self._degradation_configs is None:
+            return DegradationConfig()
+        return self._degradation_configs.get(
+            provider_name,
+            DegradationConfig(),
+        )
 
     async def _check_monthly_hard_stop(
         self,
@@ -302,18 +339,9 @@ class BudgetEnforcer:
     ) -> AgentIdentity:
         """Apply auto-downgrade at task boundary if threshold exceeded.
 
-        Returns identity unchanged when:
-        - ``auto_downgrade.enabled`` is ``False``
-        - ``total_monthly`` is zero or negative (enforcement disabled)
-        - no ``model_resolver`` provided
-        - budget usage below threshold
-        - ``model_id`` not found in resolver
-        - model alias not in ``downgrade_map``
-        - target alias not resolvable
-        - CostTracker query fails (graceful degradation)
-
-        Returns new ``AgentIdentity`` with downgraded ``ModelConfig``
-        otherwise.
+        Returns identity unchanged when downgrade is disabled, not
+        applicable, or lookup fails.  Returns new ``AgentIdentity``
+        with downgraded ``ModelConfig`` otherwise.
         """
         cfg = self._budget_config
         downgrade = cfg.auto_downgrade
@@ -363,27 +391,9 @@ class BudgetEnforcer:
     ) -> BudgetChecker | None:
         """Create a sync BudgetChecker with pre-computed baselines.
 
-        Queries CostTracker once for monthly and daily baselines, then
-        returns a sync closure that checks:
-
-        1. Task budget limit
-           (``ctx.accumulated_cost.cost_usd >= task.budget_limit``)
-        2. Monthly total
-           (baseline + running cost >= hard_stop threshold)
-        3. Agent daily
-           (baseline + running cost >= per_agent_daily_limit)
-
-        Baselines are snapshot-in-time: they will not reflect
-        concurrent spend by other agents during this task's execution.
-        The pre-flight check (``check_can_execute``) is the
-        authoritative gate.
-
-        Alert deduplication: the closure tracks the last emitted alert
-        level and only logs upward transitions
-        (NORMAL -> WARNING -> CRITICAL -> HARD_STOP).
-
-        Returns ``None`` when all limits are disabled (monthly,
-        task, and daily all off).
+        Checks task limit, monthly total, and agent daily limit.
+        Baselines are snapshot-in-time (TOCTOU acceptable).
+        Returns ``None`` when all limits are disabled.
         """
         cfg = self._budget_config
         task_limit = task.budget_limit
@@ -422,13 +432,7 @@ class BudgetEnforcer:
         daily_limit: float,
         agent_id: str,
     ) -> tuple[float, float]:
-        """Compute baselines, falling back to zero baselines on error.
-
-        When CostTracker queries fail, returns ``(0.0, 0.0)`` so the
-        caller can still build a checker that enforces task-level
-        limits.  Monthly/daily enforcement uses zero baselines, meaning
-        only the running task cost is tracked (no historical context).
-        """
+        """Compute baselines, falling back to ``(0.0, 0.0)`` on error."""
         try:
             return await self._compute_baselines(
                 cfg,
@@ -474,14 +478,6 @@ class BudgetEnforcer:
 
 
 # ── Module-level pure helpers ────────────────────────────────────
-
-
-def _always_allowed_result(provider_name: str) -> QuotaCheckResult:
-    """Build an always-allowed QuotaCheckResult."""
-    return QuotaCheckResult(
-        allowed=True,
-        provider_name=provider_name,
-    )
 
 
 def _apply_downgrade(
