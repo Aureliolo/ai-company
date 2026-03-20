@@ -73,7 +73,7 @@ func detectInstallationIssues(ctx context.Context, state config.State) []string 
 			// Docker unavailability is handled gracefully by updateContainerImages
 			// (warns and skips). Don't trigger recovery for a missing Docker daemon.
 		} else if missing := detectMissingImages(healthCtx, info, state); len(missing) > 0 {
-			issues = append(issues, fmt.Sprintf("container images missing locally for %s (%s)",
+			issues = append(issues, fmt.Sprintf("container images missing locally for version %s: %s",
 				state.ImageTag, strings.Join(missing, ", ")))
 		}
 	}
@@ -107,9 +107,28 @@ func promptHealthRecover(cmd *cobra.Command) (bool, error) {
 	return false, nil
 }
 
+// imageRepoPrefix is the GHCR repository prefix for SynthOrg service images.
+const imageRepoPrefix = "ghcr.io/aureliolo/synthorg-"
+
+// imageRefForService returns the Docker image reference for a SynthOrg service.
+// When the state contains a verified digest for the service, returns a
+// digest-pinned reference (ghcr.io/aureliolo/synthorg-<svc>@sha256:...).
+// Otherwise falls back to a tag-based reference (ghcr.io/aureliolo/synthorg-<svc>:<tag>).
+func imageRefForService(svc string, state config.State) string {
+	repo := imageRepoPrefix + svc
+	if d, ok := state.VerifiedDigests[svc]; ok && d != "" {
+		return repo + "@" + d
+	}
+	return repo + ":" + state.ImageTag
+}
+
 // detectMissingImages checks which SynthOrg service images are missing locally
-// for the given state's image tag. Only reports images as missing when Docker
-// confirms they are absent -- Docker command errors are not conflated.
+// for the given state. Uses docker image inspect which works with both
+// digest-pinned (@sha256:...) and tag-based (:tag) references.
+//
+// The caller (detectInstallationIssues) has already confirmed Docker is
+// reachable via docker.Detect, so inspect errors reliably indicate a
+// missing image rather than a Docker daemon failure.
 func detectMissingImages(ctx context.Context, info docker.Info, state config.State) []string {
 	services := []string{"backend", "web"}
 	if state.Sandbox {
@@ -118,17 +137,9 @@ func detectMissingImages(ctx context.Context, info docker.Info, state config.Sta
 
 	var missing []string
 	for _, svc := range services {
-		ref := fmt.Sprintf("ghcr.io/aureliolo/synthorg-%s:%s", svc, state.ImageTag)
-		idsOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
-			"--filter", "reference="+ref,
-			"--format", "{{.ID}}")
+		ref := imageRefForService(svc, state)
+		_, err := docker.RunCmd(ctx, info.DockerPath, "image", "inspect", ref, "--format", "{{.ID}}")
 		if err != nil {
-			// Docker command failed -- we can't determine the state,
-			// so don't report the image as missing. Docker unavailability
-			// is separately handled by the caller (detectInstallationIssues).
-			continue
-		}
-		if strings.TrimSpace(idsOut) == "" {
 			missing = append(missing, svc)
 		}
 	}

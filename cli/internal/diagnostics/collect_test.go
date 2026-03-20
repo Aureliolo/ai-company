@@ -346,4 +346,86 @@ func TestParseComposeImageRefs_NonSynthorgImages(t *testing.T) {
 	}
 }
 
+func TestImageRefForDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		svc             string
+		imageTag        string
+		composeRefs     map[string]string
+		verifiedDigests map[string]string
+		want            string
+	}{
+		{
+			name:        "compose ref takes priority over digest",
+			svc:         "backend",
+			imageTag:    "0.4.1",
+			composeRefs: map[string]string{"backend": "ghcr.io/aureliolo/synthorg-backend@sha256:fromcompose"},
+			verifiedDigests: map[string]string{
+				"backend": "sha256:fromstate",
+			},
+			want: "ghcr.io/aureliolo/synthorg-backend@sha256:fromcompose",
+		},
+		{
+			name:        "digest fallback when no compose ref",
+			svc:         "backend",
+			imageTag:    "0.4.1",
+			composeRefs: map[string]string{},
+			verifiedDigests: map[string]string{
+				"backend": "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+			},
+			want: "ghcr.io/aureliolo/synthorg-backend@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+		},
+		{
+			name:            "tag fallback when no compose ref and no digest",
+			svc:             "web",
+			imageTag:        "0.4.1",
+			composeRefs:     map[string]string{},
+			verifiedDigests: map[string]string{},
+			want:            "ghcr.io/aureliolo/synthorg-web:0.4.1",
+		},
+		{
+			name:            "tag fallback when nil maps",
+			svc:             "sandbox",
+			imageTag:        "latest",
+			composeRefs:     nil,
+			verifiedDigests: nil,
+			want:            "ghcr.io/aureliolo/synthorg-sandbox:latest",
+		},
+		{
+			name:        "tag fallback when digest value is empty",
+			svc:         "backend",
+			imageTag:    "0.4.1",
+			composeRefs: map[string]string{},
+			verifiedDigests: map[string]string{
+				"backend": "",
+			},
+			want: "ghcr.io/aureliolo/synthorg-backend:0.4.1",
+		},
+		{
+			name:     "compose ref for different service does not match",
+			svc:      "web",
+			imageTag: "0.4.1",
+			composeRefs: map[string]string{
+				"backend": "ghcr.io/aureliolo/synthorg-backend@sha256:abc",
+			},
+			verifiedDigests: map[string]string{
+				"web": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			},
+			want: "ghcr.io/aureliolo/synthorg-web@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := imageRefForDiagnostics(tt.svc, tt.imageTag, tt.composeRefs, tt.verifiedDigests)
+			if got != tt.want {
+				t.Errorf("imageRefForDiagnostics(%q, ...) = %q, want %q", tt.svc, got, tt.want)
+			}
+		})
+	}
+}
+
 func ptrBool(v bool) *bool { return &v }

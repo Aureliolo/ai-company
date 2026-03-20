@@ -163,7 +163,7 @@ func collectInfra(ctx context.Context, r *Report, info docker.Info, state config
 		r.PortConflicts = checkPorts(ctx, state.BackendPort, state.WebPort)
 	}
 	if info.DockerPath != "" {
-		r.ImageStatus = checkImages(ctx, state.ImageTag, state.Sandbox, composePath)
+		r.ImageStatus = checkImages(ctx, state.ImageTag, state.Sandbox, composePath, state.VerifiedDigests)
 	}
 }
 
@@ -300,11 +300,23 @@ func checkPorts(ctx context.Context, backendPort, webPort int) []string {
 
 const imagePrefix = "ghcr.io/aureliolo/synthorg-"
 
+// imageRefForDiagnostics returns the image reference to inspect for a service.
+// Priority: compose file ref > verified digest > tag-based fallback.
+func imageRefForDiagnostics(name, imageTag string, composeRefs, verifiedDigests map[string]string) string {
+	if image, ok := composeRefs[name]; ok {
+		return image
+	}
+	if d, ok := verifiedDigests[name]; ok && d != "" {
+		return imagePrefix + name + "@" + d
+	}
+	return imagePrefix + name + ":" + imageTag
+}
+
 // checkImages reports whether required Docker images exist locally.
 // It reads the actual compose file to get the image references (which
-// may be digest-pinned), falling back to tag-based lookup if the
-// compose file cannot be parsed.
-func checkImages(ctx context.Context, imageTag string, sandbox bool, composePath string) []string {
+// may be digest-pinned), falling back to verified digests from state,
+// then to tag-based lookup if neither is available.
+func checkImages(ctx context.Context, imageTag string, sandbox bool, composePath string, verifiedDigests map[string]string) []string {
 	names := []string{"backend", "web"}
 	if sandbox {
 		names = append(names, "sandbox")
@@ -315,11 +327,7 @@ func checkImages(ctx context.Context, imageTag string, sandbox bool, composePath
 
 	var status []string
 	for _, name := range names {
-		// Prefer the actual ref from compose (digest-pinned).
-		image, fromCompose := composeRefs[name]
-		if !fromCompose {
-			image = imagePrefix + name + ":" + imageTag
-		}
+		image := imageRefForDiagnostics(name, imageTag, composeRefs, verifiedDigests)
 		_, err := docker.RunCmd(ctx, "docker", "image", "inspect", image, "--format", "{{.ID}}")
 		if err != nil {
 			status = append(status, fmt.Sprintf("%s: not found locally", image))

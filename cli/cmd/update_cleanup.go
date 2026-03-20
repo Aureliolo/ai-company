@@ -75,8 +75,10 @@ func findOldImages(ctx context.Context, errOut io.Writer, info docker.Info, stat
 }
 
 // collectCurrentImageIDs resolves Docker image IDs for the services at the
-// current version. Returns an error if any service ID cannot be resolved
-// (to avoid accidentally deleting current images).
+// current version. Uses docker image inspect which works with both
+// digest-pinned (@sha256:...) and tag-based (:tag) references.
+// Returns an error if any service ID cannot be resolved (to avoid
+// accidentally deleting current images).
 func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.State) (map[string]bool, error) {
 	services := []string{"backend", "web"}
 	if state.Sandbox {
@@ -85,20 +87,16 @@ func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.
 
 	currentIDs := make(map[string]bool, len(services))
 	for _, svc := range services {
-		ref := fmt.Sprintf("ghcr.io/aureliolo/synthorg-%s:%s", svc, state.ImageTag)
-		idOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
-			"--filter", "reference="+ref,
-			"--format", "{{.ID}}")
+		ref := imageRefForService(svc, state)
+		idOut, err := docker.RunCmd(ctx, info.DockerPath, "image", "inspect", ref, "--format", "{{.ID}}")
 		if err != nil {
 			return nil, fmt.Errorf("resolving image ID for %s: %w", svc, err)
 		}
-		ids := strings.Fields(strings.TrimSpace(idOut))
-		if len(ids) == 0 {
+		id := strings.TrimSpace(idOut)
+		if id == "" {
 			return nil, fmt.Errorf("no image ID found for %s (image may not be pulled)", svc)
 		}
-		for _, id := range ids {
-			currentIDs[id] = true
-		}
+		currentIDs[id] = true
 	}
 	return currentIDs, nil
 }
