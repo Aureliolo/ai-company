@@ -172,15 +172,17 @@ describe('response interceptor (401 handling)', () => {
     vi.restoreAllMocks()
   })
 
-  it('clears all auth tokens from localStorage on 401', async () => {
+  it('clears all auth tokens from localStorage and calls logout on 401', async () => {
     const interceptor = getErrorInterceptor()
     window.history.pushState({}, '', '/dashboard')
 
     await expect(interceptor(make401Error('/api/v1/agents'))).rejects.toThrow()
+    await flushMicrotasks()
 
     expect(localStorage.getItem('auth_token')).toBeNull()
     expect(localStorage.getItem('auth_token_expires_at')).toBeNull()
     expect(localStorage.getItem('auth_must_change_password')).toBeNull()
+    expect(mockLogout).toHaveBeenCalledOnce()
   })
 
   it('does not re-fetch setup status when not on /setup', async () => {

@@ -217,6 +217,8 @@ describe('SetupPage', () => {
     wrapper = mount(SetupPage)
     await flushPromises()
     const dots = wrapper.findAll('[data-testid="step-indicator"]')
+    // Precondition: multiple steps must exist so the last is a true future step
+    expect(dots.length).toBeGreaterThan(1)
     // Last step (incomplete, not current) should not be interactive
     const lastDot = dots[dots.length - 1]
     expect(lastDot.attributes('role')).toBeUndefined()
