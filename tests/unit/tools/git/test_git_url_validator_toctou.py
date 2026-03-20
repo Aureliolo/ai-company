@@ -82,14 +82,14 @@ class TestBuildCurlResolveValue:
         )
         assert val == "example.com:443:93.184.216.34,1.2.3.4"
 
-    def test_ipv6_no_brackets(self) -> None:
-        """IPv6 addresses in curloptResolve do NOT need brackets."""
+    def test_ipv6_bracketed(self) -> None:
+        """IPv6 addresses in curloptResolve are wrapped in brackets."""
         val = build_curl_resolve_value(
             "example.com",
             443,
             ("2607:f8b0:4004:800::200e",),
         )
-        assert val == "example.com:443:2607:f8b0:4004:800::200e"
+        assert val == "example.com:443:[2607:f8b0:4004:800::200e]"
 
     def test_mixed_ipv4_ipv6(self) -> None:
         val = build_curl_resolve_value(
@@ -97,7 +97,7 @@ class TestBuildCurlResolveValue:
             443,
             ("93.184.216.34", "2607:f8b0:4004:800::200e"),
         )
-        assert val == "example.com:443:93.184.216.34,2607:f8b0:4004:800::200e"
+        assert val == "example.com:443:93.184.216.34,[2607:f8b0:4004:800::200e]"
 
     def test_custom_port(self) -> None:
         val = build_curl_resolve_value("example.com", 8443, ("1.2.3.4",))

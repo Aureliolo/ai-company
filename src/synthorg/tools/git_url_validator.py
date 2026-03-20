@@ -304,8 +304,8 @@ def build_curl_resolve_value(
 
     Format: ``host:port:addr1,addr2,...``
 
-    IPv6 addresses do NOT need brackets in the resolve value --
-    libcurl handles position-based parsing.
+    IPv6 addresses are wrapped in brackets per libcurl convention
+    (e.g. ``[2607:f8b0::200e]``).
 
     Args:
         hostname: Hostname to pin.
@@ -326,7 +326,8 @@ def build_curl_resolve_value(
         )
         msg = "ips must not be empty"
         raise ValueError(msg)
-    return f"{hostname}:{port}:{','.join(ips)}"
+    formatted = ",".join(f"[{ip}]" if ":" in ip else ip for ip in ips)
+    return f"{hostname}:{port}:{formatted}"
 
 
 # ── DNS resolution helpers ───────────────────────────────────────
@@ -562,7 +563,15 @@ async def validate_clone_url_host(  # noqa: PLR0911, C901
     is_https = url.startswith("https://")
     port: int | None = None
     if is_https:
-        raw_port = urlparse(url).port
+        try:
+            raw_port = urlparse(url).port
+        except ValueError:
+            logger.warning(
+                GIT_CLONE_SSRF_BLOCKED,
+                hostname=normalized,
+                reason="malformed_port",
+            )
+            return f"Invalid port in clone URL: {url!r}"
         if raw_port is not None and raw_port <= 0:
             logger.warning(
                 GIT_CLONE_SSRF_BLOCKED,
