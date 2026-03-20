@@ -311,3 +311,42 @@ class TestCompactionSanitization:
         assert summary_msg.content is not None
         assert "https://" not in summary_msg.content
         assert "[REDACTED_URL]" in summary_msg.content
+
+    async def test_assistant_long_path_crossing_boundary_is_sanitized(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+    ) -> None:
+        """A path crossing the 100-char snippet boundary is still redacted."""
+        config = CompactionConfig(
+            fill_threshold_percent=80.0,
+            min_messages_to_compact=4,
+            preserve_recent_turns=1,
+        )
+        callback = make_compaction_callback(config=config)
+
+        long_path = "C:\\Users\\dev\\" + ("nested\\" * 20) + "secrets.yaml"
+        messages = (
+            _msg(MessageRole.SYSTEM, "system prompt"),
+            _msg(MessageRole.USER, "analyze logs"),
+            _msg(
+                MessageRole.ASSISTANT,
+                f"I inspected {long_path} and extracted values",
+            ),
+            _msg(MessageRole.USER, "continue"),
+            _msg(MessageRole.ASSISTANT, "working"),
+            _msg(MessageRole.USER, "continue"),
+            _msg(MessageRole.ASSISTANT, "done"),
+            _msg(MessageRole.USER, "thanks"),
+        )
+        ctx = _build_context(
+            sample_agent_with_personality,
+            messages=messages,
+            capacity=1000,
+            fill=850,
+        )
+        result = await callback(ctx)
+        assert result is not None
+        summary_msg = result.conversation[1]
+        assert summary_msg.content is not None
+        assert "C:\\Users\\dev" not in summary_msg.content
+        assert "[REDACTED_PATH]" in summary_msg.content

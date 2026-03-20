@@ -84,6 +84,16 @@ class TestSanitizeMessagePaths:
                 "Share at [REDACTED_PATH]",
                 id="unc_forward",
             ),
+            pytest.param(
+                "Found /custom/deploy/keys.pem",
+                "Found [REDACTED_PATH]",
+                id="unix_non_standard_prefix",
+            ),
+            pytest.param(
+                "Data at /workspace/agent/output.txt",
+                "Data at [REDACTED_PATH]",
+                id="unix_workspace",
+            ),
         ],
     )
     def test_path_redacted(self, raw: str, expected: str) -> None:
@@ -96,6 +106,24 @@ class TestSanitizeMessagePaths:
     def test_standalone_slash_not_redacted(self) -> None:
         raw = "choose a / b"
         assert sanitize_message(raw) == raw
+
+    def test_ratio_not_redacted(self) -> None:
+        raw = "Rate limit: 100/min exceeded"
+        assert sanitize_message(raw) == raw
+
+    def test_content_type_not_redacted(self) -> None:
+        raw = "Invalid content-type: application/json"
+        assert sanitize_message(raw) == raw
+
+    def test_date_slash_not_redacted(self) -> None:
+        raw = "Date is 2024/01/15"
+        assert sanitize_message(raw) == raw
+
+    def test_quoted_windows_path_redacted(self) -> None:
+        raw = 'Cannot open "C:\\Program Files\\app.exe"'
+        result = sanitize_message(raw)
+        assert "Program Files" not in result
+        assert "[REDACTED_PATH]" in result
 
 
 @pytest.mark.unit
@@ -135,6 +163,26 @@ class TestSanitizeMessageUrls:
                 "Store at [REDACTED_URL]",
                 id="mongodb_uri",
             ),
+            pytest.param(
+                "Transfer via ftp://files.example.com/data",
+                "Transfer via [REDACTED_URL]",
+                id="ftp_uri",
+            ),
+            pytest.param(
+                "Secure at sftp://user@host/path",
+                "Secure at [REDACTED_URL]",
+                id="sftp_uri",
+            ),
+            pytest.param(
+                "Queue at amqp://guest:guest@rabbit:5672/vhost",
+                "Queue at [REDACTED_URL]",
+                id="amqp_uri",
+            ),
+            pytest.param(
+                "Connect to mysql://root:pass@mysql:3306/app",
+                "Connect to [REDACTED_URL]",
+                id="mysql_uri",
+            ),
         ],
     )
     def test_url_redacted(self, raw: str, expected: str) -> None:
@@ -152,6 +200,13 @@ class TestSanitizeMessageMixed:
         assert "[REDACTED_URL]" in result
         assert "C:\\app" not in result
         assert "https://" not in result
+
+    def test_file_uri_redacted_as_url(self) -> None:
+        raw = "Reading file:///home/user/data.csv"
+        result = sanitize_message(raw)
+        assert "[REDACTED_URL]" in result
+        assert "file://" not in result
+        assert "/home" not in result
 
 
 @pytest.mark.unit
@@ -172,6 +227,10 @@ class TestSanitizeMessageTruncation:
 
     def test_zero_max_length(self) -> None:
         assert sanitize_message("hello", max_length=0) == "details redacted"
+
+    def test_negative_max_length_raises(self) -> None:
+        with pytest.raises(ValueError, match="max_length must be >= 0"):
+            sanitize_message("hello", max_length=-1)
 
 
 @pytest.mark.unit

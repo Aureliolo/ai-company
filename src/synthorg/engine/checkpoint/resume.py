@@ -79,7 +79,7 @@ def deserialize_and_reconcile(
         if compression is not None
         else ""
     )
-    # May reduce to "details redacted" if error contained only paths/URLs --
+    # May reduce to "details redacted" if no alphanumeric content remains --
     # leak prevention takes priority over detail in LLM context.
     safe_error = sanitize_message(error_message)
     reconciliation_content = (

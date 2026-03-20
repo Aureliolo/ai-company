@@ -212,8 +212,9 @@ def _build_summary(
 ) -> str:
     """Build a simple text summary from archived messages.
 
-    Concatenates assistant message content snippets into a summary
-    paragraph, capped at ``_MAX_SUMMARY_CHARS``.
+    Concatenates sanitized assistant message content snippets into a
+    summary paragraph, capped at ``_MAX_SUMMARY_CHARS``. Each snippet
+    is redacted for file paths and URLs via ``sanitize_message``.
 
     Args:
         messages: The archived messages to summarize.
@@ -230,16 +231,19 @@ def _build_summary(
                 snippet = sanitize_message(cleaned, max_length=100)
                 snippets.append(snippet)
 
-    if not snippets:
+    # Drop useless "details redacted" placeholders so the summary
+    # retains only meaningful content.
+    useful = [s for s in snippets if s != "details redacted"]
+    if not useful:
         logger.debug(
             CONTEXT_BUDGET_COMPACTION_FALLBACK,
             execution_id=execution_id,
-            reason="no_assistant_content_for_summary",
+            reason="no_useful_assistant_content_for_summary",
             archived_count=len(messages),
         )
         return f"[Archived {len(messages)} messages from earlier in the conversation.]"
 
-    joined = "; ".join(snippets)
+    joined = "; ".join(useful)
     if len(joined) > _MAX_SUMMARY_CHARS:
         joined = joined[:_MAX_SUMMARY_CHARS] + "..."
 
