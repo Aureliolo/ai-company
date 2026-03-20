@@ -182,9 +182,9 @@ onMounted(async () => {
   if (hasProviders.value) {
     const names = Object.keys(store.providers)
     createdProviderName.value = names[0] ?? null
-    // Auto-pass test if provider already has models.
+    // Auto-trigger connection test instead of silently auto-passing.
     if (hasModels.value) {
-      testPassed.value = true
+      await handleTestConnection()
     }
   }
 })

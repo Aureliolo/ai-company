@@ -50,12 +50,16 @@ onMounted(start)
     <!-- WebSocket Status -->
     <div
       class="flex items-center gap-1.5"
-      :aria-label="'WebSocket: ' + (wsStore.connected ? 'connected' : 'disconnected')"
+      :aria-label="'WebSocket: ' + (wsStore.connected ? 'connected' : wsStore.reconnectExhausted ? 'connection lost' : 'reconnecting')"
     >
       <span
         :class="[
           'inline-block h-2 w-2 rounded-full',
-          wsStore.connected ? 'bg-green-500' : 'bg-red-500',
+          wsStore.connected
+            ? 'bg-green-500'
+            : wsStore.reconnectExhausted
+              ? 'bg-red-500'
+              : 'bg-yellow-500',
         ]"
         aria-hidden="true"
       />
