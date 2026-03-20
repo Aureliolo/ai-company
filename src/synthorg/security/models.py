@@ -101,7 +101,7 @@ class SecurityVerdict(BaseModel):
     evaluated_at: AwareDatetime
     evaluation_duration_ms: float = Field(ge=0.0)
     approval_id: NotBlankStr | None = None
-    agent_visible_reason: str | None = None
+    agent_visible_reason: NotBlankStr | None = None
 
     @model_validator(mode="after")
     def _check_approval_id(self) -> SecurityVerdict:
