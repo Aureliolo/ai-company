@@ -194,6 +194,7 @@ class TestEventConstants:
             "coordination",
             "correlation",
             "decomposition",
+            "degradation",
             "delegation",
             "docker",
             "execution",
