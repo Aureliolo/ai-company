@@ -1,6 +1,6 @@
 """Request/response models for the first-run setup controller."""
 
-from typing import Literal, Self
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -110,23 +110,20 @@ class SetupAgentRequest(BaseModel):
     department: NotBlankStr = Field(default="engineering", max_length=100)
     budget_limit_monthly: float | None = Field(default=None, ge=0.0)
 
-    @model_validator(mode="after")
-    def _validate_preset_exists(self) -> Self:
-        """Validate that the personality preset name exists in the registry."""
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_preset_exists(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Normalize and validate the personality preset before construction."""
         from synthorg.templates.presets import PERSONALITY_PRESETS  # noqa: PLC0415
 
-        key = self.personality_preset.strip().lower()
+        raw = values.get("personality_preset", "pragmatic_builder")
+        key = str(raw).strip().lower() if raw else "pragmatic_builder"
         if key not in PERSONALITY_PRESETS:
             available = sorted(PERSONALITY_PRESETS)
-            msg = (
-                f"Unknown personality preset {self.personality_preset!r}. "
-                f"Available: {available}"
-            )
+            msg = f"Unknown personality preset {raw!r}. Available: {available}"
             raise ValueError(msg)
-        # Store the canonical (normalized) key so downstream code sees a
-        # consistent value that matches what PERSONALITY_PRESETS expects.
-        object.__setattr__(self, "personality_preset", key)
-        return self
+        values["personality_preset"] = key
+        return values
 
 
 class SetupAgentResponse(BaseModel):

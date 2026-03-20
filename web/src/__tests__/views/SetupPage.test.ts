@@ -179,7 +179,7 @@ describe('SetupPage', () => {
     const wrapper = mount(SetupPage)
     await flushPromises()
     // The welcome step renders the branded "S" logo inside a styled container
-    const logo = wrapper.find('.rounded-xl.bg-brand-600')
+    const logo = wrapper.find('[data-testid="brand-logo"]')
     expect(logo.exists()).toBe(true)
     expect(logo.text()).toBe('S')
   })

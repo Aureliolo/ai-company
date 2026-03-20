@@ -184,14 +184,19 @@ class TestSetupStatus:
         settings_repo = app_state.persistence._settings_repo
         now = datetime.now(UTC).isoformat()
 
-        settings_repo._store[("api", "min_password_length")] = ("abc", now)
+        pw_key = ("api", "min_password_length")
+        original = settings_repo._store.get(pw_key)
+        settings_repo._store[pw_key] = ("abc", now)
         try:
             resp = test_client.get("/api/v1/setup/status")
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["min_password_length"] == 12
         finally:
-            settings_repo._store.pop(("api", "min_password_length"), None)
+            if original is None:
+                settings_repo._store.pop(pw_key, None)
+            else:
+                settings_repo._store[pw_key] = original
 
     def test_min_password_length_below_default_returns_default(
         self,
@@ -202,14 +207,19 @@ class TestSetupStatus:
         settings_repo = app_state.persistence._settings_repo
         now = datetime.now(UTC).isoformat()
 
-        settings_repo._store[("api", "min_password_length")] = ("5", now)
+        pw_key = ("api", "min_password_length")
+        original = settings_repo._store.get(pw_key)
+        settings_repo._store[pw_key] = ("5", now)
         try:
             resp = test_client.get("/api/v1/setup/status")
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["min_password_length"] == 12
         finally:
-            settings_repo._store.pop(("api", "min_password_length"), None)
+            if original is None:
+                settings_repo._store.pop(pw_key, None)
+            else:
+                settings_repo._store[pw_key] = original
 
 
 @pytest.mark.unit

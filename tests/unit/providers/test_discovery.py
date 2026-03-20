@@ -357,8 +357,8 @@ class TestValidateDiscoveryUrl:
             ("http://user@example.com:8080/", True),
         ],
     )
-    def test_url_validation(self, url: str, *, expected_safe: bool) -> None:
-        result = _validate_discovery_url(url)
+    async def test_url_validation(self, url: str, *, expected_safe: bool) -> None:
+        result = await _validate_discovery_url(url)
         if expected_safe:
             assert result is None, f"Expected {url} to be safe, got error: {result}"
         else:

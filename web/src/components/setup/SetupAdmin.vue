@@ -113,6 +113,7 @@ async function handleSetup() {
           icon="pi pi-arrow-left"
           severity="secondary"
           outlined
+          :disabled="auth.loading || locked"
           @click="emit('previous')"
         />
         <Button

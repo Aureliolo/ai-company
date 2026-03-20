@@ -6,6 +6,7 @@ Discovers available models from provider endpoints in two scenarios:
 existing providers via the ``POST /{name}/discover-models`` endpoint.
 """
 
+import asyncio
 import ipaddress
 import json
 import socket
@@ -45,13 +46,14 @@ _BLOCKED_NETWORKS: Final[tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ..
 )
 
 
-def _validate_discovery_url(url: str) -> str | None:
+async def _validate_discovery_url(url: str) -> str | None:
     """Validate a URL for SSRF safety before making a discovery request.
 
     Allows http/https schemes only and blocks private/reserved IP
     addresses -- both literal IPs in the URL and resolved addresses
     for hostnames (DNS rebinding protection).  Hostnames like
-    ``localhost`` are resolved via ``socket.getaddrinfo`` and checked
+    ``localhost`` are resolved via ``socket.getaddrinfo`` (offloaded
+    to a thread executor to avoid blocking the event loop) and checked
     against the same blocked-network list.
 
     Args:
@@ -69,13 +71,14 @@ def _validate_discovery_url(url: str) -> str | None:
     if not hostname:
         return "URL has no hostname"
 
-    return _check_blocked_address(hostname)
+    return await _check_blocked_address(hostname)
 
 
-def _check_blocked_address(hostname: str) -> str | None:
+async def _check_blocked_address(hostname: str) -> str | None:
     """Check whether a hostname resolves to a blocked network range.
 
-    Handles both literal IPs and DNS names.
+    Handles both literal IPs and DNS names.  DNS resolution is
+    offloaded to a thread executor to avoid blocking the event loop.
 
     Args:
         hostname: Hostname or IP address string.
@@ -83,7 +86,7 @@ def _check_blocked_address(hostname: str) -> str | None:
     Returns:
         Error message if blocked, or None if safe.
     """
-    # Fast path: literal IP address.
+    # Fast path: literal IP address (no I/O).
     try:
         addr = ipaddress.ip_address(hostname)
     except ValueError:
@@ -92,7 +95,7 @@ def _check_blocked_address(hostname: str) -> str | None:
         return _check_ip_blocked(addr, hostname)
 
     # Resolve hostname and check all returned addresses.
-    return _check_resolved_hostname(hostname)
+    return await asyncio.to_thread(_check_resolved_hostname, hostname)
 
 
 def _check_ip_blocked(
@@ -329,7 +332,7 @@ async def _fetch_json(
     Returns:
         Parsed JSON dict, or ``None`` on any failure.
     """
-    ssrf_error = _validate_discovery_url(url)
+    ssrf_error = await _validate_discovery_url(url)
     if ssrf_error:
         logger.warning(
             PROVIDER_DISCOVERY_FAILED,
@@ -341,7 +344,7 @@ async def _fetch_json(
         return None
 
     try:
-        return await _do_fetch_json(url, headers)
+        return await _do_fetch_json(url, headers, preset_name=preset_name)
     except MemoryError, RecursionError:
         raise
     except httpx.HTTPStatusError as exc:
@@ -373,12 +376,15 @@ async def _fetch_json(
 async def _do_fetch_json(
     url: str,
     headers: dict[str, str] | None,
+    *,
+    preset_name: str | None = None,
 ) -> dict[str, Any] | None:
     """Execute the HTTP GET and parse JSON response.
 
     Args:
         url: URL to fetch.
         headers: Optional request headers.
+        preset_name: Preset name for logging context.
 
     Returns:
         Parsed JSON dict, or ``None`` for non-dict responses.
@@ -393,7 +399,7 @@ async def _do_fetch_json(
         if not isinstance(result, dict):
             logger.warning(
                 PROVIDER_DISCOVERY_FAILED,
-                preset=None,
+                preset=preset_name,
                 reason="unexpected_json_type",
                 url=url,
             )

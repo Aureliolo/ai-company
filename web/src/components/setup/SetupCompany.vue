@@ -140,6 +140,7 @@ onMounted(async () => {
           icon="pi pi-arrow-left"
           severity="secondary"
           outlined
+          :disabled="creating"
           @click="emit('previous')"
         />
         <Button

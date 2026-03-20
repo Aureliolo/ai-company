@@ -629,6 +629,8 @@ def _build_discovery_headers(
 
     Returns headers appropriate for the provider's auth type, or
     ``None`` for ``AuthType.NONE`` or when credentials are absent.
+    OAuth-based discovery is not yet supported (token acquisition
+    requires a separate flow); a log message is emitted when skipped.
 
     Args:
         config: Provider configuration.
@@ -644,6 +646,12 @@ def _build_discovery_headers(
         and config.custom_header_value
     ):
         return {config.custom_header_name: config.custom_header_value}
+    if config.auth_type == AuthType.OAUTH:
+        logger.info(
+            PROVIDER_DISCOVERY_FAILED,
+            reason="oauth_discovery_unsupported",
+            auth_type=config.auth_type.value,
+        )
     return None
 
 
