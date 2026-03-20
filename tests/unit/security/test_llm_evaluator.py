@@ -92,7 +92,7 @@ def _make_completion_response(
 
 def _make_evaluator(
     *,
-    provider_configs: dict[str, object] | None = None,
+    provider_configs: dict[str, MagicMock] | None = None,
     config: LlmFallbackConfig | None = None,
     driver_map: dict[str, AsyncMock] | None = None,
 ) -> LlmSecurityEvaluator:
@@ -454,7 +454,9 @@ async def test_build_messages_truncates_long_arguments() -> None:
     # User message should exist and contain truncated args.
     user_msgs = [m for m in messages if m.role == MessageRole.USER]
     assert len(user_msgs) == 1
-    assert len(user_msgs[0].content) < 10000
+    content = user_msgs[0].content
+    assert content is not None
+    assert len(content) < 10000
 
 
 @pytest.mark.unit

@@ -8,12 +8,14 @@ select a model from a different provider family than the agent.
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.config.schema import ProviderConfig
 
 
 def get_family(
     provider_name: str,
-    configs: dict[str, ProviderConfig],
+    configs: Mapping[str, ProviderConfig],
 ) -> str:
     """Return the family for a provider.
 
@@ -35,7 +37,7 @@ def get_family(
 
 def providers_excluding_family(
     family: str,
-    configs: dict[str, ProviderConfig],
+    configs: Mapping[str, ProviderConfig],
 ) -> tuple[str, ...]:
     """Return provider names whose family differs from *family*.
 

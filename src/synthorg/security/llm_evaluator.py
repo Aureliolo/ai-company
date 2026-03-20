@@ -45,6 +45,8 @@ from synthorg.security.models import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from synthorg.config.schema import ProviderConfig
     from synthorg.providers.base import BaseCompletionProvider
     from synthorg.providers.models import CompletionResponse
@@ -136,7 +138,7 @@ class LlmSecurityEvaluator:
         self,
         *,
         provider_registry: ProviderRegistry,
-        provider_configs: dict[str, ProviderConfig],
+        provider_configs: Mapping[str, ProviderConfig],
         config: LlmFallbackConfig,
     ) -> None:
         self._registry = provider_registry
