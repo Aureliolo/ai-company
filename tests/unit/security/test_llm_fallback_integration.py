@@ -74,7 +74,7 @@ def _make_llm_verdict(
         reason=reason,
         risk_level=risk,
         confidence=EvaluationConfidence.HIGH,
-        matched_rules=("llm_security_eval",),
+        matched_rules=("security_verdict",),
         evaluated_at=datetime.now(UTC),
         evaluation_duration_ms=50.0,
     )
@@ -279,8 +279,8 @@ async def test_llm_escalate_result_handled() -> None:
 
 
 @pytest.mark.unit
-async def test_llm_evaluator_exception_falls_back_to_rule_verdict() -> None:
-    """When LLM evaluator raises, service catch-all returns rule verdict."""
+async def test_llm_evaluator_exception_respects_error_policy() -> None:
+    """When LLM evaluator raises, service catch-all applies error policy."""
     llm_eval = AsyncMock()
     llm_eval.evaluate = AsyncMock(side_effect=RuntimeError("Unexpected crash"))
 
@@ -293,9 +293,10 @@ async def test_llm_evaluator_exception_falls_back_to_rule_verdict() -> None:
 
     result = await service.evaluate_pre_tool(context)
 
-    # Service catch-all should return original rule verdict.
-    assert result.verdict == SecurityVerdictType.ALLOW
-    assert result.confidence == EvaluationConfidence.LOW
+    # Default error policy is ESCALATE.  Without an approval store,
+    # ESCALATE is converted to DENY by _handle_escalation.
+    assert result.verdict == SecurityVerdictType.DENY
+    assert "escalated per policy" in result.reason
 
 
 # -- Autonomy augmentation after LLM --------------------------------------
@@ -365,3 +366,33 @@ async def test_audit_records_llm_evaluation_source() -> None:
     assert len(entries) == 1
     assert entries[0].verdict == "deny"
     assert "LLM" in entries[0].reason
+    assert entries[0].confidence == EvaluationConfidence.HIGH
+
+
+# -- Safety net: DENY+LOW should never reach LLM --------------------------
+
+
+@pytest.mark.unit
+async def test_deny_with_low_confidence_never_reaches_llm() -> None:
+    """DENY with LOW confidence (buggy custom rule) should NOT trigger LLM.
+
+    This is a defensive guard in _maybe_llm_fallback against custom rules
+    that might produce DENY/ESCALATE with LOW confidence.
+    """
+    llm_eval = AsyncMock()
+
+    service = _make_service(
+        rule_engine_verdict=_make_verdict(
+            verdict=SecurityVerdictType.DENY,
+            confidence=EvaluationConfidence.LOW,
+            risk=ApprovalRiskLevel.HIGH,
+            reason="Buggy custom rule deny",
+        ),
+        llm_evaluator=llm_eval,
+    )
+    context = _make_context()
+
+    result = await service.evaluate_pre_tool(context)
+
+    llm_eval.evaluate.assert_not_awaited()
+    assert result.verdict == SecurityVerdictType.DENY

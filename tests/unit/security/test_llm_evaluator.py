@@ -13,7 +13,12 @@ from synthorg.providers.models import (
     TokenUsage,
     ToolCall,
 )
-from synthorg.security.config import LlmFallbackConfig, LlmFallbackErrorPolicy
+from synthorg.security.config import (
+    ArgumentTruncationStrategy,
+    LlmFallbackConfig,
+    LlmFallbackErrorPolicy,
+    VerdictReasonVisibility,
+)
 from synthorg.security.llm_evaluator import LlmSecurityEvaluator
 from synthorg.security.models import (
     EvaluationConfidence,
@@ -96,15 +101,8 @@ def _make_evaluator(
     config: LlmFallbackConfig | None = None,
     driver_map: dict[str, AsyncMock] | None = None,
 ) -> LlmSecurityEvaluator:
-    """Build an evaluator with mock providers.
-
-    Args:
-        provider_configs: Dict of provider name to mock ProviderConfig.
-        config: LLM fallback config.
-        driver_map: Dict of provider name to mock driver.
-    """
+    """Build an evaluator with mock providers."""
     if provider_configs is None:
-        # Two providers from different families.
         config_a = MagicMock()
         config_a.family = "family-a"
         config_a.models = (MagicMock(id="model-a-1", alias="small"),)
@@ -120,7 +118,9 @@ def _make_evaluator(
 
     registry = MagicMock()
     registry.get = MagicMock(side_effect=lambda name: driver_map[name])
-    registry.list_providers = MagicMock(return_value=tuple(sorted(driver_map.keys())))
+    registry.list_providers = MagicMock(
+        return_value=tuple(sorted(driver_map.keys())),
+    )
 
     return LlmSecurityEvaluator(
         provider_registry=registry,
@@ -148,7 +148,6 @@ async def test_evaluate_selects_cross_family_provider() -> None:
 
     await evaluator.evaluate(context, rule_verdict)
 
-    # provider-b should be called (different family), not provider-a.
     driver_b.complete.assert_awaited_once()
     driver_a.complete.assert_not_awaited()
 
@@ -172,7 +171,6 @@ async def test_evaluate_falls_back_to_same_family_with_warning() -> None:
 
     result = await evaluator.evaluate(context, rule_verdict)
 
-    # Same-family provider is used when no cross-family alternative.
     mock_driver.complete.assert_awaited_once()
     assert result.verdict == SecurityVerdictType.ALLOW
 
@@ -189,8 +187,8 @@ async def test_evaluate_skips_when_no_providers_available() -> None:
 
     result = await evaluator.evaluate(context, rule_verdict)
 
-    # Default error policy: USE_RULE_VERDICT.
-    assert result.verdict == rule_verdict.verdict
+    # Default error policy is ESCALATE.
+    assert result.verdict == SecurityVerdictType.ESCALATE
     assert result.confidence == EvaluationConfidence.LOW
 
 
@@ -198,9 +196,28 @@ async def test_evaluate_skips_when_no_providers_available() -> None:
 
 
 @pytest.mark.unit
-async def test_evaluate_returns_allow_from_llm() -> None:
-    """LLM says allow -> verdict is ALLOW with HIGH confidence."""
-    tc = _make_llm_tool_call(verdict="allow", risk_level="low")
+@pytest.mark.parametrize(
+    ("llm_verdict", "llm_risk", "expected_verdict", "expected_risk"),
+    [
+        ("allow", "low", SecurityVerdictType.ALLOW, ApprovalRiskLevel.LOW),
+        ("deny", "high", SecurityVerdictType.DENY, ApprovalRiskLevel.HIGH),
+        (
+            "escalate",
+            "critical",
+            SecurityVerdictType.ESCALATE,
+            ApprovalRiskLevel.CRITICAL,
+        ),
+    ],
+    ids=["allow", "deny", "escalate"],
+)
+async def test_evaluate_returns_llm_verdict(
+    llm_verdict: str,
+    llm_risk: str,
+    expected_verdict: SecurityVerdictType,
+    expected_risk: ApprovalRiskLevel,
+) -> None:
+    """LLM verdict is parsed correctly with HIGH confidence."""
+    tc = _make_llm_tool_call(verdict=llm_verdict, risk_level=llm_risk)
     mock_driver = AsyncMock()
     mock_driver.complete = AsyncMock(
         return_value=_make_completion_response(tc),
@@ -213,135 +230,54 @@ async def test_evaluate_returns_allow_from_llm() -> None:
 
     result = await evaluator.evaluate(context, rule_verdict)
 
-    assert result.verdict == SecurityVerdictType.ALLOW
-    assert result.risk_level == ApprovalRiskLevel.LOW
+    assert result.verdict == expected_verdict
+    assert result.risk_level == expected_risk
     assert result.confidence == EvaluationConfidence.HIGH
     assert "security_verdict" in result.matched_rules
-
-
-@pytest.mark.unit
-async def test_evaluate_returns_deny_from_llm() -> None:
-    """LLM says deny -> verdict is DENY with HIGH confidence."""
-    tc = _make_llm_tool_call(
-        verdict="deny",
-        risk_level="high",
-        reason="Suspicious file write",
-    )
-    mock_driver = AsyncMock()
-    mock_driver.complete = AsyncMock(
-        return_value=_make_completion_response(tc),
-    )
-    evaluator = _make_evaluator(
-        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
-    )
-    context = _make_context()
-    rule_verdict = _make_rule_verdict()
-
-    result = await evaluator.evaluate(context, rule_verdict)
-
-    assert result.verdict == SecurityVerdictType.DENY
-    assert result.risk_level == ApprovalRiskLevel.HIGH
-    assert result.confidence == EvaluationConfidence.HIGH
-
-
-@pytest.mark.unit
-async def test_evaluate_returns_escalate_from_llm() -> None:
-    """LLM says escalate -> verdict is ESCALATE with HIGH confidence."""
-    tc = _make_llm_tool_call(
-        verdict="escalate",
-        risk_level="critical",
-        reason="Needs human review",
-    )
-    mock_driver = AsyncMock()
-    mock_driver.complete = AsyncMock(
-        return_value=_make_completion_response(tc),
-    )
-    evaluator = _make_evaluator(
-        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
-    )
-    context = _make_context()
-    rule_verdict = _make_rule_verdict()
-
-    result = await evaluator.evaluate(context, rule_verdict)
-
-    assert result.verdict == SecurityVerdictType.ESCALATE
-    assert result.risk_level == ApprovalRiskLevel.CRITICAL
-    assert result.confidence == EvaluationConfidence.HIGH
 
 
 # -- Error handling --------------------------------------------------------
 
 
 @pytest.mark.unit
-async def test_evaluate_on_error_uses_rule_verdict() -> None:
-    """Default error policy returns original rule verdict."""
+@pytest.mark.parametrize(
+    ("error_policy", "expected_verdict"),
+    [
+        (LlmFallbackErrorPolicy.USE_RULE_VERDICT, SecurityVerdictType.ALLOW),
+        (LlmFallbackErrorPolicy.ESCALATE, SecurityVerdictType.ESCALATE),
+        (LlmFallbackErrorPolicy.DENY, SecurityVerdictType.DENY),
+    ],
+    ids=["use-rule-verdict", "escalate", "deny"],
+)
+async def test_evaluate_on_error_applies_policy(
+    error_policy: LlmFallbackErrorPolicy,
+    expected_verdict: SecurityVerdictType,
+) -> None:
+    """Error policy determines verdict on LLM failure."""
     mock_driver = AsyncMock()
     mock_driver.complete = AsyncMock(side_effect=RuntimeError("LLM failed"))
     evaluator = _make_evaluator(
         driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
-        config=LlmFallbackConfig(
-            enabled=True,
-            on_error=LlmFallbackErrorPolicy.USE_RULE_VERDICT,
-        ),
+        config=LlmFallbackConfig(enabled=True, on_error=error_policy),
     )
     context = _make_context()
     rule_verdict = _make_rule_verdict()
 
     result = await evaluator.evaluate(context, rule_verdict)
 
-    assert result.verdict == rule_verdict.verdict
-    assert result.risk_level == rule_verdict.risk_level
-
-
-@pytest.mark.unit
-async def test_evaluate_on_error_escalates() -> None:
-    """ESCALATE error policy sends to human queue on failure."""
-    mock_driver = AsyncMock()
-    mock_driver.complete = AsyncMock(side_effect=RuntimeError("LLM failed"))
-    evaluator = _make_evaluator(
-        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
-        config=LlmFallbackConfig(
-            enabled=True,
-            on_error=LlmFallbackErrorPolicy.ESCALATE,
-        ),
-    )
-    context = _make_context()
-    rule_verdict = _make_rule_verdict()
-
-    result = await evaluator.evaluate(context, rule_verdict)
-
-    assert result.verdict == SecurityVerdictType.ESCALATE
-
-
-@pytest.mark.unit
-async def test_evaluate_on_error_denies() -> None:
-    """DENY error policy denies on failure."""
-    mock_driver = AsyncMock()
-    mock_driver.complete = AsyncMock(side_effect=RuntimeError("LLM failed"))
-    evaluator = _make_evaluator(
-        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
-        config=LlmFallbackConfig(
-            enabled=True,
-            on_error=LlmFallbackErrorPolicy.DENY,
-        ),
-    )
-    context = _make_context()
-    rule_verdict = _make_rule_verdict()
-
-    result = await evaluator.evaluate(context, rule_verdict)
-
-    assert result.verdict == SecurityVerdictType.DENY
+    assert result.verdict == expected_verdict
 
 
 @pytest.mark.unit
 async def test_evaluate_on_timeout_applies_error_policy() -> None:
     """Timeout applies the configured error policy."""
 
-    async def _slow_complete(*args: object, **kwargs: object) -> None:
-        await asyncio.sleep(60)  # way longer than timeout
+    async def _never_complete(*_args: object, **_kwargs: object) -> None:
+        future: asyncio.Future[None] = asyncio.Future()
+        await future  # Never resolves.
 
     mock_driver = AsyncMock()
-    mock_driver.complete = _slow_complete
+    mock_driver.complete = _never_complete
     evaluator = _make_evaluator(
         driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
         config=LlmFallbackConfig(
@@ -358,16 +294,55 @@ async def test_evaluate_on_timeout_applies_error_policy() -> None:
     assert result.verdict == rule_verdict.verdict
 
 
+@pytest.mark.unit
+async def test_evaluate_propagates_memory_error() -> None:
+    """MemoryError from the LLM driver must propagate (not be caught)."""
+    mock_driver = AsyncMock()
+    mock_driver.complete = AsyncMock(side_effect=MemoryError("out of memory"))
+    evaluator = _make_evaluator(
+        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
+    )
+    context = _make_context()
+    rule_verdict = _make_rule_verdict()
+
+    with pytest.raises(MemoryError):
+        await evaluator.evaluate(context, rule_verdict)
+
+
 # -- Response parsing edge cases -------------------------------------------
 
 
 @pytest.mark.unit
-async def test_parse_no_tool_call_triggers_error_policy() -> None:
-    """LLM responds without tool call -> error policy kicks in."""
+@pytest.mark.parametrize(
+    ("tool_calls", "desc"),
+    [
+        ((), "no tool call"),
+        (
+            (
+                ToolCall(
+                    id="tc-1",
+                    name="wrong_tool",
+                    arguments={
+                        "verdict": "allow",
+                        "risk_level": "low",
+                        "reason": "ok",
+                    },
+                ),
+            ),
+            "wrong tool name",
+        ),
+    ],
+    ids=["no-tool-call", "wrong-tool-name"],
+)
+async def test_parse_missing_tool_call_triggers_error_policy(
+    tool_calls: tuple[ToolCall, ...],
+    desc: str,
+) -> None:
+    """Missing or wrong tool call triggers error policy ({desc})."""
     response = CompletionResponse(
         content="I think this is fine",
-        tool_calls=(),
-        finish_reason=FinishReason.STOP,
+        tool_calls=tool_calls,
+        finish_reason=FinishReason.STOP if not tool_calls else FinishReason.TOOL_USE,
         usage=TokenUsage(input_tokens=200, output_tokens=50, cost_usd=0.001),
         model="test-small-001",
     )
@@ -381,18 +356,31 @@ async def test_parse_no_tool_call_triggers_error_policy() -> None:
 
     result = await evaluator.evaluate(context, rule_verdict)
 
-    # Default policy: USE_RULE_VERDICT.
-    assert result.verdict == rule_verdict.verdict
+    # Default error policy is ESCALATE.
+    assert result.verdict == SecurityVerdictType.ESCALATE
 
 
 @pytest.mark.unit
-async def test_parse_invalid_verdict_triggers_error_policy() -> None:
-    """LLM returns invalid verdict value -> error policy kicks in."""
-    tc = ToolCall(
-        id="tc-1",
-        name="security_verdict",
-        arguments={"verdict": "maybe", "risk_level": "low", "reason": "unsure"},
-    )
+@pytest.mark.parametrize(
+    ("args", "desc"),
+    [
+        (
+            {"verdict": "maybe", "risk_level": "low", "reason": "unsure"},
+            "invalid verdict",
+        ),
+        (
+            {"verdict": "allow", "risk_level": "extreme", "reason": "ok"},
+            "invalid risk_level",
+        ),
+    ],
+    ids=["invalid-verdict", "invalid-risk"],
+)
+async def test_parse_invalid_values_triggers_error_policy(
+    args: dict[str, str],
+    desc: str,
+) -> None:
+    """Invalid LLM response values trigger error policy ({desc})."""
+    tc = ToolCall(id="tc-1", name="security_verdict", arguments=args)
     response = _make_completion_response(tc)
     mock_driver = AsyncMock()
     mock_driver.complete = AsyncMock(return_value=response)
@@ -404,29 +392,8 @@ async def test_parse_invalid_verdict_triggers_error_policy() -> None:
 
     result = await evaluator.evaluate(context, rule_verdict)
 
-    assert result.verdict == rule_verdict.verdict
-
-
-@pytest.mark.unit
-async def test_parse_wrong_tool_name_triggers_error_policy() -> None:
-    """LLM calls wrong tool name -> error policy kicks in."""
-    tc = ToolCall(
-        id="tc-1",
-        name="wrong_tool",
-        arguments={"verdict": "allow", "risk_level": "low", "reason": "ok"},
-    )
-    response = _make_completion_response(tc)
-    mock_driver = AsyncMock()
-    mock_driver.complete = AsyncMock(return_value=response)
-    evaluator = _make_evaluator(
-        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
-    )
-    context = _make_context()
-    rule_verdict = _make_rule_verdict()
-
-    result = await evaluator.evaluate(context, rule_verdict)
-
-    assert result.verdict == rule_verdict.verdict
+    # Default error policy is ESCALATE.
+    assert result.verdict == SecurityVerdictType.ESCALATE
 
 
 # -- Message building ------------------------------------------------------
@@ -449,12 +416,12 @@ async def test_build_messages_truncates_long_arguments() -> None:
 
     messages = evaluator._build_messages(context)
 
-    # User message should exist and contain truncated args.
     user_msgs = [m for m in messages if m.role == MessageRole.USER]
     assert len(user_msgs) == 1
     content = user_msgs[0].content
     assert content is not None
-    assert len(content) < 10000
+    # max_input_tokens=100 * 4 chars = 400 + overhead ~100 chars.
+    assert len(content) < 600
 
 
 @pytest.mark.unit
@@ -468,6 +435,21 @@ async def test_build_messages_has_system_and_user() -> None:
     roles = [m.role for m in messages]
     assert MessageRole.SYSTEM in roles
     assert MessageRole.USER in roles
+
+
+@pytest.mark.unit
+async def test_build_messages_uses_xml_delimiters() -> None:
+    """Prompt uses XML-like delimiters for field values."""
+    evaluator = _make_evaluator()
+    context = _make_context()
+
+    messages = evaluator._build_messages(context)
+
+    user_msg = next(m for m in messages if m.role == MessageRole.USER)
+    assert user_msg.content is not None
+    assert "<action>" in user_msg.content
+    assert "<tool>" in user_msg.content
+    assert "</action>" in user_msg.content
 
 
 # -- Agent provider name handling ------------------------------------------
@@ -494,28 +476,6 @@ async def test_evaluate_with_no_agent_provider_name() -> None:
 
 
 @pytest.mark.unit
-async def test_parse_invalid_risk_level_triggers_error_policy() -> None:
-    """LLM returns invalid risk_level -> error policy kicks in."""
-    tc = ToolCall(
-        id="tc-1",
-        name="security_verdict",
-        arguments={"verdict": "allow", "risk_level": "extreme", "reason": "ok"},
-    )
-    response = _make_completion_response(tc)
-    mock_driver = AsyncMock()
-    mock_driver.complete = AsyncMock(return_value=response)
-    evaluator = _make_evaluator(
-        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
-    )
-    context = _make_context()
-    rule_verdict = _make_rule_verdict()
-
-    result = await evaluator.evaluate(context, rule_verdict)
-
-    assert result.verdict == rule_verdict.verdict
-
-
-@pytest.mark.unit
 async def test_select_model_uses_explicit_config_model() -> None:
     """When config.model is set, it should be used regardless of provider."""
     mock_driver = AsyncMock()
@@ -538,7 +498,7 @@ async def test_select_model_fallback_to_provider_name() -> None:
     """When provider has no models configured, use provider name as hint."""
     config_b = MagicMock()
     config_b.family = "family-b"
-    config_b.models = ()  # No models configured.
+    config_b.models = ()
 
     mock_driver = AsyncMock()
     mock_driver.complete = AsyncMock(return_value=_make_completion_response())
@@ -579,5 +539,125 @@ async def test_reason_is_capped_at_max_length() -> None:
 
     result = await evaluator.evaluate(context, rule_verdict)
 
-    # Reason should be capped (300 chars max + "LLM security eval: " prefix).
-    assert len(result.reason) < 400
+    # Reason: 300 chars max + "LLM security eval: " prefix (19 chars).
+    assert len(result.reason) <= 320
+
+
+@pytest.mark.unit
+async def test_reason_control_chars_are_sanitized() -> None:
+    """Newlines and control chars in LLM reason are stripped."""
+    tc = _make_llm_tool_call(
+        verdict="allow",
+        risk_level="low",
+        reason="safe\naction\tno\x00risk",
+    )
+    mock_driver = AsyncMock()
+    mock_driver.complete = AsyncMock(
+        return_value=_make_completion_response(tc),
+    )
+    evaluator = _make_evaluator(
+        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
+    )
+    context = _make_context()
+    rule_verdict = _make_rule_verdict()
+
+    result = await evaluator.evaluate(context, rule_verdict)
+
+    assert "\n" not in result.reason
+    assert "\t" not in result.reason
+    assert "\x00" not in result.reason
+
+
+@pytest.mark.unit
+async def test_use_rule_verdict_annotates_reason() -> None:
+    """USE_RULE_VERDICT policy annotates the reason with failure context."""
+    mock_driver = AsyncMock()
+    mock_driver.complete = AsyncMock(side_effect=RuntimeError("LLM failed"))
+    evaluator = _make_evaluator(
+        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
+        config=LlmFallbackConfig(
+            enabled=True,
+            on_error=LlmFallbackErrorPolicy.USE_RULE_VERDICT,
+        ),
+    )
+    context = _make_context()
+    rule_verdict = _make_rule_verdict()
+
+    result = await evaluator.evaluate(context, rule_verdict)
+
+    assert result.verdict == rule_verdict.verdict
+    assert "LLM fallback failed" in result.reason
+
+
+# -- Reason visibility -----------------------------------------------------
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("visibility", "expected_fragment"),
+    [
+        (VerdictReasonVisibility.FULL, "LLM security eval:"),
+        (VerdictReasonVisibility.GENERIC, "Security evaluation"),
+        (VerdictReasonVisibility.CATEGORY, "risk:"),
+    ],
+    ids=["full", "generic", "category"],
+)
+async def test_agent_visible_reason_respects_config(
+    visibility: VerdictReasonVisibility,
+    expected_fragment: str,
+) -> None:
+    """agent_visible_reason is set based on reason_visibility config."""
+    tc = _make_llm_tool_call(verdict="deny", risk_level="high")
+    mock_driver = AsyncMock()
+    mock_driver.complete = AsyncMock(
+        return_value=_make_completion_response(tc),
+    )
+    evaluator = _make_evaluator(
+        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
+        config=LlmFallbackConfig(
+            enabled=True,
+            reason_visibility=visibility,
+        ),
+    )
+    context = _make_context()
+    rule_verdict = _make_rule_verdict()
+
+    result = await evaluator.evaluate(context, rule_verdict)
+
+    assert result.agent_visible_reason is not None
+    assert expected_fragment in result.agent_visible_reason
+
+
+# -- Argument truncation strategies ----------------------------------------
+
+
+@pytest.mark.unit
+async def test_per_value_truncation_preserves_keys() -> None:
+    """PER_VALUE strategy truncates values but preserves all keys."""
+    evaluator = _make_evaluator(
+        config=LlmFallbackConfig(
+            enabled=True,
+            argument_truncation=ArgumentTruncationStrategy.PER_VALUE,
+        ),
+    )
+    context = SecurityContext(
+        tool_name="test-tool",
+        tool_category=ToolCategory.FILE_SYSTEM,
+        action_type="code:write",
+        arguments={
+            "short_key": "hello",
+            "long_key": "x" * 5000,
+        },
+        agent_id="agent-1",
+        agent_provider_name="provider-a",
+    )
+
+    messages = evaluator._build_messages(context)
+
+    user_msg = next(m for m in messages if m.role == MessageRole.USER)
+    assert user_msg.content is not None
+    # Both keys should be present.
+    assert "short_key" in user_msg.content
+    assert "long_key" in user_msg.content
+    # Long value should be truncated.
+    assert "x" * 5000 not in user_msg.content

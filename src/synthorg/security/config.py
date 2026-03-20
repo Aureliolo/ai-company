@@ -26,7 +26,7 @@ class OutputScanPolicyType(StrEnum):
         WITHHOLD: Clear redacted content, forcing fail-closed.
         LOG_ONLY: Log findings but pass output through.
         AUTONOMY_TIERED: Delegate based on effective autonomy level
-            (default — falls back to ``REDACT`` when no autonomy
+            (default -- falls back to ``REDACT`` when no autonomy
             is configured).
     """
 
@@ -34,6 +34,36 @@ class OutputScanPolicyType(StrEnum):
     WITHHOLD = "withhold"
     LOG_ONLY = "log_only"
     AUTONOMY_TIERED = "autonomy_tiered"
+
+
+class VerdictReasonVisibility(StrEnum):
+    """Controls how much of the LLM evaluator's reason is visible to agents.
+
+    Attributes:
+        FULL: Return the full LLM reason to the agent.
+        GENERIC: Return a generic denial/escalation message.
+        CATEGORY: Return verdict type and risk level only.
+    """
+
+    FULL = "full"
+    GENERIC = "generic"
+    CATEGORY = "category"
+
+
+class ArgumentTruncationStrategy(StrEnum):
+    """How to truncate large tool arguments for the LLM security prompt.
+
+    Attributes:
+        WHOLE_STRING: Truncate the serialized JSON at a character limit.
+        PER_VALUE: Truncate each argument value individually before
+            serialization, preserving all key names.
+        KEYS_AND_VALUES: Include all keys with individually capped
+            values (explicit about key preservation).
+    """
+
+    WHOLE_STRING = "whole_string"
+    PER_VALUE = "per_value"
+    KEYS_AND_VALUES = "keys_and_values"
 
 
 class LlmFallbackErrorPolicy(StrEnum):
@@ -60,11 +90,16 @@ class LlmFallbackConfig(BaseModel):
     Attributes:
         enabled: Whether LLM fallback is active.
         model: Explicit model ID for security evaluation.  When
-            ``None``, the evaluator picks the first available model
-            from a cross-family provider.
+            ``None``, the evaluator picks the first model from
+            the selected provider (cross-family preferred,
+            same-family fallback).
         timeout_seconds: Maximum time for the LLM call.
         max_input_tokens: Token budget cap for security eval prompts.
         on_error: Policy when the LLM call fails.
+        reason_visibility: How much of the LLM reason is visible
+            to the evaluated agent.
+        argument_truncation: Strategy for truncating large tool
+            arguments in the LLM prompt.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -73,7 +108,11 @@ class LlmFallbackConfig(BaseModel):
     model: NotBlankStr | None = None
     timeout_seconds: float = Field(default=10.0, gt=0.0)
     max_input_tokens: int = Field(default=2000, gt=0)
-    on_error: LlmFallbackErrorPolicy = LlmFallbackErrorPolicy.USE_RULE_VERDICT
+    on_error: LlmFallbackErrorPolicy = LlmFallbackErrorPolicy.ESCALATE
+    reason_visibility: VerdictReasonVisibility = VerdictReasonVisibility.GENERIC
+    argument_truncation: ArgumentTruncationStrategy = (
+        ArgumentTruncationStrategy.PER_VALUE
+    )
 
 
 class SecurityPolicyRule(BaseModel):

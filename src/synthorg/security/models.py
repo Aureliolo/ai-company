@@ -33,7 +33,7 @@ class ScanOutcome(StrEnum):
         WITHHELD: Content intentionally withheld by policy.
         LOG_ONLY: Findings discarded by policy, original content passed
             through.  Always emitted with ``has_sensitive_data=False``
-            because the policy resets the result — the audit log
+            because the policy resets the result -- the audit log
             (written by ``SecOpsService`` before the policy runs) is
             the source of truth for what was actually detected.
     """
@@ -86,6 +86,9 @@ class SecurityVerdict(BaseModel):
         evaluated_at: Timestamp of evaluation.
         evaluation_duration_ms: How long the evaluation took.
         approval_id: Set only when verdict is ``escalate``.
+        agent_visible_reason: Reason string visible to the evaluated
+            agent.  When ``None``, ``reason`` is used.  Set by the
+            LLM evaluator based on ``VerdictReasonVisibility`` config.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -98,6 +101,7 @@ class SecurityVerdict(BaseModel):
     evaluated_at: AwareDatetime
     evaluation_duration_ms: float = Field(ge=0.0)
     approval_id: NotBlankStr | None = None
+    agent_visible_reason: str | None = None
 
     @model_validator(mode="after")
     def _check_approval_id(self) -> SecurityVerdict:

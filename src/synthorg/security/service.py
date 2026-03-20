@@ -35,7 +35,10 @@ from synthorg.observability.events.security import (
 )
 from synthorg.security.audit import AuditLog  # noqa: TC001
 from synthorg.security.autonomy.models import EffectiveAutonomy  # noqa: TC001
-from synthorg.security.config import SecurityConfig  # noqa: TC001
+from synthorg.security.config import (
+    LlmFallbackErrorPolicy,
+    SecurityConfig,
+)
 from synthorg.security.models import (
     OUTPUT_SCAN_VERDICT,
     AuditEntry,
@@ -351,8 +354,33 @@ class SecOpsService:
             logger.exception(
                 SECURITY_INTERCEPTOR_ERROR,
                 tool_name=context.tool_name,
-                note="LLM security evaluation failed (using rule verdict)",
+                note="LLM security evaluation failed (applying error policy)",
             )
+            # Respect the configured error policy rather than
+            # unconditionally returning the rule verdict.
+            policy = self._config.llm_fallback.on_error
+            if policy == LlmFallbackErrorPolicy.DENY:
+                return verdict.model_copy(
+                    update={
+                        "verdict": SecurityVerdictType.DENY,
+                        "reason": (
+                            f"{verdict.reason} "
+                            "(LLM evaluator error -- denied per policy)"
+                        ),
+                        "risk_level": ApprovalRiskLevel.HIGH,
+                    },
+                )
+            if policy == LlmFallbackErrorPolicy.ESCALATE:
+                return verdict.model_copy(
+                    update={
+                        "verdict": SecurityVerdictType.ESCALATE,
+                        "reason": (
+                            f"{verdict.reason} "
+                            "(LLM evaluator error -- escalated per policy)"
+                        ),
+                        "risk_level": ApprovalRiskLevel.HIGH,
+                    },
+                )
             return verdict
 
     def _apply_autonomy_augmentation(

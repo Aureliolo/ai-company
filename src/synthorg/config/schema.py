@@ -413,7 +413,7 @@ class TaskAssignmentConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
 
-    # Known strategy names — must stay in sync with
+    # Known strategy names -- must stay in sync with
     # ``STRATEGY_NAME_*`` constants in ``engine.assignment.strategies``.
     # ``"hierarchical"`` requires a ``HierarchyResolver`` at runtime.
     _VALID_STRATEGIES: ClassVar[frozenset[str]] = frozenset(
@@ -468,7 +468,7 @@ class TaskAssignmentConfig(BaseModel):
 
 
 class RootConfig(BaseModel):
-    """Root company configuration — the top-level validation target.
+    """Root company configuration -- the top-level validation target.
 
     Aggregates all sub-configurations into a single frozen model that
     represents a fully validated company setup.

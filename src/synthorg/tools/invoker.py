@@ -254,8 +254,9 @@ class ToolInvoker:
                         reason=verdict.reason,
                     ),
                 )
+            agent_reason = verdict.agent_visible_reason or verdict.reason
             msg = (
-                f"Security escalation: {verdict.reason}. "
+                f"Security escalation: {agent_reason}. "
                 f"Approval required (id={verdict.approval_id})"
             )
             return context, ToolResult(
@@ -270,9 +271,10 @@ class ToolInvoker:
             tool_name=tool_call.name,
             reason=verdict.reason,
         )
+        deny_reason = verdict.agent_visible_reason or verdict.reason
         return context, ToolResult(
             tool_call_id=tool_call.id,
-            content=f"Security denied: {verdict.reason}",
+            content=f"Security denied: {deny_reason}",
             is_error=True,
         )
 

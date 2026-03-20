@@ -163,6 +163,8 @@ class RuleEngine:
         """Evaluate a single rule, catching exceptions (fail-closed)."""
         try:
             return rule.evaluate(context)
+        except MemoryError, RecursionError:
+            raise
         except Exception:
             logger.exception(
                 SECURITY_RULE_ERROR,
