@@ -1,7 +1,6 @@
 """Unit and integration tests for GitCloneTool (clone + SSRF prevention)."""
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -168,7 +167,7 @@ def _mock_validate(
 ) -> None:
     """Patch validate_clone_url_host to return *validation*."""
 
-    async def _inner(url: str, policy: Any) -> DnsValidationOk:
+    async def _inner(url: str, policy: GitCloneNetworkPolicy) -> DnsValidationOk:
         return validation
 
     monkeypatch.setattr(git_tools_module, "validate_clone_url_host", _inner)

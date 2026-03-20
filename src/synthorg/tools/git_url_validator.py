@@ -564,6 +564,12 @@ async def validate_clone_url_host(  # noqa: PLR0911, C901
     if is_https:
         raw_port = urlparse(url).port
         if raw_port is not None and raw_port <= 0:
+            logger.warning(
+                GIT_CLONE_SSRF_BLOCKED,
+                hostname=normalized,
+                port=raw_port,
+                reason="invalid_port",
+            )
             return f"Invalid port in clone URL: {raw_port!r}"
         port = raw_port or 443
 
