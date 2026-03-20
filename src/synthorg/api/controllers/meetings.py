@@ -151,6 +151,7 @@ class MeetingController(Controller):
     @post(
         "/trigger",
         guards=[require_write_access],
+        status_code=200,
     )
     async def trigger_meeting(
         self,

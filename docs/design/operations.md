@@ -1007,7 +1007,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | Endpoint | Purpose |
 |----------|---------|
 | `/api/v1/health` | Health check, readiness |
-| `/api/v1/auth` | Authentication: setup, login, password change, ws-ticket |
+| `/api/v1/auth` | Authentication: setup, login, password change, ws-ticket (login/setup/change-password rate-limited to 10 req/min) |
 | `/api/v1/company` | CRUD company config |
 | `/api/v1/agents` | List, hire, fire, modify agents |
 | `/api/v1/departments` | Department management |

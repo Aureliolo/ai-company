@@ -234,11 +234,21 @@ def require_password_changed(
 _AUTH_RATE_LIMIT = LitestarRateLimitConfig(
     rate_limit=("minute", 10),
 )
-"""Stricter rate limiter for login and setup endpoints (10 req/min).
+"""Stricter rate limiter for auth endpoints (10 req/min).
 
-Applied as route-level middleware on ``/auth/login`` and
-``/auth/setup`` only.  Each middleware instance has its own
-in-memory counter cache, independent of the global rate limiter.
+Applied as route-level middleware on ``/auth/login``,
+``/auth/setup``, and ``/auth/change-password``.  Keyed by remote
+IP (``request.client.host``).  Uses the default ``"rate_limit"``
+store shared with the global limiter, but the cache key includes
+the middleware class name so counters do not collide.
+
+.. note::
+
+   Behind a reverse proxy (e.g. nginx in Docker), Litestar's
+   default ``get_remote_address`` reads ``request.client.host``
+   which is the proxy IP, not the real client.  Enable Uvicorn's
+   ``--proxy-headers`` and ``--forwarded-allow-ips`` to trust
+   ``X-Forwarded-For`` from the proxy.
 """
 
 
@@ -371,6 +381,7 @@ class AuthController(Controller):
         "/change-password",
         status_code=200,
         summary="Change current user password",
+        middleware=[_AUTH_RATE_LIMIT.middleware],
     )
     async def change_password(
         self,

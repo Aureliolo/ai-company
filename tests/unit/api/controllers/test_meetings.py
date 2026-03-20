@@ -193,7 +193,7 @@ class TestMeetingController:
             "/api/v1/meetings/trigger",
             json={"event_name": "deploy_complete"},
         )
-        assert resp.status_code == 201
+        assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         mock_scheduler.trigger_event.assert_awaited_once_with(

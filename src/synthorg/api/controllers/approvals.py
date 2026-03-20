@@ -454,7 +454,7 @@ class ApprovalsController(Controller):
     async def approve(
         self,
         state: State,
-        approval_id: str,
+        approval_id: PathId,
         data: ApproveRequest,
         request: Request[Any, Any, Any],
     ) -> ApiResponse[ApprovalItem]:
@@ -536,7 +536,7 @@ class ApprovalsController(Controller):
     async def reject(
         self,
         state: State,
-        approval_id: str,
+        approval_id: PathId,
         data: RejectRequest,
         request: Request[Any, Any, Any],
     ) -> ApiResponse[ApprovalItem]:
