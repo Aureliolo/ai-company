@@ -101,6 +101,7 @@ async function selectPreset(preset: ProviderPreset) {
   testPassed.value = false
   testResult.value = null
   probeMessage.value = null
+  probing.value = false
 
   // Auto-probe candidate URLs for no-auth local presets.
   if (preset.auth_type === 'none' && preset.candidate_urls.length > 0) {

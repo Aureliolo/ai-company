@@ -98,7 +98,7 @@ For large log files, do NOT read the entire file into the conversation. Instead:
 2. For error analysis, extract only the relevant lines
 3. Present structured summaries, not raw dumps
 
-Example summary script pattern:
+Example summary script pattern (minimal -- does not implement `--since`, `--agent`, or `--correlation` filtering; extend with `argparse` as needed):
 
 ```bash
 python -c "
@@ -245,7 +245,7 @@ Format the output based on the requested mode:
 
 ### Summary mode (default)
 
-```
+```text
 ## Log Summary (last 1h)
 
 ### Volume
@@ -277,7 +277,7 @@ Format the output based on the requested mode:
 
 ### Discrepancy mode
 
-```
+```text
 ## Discrepancy Report
 
 Status: X entries in Docker logs missing from file sinks

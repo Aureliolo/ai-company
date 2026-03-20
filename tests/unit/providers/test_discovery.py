@@ -553,10 +553,15 @@ class TestProbePresetUrls:
         assert result.candidates_tried == 1
 
     async def test_probe_json_decode_error_skips_url(self) -> None:
-        """Non-JSON response is treated as a miss."""
-        import json as _json
-
-        client = _mock_client(side_effect=_json.JSONDecodeError("", "", 0))
+        """Non-JSON 200 response is treated as a miss."""
+        # Real httpx.Response with non-JSON body -- .json() raises
+        # JSONDecodeError exactly like production.
+        html_response = httpx.Response(
+            status_code=200,
+            content=b"<html>not json</html>",
+            request=httpx.Request("GET", "http://test"),
+        )
+        client = _mock_client(html_response)
 
         with patch(
             "synthorg.providers.discovery.httpx.AsyncClient",
