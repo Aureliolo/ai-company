@@ -125,10 +125,30 @@ class TestDeserializeAndReconcileSuccess:
 class TestDeserializeAndReconcileSanitization:
     """Error messages are sanitized before injection into LLM context."""
 
-    def test_error_with_path_is_sanitized(
+    @pytest.mark.parametrize(
+        ("error_message", "expected_token", "forbidden_substr"),
+        [
+            pytest.param(
+                r"Failed at C:\Users\dev\secret.key",
+                "[REDACTED_PATH]",
+                "C:\\Users",
+                id="path",
+            ),
+            pytest.param(
+                "Timeout calling https://api.internal.io/v1/completions",
+                "[REDACTED_URL]",
+                "https://",
+                id="url",
+            ),
+        ],
+    )
+    def test_error_is_sanitized(
         self,
         sample_agent_with_personality: AgentIdentity,
         sample_task_with_criteria: Task,
+        error_message: str,
+        expected_token: str,
+        forbidden_substr: str,
     ) -> None:
         ctx_json = _make_ctx_json(
             sample_agent_with_personality,
@@ -136,34 +156,14 @@ class TestDeserializeAndReconcileSanitization:
         )
         result = deserialize_and_reconcile(
             ctx_json,
-            error_message=r"Failed at C:\Users\dev\secret.key",
+            error_message=error_message,
             agent_id="agent-1",
             task_id="task-1",
         )
         last_msg = result.conversation[-1]
         assert last_msg.content is not None
-        assert "[REDACTED_PATH]" in last_msg.content
-        assert "C:\\Users" not in last_msg.content
-
-    def test_error_with_url_is_sanitized(
-        self,
-        sample_agent_with_personality: AgentIdentity,
-        sample_task_with_criteria: Task,
-    ) -> None:
-        ctx_json = _make_ctx_json(
-            sample_agent_with_personality,
-            sample_task_with_criteria,
-        )
-        result = deserialize_and_reconcile(
-            ctx_json,
-            error_message="Timeout calling https://api.internal.io/v1/completions",
-            agent_id="agent-1",
-            task_id="task-1",
-        )
-        last_msg = result.conversation[-1]
-        assert last_msg.content is not None
-        assert "[REDACTED_URL]" in last_msg.content
-        assert "https://" not in last_msg.content
+        assert expected_token in last_msg.content
+        assert forbidden_substr not in last_msg.content
 
 
 @pytest.mark.unit

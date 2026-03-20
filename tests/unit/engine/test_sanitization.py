@@ -232,6 +232,15 @@ class TestSanitizeMessageTruncation:
         with pytest.raises(ValueError, match="max_length must be >= 0"):
             sanitize_message("hello", max_length=-1)
 
+    def test_redaction_near_boundary_may_exceed_max_length(self) -> None:
+        """Redaction tokens may expand output beyond max_length (documented)."""
+        # Place a short path right before the 200-char boundary so the
+        # 14-char [REDACTED_PATH] token expands past the limit.
+        raw = "a" * 196 + " /ab"
+        result = sanitize_message(raw, max_length=200)
+        assert "[REDACTED_PATH]" in result
+        assert len(result) > 200
+
 
 @pytest.mark.unit
 class TestSanitizeMessageNonPrintable:
