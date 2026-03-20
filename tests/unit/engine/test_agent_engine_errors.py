@@ -264,6 +264,29 @@ class TestAgentEngineFatalErrorResult:
         assert result.system_prompt.template_version == "error"
         assert result.duration_seconds > 0
 
+    async def test_error_message_with_path_is_sanitized(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+        mock_provider_factory: type[MockCompletionProvider],
+    ) -> None:
+        """Paths in exception messages are redacted in the error result."""
+        provider = mock_provider_factory([])
+        engine = AgentEngine(provider=provider)
+
+        with patch(
+            "synthorg.engine.agent_engine.build_system_prompt",
+            side_effect=RuntimeError(r"Failed reading C:\Users\dev\secret.key"),
+        ):
+            result = await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+        error_msg = result.execution_result.error_message or ""
+        assert "[REDACTED_PATH]" in error_msg
+        assert "C:\\Users" not in error_msg
+
     async def test_handle_fatal_error_secondary_failure_raises_original(
         self,
         sample_agent_with_personality: AgentIdentity,

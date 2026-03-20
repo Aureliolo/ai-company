@@ -225,9 +225,9 @@ def _build_summary(
     snippets: list[str] = []
     for msg in messages:
         if msg.role == MessageRole.ASSISTANT and msg.content:
-            snippet = msg.content[:100].replace("\n", " ").strip()
-            if snippet:
-                snippet = sanitize_message(snippet, max_length=100)
+            cleaned = msg.content.replace("\n", " ").strip()
+            if cleaned:
+                snippet = sanitize_message(cleaned, max_length=100)
                 snippets.append(snippet)
 
     if not snippets:

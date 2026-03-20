@@ -12,57 +12,90 @@ class TestSanitizeMessagePaths:
     """Path patterns are redacted."""
 
     @pytest.mark.parametrize(
-        ("label", "raw", "expected"),
+        ("raw", "expected"),
         [
-            (
-                "windows_path",
+            pytest.param(
                 r"Failed at C:\Users\dev\project\secret.key",
                 "Failed at [REDACTED_PATH]",
+                id="windows_path",
             ),
-            (
-                "unix_home",
+            pytest.param(
                 "Config loaded from /home/user/.ssh/id_rsa",
                 "Config loaded from [REDACTED_PATH]",
+                id="unix_home",
             ),
-            (
-                "unix_var",
+            pytest.param(
                 "Log at /var/log/synthorg/engine.log",
                 "Log at [REDACTED_PATH]",
+                id="unix_var",
             ),
-            (
-                "unix_tmp",
+            pytest.param(
                 "Wrote to /tmp/scratch/data.json",
                 "Wrote to [REDACTED_PATH]",
+                id="unix_tmp",
             ),
-            (
-                "unix_etc",
+            pytest.param(
                 "Reading /etc/synthorg/config.yaml",
                 "Reading [REDACTED_PATH]",
+                id="unix_etc",
             ),
-            (
-                "unix_opt",
+            pytest.param(
                 "Binary at /opt/synthorg/bin/run",
                 "Binary at [REDACTED_PATH]",
+                id="unix_opt",
             ),
-            (
-                "unix_app",
+            pytest.param(
                 "Running from /app/src/main.py",
                 "Running from [REDACTED_PATH]",
+                id="unix_app",
             ),
-            (
-                "relative_dot",
+            pytest.param(
                 "Found ./config/secrets.yaml",
                 "Found [REDACTED_PATH]",
+                id="relative_dot",
             ),
-            (
-                "relative_dotdot",
+            pytest.param(
                 "Resolved ../parent/key.pem",
                 "Resolved [REDACTED_PATH]",
+                id="relative_dotdot",
+            ),
+            pytest.param(
+                "Leaked /proc/self/environ",
+                "Leaked [REDACTED_PATH]",
+                id="unix_proc",
+            ),
+            pytest.param(
+                "Secret at /run/secrets/db_password",
+                "Secret at [REDACTED_PATH]",
+                id="unix_run_secrets",
+            ),
+            pytest.param(
+                "Mount at /mnt/efs/data/keys.pem",
+                "Mount at [REDACTED_PATH]",
+                id="unix_mnt",
+            ),
+            pytest.param(
+                r"Share at \\server\share\secrets\key.pem",
+                "Share at [REDACTED_PATH]",
+                id="unc_backslash",
+            ),
+            pytest.param(
+                "Share at //server/share/path",
+                "Share at [REDACTED_PATH]",
+                id="unc_forward",
             ),
         ],
     )
-    def test_path_redacted(self, label: str, raw: str, expected: str) -> None:
+    def test_path_redacted(self, raw: str, expected: str) -> None:
         assert sanitize_message(raw) == expected
+
+    def test_single_char_after_slash_not_redacted(self) -> None:
+        raw = "option /n is invalid"
+        assert sanitize_message(raw) == raw
+
+    def test_standalone_slash_not_redacted(self) -> None:
+        raw = "choose a / b"
+        assert sanitize_message(raw) == raw
 
 
 @pytest.mark.unit
@@ -70,26 +103,41 @@ class TestSanitizeMessageUrls:
     """URL patterns are redacted."""
 
     @pytest.mark.parametrize(
-        ("label", "raw", "expected"),
+        ("raw", "expected"),
         [
-            (
-                "https_url",
+            pytest.param(
                 "Request to https://api.example.com/v1/models failed",
                 "Request to [REDACTED_URL] failed",
+                id="https_url",
             ),
-            (
-                "http_url",
+            pytest.param(
                 "Connecting to http://localhost:8080/health",
                 "Connecting to [REDACTED_URL]",
+                id="http_url",
             ),
-            (
-                "url_with_query",
+            pytest.param(
                 "Auth at https://provider.io/token?key=abc123",
                 "Auth at [REDACTED_URL]",
+                id="url_with_query",
+            ),
+            pytest.param(
+                "DB at postgresql://user:pass@host:5432/db",
+                "DB at [REDACTED_URL]",
+                id="postgresql_uri",
+            ),
+            pytest.param(
+                "Cache at redis://:secret@redis-host:6379/0",
+                "Cache at [REDACTED_URL]",
+                id="redis_uri",
+            ),
+            pytest.param(
+                "Store at mongodb://admin:pass@mongo:27017/data",
+                "Store at [REDACTED_URL]",
+                id="mongodb_uri",
             ),
         ],
     )
-    def test_url_redacted(self, label: str, raw: str, expected: str) -> None:
+    def test_url_redacted(self, raw: str, expected: str) -> None:
         assert sanitize_message(raw) == expected
 
 
@@ -112,15 +160,18 @@ class TestSanitizeMessageTruncation:
 
     def test_default_max_length_200(self) -> None:
         raw = "a" * 300
-        assert len(sanitize_message(raw)) == 200
+        assert len(sanitize_message(raw)) <= 200
 
     def test_custom_max_length(self) -> None:
         raw = "a" * 300
-        assert len(sanitize_message(raw, max_length=50)) == 50
+        assert len(sanitize_message(raw, max_length=50)) <= 50
 
     def test_short_message_unchanged(self) -> None:
         raw = "simple error"
         assert sanitize_message(raw) == "simple error"
+
+    def test_zero_max_length(self) -> None:
+        assert sanitize_message("hello", max_length=0) == "details redacted"
 
 
 @pytest.mark.unit

@@ -58,7 +58,8 @@ def deserialize_and_reconcile(
         Reconstituted ``AgentContext`` with reconciliation message.
 
     Raises:
-        ValueError: If deserialization fails.
+        ValueError: If deserialization or schema validation fails
+            (includes ``pydantic.ValidationError``).
     """
     try:
         checkpoint_ctx = AgentContext.model_validate_json(checkpoint_json)
@@ -78,6 +79,8 @@ def deserialize_and_reconcile(
         if compression is not None
         else ""
     )
+    # May reduce to "details redacted" if error contained only paths/URLs --
+    # leak prevention takes priority over detail in LLM context.
     safe_error = sanitize_message(error_message)
     reconciliation_content = (
         f"Execution resumed from checkpoint at turn "

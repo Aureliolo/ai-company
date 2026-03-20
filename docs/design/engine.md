@@ -215,8 +215,11 @@ Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop
 - **Typed errors**: `TaskNotFoundError` and `TaskVersionConflictError` provide
   precise failure classification — API controllers catch these directly instead
   of parsing error strings.
-- **Error sanitization**: Internal exception details (SQL paths, stack traces)
-  are replaced with a generic message before reaching callers.
+- **Error sanitization**: Internal exception details (file paths, URLs, stack
+  traces) are redacted via a shared ``sanitize_message()`` helper
+  (``engine/sanitization.py``) before reaching callers or LLM context.
+  Applied in ``_handle_fatal_error``, checkpoint reconciliation, and
+  compaction summaries.
 - **Queue full**: `TaskEngineQueueFullError` signals backpressure when the
   queue is at capacity.
 
