@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.2](https://github.com/Aureliolo/synthorg/compare/v0.4.1...v0.4.2) (2026-03-20)
+
+
+### Features
+
+* implement LLM fallback for uncertain security evaluations ([#647](https://github.com/Aureliolo/synthorg/issues/647)) ([d13f6c9](https://github.com/Aureliolo/synthorg/commit/d13f6c9c77178fcd5525fab10dece63d9029175c))
+* implement quota degradation FALLBACK and QUEUE strategies ([#650](https://github.com/Aureliolo/synthorg/issues/650)) ([5828051](https://github.com/Aureliolo/synthorg/commit/582805184ca923b2f87793140b0f3a60b0919e88))
+
+
+### Bug Fixes
+
+* CLI falsely reports missing images after update ([#648](https://github.com/Aureliolo/synthorg/issues/648)) ([aeb4680](https://github.com/Aureliolo/synthorg/commit/aeb4680dd643c507d25184febcfbb5bd2e677bdc))
+* observability sink routing gaps and agent correlation binding ([#646](https://github.com/Aureliolo/synthorg/issues/646)) ([9bb56eb](https://github.com/Aureliolo/synthorg/commit/9bb56eb36f54bca69c755e4409d5ba7279727c83))
+* setup wizard UX issues (step indicator, discovery, auth, toggle) ([#651](https://github.com/Aureliolo/synthorg/issues/651)) ([2f58421](https://github.com/Aureliolo/synthorg/commit/2f58421e52d404faf15bd8c0ca1314bbe9f721ef))
+
+
+### Maintenance
+
+* silence false-positive ESLint security warnings ([#649](https://github.com/Aureliolo/synthorg/issues/649)) ([e2dc171](https://github.com/Aureliolo/synthorg/commit/e2dc1718d23df2aeb7652a027d082c3d6be6bc05))
+
 ## [0.4.1](https://github.com/Aureliolo/synthorg/compare/v0.4.0...v0.4.1) (2026-03-20)
 
 
