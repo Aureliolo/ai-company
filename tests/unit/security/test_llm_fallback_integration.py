@@ -279,25 +279,23 @@ async def test_llm_escalate_result_handled() -> None:
 
 
 @pytest.mark.unit
-async def test_llm_error_with_use_rule_verdict_policy() -> None:
-    """On LLM error with USE_RULE_VERDICT, original verdict is used."""
+async def test_llm_evaluator_exception_falls_back_to_rule_verdict() -> None:
+    """When LLM evaluator raises, service catch-all returns rule verdict."""
     llm_eval = AsyncMock()
-    llm_eval.evaluate = AsyncMock(
-        return_value=_make_verdict(
-            confidence=EvaluationConfidence.LOW,
-            reason="LLM evaluation failed -- using rule verdict",
-        ),
-    )
+    llm_eval.evaluate = AsyncMock(side_effect=RuntimeError("Unexpected crash"))
 
+    rule_verdict = _make_verdict(confidence=EvaluationConfidence.LOW)
     service = _make_service(
-        rule_engine_verdict=_make_verdict(confidence=EvaluationConfidence.LOW),
+        rule_engine_verdict=rule_verdict,
         llm_evaluator=llm_eval,
     )
     context = _make_context()
 
     result = await service.evaluate_pre_tool(context)
 
+    # Service catch-all should return original rule verdict.
     assert result.verdict == SecurityVerdictType.ALLOW
+    assert result.confidence == EvaluationConfidence.LOW
 
 
 # -- Autonomy augmentation after LLM --------------------------------------

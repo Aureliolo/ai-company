@@ -43,6 +43,7 @@ whether the backend is a cloud API, OpenRouter, Ollama, or a custom endpoint.
     ```yaml
     providers:
       example-provider:
+        family: "example-family"       # cross-validation grouping (optional)
         auth_type: api_key             # api_key | oauth | custom_header | none
         api_key: "${PROVIDER_API_KEY}"
         models:                        # example entries -- real list loaded from provider

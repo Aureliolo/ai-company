@@ -176,6 +176,7 @@ class AuditEntry(BaseModel):
         reason: Explanation of the verdict.
         matched_rules: Rules that triggered.
         evaluation_duration_ms: Duration of evaluation.
+        confidence: Confidence level of the evaluation source.
         approval_id: Set when verdict is escalate.
     """
 
@@ -194,6 +195,7 @@ class AuditEntry(BaseModel):
     reason: NotBlankStr
     matched_rules: tuple[NotBlankStr, ...] = ()
     evaluation_duration_ms: float = Field(ge=0.0)
+    confidence: EvaluationConfidence = EvaluationConfidence.HIGH
     approval_id: NotBlankStr | None = None
 
 

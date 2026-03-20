@@ -154,10 +154,8 @@ async def test_evaluate_selects_cross_family_provider() -> None:
 
 
 @pytest.mark.unit
-async def test_evaluate_falls_back_to_same_family_with_warning(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """When no cross-family provider exists, use same family with warning."""
+async def test_evaluate_falls_back_to_same_family_with_warning() -> None:
+    """When no cross-family provider exists, use same family."""
     config_a = MagicMock()
     config_a.family = "family-a"
     config_a.models = (MagicMock(id="model-a-1", alias="small"),)
@@ -174,9 +172,9 @@ async def test_evaluate_falls_back_to_same_family_with_warning(
 
     result = await evaluator.evaluate(context, rule_verdict)
 
+    # Same-family provider is used when no cross-family alternative.
     mock_driver.complete.assert_awaited_once()
     assert result.verdict == SecurityVerdictType.ALLOW
-    assert "same_family_fallback" in caplog.text or result is not None
 
 
 @pytest.mark.unit
@@ -490,3 +488,96 @@ async def test_evaluate_with_no_agent_provider_name() -> None:
 
     assert result.verdict == SecurityVerdictType.ALLOW
     mock_driver.complete.assert_awaited_once()
+
+
+# -- Additional edge cases -------------------------------------------------
+
+
+@pytest.mark.unit
+async def test_parse_invalid_risk_level_triggers_error_policy() -> None:
+    """LLM returns invalid risk_level -> error policy kicks in."""
+    tc = ToolCall(
+        id="tc-1",
+        name="security_verdict",
+        arguments={"verdict": "allow", "risk_level": "extreme", "reason": "ok"},
+    )
+    response = _make_completion_response(tc)
+    mock_driver = AsyncMock()
+    mock_driver.complete = AsyncMock(return_value=response)
+    evaluator = _make_evaluator(
+        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
+    )
+    context = _make_context()
+    rule_verdict = _make_rule_verdict()
+
+    result = await evaluator.evaluate(context, rule_verdict)
+
+    assert result.verdict == rule_verdict.verdict
+
+
+@pytest.mark.unit
+async def test_select_model_uses_explicit_config_model() -> None:
+    """When config.model is set, it should be used regardless of provider."""
+    mock_driver = AsyncMock()
+    mock_driver.complete = AsyncMock(return_value=_make_completion_response())
+    evaluator = _make_evaluator(
+        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
+        config=LlmFallbackConfig(enabled=True, model="explicit-model-001"),
+    )
+    context = _make_context()
+    rule_verdict = _make_rule_verdict()
+
+    await evaluator.evaluate(context, rule_verdict)
+
+    call_args = mock_driver.complete.call_args
+    assert call_args[0][1] == "explicit-model-001"
+
+
+@pytest.mark.unit
+async def test_select_model_fallback_to_provider_name() -> None:
+    """When provider has no models configured, use provider name as hint."""
+    config_b = MagicMock()
+    config_b.family = "family-b"
+    config_b.models = ()  # No models configured.
+
+    mock_driver = AsyncMock()
+    mock_driver.complete = AsyncMock(return_value=_make_completion_response())
+    evaluator = _make_evaluator(
+        provider_configs={
+            "provider-a": MagicMock(family="family-a", models=()),
+            "provider-b": config_b,
+        },
+        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
+    )
+    context = _make_context(agent_provider_name="provider-a")
+    rule_verdict = _make_rule_verdict()
+
+    await evaluator.evaluate(context, rule_verdict)
+
+    call_args = mock_driver.complete.call_args
+    assert call_args[0][1] == "provider-b"
+
+
+@pytest.mark.unit
+async def test_reason_is_capped_at_max_length() -> None:
+    """LLM-returned reason should be truncated to prevent injection."""
+    long_reason = "x" * 1000
+    tc = _make_llm_tool_call(
+        verdict="allow",
+        risk_level="low",
+        reason=long_reason,
+    )
+    mock_driver = AsyncMock()
+    mock_driver.complete = AsyncMock(
+        return_value=_make_completion_response(tc),
+    )
+    evaluator = _make_evaluator(
+        driver_map={"provider-a": mock_driver, "provider-b": mock_driver},
+    )
+    context = _make_context()
+    rule_verdict = _make_rule_verdict()
+
+    result = await evaluator.evaluate(context, rule_verdict)
+
+    # Reason should be capped (300 chars max + "LLM security eval: " prefix).
+    assert len(result.reason) < 400

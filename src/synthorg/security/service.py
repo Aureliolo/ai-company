@@ -306,7 +306,7 @@ class SecOpsService:
 
         return result
 
-    async def _maybe_llm_fallback(
+    async def _maybe_llm_fallback(  # noqa: PLR0911
         self,
         context: SecurityContext,
         verdict: SecurityVerdict,
@@ -320,6 +320,11 @@ class SecOpsService:
         Returns the (possibly re-evaluated) verdict.
         """
         if verdict.confidence != EvaluationConfidence.LOW:
+            return verdict
+        # Safety net: never re-evaluate non-ALLOW verdicts through LLM,
+        # regardless of confidence (defensive against buggy custom rules
+        # that might return DENY/ESCALATE with LOW confidence).
+        if verdict.verdict != SecurityVerdictType.ALLOW:
             return verdict
         if not self._config.llm_fallback.enabled:
             return verdict
@@ -434,6 +439,7 @@ class SecOpsService:
             reason=verdict.reason,
             matched_rules=verdict.matched_rules,
             evaluation_duration_ms=verdict.evaluation_duration_ms,
+            confidence=verdict.confidence,
             approval_id=verdict.approval_id,
         )
         try:

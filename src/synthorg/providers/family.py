@@ -7,10 +7,14 @@ select a model from a different provider family than the agent.
 
 from typing import TYPE_CHECKING
 
+from synthorg.observability import get_logger
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from synthorg.config.schema import ProviderConfig
+
+logger = get_logger(__name__)
 
 
 def get_family(

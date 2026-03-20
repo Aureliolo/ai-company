@@ -102,6 +102,7 @@ class ProviderConfig(BaseModel):
         rate_limiter: Client-side rate limiting configuration.
         subscription: Subscription and quota configuration.
         degradation: Degradation strategy when quota exhausted.
+        family: Provider family for cross-validation grouping.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -114,8 +115,8 @@ class ProviderConfig(BaseModel):
         default=None,
         description=(
             "Provider family for cross-validation grouping "
-            "(e.g. 'anthropic', 'openai').  When None, the "
-            "provider name is used as the family."
+            "(e.g. 'provider-family-a', 'provider-family-b').  "
+            "When None, the provider name is used as the family."
         ),
     )
     auth_type: AuthType = Field(

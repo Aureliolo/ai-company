@@ -57,6 +57,11 @@ logger = get_logger(__name__)
 # Maximum length for serialized arguments in the prompt.
 _MAX_ARGS_DISPLAY = 1500
 
+# Maximum length for LLM-returned reason string (defense against
+# prompt injection exfiltration -- the reason flows into audit log,
+# approval queue, and denial messages visible to the evaluated agent).
+_MAX_REASON_LENGTH = 300
+
 # Tool schema for structured LLM response.
 _SECURITY_VERDICT_TOOL = ToolDefinition(
     name="security_verdict",
@@ -180,13 +185,38 @@ class LlmSecurityEvaluator:
                 "No provider available for LLM security evaluation",
             )
 
-        # Select model.
+        # Select model, call LLM, parse response.
         model = self._select_model(provider_name)
+        response = await self._call_llm(
+            driver,
+            model,
+            context,
+            rule_verdict,
+            start,
+        )
+        if isinstance(response, SecurityVerdict):
+            return response  # Error policy already applied.
 
-        # Build messages and call LLM.
+        verdict = self._parse_llm_response(response, rule_verdict, start)
+        self._log_completion(context, verdict, response, start)
+        return verdict
+
+    async def _call_llm(
+        self,
+        driver: BaseCompletionProvider,
+        model: str,
+        context: SecurityContext,
+        rule_verdict: SecurityVerdict,
+        start: float,
+    ) -> CompletionResponse | SecurityVerdict:
+        """Call the LLM with the security context.
+
+        Returns the ``CompletionResponse`` on success, or a
+        ``SecurityVerdict`` (from error policy) on failure.
+        """
         messages = self._build_messages(context)
         try:
-            response = await asyncio.wait_for(
+            return await asyncio.wait_for(
                 driver.complete(
                     messages,
                     model,
@@ -224,9 +254,14 @@ class LlmSecurityEvaluator:
                 "LLM evaluation failed",
             )
 
-        # Parse response.
-        verdict = self._parse_llm_response(response, rule_verdict, start)
-
+    def _log_completion(
+        self,
+        context: SecurityContext,
+        verdict: SecurityVerdict,
+        response: CompletionResponse,
+        start: float,
+    ) -> None:
+        """Log a successful LLM evaluation completion."""
         duration_ms = (time.monotonic() - start) * 1000
         logger.info(
             SECURITY_LLM_EVAL_COMPLETE,
@@ -238,8 +273,6 @@ class LlmSecurityEvaluator:
             cost_usd=response.usage.cost_usd,
             model=response.model,
         )
-
-        return verdict
 
     def _select_provider(
         self,
@@ -409,7 +442,10 @@ class LlmSecurityEvaluator:
                 f"LLM returned invalid risk_level: {raw_risk!r}",
             )
 
-        reason = str(raw_reason).strip() if raw_reason else "LLM security evaluation"
+        reason_raw = (
+            str(raw_reason).strip() if raw_reason else "LLM security evaluation"
+        )
+        reason = reason_raw[:_MAX_REASON_LENGTH]
         duration_ms = (time.monotonic() - start) * 1000
 
         return SecurityVerdict(
