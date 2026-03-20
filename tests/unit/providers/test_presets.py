@@ -10,7 +10,6 @@ from synthorg.providers.presets import (
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestProviderPresets:
     def test_all_presets_valid_provider_configs(self) -> None:
         for preset in PROVIDER_PRESETS:

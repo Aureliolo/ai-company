@@ -120,20 +120,6 @@ class TestSettingsController:
             headers=auth_headers,
         )
         assert resp.status_code == 204
-
-    def test_delete_setting_no_body(
-        self, test_client: TestClient[Any], auth_headers: dict[str, str]
-    ) -> None:
-        test_client.put(
-            "/api/v1/settings/budget/total_monthly",
-            json={"value": "200.0"},
-            headers=auth_headers,
-        )
-        resp = test_client.delete(
-            "/api/v1/settings/budget/total_monthly",
-            headers=auth_headers,
-        )
-        assert resp.status_code == 204
         assert resp.content == b""
 
     def test_delete_unknown_setting_returns_404(

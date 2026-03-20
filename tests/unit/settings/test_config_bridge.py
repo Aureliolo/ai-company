@@ -31,7 +31,6 @@ class _FakeConfig(BaseModel):
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestExtractFromConfig:
     """Tests for dotted-path config extraction."""
 
@@ -66,7 +65,6 @@ class TestExtractFromConfig:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestSerializeValue:
     """Tests for _serialize_value() helper."""
 
@@ -148,7 +146,6 @@ class TestSerializeValue:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestExtractFromConfigStructural:
     """Tests for extract_from_config with structural data types."""
 

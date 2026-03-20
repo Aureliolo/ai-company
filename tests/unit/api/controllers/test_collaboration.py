@@ -221,33 +221,7 @@ class TestClearOverride:
         collab_client: TestClient[Any],
         override_store: CollaborationOverrideStore,
     ) -> None:
-        """DELETE removes the active override."""
-        override_store.set_override(
-            CollaborationOverride(
-                agent_id=NotBlankStr("agent-001"),
-                score=8.0,
-                reason=NotBlankStr("Temp"),
-                applied_by=NotBlankStr("manager"),
-                applied_at=NOW,
-            ),
-        )
-        resp = collab_client.delete(
-            "/api/v1/agents/agent-001/collaboration/override",
-        )
-        assert resp.status_code == 204
-
-        # Verify removed.
-        stored = override_store.get_active_override(
-            NotBlankStr("agent-001"),
-        )
-        assert stored is None
-
-    def test_clear_override_no_body(
-        self,
-        collab_client: TestClient[Any],
-        override_store: CollaborationOverrideStore,
-    ) -> None:
-        """DELETE returns 204 with empty body."""
+        """DELETE removes the active override and returns 204 with empty body."""
         override_store.set_override(
             CollaborationOverride(
                 agent_id=NotBlankStr("agent-001"),
@@ -262,6 +236,12 @@ class TestClearOverride:
         )
         assert resp.status_code == 204
         assert resp.content == b""
+
+        # Verify removed.
+        stored = override_store.get_active_override(
+            NotBlankStr("agent-001"),
+        )
+        assert stored is None
 
     def test_404_when_nothing_to_clear(
         self,

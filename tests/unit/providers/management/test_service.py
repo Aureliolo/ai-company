@@ -122,7 +122,6 @@ def _make_create_request(
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestCreateProvider:
     async def test_create_provider_success(
         self,
@@ -176,7 +175,6 @@ class TestCreateProvider:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestUpdateProvider:
     async def test_update_provider_success(
         self,
@@ -216,7 +214,6 @@ class TestUpdateProvider:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestDeleteProvider:
     async def test_delete_provider_success(
         self,
@@ -237,7 +234,6 @@ class TestDeleteProvider:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestTestConnection:
     async def test_test_connection_no_models_error(
         self,
@@ -316,7 +312,6 @@ class TestTestConnection:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestCreateFromPreset:
     async def test_create_from_preset(
         self,
@@ -355,7 +350,6 @@ class TestCreateFromPreset:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestConcurrency:
     async def test_concurrent_creates_serialized(
         self,
@@ -387,7 +381,6 @@ class TestConcurrency:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestClearApiKey:
     async def test_clear_api_key_removes_key(
         self,
@@ -415,7 +408,6 @@ class TestClearApiKey:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestProviderNameValidation:
     @pytest.mark.parametrize(
         "name",
@@ -445,7 +437,6 @@ class TestProviderNameValidation:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestAuthTypeTransitions:
     """Tests for auth-type transition credential cleanup."""
 
@@ -546,7 +537,6 @@ class TestAuthTypeTransitions:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestValidateAndPersistFailure:
     """Tests for _validate_and_persist error paths."""
 
@@ -570,7 +560,6 @@ class TestValidateAndPersistFailure:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestTestConnectionExtended:
     """Extended connection test coverage."""
 
@@ -628,7 +617,6 @@ class TestTestConnectionExtended:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestSerializeRoundTrip:
     """Tests for provider serialization round-trip fidelity."""
 
@@ -660,7 +648,6 @@ class TestSerializeRoundTrip:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestDiscoverModelsForProvider:
     """Tests for discover_models_for_provider."""
 
@@ -745,7 +732,6 @@ class TestDiscoverModelsForProvider:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestCreateFromPresetAutoDiscovery:
     """Tests for auto-discovery in create_from_preset."""
 

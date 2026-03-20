@@ -5,8 +5,6 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
-from tests.unit.api.conftest import make_auth_headers
-
 
 @pytest.mark.unit
 class TestProjectController:
@@ -26,8 +24,5 @@ class TestProjectController:
 
     def test_oversized_project_id_rejected(self, test_client: TestClient[Any]) -> None:
         long_id = "x" * 129
-        resp = test_client.get(
-            f"/api/v1/projects/{long_id}",
-            headers=make_auth_headers("ceo"),
-        )
+        resp = test_client.get(f"/api/v1/projects/{long_id}")
         assert resp.status_code == 400

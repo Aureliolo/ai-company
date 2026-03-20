@@ -139,7 +139,6 @@ def resolver(mock_settings: AsyncMock, root_config: _FakeRootConfig) -> ConfigRe
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetStr:
     """Tests for get_str()."""
 
@@ -167,7 +166,6 @@ class TestGetStr:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetInt:
     """Tests for get_int()."""
 
@@ -198,7 +196,6 @@ class TestGetInt:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetFloat:
     """Tests for get_float()."""
 
@@ -224,7 +221,6 @@ class TestGetFloat:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetBool:
     """Tests for get_bool()."""
 
@@ -260,7 +256,6 @@ class TestGetBool:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetEnum:
     """Tests for get_enum()."""
 
@@ -283,7 +278,6 @@ class TestGetEnum:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestErrorPropagation:
     """SettingNotFoundError should propagate from SettingsService."""
 
@@ -299,7 +293,6 @@ class TestErrorPropagation:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestConfigResolverInit:
     """Tests for ConfigResolver constructor validation."""
 
@@ -318,7 +311,6 @@ class TestConfigResolverInit:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetAutonomyLevel:
     """Tests for get_autonomy_level()."""
 
@@ -375,7 +367,6 @@ def _budget_get_side_effect(
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetBudgetConfig:
     """Tests for get_budget_config() composed read."""
 
@@ -482,7 +473,6 @@ def _coordination_get_side_effect(
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetCoordinationConfig:
     """Tests for get_coordination_config() composed read."""
 
@@ -559,7 +549,6 @@ class TestGetCoordinationConfig:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestParseBool:
     """Tests for the _parse_bool helper."""
 
@@ -600,7 +589,6 @@ def _make_resolver() -> tuple[ConfigResolver, AsyncMock]:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestResolverScalarProperties:
     """Hypothesis-based roundtrip tests for scalar accessors."""
 
@@ -653,7 +641,6 @@ def _api_get_side_effect(
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetApiConfig:
     """Tests for get_api_config() composed read."""
 

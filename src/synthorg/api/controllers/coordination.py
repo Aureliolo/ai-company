@@ -53,6 +53,11 @@ def _publish_ws_event(
     """Best-effort publish a coordination event to the tasks channel."""
     channels_plugin = get_channels_plugin(request)
     if channels_plugin is None:
+        logger.warning(
+            API_WS_SEND_FAILED,
+            note="ChannelsPlugin not available, dropping coordination WS event",
+            event_type=event_type.value,
+        )
         return
 
     event = WsEvent(

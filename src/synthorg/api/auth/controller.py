@@ -238,9 +238,9 @@ _AUTH_RATE_LIMIT = LitestarRateLimitConfig(
 
 Applied as route-level middleware on ``/auth/login``,
 ``/auth/setup``, and ``/auth/change-password``.  Keyed by remote
-IP (``request.client.host``).  Uses the default ``"rate_limit"``
-store shared with the global limiter, but the cache key includes
-the middleware class name so counters do not collide.
+IP (``request.client.host``).  Each ``RateLimitConfig`` instance
+produces a middleware with an independent store, so counters do
+not collide with the global rate limiter.
 
 .. note::
 

@@ -1,7 +1,10 @@
 """Provider controller -- CRUD, connection testing, and presets."""
 
+from typing import Annotated
+
 from litestar import Controller, delete, get, post, put
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.dto import (
@@ -317,7 +320,7 @@ class ProviderController(Controller):
         self,
         state: State,
         name: PathName,
-        preset_hint: str | None = None,
+        preset_hint: Annotated[str, Parameter(max_length=64)] | None = None,
     ) -> ApiResponse[DiscoverModelsResponse]:
         """Discover available models from a provider endpoint.
 

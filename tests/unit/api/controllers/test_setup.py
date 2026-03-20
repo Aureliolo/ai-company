@@ -19,7 +19,6 @@ from tests.unit.api.conftest import make_auth_headers
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestSetupStatus:
     """GET /api/v1/setup/status -- unauthenticated status check."""
 
@@ -223,7 +222,6 @@ class TestSetupStatus:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestSetupTemplates:
     """GET /api/v1/setup/templates -- list available templates."""
 
@@ -268,7 +266,6 @@ class TestSetupTemplates:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestSetupCompany:
     """POST /api/v1/setup/company -- create company config."""
 
@@ -499,7 +496,6 @@ class TestSetupCompany:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestSetupAgent:
     """POST /api/v1/setup/agent -- create agent."""
 
@@ -599,7 +595,6 @@ class TestSetupAgent:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestSetupComplete:
     """POST /api/v1/setup/complete -- mark setup as done."""
 
@@ -688,7 +683,6 @@ class TestSetupComplete:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestSetupDTOs:
     """Unit tests for setup DTO validation."""
 
@@ -740,7 +734,6 @@ class TestSetupDTOs:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestExtractTemplateDepartments:
     """Unit tests for the _extract_template_departments helper."""
 

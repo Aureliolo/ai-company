@@ -18,10 +18,15 @@ from synthorg.api.dto import (
     PaginatedResponse,
     RejectRequest,
 )
-from synthorg.api.errors import ConflictError, NotFoundError, UnauthorizedError
+from synthorg.api.errors import (
+    ApiValidationError,
+    ConflictError,
+    NotFoundError,
+    UnauthorizedError,
+)
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.approval import ApprovalItem
@@ -339,6 +344,10 @@ class ApprovalsController(Controller):
         Returns:
             Paginated approval list.
         """
+        if action_type is not None and len(action_type) > QUERY_MAX_LENGTH:
+            msg = f"action_type exceeds maximum length of {QUERY_MAX_LENGTH}"
+            raise ApiValidationError(msg)
+
         app_state: AppState = state.app_state
         items = await app_state.approval_store.list_items(
             status=status,

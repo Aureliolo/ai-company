@@ -117,7 +117,6 @@ def service(
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestResolutionOrder:
     """Tests for the DB > env > YAML > default resolution chain."""
 

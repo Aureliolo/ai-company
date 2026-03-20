@@ -289,7 +289,6 @@ class TestRegistryImmutability:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestRegistryLogging:
     def test_registry_built_event(self) -> None:
         stub = _StubDriver("test", _make_config())

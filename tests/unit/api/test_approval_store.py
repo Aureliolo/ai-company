@@ -47,7 +47,6 @@ def _make_item(  # noqa: PLR0913
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestApprovalStore:
     async def test_add_and_get_roundtrip(self) -> None:
         store = ApprovalStore()
@@ -178,7 +177,6 @@ class TestApprovalStore:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestSaveIfPending:
     """save_if_pending() optimistic concurrency guard."""
 
@@ -242,7 +240,6 @@ class TestSaveIfPending:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestApprovalStoreFilters:
     """Combined filter tests."""
 
@@ -305,7 +302,6 @@ class TestApprovalStoreFilters:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestOnExpireCallback:
     """on_expire callback lifecycle."""
 

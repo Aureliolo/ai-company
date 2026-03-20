@@ -8,10 +8,10 @@ from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
-from synthorg.api.errors import NotFoundError
+from synthorg.api.errors import ApiValidationError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
-from synthorg.api.path_params import PathId  # noqa: TC001
+from synthorg.api.path_params import QUERY_MAX_LENGTH, PathId
 from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
 from synthorg.communication.meeting.models import MeetingRecord  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -105,6 +105,10 @@ class MeetingController(Controller):
         Returns:
             Paginated meeting records.
         """
+        if meeting_type is not None and len(meeting_type) > QUERY_MAX_LENGTH:
+            msg = f"meeting_type exceeds maximum length of {QUERY_MAX_LENGTH}"
+            raise ApiValidationError(msg)
+
         orchestrator = state.app_state.meeting_orchestrator
         records = orchestrator.get_records()
 

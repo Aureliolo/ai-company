@@ -1,7 +1,10 @@
-"""Task controller — full CRUD via TaskEngine."""
+"""Task controller -- full CRUD via TaskEngine."""
+
+from typing import Annotated
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.dto import (
@@ -160,8 +163,8 @@ class TaskController(Controller):
         self,
         state: State,
         status: TaskStatus | None = None,
-        assigned_to: str | None = None,
-        project: str | None = None,
+        assigned_to: Annotated[str, Parameter(max_length=256)] | None = None,
+        project: Annotated[str, Parameter(max_length=256)] | None = None,
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
     ) -> PaginatedResponse[Task]:

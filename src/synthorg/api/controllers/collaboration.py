@@ -10,7 +10,11 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import ApiResponse
-from synthorg.api.errors import NotFoundError, ServiceUnavailableError
+from synthorg.api.errors import (
+    NotFoundError,
+    ServiceUnavailableError,
+    UnauthorizedError,
+)
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
@@ -246,8 +250,8 @@ class CollaborationController(Controller):
                 reason="user_identity_extraction_failed",
                 agent_id=agent_id,
             )
-            msg = "Unable to determine user identity"
-            raise ServiceUnavailableError(msg)
+            msg = "Authentication required"
+            raise UnauthorizedError(msg)
 
         override = CollaborationOverride(
             agent_id=NotBlankStr(agent_id),

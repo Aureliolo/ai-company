@@ -51,7 +51,6 @@ def _build_kwargs(config: ProviderConfig) -> dict[str, Any]:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestLiteLLMDriverAuth:
     def test_build_kwargs_api_key_auth(self) -> None:
         config = _make_config(

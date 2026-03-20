@@ -327,7 +327,6 @@ class TestRequirePasswordChanged:
             require_password_changed(connection, None)
 
 
-@pytest.mark.timeout(30)
 @pytest.mark.unit
 class TestWsTicket:
     def test_ws_ticket_returns_ticket_and_expires_in(

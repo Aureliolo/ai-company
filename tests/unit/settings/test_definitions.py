@@ -12,7 +12,6 @@ from synthorg.settings.registry import SettingsRegistry, get_registry
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestDefinitionsLoading:
     """Tests that all definitions load correctly."""
 

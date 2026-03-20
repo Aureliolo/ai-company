@@ -189,7 +189,6 @@ class TestWsHandleMessage:
         assert data["error"] == "Expected JSON object"
 
 
-@pytest.mark.timeout(30)
 @pytest.mark.unit
 class TestWsTicketAuth:
     """Tests for ticket-based WebSocket authentication logic.

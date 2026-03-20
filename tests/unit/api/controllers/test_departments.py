@@ -17,7 +17,6 @@ from tests.unit.api.conftest import (
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestDepartmentController:
     def test_list_departments_empty(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/departments")
@@ -40,7 +39,6 @@ class TestDepartmentController:
 
 
 @pytest.mark.integration
-@pytest.mark.timeout(30)
 class TestDepartmentControllerDbOverride:
     """Test that DB-stored settings override YAML departments."""
 

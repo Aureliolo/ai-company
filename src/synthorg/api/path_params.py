@@ -33,3 +33,8 @@ PathKey = Annotated[
     Parameter(max_length=128, min_length=1, description="Settings key"),
 ]
 """Path parameter type for settings keys (1-128 chars)."""
+
+# Max lengths for query parameter validation (shared with inline checks
+# where Litestar does not enforce Parameter constraints on optional params).
+QUERY_MAX_LENGTH: int = 128
+"""Default max length for string query filter parameters."""

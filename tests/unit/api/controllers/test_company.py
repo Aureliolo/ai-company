@@ -52,7 +52,6 @@ async def db_override_app(
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestCompanyController:
     def test_get_company(self, test_client: TestClient[Any]) -> None:
         resp = test_client.get("/api/v1/company", headers=_HEADERS)
@@ -77,7 +76,6 @@ class TestCompanyController:
 
 
 @pytest.mark.integration
-@pytest.mark.timeout(30)
 class TestCompanyControllerDbOverride:
     """Test that DB-stored settings override YAML company data."""
 

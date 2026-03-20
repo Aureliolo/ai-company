@@ -1,7 +1,10 @@
-"""Budget controller — read-only access to cost data."""
+"""Budget controller -- read-only access to cost data."""
+
+from typing import Annotated
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
@@ -59,8 +62,8 @@ class BudgetController(Controller):
     async def list_cost_records(
         self,
         state: State,
-        agent_id: str | None = None,
-        task_id: str | None = None,
+        agent_id: Annotated[str, Parameter(max_length=128)] | None = None,
+        task_id: Annotated[str, Parameter(max_length=128)] | None = None,
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
     ) -> PaginatedResponse[CostRecord]:

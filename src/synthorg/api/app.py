@@ -63,6 +63,7 @@ from synthorg.observability.events.api import (
     API_APP_SHUTDOWN,
     API_APP_STARTUP,
     API_APPROVAL_PUBLISH_FAILED,
+    API_WS_SEND_FAILED,
     API_WS_TICKET_CLEANUP,
 )
 from synthorg.persistence.config import PersistenceConfig, SQLiteConfig
@@ -158,10 +159,20 @@ def _make_meeting_publisher(
             timestamp=datetime.now(UTC),
             payload=payload,
         )
-        channels_plugin.publish(
-            event.model_dump_json(),
-            channels=[CHANNEL_MEETINGS],
-        )
+        try:
+            channels_plugin.publish(
+                event.model_dump_json(),
+                channels=[CHANNEL_MEETINGS],
+            )
+        except MemoryError, RecursionError:
+            raise
+        except Exception:
+            logger.warning(
+                API_WS_SEND_FAILED,
+                note="Failed to publish meeting WebSocket event",
+                event_name=event_name,
+                exc_info=True,
+            )
 
     return _on_meeting_event
 

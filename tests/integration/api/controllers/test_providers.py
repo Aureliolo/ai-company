@@ -29,7 +29,6 @@ async def fake_message_bus() -> FakeMessageBus:
 
 
 @pytest.mark.integration
-@pytest.mark.timeout(30)
 class TestProviderControllerDbOverride:
     """Test that DB-stored settings override YAML providers."""
 

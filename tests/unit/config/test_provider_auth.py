@@ -8,7 +8,6 @@ from synthorg.providers.enums import AuthType
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestAuthTypeEnum:
     def test_auth_type_enum_values(self) -> None:
         assert AuthType.API_KEY.value == "api_key"
@@ -19,7 +18,6 @@ class TestAuthTypeEnum:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestProviderConfigAuth:
     def test_backward_compat_defaults_to_api_key(self) -> None:
         config = ProviderConfig(driver="litellm")

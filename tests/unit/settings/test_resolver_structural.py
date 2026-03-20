@@ -56,7 +56,6 @@ def resolver(mock_settings: AsyncMock, root_config: _FakeRootConfig) -> ConfigRe
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetJson:
     """Tests for get_json() generic accessor."""
 
@@ -100,7 +99,6 @@ class TestGetJson:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetAgents:
     """Tests for get_agents() composed read."""
 
@@ -218,7 +216,6 @@ class TestGetAgents:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetDepartments:
     """Tests for get_departments() composed read."""
 
@@ -333,7 +330,6 @@ class TestGetDepartments:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestGetProviderConfigs:
     """Tests for get_provider_configs() composed read."""
 

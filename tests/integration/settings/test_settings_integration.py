@@ -73,7 +73,6 @@ def resolver(
 
 
 @pytest.mark.integration
-@pytest.mark.timeout(30)
 class TestApiSettingsIntegration:
     """End-to-end test: DB override → SettingsService → ConfigResolver."""
 

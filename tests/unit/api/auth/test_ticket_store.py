@@ -25,7 +25,6 @@ def _make_user(
     )
 
 
-@pytest.mark.timeout(30)
 @pytest.mark.unit
 class TestWsTicketStoreCreate:
     """Tests for ticket creation."""
@@ -86,7 +85,6 @@ class TestWsTicketStoreCreate:
         assert isinstance(ticket, str)
 
 
-@pytest.mark.timeout(30)
 @pytest.mark.unit
 class TestWsTicketStoreValidateAndConsume:
     """Tests for ticket validation and consumption."""
@@ -222,7 +220,6 @@ class TestWsTicketStoreValidateAndConsume:
         assert result is None
 
 
-@pytest.mark.timeout(30)
 @pytest.mark.unit
 class TestWsTicketStoreCleanup:
     """Tests for expired ticket cleanup."""

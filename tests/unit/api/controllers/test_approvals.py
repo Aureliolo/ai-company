@@ -430,7 +430,7 @@ class TestApprovalPathParamValidation:
         )
         assert resp.status_code == 400
 
-    def test_oversized_action_type_query_accepted(
+    def test_oversized_action_type_query_rejected(
         self, test_client: TestClient[Any]
     ) -> None:
         long_action = "x" * 129
@@ -439,4 +439,4 @@ class TestApprovalPathParamValidation:
             params={"action_type": long_action},
             headers=_READ_HEADERS,
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 422

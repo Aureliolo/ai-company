@@ -1,4 +1,4 @@
-import { apiClient, unwrap, unwrapVoid } from '../client'
+import { apiClient, unwrap } from '../client'
 import type { ApiResponse, SettingDefinition, SettingEntry, SettingNamespace, UpdateSettingRequest } from '../types'
 
 export async function getSchema(): Promise<SettingDefinition[]> {
@@ -38,8 +38,7 @@ export async function updateSetting(
 }
 
 export async function resetSetting(namespace: SettingNamespace, key: string): Promise<void> {
-  const response = await apiClient.delete<ApiResponse<null>>(
+  await apiClient.delete(
     `/settings/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`,
   )
-  unwrapVoid(response)
 }
