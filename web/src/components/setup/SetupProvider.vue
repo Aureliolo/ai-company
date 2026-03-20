@@ -320,9 +320,7 @@ onMounted(async () => {
             role="status"
             aria-live="polite"
             class="mt-1 text-xs"
-            :class="baseUrl && baseUrl !== (selectedPreset.default_base_url ?? '')
-              ? 'text-green-400'
-              : 'text-amber-400'"
+            :class="probedUrl ? 'text-green-400' : 'text-amber-400'"
           >
             {{ probeMessage }}
           </div>
