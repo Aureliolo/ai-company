@@ -30,10 +30,15 @@ func FuzzCompareSemver(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, a, b string) {
 		// Must not panic.
-		ab := compareSemver(a, b)
-		ba := compareSemver(b, a)
-		aa := compareSemver(a, a)
-		bb := compareSemver(b, b)
+		ab, abErr := compareSemver(a, b)
+		ba, baErr := compareSemver(b, a)
+		aa, aaErr := compareSemver(a, a)
+		bb, bbErr := compareSemver(b, b)
+
+		// Skip property checks if any call returned an error (invalid input).
+		if abErr != nil || baErr != nil || aaErr != nil || bbErr != nil {
+			return
+		}
 
 		// Reflexivity: compareSemver(x, x) == 0.
 		if aa != 0 {

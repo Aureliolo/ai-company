@@ -33,7 +33,10 @@ func init() {
 func runStatus(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	dir := resolveDataDir()
-	jsonOut, _ := cmd.Flags().GetBool("json")
+	jsonOut, err := cmd.Flags().GetBool("json")
+	if err != nil {
+		return fmt.Errorf("reading --json flag: %w", err)
+	}
 
 	state, err := config.Load(dir)
 	if err != nil {

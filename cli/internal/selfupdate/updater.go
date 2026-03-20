@@ -79,7 +79,11 @@ func CheckFromURL(ctx context.Context, url string) (CheckResult, error) {
 	}
 
 	result.LatestVersion = release.TagName
-	result.UpdateAvail = isUpdateAvailable(version.Version, release.TagName)
+	avail, err := isUpdateAvailable(version.Version, release.TagName)
+	if err != nil {
+		return result, fmt.Errorf("comparing versions: %w", err)
+	}
+	result.UpdateAvail = avail
 
 	assetURL, checksumURL, bundleURL, err := findAssets(release)
 	if err != nil {
@@ -123,19 +127,23 @@ func fetchRelease(ctx context.Context, url string) (Release, error) {
 	return release, nil
 }
 
-func isUpdateAvailable(current, latest string) bool {
+func isUpdateAvailable(current, latest string) (bool, error) {
 	cur := strings.TrimPrefix(current, "v")
 	if cur == "dev" {
-		return true
+		return true, nil
 	}
 	lat := strings.TrimPrefix(latest, "v")
 	// Only offer update when latest is strictly greater than current.
-	return compareSemver(lat, cur) > 0
+	cmp, err := compareSemver(lat, cur)
+	if err != nil {
+		return false, err
+	}
+	return cmp > 0, nil
 }
 
 // compareSemver returns >0 if a > b, 0 if equal, <0 if a < b.
 // Compares major.minor.patch numerically; ignores pre-release.
-func compareSemver(a, b string) int {
+func compareSemver(a, b string) (int, error) {
 	aParts := strings.SplitN(a, ".", 3)
 	bParts := strings.SplitN(b, ".", 3)
 	for i := range 3 {
@@ -143,20 +151,28 @@ func compareSemver(a, b string) int {
 		if i < len(aParts) {
 			numStr := strings.FieldsFunc(aParts[i], func(r rune) bool { return r < '0' || r > '9' })
 			if len(numStr) > 0 {
-				av, _ = strconv.Atoi(numStr[0])
+				var err error
+				av, err = strconv.Atoi(numStr[0])
+				if err != nil {
+					return 0, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], a, err)
+				}
 			}
 		}
 		if i < len(bParts) {
 			numStr := strings.FieldsFunc(bParts[i], func(r rune) bool { return r < '0' || r > '9' })
 			if len(numStr) > 0 {
-				bv, _ = strconv.Atoi(numStr[0])
+				var err error
+				bv, err = strconv.Atoi(numStr[0])
+				if err != nil {
+					return 0, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], b, err)
+				}
 			}
 		}
 		if av != bv {
-			return av - bv
+			return av - bv, nil
 		}
 	}
-	return 0
+	return 0, nil
 }
 
 func findAssets(release Release) (assetURL, checksumURL, bundleURL string, err error) {

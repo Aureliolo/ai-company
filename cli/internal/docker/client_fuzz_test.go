@@ -23,26 +23,42 @@ func FuzzVersionAtLeast(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, got, min string) {
 		// Must not panic.
-		result := versionAtLeast(got, min)
+		result, resultErr := versionAtLeast(got, min)
+
+		// Skip property checks if any call returned an error (invalid input).
+		if resultErr != nil {
+			return
+		}
 
 		// Reflexivity: versionAtLeast(x, x) must be true.
-		if !versionAtLeast(got, got) {
+		gotGot, err := versionAtLeast(got, got)
+		if err != nil {
+			return
+		}
+		if !gotGot {
 			t.Errorf("versionAtLeast(%q, %q) = false, want true (reflexivity)", got, got)
 		}
-		if !versionAtLeast(min, min) {
+		minMin, err := versionAtLeast(min, min)
+		if err != nil {
+			return
+		}
+		if !minMin {
 			t.Errorf("versionAtLeast(%q, %q) = false, want true (reflexivity)", min, min)
 		}
 
 		// Total-order completeness: for any two versions, at least one of
 		// versionAtLeast(got, min) or versionAtLeast(min, got) must be true.
-		reverse := versionAtLeast(min, got)
+		reverse, err := versionAtLeast(min, got)
+		if err != nil {
+			return
+		}
 		if !result && !reverse {
 			t.Errorf("total-order violation: versionAtLeast(%q,%q)=false AND versionAtLeast(%q,%q)=false", got, min, min, got)
 		}
 
 		// Antisymmetry note: if both result and reverse are true, the
 		// versions compare as equal despite potentially different strings.
-		// This is expected — versionAtLeast parses 'got' with suffix-stripping
+		// This is expected -- versionAtLeast parses 'got' with suffix-stripping
 		// but not 'min', so pairs like ("1.0.0-rc1", "1.0.0") normalise
 		// identically. The total-order check above already covers this case
 		// (both true satisfies at-least-one-true).
