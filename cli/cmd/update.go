@@ -51,6 +51,13 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	// Detect dirty installation state (e.g. after partial uninstall).
+	if abort, healthErr := checkInstallationHealth(cmd, state); healthErr != nil {
+		return healthErr
+	} else if abort {
+		return nil
+	}
+
 	// Migrate: generate settings encryption key if missing (pre-v0.3.9 installs).
 	// 32 bytes -> 44-char URL-safe base64 = valid Fernet key.
 	if state.SettingsKey == "" {
@@ -457,7 +464,12 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 
 	updatedState := state
 	updatedState.ImageTag = tag
-	return restartIfRunning(cmd, info, safeDir, updatedState)
+	if err := restartIfRunning(cmd, info, safeDir, updatedState); err != nil {
+		return err
+	}
+
+	// Offer to remove old images after a successful upgrade.
+	return cleanupOldImages(cmd, info, updatedState)
 }
 
 // confirmUpdate prompts the user to confirm an update action.
@@ -678,6 +690,200 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 		_, _ = fmt.Fprintf(out, "Dashboard: http://localhost:%d\n", state.WebPort)
 	}
 
+	return nil
+}
+
+// checkInstallationHealth detects inconsistent state between config and the
+// actual Docker/filesystem state (e.g. after a partial uninstall). Returns
+// (true, nil) if the user chose to abort, (false, nil) to continue.
+func checkInstallationHealth(cmd *cobra.Command, state config.State) (bool, error) {
+	ctx := cmd.Context()
+	out := ui.NewUI(cmd.OutOrStdout())
+
+	safeDir, err := safeStateDir(state)
+	if err != nil {
+		return false, err
+	}
+
+	var issues []string
+
+	// 1. Missing config.json (Load returned defaults).
+	if !fileExists(config.StatePath(state.DataDir)) {
+		issues = append(issues, "config.json is missing (no previous init)")
+	}
+
+	// 2. Missing secrets.
+	if state.JWTSecret == "" {
+		issues = append(issues, "JWT secret is not configured")
+	}
+	if state.SettingsKey == "" {
+		issues = append(issues, "settings encryption key is not configured")
+	}
+
+	// 3. Missing compose.yml.
+	composePath := filepath.Join(safeDir, "compose.yml")
+	if !fileExists(composePath) {
+		issues = append(issues, "compose.yml is missing")
+	}
+
+	// 4. Missing Docker images for the configured tag.
+	if state.ImageTag != "" {
+		info, dockerErr := docker.Detect(ctx)
+		if dockerErr == nil {
+			if missing := detectMissingImages(ctx, info, state); len(missing) > 0 {
+				issues = append(issues, fmt.Sprintf("container images missing locally for %s (%s)",
+					state.ImageTag, strings.Join(missing, ", ")))
+			}
+		}
+	}
+
+	if len(issues) == 0 {
+		return false, nil
+	}
+
+	out.Warn("Installation appears incomplete:")
+	for _, issue := range issues {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", issue)
+	}
+
+	if !isInteractive() {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(),
+			"\nNon-interactive mode: run 'synthorg init' to restore a clean installation.")
+		return true, nil
+	}
+
+	var recover bool
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().
+			Title("Recover by pulling images and regenerating compose?").
+			Description("Choose 'No' to run 'synthorg init' for a fresh setup instead.").
+			Value(&recover),
+	))
+	if err := form.Run(); err != nil {
+		return false, err
+	}
+	if !recover {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Run 'synthorg init' to restore a clean installation.")
+		return true, nil
+	}
+	return false, nil
+}
+
+// detectMissingImages checks which SynthOrg service images are missing locally
+// for the given state's image tag.
+func detectMissingImages(ctx context.Context, info docker.Info, state config.State) []string {
+	services := []string{"backend", "web"}
+	if state.Sandbox {
+		services = append(services, "sandbox")
+	}
+
+	var missing []string
+	for _, svc := range services {
+		ref := fmt.Sprintf("ghcr.io/aureliolo/synthorg-%s:%s", svc, state.ImageTag)
+		idsOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
+			"--filter", "reference="+ref,
+			"--format", "{{.ID}}")
+		if err != nil || strings.TrimSpace(idsOut) == "" {
+			missing = append(missing, svc)
+		}
+	}
+	return missing
+}
+
+// cleanupOldImages offers to remove non-current SynthOrg images after a
+// successful upgrade. Identifies current images by their Docker image ID
+// (handles both tagged and digest-pinned references).
+func cleanupOldImages(cmd *cobra.Command, info docker.Info, state config.State) error {
+	ctx := cmd.Context()
+	out := cmd.OutOrStdout()
+
+	// Collect IDs of the just-pulled (current) images.
+	currentIDs := make(map[string]bool)
+	services := []string{"backend", "web"}
+	if state.Sandbox {
+		services = append(services, "sandbox")
+	}
+	for _, svc := range services {
+		ref := fmt.Sprintf("ghcr.io/aureliolo/synthorg-%s:%s", svc, state.ImageTag)
+		idOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
+			"--filter", "reference="+ref,
+			"--format", "{{.ID}}")
+		if err != nil {
+			continue
+		}
+		for _, id := range strings.Fields(strings.TrimSpace(idOut)) {
+			currentIDs[id] = true
+		}
+	}
+
+	// List ALL SynthOrg images (any tag, including <none>).
+	imageRef := "ghcr.io/aureliolo/synthorg-*"
+	allOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
+		"--filter", "reference="+imageRef,
+		"--format", "{{.Repository}}:{{.Tag}} ({{.Size}})\t{{.ID}}")
+	if err != nil {
+		return nil // non-fatal
+	}
+
+	type oldImage struct {
+		display string
+		id      string
+	}
+	var old []oldImage
+	seen := make(map[string]bool)
+	for _, line := range strings.Split(strings.TrimSpace(allOut), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) < 2 {
+			continue
+		}
+		display, id := parts[0], parts[1]
+		if currentIDs[id] || seen[id] {
+			continue
+		}
+		seen[id] = true
+		old = append(old, oldImage{display: display, id: id})
+	}
+
+	if len(old) == 0 {
+		return nil
+	}
+
+	_, _ = fmt.Fprintln(out, "\nOld SynthOrg images found locally:")
+	for _, img := range old {
+		_, _ = fmt.Fprintf(out, "  %s\n", img.display)
+	}
+
+	if !isInteractive() {
+		_, _ = fmt.Fprintln(out, "Non-interactive mode: skipping image cleanup. Remove manually with 'docker rmi'.")
+		return nil
+	}
+
+	var remove bool
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().
+			Title(fmt.Sprintf("Remove %d old image(s)?", len(old))).
+			Value(&remove),
+	))
+	if err := form.Run(); err != nil {
+		return err
+	}
+	if !remove {
+		return nil
+	}
+
+	ids := make([]string, len(old))
+	for i, img := range old {
+		ids[i] = img.id
+	}
+	rmiArgs := append([]string{"rmi", "--force"}, ids...)
+	if _, rmiErr := docker.RunCmd(ctx, info.DockerPath, rmiArgs...); rmiErr != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: some images could not be removed: %v\n", rmiErr)
+	} else {
+		_, _ = fmt.Fprintf(out, "Removed %d old image(s).\n", len(old))
+	}
 	return nil
 }
 

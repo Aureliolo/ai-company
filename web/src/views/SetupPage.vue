@@ -28,20 +28,15 @@ interface StepDef {
   component: 'welcome' | 'admin' | 'provider' | 'company' | 'agent'
 }
 
-const steps = computed<StepDef[]>(() => {
-  const s: StepDef[] = [
-    { id: 'welcome', label: 'Welcome', component: 'welcome' },
-  ]
-  if (setup.isAdminNeeded) {
-    s.push({ id: 'admin', label: 'Admin', component: 'admin' })
-  }
-  s.push(
-    { id: 'provider', label: 'Provider', component: 'provider' },
-    { id: 'company', label: 'Company', component: 'company' },
-    { id: 'agent', label: 'Agent', component: 'agent' },
-  )
-  return s
-})
+// Always show all 5 steps -- admin never disappears. Step indices stay
+// consistent across refreshes so navigation doesn't break.
+const steps = computed<StepDef[]>(() => [
+  { id: 'welcome', label: 'Welcome', component: 'welcome' },
+  { id: 'admin', label: 'Admin', component: 'admin' },
+  { id: 'provider', label: 'Provider', component: 'provider' },
+  { id: 'company', label: 'Company', component: 'company' },
+  { id: 'agent', label: 'Agent', component: 'agent' },
+])
 
 const currentStep = computed(() => steps.value[setup.currentStep] ?? steps.value[0])
 
@@ -52,7 +47,18 @@ const needsLogin = computed(
     setup.currentStep > 0,
 )
 
+/** Whether a step indicator shows as completed (checkmark). */
+function isStepDone(index: number): boolean {
+  const step = steps.value[index]
+  if (!step) return false
+  return setup.isStepComplete(step.id)
+}
+
 function handleNext() {
+  // Mark current step's welcome as done when advancing from it.
+  if (setup.currentStep === 0) {
+    setup.completedSteps.welcome = true
+  }
   setup.nextStep(steps.value.length)
 }
 
@@ -61,13 +67,25 @@ function handlePrevious() {
 }
 
 function handleStepClick(index: number) {
-  if (index < setup.currentStep) {
+  // Allow navigating to any completed step or the current step.
+  if (isStepDone(index) || index < setup.currentStep) {
     setup.setStep(index, steps.value.length)
   }
 }
 
-function handleCompanyCreated(companyName: string) {
+async function handleAdminComplete() {
+  await setup.fetchStatus()
+  setup.nextStep(steps.value.length)
+}
+
+async function handleProviderComplete() {
+  await setup.fetchStatus()
+  setup.nextStep(steps.value.length)
+}
+
+async function handleCompanyCreated(companyName: string) {
   createdCompanyName.value = companyName
+  await setup.fetchStatus()
   setup.nextStep(steps.value.length)
 }
 
@@ -80,22 +98,21 @@ function handleAgentComplete(agentName: string, providerName: string) {
 /**
  * Compute the correct step to resume at based on the setup status.
  * Uses backend-reported completion state to skip already-done steps.
+ * Step indices are now stable (always 0-4).
  */
 function computeResumeStep(): number {
   const status = setup.status
   if (!status) return 0
 
-  // If admin is needed, start at the beginning (Welcome -> Admin).
+  // On fresh setup (admin not yet created), start at Welcome (0).
+  // Only resume past Welcome if the user has already started the flow
+  // (at least one step is complete).
   if (status.needs_admin) return 0
 
-  // Find step indices by component type.
-  const providerIdx = steps.value.findIndex(s => s.component === 'provider')
-  const companyIdx = steps.value.findIndex(s => s.component === 'company')
-  const agentIdx = steps.value.findIndex(s => s.component === 'agent')
-
-  if (!status.has_providers && providerIdx >= 0) return providerIdx
-  if (!status.has_company && companyIdx >= 0) return companyIdx
-  if (!status.has_agents && agentIdx >= 0) return agentIdx
+  // Admin is done -- resume at the first incomplete step.
+  if (!status.has_providers) return 2 // Provider step
+  if (!status.has_company) return 3 // Company step
+  if (!status.has_agents) return 4 // Agent step
 
   // Everything is done -- shouldn't be here (redirect handles this).
   return 0
@@ -169,21 +186,21 @@ onMounted(async () => {
               data-testid="step-indicator"
               class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-colors"
               :class="[
-                index < setup.currentStep
+                isStepDone(index)
                   ? 'bg-brand-600 text-white cursor-pointer hover:bg-brand-500'
                   : index === setup.currentStep
                     ? 'border-2 border-brand-600 text-brand-400'
                     : 'border border-slate-700 text-slate-500',
               ]"
-              :role="index < setup.currentStep ? 'button' : undefined"
-              :tabindex="index < setup.currentStep ? 0 : undefined"
-              :title="index < setup.currentStep ? `Go back to ${step.label}` : step.label"
+              :role="isStepDone(index) ? 'button' : undefined"
+              :tabindex="isStepDone(index) ? 0 : undefined"
+              :title="isStepDone(index) ? `Go back to ${step.label}` : step.label"
               @click="handleStepClick(index)"
               @keydown.enter="handleStepClick(index)"
               @keydown.space.prevent="handleStepClick(index)"
             >
               <i
-                v-if="index < setup.currentStep"
+                v-if="isStepDone(index)"
                 class="pi pi-check text-xs"
               />
               <span v-else>{{ index + 1 }}</span>
@@ -191,7 +208,7 @@ onMounted(async () => {
             <div
               v-if="index < steps.length - 1"
               class="h-px w-8"
-              :class="index < setup.currentStep ? 'bg-brand-600' : 'bg-slate-700'"
+              :class="isStepDone(index) ? 'bg-brand-600' : 'bg-slate-700'"
             />
           </template>
         </div>
@@ -211,12 +228,12 @@ onMounted(async () => {
         />
         <SetupAdmin
           v-else-if="currentStep.component === 'admin'"
-          @next="handleNext"
+          @next="handleAdminComplete"
           @previous="handlePrevious"
         />
         <SetupProvider
           v-else-if="currentStep.component === 'provider'"
-          @next="handleNext"
+          @next="handleProviderComplete"
           @previous="handlePrevious"
         />
         <SetupCompany

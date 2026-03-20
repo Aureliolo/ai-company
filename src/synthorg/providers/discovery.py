@@ -202,6 +202,7 @@ async def discover_models(
     preset_name: str | None = None,
     *,
     headers: dict[str, str] | None = None,
+    trust_url: bool = False,
 ) -> tuple[ProviderModelConfig, ...]:
     """Discover available models from a provider endpoint.
 
@@ -214,31 +215,45 @@ async def discover_models(
             for Ollama, ``http://localhost:1234/v1`` for LM Studio).
         preset_name: Preset identifier hint for endpoint selection.
         headers: Optional auth headers to include in the request.
+        trust_url: When True, skip SSRF validation. Use only when
+            the URL originates from a trusted source (e.g. a preset's
+            ``candidate_urls`` or admin-entered during setup).
 
     Returns:
         Tuple of discovered model configs, or empty tuple on failure.
     """
     if preset_name == "ollama":
-        return await _discover_ollama(base_url, headers=headers)
-    return await _discover_standard_api(base_url, preset_name, headers=headers)
+        return await _discover_ollama(
+            base_url,
+            headers=headers,
+            trust_url=trust_url,
+        )
+    return await _discover_standard_api(
+        base_url,
+        preset_name,
+        headers=headers,
+        trust_url=trust_url,
+    )
 
 
 async def _discover_ollama(
     base_url: str,
     *,
     headers: dict[str, str] | None = None,
+    trust_url: bool = False,
 ) -> tuple[ProviderModelConfig, ...]:
     """Discover models from Ollama's ``/api/tags`` endpoint.
 
     Args:
         base_url: Ollama server URL.
         headers: Optional auth headers.
+        trust_url: Skip SSRF validation when True.
 
     Returns:
         Discovered models, or empty tuple on failure.
     """
     url = f"{base_url.rstrip('/')}/api/tags"
-    data = await _fetch_json(url, "ollama", headers=headers)
+    data = await _fetch_json(url, "ollama", headers=headers, trust_url=trust_url)
     if data is None:
         return ()
 
@@ -297,6 +312,7 @@ async def _discover_standard_api(
     preset_name: str | None,
     *,
     headers: dict[str, str] | None = None,
+    trust_url: bool = False,
 ) -> tuple[ProviderModelConfig, ...]:
     """Discover models from a standard ``/models`` endpoint.
 
@@ -307,12 +323,18 @@ async def _discover_standard_api(
         base_url: Provider base URL.
         preset_name: Preset name for logging context.
         headers: Optional auth headers.
+        trust_url: Skip SSRF validation when True.
 
     Returns:
         Discovered models, or empty tuple on failure.
     """
     url = f"{base_url.rstrip('/')}/models"
-    data = await _fetch_json(url, preset_name, headers=headers)
+    data = await _fetch_json(
+        url,
+        preset_name,
+        headers=headers,
+        trust_url=trust_url,
+    )
     if data is None:
         return ()
 
@@ -387,17 +409,18 @@ def _build_pinned_url(
     return pinned_url, original_host
 
 
-async def _fetch_json(
+async def _fetch_json_trusted(
     url: str,
     preset_name: str | None,
     *,
     headers: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
-    """Fetch JSON from a URL with timeout and error handling.
+    """Fetch JSON from a trusted URL without SSRF validation.
 
-    Validates the URL for SSRF safety before making the request.
-    Uses the resolved IP from validation to pin the connection,
-    preventing DNS rebinding between validation and the HTTP request.
+    Used for URLs that originate from preset ``candidate_urls`` or
+    were admin-entered during setup.  Local providers like Ollama
+    use localhost/private IPs by design, which SSRF validation would
+    block.
 
     Args:
         url: Full URL to fetch.
@@ -407,6 +430,64 @@ async def _fetch_json(
     Returns:
         Parsed JSON dict, or ``None`` on any failure.
     """
+    safe_url = _redact_url(url)
+    try:
+        return await _do_fetch_json(
+            url,
+            headers,
+            preset_name=preset_name,
+        )
+    except MemoryError, RecursionError:
+        raise
+    except httpx.ConnectError:
+        _log_fetch_failure(preset_name, "connection_refused", safe_url)
+    except httpx.TimeoutException:
+        _log_fetch_failure(preset_name, "timeout", safe_url)
+    except json.JSONDecodeError:
+        _log_fetch_failure(preset_name, "invalid_json_response", safe_url)
+    except Exception:
+        logger.warning(
+            PROVIDER_DISCOVERY_FAILED,
+            preset=preset_name,
+            reason="unexpected_error",
+            url=safe_url,
+            exc_info=True,
+        )
+    return None
+
+
+async def _fetch_json(
+    url: str,
+    preset_name: str | None,
+    *,
+    headers: dict[str, str] | None = None,
+    trust_url: bool = False,
+) -> dict[str, Any] | None:
+    """Fetch JSON from a URL with timeout and error handling.
+
+    Validates the URL for SSRF safety before making the request
+    unless ``trust_url`` is True (delegates to
+    :func:`_fetch_json_trusted` for preset-originated URLs).
+
+    Uses the resolved IP from validation to pin the connection,
+    preventing DNS rebinding between validation and the HTTP request.
+
+    Args:
+        url: Full URL to fetch.
+        preset_name: Preset name for logging context.
+        headers: Optional auth headers to include.
+        trust_url: When True, skip SSRF validation and IP pinning.
+
+    Returns:
+        Parsed JSON dict, or ``None`` on any failure.
+    """
+    if trust_url:
+        return await _fetch_json_trusted(
+            url,
+            preset_name,
+            headers=headers,
+        )
+
     safe_url = _redact_url(url)
     check = await _validate_discovery_url(url)
     if check.error is not None:

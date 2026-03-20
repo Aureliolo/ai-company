@@ -14,6 +14,15 @@ export const useSetupStore = defineStore('setup', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
 
+  /** Per-step completion state, synced from backend status. */
+  const completedSteps = ref<Record<string, boolean>>({
+    welcome: false,
+    admin: false,
+    provider: false,
+    company: false,
+    agent: false,
+  })
+
   // Fail-closed: if status hasn't loaded, assume setup IS needed.
   const isSetupNeeded = computed(() =>
     statusLoaded.value ? !!status.value?.needs_setup : true,
@@ -25,12 +34,34 @@ export const useSetupStore = defineStore('setup', () => {
     Math.max(MIN_PASSWORD_LENGTH, status.value?.min_password_length ?? MIN_PASSWORD_LENGTH),
   )
 
+  /** Check whether a step has been completed. */
+  function isStepComplete(stepId: string): boolean {
+    return completedSteps.value[stepId] ?? false
+  }
+
+  /** Sync completion map from the backend status response. */
+  function syncCompletionFromStatus(): void {
+    if (!status.value) return
+    completedSteps.value = {
+      ...completedSteps.value,
+      admin: !status.value.needs_admin,
+      provider: status.value.has_providers,
+      company: status.value.has_company,
+      agent: status.value.has_agents,
+    }
+    // Welcome is always complete once we've moved past it.
+    if (currentStep.value > 0) {
+      completedSteps.value = { ...completedSteps.value, welcome: true }
+    }
+  }
+
   async function fetchStatus() {
     loading.value = true
     error.value = null
     try {
       status.value = await setupApi.getSetupStatus()
       statusLoaded.value = true
+      syncCompletionFromStatus()
     } catch (err) {
       error.value = getErrorMessage(err)
       // statusLoaded stays false -- isSetupNeeded/isAdminNeeded
@@ -86,12 +117,15 @@ export const useSetupStore = defineStore('setup', () => {
     status,
     statusLoaded,
     currentStep,
+    completedSteps,
     templates,
     loading,
     error,
     isSetupNeeded,
     isAdminNeeded,
     minPasswordLength,
+    isStepComplete,
+    syncCompletionFromStatus,
     fetchStatus,
     fetchTemplates,
     nextStep,

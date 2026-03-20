@@ -361,8 +361,15 @@ class ProviderManagementService:
         base_url = request.base_url or preset.default_base_url
 
         # Auto-discover models for no-auth presets with a base URL.
+        # trust_url=True: URL comes from the preset's candidate_urls or
+        # was admin-entered during setup -- skip SSRF validation so
+        # localhost/private-IP providers (Ollama, LM Studio) work.
         if not models and preset.auth_type == AuthType.NONE and base_url:
-            discovered = await discover_models(base_url, preset.name)
+            discovered = await discover_models(
+                base_url,
+                preset.name,
+                trust_url=True,
+            )
             if discovered:
                 models = discovered
 
@@ -413,10 +420,14 @@ class ProviderManagementService:
 
         resolved_hint = preset_hint or _infer_preset_hint(config.base_url)
         headers = _build_discovery_headers(config)
+        # Trust URL when a preset hint is provided -- the URL was originally
+        # sourced from a preset's candidate_urls or admin-entered during
+        # setup, so SSRF validation would block valid localhost/private IPs.
         discovered = await discover_models(
             config.base_url,
             resolved_hint,
             headers=headers,
+            trust_url=preset_hint is not None,
         )
 
         if discovered:

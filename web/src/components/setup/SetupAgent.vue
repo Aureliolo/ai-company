@@ -65,6 +65,8 @@ const creating = ref(false)
 // Cached agent creation result so markComplete retries skip re-creation.
 // Component-scoped ref prevents leaking across mounts.
 const savedAgent: Ref<SetupAgentResponse | null> = ref(null)
+/** Whether user clicked Edit on the completed summary. */
+const editing = ref(false)
 
 /** All models across all configured providers, with provider name prefix. */
 const modelOptions = computed(() => {
@@ -102,6 +104,11 @@ const isValid = computed(
     selectedPersonality.value !== null,
 )
 
+/** Whether to show the completed summary. */
+const showSummary = computed(() =>
+  setupStore.isStepComplete('agent') && !editing.value && savedAgent.value !== null,
+)
+
 watch(selectedRole, (newRole) => {
   if (newRole && !agentName.value.trim()) {
     const roleSlug = newRole.replace(/\s+/g, '-').toLowerCase()
@@ -114,6 +121,10 @@ watch(selectedRole, (newRole) => {
 watch(selectedProvider, () => {
   selectedModel.value = null
 })
+
+function startEditing() {
+  editing.value = true
+}
 
 async function handleCreate() {
   if (creating.value) return
@@ -141,6 +152,7 @@ async function handleCreate() {
       budget_limit_monthly: null,
     })
     savedAgent.value = result
+    editing.value = false
 
     await setupStore.markComplete()
     emit('complete', result.name, result.model_provider)
@@ -169,97 +181,142 @@ onMounted(async () => {
       </p>
     </div>
 
-    <form class="space-y-4" @submit.prevent="handleCreate">
-      <div>
-        <label for="sa-role" class="mb-1 block text-sm text-slate-300">Role</label>
-        <Select
-          v-model="selectedRole"
-          input-id="sa-role"
-          :options="ROLE_OPTIONS"
-          option-label="label"
-          option-value="value"
-          placeholder="Select a role..."
-          class="w-full"
+    <!-- Completed summary -->
+    <template v-if="showSummary && savedAgent">
+      <div class="rounded-lg border border-green-500/20 bg-green-500/10 p-4">
+        <div class="mb-3 flex items-center gap-2">
+          <i class="pi pi-check-circle text-xl text-green-400" />
+          <span class="text-sm font-medium text-green-300">Agent created</span>
+        </div>
+        <div class="space-y-1 text-sm text-slate-300">
+          <p>Name: <strong>{{ savedAgent.name }}</strong></p>
+          <p>Role: {{ savedAgent.role }}</p>
+          <p>Department: {{ savedAgent.department }}</p>
+          <p>Provider: {{ savedAgent.model_provider }}</p>
+          <p>Model: {{ savedAgent.model_id }}</p>
+        </div>
+        <Button
+          label="Edit"
+          icon="pi pi-pencil"
+          severity="secondary"
+          size="small"
+          outlined
+          class="mt-3"
+          @click="startEditing"
         />
       </div>
-
-      <div>
-        <label for="sa-name" class="mb-1 block text-sm text-slate-300">Agent Name</label>
-        <InputText
-          id="sa-name"
-          v-model="agentName"
-          class="w-full"
-          placeholder="e.g. agent-ceo-001"
-        />
-      </div>
-
-      <div>
-        <label for="sa-provider" class="mb-1 block text-sm text-slate-300">Provider</label>
-        <Select
-          v-model="selectedProvider"
-          input-id="sa-provider"
-          :options="providerOptions"
-          option-label="label"
-          option-value="value"
-          placeholder="All providers"
-          class="w-full"
-          show-clear
-        />
-      </div>
-
-      <div>
-        <label for="sa-model" class="mb-1 block text-sm text-slate-300">Model</label>
-        <Select
-          v-model="selectedModel"
-          input-id="sa-model"
-          :options="filteredModels"
-          option-label="label"
-          option-value="value"
-          placeholder="Select a model..."
-          class="w-full"
-        />
-      </div>
-
-      <div>
-        <label for="sa-personality" class="mb-1 block text-sm text-slate-300">Personality</label>
-        <Select
-          v-model="selectedPersonality"
-          input-id="sa-personality"
-          :options="PERSONALITY_PRESETS"
-          option-label="label"
-          option-value="value"
-          placeholder="Select a personality..."
-          class="w-full"
-        />
-      </div>
-
-      <div
-        v-if="error"
-        role="alert"
-        class="rounded bg-red-500/10 p-3 text-sm text-red-400"
-      >
-        {{ error }}
-      </div>
-
-      <div class="flex items-center gap-3">
+      <div class="mt-8 flex items-center gap-3">
         <Button
           type="button"
           label="Back"
           icon="pi pi-arrow-left"
           severity="secondary"
           outlined
-          :disabled="creating"
           @click="emit('previous')"
         />
         <Button
-          type="submit"
-          label="Create Agent & Finish"
-          icon="pi pi-user-plus"
+          label="Finish Setup"
+          icon="pi pi-check"
           class="flex-1"
-          :loading="creating"
-          :disabled="!isValid || creating"
+          @click="emit('complete', savedAgent.name, savedAgent.model_provider)"
         />
       </div>
-    </form>
+    </template>
+
+    <!-- Creation/edit form -->
+    <template v-else>
+      <form class="space-y-4" @submit.prevent="handleCreate">
+        <div>
+          <label for="sa-role" class="mb-1 block text-sm text-slate-300">Role</label>
+          <Select
+            v-model="selectedRole"
+            input-id="sa-role"
+            :options="ROLE_OPTIONS"
+            option-label="label"
+            option-value="value"
+            placeholder="Select a role..."
+            class="w-full"
+          />
+        </div>
+
+        <div>
+          <label for="sa-name" class="mb-1 block text-sm text-slate-300">Agent Name</label>
+          <InputText
+            id="sa-name"
+            v-model="agentName"
+            class="w-full"
+            placeholder="e.g. agent-ceo-001"
+          />
+        </div>
+
+        <div>
+          <label for="sa-provider" class="mb-1 block text-sm text-slate-300">Provider</label>
+          <Select
+            v-model="selectedProvider"
+            input-id="sa-provider"
+            :options="providerOptions"
+            option-label="label"
+            option-value="value"
+            placeholder="All providers"
+            class="w-full"
+            show-clear
+          />
+        </div>
+
+        <div>
+          <label for="sa-model" class="mb-1 block text-sm text-slate-300">Model</label>
+          <Select
+            v-model="selectedModel"
+            input-id="sa-model"
+            :options="filteredModels"
+            option-label="label"
+            option-value="value"
+            placeholder="Select a model..."
+            class="w-full"
+          />
+        </div>
+
+        <div>
+          <label for="sa-personality" class="mb-1 block text-sm text-slate-300">Personality</label>
+          <Select
+            v-model="selectedPersonality"
+            input-id="sa-personality"
+            :options="PERSONALITY_PRESETS"
+            option-label="label"
+            option-value="value"
+            placeholder="Select a personality..."
+            class="w-full"
+          />
+        </div>
+
+        <div
+          v-if="error"
+          role="alert"
+          class="rounded bg-red-500/10 p-3 text-sm text-red-400"
+        >
+          {{ error }}
+        </div>
+
+        <div class="flex items-center gap-3">
+          <Button
+            type="button"
+            label="Back"
+            icon="pi pi-arrow-left"
+            severity="secondary"
+            outlined
+            :disabled="creating"
+            @click="emit('previous')"
+          />
+          <Button
+            type="submit"
+            label="Create Agent & Finish"
+            icon="pi pi-user-plus"
+            class="flex-1"
+            :loading="creating"
+            :disabled="!isValid || creating"
+          />
+        </div>
+      </form>
+    </template>
   </div>
 </template>

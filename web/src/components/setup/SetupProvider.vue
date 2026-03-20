@@ -4,6 +4,7 @@ import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useProviderStore } from '@/stores/providers'
+import { useSetupStore } from '@/stores/setup'
 import { getErrorMessage } from '@/utils/errors'
 import type { ProviderPreset, TestConnectionResponse } from '@/api/types'
 
@@ -13,6 +14,7 @@ const emit = defineEmits<{
 }>()
 
 const store = useProviderStore()
+const setupStore = useSetupStore()
 
 const selectedPreset = ref<ProviderPreset | null>(null)
 const providerName = ref('')
@@ -29,6 +31,8 @@ let probeGeneration = 0
 const createdProviderName = ref<string | null>(null)
 const testPassed = ref(false)
 const testResult = ref<TestConnectionResponse | null>(null)
+/** Whether user is changing an existing provider. */
+const changingProvider = ref(false)
 
 const hasProviders = computed(() => Object.keys(store.providers).length > 0)
 
@@ -44,6 +48,11 @@ const hasModels = computed(() => {
 
 const canProceed = computed(() => hasProviders.value && hasModels.value && testPassed.value)
 
+/** Whether to show the completed summary state. */
+const showSummary = computed(() =>
+  setupStore.isStepComplete('provider') && !changingProvider.value,
+)
+
 const isFormValid = computed(() => {
   if (probing.value) return false
   if (!selectedPreset.value) return false
@@ -58,8 +67,6 @@ const isFormValid = computed(() => {
 })
 
 // Clear stale probe banner when the user manually edits baseUrl.
-// Covers both success (probedUrl set, user changes it) and failure
-// (probedUrl null, "Not detected" message, user types a URL).
 watch(baseUrl, (val) => {
   if (!probeMessage.value) return
   if (probedUrl.value ? val !== probedUrl.value : val) {
@@ -151,6 +158,26 @@ function clearSelection() {
   error.value = null
 }
 
+async function handleChangeProvider() {
+  if (!createdProviderName.value) {
+    changingProvider.value = true
+    return
+  }
+  const nameToDelete = createdProviderName.value
+  try {
+    await store.deleteProvider(nameToDelete)
+  } catch (err) {
+    error.value = getErrorMessage(err)
+    return
+  }
+  createdProviderName.value = null
+  selectedPreset.value = null
+  testPassed.value = false
+  testResult.value = null
+  error.value = null
+  changingProvider.value = true
+}
+
 async function handleAddProvider() {
   if (!selectedPreset.value) return
   creating.value = true
@@ -166,11 +193,10 @@ async function handleAddProvider() {
     })
     createdProviderName.value = providerName.value
 
-    // Auto-discover models for no-auth presets if provider has 0 models.
-    const provider = store.providers[providerName.value]
-    if (provider && provider.models.length === 0 && selectedPreset.value.auth_type === 'none') {
-      await handleDiscoverModels()
-    }
+    // Always run model discovery after creation to ensure consistent
+    // state. The backend auto-discovers during creation for no-auth
+    // presets, but re-fetching ensures the store is up to date.
+    await handleDiscoverModels()
   } catch (err) {
     error.value = getErrorMessage(err)
   } finally {
@@ -244,205 +270,261 @@ onMounted(async () => {
       </p>
     </div>
 
-    <!-- Already created state -->
-    <div
-      v-if="createdProviderName && !selectedPreset"
-      class="mb-6 rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-center"
-    >
-      <i class="pi pi-check-circle mb-2 text-2xl text-green-400" />
-      <p class="text-sm text-green-300">
-        Provider <strong>{{ createdProviderName }}</strong> is configured.
-      </p>
-    </div>
-
-    <!-- Preset cards (show when no preset is selected and no provider created yet) -->
-    <template v-if="!selectedPreset && !createdProviderName">
-      <div class="grid grid-cols-2 gap-3">
-        <button
-          v-for="preset in store.presets"
-          :key="preset.name"
-          class="rounded-lg border border-slate-700 bg-slate-900 p-4 text-left transition-colors hover:border-brand-600 hover:bg-slate-800"
-          @click="selectPreset(preset)"
-        >
-          <div class="mb-2 flex items-center justify-between">
-            <span class="text-sm font-medium text-slate-100">{{ preset.display_name }}</span>
-            <Tag
-              :value="authTypeLabel(preset.auth_type)"
-              :severity="authTypeSeverity(preset.auth_type)"
-              class="text-[10px]"
-            />
-          </div>
-          <p class="text-xs leading-relaxed text-slate-400">{{ preset.description }}</p>
-        </button>
-      </div>
-    </template>
-
-    <!-- Configuration form (after selecting a preset) -->
-    <template v-if="selectedPreset && !createdProviderName">
-      <div class="mb-4 flex items-center gap-2">
-        <button
-          class="text-sm text-slate-400 hover:text-slate-200"
-          @click="clearSelection"
-        >
-          <i class="pi pi-arrow-left mr-1" />Back
-        </button>
-        <span class="text-sm text-slate-300">
-          Configuring <strong>{{ selectedPreset.display_name }}</strong>
-        </span>
-      </div>
-
-      <form class="space-y-4" @submit.prevent="handleAddProvider">
-        <div>
-          <label for="sp-name" class="mb-1 block text-sm text-slate-300">Provider Name</label>
-          <InputText
-            id="sp-name"
-            v-model="providerName"
-            class="w-full"
-            placeholder="my-provider"
-          />
+    <!-- Completed summary state -->
+    <template v-if="showSummary && createdProviderName && createdProvider">
+      <div class="rounded-lg border border-green-500/20 bg-green-500/10 p-4">
+        <div class="mb-3 flex items-center gap-2">
+          <i class="pi pi-check-circle text-xl text-green-400" />
+          <span class="text-sm font-medium text-green-300">Provider configured</span>
         </div>
-
-        <div>
-          <label for="sp-base-url" class="mb-1 block text-sm text-slate-300">Base URL</label>
-          <InputText
-            id="sp-base-url"
-            v-model="baseUrl"
-            class="w-full"
-            :disabled="probing"
-            :placeholder="selectedPreset.default_base_url ?? 'https://api.example.com'"
-          />
-          <div v-if="probing" aria-live="polite" class="mt-1 flex items-center gap-2 text-xs text-slate-400">
-            <i class="pi pi-spin pi-spinner" aria-hidden="true" />
-            <span>Detecting provider...</span>
-          </div>
-          <div
-            v-else-if="probeMessage"
-            role="status"
-            aria-live="polite"
-            class="mt-1 text-xs"
-            :class="probedUrl ? 'text-green-400' : 'text-amber-400'"
-          >
-            {{ probeMessage }}
-          </div>
+        <div class="space-y-1 text-sm text-slate-300">
+          <p>Name: <strong>{{ createdProviderName }}</strong></p>
+          <p v-if="createdProvider.base_url">URL: {{ createdProvider.base_url }}</p>
+          <p>Models: {{ createdProvider.models.length }} available</p>
+          <p v-if="testPassed" class="text-green-400">
+            <i class="pi pi-check-circle mr-1" />Connection tested
+          </p>
         </div>
-
-        <div v-if="selectedPreset.auth_type === 'api_key'">
-          <label for="sp-api-key" class="mb-1 block text-sm text-slate-300">API Key</label>
-          <InputText
-            id="sp-api-key"
-            v-model="apiKey"
-            type="password"
-            class="w-full"
-            placeholder="sk-..."
-          />
-        </div>
-
-        <div
-          v-if="error"
-          role="alert"
-          class="rounded bg-red-500/10 p-3 text-sm text-red-400"
-        >
-          {{ error }}
-        </div>
-
         <Button
-          type="submit"
-          label="Add Provider"
-          icon="pi pi-plus"
-          class="w-full"
-          :loading="creating"
-          :disabled="!isFormValid"
+          label="Change Provider"
+          icon="pi pi-refresh"
+          severity="secondary"
+          size="small"
+          outlined
+          class="mt-3"
+          @click="handleChangeProvider"
         />
-      </form>
-    </template>
-
-    <!-- Post-creation: discovery + test connection -->
-    <template v-if="createdProviderName">
-      <div class="mt-4 flex flex-col items-center gap-3">
-        <!-- No models guidance -->
-        <div
-          v-if="!hasModels"
-          class="w-full rounded-lg border border-amber-500/20 bg-amber-500/10 p-4"
-        >
-          <div class="mb-2 flex items-center gap-2">
-            <i class="pi pi-exclamation-triangle text-amber-400" />
-            <span class="text-sm font-medium text-amber-300">No models detected</span>
-          </div>
-          <p class="mb-3 text-xs leading-relaxed text-amber-200/80">
-            {{ noModelsGuidance }}
-          </p>
-          <Button
-            label="Retry Discovery"
-            icon="pi pi-refresh"
-            severity="warn"
-            size="small"
-            outlined
-            :loading="discovering"
-            @click="handleDiscoverModels"
-          />
-        </div>
-
-        <!-- Models found indicator -->
-        <div
-          v-if="hasModels && createdProvider"
-          class="w-full rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-center"
-        >
-          <p class="text-sm text-green-300">
-            <i class="pi pi-check-circle mr-1" />
-            {{ createdProvider.models.length }} model{{ createdProvider.models.length !== 1 ? 's' : '' }} available
-          </p>
-        </div>
-
-        <!-- Test connection (only show when models exist) -->
-        <template v-if="hasModels">
-          <div v-if="!testPassed" class="flex items-center gap-3">
-            <Button
-              label="Test Connection"
-              icon="pi pi-bolt"
-              severity="info"
-              size="small"
-              :loading="testing"
-              @click="handleTestConnection"
-            />
-          </div>
-          <div v-if="testResult" class="text-center">
-            <p v-if="testResult.success" class="text-sm text-green-400">
-              <i class="pi pi-check-circle mr-1" />
-              Connection successful{{ testResult.latency_ms != null ? ` (${testResult.latency_ms}ms)` : '' }}
-            </p>
-            <p v-else class="text-sm text-red-400">
-              <i class="pi pi-times-circle mr-1" />
-              {{ testResult.error ?? 'Connection failed' }}
-            </p>
-          </div>
-        </template>
-
-        <div
-          v-if="error && createdProviderName"
-          role="alert"
-          class="mt-2 w-full rounded bg-red-500/10 p-3 text-sm text-red-400"
-        >
-          {{ error }}
-        </div>
+      </div>
+      <div class="mt-8 flex justify-between">
+        <Button
+          label="Back"
+          icon="pi pi-arrow-left"
+          severity="secondary"
+          outlined
+          @click="emit('previous')"
+        />
+        <Button
+          label="Next"
+          icon="pi pi-arrow-right"
+          icon-pos="right"
+          @click="emit('next')"
+        />
       </div>
     </template>
 
-    <!-- Navigation buttons -->
-    <div class="mt-8 flex justify-between">
-      <Button
-        label="Back"
-        icon="pi pi-arrow-left"
-        severity="secondary"
-        outlined
-        @click="emit('previous')"
-      />
-      <Button
-        label="Next"
-        icon="pi pi-arrow-right"
-        icon-pos="right"
-        :disabled="!canProceed"
-        @click="emit('next')"
-      />
-    </div>
+    <!-- Active provider setup -->
+    <template v-else>
+      <!-- Already created state (within active setup, not summary) -->
+      <div
+        v-if="createdProviderName && !selectedPreset"
+        class="mb-6 rounded-lg border border-green-500/20 bg-green-500/10 p-4 text-center"
+      >
+        <i class="pi pi-check-circle mb-2 text-2xl text-green-400" />
+        <p class="text-sm text-green-300">
+          Provider <strong>{{ createdProviderName }}</strong> is configured.
+        </p>
+      </div>
+
+      <!-- Preset cards (show when no preset is selected and no provider created yet) -->
+      <template v-if="!selectedPreset && !createdProviderName">
+        <div class="grid grid-cols-2 gap-3">
+          <button
+            v-for="preset in store.presets"
+            :key="preset.name"
+            class="rounded-lg border border-slate-700 bg-slate-900 p-4 text-left transition-colors hover:border-brand-600 hover:bg-slate-800"
+            @click="selectPreset(preset)"
+          >
+            <div class="mb-2 flex items-center justify-between">
+              <span class="text-sm font-medium text-slate-100">{{ preset.display_name }}</span>
+              <Tag
+                :value="authTypeLabel(preset.auth_type)"
+                :severity="authTypeSeverity(preset.auth_type)"
+                class="text-[10px]"
+              />
+            </div>
+            <p class="text-xs leading-relaxed text-slate-400">{{ preset.description }}</p>
+          </button>
+        </div>
+      </template>
+
+      <!-- Configuration form (after selecting a preset) -->
+      <template v-if="selectedPreset && !createdProviderName">
+        <div class="mb-4 flex items-center gap-2">
+          <button
+            class="text-sm text-slate-400 hover:text-slate-200"
+            @click="clearSelection"
+          >
+            <i class="pi pi-arrow-left mr-1" />Back
+          </button>
+          <span class="text-sm text-slate-300">
+            Configuring <strong>{{ selectedPreset.display_name }}</strong>
+          </span>
+        </div>
+
+        <form class="space-y-4" @submit.prevent="handleAddProvider">
+          <div>
+            <label for="sp-name" class="mb-1 block text-sm text-slate-300">Provider Name</label>
+            <InputText
+              id="sp-name"
+              v-model="providerName"
+              class="w-full"
+              placeholder="my-provider"
+            />
+          </div>
+
+          <div>
+            <label for="sp-base-url" class="mb-1 block text-sm text-slate-300">Base URL</label>
+            <InputText
+              id="sp-base-url"
+              v-model="baseUrl"
+              class="w-full"
+              :disabled="probing"
+              :placeholder="selectedPreset.default_base_url ?? 'https://api.example.com'"
+            />
+            <div v-if="probing" aria-live="polite" class="mt-1 flex items-center gap-2 text-xs text-slate-400">
+              <i class="pi pi-spin pi-spinner" aria-hidden="true" />
+              <span>Detecting provider...</span>
+            </div>
+            <div
+              v-else-if="probeMessage"
+              role="status"
+              aria-live="polite"
+              class="mt-1 text-xs"
+              :class="probedUrl ? 'text-green-400' : 'text-amber-400'"
+            >
+              {{ probeMessage }}
+            </div>
+          </div>
+
+          <div v-if="selectedPreset.auth_type === 'api_key'">
+            <label for="sp-api-key" class="mb-1 block text-sm text-slate-300">API Key</label>
+            <InputText
+              id="sp-api-key"
+              v-model="apiKey"
+              type="password"
+              class="w-full"
+              placeholder="sk-..."
+            />
+          </div>
+
+          <div
+            v-if="error"
+            role="alert"
+            class="rounded bg-red-500/10 p-3 text-sm text-red-400"
+          >
+            {{ error }}
+          </div>
+
+          <Button
+            type="submit"
+            label="Add Provider"
+            icon="pi pi-plus"
+            class="w-full"
+            :loading="creating"
+            :disabled="!isFormValid"
+          />
+        </form>
+      </template>
+
+      <!-- Post-creation: discovery + test connection -->
+      <template v-if="createdProviderName">
+        <div class="mt-4 flex flex-col items-center gap-3">
+          <!-- No models guidance -->
+          <div
+            v-if="!hasModels"
+            class="w-full rounded-lg border border-amber-500/20 bg-amber-500/10 p-4"
+          >
+            <div class="mb-2 flex items-center gap-2">
+              <i class="pi pi-exclamation-triangle text-amber-400" />
+              <span class="text-sm font-medium text-amber-300">No models detected</span>
+            </div>
+            <p class="mb-3 text-xs leading-relaxed text-amber-200/80">
+              {{ noModelsGuidance }}
+            </p>
+            <Button
+              label="Retry Discovery"
+              icon="pi pi-refresh"
+              severity="warn"
+              size="small"
+              outlined
+              :loading="discovering"
+              @click="handleDiscoverModels"
+            />
+          </div>
+
+          <!-- Models found indicator -->
+          <div
+            v-if="hasModels && createdProvider"
+            class="w-full rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-center"
+          >
+            <p class="text-sm text-green-300">
+              <i class="pi pi-check-circle mr-1" />
+              {{ createdProvider.models.length }} model{{ createdProvider.models.length !== 1 ? 's' : '' }} available
+            </p>
+          </div>
+
+          <!-- Test connection (only show when models exist) -->
+          <template v-if="hasModels">
+            <div v-if="!testPassed" class="flex items-center gap-3">
+              <Button
+                label="Test Connection"
+                icon="pi pi-bolt"
+                severity="info"
+                size="small"
+                :loading="testing"
+                @click="handleTestConnection"
+              />
+            </div>
+            <div v-if="testResult" class="text-center">
+              <p v-if="testResult.success" class="text-sm text-green-400">
+                <i class="pi pi-check-circle mr-1" />
+                Connection successful{{ testResult.latency_ms != null ? ` (${testResult.latency_ms}ms)` : '' }}
+              </p>
+              <p v-else class="text-sm text-red-400">
+                <i class="pi pi-times-circle mr-1" />
+                {{ testResult.error ?? 'Connection failed' }}
+              </p>
+            </div>
+          </template>
+
+          <!-- Change provider button -->
+          <Button
+            label="Change Provider"
+            icon="pi pi-refresh"
+            severity="secondary"
+            size="small"
+            text
+            class="mt-2"
+            @click="handleChangeProvider"
+          />
+
+          <div
+            v-if="error && createdProviderName"
+            role="alert"
+            class="mt-2 w-full rounded bg-red-500/10 p-3 text-sm text-red-400"
+          >
+            {{ error }}
+          </div>
+        </div>
+      </template>
+
+      <!-- Navigation buttons -->
+      <div class="mt-8 flex justify-between">
+        <Button
+          label="Back"
+          icon="pi pi-arrow-left"
+          severity="secondary"
+          outlined
+          @click="emit('previous')"
+        />
+        <Button
+          label="Next"
+          icon="pi pi-arrow-right"
+          icon-pos="right"
+          :disabled="!canProceed"
+          @click="emit('next')"
+        />
+      </div>
+    </template>
   </div>
 </template>
