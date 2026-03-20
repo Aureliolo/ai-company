@@ -523,7 +523,14 @@ export interface ProviderPreset {
   driver: string
   auth_type: AuthType
   default_base_url: string | null
+  candidate_urls: string[]
   default_models: ProviderModelConfig[]
+}
+
+export interface ProbePresetResponse {
+  url: string | null
+  model_count: number
+  candidates_tried: number
 }
 
 export interface CreateFromPresetRequest {

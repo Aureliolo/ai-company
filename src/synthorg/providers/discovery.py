@@ -4,6 +4,9 @@ Discovers available models from provider endpoints in two scenarios:
 (1) auto-discovery when a preset is created with no explicit model list
 (e.g. Ollama, LM Studio, vLLM), and (2) on-demand discovery for
 existing providers via the ``POST /{name}/discover-models`` endpoint.
+
+Also provides URL probing: given a preset's candidate URLs, tries each
+in order and returns the first reachable one with discovered models.
 """
 
 import asyncio
@@ -14,12 +17,17 @@ from typing import Any, Final, NamedTuple
 from urllib.parse import urlparse, urlunparse
 
 import httpx
+from pydantic import BaseModel, ConfigDict
 
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_FAILED,
     PROVIDER_MODELS_DISCOVERED,
+    PROVIDER_PROBE_COMPLETED,
+    PROVIDER_PROBE_HIT,
+    PROVIDER_PROBE_MISS,
+    PROVIDER_PROBE_STARTED,
 )
 
 logger = get_logger(__name__)
@@ -501,3 +509,212 @@ def _log_fetch_failure(
         reason=reason,
         url=safe_url,
     )
+
+
+# ── Probe: try candidate URLs for a preset ──────────────────
+
+_PROBE_TIMEOUT_SECONDS: Final[float] = 5.0
+
+
+class ProbeResult(BaseModel):
+    """Result of probing a preset's candidate URLs.
+
+    Attributes:
+        url: The reachable base URL, or ``None`` if all failed.
+        model_count: Number of models discovered at the URL.
+        candidates_tried: Number of candidate URLs attempted.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    url: str | None = None
+    model_count: int = 0
+    candidates_tried: int = 0
+
+
+async def _probe_url_reachable(url: str) -> bool:
+    """Check if a URL responds with a non-error status.
+
+    Uses a short timeout and does not validate SSRF -- the caller
+    is responsible for using only preset-defined candidate URLs.
+
+    Args:
+        url: URL to probe (health or model-listing endpoint).
+
+    Returns:
+        ``True`` if the URL responded with 2xx, ``False`` otherwise.
+    """
+    try:
+        async with httpx.AsyncClient(
+            timeout=_PROBE_TIMEOUT_SECONDS,
+            follow_redirects=False,
+        ) as client:
+            response = await client.get(url)
+            return response.is_success
+    except Exception:
+        return False
+
+
+async def probe_preset_urls(
+    candidate_urls: tuple[str, ...],
+    preset_name: str,
+) -> ProbeResult:
+    """Probe candidate URLs for a preset and return the first reachable one.
+
+    Tries each URL sequentially (short timeout per URL). For the first
+    URL that responds, attempts model discovery and returns the result.
+
+    SSRF validation is intentionally skipped here because candidate URLs
+    come from the hardcoded preset definitions, not user input.
+
+    Args:
+        candidate_urls: URLs to probe in priority order.
+        preset_name: Preset name for discovery endpoint selection
+            and logging.
+
+    Returns:
+        Probe result with the reachable URL and model count,
+        or an empty result if no URL responded.
+    """
+    logger.info(
+        PROVIDER_PROBE_STARTED,
+        preset=preset_name,
+        candidate_count=len(candidate_urls),
+    )
+
+    for url in candidate_urls:
+        # Build the endpoint to probe depending on preset type.
+        if preset_name == "ollama":
+            probe_endpoint = f"{url.rstrip('/')}/api/tags"
+        else:
+            probe_endpoint = f"{url.rstrip('/')}/models"
+
+        reachable = await _probe_url_reachable(probe_endpoint)
+        if not reachable:
+            logger.debug(
+                PROVIDER_PROBE_MISS,
+                preset=preset_name,
+                url=_redact_url(url),
+            )
+            continue
+
+        logger.info(
+            PROVIDER_PROBE_HIT,
+            preset=preset_name,
+            url=_redact_url(url),
+        )
+
+        # Discovered a reachable URL -- try to get model count.
+        # Use direct fetch (bypass SSRF check since these are
+        # preset-defined URLs, not user input).
+        models = await _discover_from_probe(
+            preset_name,
+            probe_endpoint,
+        )
+        result = ProbeResult(
+            url=url,
+            model_count=len(models),
+            candidates_tried=candidate_urls.index(url) + 1,
+        )
+        logger.info(
+            PROVIDER_PROBE_COMPLETED,
+            preset=preset_name,
+            url=_redact_url(url),
+            model_count=result.model_count,
+            candidates_tried=result.candidates_tried,
+        )
+        return result
+
+    logger.info(
+        PROVIDER_PROBE_COMPLETED,
+        preset=preset_name,
+        url=None,
+        model_count=0,
+        candidates_tried=len(candidate_urls),
+    )
+    return ProbeResult(candidates_tried=len(candidate_urls))
+
+
+async def _discover_from_probe(
+    preset_name: str,
+    probe_endpoint: str,
+) -> tuple[ProviderModelConfig, ...]:
+    """Discover models from an already-probed URL.
+
+    Skips SSRF validation since the URL was already confirmed reachable
+    from a preset-defined candidate list.
+
+    Args:
+        preset_name: Preset name for parsing the response format.
+        probe_endpoint: The endpoint URL already confirmed reachable.
+
+    Returns:
+        Discovered model configs, or empty tuple on failure.
+    """
+    try:
+        async with httpx.AsyncClient(
+            timeout=_DISCOVERY_TIMEOUT_SECONDS,
+            follow_redirects=False,
+        ) as client:
+            response = await client.get(probe_endpoint)
+            response.raise_for_status()
+            data = response.json()
+    except Exception:
+        return ()
+
+    if not isinstance(data, dict):
+        return ()
+
+    if preset_name == "ollama":
+        return _parse_ollama_models(data)
+    return _parse_standard_models(data)
+
+
+def _parse_ollama_models(
+    data: dict[str, Any],
+) -> tuple[ProviderModelConfig, ...]:
+    """Parse Ollama model list response.
+
+    Args:
+        data: Parsed JSON response from ``/api/tags``.
+
+    Returns:
+        Tuple of model configs.
+    """
+    raw_models = data.get("models")
+    if not isinstance(raw_models, list):
+        return ()
+    models: list[ProviderModelConfig] = []
+    for entry in raw_models:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        models.append(ProviderModelConfig(id=f"ollama/{name}"))
+    return tuple(models)
+
+
+def _parse_standard_models(
+    data: dict[str, Any],
+) -> tuple[ProviderModelConfig, ...]:
+    """Parse standard ``/models`` list response.
+
+    Args:
+        data: Parsed JSON response from ``/models``.
+
+    Returns:
+        Tuple of model configs.
+    """
+    raw_data = data.get("data")
+    if not isinstance(raw_data, list):
+        return ()
+    models: list[ProviderModelConfig] = []
+    for entry in raw_data:
+        if not isinstance(entry, dict):
+            continue
+        model_id = entry.get("id")
+        if not isinstance(model_id, str) or not model_id.strip():
+            continue
+        models.append(ProviderModelConfig(id=model_id))
+    return tuple(models)

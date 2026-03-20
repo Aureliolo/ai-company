@@ -6,6 +6,7 @@ import type {
   CreateFromPresetRequest,
   CreateProviderRequest,
   DiscoverModelsResponse,
+  ProbePresetResponse,
   ProviderConfig,
   ProviderPreset,
   TestConnectionRequest,
@@ -112,6 +113,10 @@ export const useProviderStore = defineStore('providers', () => {
     }
   }
 
+  async function probePresetAction(presetName: string): Promise<ProbePresetResponse> {
+    return await providersApi.probePreset(presetName)
+  }
+
   async function discoverModelsAction(name: string): Promise<DiscoverModelsResponse> {
     try {
       const result = await providersApi.discoverModels(name)
@@ -135,6 +140,7 @@ export const useProviderStore = defineStore('providers', () => {
     deleteProvider,
     testConnection: testConnectionAction,
     createFromPreset,
+    probePreset: probePresetAction,
     discoverModels: discoverModelsAction,
   }
 })

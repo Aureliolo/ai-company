@@ -23,6 +23,8 @@ class ProviderPreset(BaseModel):
         driver: Driver backend name.
         auth_type: Required authentication type.
         default_base_url: Default API base URL.
+        candidate_urls: URLs to probe during auto-detection, in priority
+            order.  The first reachable URL becomes the base URL.
         default_models: Pre-configured model definitions.
     """
 
@@ -34,6 +36,7 @@ class ProviderPreset(BaseModel):
     driver: NotBlankStr
     auth_type: AuthType
     default_base_url: NotBlankStr | None = None
+    candidate_urls: tuple[str, ...] = ()
     default_models: tuple[ProviderModelConfig, ...] = ()
 
 
@@ -45,6 +48,11 @@ PROVIDER_PRESETS: tuple[ProviderPreset, ...] = (
         driver="litellm",
         auth_type=AuthType.NONE,
         default_base_url="http://localhost:11434",
+        candidate_urls=(
+            "http://host.docker.internal:11434",
+            "http://172.17.0.1:11434",
+            "http://localhost:11434",
+        ),
         default_models=(),
     ),
     ProviderPreset(
@@ -54,6 +62,11 @@ PROVIDER_PRESETS: tuple[ProviderPreset, ...] = (
         driver="litellm",
         auth_type=AuthType.NONE,
         default_base_url="http://localhost:1234/v1",
+        candidate_urls=(
+            "http://host.docker.internal:1234/v1",
+            "http://172.17.0.1:1234/v1",
+            "http://localhost:1234/v1",
+        ),
         default_models=(),
     ),
     ProviderPreset(
@@ -72,6 +85,11 @@ PROVIDER_PRESETS: tuple[ProviderPreset, ...] = (
         driver="litellm",
         auth_type=AuthType.NONE,
         default_base_url="http://localhost:8000/v1",
+        candidate_urls=(
+            "http://host.docker.internal:8000/v1",
+            "http://172.17.0.1:8000/v1",
+            "http://localhost:8000/v1",
+        ),
         default_models=(),
     ),
 )

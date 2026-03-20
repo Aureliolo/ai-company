@@ -588,6 +588,7 @@ def create_app(  # noqa: PLR0913
 
     return Litestar(
         route_handlers=[api_router],
+        logging_config=None,
         state=State({"app_state": app_state}),
         cors_config=CORSConfig(
             allow_origins=list(api_config.cors.allowed_origins),

@@ -55,3 +55,7 @@ PROVIDER_VALIDATION_FAILED: Final[str] = "provider.management.validation_failed"
 
 PROVIDER_MODELS_DISCOVERED: Final[str] = "provider.management.models_discovered"
 PROVIDER_DISCOVERY_FAILED: Final[str] = "provider.management.discovery_failed"
+PROVIDER_PROBE_STARTED: Final[str] = "provider.management.probe_started"
+PROVIDER_PROBE_HIT: Final[str] = "provider.management.probe_hit"
+PROVIDER_PROBE_MISS: Final[str] = "provider.management.probe_miss"
+PROVIDER_PROBE_COMPLETED: Final[str] = "provider.management.probe_completed"

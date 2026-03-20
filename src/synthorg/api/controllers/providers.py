@@ -12,6 +12,8 @@ from synthorg.api.dto import (
     CreateFromPresetRequest,
     CreateProviderRequest,
     DiscoverModelsResponse,
+    ProbePresetRequest,
+    ProbePresetResponse,
     ProviderResponse,
     TestConnectionResponse,
     UpdateProviderRequest,
@@ -31,12 +33,13 @@ from synthorg.observability.events.api import (
     API_RESOURCE_NOT_FOUND,
     API_VALIDATION_FAILED,
 )
+from synthorg.providers.discovery import probe_preset_urls
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
     ProviderNotFoundError,
     ProviderValidationError,
 )
-from synthorg.providers.presets import ProviderPreset, list_presets
+from synthorg.providers.presets import ProviderPreset, get_preset, list_presets
 
 logger = get_logger(__name__)
 
@@ -66,6 +69,52 @@ class ProviderController(Controller):
             Preset list envelope.
         """
         return ApiResponse(data=list_presets())
+
+    @post(
+        "/probe-preset",
+        guards=[require_write_access],
+    )
+    async def probe_preset(
+        self,
+        state: State,  # noqa: ARG002
+        data: ProbePresetRequest,
+    ) -> ApiResponse[ProbePresetResponse]:
+        """Probe a preset's candidate URLs for reachability.
+
+        Tries each candidate URL in priority order and returns the
+        first one that responds, along with the number of models
+        discovered.
+
+        Args:
+            state: Application state.
+            data: Probe request with preset name.
+
+        Returns:
+            Probe result envelope.
+
+        Raises:
+            ApiValidationError: If the preset is unknown or has no
+                candidate URLs.
+        """
+        preset = get_preset(data.preset_name)
+        if preset is None:
+            msg = f"Unknown preset: {data.preset_name!r}"
+            raise ApiValidationError(msg)
+        if not preset.candidate_urls:
+            return ApiResponse(
+                data=ProbePresetResponse(candidates_tried=0),
+            )
+        result = await probe_preset_urls(
+            preset.candidate_urls,
+            preset.name,
+        )
+        return ApiResponse(
+            data=ProbePresetResponse(
+                url=result.url,
+                model_count=result.model_count,
+                candidates_tried=result.candidates_tried,
+            ),
+        )
 
     @get(
         "/",

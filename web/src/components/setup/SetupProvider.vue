@@ -22,6 +22,8 @@ const error = ref<string | null>(null)
 const creating = ref(false)
 const testing = ref(false)
 const discovering = ref(false)
+const probing = ref(false)
+const probeMessage = ref<string | null>(null)
 const createdProviderName = ref<string | null>(null)
 const testPassed = ref(false)
 const testResult = ref<TestConnectionResponse | null>(null)
@@ -87,7 +89,7 @@ function authTypeSeverity(authType: string): 'info' | 'warn' | 'success' | 'seco
   }
 }
 
-function selectPreset(preset: ProviderPreset) {
+async function selectPreset(preset: ProviderPreset) {
   selectedPreset.value = preset
   providerName.value = preset.name
   baseUrl.value = preset.default_base_url ?? ''
@@ -96,6 +98,29 @@ function selectPreset(preset: ProviderPreset) {
   createdProviderName.value = null
   testPassed.value = false
   testResult.value = null
+  probeMessage.value = null
+
+  // Auto-probe candidate URLs for no-auth local presets.
+  if (preset.auth_type === 'none' && preset.candidate_urls.length > 0) {
+    probing.value = true
+    probeMessage.value = null
+    try {
+      const result = await store.probePreset(preset.name)
+      if (result.url) {
+        baseUrl.value = result.url
+        const modelText = result.model_count > 0
+          ? ` with ${result.model_count} model${result.model_count !== 1 ? 's' : ''}`
+          : ''
+        probeMessage.value = `Detected at ${result.url}${modelText}`
+      } else {
+        probeMessage.value = 'Not detected -- enter the URL manually'
+      }
+    } catch {
+      // Probe is best-effort; fall back to default URL silently.
+    } finally {
+      probing.value = false
+    }
+  }
 }
 
 function clearSelection() {
@@ -263,8 +288,22 @@ onMounted(async () => {
             id="sp-base-url"
             v-model="baseUrl"
             class="w-full"
+            :disabled="probing"
             :placeholder="selectedPreset.default_base_url ?? 'https://api.example.com'"
           />
+          <div v-if="probing" class="mt-1 flex items-center gap-2 text-xs text-slate-400">
+            <i class="pi pi-spin pi-spinner" />
+            Detecting provider...
+          </div>
+          <div
+            v-else-if="probeMessage"
+            class="mt-1 text-xs"
+            :class="baseUrl && baseUrl !== (selectedPreset.default_base_url ?? '')
+              ? 'text-green-400'
+              : 'text-amber-400'"
+          >
+            {{ probeMessage }}
+          </div>
         </div>
 
         <div v-if="selectedPreset.auth_type === 'api_key'">

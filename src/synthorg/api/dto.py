@@ -715,6 +715,34 @@ class DiscoverModelsResponse(BaseModel):
     provider_name: NotBlankStr
 
 
+class ProbePresetRequest(BaseModel):
+    """Request to probe a preset's candidate URLs for reachability.
+
+    Attributes:
+        preset_name: Preset identifier to probe.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    preset_name: NotBlankStr
+
+
+class ProbePresetResponse(BaseModel):
+    """Result of probing a preset's candidate URLs.
+
+    Attributes:
+        url: The first reachable base URL, or ``None`` if none responded.
+        model_count: Number of models discovered at the URL.
+        candidates_tried: Number of candidate URLs attempted.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    url: str | None = None
+    model_count: int = 0
+    candidates_tried: int = 0
+
+
 def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     """Convert a ProviderConfig to a safe ProviderResponse.
 
