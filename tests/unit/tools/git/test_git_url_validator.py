@@ -2,7 +2,6 @@
 
 import asyncio
 import ipaddress
-import socket
 from unittest.mock import AsyncMock
 
 import pytest
@@ -19,6 +18,9 @@ from synthorg.tools.git_url_validator import (
     is_allowed_clone_scheme,
     validate_clone_url_host,
 )
+
+from .conftest import dns_result as _dns_result
+from .conftest import dns_result_v6 as _dns_result_v6
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -357,26 +359,6 @@ class TestGitCloneNetworkPolicy:
 
 
 # ── validate_clone_url_host ───────────────────────────────────────
-
-
-def _dns_result(
-    *addrs: str,
-) -> list[tuple[int, int, int, str, tuple[str, int]]]:
-    """Build a fake getaddrinfo result list (AF_INET)."""
-    return [
-        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (addr, 0))
-        for addr in addrs
-    ]
-
-
-def _dns_result_v6(
-    *addrs: str,
-) -> list[tuple[int, int, int, str, tuple[str, int, int, int]]]:
-    """Build a fake getaddrinfo result list (AF_INET6)."""
-    return [
-        (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (addr, 0, 0, 0))
-        for addr in addrs
-    ]
 
 
 @pytest.mark.unit

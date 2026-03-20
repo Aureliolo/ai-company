@@ -11,17 +11,23 @@ TOCTOU DNS rebinding is mitigated by two complementary strategies:
 
 * **HTTPS URLs** -- the validated IPs are returned to the caller so
   it can pin ``git clone`` via ``-c http.curloptResolve`` (requires
-  git >= 2.22, which uses libcurl under the hood).
+  git >= 2.22, which uses libcurl under the hood).  This fully
+  closes the TOCTOU gap for HTTPS.
 * **SSH / SCP-like URLs** -- a second DNS resolution is performed
   immediately before execution and compared against the first; if new
   IPs appear that were not in the validated set the clone is blocked.
+  Note: a residual TOCTOU window (~microseconds) exists between the
+  second resolve and ``git clone`` execution; this is irreducible
+  without OS-level DNS pinning.
 
 Both mitigations can be disabled via
 ``GitCloneNetworkPolicy(dns_rebinding_mitigation=False)`` for
 environments where DNS results legitimately vary between resolves
-(CDN, geo-DNS, etc.).  For defense-in-depth, combine with
-network-level egress controls (firewall, HTTP CONNECT proxy).
-See the sandbox design page for planned network isolation.
+(CDN, geo-DNS, etc.).  Disabling ``block_private_ips`` also
+implicitly disables TOCTOU mitigation (no IPs are resolved).
+For defense-in-depth, combine with network-level egress controls
+(firewall, HTTP CONNECT proxy).  See the sandbox design page for
+planned network isolation.
 """
 
 import asyncio
@@ -40,6 +46,8 @@ from synthorg.observability.events.git import (
     GIT_CLONE_SSRF_BLOCKED,
     GIT_CLONE_SSRF_DISABLED,
 )
+
+_CONTROL_CHAR_RE: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]")
 
 logger = get_logger(__name__)
 
@@ -105,8 +113,11 @@ class GitCloneNetworkPolicy(BaseModel):
         block_private_ips: Master switch for private IP blocking.
             When ``False``, **all** hosts are allowed regardless
             of IP -- use only in development.
-        dns_resolution_timeout: Timeout in seconds for async DNS
-            resolution.
+        dns_resolution_timeout: Timeout in seconds for each async
+            DNS resolution.  For SSH/SCP URLs with
+            ``dns_rebinding_mitigation=True``, up to two DNS lookups
+            are performed (initial + consistency check), so the
+            worst-case wall time is ``2 * dns_resolution_timeout``.
         dns_rebinding_mitigation: Enable TOCTOU DNS rebinding
             mitigation.  When ``True`` (default), HTTPS clones use
             ``http.curloptResolve`` to pin git to validated IPs,
@@ -308,6 +319,11 @@ def build_curl_resolve_value(
         ValueError: If *ips* is empty.
     """
     if not ips:
+        logger.warning(
+            GIT_CLONE_DNS_FAILED,
+            hostname=hostname,
+            reason="empty_ips_for_curl_resolve",
+        )
         msg = "ips must not be empty"
         raise ValueError(msg)
     return f"{hostname}:{port}:{','.join(ips)}"
@@ -329,7 +345,7 @@ def _dns_failure(hostname: str, reason: str, message: str) -> str:
 async def _resolve_dns(
     hostname: str,
     dns_timeout: float,
-) -> list[tuple[Any, ...]] | str:
+) -> str | list[tuple[Any, ...]]:
     """Resolve *hostname* via async DNS.
 
     Args:
@@ -337,8 +353,8 @@ async def _resolve_dns(
         dns_timeout: DNS resolution timeout in seconds.
 
     Returns:
-        The raw ``getaddrinfo`` result list on success, or an error
-        message string on failure.
+        An error message string on failure, or the raw
+        ``getaddrinfo`` result list on success.
     """
     loop = asyncio.get_running_loop()
     try:
@@ -473,8 +489,8 @@ async def verify_dns_consistency(
         )
         return (
             f"DNS rebinding detected for {hostname!r}: "
-            f"re-resolved IPs {sorted(new_ips)} differ from "
-            f"validated IPs {sorted(expected_ips)}"
+            f"re-resolved IPs {sorted(new_ips)} include addresses "
+            f"not in validated set {sorted(expected_ips)}"
         )
 
     return None
@@ -499,7 +515,7 @@ def _ok(
     )
 
 
-async def validate_clone_url_host(  # noqa: PLR0911
+async def validate_clone_url_host(  # noqa: PLR0911, C901
     url: str,
     policy: GitCloneNetworkPolicy,
 ) -> str | DnsValidationOk:
@@ -532,10 +548,24 @@ async def validate_clone_url_host(  # noqa: PLR0911
         return f"Could not extract hostname from clone URL: {redacted!r}"
 
     normalized = hostname.lower()
+
+    # Reject hostnames with control characters (defense-in-depth
+    # against injection in curloptResolve values).
+    if _CONTROL_CHAR_RE.search(normalized):
+        logger.warning(
+            GIT_CLONE_SSRF_BLOCKED,
+            hostname=repr(normalized),
+            reason="hostname_contains_control_characters",
+        )
+        return f"Clone URL hostname contains invalid characters: {normalized!r}"
+
     is_https = url.startswith("https://")
     port: int | None = None
     if is_https:
-        port = urlparse(url).port or 443
+        raw_port = urlparse(url).port
+        if raw_port is not None and raw_port <= 0:
+            return f"Invalid port in clone URL: {raw_port!r}"
+        port = raw_port or 443
 
     # Allowlist bypass (pre-normalized to lowercase at construction)
     if normalized in policy.hostname_allowlist:

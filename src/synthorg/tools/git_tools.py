@@ -14,6 +14,7 @@ from synthorg.core.enums import ActionType
 from synthorg.observability import get_logger
 from synthorg.observability.events.git import (
     GIT_CLONE_DNS_PINNED,
+    GIT_CLONE_TOCTOU_SKIPPED,
     GIT_CLONE_URL_REJECTED,
     GIT_COMMAND_START,
 )
@@ -22,6 +23,7 @@ from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.git_url_validator import (
     _CREDENTIAL_RE,
     ALLOWED_CLONE_SCHEMES,
+    DnsValidationOk,
     GitCloneNetworkPolicy,
     build_curl_resolve_value,
     is_allowed_clone_scheme,
@@ -30,7 +32,6 @@ from synthorg.tools.git_url_validator import (
 )
 
 if TYPE_CHECKING:
-    from synthorg.tools.git_url_validator import DnsValidationOk
     from synthorg.tools.sandbox.protocol import SandboxBackend
 
 logger = get_logger(__name__)
@@ -678,21 +679,23 @@ class GitCloneTool(_BaseGitTool):
             validation: Successful DNS validation result.
 
         Returns:
-            Updated *args* list on success, or a
+            The *args* list (potentially augmented with DNS pinning
+            config for HTTPS) on success, or a
             ``ToolExecutionResult`` with ``is_error=True`` if DNS
             rebinding is detected.
         """
         if not validation.resolved_ips:
-            # Literal IP, allowlisted host, or mitigation disabled
+            # Literal IP, allowlisted host, IP blocking disabled,
+            # or TOCTOU mitigation disabled -- no IPs to pin.
             logger.debug(
-                GIT_COMMAND_START,
+                GIT_CLONE_TOCTOU_SKIPPED,
                 hostname=validation.hostname,
-                note="toctou_mitigation_skipped",
             )
             return args
 
         if validation.is_https:
-            # Pin git to validated IPs via curloptResolve (git >= 2.22)
+            # Pin git to validated IPs via curloptResolve (git >= 2.22).
+            # resolved_ips is guaranteed non-empty here (guard above).
             resolve_value = build_curl_resolve_value(
                 validation.hostname,
                 validation.port or 443,
@@ -711,7 +714,7 @@ class GitCloneTool(_BaseGitTool):
             frozenset(validation.resolved_ips),
             self._network_policy.dns_resolution_timeout,
         )
-        if rebind_err:
+        if rebind_err is not None:
             return ToolExecutionResult(
                 content=rebind_err,
                 is_error=True,
@@ -726,8 +729,9 @@ class GitCloneTool(_BaseGitTool):
         """Clone a repository.
 
         Validation order: scheme check -> argument checks (branch,
-        depth, directory) -> SSRF host/IP check -> ``git clone``.
-        All cheap local checks run before the async DNS lookup.
+        depth, directory) -> SSRF host/IP check -> TOCTOU DNS
+        rebinding mitigation -> ``git clone``.  All cheap local
+        checks run before the async DNS lookup.
 
         Args:
             arguments: Clone URL, optional directory, branch, depth.

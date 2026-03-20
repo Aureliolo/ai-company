@@ -1,4 +1,4 @@
-"""Integration tests for GitCloneTool (clone + SSRF prevention)."""
+"""Unit and integration tests for GitCloneTool (clone + SSRF prevention)."""
 
 from pathlib import Path
 from typing import Any
@@ -181,10 +181,10 @@ def _mock_run_git(
     """Patch GitCloneTool._run_git to capture args."""
 
     async def _inner(
-        self_: Any,
+        self_: GitCloneTool,
         args: list[str],
         *,
-        cwd: Any = None,
+        cwd: Path | None = None,
         deadline: float = 30.0,
     ) -> ToolExecutionResult:
         captured.extend(args)
@@ -267,7 +267,7 @@ class TestGitCloneToolToctou:
             hostname: str,
             expected_ips: frozenset[str],
             dns_timeout: float,
-        ) -> None:
+        ) -> str | None:
             return None
 
         monkeypatch.setattr(git_tools_module, "verify_dns_consistency", mock_verify)
@@ -300,7 +300,7 @@ class TestGitCloneToolToctou:
             hostname: str,
             expected_ips: frozenset[str],
             dns_timeout: float,
-        ) -> str:
+        ) -> str | None:
             return "DNS rebinding detected for 'evil.example.com'"
 
         monkeypatch.setattr(git_tools_module, "verify_dns_consistency", mock_verify)
@@ -344,15 +344,21 @@ class TestGitCloneToolToctou:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Disabled mitigation skips DNS pinning even for HTTPS."""
-        _mock_validate(
-            DnsValidationOk(
+        received_policies: list[GitCloneNetworkPolicy] = []
+
+        async def _validate(
+            url: str,
+            policy: GitCloneNetworkPolicy,
+        ) -> DnsValidationOk:
+            received_policies.append(policy)
+            return DnsValidationOk(
                 hostname="example.com",
                 port=443,
                 resolved_ips=(),
                 is_https=True,
-            ),
-            monkeypatch,
-        )
+            )
+
+        monkeypatch.setattr(git_tools_module, "validate_clone_url_host", _validate)
         captured: list[str] = []
         _mock_run_git(captured, monkeypatch)
 
@@ -360,6 +366,42 @@ class TestGitCloneToolToctou:
         tool = GitCloneTool(workspace=workspace, network_policy=policy)
         result = await tool.execute(
             arguments={"url": "https://example.com/repo.git"},
+        )
+        assert not result.is_error
+        assert captured[0] == "clone"
+        assert "-c" not in captured
+        assert len(received_policies) == 1
+        assert received_policies[0].dns_rebinding_mitigation is False
+
+    async def test_scp_double_resolve_passes(
+        self,
+        workspace: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """SCP-like URL clone with consistent DNS proceeds normally."""
+        _mock_validate(
+            DnsValidationOk(
+                hostname="example.com",
+                resolved_ips=("93.184.216.34",),
+                is_https=False,
+            ),
+            monkeypatch,
+        )
+
+        async def mock_verify(
+            hostname: str,
+            expected_ips: frozenset[str],
+            dns_timeout: float,
+        ) -> str | None:
+            return None
+
+        monkeypatch.setattr(git_tools_module, "verify_dns_consistency", mock_verify)
+        captured: list[str] = []
+        _mock_run_git(captured, monkeypatch)
+
+        tool = GitCloneTool(workspace=workspace)
+        result = await tool.execute(
+            arguments={"url": "git@example.com:repo.git"},
         )
         assert not result.is_error
         assert captured[0] == "clone"

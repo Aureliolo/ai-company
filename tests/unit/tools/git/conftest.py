@@ -1,6 +1,7 @@
 """Fixtures for git tool tests."""
 
 import os
+import socket
 import subprocess
 from pathlib import Path
 
@@ -17,6 +18,27 @@ from synthorg.tools.git_tools import (
     GitStatusTool,
 )
 from synthorg.tools.git_url_validator import DnsValidationOk
+
+
+def dns_result(
+    *addrs: str,
+) -> list[tuple[int, int, int, str, tuple[str, int]]]:
+    """Build a fake getaddrinfo result list (AF_INET)."""
+    return [
+        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (addr, 0))
+        for addr in addrs
+    ]
+
+
+def dns_result_v6(
+    *addrs: str,
+) -> list[tuple[int, int, int, str, tuple[str, int, int, int]]]:
+    """Build a fake getaddrinfo result list (AF_INET6)."""
+    return [
+        (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (addr, 0, 0, 0))
+        for addr in addrs
+    ]
+
 
 _GIT_ENV = {
     **os.environ,

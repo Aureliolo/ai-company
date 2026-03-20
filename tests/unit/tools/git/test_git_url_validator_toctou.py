@@ -1,7 +1,6 @@
 """Tests for TOCTOU DNS rebinding mitigation in git clone validation."""
 
 import asyncio
-import socket
 from unittest.mock import AsyncMock
 
 import pytest
@@ -13,17 +12,9 @@ from synthorg.tools.git_url_validator import (
     verify_dns_consistency,
 )
 
+from .conftest import dns_result
+
 pytestmark = pytest.mark.timeout(30)
-
-
-def _dns_result(
-    *addrs: str,
-) -> list[tuple[int, int, int, str, tuple[str, int]]]:
-    """Build a fake getaddrinfo result list (AF_INET)."""
-    return [
-        (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (addr, 0))
-        for addr in addrs
-    ]
 
 
 # ── DnsValidationOk ──────────────────────────────────────────────
@@ -131,7 +122,7 @@ class TestVerifyDnsConsistency:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result("93.184.216.34")),
+            AsyncMock(return_value=dns_result("93.184.216.34")),
         )
         result = await verify_dns_consistency(
             "example.com",
@@ -146,7 +137,7 @@ class TestVerifyDnsConsistency:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result("93.184.216.34")),
+            AsyncMock(return_value=dns_result("93.184.216.34")),
         )
         result = await verify_dns_consistency(
             "example.com",
@@ -161,7 +152,7 @@ class TestVerifyDnsConsistency:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result("5.6.7.8")),
+            AsyncMock(return_value=dns_result("5.6.7.8")),
         )
         result = await verify_dns_consistency(
             "example.com",
@@ -179,7 +170,7 @@ class TestVerifyDnsConsistency:
         monkeypatch.setattr(
             loop,
             "getaddrinfo",
-            AsyncMock(return_value=_dns_result("127.0.0.1")),
+            AsyncMock(return_value=dns_result("127.0.0.1")),
         )
         result = await verify_dns_consistency(
             "example.com",
@@ -206,3 +197,21 @@ class TestVerifyDnsConsistency:
         )
         assert result is not None
         assert "failed" in result.lower()
+
+    async def test_dns_timeout_on_reresolution_blocked(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """DNS timeout on re-resolution is fail-closed."""
+        loop = asyncio.get_running_loop()
+        monkeypatch.setattr(
+            loop,
+            "getaddrinfo",
+            AsyncMock(side_effect=TimeoutError("DNS timed out")),
+        )
+        result = await verify_dns_consistency(
+            "example.com",
+            frozenset({"93.184.216.34"}),
+            dns_timeout=0.001,
+        )
+        assert result is not None
+        assert "timed out" in result.lower()
