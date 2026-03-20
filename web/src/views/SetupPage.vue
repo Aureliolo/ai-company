@@ -56,6 +56,16 @@ function handleNext() {
   setup.nextStep(steps.value.length)
 }
 
+function handlePrevious() {
+  setup.prevStep()
+}
+
+function handleStepClick(index: number) {
+  if (index < setup.currentStep) {
+    setup.setStep(index, steps.value.length)
+  }
+}
+
 function handleCompanyCreated(companyName: string) {
   createdCompanyName.value = companyName
   setup.nextStep(steps.value.length)
@@ -67,11 +77,43 @@ function handleAgentComplete(agentName: string, providerName: string) {
   showComplete.value = true
 }
 
+/**
+ * Compute the correct step to resume at based on the setup status.
+ * Uses backend-reported completion state to skip already-done steps.
+ */
+function computeResumeStep(): number {
+  const status = setup.status
+  if (!status) return 0
+
+  // If admin is needed, start at the beginning (Welcome -> Admin).
+  if (status.needs_admin) return 0
+
+  // Find step indices by component type.
+  const providerIdx = steps.value.findIndex(s => s.component === 'provider')
+  const companyIdx = steps.value.findIndex(s => s.component === 'company')
+  const agentIdx = steps.value.findIndex(s => s.component === 'agent')
+
+  if (!status.has_providers && providerIdx >= 0) return providerIdx
+  if (!status.has_company && companyIdx >= 0) return companyIdx
+  if (!status.has_agents && agentIdx >= 0) return agentIdx
+
+  // Everything is done -- shouldn't be here (redirect handles this).
+  return 0
+}
+
 onMounted(async () => {
   await setup.fetchStatus()
   // If setup is already complete, redirect to dashboard.
   if (setup.statusLoaded && !setup.isSetupNeeded) {
     router.replace('/')
+    return
+  }
+  // Resume at the correct step based on what is already completed.
+  if (setup.statusLoaded && setup.isSetupNeeded) {
+    const resumeStep = computeResumeStep()
+    if (resumeStep > 0) {
+      setup.setStep(resumeStep, steps.value.length)
+    }
   }
 })
 </script>
@@ -124,14 +166,21 @@ onMounted(async () => {
         <div class="mb-8 flex items-center justify-center gap-2">
           <template v-for="(step, index) in steps" :key="step.id">
             <div
+              data-testid="step-indicator"
               class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-colors"
-              :class="
+              :class="[
                 index < setup.currentStep
-                  ? 'bg-brand-600 text-white'
+                  ? 'bg-brand-600 text-white cursor-pointer hover:bg-brand-500'
                   : index === setup.currentStep
                     ? 'border-2 border-brand-600 text-brand-400'
-                    : 'border border-slate-700 text-slate-500'
-              "
+                    : 'border border-slate-700 text-slate-500',
+              ]"
+              :role="index < setup.currentStep ? 'button' : undefined"
+              :tabindex="index < setup.currentStep ? 0 : undefined"
+              :title="index < setup.currentStep ? `Go back to ${step.label}` : step.label"
+              @click="handleStepClick(index)"
+              @keydown.enter="handleStepClick(index)"
+              @keydown.space.prevent="handleStepClick(index)"
             >
               <i
                 v-if="index < setup.currentStep"
@@ -163,18 +212,22 @@ onMounted(async () => {
         <SetupAdmin
           v-else-if="currentStep.component === 'admin'"
           @next="handleNext"
+          @previous="handlePrevious"
         />
         <SetupProvider
           v-else-if="currentStep.component === 'provider'"
           @next="handleNext"
+          @previous="handlePrevious"
         />
         <SetupCompany
           v-else-if="currentStep.component === 'company'"
           @next="handleCompanyCreated"
+          @previous="handlePrevious"
         />
         <SetupAgent
           v-else-if="currentStep.component === 'agent'"
           @complete="handleAgentComplete"
+          @previous="handlePrevious"
         />
       </template>
     </div>

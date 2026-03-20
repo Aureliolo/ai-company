@@ -11,6 +11,7 @@ import type { SeniorityLevel, SetupAgentResponse } from '@/api/types'
 
 const emit = defineEmits<{
   complete: [agentName: string, providerName: string]
+  previous: []
 }>()
 
 const providerStore = useProviderStore()
@@ -240,14 +241,25 @@ onMounted(async () => {
         {{ error }}
       </div>
 
-      <Button
-        type="submit"
-        label="Create Agent & Finish"
-        icon="pi pi-user-plus"
-        class="w-full"
-        :loading="creating"
-        :disabled="!isValid || creating"
-      />
+      <div class="flex items-center gap-3">
+        <Button
+          type="button"
+          label="Back"
+          icon="pi pi-arrow-left"
+          severity="secondary"
+          outlined
+          :disabled="creating"
+          @click="emit('previous')"
+        />
+        <Button
+          type="submit"
+          label="Create Agent & Finish"
+          icon="pi pi-user-plus"
+          class="flex-1"
+          :loading="creating"
+          :disabled="!isValid || creating"
+        />
+      </div>
     </form>
   </div>
 </template>

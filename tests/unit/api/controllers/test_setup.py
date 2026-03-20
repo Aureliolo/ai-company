@@ -129,6 +129,98 @@ class TestSetupStatus:
         finally:
             settings_repo._store.pop(("api", "min_password_length"), None)
 
+    def test_has_agents_false_for_non_list_json(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """has_agents is False when agents setting contains non-list JSON."""
+        app_state = test_client.app.state.app_state
+        settings_repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+
+        agents_key = ("company", "agents")
+        original = settings_repo._store.get(agents_key)
+        settings_repo._store[agents_key] = ("42", now)
+        try:
+            resp = test_client.get("/api/v1/setup/status")
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["has_agents"] is False
+        finally:
+            if original is None:
+                settings_repo._store.pop(agents_key, None)
+            else:
+                settings_repo._store[agents_key] = original
+
+    def test_has_agents_false_for_invalid_json(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """has_agents is False when agents setting contains invalid JSON."""
+        app_state = test_client.app.state.app_state
+        settings_repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+
+        agents_key = ("company", "agents")
+        original = settings_repo._store.get(agents_key)
+        settings_repo._store[agents_key] = ("{not valid json", now)
+        try:
+            resp = test_client.get("/api/v1/setup/status")
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["has_agents"] is False
+        finally:
+            if original is None:
+                settings_repo._store.pop(agents_key, None)
+            else:
+                settings_repo._store[agents_key] = original
+
+    def test_min_password_length_non_integer_returns_default(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Non-integer min_password_length falls back to the default (12)."""
+        app_state = test_client.app.state.app_state
+        settings_repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+
+        pw_key = ("api", "min_password_length")
+        original = settings_repo._store.get(pw_key)
+        settings_repo._store[pw_key] = ("abc", now)
+        try:
+            resp = test_client.get("/api/v1/setup/status")
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["min_password_length"] == 12
+        finally:
+            if original is None:
+                settings_repo._store.pop(pw_key, None)
+            else:
+                settings_repo._store[pw_key] = original
+
+    def test_min_password_length_below_default_returns_default(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """min_password_length below default (12) is clamped to default."""
+        app_state = test_client.app.state.app_state
+        settings_repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+
+        pw_key = ("api", "min_password_length")
+        original = settings_repo._store.get(pw_key)
+        settings_repo._store[pw_key] = ("5", now)
+        try:
+            resp = test_client.get("/api/v1/setup/status")
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["min_password_length"] == 12
+        finally:
+            if original is None:
+                settings_repo._store.pop(pw_key, None)
+            else:
+                settings_repo._store[pw_key] = original
+
 
 @pytest.mark.unit
 @pytest.mark.timeout(30)
@@ -601,7 +693,7 @@ class TestSetupDTOs:
     """Unit tests for setup DTO validation."""
 
     def test_setup_agent_request_valid_preset(self) -> None:
-        from synthorg.api.controllers.setup import SetupAgentRequest
+        from synthorg.api.controllers.setup_models import SetupAgentRequest
 
         req = SetupAgentRequest(
             name="Alice",
@@ -614,7 +706,7 @@ class TestSetupDTOs:
         assert req.personality_preset == "visionary_leader"
 
     def test_setup_agent_request_invalid_preset(self) -> None:
-        from synthorg.api.controllers.setup import SetupAgentRequest
+        from synthorg.api.controllers.setup_models import SetupAgentRequest
 
         with pytest.raises(ValidationError, match="personality preset"):
             SetupAgentRequest(
@@ -626,19 +718,21 @@ class TestSetupDTOs:
             )
 
     def test_setup_company_request_defaults(self) -> None:
-        from synthorg.api.controllers.setup import SetupCompanyRequest
+        from synthorg.api.controllers.setup_models import SetupCompanyRequest
 
         req = SetupCompanyRequest(company_name="Test Corp")
         assert req.template_name is None
         assert req.description is None
 
     def test_setup_status_response_frozen(self) -> None:
-        from synthorg.api.controllers.setup import SetupStatusResponse
+        from synthorg.api.controllers.setup_models import SetupStatusResponse
 
         resp = SetupStatusResponse(
             needs_admin=True,
             needs_setup=True,
             has_providers=False,
+            has_company=False,
+            has_agents=False,
             min_password_length=12,
         )
         with pytest.raises(ValidationError):

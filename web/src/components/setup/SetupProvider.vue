@@ -9,6 +9,7 @@ import type { ProviderPreset, TestConnectionResponse } from '@/api/types'
 
 const emit = defineEmits<{
   next: []
+  previous: []
 }>()
 
 const store = useProviderStore()
@@ -20,13 +21,24 @@ const apiKey = ref('')
 const error = ref<string | null>(null)
 const creating = ref(false)
 const testing = ref(false)
+const discovering = ref(false)
 const createdProviderName = ref<string | null>(null)
 const testPassed = ref(false)
 const testResult = ref<TestConnectionResponse | null>(null)
 
 const hasProviders = computed(() => Object.keys(store.providers).length > 0)
 
-const canProceed = computed(() => hasProviders.value && testPassed.value)
+const createdProvider = computed(() => {
+  if (!createdProviderName.value) return null
+  return store.providers[createdProviderName.value] ?? null
+})
+
+const hasModels = computed(() => {
+  if (!createdProvider.value) return false
+  return createdProvider.value.models.length > 0
+})
+
+const canProceed = computed(() => hasProviders.value && hasModels.value && testPassed.value)
 
 const isFormValid = computed(() => {
   if (!selectedPreset.value) return false
@@ -38,6 +50,22 @@ const isFormValid = computed(() => {
     return false
   }
   return true
+})
+
+/** Guidance message when provider has no models. */
+const noModelsGuidance = computed(() => {
+  if (!selectedPreset.value && !createdProviderName.value) return null
+  const preset = selectedPreset.value?.name
+  if (preset === 'ollama') {
+    return 'Make sure Ollama is running and you have pulled at least one model (e.g. ollama pull llama3.2).'
+  }
+  if (preset === 'lm-studio') {
+    return 'Make sure LM Studio is running with at least one model loaded.'
+  }
+  if (preset === 'vllm') {
+    return 'Make sure vLLM is running and serving a model.'
+  }
+  return 'No models detected. Make sure your provider is running and has models available.'
 })
 
 function authTypeLabel(authType: string): string {
@@ -92,6 +120,12 @@ async function handleAddProvider() {
         : {}),
     })
     createdProviderName.value = providerName.value
+
+    // Auto-discover models for no-auth presets if provider has 0 models.
+    const provider = store.providers[providerName.value]
+    if (provider && provider.models.length === 0 && selectedPreset.value.auth_type === 'none') {
+      await handleDiscoverModels()
+    }
   } catch (err) {
     error.value = getErrorMessage(err)
   } finally {
@@ -99,9 +133,23 @@ async function handleAddProvider() {
   }
 }
 
-async function handleTestComplete() {
+async function handleDiscoverModels() {
+  if (!createdProviderName.value) return
+  discovering.value = true
+  error.value = null
+  try {
+    await store.discoverModels(createdProviderName.value)
+  } catch (err) {
+    error.value = getErrorMessage(err)
+  } finally {
+    discovering.value = false
+  }
+}
+
+async function handleTestConnection() {
   if (!createdProviderName.value) return
   testing.value = true
+  error.value = null
   try {
     const res = await store.testConnection(createdProviderName.value)
     testResult.value = res
@@ -132,9 +180,12 @@ onMounted(async () => {
     error.value = getErrorMessage(err)
   }
   if (hasProviders.value) {
-    testPassed.value = true
     const names = Object.keys(store.providers)
     createdProviderName.value = names[0] ?? null
+    // Auto-pass test if provider already has models.
+    if (hasModels.value) {
+      testPassed.value = true
+    }
   }
 })
 </script>
@@ -246,29 +297,66 @@ onMounted(async () => {
       </form>
     </template>
 
-    <!-- Test connection (after provider is created) -->
+    <!-- Post-creation: discovery + test connection -->
     <template v-if="createdProviderName">
       <div class="mt-4 flex flex-col items-center gap-3">
-        <div v-if="!testPassed" class="flex items-center gap-3">
+        <!-- No models guidance -->
+        <div
+          v-if="!hasModels"
+          class="w-full rounded-lg border border-amber-500/20 bg-amber-500/10 p-4"
+        >
+          <div class="mb-2 flex items-center gap-2">
+            <i class="pi pi-exclamation-triangle text-amber-400" />
+            <span class="text-sm font-medium text-amber-300">No models detected</span>
+          </div>
+          <p class="mb-3 text-xs leading-relaxed text-amber-200/80">
+            {{ noModelsGuidance }}
+          </p>
           <Button
-            label="Test Connection"
-            icon="pi pi-bolt"
-            severity="info"
+            label="Retry Discovery"
+            icon="pi pi-refresh"
+            severity="warn"
             size="small"
-            :loading="testing"
-            @click="handleTestComplete"
+            outlined
+            :loading="discovering"
+            @click="handleDiscoverModels"
           />
         </div>
-        <div v-if="testResult" class="text-center">
-          <p v-if="testResult.success" class="text-sm text-green-400">
+
+        <!-- Models found indicator -->
+        <div
+          v-if="hasModels && createdProvider"
+          class="w-full rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-center"
+        >
+          <p class="text-sm text-green-300">
             <i class="pi pi-check-circle mr-1" />
-            Connection successful{{ testResult.latency_ms != null ? ` (${testResult.latency_ms}ms)` : '' }}
-          </p>
-          <p v-else class="text-sm text-red-400">
-            <i class="pi pi-times-circle mr-1" />
-            {{ testResult.error ?? 'Connection failed' }}
+            {{ createdProvider.models.length }} model{{ createdProvider.models.length !== 1 ? 's' : '' }} available
           </p>
         </div>
+
+        <!-- Test connection (only show when models exist) -->
+        <template v-if="hasModels">
+          <div v-if="!testPassed" class="flex items-center gap-3">
+            <Button
+              label="Test Connection"
+              icon="pi pi-bolt"
+              severity="info"
+              size="small"
+              :loading="testing"
+              @click="handleTestConnection"
+            />
+          </div>
+          <div v-if="testResult" class="text-center">
+            <p v-if="testResult.success" class="text-sm text-green-400">
+              <i class="pi pi-check-circle mr-1" />
+              Connection successful{{ testResult.latency_ms != null ? ` (${testResult.latency_ms}ms)` : '' }}
+            </p>
+            <p v-else class="text-sm text-red-400">
+              <i class="pi pi-times-circle mr-1" />
+              {{ testResult.error ?? 'Connection failed' }}
+            </p>
+          </div>
+        </template>
 
         <div
           v-if="error && createdProviderName"
@@ -280,8 +368,15 @@ onMounted(async () => {
       </div>
     </template>
 
-    <!-- Next button -->
-    <div class="mt-8 flex justify-end">
+    <!-- Navigation buttons -->
+    <div class="mt-8 flex justify-between">
+      <Button
+        label="Back"
+        icon="pi pi-arrow-left"
+        severity="secondary"
+        outlined
+        @click="emit('previous')"
+      />
       <Button
         label="Next"
         icon="pi pi-arrow-right"

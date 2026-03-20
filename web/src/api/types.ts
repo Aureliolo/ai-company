@@ -825,7 +825,14 @@ export interface SetupStatusResponse {
   needs_admin: boolean
   needs_setup: boolean
   has_providers: boolean
+  has_company: boolean
+  has_agents: boolean
   min_password_length: number
+}
+
+export interface DiscoverModelsResponse {
+  discovered_models: ProviderModelConfig[]
+  provider_name: string
 }
 
 export interface TemplateInfoResponse {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import * as fc from 'fast-check'
 import { setActivePinia, createPinia } from 'pinia'
 import { useProviderStore } from '@/stores/providers'
-import type { ProviderConfig, ProviderPreset } from '@/api/types'
+import type { DiscoverModelsResponse, ProviderConfig, ProviderPreset } from '@/api/types'
 
 vi.mock('@/api/endpoints/providers', () => ({
   listProviders: vi.fn(),
@@ -14,6 +14,7 @@ vi.mock('@/api/endpoints/providers', () => ({
   testConnection: vi.fn(),
   listPresets: vi.fn(),
   createFromPreset: vi.fn(),
+  discoverModels: vi.fn(),
 }))
 
 const mockProvider: ProviderConfig = {
@@ -262,6 +263,46 @@ describe('useProviderStore', () => {
         },
       ),
     )
+  })
+
+  it('discoverModels calls api and refreshes providers', async () => {
+    const providersApi = await import('@/api/endpoints/providers')
+    const discoverResponse: DiscoverModelsResponse = {
+      discovered_models: [
+        {
+          id: 'discovered-model-001',
+          alias: null,
+          cost_per_1k_input: 0,
+          cost_per_1k_output: 0,
+          max_context: 128000,
+          estimated_latency_ms: null,
+        },
+      ],
+      provider_name: 'test-provider',
+    }
+    vi.mocked(providersApi.discoverModels).mockResolvedValue(discoverResponse)
+    vi.mocked(providersApi.listProviders).mockResolvedValue({
+      'test-provider': mockProvider,
+    })
+
+    const store = useProviderStore()
+    const result = await store.discoverModels('test-provider')
+
+    expect(providersApi.discoverModels).toHaveBeenCalledOnce()
+    expect(providersApi.discoverModels).toHaveBeenCalledWith('test-provider')
+    expect(providersApi.listProviders).toHaveBeenCalledOnce()
+    expect(result).toEqual(discoverResponse)
+    expect(store.providers['test-provider']).toBeDefined()
+  })
+
+  it('discoverModels sets error and rethrows on failure', async () => {
+    const providersApi = await import('@/api/endpoints/providers')
+    vi.mocked(providersApi.discoverModels).mockRejectedValue(new Error('Discovery failed'))
+
+    const store = useProviderStore()
+    await expect(store.discoverModels('test-provider')).rejects.toThrow('Discovery failed')
+
+    expect(store.error).toBe('Discovery failed')
   })
 
   it('stale fetch is discarded when newer fetch completes first', async () => {

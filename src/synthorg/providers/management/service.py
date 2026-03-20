@@ -7,7 +7,8 @@ and hot-reload of ProviderRegistry + ModelRouter in AppState.
 import asyncio
 import json
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
+from urllib.parse import urlparse
 
 from synthorg.api.dto import (
     CreateFromPresetRequest,
@@ -16,17 +17,19 @@ from synthorg.api.dto import (
     TestConnectionResponse,
     UpdateProviderRequest,
 )
-from synthorg.config.schema import ProviderConfig
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_ALREADY_EXISTS,
     PROVIDER_CONNECTION_TESTED,
     PROVIDER_CREATED,
     PROVIDER_DELETED,
+    PROVIDER_DISCOVERY_FAILED,
     PROVIDER_NOT_FOUND,
     PROVIDER_UPDATED,
     PROVIDER_VALIDATION_FAILED,
 )
+from synthorg.providers.discovery import discover_models
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
@@ -214,10 +217,13 @@ class ProviderManagementService:
 
         Args:
             name: Provider name.
-            request: Optional model selection.
+            request: Test connection request (includes optional model selection).
 
         Returns:
             Connection test result with latency or error.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
         """
         providers = await self._config_resolver.get_provider_configs()
         config = providers.get(name)
@@ -252,30 +258,7 @@ class ProviderManagementService:
             Connection test result.
         """
         try:
-            from synthorg.providers.drivers.litellm_driver import (  # noqa: PLC0415
-                LiteLLMDriver,
-            )
-
-            driver = LiteLLMDriver(name, config)
-            messages = [
-                ChatMessage(role=MessageRole.USER, content="ping"),
-            ]
-            start = time.monotonic()
-            await driver.complete(messages, model_id)
-            elapsed_ms = (time.monotonic() - start) * 1000
-
-            logger.info(
-                PROVIDER_CONNECTION_TESTED,
-                provider=name,
-                model=model_id,
-                success=True,
-                latency_ms=round(elapsed_ms, 1),
-            )
-            return TestConnectionResponse(
-                success=True,
-                latency_ms=round(elapsed_ms, 1),
-                model_tested=model_id,
-            )
+            return await self._probe_provider(name, config, model_id)
         except ProviderError as exc:
             logger.warning(
                 PROVIDER_CONNECTION_TESTED,
@@ -289,6 +272,8 @@ class ProviderManagementService:
                 error=str(exc),
                 model_tested=model_id,
             )
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             logger.error(
                 PROVIDER_CONNECTION_TESTED,
@@ -304,11 +289,53 @@ class ProviderManagementService:
                 model_tested=model_id,
             )
 
+    async def _probe_provider(
+        self,
+        name: str,
+        config: ProviderConfig,
+        model_id: str,
+    ) -> TestConnectionResponse:
+        """Send a minimal completion request to verify connectivity.
+
+        Args:
+            name: Provider name for logging.
+            config: Provider configuration.
+            model_id: Model to test with.
+
+        Returns:
+            Successful connection test response.
+        """
+        from synthorg.providers.drivers.litellm_driver import (  # noqa: PLC0415
+            LiteLLMDriver,
+        )
+
+        driver = LiteLLMDriver(name, config)
+        messages = [ChatMessage(role=MessageRole.USER, content="ping")]
+        start = time.monotonic()
+        await driver.complete(messages, model_id)
+        elapsed_ms = (time.monotonic() - start) * 1000
+
+        logger.info(
+            PROVIDER_CONNECTION_TESTED,
+            provider=name,
+            model=model_id,
+            success=True,
+            latency_ms=round(elapsed_ms, 1),
+        )
+        return TestConnectionResponse(
+            success=True,
+            latency_ms=round(elapsed_ms, 1),
+            model_tested=model_id,
+        )
+
     async def create_from_preset(
         self,
         request: CreateFromPresetRequest,
     ) -> ProviderConfig:
         """Create a provider from a preset template.
+
+        When the preset has ``auth_type=none`` and a base URL but no
+        models, attempts auto-discovery before creating the provider.
 
         Args:
             request: Preset-based creation request.
@@ -333,6 +360,12 @@ class ProviderManagementService:
         models = request.models if request.models is not None else preset.default_models
         base_url = request.base_url or preset.default_base_url
 
+        # Auto-discover models for no-auth presets with a base URL.
+        if not models and preset.auth_type == AuthType.NONE and base_url:
+            discovered = await discover_models(base_url, preset.name)
+            if discovered:
+                models = discovered
+
         create_request = CreateProviderRequest(
             name=request.name,
             driver=preset.driver,
@@ -342,6 +375,113 @@ class ProviderManagementService:
             models=models,
         )
         return await self.create_provider(create_request)
+
+    async def discover_models_for_provider(
+        self,
+        name: str,
+        *,
+        preset_hint: str | None = None,
+    ) -> tuple[ProviderModelConfig, ...]:
+        """Discover and update models for an existing provider.
+
+        Queries the provider's endpoint for available models and
+        updates the provider configuration if models are found.
+        Returns an empty tuple without querying if the provider has
+        no ``base_url`` configured or uses a non-``none`` auth type
+        without credentials (auth headers are forwarded when available).
+
+        Args:
+            name: Provider name.
+            preset_hint: Optional preset name hint for endpoint selection.
+                Falls back to port-based inference when not provided.
+
+        Returns:
+            Tuple of discovered model configs (may be empty).
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
+        """
+        config = await self.get_provider(name)
+
+        if config.base_url is None:
+            logger.info(
+                PROVIDER_DISCOVERY_FAILED,
+                provider=name,
+                reason="no_base_url",
+            )
+            return ()
+
+        resolved_hint = preset_hint or _infer_preset_hint(config.base_url)
+        headers = _build_discovery_headers(config)
+        discovered = await discover_models(
+            config.base_url,
+            resolved_hint,
+            headers=headers,
+        )
+
+        if discovered:
+            applied = await self._apply_discovered_models(
+                name,
+                config.base_url,
+                discovered,
+            )
+            if not applied:
+                return ()
+
+        return discovered
+
+    async def _apply_discovered_models(
+        self,
+        name: str,
+        original_base_url: str,
+        discovered: tuple[ProviderModelConfig, ...],
+    ) -> bool:
+        """Atomically verify base_url and persist discovered models.
+
+        Holds the service lock for the entire check-then-write to
+        prevent TOCTOU races between re-reading the provider and
+        applying the update.
+
+        Args:
+            name: Provider name.
+            original_base_url: The base_url that was used for discovery.
+            discovered: Models discovered from the provider endpoint.
+
+        Returns:
+            True if the models were persisted, False if aborted.
+        """
+        async with self._lock:
+            providers = await self._config_resolver.get_provider_configs()
+            existing = providers.get(name)
+            if existing is None:
+                logger.warning(
+                    PROVIDER_DISCOVERY_FAILED,
+                    provider=name,
+                    reason="deleted_during_discovery",
+                )
+                return False
+            if existing.base_url != original_base_url:
+                logger.warning(
+                    PROVIDER_DISCOVERY_FAILED,
+                    provider=name,
+                    reason="base_url_changed",
+                )
+                return False
+
+            updated = _apply_update(
+                existing,
+                UpdateProviderRequest(models=discovered),
+            )
+            new_providers = {**providers, name: updated}
+            await self._validate_and_persist(new_providers)
+
+            logger.info(
+                PROVIDER_UPDATED,
+                provider=name,
+                driver=updated.driver,
+                auth_type=updated.auth_type,
+            )
+        return True
 
     async def _validate_and_persist(
         self,
@@ -495,7 +635,7 @@ def _apply_update(
     elif request.clear_api_key:
         updates["api_key"] = None
 
-    # Re-validate the merged config (model_copy skips validators)
+    # Use model_validate (not model_copy) to run validators on the merged result
     merged = {**existing.model_dump(mode="python"), **updates}
     return ProviderConfig.model_validate(merged)
 
@@ -512,3 +652,63 @@ def _serialize_providers(
         JSON-safe dict of serialized provider configs.
     """
     return {name: config.model_dump(mode="json") for name, config in providers.items()}
+
+
+_PORT_TO_PRESET: Final[dict[int, str]] = {
+    11434: "ollama",
+    1234: "lm-studio",
+    8000: "vllm",
+}
+
+
+def _build_discovery_headers(
+    config: ProviderConfig,
+) -> dict[str, str] | None:
+    """Build auth headers for model discovery from provider config.
+
+    Returns headers appropriate for the provider's auth type, or
+    ``None`` for ``AuthType.NONE`` or when credentials are absent.
+    OAuth-based discovery is not yet supported (token acquisition
+    requires a separate flow); a log message is emitted when skipped.
+
+    Args:
+        config: Provider configuration.
+
+    Returns:
+        Auth headers dict, or ``None``.
+    """
+    if config.auth_type == AuthType.API_KEY and config.api_key:
+        return {"Authorization": f"Bearer {config.api_key}"}
+    if (
+        config.auth_type == AuthType.CUSTOM_HEADER
+        and config.custom_header_name
+        and config.custom_header_value
+    ):
+        return {config.custom_header_name: config.custom_header_value}
+    if config.auth_type == AuthType.OAUTH:
+        logger.info(
+            PROVIDER_DISCOVERY_FAILED,
+            reason="oauth_discovery_unsupported",
+            auth_type=config.auth_type.value,
+        )
+    return None
+
+
+def _infer_preset_hint(base_url: str) -> str | None:
+    """Infer the preset name from a provider base URL.
+
+    Uses port-based heuristics for common local providers.  Only
+    three ports are recognized: 11434 (ollama), 1234 (lm-studio),
+    8000 (vllm).  Port 8000 is mapped to vLLM as a best-effort
+    guess; it is also used by the SynthOrg backend and other services.
+
+    Args:
+        base_url: Provider base URL.
+
+    Returns:
+        Preset name hint, or ``None`` if unrecognized.
+    """
+    port = urlparse(base_url).port
+    if port is None:
+        return None
+    return _PORT_TO_PRESET.get(port)

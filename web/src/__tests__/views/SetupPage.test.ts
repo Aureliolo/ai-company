@@ -96,6 +96,8 @@ vi.mock('@/api/endpoints/setup', () => ({
     needs_admin: true,
     needs_setup: true,
     has_providers: false,
+    has_company: false,
+    has_agents: false,
     min_password_length: 12,
   }),
   listTemplates: vi.fn().mockResolvedValue([]),
@@ -157,7 +159,7 @@ describe('SetupPage', () => {
     const wrapper = mount(SetupPage)
     await flushPromises()
     // The step indicator should have numbered dots
-    const dots = wrapper.findAll('.rounded-full')
+    const dots = wrapper.findAll('[data-testid="step-indicator"]')
     expect(dots.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -176,7 +178,9 @@ describe('SetupPage', () => {
   it('renders branding logo', async () => {
     const wrapper = mount(SetupPage)
     await flushPromises()
-    // The welcome step includes the "S" logo
-    expect(wrapper.text()).toContain('S')
+    // The welcome step renders the branded "S" logo inside a styled container
+    const logo = wrapper.find('[data-testid="brand-logo"]')
+    expect(logo.exists()).toBe(true)
+    expect(logo.text()).toBe('S')
   })
 })

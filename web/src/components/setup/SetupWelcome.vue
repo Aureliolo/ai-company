@@ -9,6 +9,7 @@ const emit = defineEmits<{
 <template>
   <div class="flex flex-col items-center text-center">
     <div
+      data-testid="brand-logo"
       class="mb-6 flex h-16 w-16 items-center justify-center rounded-xl bg-brand-600 text-2xl font-bold text-white"
     >
       S
