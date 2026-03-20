@@ -8,7 +8,6 @@ candidate URLs come from hardcoded preset definitions.
 
 import json
 from typing import Any, Final
-from urllib.parse import urlparse, urlunparse
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,6 +21,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_PROBE_MISS,
     PROVIDER_PROBE_STARTED,
 )
+from synthorg.providers.url_utils import redact_url as _redact_url
 
 logger = get_logger(__name__)
 
@@ -42,16 +42,6 @@ class ProbeResult(BaseModel):
     url: NotBlankStr | None = None
     model_count: int = Field(default=0, ge=0)
     candidates_tried: int = Field(default=0, ge=0)
-
-
-def _redact_url(url: str) -> str:
-    """Strip userinfo and query parameters from a URL for safe logging."""
-    parsed = urlparse(url)
-    safe_netloc = parsed.hostname or ""
-    if parsed.port:
-        safe_netloc = f"{safe_netloc}:{parsed.port}"
-    redacted_query = "<redacted>" if parsed.query else ""
-    return urlunparse(parsed._replace(netloc=safe_netloc, query=redacted_query))
 
 
 def _log_probe_miss(

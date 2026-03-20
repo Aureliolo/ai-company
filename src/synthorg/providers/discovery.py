@@ -34,6 +34,7 @@ from synthorg.providers.probing import (
     _parse_ollama_models,
     _parse_standard_models,
 )
+from synthorg.providers.url_utils import redact_url as _redact_url
 
 logger = get_logger(__name__)
 
@@ -70,16 +71,6 @@ class _SsrfCheckResult(NamedTuple):
 
     error: str | None
     pinned_ip: str | None
-
-
-def _redact_url(url: str) -> str:
-    """Strip userinfo and query parameters from a URL for safe logging."""
-    parsed = urlparse(url)
-    safe_netloc = parsed.hostname or ""
-    if parsed.port:
-        safe_netloc = f"{safe_netloc}:{parsed.port}"
-    redacted_query = "<redacted>" if parsed.query else ""
-    return urlunparse(parsed._replace(netloc=safe_netloc, query=redacted_query))
 
 
 async def _validate_discovery_url(url: str) -> _SsrfCheckResult:
