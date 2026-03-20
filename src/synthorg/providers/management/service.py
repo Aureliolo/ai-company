@@ -420,29 +420,68 @@ class ProviderManagementService:
         )
 
         if discovered:
-            # Re-verify base_url hasn't changed during the discovery
-            # HTTP call (narrows TOCTOU window).
-            try:
-                current = await self.get_provider(name)
-            except ProviderNotFoundError:
+            applied = await self._apply_discovered_models(
+                name,
+                config.base_url,
+                discovered,
+            )
+            if not applied:
+                return ()
+
+        return discovered
+
+    async def _apply_discovered_models(
+        self,
+        name: str,
+        original_base_url: str,
+        discovered: tuple[ProviderModelConfig, ...],
+    ) -> bool:
+        """Atomically verify base_url and persist discovered models.
+
+        Holds the service lock for the entire check-then-write to
+        prevent TOCTOU races between re-reading the provider and
+        applying the update.
+
+        Args:
+            name: Provider name.
+            original_base_url: The base_url that was used for discovery.
+            discovered: Models discovered from the provider endpoint.
+
+        Returns:
+            True if the models were persisted, False if aborted.
+        """
+        async with self._lock:
+            providers = await self._config_resolver.get_provider_configs()
+            existing = providers.get(name)
+            if existing is None:
                 logger.warning(
                     PROVIDER_DISCOVERY_FAILED,
                     provider=name,
                     reason="deleted_during_discovery",
                 )
-                return ()
-            if current.base_url != config.base_url:
+                return False
+            if existing.base_url != original_base_url:
                 logger.warning(
                     PROVIDER_DISCOVERY_FAILED,
                     provider=name,
                     reason="base_url_changed",
                 )
-                return ()
+                return False
 
-            update_req = UpdateProviderRequest(models=discovered)
-            await self.update_provider(name, update_req)
+            updated = _apply_update(
+                existing,
+                UpdateProviderRequest(models=discovered),
+            )
+            new_providers = {**providers, name: updated}
+            await self._validate_and_persist(new_providers)
 
-        return discovered
+            logger.info(
+                PROVIDER_UPDATED,
+                provider=name,
+                driver=updated.driver,
+                auth_type=updated.auth_type,
+            )
+        return True
 
     async def _validate_and_persist(
         self,

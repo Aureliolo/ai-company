@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from synthorg.providers.discovery import (
+    _SsrfCheckResult,
     _validate_discovery_url,
     discover_models,
 )
@@ -44,9 +45,10 @@ def _mock_client(
 @pytest.fixture(autouse=False)
 def _bypass_ssrf() -> Generator[None]:
     """Patch SSRF validation so HTTP-behavior tests can use localhost URLs."""
+    safe_result = _SsrfCheckResult(error=None, pinned_ip="127.0.0.1")
     with patch(
         "synthorg.providers.discovery._validate_discovery_url",
-        return_value=None,
+        return_value=safe_result,
     ):
         yield
 
@@ -138,8 +140,8 @@ class TestDiscoverOllama:
             )
 
             client.get.assert_called_once_with(
-                "http://localhost:11434/api/tags",
-                headers={},
+                "http://127.0.0.1:11434/api/tags",
+                headers={"Host": "localhost"},
             )
 
     async def test_trailing_slash_normalized(self) -> None:
@@ -154,8 +156,8 @@ class TestDiscoverOllama:
             )
 
             client.get.assert_called_once_with(
-                "http://localhost:11434/api/tags",
-                headers={},
+                "http://127.0.0.1:11434/api/tags",
+                headers={"Host": "localhost"},
             )
 
     async def test_malformed_entries_skipped(self) -> None:
@@ -221,8 +223,8 @@ class TestDiscoverStandardApi:
             )
 
             client.get.assert_called_once_with(
-                "http://localhost:1234/v1/models",
-                headers={},
+                "http://127.0.0.1:1234/v1/models",
+                headers={"Host": "localhost"},
             )
 
     async def test_unknown_preset_uses_standard_endpoint(self) -> None:
@@ -237,8 +239,8 @@ class TestDiscoverStandardApi:
             )
 
             client.get.assert_called_once_with(
-                "http://localhost:9999/models",
-                headers={},
+                "http://127.0.0.1:9999/models",
+                headers={"Host": "localhost"},
             )
 
     async def test_malformed_json(self) -> None:
@@ -360,9 +362,12 @@ class TestValidateDiscoveryUrl:
     async def test_url_validation(self, url: str, *, expected_safe: bool) -> None:
         result = await _validate_discovery_url(url)
         if expected_safe:
-            assert result is None, f"Expected {url} to be safe, got error: {result}"
+            assert result.error is None, (
+                f"Expected {url} to be safe, got: {result.error}"
+            )
+            assert result.pinned_ip is not None, f"Expected {url} to return a pinned IP"
         else:
-            assert result is not None, f"Expected {url} to be blocked"
+            assert result.error is not None, f"Expected {url} to be blocked"
 
     async def test_blocked_url_returns_empty(self) -> None:
         """SSRF-blocked URL returns empty tuple without making HTTP call."""
