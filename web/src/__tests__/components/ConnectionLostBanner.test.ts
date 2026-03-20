@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { defineComponent, h } from 'vue'
@@ -19,8 +19,19 @@ const ButtonStub = defineComponent({
 })
 
 describe('ConnectionLostBanner', () => {
+  let originalLocation: Location
+
   beforeEach(() => {
     setActivePinia(createPinia())
+    originalLocation = window.location
+  })
+
+  afterEach(() => {
+    // Restore window.location to prevent leaking state between tests
+    Object.defineProperty(window, 'location', {
+      value: originalLocation,
+      writable: true,
+    })
   })
 
   function mountBanner() {
