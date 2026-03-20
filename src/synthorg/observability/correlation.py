@@ -12,6 +12,7 @@ propagation across agent actions, tasks, and API requests.
 import functools
 import inspect
 import uuid
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
 import structlog
@@ -25,7 +26,7 @@ from synthorg.observability.events.correlation import (
 logger = get_logger(__name__)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Callable, Coroutine, Iterator
 
 _P = ParamSpec("_P")
 _T = TypeVar("_T")
@@ -72,13 +73,7 @@ def bind_correlation_id(
         task_id: Task correlation identifier.
         agent_id: Agent correlation identifier.
     """
-    bindings: dict[str, str] = {}
-    if request_id is not None:
-        bindings["request_id"] = request_id
-    if task_id is not None:
-        bindings["task_id"] = task_id
-    if agent_id is not None:
-        bindings["agent_id"] = agent_id
+    bindings = _build_bindings(request_id, task_id, agent_id)
     if bindings:
         structlog.contextvars.bind_contextvars(**bindings)
 
@@ -118,6 +113,32 @@ def clear_correlation_ids() -> None:
         "task_id",
         "agent_id",
     )
+
+
+@contextmanager
+def correlation_scope(
+    *,
+    request_id: str | None = None,
+    task_id: str | None = None,
+    agent_id: str | None = None,
+) -> Iterator[None]:
+    """Scoped correlation binding that restores prior values on exit.
+
+    Uses structlog's ``bound_contextvars`` to save and restore any
+    pre-existing correlation IDs, making this safe for nested
+    execution contexts (e.g. hierarchical agent delegation).
+
+    Args:
+        request_id: Request correlation identifier to bind.
+        task_id: Task correlation identifier to bind.
+        agent_id: Agent correlation identifier to bind.
+    """
+    bindings = _build_bindings(request_id, task_id, agent_id)
+    if bindings:
+        with structlog.contextvars.bound_contextvars(**bindings):
+            yield
+    else:
+        yield
 
 
 def with_correlation(

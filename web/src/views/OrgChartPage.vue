@@ -59,7 +59,7 @@ const nodes = computed<Node[]>(() => {
       })
       y += 100
       for (let i = 0; i < team.members.length; i++) {
-        const memberName = team.members[i] // eslint-disable-line security/detect-object-injection
+        const memberName = team.members[i]
         if (addedAgents.has(memberName)) continue
         addedAgents.add(memberName)
         const agent = agentIndex.get(memberName)

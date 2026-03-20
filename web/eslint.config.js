@@ -25,6 +25,12 @@ export default [
   {
     rules: {
       'vue/no-v-html': 'warn',
+      // Rule flags every obj[var] with no data-flow analysis (20/23 warnings
+      // were false positives). Prototype pollution is guarded explicitly in
+      // providers.ts (Object.create(null) + __proto__/constructor/prototype
+      // filtering). Future dynamic property access with untrusted keys should
+      // be manually reviewed.
+      'security/detect-object-injection': 'off',
     },
   },
   {

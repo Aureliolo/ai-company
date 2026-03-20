@@ -61,6 +61,7 @@ from synthorg.engine.task_sync import (
     transition_task_if_needed,
 )
 from synthorg.observability import get_logger
+from synthorg.observability.correlation import correlation_scope
 from synthorg.observability.events.approval_gate import (
     APPROVAL_GATE_LOOP_WIRING_WARNING,
 )
@@ -356,86 +357,91 @@ class AgentEngine:
         validate_agent(identity, agent_id)
         validate_task(task, agent_id, task_id)
 
-        loop_mode = (
-            "auto" if self._auto_loop_config is not None else self._loop.get_loop_type()
-        )
-        logger.info(
-            EXECUTION_ENGINE_START,
-            agent_id=agent_id,
-            task_id=task_id,
-            loop_type=loop_mode,
-            max_turns=max_turns,
-        )
+        with correlation_scope(agent_id=agent_id, task_id=task_id):
+            start = time.monotonic()
+            ctx: AgentContext | None = None
+            system_prompt: SystemPrompt | None = None
+            try:
+                loop_mode = (
+                    "auto"
+                    if self._auto_loop_config is not None
+                    else self._loop.get_loop_type()
+                )
+                logger.info(
+                    EXECUTION_ENGINE_START,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    loop_type=loop_mode,
+                    max_turns=max_turns,
+                )
 
-        start = time.monotonic()
-        ctx: AgentContext | None = None
-        system_prompt: SystemPrompt | None = None
-        try:
-            # Pre-flight budget enforcement
-            if self._budget_enforcer:
-                await self._budget_enforcer.check_can_execute(agent_id)
-                identity = await self._budget_enforcer.resolve_model(identity)
+                # Pre-flight budget enforcement
+                if self._budget_enforcer:
+                    await self._budget_enforcer.check_can_execute(agent_id)
+                    identity = await self._budget_enforcer.resolve_model(
+                        identity,
+                    )
 
-            tool_invoker = self._make_tool_invoker(
-                identity,
-                task_id=task_id,
-                effective_autonomy=effective_autonomy,
-            )
-            ctx, system_prompt = await self._prepare_context(
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                max_turns=max_turns,
-                memory_messages=memory_messages,
-                tool_invoker=tool_invoker,
-                effective_autonomy=effective_autonomy,
-            )
-            return await self._execute(
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                completion_config=completion_config,
-                ctx=ctx,
-                system_prompt=system_prompt,
-                start=start,
-                timeout_seconds=timeout_seconds,
-                tool_invoker=tool_invoker,
-                effective_autonomy=effective_autonomy,
-            )
-        except MemoryError, RecursionError:
-            logger.exception(
-                EXECUTION_ENGINE_ERROR,
-                agent_id=agent_id,
-                task_id=task_id,
-                error="non-recoverable error in run()",
-            )
-            raise
-        except BudgetExhaustedError as exc:
-            return self._handle_budget_error(
-                exc=exc,
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                duration_seconds=time.monotonic() - start,
-                ctx=ctx,
-                system_prompt=system_prompt,
-            )
-        except Exception as exc:
-            return await self._handle_fatal_error(
-                exc=exc,
-                identity=identity,
-                task=task,
-                agent_id=agent_id,
-                task_id=task_id,
-                duration_seconds=time.monotonic() - start,
-                ctx=ctx,
-                system_prompt=system_prompt,
-                completion_config=completion_config,
-                effective_autonomy=effective_autonomy,
-            )
+                tool_invoker = self._make_tool_invoker(
+                    identity,
+                    task_id=task_id,
+                    effective_autonomy=effective_autonomy,
+                )
+                ctx, system_prompt = await self._prepare_context(
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    max_turns=max_turns,
+                    memory_messages=memory_messages,
+                    tool_invoker=tool_invoker,
+                    effective_autonomy=effective_autonomy,
+                )
+                return await self._execute(
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    completion_config=completion_config,
+                    ctx=ctx,
+                    system_prompt=system_prompt,
+                    start=start,
+                    timeout_seconds=timeout_seconds,
+                    tool_invoker=tool_invoker,
+                    effective_autonomy=effective_autonomy,
+                )
+            except MemoryError, RecursionError:
+                logger.exception(
+                    EXECUTION_ENGINE_ERROR,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    error="non-recoverable error in run()",
+                )
+                raise
+            except BudgetExhaustedError as exc:
+                return self._handle_budget_error(
+                    exc=exc,
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    duration_seconds=time.monotonic() - start,
+                    ctx=ctx,
+                    system_prompt=system_prompt,
+                )
+            except Exception as exc:
+                return await self._handle_fatal_error(
+                    exc=exc,
+                    identity=identity,
+                    task=task,
+                    agent_id=agent_id,
+                    task_id=task_id,
+                    duration_seconds=time.monotonic() - start,
+                    ctx=ctx,
+                    system_prompt=system_prompt,
+                    completion_config=completion_config,
+                    effective_autonomy=effective_autonomy,
+                )
 
     async def _execute(  # noqa: PLR0913
         self,
@@ -1230,6 +1236,12 @@ class AgentEngine:
                 task_id=task_id,
             )
         except MemoryError, RecursionError:
+            logger.exception(
+                EXECUTION_ENGINE_ERROR,
+                agent_id=agent_id,
+                task_id=task_id,
+                error="non-recoverable error while building budget-exhausted result",
+            )
             raise
         except Exception as build_exc:
             logger.exception(
@@ -1237,6 +1249,10 @@ class AgentEngine:
                 agent_id=agent_id,
                 task_id=task_id,
                 error=f"Failed to build budget-exhausted result: {build_exc}",
+            )
+            exc.add_note(
+                f"Secondary failure while building budget-exhausted "
+                f"result: {type(build_exc).__name__}: {build_exc}",
             )
             raise exc from None
 
@@ -1257,7 +1273,8 @@ class AgentEngine:
         """Build an error ``AgentRunResult`` when the execution pipeline fails.
 
         If constructing the error result itself fails, the original
-        exception is re-raised so it is never silently lost.
+        exception is re-raised with a note describing the secondary
+        failure so it is never silently lost.
         """
         raw_msg = str(exc)
         sanitized = sanitize_message(raw_msg)
@@ -1333,6 +1350,10 @@ class AgentEngine:
                 task_id=task_id,
                 error=f"Failed to build error result: {build_exc}",
                 original_error=error_msg,
+            )
+            exc.add_note(
+                f"Secondary failure while building error result: "
+                f"{type(build_exc).__name__}: {build_exc}",
             )
             raise exc from None
 

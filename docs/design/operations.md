@@ -1174,9 +1174,9 @@ Eight default sinks, activated at startup via `bootstrap_logging()`:
 |------|------|-------|--------|--------|-------------|
 | Console | stderr | INFO | Colored text | All loggers | Human-readable development output |
 | `synthorg.log` | File | INFO | JSON | All loggers | Main application log (catch-all) |
-| `audit.log` | File | INFO | JSON | `synthorg.security.*` | Security events only |
+| `audit.log` | File | INFO | JSON | `synthorg.security.*`, `synthorg.hr.*`, `synthorg.backup.*`, `synthorg.settings.*`, `synthorg.observability.*` | Audit-relevant events (security, HR, backup, settings, observability) |
 | `errors.log` | File | ERROR | JSON | All loggers | Errors and above only |
-| `agent_activity.log` | File | DEBUG | JSON | `synthorg.engine.*`, `synthorg.core.*` | Agent execution and task lifecycle |
+| `agent_activity.log` | File | DEBUG | JSON | `synthorg.engine.*`, `synthorg.core.*`, `synthorg.communication.*`, `synthorg.tools.*`, `synthorg.memory.*` | Agent execution, communication, tools, and memory |
 | `cost_usage.log` | File | INFO | JSON | `synthorg.budget.*`, `synthorg.providers.*` | Cost records and provider calls |
 | `debug.log` | File | DEBUG | JSON | All loggers | Full debug trace (catch-all) |
 | `access.log` | File | INFO | JSON | `synthorg.api.*` | HTTP request/response access log |
