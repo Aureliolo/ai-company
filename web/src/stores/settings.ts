@@ -59,7 +59,7 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
 
   if (validator_pattern !== null) {
     try {
-      if (!new RegExp(`^(?:${validator_pattern})$`).test(value)) {
+      if (!new RegExp(`^(?:${validator_pattern})$`).test(value)) { // eslint-disable-line security/detect-non-literal-regexp
         return `Must match pattern: ${validator_pattern}`
       }
     } catch (err) {

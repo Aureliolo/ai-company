@@ -79,7 +79,7 @@ describe('formatUptime (property-based)', () => {
         (input) => {
           const result = formatUptime(input)
           // Result should match pattern like "1d 2h 3m" or "0m"
-          expect(result).toMatch(/^(\d+d\s?)?(\d+h\s?)?(\d+m)?$/)
+          expect(result).toMatch(/^(\d+d\s?)?(\d+h\s?)?(\d+m)?$/) // eslint-disable-line security/detect-unsafe-regex
         },
       ),
     )
@@ -126,7 +126,7 @@ describe('formatLabel (property-based)', () => {
   it('each underscore-separated segment has its first char uppercased', () => {
     // Use snake_case-like strings (word chars separated by underscores) to avoid
     // edge cases with spaces in the input confounding the split logic.
-    const snakeCaseStr = fc.stringMatching(/^[a-z][a-z0-9]*(_[a-z][a-z0-9]*)*$/)
+    const snakeCaseStr = fc.stringMatching(/^[a-z][a-z0-9]*(_[a-z][a-z0-9]*)*$/) // eslint-disable-line security/detect-unsafe-regex
     fc.assert(
       fc.property(snakeCaseStr, (input) => {
         const result = formatLabel(input)

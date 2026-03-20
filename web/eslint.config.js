@@ -25,6 +25,7 @@ export default [
   {
     rules: {
       'vue/no-v-html': 'warn',
+      'security/detect-object-injection': 'off',
     },
   },
   {
