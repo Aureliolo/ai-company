@@ -200,9 +200,9 @@ onMounted(async () => {
                     ? 'bg-brand-600 text-white cursor-pointer hover:bg-brand-500'
                     : 'border border-slate-700 text-slate-500',
               ]"
-              :role="isStepDone(index) ? 'button' : undefined"
-              :tabindex="isStepDone(index) ? 0 : undefined"
-              :title="isStepDone(index) ? `Go back to ${step.label}` : step.label"
+              :role="isStepDone(index) || index === setup.currentStep ? 'button' : undefined"
+              :tabindex="isStepDone(index) || index === setup.currentStep ? 0 : undefined"
+              :title="isStepDone(index) && index !== setup.currentStep ? `Go back to ${step.label}` : step.label"
               @click="handleStepClick(index)"
               @keydown.enter="handleStepClick(index)"
               @keydown.space.prevent="handleStepClick(index)"

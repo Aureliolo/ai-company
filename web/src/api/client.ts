@@ -52,12 +52,21 @@ apiClient.interceptors.response.use(
           window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`
         }
       })
-      // On setup page, re-fetch status to handle backend reset or token expiry
-      if (window.location.pathname === '/setup') {
+      // On setup page, re-fetch status to handle backend reset or token expiry.
+      // Guard: skip if the failing request was itself /setup/status to prevent
+      // unbounded 401 loops (the status endpoint is normally unauthenticated,
+      // but a misconfigured backend could still return 401).
+      if (
+        window.location.pathname === '/setup' &&
+        !error.config?.url?.includes('/setup/status')
+      ) {
         import('@/stores/setup').then(({ useSetupStore }) => {
           const setup = useSetupStore()
           setup.fetchStatus()
-        }).catch(() => {})
+        }).catch((err: unknown) => {
+          // Best-effort: setup status re-fetch is non-critical after 401
+          console.warn('Failed to re-fetch setup status after 401:', err)
+        })
       }
     }
     return Promise.reject(error)

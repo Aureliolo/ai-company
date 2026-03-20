@@ -323,6 +323,23 @@ describe('useProviderStore', () => {
     expect(providersApi.discoverModels).toHaveBeenCalledWith('test-provider', 'ollama')
   })
 
+  it('discoverModels passes undefined presetHint when not provided (retry without preset)', async () => {
+    const providersApi = await import('@/api/endpoints/providers')
+    const discoverResponse: DiscoverModelsResponse = {
+      discovered_models: [],
+      provider_name: 'test-provider',
+    }
+    vi.mocked(providersApi.discoverModels).mockResolvedValue(discoverResponse)
+    vi.mocked(providersApi.listProviders).mockResolvedValue({
+      'test-provider': mockProvider,
+    })
+
+    const store = useProviderStore()
+    await store.discoverModels('test-provider')
+
+    expect(providersApi.discoverModels).toHaveBeenCalledWith('test-provider', undefined)
+  })
+
   it('discoverModels sets error and rethrows on failure', async () => {
     const providersApi = await import('@/api/endpoints/providers')
     vi.mocked(providersApi.discoverModels).mockRejectedValue(new Error('Discovery failed'))

@@ -142,6 +142,35 @@ describe('useSetupStore', () => {
       expect(store.isStepComplete('company')).toBe(false)
       expect(store.isStepComplete('agent')).toBe(false)
     })
+
+    it('correctly re-syncs when status regresses (provider deleted)', async () => {
+      // First fetch: provider exists
+      mockGetSetupStatus.mockResolvedValue({
+        needs_admin: false,
+        needs_setup: true,
+        has_providers: true,
+        has_company: false,
+        has_agents: false,
+        min_password_length: 12,
+      })
+
+      const store = useSetupStore()
+      await store.fetchStatus()
+      expect(store.isStepComplete('provider')).toBe(true)
+
+      // Second fetch: provider deleted
+      mockGetSetupStatus.mockResolvedValue({
+        needs_admin: false,
+        needs_setup: true,
+        has_providers: false,
+        has_company: false,
+        has_agents: false,
+        min_password_length: 12,
+      })
+
+      await store.fetchStatus()
+      expect(store.isStepComplete('provider')).toBe(false)
+    })
   })
 
   describe('setStep', () => {
