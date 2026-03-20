@@ -47,6 +47,7 @@ const mockPreset: ProviderPreset = {
   driver: 'litellm',
   auth_type: 'none',
   default_base_url: 'http://localhost:11434',
+  candidate_urls: [],
   default_models: [],
 }
 
