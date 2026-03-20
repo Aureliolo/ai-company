@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
@@ -24,6 +24,7 @@ const testing = ref(false)
 const discovering = ref(false)
 const probing = ref(false)
 const probeMessage = ref<string | null>(null)
+const probedUrl = ref<string | null>(null)
 let probeGeneration = 0
 const createdProviderName = ref<string | null>(null)
 const testPassed = ref(false)
@@ -44,6 +45,7 @@ const hasModels = computed(() => {
 const canProceed = computed(() => hasProviders.value && hasModels.value && testPassed.value)
 
 const isFormValid = computed(() => {
+  if (probing.value) return false
   if (!selectedPreset.value) return false
   if (!providerName.value.trim()) return false
   if (
@@ -53,6 +55,15 @@ const isFormValid = computed(() => {
     return false
   }
   return true
+})
+
+// Clear stale probe banner when the user manually edits baseUrl
+// away from the probed value.
+watch(baseUrl, (val) => {
+  if (probedUrl.value && val !== probedUrl.value) {
+    probeMessage.value = null
+    probedUrl.value = null
+  }
 })
 
 /** Guidance message when provider has no models. */
@@ -101,6 +112,7 @@ async function selectPreset(preset: ProviderPreset) {
   testPassed.value = false
   testResult.value = null
   probeMessage.value = null
+  probedUrl.value = null
   probing.value = false
 
   // Auto-probe candidate URLs for no-auth local presets.
@@ -110,6 +122,7 @@ async function selectPreset(preset: ProviderPreset) {
       const result = await store.probePreset(preset.name)
       if (myGen !== probeGeneration) return
       if (result.url) {
+        probedUrl.value = result.url
         baseUrl.value = result.url
         const modelText = result.model_count > 0
           ? ` with ${result.model_count} model${result.model_count !== 1 ? 's' : ''}`

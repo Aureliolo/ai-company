@@ -49,7 +49,7 @@ Log files live at `/data/logs/` inside the backend container, on the `synthorg-d
 Copy the log files out of the container volume via `docker cp`. The container just needs to exist (even stopped):
 
 ```bash
-mkdir -p /tmp/synthorg-logs && docker cp synthorg-backend-1:/data/logs/. logs/
+mkdir -p logs && docker cp synthorg-backend-1:/data/logs/. logs/
 ls -lh logs/
 ```
 
@@ -61,13 +61,13 @@ Only fetch Docker logs if running discrepancy mode or default (summary + discrep
 docker logs synthorg-backend-1 --tail 1000 > logs/docker-stdout.txt 2>&1
 ```
 
-Do **not** pass `--timestamps` -- Docker's RFC 3339 prefix would prepend a second timestamp before the app's own timestamp, breaking the parsing regex in Step 4.
+Do **not** pass `--timestamps` -- Docker's RFC 3339 prefix would prepend a second timestamp before the app's own timestamp, breaking the parsing regex in Step 3.
 
 If the container is stopped, skip the discrepancy check and report: "Container is stopped -- file log analysis only (no discrepancy check)."
 
 ---
 
-## Step 3: Parse and Filter
+## Step 2: Parse and Filter
 
 All file-based logs are newline-delimited JSON. Each line has at minimum:
 - `timestamp` (ISO 8601 UTC)
@@ -128,7 +128,7 @@ for k, v in loggers.most_common(20): print(f'  {k}: {v}')
 
 ---
 
-## Step 4: Discrepancy Detection
+## Step 3: Discrepancy Detection
 
 This is the critical check. Every INFO+ message in Docker logs must also exist in the file-based logs.
 
@@ -239,7 +239,7 @@ Report each discrepancy with:
 
 ---
 
-## Step 5: Present Results
+## Step 4: Present Results
 
 Format the output based on the requested mode:
 
@@ -297,7 +297,7 @@ Status: X entries in Docker logs missing from file sinks
 
 ---
 
-## Step 6: Cleanup
+## Step 5: Cleanup
 
 Remove the temporary files:
 
