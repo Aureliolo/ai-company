@@ -601,7 +601,7 @@ class TestSetupDTOs:
     """Unit tests for setup DTO validation."""
 
     def test_setup_agent_request_valid_preset(self) -> None:
-        from synthorg.api.controllers.setup import SetupAgentRequest
+        from synthorg.api.controllers.setup_models import SetupAgentRequest
 
         req = SetupAgentRequest(
             name="Alice",
@@ -614,7 +614,7 @@ class TestSetupDTOs:
         assert req.personality_preset == "visionary_leader"
 
     def test_setup_agent_request_invalid_preset(self) -> None:
-        from synthorg.api.controllers.setup import SetupAgentRequest
+        from synthorg.api.controllers.setup_models import SetupAgentRequest
 
         with pytest.raises(ValidationError, match="personality preset"):
             SetupAgentRequest(
@@ -626,14 +626,14 @@ class TestSetupDTOs:
             )
 
     def test_setup_company_request_defaults(self) -> None:
-        from synthorg.api.controllers.setup import SetupCompanyRequest
+        from synthorg.api.controllers.setup_models import SetupCompanyRequest
 
         req = SetupCompanyRequest(company_name="Test Corp")
         assert req.template_name is None
         assert req.description is None
 
     def test_setup_status_response_frozen(self) -> None:
-        from synthorg.api.controllers.setup import SetupStatusResponse
+        from synthorg.api.controllers.setup_models import SetupStatusResponse
 
         resp = SetupStatusResponse(
             needs_admin=True,

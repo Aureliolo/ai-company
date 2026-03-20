@@ -2,20 +2,26 @@
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import TYPE_CHECKING, Any
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
 from litestar.status_codes import HTTP_201_CREATED
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.auth.config import AuthConfig
+from synthorg.api.controllers.setup_models import (
+    SetupAgentRequest,
+    SetupAgentResponse,
+    SetupCompanyRequest,
+    SetupCompanyResponse,
+    SetupCompleteResponse,
+    SetupStatusResponse,
+    TemplateInfoResponse,
+)
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import HumanRole, require_read_access, require_write_access
 from synthorg.api.state import AppState  # noqa: TC001
-from synthorg.core.enums import SeniorityLevel
-from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_AGENT_CREATED,
@@ -51,159 +57,6 @@ _DEFAULT_MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields[
 
 # Serializes read-modify-write on the agents settings blob.
 _AGENT_LOCK = asyncio.Lock()
-
-
-# ── Request / Response DTOs ──────────────────────────────────
-
-
-class SetupStatusResponse(BaseModel):
-    """First-run setup status.
-
-    Attributes:
-        needs_admin: True if no user with the CEO role exists yet.
-        needs_setup: True if setup has not been completed.
-        has_providers: True if at least one provider is configured.
-        has_company: True if a company name has been set.
-        has_agents: True if at least one agent has been created.
-        min_password_length: Backend-configured minimum password length.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    needs_admin: bool
-    needs_setup: bool
-    has_providers: bool
-    has_company: bool
-    has_agents: bool
-    min_password_length: int = Field(ge=8)
-
-
-class TemplateInfoResponse(BaseModel):
-    """Summary of an available company template.
-
-    Attributes:
-        name: Template identifier.
-        display_name: Human-readable name.
-        description: Short description.
-        source: Where the template was found (builtin or user).
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    name: NotBlankStr
-    display_name: NotBlankStr
-    description: str
-    source: Literal["builtin", "user"]
-
-
-class SetupCompanyRequest(BaseModel):
-    """Company creation payload for first-run setup.
-
-    Attributes:
-        company_name: Company display name.
-        description: Optional company description.
-        template_name: Optional template to apply (None = blank company).
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    company_name: NotBlankStr = Field(max_length=200)
-    description: str | None = Field(default=None, max_length=1000)
-    template_name: NotBlankStr | None = Field(default=None, max_length=100)
-
-
-class SetupCompanyResponse(BaseModel):
-    """Company creation result.
-
-    Attributes:
-        company_name: The company name that was set.
-        description: The company description that was set, if any.
-        template_applied: Name of the template that was applied, if any.
-        department_count: Number of departments created.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    company_name: NotBlankStr
-    description: str | None
-    template_applied: NotBlankStr | None
-    department_count: int = Field(ge=0)
-
-
-class SetupAgentRequest(BaseModel):
-    """Agent creation payload for first-run setup.
-
-    Attributes:
-        name: Agent display name.
-        role: Agent role name.
-        level: Seniority level.
-        personality_preset: Personality preset name.
-        model_provider: Provider name for the agent's model.
-        model_id: Model identifier from that provider.
-        department: Department to assign the agent to.
-        budget_limit_monthly: Optional monthly budget limit in USD.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    name: NotBlankStr = Field(max_length=200)
-    role: NotBlankStr = Field(max_length=100)
-    level: SeniorityLevel = Field(default=SeniorityLevel.MID)
-    personality_preset: NotBlankStr = Field(default="pragmatic_builder", max_length=100)
-    model_provider: NotBlankStr = Field(max_length=100)
-    model_id: NotBlankStr = Field(max_length=200)
-    department: NotBlankStr = Field(default="engineering", max_length=100)
-    budget_limit_monthly: float | None = Field(default=None, ge=0.0)
-
-    @model_validator(mode="after")
-    def _validate_preset_exists(self) -> Self:
-        """Validate that the personality preset name exists in the registry."""
-        from synthorg.templates.presets import PERSONALITY_PRESETS  # noqa: PLC0415
-
-        key = self.personality_preset.strip().lower()
-        if key not in PERSONALITY_PRESETS:
-            available = sorted(PERSONALITY_PRESETS)
-            msg = (
-                f"Unknown personality preset {self.personality_preset!r}. "
-                f"Available: {available}"
-            )
-            raise ValueError(msg)
-        # Store the canonical (normalized) key so downstream code sees a
-        # consistent value that matches what PERSONALITY_PRESETS expects.
-        object.__setattr__(self, "personality_preset", key)
-        return self
-
-
-class SetupAgentResponse(BaseModel):
-    """Agent creation result.
-
-    Attributes:
-        name: Agent display name.
-        role: Agent role.
-        department: Assigned department.
-        model_provider: LLM provider name.
-        model_id: Model identifier.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    name: NotBlankStr
-    role: NotBlankStr
-    department: NotBlankStr
-    model_provider: NotBlankStr
-    model_id: NotBlankStr
-
-
-class SetupCompleteResponse(BaseModel):
-    """Setup completion result.
-
-    Attributes:
-        setup_complete: Always True on success.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    setup_complete: bool
 
 
 # ── Controller ───────────────────────────────────────────────
@@ -264,40 +117,15 @@ class SetupController(Controller):
 
         has_company = await _check_has_company(settings_svc)
         has_agents = await _check_has_agents(settings_svc)
-
-        min_password_length = _DEFAULT_MIN_PASSWORD_LENGTH
-        raw_pw_value: str | None = None
-        try:
-            pw_entry = await settings_svc.get_entry("api", "min_password_length")
-            raw_pw_value = pw_entry.value
-            parsed = int(raw_pw_value)
-            min_password_length = max(parsed, _DEFAULT_MIN_PASSWORD_LENGTH)
-        except MemoryError, RecursionError:
-            raise
-        except SettingNotFoundError:
-            logger.debug(
-                SETUP_STATUS_SETTINGS_DEFAULT_USED,
-                setting="min_password_length",
-            )
-        except ValueError:
-            logger.warning(
-                SETUP_STATUS_SETTINGS_UNAVAILABLE,
-                setting="min_password_length",
-                reason="non_integer_value",
-                raw=raw_pw_value,
-            )
-        except Exception:
-            logger.warning(
-                SETUP_STATUS_SETTINGS_UNAVAILABLE,
-                setting="min_password_length",
-                exc_info=True,
-            )
+        min_password_length = await _resolve_min_password_length(settings_svc)
 
         logger.debug(
             SETUP_STATUS_CHECKED,
             needs_admin=needs_admin,
             needs_setup=needs_setup,
             has_providers=has_providers,
+            has_company=has_company,
+            has_agents=has_agents,
         )
 
         return ApiResponse(
@@ -496,14 +324,7 @@ class SetupController(Controller):
         await _check_setup_not_complete(settings_svc)
 
         # Verify company has been created.
-        has_company = False
-        try:
-            entry = await settings_svc.get_entry("company", "company_name")
-            has_company = bool(entry.value and entry.value.strip())
-        except MemoryError, RecursionError:
-            raise
-        except SettingNotFoundError:
-            pass
+        has_company = await _check_has_company(settings_svc)
         if not has_company:
             msg = "A company must be created before completing setup"
             logger.warning(SETUP_NO_COMPANY)
@@ -546,10 +367,17 @@ async def _check_has_company(settings_svc: SettingsService) -> bool:
         return bool(entry.value and entry.value.strip())
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except SettingNotFoundError:
         logger.debug(
             SETUP_STATUS_SETTINGS_DEFAULT_USED,
             setting="company_name",
+        )
+        return False
+    except Exception:
+        logger.warning(
+            SETUP_STATUS_SETTINGS_UNAVAILABLE,
+            setting="company_name",
+            exc_info=True,
         )
         return False
 
@@ -565,16 +393,75 @@ async def _check_has_agents(settings_svc: SettingsService) -> bool:
     """
     try:
         entry = await settings_svc.get_entry("company", "agents")
+        if not entry.value:
+            return False
         parsed = json.loads(entry.value)
         return isinstance(parsed, list) and len(parsed) > 0
     except MemoryError, RecursionError:
         raise
-    except Exception:
+    except SettingNotFoundError:
         logger.debug(
             SETUP_STATUS_SETTINGS_DEFAULT_USED,
             setting="agents",
         )
         return False
+    except json.JSONDecodeError:
+        logger.warning(
+            SETUP_AGENTS_CORRUPTED,
+            reason="invalid_json",
+            exc_info=True,
+        )
+        return False
+    except Exception:
+        logger.warning(
+            SETUP_STATUS_SETTINGS_UNAVAILABLE,
+            setting="agents",
+            exc_info=True,
+        )
+        return False
+
+
+async def _resolve_min_password_length(
+    settings_svc: SettingsService,
+) -> int:
+    """Resolve the minimum password length from settings.
+
+    Falls back to the ``AuthConfig`` default when the setting is absent,
+    non-integer, or otherwise unreadable.
+
+    Args:
+        settings_svc: Settings service instance.
+
+    Returns:
+        Resolved minimum password length (never below the default).
+    """
+    raw_pw_value: str | None = None
+    try:
+        pw_entry = await settings_svc.get_entry("api", "min_password_length")
+        raw_pw_value = pw_entry.value
+        parsed = int(raw_pw_value)
+        return max(parsed, _DEFAULT_MIN_PASSWORD_LENGTH)
+    except MemoryError, RecursionError:
+        raise
+    except SettingNotFoundError:
+        logger.debug(
+            SETUP_STATUS_SETTINGS_DEFAULT_USED,
+            setting="min_password_length",
+        )
+    except ValueError:
+        logger.warning(
+            SETUP_STATUS_SETTINGS_UNAVAILABLE,
+            setting="min_password_length",
+            reason="non_integer_value",
+            raw=raw_pw_value,
+        )
+    except Exception:
+        logger.warning(
+            SETUP_STATUS_SETTINGS_UNAVAILABLE,
+            setting="min_password_length",
+            exc_info=True,
+        )
+    return _DEFAULT_MIN_PASSWORD_LENGTH
 
 
 async def _check_setup_not_complete(settings_svc: SettingsService) -> None:

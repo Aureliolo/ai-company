@@ -215,10 +215,13 @@ class ProviderManagementService:
 
         Args:
             name: Provider name.
-            request: Optional model selection.
+            request: Test connection request (includes optional model selection).
 
         Returns:
             Connection test result with latency or error.
+
+        Raises:
+            ProviderNotFoundError: If the provider does not exist.
         """
         providers = await self._config_resolver.get_provider_configs()
         config = providers.get(name)
@@ -374,6 +377,11 @@ class ProviderManagementService:
         config = await self.get_provider(name)
 
         if config.base_url is None:
+            logger.info(
+                PROVIDER_NOT_FOUND,
+                provider=name,
+                error="no base_url configured; cannot discover models",
+            )
             return ()
 
         # Infer preset hint from base URL patterns.
@@ -561,6 +569,8 @@ def _infer_preset_hint(base_url: str) -> str | None:
     """Infer the preset name from a provider base URL.
 
     Uses port-based heuristics for common local providers.
+    Port 8000 is mapped to vLLM as a best-effort guess; it is also
+    used by the SynthOrg backend and other services.
 
     Args:
         base_url: Provider base URL.
@@ -568,11 +578,18 @@ def _infer_preset_hint(base_url: str) -> str | None:
     Returns:
         Preset name hint, or ``None`` if unrecognized.
     """
-    url_lower = base_url.lower()
-    if ":11434" in url_lower:
-        return "ollama"
-    if ":1234" in url_lower:
-        return "lm-studio"
-    if ":8000" in url_lower:
-        return "vllm"
-    return None
+    from urllib.parse import urlparse  # noqa: PLC0415
+
+    port_to_preset: dict[int, str] = {
+        11434: "ollama",
+        1234: "lm-studio",
+        8000: "vllm",
+    }
+
+    try:
+        port = urlparse(base_url).port
+    except Exception:
+        return None
+    if port is None:
+        return None
+    return port_to_preset.get(port)

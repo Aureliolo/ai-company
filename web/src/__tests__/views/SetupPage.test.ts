@@ -96,6 +96,8 @@ vi.mock('@/api/endpoints/setup', () => ({
     needs_admin: true,
     needs_setup: true,
     has_providers: false,
+    has_company: false,
+    has_agents: false,
     min_password_length: 12,
   }),
   listTemplates: vi.fn().mockResolvedValue([]),

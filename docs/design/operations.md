@@ -107,6 +107,7 @@ Providers can be managed at runtime through the API without restarting:
 
 - **CRUD**: `POST /api/v1/providers` (create), `PUT /api/v1/providers/{name}` (update), `DELETE /api/v1/providers/{name}` (delete)
 - **Connection test**: `POST /api/v1/providers/{name}/test` -- sends a minimal probe and reports latency
+- **Model discovery**: `POST /api/v1/providers/{name}/discover-models` -- queries the provider endpoint for available models (Ollama `/api/tags`, standard `/models`) and updates the provider config. Also auto-triggered on preset creation for no-auth providers with empty model lists. SSRF-safe URL validation applied before outbound requests.
 - **Presets**: `GET /api/v1/providers/presets` lists built-in templates (Ollama, LM Studio, OpenRouter, vLLM); `POST /api/v1/providers/from-preset` creates from a template
 - **Hot-reload**: On mutation, `ProviderManagementService` rebuilds `ProviderRegistry` + `ModelRouter` and atomically swaps them in `AppState` -- no downtime
 - **Auth types**: `api_key` (default), `oauth` (stores credentials, MVP uses pre-fetched token), `custom_header`, `none` (local providers)

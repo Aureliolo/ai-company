@@ -395,7 +395,6 @@ class TestCriticalSinkFailure:
 
 
 @pytest.mark.unit
-@pytest.mark.unit
 class TestReconfigurationLogRouting:
     """Regression tests: log routing after configure_logging() is called twice.
 
@@ -505,6 +504,7 @@ class TestReconfigurationLogRouting:
         assert cfg["cache_logger_on_first_use"] is False
 
 
+@pytest.mark.unit
 class TestConfigureLoggingIntegration:
     """Integration tests for configure_logging with env var overrides."""
 

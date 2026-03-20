@@ -1,0 +1,161 @@
+"""Request/response models for the first-run setup controller."""
+
+from typing import Literal, Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from synthorg.core.enums import SeniorityLevel
+from synthorg.core.types import NotBlankStr  # noqa: TC001
+
+
+class SetupStatusResponse(BaseModel):
+    """First-run setup status.
+
+    Attributes:
+        needs_admin: True if no user with the CEO role exists yet.
+        needs_setup: True if setup has not been completed.
+        has_providers: True if at least one provider is configured.
+        has_company: True if a company name has been set.
+        has_agents: True if at least one agent has been created.
+        min_password_length: Backend-configured minimum password length.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    needs_admin: bool
+    needs_setup: bool
+    has_providers: bool
+    has_company: bool
+    has_agents: bool
+    min_password_length: int = Field(ge=8)
+
+
+class TemplateInfoResponse(BaseModel):
+    """Summary of an available company template.
+
+    Attributes:
+        name: Template identifier.
+        display_name: Human-readable name.
+        description: Short description.
+        source: Where the template was found (builtin or user).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: NotBlankStr
+    display_name: NotBlankStr
+    description: str
+    source: Literal["builtin", "user"]
+
+
+class SetupCompanyRequest(BaseModel):
+    """Company creation payload for first-run setup.
+
+    Attributes:
+        company_name: Company display name.
+        description: Optional company description.
+        template_name: Optional template to apply (None = blank company).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    company_name: NotBlankStr = Field(max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    template_name: NotBlankStr | None = Field(default=None, max_length=100)
+
+
+class SetupCompanyResponse(BaseModel):
+    """Company creation result.
+
+    Attributes:
+        company_name: The company name that was set.
+        description: The company description that was set, if any.
+        template_applied: Name of the template that was applied, if any.
+        department_count: Number of departments created.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    company_name: NotBlankStr
+    description: str | None
+    template_applied: NotBlankStr | None
+    department_count: int = Field(ge=0)
+
+
+class SetupAgentRequest(BaseModel):
+    """Agent creation payload for first-run setup.
+
+    Attributes:
+        name: Agent display name.
+        role: Agent role name.
+        level: Seniority level.
+        personality_preset: Personality preset name.
+        model_provider: Provider name for the agent's model.
+        model_id: Model identifier from that provider.
+        department: Department to assign the agent to.
+        budget_limit_monthly: Optional monthly budget limit in USD.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: NotBlankStr = Field(max_length=200)
+    role: NotBlankStr = Field(max_length=100)
+    level: SeniorityLevel = Field(default=SeniorityLevel.MID)
+    personality_preset: NotBlankStr = Field(
+        default="pragmatic_builder",
+        max_length=100,
+    )
+    model_provider: NotBlankStr = Field(max_length=100)
+    model_id: NotBlankStr = Field(max_length=200)
+    department: NotBlankStr = Field(default="engineering", max_length=100)
+    budget_limit_monthly: float | None = Field(default=None, ge=0.0)
+
+    @model_validator(mode="after")
+    def _validate_preset_exists(self) -> Self:
+        """Validate that the personality preset name exists in the registry."""
+        from synthorg.templates.presets import PERSONALITY_PRESETS  # noqa: PLC0415
+
+        key = self.personality_preset.strip().lower()
+        if key not in PERSONALITY_PRESETS:
+            available = sorted(PERSONALITY_PRESETS)
+            msg = (
+                f"Unknown personality preset {self.personality_preset!r}. "
+                f"Available: {available}"
+            )
+            raise ValueError(msg)
+        # Store the canonical (normalized) key so downstream code sees a
+        # consistent value that matches what PERSONALITY_PRESETS expects.
+        object.__setattr__(self, "personality_preset", key)
+        return self
+
+
+class SetupAgentResponse(BaseModel):
+    """Agent creation result.
+
+    Attributes:
+        name: Agent display name.
+        role: Agent role.
+        department: Assigned department.
+        model_provider: LLM provider name.
+        model_id: Model identifier.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: NotBlankStr
+    role: NotBlankStr
+    department: NotBlankStr
+    model_provider: NotBlankStr
+    model_id: NotBlankStr
+
+
+class SetupCompleteResponse(BaseModel):
+    """Setup completion result.
+
+    Attributes:
+        setup_complete: Always True on success.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    setup_complete: bool
