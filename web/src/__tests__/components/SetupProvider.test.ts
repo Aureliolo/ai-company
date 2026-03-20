@@ -225,6 +225,7 @@ describe('SetupProvider', () => {
 
       // Click on the preset card button
       const presetBtn = wrapper.findAll('button').find((b) => b.text().includes('Ollama'))
+      expect(presetBtn).toBeTruthy()
       await presetBtn!.trigger('click')
 
       expect(wrapper.text()).toContain('Configuring')
@@ -241,6 +242,7 @@ describe('SetupProvider', () => {
 
       // Select preset
       const presetBtn = wrapper.findAll('button').find((b) => b.text().includes('OpenRouter'))
+      expect(presetBtn).toBeTruthy()
       await presetBtn!.trigger('click')
 
       // Clear the name field (auto-filled from preset)
