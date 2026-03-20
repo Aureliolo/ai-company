@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+import { ref } from 'vue'
 import { useWebSocketStore } from '@/stores/websocket'
 import ConnectionStatus from '@/components/layout/ConnectionStatus.vue'
 
@@ -17,31 +18,40 @@ vi.mock('@/api/endpoints/health', () => ({
 // Let usePolling invoke the callback immediately on start() so health checks run
 vi.mock('@/composables/usePolling', () => ({
   usePolling: (fn: () => Promise<void>) => ({
+    active: ref(false),
     start: () => { fn() },
     stop: vi.fn(),
   }),
 }))
 
 describe('ConnectionStatus', () => {
+  let wrapper: ReturnType<typeof mount> | undefined
+
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
   })
 
-  function getWsGroup(wrapper: ReturnType<typeof mount>) {
-    return wrapper.find('[aria-label^="WebSocket:"]')
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = undefined
+    vi.restoreAllMocks()
+  })
+
+  function getWsGroup(w: ReturnType<typeof mount>) {
+    return w.find('[aria-label^="WebSocket:"]')
   }
 
-  function getWsDot(wrapper: ReturnType<typeof mount>) {
-    return getWsGroup(wrapper).find('span[aria-hidden="true"]')
+  function getWsDot(w: ReturnType<typeof mount>) {
+    return getWsGroup(w).find('span[aria-hidden="true"]')
   }
 
-  function getApiGroup(wrapper: ReturnType<typeof mount>) {
-    return wrapper.find('[aria-label^="API:"]')
+  function getApiGroup(w: ReturnType<typeof mount>) {
+    return w.find('[aria-label^="API:"]')
   }
 
-  function getApiDot(wrapper: ReturnType<typeof mount>) {
-    return getApiGroup(wrapper).find('span[aria-hidden="true"]')
+  function getApiDot(w: ReturnType<typeof mount>) {
+    return getApiGroup(w).find('span[aria-hidden="true"]')
   }
 
   describe('WebSocket status', () => {
@@ -49,7 +59,7 @@ describe('ConnectionStatus', () => {
       const wsStore = useWebSocketStore()
       wsStore.$patch({ connected: true })
 
-      const wrapper = mount(ConnectionStatus)
+      wrapper = mount(ConnectionStatus)
       const dot = getWsDot(wrapper)
       expect(dot.classes()).toContain('bg-green-500')
     })
@@ -58,7 +68,7 @@ describe('ConnectionStatus', () => {
       const wsStore = useWebSocketStore()
       wsStore.$patch({ connected: false, reconnectExhausted: false })
 
-      const wrapper = mount(ConnectionStatus)
+      wrapper = mount(ConnectionStatus)
       const dot = getWsDot(wrapper)
       expect(dot.classes()).toContain('bg-yellow-500')
     })
@@ -67,7 +77,7 @@ describe('ConnectionStatus', () => {
       const wsStore = useWebSocketStore()
       wsStore.$patch({ connected: false, reconnectExhausted: true })
 
-      const wrapper = mount(ConnectionStatus)
+      wrapper = mount(ConnectionStatus)
       const dot = getWsDot(wrapper)
       expect(dot.classes()).toContain('bg-red-500')
     })
@@ -76,7 +86,7 @@ describe('ConnectionStatus', () => {
       const wsStore = useWebSocketStore()
       wsStore.$patch({ connected: true })
 
-      const wrapper = mount(ConnectionStatus)
+      wrapper = mount(ConnectionStatus)
       expect(getWsGroup(wrapper).attributes('aria-label')).toBe('WebSocket: connected')
     })
 
@@ -84,7 +94,7 @@ describe('ConnectionStatus', () => {
       const wsStore = useWebSocketStore()
       wsStore.$patch({ connected: false, reconnectExhausted: false })
 
-      const wrapper = mount(ConnectionStatus)
+      wrapper = mount(ConnectionStatus)
       expect(getWsGroup(wrapper).attributes('aria-label')).toBe('WebSocket: reconnecting')
     })
 
@@ -92,7 +102,7 @@ describe('ConnectionStatus', () => {
       const wsStore = useWebSocketStore()
       wsStore.$patch({ connected: false, reconnectExhausted: true })
 
-      const wrapper = mount(ConnectionStatus)
+      wrapper = mount(ConnectionStatus)
       expect(getWsGroup(wrapper).attributes('aria-label')).toBe('WebSocket: connection lost')
     })
   })
@@ -101,7 +111,7 @@ describe('ConnectionStatus', () => {
     it('shows green dot when health status is ok', async () => {
       vi.mocked(getHealth).mockResolvedValue({ status: 'ok', persistence: true, message_bus: true, version: '0.1.0', uptime_seconds: 100 })
 
-      const wrapper = mount(ConnectionStatus)
+      wrapper = mount(ConnectionStatus)
       await flushPromises()
 
       const dot = getApiDot(wrapper)
@@ -111,7 +121,7 @@ describe('ConnectionStatus', () => {
     it('shows yellow dot when health status is degraded', async () => {
       vi.mocked(getHealth).mockResolvedValue({ status: 'degraded', persistence: true, message_bus: false, version: '0.1.0', uptime_seconds: 100 })
 
-      const wrapper = mount(ConnectionStatus)
+      wrapper = mount(ConnectionStatus)
       await flushPromises()
 
       const dot = getApiDot(wrapper)
@@ -120,21 +130,31 @@ describe('ConnectionStatus', () => {
 
     it('shows red dot when health check fails', async () => {
       vi.mocked(getHealth).mockRejectedValue(new Error('Network error'))
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      vi.spyOn(console, 'error').mockImplementation(() => {})
 
-      const wrapper = mount(ConnectionStatus)
+      wrapper = mount(ConnectionStatus)
       await flushPromises()
 
       const dot = getApiDot(wrapper)
       expect(dot.classes()).toContain('bg-red-500')
-      consoleSpy.mockRestore()
+    })
+
+    it('shows gray dot when health status is down', async () => {
+      vi.mocked(getHealth).mockResolvedValue({ status: 'down', persistence: false, message_bus: false, version: '0.1.0', uptime_seconds: 0 })
+
+      wrapper = mount(ConnectionStatus)
+      await flushPromises()
+
+      // 'down' falls through to the else branch (gray), same as unknown/pending
+      const dot = getApiDot(wrapper)
+      expect(dot.classes()).toContain('bg-gray-500')
     })
 
     it('shows gray dot before health is fetched', () => {
       // Make getHealth never resolve during this test
       vi.mocked(getHealth).mockReturnValue(new Promise(() => {}))
 
-      const wrapper = mount(ConnectionStatus)
+      wrapper = mount(ConnectionStatus)
       // Don't flush -- health hasn't resolved yet
       const dot = getApiDot(wrapper)
       expect(dot.classes()).toContain('bg-gray-500')
@@ -143,7 +163,7 @@ describe('ConnectionStatus', () => {
     it('has correct aria-label for ok status', async () => {
       vi.mocked(getHealth).mockResolvedValue({ status: 'ok', persistence: true, message_bus: true, version: '0.1.0', uptime_seconds: 100 })
 
-      const wrapper = mount(ConnectionStatus)
+      wrapper = mount(ConnectionStatus)
       await flushPromises()
 
       expect(getApiGroup(wrapper).attributes('aria-label')).toBe('API: ok')
@@ -151,13 +171,12 @@ describe('ConnectionStatus', () => {
 
     it('has correct aria-label for error status', async () => {
       vi.mocked(getHealth).mockRejectedValue(new Error('fail'))
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      vi.spyOn(console, 'error').mockImplementation(() => {})
 
-      const wrapper = mount(ConnectionStatus)
+      wrapper = mount(ConnectionStatus)
       await flushPromises()
 
       expect(getApiGroup(wrapper).attributes('aria-label')).toBe('API: error')
-      consoleSpy.mockRestore()
     })
   })
 })

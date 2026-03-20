@@ -1,9 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { defineComponent, h } from 'vue'
 import type { ProviderConfig, ProviderPreset } from '@/api/types'
 
+// We mock the API module (not the Pinia store) intentionally: the store's
+// actions are thin wrappers around these endpoints, so mocking at the API
+// layer lets us verify the full component-to-store-to-API integration path.
+// If the store ever refactors its internals, these tests will catch regressions.
 vi.mock('@/api/endpoints/providers', () => ({
   listProviders: vi.fn().mockResolvedValue({}),
   listPresets: vi.fn().mockResolvedValue([]),
@@ -17,11 +21,11 @@ import SetupProvider from '@/components/setup/SetupProvider.vue'
 
 const ButtonStub = defineComponent({
   name: 'PvButton',
-  props: ['label', 'icon', 'severity', 'size', 'outlined', 'text', 'disabled', 'loading', 'iconPos'],
+  props: ['label', 'icon', 'severity', 'size', 'outlined', 'text', 'disabled', 'loading', 'iconPos', 'type'],
   emits: ['click'],
   setup(props, { emit }) {
     return () =>
-      h('button', { disabled: props.disabled, onClick: () => emit('click') }, props.label)
+      h('button', { disabled: props.disabled, type: props.type, onClick: () => emit('click') }, props.label)
   },
 })
 
@@ -92,32 +96,43 @@ const mockApiKeyPreset: ProviderPreset = {
   default_models: [],
 }
 
-function findButton(wrapper: ReturnType<typeof mount>, label: string) {
-  return wrapper.findAll('button').find((b) => b.text().includes(label))
+function findButton(w: ReturnType<typeof mount>, label: string) {
+  return w.findAll('button').find((b) => b.text().includes(label))
+}
+
+/** Mount SetupProvider with a pre-existing provider and presets loaded. */
+function mountWithExistingProvider(
+  provider: ProviderConfig = mockProvider,
+  presets: ProviderPreset[] = [mockPreset],
+) {
+  vi.mocked(providersApi.listProviders).mockResolvedValue({ 'test-provider': provider })
+  vi.mocked(providersApi.listPresets).mockResolvedValue(presets)
+  return mount(SetupProvider, { global: { stubs: globalStubs } })
 }
 
 describe('SetupProvider', () => {
+  let wrapper: ReturnType<typeof mount> | undefined
+
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
   })
 
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = undefined
+  })
+
   describe('auto-test on mount', () => {
     it('triggers connection test when existing provider has models', async () => {
-      vi.mocked(providersApi.listProviders).mockResolvedValue({ 'test-provider': mockProvider })
-      vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
-
-      mount(SetupProvider, { global: { stubs: globalStubs } })
+      wrapper = mountWithExistingProvider()
       await flushPromises()
 
       expect(providersApi.testConnection).toHaveBeenCalledWith('test-provider', undefined)
     })
 
     it('enables Next button when auto-test succeeds', async () => {
-      vi.mocked(providersApi.listProviders).mockResolvedValue({ 'test-provider': mockProvider })
-      vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
-
-      const wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
+      wrapper = mountWithExistingProvider()
       await flushPromises()
 
       const nextBtn = findButton(wrapper, 'Next')
@@ -126,8 +141,6 @@ describe('SetupProvider', () => {
     })
 
     it('disables Next button when auto-test fails', async () => {
-      vi.mocked(providersApi.listProviders).mockResolvedValue({ 'test-provider': mockProvider })
-      vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
       vi.mocked(providersApi.testConnection).mockResolvedValue({
         success: false,
         latency_ms: null,
@@ -135,7 +148,7 @@ describe('SetupProvider', () => {
         model_tested: null,
       })
 
-      const wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
+      wrapper = mountWithExistingProvider()
       await flushPromises()
 
       const nextBtn = findButton(wrapper, 'Next')
@@ -144,8 +157,6 @@ describe('SetupProvider', () => {
     })
 
     it('shows error when auto-test fails', async () => {
-      vi.mocked(providersApi.listProviders).mockResolvedValue({ 'test-provider': mockProvider })
-      vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
       vi.mocked(providersApi.testConnection).mockResolvedValue({
         success: false,
         latency_ms: null,
@@ -153,18 +164,16 @@ describe('SetupProvider', () => {
         model_tested: null,
       })
 
-      const wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
+      wrapper = mountWithExistingProvider()
       await flushPromises()
 
       expect(wrapper.text()).toContain('Connection refused')
     })
 
     it('handles auto-test network error gracefully', async () => {
-      vi.mocked(providersApi.listProviders).mockResolvedValue({ 'test-provider': mockProvider })
-      vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
       vi.mocked(providersApi.testConnection).mockRejectedValue(new Error('Network error'))
 
-      const wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
+      wrapper = mountWithExistingProvider()
       await flushPromises()
 
       expect(wrapper.text()).toContain('Network error')
@@ -176,17 +185,14 @@ describe('SetupProvider', () => {
       vi.mocked(providersApi.listProviders).mockResolvedValue({})
       vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
 
-      mount(SetupProvider, { global: { stubs: globalStubs } })
+      wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
       await flushPromises()
 
       expect(providersApi.testConnection).not.toHaveBeenCalled()
     })
 
     it('does not auto-test when provider has no models', async () => {
-      vi.mocked(providersApi.listProviders).mockResolvedValue({ 'test-provider': mockProviderNoModels })
-      vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
-
-      mount(SetupProvider, { global: { stubs: globalStubs } })
+      wrapper = mountWithExistingProvider(mockProviderNoModels)
       await flushPromises()
 
       expect(providersApi.testConnection).not.toHaveBeenCalled()
@@ -198,7 +204,7 @@ describe('SetupProvider', () => {
       vi.mocked(providersApi.listProviders).mockResolvedValue({})
       vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset, mockApiKeyPreset])
 
-      const wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
+      wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
       await flushPromises()
 
       expect(wrapper.text()).toContain('Ollama')
@@ -209,7 +215,7 @@ describe('SetupProvider', () => {
       vi.mocked(providersApi.listProviders).mockResolvedValue({})
       vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
 
-      const wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
+      wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
       await flushPromises()
 
       // Click on the preset card button
@@ -225,7 +231,7 @@ describe('SetupProvider', () => {
       vi.mocked(providersApi.listProviders).mockResolvedValue({})
       vi.mocked(providersApi.listPresets).mockResolvedValue([mockApiKeyPreset])
 
-      const wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
+      wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
       await flushPromises()
 
       // Select preset
@@ -243,8 +249,6 @@ describe('SetupProvider', () => {
 
   describe('navigation events', () => {
     it('emits next when Next button is clicked and canProceed is true', async () => {
-      vi.mocked(providersApi.listProviders).mockResolvedValue({ 'test-provider': mockProvider })
-      vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
       vi.mocked(providersApi.testConnection).mockResolvedValue({
         success: true,
         latency_ms: 42,
@@ -252,7 +256,7 @@ describe('SetupProvider', () => {
         model_tested: 'test-small-001',
       })
 
-      const wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
+      wrapper = mountWithExistingProvider()
       await flushPromises()
 
       const nextBtn = findButton(wrapper, 'Next')
@@ -266,7 +270,7 @@ describe('SetupProvider', () => {
       vi.mocked(providersApi.listProviders).mockResolvedValue({})
       vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
 
-      const wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
+      wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
       await flushPromises()
 
       const backBtn = findButton(wrapper, 'Back')

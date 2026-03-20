@@ -20,6 +20,7 @@ const ButtonStub = defineComponent({
 
 describe('ConnectionLostBanner', () => {
   let originalLocation: Location
+  let wrapper: ReturnType<typeof mount> | undefined
 
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -27,6 +28,8 @@ describe('ConnectionLostBanner', () => {
   })
 
   afterEach(() => {
+    wrapper?.unmount()
+    wrapper = undefined
     // Restore window.location to prevent leaking state between tests
     Object.defineProperty(window, 'location', {
       value: originalLocation,
@@ -41,7 +44,7 @@ describe('ConnectionLostBanner', () => {
   }
 
   it('does not render when reconnectExhausted is false', () => {
-    const wrapper = mountBanner()
+    wrapper = mountBanner()
     expect(wrapper.find('[role="alert"]').exists()).toBe(false)
     expect(wrapper.text()).toBe('')
   })
@@ -50,7 +53,7 @@ describe('ConnectionLostBanner', () => {
     const wsStore = useWebSocketStore()
     wsStore.$patch({ reconnectExhausted: true })
 
-    const wrapper = mountBanner()
+    wrapper = mountBanner()
     const alert = wrapper.find('[role="alert"]')
     expect(alert.exists()).toBe(true)
     expect(wrapper.text()).toContain('Connection lost')
@@ -61,7 +64,7 @@ describe('ConnectionLostBanner', () => {
     const wsStore = useWebSocketStore()
     wsStore.$patch({ reconnectExhausted: true })
 
-    const wrapper = mountBanner()
+    wrapper = mountBanner()
     const icon = wrapper.find('.pi-exclamation-triangle')
     expect(icon.exists()).toBe(true)
   })
@@ -76,7 +79,7 @@ describe('ConnectionLostBanner', () => {
       writable: true,
     })
 
-    const wrapper = mountBanner()
+    wrapper = mountBanner()
     const reloadBtn = wrapper.find('button')
     expect(reloadBtn.exists()).toBe(true)
     expect(reloadBtn.text()).toContain('Reload')
@@ -88,7 +91,7 @@ describe('ConnectionLostBanner', () => {
     const wsStore = useWebSocketStore()
     wsStore.$patch({ reconnectExhausted: true })
 
-    const wrapper = mountBanner()
+    wrapper = mountBanner()
     const alert = wrapper.find('[role="alert"]')
     expect(alert.classes()).toContain('bg-amber-500/10')
     expect(alert.classes()).toContain('border-b')
