@@ -267,6 +267,42 @@ budget:
       total_monthly: 100.00
     ```
 
+### Quota Degradation
+
+When a provider's quota is exhausted, the framework applies the configured degradation
+strategy before failing. Each provider has a `DegradationConfig` specifying the strategy:
+
+| Strategy | Behavior |
+|----------|----------|
+| `alert` (default) | Raise `QuotaExhaustedError` immediately |
+| `fallback` | Walk the `fallback_providers` list, use the first provider with available quota |
+| `queue` | Wait for the soonest quota window to reset (capped at `queue_max_wait_seconds`), then retry |
+
+```yaml
+providers:
+  example-provider:
+    degradation:
+      strategy: "fallback"
+      fallback_providers:
+        - "secondary-provider"
+        - "local-provider"
+  secondary-provider:
+    degradation:
+      strategy: "queue"
+      queue_max_wait_seconds: 300
+```
+
+Degradation is resolved during pre-flight checks (`BudgetEnforcer.check_can_execute`),
+which returns a `PreFlightResult` carrying the effective provider and degradation details.
+The engine's `AgentEngine._apply_degradation` swaps the provider driver via the
+`ProviderRegistry` when FALLBACK selects a different provider. QUEUE keeps the same
+provider -- it waits for the quota window to rotate, then re-checks.
+
+!!! tip "Degradation Boundary"
+
+    Like auto-downgrade, degradation applies only at **task assignment time** (pre-flight).
+    An agent mid-execution is never switched to a different provider.
+
 ### LLM Call Analytics
 
 Every LLM provider call is tracked with comprehensive metadata for financial reporting,

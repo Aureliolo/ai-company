@@ -10,6 +10,7 @@ import time
 from typing import TYPE_CHECKING
 
 from synthorg.budget.errors import BudgetExhaustedError, QuotaExhaustedError
+from synthorg.budget.quota import DegradationAction
 from synthorg.engine._security_factory import (
     make_security_interceptor,
     registry_with_approval_tool,
@@ -1227,30 +1228,36 @@ class AgentEngine:
         provider: CompletionProvider,
     ) -> tuple[CompletionProvider, AgentIdentity]:
         """Apply degradation result: swap provider if FALLBACK selected."""
-        if (
-            preflight.effective_provider is None
-            or preflight.effective_provider == identity.model.provider
-        ):
+        effective = preflight.effective_provider
+        if effective is None or effective == identity.model.provider:
             return provider, identity
 
         # FALLBACK: need a different provider driver
         if self._provider_registry is None:
             msg = (
-                f"FALLBACK selected provider "
-                f"{preflight.effective_provider!r} but no "
-                f"provider_registry available"
+                f"FALLBACK selected provider {effective!r} "
+                f"but no provider_registry available"
             )
-            raise QuotaExhaustedError(msg)
+            raise QuotaExhaustedError(
+                msg,
+                provider_name=effective,
+                degradation_action=DegradationAction.FALLBACK,
+            )
 
-        new_provider = self._provider_registry.get(
-            preflight.effective_provider,
-        )
+        try:
+            new_provider = self._provider_registry.get(effective)
+        except Exception:
+            msg = f"Fallback provider {effective!r} not found in provider registry"
+            raise QuotaExhaustedError(
+                msg,
+                provider_name=effective,
+                degradation_action=DegradationAction.FALLBACK,
+            ) from None
+
         new_identity = identity.model_copy(
             update={
                 "model": identity.model.model_copy(
-                    update={
-                        "provider": preflight.effective_provider,
-                    },
+                    update={"provider": effective},
                 ),
             },
         )

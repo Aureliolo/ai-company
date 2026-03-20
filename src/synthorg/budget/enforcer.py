@@ -188,10 +188,7 @@ class BudgetEnforcer:
             result="pass",
         )
         if degradation_result is not None:
-            return PreFlightResult(
-                effective_provider=degradation_result.effective_provider,
-                degradation=degradation_result,
-            )
+            return PreFlightResult(degradation=degradation_result)
         return PreFlightResult()
 
     async def check_quota(
@@ -254,11 +251,12 @@ class BudgetEnforcer:
                 degradation_action=DegradationAction.ALERT,
             )
 
+        assert self._quota_tracker is not None  # noqa: S101
         return await resolve_degradation(
             provider_name=provider_name,
             quota_result=quota_result,
             degradation_config=deg_config,
-            quota_tracker=self._quota_tracker,  # type: ignore[arg-type]
+            quota_tracker=self._quota_tracker,
             estimated_tokens=estimated_tokens,
         )
 

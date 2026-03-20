@@ -163,7 +163,7 @@ class DegradationAction(StrEnum):
 
     Members:
         FALLBACK: Route to a fallback provider.
-        QUEUE: Queue for later (not yet implemented).
+        QUEUE: Wait for quota window reset, then retry.
         ALERT: Raise error and alert user.
     """
 

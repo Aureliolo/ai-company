@@ -96,7 +96,6 @@ class TestEngineDegradation:
         engine = AgentEngine(provider=provider, budget_enforcer=enforcer)
 
         fallback_result = PreFlightResult(
-            effective_provider="fallback-provider",
             degradation=DegradationResult(
                 original_provider="test-provider",
                 effective_provider="fallback-provider",
@@ -145,7 +144,6 @@ class TestEngineDegradation:
         )
 
         fallback_result = PreFlightResult(
-            effective_provider="fallback-provider",
             degradation=DegradationResult(
                 original_provider="test-provider",
                 effective_provider="fallback-provider",
@@ -189,7 +187,6 @@ class TestEngineDegradation:
         engine = AgentEngine(provider=provider, budget_enforcer=enforcer)
 
         queue_result = PreFlightResult(
-            effective_provider="test-provider",
             degradation=DegradationResult(
                 original_provider="test-provider",
                 effective_provider="test-provider",

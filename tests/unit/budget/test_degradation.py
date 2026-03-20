@@ -123,10 +123,7 @@ class TestPreFlightResult:
             effective_provider="b",
             action_taken=DegradationAction.FALLBACK,
         )
-        result = PreFlightResult(
-            effective_provider="b",
-            degradation=deg,
-        )
+        result = PreFlightResult(degradation=deg)
         assert result.effective_provider == "b"
         assert result.degradation is deg
 
@@ -579,6 +576,99 @@ class TestQueueStrategy:
 
         assert result.original_provider == "primary"
         assert result.effective_provider == "primary"
+
+    async def test_picks_soonest_from_multiple_windows(self) -> None:
+        """When multiple windows are exhausted, uses the soonest reset."""
+        tracker = _make_tracker({"primary": 5})
+        await _exhaust_provider(tracker, "primary", 5)
+
+        now = datetime.now(UTC)
+        snapshots = (
+            QuotaSnapshot(
+                provider_name="primary",
+                window=QuotaWindow.PER_HOUR,
+                requests_used=5,
+                requests_limit=5,
+                window_resets_at=now + timedelta(seconds=120),
+                captured_at=now,
+            ),
+            QuotaSnapshot(
+                provider_name="primary",
+                window=QuotaWindow.PER_DAY,
+                requests_used=100,
+                requests_limit=100,
+                window_resets_at=now + timedelta(hours=5),
+                captured_at=now,
+            ),
+        )
+        allowed_result = QuotaCheckResult(
+            allowed=True,
+            provider_name="primary",
+        )
+        with (
+            patch.object(
+                tracker,
+                "get_snapshot",
+                new_callable=AsyncMock,
+                return_value=snapshots,
+            ),
+            patch("synthorg.budget.degradation.asyncio_sleep") as mock_sleep,
+            patch.object(
+                tracker,
+                "check_quota",
+                new_callable=AsyncMock,
+                return_value=allowed_result,
+            ),
+        ):
+            mock_sleep.return_value = None
+
+            result = await resolve_degradation(
+                provider_name="primary",
+                quota_result=_denied_result(
+                    "primary",
+                    windows=(
+                        QuotaWindow.PER_HOUR,
+                        QuotaWindow.PER_DAY,
+                    ),
+                ),
+                degradation_config=DegradationConfig(
+                    strategy=DegradationAction.QUEUE,
+                    queue_max_wait_seconds=300,
+                ),
+                quota_tracker=tracker,
+            )
+
+        assert result.action_taken == DegradationAction.QUEUE
+        # Should have waited ~120s (the shorter window), not ~5 hours
+        delay = mock_sleep.call_args[0][0]
+        assert delay < 200
+
+    async def test_zero_max_wait_raises_immediately(self) -> None:
+        """queue_max_wait_seconds=0 means no waiting allowed."""
+        tracker = _make_tracker({"primary": 5})
+        await _exhaust_provider(tracker, "primary", 5)
+
+        with (
+            patch.object(
+                tracker,
+                "get_snapshot",
+                new_callable=AsyncMock,
+                return_value=self._near_future_snapshot(30),
+            ),
+            pytest.raises(
+                QuotaExhaustedError,
+                match="exceeds max wait",
+            ),
+        ):
+            await resolve_degradation(
+                provider_name="primary",
+                quota_result=_denied_result("primary"),
+                degradation_config=DegradationConfig(
+                    strategy=DegradationAction.QUEUE,
+                    queue_max_wait_seconds=0,
+                ),
+                quota_tracker=tracker,
+            )
 
     async def test_no_snapshots_raises(self) -> None:
         """When no snapshots available, raises immediately."""

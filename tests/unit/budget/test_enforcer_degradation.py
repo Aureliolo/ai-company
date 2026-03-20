@@ -16,7 +16,6 @@ from synthorg.budget.errors import QuotaExhaustedError
 from synthorg.budget.quota import (
     DegradationAction,
     DegradationConfig,
-    QuotaCheckResult,
     QuotaLimit,
     QuotaWindow,
     SubscriptionConfig,
@@ -153,45 +152,6 @@ class TestEnforcerQueue:
             ),
         }
 
-        allowed_result = QuotaCheckResult(
-            allowed=True,
-            provider_name="primary",
-        )
-
-        enforcer = BudgetEnforcer(
-            budget_config=cfg,
-            cost_tracker=tracker,
-            quota_tracker=quota_tracker,
-            degradation_configs=degradation_configs,
-        )
-
-        billing_patch, daily_patch = _patch_periods()
-        with (
-            billing_patch,
-            daily_patch,
-            patch(
-                "synthorg.budget.degradation.asyncio_sleep",
-                return_value=None,
-            ),
-            patch.object(
-                quota_tracker,
-                "check_quota",
-                new_callable=AsyncMock,
-                return_value=allowed_result,
-            ),
-            patch.object(
-                quota_tracker,
-                "get_snapshot",
-                new_callable=AsyncMock,
-                return_value=(),
-            ),
-        ):
-            # get_snapshot returns empty -> will raise.
-            # Need to mock to return a snapshot with a near-future reset.
-            # Actually, let's mock resolve_degradation directly
-            pass
-
-        # Use a more targeted approach: mock resolve_degradation
         mock_result = DegradationResult(
             original_provider="primary",
             effective_provider="primary",
