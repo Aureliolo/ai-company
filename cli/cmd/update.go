@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -401,26 +402,10 @@ func targetImageTag(ver string) string {
 	return tag
 }
 
-// isValidImageTag checks that tag matches [a-zA-Z0-9][a-zA-Z0-9._-]*.
+// isValidImageTag delegates to config.IsValidImageTag.
+// Kept as a package-local alias for readability at call sites.
 func isValidImageTag(tag string) bool {
-	if len(tag) == 0 {
-		return false
-	}
-	first := tag[0]
-	if !isAlphaNum(first) {
-		return false
-	}
-	for i := 1; i < len(tag); i++ {
-		c := tag[i]
-		if !isAlphaNum(c) && c != '.' && c != '_' && c != '-' {
-			return false
-		}
-	}
-	return true
-}
-
-func isAlphaNum(c byte) bool {
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+	return config.IsValidImageTag(tag)
 }
 
 // updateContainerImages offers to update container images to match the
@@ -697,22 +682,28 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 // actual Docker/filesystem state (e.g. after a partial uninstall). Returns
 // (true, nil) if the user chose to abort, (false, nil) to continue.
 func checkInstallationHealth(cmd *cobra.Command, state config.State) (bool, error) {
-	ctx := cmd.Context()
-	out := ui.NewUI(cmd.OutOrStdout())
-
-	safeDir, err := safeStateDir(state)
-	if err != nil {
-		return false, err
+	issues := detectInstallationIssues(cmd.Context(), state)
+	if len(issues) == 0 {
+		return false, nil
 	}
 
+	out := ui.NewUI(cmd.OutOrStdout())
+	out.Warn("Installation appears incomplete:")
+	for _, issue := range issues {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", issue)
+	}
+
+	return promptHealthRecover(cmd)
+}
+
+// detectInstallationIssues checks config, secrets, compose, and Docker
+// images for inconsistencies. Returns a list of human-readable issues.
+func detectInstallationIssues(ctx context.Context, state config.State) []string {
 	var issues []string
 
-	// 1. Missing config.json (Load returned defaults).
 	if !fileExists(config.StatePath(state.DataDir)) {
 		issues = append(issues, "config.json is missing (no previous init)")
 	}
-
-	// 2. Missing secrets.
 	if state.JWTSecret == "" {
 		issues = append(issues, "JWT secret is not configured")
 	}
@@ -720,32 +711,27 @@ func checkInstallationHealth(cmd *cobra.Command, state config.State) (bool, erro
 		issues = append(issues, "settings encryption key is not configured")
 	}
 
-	// 3. Missing compose.yml.
-	composePath := filepath.Join(safeDir, "compose.yml")
-	if !fileExists(composePath) {
+	safeDir, err := safeStateDir(state)
+	if err == nil && !fileExists(filepath.Join(safeDir, "compose.yml")) {
 		issues = append(issues, "compose.yml is missing")
 	}
 
-	// 4. Missing Docker images for the configured tag.
 	if state.ImageTag != "" {
 		info, dockerErr := docker.Detect(ctx)
-		if dockerErr == nil {
-			if missing := detectMissingImages(ctx, info, state); len(missing) > 0 {
-				issues = append(issues, fmt.Sprintf("container images missing locally for %s (%s)",
-					state.ImageTag, strings.Join(missing, ", ")))
-			}
+		if dockerErr != nil {
+			issues = append(issues, fmt.Sprintf("Docker not available: %v", dockerErr))
+		} else if missing := detectMissingImages(ctx, info, state); len(missing) > 0 {
+			issues = append(issues, fmt.Sprintf("container images missing locally for %s (%s)",
+				state.ImageTag, strings.Join(missing, ", ")))
 		}
 	}
 
-	if len(issues) == 0 {
-		return false, nil
-	}
+	return issues
+}
 
-	out.Warn("Installation appears incomplete:")
-	for _, issue := range issues {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", issue)
-	}
-
+// promptHealthRecover asks the user whether to recover or run init.
+// Returns (true, nil) if the user chose to abort.
+func promptHealthRecover(cmd *cobra.Command) (bool, error) {
 	if !isInteractive() {
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(),
 			"\nNon-interactive mode: run 'synthorg init' to restore a clean installation.")
@@ -770,7 +756,8 @@ func checkInstallationHealth(cmd *cobra.Command, state config.State) (bool, erro
 }
 
 // detectMissingImages checks which SynthOrg service images are missing locally
-// for the given state's image tag.
+// for the given state's image tag. Only reports images as missing when Docker
+// confirms they are absent -- Docker command errors are not conflated.
 func detectMissingImages(ctx context.Context, info docker.Info, state config.State) []string {
 	services := []string{"backend", "web"}
 	if state.Sandbox {
@@ -783,52 +770,59 @@ func detectMissingImages(ctx context.Context, info docker.Info, state config.Sta
 		idsOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
 			"--filter", "reference="+ref,
 			"--format", "{{.ID}}")
-		if err != nil || strings.TrimSpace(idsOut) == "" {
+		if err != nil {
+			// Docker command failed -- we can't determine the state,
+			// so don't report the image as missing.
+			continue
+		}
+		if strings.TrimSpace(idsOut) == "" {
 			missing = append(missing, svc)
 		}
 	}
 	return missing
 }
 
+type oldImage struct {
+	display string
+	id      string
+}
+
 // cleanupOldImages offers to remove non-current SynthOrg images after a
 // successful upgrade. Identifies current images by their Docker image ID
 // (handles both tagged and digest-pinned references).
 func cleanupOldImages(cmd *cobra.Command, info docker.Info, state config.State) error {
-	ctx := cmd.Context()
+	old, err := findOldImages(cmd.Context(), cmd.ErrOrStderr(), info, state)
+	if err != nil || len(old) == 0 {
+		return nil
+	}
+
 	out := cmd.OutOrStdout()
-
-	// Collect IDs of the just-pulled (current) images.
-	currentIDs := make(map[string]bool)
-	services := []string{"backend", "web"}
-	if state.Sandbox {
-		services = append(services, "sandbox")
-	}
-	for _, svc := range services {
-		ref := fmt.Sprintf("ghcr.io/aureliolo/synthorg-%s:%s", svc, state.ImageTag)
-		idOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
-			"--filter", "reference="+ref,
-			"--format", "{{.ID}}")
-		if err != nil {
-			continue
-		}
-		for _, id := range strings.Fields(strings.TrimSpace(idOut)) {
-			currentIDs[id] = true
-		}
+	_, _ = fmt.Fprintln(out, "\nOld SynthOrg images found locally:")
+	for _, img := range old {
+		_, _ = fmt.Fprintf(out, "  %s\n", img.display)
 	}
 
-	// List ALL SynthOrg images (any tag, including <none>).
+	return promptAndRemoveImages(cmd, info, old)
+}
+
+// findOldImages lists SynthOrg images that don't match the current version.
+// Returns nil if current image IDs cannot be reliably determined.
+func findOldImages(ctx context.Context, errOut io.Writer, info docker.Info, state config.State) ([]oldImage, error) {
+	currentIDs, err := collectCurrentImageIDs(ctx, info, state)
+	if err != nil {
+		_, _ = fmt.Fprintf(errOut, "Note: could not determine current image IDs, skipping cleanup: %v\n", err)
+		return nil, err
+	}
+
 	imageRef := "ghcr.io/aureliolo/synthorg-*"
-	allOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
+	allOut, listErr := docker.RunCmd(ctx, info.DockerPath, "images",
 		"--filter", "reference="+imageRef,
 		"--format", "{{.Repository}}:{{.Tag}} ({{.Size}})\t{{.ID}}")
-	if err != nil {
-		return nil // non-fatal
+	if listErr != nil {
+		_, _ = fmt.Fprintf(errOut, "Note: could not list images for cleanup: %v\n", listErr)
+		return nil, listErr
 	}
 
-	type oldImage struct {
-		display string
-		id      string
-	}
 	var old []oldImage
 	seen := make(map[string]bool)
 	for _, line := range strings.Split(strings.TrimSpace(allOut), "\n") {
@@ -840,24 +834,44 @@ func cleanupOldImages(cmd *cobra.Command, info docker.Info, state config.State) 
 			continue
 		}
 		display, id := parts[0], parts[1]
-		if currentIDs[id] || seen[id] {
+		if !isValidDockerID(id) || currentIDs[id] || seen[id] {
 			continue
 		}
 		seen[id] = true
 		old = append(old, oldImage{display: display, id: id})
 	}
+	return old, nil
+}
 
-	if len(old) == 0 {
-		return nil
+// collectCurrentImageIDs resolves Docker image IDs for the services at the
+// current version. Returns an error if any service ID cannot be resolved
+// (to avoid accidentally deleting current images).
+func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.State) (map[string]bool, error) {
+	services := []string{"backend", "web"}
+	if state.Sandbox {
+		services = append(services, "sandbox")
 	}
 
-	_, _ = fmt.Fprintln(out, "\nOld SynthOrg images found locally:")
-	for _, img := range old {
-		_, _ = fmt.Fprintf(out, "  %s\n", img.display)
+	currentIDs := make(map[string]bool, len(services))
+	for _, svc := range services {
+		ref := fmt.Sprintf("ghcr.io/aureliolo/synthorg-%s:%s", svc, state.ImageTag)
+		idOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
+			"--filter", "reference="+ref,
+			"--format", "{{.ID}}")
+		if err != nil {
+			return nil, fmt.Errorf("resolving image ID for %s: %w", svc, err)
+		}
+		for _, id := range strings.Fields(strings.TrimSpace(idOut)) {
+			currentIDs[id] = true
+		}
 	}
+	return currentIDs, nil
+}
 
+// promptAndRemoveImages asks the user and removes old images.
+func promptAndRemoveImages(cmd *cobra.Command, info docker.Info, old []oldImage) error {
 	if !isInteractive() {
-		_, _ = fmt.Fprintln(out, "Non-interactive mode: skipping image cleanup. Remove manually with 'docker rmi'.")
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Non-interactive mode: skipping image cleanup. Remove manually with 'docker rmi'.")
 		return nil
 	}
 
@@ -874,17 +888,42 @@ func cleanupOldImages(cmd *cobra.Command, info docker.Info, state config.State) 
 		return nil
 	}
 
-	ids := make([]string, len(old))
-	for i, img := range old {
-		ids[i] = img.id
+	ids := make([]string, 0, len(old))
+	for _, img := range old {
+		ids = append(ids, img.id)
 	}
-	rmiArgs := append([]string{"rmi", "--force"}, ids...)
-	if _, rmiErr := docker.RunCmd(ctx, info.DockerPath, rmiArgs...); rmiErr != nil {
+	rmiArgs := make([]string, 0, 2+len(ids))
+	rmiArgs = append(rmiArgs, "rmi", "--force")
+	rmiArgs = append(rmiArgs, ids...)
+	if _, rmiErr := docker.RunCmd(cmd.Context(), info.DockerPath, rmiArgs...); rmiErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: some images could not be removed: %v\n", rmiErr)
 	} else {
-		_, _ = fmt.Fprintf(out, "Removed %d old image(s).\n", len(old))
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed %d old image(s).\n", len(old))
 	}
 	return nil
+}
+
+// isValidDockerID checks that id looks like a Docker short ID (12 hex chars)
+// or a long digest (sha256:64 hex chars). Prevents passing malformed values
+// to docker rmi.
+func isValidDockerID(id string) bool {
+	if len(id) == 12 {
+		return isAllHex(id)
+	}
+	if len(id) == 71 && id[:7] == "sha256:" {
+		return isAllHex(id[7:])
+	}
+	return false
+}
+
+func isAllHex(s string) bool {
+	for i := range len(s) {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func confirmRestart() (bool, error) {

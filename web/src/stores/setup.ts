@@ -55,6 +55,11 @@ export const useSetupStore = defineStore('setup', () => {
     }
   }
 
+  /** Mark a single step as complete (immutable update). */
+  function markStepComplete(stepId: string): void {
+    completedSteps.value = { ...completedSteps.value, [stepId]: true }
+  }
+
   async function fetchStatus() {
     loading.value = true
     error.value = null
@@ -125,6 +130,7 @@ export const useSetupStore = defineStore('setup', () => {
     isAdminNeeded,
     minPasswordLength,
     isStepComplete,
+    markStepComplete,
     syncCompletionFromStatus,
     fetchStatus,
     fetchTemplates,

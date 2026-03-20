@@ -134,12 +134,37 @@ func (s State) validate() error {
 	if !IsValidMemoryBackend(s.MemoryBackend) {
 		return fmt.Errorf("invalid memory_backend %q: must be one of %s", s.MemoryBackend, sortedKeys(validMemoryBackends))
 	}
+	if s.ImageTag != "" && !IsValidImageTag(s.ImageTag) {
+		return fmt.Errorf("invalid image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", s.ImageTag)
+	}
 	for name, digest := range s.VerifiedDigests {
 		if !isValidDigestFormat(digest) {
 			return fmt.Errorf("invalid verified_digests[%q]: %q is not a valid sha256 digest", name, digest)
 		}
 	}
 	return nil
+}
+
+// IsValidImageTag checks that tag matches [a-zA-Z0-9][a-zA-Z0-9._-]*.
+func IsValidImageTag(tag string) bool {
+	if len(tag) == 0 {
+		return false
+	}
+	first := tag[0]
+	if !isAlphaNum(first) {
+		return false
+	}
+	for i := 1; i < len(tag); i++ {
+		c := tag[i]
+		if !isAlphaNum(c) && c != '.' && c != '_' && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func isAlphaNum(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 // isValidDigestFormat checks if d matches sha256:<64-hex-chars>.

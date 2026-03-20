@@ -26,6 +26,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_DISCOVERY_FAILED,
+    PROVIDER_DISCOVERY_SSRF_BYPASSED,
     PROVIDER_MODELS_DISCOVERED,
     PROVIDER_PROBE_COMPLETED,
     PROVIDER_PROBE_HIT,
@@ -431,6 +432,11 @@ async def _fetch_json_trusted(
         Parsed JSON dict, or ``None`` on any failure.
     """
     safe_url = _redact_url(url)
+    logger.warning(
+        PROVIDER_DISCOVERY_SSRF_BYPASSED,
+        preset=preset_name,
+        url=safe_url,
+    )
     try:
         return await _do_fetch_json(
             url,
@@ -439,6 +445,14 @@ async def _fetch_json_trusted(
         )
     except MemoryError, RecursionError:
         raise
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            PROVIDER_DISCOVERY_FAILED,
+            preset=preset_name,
+            reason="http_error",
+            url=safe_url,
+            status_code=exc.response.status_code,
+        )
     except httpx.ConnectError:
         _log_fetch_failure(preset_name, "connection_refused", safe_url)
     except httpx.TimeoutException:

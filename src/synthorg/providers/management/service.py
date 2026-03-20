@@ -361,14 +361,14 @@ class ProviderManagementService:
         base_url = request.base_url or preset.default_base_url
 
         # Auto-discover models for no-auth presets with a base URL.
-        # trust_url=True: URL comes from the preset's candidate_urls or
-        # was admin-entered during setup -- skip SSRF validation so
-        # localhost/private-IP providers (Ollama, LM Studio) work.
+        # Only trust the URL (skip SSRF) when using the preset's own
+        # default -- user-supplied overrides go through normal validation.
+        url_is_preset_default = request.base_url is None
         if not models and preset.auth_type == AuthType.NONE and base_url:
             discovered = await discover_models(
                 base_url,
                 preset.name,
-                trust_url=True,
+                trust_url=url_is_preset_default,
             )
             if discovered:
                 models = discovered
@@ -420,11 +420,15 @@ class ProviderManagementService:
 
         resolved_hint = preset_hint or _infer_preset_hint(config.base_url)
         headers = _build_discovery_headers(config)
-        # Trust URL when the provider uses no auth (local provider like
-        # Ollama/LM Studio) or has a preset hint -- the admin explicitly
-        # configured this URL and SSRF validation would block valid
-        # localhost/private IPs.
-        trust = preset_hint is not None or config.auth_type == AuthType.NONE
+        # Trust URL when a validated preset hint is provided (URL
+        # originated from a preset) or the provider uses no auth (local
+        # provider explicitly configured by admin). Validate preset_hint
+        # against the registry to prevent arbitrary strings from elevating
+        # trust -- only known preset names qualify.
+        validated_preset = (
+            preset_hint is not None and get_preset(preset_hint) is not None
+        )
+        trust = validated_preset or config.auth_type == AuthType.NONE
         discovered = await discover_models(
             config.base_url,
             resolved_hint,

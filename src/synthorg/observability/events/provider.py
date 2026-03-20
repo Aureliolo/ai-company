@@ -55,6 +55,9 @@ PROVIDER_VALIDATION_FAILED: Final[str] = "provider.management.validation_failed"
 
 PROVIDER_MODELS_DISCOVERED: Final[str] = "provider.management.models_discovered"
 PROVIDER_DISCOVERY_FAILED: Final[str] = "provider.management.discovery_failed"
+PROVIDER_DISCOVERY_SSRF_BYPASSED: Final[str] = (
+    "provider.management.discovery_ssrf_bypassed"
+)
 
 # ── Provider URL probing ──────────────────────────────────
 

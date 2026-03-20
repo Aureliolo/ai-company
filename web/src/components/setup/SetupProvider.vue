@@ -140,8 +140,12 @@ async function selectPreset(preset: ProviderPreset) {
       } else {
         probeMessage.value = 'Not detected -- enter the URL manually'
       }
-    } catch {
-      // Probe is best-effort; fall back to default URL silently.
+    } catch (err) {
+      // Probe is best-effort; fall back to default URL.
+      if (myGen === probeGeneration) {
+        probeMessage.value = 'Auto-detection unavailable -- enter the URL manually'
+      }
+      console.warn('Provider probe failed:', err)
     } finally {
       if (myGen === probeGeneration) {
         probing.value = false

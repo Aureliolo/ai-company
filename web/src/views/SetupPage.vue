@@ -57,7 +57,7 @@ function isStepDone(index: number): boolean {
 function handleNext() {
   // Mark current step's welcome as done when advancing from it.
   if (setup.currentStep === 0) {
-    setup.completedSteps.welcome = true
+    setup.markStepComplete('welcome')
   }
   setup.nextStep(steps.value.length)
 }
@@ -89,9 +89,10 @@ async function handleCompanyCreated(companyName: string) {
   setup.nextStep(steps.value.length)
 }
 
-function handleAgentComplete(agentName: string, providerName: string) {
+async function handleAgentComplete(agentName: string, providerName: string) {
   createdAgentName.value = agentName
   createdProviderName.value = providerName
+  await setup.fetchStatus()
   showComplete.value = true
 }
 

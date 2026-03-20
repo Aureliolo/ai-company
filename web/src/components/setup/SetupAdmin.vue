@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import { useAuthStore } from '@/stores/auth'
@@ -23,8 +23,8 @@ const showPassword = ref(false)
 const showConfirmPassword = ref(false)
 const error = ref<string | null>(null)
 
-/** Whether the admin step has already been completed. */
-const isComplete = setupStore.isStepComplete('admin')
+/** Whether the admin step has already been completed (reactive). */
+const isComplete = computed(() => setupStore.isStepComplete('admin'))
 
 async function handleSetup() {
   if (checkAndClearLockout()) {

@@ -124,6 +124,7 @@ watch(selectedProvider, () => {
 
 function startEditing() {
   editing.value = true
+  savedAgent.value = null
 }
 
 async function handleCreate() {
