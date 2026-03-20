@@ -262,11 +262,14 @@ class TestGitCloneToolToctou:
             monkeypatch,
         )
 
+        verify_calls: list[tuple[str, frozenset[str]]] = []
+
         async def mock_verify(
             hostname: str,
             expected_ips: frozenset[str],
             dns_timeout: float,
         ) -> str | None:
+            verify_calls.append((hostname, expected_ips))
             return None
 
         monkeypatch.setattr(git_tools_module, "verify_dns_consistency", mock_verify)
@@ -279,6 +282,9 @@ class TestGitCloneToolToctou:
         )
         assert not result.is_error
         assert captured[0] == "clone"
+        assert len(verify_calls) == 1
+        assert verify_calls[0][0] == "example.com"
+        assert verify_calls[0][1] == frozenset({"93.184.216.34"})
 
     async def test_ssh_double_resolve_detects_rebinding(
         self,

@@ -11,8 +11,9 @@ TOCTOU DNS rebinding is mitigated by two complementary strategies:
 
 * **HTTPS URLs** -- the validated IPs are returned to the caller so
   it can pin ``git clone`` via ``-c http.curloptResolve`` (requires
-  git >= 2.22, which uses libcurl under the hood).  This fully
-  closes the TOCTOU gap for HTTPS.
+  git >= 2.37.0, which exposes libcurl's ``CURLOPT_RESOLVE``; the
+  sandbox container ships git 2.39+ so no runtime check is needed).
+  This fully closes the TOCTOU gap for HTTPS.
 * **SSH / SCP-like URLs** -- a second DNS resolution is performed
   immediately before execution and compared against the first; if new
   IPs appear that were not in the validated set the clone is blocked.

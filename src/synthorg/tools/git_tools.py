@@ -694,7 +694,9 @@ class GitCloneTool(_BaseGitTool):
             return args
 
         if validation.is_https:
-            # Pin git to validated IPs via curloptResolve (git >= 2.22).
+            # Pin git to validated IPs via curloptResolve (git >= 2.37).
+            # The sandbox container ships git 2.39+ (Debian bookworm);
+            # no runtime version check needed since we control the image.
             # resolved_ips is guaranteed non-empty here (guard above).
             resolve_value = build_curl_resolve_value(
                 validation.hostname,

@@ -512,7 +512,7 @@ Git servers bypass the private-IP check.
 `git clone`'s own resolution:
 
 - **HTTPS URLs:** Validated IPs are pinned via `git -c http.curloptResolve=host:port:ip`
-  (git >= 2.22), so git uses the same addresses the validator checked.
+  (git >= 2.37.0; sandbox ships git 2.39+), so git uses the same addresses the validator checked.
 - **SSH / SCP-like URLs:** A second DNS resolution runs immediately before execution;
   if the re-resolved IP set is not a subset of the validated set, the clone is blocked.
 - **Literal IP URLs:** Immune (no DNS resolution occurs).
