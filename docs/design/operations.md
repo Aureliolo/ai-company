@@ -299,7 +299,6 @@ The engine's `AgentEngine._apply_degradation` swaps the provider driver via the
 provider -- it waits for the quota window to rotate, then re-checks.
 
 !!! tip "Degradation Boundary"
-
     Like auto-downgrade, degradation applies only at **task assignment time** (pre-flight).
     An agent mid-execution is never switched to a different provider.
 

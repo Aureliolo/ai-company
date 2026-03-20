@@ -31,22 +31,25 @@ class DailyLimitExceededError(BudgetExhaustedError):
 
 
 class QuotaExhaustedError(BudgetExhaustedError):
-    """Raised when provider quota is exhausted and degradation failed.
+    """Raised when provider quota is exhausted and unresolvable.
 
-    Carries structured context about the exhaustion for logging and
-    diagnostics.
+    Covers all terminal degradation outcomes: ALERT strategy
+    (intentional immediate raise), failed FALLBACK (no providers
+    available or all exhausted), and failed QUEUE (wait exceeded
+    or still exhausted after waiting).
 
     Attributes:
-        provider_name: The provider whose quota was exhausted.
-        degradation_action: The degradation strategy that was attempted,
-            or ``None`` when no degradation config was available.
+        provider_name: The provider whose quota was exhausted,
+            or ``None`` when not available.
+        degradation_action: The degradation strategy that was
+            attempted, or ``None`` when not available.
     """
 
     def __init__(
         self,
         msg: str,
         *,
-        provider_name: str = "",
+        provider_name: str | None = None,
         degradation_action: DegradationAction | None = None,
     ) -> None:
         super().__init__(msg)

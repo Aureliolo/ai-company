@@ -369,3 +369,5 @@ class TestEnforcerPreFlightResult:
 
         # Falls through to allow execution (graceful degradation)
         assert isinstance(result, PreFlightResult)
+        assert result.degradation is None
+        assert result.effective_provider is None

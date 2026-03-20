@@ -217,3 +217,48 @@ class TestEngineDegradation:
         # Same provider used, execution completes normally
         assert provider.call_count == 1
         assert result.termination_reason != TerminationReason.BUDGET_EXHAUSTED
+
+    async def test_engine_fallback_registry_error_raises(
+        self,
+        sample_agent_with_personality: AgentIdentity,
+        sample_task_with_criteria: Task,
+    ) -> None:
+        """Registry.get() raising an error results in BUDGET_EXHAUSTED."""
+        from synthorg.providers.errors import DriverNotRegisteredError
+
+        enforcer = _make_enforcer()
+        provider = MockCompletionProvider(
+            [make_completion_response(content="Done.")],
+        )
+
+        mock_registry = AsyncMock()
+        mock_registry.get = lambda name: (_ for _ in ()).throw(
+            DriverNotRegisteredError(f"No driver for {name!r}"),
+        )
+
+        engine = AgentEngine(
+            provider=provider,
+            budget_enforcer=enforcer,
+            provider_registry=mock_registry,
+        )
+
+        fallback_result = PreFlightResult(
+            degradation=DegradationResult(
+                original_provider="test-provider",
+                effective_provider="missing-provider",
+                action_taken=DegradationAction.FALLBACK,
+            ),
+        )
+
+        with patch.object(
+            enforcer,
+            "check_can_execute",
+            new=AsyncMock(return_value=fallback_result),
+        ):
+            result = await engine.run(
+                identity=sample_agent_with_personality,
+                task=sample_task_with_criteria,
+            )
+
+        assert result.termination_reason == TerminationReason.BUDGET_EXHAUSTED
+        assert provider.call_count == 0

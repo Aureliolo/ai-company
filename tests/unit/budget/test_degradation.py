@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from synthorg.budget.degradation import (
     DegradationResult,
@@ -85,7 +86,7 @@ class TestDegradationResult:
             effective_provider="b",
             action_taken=DegradationAction.FALLBACK,
         )
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             result.original_provider = "c"  # type: ignore[misc]
 
     def test_defaults(self) -> None:
@@ -129,7 +130,7 @@ class TestPreFlightResult:
 
     def test_frozen(self) -> None:
         result = PreFlightResult()
-        with pytest.raises(Exception):  # noqa: B017, PT011
+        with pytest.raises(ValidationError):
             result.effective_provider = "x"  # type: ignore[misc]
 
 
@@ -254,9 +255,8 @@ class TestFallbackStrategy:
         tracker = _make_tracker({"primary": 5, "fallback-a": 100})
         await _exhaust_provider(tracker, "primary", 5)
 
-        # Mock check_quota to verify estimated_tokens
-        original_check = tracker.check_quota
         calls: list[int] = []
+        original_check = tracker.check_quota
 
         async def _spy(
             name: str,
@@ -269,18 +269,17 @@ class TestFallbackStrategy:
                 estimated_tokens=estimated_tokens,
             )
 
-        tracker.check_quota = _spy  # type: ignore[assignment]
-
-        await resolve_degradation(
-            provider_name="primary",
-            quota_result=_denied_result("primary"),
-            degradation_config=DegradationConfig(
-                strategy=DegradationAction.FALLBACK,
-                fallback_providers=("fallback-a",),
-            ),
-            quota_tracker=tracker,
-            estimated_tokens=5000,
-        )
+        with patch.object(tracker, "check_quota", side_effect=_spy):
+            await resolve_degradation(
+                provider_name="primary",
+                quota_result=_denied_result("primary"),
+                degradation_config=DegradationConfig(
+                    strategy=DegradationAction.FALLBACK,
+                    fallback_providers=("fallback-a",),
+                ),
+                quota_tracker=tracker,
+                estimated_tokens=5000,
+            )
 
         # The fallback check should have received 5000
         assert 5000 in calls
@@ -724,3 +723,221 @@ class TestAlertStrategy:
 
         assert exc_info.value.provider_name == "primary"
         assert exc_info.value.degradation_action == DegradationAction.ALERT
+
+
+# ── Additional edge case tests ────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestDegradationResultValidation:
+    """Tests for DegradationResult validation constraints."""
+
+    def test_negative_wait_seconds_raises(self) -> None:
+        with pytest.raises(ValidationError, match="wait_seconds"):
+            DegradationResult(
+                original_provider="a",
+                effective_provider="a",
+                action_taken=DegradationAction.QUEUE,
+                wait_seconds=-1.0,
+            )
+
+
+@pytest.mark.unit
+class TestExtractResetTimesEdgeCases:
+    """Edge case tests for _extract_reset_times filtering."""
+
+    async def test_non_matching_windows_filtered(self) -> None:
+        """Snapshots for non-exhausted windows are filtered out."""
+        tracker = _make_tracker({"primary": 5})
+        await _exhaust_provider(tracker, "primary", 5)
+
+        now = datetime.now(UTC)
+        # Snapshot exists for PER_DAY but exhausted window is PER_HOUR
+        snapshot = QuotaSnapshot(
+            provider_name="primary",
+            window=QuotaWindow.PER_DAY,
+            requests_used=100,
+            requests_limit=100,
+            window_resets_at=now + timedelta(seconds=30),
+            captured_at=now,
+        )
+        with (
+            patch.object(
+                tracker,
+                "get_snapshot",
+                new_callable=AsyncMock,
+                return_value=(snapshot,),
+            ),
+            pytest.raises(
+                QuotaExhaustedError,
+                match="no reset time available",
+            ),
+        ):
+            await resolve_degradation(
+                provider_name="primary",
+                quota_result=_denied_result(
+                    "primary",
+                    windows=(QuotaWindow.PER_HOUR,),
+                ),
+                degradation_config=DegradationConfig(
+                    strategy=DegradationAction.QUEUE,
+                    queue_max_wait_seconds=300,
+                ),
+                quota_tracker=tracker,
+            )
+
+    async def test_none_reset_time_filtered(self) -> None:
+        """Snapshots with window_resets_at=None are filtered out."""
+        tracker = _make_tracker({"primary": 5})
+        await _exhaust_provider(tracker, "primary", 5)
+
+        now = datetime.now(UTC)
+        snapshot = QuotaSnapshot(
+            provider_name="primary",
+            window=QuotaWindow.PER_HOUR,
+            requests_used=5,
+            requests_limit=5,
+            window_resets_at=None,
+            captured_at=now,
+        )
+        with (
+            patch.object(
+                tracker,
+                "get_snapshot",
+                new_callable=AsyncMock,
+                return_value=(snapshot,),
+            ),
+            pytest.raises(
+                QuotaExhaustedError,
+                match="no reset time available",
+            ),
+        ):
+            await resolve_degradation(
+                provider_name="primary",
+                quota_result=_denied_result("primary"),
+                degradation_config=DegradationConfig(
+                    strategy=DegradationAction.QUEUE,
+                    queue_max_wait_seconds=300,
+                ),
+                quota_tracker=tracker,
+            )
+
+
+@pytest.mark.unit
+class TestQueueErrorAttributes:
+    """Verify QUEUE error paths carry structured context."""
+
+    async def test_max_wait_exceeded_error_attributes(self) -> None:
+        tracker = _make_tracker({"primary": 5})
+        await _exhaust_provider(tracker, "primary", 5)
+
+        now = datetime.now(UTC)
+        snapshot = QuotaSnapshot(
+            provider_name="primary",
+            window=QuotaWindow.PER_HOUR,
+            requests_used=5,
+            requests_limit=5,
+            window_resets_at=now + timedelta(hours=2),
+            captured_at=now,
+        )
+        with (
+            patch.object(
+                tracker,
+                "get_snapshot",
+                new_callable=AsyncMock,
+                return_value=(snapshot,),
+            ),
+            pytest.raises(QuotaExhaustedError) as exc_info,
+        ):
+            await resolve_degradation(
+                provider_name="primary",
+                quota_result=_denied_result("primary"),
+                degradation_config=DegradationConfig(
+                    strategy=DegradationAction.QUEUE,
+                    queue_max_wait_seconds=10,
+                ),
+                quota_tracker=tracker,
+            )
+
+        assert exc_info.value.provider_name == "primary"
+        assert exc_info.value.degradation_action == DegradationAction.QUEUE
+
+    async def test_no_snapshots_error_attributes(self) -> None:
+        tracker = _make_tracker({"primary": 5})
+        await _exhaust_provider(tracker, "primary", 5)
+
+        with (
+            patch.object(
+                tracker,
+                "get_snapshot",
+                new_callable=AsyncMock,
+                return_value=(),
+            ),
+            pytest.raises(QuotaExhaustedError) as exc_info,
+        ):
+            await resolve_degradation(
+                provider_name="primary",
+                quota_result=_denied_result("primary"),
+                degradation_config=DegradationConfig(
+                    strategy=DegradationAction.QUEUE,
+                    queue_max_wait_seconds=300,
+                ),
+                quota_tracker=tracker,
+            )
+
+        assert exc_info.value.provider_name == "primary"
+        assert exc_info.value.degradation_action == DegradationAction.QUEUE
+
+
+@pytest.mark.unit
+class TestQueueWaitSecondsAccuracy:
+    """Verify wait_seconds matches the actual sleep delay."""
+
+    async def test_wait_seconds_matches_sleep_delay(self) -> None:
+        tracker = _make_tracker({"primary": 5})
+        await _exhaust_provider(tracker, "primary", 5)
+
+        now = datetime.now(UTC)
+        snapshots = (
+            QuotaSnapshot(
+                provider_name="primary",
+                window=QuotaWindow.PER_HOUR,
+                requests_used=5,
+                requests_limit=5,
+                window_resets_at=now + timedelta(seconds=45),
+                captured_at=now,
+            ),
+        )
+        allowed_result = QuotaCheckResult(
+            allowed=True,
+            provider_name="primary",
+        )
+        with (
+            patch.object(
+                tracker,
+                "get_snapshot",
+                new_callable=AsyncMock,
+                return_value=snapshots,
+            ),
+            patch("synthorg.budget.degradation.asyncio_sleep") as mock_sleep,
+            patch.object(
+                tracker,
+                "check_quota",
+                new_callable=AsyncMock,
+                return_value=allowed_result,
+            ),
+        ):
+            mock_sleep.return_value = None
+
+            result = await resolve_degradation(
+                provider_name="primary",
+                quota_result=_denied_result("primary"),
+                degradation_config=DegradationConfig(
+                    strategy=DegradationAction.QUEUE,
+                    queue_max_wait_seconds=300,
+                ),
+                quota_tracker=tracker,
+            )
+
+        sleep_delay = mock_sleep.call_args[0][0]
+        assert result.wait_seconds == sleep_delay

@@ -314,6 +314,14 @@ class QuotaCheckResult(BaseModel):
         return self
 
 
+def always_allowed_result(provider_name: str) -> QuotaCheckResult:
+    """Build an always-allowed QuotaCheckResult."""
+    return QuotaCheckResult(
+        allowed=True,
+        provider_name=provider_name,
+    )
+
+
 def window_start(
     window: QuotaWindow,
     *,

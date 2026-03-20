@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, NamedTuple
 from synthorg.budget.billing import billing_period_start, daily_period_start
 from synthorg.budget.degradation import (
     PreFlightResult,
-    always_allowed_result,
     resolve_degradation,
 )
 from synthorg.budget.enums import BudgetAlertLevel
@@ -20,7 +19,11 @@ from synthorg.budget.errors import (
     DailyLimitExceededError,
     QuotaExhaustedError,
 )
-from synthorg.budget.quota import DegradationAction, DegradationConfig
+from synthorg.budget.quota import (
+    DegradationAction,
+    DegradationConfig,
+    always_allowed_result,
+)
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.observability import get_logger
 from synthorg.observability.events.budget import (
@@ -200,6 +203,22 @@ class BudgetEnforcer:
         """Check provider quota via QuotaTracker.
 
         Returns always-allowed when no quota tracker is configured.
+
+        Note:
+            Unlike ``check_can_execute``, this method does **not**
+            catch unexpected exceptions from the underlying
+            ``QuotaTracker``.  ``check_can_execute`` wraps quota
+            checks in a try/except that falls back to allowing
+            execution on unexpected errors (graceful degradation),
+            but direct callers of ``check_quota`` are responsible
+            for their own error handling.
+
+        Args:
+            provider_name: Provider to check.
+            estimated_tokens: Estimated tokens for the request.
+
+        Returns:
+            Quota check result.
         """
         if self._quota_tracker is None:
             logger.debug(
@@ -251,7 +270,9 @@ class BudgetEnforcer:
                 degradation_action=DegradationAction.ALERT,
             )
 
-        assert self._quota_tracker is not None  # noqa: S101
+        if self._quota_tracker is None:
+            msg = "Degradation strategy requires quota_tracker but none is configured"
+            raise RuntimeError(msg)
         return await resolve_degradation(
             provider_name=provider_name,
             quota_result=quota_result,

@@ -3,8 +3,7 @@
 Implements FALLBACK, QUEUE, and ALERT degradation strategies for
 provider quota exhaustion.  Called by
 :class:`~synthorg.budget.enforcer.BudgetEnforcer` when a pre-flight
-quota check fails and the provider has a non-default degradation
-configuration.
+quota check fails and degradation resolution is needed.
 """
 
 import asyncio
@@ -23,6 +22,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.degradation import (
     DEGRADATION_ALERT_RAISED,
+    DEGRADATION_FALLBACK_CHECK_ERROR,
     DEGRADATION_FALLBACK_EXHAUSTED,
     DEGRADATION_FALLBACK_PROVIDER_CHECKED,
     DEGRADATION_FALLBACK_RESOLVED,
@@ -31,6 +31,7 @@ from synthorg.observability.events.degradation import (
     DEGRADATION_QUEUE_RESUMED,
     DEGRADATION_QUEUE_STARTED,
     DEGRADATION_QUEUE_WAITING,
+    DEGRADATION_QUEUE_WINDOW_ROTATED,
 )
 
 if TYPE_CHECKING:
@@ -72,7 +73,7 @@ class DegradationResult(BaseModel):
     wait_seconds: float = Field(
         default=0.0,
         ge=0.0,
-        description="Seconds waited (QUEUE only)",
+        description="Seconds waited (0 for FALLBACK)",
     )
 
 
@@ -83,6 +84,9 @@ class PreFlightResult(BaseModel):
         degradation: Degradation result when degradation was triggered.
         effective_provider: Derived from ``degradation`` -- the
             provider to use, or ``None`` when no degradation occurred.
+            For QUEUE, equals the original provider (quota was
+            re-checked after waiting).  For FALLBACK, this is the
+            fallback provider.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)
@@ -99,17 +103,6 @@ class PreFlightResult(BaseModel):
         if self.degradation is None:
             return None
         return self.degradation.effective_provider
-
-
-# ── Helpers ───────────────────────────────────────────────────────
-
-
-def always_allowed_result(provider_name: str) -> QuotaCheckResult:
-    """Build an always-allowed QuotaCheckResult."""
-    return QuotaCheckResult(
-        allowed=True,
-        provider_name=provider_name,
-    )
 
 
 # ── Public API ────────────────────────────────────────────────────
@@ -199,10 +192,19 @@ async def _resolve_fallback(
 
     tried: list[str] = []
     for fallback_name in fallbacks:
-        check = await quota_tracker.check_quota(
-            fallback_name,
-            estimated_tokens=estimated_tokens,
-        )
+        try:
+            check = await quota_tracker.check_quota(
+                fallback_name,
+                estimated_tokens=estimated_tokens,
+            )
+        except Exception as exc:
+            logger.warning(
+                DEGRADATION_FALLBACK_CHECK_ERROR,
+                provider=fallback_name,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            tried.append(fallback_name)
+            continue
         logger.debug(
             DEGRADATION_FALLBACK_PROVIDER_CHECKED,
             provider=fallback_name,
@@ -376,22 +378,34 @@ async def _compute_queue_delay(
     reset_times = _extract_reset_times(snapshots, exhausted_windows)
 
     if not reset_times:
+        msg = f"Provider {provider_name!r} quota exhausted but no reset time available"
         raise _queue_exhausted_error(
             provider_name,
-            f"Provider {provider_name!r} quota exhausted but no reset time available",
+            msg,
+            reason="no_reset_time_available",
         )
 
     soonest = min(reset_times)
     delay = (soonest - datetime.now(UTC)).total_seconds()
 
     if delay <= 0:
+        logger.debug(
+            DEGRADATION_QUEUE_WINDOW_ROTATED,
+            provider=provider_name,
+        )
         return 0.0
 
     if delay > max_wait:
+        msg = (
+            f"Provider {provider_name!r} quota reset in "
+            f"{delay:.0f}s exceeds max wait {max_wait}s"
+        )
         raise _queue_exhausted_error(
             provider_name,
-            f"Provider {provider_name!r} quota reset in "
-            f"{delay:.0f}s exceeds max wait {max_wait}s",
+            msg,
+            reason="max_wait_exceeded",
+            delay_seconds=delay,
+            max_wait_seconds=max_wait,
         )
 
     return delay
@@ -412,12 +426,16 @@ def _extract_reset_times(
 def _queue_exhausted_error(
     provider_name: str,
     msg: str,
+    *,
+    reason: str = "queue_exhausted",
+    **extra: object,
 ) -> QuotaExhaustedError:
     """Log and build error for QUEUE exhaustion."""
     logger.warning(
         DEGRADATION_QUEUE_EXHAUSTED,
         provider=provider_name,
-        reason=msg,
+        reason=reason,
+        **extra,
     )
     return QuotaExhaustedError(
         msg,
