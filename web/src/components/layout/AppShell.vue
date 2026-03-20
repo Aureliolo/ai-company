@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
+import ConnectionLostBanner from '../common/ConnectionLostBanner.vue'
 
 const sidebarCollapsed = ref(false)
 
@@ -15,6 +16,7 @@ function toggleSidebar() {
     <Sidebar :collapsed="sidebarCollapsed" @toggle="toggleSidebar" />
     <div class="flex flex-1 flex-col overflow-hidden">
       <Topbar @toggle-sidebar="toggleSidebar" />
+      <ConnectionLostBanner />
       <main class="flex-1 overflow-auto p-6">
         <slot />
       </main>

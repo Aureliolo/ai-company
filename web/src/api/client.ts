@@ -16,6 +16,14 @@ export const apiClient = axios.create({
 })
 
 // ── Request interceptor: attach JWT ──────────────────────────
+// SECURITY NOTE: JWT is stored in localStorage, which is accessible to any JS
+// running in the page context (XSS risk). HttpOnly cookies would eliminate this
+// attack surface but require backend cookie-based auth support plus CSRF
+// protection. Mitigations in place: short-lived tokens with server-controlled
+// expiry, automatic 401 cleanup, and expiry checks on page load (see auth
+// store). CSP headers in nginx.conf restrict script sources. If the deployment
+// architecture changes to support cookie-based auth, migrate away from
+// localStorage -- see docs/security.md for the full threat model.
 
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('auth_token')
