@@ -36,6 +36,30 @@ vi.mock('@/api/endpoints/setup', () => ({
   completeSetup: vi.fn(),
 }))
 
+/** Default "setup complete" status used across most tests. */
+function completeStatus() {
+  return {
+    needs_admin: false,
+    needs_setup: false,
+    has_providers: true,
+    has_company: true,
+    has_agents: true,
+    min_password_length: 12,
+  }
+}
+
+/** Status indicating setup is still needed. */
+function needsSetupStatus() {
+  return {
+    needs_admin: true,
+    needs_setup: true,
+    has_providers: false,
+    has_company: false,
+    has_agents: false,
+    min_password_length: 12,
+  }
+}
+
 function createRoute(overrides: Partial<RouteLocationNormalized> = {}): RouteLocationNormalized {
   return {
     path: '/',
@@ -62,7 +86,7 @@ describe('authGuard', () => {
     // Tests that need setup-needed behavior override this.
     const setup = useSetupStore()
     setup.$patch({
-      status: { needs_admin: false, needs_setup: false, has_providers: true, has_company: true, has_agents: true, min_password_length: 12 },
+      status: completeStatus(),
     })
     // Mark as loaded so isSetupNeeded uses real status
     setup.statusLoaded = true
@@ -92,7 +116,7 @@ describe('authGuard', () => {
     // Re-populate setup status after Pinia reset
     const setup = useSetupStore()
     setup.$patch({
-      status: { needs_admin: false, needs_setup: false, has_providers: true, has_company: true, has_agents: true, min_password_length: 12 },
+      status: completeStatus(),
     })
     setup.statusLoaded = true
     // Force the store to read the token
@@ -120,7 +144,7 @@ describe('authGuard', () => {
     setActivePinia(createPinia())
     const setup = useSetupStore()
     setup.$patch({
-      status: { needs_admin: false, needs_setup: false, has_providers: true, has_company: true, has_agents: true, min_password_length: 12 },
+      status: completeStatus(),
     })
     setup.statusLoaded = true
 
@@ -137,7 +161,7 @@ describe('authGuard', () => {
     setActivePinia(createPinia())
     const setup = useSetupStore()
     setup.$patch({
-      status: { needs_admin: false, needs_setup: false, has_providers: true, has_company: true, has_agents: true, min_password_length: 12 },
+      status: completeStatus(),
     })
     setup.statusLoaded = true
     const store = useAuthStore()
@@ -156,7 +180,7 @@ describe('authGuard', () => {
     setActivePinia(createPinia())
     const setup = useSetupStore()
     setup.$patch({
-      status: { needs_admin: false, needs_setup: false, has_providers: true, has_company: true, has_agents: true, min_password_length: 12 },
+      status: completeStatus(),
     })
     setup.statusLoaded = true
     const store = useAuthStore()
@@ -175,7 +199,7 @@ describe('authGuard', () => {
     setActivePinia(createPinia())
     const setup = useSetupStore()
     setup.$patch({
-      status: { needs_admin: false, needs_setup: false, has_providers: true, has_company: true, has_agents: true, min_password_length: 12 },
+      status: completeStatus(),
     })
     setup.statusLoaded = true
     const store = useAuthStore()
@@ -193,7 +217,7 @@ describe('authGuard', () => {
   it('redirects to /setup when setup is needed', async () => {
     const setup = useSetupStore()
     setup.$patch({
-      status: { needs_admin: true, needs_setup: true, has_providers: false, has_company: false, has_agents: false, min_password_length: 12 },
+      status: needsSetupStatus(),
     })
     setup.statusLoaded = true
 
@@ -207,7 +231,7 @@ describe('authGuard', () => {
   it('allows /setup when setup is needed', async () => {
     const setup = useSetupStore()
     setup.$patch({
-      status: { needs_admin: true, needs_setup: true, has_providers: false, has_company: false, has_agents: false, min_password_length: 12 },
+      status: needsSetupStatus(),
     })
     setup.statusLoaded = true
 
@@ -224,7 +248,7 @@ describe('authGuard', () => {
     setActivePinia(createPinia())
     const setup = useSetupStore()
     setup.$patch({
-      status: { needs_admin: false, needs_setup: false, has_providers: true, has_company: true, has_agents: true, min_password_length: 12 },
+      status: completeStatus(),
     })
     setup.statusLoaded = true
 
@@ -256,7 +280,7 @@ describe('authGuard', () => {
   it('allows /login when setup is needed', async () => {
     const setup = useSetupStore()
     setup.$patch({
-      status: { needs_admin: true, needs_setup: true, has_providers: false, has_company: false, has_agents: false, min_password_length: 12 },
+      status: needsSetupStatus(),
     })
     setup.statusLoaded = true
 

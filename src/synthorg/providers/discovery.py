@@ -1,11 +1,14 @@
-"""Model auto-discovery for local LLM providers.
+"""Model auto-discovery for LLM providers.
 
-Queries provider endpoints to discover available models when a preset
-is created with no explicit model list (e.g. Ollama, LM Studio, vLLM).
+Discovers available models from provider endpoints in two scenarios:
+(1) auto-discovery when a preset is created with no explicit model list
+(e.g. Ollama, LM Studio, vLLM), and (2) on-demand discovery for
+existing providers via the ``POST /{name}/discover-models`` endpoint.
 """
 
 import ipaddress
 import json
+import socket
 from typing import Any, Final
 from urllib.parse import urlparse
 
@@ -45,7 +48,11 @@ _BLOCKED_NETWORKS: Final[tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ..
 def _validate_discovery_url(url: str) -> str | None:
     """Validate a URL for SSRF safety before making a discovery request.
 
-    Only allows http/https schemes and rejects literal private IPs.
+    Allows http/https schemes only and blocks private/reserved IP
+    addresses -- both literal IPs in the URL and resolved addresses
+    for hostnames (DNS rebinding protection).  Hostnames like
+    ``localhost`` are resolved via ``socket.getaddrinfo`` and checked
+    against the same blocked-network list.
 
     Args:
         url: URL to validate.
@@ -53,10 +60,7 @@ def _validate_discovery_url(url: str) -> str | None:
     Returns:
         Error message if invalid, or None if safe.
     """
-    try:
-        parsed = urlparse(url)
-    except Exception:
-        return "unparseable URL"
+    parsed = urlparse(url)
 
     if parsed.scheme not in _ALLOWED_SCHEMES:
         return f"scheme {parsed.scheme!r} not allowed; use http or https"
@@ -65,16 +69,77 @@ def _validate_discovery_url(url: str) -> str | None:
     if not hostname:
         return "URL has no hostname"
 
+    return _check_blocked_address(hostname)
+
+
+def _check_blocked_address(hostname: str) -> str | None:
+    """Check whether a hostname resolves to a blocked network range.
+
+    Handles both literal IPs and DNS names.
+
+    Args:
+        hostname: Hostname or IP address string.
+
+    Returns:
+        Error message if blocked, or None if safe.
+    """
+    # Fast path: literal IP address.
     try:
         addr = ipaddress.ip_address(hostname)
-        # Unwrap IPv6-mapped IPv4 for consistent checking.
-        if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
-            addr = addr.ipv4_mapped
-        for network in _BLOCKED_NETWORKS:
-            if addr in network:
-                return f"address {hostname!r} is in a blocked network range"
     except ValueError:
-        pass  # Not a literal IP -- hostname will be resolved by httpx.
+        pass  # Not a literal IP -- resolve via DNS below.
+    else:
+        return _check_ip_blocked(addr, hostname)
+
+    # Resolve hostname and check all returned addresses.
+    return _check_resolved_hostname(hostname)
+
+
+def _check_ip_blocked(
+    addr: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    label: str,
+) -> str | None:
+    """Check a single IP against blocked networks.
+
+    Args:
+        addr: IP address to check.
+        label: Display label for error messages.
+
+    Returns:
+        Error message if blocked, or None if safe.
+    """
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+        addr = addr.ipv4_mapped
+    for network in _BLOCKED_NETWORKS:
+        if addr in network:
+            return f"address {label!r} is in a blocked network range"
+    return None
+
+
+def _check_resolved_hostname(hostname: str) -> str | None:
+    """Resolve a hostname and check all addresses against blocked networks.
+
+    Args:
+        hostname: DNS hostname to resolve.
+
+    Returns:
+        Error message if any resolved address is blocked, or None if safe.
+    """
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return f"hostname {hostname!r} could not be resolved"
+
+    for _, _, _, _, sockaddr in infos:
+        try:
+            addr = ipaddress.ip_address(sockaddr[0])
+        except ValueError:
+            continue
+        result = _check_ip_blocked(addr, hostname)
+        if result is not None:
+            return (
+                f"hostname {hostname!r} resolves to {sockaddr[0]!r} in a blocked range"
+            )
 
     return None
 
@@ -82,6 +147,8 @@ def _validate_discovery_url(url: str) -> str | None:
 async def discover_models(
     base_url: str,
     preset_name: str | None = None,
+    *,
+    headers: dict[str, str] | None = None,
 ) -> tuple[ProviderModelConfig, ...]:
     """Discover available models from a provider endpoint.
 
@@ -93,28 +160,32 @@ async def discover_models(
         base_url: Provider base URL (e.g. ``http://localhost:11434``
             for Ollama, ``http://localhost:1234/v1`` for LM Studio).
         preset_name: Preset identifier hint for endpoint selection.
+        headers: Optional auth headers to include in the request.
 
     Returns:
         Tuple of discovered model configs, or empty tuple on failure.
     """
     if preset_name == "ollama":
-        return await _discover_ollama(base_url)
-    return await _discover_standard_api(base_url, preset_name)
+        return await _discover_ollama(base_url, headers=headers)
+    return await _discover_standard_api(base_url, preset_name, headers=headers)
 
 
 async def _discover_ollama(
     base_url: str,
+    *,
+    headers: dict[str, str] | None = None,
 ) -> tuple[ProviderModelConfig, ...]:
     """Discover models from Ollama's ``/api/tags`` endpoint.
 
     Args:
         base_url: Ollama server URL.
+        headers: Optional auth headers.
 
     Returns:
         Discovered models, or empty tuple on failure.
     """
     url = f"{base_url.rstrip('/')}/api/tags"
-    data = await _fetch_json(url, "ollama")
+    data = await _fetch_json(url, "ollama", headers=headers)
     if data is None:
         return ()
 
@@ -129,16 +200,35 @@ async def _discover_ollama(
         return ()
 
     models: list[ProviderModelConfig] = []
+    skipped = 0
     for entry in raw_models:
         if not isinstance(entry, dict):
+            skipped += 1
             continue
         name = entry.get("name")
         if not isinstance(name, str) or not name.strip():
+            skipped += 1
             continue
         models.append(
             ProviderModelConfig(
                 id=f"ollama/{name}",
             ),
+        )
+
+    if skipped and not models:
+        logger.warning(
+            PROVIDER_DISCOVERY_FAILED,
+            preset="ollama",
+            reason="all_entries_malformed",
+            total_entries=len(raw_models),
+            skipped=skipped,
+        )
+    elif skipped:
+        logger.debug(
+            PROVIDER_DISCOVERY_FAILED,
+            preset="ollama",
+            reason="some_entries_malformed",
+            skipped=skipped,
         )
 
     logger.info(
@@ -152,6 +242,8 @@ async def _discover_ollama(
 async def _discover_standard_api(
     base_url: str,
     preset_name: str | None,
+    *,
+    headers: dict[str, str] | None = None,
 ) -> tuple[ProviderModelConfig, ...]:
     """Discover models from a standard ``/models`` endpoint.
 
@@ -161,12 +253,13 @@ async def _discover_standard_api(
     Args:
         base_url: Provider base URL.
         preset_name: Preset name for logging context.
+        headers: Optional auth headers.
 
     Returns:
         Discovered models, or empty tuple on failure.
     """
     url = f"{base_url.rstrip('/')}/models"
-    data = await _fetch_json(url, preset_name)
+    data = await _fetch_json(url, preset_name, headers=headers)
     if data is None:
         return ()
 
@@ -181,14 +274,33 @@ async def _discover_standard_api(
         return ()
 
     models: list[ProviderModelConfig] = []
+    skipped = 0
     for entry in raw_data:
         if not isinstance(entry, dict):
+            skipped += 1
             continue
         model_id = entry.get("id")
         if not isinstance(model_id, str) or not model_id.strip():
+            skipped += 1
             continue
         models.append(
             ProviderModelConfig(id=model_id),
+        )
+
+    if skipped and not models:
+        logger.warning(
+            PROVIDER_DISCOVERY_FAILED,
+            preset=preset_name,
+            reason="all_entries_malformed",
+            total_entries=len(raw_data),
+            skipped=skipped,
+        )
+    elif skipped:
+        logger.debug(
+            PROVIDER_DISCOVERY_FAILED,
+            preset=preset_name,
+            reason="some_entries_malformed",
+            skipped=skipped,
         )
 
     logger.info(
@@ -202,6 +314,8 @@ async def _discover_standard_api(
 async def _fetch_json(
     url: str,
     preset_name: str | None,
+    *,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
     """Fetch JSON from a URL with timeout and error handling.
 
@@ -210,6 +324,7 @@ async def _fetch_json(
     Args:
         url: Full URL to fetch.
         preset_name: Preset name for logging context.
+        headers: Optional auth headers to include.
 
     Returns:
         Parsed JSON dict, or ``None`` on any failure.
@@ -226,51 +341,24 @@ async def _fetch_json(
         return None
 
     try:
-        async with httpx.AsyncClient(
-            timeout=_DISCOVERY_TIMEOUT_SECONDS,
-            follow_redirects=False,
-        ) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            result = response.json()
-            if not isinstance(result, dict):
-                logger.warning(
-                    PROVIDER_DISCOVERY_FAILED,
-                    preset=preset_name,
-                    reason="unexpected_json_type",
-                    url=url,
-                )
-                return None
-            return result
-    except httpx.ConnectError:
-        logger.warning(
-            PROVIDER_DISCOVERY_FAILED,
-            preset=preset_name,
-            reason="connection_refused",
-            url=url,
-        )
-    except httpx.TimeoutException:
-        logger.warning(
-            PROVIDER_DISCOVERY_FAILED,
-            preset=preset_name,
-            reason="timeout",
-            url=url,
-        )
+        return await _do_fetch_json(url, headers)
+    except MemoryError, RecursionError:
+        raise
     except httpx.HTTPStatusError as exc:
+        reason = "http_error"
         logger.warning(
             PROVIDER_DISCOVERY_FAILED,
             preset=preset_name,
-            reason="http_error",
+            reason=reason,
             url=url,
             status_code=exc.response.status_code,
         )
+    except httpx.ConnectError:
+        _log_fetch_failure(preset_name, "connection_refused", url)
+    except httpx.TimeoutException:
+        _log_fetch_failure(preset_name, "timeout", url)
     except json.JSONDecodeError:
-        logger.warning(
-            PROVIDER_DISCOVERY_FAILED,
-            preset=preset_name,
-            reason="invalid_json_response",
-            url=url,
-        )
+        _log_fetch_failure(preset_name, "invalid_json_response", url)
     except Exception:
         logger.warning(
             PROVIDER_DISCOVERY_FAILED,
@@ -280,3 +368,48 @@ async def _fetch_json(
             exc_info=True,
         )
     return None
+
+
+async def _do_fetch_json(
+    url: str,
+    headers: dict[str, str] | None,
+) -> dict[str, Any] | None:
+    """Execute the HTTP GET and parse JSON response.
+
+    Args:
+        url: URL to fetch.
+        headers: Optional request headers.
+
+    Returns:
+        Parsed JSON dict, or ``None`` for non-dict responses.
+    """
+    async with httpx.AsyncClient(
+        timeout=_DISCOVERY_TIMEOUT_SECONDS,
+        follow_redirects=False,
+    ) as client:
+        response = await client.get(url, headers=headers or {})
+        response.raise_for_status()
+        result = response.json()
+        if not isinstance(result, dict):
+            logger.warning(
+                PROVIDER_DISCOVERY_FAILED,
+                preset=None,
+                reason="unexpected_json_type",
+                url=url,
+            )
+            return None
+        return result
+
+
+def _log_fetch_failure(
+    preset_name: str | None,
+    reason: str,
+    url: str,
+) -> None:
+    """Log a discovery fetch failure with a standard structure."""
+    logger.warning(
+        PROVIDER_DISCOVERY_FAILED,
+        preset=preset_name,
+        reason=reason,
+        url=url,
+    )

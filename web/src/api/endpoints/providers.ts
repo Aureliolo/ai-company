@@ -62,9 +62,15 @@ export async function createFromPreset(data: CreateFromPresetRequest): Promise<P
   return unwrap(response)
 }
 
-export async function discoverModels(name: string): Promise<DiscoverModelsResponse> {
+export async function discoverModels(
+  name: string,
+  presetHint?: string,
+): Promise<DiscoverModelsResponse> {
+  const params = presetHint ? { preset_hint: presetHint } : undefined
   const response = await apiClient.post<ApiResponse<DiscoverModelsResponse>>(
     `/providers/${encodeURIComponent(name)}/discover-models`,
+    undefined,
+    { params },
   )
   return unwrap(response)
 }

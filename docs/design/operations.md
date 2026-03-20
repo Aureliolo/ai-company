@@ -1021,8 +1021,8 @@ future CLI tool are thin clients that call the API -- they contain no business l
 | `/api/v1/approvals` | Pending human approvals queue |
 | `/api/v1/analytics` | Performance metrics, dashboards |
 | `/api/v1/settings` | Runtime-editable configuration (9 namespaces), schema discovery |
-| `GET /api/v1/providers`, `POST /api/v1/providers`, `PUT /api/v1/providers/{name}`, `DELETE /api/v1/providers/{name}`, `POST /api/v1/providers/{name}/test`, `GET /api/v1/providers/presets`, `POST /api/v1/providers/from-preset` | Provider CRUD, connection testing, presets, 4 auth types (api_key, oauth, custom_header, none) |
-| `/api/v1/setup` | First-run setup wizard: status check (public), template listing, company/agent creation, completion gate (requires company + agent + provider) |
+| `GET /api/v1/providers`, `POST /api/v1/providers`, `PUT /api/v1/providers/{name}`, `DELETE /api/v1/providers/{name}`, `POST /api/v1/providers/{name}/test`, `GET /api/v1/providers/presets`, `POST /api/v1/providers/from-preset`, `POST /api/v1/providers/{name}/discover-models` | Provider CRUD, connection testing, presets, model discovery, 4 auth types (api_key, oauth, custom_header, none) |
+| `/api/v1/setup` | First-run setup wizard: status check (public, reports `has_company`/`has_agents`/`has_providers` for step resume), template listing, company/agent creation, completion gate (requires company + agent + provider) |
 | `/api/v1/admin/backups` | Manual backup, list, detail, delete |
 | `/api/v1/ws` | WebSocket for real-time updates (ticket auth via `?ticket=`) |
 | `POST /api/v1/auth/ws-ticket` | Exchange JWT for one-time WebSocket connection ticket |
@@ -1092,7 +1092,7 @@ and retry guidance.
 - **Meeting Logs**: Placeholder — coming soon
 - **Artifact Browser**: Placeholder — coming soon
 - **Settings**:
-    - *Provider management*: Add/edit/delete providers, connection test, preset-based creation -- integrated as a tab alongside company config and user settings.
+    - *Provider management*: Add/edit/delete providers, connection test, preset-based creation, model auto-discovery (Ollama `/api/tags`, standard `/models`) -- integrated as a tab alongside company config and user settings.
     - *DB-backed persistence*: 9 namespaces (api, company, providers, memory, budget, security, coordination, observability, backup). Setting types: `STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`. 4-layer resolution: DB > env > YAML > code defaults. Fernet encryption for `sensitive` values. REST API (`GET`/`PUT`/`DELETE` + schema endpoints for dynamic UI generation), change notifications via message bus.
     - *`ConfigResolver`*: Typed scalar accessors assemble full Pydantic config models from individually resolved settings (using `asyncio.TaskGroup` for parallel resolution). Structural data accessors (`get_agents`, `get_departments`, `get_provider_configs`) resolve JSON-typed settings with Pydantic schema validation and graceful fallback to `RootConfig` defaults on invalid data.
     - *Hot-reload*: `SettingsChangeDispatcher` polls the `#settings` bus channel and routes change notifications to registered `SettingsSubscriber` implementations. Settings marked `restart_required=True` are filtered (logged as WARNING, not dispatched). Concrete subscribers: `ProviderSettingsSubscriber` (rebuilds `ModelRouter` on `routing_strategy` change via `AppState.swap_model_router`), `MemorySettingsSubscriber` (advisory logging for non-restart memory settings), `BackupSettingsSubscriber` (toggles `BackupScheduler` on `enabled` change, reschedules interval on `schedule_hours` change).

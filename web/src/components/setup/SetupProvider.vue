@@ -149,6 +149,7 @@ async function handleDiscoverModels() {
 async function handleTestConnection() {
   if (!createdProviderName.value) return
   testing.value = true
+  error.value = null
   try {
     const res = await store.testConnection(createdProviderName.value)
     testResult.value = res

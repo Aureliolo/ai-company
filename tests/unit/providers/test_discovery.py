@@ -1,5 +1,7 @@
 """Tests for provider model auto-discovery."""
 
+import socket
+from collections.abc import Generator
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -30,7 +32,7 @@ def _mock_client(
 ) -> AsyncMock:
     """Build a mock httpx.AsyncClient with async context manager support."""
     client = AsyncMock()
-    if side_effect:
+    if side_effect is not None:
         client.get.side_effect = side_effect
     else:
         client.get.return_value = response
@@ -39,6 +41,17 @@ def _mock_client(
     return client
 
 
+@pytest.fixture(autouse=False)
+def _bypass_ssrf() -> Generator[None]:
+    """Patch SSRF validation so HTTP-behavior tests can use localhost URLs."""
+    with patch(
+        "synthorg.providers.discovery._validate_discovery_url",
+        return_value=None,
+    ):
+        yield
+
+
+@pytest.mark.usefixtures("_bypass_ssrf")
 class TestDiscoverOllama:
     """Tests for Ollama model discovery."""
 
@@ -126,6 +139,7 @@ class TestDiscoverOllama:
 
             client.get.assert_called_once_with(
                 "http://localhost:11434/api/tags",
+                headers={},
             )
 
     async def test_trailing_slash_normalized(self) -> None:
@@ -141,6 +155,7 @@ class TestDiscoverOllama:
 
             client.get.assert_called_once_with(
                 "http://localhost:11434/api/tags",
+                headers={},
             )
 
     async def test_malformed_entries_skipped(self) -> None:
@@ -169,6 +184,7 @@ class TestDiscoverOllama:
         assert result[1].id == "ollama/also-valid"
 
 
+@pytest.mark.usefixtures("_bypass_ssrf")
 class TestDiscoverStandardApi:
     """Tests for standard /models endpoint discovery (LM Studio, vLLM)."""
 
@@ -206,6 +222,7 @@ class TestDiscoverStandardApi:
 
             client.get.assert_called_once_with(
                 "http://localhost:1234/v1/models",
+                headers={},
             )
 
     async def test_unknown_preset_uses_standard_endpoint(self) -> None:
@@ -221,6 +238,7 @@ class TestDiscoverStandardApi:
 
             client.get.assert_called_once_with(
                 "http://localhost:9999/models",
+                headers={},
             )
 
     async def test_malformed_json(self) -> None:
@@ -292,13 +310,35 @@ class TestDiscoverStandardApi:
         assert result == ()
 
 
+def _fake_getaddrinfo(
+    host: str,
+    _port: object,
+    *_args: object,
+    **_kwargs: object,
+) -> list[tuple[int, int, int, str, tuple[str, int]]]:
+    """Deterministic DNS resolution for SSRF tests."""
+    if host == "localhost":
+        return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 0))]
+    # All other hostnames resolve to a safe public IP.
+    return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("93.184.216.34", 0))]
+
+
 class TestValidateDiscoveryUrl:
     """Tests for SSRF URL validation."""
+
+    @pytest.fixture(autouse=True)
+    def _mock_dns(self) -> Generator[None]:
+        """Provide deterministic DNS for URL validation tests."""
+        with patch(
+            "synthorg.providers.discovery.socket.getaddrinfo",
+            side_effect=_fake_getaddrinfo,
+        ):
+            yield
 
     @pytest.mark.parametrize(
         ("url", "expected_safe"),
         [
-            ("http://localhost:11434", True),
+            ("http://localhost:11434", False),
             ("https://api.example.com/v1", True),
             ("http://192.168.1.1:11434", False),
             ("http://10.0.0.1:8000", False),
@@ -307,6 +347,14 @@ class TestValidateDiscoveryUrl:
             ("ftp://example.com", False),
             ("file:///etc/passwd", False),
             ("http://172.16.0.1:8000", False),
+            # IPv6-mapped IPv4 addresses.
+            ("http://[::ffff:127.0.0.1]:11434", False),
+            ("http://[::ffff:10.0.0.1]:8080", False),
+            ("http://[::ffff:8.8.8.8]:8080", True),
+            # Edge cases.
+            ("http:///path", False),
+            ("data:text/plain,hello", False),
+            ("http://user@example.com:8080/", True),
         ],
     )
     def test_url_validation(self, url: str, *, expected_safe: bool) -> None:
@@ -322,6 +370,32 @@ class TestValidateDiscoveryUrl:
             "http://169.254.169.254/latest",
             "ollama",
         )
+        assert result == ()
+
+
+@pytest.mark.usefixtures("_bypass_ssrf")
+class TestDiscoverModelsRedirect:
+    """Tests for redirect-following behavior."""
+
+    async def test_redirect_not_followed(self) -> None:
+        """Discovery returns empty tuple when server responds with redirect."""
+        redirect_response = httpx.Response(
+            status_code=302,
+            headers={"Location": "http://evil.example.com/models"},
+            request=httpx.Request("GET", "http://safe.example.com:1234/models"),
+        )
+        with patch("synthorg.providers.discovery.httpx.AsyncClient") as mock_cls:
+            client = _mock_client(redirect_response)
+            mock_cls.return_value = client
+
+            result = await discover_models(
+                "http://safe.example.com:1234",
+                None,
+            )
+
+        # With follow_redirects=False, the 302 response is not
+        # followed and cannot be parsed as JSON, so discover_models
+        # returns an empty tuple instead of following the redirect.
         assert result == ()
 
 

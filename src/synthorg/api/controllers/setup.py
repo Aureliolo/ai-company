@@ -55,7 +55,8 @@ _DEFAULT_MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields[
     "min_password_length"
 ].default
 
-# Serializes read-modify-write on the agents settings blob.
+# Module-level lock: one per worker process.  Safe under asyncio single-loop
+# model.  Serializes read-modify-write on the agents settings blob.
 _AGENT_LOCK = asyncio.Lock()
 
 
@@ -88,15 +89,16 @@ class SetupController(Controller):
         app_state: AppState = state.app_state
         persistence = app_state.persistence
 
+        admin_count: int | None = None
         try:
             admin_count = await persistence.users.count_by_role(HumanRole.CEO)
         except QueryError:
             logger.warning(
                 SETUP_STATUS_SETTINGS_UNAVAILABLE,
+                context="admin_count",
                 exc_info=True,
             )
-            admin_count = 0
-        needs_admin = admin_count == 0
+        needs_admin = admin_count == 0 if admin_count is not None else True
 
         settings_svc = app_state.settings_service
         try:
@@ -323,8 +325,8 @@ class SetupController(Controller):
         settings_svc = app_state.settings_service
         await _check_setup_not_complete(settings_svc)
 
-        # Verify company has been created.
-        has_company = await _check_has_company(settings_svc)
+        # Verify company has been created (strict: propagate unexpected errors).
+        has_company = await _check_has_company(settings_svc, strict=True)
         if not has_company:
             msg = "A company must be created before completing setup"
             logger.warning(SETUP_NO_COMPANY)
@@ -353,11 +355,17 @@ class SetupController(Controller):
 # ── Helpers ──────────────────────────────────────────────────
 
 
-async def _check_has_company(settings_svc: SettingsService) -> bool:
+async def _check_has_company(
+    settings_svc: SettingsService,
+    *,
+    strict: bool = False,
+) -> bool:
     """Check whether a company name has been configured.
 
     Args:
         settings_svc: Settings service instance.
+        strict: When True, propagate unexpected exceptions instead of
+            returning False (use for validation gates, not status checks).
 
     Returns:
         True if a non-empty company name is stored, False otherwise.
@@ -374,6 +382,8 @@ async def _check_has_company(settings_svc: SettingsService) -> bool:
         )
         return False
     except Exception:
+        if strict:
+            raise
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             setting="company_name",
@@ -396,7 +406,7 @@ async def _check_has_agents(settings_svc: SettingsService) -> bool:
         if not entry.value:
             return False
         parsed = json.loads(entry.value)
-        return isinstance(parsed, list) and len(parsed) > 0
+        return isinstance(parsed, list) and bool(parsed)
     except MemoryError, RecursionError:
         raise
     except SettingNotFoundError:
@@ -649,11 +659,10 @@ def _extract_template_departments(template_name: str) -> str:
     if not departments:
         return ""
 
-    dept_list: list[dict[str, Any]] = []
-    for d in departments:
-        entry: dict[str, Any] = {"name": d.name, "budget_percent": d.budget_percent}
-        dept_list.append(entry)
-    return json.dumps(dept_list) if dept_list else ""
+    dept_list = [
+        {"name": d.name, "budget_percent": d.budget_percent} for d in departments
+    ]
+    return json.dumps(dept_list)
 
 
 async def _get_existing_agents(

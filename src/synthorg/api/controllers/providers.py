@@ -316,15 +316,19 @@ class ProviderController(Controller):
         self,
         state: State,
         name: str,
+        preset_hint: str | None = None,
     ) -> ApiResponse[DiscoverModelsResponse]:
         """Discover available models from a provider endpoint.
 
         Queries the provider's API for available models and updates
-        the provider configuration with any discovered models.
+        the provider configuration with any discovered models.  When
+        ``base_url`` is not configured, returns an empty result.
 
         Args:
             state: Application state.
             name: Provider name.
+            preset_hint: Optional preset name to guide endpoint
+                selection (e.g. ``"ollama"``).
 
         Returns:
             Discovery result with found models.
@@ -337,6 +341,7 @@ class ProviderController(Controller):
         try:
             discovered = await mgmt.discover_models_for_provider(
                 name,
+                preset_hint=preset_hint,
             )
         except ProviderNotFoundError as exc:
             logger.warning(

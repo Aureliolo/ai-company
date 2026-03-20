@@ -158,4 +158,4 @@ class SetupCompleteResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    setup_complete: bool
+    setup_complete: Literal[True]

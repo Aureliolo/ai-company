@@ -106,6 +106,8 @@ def _configure_structlog(*, enable_correlation: bool = True) -> None:
         processors=processors,
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
+        # Disabled: cached proxies retain stale processor chains after
+        # reset_defaults() + reconfigure, losing log routing to new handlers.
         cache_logger_on_first_use=False,
     )
 

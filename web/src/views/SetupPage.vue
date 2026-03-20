@@ -166,6 +166,7 @@ onMounted(async () => {
         <div class="mb-8 flex items-center justify-center gap-2">
           <template v-for="(step, index) in steps" :key="step.id">
             <div
+              data-testid="step-indicator"
               class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-colors"
               :class="[
                 index < setup.currentStep
