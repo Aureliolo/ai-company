@@ -870,6 +870,8 @@ func TestCompareSemver(t *testing.T) {
 		{"empty strings", "", "", 0, false},
 		{"single component", "1", "2", -1, false},
 		{"two components", "1.2", "1.1", 1, false},
+		{"overflow version a", "99999999999999999999.0.0", "1.0.0", 0, true},
+		{"overflow version b", "1.0.0", "99999999999999999999.0.0", 0, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

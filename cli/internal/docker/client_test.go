@@ -169,6 +169,7 @@ func TestVersionAtLeast(t *testing.T) {
 		{"1.29.0", "2.0.0", false, false},
 		{"1.0.0-rc1", "1.0.0", true, false},
 		{"", "", true, false},
+		{"99999999999999999999.0.0", "1.0.0", false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.got+">="+tt.min, func(t *testing.T) {
