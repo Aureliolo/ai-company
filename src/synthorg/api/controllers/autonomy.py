@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import AutonomyLevel  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -59,7 +60,7 @@ class AutonomyController(Controller):
     async def get_autonomy(
         self,
         state: State,
-        agent_id: str,
+        agent_id: PathId,
     ) -> ApiResponse[AutonomyLevelResponse]:
         """Get the current autonomy level for an agent.
 
@@ -83,7 +84,7 @@ class AutonomyController(Controller):
     async def update_autonomy(
         self,
         state: State,
-        agent_id: str,
+        agent_id: PathId,
         data: AutonomyLevelRequest,
     ) -> ApiResponse[AutonomyLevelResponse]:
         """Request an autonomy level change for an agent.

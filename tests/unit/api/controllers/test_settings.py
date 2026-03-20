@@ -119,9 +119,22 @@ class TestSettingsController:
             "/api/v1/settings/budget/total_monthly",
             headers=auth_headers,
         )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["success"] is True
+        assert resp.status_code == 204
+
+    def test_delete_setting_no_body(
+        self, test_client: TestClient[Any], auth_headers: dict[str, str]
+    ) -> None:
+        test_client.put(
+            "/api/v1/settings/budget/total_monthly",
+            json={"value": "200.0"},
+            headers=auth_headers,
+        )
+        resp = test_client.delete(
+            "/api/v1/settings/budget/total_monthly",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 204
+        assert resp.content == b""
 
     def test_delete_unknown_setting_returns_404(
         self, test_client: TestClient[Any], auth_headers: dict[str, str]
@@ -184,3 +197,23 @@ class TestSettingsController:
             headers=observer_headers,
         )
         assert resp.status_code == 403
+
+    def test_oversized_namespace_rejected(
+        self, test_client: TestClient[Any], auth_headers: dict[str, str]
+    ) -> None:
+        long_ns = "x" * 65
+        resp = test_client.get(
+            f"/api/v1/settings/{long_ns}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    def test_oversized_key_rejected(
+        self, test_client: TestClient[Any], auth_headers: dict[str, str]
+    ) -> None:
+        long_key = "x" * 129
+        resp = test_client.get(
+            f"/api/v1/settings/budget/{long_key}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400

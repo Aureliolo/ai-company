@@ -7,6 +7,7 @@ from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.company import Department  # noqa: TC001
 from synthorg.observability import get_logger
@@ -48,7 +49,7 @@ class DepartmentController(Controller):
     async def get_department(
         self,
         state: State,
-        name: str,
+        name: PathName,
     ) -> ApiResponse[Department]:
         """Get a department by name.
 

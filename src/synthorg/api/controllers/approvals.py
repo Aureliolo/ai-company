@@ -1,12 +1,13 @@
 """Approvals controller — human approval queue CRUD."""
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 from uuid import uuid4
 
 from litestar import Controller, Request, get, post
 from litestar.channels import ChannelsPlugin  # noqa: TC002
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import Parameter
 
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.channels import CHANNEL_APPROVALS, get_channels_plugin
@@ -20,6 +21,7 @@ from synthorg.api.dto import (
 from synthorg.api.errors import ConflictError, NotFoundError, UnauthorizedError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.core.approval import ApprovalItem
@@ -320,7 +322,7 @@ class ApprovalsController(Controller):
         state: State,
         status: ApprovalStatus | None = None,
         risk_level: ApprovalRiskLevel | None = None,
-        action_type: str | None = None,
+        action_type: Annotated[str, Parameter(max_length=128)] | None = None,
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
     ) -> PaginatedResponse[ApprovalItem]:
@@ -350,7 +352,7 @@ class ApprovalsController(Controller):
     async def get_approval(
         self,
         state: State,
-        approval_id: str,
+        approval_id: PathId,
     ) -> ApiResponse[ApprovalItem]:
         """Get a single approval item by ID.
 

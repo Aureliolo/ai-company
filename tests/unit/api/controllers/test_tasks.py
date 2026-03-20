@@ -95,7 +95,21 @@ class TestTaskController:
             "/api/v1/tasks/task-001",
             headers=make_auth_headers("ceo"),
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 204
+
+    def test_delete_task_no_body(
+        self,
+        test_client: TestClient[Any],
+        fake_persistence: FakePersistenceBackend,
+    ) -> None:
+        task = make_task()
+        fake_persistence.tasks._tasks[task.id] = task
+        resp = test_client.delete(
+            "/api/v1/tasks/task-001",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 204
+        assert resp.content == b""
 
     def test_delete_task_not_found(self, test_client: TestClient[Any]) -> None:
         resp = test_client.delete(
@@ -103,6 +117,14 @@ class TestTaskController:
             headers=make_auth_headers("ceo"),
         )
         assert resp.status_code == 404
+
+    def test_oversized_task_id_rejected(self, test_client: TestClient[Any]) -> None:
+        long_id = "x" * 129
+        resp = test_client.get(
+            f"/api/v1/tasks/{long_id}",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
 
 
 @pytest.mark.unit

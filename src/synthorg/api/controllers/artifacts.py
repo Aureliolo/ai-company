@@ -6,6 +6,7 @@ from litestar.datastructures import State  # noqa: TC002
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.observability import get_logger
 
 logger = get_logger(__name__)
@@ -47,7 +48,7 @@ class ArtifactController(Controller):
     async def get_artifact(
         self,
         state: State,  # noqa: ARG002
-        artifact_id: str,  # noqa: ARG002
+        artifact_id: PathId,  # noqa: ARG002
     ) -> Response[ApiResponse[None]]:
         """Get an artifact by ID (stub → not implemented).
 

@@ -1,16 +1,19 @@
-"""Meeting controller — list, get, and trigger meetings."""
+"""Meeting controller -- list, get, and trigger meetings."""
 
-from typing import Self
+from typing import Annotated, Self
 
-from litestar import Controller, Response, get, post
+from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
+from litestar.params import Parameter
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.dto import ApiResponse, PaginatedResponse
+from synthorg.api.errors import NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.communication.meeting.enums import MeetingStatus  # noqa: TC001
-from synthorg.communication.meeting.models import MeetingRecord
+from synthorg.communication.meeting.models import MeetingRecord  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.meeting import MEETING_NOT_FOUND
@@ -88,7 +91,7 @@ class MeetingController(Controller):
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
         status: MeetingStatus | None = None,
-        meeting_type: str | None = None,
+        meeting_type: Annotated[str, Parameter(max_length=128)] | None = None,
     ) -> PaginatedResponse[MeetingRecord]:
         """List meeting records with optional filters.
 
@@ -117,8 +120,8 @@ class MeetingController(Controller):
     async def get_meeting(
         self,
         state: State,
-        meeting_id: str,
-    ) -> Response[ApiResponse[MeetingRecord]]:
+        meeting_id: PathId,
+    ) -> ApiResponse[MeetingRecord]:
         """Get a meeting record by ID.
 
         Args:
@@ -126,28 +129,24 @@ class MeetingController(Controller):
             meeting_id: Meeting identifier.
 
         Returns:
-            Meeting record or 404.
+            Meeting record envelope.
+
+        Raises:
+            NotFoundError: If the meeting is not found.
         """
         orchestrator = state.app_state.meeting_orchestrator
         records = orchestrator.get_records()
 
         for record in records:
             if record.meeting_id == meeting_id:
-                return Response(
-                    content=ApiResponse[MeetingRecord](data=record),
-                    status_code=200,
-                )
+                return ApiResponse(data=record)
 
         logger.warning(
             MEETING_NOT_FOUND,
             meeting_id=meeting_id,
         )
-        return Response(
-            content=ApiResponse[MeetingRecord](
-                error=f"Meeting {meeting_id!r} not found",
-            ),
-            status_code=404,
-        )
+        msg = f"Meeting {meeting_id!r} not found"
+        raise NotFoundError(msg)
 
     @post(
         "/trigger",
@@ -157,7 +156,7 @@ class MeetingController(Controller):
         self,
         state: State,
         data: TriggerMeetingRequest,
-    ) -> Response[ApiResponse[tuple[MeetingRecord, ...]]]:
+    ) -> ApiResponse[tuple[MeetingRecord, ...]]:
         """Trigger event-based meetings by event name.
 
         Args:
@@ -173,7 +172,4 @@ class MeetingController(Controller):
             context=data.context,
         )
 
-        return Response(
-            content=ApiResponse[tuple[MeetingRecord, ...]](data=records),
-            status_code=200,
-        )
+        return ApiResponse(data=records)

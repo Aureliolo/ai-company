@@ -10,9 +10,11 @@ from litestar.exceptions import (
     InternalServerException,
     NotFoundException,
 )
+from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_write_access
+from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.backup.errors import (
     BackupError,
@@ -115,7 +117,7 @@ class BackupController(Controller):
     async def get_backup(
         self,
         state: State,
-        backup_id: str,
+        backup_id: PathId,
     ) -> ApiResponse[BackupManifest]:
         """Get details of a specific backup.
 
@@ -137,20 +139,17 @@ class BackupController(Controller):
             raise NotFoundException(str(exc)) from exc
         return ApiResponse(data=manifest)
 
-    @delete("/{backup_id:str}", status_code=200)
+    @delete("/{backup_id:str}", status_code=HTTP_204_NO_CONTENT)
     async def delete_backup(
         self,
         state: State,
-        backup_id: str,
-    ) -> ApiResponse[None]:
+        backup_id: PathId,
+    ) -> None:
         """Delete a backup.
 
         Args:
             state: Application state.
             backup_id: Backup identifier.
-
-        Returns:
-            Empty success response.
         """
         app_state: AppState = state.app_state
         try:
@@ -161,7 +160,6 @@ class BackupController(Controller):
                 backup_id=backup_id,
             )
             raise NotFoundException(str(exc)) from exc
-        return ApiResponse(data=None)
 
     @post("/restore")
     async def restore_backup(

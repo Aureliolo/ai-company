@@ -78,3 +78,11 @@ class TestBudgetController:
             headers={"Authorization": "Bearer invalid-token"},
         )
         assert resp.status_code == 401
+
+    def test_oversized_agent_id_rejected(self, test_client: TestClient[Any]) -> None:
+        long_id = "x" * 129
+        resp = test_client.get(
+            f"/api/v1/budget/agents/{long_id}",
+            headers=_HEADERS,
+        )
+        assert resp.status_code == 400

@@ -7,10 +7,12 @@ from litestar.exceptions import (
     InternalServerException,
     NotFoundException,
 )
+from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.api.dto import ApiResponse
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.path_params import PathKey, PathNamespace  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_ENCRYPTION_ERROR
@@ -74,7 +76,7 @@ class SettingsController(Controller):
     async def get_namespace_schema(
         self,
         state: State,
-        namespace: str,
+        namespace: PathNamespace,
     ) -> ApiResponse[tuple[SettingDefinition, ...]]:
         """Return setting definitions for a specific namespace.
 
@@ -113,7 +115,7 @@ class SettingsController(Controller):
     async def get_namespace_settings(
         self,
         state: State,
-        namespace: str,
+        namespace: PathNamespace,
     ) -> ApiResponse[tuple[SettingEntry, ...]]:
         """List resolved settings for a namespace.
 
@@ -133,8 +135,8 @@ class SettingsController(Controller):
     async def get_setting(
         self,
         state: State,
-        namespace: str,
-        key: str,
+        namespace: PathNamespace,
+        key: PathKey,
     ) -> ApiResponse[SettingEntry]:
         """Get a single resolved setting.
 
@@ -161,8 +163,8 @@ class SettingsController(Controller):
     async def update_setting(
         self,
         state: State,
-        namespace: str,
-        key: str,
+        namespace: PathNamespace,
+        key: PathKey,
         data: UpdateSettingRequest,
     ) -> ApiResponse[SettingEntry]:
         """Update a setting value.
@@ -197,23 +199,20 @@ class SettingsController(Controller):
     @delete(
         "/{namespace:str}/{key:str}",
         guards=[require_write_access],
-        status_code=200,
+        status_code=HTTP_204_NO_CONTENT,
     )
     async def delete_setting(
         self,
         state: State,
-        namespace: str,
-        key: str,
-    ) -> ApiResponse[None]:
+        namespace: PathNamespace,
+        key: PathKey,
+    ) -> None:
         """Delete a DB override, reverting to next source in chain.
 
         Args:
             state: Application state.
             namespace: Setting namespace.
             key: Setting key.
-
-        Returns:
-            Empty success response.
         """
         _validate_namespace(namespace)
         app_state: AppState = state.app_state
@@ -221,4 +220,3 @@ class SettingsController(Controller):
             await app_state.settings_service.delete(namespace, key)
         except SettingNotFoundError as exc:
             raise NotFoundException(str(exc)) from exc
-        return ApiResponse(data=None)

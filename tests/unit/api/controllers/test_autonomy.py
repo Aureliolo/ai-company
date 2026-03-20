@@ -64,3 +64,14 @@ class TestUpdateAutonomy:
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 403
+
+
+@pytest.mark.unit
+class TestAutonomyPathParamValidation:
+    def test_oversized_agent_id_rejected(self, test_client: TestClient[Any]) -> None:
+        long_id = "x" * 129
+        resp = test_client.get(
+            _url(long_id),
+            headers=_READ_HEADERS,
+        )
+        assert resp.status_code == 400

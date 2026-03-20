@@ -73,6 +73,11 @@ class TestAgentController:
         assert resp.status_code == 404
         assert resp.json()["success"] is False
 
+    def test_oversized_agent_name_rejected(self, test_client: TestClient[Any]) -> None:
+        long_name = "x" * 129
+        resp = test_client.get(f"/api/v1/agents/{long_name}")
+        assert resp.status_code == 400
+
 
 @pytest.mark.integration
 @pytest.mark.timeout(30)

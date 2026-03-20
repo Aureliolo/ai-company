@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from synthorg.api.dto import ApiResponse, PaginatedResponse
 from synthorg.api.guards import require_read_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.budget.config import BudgetConfig  # noqa: TC001
 from synthorg.budget.cost_record import CostRecord  # noqa: TC001
@@ -87,7 +88,7 @@ class BudgetController(Controller):
     async def get_agent_spending(
         self,
         state: State,
-        agent_id: str,
+        agent_id: PathId,
     ) -> ApiResponse[AgentSpending]:
         """Get total spending for an agent.
 

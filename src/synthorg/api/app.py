@@ -588,6 +588,7 @@ def create_app(  # noqa: PLR0913
             backend="brotli",
             minimum_size=1000,
         ),
+        request_max_body_size=2_097_152,  # 2 MB
         before_send=[security_headers_hook],
         middleware=middleware,
         plugins=plugins,

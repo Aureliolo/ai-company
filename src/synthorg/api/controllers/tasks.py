@@ -2,6 +2,7 @@
 
 from litestar import Controller, delete, get, patch, post
 from litestar.datastructures import State  # noqa: TC002
+from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.dto import (
     ApiResponse,
@@ -19,6 +20,7 @@ from synthorg.api.errors import (
 )
 from synthorg.api.guards import require_read_access, require_write_access
 from synthorg.api.pagination import PaginationLimit, PaginationOffset, paginate
+from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.enums import TaskStatus  # noqa: TC001
 from synthorg.core.task import Task  # noqa: TC001
@@ -197,7 +199,7 @@ class TaskController(Controller):
     async def get_task(
         self,
         state: State,
-        task_id: str,
+        task_id: PathId,
     ) -> ApiResponse[Task]:
         """Get a task by ID.
 
@@ -280,7 +282,7 @@ class TaskController(Controller):
     async def update_task(
         self,
         state: State,
-        task_id: str,
+        task_id: PathId,
         data: UpdateTaskRequest,
     ) -> ApiResponse[Task]:
         """Update task fields.
@@ -327,7 +329,7 @@ class TaskController(Controller):
     async def transition_task(
         self,
         state: State,
-        task_id: str,
+        task_id: PathId,
         data: TransitionTaskRequest,
     ) -> ApiResponse[Task]:
         """Perform a status transition on a task.
@@ -374,20 +376,21 @@ class TaskController(Controller):
         )
         return ApiResponse(data=task)
 
-    @delete("/{task_id:str}", guards=[require_write_access], status_code=200)
+    @delete(
+        "/{task_id:str}",
+        guards=[require_write_access],
+        status_code=HTTP_204_NO_CONTENT,
+    )
     async def delete_task(
         self,
         state: State,
-        task_id: str,
-    ) -> ApiResponse[None]:
+        task_id: PathId,
+    ) -> None:
         """Delete a task.
 
         Args:
             state: Application state.
             task_id: Task identifier.
-
-        Returns:
-            Success envelope.
 
         Raises:
             NotFoundError: If the task is not found.
@@ -407,13 +410,12 @@ class TaskController(Controller):
         ) as exc:
             raise _map_task_engine_errors(exc, task_id=task_id) from exc
         logger.info(API_TASK_DELETED, task_id=task_id)
-        return ApiResponse(data=None)
 
     @post("/{task_id:str}/cancel", guards=[require_write_access])
     async def cancel_task(
         self,
         state: State,
-        task_id: str,
+        task_id: PathId,
         data: CancelTaskRequest,
     ) -> ApiResponse[Task]:
         """Cancel a task.

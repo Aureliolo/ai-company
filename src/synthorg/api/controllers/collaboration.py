@@ -5,12 +5,14 @@ from typing import Any
 
 from litestar import Controller, Request, delete, get, post
 from litestar.datastructures import State  # noqa: TC002
+from litestar.status_codes import HTTP_204_NO_CONTENT
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field
 
 from synthorg.api.auth.models import AuthenticatedUser
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import NotFoundError, ServiceUnavailableError
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.core.types import NotBlankStr
 from synthorg.hr.performance.collaboration_override_store import (
@@ -141,7 +143,7 @@ class CollaborationController(Controller):
     async def get_score(
         self,
         state: State,
-        agent_id: str,
+        agent_id: PathId,
     ) -> ApiResponse[CollaborationScoreResult]:
         """Get current collaboration score (with override if active).
 
@@ -164,7 +166,7 @@ class CollaborationController(Controller):
     async def get_override(
         self,
         state: State,
-        agent_id: str,
+        agent_id: PathId,
     ) -> ApiResponse[OverrideResponse]:
         """Get the active override for an agent.
 
@@ -207,7 +209,7 @@ class CollaborationController(Controller):
     async def set_override(
         self,
         state: State,
-        agent_id: str,
+        agent_id: PathId,
         data: SetOverrideRequest,
         request: Request[Any, Any, Any],
     ) -> ApiResponse[OverrideResponse]:
@@ -268,20 +270,17 @@ class CollaborationController(Controller):
             ),
         )
 
-    @delete("/override", guards=[require_write_access], status_code=200)
+    @delete("/override", guards=[require_write_access], status_code=HTTP_204_NO_CONTENT)
     async def clear_override(
         self,
         state: State,
-        agent_id: str,
-    ) -> ApiResponse[None]:
+        agent_id: PathId,
+    ) -> None:
         """Clear the active override for an agent.
 
         Args:
             state: Application state.
             agent_id: Agent identifier.
-
-        Returns:
-            Empty success response.
 
         Raises:
             ServiceUnavailableError: If the override store is not configured.
@@ -300,13 +299,11 @@ class CollaborationController(Controller):
             msg = "No override to clear for the specified agent"
             raise NotFoundError(msg)
 
-        return ApiResponse(data=None)
-
     @get("/calibration", guards=[require_read_access])
     async def get_calibration(
         self,
         state: State,
-        agent_id: str,
+        agent_id: PathId,
     ) -> ApiResponse[CalibrationSummaryResponse]:
         """Get LLM calibration records and drift summary.
 

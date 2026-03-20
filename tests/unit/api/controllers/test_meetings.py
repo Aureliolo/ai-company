@@ -193,13 +193,42 @@ class TestMeetingController:
             "/api/v1/meetings/trigger",
             json={"event_name": "deploy_complete"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         body = resp.json()
         assert body["success"] is True
         mock_scheduler.trigger_event.assert_awaited_once_with(
             "deploy_complete",
             context={},
         )
+
+    def test_get_meeting_not_found_returns_structured_error(
+        self,
+        meeting_client: TestClient[Any],
+    ) -> None:
+        resp = meeting_client.get("/api/v1/meetings/mtg-unknown")
+        assert resp.status_code == 404
+        body = resp.json()
+        assert body["success"] is False
+        assert "error_code" in body or "type" in body or "error" in body
+
+    def test_oversized_meeting_id_rejected(
+        self,
+        meeting_client: TestClient[Any],
+    ) -> None:
+        long_id = "x" * 129
+        resp = meeting_client.get(f"/api/v1/meetings/{long_id}")
+        assert resp.status_code == 400
+
+    def test_oversized_meeting_type_query_accepted(
+        self,
+        meeting_client: TestClient[Any],
+    ) -> None:
+        long_type = "x" * 129
+        resp = meeting_client.get(
+            "/api/v1/meetings",
+            params={"meeting_type": long_type},
+        )
+        assert resp.status_code == 200
 
     def test_503_when_orchestrator_not_configured(
         self,

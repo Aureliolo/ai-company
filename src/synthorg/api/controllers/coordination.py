@@ -20,6 +20,7 @@ from synthorg.api.errors import (
     ServiceUnavailableError,
 )
 from synthorg.api.guards import require_write_access
+from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.ws_models import WsEvent, WsEventType
 from synthorg.engine.coordination.models import (
     CoordinationContext,
@@ -42,15 +43,6 @@ if TYPE_CHECKING:
     from synthorg.core.task import Task
 
 logger = get_logger(__name__)
-
-_MAX_TASK_ID_LEN: int = 128
-
-
-def _validate_task_id(task_id: str) -> None:
-    """Reject oversized task IDs at the API boundary."""
-    if len(task_id) > _MAX_TASK_ID_LEN:
-        msg = "Task ID too long"
-        raise ApiValidationError(msg)
 
 
 def _publish_ws_event(
@@ -118,7 +110,7 @@ class CoordinationController(Controller):
         self,
         request: Request[Any, Any, Any],
         state: State,
-        task_id: str,
+        task_id: PathId,
         data: CoordinateTaskRequest,
     ) -> ApiResponse[CoordinationResultResponse]:
         """Trigger multi-agent coordination for a task.
@@ -155,7 +147,6 @@ class CoordinationController(Controller):
             msg = "Agent registry not configured"
             raise ServiceUnavailableError(msg)
 
-        _validate_task_id(task_id)
         task = await self._get_task(app_state, task_id)
         agents = await self._resolve_agents(app_state, data, task_id)
         context = await self._build_context(app_state, task, agents, data)

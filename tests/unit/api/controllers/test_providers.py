@@ -33,6 +33,13 @@ class TestProviderController:
         resp = test_client.get("/api/v1/providers/nonexistent/models")
         assert resp.status_code == 404
 
+    def test_oversized_provider_name_rejected(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        long_name = "x" * 129
+        resp = test_client.get(f"/api/v1/providers/{long_name}")
+        assert resp.status_code == 400
+
 
 @pytest.mark.unit
 @pytest.mark.timeout(30)

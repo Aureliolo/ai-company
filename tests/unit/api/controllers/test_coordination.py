@@ -341,6 +341,20 @@ class TestCoordinationControllerErrors:
 
 
 @pytest.mark.unit
+class TestCoordinationPathParamValidation:
+    def test_oversized_task_id_rejected(
+        self,
+        coordination_client: TestClient[Any],
+    ) -> None:
+        long_id = "x" * 129
+        resp = coordination_client.post(
+            f"/api/v1/tasks/{long_id}/coordinate",
+            json={},
+        )
+        assert resp.status_code == 400
+
+
+@pytest.mark.unit
 class TestCoordinationControllerNoCoordinator:
     def test_503_when_coordinator_not_configured(
         self,

@@ -19,6 +19,7 @@ from synthorg.api.dto import (
 )
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
+from synthorg.api.path_params import PathName  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.config.schema import ProviderModelConfig  # noqa: TC001
 from synthorg.observability import get_logger
@@ -91,7 +92,7 @@ class ProviderController(Controller):
     async def get_provider(
         self,
         state: State,
-        name: str,
+        name: PathName,
     ) -> ApiResponse[ProviderResponse]:
         """Get a provider by name (secrets stripped).
 
@@ -121,7 +122,7 @@ class ProviderController(Controller):
     async def list_models(
         self,
         state: State,
-        name: str,
+        name: PathName,
     ) -> ApiResponse[tuple[ProviderModelConfig, ...]]:
         """List models for a provider.
 
@@ -239,7 +240,7 @@ class ProviderController(Controller):
     async def update_provider(
         self,
         state: State,
-        name: str,
+        name: PathName,
         data: UpdateProviderRequest,
     ) -> ApiResponse[ProviderResponse]:
         """Update an existing provider.
@@ -286,7 +287,7 @@ class ProviderController(Controller):
     async def delete_provider(
         self,
         state: State,
-        name: str,
+        name: PathName,
     ) -> None:
         """Delete a provider.
 
@@ -315,7 +316,7 @@ class ProviderController(Controller):
     async def discover_models(
         self,
         state: State,
-        name: str,
+        name: PathName,
         preset_hint: str | None = None,
     ) -> ApiResponse[DiscoverModelsResponse]:
         """Discover available models from a provider endpoint.
@@ -364,7 +365,7 @@ class ProviderController(Controller):
     async def test_connection(
         self,
         state: State,
-        name: str,
+        name: PathName,
         data: ConnTestRequest,
     ) -> ApiResponse[TestConnectionResponse]:
         """Test connectivity to a provider.

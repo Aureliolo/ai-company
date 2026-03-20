@@ -8,6 +8,7 @@ from typing import Any, Self
 from litestar import Controller, Request, Response, get, post
 from litestar.connection import ASGIConnection  # noqa: TC002
 from litestar.exceptions import PermissionDeniedException
+from litestar.middleware.rate_limit import RateLimitConfig as LitestarRateLimitConfig
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.api.auth.config import AuthConfig
@@ -230,6 +231,17 @@ def require_password_changed(
 # ── Controller ────────────────────────────────────────────────
 
 
+_AUTH_RATE_LIMIT = LitestarRateLimitConfig(
+    rate_limit=("minute", 10),
+)
+"""Stricter rate limiter for login and setup endpoints (10 req/min).
+
+Applied as route-level middleware on ``/auth/login`` and
+``/auth/setup`` only.  Each middleware instance has its own
+in-memory counter cache, independent of the global rate limiter.
+"""
+
+
 class AuthController(Controller):
     """Authentication endpoints: setup, login, password change, me."""
 
@@ -240,6 +252,7 @@ class AuthController(Controller):
         "/setup",
         status_code=201,
         summary="First-run admin setup",
+        middleware=[_AUTH_RATE_LIMIT.middleware],
     )
     async def setup(
         self,
@@ -305,6 +318,7 @@ class AuthController(Controller):
         "/login",
         status_code=200,
         summary="Authenticate with credentials",
+        middleware=[_AUTH_RATE_LIMIT.middleware],
     )
     async def login(
         self,

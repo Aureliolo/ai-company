@@ -418,3 +418,25 @@ class TestRejectApproval:
             headers=_READ_HEADERS,
         )
         assert resp.status_code == 403
+
+
+@pytest.mark.unit
+class TestApprovalPathParamValidation:
+    def test_oversized_approval_id_rejected(self, test_client: TestClient[Any]) -> None:
+        long_id = "x" * 129
+        resp = test_client.get(
+            f"{_BASE}/{long_id}",
+            headers=_READ_HEADERS,
+        )
+        assert resp.status_code == 400
+
+    def test_oversized_action_type_query_accepted(
+        self, test_client: TestClient[Any]
+    ) -> None:
+        long_action = "x" * 129
+        resp = test_client.get(
+            _BASE,
+            params={"action_type": long_action},
+            headers=_READ_HEADERS,
+        )
+        assert resp.status_code == 200

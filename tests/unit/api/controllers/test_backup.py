@@ -6,6 +6,7 @@ bootstrapping a full Litestar app, we call the raw function via
 ``handler.fn(self, ...)``.
 """
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -14,6 +15,7 @@ from litestar.exceptions import (
     InternalServerException,
     NotFoundException,
 )
+from litestar.testing import TestClient
 
 from synthorg.api.controllers.backup import BackupController
 from synthorg.api.dto import ApiResponse
@@ -30,6 +32,7 @@ from synthorg.backup.models import (
     RestoreRequest,
     RestoreResponse,
 )
+from tests.unit.api.conftest import make_auth_headers
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -181,8 +184,7 @@ class TestDeleteBackup:
         )
 
         service.delete_backup.assert_awaited_once_with("abc123def456")
-        assert isinstance(result, ApiResponse)
-        assert result.data is None
+        assert result is None
 
     async def test_delete_backup_raises_404_on_not_found(self) -> None:
         state, service = _make_state_and_service()
@@ -338,3 +340,19 @@ class TestRestoreConfirmGate:
 
         # Service must never be called when confirm is false
         service.restore_from_backup.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestBackupPathParamValidation:
+    """Path parameter validation via Litestar Parameter constraints."""
+
+    def test_oversized_backup_id_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        long_id = "x" * 129
+        resp = test_client.get(
+            f"/api/v1/admin/backups/{long_id}",
+            headers=make_auth_headers("ceo"),
+        )
+        assert resp.status_code == 400
