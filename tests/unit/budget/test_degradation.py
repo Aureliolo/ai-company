@@ -1,7 +1,7 @@
 """Tests for quota degradation resolution (FALLBACK, QUEUE, ALERT)."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
@@ -24,6 +24,17 @@ from synthorg.budget.quota import (
 from synthorg.budget.quota_tracker import QuotaTracker
 
 pytestmark = pytest.mark.timeout(30)
+
+
+# Frozen reference time for deterministic delay computation in QUEUE tests.
+_FROZEN_NOW = datetime(2026, 3, 20, 12, 0, 0, tzinfo=UTC)
+
+
+def _frozen_datetime_mock() -> MagicMock:
+    """Build a mock datetime that returns _FROZEN_NOW from now()."""
+    mock_dt = MagicMock(wraps=datetime)
+    mock_dt.now = MagicMock(return_value=_FROZEN_NOW)
+    return mock_dt
 
 
 # ── Helpers ────────────────────────────────────────────────────────
@@ -314,15 +325,14 @@ class TestQueueStrategy:
         seconds: float = 30,
     ) -> tuple[QuotaSnapshot, ...]:
         """Build a snapshot with a reset time in the near future."""
-        now = datetime.now(UTC)
         return (
             QuotaSnapshot(
                 provider_name="primary",
                 window=QuotaWindow.PER_HOUR,
                 requests_used=5,
                 requests_limit=5,
-                window_resets_at=now + timedelta(seconds=seconds),
-                captured_at=now,
+                window_resets_at=_FROZEN_NOW + timedelta(seconds=seconds),
+                captured_at=_FROZEN_NOW,
             ),
         )
 
@@ -349,6 +359,10 @@ class TestQueueStrategy:
                 new_callable=AsyncMock,
                 return_value=allowed_result,
             ),
+            patch(
+                "synthorg.budget.degradation.datetime",
+                _frozen_datetime_mock(),
+            ),
         ):
             mock_sleep.return_value = None
 
@@ -366,7 +380,7 @@ class TestQueueStrategy:
         assert result.effective_provider == "primary"
         mock_sleep.assert_awaited_once()
         delay = mock_sleep.call_args[0][0]
-        assert 0 < delay <= 300
+        assert delay == 30.0
 
     async def test_rechecks_after_wake_and_succeeds(self) -> None:
         tracker = _make_tracker({"primary": 5})
@@ -390,6 +404,10 @@ class TestQueueStrategy:
                 new_callable=AsyncMock,
                 return_value=allowed_result,
             ),
+            patch(
+                "synthorg.budget.degradation.datetime",
+                _frozen_datetime_mock(),
+            ),
         ):
             mock_sleep.return_value = None
 
@@ -404,7 +422,7 @@ class TestQueueStrategy:
             )
 
         assert result.effective_provider == "primary"
-        assert result.wait_seconds > 0
+        assert result.wait_seconds == 30.0
 
     async def test_rechecks_after_wake_and_fails(self) -> None:
         tracker = _make_tracker({"primary": 5})
@@ -429,6 +447,10 @@ class TestQueueStrategy:
                 "check_quota",
                 new_callable=AsyncMock,
                 return_value=still_denied,
+            ),
+            patch(
+                "synthorg.budget.degradation.datetime",
+                _frozen_datetime_mock(),
             ),
         ):
             mock_sleep.return_value = None
@@ -455,7 +477,7 @@ class TestQueueStrategy:
         await _exhaust_provider(tracker, "primary", 5)
 
         # Build a snapshot where reset is far in the future
-        now = datetime.now(UTC)
+        now = _FROZEN_NOW
         far_future = now + timedelta(hours=2)
         snapshot = QuotaSnapshot(
             provider_name="primary",
@@ -471,6 +493,10 @@ class TestQueueStrategy:
                 "get_snapshot",
                 new_callable=AsyncMock,
                 return_value=(snapshot,),
+            ),
+            patch(
+                "synthorg.budget.degradation.datetime",
+                _frozen_datetime_mock(),
             ),
             pytest.raises(
                 QuotaExhaustedError,
@@ -493,7 +519,7 @@ class TestQueueStrategy:
         await _exhaust_provider(tracker, "primary", 5)
 
         # Snapshot with reset in the past
-        now = datetime.now(UTC)
+        now = _FROZEN_NOW
         past = now - timedelta(seconds=10)
         snapshot = QuotaSnapshot(
             provider_name="primary",
@@ -520,6 +546,10 @@ class TestQueueStrategy:
                 "check_quota",
                 new_callable=AsyncMock,
                 return_value=allowed_result,
+            ),
+            patch(
+                "synthorg.budget.degradation.datetime",
+                _frozen_datetime_mock(),
             ),
         ):
             mock_sleep.return_value = None
@@ -560,6 +590,10 @@ class TestQueueStrategy:
                 new_callable=AsyncMock,
                 return_value=allowed_result,
             ),
+            patch(
+                "synthorg.budget.degradation.datetime",
+                _frozen_datetime_mock(),
+            ),
         ):
             mock_sleep.return_value = None
 
@@ -581,7 +615,7 @@ class TestQueueStrategy:
         tracker = _make_tracker({"primary": 5})
         await _exhaust_provider(tracker, "primary", 5)
 
-        now = datetime.now(UTC)
+        now = _FROZEN_NOW
         snapshots = (
             QuotaSnapshot(
                 provider_name="primary",
@@ -618,6 +652,10 @@ class TestQueueStrategy:
                 new_callable=AsyncMock,
                 return_value=allowed_result,
             ),
+            patch(
+                "synthorg.budget.degradation.datetime",
+                _frozen_datetime_mock(),
+            ),
         ):
             mock_sleep.return_value = None
 
@@ -638,9 +676,8 @@ class TestQueueStrategy:
             )
 
         assert result.action_taken == DegradationAction.QUEUE
-        # Should have waited ~120s (the shorter window), not ~5 hours
         delay = mock_sleep.call_args[0][0]
-        assert delay < 200
+        assert delay == 120.0
 
     async def test_zero_max_wait_raises_immediately(self) -> None:
         """queue_max_wait_seconds=0 means no waiting allowed."""
@@ -653,6 +690,10 @@ class TestQueueStrategy:
                 "get_snapshot",
                 new_callable=AsyncMock,
                 return_value=self._near_future_snapshot(30),
+            ),
+            patch(
+                "synthorg.budget.degradation.datetime",
+                _frozen_datetime_mock(),
             ),
             pytest.raises(
                 QuotaExhaustedError,
@@ -831,7 +872,7 @@ class TestQueueErrorAttributes:
         tracker = _make_tracker({"primary": 5})
         await _exhaust_provider(tracker, "primary", 5)
 
-        now = datetime.now(UTC)
+        now = _FROZEN_NOW
         snapshot = QuotaSnapshot(
             provider_name="primary",
             window=QuotaWindow.PER_HOUR,
@@ -846,6 +887,10 @@ class TestQueueErrorAttributes:
                 "get_snapshot",
                 new_callable=AsyncMock,
                 return_value=(snapshot,),
+            ),
+            patch(
+                "synthorg.budget.degradation.datetime",
+                _frozen_datetime_mock(),
             ),
             pytest.raises(QuotaExhaustedError) as exc_info,
         ):
@@ -897,7 +942,7 @@ class TestQueueWaitSecondsAccuracy:
         tracker = _make_tracker({"primary": 5})
         await _exhaust_provider(tracker, "primary", 5)
 
-        now = datetime.now(UTC)
+        now = _FROZEN_NOW
         snapshots = (
             QuotaSnapshot(
                 provider_name="primary",
@@ -925,6 +970,10 @@ class TestQueueWaitSecondsAccuracy:
                 "check_quota",
                 new_callable=AsyncMock,
                 return_value=allowed_result,
+            ),
+            patch(
+                "synthorg.budget.degradation.datetime",
+                _frozen_datetime_mock(),
             ),
         ):
             mock_sleep.return_value = None

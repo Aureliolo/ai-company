@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from synthorg.budget.quota import DegradationAction
+    from synthorg.core.types import NotBlankStr
 
 
 class BudgetExhaustedError(Exception):
@@ -49,7 +50,7 @@ class QuotaExhaustedError(BudgetExhaustedError):
         self,
         msg: str,
         *,
-        provider_name: str | None = None,
+        provider_name: NotBlankStr | None = None,
         degradation_action: DegradationAction | None = None,
     ) -> None:
         super().__init__(msg)

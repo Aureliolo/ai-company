@@ -197,6 +197,8 @@ async def _resolve_fallback(
                 fallback_name,
                 estimated_tokens=estimated_tokens,
             )
+        except MemoryError, RecursionError:
+            raise
         except Exception as exc:
             logger.warning(
                 DEGRADATION_FALLBACK_CHECK_ERROR,

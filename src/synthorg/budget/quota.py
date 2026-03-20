@@ -314,7 +314,7 @@ class QuotaCheckResult(BaseModel):
         return self
 
 
-def always_allowed_result(provider_name: str) -> QuotaCheckResult:
+def always_allowed_result(provider_name: NotBlankStr) -> QuotaCheckResult:
     """Build an always-allowed QuotaCheckResult."""
     return QuotaCheckResult(
         allowed=True,

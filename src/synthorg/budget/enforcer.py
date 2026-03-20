@@ -6,6 +6,8 @@ checks, in-flight budget checking, and task-boundary auto-downgrade
 as described in the Cost Controls section of the Operations design page.
 """
 
+import copy
+from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
 from synthorg.budget.billing import billing_period_start, daily_period_start
@@ -93,7 +95,11 @@ class BudgetEnforcer:
         self._cost_tracker = cost_tracker
         self._model_resolver = model_resolver
         self._quota_tracker = quota_tracker
-        self._degradation_configs = degradation_configs
+        self._degradation_configs: MappingProxyType[str, DegradationConfig] | None = (
+            MappingProxyType(copy.deepcopy(dict(degradation_configs)))
+            if degradation_configs is not None
+            else None
+        )
 
     @property
     def cost_tracker(self) -> CostTracker:
