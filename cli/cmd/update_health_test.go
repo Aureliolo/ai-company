@@ -111,6 +111,10 @@ func TestImageRefForService(t *testing.T) {
 			want: "ghcr.io/aureliolo/synthorg-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		},
 		{
+			// Degenerate case: empty ImageTag produces a malformed ref.
+			// Not reachable in production -- detectInstallationIssues
+			// guards with state.ImageTag != "" before calling
+			// detectMissingImages. Kept for completeness.
 			name: "empty image tag produces colon-only ref when no digest",
 			svc:  "backend",
 			state: config.State{

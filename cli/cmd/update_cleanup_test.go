@@ -63,3 +63,36 @@ func TestIsAllHex(t *testing.T) {
 		})
 	}
 }
+
+func FuzzIsValidDockerID(f *testing.F) {
+	f.Add("abcdef123456")
+	f.Add("ABCDEF123456")
+	f.Add("")
+	f.Add("abcdef12345g")
+	f.Add("abcdef 12345")
+	f.Add("abcdef1234567")
+	f.Fuzz(func(t *testing.T, s string) {
+		result := isValidDockerID(s)
+		// Invariant: true implies exactly 12 hex characters.
+		if result && (len(s) != 12 || !isAllHex(s)) {
+			t.Errorf("isValidDockerID(%q) = true but len=%d isAllHex=%v",
+				s, len(s), isAllHex(s))
+		}
+	})
+}
+
+func FuzzIsAllHex(f *testing.F) {
+	f.Add("0123456789abcdef")
+	f.Add("0123456789ABCDEF")
+	f.Add("")
+	f.Add("g")
+	f.Add("abc!def")
+	f.Add("abc def")
+	f.Fuzz(func(t *testing.T, s string) {
+		result := isAllHex(s)
+		// Cross-check: isAllHex && len==12 must imply isValidDockerID.
+		if result && len(s) == 12 && !isValidDockerID(s) {
+			t.Errorf("isAllHex(%q)=true, len=12, but isValidDockerID=false", s)
+		}
+	})
+}

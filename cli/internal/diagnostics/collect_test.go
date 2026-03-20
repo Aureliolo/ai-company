@@ -13,6 +13,8 @@ import (
 )
 
 func TestTruncate(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		input string
@@ -27,6 +29,7 @@ func TestTruncate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := truncate(tt.input, tt.max)
 			if got != tt.want {
 				t.Errorf("truncate(%q, %d) = %q, want %q", tt.input, tt.max, got, tt.want)
@@ -36,6 +39,8 @@ func TestTruncate(t *testing.T) {
 }
 
 func TestReportFormatText(t *testing.T) {
+	t.Parallel()
+
 	r := Report{
 		Timestamp:  "2026-03-14T00:00:00Z",
 		OS:         "linux",
@@ -60,6 +65,8 @@ func TestReportFormatText(t *testing.T) {
 }
 
 func TestReportFormatTextWithErrors(t *testing.T) {
+	t.Parallel()
+
 	r := Report{
 		Timestamp:  "2026-03-14T00:00:00Z",
 		OS:         "linux",
@@ -78,6 +85,8 @@ func TestReportFormatTextWithErrors(t *testing.T) {
 }
 
 func TestCollectDoesNotPanic(t *testing.T) {
+	t.Parallel()
+
 	// Collect should never panic even with a bad state.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -100,6 +109,8 @@ func TestCollectDoesNotPanic(t *testing.T) {
 }
 
 func TestDiskInfo(t *testing.T) {
+	t.Parallel()
+
 	info := diskInfo(context.Background(), t.TempDir())
 	// Should return something (even "unavailable: ...")
 	if info == "" {
@@ -108,6 +119,8 @@ func TestDiskInfo(t *testing.T) {
 }
 
 func TestParseContainerDetails(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name  string
 		input string
@@ -134,6 +147,7 @@ func TestParseContainerDetails(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			got := parseContainerDetails(tt.input)
 			if len(got) != tt.want {
 				t.Errorf("parseContainerDetails: got %d details, want %d", len(got), tt.want)
@@ -143,6 +157,8 @@ func TestParseContainerDetails(t *testing.T) {
 }
 
 func TestParseContainerDetailsFields(t *testing.T) {
+	t.Parallel()
+
 	input := `{"Name":"synthorg-backend-1","State":"running","Status":"Up 5 minutes","Health":"healthy"}`
 	details := parseContainerDetails(input)
 	if len(details) != 1 {
@@ -161,6 +177,8 @@ func TestParseContainerDetailsFields(t *testing.T) {
 }
 
 func TestHasRunningContainers(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name    string
 		details []ContainerDetail
@@ -173,6 +191,7 @@ func TestHasRunningContainers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := hasRunningContainers(tt.details); got != tt.want {
 				t.Errorf("hasRunningContainers = %v, want %v", got, tt.want)
 			}
@@ -181,6 +200,8 @@ func TestHasRunningContainers(t *testing.T) {
 }
 
 func TestCheckPortsDetectsConflict(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	// Start a listener to occupy a port.
 	var lc net.ListenConfig
@@ -208,6 +229,8 @@ func TestCheckPortsDetectsConflict(t *testing.T) {
 }
 
 func TestCheckPortsNoConflict(t *testing.T) {
+	t.Parallel()
+
 	// Port 0 is not a connectable port — dialing 127.0.0.1:0 always fails.
 	conflicts := checkPorts(context.Background(), 0, 0)
 	if len(conflicts) != 0 {
@@ -216,6 +239,8 @@ func TestCheckPortsNoConflict(t *testing.T) {
 }
 
 func TestFormatTextNewSections(t *testing.T) {
+	t.Parallel()
+
 	r := Report{
 		Timestamp:         "2026-03-15T00:00:00Z",
 		OS:                "linux",
@@ -248,6 +273,8 @@ func TestFormatTextNewSections(t *testing.T) {
 }
 
 func TestParseComposeImageRefs(t *testing.T) {
+	t.Parallel()
+
 	compose := `services:
   backend:
     image: ghcr.io/aureliolo/synthorg-backend@sha256:abc123
@@ -279,6 +306,8 @@ func TestParseComposeImageRefs(t *testing.T) {
 }
 
 func TestParseComposeImageRefs_TagFormat(t *testing.T) {
+	t.Parallel()
+
 	compose := `services:
   backend:
     image: ghcr.io/aureliolo/synthorg-backend:0.3.9
@@ -295,6 +324,8 @@ func TestParseComposeImageRefs_TagFormat(t *testing.T) {
 }
 
 func TestParseComposeImageRefs_EmptyPath(t *testing.T) {
+	t.Parallel()
+
 	refs := parseComposeImageRefs("")
 	if len(refs) != 0 {
 		t.Errorf("expected empty map, got %v", refs)
@@ -302,6 +333,8 @@ func TestParseComposeImageRefs_EmptyPath(t *testing.T) {
 }
 
 func TestParseComposeImageRefs_MissingFile(t *testing.T) {
+	t.Parallel()
+
 	refs := parseComposeImageRefs("/nonexistent/compose.yml")
 	if len(refs) != 0 {
 		t.Errorf("expected empty map, got %v", refs)
@@ -309,6 +342,8 @@ func TestParseComposeImageRefs_MissingFile(t *testing.T) {
 }
 
 func TestParseComposeImageRefs_PathTraversal(t *testing.T) {
+	t.Parallel()
+
 	refs := parseComposeImageRefs("../../etc/passwd")
 	if len(refs) != 0 {
 		t.Errorf("expected empty map for path traversal, got %v", refs)
@@ -316,6 +351,8 @@ func TestParseComposeImageRefs_PathTraversal(t *testing.T) {
 }
 
 func TestParseComposeImageRefs_InvalidYAML(t *testing.T) {
+	t.Parallel()
+
 	tmp := filepath.Join(t.TempDir(), "compose.yml")
 	if err := os.WriteFile(tmp, []byte("not: [valid: yaml: {{{"), 0o644); err != nil {
 		t.Fatal(err)
@@ -327,6 +364,8 @@ func TestParseComposeImageRefs_InvalidYAML(t *testing.T) {
 }
 
 func TestParseComposeImageRefs_NonSynthorgImages(t *testing.T) {
+	t.Parallel()
+
 	compose := `services:
   redis:
     image: redis:7-alpine

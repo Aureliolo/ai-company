@@ -378,6 +378,12 @@ func parseComposeImageRefs(composePath string) map[string]string {
 		if !strings.HasPrefix(svc.Image, imagePrefix) {
 			continue
 		}
+		// Validate structural format: must contain a tag (:) or digest (@)
+		// separator after the prefix to be a well-formed image reference.
+		suffix := svc.Image[len(imagePrefix):]
+		if !strings.Contains(suffix, ":") && !strings.Contains(suffix, "@") {
+			continue
+		}
 		refs[svcName] = svc.Image
 	}
 	return refs

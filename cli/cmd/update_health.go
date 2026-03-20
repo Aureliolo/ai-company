@@ -68,13 +68,14 @@ func detectInstallationIssues(ctx context.Context, state config.State) []string 
 		healthCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
 
+		// Docker unavailability is handled gracefully by updateContainerImages
+		// (warns and skips). Only check images when Docker is reachable.
 		info, dockerErr := docker.Detect(healthCtx)
-		if dockerErr != nil {
-			// Docker unavailability is handled gracefully by updateContainerImages
-			// (warns and skips). Don't trigger recovery for a missing Docker daemon.
-		} else if missing := detectMissingImages(healthCtx, info, state); len(missing) > 0 {
-			issues = append(issues, fmt.Sprintf("container images missing locally for version %s: %s",
-				state.ImageTag, strings.Join(missing, ", ")))
+		if dockerErr == nil {
+			if missing := detectMissingImages(healthCtx, info, state); len(missing) > 0 {
+				issues = append(issues, fmt.Sprintf("container images missing locally for version %s: %s",
+					state.ImageTag, strings.Join(missing, ", ")))
+			}
 		}
 	}
 
@@ -126,9 +127,10 @@ func imageRefForService(svc string, state config.State) string {
 // for the given state. Uses docker image inspect which works with both
 // digest-pinned (@sha256:...) and tag-based (:tag) references.
 //
-// The caller (detectInstallationIssues) has already confirmed Docker is
-// reachable via docker.Detect, so inspect errors reliably indicate a
-// missing image rather than a Docker daemon failure.
+// Precondition: caller must have verified Docker is reachable (e.g. via
+// docker.Detect). Only inspect errors that occur while the context is still
+// valid are treated as missing images; context cancellation or timeout errors
+// are ignored to avoid false positives.
 func detectMissingImages(ctx context.Context, info docker.Info, state config.State) []string {
 	services := []string{"backend", "web"}
 	if state.Sandbox {
@@ -140,6 +142,11 @@ func detectMissingImages(ctx context.Context, info docker.Info, state config.Sta
 		ref := imageRefForService(svc, state)
 		_, err := docker.RunCmd(ctx, info.DockerPath, "image", "inspect", ref, "--format", "{{.ID}}")
 		if err != nil {
+			if ctx.Err() != nil {
+				// Context expired or cancelled -- can't reliably determine
+				// image state, so don't report as missing.
+				return missing
+			}
 			missing = append(missing, svc)
 		}
 	}
