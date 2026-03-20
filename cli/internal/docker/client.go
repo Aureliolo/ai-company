@@ -154,32 +154,33 @@ func versionAtLeast(got, min string) (bool, error) {
 	gParts := strings.SplitN(got, ".", 3)
 	mParts := strings.SplitN(min, ".", 3)
 
-	for i := range 3 {
-		var g, m int
-		if i < len(gParts) {
-			// Strip non-numeric suffixes (e.g. "1-rc1").
-			numStr := strings.FieldsFunc(gParts[i], func(r rune) bool {
-				return r < '0' || r > '9'
-			})
-			if len(numStr) > 0 {
-				var err error
-				g, err = strconv.Atoi(numStr[0])
-				if err != nil {
-					return false, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], got, err)
-				}
-			}
+	// parsePart extracts the leading integer from a version component,
+	// stripping non-numeric suffixes (e.g. "1-rc1" -> 1).
+	parsePart := func(parts []string, i int, ver string) (int, error) {
+		if i >= len(parts) {
+			return 0, nil
 		}
-		if i < len(mParts) {
-			numStr := strings.FieldsFunc(mParts[i], func(r rune) bool {
-				return r < '0' || r > '9'
-			})
-			if len(numStr) > 0 {
-				var err error
-				m, err = strconv.Atoi(numStr[0])
-				if err != nil {
-					return false, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], min, err)
-				}
-			}
+		numStr := strings.FieldsFunc(parts[i], func(r rune) bool {
+			return r < '0' || r > '9'
+		})
+		if len(numStr) == 0 {
+			return 0, nil
+		}
+		v, err := strconv.Atoi(numStr[0])
+		if err != nil {
+			return 0, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], ver, err)
+		}
+		return v, nil
+	}
+
+	for i := range 3 {
+		g, err := parsePart(gParts, i, got)
+		if err != nil {
+			return false, err
+		}
+		m, err := parsePart(mParts, i, min)
+		if err != nil {
+			return false, err
 		}
 		if g > m {
 			return true, nil

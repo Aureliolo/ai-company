@@ -101,7 +101,7 @@ func fetchRelease(ctx context.Context, url string) (Release, error) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return Release{}, err
+		return Release{}, fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
@@ -136,7 +136,7 @@ func isUpdateAvailable(current, latest string) (bool, error) {
 	// Only offer update when latest is strictly greater than current.
 	cmp, err := compareSemver(lat, cur)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("current=%q latest=%q: %w", current, latest, err)
 	}
 	return cmp > 0, nil
 }
@@ -146,27 +146,30 @@ func isUpdateAvailable(current, latest string) (bool, error) {
 func compareSemver(a, b string) (int, error) {
 	aParts := strings.SplitN(a, ".", 3)
 	bParts := strings.SplitN(b, ".", 3)
-	for i := range 3 {
-		var av, bv int
-		if i < len(aParts) {
-			numStr := strings.FieldsFunc(aParts[i], func(r rune) bool { return r < '0' || r > '9' })
-			if len(numStr) > 0 {
-				var err error
-				av, err = strconv.Atoi(numStr[0])
-				if err != nil {
-					return 0, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], a, err)
-				}
-			}
+
+	parsePart := func(parts []string, i int, ver string) (int, error) {
+		if i >= len(parts) {
+			return 0, nil
 		}
-		if i < len(bParts) {
-			numStr := strings.FieldsFunc(bParts[i], func(r rune) bool { return r < '0' || r > '9' })
-			if len(numStr) > 0 {
-				var err error
-				bv, err = strconv.Atoi(numStr[0])
-				if err != nil {
-					return 0, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], b, err)
-				}
-			}
+		numStr := strings.FieldsFunc(parts[i], func(r rune) bool { return r < '0' || r > '9' })
+		if len(numStr) == 0 {
+			return 0, nil
+		}
+		v, err := strconv.Atoi(numStr[0])
+		if err != nil {
+			return 0, fmt.Errorf("invalid version component %q in %q: %w", numStr[0], ver, err)
+		}
+		return v, nil
+	}
+
+	for i := range 3 {
+		av, err := parsePart(aParts, i, a)
+		if err != nil {
+			return 0, err
+		}
+		bv, err := parsePart(bParts, i, b)
+		if err != nil {
+			return 0, err
 		}
 		if av != bv {
 			return av - bv, nil
@@ -210,7 +213,7 @@ func findAssets(release Release) (assetURL, checksumURL, bundleURL string, err e
 // Returns an error if checksum verification cannot be performed.
 func Download(ctx context.Context, assetURL, checksumURL, bundleURL string) ([]byte, error) {
 	if checksumURL == "" {
-		return nil, fmt.Errorf("no checksum file found in release assets — refusing to install unverified binary")
+		return nil, fmt.Errorf("no checksum file found in release assets -- refusing to install unverified binary")
 	}
 
 	client := &http.Client{Timeout: httpTimeout}
@@ -290,7 +293,7 @@ func ReplaceAt(binaryData []byte, execPath string) error {
 		return fmt.Errorf("closing new binary: %w", err)
 	}
 
-	// On Windows, we can't overwrite the running binary — rename first.
+	// On Windows, we can't overwrite the running binary -- rename first.
 	// Use a random suffix to avoid predictable paths.
 	var oldPath string
 	if runtime.GOOS == "windows" {
