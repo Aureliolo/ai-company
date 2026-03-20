@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.0](https://github.com/Aureliolo/synthorg/compare/v0.3.10...v0.4.0) (2026-03-20)
+
+
+### Bug Fixes
+
+* add WebSocket reconnect feedback and fix setup provider validation ([#636](https://github.com/Aureliolo/synthorg/issues/636)) ([77f14f0](https://github.com/Aureliolo/synthorg/commit/77f14f09f70a731dd8c7e09dd7468cc50040eb47))
+* **api:** controller consistency, input validation, and auth rate limiting ([#638](https://github.com/Aureliolo/synthorg/issues/638)) ([1192a60](https://github.com/Aureliolo/synthorg/commit/1192a60b4633991fa84a314560983277d78fc143))
+* **cli:** handle ignored errors in version parsing and flag reading ([#635](https://github.com/Aureliolo/synthorg/issues/635)) ([cfd7ce4](https://github.com/Aureliolo/synthorg/commit/cfd7ce4b41c8a3ceaf25c9cfda5382f11d81a2a5))
+* prevent Litestar from destroying structlog file sinks and add provider auto-probe ([#639](https://github.com/Aureliolo/synthorg/issues/639)) ([476ee5f](https://github.com/Aureliolo/synthorg/commit/476ee5fc602556d0badfa0fb323dffd85228c838))
+
+
+### Documentation
+
+* add releasing instructions to CLAUDE.md ([#640](https://github.com/Aureliolo/synthorg/issues/640)) ([2e08ca4](https://github.com/Aureliolo/synthorg/commit/2e08ca4837a16695cc8aaebc1700503820aef9dc))
+
 ## [0.3.10](https://github.com/Aureliolo/synthorg/compare/v0.3.9...v0.3.10) (2026-03-20)
 
 
