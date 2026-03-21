@@ -270,7 +270,7 @@ func composeRun(ctx context.Context, cobraCmd *cobra.Command, info docker.Info, 
 }
 
 // composeRunQuiet runs a docker compose command with output captured in
-// a buffer. On error, the captured output is included in the error message.
+// a buffer. On error, the sanitized output is included in the error message.
 // Used when a spinner is shown and Docker's verbose output should be hidden.
 func composeRunQuiet(ctx context.Context, info docker.Info, dir string, args ...string) error {
 	fullArgs := make([]string, 0, len(info.ComposeCmd)-1+len(args))
@@ -283,11 +283,24 @@ func composeRunQuiet(ctx context.Context, info docker.Info, dir string, args ...
 	c.Stdout = &buf
 	c.Stderr = &buf
 	if err := c.Run(); err != nil {
-		output := strings.TrimSpace(buf.String())
+		output := sanitizeCLIOutput(buf.String())
 		if output != "" {
 			return fmt.Errorf("%w: %s", err, output)
 		}
 		return err
 	}
 	return nil
+}
+
+// sanitizeCLIOutput strips control characters from external CLI output
+// before including it in error messages, preserving only printable text
+// and newlines for readability.
+func sanitizeCLIOutput(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 && r != '\n' {
+			return -1
+		}
+		return r
+	}, s)
+	return strings.TrimSpace(s)
 }

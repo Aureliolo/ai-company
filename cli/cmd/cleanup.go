@@ -60,8 +60,8 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// displayOldImages renders the image list and returns the total size.
-func displayOldImages(out *ui.UI, old []oldImage) float64 {
+// displayOldImages renders the image list with total size.
+func displayOldImages(out *ui.UI, old []oldImage) {
 	var totalB float64
 	lines := make([]string, 0, len(old))
 	for _, img := range old {
@@ -75,7 +75,6 @@ func displayOldImages(out *ui.UI, old []oldImage) float64 {
 		out.KeyValue("Total", formatBytes(totalB))
 		out.Blank()
 	}
-	return totalB
 }
 
 // confirmAndCleanup prompts the user and removes approved images.
@@ -133,9 +132,12 @@ func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info
 	return nil
 }
 
-// isImageInUse checks if a docker rmi error indicates the image is in use.
+// isImageInUse checks if a docker rmi error indicates the image is in use
+// or has dependents, rather than a real failure (permissions, network, etc.).
 func isImageInUse(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "image is being used") ||
-		strings.Contains(msg, "conflict")
+		strings.Contains(msg, "conflict") ||
+		strings.Contains(msg, "dependent child images") ||
+		strings.Contains(msg, "image is referenced")
 }

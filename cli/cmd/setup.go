@@ -67,7 +67,7 @@ func runSetup(cmd *cobra.Command, _ []string) error {
 	// Reset the setup_complete flag via docker exec into the backend container.
 	sp := out.StartSpinner("Resetting setup flag...")
 	if err := resetSetupFlag(ctx, info, safeDir); err != nil {
-		sp.Error(fmt.Sprintf("Failed to reset setup flag: %v", err))
+		sp.Error("Failed to reset setup flag")
 		return fmt.Errorf("resetting setup flag: %w", err)
 	}
 	sp.Success("Setup flag reset")

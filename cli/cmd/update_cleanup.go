@@ -95,7 +95,7 @@ func listNonCurrentImages(ctx context.Context, errOut io.Writer, info docker.Inf
 		seen[id] = true
 
 		// Build a human-readable display string.
-		display := buildImageDisplay(repo, tag, digest, sizeStr)
+		display := buildImageDisplay(repo, tag, digest, sizeStr, id)
 		sizeB := parseDockerSize(sizeStr)
 		old = append(old, oldImage{display: display, id: id, sizeB: sizeB})
 	}
@@ -103,22 +103,25 @@ func listNonCurrentImages(ctx context.Context, errOut io.Writer, info docker.Inf
 }
 
 // buildImageDisplay creates a readable display string for an image.
-// Prefers tag, falls back to digest short form, then Docker ID.
-func buildImageDisplay(repo, tag, digest, size string) string {
-	// Strip the registry prefix for brevity.
+// Prefers tag, falls back to digest short form, then Docker short ID.
+func buildImageDisplay(repo, tag, digest, size, id string) string {
 	// Strip registry org prefix for brevity in display.
 	short := strings.TrimPrefix(repo, "ghcr.io/aureliolo/")
 
 	label := short
-	if tag != "" && tag != "<none>" {
+	switch {
+	case tag != "" && tag != "<none>":
 		label += ":" + tag
-	} else if digest != "" && digest != "<none>" {
+	case digest != "" && digest != "<none>":
 		// Show first 16 chars of the digest hash for identification.
 		d := strings.TrimPrefix(digest, "sha256:")
 		if len(d) > 16 {
 			d = d[:16]
 		}
 		label += "@" + d
+	case id != "":
+		// No tag or digest -- use Docker short ID for disambiguation.
+		label += " (" + id + ")"
 	}
 
 	return fmt.Sprintf("%-40s %s", label, size)
@@ -146,7 +149,14 @@ func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.
 		if id == "" {
 			return nil, fmt.Errorf("no image ID found for %s (image may not be pulled)", svc)
 		}
+		// Store both the full ID (sha256:...) and the short 12-char ID.
+		// docker images --format {{.ID}} returns short IDs, while
+		// docker image inspect returns full IDs with sha256: prefix.
 		currentIDs[id] = true
+		short := strings.TrimPrefix(id, "sha256:")
+		if len(short) >= 12 {
+			currentIDs[short[:12]] = true
+		}
 	}
 	return currentIDs, nil
 }

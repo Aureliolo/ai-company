@@ -156,29 +156,30 @@ func TestBuildImageDisplay(t *testing.T) {
 		tag    string
 		digest string
 		size   string
+		id     string
 		wantIn string // substring that should appear
 	}{
 		{
 			"with tag",
-			"ghcr.io/aureliolo/synthorg-backend", "0.4.3", "sha256:abc123", "646MB",
+			"ghcr.io/aureliolo/synthorg-backend", "0.4.3", "sha256:abc123", "646MB", "abc123def456",
 			"synthorg-backend:0.4.3",
 		},
 		{
 			"no tag, has digest",
-			"ghcr.io/aureliolo/synthorg-web", "<none>", "sha256:abcdef1234567890abcdef", "85.8MB",
+			"ghcr.io/aureliolo/synthorg-web", "<none>", "sha256:abcdef1234567890abcdef", "85.8MB", "abcdef123456",
 			"synthorg-web@abcdef1234567890",
 		},
 		{
-			"no tag, no digest",
-			"ghcr.io/aureliolo/synthorg-sandbox", "<none>", "<none>", "514MB",
-			"synthorg-sandbox",
+			"no tag, no digest, shows id",
+			"ghcr.io/aureliolo/synthorg-sandbox", "<none>", "<none>", "514MB", "deadbeef1234",
+			"deadbeef1234",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := buildImageDisplay(tt.repo, tt.tag, tt.digest, tt.size)
+			got := buildImageDisplay(tt.repo, tt.tag, tt.digest, tt.size, tt.id)
 			if got == "" {
 				t.Fatal("buildImageDisplay returned empty string")
 			}

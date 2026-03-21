@@ -36,8 +36,8 @@ func (u *UI) StartSpinner(msg string) *Spinner {
 		done: make(chan struct{}),
 	}
 	if !u.isTTY {
-		// Non-interactive: print a plain step line and return.
-		u.Step(msg)
+		// Non-interactive: print a plain step line using sanitized msg.
+		u.Step(s.msg)
 		return s
 	}
 	s.wg.Add(1)
