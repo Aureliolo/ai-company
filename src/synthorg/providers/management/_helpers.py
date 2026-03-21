@@ -117,7 +117,6 @@ PORT_TO_PRESET: Final[MappingProxyType[int, str]] = MappingProxyType(
     {
         11434: "ollama",
         1234: "lm-studio",
-        8000: "vllm",
     }
 )
 

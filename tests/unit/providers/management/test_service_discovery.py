@@ -366,7 +366,7 @@ class TestSelfConnectionGuard:
         *,
         expected_trust: bool,
     ) -> None:
-        """URLs pointing at the backend itself are never trusted."""
+        """Self-connection URLs are blocked before discovery; others proceed."""
         fake_preset = ProviderPreset(
             name="test-local",
             display_name="Test Local",
@@ -390,20 +390,22 @@ class TestSelfConnectionGuard:
                 return_value=(),
             ) as mock_discover,
         ):
-            await service.discover_models_for_provider(
+            result = await service.discover_models_for_provider(
                 "test-provider",
                 preset_hint="test-local",
             )
 
-        mock_discover.assert_awaited_once()
-        call_kwargs = mock_discover.call_args
-        assert call_kwargs.kwargs["trust_url"] is expected_trust
+        if expected_trust:
+            mock_discover.assert_awaited_once()
+        else:
+            mock_discover.assert_not_awaited()
+            assert result == ()
 
     async def test_self_connection_via_default_base_url(
         self,
         service: ProviderManagementService,
     ) -> None:
-        """Self-connection guard fires even when URL matches via default_base_url."""
+        """Self-connection guard blocks discovery for default_base_url too."""
         self_url = f"http://localhost:{_BACKEND_PORT}/v1"
         fake_preset = ProviderPreset(
             name="test-local",
@@ -428,13 +430,13 @@ class TestSelfConnectionGuard:
                 return_value=(),
             ) as mock_discover,
         ):
-            await service.discover_models_for_provider(
+            result = await service.discover_models_for_provider(
                 "test-provider",
                 preset_hint="test-local",
             )
 
-        mock_discover.assert_awaited_once()
-        assert mock_discover.call_args.kwargs["trust_url"] is False
+        mock_discover.assert_not_awaited()
+        assert result == ()
 
     async def test_self_connection_logs_warning(
         self,

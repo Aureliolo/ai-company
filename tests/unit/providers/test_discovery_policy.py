@@ -155,10 +155,9 @@ class TestSeedFromPresets:
         assert "172.17.0.1:1234" in seeds
         assert "localhost:1234" in seeds
 
-    def test_includes_vllm_candidates(self) -> None:
+    def test_vllm_default_base_url_seeded(self) -> None:
+        """vLLM has no candidate_urls but default_base_url is seeded."""
         seeds = seed_from_presets()
-        assert "host.docker.internal:8000" in seeds
-        assert "172.17.0.1:8000" in seeds
         assert "localhost:8000" in seeds
 
     def test_no_duplicates(self) -> None:

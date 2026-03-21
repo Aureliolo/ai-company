@@ -476,6 +476,9 @@ class ProviderManagementService:
             )
             return ()
 
+        if self._is_self_connection(config.base_url):
+            return ()
+
         resolved_hint = preset_hint or infer_preset_hint(config.base_url)
         headers = build_discovery_headers(config)
         policy = await self._allowlist.load()
