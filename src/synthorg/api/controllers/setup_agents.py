@@ -291,23 +291,48 @@ async def get_existing_agents(
         msg = f"Stored agents list is {type(parsed).__name__}, expected list"
         raise ApiValidationError(msg)
 
+    _validate_agent_elements(parsed)
+    return parsed
+
+
+def _validate_agent_elements(parsed: list[Any]) -> None:
+    """Validate each element in a parsed agents list.
+
+    Raises:
+        ApiValidationError: If any element is not a dict with valid
+            string values for required keys.
+    """
     for idx, element in enumerate(parsed):
-        if not isinstance(element, dict) or not _REQUIRED_AGENT_KEYS.issubset(
-            element.keys(),
-        ):
+        if not isinstance(element, dict):
             logger.warning(
                 SETUP_AGENTS_CORRUPTED,
-                reason="invalid_element",
+                reason="non_dict_element",
                 element_index=idx,
                 element_type=type(element).__name__,
             )
-            msg = (
-                f"Agent at index {idx} is not a valid agent dict "
-                f"(must be a dict with 'name' and 'role' keys)"
-            )
+            msg = f"Agent at index {idx} is {type(element).__name__}, expected dict"
             raise ApiValidationError(msg)
-
-    return parsed
+        if not _REQUIRED_AGENT_KEYS.issubset(element.keys()):
+            logger.warning(
+                SETUP_AGENTS_CORRUPTED,
+                reason="missing_keys",
+                element_index=idx,
+                present_keys=sorted(element.keys()),
+            )
+            msg = f"Agent at index {idx} missing required keys (need 'name' and 'role')"
+            raise ApiValidationError(msg)
+        for key in _REQUIRED_AGENT_KEYS:
+            val = element[key]
+            if not isinstance(val, str) or not val.strip():
+                logger.warning(
+                    SETUP_AGENTS_CORRUPTED,
+                    reason="invalid_field_value",
+                    element_index=idx,
+                    field=key,
+                    value_type=type(val).__name__,
+                )
+                msg = f"Agent at index {idx}: '{key}' must be a non-empty string"
+                raise ApiValidationError(msg)
 
 
 def validate_agents_value(raw: str, *, strict: bool) -> bool:
