@@ -86,7 +86,7 @@ Choose a pre-built organization template to get started quickly:
 | `agency` | Project manager + specialists |
 | `research-lab` | Lead researcher + research assistants |
 
-Templates are selected through the dashboard. Full list coming soon.
+Templates are selected through the dashboard during the setup wizard.
 
 ## Stop
 
@@ -96,6 +96,5 @@ docker compose -f docker/compose.yml down
 
 ## Next Steps
 
-- Templates -- Full list of pre-built configurations (coming soon)
-- REST API -- Interact with your org via the API (coming soon)
+- [REST API Reference](rest-api.md) -- Interact with your org via the API
 - [Design Specification](design/index.md) -- Full architecture details

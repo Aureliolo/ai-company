@@ -1,38 +1,31 @@
 # Roadmap
 
+!!! warning "Work in Progress"
+    SynthOrg is under active development and is **not ready for production use**.
+    APIs, configuration formats, and behavior may change without notice.
+
 ## Current Status
 
-The SynthOrg core framework is complete. The following subsystems are built and tested:
+SynthOrg is in **early development**. Substantial work has gone into the core subsystems -- provider abstraction, agent engine, security, communication, memory, tools, persistence, observability, and a web dashboard -- but the project has not yet been run end-to-end as a cohesive product.
 
-- Provider abstraction layer (LiteLLM adapter, routing, resilience)
-- Budget and cost management (tracking, enforcement, CFO optimization, quotas)
-- Agent engine (execution loops, parallel execution, task decomposition, routing, assignment, recovery, shutdown, multi-agent coordination)
-- Communication layer (message bus, delegation, loop prevention, conflict resolution, meeting protocol)
-- Memory system (pluggable backend protocol, Mem0 adapter, retrieval pipeline, shared org memory, consolidation)
-- Security and approval system (rule engine, output scanning, progressive trust, autonomy levels, timeout policies)
-- Tool system (file system, git, code runner, MCP bridge, sandboxing, permissions)
-- HR engine (hiring, firing, onboarding, offboarding, registry, performance tracking, promotions)
-- REST and WebSocket API (Litestar controllers, JWT + API key + WS ticket auth, WebSocket channels)
-- Persistence layer (pluggable protocol, SQLite backend, repository protocols)
-- Observability (structured logging, correlation tracking, per-domain event constants)
-- Configuration (YAML loading, Pydantic validation, company templates with inheritance)
-- Container packaging (Docker, Chainguard distroless, CI/CD pipelines)
+What remains is significant: integration testing across subsystem boundaries, wiring the pieces together into coherent workflows, hardening edge cases, and validating that the system works as a whole rather than as isolated modules. The individual subsystems have unit tests and follow a consistent architecture, but the glue between them is incomplete.
 
-## In Progress
+Think of it as: the building blocks are shaped, but they haven't been assembled and stress-tested as a structure yet.
 
-| Area | Description |
-|------|-------------|
-| **Web dashboard** | Vue 3 + PrimeVue + Tailwind CSS frontend for monitoring and managing the synthetic organization (core infrastructure merged, page views pending) |
+## What's Next
 
-## Remaining Work
+Current priorities and in-progress work are tracked on the [GitHub issue tracker](https://github.com/Aureliolo/synthorg/issues). Key areas:
 
-| Area | Description |
-|------|-------------|
-| **Approval workflow gates** | Runtime wiring for human-in-the-loop approval queues |
+- **Integration and end-to-end validation** -- wiring subsystems into working workflows
+- **Security hardening** -- custom policy enforcement, sandbox network isolation
+- **Human interaction layer** -- roles, access control, approval workflows
+- **Production readiness** -- database backend beyond SQLite, runtime configuration, monitoring
+
+For long-term vision (plugin system, distributed backends, inter-company communication, and more), see [Future Vision](future-vision.md).
 
 ## Tracking
 
-Implementation issues are tracked on the [GitHub issue tracker](https://github.com/Aureliolo/synthorg/issues) and prioritized by dependency order.
+All implementation work is tracked on the [GitHub issue tracker](https://github.com/Aureliolo/synthorg/issues).
 
 ## Further Reading
 
