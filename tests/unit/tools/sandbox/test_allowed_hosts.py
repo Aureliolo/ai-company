@@ -83,22 +83,26 @@ class TestAllowedHostsDnsLoopbackSettings:
     """DNS and loopback settings are passed as environment variables."""
 
     @pytest.mark.parametrize(
-        ("param", "flag", "expected"),
+        ("dns", "loopback", "expected"),
         [
-            ("dns_allowed", True, "SANDBOX_DNS_ALLOWED=1"),
-            ("dns_allowed", False, "SANDBOX_DNS_ALLOWED=0"),
-            ("loopback_allowed", True, "SANDBOX_LOOPBACK_ALLOWED=1"),
-            ("loopback_allowed", False, "SANDBOX_LOOPBACK_ALLOWED=0"),
+            (True, True, "SANDBOX_DNS_ALLOWED=1"),
+            (False, True, "SANDBOX_DNS_ALLOWED=0"),
+            (True, True, "SANDBOX_LOOPBACK_ALLOWED=1"),
+            (True, False, "SANDBOX_LOOPBACK_ALLOWED=0"),
         ],
     )
     def test_env_flag_set(
         self,
         tmp_path: Path,
-        param: str,
-        flag: bool,
+        dns: bool,
+        loopback: bool,
         expected: str,
     ) -> None:
-        result = _build_config(tmp_path, **{param: flag})
+        result = _build_config(
+            tmp_path,
+            dns_allowed=dns,
+            loopback_allowed=loopback,
+        )
         assert expected in result["Env"]
 
 
