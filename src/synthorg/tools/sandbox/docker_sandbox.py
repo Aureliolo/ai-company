@@ -34,6 +34,14 @@ from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
 from synthorg.tools.sandbox.result import SandboxResult
 
+_RESERVED_ENV_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "SANDBOX_ALLOWED_HOSTS",
+        "SANDBOX_DNS_ALLOWED",
+        "SANDBOX_LOOPBACK_ALLOWED",
+    }
+)
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -207,6 +215,16 @@ class DockerSandbox:
         mount_mode = self._config.mount_mode
         bind_str = f"{bind_path}:{_CONTAINER_WORKSPACE}:{mount_mode}"
 
+        if env_overrides:
+            conflicting = sorted(
+                set(env_overrides) & _RESERVED_ENV_KEYS,
+            )
+            if conflicting:
+                msg = (
+                    "env_overrides cannot set reserved sandbox "
+                    f"control variables: {conflicting}"
+                )
+                raise SandboxError(msg)
         env_list = [f"{k}={v}" for k, v in (env_overrides or {}).items()]
 
         memory_bytes = self._parse_memory_limit(
@@ -255,7 +273,10 @@ class DockerSandbox:
 
         Modifies *container_config*, *host_config*, and *env_list*
         in place when ``allowed_hosts`` is non-empty and network is
-        not ``"none"``.
+        not ``"none"``.  When active, adds ``NET_ADMIN``/``NET_RAW``
+        capabilities, sets the container user to ``root``, and
+        replaces the entrypoint with ``sandbox-init`` (which applies
+        iptables rules then drops privileges via ``setpriv``).
         """
         if not self._config.allowed_hosts:
             return

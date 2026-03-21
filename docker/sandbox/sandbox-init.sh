@@ -2,16 +2,17 @@
 # Sandbox entrypoint -- enforces allowed_hosts via iptables, then drops
 # to the unprivileged sandbox user.
 #
-# Environment variables (set by DockerSandbox._build_container_config):
+# Environment variables (set by DockerSandbox._apply_network_enforcement):
 #   SANDBOX_ALLOWED_HOSTS    - comma-separated host:port pairs
 #   SANDBOX_DNS_ALLOWED      - "1" to allow outbound DNS (port 53)
 #   SANDBOX_LOOPBACK_ALLOWED - "1" to allow loopback traffic
 #
 # Limitations:
-#   - Only TCP traffic is allowed to host:port pairs (UDP is not supported).
-#   - Hostnames are resolved to IPs at container startup; subsequent DNS
-#     changes (CDN rotation, geo-DNS) are not reflected in the iptables rules.
-#     Use stable IPs or CIDR ranges for production allowed_hosts.
+#   - Only IPv4 and TCP traffic is allowed to host:port pairs.
+#     IPv6 OUTPUT is unconditionally dropped when enforcement is active.
+#   - Hostnames are resolved to IPv4 addresses at container startup;
+#     subsequent DNS changes (CDN rotation, geo-DNS) are not reflected
+#     in the iptables rules.  Use stable IPs for production allowed_hosts.
 #   - NET_ADMIN/NET_RAW capabilities are granted at the container level for
 #     iptables setup. setpriv clears bounding/ambient/inheritable sets before
 #     executing the user command, but the container-level grant persists
@@ -19,6 +20,10 @@
 set -eu
 
 if [ -n "${SANDBOX_ALLOWED_HOSTS:-}" ]; then
+  # Emit a diagnostic message on any error so the caller can see what
+  # failed in the SandboxResult stderr.
+  trap 'echo "sandbox-init: FATAL: iptables setup failed (exit $?)" >&2' ERR
+
   # Disable globbing to prevent wildcard expansion in unquoted variables.
   set -f
 
@@ -37,31 +42,55 @@ if [ -n "${SANDBOX_ALLOWED_HOSTS:-}" ]; then
   # /etc/resolv.conf), not to arbitrary destinations.  This prevents
   # DNS tunneling exfiltration while still allowing hostname resolution.
   if [ "${SANDBOX_DNS_ALLOWED:-1}" = "1" ]; then
-    for ns in $(awk '/^nameserver/{print $2}' /etc/resolv.conf); do
+    awk '/^nameserver/{print $2}' /etc/resolv.conf | while IFS= read -r ns; do
       iptables -A OUTPUT -d "$ns" -p udp --dport 53 -j ACCEPT
       iptables -A OUTPUT -d "$ns" -p tcp --dport 53 -j ACCEPT
     done
   fi
 
-  # Allow each host:port pair (TCP only).
+  # Allow each host:port pair (TCP only, IPv4 only).
+  any_resolved=0
   IFS=','
   for entry in $SANDBOX_ALLOWED_HOSTS; do
     host="${entry%%:*}"
     port="${entry#*:}"
-    resolved_ips=$(getent hosts "$host" 2>/dev/null | awk '{print $1}')
+    # Defense-in-depth: validate port is numeric (primary gate is Python).
+    case "$port" in
+      *[!0-9]*) echo "sandbox-init: ERROR: invalid port '$port' in '$entry' -- skipping" >&2; continue ;;
+    esac
+    # Use ahostsv4 to get only IPv4 addresses (iptables is IPv4 only).
+    resolved_ips=$(getent ahostsv4 "$host" 2>/dev/null | awk '{print $1}' | sort -u)
     if [ -z "$resolved_ips" ]; then
       echo "sandbox-init: WARNING: could not resolve host '$host' -- no rule added" >&2
+    else
+      any_resolved=1
     fi
     for ip in $resolved_ips; do
+      # Verify the resolved value looks like an IPv4 address.
+      case "$ip" in
+        *[!0-9.]*) echo "sandbox-init: WARNING: skipping non-IPv4 '$ip' for '$host'" >&2; continue ;;
+      esac
       iptables -A OUTPUT -d "$ip" -p tcp --dport "$port" -j ACCEPT
     done
   done
   unset IFS
 
-  # Default DROP -- applied AFTER all allow rules are in place.
+  if [ "$any_resolved" = "0" ]; then
+    echo "sandbox-init: FATAL: none of the allowed_hosts could be resolved" >&2
+    exit 1
+  fi
+
+  # Restore globbing.
+  set +f
+
+  # Default DROP for both IPv4 and IPv6 -- applied AFTER all allow
+  # rules are in place.  IPv6 is unconditionally dropped since only
+  # IPv4 iptables rules are configured.
   iptables -P OUTPUT DROP
+  ip6tables -P OUTPUT DROP 2>/dev/null || true
 fi
 
-# Drop to sandbox user (UID 10001) and clear all capability sets.
+# Drop to sandbox user and clear all capability sets.
+# IMPORTANT: UID must match useradd --uid in docker/sandbox/Dockerfile.
 exec setpriv --reuid=10001 --regid=10001 --init-groups \
      --inh-caps=-all --ambient-caps=-all --bounding-set=-all -- "$@"

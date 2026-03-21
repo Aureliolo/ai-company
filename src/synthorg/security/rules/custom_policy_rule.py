@@ -32,6 +32,8 @@ class CustomPolicyRule:
     action types.
 
     Attributes:
+        name: Rule name, prefixed with ``custom_policy:`` to
+            distinguish from built-in rules.
         policy: The wrapped ``SecurityPolicyRule`` config.
     """
 
@@ -97,5 +99,5 @@ class CustomPolicyRule:
             risk_level=self._policy.risk_level,
             matched_rules=(self.name,),
             evaluated_at=datetime.now(UTC),
-            evaluation_duration_ms=0.0,
+            evaluation_duration_ms=0.0,  # overwritten by RuleEngine after timing
         )

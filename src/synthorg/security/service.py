@@ -21,7 +21,6 @@ from synthorg.observability.events.autonomy import (
 )
 from synthorg.observability.events.security import (
     SECURITY_AUDIT_RECORD_ERROR,
-    SECURITY_CONFIG_LOADED,
     SECURITY_DISABLED,
     SECURITY_ESCALATION_CREATED,
     SECURITY_ESCALATION_STORE_ERROR,
@@ -143,13 +142,8 @@ class SecOpsService:
             )
         )
 
-        if config.custom_policies:
-            enabled_count = sum(1 for p in config.custom_policies if p.enabled)
-            logger.info(
-                SECURITY_CONFIG_LOADED,
-                custom_policy_count=len(config.custom_policies),
-                enabled_count=enabled_count,
-            )
+        # Custom policy loading is logged by _build_rule_engine in
+        # _security_factory.py (includes bypasses_detectors detail).
 
     async def evaluate_pre_tool(
         self,

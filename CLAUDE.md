@@ -115,7 +115,7 @@ src/synthorg/
   observability/  # Structured logging, correlation tracking, redaction, third-party logger taming, events/
   providers/      # LLM provider abstraction, presets, model auto-discovery, runtime CRUD (management/), provider families
   settings/       # Runtime-editable settings (DB > env > YAML > code), Fernet encryption, ConfigResolver, definitions/, subscribers/
-  security/       # Rule engine, audit log, output scanner, progressive trust, autonomy levels, timeout policies, LLM fallback evaluator
+  security/       # Rule engine, audit log, output scanner, progressive trust, autonomy levels, timeout policies, LLM fallback evaluator, custom policy rules
   templates/      # Pre-built company templates, personality presets
   tools/          # Tool registry, built-in tools, git SSRF prevention, MCP bridge, sandbox factory
 

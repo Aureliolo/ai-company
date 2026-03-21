@@ -135,8 +135,12 @@ class TestDockerSandboxConfigAllowedHostsValidation:
             DockerSandboxConfig(allowed_hosts=("example.com",))
 
     def test_empty_host_rejected(self) -> None:
-        with pytest.raises(ValidationError, match=r"host.*empty"):
+        with pytest.raises(ValidationError, match=r"hostname or IP"):
             DockerSandboxConfig(allowed_hosts=(":443",))
+
+    def test_wildcard_host_rejected(self) -> None:
+        with pytest.raises(ValidationError, match=r"hostname or IP"):
+            DockerSandboxConfig(allowed_hosts=("*:443",))
 
     def test_invalid_port_not_a_number_rejected(self) -> None:
         with pytest.raises(ValidationError, match="port"):

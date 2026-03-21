@@ -12,6 +12,7 @@ from synthorg.security.models import (
     SecurityVerdictType,
 )
 from synthorg.security.rules.custom_policy_rule import CustomPolicyRule
+from synthorg.security.rules.protocol import SecurityRule
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
@@ -55,7 +56,6 @@ def _policy(  # noqa: PLR0913
 # -- Name property ---------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCustomPolicyRuleName:
     """Rule name uses 'custom_policy:' prefix."""
 
@@ -71,7 +71,6 @@ class TestCustomPolicyRuleName:
 # -- Matching action_types ------------------------------------------
 
 
-@pytest.mark.unit
 class TestCustomPolicyRuleMatch:
     """Rule matches when context.action_type is in policy.action_types."""
 
@@ -109,7 +108,6 @@ class TestCustomPolicyRuleMatch:
 # -- Verdict types ---------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCustomPolicyRuleVerdicts:
     """Configured verdict type is returned on match."""
 
@@ -137,7 +135,6 @@ class TestCustomPolicyRuleVerdicts:
 # -- Risk level ------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCustomPolicyRuleRiskLevel:
     """Configured risk level is carried through to verdict."""
 
@@ -166,7 +163,6 @@ class TestCustomPolicyRuleRiskLevel:
 # -- Disabled policies -----------------------------------------------
 
 
-@pytest.mark.unit
 class TestCustomPolicyRuleDisabled:
     """Disabled policies never match, even with matching action_type."""
 
@@ -182,7 +178,6 @@ class TestCustomPolicyRuleDisabled:
 # -- Verdict metadata ------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCustomPolicyRuleVerdictMetadata:
     """Verdict carries correct metadata."""
 
@@ -252,3 +247,11 @@ class TestCustomPolicyRuleVerdictMetadata:
 
         assert verdict is not None
         assert verdict.evaluation_duration_ms == 0.0
+
+
+class TestCustomPolicyRuleProtocol:
+    """CustomPolicyRule conforms to the SecurityRule protocol."""
+
+    def test_satisfies_security_rule_protocol(self) -> None:
+        rule = CustomPolicyRule(_policy())
+        assert isinstance(rule, SecurityRule)

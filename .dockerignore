@@ -1,5 +1,5 @@
 # =============================================================================
-# Consolidated .dockerignore — applies to all Docker builds from repo root
+# Consolidated .dockerignore -- applies to all Docker builds from repo root
 # =============================================================================
 # Both backend and web images build with context: . (repo root).
 # Backend needs: pyproject.toml, uv.lock, src/
@@ -12,6 +12,7 @@
 
 # Docker configs (Dockerfiles read via -f, not from context)
 docker/
+!docker/sandbox/sandbox-init.sh
 
 # Tests
 tests/

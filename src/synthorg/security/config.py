@@ -146,6 +146,13 @@ class SecurityPolicyRule(BaseModel):
                     "'category:action' format"
                 )
                 raise ValueError(msg)
+            category, action = at.split(":", maxsplit=1)
+            if not category or not action:
+                msg = (
+                    f"action_type {at!r} in policy {self.name!r} has "
+                    "empty category or action segment"
+                )
+                raise ValueError(msg)
         return self
 
 
@@ -224,6 +231,42 @@ class SecurityConfig(BaseModel):
             msg = (
                 f"hard_deny_action_types and auto_approve_action_types "
                 f"must not overlap: {sorted(overlap)}"
+            )
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _check_unique_custom_policy_names(self) -> SecurityConfig:
+        """Reject duplicate custom policy names."""
+        seen: set[str] = set()
+        for policy in self.custom_policies:
+            if policy.name in seen:
+                msg = f"duplicate custom policy name {policy.name!r}"
+                raise ValueError(msg)
+            seen.add(policy.name)
+        return self
+
+    @model_validator(mode="after")
+    def _check_no_allow_bypass(self) -> SecurityConfig:
+        """Reject ALLOW policies when bypass mode is enabled.
+
+        With ``custom_allow_bypasses_detectors=True``, custom ALLOW
+        policies would skip all security detectors (credential, path
+        traversal, etc.).  Only DENY/ESCALATE policies are safe in
+        bypass position.
+        """
+        if not self.rule_engine.custom_allow_bypasses_detectors:
+            return self
+        allow_policies = [
+            p.name
+            for p in self.custom_policies
+            if p.enabled and p.verdict == SecurityVerdictType.ALLOW
+        ]
+        if allow_policies:
+            msg = (
+                "custom_allow_bypasses_detectors=True cannot be used "
+                "with ALLOW-verdict custom policies (would skip all "
+                f"security detectors): {sorted(allow_policies)}"
             )
             raise ValueError(msg)
         return self

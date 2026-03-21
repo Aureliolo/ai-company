@@ -501,7 +501,7 @@ isolation for high-risk tools.
         network: "none"                    # no network by default
         network_overrides:                 # category-specific network policies
           database: "bridge"               # database tools need TCP access to DB host
-          web: "egress-only"               # web tools need outbound HTTP; no inbound
+          web: "bridge"                    # web tools need outbound HTTP; no inbound
         allowed_hosts: []                  # allowlist of host:port pairs (TCP only)
         dns_allowed: true                  # allow outbound DNS when allowed_hosts restricts network
         loopback_allowed: true             # allow loopback traffic in restricted network mode
@@ -1278,7 +1278,7 @@ Default levels per domain module (overridable via `LogConfig.logger_levels`):
 
 ### Event Taxonomy
 
-50 domain-specific event constant modules under `observability/events/` (one per subsystem:
+52 domain-specific event constant modules under `observability/events/` (one per subsystem:
 api, budget, tool, git, engine, communication, etc.). Every log call uses a typed constant
 (e.g., `API_REQUEST_STARTED`, `BUDGET_RECORD_ADDED`) for consistent, grep-friendly event
 names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).

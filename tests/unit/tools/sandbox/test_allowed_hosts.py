@@ -154,3 +154,45 @@ class TestAllowedHostsEnforcementInactive:
         assert "CapAdd" not in result["HostConfig"]
         assert "User" not in result
         assert "Entrypoint" not in result
+
+
+# -- env_overrides coexistence --------------------------------------
+
+
+class TestAllowedHostsWithEnvOverrides:
+    """User-provided env_overrides coexist with enforcement vars."""
+
+    def test_user_env_preserved_alongside_enforcement(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        config = DockerSandboxConfig(
+            network="bridge",
+            allowed_hosts=("example.com:443",),
+        )
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+        result = sandbox._build_container_config(
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides={"MY_VAR": "hello"},
+        )
+        env = result["Env"]
+        assert "MY_VAR=hello" in env
+        assert any(e.startswith("SANDBOX_ALLOWED_HOSTS=") for e in env)
+
+    def test_reserved_env_key_rejected(self, tmp_path: Path) -> None:
+        from synthorg.tools.sandbox.errors import SandboxError
+
+        config = DockerSandboxConfig(
+            network="bridge",
+            allowed_hosts=("example.com:443",),
+        )
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+        with pytest.raises(SandboxError, match="reserved"):
+            sandbox._build_container_config(
+                command="echo",
+                args=(),
+                container_cwd="/workspace",
+                env_overrides={"SANDBOX_ALLOWED_HOSTS": "evil.com:80"},
+            )

@@ -19,7 +19,7 @@ COPY --from=node-base /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && apt-get update && apt-get install -y --no-install-recommends git iptables \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
-    && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sandbox \
+    && useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin sandbox `# IMPORTANT: UID must match setpriv --reuid in docker/sandbox/sandbox-init.sh` \
     && mkdir -p /workspace \
     && chown sandbox:sandbox /workspace
 

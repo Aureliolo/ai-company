@@ -82,7 +82,10 @@ class DockerSandboxConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_memory_limit(self) -> Self:
-        """Validate that memory_limit is a parseable Docker memory value."""
+        """Validate that memory_limit uses a supported format.
+
+        Accepts an integer with an optional ``k``/``m``/``g`` suffix.
+        """
         limit = self.memory_limit.strip().lower()
         if not limit:
             msg = "Memory limit must not be empty"
@@ -122,13 +125,19 @@ class DockerSandboxConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_allowed_hosts(self) -> Self:
-        """Validate that allowed_hosts entries use ``host:port`` format."""
+        """Validate that allowed_hosts entries use ``host:port`` format.
+
+        Only IPv4 addresses and hostnames are supported; IPv6
+        addresses are not supported by the iptables enforcement
+        script.
+        """
         for entry in self.allowed_hosts:
             parts = entry.split(":")
             if len(parts) != _HOST_PORT_PARTS:
                 msg = (
                     f"allowed_hosts entry {entry!r} must use "
-                    "'host:port' format (exactly one ':')"
+                    "'host:port' format (exactly one ':'); "
+                    "IPv6 addresses are not supported"
                 )
                 logger.warning(
                     CONFIG_VALIDATION_FAILED,
@@ -137,8 +146,11 @@ class DockerSandboxConfig(BaseModel):
                 )
                 raise ValueError(msg)
             host, port_str = parts
-            if not host:
-                msg = f"host part of {entry!r} must not be empty"
+            if not host or host == "*":
+                msg = (
+                    f"host part of {entry!r} must be a hostname "
+                    "or IP (not empty or wildcard)"
+                )
                 logger.warning(
                     CONFIG_VALIDATION_FAILED,
                     field="allowed_hosts",
