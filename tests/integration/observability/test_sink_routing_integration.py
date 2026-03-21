@@ -216,6 +216,51 @@ class TestSinkRoutingIntegration:
         assert "task created" in content
         assert "not here" not in content
 
+    def test_routing_split_exclusivity(self, log_dir: Path) -> None:
+        """Backup/settings must NOT appear in audit.log after the split."""
+        config = LogConfig(
+            root_level=LogLevel.DEBUG,
+            log_dir=str(log_dir),
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.DEBUG,
+                    file_path="audit.log",
+                    json_format=True,
+                ),
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.DEBUG,
+                    file_path="backup.log",
+                    json_format=True,
+                ),
+                SinkConfig(
+                    sink_type=SinkType.FILE,
+                    level=LogLevel.DEBUG,
+                    file_path="configuration.log",
+                    json_format=True,
+                ),
+            ),
+        )
+        configure_logging(config)
+
+        logging.getLogger("synthorg.backup.scheduler").info("backup event")
+        logging.getLogger("synthorg.settings.service").info("settings event")
+        logging.getLogger("synthorg.security.audit").info("security event")
+
+        audit = _read_log(log_dir / "audit.log")
+        backup = _read_log(log_dir / "backup.log")
+        configuration = _read_log(log_dir / "configuration.log")
+
+        # Security stays in audit
+        assert "security event" in audit
+        # Backup and settings must NOT leak into audit
+        assert "backup event" not in audit
+        assert "settings event" not in audit
+        # Each goes to its dedicated sink
+        assert "backup event" in backup
+        assert "settings event" in configuration
+
     def test_errors_log_only_catches_error_and_above(
         self,
         log_dir: Path,

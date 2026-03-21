@@ -1,5 +1,6 @@
 """Shared fixtures for provider management tests."""
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
@@ -17,19 +18,21 @@ from tests.unit.api.fakes import FakeMessageBus, FakePersistenceBackend
 
 
 @pytest.fixture
-async def fake_persistence() -> FakePersistenceBackend:
+async def fake_persistence() -> AsyncIterator[FakePersistenceBackend]:
     """In-memory persistence backend for provider management tests."""
     backend = FakePersistenceBackend()
     await backend.connect()
-    return backend
+    yield backend
+    await backend.disconnect()
 
 
 @pytest.fixture
-async def fake_message_bus() -> FakeMessageBus:
+async def fake_message_bus() -> AsyncIterator[FakeMessageBus]:
     """In-memory message bus for provider management tests."""
     bus = FakeMessageBus()
     await bus.start()
-    return bus
+    yield bus
+    await bus.stop()
 
 
 @pytest.fixture
