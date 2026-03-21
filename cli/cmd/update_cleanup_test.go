@@ -186,7 +186,10 @@ func TestBuildImageDisplay(t *testing.T) {
 				t.Fatal("buildImageDisplay returned empty string")
 			}
 			if !strings.Contains(got, tt.wantIn) {
-				t.Errorf("display %q missing %q", got, tt.wantIn)
+				t.Errorf("display %q missing label %q", got, tt.wantIn)
+			}
+			if !strings.Contains(got, tt.size) {
+				t.Errorf("display %q missing size %q", got, tt.size)
 			}
 		})
 	}
