@@ -121,13 +121,13 @@ src/synthorg/
 
 web/src/          # Vue 3 + PrimeVue + Tailwind CSS dashboard
   api/            # Axios client, endpoint modules, TypeScript types
-  components/     # Vue components by feature (agents/, approvals/, budget/, setup/, etc.)
-  composables/    # useAuth, usePolling, useOptimisticUpdate, useWebSocketSubscription, etc.
+  components/     # Vue components by feature (agents/, approvals/, budget/, company/, setup/, settings/, providers/, etc.)
+  composables/    # useAuth, usePolling, useOptimisticUpdate, useWebSocketSubscription, useEditMode, etc.
   router/         # Vue Router config with auth guards
   stores/         # Pinia stores (auth, agents, tasks, budget, messages, approvals, websocket, etc.)
   styles/         # Global CSS and PrimeVue theme
   utils/          # Constants, formatters, error helpers
-  views/          # Page-level components (Login, Setup, Dashboard, OrgChart, TaskBoard, etc.)
+  views/          # Page-level components (Login, Setup, Dashboard, OrgChart, TaskBoard, Company, Providers, Settings, etc.)
   __tests__/      # Vitest unit tests
 
 cli/              # Go CLI binary (cross-platform, manages Docker lifecycle)
@@ -249,5 +249,5 @@ site/             # Astro landing page (synthorg.io)
 - **Groups**: `test` (pytest + plugins, hypothesis), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pip-audit)
 - **Required**: `mem0ai` (Mem0 memory backend -- the default and currently only backend), `cryptography` (Fernet encryption for sensitive settings at rest)
 - **Install**: `uv sync` installs everything (dev group is default)
-- **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, Vitest, fast-check, ESLint, vue-tsc)
+- **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, CodeMirror 6 (vue-codemirror), js-yaml, Vitest, fast-check, ESLint, vue-tsc)
 - **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss, sigstore-go, go-containerregistry, go-tuf)

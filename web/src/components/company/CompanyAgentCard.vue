@@ -1,19 +1,7 @@
 <script setup lang="ts">
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
-
-export interface AgentConfigEntry {
-  name: string
-  role: string
-  department: string
-  level: string
-  personality?: Record<string, unknown>
-  model?: Record<string, unknown>
-  memory?: Record<string, unknown>
-  tools?: Record<string, unknown>
-  authority?: Record<string, unknown>
-  autonomy_level?: string | null
-}
+import type { AgentConfigEntry } from '@/api/types'
 
 defineProps<{
   agent: AgentConfigEntry
@@ -25,11 +13,16 @@ defineEmits<{
   delete: [index: number]
 }>()
 
-const levelColors: Record<string, string> = {
+type TagSeverity = 'info' | 'success' | 'warn' | 'danger' | 'secondary' | 'contrast'
+
+const levelColors: Record<string, TagSeverity> = {
   junior: 'info',
   mid: 'info',
   senior: 'success',
   lead: 'warn',
+  principal: 'warn',
+  director: 'danger',
+  vp: 'danger',
   c_suite: 'danger',
 }
 </script>
@@ -65,7 +58,7 @@ const levelColors: Record<string, string> = {
 
     <div class="flex flex-wrap gap-1.5">
       <Tag :value="agent.department" severity="secondary" />
-      <Tag :value="agent.level" :severity="(levelColors[agent.level] as any) ?? 'info'" />
+      <Tag :value="agent.level" :severity="levelColors[agent.level] ?? 'info'" />
       <Tag v-if="agent.autonomy_level" :value="agent.autonomy_level" severity="warn" />
     </div>
   </div>

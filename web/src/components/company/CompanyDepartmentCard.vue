@@ -1,16 +1,7 @@
 <script setup lang="ts">
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
-
-export interface DepartmentEntry {
-  name: string
-  head?: string
-  budget_percent?: number
-  teams?: Array<{ name: string; lead?: string; members?: string[] }>
-  reporting_lines?: Array<{ subordinate: string; supervisor: string }>
-  autonomy_level?: string | null
-  policies?: Record<string, unknown>
-}
+import type { DepartmentEntry } from '@/api/types'
 
 defineProps<{
   department: DepartmentEntry

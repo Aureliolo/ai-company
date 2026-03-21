@@ -6,6 +6,8 @@ import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import Button from 'primevue/button'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -22,10 +24,9 @@ import { useSettingsStore } from '@/stores/settings'
 import { useEditMode } from '@/composables/useEditMode'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
-import type { AgentConfigEntry } from '@/components/company/CompanyAgentCard.vue'
-import type { DepartmentEntry } from '@/components/company/CompanyDepartmentCard.vue'
-import type { SettingEntry, SettingNamespace } from '@/api/types'
+import type { AgentConfigEntry, DepartmentEntry, SettingEntry, SettingNamespace } from '@/api/types'
 
+const confirm = useConfirm()
 const toast = useToast()
 const settingsStore = useSettingsStore()
 const editMode = useEditMode()
@@ -127,21 +128,28 @@ async function saveAgent(agent: AgentConfigEntry) {
   }
   try {
     await settingsStore.updateSetting('company', 'agents', JSON.stringify(updated))
-    toast.add({ severity: 'success', summary: `Agent ${agent.name} ${agentDialogMode.value === 'create' ? 'added' : 'updated'}`, life: 3000 })
+    toast.add({ severity: 'success', summary: `Agent ${agent.name.slice(0, 64)} ${agentDialogMode.value === 'create' ? 'added' : 'updated'}`, life: 3000 })
   } catch (err) {
     toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
   }
 }
 
-async function deleteAgent(index: number) {
+function deleteAgent(index: number) {
   const agent = agents.value[index]
-  const updated = agents.value.filter((_, i) => i !== index)
-  try {
-    await settingsStore.updateSetting('company', 'agents', JSON.stringify(updated))
-    toast.add({ severity: 'success', summary: `Agent ${agent.name} deleted`, life: 3000 })
-  } catch (err) {
-    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
-  }
+  confirm.require({
+    header: 'Delete Agent',
+    message: `Are you sure you want to delete agent "${agent.name.slice(0, 64)}"?`,
+    acceptClass: 'p-button-danger',
+    accept: async () => {
+      const updated = agents.value.filter((_, i) => i !== index)
+      try {
+        await settingsStore.updateSetting('company', 'agents', JSON.stringify(updated))
+        toast.add({ severity: 'success', summary: `Agent ${agent.name.slice(0, 64)} deleted`, life: 3000 })
+      } catch (err) {
+        toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+      }
+    },
+  })
 }
 
 // ── Department CRUD ────────────────────────────────────────
@@ -167,21 +175,28 @@ async function saveDept(dept: DepartmentEntry) {
   }
   try {
     await settingsStore.updateSetting('company', 'departments', JSON.stringify(updated))
-    toast.add({ severity: 'success', summary: `Department ${dept.name} ${deptDialogMode.value === 'create' ? 'added' : 'updated'}`, life: 3000 })
+    toast.add({ severity: 'success', summary: `Department ${dept.name.slice(0, 64)} ${deptDialogMode.value === 'create' ? 'added' : 'updated'}`, life: 3000 })
   } catch (err) {
     toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
   }
 }
 
-async function deleteDept(index: number) {
+function deleteDept(index: number) {
   const dept = departments.value[index]
-  const updated = departments.value.filter((_, i) => i !== index)
-  try {
-    await settingsStore.updateSetting('company', 'departments', JSON.stringify(updated))
-    toast.add({ severity: 'success', summary: `Department ${dept.name} deleted`, life: 3000 })
-  } catch (err) {
-    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
-  }
+  confirm.require({
+    header: 'Delete Department',
+    message: `Are you sure you want to delete department "${dept.name.slice(0, 64)}"?`,
+    acceptClass: 'p-button-danger',
+    accept: async () => {
+      const updated = departments.value.filter((_, i) => i !== index)
+      try {
+        await settingsStore.updateSetting('company', 'departments', JSON.stringify(updated))
+        toast.add({ severity: 'success', summary: `Department ${dept.name.slice(0, 64)} deleted`, life: 3000 })
+      } catch (err) {
+        toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+      }
+    },
+  })
 }
 
 // ── Settings handlers (for general form) ───────────────────
@@ -324,5 +339,6 @@ async function handleCodeViewSave(updates: Array<{ namespace: string; key: strin
       :department="editingDept"
       @save="saveDept"
     />
+    <ConfirmDialog />
   </AppShell>
 </template>

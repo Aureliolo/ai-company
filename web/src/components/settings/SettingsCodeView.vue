@@ -44,7 +44,7 @@ function serialize(obj: Record<string, unknown>, mode: 'json' | 'yaml'): string 
 
 function deserialize(text: string, mode: 'json' | 'yaml'): Record<string, unknown> {
   if (mode === 'yaml') {
-    const result = yaml.load(text)
+    const result = yaml.load(text, { schema: yaml.JSON_SCHEMA })
     if (typeof result !== 'object' || result === null || Array.isArray(result)) {
       throw new Error('YAML must be a mapping')
     }

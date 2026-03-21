@@ -15,22 +15,24 @@ function readPersistedMode(): EditMode {
 }
 
 export interface UseEditModeReturn {
-  globalMode: Ref<EditMode>
-  tabOverrides: Ref<Map<string, EditMode>>
+  globalMode: Readonly<Ref<EditMode>>
+  tabOverrides: Readonly<Ref<ReadonlyMap<string, EditMode>>>
   setGlobalMode: (mode: EditMode) => void
   setTabMode: (tab: string, mode: EditMode) => void
   clearTabMode: (tab: string) => void
   getEffectiveMode: (tab: string) => ComputedRef<EditMode>
 }
 
+// Module-level singleton state -- shared across all callers
+const globalMode = ref<EditMode>(readPersistedMode())
+const tabOverrides = ref<Map<string, EditMode>>(new Map())
+
 /**
  * Composable for managing GUI/JSON/YAML edit mode state.
+ * State is shared as a singleton across all pages.
  * Global mode persists to sessionStorage. Per-tab overrides are ephemeral.
  */
 export function useEditMode(): UseEditModeReturn {
-  const globalMode = ref<EditMode>(readPersistedMode())
-  const tabOverrides = ref(new Map<string, EditMode>())
-
   function setGlobalMode(mode: EditMode) {
     globalMode.value = mode
     try {

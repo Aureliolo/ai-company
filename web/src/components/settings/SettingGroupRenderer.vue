@@ -27,7 +27,7 @@ const advancedEntries = computed(() => {
 })
 
 /** Group entries by their definition.group field. */
-function groupEntries(entries: SettingEntry[]): Map<string, SettingEntry[]> {
+function buildGroups(entries: SettingEntry[]): Map<string, SettingEntry[]> {
   const map = new Map<string, SettingEntry[]>()
   for (const entry of entries) {
     const group = entry.definition.group
@@ -41,8 +41,8 @@ function groupEntries(entries: SettingEntry[]): Map<string, SettingEntry[]> {
   return map
 }
 
-const basicGroups = computed(() => groupEntries(basicEntries.value))
-const advancedGroups = computed(() => groupEntries(advancedEntries.value))
+const basicGroups = computed(() => buildGroups(basicEntries.value))
+const advancedGroups = computed(() => buildGroups(advancedEntries.value))
 
 /** Whether a setting should span full width (JSON types need more space). */
 function isWide(entry: SettingEntry): boolean {

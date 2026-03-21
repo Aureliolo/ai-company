@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import Button from 'primevue/button'
-import Badge from 'primevue/badge'
 
 defineProps<{
   count: number
@@ -29,11 +28,7 @@ defineEmits<{
         :loading="loading"
         raised
         @click="$emit('click')"
-      >
-        <template #icon>
-          <i class="pi pi-save mr-2" aria-hidden="true" />
-        </template>
-      </Button>
+      />
     </div>
   </Transition>
 </template>

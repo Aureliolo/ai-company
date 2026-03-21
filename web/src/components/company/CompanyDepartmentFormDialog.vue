@@ -10,7 +10,7 @@ import AccordionHeader from 'primevue/accordionheader'
 import AccordionContent from 'primevue/accordioncontent'
 import Button from 'primevue/button'
 import CodeEditor from '@/components/common/CodeEditor.vue'
-import type { DepartmentEntry } from './CompanyDepartmentCard.vue'
+import type { AutonomyLevel, DepartmentEntry } from '@/api/types'
 
 const props = defineProps<{
   visible: boolean
@@ -23,13 +23,13 @@ const emit = defineEmits<{
   save: [department: DepartmentEntry]
 }>()
 
-const AUTONOMY_LEVELS = ['full', 'semi', 'supervised', 'locked']
+const AUTONOMY_LEVELS: AutonomyLevel[] = ['full', 'semi', 'supervised', 'locked']
 
 // Form state
 const name = ref('')
 const head = ref('')
 const budgetPercent = ref<number | null>(null)
-const autonomyLevel = ref<string | null>(null)
+const autonomyLevel = ref<AutonomyLevel | null>(null)
 const teamsJson = ref('[]')
 const reportingLinesJson = ref('[]')
 const policiesJson = ref('{}')
@@ -58,9 +58,28 @@ watch(() => props.visible, (vis) => {
 
 const jsonError = ref<string | null>(null)
 
-function tryParseJson(text: string, label: string): unknown | null {
+function tryParseJsonArray(text: string, label: string): unknown[] | null {
   try {
-    return JSON.parse(text)
+    const parsed = JSON.parse(text)
+    if (!Array.isArray(parsed)) {
+      jsonError.value = `${label} must be a JSON array`
+      return null
+    }
+    return parsed
+  } catch {
+    jsonError.value = `${label} contains invalid JSON`
+    return null
+  }
+}
+
+function tryParseJsonObject(text: string, label: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(text)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      jsonError.value = `${label} must be a JSON object`
+      return null
+    }
+    return parsed as Record<string, unknown>
   } catch {
     jsonError.value = `${label} contains invalid JSON`
     return null
@@ -71,11 +90,11 @@ const canSave = computed(() => name.value.trim().length > 0)
 
 function handleSave() {
   jsonError.value = null
-  const teams = tryParseJson(teamsJson.value, 'Teams')
+  const teams = tryParseJsonArray(teamsJson.value, 'Teams')
   if (teams === null) return
-  const reportingLines = tryParseJson(reportingLinesJson.value, 'Reporting Lines')
+  const reportingLines = tryParseJsonArray(reportingLinesJson.value, 'Reporting Lines')
   if (reportingLines === null) return
-  const policies = tryParseJson(policiesJson.value, 'Policies')
+  const policies = tryParseJsonObject(policiesJson.value, 'Policies')
   if (policies === null) return
 
   const dept: DepartmentEntry = {
@@ -105,20 +124,21 @@ function handleSave() {
       <!-- Top-level fields -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Name</label>
-          <InputText v-model="name" class="w-full" :disabled="mode === 'edit'" placeholder="e.g. engineering" />
+          <label for="dept-name" class="mb-1 block text-xs text-slate-400">Name</label>
+          <InputText id="dept-name" v-model="name" class="w-full" :disabled="mode === 'edit'" placeholder="e.g. engineering" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Head (agent name)</label>
-          <InputText v-model="head" class="w-full" placeholder="e.g. agent-cto-001" />
+          <label for="dept-head" class="mb-1 block text-xs text-slate-400">Head (agent name)</label>
+          <InputText id="dept-head" v-model="head" class="w-full" placeholder="e.g. agent-cto-001" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Budget %</label>
-          <InputNumber v-model="budgetPercent" :min="0" :max="100" :use-grouping="false" class="w-full" placeholder="0-100" />
+          <label for="dept-budget" class="mb-1 block text-xs text-slate-400">Budget %</label>
+          <InputNumber input-id="dept-budget" v-model="budgetPercent" :min="0" :max="100" :use-grouping="false" class="w-full" placeholder="0-100" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Autonomy Level (optional)</label>
+          <label for="dept-autonomy" class="mb-1 block text-xs text-slate-400">Autonomy Level (optional)</label>
           <Select
+            input-id="dept-autonomy"
             v-model="autonomyLevel"
             :options="AUTONOMY_LEVELS"
             class="w-full"

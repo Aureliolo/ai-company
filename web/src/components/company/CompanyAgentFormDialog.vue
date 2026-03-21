@@ -9,7 +9,7 @@ import AccordionHeader from 'primevue/accordionheader'
 import AccordionContent from 'primevue/accordioncontent'
 import Button from 'primevue/button'
 import CodeEditor from '@/components/common/CodeEditor.vue'
-import type { AgentConfigEntry } from './CompanyAgentCard.vue'
+import type { AgentConfigEntry, SeniorityLevel, AutonomyLevel } from '@/api/types'
 
 const props = defineProps<{
   visible: boolean
@@ -23,15 +23,15 @@ const emit = defineEmits<{
   save: [agent: AgentConfigEntry]
 }>()
 
-const LEVELS = ['junior', 'mid', 'senior', 'lead', 'c_suite']
-const AUTONOMY_LEVELS = ['full', 'semi', 'supervised', 'locked']
+const LEVELS: SeniorityLevel[] = ['junior', 'mid', 'senior', 'lead', 'principal', 'director', 'vp', 'c_suite']
+const AUTONOMY_LEVELS: AutonomyLevel[] = ['full', 'semi', 'supervised', 'locked']
 
 // Form state
 const name = ref('')
 const role = ref('')
 const department = ref('')
-const level = ref('mid')
-const autonomyLevel = ref<string | null>(null)
+const level = ref<SeniorityLevel>('mid')
+const autonomyLevel = ref<AutonomyLevel | null>(null)
 const personalityJson = ref('{}')
 const modelJson = ref('{}')
 const memoryJson = ref('{}')
@@ -125,32 +125,34 @@ function handleSave() {
       <!-- Top-level fields -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Name</label>
-          <InputText v-model="name" class="w-full" :disabled="mode === 'edit'" placeholder="agent-name" />
+          <label for="agent-name" class="mb-1 block text-xs text-slate-400">Name</label>
+          <InputText id="agent-name" v-model="name" class="w-full" :disabled="mode === 'edit'" placeholder="agent-name" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Role</label>
-          <InputText v-model="role" class="w-full" placeholder="e.g. CTO" />
+          <label for="agent-role" class="mb-1 block text-xs text-slate-400">Role</label>
+          <InputText id="agent-role" v-model="role" class="w-full" placeholder="e.g. CTO" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Department</label>
+          <label for="agent-department" class="mb-1 block text-xs text-slate-400">Department</label>
           <Select
             v-if="departments && departments.length > 0"
+            input-id="agent-department"
             v-model="department"
             :options="departments"
             class="w-full"
             editable
             placeholder="Select or type..."
           />
-          <InputText v-else v-model="department" class="w-full" placeholder="e.g. engineering" />
+          <InputText v-else id="agent-department" v-model="department" class="w-full" placeholder="e.g. engineering" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Level</label>
-          <Select v-model="level" :options="LEVELS" class="w-full" />
+          <label for="agent-level" class="mb-1 block text-xs text-slate-400">Level</label>
+          <Select input-id="agent-level" v-model="level" :options="LEVELS" class="w-full" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-slate-400">Autonomy Level (optional)</label>
+          <label for="agent-autonomy" class="mb-1 block text-xs text-slate-400">Autonomy Level (optional)</label>
           <Select
+            input-id="agent-autonomy"
             v-model="autonomyLevel"
             :options="AUTONOMY_LEVELS"
             class="w-full"
