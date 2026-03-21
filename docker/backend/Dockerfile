@@ -119,7 +119,7 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=30s \
 # Suppress Pydantic v1 compatibility warning from Litestar's plugin detection
 # on Python 3.14+ (harmless import-time check, not actual v1 usage).
 # Tracked: Litestar v3 will drop the v1 compat layer entirely (#551).
-ENV PYTHONWARNINGS="ignore::UserWarning:pydantic.v1"
+ENV PYTHONWARNINGS="ignore::UserWarning:litestar.plugins.pydantic"
 
 ENTRYPOINT []
 # --no-access-log: Uvicorn's default access logger is disabled because

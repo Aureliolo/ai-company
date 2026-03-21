@@ -840,14 +840,14 @@ class TestDiscoverModelsForProviderTrust:
         call_kwargs = mock_discover.call_args
         assert call_kwargs.kwargs["trust_url"] is False
 
-    async def test_no_preset_hint_does_not_trust_url(
+    async def test_no_preset_hint_unknown_port_does_not_trust(
         self,
         service: ProviderManagementService,
     ) -> None:
-        """No preset_hint results in trust_url=False."""
+        """No preset_hint with unrecognized port results in trust_url=False."""
         await service.create_provider(
             _make_create_request(
-                base_url="http://localhost:11434",
+                base_url="http://localhost:9999",
             ),
         )
         with patch(
@@ -863,14 +863,37 @@ class TestDiscoverModelsForProviderTrust:
         call_kwargs = mock_discover.call_args
         assert call_kwargs.kwargs["trust_url"] is False
 
-    async def test_auth_type_none_without_preset_hint_does_not_trust(
+    async def test_auth_type_none_unknown_port_does_not_trust(
         self,
         service: ProviderManagementService,
     ) -> None:
-        """auth_type=none alone (without valid preset_hint) does NOT trust the URL."""
+        """auth_type=none with unrecognized port does NOT trust the URL."""
         await service.create_provider(
             _make_create_request(
                 auth_type=AuthType.NONE,
+                base_url="http://localhost:9999",
+            ),
+        )
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=(),
+        ) as mock_discover:
+            await service.discover_models_for_provider(
+                "test-provider",
+            )
+
+        mock_discover.assert_awaited_once()
+        call_kwargs = mock_discover.call_args
+        assert call_kwargs.kwargs["trust_url"] is False
+
+    async def test_port_inferred_trust_for_known_preset_url(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Port 11434 infers 'ollama' and localhost URL matches candidate_urls."""
+        await service.create_provider(
+            _make_create_request(
                 base_url="http://localhost:11434",
             ),
         )
@@ -885,5 +908,50 @@ class TestDiscoverModelsForProviderTrust:
 
         mock_discover.assert_awaited_once()
         call_kwargs = mock_discover.call_args
-        # After SSRF fix: auth_type=none alone must NOT bypass SSRF
+        assert call_kwargs.kwargs["trust_url"] is True
+
+    async def test_port_inferred_trust_for_docker_internal(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Port 11434 infers 'ollama'; docker.internal matches candidates."""
+        await service.create_provider(
+            _make_create_request(
+                base_url="http://host.docker.internal:11434",
+            ),
+        )
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=(),
+        ) as mock_discover:
+            await service.discover_models_for_provider(
+                "test-provider",
+            )
+
+        mock_discover.assert_awaited_once()
+        call_kwargs = mock_discover.call_args
+        assert call_kwargs.kwargs["trust_url"] is True
+
+    async def test_port_inferred_hint_mismatched_url_no_trust(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Port 11434 infers 'ollama' but arbitrary host is not trusted."""
+        await service.create_provider(
+            _make_create_request(
+                base_url="http://evil.example.com:11434",
+            ),
+        )
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=(),
+        ) as mock_discover:
+            await service.discover_models_for_provider(
+                "test-provider",
+            )
+
+        mock_discover.assert_awaited_once()
+        call_kwargs = mock_discover.call_args
         assert call_kwargs.kwargs["trust_url"] is False

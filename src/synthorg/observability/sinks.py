@@ -58,8 +58,6 @@ _SINK_ROUTING: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
         "audit.log": (
             "synthorg.security.",
             "synthorg.hr.",
-            "synthorg.backup.",
-            "synthorg.settings.",
             "synthorg.observability.",
         ),
         "cost_usage.log": ("synthorg.budget.", "synthorg.providers."),
@@ -71,6 +69,9 @@ _SINK_ROUTING: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
             "synthorg.memory.",
         ),
         "access.log": ("synthorg.api.",),
+        "persistence.log": ("synthorg.persistence.",),
+        "configuration.log": ("synthorg.settings.", "synthorg.config."),
+        "backup.log": ("synthorg.backup.",),
     }
 )
 

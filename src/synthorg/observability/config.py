@@ -245,4 +245,25 @@ DEFAULT_SINKS: tuple[SinkConfig, ...] = (
         rotation=RotationConfig(),
         json_format=True,
     ),
+    SinkConfig(
+        sink_type=SinkType.FILE,
+        level=LogLevel.INFO,
+        file_path="persistence.log",
+        rotation=RotationConfig(),
+        json_format=True,
+    ),
+    SinkConfig(
+        sink_type=SinkType.FILE,
+        level=LogLevel.INFO,
+        file_path="configuration.log",
+        rotation=RotationConfig(),
+        json_format=True,
+    ),
+    SinkConfig(
+        sink_type=SinkType.FILE,
+        level=LogLevel.INFO,
+        file_path="backup.log",
+        rotation=RotationConfig(),
+        json_format=True,
+    ),
 )

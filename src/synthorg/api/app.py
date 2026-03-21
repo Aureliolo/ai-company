@@ -444,7 +444,7 @@ def create_app(  # noqa: PLR0913
     """
     effective_config = config or RootConfig(company_name="default")
 
-    # Activate the structured logging pipeline (8 sinks) before any
+    # Activate the structured logging pipeline (11 sinks) before any
     # other setup so that auto-wiring, persistence, and bus logs all
     # flow through the configured sinks.  Respects SYNTHORG_LOG_DIR
     # env var for Docker log directory override.

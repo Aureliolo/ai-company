@@ -446,7 +446,7 @@ class ProviderManagementService:
 
         resolved_hint = preset_hint or _infer_preset_hint(config.base_url)
         headers = _build_discovery_headers(config)
-        trust = self._resolve_discovery_trust(preset_hint, config.base_url)
+        trust = self._resolve_discovery_trust(resolved_hint, config.base_url)
         discovered = await discover_models(
             config.base_url,
             resolved_hint,
