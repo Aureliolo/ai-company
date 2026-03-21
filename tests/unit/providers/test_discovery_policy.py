@@ -108,8 +108,9 @@ class TestExtractHostPort:
         assert extract_host_port(url) == expected
 
     def test_ipv6_literal(self) -> None:
+        """IPv6 addresses are re-bracketed in host:port output."""
         result = extract_host_port("http://[::1]:11434/v1")
-        assert result == "::1:11434"
+        assert result == "[::1]:11434"
 
     def test_no_hostname_returns_none(self) -> None:
         assert extract_host_port("not-a-url") is None
@@ -126,6 +127,14 @@ class TestExtractHostPort:
     def test_port_zero_not_normalized_to_default(self) -> None:
         result = extract_host_port("http://host:0/v1")
         assert result == "host:0"
+
+    def test_port_out_of_range_returns_none(self) -> None:
+        """URL with port > 65535 returns None, not ValueError."""
+        assert extract_host_port("http://localhost:99999/v1") is None
+
+    def test_ftp_scheme_returns_none(self) -> None:
+        """Non-HTTP schemes are rejected."""
+        assert extract_host_port("ftp://host:21/path") is None
 
 
 # ── seed_from_presets ────────────────────────────────────────────
@@ -292,7 +301,7 @@ class TestDiscoveryPolicyProperties:
             max_size=10,
         ),
     )
-    @settings(max_examples=200)
+    @settings()
     def test_normalization_is_idempotent(self, entries: list[str]) -> None:
         policy = ProviderDiscoveryPolicy(
             host_port_allowlist=tuple(entries),
@@ -308,7 +317,7 @@ class TestDiscoveryPolicyProperties:
             fullmatch=True,
         ),
     )
-    @settings(max_examples=200)
+    @settings()
     def test_allowlist_entries_always_lowercase(self, entry: str) -> None:
         policy = ProviderDiscoveryPolicy(
             host_port_allowlist=(entry,),
@@ -323,7 +332,7 @@ class TestDiscoveryPolicyProperties:
             max_size=10,
         ),
     )
-    @settings(max_examples=200)
+    @settings()
     def test_no_duplicates_after_normalization(self, entries: list[str]) -> None:
         policy = ProviderDiscoveryPolicy(
             host_port_allowlist=tuple(entries),

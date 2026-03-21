@@ -274,6 +274,7 @@ class TestAllowlistSeeding:
         self,
         service: ProviderManagementService,
     ) -> None:
+        """Seeded allowlist includes LM Studio preset candidate URLs."""
         policy = await _read_persisted_policy(service)
         assert "localhost:1234" in policy.host_port_allowlist
 
@@ -281,6 +282,7 @@ class TestAllowlistSeeding:
         self,
         service: ProviderManagementService,
     ) -> None:
+        """Seeded allowlist includes vLLM preset candidate URLs."""
         policy = await _read_persisted_policy(service)
         assert "localhost:8000" in policy.host_port_allowlist
 
@@ -303,7 +305,7 @@ class TestCreateFromPresetAllowlistTrust:
         ) as mock_discover:
             request = CreateFromPresetRequest(
                 preset_name="ollama",
-                name="my-ollama",
+                name="test-ollama-provider",
             )
             await service.create_from_preset(request)
 
@@ -322,7 +324,7 @@ class TestCreateFromPresetAllowlistTrust:
         ) as mock_discover:
             request = CreateFromPresetRequest(
                 preset_name="ollama",
-                name="my-ollama",
+                name="test-ollama-provider",
                 base_url="http://custom-host:11434",
             )
             await service.create_from_preset(request)
@@ -391,12 +393,14 @@ class TestAllowlistEdgeCases:
         self,
         service: ProviderManagementService,
     ) -> None:
-        """Deleting a provider with no base_url does not error."""
+        """Deleting a provider with no base_url does not modify allowlist."""
+        policy_before = await _read_persisted_policy(service)
         await service.create_provider(
             make_create_request(base_url=None),
         )
         await service.delete_provider("test-provider")
-        # Should not raise -- just a no-op for the allowlist
+        policy_after = await _read_persisted_policy(service)
+        assert policy_before.host_port_allowlist == policy_after.host_port_allowlist
 
     async def test_add_custom_entry_normalizes_case(
         self,

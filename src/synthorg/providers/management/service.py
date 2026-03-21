@@ -7,8 +7,7 @@ and hot-reload of ProviderRegistry + ModelRouter in AppState.
 import asyncio
 import json
 import time
-from typing import TYPE_CHECKING, Any, Final
-from urllib.parse import urlparse
+from typing import TYPE_CHECKING
 
 from synthorg.api.dto import (
     CreateFromPresetRequest,
@@ -17,7 +16,7 @@ from synthorg.api.dto import (
     TestConnectionResponse,
     UpdateProviderRequest,
 )
-from synthorg.config.schema import ProviderConfig, ProviderModelConfig
+from synthorg.config.schema import ProviderConfig, ProviderModelConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
     PROVIDER_ALREADY_EXISTS,
@@ -41,6 +40,13 @@ from synthorg.providers.errors import (
     ProviderError,
     ProviderNotFoundError,
     ProviderValidationError,
+)
+from synthorg.providers.management._helpers import (
+    apply_update,
+    build_discovery_headers,
+    build_provider_config,
+    infer_preset_hint,
+    serialize_providers,
 )
 from synthorg.providers.management.allowlist import DiscoveryAllowlistManager
 from synthorg.providers.models import ChatMessage
@@ -145,7 +151,7 @@ class ProviderManagementService:
                 )
                 raise ProviderAlreadyExistsError(msg)
 
-            new_config = _build_provider_config(request)
+            new_config = build_provider_config(request)
             new_providers = {**providers, request.name: new_config}
             await self._validate_and_persist(new_providers)
             await self._allowlist.update_for_create(new_config)
@@ -184,7 +190,7 @@ class ProviderManagementService:
                 logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
 
-            updated = _apply_update(existing, request)
+            updated = apply_update(existing, request)
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)
             await self._allowlist.update_for_update(
@@ -408,7 +414,7 @@ class ProviderManagementService:
         Only attempts discovery when the preset uses ``AuthType.NONE``,
         a base URL is available, and no models were explicitly provided.
         Trust is determined by the discovery allowlist -- preset default
-        URLs are seeded at startup, so they are automatically trusted.
+        URLs are seeded on first access, so they are automatically trusted.
 
         Args:
             preset: Resolved preset definition.
@@ -442,8 +448,8 @@ class ProviderManagementService:
         Queries the provider's endpoint for available models and
         updates the provider configuration if models are found.
         Returns an empty tuple without querying if the provider has
-        no ``base_url`` configured or uses a non-``none`` auth type
-        without credentials (auth headers are forwarded when available).
+        no ``base_url`` configured.  Auth headers are forwarded when
+        available; discovery proceeds without them otherwise.
 
         Args:
             name: Provider name.
@@ -470,8 +476,8 @@ class ProviderManagementService:
             )
             return ()
 
-        resolved_hint = preset_hint or _infer_preset_hint(config.base_url)
-        headers = _build_discovery_headers(config)
+        resolved_hint = preset_hint or infer_preset_hint(config.base_url)
+        headers = build_discovery_headers(config)
         policy = await self._allowlist.load()
         trust = is_url_allowed(config.base_url, policy)
         discovered = await discover_models(
@@ -587,7 +593,7 @@ class ProviderManagementService:
                 )
                 return False
 
-            updated = _apply_update(
+            updated = apply_update(
                 existing,
                 UpdateProviderRequest(models=discovered),
             )
@@ -632,7 +638,7 @@ class ProviderManagementService:
 
         # 2. Persist to settings
         try:
-            serialized = _serialize_providers(new_providers)
+            serialized = serialize_providers(new_providers)
             await self._settings_service.set(
                 "providers",
                 "configs",
@@ -671,163 +677,3 @@ class ProviderManagementService:
             routing_config=self._config.routing,
             providers=providers,
         )
-
-
-def _build_provider_config(
-    request: CreateProviderRequest,
-) -> ProviderConfig:
-    """Build a ProviderConfig from a create request.
-
-    Args:
-        request: Create provider request.
-
-    Returns:
-        Frozen ProviderConfig.
-    """
-    return ProviderConfig(
-        driver=request.driver,
-        auth_type=request.auth_type,
-        api_key=request.api_key,
-        base_url=request.base_url,
-        oauth_token_url=request.oauth_token_url,
-        oauth_client_id=request.oauth_client_id,
-        oauth_client_secret=request.oauth_client_secret,
-        oauth_scope=request.oauth_scope,
-        custom_header_name=request.custom_header_name,
-        custom_header_value=request.custom_header_value,
-        models=request.models,
-    )
-
-
-_UPDATE_FIELDS: tuple[str, ...] = (
-    "driver",
-    "base_url",
-    "oauth_token_url",
-    "oauth_client_id",
-    "oauth_client_secret",
-    "oauth_scope",
-    "custom_header_name",
-    "custom_header_value",
-    "models",
-)
-
-
-def _apply_update(
-    existing: ProviderConfig,
-    request: UpdateProviderRequest,
-) -> ProviderConfig:
-    """Apply partial update fields to an existing config.
-
-    When auth_type changes, orphaned credential fields from the
-    old auth type are automatically cleared.
-
-    Args:
-        existing: Current provider configuration.
-        request: Partial update request.
-
-    Returns:
-        New ProviderConfig with updates applied.
-    """
-    updates: dict[str, Any] = {}
-    for field in _UPDATE_FIELDS:
-        value = getattr(request, field)
-        if value is not None:
-            updates[field] = value
-
-    # auth_type change: unconditionally clear incompatible credentials
-    if request.auth_type is not None:
-        updates["auth_type"] = request.auth_type
-        if request.auth_type not in (AuthType.API_KEY, AuthType.OAUTH):
-            updates["api_key"] = None
-        if request.auth_type != AuthType.OAUTH:
-            updates["oauth_client_secret"] = None
-            updates["oauth_token_url"] = None
-            updates["oauth_client_id"] = None
-            updates["oauth_scope"] = None
-        if request.auth_type != AuthType.CUSTOM_HEADER:
-            updates["custom_header_name"] = None
-            updates["custom_header_value"] = None
-
-    # api_key has special clear_api_key semantics (overrides above)
-    if request.api_key is not None:
-        updates["api_key"] = request.api_key
-    elif request.clear_api_key:
-        updates["api_key"] = None
-
-    # Use model_validate (not model_copy) to run validators on the merged result
-    merged = {**existing.model_dump(mode="python"), **updates}
-    return ProviderConfig.model_validate(merged)
-
-
-def _serialize_providers(
-    providers: dict[str, ProviderConfig],
-) -> dict[str, Any]:
-    """Serialize provider dict for JSON persistence.
-
-    Args:
-        providers: Provider configurations.
-
-    Returns:
-        JSON-safe dict of serialized provider configs.
-    """
-    return {name: config.model_dump(mode="json") for name, config in providers.items()}
-
-
-_PORT_TO_PRESET: Final[dict[int, str]] = {
-    11434: "ollama",
-    1234: "lm-studio",
-}
-
-
-def _build_discovery_headers(
-    config: ProviderConfig,
-) -> dict[str, str] | None:
-    """Build auth headers for model discovery from provider config.
-
-    Returns headers appropriate for the provider's auth type, or
-    ``None`` for ``AuthType.NONE`` or when credentials are absent.
-    OAuth-based discovery is not yet supported (token acquisition
-    requires a separate flow); a log message is emitted when skipped.
-
-    Args:
-        config: Provider configuration.
-
-    Returns:
-        Auth headers dict, or ``None``.
-    """
-    if config.auth_type == AuthType.API_KEY and config.api_key:
-        return {"Authorization": f"Bearer {config.api_key}"}
-    if (
-        config.auth_type == AuthType.CUSTOM_HEADER
-        and config.custom_header_name
-        and config.custom_header_value
-    ):
-        return {config.custom_header_name: config.custom_header_value}
-    if config.auth_type == AuthType.OAUTH:
-        logger.info(
-            PROVIDER_DISCOVERY_FAILED,
-            reason="oauth_discovery_unsupported",
-            auth_type=config.auth_type.value,
-        )
-    return None
-
-
-def _infer_preset_hint(base_url: str) -> str | None:
-    """Infer the preset name from a provider base URL.
-
-    Uses port-based heuristics for common local providers.
-    Recognized ports: 11434 (ollama), 1234 (lm-studio).
-
-    Args:
-        base_url: Provider base URL.
-
-    Returns:
-        Preset name hint, or ``None`` if unrecognized.
-    """
-    try:
-        port = urlparse(base_url).port
-    except ValueError:
-        return None
-    if port is None:
-        return None
-    return _PORT_TO_PRESET.get(port)

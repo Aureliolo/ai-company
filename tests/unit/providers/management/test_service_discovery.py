@@ -15,7 +15,7 @@ from synthorg.providers.url_utils import redact_url
 
 from .conftest import make_create_request
 
-pytestmark = pytest.mark.timeout(30)
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 # Derived from the default ServerConfig so tests track port changes automatically.
 _BACKEND_PORT = ServerConfig().port

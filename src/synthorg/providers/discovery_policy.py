@@ -3,20 +3,19 @@
 Provides a ``ProviderDiscoveryPolicy`` model that controls which
 ``host:port`` pairs are trusted for model discovery requests.  Entries
 in the allowlist bypass the private-IP check, enabling discovery
-against local providers (e.g. inference servers on private IPs)
-without the fragile preset-hint matching that preceded this module.
+against local providers (e.g. inference servers on private IPs).
 
 The design mirrors :class:`~synthorg.tools.git_url_validator.GitCloneNetworkPolicy`.
 """
 
-from typing import TYPE_CHECKING, Self
+from collections.abc import Mapping  # noqa: TC003
+from types import MappingProxyType
+from typing import Self
 from urllib.parse import urlparse
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from synthorg.config.schema import ProviderConfig  # noqa: TC001
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
@@ -26,7 +25,9 @@ from synthorg.observability.events.provider import (
 logger = get_logger(__name__)
 
 _ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
-_DEFAULT_PORTS: dict[str, int] = {"http": 80, "https": 443}
+_DEFAULT_PORTS: MappingProxyType[str, int] = MappingProxyType(
+    {"http": 80, "https": 443},
+)
 
 
 class ProviderDiscoveryPolicy(BaseModel):
@@ -92,9 +93,13 @@ def extract_host_port(url: str) -> str | None:
         return None
 
     hostname = hostname.lower()
+    try:
+        raw_port = parsed.port
+    except ValueError:
+        return None
     port = (
-        parsed.port
-        if parsed.port is not None
+        raw_port
+        if raw_port is not None
         else _DEFAULT_PORTS.get(
             parsed.scheme,
         )
@@ -102,6 +107,8 @@ def extract_host_port(url: str) -> str | None:
     if port is None:
         return None
 
+    if ":" in hostname:
+        return f"[{hostname}]:{port}"
     return f"{hostname}:{port}"
 
 
@@ -130,7 +137,7 @@ def seed_from_presets() -> tuple[str, ...]:
 
 
 def build_seed_allowlist(
-    providers: Mapping[str, object],
+    providers: Mapping[str, ProviderConfig],
 ) -> tuple[str, ...]:
     """Build a seed allowlist from presets and installed providers.
 
@@ -138,8 +145,7 @@ def build_seed_allowlist(
     entries extracted from installed provider ``base_url`` values.
 
     Args:
-        providers: Mapping of provider name to config.  Each value
-            must have a ``base_url`` attribute (may be ``None``).
+        providers: Mapping of provider name to config.
 
     Returns:
         Deduplicated tuple of ``host:port`` strings.
@@ -149,9 +155,8 @@ def build_seed_allowlist(
         seen.setdefault(hp, None)
 
     for config in providers.values():
-        base_url = getattr(config, "base_url", None)
-        if base_url is not None:
-            provider_hp = extract_host_port(base_url)
+        if config.base_url is not None:
+            provider_hp = extract_host_port(config.base_url)
             if provider_hp is not None:
                 seen.setdefault(provider_hp, None)
 
@@ -172,6 +177,12 @@ def is_url_allowed(url: str, policy: ProviderDiscoveryPolicy) -> bool:
         ``True`` if the URL is trusted for discovery.
     """
     if not policy.block_private_ips:
+        logger.warning(
+            PROVIDER_DISCOVERY_URL_ALLOWED,
+            url=url,
+            allowed=True,
+            reason="block_private_ips_disabled",
+        )
         return True
 
     hp = extract_host_port(url)

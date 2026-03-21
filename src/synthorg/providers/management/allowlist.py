@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from synthorg.config.schema import ProviderConfig  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.provider import (
+    PROVIDER_DISCOVERY_ALLOWLIST_CORRUPTED,
     PROVIDER_DISCOVERY_ALLOWLIST_SEEDED,
     PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
 )
@@ -21,6 +22,7 @@ from synthorg.providers.discovery_policy import (
     ProviderDiscoveryPolicy,
     build_seed_allowlist,
     extract_host_port,
+    seed_from_presets,
 )
 
 if TYPE_CHECKING:
@@ -72,9 +74,9 @@ class DiscoveryAllowlistManager:
                 return ProviderDiscoveryPolicy.model_validate(data)
             except json.JSONDecodeError, ValidationError:
                 logger.warning(
-                    PROVIDER_DISCOVERY_ALLOWLIST_SEEDED,
-                    reason="corrupted_persisted_policy",
+                    PROVIDER_DISCOVERY_ALLOWLIST_CORRUPTED,
                     raw_length=len(result.value),
+                    exc_info=True,
                 )
 
         # Seed from presets + installed providers.
@@ -156,6 +158,9 @@ class DiscoveryAllowlistManager:
         hp = extract_host_port(removed_config.base_url)
         if hp is None:
             return
+        # Keep preset-seeded entries even if no provider uses them.
+        if hp in seed_from_presets():
+            return
         # Check whether any remaining provider shares this host:port.
         for config in remaining_providers.values():
             if config.base_url is not None:
@@ -209,27 +214,16 @@ class DiscoveryAllowlistManager:
 
         try:
             policy = await self.load()
-            entries = list(policy.host_port_allowlist)
-
-            # Remove old entry if unshared by other providers.
-            if old_hp is not None and old_hp in entries:
-                shared = any(
-                    extract_host_port(c.base_url) == old_hp
-                    for c in providers_after_update.values()
-                    if c.base_url is not None
-                )
-                if not shared:
-                    entries = [e for e in entries if e != old_hp]
-
-            # Add new entry if not present.
-            if new_hp is not None and new_hp not in entries:
-                entries.append(new_hp)
-
-            if tuple(entries) == policy.host_port_allowlist:
+            entries = _compute_update_entries(
+                policy.host_port_allowlist,
+                old_hp,
+                new_hp,
+                providers_after_update,
+            )
+            if entries == policy.host_port_allowlist:
                 return
-
             updated = ProviderDiscoveryPolicy(
-                host_port_allowlist=tuple(entries),
+                host_port_allowlist=entries,
                 block_private_ips=policy.block_private_ips,
             )
             await self._persist(updated)
@@ -308,3 +302,41 @@ class DiscoveryAllowlistManager:
             entry_count=len(updated.host_port_allowlist),
         )
         return updated
+
+
+def _compute_update_entries(
+    current: tuple[str, ...],
+    old_hp: str | None,
+    new_hp: str | None,
+    providers_after_update: dict[str, ProviderConfig],
+) -> tuple[str, ...]:
+    """Compute allowlist entries after a provider URL change.
+
+    Removes the old entry if unshared and not a preset seed, and
+    adds the new entry if not already present.
+
+    Args:
+        current: Current allowlist entries.
+        old_hp: Old host:port (may be ``None``).
+        new_hp: New host:port (may be ``None``).
+        providers_after_update: Provider configs after the update.
+
+    Returns:
+        Updated tuple of entries.
+    """
+    entries = list(current)
+    preset_seeds = seed_from_presets()
+
+    if old_hp is not None and old_hp in entries and old_hp not in preset_seeds:
+        shared = any(
+            extract_host_port(c.base_url) == old_hp
+            for c in providers_after_update.values()
+            if c.base_url is not None
+        )
+        if not shared:
+            entries = [e for e in entries if e != old_hp]
+
+    if new_hp is not None and new_hp not in entries:
+        entries.append(new_hp)
+
+    return tuple(entries)

@@ -8,22 +8,24 @@ from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.dto import (
-    AddAllowlistEntryRequest,
     ApiResponse,
     CreateFromPresetRequest,
     CreateProviderRequest,
     DiscoverModelsResponse,
-    DiscoveryPolicyResponse,
     ProbePresetRequest,
     ProbePresetResponse,
     ProviderResponse,
-    RemoveAllowlistEntryRequest,
     TestConnectionResponse,
     UpdateProviderRequest,
     to_provider_response,
 )
 from synthorg.api.dto import (
     TestConnectionRequest as ConnTestRequest,
+)
+from synthorg.api.dto_discovery import (
+    AddAllowlistEntryRequest,
+    DiscoveryPolicyResponse,
+    RemoveAllowlistEntryRequest,
 )
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
 from synthorg.api.guards import require_read_access, require_write_access
@@ -452,7 +454,7 @@ class ProviderController(Controller):
             raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=result)
 
-    # ── Discovery allowlist ────────────────────────────────────
+    # ── Discovery allowlist (read + write access) ──────────────
 
     @get(
         "/discovery-policy",
@@ -473,9 +475,9 @@ class ProviderController(Controller):
         app_state: AppState = state.app_state
         policy = await app_state.provider_management.get_discovery_policy()
         return ApiResponse(
-            data=DiscoveryPolicyResponse(
-                host_port_allowlist=policy.host_port_allowlist,
-                block_private_ips=policy.block_private_ips,
+            data=DiscoveryPolicyResponse.model_validate(
+                policy,
+                from_attributes=True,
             ),
         )
 
@@ -502,9 +504,9 @@ class ProviderController(Controller):
             data.host_port,
         )
         return ApiResponse(
-            data=DiscoveryPolicyResponse(
-                host_port_allowlist=policy.host_port_allowlist,
-                block_private_ips=policy.block_private_ips,
+            data=DiscoveryPolicyResponse.model_validate(
+                policy,
+                from_attributes=True,
             ),
         )
 
@@ -531,8 +533,8 @@ class ProviderController(Controller):
             data.host_port,
         )
         return ApiResponse(
-            data=DiscoveryPolicyResponse(
-                host_port_allowlist=policy.host_port_allowlist,
-                block_private_ips=policy.block_private_ips,
+            data=DiscoveryPolicyResponse.model_validate(
+                policy,
+                from_attributes=True,
             ),
         )

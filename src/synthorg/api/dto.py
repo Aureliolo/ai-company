@@ -745,60 +745,6 @@ class ProbePresetResponse(BaseModel):
     candidates_tried: int = Field(default=0, ge=0)
 
 
-class DiscoveryPolicyResponse(BaseModel):
-    """Current state of the provider discovery SSRF allowlist.
-
-    Attributes:
-        host_port_allowlist: Trusted host:port pairs.
-        block_private_ips: Whether private IP blocking is active.
-        entry_count: Number of entries in the allowlist (computed).
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    host_port_allowlist: tuple[NotBlankStr, ...] = ()
-    block_private_ips: bool = True
-
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def entry_count(self) -> int:
-        """Number of entries in the allowlist."""
-        return len(self.host_port_allowlist)
-
-
-_HOST_PORT_PATTERN = r"^[a-zA-Z0-9._\[\]:%-]+:[0-9]{1,5}$"
-
-
-class AddAllowlistEntryRequest(BaseModel):
-    """Payload for adding a host:port entry to the discovery allowlist.
-
-    Attributes:
-        host_port: Entry to add (e.g. ``"my-server:8080"``).
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    host_port: NotBlankStr = Field(
-        max_length=256,
-        pattern=_HOST_PORT_PATTERN,
-    )
-
-
-class RemoveAllowlistEntryRequest(BaseModel):
-    """Payload for removing a host:port entry from the discovery allowlist.
-
-    Attributes:
-        host_port: Entry to remove.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    host_port: NotBlankStr = Field(
-        max_length=256,
-        pattern=_HOST_PORT_PATTERN,
-    )
-
-
 def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     """Convert a ProviderConfig to a safe ProviderResponse.
 

@@ -72,6 +72,9 @@ PROVIDER_PROBE_COMPLETED: Final[str] = "provider.management.probe_completed"
 # ── Provider discovery allowlist ─────────────────────────────
 
 PROVIDER_DISCOVERY_ALLOWLIST_SEEDED: Final[str] = "provider.discovery.allowlist_seeded"
+PROVIDER_DISCOVERY_ALLOWLIST_CORRUPTED: Final[str] = (
+    "provider.discovery.allowlist_corrupted"
+)
 PROVIDER_DISCOVERY_ALLOWLIST_UPDATED: Final[str] = (
     "provider.discovery.allowlist_updated"
 )
