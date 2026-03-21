@@ -4,6 +4,7 @@ Provides the idempotent :func:`configure_logging` entry point that
 wires structlog processors, stdlib handlers, and per-logger levels.
 """
 
+import contextlib
 import logging
 import os
 import sys
@@ -34,19 +35,25 @@ _DEFAULT_LOGGER_LEVELS: tuple[tuple[str, LogLevel], ...] = (
 )
 
 # Third-party loggers that add their own handlers or emit noisy DEBUG
-# output.  Clearing their handlers forces messages to propagate to the
-# root logger where our structlog sinks capture them uniformly.
+# output.  Clearing their handlers and enforcing ``propagate = True``
+# routes all messages through the root logger where our structlog sinks
+# capture them uniformly.
 # Level is set to WARNING by default -- our provider/persistence layers
 # already log meaningful events at the appropriate level.
-_THIRD_PARTY_LOGGER_LEVELS: tuple[tuple[str, int], ...] = (
-    ("LiteLLM", logging.WARNING),
-    ("LiteLLM Router", logging.WARNING),
-    ("LiteLLM Proxy", logging.WARNING),
-    ("aiosqlite", logging.WARNING),
-    ("httpcore", logging.WARNING),
-    ("httpcore.http11", logging.WARNING),
-    ("httpcore.connection", logging.WARNING),
-    ("httpx", logging.WARNING),
+_THIRD_PARTY_LOGGER_LEVELS: tuple[tuple[str, LogLevel], ...] = (
+    ("LiteLLM", LogLevel.WARNING),
+    ("LiteLLM Router", LogLevel.WARNING),
+    ("LiteLLM Proxy", LogLevel.WARNING),
+    ("aiosqlite", LogLevel.WARNING),
+    ("httpcore", LogLevel.WARNING),
+    ("httpcore.http11", LogLevel.WARNING),
+    ("httpcore.connection", LogLevel.WARNING),
+    ("httpx", LogLevel.WARNING),
+    ("uvicorn", LogLevel.WARNING),
+    ("uvicorn.error", LogLevel.WARNING),
+    ("uvicorn.access", LogLevel.WARNING),
+    ("anyio", LogLevel.WARNING),
+    ("multipart", LogLevel.WARNING),
 )
 
 # Processors shared between structlog and stdlib (foreign) chains.
@@ -208,8 +215,8 @@ def _tame_third_party_loggers() -> None:
 
     This function strips those handlers so all output flows exclusively
     through the structured logging pipeline. It also suppresses
-    LiteLLM's ``print_verbose()`` raw ``print()`` calls by ensuring
-    ``set_verbose`` stays ``False``.
+    LiteLLM's ``print_verbose()`` raw ``print()`` calls by setting
+    ``set_verbose = False`` at configuration time.
 
     Only touches loggers whose library is already imported -- avoids
     triggering expensive import side-effects (LiteLLM creates HTTP
@@ -223,8 +230,11 @@ def _tame_third_party_loggers() -> None:
 
     for name, level in _THIRD_PARTY_LOGGER_LEVELS:
         lg = logging.getLogger(name)
-        lg.handlers.clear()
-        lg.setLevel(level)
+        for handler in lg.handlers[:]:
+            lg.removeHandler(handler)
+            with contextlib.suppress(Exception):
+                handler.close()
+        lg.setLevel(level.value)
         lg.propagate = True
 
 

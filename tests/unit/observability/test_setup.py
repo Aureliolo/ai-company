@@ -2,6 +2,7 @@
 
 import json
 import logging
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -520,16 +521,18 @@ class TestTameThirdPartyLoggers:
 
     def test_sets_level_to_warning(self) -> None:
         """Third-party loggers are set to WARNING."""
-        for name, _expected_level in _THIRD_PARTY_LOGGER_LEVELS:
+        for name, _ in _THIRD_PARTY_LOGGER_LEVELS:
             lg = logging.getLogger(name)
             lg.setLevel(logging.DEBUG)  # reset to DEBUG first
         _tame_third_party_loggers()
         for name, expected_level in _THIRD_PARTY_LOGGER_LEVELS:
             lg = logging.getLogger(name)
-            assert lg.level == expected_level, name
+            assert lg.level == getattr(logging, expected_level.value), name
 
     def test_propagate_stays_true(self) -> None:
         """Third-party loggers propagate to root (our sinks)."""
+        for name, _ in _THIRD_PARTY_LOGGER_LEVELS:
+            logging.getLogger(name).propagate = False
         _tame_third_party_loggers()
         for name, _ in _THIRD_PARTY_LOGGER_LEVELS:
             lg = logging.getLogger(name)
@@ -557,7 +560,7 @@ class TestTameThirdPartyLoggers:
         for name, expected_level in _THIRD_PARTY_LOGGER_LEVELS:
             lg = logging.getLogger(name)
             assert lg.handlers == []
-            assert lg.level == expected_level
+            assert lg.level == getattr(logging, expected_level.value)
 
     def test_called_by_configure_logging(self) -> None:
         """configure_logging invokes third-party taming."""
@@ -586,11 +589,22 @@ class TestTameThirdPartyLoggers:
     ) -> None:
         """LiteLLM DEBUG messages do not reach file sinks."""
         configure_logging(_file_config(tmp_path))
+        root = logging.getLogger()
+        assert root.handlers, "Precondition: file sink must be attached"
         lg = logging.getLogger("LiteLLM")
         lg.debug("should not appear")
         log_file = tmp_path / "test.log"
         content = log_file.read_text().strip() if log_file.exists() else ""
         assert "should not appear" not in content
+
+    def test_skips_litellm_when_not_imported(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Does not import litellm or raise when litellm is absent."""
+        monkeypatch.delitem(sys.modules, "litellm", raising=False)
+        _tame_third_party_loggers()
+        assert sys.modules.get("litellm") is None
 
 
 @pytest.mark.unit

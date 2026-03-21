@@ -1297,6 +1297,27 @@ file sink handlers attached by `_bootstrap_app_logging()`. The bootstrap call in
 runs before the Litestar constructor and sets up all 8 sinks; `logging_config=None` ensures
 they survive.
 
+### Third-Party Logger Taming
+
+LiteLLM and its HTTP stack (httpx, httpcore) attach their own `StreamHandler` instances at
+import time, producing duplicate output in Docker logs -- once via the library's own handler,
+and once again via root propagation through the structlog sinks.
+
+`_tame_third_party_loggers()` (called as step 8 of `configure_logging`) resolves this by:
+
+- Suppressing LiteLLM's raw `print()` output via `litellm.set_verbose = False` and
+  `litellm.suppress_debug_info = True` (applied only when `litellm` is already imported --
+  avoids triggering LiteLLM's expensive import side-effects)
+- Clearing all handlers from `LiteLLM`, `LiteLLM Router`, `LiteLLM Proxy`, `aiosqlite`,
+  `httpcore`, `httpcore.http11`, `httpcore.connection`, `httpx`, `uvicorn`, `uvicorn.error`,
+  `uvicorn.access`, `anyio`, and `multipart` loggers
+- Setting each to `WARNING` and `propagate = True` so warnings and errors still flow through
+  the structlog pipeline
+
+The provider and persistence layers already log meaningful events at appropriate levels via
+their own structlog calls; the third-party loggers would otherwise add noisy DEBUG output
+that duplicates or contradicts those structured events.
+
 ### Docker Logging
 
 Two layers of log management:
