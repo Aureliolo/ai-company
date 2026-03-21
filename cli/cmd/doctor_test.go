@@ -182,6 +182,20 @@ func TestClassifyDoctor(t *testing.T) {
 			wantContains: "no containers detected",
 		},
 		{
+			name: "compose validity not checked is warning",
+			report: diagnostics.Report{
+				HealthStatus: "200",
+				ContainerSummary: []diagnostics.ContainerDetail{
+					{Name: "backend", Health: "healthy"},
+				},
+				ComposeFileExists: true,
+				ComposeFileValid:  nil,
+			},
+			wantStatus:   doctorWarnings,
+			wantCount:    1,
+			wantContains: "validity not checked",
+		},
+		{
 			name: "unavailable image is warning",
 			report: diagnostics.Report{
 				HealthStatus: "200",

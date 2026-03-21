@@ -127,9 +127,12 @@ func classifyDoctor(r diagnostics.Report) (doctorStatus, []string) {
 	}
 
 	// Compose file.
-	if !r.ComposeFileExists {
+	switch {
+	case !r.ComposeFileExists:
 		errs = append(errs, "compose.yml not found")
-	} else if r.ComposeFileValid != nil && !*r.ComposeFileValid {
+	case r.ComposeFileValid == nil:
+		warnings = append(warnings, "compose.yml exists, validity not checked")
+	case !*r.ComposeFileValid:
 		errs = append(errs, "compose.yml is invalid")
 	}
 
