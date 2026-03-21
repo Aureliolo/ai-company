@@ -65,10 +65,10 @@ async function handleCreate() {
     }
     // Cache agents in the store for the Review Org step.
     if (result.agents?.length) {
-      setup.agents = result.agents
+      setup.setAgents(result.agents)
     }
     editing.value = false
-    emit('next', companyName.value.trim(), result.agent_count)
+    emit('next', result.company_name, result.agent_count)
   } catch (err) {
     error.value = getErrorMessage(err)
   } finally {

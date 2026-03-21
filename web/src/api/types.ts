@@ -901,6 +901,7 @@ export interface UpdateAgentModelRequest {
 
 export interface SetupAgentsListResponse {
   agents: SetupAgentSummary[]
+  agent_count: number
 }
 
 // ── Settings ────────────────────────────────────────────────

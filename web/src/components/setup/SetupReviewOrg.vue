@@ -134,10 +134,14 @@ async function handleComplete() {
 }
 
 onMounted(async () => {
-  await providerStore.fetchProviders()
-  // Load agents if the store cache is empty (e.g. on page refresh).
-  if (setup.agents.length === 0) {
-    await setup.fetchAgents()
+  try {
+    await providerStore.fetchProviders()
+    // Load agents if the store cache is empty (e.g. on page refresh).
+    if (setup.agents.length === 0) {
+      await setup.fetchAgents()
+    }
+  } catch (err) {
+    error.value = getErrorMessage(err)
   }
 })
 </script>
@@ -164,7 +168,7 @@ onMounted(async () => {
     <div v-if="hasAgents" class="mb-6 space-y-3">
       <div
         v-for="(agent, index) in setup.agents"
-        :key="index"
+        :key="agent.name"
         class="rounded-lg border border-slate-700 bg-slate-900 p-4"
       >
         <div class="mb-2 flex items-center justify-between">
@@ -209,11 +213,13 @@ onMounted(async () => {
         <InputText
           v-model="newAgentRole"
           placeholder="Role (e.g. Backend Developer)"
+          aria-label="Agent role"
           class="w-full"
         />
         <InputText
           v-model="newAgentName"
           placeholder="Name (optional)"
+          aria-label="Agent name"
           class="w-full"
         />
         <Select
@@ -222,6 +228,7 @@ onMounted(async () => {
           option-label="label"
           option-value="value"
           placeholder="Provider"
+          aria-label="Agent provider"
           class="w-full"
         />
         <Select
@@ -231,6 +238,7 @@ onMounted(async () => {
           option-label="label"
           option-value="value"
           placeholder="Model"
+          aria-label="Agent model"
           class="w-full"
         />
         <div class="flex gap-2">

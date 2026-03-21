@@ -46,8 +46,12 @@ class TestClassifyTiers:
         cheap = _make_model("cheap", cost_input=0.001)
         expensive = _make_model("expensive", cost_input=0.1)
         tiers = _classify_tiers([cheap, expensive])
-        # Both appear in all tiers since < 3.
+        # Both appear in ALL tiers since < 3 models.
         assert cheap in tiers["small"]
+        assert cheap in tiers["medium"]
+        assert cheap in tiers["large"]
+        assert expensive in tiers["small"]
+        assert expensive in tiers["medium"]
         assert expensive in tiers["large"]
 
     def test_three_models_split(self) -> None:
@@ -230,6 +234,29 @@ class TestMatchAllAgents:
         assert len(results) == 1
         # Should still get assigned (fallback or single-model-all-tiers).
         assert results[0].model_id == "only"
+
+    def test_fallback_when_min_context_unsatisfied(self) -> None:
+        """Agent whose preset demands more context than any model offers
+        still gets a fallback match with score=0."""
+        # visionary_leader preset has min_context=100_000 via affinity.
+        # Provide a model with only 50k context to force match_model to
+        # return None (all candidates filtered out), triggering fallback.
+        agents = [
+            {
+                "tier": "large",
+                "personality_preset": "visionary_leader",
+            },
+        ]
+        providers = {
+            "test-provider": _FakeProviderConfig(
+                models=(_make_model("small-ctx", max_context=50_000),),
+            ),
+        }
+        results = match_all_agents(agents, providers)
+        assert len(results) == 1
+        assert results[0].model_id == "small-ctx"
+        assert results[0].provider_name == "test-provider"
+        assert results[0].score == 0.0
 
     def test_agent_index_preserved(self) -> None:
         agents = [

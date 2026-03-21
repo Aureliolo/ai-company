@@ -66,10 +66,10 @@ After the containers are running, open the web dashboard at [http://localhost:30
 
 1. **Create an admin account** -- set up the first admin (CEO) user.
 2. **Configure an LLM provider** -- select a preset (Ollama, OpenRouter, etc.) or add a custom provider. Model discovery verifies the connection automatically.
-3. **Create your company** -- name your synthetic organization and optionally start from a template.
-4. **Hire your first agent** -- choose a role, model, and personality for the first AI agent.
+3. **Create your company** -- name your synthetic organization and optionally start from a template. When a template is selected, agents are auto-created with models matched to your configured providers.
+4. **Review your organization** -- inspect the auto-created agents and adjust model assignments if needed. If no template was used, you can create agents manually.
 
-The wizard shows five steps (Welcome, then the four above). All four substantive steps must be completed -- the backend validates that a company, at least one agent, and at least one provider exist before allowing setup to finish. Steps are completed sequentially -- a later step only appears done if all prior steps are also complete. Completed steps show a summary and can be revisited via the step indicator. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
+The wizard shows six steps (Welcome, then the four above, then Complete). All four substantive steps must be completed -- the backend validates that a company, at least one agent, and at least one provider exist before allowing setup to finish. Steps are completed sequentially -- a later step only appears done if all prior steps are also complete. Completed steps show a summary and can be revisited via the step indicator. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
 
 To re-run the wizard later, use `synthorg setup` (resets the flag and opens the browser) or delete the `api.setup_complete` setting via the settings API.
 

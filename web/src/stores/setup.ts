@@ -99,6 +99,10 @@ export const useSetupStore = defineStore('setup', () => {
     }
   }
 
+  function setAgents(newAgents: SetupAgentSummary[]) {
+    agents.value = newAgents
+  }
+
   async function fetchAgents() {
     error.value = null
     try {
@@ -175,6 +179,7 @@ export const useSetupStore = defineStore('setup', () => {
     syncCompletionFromStatus,
     fetchStatus,
     fetchTemplates,
+    setAgents,
     fetchAgents,
     updateAgentModel,
     nextStep,

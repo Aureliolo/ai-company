@@ -72,3 +72,9 @@ SETUP_AGENT_MODEL_UPDATED: Final[str] = "setup.agent.model_updated"
 
 # Agent index out of range during model update
 SETUP_AGENT_INDEX_OUT_OF_RANGE: Final[str] = "setup.agent.index_out_of_range"
+
+# Unexpected error while checking setup completion status
+SETUP_COMPLETE_CHECK_ERROR: Final[str] = "setup.flow.complete_check_error"
+
+# Agent dict missing critical fields during summary conversion
+SETUP_AGENT_SUMMARY_MISSING_FIELDS: Final[str] = "setup.agent.summary_missing_fields"

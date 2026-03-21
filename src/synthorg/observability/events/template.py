@@ -40,3 +40,4 @@ TEMPLATE_MODEL_REQUIREMENT_RESOLVED: Final[str] = "template.model_requirement.re
 # Model matching
 TEMPLATE_MODEL_MATCH_SUCCESS: Final[str] = "template.model_match.success"
 TEMPLATE_MODEL_MATCH_FAILED: Final[str] = "template.model_match.failed"
+TEMPLATE_MODEL_MATCH_SKIPPED: Final[str] = "template.model_match.skipped"

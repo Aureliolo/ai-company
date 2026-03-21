@@ -6,14 +6,16 @@ classifying models into cost-based tiers and ranking within each tier
 according to the requirement's priority axis.
 """
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_MODEL_MATCH_FAILED,
+    TEMPLATE_MODEL_MATCH_SKIPPED,
     TEMPLATE_MODEL_MATCH_SUCCESS,
 )
 from synthorg.templates.model_requirements import ModelTier  # noqa: TC001
@@ -99,6 +101,11 @@ def match_all_agents(
     For each agent, resolves its model requirement and finds the best
     model across all configured providers.
 
+    Note:
+        The *agents* list is shallow-copied from the caller. Each dict
+        is shared, so nested mutable values (e.g. ``personality``) are
+        **not** copied. This function only reads agent dicts.
+
     Args:
         agents: List of expanded agent config dicts.  Each must have
             ``tier`` (str) and optionally ``personality_preset`` (str).
@@ -107,8 +114,10 @@ def match_all_agents(
             a tuple of ``ProviderModelConfig``.
 
     Returns:
-        List of ``ModelMatch`` results, one per agent.  Agents with
-        no viable match get a ``ModelMatch`` with score 0 and the
+        List of ``ModelMatch`` results.  Agents may be omitted from
+        the result when no models exist across any provider or when
+        requirement resolution fails.  Agents with a viable provider
+        but no tier match get a ``ModelMatch`` with score 0 and the
         first available provider/model as a fallback.
     """
     from synthorg.templates.model_requirements import (  # noqa: PLC0415
@@ -125,7 +134,17 @@ def match_all_agents(
     for idx, agent in enumerate(agents):
         tier: ModelTier = agent.get("tier", "medium")
         preset = agent.get("personality_preset")
-        req = resolve_model_requirement(tier, preset)
+        try:
+            req = resolve_model_requirement(tier, preset)
+        except ValidationError, ValueError:
+            logger.warning(
+                TEMPLATE_MODEL_MATCH_SKIPPED,
+                agent_index=idx,
+                tier=tier,
+                preset=preset,
+                reason="invalid_requirement",
+            )
+            continue
 
         best_provider: str | None = None
         best_model: ProviderModelConfig | None = None
@@ -193,16 +212,18 @@ def match_all_agents(
 _MIN_TIER_SIZE: int = 3
 
 # Tier fallback order: if exact tier has no models, try these.
-_TIER_FALLBACK: dict[str, list[str]] = {
-    "large": ["medium", "small"],
-    "medium": ["large", "small"],
-    "small": ["medium", "large"],
-}
+_TIER_FALLBACK: MappingProxyType[ModelTier, tuple[ModelTier, ...]] = MappingProxyType(
+    {
+        "large": ("medium", "small"),
+        "medium": ("large", "small"),
+        "small": ("medium", "large"),
+    }
+)
 
 
 def _classify_tiers(
     models: list[ProviderModelConfig],
-) -> dict[str, list[ProviderModelConfig]]:
+) -> dict[ModelTier, list[ProviderModelConfig]]:
     """Split models into cost-based thirds.
 
     Models are sorted by ``cost_per_1k_input`` ascending.  The bottom
@@ -217,10 +238,13 @@ def _classify_tiers(
     n = len(sorted_models)
     third = n // 3
 
+    # With n >= 3, each slice is guaranteed non-empty:
+    # small gets at least 1 element, medium gets at least 1,
+    # large gets the remainder (at least 1).
     return {
-        "small": sorted_models[:third] or [sorted_models[0]],
-        "medium": sorted_models[third : 2 * third] or [sorted_models[n // 2]],
-        "large": sorted_models[2 * third :] or [sorted_models[-1]],
+        "small": sorted_models[:third],
+        "medium": sorted_models[third : 2 * third],
+        "large": sorted_models[2 * third :],
     }
 
 
@@ -228,7 +252,28 @@ def _rank_by_priority(
     models: list[ProviderModelConfig],
     priority: str,
 ) -> ProviderModelConfig:
-    """Pick the best model in a tier according to priority axis."""
+    """Pick the best model in a tier according to priority axis.
+
+    Axes:
+        quality: Highest cost (proxy for capability).
+        speed: Lowest estimated latency. Models with ``None`` latency
+            sort last (treated as infinite).
+        cost: Lowest cost.
+        balanced: Closest to the midpoint of the cost range.
+
+    Args:
+        models: Non-empty list of candidate models within a tier.
+        priority: One of ``quality``, ``speed``, ``cost``, ``balanced``.
+
+    Returns:
+        The single best model for the given priority.
+
+    Raises:
+        ValueError: If *models* is empty.
+    """
+    if not models:
+        msg = "Cannot rank empty model list"
+        raise ValueError(msg)
     if priority == "quality":
         return max(models, key=lambda m: m.cost_per_1k_input)
     if priority == "speed":
@@ -255,7 +300,7 @@ def _compute_score(
 ) -> float:
     """Compute a 0-1 quality score for a match.
 
-    Factors: tier hit (0.5), context headroom (0.25), priority
+    Factors: base score (0.5), context headroom (0.25), priority
     alignment (0.25).
     """
     score = 0.5  # Base score for being in the right tier.
@@ -271,15 +316,54 @@ def _compute_score(
     if len(tier_candidates) <= 1:
         score += 0.25
     else:
-        ranked = sorted(tier_candidates, key=lambda m: m.cost_per_1k_input)
-        rank_map = {id(m): r for r, m in enumerate(ranked)}
-        model_rank = rank_map.get(id(model), 0)
-        max_rank = len(ranked) - 1
-        if requirement.priority == "quality":
-            score += 0.25 * (model_rank / max_rank)
-        elif requirement.priority == "cost":
-            score += 0.25 * (1 - model_rank / max_rank)
-        else:
-            score += 0.125  # Balanced/speed get partial.
+        score += _priority_alignment_bonus(
+            model,
+            requirement.priority,
+            tier_candidates,
+        )
 
     return min(1.0, score)
+
+
+def _priority_alignment_bonus(
+    model: ProviderModelConfig,
+    priority: str,
+    tier_candidates: list[ProviderModelConfig],
+) -> float:
+    """Return 0-0.25 bonus based on priority alignment.
+
+    Args:
+        model: The matched model.
+        priority: The requirement priority axis.
+        tier_candidates: All models in the matched tier (len >= 2).
+
+    Returns:
+        Bonus score in the range [0, 0.25].
+    """
+    ranked = sorted(
+        tier_candidates,
+        key=lambda m: m.cost_per_1k_input,
+    )
+    rank_map = {id(m): r for r, m in enumerate(ranked)}
+    model_rank = rank_map.get(id(model), 0)
+    max_rank = len(ranked) - 1
+
+    if priority == "quality":
+        return 0.25 * (model_rank / max_rank)
+    if priority == "cost":
+        return 0.25 * (1 - model_rank / max_rank)
+    if priority == "speed":
+        # Rank by latency: lowest latency gets full bonus.
+        latency_ranked = sorted(
+            tier_candidates,
+            key=lambda m: (
+                m.estimated_latency_ms
+                if m.estimated_latency_ms is not None
+                else float("inf")
+            ),
+        )
+        latency_map = {id(m): r for r, m in enumerate(latency_ranked)}
+        latency_rank = latency_map.get(id(model), 0)
+        return 0.25 * (1 - latency_rank / max_rank)
+    # "balanced" -- partial credit.
+    return 0.125

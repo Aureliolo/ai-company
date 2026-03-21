@@ -1,4 +1,7 @@
-"""First-run setup controller -- status, templates, company, agent, complete."""
+"""First-run setup controller.
+
+Status, templates, company, agents, model update, complete.
+"""
 
 import asyncio
 import json
@@ -10,10 +13,14 @@ from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.controllers.setup_agents import (
+    agent_dict_to_summary,
+    agents_to_summaries,
     build_agent_config,
+    departments_to_json,
     expand_template_agents,
     get_existing_agents,
     match_and_assign_models,
+    normalize_description,
     validate_agents_value,
     validate_model_assignment,
     validate_provider_and_model,
@@ -43,6 +50,7 @@ from synthorg.observability.events.setup import (
     SETUP_AGENTS_LISTED,
     SETUP_ALREADY_COMPLETE,
     SETUP_COMPANY_CREATED,
+    SETUP_COMPLETE_CHECK_ERROR,
     SETUP_COMPLETED,
     SETUP_NO_AGENTS,
     SETUP_NO_COMPANY,
@@ -59,11 +67,9 @@ from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from synthorg.settings.service import SettingsService
     from synthorg.templates.loader import LoadedTemplate
-    from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
+    from synthorg.templates.schema import CompanyTemplate
 
 logger = get_logger(__name__)
 
@@ -72,8 +78,7 @@ _DEFAULT_MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields[
     "min_password_length"
 ].default
 
-# Module-level lock: one per worker process.  Safe under asyncio single-loop
-# model.  Serializes read-modify-write on the agents settings blob.
+# Module-level lock: serializes read-modify-write on agents settings.
 _AGENT_LOCK = asyncio.Lock()
 
 
@@ -206,7 +211,7 @@ class SetupController(Controller):
         departments_json = template_result.departments_json
         department_count = template_result.department_count
         template_applied = template_result.template_applied
-        description = _normalize_description(data.description)
+        description = normalize_description(data.description)
 
         await _persist_company_settings(
             settings_svc,
@@ -215,24 +220,16 @@ class SetupController(Controller):
             departments_json,
         )
 
-        # Auto-create agents from template.
         agent_summaries: tuple[SetupAgentSummary, ...] = ()
         if template_result.template is not None:
-            agents = expand_template_agents(template_result.template)
-            providers = await app_state.provider_management.list_providers()
-            agents = match_and_assign_models(agents, providers)
-
-            async with _AGENT_LOCK:
-                await settings_svc.set(
-                    "company",
-                    "agents",
-                    json.dumps(agents),
-                )
-
-            agent_summaries = _agents_to_summaries(agents)
+            agent_summaries = await _auto_create_template_agents(
+                template_result.template,
+                app_state,
+                settings_svc,
+            )
             logger.info(
                 SETUP_AGENTS_AUTO_CREATED,
-                count=len(agents),
+                count=len(agent_summaries),
                 template=template_applied,
             )
 
@@ -341,7 +338,7 @@ class SetupController(Controller):
         settings_svc = app_state.settings_service
 
         agents = await get_existing_agents(settings_svc)
-        summaries = _agents_to_summaries(agents)
+        summaries = agents_to_summaries(agents)
 
         logger.debug(SETUP_AGENTS_LISTED, count=len(summaries))
         return ApiResponse(
@@ -385,7 +382,14 @@ class SetupController(Controller):
         async with _AGENT_LOCK:
             agents = await get_existing_agents(settings_svc)
             if agent_index < 0 or agent_index >= len(agents):
-                msg = f"Agent index {agent_index} out of range (0-{len(agents) - 1})"
+                if not agents:
+                    msg = (
+                        f"Agent index {agent_index} out of range (no agents configured)"
+                    )
+                else:
+                    msg = (
+                        f"Agent index {agent_index} out of range (0-{len(agents) - 1})"
+                    )
                 logger.warning(
                     SETUP_AGENT_INDEX_OUT_OF_RANGE,
                     agent_index=agent_index,
@@ -393,10 +397,18 @@ class SetupController(Controller):
                 )
                 raise NotFoundError(msg)
 
-            agents[agent_index]["model"] = {
-                "provider": data.model_provider,
-                "model_id": data.model_id,
+            updated_agent = {
+                **agents[agent_index],
+                "model": {
+                    "provider": data.model_provider,
+                    "model_id": data.model_id,
+                },
             }
+            agents = [
+                *agents[:agent_index],
+                updated_agent,
+                *agents[agent_index + 1 :],
+            ]
             await settings_svc.set(
                 "company",
                 "agents",
@@ -411,7 +423,7 @@ class SetupController(Controller):
         )
 
         return ApiResponse(
-            data=_agent_dict_to_summary(agents[agent_index]),
+            data=agent_dict_to_summary(agents[agent_index]),
         )
 
     @post(
@@ -646,19 +658,32 @@ async def _resolve_min_password_length(
 
 
 async def _check_setup_not_complete(settings_svc: SettingsService) -> None:
-    """Raise ConflictError if setup has already been completed.
-
-    Args:
-        settings_svc: Settings service instance.
-
-    Raises:
-        ConflictError: If the setup_complete flag is already true.
-    """
+    """Raise ConflictError if setup has already been completed."""
     is_complete = await _is_setup_complete(settings_svc)
     if is_complete:
         logger.warning(SETUP_ALREADY_COMPLETE)
         msg = "Setup has already been completed"
         raise ConflictError(msg)
+
+
+async def _auto_create_template_agents(
+    template: CompanyTemplate,
+    app_state: AppState,
+    settings_svc: SettingsService,
+) -> tuple[SetupAgentSummary, ...]:
+    """Expand template agents, match models, persist, and return summaries."""
+    agents = expand_template_agents(template)
+    providers = await app_state.provider_management.list_providers()
+    agents = match_and_assign_models(agents, providers)
+
+    async with _AGENT_LOCK:
+        await settings_svc.set(
+            "company",
+            "agents",
+            json.dumps(agents),
+        )
+
+    return agents_to_summaries(agents)
 
 
 async def _is_setup_complete(settings_svc: SettingsService) -> bool:
@@ -677,13 +702,14 @@ async def _is_setup_complete(settings_svc: SettingsService) -> bool:
     except SettingNotFoundError:
         # Key does not exist yet -- setup has not been completed.
         return False
+    except Exception:
+        logger.error(
+            SETUP_COMPLETE_CHECK_ERROR,
+            exc_info=True,
+        )
+        raise
     else:
         return entry.value == "true"
-
-
-def _normalize_description(raw: str | None) -> str | None:
-    """Strip whitespace from description, treating blank as None."""
-    return (raw.strip() or None) if raw else None
 
 
 class _TemplateResult(NamedTuple):
@@ -699,11 +725,10 @@ def _resolve_template(template_name: str | None) -> _TemplateResult:
         return _TemplateResult("", 0, None, None)
 
     loaded = _load_template_safe(template_name)
-    departments_json = _departments_to_json(loaded.template.departments)
-    department_count = len(json.loads(departments_json)) if departments_json else 0
+    departments_json = departments_to_json(loaded.template.departments)
     return _TemplateResult(
         departments_json,
-        department_count,
+        len(loaded.template.departments),
         template_name,
         loaded.template,
     )
@@ -764,37 +789,3 @@ def _load_template_safe(template_name: str) -> LoadedTemplate:
             error=str(exc),
         )
         raise ApiValidationError(msg) from exc
-
-
-def _departments_to_json(
-    departments: Sequence[TemplateDepartmentConfig],
-) -> str:
-    """Convert template departments to a JSON string."""
-    if not departments:
-        return ""
-    dept_list = [
-        {"name": d.name, "budget_percent": d.budget_percent} for d in departments
-    ]
-    return json.dumps(dept_list)
-
-
-def _agents_to_summaries(
-    agents: list[dict[str, Any]],
-) -> tuple[SetupAgentSummary, ...]:
-    """Convert agent config dicts to summary DTOs."""
-    return tuple(_agent_dict_to_summary(a) for a in agents)
-
-
-def _agent_dict_to_summary(agent: dict[str, Any]) -> SetupAgentSummary:
-    """Convert a single agent config dict to a summary DTO."""
-    model = agent.get("model", {})
-    return SetupAgentSummary(
-        name=agent.get("name", ""),
-        role=agent.get("role", ""),
-        department=agent.get("department", ""),
-        level=agent.get("level", ""),
-        model_provider=model.get("provider", ""),
-        model_id=model.get("model_id", ""),
-        tier=agent.get("tier", "medium"),
-        personality_preset=agent.get("personality_preset"),
-    )

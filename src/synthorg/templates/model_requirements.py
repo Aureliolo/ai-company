@@ -101,8 +101,8 @@ def parse_model_requirement(raw: str | dict[str, Any]) -> ModelRequirement:
 # ── Model affinity per personality preset ────────────────────
 #
 # Separated from the preset dicts because PersonalityConfig has
-# extra="forbid".  These are soft defaults: template-level fields
-# override them when both are specified.
+# extra="forbid".  These are soft defaults applied when resolving
+# model requirements.
 
 _RAW_AFFINITY: dict[str, dict[str, Any]] = {
     # Leaders and strategists benefit from stronger reasoning.
@@ -138,6 +138,11 @@ MODEL_AFFINITY: MappingProxyType[str, MappingProxyType[str, Any]] = MappingProxy
 )
 del _RAW_AFFINITY
 
+_VALID_PRIORITIES: frozenset[str] = frozenset(get_args(ModelPriority))
+assert all(  # noqa: S101
+    v.get("priority", "balanced") in _VALID_PRIORITIES for v in MODEL_AFFINITY.values()
+), "MODEL_AFFINITY has invalid priority values"
+
 
 def resolve_model_requirement(
     tier_str: str,
@@ -145,8 +150,8 @@ def resolve_model_requirement(
 ) -> ModelRequirement:
     """Merge a template tier alias with personality-preset affinity.
 
-    The template's tier always wins.  Affinity fills in ``priority``
-    and ``min_context`` when the template only specifies a bare tier.
+    The template's tier always wins.  Affinity provides ``priority``
+    and ``min_context`` defaults based on the personality preset.
 
     Args:
         tier_str: Tier alias from the template agent config.

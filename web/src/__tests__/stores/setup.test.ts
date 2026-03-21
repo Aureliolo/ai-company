@@ -218,6 +218,164 @@ describe('useSetupStore', () => {
     })
   })
 
+  describe('fetchAgents', () => {
+    it('populates agents on success', async () => {
+      const fakeAgents = [
+        {
+          name: 'agent-ceo',
+          role: 'CEO',
+          department: 'executive',
+          level: 'senior',
+          model_provider: 'test-provider',
+          model_id: 'test-large-001',
+          tier: 'large',
+          personality_preset: 'visionary_leader',
+        },
+        {
+          name: 'agent-dev',
+          role: 'Developer',
+          department: 'engineering',
+          level: 'mid',
+          model_provider: 'test-provider',
+          model_id: 'test-small-001',
+          tier: 'small',
+          personality_preset: 'pragmatic_builder',
+        },
+      ]
+      mockGetAgents.mockResolvedValue(fakeAgents)
+
+      const store = useSetupStore()
+      await store.fetchAgents()
+
+      expect(store.agents).toEqual(fakeAgents)
+      expect(store.error).toBeNull()
+    })
+
+    it('sets error on failure', async () => {
+      mockGetAgents.mockRejectedValue(new Error('Network error'))
+
+      const store = useSetupStore()
+      await store.fetchAgents()
+
+      expect(store.agents).toEqual([])
+      expect(store.error).toBe('Network error')
+    })
+  })
+
+  describe('updateAgentModel', () => {
+    it('replaces the agent at the given index on success', async () => {
+      const store = useSetupStore()
+      store.agents = [
+        {
+          name: 'agent-ceo',
+          role: 'CEO',
+          department: 'executive',
+          level: 'senior',
+          model_provider: 'test-provider',
+          model_id: 'test-large-001',
+          tier: 'large',
+          personality_preset: 'visionary_leader',
+        },
+      ]
+
+      const updatedAgent = {
+        name: 'agent-ceo',
+        role: 'CEO',
+        department: 'executive',
+        level: 'senior',
+        model_provider: 'other-provider',
+        model_id: 'other-model-001',
+        tier: 'large',
+        personality_preset: 'visionary_leader',
+      }
+      mockUpdateAgentModel.mockResolvedValue(updatedAgent)
+
+      await store.updateAgentModel(0, 'other-provider', 'other-model-001')
+
+      expect(store.agents[0].model_provider).toBe('other-provider')
+      expect(store.agents[0].model_id).toBe('other-model-001')
+      expect(store.error).toBeNull()
+    })
+
+    it('leaves agents unchanged when index is out of bounds', async () => {
+      const store = useSetupStore()
+      const originalAgent = {
+        name: 'agent-ceo',
+        role: 'CEO',
+        department: 'executive',
+        level: 'senior',
+        model_provider: 'test-provider',
+        model_id: 'test-large-001',
+        tier: 'large',
+        personality_preset: 'visionary_leader',
+      }
+      store.agents = [originalAgent]
+
+      const updatedAgent = { ...originalAgent, model_provider: 'new-prov', model_id: 'new-model' }
+      mockUpdateAgentModel.mockResolvedValue(updatedAgent)
+
+      await store.updateAgentModel(5, 'new-prov', 'new-model')
+
+      // Agent at index 0 is unchanged because index 5 is out of bounds.
+      expect(store.agents).toHaveLength(1)
+      expect(store.agents[0].model_provider).toBe('test-provider')
+    })
+
+    it('sets error on failure', async () => {
+      const store = useSetupStore()
+      store.agents = [
+        {
+          name: 'agent-ceo',
+          role: 'CEO',
+          department: 'executive',
+          level: 'senior',
+          model_provider: 'test-provider',
+          model_id: 'test-large-001',
+          tier: 'large',
+          personality_preset: 'visionary_leader',
+        },
+      ]
+      mockUpdateAgentModel.mockRejectedValue(new Error('Server error'))
+
+      await store.updateAgentModel(0, 'bad-prov', 'bad-model')
+
+      expect(store.error).toBe('Server error')
+      // Agent should remain unchanged on error.
+      expect(store.agents[0].model_provider).toBe('test-provider')
+    })
+  })
+
+  describe('markComplete', () => {
+    it('marks setup as no longer needed on success', async () => {
+      mockGetSetupStatus.mockResolvedValue({
+        needs_admin: false,
+        needs_setup: true,
+        has_providers: true,
+        has_company: true,
+        has_agents: true,
+        min_password_length: 12,
+      })
+      mockCompleteSetup.mockResolvedValue(undefined)
+
+      const store = useSetupStore()
+      await store.fetchStatus()
+      expect(store.isSetupNeeded).toBe(true)
+
+      await store.markComplete()
+
+      expect(store.isSetupNeeded).toBe(false)
+      expect(store.error).toBeNull()
+    })
+
+    it('sets error and re-throws on failure', async () => {
+      mockCompleteSetup.mockRejectedValue(new Error('Precondition failed'))
+
+      const store = useSetupStore()
+      await expect(store.markComplete()).rejects.toThrow('Precondition failed')
+      expect(store.error).toBe('Precondition failed')
+    })
+  })
+
   describe('setStep', () => {
     it('sets currentStep to the given index', () => {
       const store = useSetupStore()

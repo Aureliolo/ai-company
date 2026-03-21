@@ -563,13 +563,11 @@ class TestExtractTemplateDepartments:
     """Unit tests for the _load_template_safe + _departments_to_json helpers."""
 
     def test_valid_template(self) -> None:
-        from synthorg.api.controllers.setup import (
-            _departments_to_json,
-            _load_template_safe,
-        )
+        from synthorg.api.controllers.setup import _load_template_safe
+        from synthorg.api.controllers.setup_agents import departments_to_json
 
         loaded = _load_template_safe("solo_founder")
-        result = _departments_to_json(loaded.template.departments)
+        result = departments_to_json(loaded.template.departments)
         assert result != ""
         departments = json.loads(result)
         assert len(departments) >= 1
@@ -737,6 +735,13 @@ class TestSetupAgentModelUpdate:
             data = resp.json()["data"]
             assert data["model_provider"] == "test-provider"
             assert data["model_id"] == "test-small-001"
+
+            # Verify persistence: GET agents and check the update stuck.
+            get_resp = test_client.get("/api/v1/setup/agents")
+            assert get_resp.status_code == 200
+            agents = get_resp.json()["data"]["agents"]
+            assert agents[0]["model_provider"] == "test-provider"
+            assert agents[0]["model_id"] == "test-small-001"
         finally:
             app_state._provider_management = original
 

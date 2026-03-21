@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validat
 
 from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.templates.model_requirements import ModelTier  # noqa: TC001
 
 
 class SetupStatusResponse(BaseModel):
@@ -80,13 +81,13 @@ class SetupAgentSummary(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    name: str
-    role: str
-    department: str
+    name: NotBlankStr
+    role: NotBlankStr
+    department: NotBlankStr
     level: str = ""
     model_provider: str = ""
     model_id: str = ""
-    tier: str = "medium"
+    tier: ModelTier = "medium"
     personality_preset: str | None = None
 
 
@@ -98,7 +99,8 @@ class SetupCompanyResponse(BaseModel):
         description: The company description that was set, if any.
         template_applied: Name of the template that was applied, if any.
         department_count: Number of departments created.
-        agent_count: Number of agents auto-created from template.
+        agent_count: Number of agents auto-created from template
+            (computed from ``agents``).
         agents: Agent summaries for the Review Org step.
     """
 
@@ -143,7 +145,7 @@ class SetupAgentRequest(BaseModel):
     model_provider: NotBlankStr = Field(max_length=100)
     model_id: NotBlankStr = Field(max_length=200)
     department: NotBlankStr = Field(default="engineering", max_length=100)
-    budget_limit_monthly: float | None = Field(default=None, ge=0.0)
+    budget_limit_monthly: float | None = Field(default=None, ge=0.0, le=1_000_000.0)
 
     @model_validator(mode="before")
     @classmethod
@@ -189,7 +191,7 @@ class UpdateAgentModelRequest(BaseModel):
         model_id: Model identifier from that provider.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     model_provider: NotBlankStr = Field(max_length=100)
     model_id: NotBlankStr = Field(max_length=200)
@@ -200,11 +202,18 @@ class SetupAgentsListResponse(BaseModel):
 
     Attributes:
         agents: Agent summaries.
+        agent_count: Number of agents (computed from ``agents``).
     """
 
     model_config = ConfigDict(frozen=True)
 
     agents: tuple[SetupAgentSummary, ...]
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def agent_count(self) -> int:
+        """Number of agents currently configured."""
+        return len(self.agents)
 
 
 class SetupCompleteResponse(BaseModel):

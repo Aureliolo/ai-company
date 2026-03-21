@@ -98,6 +98,10 @@ async function handleCompanyCreated(companyName: string, agentCount: number) {
 async function handleReviewComplete(providerName: string) {
   createdProviderName.value = providerName
   await setup.fetchStatus()
+  // Populate summary values from store if not already set (e.g. after refresh).
+  if (!createdCompanyName.value && setup.status?.has_company) {
+    createdAgentCount.value = setup.agents.length
+  }
   if (setup.statusLoaded) {
     showComplete.value = true
   }
@@ -120,7 +124,7 @@ function computeResumeStep(): number {
   // Admin is done -- resume at the first incomplete step.
   if (!status.has_providers) return 2 // Provider step
   if (!status.has_company) return 3 // Company step
-  if (!status.has_agents) return 4 // Agent step
+  if (status.needs_setup) return 4 // Review step (setup not fully complete)
 
   // Everything is done -- shouldn't be here (redirect handles this).
   return 0
@@ -138,6 +142,11 @@ onMounted(async () => {
     const resumeStep = computeResumeStep()
     if (resumeStep > 0) {
       setup.setStep(resumeStep, steps.value.length)
+    }
+    // Restore completion summary values from store when resuming after refresh.
+    if (setup.status?.has_company && !createdCompanyName.value) {
+      await setup.fetchAgents()
+      createdAgentCount.value = setup.agents.length
     }
   }
 })
