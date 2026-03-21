@@ -1,5 +1,6 @@
 """Shared URL utilities for the providers package."""
 
+import ipaddress
 from typing import Final
 from urllib.parse import urlparse, urlunparse
 
@@ -19,7 +20,8 @@ def is_self_url(url: str, *, backend_port: int) -> bool:
     """Check whether a URL points at the local backend.
 
     Compares the URL's hostname against known localhost aliases
-    and its port against the backend's configured port.
+    (and the full ``127.0.0.0/8`` + ``::1`` loopback ranges via
+    ``ipaddress``) and its port against the backend's configured port.
 
     Args:
         url: URL to check.
@@ -36,8 +38,15 @@ def is_self_url(url: str, *, backend_port: int) -> bool:
         return False
     if hostname is None or port is None:
         return False
+    if port != backend_port:
+        return False
     normalized_host = hostname.rstrip(".").lower()
-    return port == backend_port and normalized_host in LOCALHOST_ALIASES
+    if normalized_host in LOCALHOST_ALIASES:
+        return True
+    try:
+        return ipaddress.ip_address(normalized_host).is_loopback
+    except ValueError:
+        return False
 
 
 def redact_url(url: str) -> str:

@@ -11,6 +11,7 @@ from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderNotFoundError
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.providers.presets import ProviderPreset
+from synthorg.providers.url_utils import redact_url
 
 from .conftest import make_create_request
 
@@ -486,5 +487,5 @@ class TestSelfConnectionGuard:
         )
 
         assert call_args.args[0] == PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED
-        assert call_args.kwargs["url"] == self_url
+        assert call_args.kwargs["url"] == redact_url(self_url)
         assert call_args.kwargs["backend_port"] == _BACKEND_PORT

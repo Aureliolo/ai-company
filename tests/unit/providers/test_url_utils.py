@@ -97,6 +97,18 @@ class TestIsSelfUrl:
                 True,
                 id="uppercase-normalized",
             ),
+            pytest.param(
+                "http://127.0.0.2:8000/v1",
+                8000,
+                True,
+                id="loopback-range-127.0.0.2",
+            ),
+            pytest.param(
+                "http://127.255.255.1:8000/v1",
+                8000,
+                True,
+                id="loopback-range-high",
+            ),
         ],
     )
     def test_detection(
