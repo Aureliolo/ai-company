@@ -36,6 +36,8 @@ vi.mock('primevue/password', () => ({
           id: props.inputId,
           type: 'password',
           value: props.modelValue,
+          disabled: props.disabled,
+          ...props.inputProps,
           onInput: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).value),
         })
     },
