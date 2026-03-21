@@ -2,7 +2,10 @@
 
 Phase 1 (construction time): creates services that don't need a
 connected persistence backend -- message bus, cost tracker, provider
-registry, task engine, meeting orchestrator, meeting scheduler.
+registry, task engine.
+
+Meeting auto-wire (construction time): creates meeting orchestrator
+and meeting scheduler (same lifecycle as Phase 1 but separate call).
 
 Phase 2 (on_startup): creates SettingsService + dispatcher after
 persistence connects and migrations complete.
@@ -33,8 +36,7 @@ if TYPE_CHECKING:
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
     from synthorg.communication.meeting.participant import (
-        PassthroughParticipantResolver,
-        RegistryParticipantResolver,
+        ParticipantResolver,
     )
     from synthorg.communication.meeting.protocol import (
         AgentCaller,
@@ -239,8 +241,9 @@ def auto_wire_meetings(
     """Auto-wire meeting orchestrator and scheduler.
 
     Each service is created only when the caller passes ``None``.
-    Explicit values are preserved unchanged.  This runs alongside
-    Phase 1 -- meeting services don't need connected persistence.
+    Explicit values are preserved unchanged.  This runs at the same
+    lifecycle stage as Phase 1 -- meeting services don't need
+    connected persistence.
 
     Args:
         effective_config: Root company configuration.
@@ -255,6 +258,16 @@ def auto_wire_meetings(
     """
     if meeting_orchestrator is None:
         meeting_orchestrator = _wire_meeting_orchestrator()
+        if meeting_scheduler is not None:
+            logger.warning(
+                API_APP_STARTUP,
+                note=(
+                    "Auto-wired a new orchestrator but using an explicit "
+                    "scheduler -- the scheduler's internal orchestrator "
+                    "reference will diverge from the auto-wired one. "
+                    "Provide both or neither for consistent state"
+                ),
+            )
 
     if meeting_scheduler is None:
         meeting_scheduler = _wire_meeting_scheduler(
@@ -295,7 +308,7 @@ def _build_protocol_registry() -> Mapping[MeetingProtocolType, MeetingProtocol]:
         StructuredPhasesProtocol,
     )
 
-    return {
+    registry: dict[MeetingProtocolType, MeetingProtocol] = {
         MeetingProtocolType.ROUND_ROBIN: RoundRobinProtocol(
             RoundRobinConfig(),
         ),
@@ -306,6 +319,15 @@ def _build_protocol_registry() -> Mapping[MeetingProtocolType, MeetingProtocol]:
             StructuredPhasesConfig(),
         ),
     }
+
+    if len(registry) != len(MeetingProtocolType):
+        msg = (
+            f"Protocol registry has {len(registry)} entries but "
+            f"{len(MeetingProtocolType)} protocol types exist"
+        )
+        raise RuntimeError(msg)
+
+    return registry
 
 
 def _build_stub_agent_caller() -> AgentCaller:
@@ -369,7 +391,7 @@ def _wire_meeting_orchestrator() -> MeetingOrchestrator:
 
 def _select_participant_resolver(
     agent_registry: AgentRegistryService | None,
-) -> RegistryParticipantResolver | PassthroughParticipantResolver:
+) -> ParticipantResolver:
     """Choose a participant resolver based on registry availability.
 
     Args:
@@ -386,7 +408,7 @@ def _select_participant_resolver(
 
     if agent_registry is not None:
         return RegistryParticipantResolver(agent_registry)
-    logger.info(
+    logger.warning(
         API_APP_STARTUP,
         note=(
             "No agent registry available -- meeting "
@@ -439,7 +461,7 @@ async def auto_wire_settings(  # noqa: PLR0913
 ) -> SettingsChangeDispatcher | None:
     """Phase 2 auto-wire: create SettingsService after persistence connects.
 
-    Called from ``on_startup`` after ``_init_persistence()``.  Creates
+    Called from ``on_startup`` after persistence connects.  Creates
     the settings service, starts the dispatcher, and only then injects
     the service into *app_state* (to avoid partial state corruption if
     the dispatcher fails to start).

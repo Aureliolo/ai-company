@@ -18,6 +18,7 @@ from synthorg.communication.meeting.models import (
     MeetingMinutes,
     MeetingRecord,
 )
+from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 
 # Re-use the shared conftest helpers.
 from tests.unit.api.conftest import (
@@ -63,7 +64,7 @@ def _make_record(
 @pytest.fixture
 def mock_orchestrator() -> MagicMock:
     """Mock orchestrator with pre-loaded records."""
-    orch = MagicMock()
+    orch = MagicMock(spec=MeetingOrchestrator)
     records = (
         _make_record("mtg-001", "standup", MeetingStatus.COMPLETED),
         _make_record("mtg-002", "retro", MeetingStatus.FAILED),
@@ -75,6 +76,8 @@ def mock_orchestrator() -> MagicMock:
 @pytest.fixture
 def mock_scheduler() -> MagicMock:
     """Mock scheduler."""
+    # Cannot use spec=MeetingScheduler: PEP 649 deferred annotation
+    # for MeetingsConfig in __init__ causes NameError in inspect.
     sched = MagicMock()
     sched.trigger_event = AsyncMock(return_value=())
     sched.start = AsyncMock()

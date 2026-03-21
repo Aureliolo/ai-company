@@ -17,6 +17,40 @@ from synthorg.observability.events.meeting import (
 logger = get_logger(__name__)
 
 
+def _resolve_context_value(entry: str, val: Any) -> list[str]:
+    """Resolve a participant entry from an event context value.
+
+    Shared logic for both ``PassthroughParticipantResolver`` and
+    ``RegistryParticipantResolver``.
+
+    Args:
+        entry: The context key that matched.
+        val: The context value.
+
+    Returns:
+        List of resolved agent ID strings (may be empty).
+    """
+    if isinstance(val, str):
+        stripped = val.strip()
+        if stripped:
+            return [stripped]
+        logger.warning(
+            MEETING_NO_PARTICIPANTS,
+            entry=entry,
+            note="context string value is blank, skipping",
+        )
+        return []
+    if isinstance(val, (list, tuple)):
+        return [v.strip() for v in val if isinstance(v, str) and v.strip()]
+    logger.warning(
+        MEETING_NO_PARTICIPANTS,
+        entry=entry,
+        ctx_value_type=type(val).__name__,
+        note="context value is not str or list, skipping",
+    )
+    return []
+
+
 @runtime_checkable
 class ParticipantResolver(Protocol):
     """Protocol for resolving participant references to agent IDs."""
@@ -76,30 +110,11 @@ class PassthroughParticipantResolver:
 
         for entry in participant_refs:
             if entry in ctx:
-                val = ctx[entry]
-                if isinstance(val, str):
-                    stripped = val.strip()
-                    if stripped:
-                        resolved.append(stripped)
-                    else:
-                        logger.warning(
-                            MEETING_NO_PARTICIPANTS,
-                            entry=entry,
-                            note="context string value is blank, skipping",
-                        )
-                elif isinstance(val, (list, tuple)):
-                    resolved.extend(
-                        v.strip() for v in val if isinstance(v, str) and v.strip()
-                    )
-                else:
-                    logger.warning(
-                        MEETING_NO_PARTICIPANTS,
-                        entry=entry,
-                        ctx_value_type=type(val).__name__,
-                        note="context value is not str or list, skipping",
-                    )
+                resolved.extend(_resolve_context_value(entry, ctx[entry]))
             else:
-                resolved.append(entry)
+                stripped = entry.strip()
+                if stripped:
+                    resolved.append(stripped)
 
         # Deduplicate while preserving order.
         seen: set[str] = set()
@@ -110,6 +125,10 @@ class PassthroughParticipantResolver:
                 deduped.append(agent_id)
 
         if not deduped:
+            logger.warning(
+                MEETING_NO_PARTICIPANTS,
+                refs=participant_refs,
+            )
             msg = f"No participants resolved from refs: {participant_refs!r}"
             raise NoParticipantsResolvedError(msg)
 
@@ -121,7 +140,7 @@ class RegistryParticipantResolver:
 
     Resolution order per entry:
     1. Context lookup: if context has a matching key, use its value.
-    2. Special value ``"all"`` → all active agents.
+    2. Special value ``"all"`` -> all active agents.
     3. Department lookup: if registry returns agents for the entry.
     4. Agent name lookup: if registry finds an agent by name.
     5. Pass-through: assume the entry is a literal agent ID.
@@ -148,6 +167,9 @@ class RegistryParticipantResolver:
 
         Returns:
             Deduplicated tuple of agent ID strings.
+
+        Raises:
+            NoParticipantsResolvedError: When all entries resolve to empty.
         """
         resolved: list[str] = []
         ctx = context or {}
@@ -202,6 +224,8 @@ class RegistryParticipantResolver:
     def _resolve_from_context(entry: str, val: Any) -> list[str]:
         """Resolve a participant entry from event context.
 
+        Delegates to the shared ``_resolve_context_value`` helper.
+
         Args:
             entry: The context key that matched.
             val: The context value.
@@ -209,30 +233,12 @@ class RegistryParticipantResolver:
         Returns:
             List of agent ID strings.
         """
-        if isinstance(val, str):
-            stripped = val.strip()
-            if stripped:
-                return [stripped]
-            logger.warning(
-                MEETING_NO_PARTICIPANTS,
-                entry=entry,
-                note="context string value is blank, skipping",
-            )
-            return []
-        if isinstance(val, (list, tuple)):
-            return [v.strip() for v in val if isinstance(v, str) and v.strip()]
-        logger.warning(
-            MEETING_NO_PARTICIPANTS,
-            entry=entry,
-            ctx_value_type=type(val).__name__,
-            note="context value is not str or list, skipping",
-        )
-        return []
+        return _resolve_context_value(entry, val)
 
     async def _resolve_from_registry(self, entry: str) -> list[str]:
         """Resolve a participant entry via agent registry lookups.
 
-        Resolution order: "all" → department → name → literal pass-through.
+        Resolution order: "all" -> department -> name -> literal pass-through.
 
         Args:
             entry: A participant reference string.

@@ -1,8 +1,9 @@
 """Tests for meeting service auto-wiring."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+import structlog.testing
 
 from synthorg.communication.meeting.enums import MeetingProtocolType
 from synthorg.communication.meeting.models import AgentResponse
@@ -59,6 +60,7 @@ class TestStubAgentCaller:
         assert response.input_tokens == 0
         assert response.output_tokens == 0
         assert response.cost_usd == 0.0
+        assert response.content == ""
 
 
 @pytest.mark.unit
@@ -146,6 +148,8 @@ class TestAutoWireMeetings:
         from synthorg.api.auto_wire import auto_wire_meetings
 
         config = _default_config()
+        # Cannot use spec=MeetingScheduler: PEP 649 deferred
+        # annotation for MeetingsConfig causes NameError in inspect.
         explicit_sched = MagicMock()
 
         result = auto_wire_meetings(
@@ -163,6 +167,8 @@ class TestAutoWireMeetings:
 
         config = _default_config()
         explicit_orch = MagicMock(spec=MeetingOrchestrator)
+        # Cannot use spec=MeetingScheduler: PEP 649 deferred
+        # annotation for MeetingsConfig causes NameError in inspect.
         explicit_sched = MagicMock()
 
         result = auto_wire_meetings(
@@ -175,19 +181,74 @@ class TestAutoWireMeetings:
         assert result.meeting_orchestrator is explicit_orch
         assert result.meeting_scheduler is explicit_sched
 
-    def test_logs_auto_wire_events(self, capfd: pytest.CaptureFixture[str]) -> None:
+    def test_logs_auto_wire_events(self) -> None:
         from synthorg.api.auto_wire import auto_wire_meetings
 
         config = _default_config()
 
-        auto_wire_meetings(
+        with structlog.testing.capture_logs() as captured:
+            auto_wire_meetings(
+                effective_config=config,
+                meeting_orchestrator=None,
+                meeting_scheduler=None,
+                agent_registry=None,
+            )
+
+        services = [e.get("service") for e in captured]
+        assert "meeting_orchestrator" in services
+        assert "meeting_scheduler" in services
+
+    def test_with_agent_registry(self) -> None:
+        from synthorg.api.auto_wire import auto_wire_meetings
+
+        config = _default_config()
+        registry = MagicMock()
+
+        result = auto_wire_meetings(
             effective_config=config,
             meeting_orchestrator=None,
             meeting_scheduler=None,
-            agent_registry=None,
+            agent_registry=registry,
         )
 
-        captured = capfd.readouterr()
-        output = captured.out + captured.err
-        assert "meeting_orchestrator" in output
-        assert "meeting_scheduler" in output
+        assert isinstance(result.meeting_orchestrator, MeetingOrchestrator)
+        assert isinstance(result.meeting_scheduler, MeetingScheduler)
+        assert isinstance(
+            result.meeting_scheduler._resolver,
+            RegistryParticipantResolver,
+        )
+
+
+@pytest.mark.unit
+class TestWireMeetingOrchestratorError:
+    """Tests for error propagation in meeting wiring helpers."""
+
+    def test_orchestrator_creation_failure_propagates(self) -> None:
+        from synthorg.api.auto_wire import _wire_meeting_orchestrator
+
+        with (
+            patch(
+                "synthorg.api.auto_wire._build_protocol_registry",
+                side_effect=RuntimeError("boom"),
+            ),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            _wire_meeting_orchestrator()
+
+    def test_scheduler_creation_failure_propagates(self) -> None:
+        from synthorg.api.auto_wire import (
+            _wire_meeting_orchestrator,
+            _wire_meeting_scheduler,
+        )
+
+        config = _default_config()
+        orchestrator = _wire_meeting_orchestrator()
+
+        with (
+            patch(
+                "synthorg.api.auto_wire._select_participant_resolver",
+                side_effect=RuntimeError("resolver-error"),
+            ),
+            pytest.raises(RuntimeError, match="resolver-error"),
+        ):
+            _wire_meeting_scheduler(config, orchestrator, None)
