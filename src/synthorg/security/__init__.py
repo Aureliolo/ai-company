@@ -17,6 +17,7 @@ Public API:
 - ``SecurityInterceptionStrategy`` -- protocol for the ToolInvoker.
 - ``ActionTypeRegistry`` / ``ActionTypeCategory`` -- action taxonomy.
 - ``RuleEngine`` / ``SecurityRule`` -- rule evaluation.
+- ``CustomPolicyRule`` -- user-defined policy rule wrapper.
 """
 
 from synthorg.security.action_types import (
@@ -55,6 +56,7 @@ from synthorg.security.output_scan_policy_factory import (
 )
 from synthorg.security.output_scanner import OutputScanner
 from synthorg.security.protocol import SecurityInterceptionStrategy
+from synthorg.security.rules.custom_policy_rule import CustomPolicyRule
 from synthorg.security.rules.engine import RuleEngine
 from synthorg.security.rules.protocol import SecurityRule
 from synthorg.security.service import SecOpsService
@@ -66,6 +68,7 @@ __all__ = [
     "AuditEntry",
     "AuditLog",
     "AutonomyTieredPolicy",
+    "CustomPolicyRule",
     "EvaluationConfidence",
     "LlmFallbackConfig",
     "LlmFallbackErrorPolicy",

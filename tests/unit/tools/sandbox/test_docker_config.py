@@ -113,3 +113,107 @@ class TestDockerSandboxConfigBounds:
             DockerSandboxConfig(
                 network_overrides={"web": "overlay"},
             )
+
+
+class TestDockerSandboxConfigAllowedHostsValidation:
+    """allowed_hosts entries must be host:port format."""
+
+    def test_valid_host_port_accepted(self) -> None:
+        config = DockerSandboxConfig(
+            allowed_hosts=("example.com:443", "db.local:5432"),
+        )
+        assert config.allowed_hosts == ("example.com:443", "db.local:5432")
+
+    def test_ip_host_port_accepted(self) -> None:
+        config = DockerSandboxConfig(
+            allowed_hosts=("192.168.1.1:8080",),
+        )
+        assert config.allowed_hosts == ("192.168.1.1:8080",)
+
+    def test_missing_port_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="host:port"):
+            DockerSandboxConfig(allowed_hosts=("example.com",))
+
+    def test_empty_host_rejected(self) -> None:
+        with pytest.raises(ValidationError, match=r"host.*empty"):
+            DockerSandboxConfig(allowed_hosts=(":443",))
+
+    def test_invalid_port_not_a_number_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="port"):
+            DockerSandboxConfig(allowed_hosts=("example.com:abc",))
+
+    def test_port_zero_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="port"):
+            DockerSandboxConfig(allowed_hosts=("example.com:0",))
+
+    def test_port_exceeds_max_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="port"):
+            DockerSandboxConfig(allowed_hosts=("example.com:65536",))
+
+    def test_port_at_max_accepted(self) -> None:
+        config = DockerSandboxConfig(
+            allowed_hosts=("example.com:65535",),
+        )
+        assert config.allowed_hosts == ("example.com:65535",)
+
+    def test_port_one_accepted(self) -> None:
+        config = DockerSandboxConfig(
+            allowed_hosts=("example.com:1",),
+        )
+        assert config.allowed_hosts == ("example.com:1",)
+
+    def test_multiple_colons_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="host:port"):
+            DockerSandboxConfig(
+                allowed_hosts=("host:80:extra",),
+            )
+
+    def test_empty_tuple_accepted(self) -> None:
+        config = DockerSandboxConfig(allowed_hosts=())
+        assert config.allowed_hosts == ()
+
+
+class TestDockerSandboxConfigHostNetworkWithAllowedHosts:
+    """network='host' with allowed_hosts is rejected."""
+
+    def test_host_network_with_allowed_hosts_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match=r"allowed_hosts.*host",
+        ):
+            DockerSandboxConfig(
+                network="host",
+                allowed_hosts=("example.com:443",),
+            )
+
+    def test_host_network_without_allowed_hosts_accepted(self) -> None:
+        config = DockerSandboxConfig(network="host")
+        assert config.network == "host"
+        assert config.allowed_hosts == ()
+
+    def test_bridge_network_with_allowed_hosts_accepted(self) -> None:
+        config = DockerSandboxConfig(
+            network="bridge",
+            allowed_hosts=("example.com:443",),
+        )
+        assert config.network == "bridge"
+
+
+class TestDockerSandboxConfigNetworkEnforcementSettings:
+    """Tunable network enforcement settings have correct defaults."""
+
+    def test_dns_allowed_default_true(self) -> None:
+        config = DockerSandboxConfig()
+        assert config.dns_allowed is True
+
+    def test_loopback_allowed_default_true(self) -> None:
+        config = DockerSandboxConfig()
+        assert config.loopback_allowed is True
+
+    def test_dns_allowed_can_be_disabled(self) -> None:
+        config = DockerSandboxConfig(dns_allowed=False)
+        assert config.dns_allowed is False
+
+    def test_loopback_allowed_can_be_disabled(self) -> None:
+        config = DockerSandboxConfig(loopback_allowed=False)
+        assert config.loopback_allowed is False

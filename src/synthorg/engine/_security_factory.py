@@ -8,10 +8,15 @@ from typing import TYPE_CHECKING
 
 from synthorg.engine.errors import ExecutionStateError
 from synthorg.observability import get_logger
-from synthorg.observability.events.security import SECURITY_DISABLED
+from synthorg.observability.events.security import (
+    SECURITY_CONFIG_LOADED,
+    SECURITY_DISABLED,
+)
 from synthorg.security.audit import AuditLog  # noqa: TC001
+from synthorg.security.config import SecurityConfig  # noqa: TC001
 from synthorg.security.output_scanner import OutputScanner
 from synthorg.security.rules.credential_detector import CredentialDetector
+from synthorg.security.rules.custom_policy_rule import CustomPolicyRule
 from synthorg.security.rules.data_leak_detector import DataLeakDetector
 from synthorg.security.rules.destructive_op_detector import (
     DestructiveOpDetector,
@@ -29,7 +34,6 @@ if TYPE_CHECKING:
     from synthorg.api.approval_store import ApprovalStore
     from synthorg.core.agent import AgentIdentity
     from synthorg.security.autonomy.models import EffectiveAutonomy
-    from synthorg.security.config import SecurityConfig
     from synthorg.security.protocol import SecurityInterceptionStrategy
     from synthorg.tools.registry import ToolRegistry
 
@@ -80,32 +84,7 @@ def make_security_interceptor(
         return None
 
     cfg = security_config
-    re_cfg = cfg.rule_engine
-    policy_validator = PolicyValidator(
-        hard_deny_action_types=frozenset(cfg.hard_deny_action_types),
-        auto_approve_action_types=frozenset(cfg.auto_approve_action_types),
-    )
-    detectors: list[
-        PolicyValidator
-        | CredentialDetector
-        | PathTraversalDetector
-        | DestructiveOpDetector
-        | DataLeakDetector
-    ] = [policy_validator]
-    if re_cfg.credential_patterns_enabled:
-        detectors.append(CredentialDetector())
-    if re_cfg.path_traversal_detection_enabled:
-        detectors.append(PathTraversalDetector())
-    if re_cfg.destructive_op_detection_enabled:
-        detectors.append(DestructiveOpDetector())
-    if re_cfg.data_leak_detection_enabled:
-        detectors.append(DataLeakDetector())
-
-    rule_engine = RuleEngine(
-        rules=tuple(detectors),
-        risk_classifier=RiskClassifier(),
-        config=re_cfg,
-    )
+    rule_engine = _build_rule_engine(cfg)
     return SecOpsService(
         config=cfg,
         rule_engine=rule_engine,
@@ -114,6 +93,57 @@ def make_security_interceptor(
         approval_store=approval_store,
         effective_autonomy=effective_autonomy,
         risk_classifier=DefaultRiskTierClassifier(),
+    )
+
+
+def _build_rule_engine(cfg: SecurityConfig) -> RuleEngine:
+    """Assemble the rule engine with built-in detectors and custom policies."""
+    re_cfg = cfg.rule_engine
+    policy_validator = PolicyValidator(
+        hard_deny_action_types=frozenset(cfg.hard_deny_action_types),
+        auto_approve_action_types=frozenset(cfg.auto_approve_action_types),
+    )
+    rules: list[
+        PolicyValidator
+        | CredentialDetector
+        | PathTraversalDetector
+        | DestructiveOpDetector
+        | DataLeakDetector
+        | CustomPolicyRule
+    ] = [policy_validator]
+
+    # When custom_allow_bypasses_detectors is True, custom policies go
+    # right after the policy validator (before detectors) so a custom
+    # ALLOW can short-circuit security scanning.  Otherwise (default),
+    # custom policies go after all detectors -- security scanning
+    # always runs first.
+    custom_rules = [CustomPolicyRule(p) for p in cfg.custom_policies if p.enabled]
+    if re_cfg.custom_allow_bypasses_detectors:
+        rules.extend(custom_rules)
+
+    if re_cfg.credential_patterns_enabled:
+        rules.append(CredentialDetector())
+    if re_cfg.path_traversal_detection_enabled:
+        rules.append(PathTraversalDetector())
+    if re_cfg.destructive_op_detection_enabled:
+        rules.append(DestructiveOpDetector())
+    if re_cfg.data_leak_detection_enabled:
+        rules.append(DataLeakDetector())
+
+    if not re_cfg.custom_allow_bypasses_detectors:
+        rules.extend(custom_rules)
+
+    if custom_rules:
+        logger.debug(
+            SECURITY_CONFIG_LOADED,
+            custom_policy_count=len(custom_rules),
+            bypasses_detectors=re_cfg.custom_allow_bypasses_detectors,
+        )
+
+    return RuleEngine(
+        rules=tuple(rules),
+        risk_classifier=RiskClassifier(),
+        config=re_cfg,
     )
 
 

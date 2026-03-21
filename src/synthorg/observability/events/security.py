@@ -45,3 +45,6 @@ SECURITY_LLM_EVAL_NO_PROVIDER: Final[str] = "security.llm_eval.no_provider"
 SECURITY_LLM_EVAL_SKIPPED_FULL_AUTONOMY: Final[str] = (
     "security.llm_eval.skipped_full_autonomy"
 )
+
+# Custom policy events.
+SECURITY_CUSTOM_POLICY_MATCHED: Final[str] = "security.custom_policy.matched"

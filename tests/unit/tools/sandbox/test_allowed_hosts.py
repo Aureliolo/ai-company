@@ -1,0 +1,155 @@
+"""Tests for sandbox allowed_hosts network enforcement in container config."""
+
+from pathlib import Path
+
+import pytest
+
+from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
+from synthorg.tools.sandbox.docker_sandbox import DockerSandbox
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+def _build_config(
+    tmp_path: Path,
+    *,
+    network: str = "bridge",
+    allowed_hosts: tuple[str, ...] = ("example.com:443",),
+    dns_allowed: bool = True,
+    loopback_allowed: bool = True,
+) -> dict:
+    """Build container config for the given sandbox settings."""
+    config = DockerSandboxConfig(
+        network=network,  # type: ignore[arg-type]
+        allowed_hosts=allowed_hosts,
+        dns_allowed=dns_allowed,
+        loopback_allowed=loopback_allowed,
+    )
+    sandbox = DockerSandbox(config=config, workspace=tmp_path)
+    return sandbox._build_container_config(
+        command="echo",
+        args=("hello",),
+        container_cwd="/workspace",
+        env_overrides=None,
+    )
+
+
+# -- Enforcement activated -------------------------------------------
+
+
+class TestAllowedHostsEnforcementActive:
+    """When allowed_hosts is set and network is bridge, enforcement activates."""
+
+    def test_sandbox_allowed_hosts_env_set(self, tmp_path: Path) -> None:
+        result = _build_config(tmp_path)
+        env = result["Env"]
+        matches = [e for e in env if e.startswith("SANDBOX_ALLOWED_HOSTS=")]
+        assert len(matches) == 1
+        assert matches[0] == "SANDBOX_ALLOWED_HOSTS=example.com:443"
+
+    def test_multiple_hosts_comma_separated(self, tmp_path: Path) -> None:
+        result = _build_config(
+            tmp_path,
+            allowed_hosts=("api.example.com:443", "db.local:5432"),
+        )
+        env = result["Env"]
+        hosts_env = next(e for e in env if e.startswith("SANDBOX_ALLOWED_HOSTS="))
+        assert hosts_env == ("SANDBOX_ALLOWED_HOSTS=api.example.com:443,db.local:5432")
+
+    def test_cap_add_includes_net_admin(self, tmp_path: Path) -> None:
+        result = _build_config(tmp_path)
+        cap_add = result["HostConfig"]["CapAdd"]
+        assert "NET_ADMIN" in cap_add
+        assert "NET_RAW" in cap_add
+
+    def test_user_set_to_root(self, tmp_path: Path) -> None:
+        result = _build_config(tmp_path)
+        assert result["User"] == "root"
+
+    def test_entrypoint_set_to_sandbox_init(self, tmp_path: Path) -> None:
+        result = _build_config(tmp_path)
+        assert result["Entrypoint"] == ["/usr/local/bin/sandbox-init"]
+
+    def test_cap_drop_all_still_present(self, tmp_path: Path) -> None:
+        result = _build_config(tmp_path)
+        assert result["HostConfig"]["CapDrop"] == ["ALL"]
+
+
+# -- DNS and loopback settings ---------------------------------------
+
+
+class TestAllowedHostsDnsLoopbackSettings:
+    """DNS and loopback settings are passed as environment variables."""
+
+    def test_dns_allowed_env_set_true(self, tmp_path: Path) -> None:
+        result = _build_config(tmp_path, dns_allowed=True)
+        env = result["Env"]
+        assert "SANDBOX_DNS_ALLOWED=1" in env
+
+    def test_dns_allowed_env_set_false(self, tmp_path: Path) -> None:
+        result = _build_config(tmp_path, dns_allowed=False)
+        env = result["Env"]
+        assert "SANDBOX_DNS_ALLOWED=0" in env
+
+    def test_loopback_allowed_env_set_true(self, tmp_path: Path) -> None:
+        result = _build_config(tmp_path, loopback_allowed=True)
+        env = result["Env"]
+        assert "SANDBOX_LOOPBACK_ALLOWED=1" in env
+
+    def test_loopback_allowed_env_set_false(self, tmp_path: Path) -> None:
+        result = _build_config(tmp_path, loopback_allowed=False)
+        env = result["Env"]
+        assert "SANDBOX_LOOPBACK_ALLOWED=0" in env
+
+
+# -- Enforcement NOT activated ---------------------------------------
+
+
+class TestAllowedHostsEnforcementInactive:
+    """No enforcement when conditions are not met."""
+
+    def test_no_enforcement_when_hosts_empty(self, tmp_path: Path) -> None:
+        config = DockerSandboxConfig(network="bridge")
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+        result = sandbox._build_container_config(
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+        env = result["Env"]
+        assert not any(e.startswith("SANDBOX_ALLOWED_HOSTS=") for e in env)
+        assert "CapAdd" not in result["HostConfig"]
+        assert "User" not in result
+        assert "Entrypoint" not in result
+
+    def test_no_enforcement_when_network_none(self, tmp_path: Path) -> None:
+        config = DockerSandboxConfig(
+            network="none",
+            allowed_hosts=("example.com:443",),
+        )
+        sandbox = DockerSandbox(config=config, workspace=tmp_path)
+        result = sandbox._build_container_config(
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+        env = result["Env"]
+        assert not any(e.startswith("SANDBOX_ALLOWED_HOSTS=") for e in env)
+        assert "CapAdd" not in result["HostConfig"]
+        assert "User" not in result
+        assert "Entrypoint" not in result
+
+    def test_default_config_no_enforcement(self, tmp_path: Path) -> None:
+        """Default config (network=none, no hosts) has no enforcement."""
+        sandbox = DockerSandbox(workspace=tmp_path)
+        result = sandbox._build_container_config(
+            command="echo",
+            args=(),
+            container_cwd="/workspace",
+            env_overrides=None,
+        )
+        assert "CapAdd" not in result["HostConfig"]
+        assert "User" not in result
+        assert "Entrypoint" not in result

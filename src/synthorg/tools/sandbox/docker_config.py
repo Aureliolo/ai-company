@@ -11,6 +11,9 @@ from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 logger = get_logger(__name__)
 
 _VALID_NETWORK_MODES = frozenset({"none", "bridge", "host"})
+_MIN_PORT = 1
+_MAX_PORT = 65535
+_HOST_PORT_PARTS = 2
 
 
 class DockerSandboxConfig(BaseModel):
@@ -21,6 +24,11 @@ class DockerSandboxConfig(BaseModel):
         network: Default Docker network mode.
         network_overrides: Per-category network mode overrides.
         allowed_hosts: Host:port allowlist for network filtering.
+        dns_allowed: Allow outbound DNS when ``allowed_hosts`` restricts
+            network.  Default ``True`` (needed for hostname resolution).
+            Set to ``False`` to require IP addresses in ``allowed_hosts``.
+        loopback_allowed: Allow loopback traffic in restricted network
+            mode.  Default ``True``.
         memory_limit: Container memory limit (Docker format).
         cpu_limit: CPU core limit for the container.
         timeout_seconds: Default command timeout in seconds.
@@ -45,6 +53,17 @@ class DockerSandboxConfig(BaseModel):
     allowed_hosts: tuple[NotBlankStr, ...] = Field(
         default=(),
         description="Host:port allowlist for network filtering",
+    )
+    dns_allowed: bool = Field(
+        default=True,
+        description=(
+            "Allow outbound DNS (port 53) when allowed_hosts restricts "
+            "network; set to False to require IP addresses"
+        ),
+    )
+    loopback_allowed: bool = Field(
+        default=True,
+        description="Allow loopback traffic in restricted network mode",
     )
     memory_limit: NotBlankStr = Field(
         default="512m",
@@ -99,4 +118,68 @@ class DockerSandboxConfig(BaseModel):
                     reason=msg,
                 )
                 raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_allowed_hosts(self) -> Self:
+        """Validate that allowed_hosts entries use ``host:port`` format."""
+        for entry in self.allowed_hosts:
+            parts = entry.split(":")
+            if len(parts) != _HOST_PORT_PARTS:
+                msg = (
+                    f"allowed_hosts entry {entry!r} must use "
+                    "'host:port' format (exactly one ':')"
+                )
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    field="allowed_hosts",
+                    reason=msg,
+                )
+                raise ValueError(msg)
+            host, port_str = parts
+            if not host:
+                msg = f"host part of {entry!r} must not be empty"
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    field="allowed_hosts",
+                    reason=msg,
+                )
+                raise ValueError(msg)
+            try:
+                port = int(port_str)
+            except ValueError as exc:
+                msg = f"port {port_str!r} in {entry!r} is not a valid integer"
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    field="allowed_hosts",
+                    reason=msg,
+                )
+                raise ValueError(msg) from exc
+            if port < _MIN_PORT or port > _MAX_PORT:
+                msg = (
+                    f"port {port} in {entry!r} must be "
+                    f"between {_MIN_PORT} and {_MAX_PORT}"
+                )
+                logger.warning(
+                    CONFIG_VALIDATION_FAILED,
+                    field="allowed_hosts",
+                    reason=msg,
+                )
+                raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_no_allowed_hosts_with_host_network(self) -> Self:
+        """Reject allowed_hosts with network='host' (unsafe)."""
+        if self.allowed_hosts and self.network == "host":
+            msg = (
+                "allowed_hosts cannot be used with network='host' -- "
+                "iptables rules would affect the host system"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="allowed_hosts",
+                reason=msg,
+            )
+            raise ValueError(msg)
         return self

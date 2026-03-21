@@ -158,6 +158,11 @@ class RuleEngineConfig(BaseModel):
         destructive_op_detection_enabled: Detect destructive operations.
         path_traversal_detection_enabled: Detect path traversal attacks.
         max_argument_length: Maximum argument string length for scanning.
+        custom_allow_bypasses_detectors: When ``True``, custom ALLOW
+            policies are placed before detectors, allowing them to
+            short-circuit security scanning.  When ``False`` (default),
+            custom policies are placed after all detectors so security
+            scanning always runs first.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -167,6 +172,7 @@ class RuleEngineConfig(BaseModel):
     destructive_op_detection_enabled: bool = True
     path_traversal_detection_enabled: bool = True
     max_argument_length: int = Field(default=100_000, gt=0)
+    custom_allow_bypasses_detectors: bool = False
 
 
 class SecurityConfig(BaseModel):

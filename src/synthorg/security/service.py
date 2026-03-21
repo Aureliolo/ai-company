@@ -144,13 +144,11 @@ class SecOpsService:
         )
 
         if config.custom_policies:
-            logger.warning(
+            enabled_count = sum(1 for p in config.custom_policies if p.enabled)
+            logger.info(
                 SECURITY_CONFIG_LOADED,
-                note=(
-                    "custom_policies configured but not yet "
-                    "evaluated -- enforcement is not implemented"
-                ),
-                policy_count=len(config.custom_policies),
+                custom_policy_count=len(config.custom_policies),
+                enabled_count=enabled_count,
             )
 
     async def evaluate_pre_tool(

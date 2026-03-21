@@ -29,6 +29,7 @@ from synthorg.observability.events.docker import (
     DOCKER_EXECUTE_TIMEOUT,
     DOCKER_HEALTH_CHECK,
 )
+from synthorg.observability.events.sandbox import SANDBOX_NETWORK_ENFORCEMENT
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
 from synthorg.tools.sandbox.result import SandboxResult
@@ -226,10 +227,8 @@ class DockerSandbox:
         }
         if self._config.runtime is not None:
             host_config["Runtime"] = self._config.runtime
-        # TODO(#50): allowed_hosts is not yet enforced at runtime;
-        # needs iptables/nftables rules or Docker network plugin.
 
-        return {
+        container_config: dict[str, Any] = {
             "Image": self._config.image,
             "Cmd": [command, *args],
             "WorkingDir": container_cwd,
@@ -238,6 +237,30 @@ class DockerSandbox:
             "AttachStdout": True,
             "AttachStderr": True,
         }
+
+        # Enforce allowed_hosts via iptables in the sandbox-init
+        # entrypoint.  Only active when hosts are configured and
+        # network is not "none" (no network = no enforcement needed).
+        if self._config.allowed_hosts and self._config.network != "none":
+            hosts_csv = ",".join(self._config.allowed_hosts)
+            env_list.append(f"SANDBOX_ALLOWED_HOSTS={hosts_csv}")
+            dns_flag = "1" if self._config.dns_allowed else "0"
+            lo_flag = "1" if self._config.loopback_allowed else "0"
+            env_list.append(f"SANDBOX_DNS_ALLOWED={dns_flag}")
+            env_list.append(f"SANDBOX_LOOPBACK_ALLOWED={lo_flag}")
+            host_config["CapAdd"] = ["NET_ADMIN", "NET_RAW"]
+            container_config["User"] = "root"
+            container_config["Entrypoint"] = [
+                "/usr/local/bin/sandbox-init",
+            ]
+            logger.debug(
+                SANDBOX_NETWORK_ENFORCEMENT,
+                allowed_hosts=hosts_csv,
+                dns_allowed=self._config.dns_allowed,
+                loopback_allowed=self._config.loopback_allowed,
+            )
+
+        return container_config
 
     @staticmethod
     def _parse_memory_limit(limit: str) -> int:
