@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.4.4](https://github.com/Aureliolo/synthorg/compare/v0.4.3...v0.4.4) (2026-03-21)
+
+
+### Features
+
+* enforce custom security policies and sandbox allowed_hosts ([#664](https://github.com/Aureliolo/synthorg/issues/664)) ([71d8839](https://github.com/Aureliolo/synthorg/commit/71d88396b6fd22810ace4ff10c4cfbea746caac5))
+
+
+### Bug Fixes
+
+* overhaul CLI output, fix setup 401, add cleanup command ([#663](https://github.com/Aureliolo/synthorg/issues/663)) ([fb01c78](https://github.com/Aureliolo/synthorg/commit/fb01c78589f4e3fc1ff8263e2b065ac5346b8b0d))
+* remediate flaky test patterns and add missing test coverage ([#662](https://github.com/Aureliolo/synthorg/issues/662)) ([bbc94e5](https://github.com/Aureliolo/synthorg/commit/bbc94e5c33e12ecaf9a648e36e961cd1d74768ee))
+* use PrimeVue native Password component for all secret fields ([#661](https://github.com/Aureliolo/synthorg/issues/661)) ([926cb15](https://github.com/Aureliolo/synthorg/commit/926cb1581c56b3718053ad81146553ce4c4f744a))
+
+
+### Performance
+
+* remove DAST scan from push-to-main trigger ([#665](https://github.com/Aureliolo/synthorg/issues/665)) ([3135b0f](https://github.com/Aureliolo/synthorg/commit/3135b0ff453f603d82535074f676228e79283167))
+
+
+### Documentation
+
+* add WIP banner, clean up roadmap, remove stale placeholders ([#667](https://github.com/Aureliolo/synthorg/issues/667)) ([194f637](https://github.com/Aureliolo/synthorg/commit/194f637be447ce9b4d5bace612591230f7bbab73))
+* fix incorrect commands, vendor name leaks, and site gaps ([#660](https://github.com/Aureliolo/synthorg/issues/660)) ([b0f7a23](https://github.com/Aureliolo/synthorg/commit/b0f7a235070ad398e95004028936141fe528e693))
+
+
+### Maintenance
+
+* replace em-dashes with ASCII dashes and add prevention hook ([#659](https://github.com/Aureliolo/synthorg/issues/659)) ([cf0a500](https://github.com/Aureliolo/synthorg/commit/cf0a500e4ff854b47a63ff0ed7a9382cb469bda4))
+* trim CLAUDE.md from 40.2k to 20.5k chars ([#657](https://github.com/Aureliolo/synthorg/issues/657)) ([db5223f](https://github.com/Aureliolo/synthorg/commit/db5223fe123a61df95c849f1a43f3c0813943f86))
+
 ## [0.4.3](https://github.com/Aureliolo/synthorg/compare/v0.4.2...v0.4.3) (2026-03-21)
 
 
