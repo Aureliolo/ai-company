@@ -61,6 +61,9 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
     }
   }
 
+  // validator_pattern is sourced from the trusted backend SettingDefinition
+  // schema, not end-user input. Mitigations: pattern length capped at 256 chars,
+  // value length capped at MAX_SETTING_VALUE_LENGTH (8192).
   if (validator_pattern !== null) {
     if (validator_pattern.length > 256) {
       console.warn(

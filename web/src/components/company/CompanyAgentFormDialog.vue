@@ -41,33 +41,47 @@ const memoryJson = ref('{}')
 const toolsJson = ref('{}')
 const authorityJson = ref('{}')
 
-// Reset form when dialog opens or agent changes
-watch(() => props.visible, (vis) => {
-  if (!vis) return
-  if (props.mode === 'edit' && props.agent) {
-    name.value = props.agent.name
-    role.value = props.agent.role
-    department.value = props.agent.department
-    level.value = props.agent.level
-    autonomyLevel.value = props.agent.autonomy_level ?? null
-    personalityJson.value = JSON.stringify(props.agent.personality ?? {}, null, 2)
-    modelJson.value = JSON.stringify(props.agent.model ?? {}, null, 2)
-    memoryJson.value = JSON.stringify(props.agent.memory ?? {}, null, 2)
-    toolsJson.value = JSON.stringify(props.agent.tools ?? {}, null, 2)
-    authorityJson.value = JSON.stringify(props.agent.authority ?? {}, null, 2)
-  } else {
-    name.value = ''
-    role.value = ''
-    department.value = ''
-    level.value = 'mid'
-    autonomyLevel.value = null
-    personalityJson.value = '{}'
-    modelJson.value = '{}'
-    memoryJson.value = '{}'
-    toolsJson.value = '{}'
-    authorityJson.value = '{}'
-  }
-})
+// Reset form when dialog opens, mode changes, or agent changes
+watch(
+  [() => props.visible, () => props.mode, () => props.agent],
+  ([vis]) => {
+    if (!vis) return
+    jsonError.value = null
+    if (props.mode === 'edit' && props.agent) {
+      name.value = props.agent.name
+      role.value = props.agent.role
+      department.value = props.agent.department
+      level.value = props.agent.level
+      autonomyLevel.value = props.agent.autonomy_level ?? null
+      personalityJson.value = JSON.stringify(
+        props.agent.personality ?? {}, null, 2,
+      )
+      modelJson.value = JSON.stringify(
+        props.agent.model ?? {}, null, 2,
+      )
+      memoryJson.value = JSON.stringify(
+        props.agent.memory ?? {}, null, 2,
+      )
+      toolsJson.value = JSON.stringify(
+        props.agent.tools ?? {}, null, 2,
+      )
+      authorityJson.value = JSON.stringify(
+        props.agent.authority ?? {}, null, 2,
+      )
+    } else {
+      name.value = ''
+      role.value = ''
+      department.value = ''
+      level.value = 'mid'
+      autonomyLevel.value = null
+      personalityJson.value = '{}'
+      modelJson.value = '{}'
+      memoryJson.value = '{}'
+      toolsJson.value = '{}'
+      authorityJson.value = '{}'
+    }
+  },
+)
 
 const jsonError = ref<string | null>(null)
 

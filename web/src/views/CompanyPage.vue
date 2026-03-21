@@ -126,9 +126,16 @@ async function saveAgent(agent: AgentConfigEntry) {
     updated.push(agent)
   }
   try {
-    await settingsStore.updateSetting('company', 'agents', JSON.stringify(updated))
+    await settingsStore.updateSetting(
+      'company', 'agents', JSON.stringify(updated),
+    )
     agentDialogVisible.value = false
-    toast.add({ severity: 'success', summary: `Agent ${agent.name.slice(0, 64)} ${agentDialogMode.value === 'create' ? 'added' : 'updated'}`, life: 3000 })
+    const action = agentDialogMode.value === 'create' ? 'added' : 'updated'
+    toast.add({
+      severity: 'success',
+      summary: `Agent ${agent.name.slice(0, 64)} ${action}`,
+      life: 3000,
+    })
   } catch (err) {
     toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
   }
@@ -174,9 +181,16 @@ async function saveDept(dept: DepartmentEntry) {
     updated.push(dept)
   }
   try {
-    await settingsStore.updateSetting('company', 'departments', JSON.stringify(updated))
+    await settingsStore.updateSetting(
+      'company', 'departments', JSON.stringify(updated),
+    )
     deptDialogVisible.value = false
-    toast.add({ severity: 'success', summary: `Department ${dept.name.slice(0, 64)} ${deptDialogMode.value === 'create' ? 'added' : 'updated'}`, life: 3000 })
+    const action = deptDialogMode.value === 'create' ? 'added' : 'updated'
+    toast.add({
+      severity: 'success',
+      summary: `Department ${dept.name.slice(0, 64)} ${action}`,
+      life: 3000,
+    })
   } catch (err) {
     toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
   }
