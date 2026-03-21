@@ -1,4 +1,4 @@
-"""Timeout policy implementations — wait, deny, tiered, escalation chain."""
+"""Timeout policy implementations -- wait, deny, tiered, escalation chain."""
 
 from synthorg.core.approval import ApprovalItem  # noqa: TC001
 from synthorg.core.enums import ApprovalRiskLevel, TimeoutActionType
@@ -22,7 +22,7 @@ _SECONDS_PER_MINUTE = 60.0
 
 
 class WaitForeverPolicy:
-    """Always returns WAIT — no automatic timeout action.
+    """Always returns WAIT -- no automatic timeout action.
 
     This is the safest default: approvals remain pending until a
     human responds.
@@ -49,7 +49,7 @@ class WaitForeverPolicy:
         )
         return TimeoutAction(
             action=TimeoutActionType.WAIT,
-            reason="Wait-forever policy — no automatic action",
+            reason="Wait-forever policy -- no automatic action",
         )
 
 
@@ -90,7 +90,7 @@ class DenyOnTimeoutPolicy:
             return TimeoutAction(
                 action=TimeoutActionType.WAIT,
                 reason=(
-                    f"Waiting — {elapsed_seconds:.0f}s of "
+                    f"Waiting -- {elapsed_seconds:.0f}s of "
                     f"{self._timeout_seconds:.0f}s elapsed"
                 ),
             )
@@ -159,18 +159,18 @@ class TieredTimeoutPolicy:
             tier_config = self._tiers.get(risk_level.value)
 
         if tier_config is None:
-            # No tier configured for this risk level — wait (safe default).
+            # No tier configured for this risk level -- wait (safe default).
             logger.warning(
                 TIMEOUT_WAITING,
                 approval_id=item.id,
                 risk_level=risk_level.value,
                 available_tiers=sorted(self._tiers.keys()),
-                note="no tier config for this risk level — defaulting to wait",
+                note="no tier config for this risk level -- defaulting to wait",
             )
             return TimeoutAction(
                 action=TimeoutActionType.WAIT,
                 reason=(
-                    f"No tier config for risk level {risk_level.value!r} — waiting"
+                    f"No tier config for risk level {risk_level.value!r} -- waiting"
                 ),
             )
 
@@ -206,7 +206,7 @@ class TieredTimeoutPolicy:
                 risk_level=risk_level.value,
                 configured_action=effective_action.value,
                 note=(
-                    "auto-approve blocked for high/critical risk — overriding to DENY"
+                    "auto-approve blocked for high/critical risk -- overriding to DENY"
                 ),
             )
             effective_action = TimeoutActionType.DENY
@@ -271,11 +271,11 @@ class EscalationChainPolicy:
                 TIMEOUT_ESCALATED,
                 approval_id=item.id,
                 on_exhausted=self._on_chain_exhausted.value,
-                note="empty escalation chain — likely a configuration error",
+                note="empty escalation chain -- likely a configuration error",
             )
             return TimeoutAction(
                 action=self._on_chain_exhausted,
-                reason="Empty escalation chain — applying exhausted action",
+                reason="Empty escalation chain -- applying exhausted action",
             )
 
         cumulative_seconds = 0.0
@@ -284,7 +284,7 @@ class EscalationChainPolicy:
             step_end = cumulative_seconds + step_timeout
             if elapsed_seconds < step_end:
                 if idx == 0:
-                    # First step hasn't timed out yet — WAIT.
+                    # First step hasn't timed out yet -- WAIT.
                     logger.debug(
                         TIMEOUT_WAITING,
                         approval_id=item.id,
@@ -294,12 +294,12 @@ class EscalationChainPolicy:
                     return TimeoutAction(
                         action=TimeoutActionType.WAIT,
                         reason=(
-                            f"Waiting at {step.role!r} — "
+                            f"Waiting at {step.role!r} -- "
                             f"{elapsed_seconds:.0f}s of "
                             f"{step_end:.0f}s elapsed"
                         ),
                     )
-                # Previous step timed out — escalate to this step's role.
+                # Previous step timed out -- escalate to this step's role.
                 logger.info(
                     TIMEOUT_ESCALATED,
                     approval_id=item.id,
@@ -309,7 +309,7 @@ class EscalationChainPolicy:
                 return TimeoutAction(
                     action=TimeoutActionType.ESCALATE,
                     reason=(
-                        f"Escalated to {step.role!r} — {elapsed_seconds:.0f}s elapsed"
+                        f"Escalated to {step.role!r} -- {elapsed_seconds:.0f}s elapsed"
                     ),
                     escalate_to=step.role,
                 )
@@ -327,6 +327,6 @@ class EscalationChainPolicy:
             action=self._on_chain_exhausted,
             reason=(
                 f"Escalation chain exhausted after {elapsed_seconds:.0f}s "
-                f"— {self._on_chain_exhausted.value}"
+                f"-- {self._on_chain_exhausted.value}"
             ),
         )

@@ -68,7 +68,7 @@ class TestQuotaTrackerConstruction:
         sub = SubscriptionConfig()  # No quotas
         tracker = QuotaTracker(subscriptions={"test-provider": sub})
 
-        # Provider is known but has no quotas — should still be allowed
+        # Provider is known but has no quotas -- should still be allowed
         result = await tracker.check_quota("test-provider")
         assert result.allowed is True
 
@@ -240,7 +240,7 @@ class TestCheckQuota:
             ),
         )
 
-        # Exhaust daily tokens (exceed limit — tokens use > semantics)
+        # Exhaust daily tokens (exceed limit -- tokens use > semantics)
         await tracker.record_usage("test-provider", requests=5, tokens=10_001)
 
         result = await tracker.check_quota("test-provider")
@@ -263,7 +263,7 @@ class TestCheckQuota:
         result = await tracker.check_quota("test-provider")
         assert result.allowed is False
 
-        # Check in next hour (window rotated — check sees fresh window)
+        # Check in next hour (window rotated -- check sees fresh window)
         next_hour = datetime(2099, 1, 1, 1, 0, 0, tzinfo=UTC)
         with patch(
             "synthorg.budget.quota_tracker.datetime",

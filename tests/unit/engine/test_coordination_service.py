@@ -771,7 +771,7 @@ class TestMultiAgentCoordinator:
             decomp_result=decomp,
             routing_result=routing,
             exec_results=[
-                # Wave 0 fails — should stop before wave 1
+                # Wave 0 fails -- should stop before wave 1
                 make_exec_result("wave-0", [("sub-a", agent_id)], all_succeed=False),
             ],
         )

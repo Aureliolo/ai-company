@@ -88,7 +88,7 @@ def make_openrouter_config() -> dict[str, ProviderConfig]:
 
 
 def make_ollama_config() -> dict[str, ProviderConfig]:
-    """Provider config — local, no api_key, zero cost (Ollama-shaped)."""
+    """Provider config -- local, no api_key, zero cost (Ollama-shaped)."""
     return {
         "ollama": ProviderConfig(
             driver="litellm",

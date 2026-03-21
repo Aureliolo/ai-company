@@ -337,7 +337,7 @@ class TestPermissionDeniedToolCall:
             status=TaskStatus.ASSIGNED,
         )
 
-        # Tool category is DEPLOYMENT — not allowed at SANDBOXED level
+        # Tool category is DEPLOYMENT -- not allowed at SANDBOXED level
         tool = UppercaseTool(
             name="uppercase",
             description="Converts text to uppercase.",

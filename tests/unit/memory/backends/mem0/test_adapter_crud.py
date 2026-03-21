@@ -1,4 +1,4 @@
-"""Tests for Mem0 adapter — store, retrieve, get, delete, count."""
+"""Tests for Mem0 adapter -- store, retrieve, get, delete, count."""
 
 import builtins
 from unittest.mock import MagicMock

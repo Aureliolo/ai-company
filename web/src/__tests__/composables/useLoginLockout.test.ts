@@ -89,7 +89,7 @@ describe('useLoginLockout', () => {
     recordFailure(new Error('network'))
     recordFailure(makeAxiosError(500))
     recordFailure(makeAxiosError(422))
-    // 3 credential failures (401, 403, 422) — not yet at 5
+    // 3 credential failures (401, 403, 422) -- not yet at 5
     expect(locked.value).toBe(false)
   })
 })

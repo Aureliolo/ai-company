@@ -69,7 +69,7 @@ describe('unwrap (property-based)', () => {
         const response = mockResponse(body)
         try {
           const result = unwrap(response as unknown as AxiosResponse<ApiResponse<unknown>>)
-          // If it didn't throw, we got a value back — that's fine
+          // If it didn't throw, we got a value back -- that's fine
           expect(result).toBeDefined()
         } catch (err) {
           // Must throw a controlled Error, not crash with a TypeError

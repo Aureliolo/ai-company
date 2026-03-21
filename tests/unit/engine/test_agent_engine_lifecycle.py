@@ -537,7 +537,7 @@ class TestAgentEnginePostExecutionResilience:
         )
         te = ctx.task_execution
         assert te is not None
-        # Force into COMPLETED (terminal) — INTERRUPTED transition should fail
+        # Force into COMPLETED (terminal) -- INTERRUPTED transition should fail
         bad_te = te.model_copy(update={"status": TaskStatus.COMPLETED})
         ctx_bad = ctx.model_copy(update={"task_execution": bad_te})
 

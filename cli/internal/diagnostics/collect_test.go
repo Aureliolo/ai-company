@@ -231,7 +231,7 @@ func TestCheckPortsDetectsConflict(t *testing.T) {
 func TestCheckPortsNoConflict(t *testing.T) {
 	t.Parallel()
 
-	// Port 0 is not a connectable port — dialing 127.0.0.1:0 always fails.
+	// Port 0 is not a connectable port -- dialing 127.0.0.1:0 always fails.
 	conflicts := checkPorts(context.Background(), 0, 0)
 	if len(conflicts) != 0 {
 		t.Errorf("expected no conflicts, got %v", conflicts)

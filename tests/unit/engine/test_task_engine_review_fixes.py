@@ -76,7 +76,7 @@ class TestLifecycleLock:
         # Now race: stop and create in parallel
         stop_task = asyncio.create_task(eng.stop(timeout=2.0))
 
-        # Yield once to let stop() begin — both outcomes are valid
+        # Yield once to let stop() begin -- both outcomes are valid
         await asyncio.sleep(0)
 
         # The create should either succeed (if enqueued before stop)
@@ -627,7 +627,7 @@ class TestProcessingLoopExceptionRecovery:
             r1 = await eng.submit(m1)
             assert r1.success is False
 
-            # Second create succeeds — engine recovered
+            # Second create succeeds -- engine recovered
             m2 = CreateTaskMutation(
                 request_id="req-ok",
                 requested_by="alice",
@@ -660,7 +660,7 @@ class TestSnapshotNewStatusNone:
             config=TaskEngineConfig(publish_snapshots=True),
         )
         eng.start()
-        # Create then delete — delete snapshot has task=None and new_status=None
+        # Create then delete -- delete snapshot has task=None and new_status=None
         task = await eng.create_task(make_create_data(), requested_by="alice")
         await eng.delete_task(task.id, requested_by="alice")
         await eng.stop(timeout=2.0)

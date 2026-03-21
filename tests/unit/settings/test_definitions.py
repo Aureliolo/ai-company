@@ -6,7 +6,7 @@ error and that there are no duplicate registrations.
 
 import pytest
 
-import synthorg.settings.definitions  # noqa: F401 — trigger registration
+import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.settings.enums import SettingNamespace, SettingType
 from synthorg.settings.registry import SettingsRegistry, get_registry
 

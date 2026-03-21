@@ -1,6 +1,6 @@
 """Task assignment strategy implementations.
 
-Concrete strategies — Manual, RoleBased, LoadBalanced,
+Concrete strategies -- Manual, RoleBased, LoadBalanced,
 CostOptimized, Hierarchical, Auction.  The module-level
 ``STRATEGY_MAP`` (Hierarchical excluded; it requires
 explicit construction via ``build_strategy_map``) and the

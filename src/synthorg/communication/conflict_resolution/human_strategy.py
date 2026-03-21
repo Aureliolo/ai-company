@@ -1,7 +1,7 @@
 """Human escalation conflict resolution strategy (see Communication design page).
 
 Strategy 3: Escalate to human for resolution.  Returns a stub
-resolution with ``ESCALATED_TO_HUMAN`` outcome — actual human
+resolution with ``ESCALATED_TO_HUMAN`` outcome -- actual human
 approval queue integration depends on approval queue API (#37).
 """
 
@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 class HumanEscalationResolver:
     """Escalate conflicts to a human for resolution.
 
-    This is a stub implementation — the human approval queue (#37)
+    This is a stub implementation -- the human approval queue (#37)
     is a dependency.  Callers receive a proper resolution
     object with ``ESCALATED_TO_HUMAN`` outcome; no
     ``NotImplementedError`` is raised.
@@ -64,7 +64,7 @@ class HumanEscalationResolver:
             reasoning=(
                 "Conflict escalated to human for resolution. "
                 "Awaiting human decision (approval queue not yet "
-                "implemented — see #37)."
+                "implemented -- see #37)."
             ),
             resolved_at=datetime.now(UTC),
         )
@@ -76,7 +76,7 @@ class HumanEscalationResolver:
     ) -> tuple[DissentRecord, ...]:
         """Build dissent records for all positions in an escalated conflict.
 
-        For escalated conflicts, no agent "lost" — all positions
+        For escalated conflicts, no agent "lost" -- all positions
         are pending human review.  Each position gets a record to
         ensure the audit trail captures every stance.
 

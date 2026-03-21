@@ -21,7 +21,7 @@ class TestCloseSubprocessTransport:
 
     def test_noop_when_transport_attr_missing(self) -> None:
         """No-op when _transport attribute does not exist."""
-        proc = MagicMock(spec=[])  # empty spec — no _transport
+        proc = MagicMock(spec=[])  # empty spec -- no _transport
         close_subprocess_transport(proc)
 
     def test_noop_when_transport_is_closing(self) -> None:
@@ -58,7 +58,7 @@ class TestCloseSubprocessTransport:
         transport = MagicMock()
         transport.is_closing.side_effect = AttributeError("no method")
         proc._transport = transport
-        # Should not raise — is_closing() is now inside the try/except
+        # Should not raise -- is_closing() is now inside the try/except
         close_subprocess_transport(proc)
 
     def test_suppresses_is_closing_on_non_transport(self) -> None:

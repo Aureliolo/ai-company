@@ -1,4 +1,4 @@
-"""Tests for autonomy models — presets, config, effective autonomy, overrides."""
+"""Tests for autonomy models -- presets, config, effective autonomy, overrides."""
 
 from datetime import UTC, datetime
 

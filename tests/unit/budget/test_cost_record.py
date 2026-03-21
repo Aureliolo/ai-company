@@ -28,7 +28,7 @@ class TestCostRecord:
         assert sample_cost_record.cost_usd == 0.0315
 
     def test_all_required_fields(self) -> None:
-        """Ensure no defaults on required fields — all must be provided."""
+        """Ensure no defaults on required fields -- all must be provided."""
         with pytest.raises(ValidationError):
             CostRecord()  # type: ignore[call-arg]
 

@@ -21,7 +21,7 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "synthorg",
-	Short: "SynthOrg CLI — manage your synthetic organization",
+	Short: "SynthOrg CLI -- manage your synthetic organization",
 	Long: `SynthOrg CLI manages the lifecycle of your synthetic organization.
 
 Run 'synthorg init' to set up a new installation, then 'synthorg start'

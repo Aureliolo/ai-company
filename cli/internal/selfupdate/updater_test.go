@@ -182,7 +182,7 @@ func TestExtractFromTarGzNestedPath(t *testing.T) {
 	gw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gw)
 
-	// Binary in a subdirectory — extractFromTarGz checks filepath.Base.
+	// Binary in a subdirectory -- extractFromTarGz checks filepath.Base.
 	hdr := &tar.Header{Name: "synthorg_linux_amd64/synthorg", Mode: 0o755, Size: int64(len(content))}
 	if err := tw.WriteHeader(hdr); err != nil {
 		t.Fatal(err)
@@ -709,7 +709,7 @@ func TestDownloadNoChecksumRefused(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// Empty checksum URL — should refuse to download.
+	// Empty checksum URL -- should refuse to download.
 	_, err := Download(context.Background(), srv.URL, "", "")
 	if err == nil {
 		t.Fatal("expected error when checksum URL is empty")

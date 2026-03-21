@@ -1,4 +1,4 @@
-"""ReAct execution loop — think, act, observe.
+"""ReAct execution loop -- think, act, observe.
 
 Implements the ``ExecutionLoop`` protocol using the ReAct pattern:
 check shutdown -> check budget -> call LLM -> record turn ->

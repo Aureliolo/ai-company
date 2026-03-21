@@ -198,7 +198,7 @@ describe('useAuthStore', () => {
       expect(store.isAuthenticated).toBe(false)
     })
 
-    it('does not clear auth on 500 — re-throws', async () => {
+    it('does not clear auth on 500 -- re-throws', async () => {
       localStorage.setItem('auth_token', 'test-token')
       localStorage.setItem('auth_token_expires_at', String(Date.now() + 3600_000))
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})

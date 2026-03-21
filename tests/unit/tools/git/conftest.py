@@ -146,7 +146,7 @@ def merge_conflict_repo(git_repo: Path) -> Path:
     (git_repo / "README.md").write_text("# Main change\n")
     _run_git(["add", "."], git_repo)
     _run_git(["commit", "-m", "main change"], git_repo)
-    # Merge will fail with conflict — don't use check=True
+    # Merge will fail with conflict -- don't use check=True
     subprocess.run(
         ["git", "merge", "conflict-branch"],  # noqa: S607
         cwd=git_repo,

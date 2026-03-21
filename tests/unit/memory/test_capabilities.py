@@ -87,7 +87,7 @@ class _FakeUnlimitedCapabilities:
 
 
 class _IncompleteCapabilities:
-    """Missing required properties — should fail isinstance check."""
+    """Missing required properties -- should fail isinstance check."""
 
     @property
     def supported_categories(self) -> frozenset[MemoryCategory]:

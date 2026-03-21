@@ -1,7 +1,7 @@
 """Unit tests for ConfigResolver structural data accessors.
 
 Tests for ``get_json``, ``get_agents``, ``get_departments``, and
-``get_provider_configs`` — extracted from ``test_resolver.py`` to
+``get_provider_configs`` -- extracted from ``test_resolver.py`` to
 keep files under the 800-line limit.
 """
 
@@ -445,7 +445,7 @@ class TestGetProviderConfigs:
     async def test_fallback_returns_defensive_copy(
         self, mock_settings: AsyncMock
     ) -> None:
-        """Returned dict must be a copy — mutating it must not affect config."""
+        """Returned dict must be a copy -- mutating it must not affect config."""
         mock_settings.get.return_value = _make_value(
             "null",
             namespace=SettingNamespace.PROVIDERS,

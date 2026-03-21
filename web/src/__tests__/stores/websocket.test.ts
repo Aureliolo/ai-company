@@ -3,7 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useWebSocketStore } from '@/stores/websocket'
 import type { WsEvent } from '@/api/types'
 
-// Mock the auth API module — getWsTicket returns a one-time ticket
+// Mock the auth API module -- getWsTicket returns a one-time ticket
 vi.mock('@/api/endpoints/auth', () => ({
   getWsTicket: vi.fn().mockResolvedValue({ ticket: 'test-ticket-abc', expires_in: 30 }),
 }))
@@ -99,13 +99,13 @@ describe('useWebSocketStore', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(mockInstances).toHaveLength(1)
 
-    await store.connect() // should be no-op — already connected
+    await store.connect() // should be no-op -- already connected
     expect(mockInstances).toHaveLength(1) // no new WebSocket created
   })
 
   it('queues subscriptions when not connected and does not call send', () => {
     const store = useWebSocketStore()
-    // Don't connect first — subscribe while disconnected
+    // Don't connect first -- subscribe while disconnected
     store.subscribe(['tasks', 'agents'])
 
     // No WebSocket exists, so no send should have been called
@@ -277,7 +277,7 @@ describe('useWebSocketStore', () => {
       close = vi.fn()
       constructor(url: string) {
         this.url = url
-        // Simulate immediate connection failure — only fire onclose, never onopen
+        // Simulate immediate connection failure -- only fire onclose, never onopen
         setTimeout(() => {
           this.readyState = 3 // CLOSED
           this.onclose?.()
@@ -400,7 +400,7 @@ describe('useWebSocketStore', () => {
     })
 
     store.subscribe(['budget'])
-    // Should not throw — caught internally and queued for replay
+    // Should not throw -- caught internally and queued for replay
     expect(store.connected).toBe(true)
   })
 

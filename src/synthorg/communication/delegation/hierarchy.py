@@ -18,7 +18,7 @@ class HierarchyResolver:
 
     Built from three sources, in priority order:
 
-    1. Explicit ``ReportingLine.supervisor`` (most specific) — overrides
+    1. Explicit ``ReportingLine.supervisor`` (most specific) -- overrides
        team-derived relationships.
     2. ``Team.lead`` for team members
     3. ``Department.head`` for team leads without explicit reporting
@@ -53,7 +53,7 @@ class HierarchyResolver:
                         supervisor_of[member] = team.lead
                         reports_of.setdefault(team.lead, []).append(member)
 
-            # Explicit reporting lines (highest priority — override)
+            # Explicit reporting lines (highest priority -- override)
             for line in dept.reporting_lines:
                 old_sup = supervisor_of.get(line.subordinate)
                 if old_sup == line.supervisor:
@@ -95,7 +95,7 @@ class HierarchyResolver:
     def _detect_cycles(supervisor_of: dict[str, str]) -> None:
         """Detect cycles in the supervisor graph via single-pass chain walking.
 
-        Uses a visited/in-stack approach for O(n) complexity — each
+        Uses a visited/in-stack approach for O(n) complexity -- each
         agent is processed at most once.
 
         Args:

@@ -96,7 +96,7 @@ export const useAuthStore = defineStore('auth', () => {
         await fetchUser()
       } catch (fetchErr) {
         // fetchUser already clears auth on 401 (invalid token) and doesn't throw.
-        // If we get here, it's a transient error (network/5xx) — the token may be
+        // If we get here, it's a transient error (network/5xx) -- the token may be
         // valid but we can't load the profile. Clear auth since the app can't
         // function without user data, but use a distinct error message.
         if (isAxiosError(fetchErr) && fetchErr.response?.status === 401) {
@@ -158,7 +158,7 @@ export const useAuthStore = defineStore('auth', () => {
         new_password: newPassword,
       })
       user.value = result
-      // Password changed — clear the persisted flag
+      // Password changed -- clear the persisted flag
       if (result && !result.must_change_password) {
         localStorage.removeItem('auth_must_change_password')
         persistedMustChange.value = false

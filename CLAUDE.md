@@ -1,8 +1,8 @@
-# CLAUDE.md — SynthOrg
+# CLAUDE.md -- SynthOrg
 
 ## Project
 
-- **What**: Framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company
+- **What**: Framework for building synthetic organizations -- autonomous AI agents orchestrated as a virtual company
 - **Python**: 3.14+ (PEP 649 native lazy annotations)
 - **License**: BUSL-1.1 with narrowed Additional Use Grant (free production use for non-competing small orgs; converts to Apache 2.0 three years after release)
 - **Layout**: `src/synthorg/` (src layout), `tests/` (unit/integration/e2e), `web/` (Vue 3 dashboard), `cli/` (Go CLI binary)
@@ -12,17 +12,17 @@
 
 - **ALWAYS read the relevant `docs/design/` page** before implementing any feature or planning any issue. [DESIGN_SPEC.md](docs/DESIGN_SPEC.md) is a pointer file linking to the 7 design pages.
 - The design spec is the **starting point** for architecture, data models, and behavior
-- If implementation deviates from the spec (better approach found, scope evolved, etc.), **alert the user and explain why** — user decides whether to proceed or update the spec
-- Do NOT silently diverge — every deviation needs explicit user approval
+- If implementation deviates from the spec (better approach found, scope evolved, etc.), **alert the user and explain why** -- user decides whether to proceed or update the spec
+- Do NOT silently diverge -- every deviation needs explicit user approval
 - When a spec topic is referenced (e.g. "the Agents page" or "the Engine page's Crash Recovery section"), read the relevant `docs/design/` page before coding
 - When approved deviations occur, update the relevant `docs/design/` page to reflect the new reality
 
 ## Planning (MANDATORY)
 
 - Every implementation plan must be **presented to the user** for accept/deny before coding starts
-- At **every phase** of planning and implementation, be critical — actively look for ways to improve the design in the spirit of what we're building (robustness, correctness, simplicity, future-proofing where it's free)
-- Surface improvements as suggestions, not silent changes — user decides
-- **Prioritize issues by dependency order**, not priority labels — unblocked dependencies come first
+- At **every phase** of planning and implementation, be critical -- actively look for ways to improve the design in the spirit of what we're building (robustness, correctness, simplicity, future-proofing where it's free)
+- Surface improvements as suggestions, not silent changes -- user decides
+- **Prioritize issues by dependency order**, not priority labels -- unblocked dependencies come first
 
 ## Quick Commands
 
@@ -40,7 +40,7 @@ uv run python -m pytest tests/ -n auto --cov=synthorg --cov-fail-under=80  # ful
 HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n auto -k properties  # property tests (dev profile, 1000 examples)
 uv run pre-commit run --all-files          # all pre-commit hooks
 uv run python scripts/export_openapi.py    # export OpenAPI schema (needed before docs build)
-uv run zensical build                      # build docs (output: _site/docs/) — no --strict until zensical/backlog#72
+uv run zensical build                      # build docs (output: _site/docs/) -- no --strict until zensical/backlog#72
 uv run zensical serve                      # local docs preview (http://127.0.0.1:8000)
 ```
 
@@ -57,7 +57,7 @@ npm --prefix web run test                  # Vitest unit tests
 
 ### CLI (Go Binary)
 
-Note: Go commands require `cd cli` because the Go module is in `cli/` (exception to the "never use cd" rule — Go tooling requires working directory to be the module root).
+Note: Go commands require `cd cli` because the Go module is in `cli/` (exception to the "never use cd" rule -- Go tooling requires working directory to be the module root).
 
 ```bash
 cd cli && go build -o synthorg ./main.go   # build CLI
@@ -139,17 +139,17 @@ site/             # Astro landing page (synthorg.io)
 
 ## Shell Usage
 
-- **NEVER use `cd` in Bash commands** — the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/synthorg &&`.
+- **NEVER use `cd` in Bash commands** -- the working directory is already set to the project root. Use absolute paths or run commands directly. Do NOT prefix commands with `cd C:/Users/Aurelio/synthorg &&`.
 
 ## Code Conventions
 
-- **No `from __future__ import annotations`** — Python 3.14 has PEP 649
-- **PEP 758 except syntax**: use `except A, B:` (no parentheses) — ruff enforces this on Python 3.14
+- **No `from __future__ import annotations`** -- Python 3.14 has PEP 649
+- **PEP 758 except syntax**: use `except A, B:` (no parentheses) -- ruff enforces this on Python 3.14
 - **Type hints**: all public functions, mypy strict mode
 - **Docstrings**: Google style, required on public classes/functions (enforced by ruff D rules)
 - **Immutability**: create new objects, never mutate existing ones. For non-Pydantic internal collections (registries, `BaseTool`), use `copy.deepcopy()` at construction + `MappingProxyType` wrapping for read-only enforcement. For `dict`/`list` fields in frozen Pydantic models, rely on `frozen=True` for field reassignment prevention and `copy.deepcopy()` at system boundaries (tool execution, LLM provider serialization, inter-agent delegation, serializing for persistence).
 - **Config vs runtime state**: frozen Pydantic models for config/identity; separate mutable-via-copy models (using `model_copy(update=...)`) for runtime state that evolves (e.g. agent execution state, task progress). Never mix static config fields with mutable runtime fields in one model.
-- **Models**: Pydantic v2 (`BaseModel`, `model_validator`, `computed_field`, `ConfigDict`). Adopted conventions: use `@computed_field` for derived values instead of storing + validating redundant fields (e.g. `TokenUsage.total_tokens`); use `NotBlankStr` (from `core.types`) for all identifier/name fields — including optional (`NotBlankStr | None`) and tuple (`tuple[NotBlankStr, ...]`) variants — instead of manual whitespace validators.
+- **Models**: Pydantic v2 (`BaseModel`, `model_validator`, `computed_field`, `ConfigDict`). Adopted conventions: use `@computed_field` for derived values instead of storing + validating redundant fields (e.g. `TokenUsage.total_tokens`); use `NotBlankStr` (from `core.types`) for all identifier/name fields -- including optional (`NotBlankStr | None`) and tuple (`tuple[NotBlankStr, ...]`) variants -- instead of manual whitespace validators.
 - **Async concurrency**: prefer `asyncio.TaskGroup` for fan-out/fan-in parallel operations in new code (e.g. multiple tool invocations, parallel agent calls). Prefer structured concurrency over bare `create_task`. Existing code is being migrated incrementally.
 - **Line length**: 88 characters (ruff)
 - **Functions**: < 50 lines, files < 800 lines
@@ -162,7 +162,7 @@ site/             # Astro landing page (synthorg.io)
 - **Never** use `import logging` / `logging.getLogger()` / `print()` in application code
 - **Variable name**: always `logger` (not `_logger`, not `log`)
 - **Event names**: always use constants from the domain-specific module under `synthorg.observability.events` (e.g., `API_REQUEST_STARTED` from `events.api`, `TOOL_INVOKE_START` from `events.tool`, `GIT_COMMAND_START` from `events.git`, `CONTEXT_BUDGET_FILL_UPDATED` from `events.context_budget`, `BACKUP_STARTED` from `events.backup`, `SETUP_COMPLETED` from `events.setup`). Each domain has its own module -- see `src/synthorg/observability/events/` for the full inventory of constants. Import directly: `from synthorg.observability.events.<domain> import EVENT_CONSTANT`
-- **Structured kwargs**: always `logger.info(EVENT, key=value)` — never `logger.info("msg %s", val)`
+- **Structured kwargs**: always `logger.info(EVENT, key=value)` -- never `logger.info("msg %s", val)`
 - **All error paths** must log at WARNING or ERROR with context before raising
 - **All state transitions** must log at INFO
 - **DEBUG** for object creation, internal flow, entry/exit of key functions
@@ -171,51 +171,51 @@ site/             # Astro landing page (synthorg.io)
 ## Resilience
 
 - **All provider calls** go through `BaseCompletionProvider` which applies retry + rate limiting automatically
-- **Never** implement retry logic in driver subclasses or calling code — it's handled by the base class
+- **Never** implement retry logic in driver subclasses or calling code -- it's handled by the base class
 - **RetryConfig** and **RateLimiterConfig** are set per-provider in `ProviderConfig`
 - **Retryable errors** (`is_retryable=True`): `RateLimitError`, `ProviderTimeoutError`, `ProviderConnectionError`, `ProviderInternalError`
 - **Non-retryable errors** raise immediately without retry
-- **`RetryExhaustedError`** signals that all retries failed — the engine layer catches this to trigger fallback chains
-- **Rate limiter** respects `RateLimitError.retry_after` from providers — automatically pauses future requests
+- **`RetryExhaustedError`** signals that all retries failed -- the engine layer catches this to trigger fallback chains
+- **Rate limiter** respects `RateLimitError.retry_after` from providers -- automatically pauses future requests
 
 ## Testing
 
 - **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`, `@pytest.mark.slow`
 - **Coverage**: 80% minimum (enforced in CI)
-- **Async**: `asyncio_mode = "auto"` — no manual `@pytest.mark.asyncio` needed
+- **Async**: `asyncio_mode = "auto"` -- no manual `@pytest.mark.asyncio` needed
 - **Timeout**: 30 seconds per test
-- **Parallelism**: `pytest-xdist` via `-n auto` — **ALWAYS** include `-n auto` when running pytest, never run tests sequentially
+- **Parallelism**: `pytest-xdist` via `-n auto` -- **ALWAYS** include `-n auto` when running pytest, never run tests sequentially
 - **Parametrize**: Prefer `@pytest.mark.parametrize` for testing similar cases
 - **Vendor-agnostic everywhere**: NEVER use real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples. Use generic names: `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, `large`/`medium`/`small` as aliases. Vendor names may only appear in: (1) Operations design page provider list (`docs/design/operations.md`), (2) `.claude/` skill/agent files, (3) third-party import paths/module names (e.g. `litellm.types.llms.openai`). Tests must use `test-provider`, `test-small-001`, etc.
 - **Property-based testing**: Python uses [Hypothesis](https://hypothesis.readthedocs.io/) (`@given` + `@settings`), Vue uses [fast-check](https://fast-check.dev/) (`fc.assert` + `fc.property`), Go uses native `testing.F` fuzz functions (`Fuzz*`). Hypothesis profiles: `ci` (50 examples, default) and `dev` (1000 examples), controlled via `HYPOTHESIS_PROFILE` env var. Run dev profile: `HYPOTHESIS_PROFILE=dev uv run python -m pytest tests/ -m unit -n auto -k properties`. `.hypothesis/` is gitignored.
-- **Flaky tests**: NEVER skip, dismiss, or ignore flaky tests — always fix them fully and fundamentally. For timing-sensitive tests, mock `time.monotonic()` and `asyncio.sleep()` to make them deterministic instead of widening timing margins.
+- **Flaky tests**: NEVER skip, dismiss, or ignore flaky tests -- always fix them fully and fundamentally. For timing-sensitive tests, mock `time.monotonic()` and `asyncio.sleep()` to make them deterministic instead of widening timing margins.
 
 ## Git
 
-- **Commits**: `<type>: <description>` — types: feat, fix, refactor, docs, test, chore, perf, ci
+- **Commits**: `<type>: <description>` -- types: feat, fix, refactor, docs, test, chore, perf, ci
 - **Enforced by**: commitizen (commit-msg hook)
-- **Signed commits**: required on `main` via branch protection — all commits must be GPG/SSH signed
+- **Signed commits**: required on `main` via branch protection -- all commits must be GPG/SSH signed
 - **Branches**: `<type>/<slug>` from main
 - **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting)
-- **Pre-push hooks**: mypy type-check + pytest unit tests + golangci-lint + go vet + go test (CLI, conditional on `cli/**/*.go`) (fast gate before push, skipped in pre-commit.ci — dedicated CI jobs already run these)
-- **Pre-commit.ci**: autoupdate disabled (`autoupdate_schedule: never`) — Dependabot owns hook version bumps via `pre-commit` ecosystem
-- **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) — MCP `list_issues` has unreliable field data
+- **Pre-push hooks**: mypy type-check + pytest unit tests + golangci-lint + go vet + go test (CLI, conditional on `cli/**/*.go`) (fast gate before push, skipped in pre-commit.ci -- dedicated CI jobs already run these)
+- **Pre-commit.ci**: autoupdate disabled (`autoupdate_schedule: never`) -- Dependabot owns hook version bumps via `pre-commit` ecosystem
+- **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) -- MCP `list_issues` has unreliable field data
 - **Merge strategy**: squash merge -- PR body becomes the squash commit message on main. Trailers (e.g. `Release-As`, `Closes #N`) must be in the PR body to land in the final commit.
-- **PR issue references**: preserve existing `Closes #NNN` references — never remove unless explicitly asked
+- **PR issue references**: preserve existing `Closes #NNN` references -- never remove unless explicitly asked
 
 ## Post-Implementation (MANDATORY)
 
-- **After finishing an issue implementation**: always create a feature branch (`<type>/<slug>`), commit, and push — do NOT create a PR automatically
-- Do NOT leave work uncommitted on main — branch, commit, push immediately after finishing
+- **After finishing an issue implementation**: always create a feature branch (`<type>/<slug>`), commit, and push -- do NOT create a PR automatically
+- Do NOT leave work uncommitted on main -- branch, commit, push immediately after finishing
 
 ## Pre-PR Review (MANDATORY)
 
-- **NEVER create a PR directly** — `gh pr create` is blocked by hookify
-- **ALWAYS use `/pre-pr-review`** to create PRs — it runs automated checks + review agents + fixes before creating the PR
+- **NEVER create a PR directly** -- `gh pr create` is blocked by hookify
+- **ALWAYS use `/pre-pr-review`** to create PRs -- it runs automated checks + review agents + fixes before creating the PR
 - For trivial/docs-only changes: `/pre-pr-review quick` skips agents but still runs automated checks
 - After the PR exists, use `/aurelio-review-pr` to handle external reviewer feedback
 - The `/commit-push-pr` command is effectively blocked (it calls `gh pr create` internally)
-- **Fix everything valid — never skip**: When review agents find valid issues (including pre-existing issues in surrounding code, suggestions, and findings adjacent to the PR's changes), fix them all. No deferring, no "out of scope" skipping.
+- **Fix everything valid -- never skip**: When review agents find valid issues (including pre-existing issues in surrounding code, suggestions, and findings adjacent to the PR's changes), fix them all. No deferring, no "out of scope" skipping.
 
 ## Releasing
 
@@ -247,7 +247,7 @@ site/             # Astro landing page (synthorg.io)
 
 - **Pinned**: all versions use `==` in `pyproject.toml`
 - **Groups**: `test` (pytest + plugins, hypothesis), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pip-audit)
-- **Required**: `mem0ai` (Mem0 memory backend — the default and currently only backend), `cryptography` (Fernet encryption for sensitive settings at rest)
+- **Required**: `mem0ai` (Mem0 memory backend -- the default and currently only backend), `cryptography` (Fernet encryption for sensitive settings at rest)
 - **Install**: `uv sync` installs everything (dev group is default)
 - **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, Vitest, fast-check, ESLint, vue-tsc)
 - **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss, sigstore-go, go-containerregistry, go-tuf)

@@ -155,7 +155,7 @@ class TestSubscriptionConfig:
 
     def test_subscription_zero_monthly_cost_warns(self) -> None:
         """SUBSCRIPTION with monthly_cost=0 logs warning but is accepted."""
-        # Should not raise — just warns
+        # Should not raise -- just warns
         sc = SubscriptionConfig(
             cost_model=ProviderCostModel.SUBSCRIPTION,
             monthly_cost=0.0,
@@ -439,7 +439,7 @@ class TestWindowStart:
         before = datetime.now(UTC)
         result = window_start(QuotaWindow.PER_MONTH)
         after = datetime.now(UTC)
-        # PER_MONTH truncates to 1st of month — stable within a month
+        # PER_MONTH truncates to 1st of month -- stable within a month
         assert result.year == before.year
         assert result.month == before.month
         assert result.day == 1

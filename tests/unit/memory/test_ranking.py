@@ -517,7 +517,7 @@ class TestFuseRankedLists:
         now = datetime.now(UTC)
         a = _make_entry(entry_id="a", created_at=now)
         b = _make_entry(entry_id="b", created_at=now)
-        # Both at rank 1 in separate lists — same raw score
+        # Both at rank 1 in separate lists -- same raw score
         result = fuse_ranked_lists(((a,), (b,)))
         assert result[0].combined_score == pytest.approx(1.0)
         assert result[1].combined_score == pytest.approx(1.0)
@@ -561,7 +561,7 @@ class TestFuseRankedLists:
         a = _make_entry(entry_id="a", created_at=now)
         a_dup = _make_entry(entry_id="a", created_at=now)
         b = _make_entry(entry_id="b", created_at=now)
-        # List has [a, b, a_dup] — a_dup at rank 3 should be skipped
+        # List has [a, b, a_dup] -- a_dup at rank 3 should be skipped
         # a gets 1/(k+1), b gets 1/(k+2), a_dup is ignored
         result = fuse_ranked_lists(((a, b, a_dup),))
         assert len(result) == 2

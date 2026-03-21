@@ -272,7 +272,7 @@ class TestDetectCycle:
     def test_shortest_cycle_preferred(self) -> None:
         from synthorg.engine.stagnation.detector import _detect_cycle
 
-        # A A A A — cycle length 2 matches before 3
+        # A A A A -- cycle length 2 matches before 3
         a: tuple[str, ...] = ("a:1",)
         assert _detect_cycle([a, a, a, a]) == 2
 

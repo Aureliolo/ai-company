@@ -4,7 +4,7 @@ Provides a safe helper for closing asyncio subprocess transports
 to prevent ``ResourceWarning`` on Windows with ``ProactorEventLoop``.
 """
 
-import asyncio  # noqa: TC003 — used in runtime-visible annotation
+import asyncio  # noqa: TC003 -- used in runtime-visible annotation
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.tool import (
@@ -22,7 +22,7 @@ def close_subprocess_transport(proc: asyncio.subprocess.Process) -> None:
     at GC time.  Explicitly closing the transport avoids this.
 
     Uses ``getattr`` to access the CPython-internal ``_transport``
-    attribute — if the attribute is absent (different runtime or
+    attribute -- if the attribute is absent (different runtime or
     future CPython version), this is a no-op.  Exceptions from
     ``close()`` and ``is_closing()`` are logged and suppressed so
     cleanup never masks the primary result.

@@ -54,7 +54,7 @@ class _FakeSharedKnowledgeStore:
 
 
 class _IncompleteSharedStore:
-    """Missing required methods — should fail isinstance check."""
+    """Missing required methods -- should fail isinstance check."""
 
     async def publish(self, agent_id: str, request: MemoryStoreRequest) -> str:
         return "id"

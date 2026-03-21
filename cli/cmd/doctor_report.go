@@ -67,7 +67,7 @@ func runDoctorReport(cmd *cobra.Command, _ []string) error {
 }
 
 func buildBugReportURL(report diagnostics.Report, state config.State) string {
-	title := fmt.Sprintf("[CLI] Bug report — %s/%s, CLI %s",
+	title := fmt.Sprintf("[CLI] Bug report -- %s/%s, CLI %s",
 		report.OS, report.Arch, report.CLIVersion)
 
 	// Build container summary lines.

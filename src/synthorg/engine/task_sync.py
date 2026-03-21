@@ -1,4 +1,4 @@
-"""Task status sync — AgentEngine → TaskEngine integration.
+"""Task status sync -- AgentEngine → TaskEngine integration.
 
 Module-level functions extracted from ``AgentEngine`` to keep the
 orchestrator file focused on execution flow.  Every function is
@@ -68,7 +68,7 @@ async def sync_to_task_engine(  # noqa: PLR0913
         agent_id: Agent performing the transition.
         reason: Human-readable reason for the transition.
         critical: If ``True``, sync failure is logged at ERROR level
-            instead of WARNING (severity only — sync remains best-effort
+            instead of WARNING (severity only -- sync remains best-effort
             regardless).
 
     Raises:

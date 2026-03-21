@@ -10,7 +10,7 @@ execution uses ``asyncio.create_subprocess_exec`` (never
 interactive prompts and restrict config/protocol attack surfaces.
 
 When a ``SandboxBackend`` is injected, subprocess management is
-delegated to the sandbox — the sandbox handles environment
+delegated to the sandbox -- the sandbox handles environment
 filtering and workspace boundary enforcement for the ``cwd``,
 while ``_BaseGitTool._validate_path`` independently enforces
 workspace boundaries for git path arguments.  Git hardening
@@ -23,7 +23,7 @@ import contextlib
 import os
 import re
 from abc import ABC
-from pathlib import Path  # noqa: TC003 — used at runtime
+from pathlib import Path  # noqa: TC003 -- used at runtime
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Final
 
@@ -283,7 +283,7 @@ class _BaseGitTool(BaseTool, ABC):
     def _build_git_env_overrides() -> dict[str, str]:
         """Return only git-specific hardening env vars.
 
-        Used by the sandbox code path — the sandbox handles base env
+        Used by the sandbox code path -- the sandbox handles base env
         filtering, and these overrides are applied on top.
         """
         return dict(_GIT_HARDENING_OVERRIDES)
@@ -522,7 +522,7 @@ class _BaseGitTool(BaseTool, ABC):
         deadline: float,
     ) -> ToolExecutionResult:
         """Execute git through the sandbox backend."""
-        if self._sandbox is None:  # pragma: no cover — guarded by caller
+        if self._sandbox is None:  # pragma: no cover -- guarded by caller
             msg = "_run_git_sandboxed called without sandbox"
             raise RuntimeError(msg)
 

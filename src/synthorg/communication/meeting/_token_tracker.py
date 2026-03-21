@@ -5,7 +5,7 @@ Concurrency note: ``TokenTracker`` is safe for use within a single
 to completion without suspension, so concurrent coroutines sharing a
 tracker will not interleave reads and writes.  However, intermediate
 values of ``remaining`` during a parallel ``TaskGroup`` phase reflect
-only the tasks that have completed so far — callers should pre-divide
+only the tasks that have completed so far -- callers should pre-divide
 budgets before launching parallel work rather than checking
 ``remaining`` inside concurrent tasks.
 """

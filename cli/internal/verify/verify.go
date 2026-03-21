@@ -28,7 +28,7 @@ type ImageRef struct {
 	Registry   string // e.g. "ghcr.io"
 	Repository string // e.g. "aureliolo/synthorg-backend"
 	Tag        string // e.g. "0.3.0" or "latest"
-	Digest     string // e.g. "sha256:abc..." — filled after resolution
+	Digest     string // e.g. "sha256:abc..." -- filled after resolution
 }
 
 // String returns the full image reference with tag.
@@ -61,7 +61,7 @@ func (r ImageRef) Name() string {
 
 // VerifyResult holds the outcome of verifying a single image.
 // CosignVerified is always true when returned from VerifyImages because cosign
-// failure returns an error — the result is only constructed on success.
+// failure returns an error -- the result is only constructed on success.
 type VerifyResult struct {
 	Ref                ImageRef
 	ProvenanceVerified bool
@@ -122,7 +122,7 @@ func VerifyImages(ctx context.Context, opts VerifyOptions) ([]VerifyResult, erro
 		w = io.Discard
 	}
 
-	// Build verifier and identity once — reuse for all images.
+	// Build verifier and identity once -- reuse for all images.
 	sev, err := BuildVerifier()
 	if err != nil {
 		return nil, fmt.Errorf("building sigstore verifier: %w", err)

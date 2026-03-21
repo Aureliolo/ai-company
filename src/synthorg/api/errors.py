@@ -37,33 +37,33 @@ class ErrorCode(IntEnum):
     8xxx = internal.
     """
 
-    # 1xxx — auth
+    # 1xxx -- auth
     UNAUTHORIZED = 1000
     FORBIDDEN = 1001
 
-    # 2xxx — validation
+    # 2xxx -- validation
     VALIDATION_ERROR = 2000
     REQUEST_VALIDATION_ERROR = 2001
 
-    # 3xxx — not_found
+    # 3xxx -- not_found
     RESOURCE_NOT_FOUND = 3000
     RECORD_NOT_FOUND = 3001
     ROUTE_NOT_FOUND = 3002
 
-    # 4xxx — conflict
+    # 4xxx -- conflict
     RESOURCE_CONFLICT = 4000
     DUPLICATE_RECORD = 4001
 
-    # 5xxx — rate_limit
+    # 5xxx -- rate_limit
     RATE_LIMITED = 5000
 
-    # 6xxx — budget_exhausted
+    # 6xxx -- budget_exhausted
     BUDGET_EXHAUSTED = 6000
 
-    # 7xxx — provider_error
+    # 7xxx -- provider_error
     PROVIDER_ERROR = 7000
 
-    # 8xxx — internal
+    # 8xxx -- internal
     INTERNAL_ERROR = 8000
     SERVICE_UNAVAILABLE = 8001
     PERSISTENCE_ERROR = 8002

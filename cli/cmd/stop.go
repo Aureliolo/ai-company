@@ -36,7 +36,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 	}
 	composePath := filepath.Join(safeDir, "compose.yml")
 	if _, err := os.Stat(composePath); errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("compose.yml not found in %s — run 'synthorg init' first", safeDir)
+		return fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
 	}
 
 	info, err := docker.Detect(ctx)

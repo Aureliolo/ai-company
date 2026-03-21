@@ -1,8 +1,8 @@
 """Export the Litestar OpenAPI schema and generate a standalone Scalar UI page.
 
 Used by CI (pages.yml, pages-preview.yml) to generate:
-- ``docs/_generated/openapi.json`` — raw OpenAPI schema
-- ``docs/_generated/api-reference.html`` — standalone Scalar UI page
+- ``docs/_generated/openapi.json`` -- raw OpenAPI schema
+- ``docs/_generated/api-reference.html`` -- standalone Scalar UI page
 
 Both are generated before the docs build so the docs site can
 link to the interactive API reference.
@@ -31,7 +31,7 @@ STANDALONE_HTML = """\
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>REST API Reference &mdash; SynthOrg</title>
+  <title>REST API Reference -- SynthOrg</title>
   <link rel="icon" href="../assets/images/favicon.png">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -65,7 +65,7 @@ STANDALONE_HTML = """\
 </head>
 <body>
   <div class="banner">
-    Static snapshot of the OpenAPI schema &mdash;
+    Static snapshot of the OpenAPI schema --
     when running locally, use the live docs at <code>/docs/api</code> instead.
     <a href="../">&larr; Back to docs</a>
   </div>

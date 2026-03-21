@@ -1,4 +1,4 @@
-"""Analytics controller — derived read-only metrics."""
+"""Analytics controller -- derived read-only metrics."""
 
 import asyncio
 from collections import Counter

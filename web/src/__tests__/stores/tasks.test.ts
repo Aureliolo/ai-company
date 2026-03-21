@@ -261,7 +261,7 @@ describe('useTaskStore', () => {
         payload: { ...mockTask, id: 'task-new', status: 'created' },
       }
       store.handleWsEvent(event)
-      // Should NOT append — filters are active, let next fetch sync the list
+      // Should NOT append -- filters are active, let next fetch sync the list
       expect(store.tasks).toHaveLength(0)
       expect(store.total).toBe(0)
     })

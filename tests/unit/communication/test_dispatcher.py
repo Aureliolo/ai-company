@@ -80,7 +80,7 @@ class TestRegisterDeregister:
 
         handler_id = dispatcher.register(_fn, name="func")
         assert isinstance(handler_id, str)
-        # Verify wrapped — dispatch should work
+        # Verify wrapped -- dispatch should work
         assert len(handler_id) > 0
 
     def test_register_multiple_handlers(self) -> None:

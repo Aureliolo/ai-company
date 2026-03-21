@@ -6,7 +6,7 @@ name: Finalize Release
 # This workflow fires on each completion and publishes when both are done.
 
 on:
-  # zizmor: ignore[dangerous-triggers] — safe: no checkout, no untrusted code
+  # zizmor: ignore[dangerous-triggers] -- safe: no checkout, no untrusted code
   # execution; only queries workflow status via gh CLI and publishes a draft
   # release. Guarded by event != 'pull_request' and startsWith(head_branch, 'v').
   workflow_run:
@@ -46,7 +46,7 @@ jobs:
 
           # If the triggering workflow failed, no point checking the other
           if [ "$WORKFLOW_CONCLUSION" != "success" ]; then
-            echo "Triggering workflow failed — skipping."
+            echo "Triggering workflow failed -- skipping."
             exit 0
           fi
 
@@ -72,10 +72,10 @@ jobs:
             exit 0
           fi
 
-          # Both succeeded — check if release exists and is still a draft
+          # Both succeeded -- check if release exists and is still a draft
           if ! IS_DRAFT=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
               --json isDraft --jq '.isDraft' 2>/dev/null); then
-            echo "Release $TAG not found — nothing to publish."
+            echo "Release $TAG not found -- nothing to publish."
             exit 0
           fi
 
@@ -229,10 +229,10 @@ jobs:
             echo "Release body assembled with combined Verification section."
           else
             if [ -n "$VERIFICATION" ]; then
-              echo "::error::Failed to update release body — verification data would be lost. Not publishing."
+              echo "::error::Failed to update release body -- verification data would be lost. Not publishing."
               exit 1
             else
-              echo "::warning::Failed to update release body (no verification data to lose — proceeding)"
+              echo "::warning::Failed to update release body (no verification data to lose -- proceeding)"
             fi
           fi
 
@@ -245,7 +245,7 @@ jobs:
             IS_DRAFT_NOW=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
               --json isDraft --jq '.isDraft' 2>/dev/null || echo "unknown")
             if [ "$IS_DRAFT_NOW" = "false" ]; then
-              echo "Release $TAG was already published by a concurrent run — OK."
+              echo "Release $TAG was already published by a concurrent run -- OK."
             else
               echo "::error::Failed to publish release $TAG (isDraft=$IS_DRAFT_NOW)"
               exit 1

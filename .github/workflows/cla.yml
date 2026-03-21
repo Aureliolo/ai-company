@@ -38,7 +38,7 @@ jobs:
 
             > I have read the CLA Document and I hereby sign the CLA
 
-            You only need to sign once — it covers all future contributions.
+            You only need to sign once -- it covers all future contributions.
           custom-pr-sign-comment: I have read the CLA Document and I hereby sign the CLA
           custom-allsigned-prcomment: All contributors have signed the CLA. Thank you!
           lock-pullrequest-aftermerge: false

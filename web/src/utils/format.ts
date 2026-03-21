@@ -4,9 +4,9 @@
  * Format an ISO 8601 date string to a human-readable locale string.
  */
 export function formatDate(iso: string | null | undefined): string {
-  if (!iso) return '—'
+  if (!iso) return '--'
   const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return '—'
+  if (Number.isNaN(date.getTime())) return '--'
   return date.toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -20,9 +20,9 @@ export function formatDate(iso: string | null | undefined): string {
  * Format a date as relative time (e.g., "2 hours ago").
  */
 export function formatRelativeTime(iso: string | null | undefined): string {
-  if (!iso) return '—'
+  if (!iso) return '--'
   const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return '—'
+  if (Number.isNaN(date.getTime())) return '--'
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   if (diffMs < 0) return formatDate(iso)

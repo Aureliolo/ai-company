@@ -1,4 +1,4 @@
-"""Authentication controller — setup, login, password change, me, ws-ticket."""
+"""Authentication controller -- setup, login, password change, me, ws-ticket."""
 
 import math
 import uuid
@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 _MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields["min_password_length"].default
 
 # Pre-computed Argon2id hash for constant-time rejection when the
-# username doesn't exist — prevents timing-based username enumeration.
+# username doesn't exist -- prevents timing-based username enumeration.
 # The actual password is irrelevant; only the verification time matters.
 _DUMMY_ARGON2_HASH = (
     "$argon2id$v=19$m=65536,t=3,p=4$"
@@ -518,7 +518,7 @@ class AuthController(Controller):
                 reason="ws_ticket_limit_exceeded",
                 user_id=auth_user.user_id,
             )
-            msg = "Too many pending tickets — wait for existing tickets to expire"
+            msg = "Too many pending tickets -- wait for existing tickets to expire"
             raise ConflictError(msg)  # noqa: B904
 
         return Response(

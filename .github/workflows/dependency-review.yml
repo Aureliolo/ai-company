@@ -22,16 +22,16 @@ jobs:
         uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
         with:
           fail-on-severity: high
-          # LicenseRef-scancode-free-unknown: aiosqlite 0.21.0 — MIT per classifiers, scancode misdetects
+          # LicenseRef-scancode-free-unknown: aiosqlite 0.21.0 -- MIT per classifiers, scancode misdetects
           # Python-2.0.1: editorconfig 0.17.1 (via jsbeautifier via litestar[standard])
-          # MIT-0: cffi 2.0.0 — permissive (MIT variant, no attribution required)
+          # MIT-0: cffi 2.0.0 -- permissive (MIT variant, no attribution required)
           # LicenseRef-scancode-free-unknown: aiosqlite 0.21.0, aiodocker 0.26.0,
-          #   pycparser 3.0, sse-starlette 3.3.2 — MIT per classifiers, scancode misdetects
+          #   pycparser 3.0, sse-starlette 3.3.2 -- MIT per classifiers, scancode misdetects
           # LGPL-*: @img/sharp-libvips-* (Astro image optimization, build-time only)
           # BlueOak-1.0.0: lru-cache, sax (Astro transitive deps, permissive)
           # LicenseRef-scancode-protobuf: protobuf 5.29.6 (BSD-3-Clause AND scancode-protobuf, permissive)
-          # ZPL-2.1: pytz 2026.1 (MIT AND ZPL-2.1, Zope Public License — permissive)
-          # Null: mem0ai, numpy, qdrant-client, posthog — license metadata missing
+          # ZPL-2.1: pytz 2026.1 (MIT AND ZPL-2.1, Zope Public License -- permissive)
+          # Null: mem0ai, numpy, qdrant-client, posthog -- license metadata missing
           #   from lockfile but all are permissive (Apache-2.0 / BSD-3-Clause / MIT)
           # LicenseRef-scancode-google-patent-license-golang: golang.org/x/* packages
           #   (BSD-3-Clause AND google-patent-grant, standard Go stdlib-adjacent, permissive)
@@ -48,7 +48,7 @@ jobs:
           # Verified manually: mem0ai (Apache-2.0), numpy (BSD-3-Clause),
           # qdrant-client (Apache-2.0), posthog (MIT).
           # sharp platform binaries use compound AND licenses (e.g.
-          # "Apache-2.0 AND LGPL-3.0-or-later") — all constituents are
+          # "Apache-2.0 AND LGPL-3.0-or-later") -- all constituents are
           # in the allowlist but the action doesn't split AND expressions.
           # CI-only transitive dep via wrangler, no licensing impact.
           allow-dependencies-licenses: >-

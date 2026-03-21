@@ -1,4 +1,4 @@
-"""OrgMemoryBackend protocol — lifecycle + org memory operations.
+"""OrgMemoryBackend protocol -- lifecycle + org memory operations.
 
 Application code depends on this protocol for shared organizational
 memory storage and retrieval.  Concrete backends implement this

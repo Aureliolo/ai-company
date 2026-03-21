@@ -1,4 +1,4 @@
-"""Echo tool — returns the input message unchanged.
+"""Echo tool -- returns the input message unchanged.
 
 A minimal reference implementation of ``BaseTool`` useful for testing
 and as a starting point for new tool implementations.

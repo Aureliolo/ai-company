@@ -57,7 +57,7 @@ def _make_repos() -> tuple[AsyncMock, AsyncMock]:
 
 @pytest.mark.unit
 class TestDeserializeAndReconcileSuccess:
-    """Happy path — valid JSON produces a reconstituted AgentContext."""
+    """Happy path -- valid JSON produces a reconstituted AgentContext."""
 
     def test_returns_agent_context(
         self,
@@ -168,7 +168,7 @@ class TestDeserializeAndReconcileSanitization:
 
 @pytest.mark.unit
 class TestDeserializeAndReconcileError:
-    """Error path — invalid JSON raises ValueError."""
+    """Error path -- invalid JSON raises ValueError."""
 
     @pytest.mark.parametrize(
         ("label", "checkpoint_json"),
@@ -335,7 +335,7 @@ class TestMakeLoopWithCallbackInjection:
 
 @pytest.mark.unit
 class TestCleanupCheckpointArtifactsSuccess:
-    """Happy path — cleanup deletes checkpoints and heartbeat."""
+    """Happy path -- cleanup deletes checkpoints and heartbeat."""
 
     async def test_deletes_both(self) -> None:
         cp_repo, hb_repo = _make_repos()
@@ -361,7 +361,7 @@ class TestCleanupCheckpointArtifactsSuccess:
 
 @pytest.mark.unit
 class TestCleanupCheckpointArtifactsErrors:
-    """Error paths — errors are logged but not propagated."""
+    """Error paths -- errors are logged but not propagated."""
 
     async def test_checkpoint_delete_error_swallowed(self) -> None:
         cp_repo = AsyncMock()

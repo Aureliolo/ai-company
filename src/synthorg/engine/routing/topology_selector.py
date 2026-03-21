@@ -77,7 +77,7 @@ class TopologySelector:
                 topology = self._config.parallel_default
         elif structure == TaskStructure.MIXED:
             topology = self._config.mixed_default
-        else:  # pragma: no cover — defensive fallback
+        else:  # pragma: no cover -- defensive fallback
             logger.warning(  # type: ignore[unreachable]
                 TASK_ROUTING_TOPOLOGY_AUTO_RESOLVED,
                 task_id=task.id,

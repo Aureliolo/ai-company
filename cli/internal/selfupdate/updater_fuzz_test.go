@@ -82,7 +82,7 @@ func FuzzVerifyChecksum(f *testing.F) {
 	expectedHash := hex.EncodeToString(hash[:])
 
 	f.Fuzz(func(t *testing.T, checksumData []byte, assetName string) {
-		// Must not panic — either returns nil or error.
+		// Must not panic -- either returns nil or error.
 		err := verifyChecksum(fuzzArchiveData, checksumData, assetName)
 		if err != nil {
 			return
@@ -126,7 +126,7 @@ func FuzzExtractFromTarGz(f *testing.F) {
 
 	// Seed: tar.gz with path-traversal entry name. extractFromTarGz uses
 	// filepath.Base(hdr.Name) for matching, so "../../synthorg" resolves to
-	// "synthorg" and is intentionally extracted — the security property is
+	// "synthorg" and is intentionally extracted -- the security property is
 	// that extracted bytes are returned to the caller, never written to a
 	// path derived from the entry name.
 	traversalArchive := buildTarGzWithName(f, "../../synthorg")
@@ -164,7 +164,7 @@ func FuzzExtractFromZip(f *testing.F) {
 	// Seed: minimal PK header but invalid.
 	f.Add([]byte("PK\x03\x04garbage"))
 
-	// Seed: zip with path-traversal entry name. Same as tar.gz — basename
+	// Seed: zip with path-traversal entry name. Same as tar.gz -- basename
 	// matching means traversal entries are extracted safely.
 	traversalZip := buildZipWithName(f, "../../synthorg.exe")
 	f.Add(traversalZip)

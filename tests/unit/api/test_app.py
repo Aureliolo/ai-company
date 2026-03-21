@@ -65,7 +65,7 @@ class TestCreateApp:
         header: str,
         expected: str,
     ) -> None:
-        # Use a non-docs endpoint — /docs paths relax COOP for Scalar UI.
+        # Use a non-docs endpoint -- /docs paths relax COOP for Scalar UI.
         response = test_client.get("/api/v1/health")
         assert response.headers.get(header) == expected
 

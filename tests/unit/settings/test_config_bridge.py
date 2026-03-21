@@ -60,7 +60,7 @@ class TestExtractFromConfig:
 
     def test_empty_path(self) -> None:
         config = _FakeConfig()
-        # Empty string splits to [''] — getattr('') fails
+        # Empty string splits to [''] -- getattr('') fails
         assert extract_from_config(config, "") is None
 
 

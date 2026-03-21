@@ -1,4 +1,4 @@
-"""MCP bridge tool — wraps an MCP server tool as a ``BaseTool``.
+"""MCP bridge tool -- wraps an MCP server tool as a ``BaseTool``.
 
 Each ``MCPBridgeTool`` instance represents a single tool discovered
 from an MCP server, bridging MCP protocol calls into the internal

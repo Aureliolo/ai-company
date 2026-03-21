@@ -127,7 +127,7 @@ class Mem0MemoryBackend:
         """Establish connection to Mem0.
 
         Creates the Mem0 ``Memory`` client with Qdrant
-        (embedded by default).  Idempotent — returns immediately
+        (embedded by default).  Idempotent -- returns immediately
         if already connected.  Uses a lock to prevent concurrent
         ``connect()`` calls from creating duplicate clients.
 
@@ -138,7 +138,7 @@ class Mem0MemoryBackend:
         if self._connected:
             return
         async with self._connect_lock:
-            # Double-check after acquiring the lock — another
+            # Double-check after acquiring the lock -- another
             # coroutine may have connected while we waited.
             if self._connected:
                 return  # type: ignore[unreachable]  # concurrent state change
@@ -191,7 +191,7 @@ class Mem0MemoryBackend:
                 logger.debug(
                     MEMORY_BACKEND_DISCONNECTED,
                     backend="mem0",
-                    reason="already disconnected — no-op",
+                    reason="already disconnected -- no-op",
                 )
                 return
             logger.info(MEMORY_BACKEND_DISCONNECTING, backend="mem0")
@@ -301,7 +301,7 @@ class Mem0MemoryBackend:
                 MEMORY_BACKEND_NOT_CONNECTED,
                 backend="mem0",
             )
-            msg = "Not connected — call connect() first"
+            msg = "Not connected -- call connect() first"
             raise MemoryConnectionError(msg)
         return self._client
 
@@ -315,7 +315,7 @@ class Mem0MemoryBackend:
 
         Args:
             agent_id: Agent identifier to validate.
-            error_cls: Error class to raise on rejection — defaults to
+            error_cls: Error class to raise on rejection -- defaults to
                 ``MemoryStoreError`` for write ops, pass
                 ``MemoryRetrievalError`` or ``MemoryConnectionError``
                 for read/connection ops.
@@ -512,7 +512,7 @@ class Mem0MemoryBackend:
                     agent_id=agent_id,
                     memory_id=memory_id,
                     found=False,
-                    reason="memory has no user_id — ownership "
+                    reason="memory has no user_id -- ownership "
                     "unverifiable, refusing to return",
                 )
                 return None
@@ -636,7 +636,7 @@ class Mem0MemoryBackend:
     ) -> int:
         """Count memory entries for an agent.
 
-        Uses ``get_all()`` internally — retrieves all of the agent's
+        Uses ``get_all()`` internally -- retrieves all of the agent's
         memories, so cost scales linearly with the agent's memory count.
         Acceptable because ``count()`` is not on the hot path.
 
@@ -711,7 +711,7 @@ class Mem0MemoryBackend:
                     category=category.value if category else None,
                     truncated=True,
                     reason="raw result set reached max_memories_per_agent "
-                    "limit — actual count may be higher "
+                    "limit -- actual count may be higher "
                     "(conservative estimate)",
                 )
             else:

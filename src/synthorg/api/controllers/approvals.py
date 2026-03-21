@@ -1,4 +1,4 @@
-"""Approvals controller — human approval queue CRUD."""
+"""Approvals controller -- human approval queue CRUD."""
 
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Annotated, Any
@@ -316,7 +316,7 @@ async def _signal_resume_intent(  # noqa: PLR0913
 
 
 class ApprovalsController(Controller):
-    """Human approval queue — list, create, approve, reject."""
+    """Human approval queue -- list, create, approve, reject."""
 
     path = "/approvals"
     tags = ("approvals",)

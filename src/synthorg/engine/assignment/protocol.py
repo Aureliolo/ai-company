@@ -19,7 +19,7 @@ class TaskAssignmentStrategy(Protocol):
     Implementations must be synchronous (pure computation, no I/O)
     and return an ``AssignmentResult`` with the selected agent and
     ranked alternatives. ``TaskAssignmentService`` calls ``assign()``
-    synchronously — async implementations will NOT work correctly.
+    synchronously -- async implementations will NOT work correctly.
 
     Error signaling contract:
 
@@ -58,7 +58,7 @@ class TaskAssignmentStrategy(Protocol):
         Returns:
             Assignment result with selected agent and alternatives.
             ``selected`` may be ``None`` when no eligible agent is
-            found (scoring strategies) — callers must check this.
+            found (scoring strategies) -- callers must check this.
 
         Raises:
             TaskAssignmentError: When preconditions are violated

@@ -63,13 +63,13 @@ def make_security_interceptor(
         if effective_autonomy is not None:
             msg = (
                 "effective_autonomy cannot be enforced without "
-                "SecurityConfig — configure security or remove autonomy"
+                "SecurityConfig -- configure security or remove autonomy"
             )
             logger.error(SECURITY_DISABLED, note=msg)
             raise ExecutionStateError(msg)
         logger.warning(
             SECURITY_DISABLED,
-            note="No SecurityConfig provided — all security checks skipped",
+            note="No SecurityConfig provided -- all security checks skipped",
         )
         return None
     if not security_config.enabled:

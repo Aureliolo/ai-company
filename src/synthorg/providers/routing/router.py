@@ -1,4 +1,4 @@
-"""Model router — main entry point for routing decisions.
+"""Model router -- main entry point for routing decisions.
 
 Constructed from ``RoutingConfig`` and a provider config dict.
 Delegates to strategy implementations.

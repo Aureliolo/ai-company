@@ -1,4 +1,4 @@
-"""SecOps service — the security meta-agent.
+"""SecOps service -- the security meta-agent.
 
 Coordinates the rule engine, audit log, output scanner, output scan
 response policy, and approval store into a single
@@ -70,7 +70,7 @@ def _hash_arguments(arguments: dict[str, object]) -> str:
 
     Uses ``default=str`` for non-JSON-serializable values.  This means
     two distinct objects with the same ``str()`` will produce identical
-    hashes — acceptable for tool arguments (strings, ints, lists, dicts)
+    hashes -- acceptable for tool arguments (strings, ints, lists, dicts)
     but not a guaranteed-unique fingerprint for arbitrary types.
     """
     serialized = json.dumps(arguments, sort_keys=True, default=str)
@@ -112,7 +112,7 @@ class SecOpsService:
             approval_store: Optional store for escalation items.
             effective_autonomy: Resolved autonomy for the current run.
                 When provided, autonomy routing is applied *after*
-                the rule engine — never bypassing security detectors.
+                the rule engine -- never bypassing security detectors.
             risk_classifier: Optional classifier for determining action
                 risk levels in autonomy escalations.  Defaults to HIGH
                 when absent (fail-safe).
@@ -148,7 +148,7 @@ class SecOpsService:
                 SECURITY_CONFIG_LOADED,
                 note=(
                     "custom_policies configured but not yet "
-                    "evaluated — enforcement is not implemented"
+                    "evaluated -- enforcement is not implemented"
                 ),
                 policy_count=len(config.custom_policies),
             )
@@ -185,7 +185,7 @@ class SecOpsService:
             agent_id=context.agent_id,
         )
 
-        # Always run the rule engine first — security detectors must
+        # Always run the rule engine first -- security detectors must
         # never be bypassed, regardless of autonomy configuration.
         try:
             verdict = self._rule_engine.evaluate(context)
@@ -303,7 +303,7 @@ class SecOpsService:
                 policy=policy_name,
                 fallback_outcome=result.outcome.value,
                 note="Output scan policy application failed "
-                "— returning raw scan result "
+                "-- returning raw scan result "
                 "(may be less strict than intended policy)",
             )
 
@@ -392,7 +392,7 @@ class SecOpsService:
 
         Autonomy can only *tighten* a verdict (ALLOW → ESCALATE), never
         weaken one.  DENY and ESCALATE from the rule engine are always
-        preserved — security detectors take precedence over autonomy.
+        preserved -- security detectors take precedence over autonomy.
 
         Returns the (possibly upgraded) verdict.
         """
@@ -439,7 +439,7 @@ class SecOpsService:
                 },
             )
 
-        # Not classified by autonomy — keep rule engine's verdict.
+        # Not classified by autonomy -- keep rule engine's verdict.
         return verdict
 
     def _record_audit(
@@ -450,7 +450,7 @@ class SecOpsService:
         """Record an audit entry for a pre-tool evaluation.
 
         Model construction errors propagate (they indicate programming
-        bugs).  Storage errors are caught and logged — they must never
+        bugs).  Storage errors are caught and logged -- they must never
         prevent the verdict from being returned.
         """
         entry = AuditEntry(
@@ -478,7 +478,7 @@ class SecOpsService:
             logger.exception(
                 SECURITY_AUDIT_RECORD_ERROR,
                 tool_name=context.tool_name,
-                note="Audit recording failed — verdict still returned",
+                note="Audit recording failed -- verdict still returned",
             )
 
     async def _handle_escalation(
@@ -496,12 +496,12 @@ class SecOpsService:
                 SECURITY_VERDICT_DENY,
                 tool_name=context.tool_name,
                 original_verdict="escalate",
-                note="no approval store — converting to DENY",
+                note="no approval store -- converting to DENY",
             )
             return verdict.model_copy(
                 update={
                     "verdict": SecurityVerdictType.DENY,
-                    "reason": (f"{verdict.reason} (escalation unavailable — denied)"),
+                    "reason": (f"{verdict.reason} (escalation unavailable -- denied)"),
                 },
             )
 
@@ -536,7 +536,7 @@ class SecOpsService:
             return verdict.model_copy(
                 update={
                     "verdict": SecurityVerdictType.DENY,
-                    "reason": (f"{verdict.reason} (escalation store error — denied)"),
+                    "reason": (f"{verdict.reason} (escalation store error -- denied)"),
                 },
             )
         logger.info(

@@ -108,7 +108,7 @@ class TestSnapshotPublishing:
         # Yield to let processing complete before stopping
         await asyncio.sleep(0)
 
-        # Stop — drain remaining if any
+        # Stop -- drain remaining if any
         await eng.stop(timeout=5.0)
 
         # All futures resolved
@@ -300,7 +300,7 @@ class TestDrainTimeout:
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
         eng.start()
 
-        # Submit a task — it'll block in slow_save, holding the processing loop
+        # Submit a task -- it'll block in slow_save, holding the processing loop
         blocked_task = asyncio.create_task(
             eng.create_task(make_create_data(), requested_by="alice")
         )
@@ -316,7 +316,7 @@ class TestDrainTimeout:
         await entered_save.wait()
         eng._queue.put_nowait(envelope)
 
-        # Stop with a very short timeout — loop is blocked, so timeout fires
+        # Stop with a very short timeout -- loop is blocked, so timeout fires
         await eng.stop(timeout=0.05)
 
         # The queued envelope (not yet processed) must be failed

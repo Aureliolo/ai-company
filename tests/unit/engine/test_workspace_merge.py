@@ -363,7 +363,7 @@ class TestSortWorkspaces:
         mock_strategy.teardown_workspace = AsyncMock()
 
         orch = _make_orchestrator(strategy=mock_strategy)
-        # Only mention ws-1 in completion order — ws-2 and ws-3
+        # Only mention ws-1 in completion order -- ws-2 and ws-3
         # should be appended
         results = await orch.merge_all(
             workspaces=(ws1, ws2, ws3),

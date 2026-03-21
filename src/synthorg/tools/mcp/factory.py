@@ -1,4 +1,4 @@
-"""MCP tool factory — discovers and creates bridge tools.
+"""MCP tool factory -- discovers and creates bridge tools.
 
 Connects to all enabled MCP servers in parallel, discovers their
 tools, and wraps each as an ``MCPBridgeTool``.

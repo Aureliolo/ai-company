@@ -71,7 +71,7 @@ class RoutingRequest(BaseModel):
             each model's ``total_cost_per_1k`` (i.e.
             ``cost_per_1k_input + cost_per_1k_output``) to filter
             models that exceed this threshold.  This is **not** a
-            total session budget — use the budget module for that.
+            total session budget -- use the budget module for that.
     """
 
     model_config = ConfigDict(frozen=True, allow_inf_nan=False)

@@ -1,4 +1,4 @@
-"""Integration test — full graceful shutdown flow.
+"""Integration test -- full graceful shutdown flow.
 
 Creates an engine with a shutdown manager, starts an agent, triggers
 shutdown, and verifies: agent stops, task is INTERRUPTED, cleanup runs.
@@ -97,7 +97,7 @@ class TestGracefulShutdownFlow:
 
         The provider triggers shutdown on the first call but returns
         STOP (no tool calls), so the loop completes *before* the next
-        shutdown check.  This verifies the signal propagation path —
+        shutdown check.  This verifies the signal propagation path --
         test_shutdown_during_multi_turn_interrupts below covers the
         INTERRUPTED transition.
         """

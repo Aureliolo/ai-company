@@ -337,7 +337,7 @@ class TestResolveModel:
             ),
         )
         tracker = CostTracker(budget_config=cfg)
-        # 50% usage — below 85% threshold
+        # 50% usage -- below 85% threshold
         await tracker.record(
             make_cost_record(
                 cost_usd=50.0,
@@ -371,7 +371,7 @@ class TestResolveModel:
             ),
         )
         tracker = CostTracker(budget_config=cfg)
-        # 90% usage — above 85% threshold
+        # 90% usage -- above 85% threshold
         await tracker.record(
             make_cost_record(
                 cost_usd=90.0,

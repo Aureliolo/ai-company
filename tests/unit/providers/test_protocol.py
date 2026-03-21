@@ -507,7 +507,7 @@ class TestBaseCompletionProviderResilience:
         # Consume only the first chunk, then explicitly close
         async for _ in stream:
             break
-        # Async generators require explicit aclose() — break alone
+        # Async generators require explicit aclose() -- break alone
         # does not trigger the finally block in CPython.
         await stream.aclose()  # type: ignore[attr-defined]
 

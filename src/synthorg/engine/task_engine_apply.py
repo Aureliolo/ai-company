@@ -372,7 +372,7 @@ async def apply_cancel(
     """Cancel a task (shortcut for transition to CANCELLED).
 
     Unlike :func:`apply_update` and :func:`apply_transition`, cancel
-    intentionally omits an ``expected_version`` check — a cancellation
+    intentionally omits an ``expected_version`` check -- a cancellation
     should always succeed regardless of version, similar to a forced
     stop signal.
 

@@ -262,7 +262,7 @@ class TestHierarchicalAssignmentStrategy:
         strategy = HierarchicalAssignmentStrategy(scorer, hierarchy)
 
         # lead has dev-1 and dev-2 as reports, but neither is
-        # in the pool — only an unrelated agent is.
+        # in the pool -- only an unrelated agent is.
         outsider = make_assignment_agent(
             "outsider",
             primary_skills=("python",),

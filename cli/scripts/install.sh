@@ -3,8 +3,8 @@
 # Usage: curl -sSfL https://synthorg.io/get/install.sh | bash
 #
 # Environment variables:
-#   SYNTHORG_VERSION  — specific version to install (default: latest)
-#   INSTALL_DIR       — installation directory (default: /usr/local/bin)
+#   SYNTHORG_VERSION  -- specific version to install (default: latest)
+#   INSTALL_DIR       -- installation directory (default: /usr/local/bin)
 
 set -euo pipefail
 

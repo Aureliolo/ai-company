@@ -42,9 +42,9 @@ class BaseCompletionProvider(ABC):
 
     Subclasses implement three hooks:
 
-    * ``_do_complete`` — raw non-streaming call
-    * ``_do_stream`` — raw streaming call
-    * ``_do_get_model_capabilities`` — capability lookup
+    * ``_do_complete`` -- raw non-streaming call
+    * ``_do_stream`` -- raw streaming call
+    * ``_do_get_model_capabilities`` -- capability lookup
 
     The public methods validate inputs before delegating to hooks.
     When a ``retry_handler`` and/or ``rate_limiter`` are provided,

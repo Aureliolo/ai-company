@@ -27,7 +27,7 @@ def _embedder(
 @pytest.mark.unit
 class TestMem0EmbedderConfig:
     def test_requires_provider_and_model(self) -> None:
-        """Provider and model are required — no vendor-specific defaults."""
+        """Provider and model are required -- no vendor-specific defaults."""
         with pytest.raises(ValidationError):
             Mem0EmbedderConfig()  # type: ignore[call-arg]
 
@@ -218,7 +218,7 @@ class TestBuildConfigFromCompanyConfig:
             )
 
     def test_rejects_qdrant_external(self) -> None:
-        """qdrant-external is not supported — only embedded qdrant."""
+        """qdrant-external is not supported -- only embedded qdrant."""
         company_config = CompanyMemoryConfig(
             backend="mem0",
             storage=MemoryStorageConfig(vector_store="qdrant-external"),

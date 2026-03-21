@@ -2,7 +2,7 @@
 
 Each participant writes an independent position paper in parallel,
 then a synthesizer combines all papers into decisions and action
-items.  This is the cheapest protocol — O(n) tokens with no ordering
+items.  This is the cheapest protocol -- O(n) tokens with no ordering
 bias and no quadratic context growth.
 """
 
@@ -288,7 +288,7 @@ class PositionPapersProtocol:
                     _collect_paper(pid, idx, tokens_per_agent),
                 )
 
-        # All slots must be filled — TaskGroup propagates ExceptionGroup
+        # All slots must be filled -- TaskGroup propagates ExceptionGroup
         # on any task failure, so reaching this point means all succeeded.
         if not all(r is not None for r in results):
             msg = f"Expected {n} position papers but some slots are None"

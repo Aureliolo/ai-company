@@ -131,7 +131,7 @@ the primary mechanism for bootstrapping organizations.
 ### Template Structure
 
 ```yaml
-# templates/startup.yaml (simplified — real templates also declare
+# templates/startup.yaml (simplified -- real templates also declare
 # variables, departments, min_agents/max_agents, and tags)
 template:
   name: "Tech Startup"

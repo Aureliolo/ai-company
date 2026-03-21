@@ -268,7 +268,7 @@
 
 ### Features
 
-* **api:** RFC 9457 Phase 2 — ProblemDetail and content negotiation ([#496](https://github.com/Aureliolo/synthorg/issues/496)) ([30f7c49](https://github.com/Aureliolo/synthorg/commit/30f7c49ff2562919988ed510abd805ba3752ae92))
+* **api:** RFC 9457 Phase 2 -- ProblemDetail and content negotiation ([#496](https://github.com/Aureliolo/synthorg/issues/496)) ([30f7c49](https://github.com/Aureliolo/synthorg/commit/30f7c49ff2562919988ed510abd805ba3752ae92))
 * **cli:** verify container image signatures and SLSA provenance on pull ([#492](https://github.com/Aureliolo/synthorg/issues/492)) ([bef272d](https://github.com/Aureliolo/synthorg/commit/bef272d37e0020e9f33da2ce611d33cf749d570f)), closes [#491](https://github.com/Aureliolo/synthorg/issues/491)
 * **engine:** implement context budget management in execution loops ([#520](https://github.com/Aureliolo/synthorg/issues/520)) ([181eb8a](https://github.com/Aureliolo/synthorg/commit/181eb8a7f289e72239916a7832fb64bc5b47f1e1)), closes [#416](https://github.com/Aureliolo/synthorg/issues/416)
 * implement settings persistence layer (DB-backed config) ([#495](https://github.com/Aureliolo/synthorg/issues/495)) ([4bd99f7](https://github.com/Aureliolo/synthorg/commit/4bd99f7c242cf611ec2dadcaaf3d46a21bec20c3)), closes [#450](https://github.com/Aureliolo/synthorg/issues/450)
@@ -322,7 +322,7 @@
 ### Features
 
 * add RRF rank fusion to memory ranking ([#478](https://github.com/Aureliolo/synthorg/issues/478)) ([42242b5](https://github.com/Aureliolo/synthorg/commit/42242b51e5f6d4c2d034d569d20652f5175abf91))
-* collaboration scoring enhancements — LLM sampling and human override ([#477](https://github.com/Aureliolo/synthorg/issues/477)) ([b3f3330](https://github.com/Aureliolo/synthorg/commit/b3f33303e9a2dbcb57c59b7ed32cc5fda292398d))
+* collaboration scoring enhancements -- LLM sampling and human override ([#477](https://github.com/Aureliolo/synthorg/issues/477)) ([b3f3330](https://github.com/Aureliolo/synthorg/commit/b3f33303e9a2dbcb57c59b7ed32cc5fda292398d))
 
 
 ### Bug Fixes
@@ -367,7 +367,7 @@
 
 ### Bug Fixes
 
-* CLI improvements — config show, completion install, enhanced doctor, Sigstore verification ([#465](https://github.com/Aureliolo/synthorg/issues/465)) ([9e08cec](https://github.com/Aureliolo/synthorg/commit/9e08cec314faa82d6baf603bf51db31528f41d19))
+* CLI improvements -- config show, completion install, enhanced doctor, Sigstore verification ([#465](https://github.com/Aureliolo/synthorg/issues/465)) ([9e08cec](https://github.com/Aureliolo/synthorg/commit/9e08cec314faa82d6baf603bf51db31528f41d19))
 * **site:** add reCAPTCHA v3, main landmark, and docs sitemap ([#469](https://github.com/Aureliolo/synthorg/issues/469)) ([fa6d35c](https://github.com/Aureliolo/synthorg/commit/fa6d35c0025fd9a7507d1bf3f307f6ce435721c1))
 * use force-tag-creation instead of manual tag creation hack ([#462](https://github.com/Aureliolo/synthorg/issues/462)) ([2338004](https://github.com/Aureliolo/synthorg/commit/23380049d5a824731d47a22d7baf64af32375ff2))
 
@@ -482,7 +482,7 @@
 
 ### License
 
-* narrow BSL 1.1 Additional Use Grant — free production use for non-competing organizations with fewer than 500 employees and contractors ([#406](https://github.com/Aureliolo/synthorg/issues/406))
+* narrow BSL 1.1 Additional Use Grant -- free production use for non-competing organizations with fewer than 500 employees and contractors ([#406](https://github.com/Aureliolo/synthorg/issues/406))
 * add Contributor License Agreement (CLA) with automated enforcement for dual-licensing support
 * add licensing rationale documentation page explaining BSL choice, what's permitted, and invitation for feedback
 * auto-update BSL Change Date to 3 years ahead on each release
@@ -528,7 +528,7 @@
 * add Mem0 memory backend adapter ([#345](https://github.com/Aureliolo/synthorg/issues/345)) ([2788db8](https://github.com/Aureliolo/synthorg/commit/2788db881f85a4e9e211b834b396943b3c588edf)), closes [#206](https://github.com/Aureliolo/synthorg/issues/206)
 * centralized single-writer TaskEngine with full CRUD API ([#328](https://github.com/Aureliolo/synthorg/issues/328)) ([9c1a3e1](https://github.com/Aureliolo/synthorg/commit/9c1a3e150082ec4263148b4fcc71e5ba7c7a072d))
 * incremental AgentEngine → TaskEngine status sync ([#331](https://github.com/Aureliolo/synthorg/issues/331)) ([7a68d34](https://github.com/Aureliolo/synthorg/commit/7a68d34a815efc20dbe409a597a93b9820b2227b)), closes [#323](https://github.com/Aureliolo/synthorg/issues/323)
-* web dashboard pages — views, components, tests, and review fixes ([#354](https://github.com/Aureliolo/synthorg/issues/354)) ([b165ec4](https://github.com/Aureliolo/synthorg/commit/b165ec4d5d3e2a70852ef952a417fbcb053129c2))
+* web dashboard pages -- views, components, tests, and review fixes ([#354](https://github.com/Aureliolo/synthorg/issues/354)) ([b165ec4](https://github.com/Aureliolo/synthorg/commit/b165ec4d5d3e2a70852ef952a417fbcb053129c2))
 * web dashboard with Vue 3 + PrimeVue + Tailwind CSS ([#347](https://github.com/Aureliolo/synthorg/issues/347)) ([06416b1](https://github.com/Aureliolo/synthorg/commit/06416b1d876528754db5a1363d5ebb58bde1bf2a))
 
 
@@ -634,12 +634,12 @@
 * implement AuditRepository for security audit log persistence ([#279](https://github.com/Aureliolo/synthorg/issues/279)) ([94bc29f](https://github.com/Aureliolo/synthorg/commit/94bc29fbf745576da51b8b942faf7aa0047dbe9a))
 * implement basic tool system (registry, invocation, results) ([#15](https://github.com/Aureliolo/synthorg/issues/15)) ([c51068b](https://github.com/Aureliolo/synthorg/commit/c51068b11de77fb15699c203840651044ab482fa))
 * implement built-in file system tools ([#18](https://github.com/Aureliolo/synthorg/issues/18)) ([325ef98](https://github.com/Aureliolo/synthorg/commit/325ef988c2c5312215c7eaf20401d904863c049d))
-* implement communication foundation — message bus, dispatcher, and messenger ([#157](https://github.com/Aureliolo/synthorg/issues/157)) ([8e71bfd](https://github.com/Aureliolo/synthorg/commit/8e71bfd0e3cf84dd36c48f17b933d0554c6f932e))
+* implement communication foundation -- message bus, dispatcher, and messenger ([#157](https://github.com/Aureliolo/synthorg/issues/157)) ([8e71bfd](https://github.com/Aureliolo/synthorg/commit/8e71bfd0e3cf84dd36c48f17b933d0554c6f932e))
 * implement company template system with 7 built-in presets ([#85](https://github.com/Aureliolo/synthorg/issues/85)) ([cbf1496](https://github.com/Aureliolo/synthorg/commit/cbf14963be4547749d493e1ba5cc40d75c67a6c5))
 * implement conflict resolution protocol ([#122](https://github.com/Aureliolo/synthorg/issues/122)) ([#166](https://github.com/Aureliolo/synthorg/issues/166)) ([e03f9f2](https://github.com/Aureliolo/synthorg/commit/e03f9f2e09c0493d5ca51a98d83481bd828b9113))
 * implement core entity and role system models ([#69](https://github.com/Aureliolo/synthorg/issues/69)) ([acf9801](https://github.com/Aureliolo/synthorg/commit/acf9801f4b68b1538c07329d9d61771267978bce))
 * implement crash recovery with fail-and-reassign strategy ([#149](https://github.com/Aureliolo/synthorg/issues/149)) ([e6e91ed](https://github.com/Aureliolo/synthorg/commit/e6e91ed3dd19397c3d9d456bbdd8cc2fd8c1cfac))
-* implement engine extensions — Plan-and-Execute loop and call categorization ([#134](https://github.com/Aureliolo/synthorg/issues/134), [#135](https://github.com/Aureliolo/synthorg/issues/135)) ([#159](https://github.com/Aureliolo/synthorg/issues/159)) ([9b2699f](https://github.com/Aureliolo/synthorg/commit/9b2699f3b9b1b07912a6a09e0cd21644f432d744))
+* implement engine extensions -- Plan-and-Execute loop and call categorization ([#134](https://github.com/Aureliolo/synthorg/issues/134), [#135](https://github.com/Aureliolo/synthorg/issues/135)) ([#159](https://github.com/Aureliolo/synthorg/issues/159)) ([9b2699f](https://github.com/Aureliolo/synthorg/commit/9b2699f3b9b1b07912a6a09e0cd21644f432d744))
 * implement enterprise logging system with structlog ([#73](https://github.com/Aureliolo/synthorg/issues/73)) ([2f787e5](https://github.com/Aureliolo/synthorg/commit/2f787e5b2576a0403f6b86c9daa16dfbbfd2e243))
 * implement graceful shutdown with cooperative timeout strategy ([#130](https://github.com/Aureliolo/synthorg/issues/130)) ([6592515](https://github.com/Aureliolo/synthorg/commit/6592515617742851c1d355422ac40266af3b5127))
 * implement hierarchical delegation and loop prevention ([#12](https://github.com/Aureliolo/synthorg/issues/12), [#17](https://github.com/Aureliolo/synthorg/issues/17)) ([6be60b6](https://github.com/Aureliolo/synthorg/commit/6be60b65dd6cac4f61a023b274353325e1690eae))
@@ -742,4 +742,4 @@
 * bump ruff from 0.15.4 to 0.15.5 ([a49ee46](https://github.com/Aureliolo/synthorg/commit/a49ee464ac475f3780c24902b5331509d0fb8562))
 * fix M0 audit items ([#66](https://github.com/Aureliolo/synthorg/issues/66)) ([c7724b5](https://github.com/Aureliolo/synthorg/commit/c7724b55321a7d2d6b67523f95cfe43cce00f143))
 * pin setup-uv action to full SHA ([#281](https://github.com/Aureliolo/synthorg/issues/281)) ([4448002](https://github.com/Aureliolo/synthorg/commit/44480022aa613f7898897a74c376b33b0dc41435))
-* post-audit cleanup — PEP 758, loggers, bug fixes, refactoring, tests, hookify rules ([#148](https://github.com/Aureliolo/synthorg/issues/148)) ([c57a6a9](https://github.com/Aureliolo/synthorg/commit/c57a6a9e619ba3339d58df221edf332998a0d1d2))
+* post-audit cleanup -- PEP 758, loggers, bug fixes, refactoring, tests, hookify rules ([#148](https://github.com/Aureliolo/synthorg/issues/148)) ([c57a6a9](https://github.com/Aureliolo/synthorg/commit/c57a6a9e619ba3339d58df221edf332998a0d1d2))

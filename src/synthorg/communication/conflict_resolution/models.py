@@ -208,7 +208,7 @@ class DissentRecord(BaseModel):
 
         The dissenting agent must appear in the conflict's positions
         and must not be the winning agent (unless escalated to human,
-        where all positions are recorded as pending human review — no
+        where all positions are recorded as pending human review -- no
         agent is considered the winner).
         """
         agent_ids = {p.agent_id for p in self.conflict.positions}

@@ -1,4 +1,4 @@
-"""MCP client — thin async wrapper over the MCP SDK.
+"""MCP client -- thin async wrapper over the MCP SDK.
 
 Manages a single connection to an MCP server and provides
 tool discovery and invocation through the MCP protocol.
@@ -148,7 +148,7 @@ class MCPClient:
                     },
                 ) from exc
             except BaseException:
-                # CancelledError, KeyboardInterrupt — still close the stack
+                # CancelledError, KeyboardInterrupt -- still close the stack
                 await stack.aclose()
                 raise
 

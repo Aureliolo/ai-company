@@ -314,7 +314,7 @@ class TrustConfig(BaseModel):
                 )
                 raise ValueError(msg)
 
-        # Check category criteria — any category with standard_to_elevated
+        # Check category criteria -- any category with standard_to_elevated
         for category, transitions in self.category_criteria.items():
             if threshold_key in transitions:
                 criteria = transitions[threshold_key]

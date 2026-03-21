@@ -194,7 +194,7 @@ class TestAutonomyTieredPolicy:
 
         transformed = policy.apply(result, _make_context())
 
-        # Fallback is RedactPolicy — passes through unchanged.
+        # Fallback is RedactPolicy -- passes through unchanged.
         assert transformed == result
 
     def test_supervised_autonomy_uses_redact(self) -> None:
@@ -227,7 +227,7 @@ class TestAutonomyTieredPolicy:
     def test_custom_map_missing_level_falls_back_to_redact(self) -> None:
         """Missing level in custom map falls back to RedactPolicy."""
         autonomy = self._make_autonomy(AutonomyLevel.SEMI)
-        # Custom map only has FULL — SEMI is missing.
+        # Custom map only has FULL -- SEMI is missing.
         custom_map = {AutonomyLevel.FULL: WithholdPolicy()}
         policy = AutonomyTieredPolicy(
             effective_autonomy=autonomy,
@@ -237,7 +237,7 @@ class TestAutonomyTieredPolicy:
 
         transformed = policy.apply(result, _make_context())
 
-        # Fallback is RedactPolicy — passes through unchanged.
+        # Fallback is RedactPolicy -- passes through unchanged.
         assert transformed == result
 
 

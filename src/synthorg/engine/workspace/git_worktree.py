@@ -375,7 +375,7 @@ class PlannerWorktreeStrategy:
                     duration_seconds=elapsed,
                 )
 
-            # Conflict detected — collect conflicting files
+            # Conflict detected -- collect conflicting files
             logger.warning(
                 WORKSPACE_MERGE_CONFLICT,
                 workspace_id=workspace.workspace_id,

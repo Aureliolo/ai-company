@@ -200,7 +200,7 @@ func atomicWriteFile(targetPath string, data []byte, tmpDir string) error {
 
 // digestPinMap converts verification results to a map of image name → digest
 // for use in compose generation. Returns an error if any result has an empty
-// digest — after successful verification all digests must be resolved.
+// digest -- after successful verification all digests must be resolved.
 func digestPinMap(results []verify.VerifyResult) (map[string]string, error) {
 	pins := make(map[string]string, len(results))
 	for _, r := range results {

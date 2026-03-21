@@ -445,7 +445,7 @@ class PerformanceTracker:
 
         The task is tracked in ``_background_tasks`` to prevent
         garbage-collection warnings.  Failures are handled inside
-        ``_maybe_sample`` — they never propagate.
+        ``_maybe_sample`` -- they never propagate.
         """
         if self._sampler is None:
             return
@@ -465,11 +465,11 @@ class PerformanceTracker:
         """Execute LLM sampling for a single record.
 
         Called as a background task by ``_schedule_sampling``.
-        Failures are caught and logged — sampling must never propagate
+        Failures are caught and logged -- sampling must never propagate
         exceptions to the caller.
         """
         sampler = self._sampler
-        if sampler is None:  # pragma: no cover — guarded by _schedule_sampling
+        if sampler is None:  # pragma: no cover -- guarded by _schedule_sampling
             return
 
         try:

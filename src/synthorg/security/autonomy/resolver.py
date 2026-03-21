@@ -1,4 +1,4 @@
-"""Autonomy resolver — three-level chain and category expansion."""
+"""Autonomy resolver -- three-level chain and category expansion."""
 
 from synthorg.core.enums import AutonomyLevel, SeniorityLevel, compare_seniority
 from synthorg.observability import get_logger
@@ -133,7 +133,7 @@ class AutonomyResolver:
             )
             msg = (
                 f"Seniority level {seniority.value!r} cannot have "
-                f"FULL autonomy — maximum is {_JUNIOR_MAX_AUTONOMY.value!r}"
+                f"FULL autonomy -- maximum is {_JUNIOR_MAX_AUTONOMY.value!r}"
             )
             raise ValueError(msg)
 
@@ -186,7 +186,7 @@ class AutonomyResolver:
                     AUTONOMY_PRESET_EXPANDED,
                     pattern=pattern,
                     note=(
-                        "pattern not currently registered — included for "
+                        "pattern not currently registered -- included for "
                         "forward compatibility, verify this is not a typo"
                     ),
                 )

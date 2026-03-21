@@ -67,7 +67,7 @@ def _check_retract_ownership(
             reason="unverifiable_ownership",
         )
         msg = (
-            f"Memory {memory_id} has no user_id — "
+            f"Memory {memory_id} has no user_id -- "
             f"ownership unverifiable, refusing retraction"
         )
         raise MemoryStoreError(msg)
@@ -80,7 +80,7 @@ def _check_retract_ownership(
             actual_namespace=str(owner_ns),
         )
         msg = (
-            f"Memory {memory_id} is not in the shared namespace — "
+            f"Memory {memory_id} is not in the shared namespace -- "
             f"use delete() to remove private entries"
         )
         raise MemoryStoreError(msg)
@@ -312,7 +312,7 @@ async def retract_shared(
         await asyncio.to_thread(client.delete, str(memory_id))
     except MemoryStoreError:
         # Ownership-check MemoryStoreErrors are already logged
-        # with context (reason, publisher) above — re-raise
+        # with context (reason, publisher) above -- re-raise
         # without duplicate logging.
         raise
     except (builtins.MemoryError, RecursionError) as exc:

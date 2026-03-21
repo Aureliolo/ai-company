@@ -1,4 +1,4 @@
-"""Autonomy controller — runtime autonomy level management."""
+"""Autonomy controller -- runtime autonomy level management."""
 
 from litestar import Controller, get, post
 from litestar.datastructures import State  # noqa: TC002
@@ -113,7 +113,7 @@ class AutonomyController(Controller):
             current_level=current_level.value,
         )
 
-        # All changes route through human approval — return current
+        # All changes route through human approval -- return current
         # level with pending status.  The AutonomyChangeStrategy will
         # apply the change when the approval system is wired up.
         logger.info(

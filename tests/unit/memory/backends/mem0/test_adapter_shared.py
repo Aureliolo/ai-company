@@ -1,4 +1,4 @@
-"""Tests for Mem0 adapter — shared knowledge store (publish, search, retract)."""
+"""Tests for Mem0 adapter -- shared knowledge store (publish, search, retract)."""
 
 import builtins
 from unittest.mock import MagicMock

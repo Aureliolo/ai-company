@@ -1,4 +1,4 @@
-"""Edit file tool — search-and-replace within workspace files."""
+"""Edit file tool -- search-and-replace within workspace files."""
 
 import asyncio
 import os

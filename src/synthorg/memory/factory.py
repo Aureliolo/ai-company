@@ -51,7 +51,7 @@ def _create_mem0_backend(
 
     if embedder is None:
         msg = (
-            "Mem0 backend requires an embedder configuration — "
+            "Mem0 backend requires an embedder configuration -- "
             "pass a Mem0EmbedderConfig instance"
         )
         logger.warning(

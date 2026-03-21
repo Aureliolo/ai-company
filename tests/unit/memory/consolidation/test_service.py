@@ -410,7 +410,7 @@ class TestArchivalModeAware:
         )
 
         archival = AsyncMock()
-        # Second archival fails — only m1 and m3 succeed
+        # Second archival fails -- only m1 and m3 succeed
         archival.archive = AsyncMock(
             side_effect=["arch-1", RuntimeError("disk full"), "arch-3"],
         )

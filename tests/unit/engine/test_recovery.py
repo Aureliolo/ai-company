@@ -168,7 +168,7 @@ class TestFailAndReassignStrategy:
         assert snapshot.task_id == sample_task_with_criteria.id
         assert snapshot.agent_id == str(sample_agent_with_personality.id)
         assert snapshot.turn_count >= 0
-        # Snapshot is an AgentContextSnapshot — has no message contents
+        # Snapshot is an AgentContextSnapshot -- has no message contents
         assert not hasattr(snapshot, "conversation")
 
     async def test_error_message_captured(

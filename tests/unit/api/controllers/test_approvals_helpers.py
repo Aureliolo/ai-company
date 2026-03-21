@@ -321,7 +321,7 @@ class TestPublishApprovalEvent:
         request = _make_request()
         request.app.plugins = []  # No ChannelsPlugin
         item = _make_pending_item()
-        # Should not raise — best-effort
+        # Should not raise -- best-effort
         _publish_approval_event(
             request,
             WsEventType.APPROVAL_SUBMITTED,
@@ -356,7 +356,7 @@ class TestPublishApprovalEvent:
         request.app.plugins = [plugin]
         item = _make_pending_item()
 
-        # Should not raise — best-effort
+        # Should not raise -- best-effort
         _publish_approval_event(
             request,
             WsEventType.APPROVAL_SUBMITTED,

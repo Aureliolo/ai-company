@@ -1,4 +1,4 @@
-"""Coordinator factory — builds a fully wired MultiAgentCoordinator.
+"""Coordinator factory -- builds a fully wired MultiAgentCoordinator.
 
 Constructs the decomposition, routing, execution, and workspace
 dependency tree from config and runtime services.
@@ -61,7 +61,7 @@ class _NoProviderDecompositionStrategy(DecompositionStrategy):
         task: Task,  # noqa: ARG002
         context: DecompositionContext,  # noqa: ARG002
     ) -> DecompositionPlan:
-        """Raise DecompositionError — no provider configured."""
+        """Raise DecompositionError -- no provider configured."""
         msg = (
             "No LLM provider configured for decomposition. "
             "Provide a CompletionProvider and decomposition_model "
@@ -82,7 +82,7 @@ def _build_decomposition_strategy(
 
     Raises:
         ValueError: If exactly one of *provider* / *decomposition_model*
-            is supplied — both or neither must be given.
+            is supplied -- both or neither must be given.
     """
     if provider is not None and decomposition_model is not None:
         from synthorg.engine.decomposition.llm import (  # noqa: PLC0415
@@ -118,7 +118,7 @@ def _build_workspace_service(
 
     Raises:
         ValueError: If exactly one of *workspace_strategy* /
-            *workspace_config* is supplied — both or neither must be given.
+            *workspace_config* is supplied -- both or neither must be given.
     """
     if workspace_strategy is not None and workspace_config is not None:
         from synthorg.engine.workspace.service import (  # noqa: PLC0415
@@ -170,7 +170,7 @@ def build_coordinator(  # noqa: PLR0913
 
     Constructs the dependency tree:
         1. ``TaskStructureClassifier`` (no deps)
-        2. ``DecompositionStrategy`` — LLM if provider+model provided,
+        2. ``DecompositionStrategy`` -- LLM if provider+model provided,
            otherwise a placeholder that raises at decompose-time
         3. ``DecompositionService(strategy, classifier)``
         4. ``AgentTaskScorer(min_score=task_assignment_config.min_score)``

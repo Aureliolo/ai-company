@@ -82,7 +82,7 @@ def _make_run_result(  # noqa: PLR0913
 
 @pytest.mark.unit
 class TestAgentRunResultFrozen:
-    """AgentRunResult is frozen — field reassignment raises."""
+    """AgentRunResult is frozen -- field reassignment raises."""
 
     def test_frozen_execution_result(self) -> None:
         result = _make_run_result()

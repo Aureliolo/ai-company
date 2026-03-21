@@ -2,7 +2,7 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, mypy, pytest-unit, golangci-lint, go-vet, go-test]
+  skip: [commitizen, gitleaks, hadolint-docker, no-em-dashes, mypy, pytest-unit, golangci-lint, go-vet, go-test]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -51,6 +51,12 @@ repos:
 
   - repo: local
     hooks:
+      - id: no-em-dashes
+        name: no em-dashes (U+2014)
+        entry: bash -c 'uv run python scripts/check_no_em_dashes.py "$@"' --
+        language: system
+        types: [text]
+
       - id: mypy
         name: mypy type-check
         entry: uv run python -m mypy src/ tests/

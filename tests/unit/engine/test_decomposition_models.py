@@ -390,7 +390,7 @@ class TestSubtaskStatusRollup:
         """Fully terminal mix of COMPLETED+CANCELLED -> CANCELLED.
 
         When some subtasks were cancelled, the parent cannot be considered
-        fully completed — CANCELLED signals partial abandonment.
+        fully completed -- CANCELLED signals partial abandonment.
         """
         rollup = SubtaskStatusRollup(
             parent_task_id="task-1",

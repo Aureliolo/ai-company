@@ -160,7 +160,7 @@ jobs:
         working-directory: cli
         run: govulncheck ./...
 
-  # ── Fuzz (main only — too slow for PRs) ──
+  # ── Fuzz (main only -- too slow for PRs) ──
   cli-fuzz:
     name: CLI Fuzz
     needs: cli-changes
@@ -249,7 +249,7 @@ jobs:
             exit 1
           fi
           # cli-fuzz uses step-level continue-on-error, so fuzz findings
-          # don't fail the job — only infra failures (checkout, setup-go)
+          # don't fail the job -- only infra failures (checkout, setup-go)
           # propagate here. Fuzz warnings are emitted by the per-matrix
           # "Report fuzz outcome" step.
           echo "All CLI checks passed (some may have been skipped due to path filters)"
@@ -297,7 +297,7 @@ jobs:
             echo "Attempt $i: release not found yet, waiting 10s..."
             sleep 10
           done
-          echo "Release $TAG not found after 5 minutes — proceeding, but the next upload step will fail if the draft release is missing."
+          echo "Release $TAG not found after 5 minutes -- proceeding, but the next upload step will fail if the draft release is missing."
 
       - name: Copy LICENSE into CLI module
         run: cp LICENSE cli/LICENSE
@@ -314,7 +314,7 @@ jobs:
       - name: Validate checksums file
         run: |
           if [ ! -f cli/dist/checksums.txt ] || [ ! -s cli/dist/checksums.txt ]; then
-            echo "::error::cli/dist/checksums.txt is missing or empty — GoReleaser may have failed"
+            echo "::error::cli/dist/checksums.txt is missing or empty -- GoReleaser may have failed"
             exit 1
           fi
 

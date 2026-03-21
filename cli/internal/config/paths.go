@@ -53,7 +53,7 @@ func dataDirForOS(goos, home, localAppData, xdgDataHome string) string {
 // environment-variable-derived paths are sanitized before filesystem use.
 //
 // Security note: this validates path format only. The CLI trusts user-provided
-// paths (--data-dir, config file) by design — the user controls their own
+// paths (--data-dir, config file) by design -- the user controls their own
 // installation directory. No filesystem containment is enforced.
 func SecurePath(path string) (string, error) {
 	clean := filepath.Clean(path)

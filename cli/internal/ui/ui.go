@@ -130,7 +130,7 @@ func (u *UI) Table(headers []string, rows [][]string) {
 	if len(headers) == 0 {
 		return
 	}
-	// Sanitize all inputs — strip control chars and collapse whitespace
+	// Sanitize all inputs -- strip control chars and collapse whitespace
 	// that would break column alignment.
 	sanitize := func(s string) string {
 		s = stripControl(s)

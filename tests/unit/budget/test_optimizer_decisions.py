@@ -1,4 +1,4 @@
-"""Tests for CostOptimizer — downgrades, approval, routing, edge cases."""
+"""Tests for CostOptimizer -- downgrades, approval, routing, edge cases."""
 
 from datetime import UTC, datetime, timedelta
 
@@ -262,7 +262,7 @@ class TestEvaluateOperation:
         )
         optimizer, tracker = make_optimizer(budget_config=bc, config=config)
 
-        # Spend 95% — current alert is CRITICAL, but requesting 10
+        # Spend 95% -- current alert is CRITICAL, but requesting 10
         # would push to 105% → projected HARD_STOP → denied
         await tracker.record(
             make_cost_record(cost_usd=95.0, timestamp=OPT_START + timedelta(hours=1)),
@@ -428,7 +428,7 @@ class TestEdgeCases:
             ),
         ]
         resolver = make_resolver(models)
-        # Require 200k context — small model has only 50k
+        # Require 200k context -- small model has only 50k
         result = _find_cheaper_model(0.09, resolver, min_context=200000)
         assert result is None
 

@@ -2,7 +2,7 @@
 
 Orchestrates the detection of coordination errors from an execution
 result using the configured error taxonomy.  The pipeline never raises
-exceptions — all errors are caught and logged.
+exceptions -- all errors are caught and logged.
 """
 
 from typing import TYPE_CHECKING
@@ -49,7 +49,7 @@ async def classify_execution_errors(
 ) -> ClassificationResult | None:
     """Classify coordination errors from an execution result.
 
-    Returns ``None`` when the taxonomy is disabled.  Never raises —
+    Returns ``None`` when the taxonomy is disabled.  Never raises --
     all exceptions are caught and logged as ``CLASSIFICATION_ERROR``.
 
     The function is async for compatibility with the engine's async

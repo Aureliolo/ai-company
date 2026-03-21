@@ -1,4 +1,4 @@
-"""Memory context formatter — converts ranked memories to ChatMessages.
+"""Memory context formatter -- converts ranked memories to ChatMessages.
 
 Handles token budget enforcement via greedy packing: iterates by rank,
 skips entries that exceed the remaining budget, and continues with
@@ -48,7 +48,7 @@ def _format_line(memory: ScoredMemory) -> str:
     shared_prefix = "[shared] " if memory.is_shared else ""
     category = memory.entry.category.value
     score = memory.combined_score
-    # Sanitise content to prevent delimiter injection — replace end
+    # Sanitise content to prevent delimiter injection -- replace end
     # delimiter inside memory content so it cannot break the block.
     content = memory.entry.content.replace(MEMORY_BLOCK_END, "[DELIMITER_REDACTED]")
     return f"{shared_prefix}[{category} | score: {score:.2f}] {content}"

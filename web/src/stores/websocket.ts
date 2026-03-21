@@ -43,12 +43,12 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   async function connect() {
     if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return
-    // Deduplicate concurrent connect() calls — the ticket exchange is async,
+    // Deduplicate concurrent connect() calls -- the ticket exchange is async,
     // so two callers could pass the readyState guard before the first resolves.
     if (connectPromise) return connectPromise
     const generation = connectGeneration
     connectPromise = doConnect(generation).finally(() => {
-      // Only clear if no disconnect() happened — disconnect increments
+      // Only clear if no disconnect() happened -- disconnect increments
       // connectGeneration, so stale finally callbacks are no-ops.
       if (generation === connectGeneration) connectPromise = null
     })
@@ -61,7 +61,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     intentionalClose = false
 
     // Fetch a one-time ticket from the backend (requires valid JWT in Authorization header).
-    // The ticket is short-lived (30s) and single-use — browsers cannot set custom headers
+    // The ticket is short-lived (30s) and single-use -- browsers cannot set custom headers
     // on WebSocket upgrade requests, so a query parameter is the only viable transport.
     let ticket: string
     try {
@@ -69,7 +69,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       ticket = resp.ticket
     } catch (err) {
       console.error('WebSocket ticket exchange failed:', sanitizeForLog(err))
-      // Don't reconnect on auth failure — the 401 interceptor handles redirect
+      // Don't reconnect on auth failure -- the 401 interceptor handles redirect
       const isAuthError = err instanceof AxiosError && err.response?.status === 401
       if (shouldBeConnected && !isAuthError) {
         scheduleReconnect()
@@ -77,7 +77,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       return
     }
 
-    // Guard against stale connect attempts — if disconnect() was called while
+    // Guard against stale connect attempts -- if disconnect() was called while
     // we were awaiting the ticket, bail out instead of opening a new socket.
     if (!shouldBeConnected || generation !== connectGeneration) {
       return
@@ -89,7 +89,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     socket.onopen = () => {
       connected.value = true
       reconnectAttempts = 0
-      // Clear pending queue — activeSubscriptions is the single source of truth.
+      // Clear pending queue -- activeSubscriptions is the single source of truth.
       // Anything queued while disconnected was already added to activeSubscriptions
       // by subscribe(), so replaying pendingSubscriptions would cause duplicate sends.
       pendingSubscriptions = []
@@ -104,7 +104,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
 
     socket.onmessage = (event: MessageEvent) => {
-      // .length counts UTF-16 code units, not bytes — close enough for size-gating
+      // .length counts UTF-16 code units, not bytes -- close enough for size-gating
       if (typeof event.data === 'string' && event.data.length > WS_MAX_MESSAGE_SIZE) {
         console.error('WebSocket message exceeds max size, discarding')
         return
@@ -222,7 +222,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   function unsubscribe(channels: WsChannel[]) {
     // Remove from tracked subscriptions so reconnect won't re-subscribe.
-    // Uses every() — only removes subscriptions whose channels are fully
+    // Uses every() -- only removes subscriptions whose channels are fully
     // covered by the unsubscribe set. Partial overlap is intentionally kept.
     const channelSet = new Set(channels)
     for (let i = activeSubscriptions.length - 1; i >= 0; i--) {

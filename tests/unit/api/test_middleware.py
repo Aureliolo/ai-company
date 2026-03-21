@@ -130,7 +130,7 @@ class TestSecurityHeadersHook:
 
         await security_headers_hook(message, scope)
 
-        # Headers list should remain empty — hook returned early.
+        # Headers list should remain empty -- hook returned early.
         assert message.get("headers") == []
 
 

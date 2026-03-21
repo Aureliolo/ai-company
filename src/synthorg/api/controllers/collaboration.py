@@ -1,4 +1,4 @@
-"""Collaboration scoring controller — overrides and calibration data."""
+"""Collaboration scoring controller -- overrides and calibration data."""
 
 from datetime import UTC, datetime, timedelta
 from typing import Any

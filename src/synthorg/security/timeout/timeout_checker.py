@@ -1,4 +1,4 @@
-"""Timeout checker — evaluates pending approvals against timeout policy.
+"""Timeout checker -- evaluates pending approvals against timeout policy.
 
 Periodically called (by the engine or a background task) to check
 whether pending approval items have exceeded their timeout thresholds
@@ -69,11 +69,11 @@ class TimeoutChecker:
                 TIMEOUT_POLICY_EVALUATED,
                 approval_id=item.id,
                 elapsed_seconds=elapsed,
-                note="policy.determine_action failed — defaulting to WAIT",
+                note="policy.determine_action failed -- defaulting to WAIT",
             )
             action = TimeoutAction(
                 action=TimeoutActionType.WAIT,
-                reason="Policy evaluation error — defaulting to WAIT",
+                reason="Policy evaluation error -- defaulting to WAIT",
             )
 
         event = {

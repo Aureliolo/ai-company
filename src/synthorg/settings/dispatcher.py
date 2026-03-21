@@ -1,4 +1,4 @@
-"""Settings change dispatcher — polls ``#settings`` and routes to subscribers.
+"""Settings change dispatcher -- polls ``#settings`` and routes to subscribers.
 
 Follows the same polling-loop pattern as
 :class:`~synthorg.api.bus_bridge.MessageBusBridge`.
@@ -57,7 +57,7 @@ class SettingsChangeDispatcher:
     a WARNING is logged and subscribers are **not** called.  For all
     other settings, matching subscribers' ``on_settings_changed``
     is invoked.  Errors in individual subscribers are logged and
-    swallowed — the poll loop is never interrupted.
+    swallowed -- the poll loop is never interrupted.
 
     Args:
         message_bus: The message bus to poll.
@@ -232,7 +232,7 @@ def _extract_metadata(
     Returns:
         A :class:`_ChangeMetadata` or ``None`` if the ``namespace`` or
         ``key`` metadata fields are missing.  The ``restart_required``
-        field defaults to ``True`` when absent — fail-safe to prevent
+        field defaults to ``True`` when absent -- fail-safe to prevent
         accidental hot-reload of restart-required settings on metadata
         corruption.
     """

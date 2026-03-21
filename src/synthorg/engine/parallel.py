@@ -57,7 +57,7 @@ must not block.  Async functions will produce un-awaited coroutines.
 
 @dataclasses.dataclass
 class _ProgressState:
-    """Mutable progress tracking — internal to ``execute_group()`` scope."""
+    """Mutable progress tracking -- internal to ``execute_group()`` scope."""
 
     group_id: str
     total: int
@@ -81,7 +81,7 @@ class _ProgressState:
 class ParallelExecutor:
     """Orchestrates concurrent agent execution.
 
-    Composition over inheritance — takes an ``AgentEngine`` and
+    Composition over inheritance -- takes an ``AgentEngine`` and
     coordinates concurrent ``run()`` calls.
 
     Args:

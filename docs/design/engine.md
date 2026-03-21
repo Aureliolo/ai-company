@@ -166,7 +166,7 @@ exceptions on failure; scoring-based strategies return
 
 ---
 
-## TaskEngine — Centralized State Coordination
+## TaskEngine -- Centralized State Coordination
 
 All task state mutations flow through a single-writer `TaskEngine` that owns the
 authoritative task state. This eliminates race conditions when multiple agents
@@ -188,7 +188,7 @@ Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop
   `Task.model_validate({**task.model_dump(), **updates})` or
   `Task.with_transition(...)`); the existing instance is never mutated.
 - **Optimistic concurrency**: Per-task version counters held in-memory
-  (volatile).  An unknown task is seeded at version 1 on first access —
+  (volatile).  An unknown task is seeded at version 1 on first access --
   this is a heuristic baseline, **not** loaded from persistence.  Version
   tracking resets on engine restart; durable persistence of versions is a
   future enhancement.  Callers can pass `expected_version` to detect stale
@@ -196,7 +196,7 @@ Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop
   with `error_code="version_conflict"`.  Convenience methods raise
   `TaskVersionConflictError`.
 - **Read-through**: `get_task()` and `list_tasks()` bypass the queue and
-  read directly from persistence — safe because TaskEngine is the sole writer.
+  read directly from persistence -- safe because TaskEngine is the sole writer.
 - **Snapshot publishing**: On success, a `TaskStateChanged` event is published
   to the message bus for downstream consumers (WebSocket bridge, audit, etc.).
 
@@ -213,7 +213,7 @@ Agent / API  ──submit()──▶  asyncio.Queue  ──▶  _processing_loop
 ### Error Handling
 
 - **Typed errors**: `TaskNotFoundError` and `TaskVersionConflictError` provide
-  precise failure classification — API controllers catch these directly instead
+  precise failure classification -- API controllers catch these directly instead
   of parsing error strings.
 - **Error sanitization**: Internal exception details (file paths, URLs) are
   redacted via a shared ``sanitize_message()`` helper
@@ -249,7 +249,7 @@ at `ASSIGNED`).
 
 **Semantics:**
 
-- **Best-effort**: Sync failures are logged and swallowed — agent execution
+- **Best-effort**: Sync failures are logged and swallowed -- agent execution
   is never blocked by a TaskEngine issue. Each sync failure is isolated and
   does not prevent subsequent transitions.
 - **Critical IN_PROGRESS**: The initial `ASSIGNED → IN_PROGRESS` sync is
@@ -275,7 +275,7 @@ execution state:
 
 | Status | Meaning |
 |--------|---------|
-| `IDLE` | Agent is not currently executing — no active task or execution run. |
+| `IDLE` | Agent is not currently executing -- no active task or execution run. |
 | `EXECUTING` | Agent is actively processing a task within an execution loop. |
 | `PAUSED` | Agent is waiting for an external event (e.g. approval gate). |
 
@@ -576,17 +576,17 @@ class StagnationDetector(Protocol):
     def get_detector_type(self) -> str: ...
 ```
 
-Async protocol — future implementations may consult external services or
+Async protocol -- future implementations may consult external services or
 LLM-based analysis.
 
 ### Default Implementation: `ToolRepetitionDetector`
 
 Uses dual-signal detection:
 
-1. **Repetition ratio** — excess duplicates divided by total fingerprint count
+1. **Repetition ratio** -- excess duplicates divided by total fingerprint count
    in the window. A fingerprint appearing 3 times contributes 2 to the
    duplicate count.
-2. **Cycle detection** — checks for repeating A→B→A→B patterns at the turn
+2. **Cycle detection** -- checks for repeating A→B→A→B patterns at the turn
    level (`seq[-2k:-k] == seq[-k:]` for cycle lengths 2..len/2).
 
 Fingerprints are computed as `name:sha256(canonical_json_args)[:16]`,
@@ -605,10 +605,10 @@ sorted per-turn for order-independent comparison.
 
 ### Intervention Flow
 
-1. **No stagnation** — execution continues normally
-2. **`INJECT_PROMPT`** — a corrective USER-role message is injected into the
+1. **No stagnation** -- execution continues normally
+2. **`INJECT_PROMPT`** -- a corrective USER-role message is injected into the
    conversation (up to `max_corrections` times)
-3. **`TERMINATE`** — execution terminates with `TerminationReason.STAGNATION`
+3. **`TERMINATE`** -- execution terminates with `TerminationReason.STAGNATION`
    and stagnation metadata attached to the result
 
 ### Loop Integration
@@ -622,7 +622,7 @@ sorted per-turn for order-independent comparison.
   checked within the mini-ReAct sub-loop, corrections counter and
   window are step-scoped
 - `STAGNATION` termination leaves the task in its current state (like
-  `MAX_TURNS` — the task is not failed, it's returned to the caller)
+  `MAX_TURNS` -- the task is not failed, it's returned to the caller)
 
 ---
 
@@ -636,11 +636,11 @@ system prompts, and compresses conversations at turn boundaries.
 
 `AgentContext` carries three context-budget fields:
 
-- `context_fill_tokens` — estimated tokens in the full context (system prompt +
+- `context_fill_tokens` -- estimated tokens in the full context (system prompt +
   conversation + tool definitions)
-- `context_capacity_tokens` — the model's `max_context_tokens` from
+- `context_capacity_tokens` -- the model's `max_context_tokens` from
   `ModelCapabilities`, or `None` when unknown
-- `context_fill_percent` — computed percentage (`fill / capacity * 100`),
+- `context_fill_percent` -- computed percentage (`fill / capacity * 100`),
   `None` when capacity is unknown
 
 Fill is re-estimated after each turn via `update_context_fill()` in
@@ -663,7 +663,7 @@ is derived from `CompressionMetadata.compactions_performed`.
 
 `CompactionCallback` is a type alias (`Callable[[AgentContext], Coroutine[...,
 AgentContext | None]]`) wired into `ReactLoop`, `PlanExecuteLoop`, and
-`HybridLoop` via their constructors — the same injection pattern as `checkpoint_callback`,
+`HybridLoop` via their constructors -- the same injection pattern as `checkpoint_callback`,
 `stagnation_detector`, and `approval_gate`.
 
 The default implementation (`make_compaction_callback` in
@@ -681,7 +681,7 @@ message when `context_fill_percent` exceeds a configurable threshold (default
 
 Assistant message snippets included in the summary are sanitized via
 ``sanitize_message()`` to redact file paths and URLs before injection into LLM
-context. Compaction errors are logged but never propagated — compaction is
+context. Compaction errors are logged but never propagated -- compaction is
 advisory, not critical.
 
 ### Compressed Checkpoint Recovery
@@ -1034,17 +1034,17 @@ decompose → route → resolve topology → validate → dispatch → rollup �
 
 **Pipeline phases:**
 
-1. **Decompose** — `DecompositionService` breaks the parent task into subtasks
+1. **Decompose** -- `DecompositionService` breaks the parent task into subtasks
    with a dependency DAG
-2. **Route** — `TaskRoutingService` assigns each subtask to an agent based on
+2. **Route** -- `TaskRoutingService` assigns each subtask to an agent based on
    skills, workload, and topology
-3. **Resolve topology** — reads topology from routing decisions; falls back to
+3. **Resolve topology** -- reads topology from routing decisions; falls back to
    `CENTRALIZED` if `AUTO` was not resolved upstream
-4. **Validate** — fails the pipeline if all subtasks are unroutable
-5. **Dispatch** — a `TopologyDispatcher` executes waves (workspace setup →
+4. **Validate** -- fails the pipeline if all subtasks are unroutable
+5. **Dispatch** -- a `TopologyDispatcher` executes waves (workspace setup →
    parallel execution → merge → teardown)
-6. **Rollup** — aggregates subtask statuses into a `SubtaskStatusRollup`
-7. **Update parent** — transitions the parent task via `TaskEngine` (if provided)
+6. **Rollup** -- aggregates subtask statuses into a `SubtaskStatusRollup`
+7. **Update parent** -- transitions the parent task via `TaskEngine` (if provided)
 
 Each phase produces a `CoordinationPhaseResult` (success/failure + duration).
 Phase failures in decompose/route/validate raise `CoordinationPhaseError` with

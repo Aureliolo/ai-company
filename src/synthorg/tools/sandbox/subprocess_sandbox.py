@@ -132,7 +132,7 @@ class SubprocessSandbox:
         """Check if an env var name matches any denylist pattern.
 
         Both name and patterns are uppercased for case-insensitive
-        matching — denylist patterns must catch secrets regardless of
+        matching -- denylist patterns must catch secrets regardless of
         casing.
         """
         upper = name.upper()
@@ -161,8 +161,8 @@ class SubprocessSandbox:
             reason="no PATH entries matched safe prefixes; using safe defaults",
             original_entry_count=len(entries),
         )
-        # Fallback uses fully hardcoded directories — no os.environ reads,
-        # no user-provided extra_safe_path_prefixes — so that the
+        # Fallback uses fully hardcoded directories -- no os.environ reads,
+        # no user-provided extra_safe_path_prefixes -- so that the
         # Path.is_dir() filesystem probe receives only compile-time
         # constants (CodeQL py/path-injection).
         fallback_dirs = self._get_hardcoded_fallback_dirs()
@@ -205,7 +205,7 @@ class SubprocessSandbox:
     def _get_platform_default_dirs() -> tuple[str, ...]:
         """Return built-in safe PATH directories for the current platform.
 
-        These are built-in system directories — not influenced by
+        These are built-in system directories -- not influenced by
         ``SubprocessSandboxConfig`` user configuration.  On Windows,
         ``SYSTEMROOT`` is read from the process environment at call
         time (with a safe default fallback).
@@ -225,7 +225,7 @@ class SubprocessSandbox:
         """Return fully hardcoded safe PATH directories for fallback.
 
         Unlike ``_get_platform_default_dirs``, this reads **no**
-        environment variables — every value is a compile-time constant.
+        environment variables -- every value is a compile-time constant.
         Used only in the fallback branch of ``_filter_path`` where
         ``Path.is_dir()`` probes the filesystem, so that no
         ``os.environ`` data reaches a filesystem call
@@ -258,7 +258,7 @@ class SubprocessSandbox:
         process environment, strips denylist matches, optionally filters
         PATH, then applies overrides.
 
-        Note: ``env_overrides`` bypass the denylist by design — they
+        Note: ``env_overrides`` bypass the denylist by design -- they
         are trusted internal overrides (e.g. git hardening vars).
         Callers must not pass untrusted user-controlled data as
         overrides.
@@ -294,7 +294,7 @@ class SubprocessSandbox:
 
         if env_overrides:
             env.update(env_overrides)
-            # Re-filter PATH if overrides injected one — prevents
+            # Re-filter PATH if overrides injected one -- prevents
             # bypassing the restricted-path guard via env_overrides.
             # Case-insensitive key check on Windows where env var
             # names are case-insensitive (e.g. "Path" vs "PATH").
@@ -373,7 +373,7 @@ class SubprocessSandbox:
     def _close_process(proc: asyncio.subprocess.Process) -> None:
         """Close subprocess transport to prevent ResourceWarning on Windows.
 
-        Delegates to :func:`close_subprocess_transport` — see its
+        Delegates to :func:`close_subprocess_transport` -- see its
         docstring for details on the CPython-internal ``_transport``
         access and error handling.
         """
@@ -579,7 +579,7 @@ class SubprocessSandbox:
         )
 
     async def cleanup(self) -> None:
-        """Subprocesses are ephemeral — no resources to release."""
+        """Subprocesses are ephemeral -- no resources to release."""
         logger.debug(SANDBOX_CLEANUP, backend="subprocess")
 
     async def health_check(self) -> bool:

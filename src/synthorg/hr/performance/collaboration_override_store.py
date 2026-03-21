@@ -27,7 +27,7 @@ class CollaborationOverrideStore:
     """In-memory store for human collaboration score overrides.
 
     Maintains at most one override per agent. Expiration is checked
-    at query time — expired overrides are not returned by
+    at query time -- expired overrides are not returned by
     :meth:`get_active_override`.
     """
 

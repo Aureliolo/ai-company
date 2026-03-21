@@ -1,4 +1,4 @@
-# Gitleaks configuration — allowlist test files containing deliberately
+# Gitleaks configuration -- allowlist test files containing deliberately
 # fake credentials used by the security rule detector test suite.
 
 [allowlist]

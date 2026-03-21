@@ -80,7 +80,7 @@ class TestAutoDowngrade:
             DowngradeReason.SECURITY_INCIDENT,
             current_level=AutonomyLevel.SEMI,
         )
-        # Now agent is LOCKED. HIGH_ERROR_RATE targets SUPERVISED — but
+        # Now agent is LOCKED. HIGH_ERROR_RATE targets SUPERVISED -- but
         # that's higher than LOCKED, so agent should stay LOCKED.
         result = strategy.auto_downgrade("agent-1", DowngradeReason.HIGH_ERROR_RATE)
         assert result == AutonomyLevel.LOCKED

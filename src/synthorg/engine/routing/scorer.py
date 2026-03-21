@@ -37,7 +37,7 @@ class AgentTaskScorer:
     """Scores agent-subtask compatibility for routing.
 
     Scoring heuristics (both skill ratios use total required count
-    as denominator — i.e. fraction of required skills covered per tier):
+    as denominator -- i.e. fraction of required skills covered per tier):
 
     - Primary skill overlap: matched/max(required, 1) * 0.4
     - Secondary skill overlap: matched/max(required, 1) * 0.2
@@ -111,7 +111,7 @@ class AgentTaskScorer:
         else:
             reasons.append("no skills required, skill matching skipped")
 
-        # Secondary skill overlap (weight: 0.2) — exclude primary matches
+        # Secondary skill overlap (weight: 0.2) -- exclude primary matches
         secondary = set(agent.skills.secondary)
         secondary_matched = (required & secondary) - primary_matched
         if required:

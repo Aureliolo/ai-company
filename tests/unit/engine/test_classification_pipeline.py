@@ -94,13 +94,13 @@ class TestClassifyExecutionErrors:
         assert result.task_id == "task-1"
 
     async def test_only_enabled_categories_run(self) -> None:
-        """Only COORDINATION_FAILURE is enabled — others should not run."""
+        """Only COORDINATION_FAILURE is enabled -- others should not run."""
         config = ErrorTaxonomyConfig(
             enabled=True,
             categories=(ErrorCategory.COORDINATION_FAILURE,),
         )
         # Conversation has a contradiction but only coordination
-        # failure is enabled — should not detect contradiction
+        # failure is enabled -- should not detect contradiction
         messages = (
             ChatMessage(
                 role=MessageRole.ASSISTANT,

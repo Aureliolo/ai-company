@@ -38,7 +38,7 @@ class TaskAssignmentService:
     """Orchestrates task assignment via a pluggable strategy.
 
     Validates task status before delegating to the strategy.
-    Does NOT mutate the task — callers are responsible for any
+    Does NOT mutate the task -- callers are responsible for any
     subsequent status transitions.
     """
 

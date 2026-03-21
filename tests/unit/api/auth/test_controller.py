@@ -308,7 +308,7 @@ class TestRequirePasswordChanged:
         connection.scope = {"user": user}
         connection.url.path = path
 
-        # Should not raise — exempt path
+        # Should not raise -- exempt path
         require_password_changed(connection, None)
 
     def test_rejects_unknown_user_type(self) -> None:

@@ -164,7 +164,7 @@ class TestWsTicketStoreValidateAndConsume:
         ):
             ticket = store.create(user)
 
-        # Just before expiry — should still work
+        # Just before expiry -- should still work
         with patch(
             "synthorg.api.auth.ticket_store.time.monotonic",
             return_value=base_time + 9.9,

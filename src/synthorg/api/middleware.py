@@ -9,7 +9,7 @@ Why ``before_send`` instead of ASGI middleware?
 Litestar's ``before_send`` hook wraps the ASGI ``send`` callback at
 the outermost layer (before the middleware stack), so it fires for
 all responses.  By contrast, user-defined ASGI middleware only runs
-for matched routes — 404 and 405 responses from the router bypass it.
+for matched routes -- 404 and 405 responses from the router bypass it.
 """
 
 import time
@@ -38,18 +38,18 @@ logger = get_logger(__name__)
 # ── Security headers ────────────────────────────────────────────
 # Applied to every HTTP response via the before_send hook.
 
-# Strict CSP for API routes — no inline scripts, self-origin only.
+# Strict CSP for API routes -- no inline scripts, self-origin only.
 _API_CSP: Final[str] = (
     "default-src 'self'; script-src 'self'; object-src 'none'; "
     "base-uri 'self'; frame-ancestors 'none'"
 )
 
-# Relaxed CSP for /docs/ — Scalar UI loads resources from external origins.
+# Relaxed CSP for /docs/ -- Scalar UI loads resources from external origins.
 # cdn.jsdelivr.net: JS bundle, CSS, fonts, source maps
 # fonts.scalar.com: Scalar-hosted font files
 # proxy.scalar.com: API proxy and registry features
 # 'unsafe-inline' in script-src/style-src: required by Scalar UI which uses
-# inline <script> and <style> elements.  Accepted risk — /docs is read-only,
+# inline <script> and <style> elements.  Accepted risk -- /docs is read-only,
 # unauthenticated, and serves no user-submitted content.
 _DOCS_CSP: Final[str] = (
     "default-src 'self'; "
@@ -92,7 +92,7 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
     """Inject security headers into every HTTP response.
 
     Registered as a Litestar ``before_send`` hook so it fires for
-    **all** HTTP responses — successful, exception-handler, and
+    **all** HTTP responses -- successful, exception-handler, and
     router-level 404/405.
 
     Adds static security headers (CORP, HSTS, X-Content-Type-Options,
@@ -117,7 +117,7 @@ async def security_headers_hook(message: Message, scope: Scope) -> None:
 
     headers = MutableScopeHeaders.from_message(message)
 
-    # Static security headers — overwrite to prevent duplicates.
+    # Static security headers -- overwrite to prevent duplicates.
     for name, value in _SECURITY_HEADERS.items():
         headers[name] = value
 

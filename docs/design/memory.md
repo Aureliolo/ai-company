@@ -341,7 +341,7 @@ dense content (code, structured data, identifiers). Based on research: Memex
 
 **Classification** is heuristic-based (`DensityClassifier`), using five weighted signals: code
 patterns, structured data markers, identifier density, numeric density, and line structure.  No LLM
-is needed for classification — only for abstractive summarization.  Groups are classified by
+is needed for classification -- only for abstractive summarization.  Groups are classified by
 majority vote: if most entries in a category group are dense, the group uses extractive mode.
 
 **Deterministic restore**: When entries are archived, the service builds an `archival_index`
@@ -541,7 +541,7 @@ the agent during execution.
 
     1. `MemoryBackend.retrieve()` -- fetch candidate memories
     2. Rank by relevance + recency (Linear, default) or fuse via RRF (algorithms below)
-    3. Filter by `min_relevance` threshold (Linear only — RRF does not apply this filter)
+    3. Filter by `min_relevance` threshold (Linear only -- RRF does not apply this filter)
     4. Apply `MemoryFilterStrategy` ([Decision Log](../architecture/decisions.md) D23, optional) -- exclude inferable content
     5. Greedy token-budget packing
     6. Format as `ChatMessage` (configured role: SYSTEM or USER) with delimiters
@@ -549,7 +549,7 @@ the agent during execution.
     Shared memories (from `SharedKnowledgeStore`) are fetched in parallel, merged with personal
     memories (no `personal_boost` for shared), and ranked together.
 
-    **Ranking Algorithm (Linear — default):**
+    **Ranking Algorithm (Linear -- default):**
 
     1. `relevance = entry.relevance_score ?? config.default_relevance`
     2. Personal entries: `relevance = min(relevance + personal_boost, 1.0)`

@@ -87,7 +87,7 @@ class TestParseActionItems:
         text = "# Action Items\n- Please assign to bob the new module\n"
         result = parse_action_items(text)
         assert len(result) == 1
-        # The description should remain intact — no false assignee extraction
+        # The description should remain intact -- no false assignee extraction
         assert result[0].description == "Please assign to bob the new module"
         assert result[0].assignee_id is None
 

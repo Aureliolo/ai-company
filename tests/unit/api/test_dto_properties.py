@@ -123,7 +123,7 @@ class TestCreateApprovalRequestProperties:
         description: str,
         risk_level: ApprovalRiskLevel,
     ) -> None:
-        # No assume() needed — _not_blank strategy has max_size=30,
+        # No assume() needed -- _not_blank strategy has max_size=30,
         # which is always within the 256/4096 field limits.
         req = CreateApprovalRequest(
             action_type=action_type,

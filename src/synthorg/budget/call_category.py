@@ -16,13 +16,13 @@ class LLMCallCategory(StrEnum):
     """
 
     PRODUCTIVE = "productive"
-    """Direct task work — reasoning, code generation, analysis."""
+    """Direct task work -- reasoning, code generation, analysis."""
 
     COORDINATION = "coordination"
-    """Inter-agent communication — delegation, status updates, handoffs."""
+    """Inter-agent communication -- delegation, status updates, handoffs."""
 
     SYSTEM = "system"
-    """Framework overhead — planning, re-planning, self-evaluation."""
+    """Framework overhead -- planning, re-planning, self-evaluation."""
 
 
 class OrchestrationAlertLevel(StrEnum):

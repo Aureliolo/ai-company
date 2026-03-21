@@ -15,7 +15,7 @@ class TaskReassignmentStrategy(Protocol):
     """Strategy for reassigning tasks from a departing agent.
 
     Implementations determine how active tasks are handled when
-    an agent is terminated — e.g. returned to queue, reassigned
+    an agent is terminated -- e.g. returned to queue, reassigned
     to a specific agent, or cancelled.
     """
 

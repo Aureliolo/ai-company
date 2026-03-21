@@ -87,7 +87,7 @@ class MessageBus(Protocol):
     ) -> Subscription:
         """Subscribe an agent to a channel.
 
-        Idempotent — returns a fresh subscription record if already
+        Idempotent -- returns a fresh subscription record if already
         subscribed (the channel's subscriber list is not duplicated).
 
         Args:

@@ -90,7 +90,7 @@ class TestFIFOOrdering:
             make_create_data(title="Original"),
             requested_by="alice",
         )
-        # Immediately update — this should see the task because
+        # Immediately update -- this should see the task because
         # the queue processes sequentially
         updated = await engine.update_task(
             task.id,

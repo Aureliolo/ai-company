@@ -13,7 +13,7 @@ COPY --from=node-base /usr/local/bin/node /usr/local/bin/node
 COPY --from=node-base /usr/local/lib/node_modules /usr/local/lib/node_modules
 
 # git version tracks base image; updated via Dependabot base image bumps.
-# Symlink npm, install git, create sandbox user — single layer.
+# Symlink npm, install git, create sandbox user -- single layer.
 # hadolint ignore=DL3008
 RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
     && apt-get update && apt-get install -y --no-install-recommends git \

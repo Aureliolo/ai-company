@@ -1,4 +1,4 @@
-"""Settings service — resolution, validation, caching, and notifications.
+"""Settings service -- resolution, validation, caching, and notifications.
 
 Provides the central service layer that merges setting values from
 four sources in priority order: DB > env > YAML > code defaults.
@@ -288,7 +288,7 @@ class SettingsService:
         # get() performs the registry check and raises SettingNotFoundError
         value = await self.get(namespace, key)
         definition = self._registry.get(namespace, key)
-        assert definition is not None  # noqa: S101 — get() guarantees
+        assert definition is not None  # noqa: S101 -- get() guarantees
         display_value = _SENSITIVE_MASK if definition.sensitive else value.value
         return SettingEntry(
             definition=definition,
@@ -381,7 +381,7 @@ class SettingsService:
                     source=SettingSource.YAML,
                 )
 
-        # default=None means "optional — no built-in default".  Return
+        # default=None means "optional -- no built-in default".  Return
         # empty string as a sentinel (callers like ConfigResolver.get_int
         # will raise ValueError on empty, giving a clear error at the
         # consumer layer rather than here).

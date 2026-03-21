@@ -10,7 +10,7 @@ class DebateConfig(BaseModel):
     """Configuration for the structured debate strategy.
 
     Attributes:
-        judge: Judge selection — ``"shared_manager"`` (lowest common
+        judge: Judge selection -- ``"shared_manager"`` (lowest common
             manager), ``"ceo"`` (hierarchy root), or a named agent.
     """
 

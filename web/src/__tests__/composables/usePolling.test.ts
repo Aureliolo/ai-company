@@ -83,10 +83,10 @@ describe('usePolling', () => {
     const { start } = usePolling(fn, 1000)
 
     start()
-    await vi.advanceTimersByTimeAsync(0) // first call — errors
+    await vi.advanceTimersByTimeAsync(0) // first call -- errors
     expect(consoleSpy).toHaveBeenCalledWith('Polling error:', expect.any(String))
 
-    await vi.advanceTimersByTimeAsync(1000) // second call — succeeds
+    await vi.advanceTimersByTimeAsync(1000) // second call -- succeeds
     expect(fn).toHaveBeenCalledTimes(2)
     consoleSpy.mockRestore()
   })
@@ -104,7 +104,7 @@ describe('usePolling', () => {
     const { start } = usePolling(fn, 100)
 
     start()
-    // Advance past several intervals — with setTimeout-based scheduling,
+    // Advance past several intervals -- with setTimeout-based scheduling,
     // next tick only starts after previous completes
     await vi.advanceTimersByTimeAsync(2000)
     expect(maxConcurrent).toBe(1)

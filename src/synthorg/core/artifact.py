@@ -1,11 +1,11 @@
 """Artifact domain models for task outputs and expected deliverables."""
 
-from datetime import datetime  # noqa: TC003 — required at runtime by Pydantic
+from datetime import datetime  # noqa: TC003 -- required at runtime by Pydantic
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.core.enums import (
-    ArtifactType,  # noqa: TC001 — required at runtime by Pydantic
+    ArtifactType,  # noqa: TC001 -- required at runtime by Pydantic
 )
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 

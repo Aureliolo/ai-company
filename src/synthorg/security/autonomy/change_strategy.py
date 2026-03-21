@@ -1,4 +1,4 @@
-"""Human-only promotion strategy — the default autonomy change strategy."""
+"""Human-only promotion strategy -- the default autonomy change strategy."""
 
 from datetime import UTC, datetime
 
@@ -52,7 +52,7 @@ class HumanOnlyPromotionStrategy:
         agent_id: NotBlankStr,
         target: AutonomyLevel,
     ) -> bool:
-        """Deny all promotion requests — requires human approval.
+        """Deny all promotion requests -- requires human approval.
 
         Args:
             agent_id: The agent requesting promotion.
@@ -100,7 +100,7 @@ class HumanOnlyPromotionStrategy:
             else (current_level or AutonomyLevel.SEMI)
         )
 
-        # Never increase autonomy — if the agent is already at or below
+        # Never increase autonomy -- if the agent is already at or below
         # the target level, keep the current (more restrictive) level.
         effective_current = existing.current_level if existing else original
         new_level = (
@@ -132,7 +132,7 @@ class HumanOnlyPromotionStrategy:
         self,
         agent_id: NotBlankStr,
     ) -> bool:
-        """Deny all recovery requests — requires human approval.
+        """Deny all recovery requests -- requires human approval.
 
         Args:
             agent_id: The agent requesting recovery.

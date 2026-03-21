@@ -405,7 +405,7 @@ class StructuredPhasesProtocol:
             for idx, pid in enumerate(participant_ids):
                 tg.create_task(_collect_input(pid, idx, tokens_per_agent))
 
-        # All slots must be filled — TaskGroup propagates ExceptionGroup
+        # All slots must be filled -- TaskGroup propagates ExceptionGroup
         # on any task failure, so reaching this point means all succeeded.
         if not all(r is not None for r in result_inputs):
             msg = f"Expected {num_participants} inputs but some slots are None"

@@ -1,4 +1,4 @@
-"""Approval gate models — escalation info and resume payload.
+"""Approval gate models -- escalation info and resume payload.
 
 These frozen Pydantic models carry escalation details from SecOps
 ESCALATE verdicts or ``request_human_approval`` tool calls, and

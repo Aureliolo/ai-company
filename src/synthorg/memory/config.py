@@ -44,7 +44,7 @@ class MemoryStorageConfig(BaseModel):
         default="/data/memory",
         description=(
             "Directory path for memory data persistence.  "
-            "Default targets a Docker volume mount — override "
+            "Default targets a Docker volume mount -- override "
             "for local development."
         ),
     )

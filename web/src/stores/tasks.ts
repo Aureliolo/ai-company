@@ -43,7 +43,7 @@ export const useTaskStore = defineStore('tasks', () => {
   async function fetchTasks(filters?: TaskFilters) {
     loading.value = true
     error.value = null
-    // Always update filters — passing undefined clears previous filters
+    // Always update filters -- passing undefined clears previous filters
     currentFilters.value = filters ? { ...filters } : {}
     try {
       const result = await tasksApi.listTasks(currentFilters.value)
@@ -133,7 +133,7 @@ export const useTaskStore = defineStore('tasks', () => {
           isValidTaskPayload(payload) &&
           !tasks.value.some((t) => t.id === payload.id)
         ) {
-          // Only append if no active filters — filtered views are kept accurate by REST fetches
+          // Only append if no active filters -- filtered views are kept accurate by REST fetches
           if (!hasActiveFilters()) {
             tasks.value = [...tasks.value, payload as unknown as Task]
             total.value++
@@ -144,7 +144,7 @@ export const useTaskStore = defineStore('tasks', () => {
       case 'task.status_changed':
       case 'task.assigned':
         if (typeof payload.id === 'string' && payload.id) {
-          // Only update tasks already in the list — if filters are active,
+          // Only update tasks already in the list -- if filters are active,
           // tasks that no longer match will be cleaned up on next REST fetch
           tasks.value = tasks.value.map((t) =>
             t.id === payload.id ? { ...t, ...(payload as Partial<Task>) } : t,

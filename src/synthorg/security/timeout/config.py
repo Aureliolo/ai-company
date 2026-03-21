@@ -1,4 +1,4 @@
-"""Timeout policy configuration models — discriminated union of 4 policies."""
+"""Timeout policy configuration models -- discriminated union of 4 policies."""
 
 from typing import Annotated, Literal, Self
 
@@ -9,7 +9,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 
 
 class WaitForeverConfig(BaseModel):
-    """Wait indefinitely for human approval — the default.
+    """Wait indefinitely for human approval -- the default.
 
     Attributes:
         policy: Discriminator tag.
@@ -65,11 +65,11 @@ class TierConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_escalate(self) -> Self:
-        """Reject ESCALATE — tier configs cannot provide a target."""
+        """Reject ESCALATE -- tier configs cannot provide a target."""
         if self.on_timeout == TimeoutActionType.ESCALATE:
             msg = (
                 "on_timeout cannot be ESCALATE (no escalation target "
-                "available — use the escalation chain policy instead)"
+                "available -- use the escalation chain policy instead)"
             )
             raise ValueError(msg)
         return self

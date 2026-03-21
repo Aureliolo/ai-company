@@ -62,7 +62,7 @@ func verifySigstoreBundle(checksumData, bundleData []byte) error {
 		return fmt.Errorf("creating sigstore verifier: %w", err)
 	}
 
-	// Build identity policy — must match GitHub Actions OIDC from our repo.
+	// Build identity policy -- must match GitHub Actions OIDC from our repo.
 	certID, err := verify.NewShortCertificateIdentity(
 		expectedIssuer, "",
 		"", expectedSANRegex,
@@ -93,7 +93,7 @@ func verifySigstoreBundle(checksumData, bundleData []byte) error {
 
 // Constants for SLSA validation are imported from the verify package to avoid
 // duplication. The slsaStatement struct is defined locally (trivial one-field
-// struct for JSON unmarshalling — not worth exporting from verify).
+// struct for JSON unmarshalling -- not worth exporting from verify).
 
 // slsaStatement is a minimal in-toto statement for predicate type extraction.
 type slsaStatement struct {
@@ -102,12 +102,12 @@ type slsaStatement struct {
 
 // assertSLSAProvenance checks that the bundle contains a DSSE envelope with
 // a SLSA provenance predicate. If the bundle does not contain a DSSE envelope
-// (i.e. it's a plain message signature), this is a no-op — SLSA provenance
+// (i.e. it's a plain message signature), this is a no-op -- SLSA provenance
 // is additive assurance, not a hard requirement for older bundles.
 func assertSLSAProvenance(b *bundle.Bundle) error {
 	env := b.GetDsseEnvelope()
 	if env == nil {
-		// Bundle uses message signature, not DSSE — no provenance to check.
+		// Bundle uses message signature, not DSSE -- no provenance to check.
 		return nil
 	}
 

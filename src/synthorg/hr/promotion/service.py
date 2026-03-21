@@ -457,7 +457,7 @@ class PromotionService:
                 hours=self._config.cooldown_hours
             )
 
-        # Best-effort trust re-evaluation — promotion is already applied,
+        # Best-effort trust re-evaluation -- promotion is already applied,
         # so failures here must not prevent the record from being returned.
         if self._trust_service is not None:
             try:
@@ -487,7 +487,7 @@ class PromotionService:
             model_changed=record.model_changed,
         )
 
-        # Notify agent and team — best-effort, must not block the record.
+        # Notify agent and team -- best-effort, must not block the record.
         if self._on_notification is not None:
             try:
                 await self._on_notification(record)

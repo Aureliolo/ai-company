@@ -298,7 +298,7 @@ class TestStopIdempotency:
         persistence: FakePersistence,
     ) -> None:
         eng = TaskEngine(persistence=persistence)  # type: ignore[arg-type]
-        # Never started — stop should be safe
+        # Never started -- stop should be safe
         await eng.stop(timeout=1.0)
 
     async def test_double_stop(

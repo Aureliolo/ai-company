@@ -1,6 +1,6 @@
 """Agent identity and configuration models."""
 
-from datetime import date  # noqa: TC003 — required at runtime by Pydantic
+from datetime import date  # noqa: TC003 -- required at runtime by Pydantic
 from typing import Self
 from uuid import UUID, uuid4
 
@@ -76,7 +76,7 @@ class PersonalityConfig(BaseModel):
         description="Extended personality description",
     )
 
-    # Big Five (OCEAN) dimensions — internal scoring only, not prompt-injected.
+    # Big Five (OCEAN) dimensions -- internal scoring only, not prompt-injected.
     openness: float = Field(
         default=0.5,
         ge=0.0,
@@ -108,7 +108,7 @@ class PersonalityConfig(BaseModel):
         description="Emotional stability (1.0 = very calm)",
     )
 
-    # Behavioral enums — injected into system prompts as natural-language labels.
+    # Behavioral enums -- injected into system prompts as natural-language labels.
     decision_making: DecisionMakingStyle = Field(
         default=DecisionMakingStyle.CONSULTATIVE,
         description="Decision-making approach",
@@ -335,7 +335,7 @@ class AgentIdentity(BaseModel):
             and self.level == SeniorityLevel.JUNIOR
         ):
             msg = (
-                "JUNIOR agents cannot have FULL autonomy — "
+                "JUNIOR agents cannot have FULL autonomy -- "
                 "maximum is SEMI (DESIGN_SPEC D6)"
             )
             raise ValueError(msg)

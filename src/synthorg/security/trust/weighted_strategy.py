@@ -32,7 +32,7 @@ class WeightedTrustStrategy:
       - completion_rate: task success rate from the latest window
       - error_rate: failure penalty (tasks_failed / data_point_count)
       - human_feedback: task volume proxy (tasks / 100, capped at 1.0)
-        — placeholder until actual human feedback signals are available
+        -- placeholder until actual human feedback signals are available
 
     The score is compared against configurable thresholds to
     determine the recommended trust level.  Trust changes are
@@ -121,7 +121,7 @@ class WeightedTrustStrategy:
         - error: 1 - (tasks_failed / data_point_count), distinct from
           success_rate because data_point_count includes non-task events
         - feedback: task volume ratio (tasks/100, capped at 1.0)
-          — placeholder for human feedback signals
+          -- placeholder for human feedback signals
         """
         # Quality score normalized to [0, 1]
         difficulty_factor = (
@@ -145,7 +145,7 @@ class WeightedTrustStrategy:
                 break
 
         # Task volume ratio (tasks completed / 100, capped at 1.0)
-        # — placeholder for human feedback until that signal is available
+        # -- placeholder for human feedback until that signal is available
         feedback_factor = 0.0
         for window in snapshot.windows:
             if window.tasks_completed > 0:
@@ -168,7 +168,7 @@ class WeightedTrustStrategy:
         """Determine the next adjacent trust level from score.
 
         Only considers the immediate next transition from the current
-        level — trust changes are restricted to one level per evaluation.
+        level -- trust changes are restricted to one level per evaluation.
         """
         for key, from_level, to_level in TRANSITION_KEYS:
             if from_level != current_level:

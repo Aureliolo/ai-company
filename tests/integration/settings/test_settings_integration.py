@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-import synthorg.settings.definitions  # noqa: F401 — trigger registration
+import synthorg.settings.definitions  # noqa: F401 -- trigger registration
 from synthorg.config.schema import RootConfig
 from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend

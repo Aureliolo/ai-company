@@ -1,7 +1,7 @@
 """Org policy quality validation heuristics.
 
 Applies lightweight checks to detect policies that likely violate the
-non-inferable principle — e.g. policies that describe codebase structure
+non-inferable principle -- e.g. policies that describe codebase structure
 (inferable by reading the repo) rather than actionable constraints.
 
 Examples of **good** policies (non-inferable, actionable):
@@ -12,9 +12,9 @@ Examples of **good** policies (non-inferable, actionable):
 
 Examples of **bad** policies (inferable or non-actionable):
 
-- ``"The project uses Python 3.14"`` — discoverable from pyproject.toml
-- ``"src/api/ contains REST controllers"`` — discoverable by reading code
-- ``"x"`` — too short to be actionable
+- ``"The project uses Python 3.14"`` -- discoverable from pyproject.toml
+- ``"src/api/ contains REST controllers"`` -- discoverable by reading code
+- ``"x"`` -- too short to be actionable
 """
 
 import re
@@ -95,7 +95,7 @@ def validate_policy_quality(
 ) -> tuple[PolicyQualityIssue, ...]:
     """Check org policies for non-inferable principle violations.
 
-    Applies heuristic checks — results are advisory and never block
+    Applies heuristic checks -- results are advisory and never block
     prompt construction.
 
     Args:
@@ -160,7 +160,8 @@ def _check_length(policy: str) -> list[PolicyQualityIssue]:
             PolicyQualityIssue(
                 policy=policy,
                 issue=(
-                    f"Too short ({len(policy)} chars) — likely not an actionable policy"
+                    f"Too short ({len(policy)} chars)"
+                    " -- likely not an actionable policy"
                 ),
                 severity="warning",
             ),
@@ -171,7 +172,7 @@ def _check_length(policy: str) -> list[PolicyQualityIssue]:
             PolicyQualityIssue(
                 policy=policy,
                 issue=(
-                    f"Too long ({len(policy)} chars) — "
+                    f"Too long ({len(policy)} chars) -- "
                     f"may contain inferable context rather than a policy"
                 ),
                 severity="warning",
@@ -197,7 +198,7 @@ def _check_code_patterns(policy: str) -> list[PolicyQualityIssue]:
                     policy=policy,
                     issue=(
                         "Contains code patterns (file paths, imports, or "
-                        "definitions) — likely inferable from the codebase"
+                        "definitions) -- likely inferable from the codebase"
                     ),
                     severity="warning",
                 ),
@@ -221,7 +222,7 @@ def _check_action_keywords(policy: str) -> list[PolicyQualityIssue]:
                 policy=policy,
                 issue=(
                     "Missing action verbs (must, should, always, never, "
-                    "etc.) — may not be an actionable policy"
+                    "etc.) -- may not be an actionable policy"
                 ),
                 severity="warning",
             ),

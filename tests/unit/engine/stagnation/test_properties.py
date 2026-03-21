@@ -44,7 +44,7 @@ _args_strategy = st.dictionaries(
     max_size=5,
 )
 
-# Tool names use NotBlankStr — filter out whitespace-only strings
+# Tool names use NotBlankStr -- filter out whitespace-only strings
 _tool_name = st.text(min_size=1, max_size=20).filter(lambda s: s.strip())
 
 
@@ -126,7 +126,7 @@ class TestDetectorProperties:
         n_turns: int,
     ) -> None:
         """Detector never considers more turns than window_size."""
-        # All unique fingerprints — no stagnation possible
+        # All unique fingerprints -- no stagnation possible
         turns = tuple(_turn(i + 1, (f"t{i}:{'0' * 16}",)) for i in range(n_turns))
         detector = ToolRepetitionDetector(
             StagnationConfig(

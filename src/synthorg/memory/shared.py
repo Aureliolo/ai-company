@@ -1,4 +1,4 @@
-"""SharedKnowledgeStore protocol — cross-agent memory.
+"""SharedKnowledgeStore protocol -- cross-agent memory.
 
 Backends that support cross-agent shared knowledge implement this
 protocol in addition to ``MemoryBackend``.
@@ -20,7 +20,7 @@ class SharedKnowledgeStore(Protocol):
 
     Backends that support shared memory implement this protocol
     alongside ``MemoryBackend``.  Not all backends need cross-agent
-    queries — this keeps the base protocol clean.
+    queries -- this keeps the base protocol clean.
     """
 
     async def publish(

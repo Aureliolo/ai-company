@@ -88,7 +88,7 @@ class TestExceptionHandlers:
             assert resp.status_code == 404
             body = resp.json()
             assert body["success"] is False
-            # Error message is scrubbed — internal details not exposed.
+            # Error message is scrubbed -- internal details not exposed.
             assert body["error"] == "Resource not found"
             _assert_error_detail(
                 body,

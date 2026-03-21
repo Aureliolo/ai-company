@@ -338,7 +338,7 @@ class InMemoryMessageBus:
     ) -> Subscription:
         """Subscribe an agent to a channel.
 
-        Idempotent — returns a fresh subscription record if already
+        Idempotent -- returns a fresh subscription record if already
         subscribed (the channel's subscriber list is not duplicated).
 
         Args:
@@ -476,7 +476,7 @@ class InMemoryMessageBus:
             # read and write of ``_waiters``, so no other coroutine
             # can interleave in a single-threaded asyncio event loop.
             # The asymmetry with the lock-guarded increment is
-            # intentional — the decrement must happen after
+            # intentional -- the decrement must happen after
             # _await_with_shutdown completes.
             current = self._waiters.get(key)
             if current is None:

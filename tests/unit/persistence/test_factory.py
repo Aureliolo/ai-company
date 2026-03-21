@@ -66,7 +66,7 @@ class TestCreateBackend:
         await backend_b.connect()
         await backend_b.migrate()
 
-        # Verify isolation — data in one doesn't affect the other
+        # Verify isolation -- data in one doesn't affect the other
         from tests.unit.persistence.conftest import make_task
 
         await backend_a.tasks.save(make_task(task_id="company-a-task"))

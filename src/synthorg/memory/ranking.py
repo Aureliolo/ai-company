@@ -1,4 +1,4 @@
-"""Memory ranking — scoring and sorting functions.
+"""Memory ranking -- scoring and sorting functions.
 
 All functions are functionally pure (deterministic given the same
 inputs).  Logging calls are the only side effect.
@@ -318,7 +318,7 @@ def fuse_ranked_lists(
     ``MemoryEntry`` object encountered is retained.
 
     Unlike ``rank_memories``, this function does **not** apply a
-    ``min_relevance`` threshold — callers are responsible for
+    ``min_relevance`` threshold -- callers are responsible for
     post-filtering if needed.
 
     Args:

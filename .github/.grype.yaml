@@ -1,4 +1,4 @@
-# Grype configuration — CVE ignore list
+# Grype configuration -- CVE ignore list
 # Kept in sync with .github/.trivyignore.yaml.
 
 ignore:

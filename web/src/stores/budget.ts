@@ -6,7 +6,7 @@ import type { BudgetConfig, CostRecord, AgentSpending, WsEvent } from '@/api/typ
 
 const MAX_WS_RECORDS = 500
 
-/** Runtime type guard for CostRecord-shaped payloads — validates all required fields. */
+/** Runtime type guard for CostRecord-shaped payloads -- validates all required fields. */
 function isCostRecord(payload: unknown): payload is CostRecord {
   if (typeof payload !== 'object' || payload === null) return false
   const p = payload as Record<string, unknown>

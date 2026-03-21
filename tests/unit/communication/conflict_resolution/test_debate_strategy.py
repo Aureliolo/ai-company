@@ -292,7 +292,7 @@ class TestDebateResolverThreeParty:
         )
         resolution = await resolver.resolve(conflict)
         assert resolution.winning_agent_id == "sr_dev"
-        # Judge should be LCM of all three — cto (cross-team)
+        # Judge should be LCM of all three -- cto (cross-team)
         _, judge_id = judge.calls[0]
         assert judge_id == "cto"
 
@@ -342,7 +342,7 @@ class TestDebateResolverCEORootAgent:
             config=DebateConfig(judge="ceo"),
             judge_evaluator=judge,
         )
-        # cto is the root of the Engineering hierarchy — has no ancestors
+        # cto is the root of the Engineering hierarchy -- has no ancestors
         conflict = make_conflict(
             positions=(
                 make_position(

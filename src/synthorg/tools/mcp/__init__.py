@@ -1,4 +1,4 @@
-"""MCP bridge — connects external MCP servers as internal tools.
+"""MCP bridge -- connects external MCP servers as internal tools.
 
 Re-exports from submodules use lazy ``__getattr__`` to avoid circular
 imports. Config models and errors are imported eagerly since they have

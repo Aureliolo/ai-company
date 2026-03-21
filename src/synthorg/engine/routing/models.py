@@ -198,7 +198,7 @@ class AutoTopologyConfig(BaseModel):
         ):
             value = getattr(self, field_name)
             if value == CoordinationTopology.AUTO:
-                msg = f"{field_name} cannot be AUTO — would cause infinite resolution"
+                msg = f"{field_name} cannot be AUTO -- would cause infinite resolution"
                 logger.warning(
                     TASK_ROUTING_FAILED,
                     error=msg,

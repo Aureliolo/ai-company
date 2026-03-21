@@ -36,7 +36,7 @@ class AuthConfig(BaseModel):
     2. Previously persisted secret in the ``settings`` table.
     3. Auto-generate a new secret and persist it for future runs.
 
-    At construction time the secret may be empty — it is populated
+    At construction time the secret may be empty -- it is populated
     before the first request is served.
 
     Attributes:
@@ -56,7 +56,7 @@ class AuthConfig(BaseModel):
         repr=False,
         description=(
             "JWT signing secret (resolved at startup). "
-            "Also used as the HMAC key for API key hash computation — "
+            "Also used as the HMAC key for API key hash computation -- "
             "rotating this secret invalidates all stored API key hashes."
         ),
     )

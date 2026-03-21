@@ -36,7 +36,7 @@ def test_full_app_schema_enhancement() -> None:
     # ProblemDetail schema present.
     assert "ProblemDetail" in result["components"]["schemas"]
 
-    # All 8 reusable responses defined (subset check — schema may
+    # All 8 reusable responses defined (subset check -- schema may
     # contain additional non-RFC-9457 reusable responses).
     responses = result["components"]["responses"]
     assert _EXPECTED_RESPONSE_KEYS.issubset(responses.keys())

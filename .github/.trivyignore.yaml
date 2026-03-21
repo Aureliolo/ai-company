@@ -1,4 +1,4 @@
-# Trivy CVE ignore list — structured YAML format
+# Trivy CVE ignore list -- structured YAML format
 
 vulnerabilities:
   - id: CVE-2026-22184

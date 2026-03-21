@@ -26,7 +26,7 @@ The web dashboard is at [http://localhost:3000](http://localhost:3000) (default 
 
 Other CLI commands: `synthorg stop`, `synthorg logs`, `synthorg update`, `synthorg doctor`, `synthorg uninstall`, `synthorg backup`, `synthorg setup`. When updating, the CLI re-launches itself after binary replacement so the remaining steps (compose refresh, image pull) use the new version. If the compose template has changed (new environment variables, hardening tweaks), the diff is shown for approval before applying.
 
-## Quick Start (Docker Compose — manual)
+## Quick Start (Docker Compose -- manual)
 
 For development or if you prefer manual Docker Compose:
 
@@ -96,6 +96,6 @@ docker compose -f docker/compose.yml down
 
 ## Next Steps
 
-- Templates — Full list of pre-built configurations (coming soon)
-- REST API — Interact with your org via the API (coming soon)
-- [Design Specification](design/index.md) — Full architecture details
+- Templates -- Full list of pre-built configurations (coming soon)
+- REST API -- Interact with your org via the API (coming soon)
+- [Design Specification](design/index.md) -- Full architecture details

@@ -9,7 +9,7 @@ from tests.unit.api.conftest import make_auth_headers
 
 # To test "no auth" we need a fresh client without default headers.
 # The test_client fixture sets CEO headers. Passing headers={} to
-# a request merges with session defaults — it does NOT clear them.
+# a request merges with session defaults -- it does NOT clear them.
 # Instead we create a bare_client fixture.
 
 

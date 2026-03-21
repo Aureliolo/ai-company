@@ -100,7 +100,7 @@ class SubprocessSandboxConfig(BaseModel):
                     f"to absolute paths, got: {prefix!r}"
                 )
                 raise ValueError(msg)
-            # Reject filesystem roots — they effectively disable
+            # Reject filesystem roots -- they effectively disable
             # the restricted_path guard for all absolute entries.
             if normalized_path == PurePath(normalized_path.anchor):
                 msg = (

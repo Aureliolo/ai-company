@@ -25,13 +25,13 @@ describe('formatDate (property-based)', () => {
     )
   })
 
-  it('returns em dash for empty strings', () => {
-    expect(formatDate('')).toBe('\u2014')
+  it('returns double dash for empty strings', () => {
+    expect(formatDate('')).toBe('--')
   })
 
-  it('returns em dash for null and undefined', () => {
-    expect(formatDate(null)).toBe('\u2014')
-    expect(formatDate(undefined)).toBe('\u2014')
+  it('returns double dash for null and undefined', () => {
+    expect(formatDate(null)).toBe('--')
+    expect(formatDate(undefined)).toBe('--')
   })
 })
 

@@ -1,4 +1,4 @@
-"""Tool registry — maps tool names to ``BaseTool`` instances.
+"""Tool registry -- maps tool names to ``BaseTool`` instances.
 
 Immutable after construction.  Provides lookup, membership testing,
 and conversion to a tuple of ``ToolDefinition`` objects for LLM providers.

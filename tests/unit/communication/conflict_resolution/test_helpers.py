@@ -173,7 +173,7 @@ class TestPickHighestSeniority:
             ),
         )
         best = pick_highest_seniority(conflict, hierarchy=hierarchy)
-        # Same depth under backend_lead — incumbent (sr_dev) kept
+        # Same depth under backend_lead -- incumbent (sr_dev) kept
         assert best.agent_id == "sr_dev"
 
 

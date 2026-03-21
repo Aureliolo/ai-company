@@ -70,7 +70,7 @@ class PathValidator:
         Raises:
             ValueError: If the resolved path escapes the workspace.
         """
-        # Reject absolute paths outright — agents must use relative paths.
+        # Reject absolute paths outright -- agents must use relative paths.
         if PurePosixPath(path).is_absolute() or PureWindowsPath(path).is_absolute():
             logger.warning(TOOL_FS_PATH_VIOLATION, user_path=path)
             msg = f"Absolute paths not allowed: {path}"

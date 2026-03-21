@@ -242,7 +242,7 @@ func powershellProfilePath(ctx context.Context) (string, error) {
 		// Resolve symlinks and verify path is inside user's home directory.
 		resolvedP, err := filepath.EvalSymlinks(filepath.Dir(p))
 		if err != nil {
-			// Parent dir may not exist yet — fall back to lexical check.
+			// Parent dir may not exist yet -- fall back to lexical check.
 			resolvedP = filepath.Clean(filepath.Dir(p))
 		}
 		resolvedP = filepath.Join(resolvedP, filepath.Base(p))
@@ -376,13 +376,13 @@ func removeMarkerBlock(path string) error {
 				blockLines++
 				continue
 			}
-			// Empty line or cap reached — end the block.
+			// Empty line or cap reached -- end the block.
 			inBlock = false
 			if strings.TrimSpace(line) == "" {
 				// Consume the terminating empty line.
 				continue
 			}
-			// Cap reached on a non-empty line — keep it.
+			// Cap reached on a non-empty line -- keep it.
 		}
 		result = append(result, line)
 	}

@@ -8,7 +8,7 @@ aggregated by agent, department, and time period.
 """
 
 from collections import Counter
-from datetime import datetime  # noqa: TC003 — required at runtime by Pydantic
+from datetime import datetime  # noqa: TC003 -- required at runtime by Pydantic
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -20,7 +20,7 @@ from synthorg.core.types import NotBlankStr  # noqa: TC001
 class _SpendingTotals(BaseModel):
     """Shared aggregation fields for spending summary models.
 
-    Not intended for direct instantiation — subclass with a
+    Not intended for direct instantiation -- subclass with a
     dimension-specific identifier (agent, department, or period).
 
     Attributes:

@@ -1,7 +1,7 @@
 [project]
 name = "synthorg"
 dynamic = ["version"]
-description = "Framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company"
+description = "Framework for building synthetic organizations -- autonomous AI agents orchestrated as a virtual company"
 readme = "README.md"
 license = "BUSL-1.1"
 requires-python = ">=3.14"
@@ -71,7 +71,7 @@ dev = [
 ]
 
 # ---------------------------------------------------------------------------
-# Ruff — linter + formatter (replaces flake8, isort, pyupgrade, etc.)
+# Ruff -- linter + formatter (replaces flake8, isort, pyupgrade, etc.)
 # ---------------------------------------------------------------------------
 [tool.ruff]
 target-version = "py314"
@@ -111,7 +111,7 @@ select = [
     "FURB",   # refurb
     "RUF",    # ruff-specific rules
     "S",      # flake8-bandit (security)
-    # "FAST" removed — using Litestar, not FastAPI
+    # "FAST" removed -- using Litestar, not FastAPI
     "ASYNC",  # flake8-async
     "FBT",    # flake8-boolean-trap
     "PL",     # pylint
@@ -159,7 +159,7 @@ known-first-party = ["synthorg"]
 docstring-code-format = true
 
 # ---------------------------------------------------------------------------
-# mypy — static type checker (strict mode)
+# mypy -- static type checker (strict mode)
 # ---------------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.14"
@@ -205,7 +205,7 @@ init_typed = true
 warn_required_dynamic_aliases = true
 
 # ---------------------------------------------------------------------------
-# pyright — IDE type checking only (not used in CI)
+# pyright -- IDE type checking only (not used in CI)
 # ---------------------------------------------------------------------------
 [tool.pyright]
 pythonVersion = "3.14"
@@ -214,7 +214,7 @@ venvPath = "."
 venv = ".venv"
 
 # ---------------------------------------------------------------------------
-# commitizen — conventional commits
+# commitizen -- conventional commits
 # ---------------------------------------------------------------------------
 [tool.commitizen]
 name = "cz_conventional_commits"
@@ -222,7 +222,7 @@ version = "0.4.3" # x-release-please-version
 tag_format = "v$version"
 
 # ---------------------------------------------------------------------------
-# pytest — test runner
+# pytest -- test runner
 # ---------------------------------------------------------------------------
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -242,7 +242,7 @@ filterwarnings = [
 ]
 
 # ---------------------------------------------------------------------------
-# coverage — test coverage reporting
+# coverage -- test coverage reporting
 # ---------------------------------------------------------------------------
 [tool.coverage.run]
 source = ["synthorg"]

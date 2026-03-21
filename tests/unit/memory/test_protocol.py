@@ -89,7 +89,7 @@ class _FakeMemoryBackend:
 
 
 class _IncompleteBackend:
-    """Missing required methods — should fail isinstance check."""
+    """Missing required methods -- should fail isinstance check."""
 
     async def connect(self) -> None: ...
 

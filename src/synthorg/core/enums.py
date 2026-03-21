@@ -10,7 +10,7 @@ class SeniorityLevel(StrEnum):
     cost tier defined in ``synthorg.core.role_catalog.SENIORITY_INFO``.
     """
 
-    # Agents page lists "Intern/Junior" — collapsed to JUNIOR.
+    # Agents page lists "Intern/Junior" -- collapsed to JUNIOR.
     JUNIOR = "junior"
     MID = "mid"
     SENIOR = "senior"
@@ -377,7 +377,7 @@ class ActionType(StrEnum):
     Values follow a ``category:action`` naming convention.
 
     Custom action type strings are also accepted by models that use
-    ``str`` for ``action_type`` fields — these enum members are
+    ``str`` for ``action_type`` fields -- these enum members are
     convenience constants for the built-in taxonomy.
     """
 

@@ -1,4 +1,4 @@
-"""Code runner tool — executes code snippets in a sandboxed environment.
+"""Code runner tool -- executes code snippets in a sandboxed environment.
 
 Supports Python, JavaScript, and Bash via configurable sandbox backends.
 """

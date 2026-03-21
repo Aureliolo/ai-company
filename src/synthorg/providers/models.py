@@ -69,7 +69,7 @@ class ToolDefinition(BaseModel):
 
     Note:
         The ``parameters_schema`` dict is shallowly frozen by Pydantic's
-        ``frozen=True`` — field reassignment is prevented but nested
+        ``frozen=True`` -- field reassignment is prevented but nested
         contents can still be mutated in place.  ``BaseTool.to_definition()``
         provides a deep-copied schema, and ``ToolInvoker`` deep-copies
         arguments at the execution boundary, so no additional caller-side
@@ -98,7 +98,7 @@ class ToolCall(BaseModel):
 
     Note:
         The ``arguments`` dict is shallowly frozen by Pydantic's
-        ``frozen=True`` — field reassignment is prevented but nested
+        ``frozen=True`` -- field reassignment is prevented but nested
         contents can still be mutated in place.  The ``ToolInvoker``
         deep-copies arguments before passing them to tool
         implementations.  See the tech stack page (docs/architecture/tech-stack.md).
@@ -171,7 +171,7 @@ class ChatMessage(BaseModel):
 
         Note:
             Empty-string content (``content=""``) is intentionally
-            permitted — some providers return it legitimately.
+            permitted -- some providers return it legitimately.
 
         Raises:
             ValueError: If any role-specific constraint is violated.
@@ -213,7 +213,7 @@ class ChatMessage(BaseModel):
 class CompletionConfig(BaseModel):
     """Optional parameters for a completion request.
 
-    All fields are optional — the provider fills in defaults.
+    All fields are optional -- the provider fills in defaults.
 
     Attributes:
         temperature: Sampling temperature (0.0-2.0). Actual valid range

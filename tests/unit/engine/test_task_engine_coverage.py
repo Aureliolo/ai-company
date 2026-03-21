@@ -63,7 +63,7 @@ class TestInFlightResolution:
             "engine did not enter _process_one"
         )
 
-        # Stop with very short timeout — triggers _fail_remaining_futures
+        # Stop with very short timeout -- triggers _fail_remaining_futures
         await eng.stop(timeout=0.05)
 
         # In-flight should be cleared
@@ -230,7 +230,7 @@ class TestProcessingLoopResilience:
             r1 = await eng.submit(m1)
             assert r1.success is False
 
-            # Second mutation succeeds — loop recovered
+            # Second mutation succeeds -- loop recovered
             m2 = CreateTaskMutation(
                 request_id="req-2",
                 requested_by="alice",
