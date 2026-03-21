@@ -4,6 +4,10 @@
 import sys
 from pathlib import Path
 
+# Build patterns without embedding the literal HTML entity in this file
+# (otherwise the pre-commit hook flags this script itself).
+_PATTERNS = ("\u2014", "&" + "mdash;", "&" + "#8212;", "&" + "#x2014;")
+
 
 def main() -> int:
     """Scan files for em-dash characters and report locations."""
@@ -12,7 +16,7 @@ def main() -> int:
         try:
             with Path(path).open(encoding="utf-8") as f:
                 for lineno, line in enumerate(f, 1):
-                    if "\u2014" in line:
+                    if any(p in line for p in _PATTERNS):
                         print(f"{path}:{lineno}: {line.rstrip()}")
                         found = True
         except UnicodeDecodeError, OSError:

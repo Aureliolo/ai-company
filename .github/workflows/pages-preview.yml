@@ -189,11 +189,11 @@ jobs:
           )
           banner = (
               f'<div style="{style}">'
-              f"Development Preview &mdash; PR #{pr_number}"
-              f' &mdash; <code style="background:rgba(0,0,0,0.1);'
+              f"Development Preview -- PR #{pr_number}"
+              f' -- <code style="background:rgba(0,0,0,0.1);'
               f'padding:2px 6px;border-radius:3px;font-size:12px">'
               f"{short_sha}</code>"
-              f' &mdash; built <span id="preview-age"></span>'
+              f' -- built <span id="preview-age"></span>'
               f"</div>"
               f"{time_ago_js}"
           )
