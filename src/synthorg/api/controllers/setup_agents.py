@@ -407,8 +407,15 @@ def agent_dict_to_summary(
         SetupAgentSummary,
     )
 
+    # Normalize string fields so whitespace-only values fall through
+    # to defaults (NotBlankStr rejects blank strings).
+    name = (agent.get("name") or "").strip() or "unknown"
+    role = (agent.get("role") or "").strip() or "unknown"
+    department = (agent.get("department") or "").strip() or "general"
     missing = [
-        f for f in ("name", "role", "department") if not agent.get(f, "").strip()
+        f
+        for f, v in (("name", name), ("role", role), ("department", department))
+        if v in ("unknown", "general") and not (agent.get(f) or "").strip()
     ]
     if missing:
         logger.warning(
@@ -418,12 +425,12 @@ def agent_dict_to_summary(
         )
     model = agent.get("model", {})
     return SetupAgentSummary(
-        name=agent.get("name") or "unknown",
-        role=agent.get("role") or "unknown",
-        department=agent.get("department") or "general",
-        level=agent.get("level") or "",
-        model_provider=model.get("provider") or "",
-        model_id=model.get("model_id") or "",
-        tier=agent.get("tier") or "medium",
-        personality_preset=agent.get("personality_preset") or None,
+        name=name,
+        role=role,
+        department=department,
+        level=(agent.get("level") or "").strip(),
+        model_provider=(model.get("provider") or "").strip(),
+        model_id=(model.get("model_id") or "").strip(),
+        tier=(agent.get("tier") or "").strip() or "medium",  # type: ignore[arg-type]
+        personality_preset=(agent.get("personality_preset") or "").strip() or None,
     )
