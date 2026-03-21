@@ -3,7 +3,7 @@
 
 services:
   backend:
-    image: ghcr.io/aureliolo/synthorg-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    image: ghcr.io/aureliolo/synthorg-backend:latest
     ports:
       - "8000:8000"
     volumes:
@@ -41,7 +41,7 @@ services:
         max-file: "3"
 
   web:
-    image: ghcr.io/aureliolo/synthorg-web@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    image: ghcr.io/aureliolo/synthorg-web:latest
     ports:
       - "3000:8080"
     depends_on:
@@ -64,6 +64,34 @@ services:
           memory: 256M
           cpus: "0.5"
           pids: 64
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  sandbox:
+    image: ghcr.io/aureliolo/synthorg-sandbox:latest
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    user: "10001:10001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=128m
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+          pids: 128
     logging:
       driver: json-file
       options:

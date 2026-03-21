@@ -31,7 +31,7 @@ WORKDIR /workspace
 
 USER sandbox
 
-HEALTHCHECK --interval=30s --timeout=3s --retries=2 \
+HEALTHCHECK --interval=10s --timeout=3s --retries=2 --start-period=5s \
   CMD ["true"]
 
 CMD ["sleep", "infinity"]
