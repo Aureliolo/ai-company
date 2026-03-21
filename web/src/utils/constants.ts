@@ -51,33 +51,38 @@ export const VALID_TRANSITIONS: Readonly<Record<TaskStatus, readonly TaskStatus[
 /** Write-capable human roles. */
 export const WRITE_ROLES = ['ceo', 'manager', 'board_member', 'pair_programmer'] as const
 
+/** Type of a single navigation item. */
+export interface NavItem {
+  readonly label: string
+  readonly icon: string
+  readonly to: string
+}
+
 /** Sidebar navigation items. */
-export const NAV_ITEMS = [
+export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Dashboard', icon: 'pi pi-home', to: '/' },
   { label: 'Org Chart', icon: 'pi pi-sitemap', to: '/org-chart' },
   { label: 'Tasks', icon: 'pi pi-check-square', to: '/tasks' },
   { label: 'Messages', icon: 'pi pi-comments', to: '/messages' },
   { label: 'Approvals', icon: 'pi pi-shield', to: '/approvals' },
+  { label: 'Company', icon: 'pi pi-building', to: '/company' },
   { label: 'Agents', icon: 'pi pi-users', to: '/agents' },
+  { label: 'Providers', icon: 'pi pi-server', to: '/providers' },
   { label: 'Budget', icon: 'pi pi-chart-bar', to: '/budget' },
   { label: 'Meetings', icon: 'pi pi-video', to: '/meetings' },
   { label: 'Artifacts', icon: 'pi pi-file', to: '/artifacts' },
   { label: 'Settings', icon: 'pi pi-cog', to: '/settings' },
-] as const
-
-/** Type of a single navigation item derived from NAV_ITEMS. */
-export type NavItem = (typeof NAV_ITEMS)[number]
+]
 
 // ── Settings ────────────────────────────────────────────────
 
 /** localStorage key for the basic/advanced toggle state. */
 export const SETTINGS_ADVANCED_KEY = 'settings_show_advanced'
 
-/** Display order for setting namespaces (matches backend enum order). */
+/** Display order for setting namespaces shown in the Settings page.
+ * 'company' and 'providers' are excluded -- they have dedicated pages. */
 export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'api',
-  'company',
-  'providers',
   'memory',
   'budget',
   'security',
@@ -98,3 +103,13 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
   observability: 'Observability',
   backup: 'Backup',
 }
+
+/** sessionStorage key for the advanced-mode first-toggle warning. */
+export const SETTINGS_ADVANCED_WARNED_KEY = 'settings_advanced_warned'
+
+/** Settings that are simple string arrays and should render as chip inputs in GUI mode. */
+export const SIMPLE_ARRAY_SETTINGS = new Set([
+  'api/cors_allowed_origins',
+  'api/rate_limit_exclude_paths',
+  'api/auth_exclude_paths',
+])

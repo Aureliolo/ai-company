@@ -14,30 +14,33 @@ import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
-import ProviderCard from '@/components/providers/ProviderCard.vue'
-import ProviderFormDialog from '@/components/providers/ProviderFormDialog.vue'
+import EditModeToggle from '@/components/common/EditModeToggle.vue'
+import AdvancedWarningDialog from '@/components/common/AdvancedWarningDialog.vue'
+import AdvancedBanner from '@/components/common/AdvancedBanner.vue'
+import FloatingSaveButton from '@/components/common/FloatingSaveButton.vue'
 import SettingGroupRenderer from '@/components/settings/SettingGroupRenderer.vue'
+import SettingsCodeView from '@/components/settings/SettingsCodeView.vue'
 import { useAuthStore } from '@/stores/auth'
-import { useCompanyStore } from '@/stores/company'
-import { useProviderStore } from '@/stores/providers'
 import { useSettingsStore } from '@/stores/settings'
+import { useEditMode } from '@/composables/useEditMode'
 import { getErrorMessage } from '@/utils/errors'
 import { MIN_PASSWORD_LENGTH, NAMESPACE_DISPLAY_NAMES } from '@/utils/constants'
 import { sanitizeForLog } from '@/utils/logging'
-import type { SettingEntry, SettingNamespace, CreateFromPresetRequest, CreateProviderRequest, UpdateProviderRequest } from '@/api/types'
+import type { SettingEntry, SettingNamespace } from '@/api/types'
 
 const route = useRoute()
 const toast = useToast()
 const auth = useAuthStore()
-const companyStore = useCompanyStore()
-const providerStore = useProviderStore()
 const settingsStore = useSettingsStore()
+const editMode = useEditMode()
 const loading = ref(true)
 
-// Tab management -- dynamic namespace tabs + providers + user
+// Advanced warning dialog
+const showWarningDialog = ref(false)
+
+// Tab management -- dynamic namespace tabs + user
 const allTabValues = computed(() => {
-  const nsTabs = settingsStore.namespaces.filter((ns) => ns !== 'providers')
-  return [...nsTabs, 'providers', 'user'] as string[]
+  return [...settingsStore.namespaces, 'user'] as string[]
 })
 
 function resolveTab(raw: unknown): string {
@@ -52,45 +55,18 @@ watch(() => route.query.tab, (tab) => {
   activeTab.value = resolveTab(tab)
 })
 
-// Provider entries for the custom providers tab
-const providerEntries = computed(() =>
-  Object.entries(providerStore.providers).map(([name, config]) => ({ name, config })),
-)
-
-// Provider settings (non-configs entries) for the providers tab
-const providerSettings = computed(() =>
-  settingsStore.entriesByNamespace('providers').filter(
-    (e) => e.definition.key !== 'configs',
-  ),
-)
-
 // Password change state
 const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
 const pwdError = ref<string | null>(null)
 
-// Provider form dialog state
-const formDialogVisible = ref(false)
-const formDialogMode = ref<'create' | 'edit'>('create')
-const editingProviderName = ref<string | undefined>(undefined)
-const editingProviderConfig = computed(() =>
-  editingProviderName.value ? providerStore.providers[editingProviderName.value] : undefined,
-)
-
 async function retryFetch() {
   loading.value = true
   try {
-    await Promise.all([
-      companyStore.fetchConfig(),
-      providerStore.fetchProviders(),
-      providerStore.fetchPresets(),
-      settingsStore.fetchAll(),
-    ])
+    await settingsStore.fetchAll()
     activeTab.value = resolveTab(route.query.tab)
   } catch (err) {
-    // Surface fetch failure in the error boundary so the user sees it
-    settingsStore.error = getErrorMessage(err)
     console.error('Settings data fetch failed:', sanitizeForLog(err))
   } finally {
     loading.value = false
@@ -99,10 +75,23 @@ async function retryFetch() {
 
 onMounted(retryFetch)
 
+// Advanced toggle with warning
+function handleAdvancedToggle() {
+  const result = settingsStore.toggleAdvanced()
+  if (result === 'needs_warning') {
+    showWarningDialog.value = true
+  }
+}
+
+function handleAdvancedConfirm() {
+  settingsStore.confirmAdvanced()
+}
+
 // Settings save/reset handlers
 async function handleSettingSave(entry: SettingEntry, value: string) {
   try {
     await settingsStore.updateSetting(entry.definition.namespace, entry.definition.key, value)
+    settingsStore.clearDirty(entry.definition.namespace, entry.definition.key)
     toast.add({ severity: 'success', summary: `${entry.definition.key} updated`, life: 3000 })
   } catch (err) {
     toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
@@ -112,9 +101,44 @@ async function handleSettingSave(entry: SettingEntry, value: string) {
 async function handleSettingReset(entry: SettingEntry) {
   try {
     await settingsStore.resetSetting(entry.definition.namespace, entry.definition.key)
+    settingsStore.clearDirty(entry.definition.namespace, entry.definition.key)
     toast.add({ severity: 'success', summary: `${entry.definition.key} reset to default`, life: 3000 })
   } catch (err) {
     toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+  }
+}
+
+// Code view save handler
+async function handleCodeViewSave(updates: Array<{ namespace: SettingNamespace; key: string; value: string }>) {
+  const results = await Promise.allSettled(
+    updates.map((u) => settingsStore.updateSetting(u.namespace, u.key, u.value)),
+  )
+  const saved = results.filter((r) => r.status === 'fulfilled').length
+  const failed = results.filter((r) => r.status === 'rejected').length
+  if (saved > 0) {
+    toast.add({ severity: 'success', summary: `${saved} setting(s) saved`, life: 3000 })
+  }
+  if (failed > 0) {
+    toast.add({ severity: 'error', summary: `${failed} setting(s) failed to save`, life: 5000 })
+  }
+}
+
+// Dirty tracking
+function handleDirty(payload: { namespace: SettingNamespace; key: string; value: string; isDirty: boolean }) {
+  if (payload.isDirty) {
+    settingsStore.setDirty(payload.namespace, payload.key, payload.value)
+  } else {
+    settingsStore.clearDirty(payload.namespace, payload.key)
+  }
+}
+
+async function handleSaveAllDirty() {
+  const { saved, failed } = await settingsStore.saveAllDirty()
+  if (saved > 0) {
+    toast.add({ severity: 'success', summary: `${saved} setting(s) saved`, life: 3000 })
+  }
+  if (failed > 0) {
+    toast.add({ severity: 'error', summary: `${failed} setting(s) failed to save`, life: 5000 })
   }
 }
 
@@ -140,149 +164,92 @@ async function handleChangePassword() {
   }
 }
 
-// Provider handlers
-function openCreateDialog() {
-  formDialogMode.value = 'create'
-  editingProviderName.value = undefined
-  formDialogVisible.value = true
-}
-
-function openEditDialog(name: string) {
-  formDialogMode.value = 'edit'
-  editingProviderName.value = name
-  formDialogVisible.value = true
-}
-
-async function handleFormSave(data: CreateProviderRequest | UpdateProviderRequest) {
-  try {
-    if (formDialogMode.value === 'create') {
-      await providerStore.createProvider(data as CreateProviderRequest)
-      toast.add({ severity: 'success', summary: 'Provider created', life: 3000 })
-    } else if (editingProviderName.value) {
-      await providerStore.updateProvider(editingProviderName.value, data as UpdateProviderRequest)
-      toast.add({ severity: 'success', summary: 'Provider updated', life: 3000 })
-    }
-    formDialogVisible.value = false
-  } catch (err) {
-    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
-  }
-}
-
-async function handleFormSavePreset(data: CreateFromPresetRequest) {
-  try {
-    await providerStore.createFromPreset(data)
-    toast.add({ severity: 'success', summary: 'Provider created from preset', life: 3000 })
-    formDialogVisible.value = false
-  } catch (err) {
-    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
-  }
-}
-
-async function handleDelete(name: string) {
-  try {
-    await providerStore.deleteProvider(name)
-    toast.add({ severity: 'success', summary: `Provider ${name} deleted`, life: 3000 })
-  } catch (err) {
-    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
-  }
-}
-
 function namespaceLabel(ns: SettingNamespace): string {
   return NAMESPACE_DISPLAY_NAMES[ns] ?? ns
+}
+
+/** Get the code mode for a namespace (excluding 'gui'). */
+function getCodeMode(ns: string): 'json' | 'yaml' {
+  const mode = editMode.getEffectiveMode(ns).value
+  return mode === 'yaml' ? 'yaml' : 'json'
 }
 </script>
 
 <template>
   <AppShell>
-    <PageHeader title="Settings" subtitle="Manage your dashboard configuration">
+    <PageHeader title="Settings" subtitle="Manage system and account settings">
       <template #actions>
-        <div class="flex items-center gap-2 text-sm text-slate-400">
-          <span>Basic</span>
-          <ToggleSwitch
-            :model-value="settingsStore.showAdvanced"
-            aria-label="Toggle advanced settings"
-            @update:model-value="settingsStore.toggleAdvanced()"
+        <div class="flex items-center gap-4">
+          <EditModeToggle
+            :model-value="editMode.globalMode.value"
+            size="small"
+            @update:model-value="editMode.setGlobalMode"
           />
-          <span>Advanced</span>
+          <div class="flex items-center gap-2 text-sm text-slate-400">
+            <span>Basic</span>
+            <ToggleSwitch
+              :model-value="settingsStore.showAdvanced"
+              aria-label="Toggle advanced settings"
+              @update:model-value="handleAdvancedToggle()"
+            />
+            <span>Advanced</span>
+          </div>
         </div>
       </template>
     </PageHeader>
 
-    <ErrorBoundary :error="companyStore.configError ?? providerStore.error ?? settingsStore.error" @retry="retryFetch">
+    <AdvancedBanner :visible="settingsStore.showAdvanced" class="mb-4" />
+
+    <ErrorBoundary :error="settingsStore.error" @retry="retryFetch">
     <LoadingSkeleton v-if="loading" :lines="6" />
     <Tabs v-else :value="activeTab" @update:value="activeTab = String($event)">
       <TabList>
         <Tab
-          v-for="ns in settingsStore.namespaces.filter((n) => n !== 'providers')"
+          v-for="ns in settingsStore.namespaces"
           :key="ns"
           :value="ns"
           :disabled="auth.mustChangePassword"
         >
           {{ namespaceLabel(ns as SettingNamespace) }}
         </Tab>
-        <Tab value="providers" :disabled="auth.mustChangePassword">Providers</Tab>
         <Tab value="user">User</Tab>
       </TabList>
 
       <TabPanels>
-        <!-- Dynamic namespace tabs (except providers) -->
+        <!-- Dynamic namespace tabs -->
         <TabPanel
-          v-for="ns in settingsStore.namespaces.filter((n) => n !== 'providers')"
+          v-for="ns in settingsStore.namespaces"
           :key="ns"
           :value="ns"
         >
+          <!-- Per-tab edit mode override -->
+          <div class="mb-4 flex items-center justify-between">
+            <h3 class="text-sm font-medium text-slate-300">{{ namespaceLabel(ns as SettingNamespace) }} Settings</h3>
+            <EditModeToggle
+              :model-value="editMode.getEffectiveMode(ns).value"
+              size="small"
+              @update:model-value="editMode.setTabMode(ns, $event)"
+            />
+          </div>
+
+          <!-- GUI mode -->
           <SettingGroupRenderer
+            v-if="editMode.getEffectiveMode(ns).value === 'gui'"
             :entries="settingsStore.entriesByNamespace(ns as SettingNamespace)"
             :show-advanced="settingsStore.showAdvanced"
             :saving-key="settingsStore.savingKey"
             @save="handleSettingSave"
             @reset="handleSettingReset"
+            @dirty="handleDirty"
           />
-        </TabPanel>
 
-        <!-- Providers tab (custom UI + dynamic settings) -->
-        <TabPanel value="providers">
-          <div class="space-y-6">
-            <!-- Provider cards (custom CRUD UI) -->
-            <div class="space-y-4">
-              <div class="flex items-center gap-2">
-                <Button label="Add Provider" size="small" @click="openCreateDialog" />
-              </div>
-
-              <div v-if="providerEntries.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
-                <p class="text-sm text-slate-400">No providers configured. Add one to get started.</p>
-              </div>
-
-              <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <ProviderCard
-                  v-for="entry in providerEntries"
-                  :key="entry.name"
-                  :name="entry.name"
-                  :config="entry.config"
-                  @edit="openEditDialog"
-                  @delete="handleDelete"
-                />
-              </div>
-            </div>
-
-            <!-- Dynamic provider settings (routing strategy, retry, etc.) -->
-            <SettingGroupRenderer
-              v-if="providerSettings.length > 0"
-              :entries="providerSettings"
-              :show-advanced="settingsStore.showAdvanced"
-              :saving-key="settingsStore.savingKey"
-              @save="handleSettingSave"
-              @reset="handleSettingReset"
-            />
-          </div>
-
-          <ProviderFormDialog
-            v-model:visible="formDialogVisible"
-            :mode="formDialogMode"
-            :provider-name="editingProviderName"
-            :provider-config="editingProviderConfig"
-            @save="handleFormSave"
-            @save-preset="handleFormSavePreset"
+          <!-- JSON / YAML mode -->
+          <SettingsCodeView
+            v-else
+            :entries="settingsStore.entriesByNamespace(ns as SettingNamespace)"
+            :mode="getCodeMode(ns)"
+            :saving="settingsStore.savingKey !== null"
+            @save="handleCodeViewSave"
           />
         </TabPanel>
 
@@ -308,15 +275,51 @@ function namespaceLabel(ns: SettingNamespace): string {
               <form class="space-y-3" @submit.prevent="handleChangePassword">
                 <div>
                   <label for="current-password" class="mb-1 block text-xs text-slate-400">Current Password</label>
-                  <Password inputId="current-password" v-model="currentPassword" :toggle-mask="true" :feedback="false" fluid placeholder="Current password" :input-props="{ autocomplete: 'current-password', 'aria-required': 'true', 'aria-describedby': pwdError ? 'pwd-error' : undefined }" />
+                  <Password
+                    inputId="current-password"
+                    v-model="currentPassword"
+                    :toggle-mask="true"
+                    :feedback="false"
+                    fluid
+                    placeholder="Current password"
+                    :input-props="{
+                      autocomplete: 'current-password',
+                      'aria-required': 'true',
+                      'aria-describedby': pwdError ? 'pwd-error' : undefined,
+                    }"
+                  />
                 </div>
                 <div>
                   <label for="new-password" class="mb-1 block text-xs text-slate-400">New Password</label>
-                  <Password inputId="new-password" v-model="newPassword" :toggle-mask="true" :feedback="false" fluid :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`" :input-props="{ autocomplete: 'new-password', 'aria-required': 'true', 'aria-describedby': pwdError ? 'pwd-error' : undefined }" />
+                  <Password
+                    inputId="new-password"
+                    v-model="newPassword"
+                    :toggle-mask="true"
+                    :feedback="false"
+                    fluid
+                    :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`"
+                    :input-props="{
+                      autocomplete: 'new-password',
+                      'aria-required': 'true',
+                      'aria-describedby': pwdError ? 'pwd-error' : undefined,
+                    }"
+                  />
                 </div>
                 <div>
                   <label for="confirm-password" class="mb-1 block text-xs text-slate-400">Confirm Password</label>
-                  <Password inputId="confirm-password" v-model="confirmPassword" :toggle-mask="true" :feedback="false" fluid placeholder="Confirm new password" :input-props="{ autocomplete: 'new-password', 'aria-required': 'true', 'aria-describedby': pwdError ? 'pwd-error' : undefined }" />
+                  <Password
+                    inputId="confirm-password"
+                    v-model="confirmPassword"
+                    :toggle-mask="true"
+                    :feedback="false"
+                    fluid
+                    placeholder="Confirm new password"
+                    :input-props="{
+                      autocomplete: 'new-password',
+                      'aria-required': 'true',
+                      'aria-describedby': pwdError ? 'pwd-error' : undefined,
+                    }"
+                  />
                 </div>
                 <div v-if="pwdError" id="pwd-error" role="alert" class="rounded bg-red-500/10 p-2 text-sm text-red-400">{{ pwdError }}</div>
                 <Button
@@ -333,5 +336,18 @@ function namespaceLabel(ns: SettingNamespace): string {
       </TabPanels>
     </Tabs>
     </ErrorBoundary>
+
+    <!-- Floating save all button -->
+    <FloatingSaveButton
+      :count="settingsStore.dirtyCount"
+      :loading="settingsStore.savingAll"
+      @click="handleSaveAllDirty"
+    />
+
+    <!-- Advanced warning dialog -->
+    <AdvancedWarningDialog
+      v-model:visible="showWarningDialog"
+      @confirm="handleAdvancedConfirm"
+    />
   </AppShell>
 </template>

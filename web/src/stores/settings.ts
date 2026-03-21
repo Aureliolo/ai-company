@@ -2,7 +2,11 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import * as settingsApi from '@/api/endpoints/settings'
 import { getErrorMessage } from '@/utils/errors'
-import { NAMESPACE_ORDER, SETTINGS_ADVANCED_KEY } from '@/utils/constants'
+import {
+  NAMESPACE_ORDER,
+  SETTINGS_ADVANCED_KEY,
+  SETTINGS_ADVANCED_WARNED_KEY,
+} from '@/utils/constants'
 import type { SettingDefinition, SettingEntry, SettingNamespace } from '@/api/types'
 
 /** Backend max_length on UpdateSettingRequest.value. Also serves as ReDoS guard for regex validation. */
@@ -57,6 +61,9 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
     }
   }
 
+  // validator_pattern is sourced from the trusted backend SettingDefinition
+  // schema, not end-user input. Mitigations: pattern length capped at 256 chars,
+  // value length capped at MAX_SETTING_VALUE_LENGTH (8192).
   if (validator_pattern !== null) {
     if (validator_pattern.length > 256) {
       console.warn(
@@ -64,6 +71,8 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
       )
     } else {
       try {
+        // Wrap server pattern in non-capturing group + anchors to prevent partial matches
+        // and ensure the pattern cannot override the anchoring behavior
         if (!new RegExp(`^(?:${validator_pattern})$`).test(value)) { // eslint-disable-line security/detect-non-literal-regexp
           return `Must match pattern: ${validator_pattern}`
         }
@@ -79,12 +88,21 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
   return null
 }
 
+/** Composite key format: `${namespace}/${key}`. */
+type SettingCompositeKey = `${SettingNamespace}/${string}`
+
+export interface DirtyField {
+  namespace: SettingNamespace
+  key: string
+  value: string
+}
+
 export const useSettingsStore = defineStore('settings', () => {
   const schema = ref<SettingDefinition[]>([])
   const entries = ref<SettingEntry[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
-  const savingKey = ref<string | null>(null)
+  const savingKey = ref<SettingCompositeKey | null>(null)
   let initialAdvanced = false
   try {
     initialAdvanced = localStorage.getItem(SETTINGS_ADVANCED_KEY) === 'true'
@@ -94,6 +112,104 @@ export const useSettingsStore = defineStore('settings', () => {
   const showAdvanced = ref(initialAdvanced)
   let generation = 0
 
+  // ── Dirty tracking ──────────────────────────────────────────
+  const dirtyFields = ref(new Map<SettingCompositeKey, DirtyField>())
+  const hasDirty = computed(() => dirtyFields.value.size > 0)
+  const dirtyCount = computed(() => dirtyFields.value.size)
+  const savingAll = ref(false)
+
+  function setDirty(namespace: SettingNamespace, key: string, value: string) {
+    const next = new Map(dirtyFields.value)
+    next.set(`${namespace}/${key}`, { namespace, key, value })
+    dirtyFields.value = next
+  }
+
+  function clearDirty(namespace: SettingNamespace, key: string) {
+    const next = new Map(dirtyFields.value)
+    next.delete(`${namespace}/${key}`)
+    dirtyFields.value = next
+  }
+
+  function clearAllDirty() {
+    dirtyFields.value = new Map()
+  }
+
+  async function saveAllDirty(): Promise<{ saved: number; failed: number; errors: string[] }> {
+    const fields = Array.from(dirtyFields.value.values())
+    if (fields.length === 0) return { saved: 0, failed: 0, errors: [] }
+
+    savingAll.value = true
+    try {
+      const results = await Promise.allSettled(
+        fields.map((f) => updateSetting(f.namespace, f.key, f.value, { skipRefresh: true })),
+      )
+      let saved = 0
+      let failed = 0
+      const errors: string[] = []
+      for (let i = 0; i < results.length; i++) {
+        if (results[i].status === 'fulfilled') {
+          saved++
+          clearDirty(fields[i].namespace, fields[i].key)
+        } else {
+          failed++
+          errors.push(getErrorMessage((results[i] as PromiseRejectedResult).reason))
+        }
+      }
+      // Single refresh after all updates complete
+      try {
+        const gen = ++generation
+        const entriesData = await settingsApi.getAllSettings()
+        if (gen === generation) {
+          entries.value = entriesData
+        }
+      } catch {
+        // Best-effort -- individual optimistic updates already applied
+      }
+      return { saved, failed, errors }
+    } finally {
+      savingAll.value = false
+    }
+  }
+
+  // ── Advanced toggle with warning ────────────────────────────
+  /**
+   * Attempt to toggle advanced mode.
+   * Returns 'needs_warning' if the caller should show the confirmation dialog first.
+   * Returns 'toggled' if the toggle was applied immediately (toggling OFF, or already warned).
+   */
+  function toggleAdvanced(): 'needs_warning' | 'toggled' {
+    // Toggling OFF never needs a warning
+    if (showAdvanced.value) {
+      showAdvanced.value = false
+      try { localStorage.setItem(SETTINGS_ADVANCED_KEY, 'false') } catch { /* noop */ }
+      return 'toggled'
+    }
+
+    // Toggling ON -- check if we already warned this session
+    let alreadyWarned = false
+    try {
+      alreadyWarned = sessionStorage.getItem(SETTINGS_ADVANCED_WARNED_KEY) === 'true'
+    } catch { /* noop */ }
+
+    if (alreadyWarned) {
+      showAdvanced.value = true
+      try { localStorage.setItem(SETTINGS_ADVANCED_KEY, 'true') } catch { /* noop */ }
+      return 'toggled'
+    }
+
+    return 'needs_warning'
+  }
+
+  /** Called after the user confirms the advanced warning dialog. */
+  function confirmAdvanced() {
+    showAdvanced.value = true
+    try {
+      localStorage.setItem(SETTINGS_ADVANCED_KEY, 'true')
+      sessionStorage.setItem(SETTINGS_ADVANCED_WARNED_KEY, 'true')
+    } catch { /* noop */ }
+  }
+
+  // ── Namespaces ──────────────────────────────────────────────
   const namespaces = computed<SettingNamespace[]>(() => {
     const visible = schema.value.filter(
       (d) => showAdvanced.value || d.level !== 'advanced',
@@ -106,6 +222,7 @@ export const useSettingsStore = defineStore('settings', () => {
     return entries.value.filter((e) => e.definition.namespace === ns)
   }
 
+  // ── Fetch ───────────────────────────────────────────────────
   async function fetchAll(): Promise<void> {
     loading.value = true
     error.value = null
@@ -130,12 +247,17 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function updateSetting(namespace: SettingNamespace, key: string, value: string): Promise<void> {
+  // ── Update / Reset ─────────────────────────────────────────
+  async function updateSetting(
+    namespace: SettingNamespace,
+    key: string,
+    value: string,
+    options?: { skipRefresh?: boolean },
+  ): Promise<void> {
     savingKey.value = `${namespace}/${key}`
     try {
       const updatedEntry = await settingsApi.updateSetting(namespace, key, { value })
       // Immediately apply the returned entry so the UI reflects the change
-      const gen = ++generation
       const idx = entries.value.findIndex(
         (e) => e.definition.namespace === namespace && e.definition.key === key,
       )
@@ -145,13 +267,17 @@ export const useSettingsStore = defineStore('settings', () => {
         entries.value = [...entries.value, updatedEntry]
       }
       // Best-effort full refresh to get all resolved values
-      try {
-        const entriesData = await settingsApi.getAllSettings()
-        if (gen === generation) {
-          entries.value = entriesData
+      // (skipped during batch saves -- saveAllDirty does a single refresh after)
+      if (!options?.skipRefresh) {
+        const gen = ++generation
+        try {
+          const entriesData = await settingsApi.getAllSettings()
+          if (gen === generation) {
+            entries.value = entriesData
+          }
+        } catch (refreshErr) {
+          console.warn('Settings refresh failed after update:', refreshErr)
         }
-      } catch (refreshErr) {
-        console.warn('Settings refresh failed after update:', refreshErr)
       }
     } finally {
       savingKey.value = null
@@ -184,15 +310,6 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  function toggleAdvanced(): void {
-    showAdvanced.value = !showAdvanced.value
-    try {
-      localStorage.setItem(SETTINGS_ADVANCED_KEY, String(showAdvanced.value))
-    } catch {
-      // localStorage not available -- preference won't persist
-    }
-  }
-
   return {
     schema,
     entries,
@@ -206,5 +323,15 @@ export const useSettingsStore = defineStore('settings', () => {
     updateSetting,
     resetSetting,
     toggleAdvanced,
+    confirmAdvanced,
+    // Dirty tracking
+    dirtyFields,
+    hasDirty,
+    dirtyCount,
+    savingAll,
+    setDirty,
+    clearDirty,
+    clearAllDirty,
+    saveAllDirty,
   }
 })

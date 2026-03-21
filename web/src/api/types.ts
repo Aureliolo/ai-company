@@ -951,3 +951,39 @@ export interface SettingEntry {
 export interface UpdateSettingRequest {
   value: string
 }
+
+// ── Company Config (parsed from settings JSON) ────────────
+
+export interface AgentConfigEntry {
+  name: string
+  role: string
+  department: string
+  level: SeniorityLevel
+  personality?: Record<string, unknown>
+  model?: Record<string, unknown>
+  memory?: Record<string, unknown>
+  tools?: Record<string, unknown>
+  authority?: Record<string, unknown>
+  autonomy_level?: AutonomyLevel | null
+}
+
+export interface DepartmentTeam {
+  name: string
+  lead?: string
+  members?: string[]
+}
+
+export interface DepartmentReportingLine {
+  subordinate: string
+  supervisor: string
+}
+
+export interface DepartmentEntry {
+  name: string
+  head?: string
+  budget_percent?: number
+  teams?: DepartmentTeam[]
+  reporting_lines?: DepartmentReportingLine[]
+  autonomy_level?: AutonomyLevel | null
+  policies?: Record<string, unknown>
+}

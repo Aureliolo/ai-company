@@ -249,12 +249,14 @@ describe('SettingsPage (dynamic)', () => {
     const wrapper = mount(SettingsPage)
     await flushPromises()
 
-    // Should have tabs for budget, security, providers, and user
+    // Should have tabs for budget, security, and user
+    // (company and providers have dedicated pages)
     const tabs = wrapper.findAll('[data-tab]')
     const tabValues = tabs.map((t) => t.attributes('data-tab'))
     expect(tabValues).toContain('budget')
     expect(tabValues).toContain('security')
-    expect(tabValues).toContain('providers')
+    expect(tabValues).not.toContain('providers')
+    expect(tabValues).not.toContain('company')
     expect(tabValues).toContain('user')
   })
 

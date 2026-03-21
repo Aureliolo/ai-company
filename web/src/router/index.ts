@@ -42,6 +42,12 @@ const router = createRouter({
       component: () => import('@/views/ApprovalQueuePage.vue'),
     },
     {
+      path: '/company',
+      name: 'company',
+      component: () => import('@/views/CompanyPage.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/agents',
       name: 'agents',
       component: () => import('@/views/AgentProfilesPage.vue'),
@@ -51,6 +57,12 @@ const router = createRouter({
       name: 'agent-detail',
       component: () => import('@/views/AgentDetailPage.vue'),
       props: true,
+    },
+    {
+      path: '/providers',
+      name: 'providers',
+      component: () => import('@/views/ProvidersPage.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/budget',

@@ -49,4 +49,18 @@ describe('NAV_ITEMS', () => {
   it('has settings as last item', () => {
     expect(NAV_ITEMS[NAV_ITEMS.length - 1].label).toBe('Settings')
   })
+
+  it('includes Company with correct icon and route', () => {
+    const company = NAV_ITEMS.find((item) => item.label === 'Company')
+    expect(company).toBeDefined()
+    expect(company?.icon).toBe('pi pi-building')
+    expect(company?.to).toBe('/company')
+  })
+
+  it('includes Providers with correct icon and route', () => {
+    const providers = NAV_ITEMS.find((item) => item.label === 'Providers')
+    expect(providers).toBeDefined()
+    expect(providers?.icon).toBe('pi pi-server')
+    expect(providers?.to).toBe('/providers')
+  })
 })

@@ -10,20 +10,30 @@ import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import SettingSourceBadge from './SettingSourceBadge.vue'
 import SettingRestartBadge from './SettingRestartBadge.vue'
+import ChipArrayInput from '@/components/common/ChipArrayInput.vue'
 import { validateSettingValue } from '@/stores/settings'
-import type { SettingEntry } from '@/api/types'
+import { SIMPLE_ARRAY_SETTINGS } from '@/utils/constants'
+import type { SettingEntry, SettingNamespace } from '@/api/types'
 
 const props = defineProps<{
   entry: SettingEntry
   saving: boolean
+  isAdvanced?: boolean
 }>()
 
 const emit = defineEmits<{
   save: [value: string]
   reset: []
+  dirty: [payload: { namespace: SettingNamespace; key: string; value: string; isDirty: boolean }]
 }>()
 
 const def = computed(() => props.entry.definition)
+
+/** Whether this JSON setting is a simple string array with chip input. */
+const isSimpleArray = computed(() =>
+  def.value.type === 'json' &&
+  SIMPLE_ARRAY_SETTINGS.has(`${def.value.namespace}/${def.value.key}`),
+)
 
 // Local edit state -- initialized from server value
 const localValue = ref(props.entry.value)
@@ -31,6 +41,43 @@ const localValue = ref(props.entry.value)
 // Re-sync local value when server value changes (after save/reset)
 watch(() => props.entry.value, (newVal) => {
   localValue.value = newVal
+})
+
+// Emit dirty state on every local value change.
+// Canonicalize JSON before comparing to avoid false dirty flags
+// from formatting differences (e.g. compact vs pretty-printed).
+watch(localValue, (val) => {
+  let isDirty = val !== props.entry.value
+  if (isDirty && def.value.type === 'json') {
+    try {
+      const a = JSON.parse(val)
+      const b = JSON.parse(props.entry.value)
+      isDirty = JSON.stringify(a) !== JSON.stringify(b)
+    } catch {
+      // Parse failure means genuinely different
+    }
+  }
+  emit('dirty', {
+    namespace: def.value.namespace,
+    key: def.value.key,
+    value: val,
+    isDirty,
+  })
+})
+
+// Derived state for simple array (convert JSON string to string[])
+const arrayValue = computed({
+  get: () => {
+    try {
+      const parsed = JSON.parse(localValue.value)
+      return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []
+    } catch {
+      return []
+    }
+  },
+  set: (val: string[]) => {
+    localValue.value = JSON.stringify(val)
+  },
 })
 
 // Derived state for bool toggle (convert string to boolean)
@@ -83,13 +130,18 @@ function formatJson() {
 </script>
 
 <template>
-  <div class="rounded-lg border border-slate-800 p-4">
+  <div
+    class="rounded-lg border p-4"
+    :class="isAdvanced
+      ? 'border-l-4 border-amber-500/30 border-l-amber-500 bg-amber-500/5'
+      : 'border-slate-800'"
+  >
     <!-- Header row: key name + badges -->
     <div class="mb-2 flex flex-wrap items-center gap-2">
       <span class="text-sm font-medium text-slate-200">{{ def.key }}</span>
       <SettingSourceBadge :source="entry.source" />
       <SettingRestartBadge v-if="def.restart_required" />
-      <Tag v-if="def.level === 'advanced'" value="Advanced" severity="secondary" />
+      <Tag v-if="def.level === 'advanced'" value="Advanced" severity="warn" />
     </div>
 
     <!-- Description -->
@@ -97,9 +149,17 @@ function formatJson() {
 
     <!-- Input based on type -->
     <div class="mb-3">
+      <!-- Simple string array (chip input) -->
+      <ChipArrayInput
+        v-if="isSimpleArray"
+        v-model="arrayValue"
+        :disabled="saving"
+        placeholder="Add value..."
+      />
+
       <!-- String (non-sensitive) -->
       <InputText
-        v-if="def.type === 'str' && !def.sensitive"
+        v-else-if="def.type === 'str' && !def.sensitive"
         v-model="localValue"
         type="text"
         class="w-full"
@@ -158,7 +218,7 @@ function formatJson() {
         :disabled="saving"
       />
 
-      <!-- JSON -->
+      <!-- JSON (complex -- raw textarea) -->
       <div v-else-if="def.type === 'json'">
         <Textarea
           v-model="localValue"
