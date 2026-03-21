@@ -1,5 +1,6 @@
 """Tests for handle_sensitive_scan routing logic."""
 
+from typing import Any, ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -16,14 +17,14 @@ def _make_tool_call() -> ToolCall:
     return ToolCall(id="tc-1", name="read_file", arguments={"path": "/workspace"})
 
 
-def _make_result(**overrides: object) -> ToolExecutionResult:
-    defaults: dict[str, object] = {
+def _make_result(**overrides: Any) -> ToolExecutionResult:
+    defaults: dict[str, Any] = {
         "content": "original output",
         "is_error": False,
         "metadata": {"tool_name": "read_file"},
     }
     defaults.update(overrides)
-    return ToolExecutionResult(**defaults)  # type: ignore[arg-type]
+    return ToolExecutionResult(**defaults)
 
 
 class TestWithheld:
@@ -138,30 +139,48 @@ class TestRedacted:
 
 
 class TestDefensiveFallback:
-    """REDACTED with None redacted_content falls back to withhold."""
+    """Unexpected outcomes (REDACTED w/o content, LOG_ONLY) fail-closed.
 
-    def test_returns_error_with_fail_closed(self) -> None:
-        # Use model_construct to bypass validator that enforces
-        # redacted_content is not None when outcome=REDACTED.
-        scan = OutputScanResult.model_construct(
-            has_sensitive_data=True,
-            findings=("something sensitive",),
-            redacted_content=None,
-            outcome=ScanOutcome.REDACTED,
-        )
-        result = handle_sensitive_scan(_make_tool_call(), _make_result(), scan)
-        assert result.is_error is True
-        assert "fail-closed" in result.content
+    Uses ``model_construct`` to bypass validators that prevent these
+    states in normal usage, verifying the defensive code path.
+    """
 
-    def test_metadata_has_scan_failed_flag(self) -> None:
+    _OUTCOMES: ClassVar[list[object]] = [
+        pytest.param(ScanOutcome.REDACTED, "redacted", id="redacted-no-content"),
+        pytest.param(ScanOutcome.LOG_ONLY, "log_only", id="log-only"),
+    ]
+
+    @pytest.mark.parametrize(("outcome", "expected_value"), _OUTCOMES)
+    def test_returns_fail_closed_error(
+        self, outcome: ScanOutcome, expected_value: str
+    ) -> None:
         scan = OutputScanResult.model_construct(
             has_sensitive_data=True,
             findings=("sensitive data",),
             redacted_content=None,
-            outcome=ScanOutcome.REDACTED,
+            outcome=outcome,
         )
         result = handle_sensitive_scan(_make_tool_call(), _make_result(), scan)
+        assert result.is_error is True
+        assert "fail-closed" in result.content
         assert result.metadata["output_scan_failed"] is True
+
+    @pytest.mark.parametrize(("outcome", "expected_value"), _OUTCOMES)
+    def test_logs_withheld_event_with_outcome(
+        self, outcome: ScanOutcome, expected_value: str
+    ) -> None:
+        scan = OutputScanResult.model_construct(
+            has_sensitive_data=True,
+            findings=("sensitive data",),
+            redacted_content=None,
+            outcome=outcome,
+        )
+        with patch("synthorg.tools.scan_result_handler.logger") as mock_logger:
+            handle_sensitive_scan(_make_tool_call(), _make_result(), scan)
+            mock_logger.warning.assert_called_once()
+            call_args = mock_logger.warning.call_args
+            assert call_args[0][0] == "tool.output.withheld"
+            assert call_args[1]["outcome"] == expected_value
 
     def test_preserves_original_metadata_keys(self) -> None:
         scan = OutputScanResult.model_construct(
@@ -174,50 +193,3 @@ class TestDefensiveFallback:
         result = handle_sensitive_scan(_make_tool_call(), original, scan)
         assert result.metadata["origin"] == "test"
         assert result.metadata["output_scan_failed"] is True
-
-    def test_logs_withheld_event_with_outcome(self) -> None:
-        scan = OutputScanResult.model_construct(
-            has_sensitive_data=True,
-            findings=("sensitive data",),
-            redacted_content=None,
-            outcome=ScanOutcome.REDACTED,
-        )
-        with patch("synthorg.tools.scan_result_handler.logger") as mock_logger:
-            handle_sensitive_scan(_make_tool_call(), _make_result(), scan)
-            mock_logger.warning.assert_called_once()
-            call_args = mock_logger.warning.call_args
-            assert call_args[0][0] == "tool.output.withheld"
-            assert call_args[1]["outcome"] == "redacted"
-
-
-class TestLogOnlyFallback:
-    """LOG_ONLY outcome triggers defensive fail-closed (unexpected path)."""
-
-    def test_log_only_returns_fail_closed_error(self) -> None:
-        # LOG_ONLY normally has has_sensitive_data=False, so it should
-        # never reach handle_sensitive_scan.  Use model_construct to
-        # bypass the validator and verify the defensive fallback.
-        scan = OutputScanResult.model_construct(
-            has_sensitive_data=True,
-            findings=("secret detected",),
-            redacted_content=None,
-            outcome=ScanOutcome.LOG_ONLY,
-        )
-        result = handle_sensitive_scan(_make_tool_call(), _make_result(), scan)
-        assert result.is_error is True
-        assert "fail-closed" in result.content
-        assert result.metadata["output_scan_failed"] is True
-
-    def test_log_only_logs_outcome_value(self) -> None:
-        scan = OutputScanResult.model_construct(
-            has_sensitive_data=True,
-            findings=("secret detected",),
-            redacted_content=None,
-            outcome=ScanOutcome.LOG_ONLY,
-        )
-        with patch("synthorg.tools.scan_result_handler.logger") as mock_logger:
-            handle_sensitive_scan(_make_tool_call(), _make_result(), scan)
-            mock_logger.warning.assert_called_once()
-            call_args = mock_logger.warning.call_args
-            assert call_args[0][0] == "tool.output.withheld"
-            assert call_args[1]["outcome"] == "log_only"
