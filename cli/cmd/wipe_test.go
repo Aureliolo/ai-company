@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 )
 
 func TestIsEmptyPS(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		output string
@@ -22,12 +24,15 @@ func TestIsEmptyPS(t *testing.T) {
 		{"empty JSON array", "[]", true},
 		{"empty array with newline", "[]\n", true},
 		{"empty with whitespace", "  []  ", true},
+		{"empty array with inner space", "[ ]", true},
 		{"non-empty JSON", `[{"Name":"backend"}]`, false},
 		{"whitespace only", "   ", true},
 		{"single container", `{"Name":"backend","State":"running"}`, false},
+		{"NDJSON multiple containers", "{\"Name\":\"backend\"}\n{\"Name\":\"web\"}\n", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			if got := isEmptyPS(tt.output); got != tt.want {
 				t.Errorf("isEmptyPS(%q) = %v, want %v", tt.output, got, tt.want)
 			}
@@ -36,6 +41,7 @@ func TestIsEmptyPS(t *testing.T) {
 }
 
 func TestOpenBrowser_RejectsNonLocalhost(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		url     string
@@ -48,6 +54,7 @@ func TestOpenBrowser_RejectsNonLocalhost(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := openBrowser(t.Context(), tt.url)
 			if err == nil {
 				t.Fatal("expected error, got nil")
@@ -60,6 +67,7 @@ func TestOpenBrowser_RejectsNonLocalhost(t *testing.T) {
 }
 
 func TestOpenBrowser_AcceptsLocalhost(t *testing.T) {
+	t.Parallel()
 	// We can't fully test browser opening in CI, but we can verify
 	// the URL validation passes for valid localhost URLs.
 	validURLs := []string{
@@ -69,6 +77,7 @@ func TestOpenBrowser_AcceptsLocalhost(t *testing.T) {
 	}
 	for _, u := range validURLs {
 		t.Run(u, func(t *testing.T) {
+			t.Parallel()
 			// openBrowser will attempt to launch a browser binary which may
 			// not exist in CI -- that's fine, we're testing the URL validation.
 			err := openBrowser(t.Context(), u)
@@ -84,6 +93,7 @@ func TestOpenBrowser_AcceptsLocalhost(t *testing.T) {
 }
 
 func TestCreateTarGz(t *testing.T) {
+	t.Parallel()
 	// Create a source directory with test files.
 	srcDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(srcDir, "data.txt"), []byte("hello world"), 0o600); err != nil {
@@ -114,14 +124,17 @@ func TestCreateTarGz(t *testing.T) {
 	found := map[string]string{}
 	for {
 		hdr, err := tr.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			t.Fatalf("reading tar: %v", err)
 		}
 		if hdr.Typeflag == tar.TypeReg {
-			data, _ := io.ReadAll(tr)
+			data, readErr := io.ReadAll(tr)
+			if readErr != nil {
+				t.Fatalf("reading %q: %v", hdr.Name, readErr)
+			}
 			found[hdr.Name] = string(data)
 		}
 	}
@@ -134,7 +147,40 @@ func TestCreateTarGz(t *testing.T) {
 	}
 }
 
+func TestCreateTarGz_StripsHostIdentity(t *testing.T) {
+	t.Parallel()
+	srcDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if err := createTarGz(&buf, srcDir); err != nil {
+		t.Fatalf("createTarGz: %v", err)
+	}
+
+	gr, err := gzip.NewReader(&buf)
+	if err != nil {
+		t.Fatalf("gzip reader: %v", err)
+	}
+	defer func() { _ = gr.Close() }()
+
+	tr := tar.NewReader(gr)
+	hdr, err := tr.Next()
+	if err != nil {
+		t.Fatalf("reading first entry: %v", err)
+	}
+
+	if hdr.Uid != 0 || hdr.Gid != 0 {
+		t.Errorf("expected Uid=0 Gid=0, got Uid=%d Gid=%d", hdr.Uid, hdr.Gid)
+	}
+	if hdr.Uname != "" || hdr.Gname != "" {
+		t.Errorf("expected empty Uname/Gname, got Uname=%q Gname=%q", hdr.Uname, hdr.Gname)
+	}
+}
+
 func TestTarDirectory_EmptyDir(t *testing.T) {
+	t.Parallel()
 	srcDir := t.TempDir()
 	dstPath := filepath.Join(t.TempDir(), "out.tar.gz")
 
@@ -148,6 +194,7 @@ func TestTarDirectory_EmptyDir(t *testing.T) {
 }
 
 func TestTarDirectory_RoundTrip(t *testing.T) {
+	t.Parallel()
 	// Create source directory with a file.
 	srcDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(srcDir, "test.txt"), []byte("round trip"), 0o600); err != nil {
@@ -180,13 +227,17 @@ func TestTarDirectory_RoundTrip(t *testing.T) {
 	if hdr.Name != "test.txt" {
 		t.Errorf("unexpected archive entry: %q", hdr.Name)
 	}
-	data, _ := io.ReadAll(tr)
+	data, readErr := io.ReadAll(tr)
+	if readErr != nil {
+		t.Fatalf("reading %q: %v", hdr.Name, readErr)
+	}
 	if string(data) != "round trip" {
 		t.Errorf("content = %q, want %q", string(data), "round trip")
 	}
 }
 
 func TestTarDirectory_RestrictedPermissions(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("file permission bits are not enforced on Windows")
 	}

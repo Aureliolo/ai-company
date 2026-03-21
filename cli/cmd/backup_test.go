@@ -168,7 +168,10 @@ func TestSanitizeAPIMessage(t *testing.T) {
 }
 
 func TestBuildLocalJWT(t *testing.T) {
-	token := buildLocalJWT("test-secret")
+	token, err := buildLocalJWT("test-secret-that-is-at-least-32-characters-long")
+	if err != nil {
+		t.Fatalf("buildLocalJWT: %v", err)
+	}
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		t.Fatalf("expected 3 JWT parts, got %d", len(parts))
@@ -186,8 +189,20 @@ func TestBuildLocalJWT(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decoding payload: %v", err)
 	}
-	if !strings.Contains(string(payloadJSON), `"sub":"synthorg-cli"`) {
-		t.Errorf("payload missing synthorg-cli sub: %s", payloadJSON)
+	for _, claim := range []string{`"sub":"synthorg-cli"`, `"iss":"synthorg-cli"`, `"aud":"synthorg-backend"`} {
+		if !strings.Contains(string(payloadJSON), claim) {
+			t.Errorf("payload missing claim %s: %s", claim, payloadJSON)
+		}
+	}
+}
+
+func TestBuildLocalJWT_TooShort(t *testing.T) {
+	_, err := buildLocalJWT("short")
+	if err == nil {
+		t.Fatal("expected error for short secret, got nil")
+	}
+	if !strings.Contains(err.Error(), "too short") {
+		t.Errorf("error %q does not mention too short", err.Error())
 	}
 }
 
@@ -204,7 +219,7 @@ func writeConfigJSON(t *testing.T, dir string, backendPort int) {
 		"log_level":           "info",
 		"persistence_backend": "sqlite",
 		"memory_backend":      "mem0",
-		"jwt_secret":          "test-backup-secret",
+		"jwt_secret":          "test-backup-secret-at-least-32-chars",
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {

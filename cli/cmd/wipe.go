@@ -26,6 +26,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// errWipeCancelled is a sentinel error used to signal that the user cancelled
+// the wipe operation. Callers convert this to a clean (nil) exit.
+var errWipeCancelled = errors.New("wipe cancelled by user")
+
+// wipeContext bundles the shared dependencies for the wipe workflow,
+// reducing parameter passing across the multi-step operation.
+type wipeContext struct {
+	ctx     context.Context
+	cmd     *cobra.Command
+	state   config.State
+	info    docker.Info
+	safeDir string
+	out     *ui.UI
+	errOut  *ui.UI
+}
+
 var wipeCmd = &cobra.Command{
 	Use:   "wipe",
 	Short: "Factory-reset: wipe all data and re-open the setup wizard",
@@ -71,55 +87,68 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	if err := ensureRunning(ctx, cmd, state, info, safeDir, out, errOut); err != nil {
+	wc := &wipeContext{
+		ctx:     ctx,
+		cmd:     cmd,
+		state:   state,
+		info:    info,
+		safeDir: safeDir,
+		out:     out,
+		errOut:  errOut,
+	}
+
+	if err := wc.ensureRunning(); err != nil {
 		return err
 	}
 
-	if err := offerBackup(ctx, cmd, state, info, safeDir, out, errOut); err != nil {
+	if err := wc.offerBackup(); err != nil {
+		if errors.Is(err, errWipeCancelled) {
+			return nil
+		}
 		return err
 	}
 
-	return confirmAndWipe(ctx, cmd, state, info, safeDir, out, errOut)
+	return wc.confirmAndWipe()
 }
 
 // confirmAndWipe asks for final confirmation, then stops containers,
 // removes volumes, starts fresh, and opens the setup wizard.
-func confirmAndWipe(ctx context.Context, cmd *cobra.Command, state config.State, info docker.Info, safeDir string, out, errOut *ui.UI) error {
-	confirmed, err := confirmWipe(cmd)
+func (wc *wipeContext) confirmAndWipe() error {
+	confirmed, err := wc.confirmWipe()
 	if err != nil {
 		return err
 	}
 	if !confirmed {
-		out.Hint("Wipe cancelled.")
+		wc.out.Hint("Wipe cancelled.")
 		return nil
 	}
 
-	sp := out.StartSpinner("Stopping containers and removing volumes...")
-	if err := composeRunQuiet(ctx, info, safeDir, "down", "-v"); err != nil {
+	sp := wc.out.StartSpinner("Stopping containers and removing volumes...")
+	if err := composeRunQuiet(wc.ctx, wc.info, wc.safeDir, "down", "-v"); err != nil {
 		sp.Error("Failed to stop containers")
 		return fmt.Errorf("stopping containers: %w", err)
 	}
 	sp.Success("Containers stopped and volumes removed")
 
-	out.Blank()
-	if err := pullStartAndWait(ctx, info, safeDir, state, out, errOut); err != nil {
+	wc.out.Blank()
+	if err := pullStartAndWait(wc.ctx, wc.info, wc.safeDir, wc.state, wc.out, wc.errOut); err != nil {
 		return err
 	}
 
-	out.Blank()
-	setupURL := fmt.Sprintf("http://localhost:%d/setup", state.WebPort)
-	out.Success("Factory reset complete")
-	out.Hint(fmt.Sprintf("Opening %s", setupURL))
-	if err := openBrowser(ctx, setupURL); err != nil {
-		errOut.Warn(fmt.Sprintf("Could not open browser: %v", err))
-		errOut.Hint(fmt.Sprintf("Open %s manually in your browser.", setupURL))
+	wc.out.Blank()
+	setupURL := fmt.Sprintf("http://localhost:%d/setup", wc.state.WebPort)
+	wc.out.Success("Factory reset complete")
+	wc.out.Hint(fmt.Sprintf("Opening %s", setupURL))
+	if err := openBrowser(wc.ctx, setupURL); err != nil {
+		wc.errOut.Warn(fmt.Sprintf("Could not open browser: %v", err))
+		wc.errOut.Hint(fmt.Sprintf("Open %s manually in your browser.", setupURL))
 	}
 
 	return nil
 }
 
 // confirmWipe prompts for final destructive-action confirmation.
-func confirmWipe(cmd *cobra.Command) (bool, error) {
+func (wc *wipeContext) confirmWipe() (bool, error) {
 	var confirmed bool
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
@@ -129,9 +158,12 @@ func confirmWipe(cmd *cobra.Command) (bool, error) {
 			Negative("Cancel").
 			Value(&confirmed),
 	))
-	form.WithInput(cmd.InOrStdin())
-	form.WithOutput(cmd.OutOrStdout())
+	form.WithInput(wc.cmd.InOrStdin())
+	form.WithOutput(wc.cmd.OutOrStdout())
 	if err := form.Run(); err != nil {
+		if isUserAbort(err) {
+			return false, nil // treat Ctrl-C as "Cancel"
+		}
 		return false, fmt.Errorf("confirmation prompt: %w", err)
 	}
 	return confirmed, nil
@@ -140,30 +172,30 @@ func confirmWipe(cmd *cobra.Command) (bool, error) {
 // ensureRunning checks whether the SynthOrg stack is running. If not, it
 // starts the stack (pull, verify, up, health-wait) so the backup API is
 // available before wiping.
-func ensureRunning(ctx context.Context, cmd *cobra.Command, state config.State, info docker.Info, safeDir string, out, errOut *ui.UI) error {
-	psOut, err := docker.ComposeExecOutput(ctx, info, safeDir, "ps", "--format", "json")
+func (wc *wipeContext) ensureRunning() error {
+	psOut, err := docker.ComposeExecOutput(wc.ctx, wc.info, wc.safeDir, "ps", "--format", "json")
 	if err != nil || isEmptyPS(psOut) {
-		out.Hint("Containers are not running -- starting them for backup...")
-		out.Blank()
-		if err := verifyAndPinImages(ctx, cmd, state, safeDir, out, errOut); err != nil {
+		wc.out.Hint("Containers are not running -- starting them for backup...")
+		wc.out.Blank()
+		if err := verifyAndPinImages(wc.ctx, wc.cmd, wc.state, wc.safeDir, wc.out, wc.errOut); err != nil {
 			return err
 		}
-		out.Blank()
-		return pullStartAndWait(ctx, info, safeDir, state, out, errOut)
+		wc.out.Blank()
+		return pullStartAndWait(wc.ctx, wc.info, wc.safeDir, wc.state, wc.out, wc.errOut)
 	}
 
 	// Containers exist but backend may not be healthy yet.
-	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
-	if err := health.WaitForHealthy(ctx, healthURL, 30*time.Second, 2*time.Second, 5*time.Second); err != nil {
-		errOut.Warn(fmt.Sprintf("Backend not healthy -- backup may not be available: %v", err))
+	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", wc.state.BackendPort)
+	if err := health.WaitForHealthy(wc.ctx, healthURL, 30*time.Second, 2*time.Second, 5*time.Second); err != nil {
+		wc.errOut.Warn(fmt.Sprintf("Backend not healthy -- backup may not be available: %v", err))
 	}
 	return nil
 }
 
 // offerBackup prompts whether to create a backup, and if so, creates one
 // via the backend API and copies the archive to a local path.
-func offerBackup(ctx context.Context, cmd *cobra.Command, state config.State, info docker.Info, safeDir string, out, errOut *ui.UI) error {
-	wantBackup, err := promptForBackup(cmd)
+func (wc *wipeContext) offerBackup() error {
+	wantBackup, err := wc.promptForBackup()
 	if err != nil {
 		return err
 	}
@@ -171,16 +203,16 @@ func offerBackup(ctx context.Context, cmd *cobra.Command, state config.State, in
 		return nil
 	}
 
-	savePath, err := promptSavePath(cmd)
+	savePath, err := wc.promptSavePath()
 	if err != nil {
 		return err
 	}
 
-	return createAndCopyBackup(ctx, cmd, state, info, safeDir, savePath, out, errOut)
+	return wc.createAndCopyBackup(savePath)
 }
 
 // promptForBackup asks whether the user wants a backup before wiping.
-func promptForBackup(cmd *cobra.Command) (bool, error) {
+func (wc *wipeContext) promptForBackup() (bool, error) {
 	var wantBackup bool
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
@@ -190,16 +222,20 @@ func promptForBackup(cmd *cobra.Command) (bool, error) {
 			Negative("No, skip").
 			Value(&wantBackup),
 	))
-	form.WithInput(cmd.InOrStdin())
-	form.WithOutput(cmd.OutOrStdout())
+	form.WithInput(wc.cmd.InOrStdin())
+	form.WithOutput(wc.cmd.OutOrStdout())
 	if err := form.Run(); err != nil {
+		if isUserAbort(err) {
+			wc.out.Hint("Wipe cancelled.")
+			return false, errWipeCancelled
+		}
 		return false, fmt.Errorf("backup prompt: %w", err)
 	}
 	return wantBackup, nil
 }
 
 // promptSavePath asks the user for a local path to save the backup archive.
-func promptSavePath(cmd *cobra.Command) (string, error) {
+func (wc *wipeContext) promptSavePath() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		homeDir = os.TempDir()
@@ -213,9 +249,13 @@ func promptSavePath(cmd *cobra.Command) (string, error) {
 			Description("Path for the backup archive").
 			Value(&savePath),
 	))
-	pathForm.WithInput(cmd.InOrStdin())
-	pathForm.WithOutput(cmd.OutOrStdout())
+	pathForm.WithInput(wc.cmd.InOrStdin())
+	pathForm.WithOutput(wc.cmd.OutOrStdout())
 	if err := pathForm.Run(); err != nil {
+		if isUserAbort(err) {
+			wc.out.Hint("Wipe cancelled.")
+			return "", errWipeCancelled
+		}
 		return "", fmt.Errorf("save path prompt: %w", err)
 	}
 	savePath = strings.TrimSpace(savePath)
@@ -223,8 +263,10 @@ func promptSavePath(cmd *cobra.Command) (string, error) {
 		savePath = defaultPath
 	}
 
-	// Expand leading ~/ to the user's home directory.
-	if strings.HasPrefix(savePath, "~/") || strings.HasPrefix(savePath, "~\\") {
+	// Expand leading ~ or ~/ to the user's home directory.
+	if savePath == "~" {
+		savePath = homeDir
+	} else if strings.HasPrefix(savePath, "~/") || strings.HasPrefix(savePath, "~\\") {
 		savePath = filepath.Join(homeDir, savePath[2:])
 	}
 
@@ -237,21 +279,21 @@ func promptSavePath(cmd *cobra.Command) (string, error) {
 }
 
 // createAndCopyBackup creates a backup via the API and copies it locally.
-func createAndCopyBackup(ctx context.Context, cmd *cobra.Command, state config.State, info docker.Info, safeDir, savePath string, out, errOut *ui.UI) error {
-	sp := out.StartSpinner("Creating backup...")
-	manifest, err := createBackupViaAPI(ctx, state)
+func (wc *wipeContext) createAndCopyBackup(savePath string) error {
+	sp := wc.out.StartSpinner("Creating backup...")
+	manifest, err := createBackupViaAPI(wc.ctx, wc.state)
 	if err != nil {
 		sp.Error("Backup failed")
-		errOut.Warn(fmt.Sprintf("Could not create backup: %v", err))
-		return askContinueWithoutBackup(cmd, out)
+		wc.errOut.Warn(fmt.Sprintf("Could not create backup: %v", err))
+		return wc.askContinueWithoutBackup()
 	}
 	sp.Success("Backup created")
 
-	sp = out.StartSpinner("Copying backup to local path...")
-	if err := copyBackupFromContainer(ctx, info, safeDir, manifest.BackupID, savePath); err != nil {
+	sp = wc.out.StartSpinner("Copying backup to local path...")
+	if err := copyBackupFromContainer(wc.ctx, wc.info, wc.safeDir, manifest.BackupID, savePath); err != nil {
 		sp.Error("Failed to copy backup")
-		errOut.Warn(fmt.Sprintf("Could not copy backup locally: %v", err))
-		return askContinueWithoutBackup(cmd, out)
+		wc.errOut.Warn(fmt.Sprintf("Could not copy backup locally: %v", err))
+		return wc.askContinueWithoutBackup()
 	}
 	sp.Success(fmt.Sprintf("Backup saved to %s", savePath))
 
@@ -344,8 +386,9 @@ func tarDirectory(srcDir, dstPath string) error {
 }
 
 // askContinueWithoutBackup prompts whether to proceed with the wipe even
-// though the backup failed. Returns nil to continue, or an error to abort.
-func askContinueWithoutBackup(cmd *cobra.Command, out *ui.UI) error {
+// though the backup failed. Returns nil to continue, or errWipeCancelled
+// to abort the wipe cleanly.
+func (wc *wipeContext) askContinueWithoutBackup() error {
 	var proceed bool
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
@@ -355,22 +398,36 @@ func askContinueWithoutBackup(cmd *cobra.Command, out *ui.UI) error {
 			Negative("Cancel").
 			Value(&proceed),
 	))
-	form.WithInput(cmd.InOrStdin())
-	form.WithOutput(cmd.OutOrStdout())
+	form.WithInput(wc.cmd.InOrStdin())
+	form.WithOutput(wc.cmd.OutOrStdout())
 	if err := form.Run(); err != nil {
+		if isUserAbort(err) {
+			wc.out.Hint("Wipe cancelled.")
+			return errWipeCancelled
+		}
 		return fmt.Errorf("continue prompt: %w", err)
 	}
 	if !proceed {
-		out.Hint("Wipe cancelled.")
-		return nil
+		wc.out.Hint("Wipe cancelled.")
+		return errWipeCancelled
 	}
 	return nil
 }
 
 // isEmptyPS returns true if docker compose ps output indicates no containers.
+// Handles both JSON array format (Compose v2.21+) and NDJSON (older versions).
 func isEmptyPS(output string) bool {
 	trimmed := strings.TrimSpace(output)
-	return trimmed == "" || trimmed == "[]"
+	if trimmed == "" {
+		return true
+	}
+	// JSON array format (Compose v2.21+).
+	if strings.HasPrefix(trimmed, "[") {
+		var arr []json.RawMessage
+		return json.Unmarshal([]byte(trimmed), &arr) == nil && len(arr) == 0
+	}
+	// NDJSON: any non-empty line means at least one container.
+	return false
 }
 
 // openBrowser opens a URL in the default browser. Only localhost HTTP(S)
@@ -441,7 +498,20 @@ func createTarGz(w io.Writer, srcDir string) error {
 		if err != nil {
 			return fmt.Errorf("creating tar header for %s: %w", rel, err)
 		}
-		header.Name = filepath.ToSlash(rel)
+
+		// Normalize path and validate against traversal.
+		cleanRel := filepath.ToSlash(filepath.Clean(rel))
+		if strings.HasPrefix(cleanRel, "..") {
+			return fmt.Errorf("refusing to archive path with traversal component: %s", rel)
+		}
+		header.Name = cleanRel
+
+		// Strip host identity to avoid information disclosure and permission
+		// mismatch when the archive is restored on a different machine.
+		header.Uid = 0
+		header.Gid = 0
+		header.Uname = ""
+		header.Gname = ""
 
 		if err := tw.WriteHeader(header); err != nil {
 			return fmt.Errorf("writing tar header for %s: %w", rel, err)
@@ -454,14 +524,10 @@ func createTarGz(w io.Writer, srcDir string) error {
 		return addFileToTar(tw, path, rel)
 	})
 
-	// Close tar then gzip in order; return first error encountered.
-	if err := tw.Close(); err != nil && walkErr == nil {
-		walkErr = err
-	}
-	if err := gw.Close(); err != nil && walkErr == nil {
-		walkErr = err
-	}
-	return walkErr
+	// Close tar then gzip; errors.Join reports all errors.
+	errTar := tw.Close()
+	errGzip := gw.Close()
+	return errors.Join(walkErr, errTar, errGzip)
 }
 
 // addFileToTar copies a single file into the tar writer.
@@ -479,4 +545,9 @@ func addFileToTar(tw *tar.Writer, path, rel string) error {
 		return fmt.Errorf("writing %s to archive: %w", rel, copyErr)
 	}
 	return nil
+}
+
+// isUserAbort returns true if the error is a huh user-abort (Ctrl-C/Esc).
+func isUserAbort(err error) bool {
+	return errors.Is(err, huh.ErrUserAborted)
 }

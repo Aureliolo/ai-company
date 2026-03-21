@@ -163,20 +163,26 @@ func sanitizeAPIMessage(msg string) string {
 // Per-request timeouts are controlled via context.WithTimeout.
 var backupClient = &http.Client{}
 
+// minJWTSecretLen is the minimum acceptable length for the JWT signing secret.
+const minJWTSecretLen = 32
+
 // buildLocalJWT generates a short-lived JWT signed with the shared secret so
 // the CLI can authenticate against the backend's admin endpoints. The token
 // uses HMAC-SHA256 (HS256) and expires after 60 seconds.
-func buildLocalJWT(secret string) string {
+func buildLocalJWT(secret string) (string, error) {
+	if len(secret) < minJWTSecretLen {
+		return "", fmt.Errorf("jwt_secret is too short (%d chars); minimum is %d", len(secret), minJWTSecretLen)
+	}
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 	now := time.Now().Unix()
 	payload := base64.RawURLEncoding.EncodeToString(
-		fmt.Appendf(nil, `{"sub":"synthorg-cli","iat":%d,"exp":%d}`, now, now+60),
+		fmt.Appendf(nil, `{"sub":"synthorg-cli","iss":"synthorg-cli","aud":"synthorg-backend","iat":%d,"exp":%d}`, now, now+60),
 	)
 	signingInput := header + "." + payload
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(signingInput))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	return signingInput + "." + sig
+	return signingInput + "." + sig, nil
 }
 
 // backupAPIRequest performs an HTTP request to the backup API and returns
@@ -210,7 +216,11 @@ func backupAPIRequest(ctx context.Context, port int, method, path string, body [
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if jwtSecret != "" {
-		req.Header.Set("Authorization", "Bearer "+buildLocalJWT(jwtSecret))
+		token, err := buildLocalJWT(jwtSecret)
+		if err != nil {
+			return nil, 0, fmt.Errorf("building JWT: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
 	resp, err := backupClient.Do(req)
@@ -305,8 +315,8 @@ func runBackupCreate(cmd *cobra.Command, _ []string) error {
 	}
 
 	if statusCode < 200 || statusCode >= 300 {
-		msg := apiErrorMessage(body, "backup failed")
-		errOut.Error(sanitizeAPIMessage(msg))
+		msg := sanitizeAPIMessage(apiErrorMessage(body, "backup failed"))
+		errOut.Error(msg)
 		return errors.New(msg)
 	}
 
@@ -345,8 +355,8 @@ func runBackupList(cmd *cobra.Command, _ []string) error {
 	}
 
 	if statusCode < 200 || statusCode >= 300 {
-		msg := apiErrorMessage(body, "failed to list backups")
-		errOut.Error(sanitizeAPIMessage(msg))
+		msg := sanitizeAPIMessage(apiErrorMessage(body, "failed to list backups"))
+		errOut.Error(msg)
 		return errors.New(msg)
 	}
 
@@ -466,8 +476,9 @@ func handleRestoreError(errOut *ui.UI, body []byte, statusCode int, backupID str
 		errOut.Hint("Run 'synthorg backup list' to see available backups")
 		return fmt.Errorf("backup not found: %s", backupID)
 	}
-	errOut.Error(sanitizeAPIMessage(msg))
-	return errors.New(msg)
+	safe := sanitizeAPIMessage(msg)
+	errOut.Error(safe)
+	return errors.New(safe)
 }
 
 // handleRestartAfterRestore stops containers when a restore requires restart.
