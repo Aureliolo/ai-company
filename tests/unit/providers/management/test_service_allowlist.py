@@ -8,6 +8,7 @@ from synthorg.api.dto import CreateFromPresetRequest, UpdateProviderRequest
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.discovery_policy import ProviderDiscoveryPolicy
 from synthorg.providers.management.service import ProviderManagementService
+from tests.unit.api.fakes import FakePersistenceBackend
 
 from .conftest import make_create_request
 
@@ -339,14 +340,14 @@ class TestAllowlistEdgeCases:
     async def test_corrupted_policy_reseeds(
         self,
         service: ProviderManagementService,
-        fake_persistence: object,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         """Corrupted persisted policy triggers re-seed."""
         from datetime import UTC, datetime
 
         # Write corrupted JSON directly to the raw repository,
         # bypassing SettingsService validation.
-        repo = fake_persistence.settings  # type: ignore[union-attr]
+        repo = fake_persistence.settings
         repo._store[("providers", "discovery_allowlist")] = (
             "not-valid-json",
             datetime.now(tz=UTC).isoformat(),
@@ -358,12 +359,12 @@ class TestAllowlistEdgeCases:
     async def test_invalid_schema_reseeds(
         self,
         service: ProviderManagementService,
-        fake_persistence: object,
+        fake_persistence: FakePersistenceBackend,
     ) -> None:
         """Valid JSON with invalid schema triggers re-seed."""
         from datetime import UTC, datetime
 
-        repo = fake_persistence.settings  # type: ignore[union-attr]
+        repo = fake_persistence.settings
         repo._store[("providers", "discovery_allowlist")] = (
             '{"block_private_ips": "not-a-bool"}',
             datetime.now(tz=UTC).isoformat(),
