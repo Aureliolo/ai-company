@@ -7,7 +7,7 @@ SynthOrg aligns with emerging industry standards for agent-to-tool and agent-to-
 | Standard | Owner | Purpose | SynthOrg Usage |
 |----------|-------|---------|----------------|
 | **MCP** (Model Context Protocol) | Linux Foundation (AAIF) | Standardized LLM-to-tool integration | Tool system backbone |
-| **A2A** (Agent-to-Agent Protocol) | Google, now Linux Foundation | Agent-to-agent communication | Future agent interoperability |
+| **A2A** (Agent-to-Agent Protocol) | Linux Foundation | Agent-to-agent communication | Future agent interoperability |
 | **Chat completions API format** | De facto industry standard | LLM API | Via provider abstraction layer (LiteLLM) |
 
 ---

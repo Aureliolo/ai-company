@@ -115,6 +115,8 @@ synthorg/
     hr/                 # HR engine (hiring, firing, performance)
     observability/      # Structured logging, correlation tracking
     persistence/        # Pluggable persistence backends
+    settings/           # Runtime-editable settings
+    backup/             # Backup/restore orchestrator
   tests/
     unit/               # Fast, isolated tests (no I/O)
     integration/        # Tests with I/O, databases, APIs
