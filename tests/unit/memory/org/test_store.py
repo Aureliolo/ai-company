@@ -248,65 +248,68 @@ class TestSQLiteOrgFactStoreOperations:
     async def test_save_sqlite_error_wraps(self) -> None:
         store = SQLiteOrgFactStore(":memory:")
         await store.connect()
+        # Swap the aiosqlite connection with a mock so the error
+        # does not leave aiosqlite's worker thread inconsistent.
+        # The real connection is restored for clean disconnect.
+        real_db = store._db
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(
+            side_effect=sqlite3.Error("disk I/O error"),
+        )
+        store._db = mock_db
         try:
-            with (
-                patch.object(
-                    store._db,
-                    "execute",
-                    side_effect=sqlite3.Error("disk I/O error"),
-                ),
-                pytest.raises(OrgMemoryWriteError, match="disk I/O error"),
-            ):
+            with pytest.raises(OrgMemoryWriteError, match="disk I/O error"):
                 await store.save(_make_fact())
         finally:
+            store._db = real_db
             await store.disconnect()
 
     async def test_get_sqlite_error_wraps(self) -> None:
         store = SQLiteOrgFactStore(":memory:")
         await store.connect()
+        real_db = store._db
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(
+            side_effect=sqlite3.Error("disk I/O error"),
+        )
+        store._db = mock_db
         try:
-            with (
-                patch.object(
-                    store._db,
-                    "execute",
-                    side_effect=sqlite3.Error("disk I/O error"),
-                ),
-                pytest.raises(OrgMemoryQueryError, match="disk I/O error"),
-            ):
+            with pytest.raises(OrgMemoryQueryError, match="disk I/O error"):
                 await store.get("f1")
         finally:
+            store._db = real_db
             await store.disconnect()
 
     async def test_query_sqlite_error_wraps(self) -> None:
         store = SQLiteOrgFactStore(":memory:")
         await store.connect()
+        real_db = store._db
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(
+            side_effect=sqlite3.Error("disk I/O error"),
+        )
+        store._db = mock_db
         try:
-            with (
-                patch.object(
-                    store._db,
-                    "execute",
-                    side_effect=sqlite3.Error("disk I/O error"),
-                ),
-                pytest.raises(OrgMemoryQueryError, match="disk I/O error"),
-            ):
+            with pytest.raises(OrgMemoryQueryError, match="disk I/O error"):
                 await store.query()
         finally:
+            store._db = real_db
             await store.disconnect()
 
     async def test_delete_sqlite_error_wraps(self) -> None:
         store = SQLiteOrgFactStore(":memory:")
         await store.connect()
+        real_db = store._db
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(
+            side_effect=sqlite3.Error("disk I/O error"),
+        )
+        store._db = mock_db
         try:
-            with (
-                patch.object(
-                    store._db,
-                    "execute",
-                    side_effect=sqlite3.Error("disk I/O error"),
-                ),
-                pytest.raises(OrgMemoryWriteError, match="disk I/O error"),
-            ):
+            with pytest.raises(OrgMemoryWriteError, match="disk I/O error"):
                 await store.delete("f1")
         finally:
+            store._db = real_db
             await store.disconnect()
 
     def test_path_traversal_rejected(self) -> None:
