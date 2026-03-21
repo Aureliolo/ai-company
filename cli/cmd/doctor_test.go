@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/Aureliolo/synthorg/cli/internal/diagnostics"
@@ -12,10 +13,11 @@ func TestClassifyDoctor(t *testing.T) {
 	boolPtr := func(v bool) *bool { return &v }
 
 	tests := []struct {
-		name       string
-		report     diagnostics.Report
-		wantStatus doctorStatus
-		wantCount  int // expected number of issues
+		name         string
+		report       diagnostics.Report
+		wantStatus   doctorStatus
+		wantCount    int    // expected number of issues
+		wantContains string // substring that must appear in at least one issue
 	}{
 		{
 			name: "all healthy",
@@ -38,8 +40,9 @@ func TestClassifyDoctor(t *testing.T) {
 				ComposeFileExists: true,
 				ComposeFileValid:  boolPtr(true),
 			},
-			wantStatus: doctorErrors,
-			wantCount:  1,
+			wantStatus:   doctorErrors,
+			wantCount:    1,
+			wantContains: "backend unreachable",
 		},
 		{
 			name: "backend unhealthy status code",
@@ -48,8 +51,9 @@ func TestClassifyDoctor(t *testing.T) {
 				ComposeFileExists: true,
 				ComposeFileValid:  boolPtr(true),
 			},
-			wantStatus: doctorErrors,
-			wantCount:  1,
+			wantStatus:   doctorErrors,
+			wantCount:    1,
+			wantContains: "HTTP 503",
 		},
 		{
 			name: "container starting is warning",
@@ -62,8 +66,9 @@ func TestClassifyDoctor(t *testing.T) {
 				ComposeFileExists: true,
 				ComposeFileValid:  boolPtr(true),
 			},
-			wantStatus: doctorWarnings,
-			wantCount:  1,
+			wantStatus:   doctorWarnings,
+			wantCount:    1,
+			wantContains: "sandbox still starting",
 		},
 		{
 			name: "container unhealthy is error",
@@ -75,8 +80,9 @@ func TestClassifyDoctor(t *testing.T) {
 				ComposeFileExists: true,
 				ComposeFileValid:  boolPtr(true),
 			},
-			wantStatus: doctorErrors,
-			wantCount:  1,
+			wantStatus:   doctorErrors,
+			wantCount:    1,
+			wantContains: "backend unhealthy",
 		},
 		{
 			name: "container exited is error",
@@ -88,8 +94,9 @@ func TestClassifyDoctor(t *testing.T) {
 				ComposeFileExists: true,
 				ComposeFileValid:  boolPtr(true),
 			},
-			wantStatus: doctorErrors,
-			wantCount:  1,
+			wantStatus:   doctorErrors,
+			wantCount:    1,
+			wantContains: "web exited",
 		},
 		{
 			name: "compose missing",
@@ -97,8 +104,9 @@ func TestClassifyDoctor(t *testing.T) {
 				HealthStatus:      "200",
 				ComposeFileExists: false,
 			},
-			wantStatus: doctorErrors,
-			wantCount:  1,
+			wantStatus:   doctorErrors,
+			wantCount:    1,
+			wantContains: "compose.yml not found",
 		},
 		{
 			name: "compose invalid",
@@ -107,8 +115,9 @@ func TestClassifyDoctor(t *testing.T) {
 				ComposeFileExists: true,
 				ComposeFileValid:  boolPtr(false),
 			},
-			wantStatus: doctorErrors,
-			wantCount:  1,
+			wantStatus:   doctorErrors,
+			wantCount:    1,
+			wantContains: "compose.yml is invalid",
 		},
 		{
 			name: "port conflicts",
@@ -118,8 +127,9 @@ func TestClassifyDoctor(t *testing.T) {
 				ComposeFileValid:  boolPtr(true),
 				PortConflicts:     []string{"8000 in use by other-process"},
 			},
-			wantStatus: doctorErrors,
-			wantCount:  1,
+			wantStatus:   doctorErrors,
+			wantCount:    1,
+			wantContains: "port conflict",
 		},
 		{
 			name: "collection errors propagated",
@@ -129,8 +139,9 @@ func TestClassifyDoctor(t *testing.T) {
 				ComposeFileValid:  boolPtr(true),
 				Errors:            []string{"docker not found", "compose not found"},
 			},
-			wantStatus: doctorErrors,
-			wantCount:  2,
+			wantStatus:   doctorErrors,
+			wantCount:    2,
+			wantContains: "docker not found",
 		},
 		{
 			name: "errors take precedence over warnings",
@@ -142,8 +153,9 @@ func TestClassifyDoctor(t *testing.T) {
 				ComposeFileExists: true,
 				ComposeFileValid:  boolPtr(true),
 			},
-			wantStatus: doctorErrors,
-			wantCount:  1, // only errors returned, warnings discarded
+			wantStatus:   doctorErrors,
+			wantCount:    1, // only errors returned, warnings discarded
+			wantContains: "backend unreachable",
 		},
 		{
 			name: "empty health status is not checked",
@@ -166,6 +178,18 @@ func TestClassifyDoctor(t *testing.T) {
 			}
 			if len(gotIssues) != tt.wantCount {
 				t.Errorf("classifyDoctor() issues count = %d, want %d: %v", len(gotIssues), tt.wantCount, gotIssues)
+			}
+			if tt.wantContains != "" {
+				found := false
+				for _, issue := range gotIssues {
+					if strings.Contains(issue, tt.wantContains) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("classifyDoctor() issues %v missing expected substring %q", gotIssues, tt.wantContains)
+				}
 			}
 		})
 	}

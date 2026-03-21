@@ -106,7 +106,11 @@ func classifyDoctor(r diagnostics.Report) (doctorStatus, []string) {
 	for _, c := range r.ContainerSummary {
 		switch {
 		case c.Health == "unhealthy", c.State == "exited":
-			errs = append(errs, fmt.Sprintf("%s %s", c.Name, c.Health))
+			status := c.Health
+			if status == "" {
+				status = c.State
+			}
+			errs = append(errs, fmt.Sprintf("%s %s", c.Name, status))
 		case c.Health == "starting":
 			warnings = append(warnings, fmt.Sprintf("%s still starting", c.Name))
 		}
@@ -145,18 +149,24 @@ func renderDoctorSummary(out *ui.UI, r diagnostics.Report) {
 		out.Box("Status", []string{
 			fmt.Sprintf("  %s All systems healthy", ui.IconSuccess),
 		})
-	case doctorWarnings:
-		lines := make([]string, 0, len(issues)+1)
-		lines = append(lines, fmt.Sprintf("  %s %d warning(s) detected", ui.IconWarning, len(issues)))
-		for _, w := range issues {
-			lines = append(lines, fmt.Sprintf("    %s %s", ui.IconHint, w))
+	case doctorWarnings, doctorErrors:
+		count := len(issues)
+		plural := "s"
+		if count == 1 {
+			plural = ""
 		}
-		out.Box("Status", lines)
-	case doctorErrors:
-		lines := make([]string, 0, len(issues)+1)
-		lines = append(lines, fmt.Sprintf("  %s %d issue(s) found", ui.IconError, len(issues)))
-		for _, e := range issues {
-			lines = append(lines, fmt.Sprintf("    %s %s", ui.IconHint, e))
+
+		var title string
+		if status == doctorWarnings {
+			title = fmt.Sprintf("  %s %d warning%s detected", ui.IconWarning, count, plural)
+		} else {
+			title = fmt.Sprintf("  %s %d issue%s found", ui.IconError, count, plural)
+		}
+
+		lines := make([]string, 1, count+1)
+		lines[0] = title
+		for _, issue := range issues {
+			lines = append(lines, fmt.Sprintf("    %s %s", ui.IconHint, issue))
 		}
 		out.Box("Status", lines)
 	}

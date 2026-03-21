@@ -336,7 +336,7 @@ func composeRunQuiet(ctx context.Context, info docker.Info, dir string, args ...
 // and newlines for readability.
 func sanitizeCLIOutput(s string) string {
 	s = strings.Map(func(r rune) rune {
-		if r < 0x20 && r != '\n' {
+		if (r < 0x20 && r != '\n') || r == 0x7F || (r >= 0x80 && r <= 0x9F) {
 			return -1
 		}
 		return r

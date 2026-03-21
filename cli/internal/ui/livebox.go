@@ -8,10 +8,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// LiveBoxLine holds the current state of a single line in a LiveBox.
-type LiveBoxLine struct {
-	Label    string // left-aligned label (e.g. service name)
-	Status   string // right-aligned status icon/text (set on finish)
+// liveBoxLine holds the current state of a single line in a LiveBox.
+type liveBoxLine struct {
+	label    string // left-aligned label (e.g. service name)
+	status   string // right-aligned status icon/text (set on finish)
 	finished bool
 }
 
@@ -21,7 +21,8 @@ type LiveBoxLine struct {
 type LiveBox struct {
 	ui         *UI
 	title      string
-	lines      []LiveBoxLine
+	lines      []liveBoxLine
+	labelW     int // max label width for alignment
 	innerW     int
 	mu         sync.Mutex
 	done       chan struct{}
@@ -36,17 +37,25 @@ type LiveBox struct {
 // spinners on unfinished lines until all lines are finished or
 // Finish is called.
 func (u *UI) NewLiveBox(title string, labels []string) *LiveBox {
-	lines := make([]LiveBoxLine, len(labels))
+	lines := make([]liveBoxLine, len(labels))
 	for i, l := range labels {
-		lines[i] = LiveBoxLine{Label: stripControlStrict(l)}
+		lines[i] = liveBoxLine{label: stripControlStrict(l)}
+	}
+
+	// Compute max label width for alignment.
+	maxLabelW := 0
+	for _, line := range lines {
+		w := lipgloss.Width(line.label)
+		if w > maxLabelW {
+			maxLabelW = w
+		}
 	}
 
 	// Compute inner width from the widest possible line content.
 	// Format: "  <label>  <status>" -- status is at most a few chars.
 	maxContentW := 0
 	for _, line := range lines {
-		// "  %-14s %s" with a spinner or icon
-		w := lipgloss.Width(fmt.Sprintf("  %-14s %s", line.Label, IconSuccess))
+		w := lipgloss.Width(fmt.Sprintf("  %-*s %s", maxLabelW, line.label, IconSuccess))
 		if w > maxContentW {
 			maxContentW = w
 		}
@@ -58,6 +67,7 @@ func (u *UI) NewLiveBox(title string, labels []string) *LiveBox {
 		ui:     u,
 		title:  stripControlStrict(title),
 		lines:  lines,
+		labelW: maxLabelW,
 		innerW: innerW,
 		done:   make(chan struct{}),
 	}
@@ -91,16 +101,16 @@ func (lb *LiveBox) UpdateLine(index int, status string) {
 	if index < 0 || index >= len(lb.lines) {
 		return
 	}
-	lb.lines[index].Status = stripControlStrict(status)
+	lb.lines[index].status = stripControlStrict(status)
 	lb.lines[index].finished = true
 
 	if !lb.ui.isTTY {
 		// Non-TTY: print a status line immediately.
 		// Compare the stored (already-stripped) value, not the raw input.
-		if lb.lines[index].Status == IconError {
-			lb.ui.Error(lb.lines[index].Label)
+		if lb.lines[index].status == IconError {
+			lb.ui.Error(lb.lines[index].label)
 		} else {
-			lb.ui.Success(lb.lines[index].Label)
+			lb.ui.Success(lb.lines[index].label)
 		}
 	}
 }
@@ -115,12 +125,20 @@ func (lb *LiveBox) Finish() {
 		lb.closeDone()
 		lb.wg.Wait()
 
-		// Final redraw with all current states.
+		// Only redraw if some lines are still in progress. When the
+		// animation goroutine detected all lines finished, it already
+		// drew the final state before exiting.
 		lb.mu.Lock()
-		contentLines := lb.buildLines(-1) // no spinner frame
+		done := lb.allFinished()
+		var contentLines []string
+		if !done {
+			contentLines = lb.buildLines(-1) // no spinner frame
+		}
 		lb.mu.Unlock()
 
-		lb.redraw(contentLines)
+		if !done {
+			lb.redraw(contentLines)
+		}
 	})
 }
 
@@ -164,11 +182,11 @@ func (lb *LiveBox) buildLines(frame int) []string {
 	for i, line := range lb.lines {
 		switch {
 		case line.finished:
-			result[i] = fmt.Sprintf("  %-14s %s", line.Label, line.Status)
+			result[i] = fmt.Sprintf("  %-*s %s", lb.labelW, line.label, line.status)
 		case frame >= 0:
-			result[i] = fmt.Sprintf("  %-14s %s", line.Label, spinnerFrames[frame])
+			result[i] = fmt.Sprintf("  %-*s %s", lb.labelW, line.label, spinnerFrames[frame])
 		default:
-			result[i] = fmt.Sprintf("  %-14s ...", line.Label)
+			result[i] = fmt.Sprintf("  %-*s ...", lb.labelW, line.label)
 		}
 	}
 	return result

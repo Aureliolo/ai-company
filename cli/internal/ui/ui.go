@@ -267,11 +267,12 @@ func (u *UI) printTableRow(widths []int, cells []string) {
 	_, _ = fmt.Fprintln(u.w, b.String())
 }
 
-// stripControl removes ASCII control characters (except tab and newline)
-// to prevent terminal escape sequence injection in displayed values.
+// stripControl removes ASCII control characters (except tab and newline),
+// DEL, and C1 control bytes (0x80-0x9F) to prevent terminal escape
+// sequence injection in displayed values.
 func stripControl(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r < 0x20 && r != '\t' && r != '\n' {
+		if (r < 0x20 && r != '\t' && r != '\n') || r == 0x7F || (r >= 0x80 && r <= 0x9F) {
 			return -1
 		}
 		return r
@@ -279,11 +280,12 @@ func stripControl(s string) string {
 }
 
 // stripControlStrict removes all ASCII control characters (< 0x20) including
-// tab, newline, and ESC. Use for single-line contexts (box content, spinner
-// messages) where embedded newlines or tabs would corrupt layout.
+// tab, newline, and ESC, plus DEL (0x7F) and C1 control bytes (0x80-0x9F).
+// Use for single-line contexts (box content, spinner messages) where embedded
+// newlines or tabs would corrupt layout.
 func stripControlStrict(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r < 0x20 {
+		if r < 0x20 || r == 0x7F || (r >= 0x80 && r <= 0x9F) {
 			return -1
 		}
 		return r

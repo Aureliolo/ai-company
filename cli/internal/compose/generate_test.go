@@ -10,6 +10,7 @@ import (
 )
 
 func TestGenerateDefault(t *testing.T) {
+	t.Parallel()
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "latest",
@@ -54,6 +55,7 @@ func TestGenerateDefault(t *testing.T) {
 }
 
 func TestGenerateCustomPorts(t *testing.T) {
+	t.Parallel()
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "v0.2.0",
@@ -83,6 +85,7 @@ func TestGenerateCustomPorts(t *testing.T) {
 }
 
 func TestGenerateWithSandbox(t *testing.T) {
+	t.Parallel()
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "latest",
@@ -111,6 +114,7 @@ func TestGenerateWithSandbox(t *testing.T) {
 }
 
 func TestGenerateWithDigestPins(t *testing.T) {
+	t.Parallel()
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "0.3.0",
@@ -146,6 +150,7 @@ func TestGenerateWithDigestPins(t *testing.T) {
 }
 
 func TestGenerateWithDigestPinsAndSandbox(t *testing.T) {
+	t.Parallel()
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "0.3.0",
@@ -174,6 +179,7 @@ func TestGenerateWithDigestPinsAndSandbox(t *testing.T) {
 }
 
 func TestGenerateNilDigestPinsFallsBackToTag(t *testing.T) {
+	t.Parallel()
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "0.3.0",
@@ -195,6 +201,7 @@ func TestGenerateNilDigestPinsFallsBackToTag(t *testing.T) {
 }
 
 func TestGenerateHardeningPresent(t *testing.T) {
+	t.Parallel()
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "latest",
@@ -225,6 +232,7 @@ func TestGenerateHardeningPresent(t *testing.T) {
 }
 
 func TestParamsFromState(t *testing.T) {
+	t.Parallel()
 	s := config.State{
 		DataDir:            "/tmp/test",
 		ImageTag:           "v1.0.0",
