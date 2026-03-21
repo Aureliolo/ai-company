@@ -57,3 +57,17 @@ _r.register(
         sensitive=True,
     )
 )
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.PROVIDERS,
+        key="discovery_allowlist",
+        type=SettingType.JSON,
+        default=None,
+        description=(
+            "Trusted host:port pairs for provider discovery SSRF bypass (JSON)"
+        ),
+        group="Discovery",
+        level=SettingLevel.ADVANCED,
+    )
+)
