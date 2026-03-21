@@ -224,6 +224,11 @@ class DockerSandbox:
                     "env_overrides cannot set reserved sandbox "
                     f"control variables: {conflicting}"
                 )
+                logger.warning(
+                    DOCKER_EXECUTE_FAILED,
+                    error=msg,
+                    conflicting_keys=conflicting,
+                )
                 raise SandboxError(msg)
         env_list = [f"{k}={v}" for k, v in (env_overrides or {}).items()]
 

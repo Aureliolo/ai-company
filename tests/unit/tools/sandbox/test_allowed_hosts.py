@@ -82,25 +82,24 @@ class TestAllowedHostsEnforcementActive:
 class TestAllowedHostsDnsLoopbackSettings:
     """DNS and loopback settings are passed as environment variables."""
 
-    def test_dns_allowed_env_set_true(self, tmp_path: Path) -> None:
-        result = _build_config(tmp_path, dns_allowed=True)
-        env = result["Env"]
-        assert "SANDBOX_DNS_ALLOWED=1" in env
-
-    def test_dns_allowed_env_set_false(self, tmp_path: Path) -> None:
-        result = _build_config(tmp_path, dns_allowed=False)
-        env = result["Env"]
-        assert "SANDBOX_DNS_ALLOWED=0" in env
-
-    def test_loopback_allowed_env_set_true(self, tmp_path: Path) -> None:
-        result = _build_config(tmp_path, loopback_allowed=True)
-        env = result["Env"]
-        assert "SANDBOX_LOOPBACK_ALLOWED=1" in env
-
-    def test_loopback_allowed_env_set_false(self, tmp_path: Path) -> None:
-        result = _build_config(tmp_path, loopback_allowed=False)
-        env = result["Env"]
-        assert "SANDBOX_LOOPBACK_ALLOWED=0" in env
+    @pytest.mark.parametrize(
+        ("param", "flag", "expected"),
+        [
+            ("dns_allowed", True, "SANDBOX_DNS_ALLOWED=1"),
+            ("dns_allowed", False, "SANDBOX_DNS_ALLOWED=0"),
+            ("loopback_allowed", True, "SANDBOX_LOOPBACK_ALLOWED=1"),
+            ("loopback_allowed", False, "SANDBOX_LOOPBACK_ALLOWED=0"),
+        ],
+    )
+    def test_env_flag_set(
+        self,
+        tmp_path: Path,
+        param: str,
+        flag: bool,
+        expected: str,
+    ) -> None:
+        result = _build_config(tmp_path, **{param: flag})
+        assert expected in result["Env"]
 
 
 # -- Enforcement NOT activated ---------------------------------------

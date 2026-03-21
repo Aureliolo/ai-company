@@ -182,10 +182,32 @@ class DockerSandboxConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_no_allowed_hosts_with_host_network(self) -> Self:
-        """Reject allowed_hosts with network='host' (unsafe)."""
-        if self.allowed_hosts and self.network == "host":
+        """Reject allowed_hosts with network='host' (unsafe).
+
+        Checks both the top-level ``network`` field and any
+        ``network_overrides`` entries.
+        """
+        if not self.allowed_hosts:
+            return self
+        if self.network == "host":
             msg = (
                 "allowed_hosts cannot be used with network='host' -- "
+                "iptables rules would affect the host system"
+            )
+            logger.warning(
+                CONFIG_VALIDATION_FAILED,
+                field="allowed_hosts",
+                reason=msg,
+            )
+            raise ValueError(msg)
+        host_overrides = [
+            cat for cat, mode in self.network_overrides.items() if mode == "host"
+        ]
+        if host_overrides:
+            msg = (
+                "allowed_hosts cannot be used with "
+                "network_overrides containing 'host' "
+                f"(categories: {sorted(host_overrides)}) -- "
                 "iptables rules would affect the host system"
             )
             logger.warning(

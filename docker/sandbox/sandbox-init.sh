@@ -19,11 +19,11 @@
 #     (Docker limitation -- cannot drop capabilities mid-lifecycle).
 set -eu
 
-if [ -n "${SANDBOX_ALLOWED_HOSTS:-}" ]; then
-  # Emit a diagnostic message on any error so the caller can see what
-  # failed in the SandboxResult stderr.
-  trap 'echo "sandbox-init: FATAL: iptables setup failed (exit $?)" >&2' ERR
+# POSIX-compatible error trap: EXIT fires on any exit (including set -e
+# failures).  We capture $? and emit a diagnostic only on non-zero.
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then echo "sandbox-init: FATAL: iptables setup failed (exit $rc)" >&2; fi' EXIT
 
+if [ -n "${SANDBOX_ALLOWED_HOSTS:-}" ]; then
   # Disable globbing to prevent wildcard expansion in unquoted variables.
   set -f
 
@@ -35,8 +35,12 @@ if [ -n "${SANDBOX_ALLOWED_HOSTS:-}" ]; then
     iptables -A OUTPUT -o lo -j ACCEPT
   fi
 
-  # Allow established/related connections (replies to allowed outbound).
-  iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  # No ESTABLISHED,RELATED rule on OUTPUT -- explicit destination rules
+  # already cover all legitimate outbound traffic.  An OUTPUT
+  # ESTABLISHED rule would allow the container to respond to any
+  # externally initiated connection, widening the policy.
+  # Return traffic for outbound TCP connections (SYN-ACK etc.) enters
+  # via INPUT (default ACCEPT) and needs no OUTPUT rule.
 
   # Allow DNS only to the container's configured nameservers (from
   # /etc/resolv.conf), not to arbitrary destinations.  This prevents
@@ -89,6 +93,9 @@ if [ -n "${SANDBOX_ALLOWED_HOSTS:-}" ]; then
   iptables -P OUTPUT DROP
   ip6tables -P OUTPUT DROP 2>/dev/null || true
 fi
+
+# Clear the EXIT trap before exec so a successful run does not trigger it.
+trap - EXIT
 
 # Drop to sandbox user and clear all capability sets.
 # IMPORTANT: UID must match useradd --uid in docker/sandbox/Dockerfile.

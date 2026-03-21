@@ -138,19 +138,24 @@ class SecurityPolicyRule(BaseModel):
 
     @model_validator(mode="after")
     def _check_action_type_format(self) -> SecurityPolicyRule:
-        """Validate that action_types entries use ``category:action`` format."""
+        """Validate that action_types entries use ``category:action`` format.
+
+        Requires exactly one colon with non-empty, non-whitespace
+        segments on each side.
+        """
         for at in self.action_types:
-            if ":" not in at:
+            parts = at.split(":")
+            if len(parts) != 2:  # noqa: PLR2004
                 msg = (
-                    f"action_type {at!r} in policy {self.name!r} must use "
-                    "'category:action' format"
+                    f"action_type {at!r} in policy {self.name!r} must "
+                    "contain exactly one ':' (category:action)"
                 )
                 raise ValueError(msg)
-            category, action = at.split(":", maxsplit=1)
-            if not category or not action:
+            category, action = parts
+            if not category.strip() or not action.strip():
                 msg = (
                     f"action_type {at!r} in policy {self.name!r} has "
-                    "empty category or action segment"
+                    "empty or whitespace-only category or action segment"
                 )
                 raise ValueError(msg)
         return self
@@ -247,26 +252,32 @@ class SecurityConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _check_no_allow_bypass(self) -> SecurityConfig:
-        """Reject ALLOW policies when bypass mode is enabled.
+    def _check_no_allow_or_escalate_bypass(self) -> SecurityConfig:
+        """Reject ALLOW/ESCALATE policies when bypass mode is enabled.
 
-        With ``custom_allow_bypasses_detectors=True``, custom ALLOW
-        policies would skip all security detectors (credential, path
-        traversal, etc.).  Only DENY/ESCALATE policies are safe in
-        bypass position.
+        With ``custom_allow_bypasses_detectors=True``, custom policies
+        are placed before detectors.  Both ALLOW and ESCALATE verdicts
+        short-circuit the rule engine, so either would skip all
+        security detectors (credential, path traversal, etc.).  Only
+        DENY policies are safe in bypass position.
         """
         if not self.rule_engine.custom_allow_bypasses_detectors:
             return self
-        allow_policies = [
+        unsafe_verdicts = {
+            SecurityVerdictType.ALLOW,
+            SecurityVerdictType.ESCALATE,
+        }
+        unsafe_policies = [
             p.name
             for p in self.custom_policies
-            if p.enabled and p.verdict == SecurityVerdictType.ALLOW
+            if p.enabled and p.verdict in unsafe_verdicts
         ]
-        if allow_policies:
+        if unsafe_policies:
             msg = (
                 "custom_allow_bypasses_detectors=True cannot be used "
-                "with ALLOW-verdict custom policies (would skip all "
-                f"security detectors): {sorted(allow_policies)}"
+                "with ALLOW or ESCALATE custom policies (would skip "
+                "all security detectors): "
+                f"{sorted(unsafe_policies)}"
             )
             raise ValueError(msg)
         return self
