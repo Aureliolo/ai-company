@@ -404,13 +404,7 @@ class ProviderManagementService:
         """
         if models or preset.auth_type != AuthType.NONE or not base_url:
             return models
-        backend_port = self._config.api.server.port
-        if is_self_url(base_url, backend_port=backend_port):
-            logger.warning(
-                PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
-                url=base_url,
-                backend_port=backend_port,
-            )
+        if self._is_self_connection(base_url):
             return models
         discovered = await discover_models(
             base_url,
@@ -479,6 +473,25 @@ class ProviderManagementService:
 
         return discovered
 
+    def _is_self_connection(self, base_url: str) -> bool:
+        """Check if a URL points at this backend and log a warning if so.
+
+        Args:
+            base_url: URL to check.
+
+        Returns:
+            True if the URL targets the backend, False otherwise.
+        """
+        backend_port = self._config.api.server.port
+        if is_self_url(base_url, backend_port=backend_port):
+            logger.warning(
+                PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
+                url=base_url,
+                backend_port=backend_port,
+            )
+            return True
+        return False
+
     def _resolve_discovery_trust(
         self,
         preset_hint: str | None,
@@ -518,15 +531,7 @@ class ProviderManagementService:
             trusted_urls.add(preset.default_base_url.rstrip("/"))
         if normalized not in trusted_urls:
             return False
-        backend_port = self._config.api.server.port
-        if is_self_url(base_url, backend_port=backend_port):
-            logger.warning(
-                PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
-                url=base_url,
-                backend_port=backend_port,
-            )
-            return False
-        return True
+        return not self._is_self_connection(base_url)
 
     async def _apply_discovered_models(
         self,

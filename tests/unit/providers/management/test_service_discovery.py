@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from synthorg.api.config import ServerConfig
 from synthorg.api.dto import CreateFromPresetRequest, UpdateProviderRequest
 from synthorg.config.schema import ProviderModelConfig
 from synthorg.providers.enums import AuthType
@@ -14,6 +15,9 @@ from synthorg.providers.presets import ProviderPreset
 from .conftest import make_create_request
 
 pytestmark = pytest.mark.timeout(30)
+
+# Derived from the default ServerConfig so tests track port changes automatically.
+_BACKEND_PORT = ServerConfig().port
 
 
 @pytest.mark.unit
@@ -326,36 +330,36 @@ class TestSelfConnectionGuard:
     """Tests for the self-connection guard in trust resolution.
 
     The guard rejects URLs that point at the backend itself, even
-    when the URL matches a preset's candidate_urls.  The default
-    ``RootConfig`` uses ``api.server.port=3001``, so self-connection
-    tests use port 3001.
+    when the URL matches a preset's candidate_urls.  The port is
+    derived from ``_BACKEND_PORT`` (the ``ServerConfig`` default)
+    so tests track port changes automatically.
     """
 
     @pytest.mark.parametrize(
         ("base_url", "expected_trust"),
         [
             pytest.param(
-                "http://localhost:3001/v1",
+                f"http://localhost:{_BACKEND_PORT}/v1",
                 False,
                 id="localhost-backend-port-rejected",
             ),
             pytest.param(
-                "http://127.0.0.1:3001/v1",
+                f"http://127.0.0.1:{_BACKEND_PORT}/v1",
                 False,
                 id="loopback-backend-port-rejected",
             ),
             pytest.param(
-                "http://host.docker.internal:3001/v1",
+                f"http://host.docker.internal:{_BACKEND_PORT}/v1",
                 False,
                 id="docker-internal-backend-port-rejected",
             ),
             pytest.param(
-                "http://172.17.0.1:3001/v1",
+                f"http://172.17.0.1:{_BACKEND_PORT}/v1",
                 False,
                 id="docker-bridge-backend-port-rejected",
             ),
             pytest.param(
-                "http://example-provider.example.com:3001/v1",
+                f"http://example-provider.example.com:{_BACKEND_PORT}/v1",
                 True,
                 id="remote-host-same-port-allowed",
             ),
@@ -406,16 +410,17 @@ class TestSelfConnectionGuard:
         service: ProviderManagementService,
     ) -> None:
         """Self-connection guard fires even when URL matches via default_base_url."""
+        self_url = f"http://localhost:{_BACKEND_PORT}/v1"
         fake_preset = ProviderPreset(
             name="test-local",
             display_name="Test Local",
             description="Fake preset with self-URL as default_base_url",
             driver="litellm",
             auth_type=AuthType.NONE,
-            default_base_url="http://localhost:3001/v1",
+            default_base_url=self_url,
         )
         await service.create_provider(
-            make_create_request(base_url="http://localhost:3001/v1"),
+            make_create_request(base_url=self_url),
         )
 
         with (
@@ -442,16 +447,17 @@ class TestSelfConnectionGuard:
         service: ProviderManagementService,
     ) -> None:
         """Self-connection guard emits a warning log on rejection."""
+        self_url = f"http://localhost:{_BACKEND_PORT}/v1"
         fake_preset = ProviderPreset(
             name="test-local",
             display_name="Test Local",
             description="Fake preset for log assertion",
             driver="litellm",
             auth_type=AuthType.NONE,
-            candidate_urls=("http://localhost:3001/v1",),
+            candidate_urls=(self_url,),
         )
         await service.create_provider(
-            make_create_request(base_url="http://localhost:3001/v1"),
+            make_create_request(base_url=self_url),
         )
 
         with (
@@ -480,5 +486,5 @@ class TestSelfConnectionGuard:
         )
 
         assert call_args.args[0] == PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED
-        assert call_args.kwargs["url"] == "http://localhost:3001/v1"
-        assert call_args.kwargs["backend_port"] == 3001
+        assert call_args.kwargs["url"] == self_url
+        assert call_args.kwargs["backend_port"] == _BACKEND_PORT
