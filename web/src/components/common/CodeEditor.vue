@@ -57,6 +57,7 @@ function handleUpdate(value: string) {
 
 .code-editor-wrapper :deep(.cm-editor.cm-focused) {
   outline: none;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.5);
 }
 
 .code-editor-wrapper :deep(.cm-scroller) {

@@ -108,7 +108,7 @@ function handleSave() {
   if (head.value.trim()) dept.head = head.value.trim()
 
   emit('save', dept)
-  emit('update:visible', false)
+  // Dialog close is controlled by the parent after async save succeeds
 }
 </script>
 

@@ -67,7 +67,6 @@ async function retryFetch() {
     await settingsStore.fetchAll()
     activeTab.value = resolveTab(route.query.tab)
   } catch (err) {
-    settingsStore.error = getErrorMessage(err)
     console.error('Settings data fetch failed:', sanitizeForLog(err))
   } finally {
     loading.value = false
@@ -110,17 +109,12 @@ async function handleSettingReset(entry: SettingEntry) {
 }
 
 // Code view save handler
-async function handleCodeViewSave(updates: Array<{ namespace: string; key: string; value: string }>) {
-  let saved = 0
-  let failed = 0
-  for (const u of updates) {
-    try {
-      await settingsStore.updateSetting(u.namespace as SettingNamespace, u.key, u.value)
-      saved++
-    } catch {
-      failed++
-    }
-  }
+async function handleCodeViewSave(updates: Array<{ namespace: SettingNamespace; key: string; value: string }>) {
+  const results = await Promise.allSettled(
+    updates.map((u) => settingsStore.updateSetting(u.namespace, u.key, u.value)),
+  )
+  const saved = results.filter((r) => r.status === 'fulfilled').length
+  const failed = results.filter((r) => r.status === 'rejected').length
   if (saved > 0) {
     toast.add({ severity: 'success', summary: `${saved} setting(s) saved`, life: 3000 })
   }
@@ -183,7 +177,7 @@ function getCodeMode(ns: string): 'json' | 'yaml' {
 
 <template>
   <AppShell>
-    <PageHeader title="Settings" subtitle="Manage your dashboard configuration">
+    <PageHeader title="Settings" subtitle="Manage system and account settings">
       <template #actions>
         <div class="flex items-center gap-4">
           <EditModeToggle
@@ -281,15 +275,51 @@ function getCodeMode(ns: string): 'json' | 'yaml' {
               <form class="space-y-3" @submit.prevent="handleChangePassword">
                 <div>
                   <label for="current-password" class="mb-1 block text-xs text-slate-400">Current Password</label>
-                  <Password inputId="current-password" v-model="currentPassword" :toggle-mask="true" :feedback="false" fluid placeholder="Current password" :input-props="{ autocomplete: 'current-password', 'aria-required': 'true', 'aria-describedby': pwdError ? 'pwd-error' : undefined }" />
+                  <Password
+                    inputId="current-password"
+                    v-model="currentPassword"
+                    :toggle-mask="true"
+                    :feedback="false"
+                    fluid
+                    placeholder="Current password"
+                    :input-props="{
+                      autocomplete: 'current-password',
+                      'aria-required': 'true',
+                      'aria-describedby': pwdError ? 'pwd-error' : undefined,
+                    }"
+                  />
                 </div>
                 <div>
                   <label for="new-password" class="mb-1 block text-xs text-slate-400">New Password</label>
-                  <Password inputId="new-password" v-model="newPassword" :toggle-mask="true" :feedback="false" fluid :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`" :input-props="{ autocomplete: 'new-password', 'aria-required': 'true', 'aria-describedby': pwdError ? 'pwd-error' : undefined }" />
+                  <Password
+                    inputId="new-password"
+                    v-model="newPassword"
+                    :toggle-mask="true"
+                    :feedback="false"
+                    fluid
+                    :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`"
+                    :input-props="{
+                      autocomplete: 'new-password',
+                      'aria-required': 'true',
+                      'aria-describedby': pwdError ? 'pwd-error' : undefined,
+                    }"
+                  />
                 </div>
                 <div>
                   <label for="confirm-password" class="mb-1 block text-xs text-slate-400">Confirm Password</label>
-                  <Password inputId="confirm-password" v-model="confirmPassword" :toggle-mask="true" :feedback="false" fluid placeholder="Confirm new password" :input-props="{ autocomplete: 'new-password', 'aria-required': 'true', 'aria-describedby': pwdError ? 'pwd-error' : undefined }" />
+                  <Password
+                    inputId="confirm-password"
+                    v-model="confirmPassword"
+                    :toggle-mask="true"
+                    :feedback="false"
+                    fluid
+                    placeholder="Confirm new password"
+                    :input-props="{
+                      autocomplete: 'new-password',
+                      'aria-required': 'true',
+                      'aria-describedby': pwdError ? 'pwd-error' : undefined,
+                    }"
+                  />
                 </div>
                 <div v-if="pwdError" id="pwd-error" role="alert" class="rounded bg-red-500/10 p-2 text-sm text-red-400">{{ pwdError }}</div>
                 <Button

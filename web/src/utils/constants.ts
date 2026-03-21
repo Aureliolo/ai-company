@@ -51,6 +51,13 @@ export const VALID_TRANSITIONS: Readonly<Record<TaskStatus, readonly TaskStatus[
 /** Write-capable human roles. */
 export const WRITE_ROLES = ['ceo', 'manager', 'board_member', 'pair_programmer'] as const
 
+/** Type of a single navigation item. */
+export interface NavItem {
+  readonly label: string
+  readonly icon: string
+  readonly to: string
+}
+
 /** Sidebar navigation items. */
 export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Dashboard', icon: 'pi pi-home', to: '/' },
@@ -67,19 +74,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Settings', icon: 'pi pi-cog', to: '/settings' },
 ]
 
-/** Type of a single navigation item. */
-export interface NavItem {
-  readonly label: string
-  readonly icon: string
-  readonly to: string
-}
-
 // ── Settings ────────────────────────────────────────────────
 
 /** localStorage key for the basic/advanced toggle state. */
 export const SETTINGS_ADVANCED_KEY = 'settings_show_advanced'
 
-/** Display order for setting namespaces shown in the Settings page. */
+/** Display order for setting namespaces shown in the Settings page.
+ * 'company' and 'providers' are excluded -- they have dedicated pages. */
 export const NAMESPACE_ORDER: readonly SettingNamespace[] = [
   'api',
   'memory',

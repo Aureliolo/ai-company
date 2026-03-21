@@ -42,29 +42,28 @@ const companyName = computed(() => {
   return entry?.value || 'Company'
 })
 
-// Parse agents from JSON setting
-const agents = computed<AgentConfigEntry[]>(() => {
-  const entry = companyEntries.value.find((e) => e.definition.key === 'agents')
-  if (!entry?.value) return []
+// Parse agents from JSON setting -- surface errors instead of silently returning []
+function parseJsonArray(entries: SettingEntry[], key: string): { data: unknown[]; error: string | null } {
+  const entry = entries.find((e) => e.definition.key === key)
+  if (!entry?.value) return { data: [], error: null }
   try {
     const parsed = JSON.parse(entry.value)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
+    return { data: Array.isArray(parsed) ? parsed : [], error: null }
+  } catch (err) {
+    return {
+      data: [],
+      error: `Failed to parse ${key} JSON: ${err instanceof Error ? err.message : 'invalid JSON'}. Use code mode to fix.`,
+    }
   }
-})
+}
 
-// Parse departments from JSON setting
-const departments = computed<DepartmentEntry[]>(() => {
-  const entry = companyEntries.value.find((e) => e.definition.key === 'departments')
-  if (!entry?.value) return []
-  try {
-    const parsed = JSON.parse(entry.value)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-})
+const agentsParsed = computed(() => parseJsonArray(companyEntries.value, 'agents'))
+const agents = computed<AgentConfigEntry[]>(() => agentsParsed.value.data as AgentConfigEntry[])
+const agentParseError = computed(() => agentsParsed.value.error)
+
+const deptsParsed = computed(() => parseJsonArray(companyEntries.value, 'departments'))
+const departments = computed<DepartmentEntry[]>(() => deptsParsed.value.data as DepartmentEntry[])
+const deptParseError = computed(() => deptsParsed.value.error)
 
 // Department names for agent form dropdown
 const departmentNames = computed(() => departments.value.map((d) => d.name))
@@ -128,6 +127,7 @@ async function saveAgent(agent: AgentConfigEntry) {
   }
   try {
     await settingsStore.updateSetting('company', 'agents', JSON.stringify(updated))
+    agentDialogVisible.value = false
     toast.add({ severity: 'success', summary: `Agent ${agent.name.slice(0, 64)} ${agentDialogMode.value === 'create' ? 'added' : 'updated'}`, life: 3000 })
   } catch (err) {
     toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
@@ -175,6 +175,7 @@ async function saveDept(dept: DepartmentEntry) {
   }
   try {
     await settingsStore.updateSetting('company', 'departments', JSON.stringify(updated))
+    deptDialogVisible.value = false
     toast.add({ severity: 'success', summary: `Department ${dept.name.slice(0, 64)} ${deptDialogMode.value === 'create' ? 'added' : 'updated'}`, life: 3000 })
   } catch (err) {
     toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
@@ -219,17 +220,12 @@ async function handleSettingReset(entry: SettingEntry) {
   }
 }
 
-async function handleCodeViewSave(updates: Array<{ namespace: string; key: string; value: string }>) {
-  let saved = 0
-  let failed = 0
-  for (const u of updates) {
-    try {
-      await settingsStore.updateSetting(u.namespace as SettingNamespace, u.key, u.value)
-      saved++
-    } catch {
-      failed++
-    }
-  }
+async function handleCodeViewSave(updates: Array<{ namespace: SettingNamespace; key: string; value: string }>) {
+  const results = await Promise.allSettled(
+    updates.map((u) => settingsStore.updateSetting(u.namespace, u.key, u.value)),
+  )
+  const saved = results.filter((r) => r.status === 'fulfilled').length
+  const failed = results.filter((r) => r.status === 'rejected').length
   if (saved > 0) toast.add({ severity: 'success', summary: `${saved} setting(s) saved`, life: 3000 })
   if (failed > 0) toast.add({ severity: 'error', summary: `${failed} setting(s) failed to save`, life: 5000 })
 }
@@ -280,11 +276,14 @@ async function handleCodeViewSave(updates: Array<{ namespace: string; key: strin
 
         <!-- Agents tab -->
         <TabPanel value="agents">
+          <div v-if="agentParseError" role="alert" class="mb-4 rounded bg-red-500/10 p-3 text-sm text-red-400">
+            {{ agentParseError }}
+          </div>
           <div class="mb-4">
-            <Button label="Add Agent" size="small" @click="openAddAgent" />
+            <Button label="Add Agent" size="small" :disabled="!!agentParseError" @click="openAddAgent" />
           </div>
 
-          <div v-if="agents.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
+          <div v-if="!agentParseError && agents.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
             <p class="text-sm text-slate-400">No agents configured. Add one to get started.</p>
           </div>
 
@@ -302,11 +301,14 @@ async function handleCodeViewSave(updates: Array<{ namespace: string; key: strin
 
         <!-- Departments tab -->
         <TabPanel value="departments">
+          <div v-if="deptParseError" role="alert" class="mb-4 rounded bg-red-500/10 p-3 text-sm text-red-400">
+            {{ deptParseError }}
+          </div>
           <div class="mb-4">
-            <Button label="Add Department" size="small" @click="openAddDept" />
+            <Button label="Add Department" size="small" :disabled="!!deptParseError" @click="openAddDept" />
           </div>
 
-          <div v-if="departments.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
+          <div v-if="!deptParseError && departments.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
             <p class="text-sm text-slate-400">No departments configured. Add one to get started.</p>
           </div>
 

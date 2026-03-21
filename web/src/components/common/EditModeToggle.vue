@@ -25,6 +25,7 @@ const options = [
   <SelectButton
     :model-value="modelValue"
     :options="options"
+    :allow-empty="false"
     option-label="label"
     option-value="value"
     :class="{ 'p-selectbutton-sm': size === 'small' }"

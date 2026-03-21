@@ -3,7 +3,7 @@ import { ref, computed, watch } from 'vue'
 import * as yaml from 'js-yaml'
 import Button from 'primevue/button'
 import CodeEditor from '@/components/common/CodeEditor.vue'
-import type { SettingEntry } from '@/api/types'
+import type { SettingEntry, SettingNamespace } from '@/api/types'
 
 const props = defineProps<{
   entries: SettingEntry[]
@@ -12,7 +12,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  save: [updates: Array<{ namespace: string; key: string; value: string }>]
+  save: [updates: Array<{ namespace: SettingNamespace; key: string; value: string }>]
 }>()
 
 /** Build a flat object from entries for display. */
@@ -27,7 +27,8 @@ function entriesToObject(entries: SettingEntry[]): Record<string, unknown> {
     } else if (type === 'float') {
       obj[key] = parseFloat(entry.value)
     } else if (type === 'bool') {
-      obj[key] = entry.value === 'true'
+      // Preserve wire format: 'true'/'1' -> true, anything else -> false
+      obj[key] = entry.value === 'true' || entry.value === '1'
     } else {
       obj[key] = entry.value
     }
@@ -61,24 +62,43 @@ const originalObject = computed(() => entriesToObject(props.entries))
 const originalText = computed(() => serialize(originalObject.value, props.mode))
 
 const localText = ref(originalText.value)
+const userEditing = ref(false)
 
-// Re-sync when entries or mode change
+// Re-sync when entries or mode change, but only if the user hasn't edited
 watch([() => props.entries, () => props.mode], () => {
-  localText.value = serialize(entriesToObject(props.entries), props.mode)
+  if (!userEditing.value) {
+    localText.value = serialize(entriesToObject(props.entries), props.mode)
+  }
+})
+
+// Track user edits vs programmatic changes
+watch(localText, (newVal) => {
+  userEditing.value = newVal !== originalText.value
 })
 
 /** Parse result: either a list of changes or an error string. */
-const parseResult = computed<{ changes: Array<{ namespace: string; key: string; value: string }>; error: string | null }>(() => {
+const parseResult = computed<{ changes: Array<{ namespace: SettingNamespace; key: string; value: string }>; error: string | null }>(() => {
   try {
     const parsed = deserialize(localText.value, props.mode)
 
     // Diff against original
-    const changes: Array<{ namespace: string; key: string; value: string }> = []
+    const changes: Array<{ namespace: SettingNamespace; key: string; value: string }> = []
     for (const entry of props.entries) {
       const { namespace, key, type } = entry.definition
       if (!(key in parsed)) continue
       const newVal = parsed[key]
-      const serialized = type === 'json' ? JSON.stringify(newVal) : String(newVal)
+      let serialized: string
+      if (type === 'json') {
+        serialized = JSON.stringify(newVal)
+      } else if (type === 'bool') {
+        // Preserve wire format: compare normalized booleans to avoid
+        // bogus diffs when wire format is '1'/'0' vs 'true'/'false'
+        const oldBool = entry.value === 'true' || entry.value === '1'
+        if (Boolean(newVal) === oldBool) continue
+        serialized = String(newVal)
+      } else {
+        serialized = String(newVal)
+      }
       if (serialized !== entry.value) {
         changes.push({ namespace, key, value: serialized })
       }
@@ -98,6 +118,7 @@ const canSave = computed(() => isDirty.value && parseError.value === null && par
 function handleSave() {
   if (!canSave.value) return
   emit('save', parsedChanges.value)
+  userEditing.value = false
 }
 </script>
 

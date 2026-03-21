@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import Button from 'primevue/button'
+import ConfirmDialog from 'primevue/confirmdialog'
+import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import AppShell from '@/components/layout/AppShell.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -16,8 +18,15 @@ import { useSettingsStore } from '@/stores/settings'
 import { useEditMode } from '@/composables/useEditMode'
 import { getErrorMessage } from '@/utils/errors'
 import { sanitizeForLog } from '@/utils/logging'
-import type { SettingEntry, SettingNamespace, CreateFromPresetRequest, CreateProviderRequest, UpdateProviderRequest } from '@/api/types'
+import type {
+  SettingEntry,
+  SettingNamespace,
+  CreateFromPresetRequest,
+  CreateProviderRequest,
+  UpdateProviderRequest,
+} from '@/api/types'
 
+const confirm = useConfirm()
 const toast = useToast()
 const providerStore = useProviderStore()
 const settingsStore = useSettingsStore()
@@ -29,7 +38,7 @@ const providerEntries = computed(() =>
   Object.entries(providerStore.providers).map(([name, config]) => ({ name, config })),
 )
 
-// Provider settings (non-configs entries)
+// Provider-namespace settings excluding the 'configs' key (shown via ProviderCard grid above)
 const providerSettings = computed(() =>
   settingsStore.entriesByNamespace('providers').filter(
     (e) => e.definition.key !== 'configs',
@@ -106,13 +115,20 @@ async function handleFormSavePreset(data: CreateFromPresetRequest) {
   }
 }
 
-async function handleDelete(name: string) {
-  try {
-    await providerStore.deleteProvider(name)
-    toast.add({ severity: 'success', summary: `Provider ${name} deleted`, life: 3000 })
-  } catch (err) {
-    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
-  }
+function handleDelete(name: string) {
+  confirm.require({
+    header: 'Delete Provider',
+    message: `Are you sure you want to delete provider "${name.slice(0, 64)}"? Credentials will be lost.`,
+    acceptClass: 'p-button-danger',
+    accept: async () => {
+      try {
+        await providerStore.deleteProvider(name)
+        toast.add({ severity: 'success', summary: `Provider ${name} deleted`, life: 3000 })
+      } catch (err) {
+        toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+      }
+    },
+  })
 }
 
 // Settings handlers
@@ -134,17 +150,12 @@ async function handleSettingReset(entry: SettingEntry) {
   }
 }
 
-async function handleCodeViewSave(updates: Array<{ namespace: string; key: string; value: string }>) {
-  let saved = 0
-  let failed = 0
-  for (const u of updates) {
-    try {
-      await settingsStore.updateSetting(u.namespace as SettingNamespace, u.key, u.value)
-      saved++
-    } catch {
-      failed++
-    }
-  }
+async function handleCodeViewSave(updates: Array<{ namespace: SettingNamespace; key: string; value: string }>) {
+  const results = await Promise.allSettled(
+    updates.map((u) => settingsStore.updateSetting(u.namespace, u.key, u.value)),
+  )
+  const saved = results.filter((r) => r.status === 'fulfilled').length
+  const failed = results.filter((r) => r.status === 'rejected').length
   if (saved > 0) toast.add({ severity: 'success', summary: `${saved} setting(s) saved`, life: 3000 })
   if (failed > 0) toast.add({ severity: 'error', summary: `${failed} setting(s) failed to save`, life: 5000 })
 }
@@ -209,6 +220,7 @@ async function handleCodeViewSave(updates: Array<{ namespace: string; key: strin
     </div>
     </ErrorBoundary>
 
+    <ConfirmDialog />
     <ProviderFormDialog
       v-model:visible="formDialogVisible"
       :mode="formDialogMode"

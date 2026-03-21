@@ -197,13 +197,12 @@ describe('SettingsPage', () => {
     expect(wrapper.find('[data-testid="loading-skeleton"]').exists()).toBe(true)
   })
 
-  it('fetches company config and providers on mount', async () => {
-    const { getCompanyConfig } = await import('@/api/endpoints/company')
-    const { listProviders } = await import('@/api/endpoints/providers')
+  it('fetches settings schema and entries on mount', async () => {
+    const { getSchema, getAllSettings } = await import('@/api/endpoints/settings')
     mount(SettingsPage)
     await flushPromises()
-    expect(getCompanyConfig).toHaveBeenCalled()
-    expect(listProviders).toHaveBeenCalled()
+    expect(getSchema).toHaveBeenCalled()
+    expect(getAllSettings).toHaveBeenCalled()
   })
 
   it('renders tabs after loading', async () => {

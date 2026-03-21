@@ -45,6 +45,7 @@ const router = createRouter({
       path: '/company',
       name: 'company',
       component: () => import('@/views/CompanyPage.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/agents',
@@ -61,6 +62,7 @@ const router = createRouter({
       path: '/providers',
       name: 'providers',
       component: () => import('@/views/ProvidersPage.vue'),
+      meta: { requiresAuth: true },
     },
     {
       path: '/budget',

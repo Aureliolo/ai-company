@@ -109,7 +109,7 @@ function handleSave() {
     tools,
     authority,
   })
-  emit('update:visible', false)
+  // Dialog close is controlled by the parent after async save succeeds
 }
 </script>
 

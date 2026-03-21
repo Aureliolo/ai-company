@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useSettingsStore, validateSettingValue } from '@/stores/settings'
-import { SETTINGS_ADVANCED_KEY } from '@/utils/constants'
+import { SETTINGS_ADVANCED_KEY, SETTINGS_ADVANCED_WARNED_KEY } from '@/utils/constants'
 import type { SettingDefinition, SettingEntry } from '@/api/types'
 
 vi.mock('@/api/endpoints/settings', () => ({
@@ -85,6 +85,7 @@ describe('useSettingsStore', () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
     localStorage.clear()
+    sessionStorage.clear()
   })
 
   it('initializes with empty state', () => {
@@ -199,8 +200,8 @@ describe('useSettingsStore', () => {
     expect(store.namespaces).toEqual(['budget'])
     expect(store.namespaces).not.toContain('coordination')
 
-    // Toggle to advanced -- coordination should appear
-    store.toggleAdvanced()
+    // Enable advanced mode -- coordination should appear
+    store.confirmAdvanced()
     expect(store.namespaces).toEqual(['budget', 'coordination'])
   })
 
@@ -301,7 +302,7 @@ describe('useSettingsStore', () => {
 
   it('toggleAdvanced returns "needs_warning" when toggling ON (never warned)', () => {
     const store = useSettingsStore()
-    sessionStorage.removeItem('settings_advanced_warned')
+    sessionStorage.removeItem(SETTINGS_ADVANCED_WARNED_KEY)
     const result = store.toggleAdvanced()
     expect(result).toBe('needs_warning')
     expect(store.showAdvanced).toBe(false) // Not toggled yet
@@ -309,7 +310,7 @@ describe('useSettingsStore', () => {
 
   it('toggleAdvanced returns "toggled" when toggling ON (already warned)', () => {
     const store = useSettingsStore()
-    sessionStorage.setItem('settings_advanced_warned', 'true')
+    sessionStorage.setItem(SETTINGS_ADVANCED_WARNED_KEY, 'true')
     const result = store.toggleAdvanced()
     expect(result).toBe('toggled')
     expect(store.showAdvanced).toBe(true)
@@ -322,7 +323,7 @@ describe('useSettingsStore', () => {
     store.confirmAdvanced()
     expect(store.showAdvanced).toBe(true)
     expect(localStorage.getItem(SETTINGS_ADVANCED_KEY)).toBe('true')
-    expect(sessionStorage.getItem('settings_advanced_warned')).toBe('true')
+    expect(sessionStorage.getItem(SETTINGS_ADVANCED_WARNED_KEY)).toBe('true')
   })
 
   it('setDirty/clearDirty/clearAllDirty track dirty fields', () => {

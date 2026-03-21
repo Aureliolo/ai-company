@@ -124,7 +124,7 @@ web/src/          # Vue 3 + PrimeVue + Tailwind CSS dashboard
   components/     # Vue components by feature (agents/, approvals/, budget/, company/, setup/, settings/, providers/, etc.)
   composables/    # useAuth, usePolling, useOptimisticUpdate, useWebSocketSubscription, useEditMode, etc.
   router/         # Vue Router config with auth guards
-  stores/         # Pinia stores (auth, agents, tasks, budget, messages, approvals, websocket, etc.)
+  stores/         # Pinia stores (auth, agents, tasks, budget, messages, approvals, settings, company, providers, websocket, etc.)
   styles/         # Global CSS and PrimeVue theme
   utils/          # Constants, formatters, error helpers
   views/          # Page-level components (Login, Setup, Dashboard, OrgChart, TaskBoard, Company, Providers, Settings, etc.)

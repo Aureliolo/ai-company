@@ -51,7 +51,7 @@ function handleKeydown(event: KeyboardEvent) {
     <div v-if="modelValue.length > 0" class="mb-2 flex flex-wrap gap-1.5">
       <Tag
         v-for="(item, index) in modelValue"
-        :key="index"
+        :key="item"
         severity="info"
         class="cursor-default"
       >

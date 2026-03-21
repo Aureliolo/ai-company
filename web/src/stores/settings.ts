@@ -68,6 +68,8 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
       )
     } else {
       try {
+        // Wrap server pattern in non-capturing group + anchors to prevent partial matches
+        // and ensure the pattern cannot override the anchoring behavior
         if (!new RegExp(`^(?:${validator_pattern})$`).test(value)) { // eslint-disable-line security/detect-non-literal-regexp
           return `Must match pattern: ${validator_pattern}`
         }
@@ -83,6 +85,9 @@ export function validateSettingValue(value: string, definition: SettingDefinitio
   return null
 }
 
+/** Composite key format: `${namespace}/${key}`. */
+type SettingCompositeKey = `${SettingNamespace}/${string}`
+
 export interface DirtyField {
   namespace: SettingNamespace
   key: string
@@ -94,7 +99,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const entries = ref<SettingEntry[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
-  const savingKey = ref<string | null>(null)
+  const savingKey = ref<SettingCompositeKey | null>(null)
   let initialAdvanced = false
   try {
     initialAdvanced = localStorage.getItem(SETTINGS_ADVANCED_KEY) === 'true'
@@ -105,7 +110,7 @@ export const useSettingsStore = defineStore('settings', () => {
   let generation = 0
 
   // ── Dirty tracking ──────────────────────────────────────────
-  const dirtyFields = ref(new Map<string, DirtyField>())
+  const dirtyFields = ref(new Map<SettingCompositeKey, DirtyField>())
   const hasDirty = computed(() => dirtyFields.value.size > 0)
   const dirtyCount = computed(() => dirtyFields.value.size)
   const savingAll = ref(false)
@@ -126,26 +131,38 @@ export const useSettingsStore = defineStore('settings', () => {
     dirtyFields.value = new Map()
   }
 
-  async function saveAllDirty(): Promise<{ saved: number; failed: number }> {
+  async function saveAllDirty(): Promise<{ saved: number; failed: number; errors: string[] }> {
     const fields = Array.from(dirtyFields.value.values())
-    if (fields.length === 0) return { saved: 0, failed: 0 }
+    if (fields.length === 0) return { saved: 0, failed: 0, errors: [] }
 
     savingAll.value = true
     try {
       const results = await Promise.allSettled(
-        fields.map((f) => updateSetting(f.namespace, f.key, f.value)),
+        fields.map((f) => updateSetting(f.namespace, f.key, f.value, { skipRefresh: true })),
       )
       let saved = 0
       let failed = 0
+      const errors: string[] = []
       for (let i = 0; i < results.length; i++) {
         if (results[i].status === 'fulfilled') {
           saved++
           clearDirty(fields[i].namespace, fields[i].key)
         } else {
           failed++
+          errors.push(getErrorMessage((results[i] as PromiseRejectedResult).reason))
         }
       }
-      return { saved, failed }
+      // Single refresh after all updates complete
+      try {
+        const gen = ++generation
+        const entriesData = await settingsApi.getAllSettings()
+        if (gen === generation) {
+          entries.value = entriesData
+        }
+      } catch {
+        // Best-effort -- individual optimistic updates already applied
+      }
+      return { saved, failed, errors }
     } finally {
       savingAll.value = false
     }
@@ -228,12 +245,16 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   // ── Update / Reset ─────────────────────────────────────────
-  async function updateSetting(namespace: SettingNamespace, key: string, value: string): Promise<void> {
+  async function updateSetting(
+    namespace: SettingNamespace,
+    key: string,
+    value: string,
+    options?: { skipRefresh?: boolean },
+  ): Promise<void> {
     savingKey.value = `${namespace}/${key}`
     try {
       const updatedEntry = await settingsApi.updateSetting(namespace, key, { value })
       // Immediately apply the returned entry so the UI reflects the change
-      const gen = ++generation
       const idx = entries.value.findIndex(
         (e) => e.definition.namespace === namespace && e.definition.key === key,
       )
@@ -243,13 +264,17 @@ export const useSettingsStore = defineStore('settings', () => {
         entries.value = [...entries.value, updatedEntry]
       }
       // Best-effort full refresh to get all resolved values
-      try {
-        const entriesData = await settingsApi.getAllSettings()
-        if (gen === generation) {
-          entries.value = entriesData
+      // (skipped during batch saves -- saveAllDirty does a single refresh after)
+      if (!options?.skipRefresh) {
+        const gen = ++generation
+        try {
+          const entriesData = await settingsApi.getAllSettings()
+          if (gen === generation) {
+            entries.value = entriesData
+          }
+        } catch (refreshErr) {
+          console.warn('Settings refresh failed after update:', refreshErr)
         }
-      } catch (refreshErr) {
-        console.warn('Settings refresh failed after update:', refreshErr)
       }
     } finally {
       savingKey.value = null
