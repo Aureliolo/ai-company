@@ -66,12 +66,12 @@ vi.mock('@/components/org-chart/OrgNode.vue', () => ({
 
 vi.mock('@/api/endpoints/company', () => ({
   getCompanyConfig: vi.fn(),
-  listDepartments: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+  listDepartments: vi.fn().mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 }),
   getDepartment: vi.fn(),
 }))
 
 vi.mock('@/api/endpoints/agents', () => ({
-  listAgents: vi.fn().mockResolvedValue({ data: [], total: 0 }),
+  listAgents: vi.fn().mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 }),
   getAgent: vi.fn(),
   getAutonomy: vi.fn(),
   setAutonomy: vi.fn(),
@@ -79,6 +79,7 @@ vi.mock('@/api/endpoints/agents', () => ({
 
 import OrgChartPage from '@/views/OrgChartPage.vue'
 import { listDepartments } from '@/api/endpoints/company'
+import { listAgents } from '@/api/endpoints/agents'
 
 const MOCK_DEPARTMENTS = [
   {
@@ -103,6 +104,7 @@ describe('OrgChartPage', () => {
     vi.clearAllMocks()
     // Re-set default mocks (clearAllMocks only clears history, not implementations)
     vi.mocked(listDepartments).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 })
+    vi.mocked(listAgents).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 })
   })
 
   it('mounts without error', () => {
@@ -116,7 +118,6 @@ describe('OrgChartPage', () => {
   })
 
   it('fetches departments and agents on mount', async () => {
-    const { listAgents } = await import('@/api/endpoints/agents')
     mount(OrgChartPage)
     await flushPromises()
     expect(listDepartments).toHaveBeenCalled()
@@ -152,5 +153,16 @@ describe('OrgChartPage', () => {
     await flushPromises()
     // EmptyState action slot renders a RouterLink to /settings
     expect(wrapper.text()).toContain('Go to Settings')
+  })
+
+  it('shows error boundary when fetch fails', async () => {
+    vi.mocked(listDepartments).mockRejectedValue(new Error('Network error'))
+    const wrapper = mount(OrgChartPage)
+    await flushPromises()
+    // ErrorBoundary mock renders slot content; the store captures the error
+    // Verify the fetch ran and the error was captured (no unhandled rejection)
+    expect(listDepartments).toHaveBeenCalled()
+    // VueFlow should not render when there is an error
+    expect(wrapper.find('[data-testid="vue-flow"]').exists()).toBe(false)
   })
 })

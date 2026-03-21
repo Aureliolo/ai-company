@@ -1128,7 +1128,7 @@ and retry guidance.
     remains fully self-sufficient for all operations -- the dashboard is a thin client.
 
 - **Dashboard**: Real-time company overview, active tasks, spending
-- **Org Chart**: Visual hierarchy, click to inspect any agent
+- **Org Chart**: Visual hierarchy with interactive nodes -- click agents to view profiles, departments and teams to browse the agent list; empty state with settings link when no departments are configured
 - **Task Board**: Kanban/list view of all tasks across projects
 - **Message Feed**: Real-time feed of agent communications
 - **Approval Queue**: Pending approvals with context and recommendations
