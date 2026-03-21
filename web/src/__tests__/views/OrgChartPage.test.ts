@@ -1,19 +1,27 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 
+const mockRouterPush = vi.fn()
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: vi.fn(), go: vi.fn() }),
+  useRouter: () => ({ push: mockRouterPush, go: vi.fn() }),
   useRoute: () => ({ params: {} }),
-  RouterLink: { template: '<a><slot /></a>' },
+  RouterLink: {
+    props: ['to'],
+    template: '<a :href="to"><slot /></a>',
+  },
 }))
 
+const mockFitView = vi.fn().mockResolvedValue(true)
 vi.mock('@vue-flow/core', () => ({
   VueFlow: {
+    name: 'VueFlow',
     props: ['nodes', 'edges', 'fitViewOnInit'],
+    emits: ['node-click'],
     template: '<div data-testid="vue-flow"><slot /></div>',
   },
-  useVueFlow: () => ({ fitView: vi.fn() }),
+  useVueFlow: () => ({ fitView: mockFitView }),
 }))
 
 vi.mock('@vue-flow/controls', () => ({
@@ -45,7 +53,9 @@ vi.mock('@/components/common/LoadingSkeleton.vue', () => ({
 vi.mock('@/components/common/ErrorBoundary.vue', () => ({
   default: {
     props: ['error'],
-    template: '<div><slot /></div>',
+    emits: ['retry'],
+    template:
+      '<div data-testid="error-boundary"><div v-if="error" data-testid="error-message">{{ error }}</div><slot v-else /></div>',
   },
 }))
 
@@ -105,6 +115,7 @@ describe('OrgChartPage', () => {
     // Re-set default mocks (clearAllMocks only clears history, not implementations)
     vi.mocked(listDepartments).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 })
     vi.mocked(listAgents).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 })
+    mockFitView.mockResolvedValue(true)
   })
 
   it('mounts without error', () => {
@@ -120,8 +131,21 @@ describe('OrgChartPage', () => {
   it('fetches departments and agents on mount', async () => {
     mount(OrgChartPage)
     await flushPromises()
-    expect(listDepartments).toHaveBeenCalled()
-    expect(listAgents).toHaveBeenCalled()
+    expect(listDepartments).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: expect.any(Number) }),
+    )
+    expect(listAgents).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: expect.any(Number) }),
+    )
+  })
+
+  it('shows loading skeleton while fetching', async () => {
+    vi.mocked(listDepartments).mockReturnValue(new Promise(() => {}))
+    vi.mocked(listAgents).mockReturnValue(new Promise(() => {}))
+    const wrapper = mount(OrgChartPage)
+    await nextTick()
+    expect(wrapper.find('[data-testid="loading-skeleton"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="empty-state"]').exists()).toBe(false)
   })
 
   it('shows empty state when no departments exist', async () => {
@@ -132,37 +156,76 @@ describe('OrgChartPage', () => {
     expect(wrapper.find('[data-testid="vue-flow"]').exists()).toBe(false)
   })
 
-  it('shows VueFlow when departments exist', async () => {
-    mockWithDepartments()
+  it('empty state includes a link to /settings', async () => {
     const wrapper = mount(OrgChartPage)
     await flushPromises()
-    expect(wrapper.find('[data-testid="vue-flow"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="empty-state"]').exists()).toBe(false)
+    const link = wrapper.find('[data-testid="empty-state"] a')
+    expect(link.text()).toContain('Go to Settings')
+    expect(link.attributes('href')).toBe('/settings')
   })
 
-  it('renders controls and minimap when departments exist', async () => {
-    mockWithDepartments()
-    const wrapper = mount(OrgChartPage)
-    await flushPromises()
-    expect(wrapper.find('[data-testid="controls"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="minimap"]').exists()).toBe(true)
+  describe('when departments exist', () => {
+    let wrapper: ReturnType<typeof mount>
+
+    beforeEach(async () => {
+      mockWithDepartments()
+      wrapper = mount(OrgChartPage)
+      await flushPromises()
+    })
+
+    it('shows VueFlow and hides empty state', () => {
+      expect(wrapper.find('[data-testid="vue-flow"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="empty-state"]').exists()).toBe(false)
+    })
+
+    it('renders controls and minimap', () => {
+      expect(wrapper.find('[data-testid="controls"]').exists()).toBe(true)
+      expect(wrapper.find('[data-testid="minimap"]').exists()).toBe(true)
+    })
+
+    it('calls fitView once after nodes populate', () => {
+      expect(mockFitView).toHaveBeenCalledTimes(1)
+    })
+
+    it('navigates to /agents/{name} on agent node click', async () => {
+      const vueFlow = wrapper.findComponent({ name: 'VueFlow' })
+      vueFlow.vm.$emit('node-click', { node: { id: 'agent-test-agent' } })
+      await nextTick()
+      expect(mockRouterPush).toHaveBeenCalledWith('/agents/test-agent')
+    })
+
+    it('navigates to /agents on department node click', async () => {
+      const vueFlow = wrapper.findComponent({ name: 'VueFlow' })
+      vueFlow.vm.$emit('node-click', { node: { id: 'dept-engineering' } })
+      await nextTick()
+      expect(mockRouterPush).toHaveBeenCalledWith('/agents')
+    })
+
+    it('navigates to /agents on team node click', async () => {
+      const vueFlow = wrapper.findComponent({ name: 'VueFlow' })
+      vueFlow.vm.$emit('node-click', { node: { id: 'team-engineering-Backend' } })
+      await nextTick()
+      expect(mockRouterPush).toHaveBeenCalledWith('/agents')
+    })
   })
 
-  it('empty state includes a link to settings', async () => {
-    const wrapper = mount(OrgChartPage)
-    await flushPromises()
-    // EmptyState action slot renders a RouterLink to /settings
-    expect(wrapper.text()).toContain('Go to Settings')
-  })
-
-  it('shows error boundary when fetch fails', async () => {
+  it('shows error when department fetch fails', async () => {
     vi.mocked(listDepartments).mockRejectedValue(new Error('Network error'))
     const wrapper = mount(OrgChartPage)
     await flushPromises()
-    // ErrorBoundary mock renders slot content; the store captures the error
-    // Verify the fetch ran and the error was captured (no unhandled rejection)
+    // Fetch attempted; store captured the error (hasDepartments stays false).
+    // ErrorBoundary mock shows error message instead of slot content.
     expect(listDepartments).toHaveBeenCalled()
-    // VueFlow should not render when there is an error
+    expect(wrapper.find('[data-testid="error-message"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="vue-flow"]').exists()).toBe(false)
+  })
+
+  it('shows error when only agent fetch fails', async () => {
+    mockWithDepartments()
+    vi.mocked(listAgents).mockRejectedValue(new Error('Agent service down'))
+    const wrapper = mount(OrgChartPage)
+    await flushPromises()
+    // Departments loaded but agent error triggers ErrorBoundary
+    expect(wrapper.find('[data-testid="error-message"]').exists()).toBe(true)
   })
 })

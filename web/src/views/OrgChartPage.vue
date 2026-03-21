@@ -17,7 +17,6 @@ import OrgNode from '@/components/org-chart/OrgNode.vue'
 import { useCompanyStore } from '@/stores/company'
 import { useAgentStore } from '@/stores/agents'
 import { formatLabel } from '@/utils/format'
-import { sanitizeForLog } from '@/utils/logging'
 
 const router = useRouter()
 const companyStore = useCompanyStore()
@@ -25,11 +24,7 @@ const agentStore = useAgentStore()
 const { fitView } = useVueFlow()
 
 async function retryFetch() {
-  try {
-    await Promise.all([companyStore.fetchDepartments(), agentStore.fetchAgents()])
-  } catch (err) {
-    console.error('Org chart data fetch failed:', sanitizeForLog(err))
-  }
+  await Promise.all([companyStore.fetchDepartments(), agentStore.fetchAgents()])
 }
 
 onMounted(retryFetch)
@@ -41,6 +36,11 @@ const isLoading = computed(
 const hasDepartments = computed(
   () => companyStore.departments.length > 0,
 )
+
+const combinedError = computed(() => {
+  const errors = [companyStore.departmentsError, agentStore.error].filter(Boolean)
+  return errors.length > 0 ? errors.join(' | ') : null
+})
 
 const nodes = computed<Node[]>(() => {
   const result: Node[] = []
@@ -124,14 +124,19 @@ watch(
   async (len) => {
     if (len > 0) {
       await nextTick()
-      fitView()
+      try {
+        await fitView()
+      } catch {
+        // fitView may throw if viewport is not ready; fit-view-on-init handles initial render
+      }
     }
   },
+  { once: true },
 )
 
 function onNodeClick(event: { node: Node }) {
   if (event.node.id.startsWith('agent-')) {
-    const name = event.node.id.replace('agent-', '')
+    const name = event.node.id.slice('agent-'.length)
     router.push(`/agents/${encodeURIComponent(name)}`)
   } else if (
     event.node.id.startsWith('dept-') ||
@@ -146,7 +151,7 @@ function onNodeClick(event: { node: Node }) {
   <AppShell>
     <PageHeader title="Organization Chart" subtitle="Visual structure of departments, teams, and agents" />
 
-    <ErrorBoundary :error="companyStore.departmentsError ?? agentStore.error" @retry="retryFetch">
+    <ErrorBoundary :error="combinedError" @retry="retryFetch">
       <LoadingSkeleton v-if="isLoading && !hasDepartments" :lines="6" />
       <EmptyState
         v-else-if="!hasDepartments"
