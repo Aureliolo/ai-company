@@ -40,12 +40,12 @@ def _validate_host_port(v: str) -> str:
         The original string if valid.
 
     Raises:
-        ValueError: If the port is outside 0-65535.
+        ValueError: If the port is outside 1-65535.
     """
     port_str = v.rsplit(":", 1)[-1]
     port = int(port_str)
-    if port > _MAX_PORT:
-        msg = f"Port must be in range 0-{_MAX_PORT}, got {port}"
+    if not 1 <= port <= _MAX_PORT:
+        msg = f"Port must be in range 1-{_MAX_PORT}, got {port}"
         raise ValueError(msg)
     return v
 

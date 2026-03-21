@@ -88,10 +88,14 @@ def apply_update(
             updates["custom_header_name"] = None
             updates["custom_header_value"] = None
 
-    # api_key has special clear_api_key semantics (overrides above)
-    if request.api_key is not None:
-        updates["api_key"] = request.api_key
-    elif request.clear_api_key:
+    # api_key: only set/clear when the resulting auth type supports it
+    final_auth_type = updates.get("auth_type", existing.auth_type)
+    if final_auth_type in (AuthType.API_KEY, AuthType.OAUTH):
+        if request.api_key is not None:
+            updates["api_key"] = request.api_key
+        elif request.clear_api_key:
+            updates["api_key"] = None
+    else:
         updates["api_key"] = None
 
     # Use model_validate (not model_copy) to run validators on the merged result

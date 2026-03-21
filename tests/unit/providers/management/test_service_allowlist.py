@@ -305,7 +305,7 @@ class TestCreateFromPresetAllowlistTrust:
         ) as mock_discover:
             request = CreateFromPresetRequest(
                 preset_name="ollama",
-                name="test-ollama-provider",
+                name="test-preset-provider",
             )
             await service.create_from_preset(request)
 
@@ -324,7 +324,7 @@ class TestCreateFromPresetAllowlistTrust:
         ) as mock_discover:
             request = CreateFromPresetRequest(
                 preset_name="ollama",
-                name="test-ollama-provider",
+                name="test-preset-provider",
                 base_url="http://custom-host:11434",
             )
             await service.create_from_preset(request)
