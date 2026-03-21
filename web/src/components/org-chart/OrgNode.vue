@@ -16,16 +16,16 @@ const props = defineProps<{
 
 const borderClass = computed(() => {
   switch (props.data.type) {
-    case 'department': return 'border-brand-600 bg-brand-600/10'
-    case 'team': return 'border-purple-600 bg-purple-600/10'
-    default: return 'border-slate-700 bg-slate-800'
+    case 'department': return 'border-brand-600 bg-brand-600/10 hover:bg-brand-600/20'
+    case 'team': return 'border-purple-600 bg-purple-600/10 hover:bg-purple-600/20'
+    default: return 'border-slate-700 bg-slate-800 hover:bg-slate-700'
   }
 })
 </script>
 
 <template>
   <div
-    :class="['rounded-lg border px-3 py-2 text-center', borderClass]"
+    :class="['cursor-pointer rounded-lg border px-3 py-2 text-center transition-colors', borderClass]"
   >
     <p class="text-sm font-medium text-slate-200">{{ data.label }}</p>
     <p v-if="data.role" class="text-xs text-slate-400">{{ data.role }}</p>

@@ -101,6 +101,15 @@ describe('OrgNode', () => {
     expect(wrapper.text()).not.toContain('Department')
   })
 
+  it('has cursor-pointer class for interactive feedback', () => {
+    const wrapper = mount(OrgNode, {
+      props: { data: { label: 'Engineering', type: 'department' as const } },
+    })
+    const root = wrapper.find('div')
+    expect(root.classes()).toContain('cursor-pointer')
+    expect(root.classes()).toContain('transition-colors')
+  })
+
   it('renders all optional props together', () => {
     const wrapper = mount(OrgNode, {
       props: {

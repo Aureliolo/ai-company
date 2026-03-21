@@ -13,6 +13,7 @@ vi.mock('@vue-flow/core', () => ({
     props: ['nodes', 'edges', 'fitViewOnInit'],
     template: '<div data-testid="vue-flow"><slot /></div>',
   },
+  useVueFlow: () => ({ fitView: vi.fn() }),
 }))
 
 vi.mock('@vue-flow/controls', () => ({
@@ -48,6 +49,14 @@ vi.mock('@/components/common/ErrorBoundary.vue', () => ({
   },
 }))
 
+vi.mock('@/components/common/EmptyState.vue', () => ({
+  default: {
+    props: ['icon', 'title', 'message'],
+    template:
+      '<div data-testid="empty-state"><h3>{{ title }}</h3><p>{{ message }}</p><slot name="action" /></div>',
+  },
+}))
+
 vi.mock('@/components/org-chart/OrgNode.vue', () => ({
   default: {
     props: ['data'],
@@ -69,11 +78,31 @@ vi.mock('@/api/endpoints/agents', () => ({
 }))
 
 import OrgChartPage from '@/views/OrgChartPage.vue'
+import { listDepartments } from '@/api/endpoints/company'
+
+const MOCK_DEPARTMENTS = [
+  {
+    name: 'engineering' as const,
+    display_name: 'Engineering',
+    teams: [{ name: 'Backend', members: ['test-agent'] }],
+  },
+]
+
+function mockWithDepartments() {
+  vi.mocked(listDepartments).mockResolvedValue({
+    data: MOCK_DEPARTMENTS,
+    total: 1,
+    offset: 0,
+    limit: 200,
+  })
+}
 
 describe('OrgChartPage', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    // Re-set default mocks (clearAllMocks only clears history, not implementations)
+    vi.mocked(listDepartments).mockResolvedValue({ data: [], total: 0, offset: 0, limit: 200 })
   })
 
   it('mounts without error', () => {
@@ -87,7 +116,6 @@ describe('OrgChartPage', () => {
   })
 
   it('fetches departments and agents on mount', async () => {
-    const { listDepartments } = await import('@/api/endpoints/company')
     const { listAgents } = await import('@/api/endpoints/agents')
     mount(OrgChartPage)
     await flushPromises()
@@ -95,16 +123,34 @@ describe('OrgChartPage', () => {
     expect(listAgents).toHaveBeenCalled()
   })
 
-  it('renders VueFlow after loading', async () => {
+  it('shows empty state when no departments exist', async () => {
+    const wrapper = mount(OrgChartPage)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="empty-state"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="empty-state"] h3').text()).toBe('No departments')
+    expect(wrapper.find('[data-testid="vue-flow"]').exists()).toBe(false)
+  })
+
+  it('shows VueFlow when departments exist', async () => {
+    mockWithDepartments()
     const wrapper = mount(OrgChartPage)
     await flushPromises()
     expect(wrapper.find('[data-testid="vue-flow"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="empty-state"]').exists()).toBe(false)
   })
 
-  it('renders controls and minimap', async () => {
+  it('renders controls and minimap when departments exist', async () => {
+    mockWithDepartments()
     const wrapper = mount(OrgChartPage)
     await flushPromises()
     expect(wrapper.find('[data-testid="controls"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="minimap"]').exists()).toBe(true)
+  })
+
+  it('empty state includes a link to settings', async () => {
+    const wrapper = mount(OrgChartPage)
+    await flushPromises()
+    // EmptyState action slot renders a RouterLink to /settings
+    expect(wrapper.text()).toContain('Go to Settings')
   })
 })
