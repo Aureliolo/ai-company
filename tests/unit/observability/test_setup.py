@@ -3,12 +3,13 @@
 import json
 import logging
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 import structlog
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 from synthorg.observability.config import LogConfig, SinkConfig
@@ -511,6 +512,17 @@ class TestReconfigurationLogRouting:
 class TestTameThirdPartyLoggers:
     """Tests for _tame_third_party_loggers."""
 
+    @pytest.fixture(autouse=True)
+    def _reset_third_party_loggers(self) -> Iterator[None]:
+        """Reset third-party logger state after each test."""
+        yield
+        for name, _ in _THIRD_PARTY_LOGGER_LEVELS:
+            lg = logging.getLogger(name)
+            for handler in lg.handlers[:]:
+                lg.removeHandler(handler)
+            lg.setLevel(logging.WARNING)
+            lg.propagate = True
+
     def test_clears_litellm_handlers(self) -> None:
         """LiteLLM's own StreamHandler is removed after taming."""
         lg = logging.getLogger("LiteLLM")
@@ -518,6 +530,42 @@ class TestTameThirdPartyLoggers:
         assert len(lg.handlers) >= 1
         _tame_third_party_loggers()
         assert lg.handlers == []
+
+    def test_clears_non_litellm_handlers(self) -> None:
+        """Non-LiteLLM third-party handlers are also removed."""
+        lg = logging.getLogger("httpx")
+        lg.addHandler(logging.StreamHandler())
+        assert len(lg.handlers) >= 1
+        _tame_third_party_loggers()
+        assert lg.handlers == []
+
+    def test_clears_multiple_handlers_from_single_logger(self) -> None:
+        """All handlers removed even when a logger has multiple."""
+        lg = logging.getLogger("LiteLLM")
+        lg.addHandler(logging.StreamHandler())
+        lg.addHandler(logging.StreamHandler())
+        lg.addHandler(logging.StreamHandler())
+        assert len(lg.handlers) == 3
+        _tame_third_party_loggers()
+        assert lg.handlers == []
+
+    def test_handler_close_failure_warns_to_stderr(
+        self,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """A handler whose close() raises warns to stderr but is still removed."""
+
+        class _BadHandler(logging.StreamHandler[Any]):
+            def close(self) -> None:
+                msg = "close failed"
+                raise RuntimeError(msg)
+
+        lg = logging.getLogger("LiteLLM")
+        lg.addHandler(_BadHandler())
+        _tame_third_party_loggers()
+        assert lg.handlers == []
+        captured = capsys.readouterr()
+        assert "WARNING: Failed to close third-party log handler" in captured.err
 
     def test_sets_level_to_warning(self) -> None:
         """Third-party loggers are set to WARNING."""
@@ -550,6 +598,7 @@ class TestTameThirdPartyLoggers:
         """litellm.suppress_debug_info is set to True."""
         import litellm
 
+        litellm.suppress_debug_info = False
         _tame_third_party_loggers()
         assert litellm.suppress_debug_info is True
 
@@ -601,10 +650,15 @@ class TestTameThirdPartyLoggers:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Does not import litellm or raise when litellm is absent."""
+        """Does not import litellm but still cleans up other loggers."""
         monkeypatch.delitem(sys.modules, "litellm", raising=False)
+        lg = logging.getLogger("httpx")
+        lg.addHandler(logging.StreamHandler())
+        lg.setLevel(logging.DEBUG)
         _tame_third_party_loggers()
         assert sys.modules.get("litellm") is None
+        assert lg.handlers == []
+        assert lg.level == logging.WARNING
 
 
 @pytest.mark.unit

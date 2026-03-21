@@ -4,7 +4,6 @@ Provides the idempotent :func:`configure_logging` entry point that
 wires structlog processors, stdlib handlers, and per-logger levels.
 """
 
-import contextlib
 import logging
 import os
 import sys
@@ -218,9 +217,11 @@ def _tame_third_party_loggers() -> None:
     LiteLLM's ``print_verbose()`` raw ``print()`` calls by setting
     ``set_verbose = False`` at configuration time.
 
-    Only touches loggers whose library is already imported -- avoids
-    triggering expensive import side-effects (LiteLLM creates HTTP
-    clients and logs debug messages at import time).
+    The LiteLLM module-level attribute suppression (``set_verbose``,
+    ``suppress_debug_info``) only executes when ``litellm`` is already
+    imported, avoiding expensive import side-effects.  Handler cleanup
+    and level enforcement run unconditionally -- ``logging.getLogger()``
+    does not trigger library imports.
     """
     # Suppress LiteLLM's raw print() output if already imported.
     _litellm = sys.modules.get("litellm")
@@ -232,8 +233,15 @@ def _tame_third_party_loggers() -> None:
         lg = logging.getLogger(name)
         for handler in lg.handlers[:]:
             lg.removeHandler(handler)
-            with contextlib.suppress(Exception):
+            try:
                 handler.close()
+            except Exception:
+                print(  # noqa: T201
+                    f"WARNING: Failed to close third-party log handler "
+                    f"{handler!r} on logger {name!r}",
+                    file=sys.stderr,
+                    flush=True,
+                )
         lg.setLevel(level.value)
         lg.propagate = True
 
@@ -331,8 +339,8 @@ def configure_logging(config: LogConfig | None = None) -> None:
     # 6. Build and attach handlers for each sink
     _attach_handlers(config, root_logger, shared)
 
-    # 7. Apply per-logger levels
-    _apply_logger_levels(config)
-
-    # 8. Tame third-party loggers (clear duplicate handlers, set levels)
+    # 7. Tame third-party loggers (clear duplicate handlers, set defaults)
     _tame_third_party_loggers()
+
+    # 8. Apply per-logger levels (after taming so user overrides take precedence)
+    _apply_logger_levels(config)

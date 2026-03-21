@@ -1303,7 +1303,8 @@ LiteLLM and its HTTP stack (httpx, httpcore) attach their own `StreamHandler` in
 import time, producing duplicate output in Docker logs -- once via the library's own handler,
 and once again via root propagation through the structlog sinks.
 
-`_tame_third_party_loggers()` (called as step 8 of `configure_logging`) resolves this by:
+`_tame_third_party_loggers()` (called as step 7 of `configure_logging`, before per-logger level
+overrides so explicit user settings take precedence) resolves this by:
 
 - Suppressing LiteLLM's raw `print()` output via `litellm.set_verbose = False` and
   `litellm.suppress_debug_info = True` (applied only when `litellm` is already imported --
