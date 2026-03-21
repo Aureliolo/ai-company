@@ -371,6 +371,7 @@ onMounted(async () => {
               :feedback="false"
               fluid
               placeholder="sk-..."
+              :input-props="{ autocomplete: 'off' }"
             />
           </div>
 

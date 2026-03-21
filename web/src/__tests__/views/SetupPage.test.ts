@@ -26,7 +26,7 @@ vi.mock('primevue/inputtext', () => ({
 
 vi.mock('primevue/password', () => ({
   default: defineComponent({
-    props: ['modelValue', 'inputId', 'toggleMask', 'feedback', 'placeholder', 'fluid', 'inputProps'],
+    props: ['modelValue', 'inputId', 'toggleMask', 'feedback', 'placeholder', 'fluid', 'disabled', 'inputProps'],
     emits: ['update:modelValue'],
     setup(props, { emit }) {
       return () =>

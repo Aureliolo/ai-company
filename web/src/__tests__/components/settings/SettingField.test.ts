@@ -4,7 +4,7 @@ import type { SettingDefinition, SettingEntry } from '@/api/types'
 
 vi.mock('primevue/password', () => ({
   default: {
-    props: ['modelValue', 'inputId', 'toggleMask', 'feedback', 'placeholder', 'fluid', 'disabled'],
+    props: ['modelValue', 'inputId', 'toggleMask', 'feedback', 'placeholder', 'fluid', 'disabled', 'inputProps'],
     emits: ['update:modelValue'],
     template: '<input type="password" :value="modelValue" :disabled="disabled" @input="$emit(\'update:modelValue\', $event.target.value)" />',
   },

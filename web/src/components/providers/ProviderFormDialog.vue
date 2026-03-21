@@ -259,7 +259,7 @@ function handleSave() {
         <label for="pf-api-key" class="mb-1 block text-xs text-slate-400">
           {{ authType === 'oauth' ? 'Access Token (pre-fetched)' : 'API Key' }}
         </label>
-        <Password inputId="pf-api-key" v-model="apiKey" :toggle-mask="true" :feedback="false" fluid placeholder="sk-..." />
+        <Password inputId="pf-api-key" v-model="apiKey" :toggle-mask="true" :feedback="false" fluid placeholder="sk-..." :input-props="{ autocomplete: 'off' }" />
       </div>
 
       <!-- OAuth fields -->
@@ -274,7 +274,7 @@ function handleSave() {
         </div>
         <div>
           <label for="pf-oauth-secret" class="mb-1 block text-xs text-slate-400">Client Secret</label>
-          <Password inputId="pf-oauth-secret" v-model="oauthClientSecret" :toggle-mask="true" :feedback="false" fluid />
+          <Password inputId="pf-oauth-secret" v-model="oauthClientSecret" :toggle-mask="true" :feedback="false" fluid :input-props="{ autocomplete: 'off' }" />
         </div>
         <div>
           <label for="pf-oauth-scope" class="mb-1 block text-xs text-slate-400">Scope (optional)</label>
@@ -290,7 +290,7 @@ function handleSave() {
         </div>
         <div>
           <label for="pf-header-value" class="mb-1 block text-xs text-slate-400">Header Value</label>
-          <Password inputId="pf-header-value" v-model="customHeaderValue" :toggle-mask="true" :feedback="false" fluid />
+          <Password inputId="pf-header-value" v-model="customHeaderValue" :toggle-mask="true" :feedback="false" fluid :input-props="{ autocomplete: 'off' }" />
         </div>
       </template>
     </div>

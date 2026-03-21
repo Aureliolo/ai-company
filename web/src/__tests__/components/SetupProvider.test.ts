@@ -46,7 +46,7 @@ const InputTextStub = defineComponent({
 
 const PasswordStub = defineComponent({
   name: 'PvPassword',
-  props: ['modelValue', 'inputId', 'toggleMask', 'feedback', 'placeholder', 'fluid', 'inputProps'],
+  props: ['modelValue', 'inputId', 'toggleMask', 'feedback', 'placeholder', 'fluid', 'disabled', 'inputProps'],
   emits: ['update:modelValue'],
   setup(props, { emit }) {
     return () =>

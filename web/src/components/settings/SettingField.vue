@@ -114,6 +114,7 @@ function formatJson() {
         :feedback="false"
         fluid
         :disabled="saving"
+        :input-props="{ autocomplete: 'off' }"
       />
 
       <!-- Integer -->
