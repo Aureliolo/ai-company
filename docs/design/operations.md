@@ -100,7 +100,7 @@ The framework uses **LiteLLM** as the provider abstraction layer:
 - Built-in cost tracking
 - Automatic retries and fallbacks
 - Load balancing across providers
-- OpenAI-compatible interface (all providers normalized)
+- Chat completions-compatible interface (all providers normalized)
 
 ### Provider Management
 

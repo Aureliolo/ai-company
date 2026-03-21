@@ -109,7 +109,7 @@ jobs:
         env:
           RUN_INTEGRATION_TESTS: "1"
         run: |
-          uv run pytest tests/ \
+          uv run python -m pytest tests/ \
             -n auto \
             --cov=synthorg \
             --cov-report=term-missing \

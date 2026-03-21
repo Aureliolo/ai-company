@@ -597,7 +597,7 @@ the agent during execution.
 
     The agent has structured memory blocks (core, archival, recall) it reads AND writes during
     execution via dedicated tools. Core memory is always in context; archival and recall are
-    searched via tools. Most sophisticated (Letta/MemGPT-inspired) but highest complexity and
+    searched via tools. Most sophisticated (self-editing memory architecture) but highest complexity and
     LLM overhead.
 
 ### MemoryInjectionStrategy Protocol

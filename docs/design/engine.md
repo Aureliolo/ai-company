@@ -892,8 +892,8 @@ The task planner decomposes work to minimize file overlap across agents. Each
 agent operates in its own git worktree (shared `.git` object database,
 independent working tree). On completion, branches are merged sequentially.
 
-This is the dominant industry pattern (used by OpenAI Codex, Cursor, Claude
-Code, VS Code background agents).
+This is the dominant industry pattern (used by major coding agent products
+and IDE background agents).
 
 ```text
 Planner decomposes task:
