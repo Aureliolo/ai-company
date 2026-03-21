@@ -476,7 +476,6 @@ class ProviderController(Controller):
             data=DiscoveryPolicyResponse(
                 host_port_allowlist=policy.host_port_allowlist,
                 block_private_ips=policy.block_private_ips,
-                entry_count=len(policy.host_port_allowlist),
             ),
         )
 
@@ -506,7 +505,6 @@ class ProviderController(Controller):
             data=DiscoveryPolicyResponse(
                 host_port_allowlist=policy.host_port_allowlist,
                 block_private_ips=policy.block_private_ips,
-                entry_count=len(policy.host_port_allowlist),
             ),
         )
 
@@ -536,6 +534,5 @@ class ProviderController(Controller):
             data=DiscoveryPolicyResponse(
                 host_port_allowlist=policy.host_port_allowlist,
                 block_private_ips=policy.block_private_ips,
-                entry_count=len(policy.host_port_allowlist),
             ),
         )

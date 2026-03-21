@@ -491,7 +491,7 @@ class CoordinationResultResponse(BaseModel):
 
 _PROVIDER_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$")
 _RESERVED_PROVIDER_NAMES: frozenset[str] = frozenset(
-    {"presets", "from-preset", "probe-preset"},
+    {"presets", "from-preset", "probe-preset", "discovery-policy"},
 )
 
 
@@ -751,14 +751,22 @@ class DiscoveryPolicyResponse(BaseModel):
     Attributes:
         host_port_allowlist: Trusted host:port pairs.
         block_private_ips: Whether private IP blocking is active.
-        entry_count: Number of entries in the allowlist.
+        entry_count: Number of entries in the allowlist (computed).
     """
 
     model_config = ConfigDict(frozen=True)
 
-    host_port_allowlist: tuple[str, ...] = ()
+    host_port_allowlist: tuple[NotBlankStr, ...] = ()
     block_private_ips: bool = True
-    entry_count: int = Field(default=0, ge=0)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def entry_count(self) -> int:
+        """Number of entries in the allowlist."""
+        return len(self.host_port_allowlist)
+
+
+_HOST_PORT_PATTERN = r"^[a-zA-Z0-9._\[\]:%-]+:[0-9]{1,5}$"
 
 
 class AddAllowlistEntryRequest(BaseModel):
@@ -770,7 +778,10 @@ class AddAllowlistEntryRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    host_port: NotBlankStr = Field(max_length=256)
+    host_port: NotBlankStr = Field(
+        max_length=256,
+        pattern=_HOST_PORT_PATTERN,
+    )
 
 
 class RemoveAllowlistEntryRequest(BaseModel):
@@ -782,7 +793,10 @@ class RemoveAllowlistEntryRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    host_port: NotBlankStr = Field(max_length=256)
+    host_port: NotBlankStr = Field(
+        max_length=256,
+        pattern=_HOST_PORT_PATTERN,
+    )
 
 
 def to_provider_response(config: ProviderConfig) -> ProviderResponse:

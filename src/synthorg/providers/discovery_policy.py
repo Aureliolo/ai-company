@@ -3,8 +3,8 @@
 Provides a ``ProviderDiscoveryPolicy`` model that controls which
 ``host:port`` pairs are trusted for model discovery requests.  Entries
 in the allowlist bypass the private-IP check, enabling discovery
-against local providers (Ollama, LM Studio, vLLM) without the
-fragile preset-hint matching that preceded this module.
+against local providers (e.g. inference servers on private IPs)
+without the fragile preset-hint matching that preceded this module.
 
 The design mirrors :class:`~synthorg.tools.git_url_validator.GitCloneNetworkPolicy`.
 """
@@ -18,6 +18,12 @@ if TYPE_CHECKING:
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from synthorg.core.types import NotBlankStr  # noqa: TC001
+from synthorg.observability import get_logger
+from synthorg.observability.events.provider import (
+    PROVIDER_DISCOVERY_URL_ALLOWED,
+)
+
+logger = get_logger(__name__)
 
 _ALLOWED_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 _DEFAULT_PORTS: dict[str, int] = {"http": 80, "https": 443}
@@ -76,10 +82,7 @@ def extract_host_port(url: str) -> str | None:
     Returns:
         Lowercase ``host:port`` string, or ``None``.
     """
-    try:
-        parsed = urlparse(url)
-    except Exception:
-        return None
+    parsed = urlparse(url)
 
     if parsed.scheme not in _ALLOWED_SCHEMES:
         return None
@@ -89,7 +92,13 @@ def extract_host_port(url: str) -> str | None:
         return None
 
     hostname = hostname.lower()
-    port = parsed.port or _DEFAULT_PORTS.get(parsed.scheme)
+    port = (
+        parsed.port
+        if parsed.port is not None
+        else _DEFAULT_PORTS.get(
+            parsed.scheme,
+        )
+    )
     if port is None:
         return None
 
@@ -169,4 +178,11 @@ def is_url_allowed(url: str, policy: ProviderDiscoveryPolicy) -> bool:
     if hp is None:
         return False
 
-    return hp in policy.host_port_allowlist
+    allowed = hp in policy.host_port_allowlist
+    logger.debug(
+        PROVIDER_DISCOVERY_URL_ALLOWED,
+        url=url,
+        host_port=hp,
+        allowed=allowed,
+    )
+    return allowed

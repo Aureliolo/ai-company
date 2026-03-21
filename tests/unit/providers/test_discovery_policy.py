@@ -123,6 +123,10 @@ class TestExtractHostPort:
     def test_file_scheme_returns_none(self) -> None:
         assert extract_host_port("file:///etc/passwd") is None
 
+    def test_port_zero_not_normalized_to_default(self) -> None:
+        result = extract_host_port("http://host:0/v1")
+        assert result == "host:0"
+
 
 # ── seed_from_presets ────────────────────────────────────────────
 
@@ -283,7 +287,7 @@ class TestDiscoveryPolicyProperties:
 
     @given(
         entries=st.lists(
-            st.from_regex(r"[a-z][a-z0-9\.\-]{0,20}:[0-9]{1,5}", fullmatch=True),
+            st.from_regex(r"[a-zA-Z][a-zA-Z0-9\.\-]{0,20}:[0-9]{1,5}", fullmatch=True),
             min_size=0,
             max_size=10,
         ),

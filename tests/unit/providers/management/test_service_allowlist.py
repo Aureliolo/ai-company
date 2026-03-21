@@ -11,7 +11,7 @@ from synthorg.providers.management.service import ProviderManagementService
 
 from .conftest import make_create_request
 
-pytestmark = pytest.mark.timeout(30)
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 
 
 # ── Helpers ──────────────────────────────────────────────────────
@@ -27,7 +27,6 @@ async def _read_persisted_policy(
 # ── Provider create adds to allowlist ────────────────────────────
 
 
-@pytest.mark.unit
 class TestCreateProviderAllowlist:
     """Creating a provider updates the discovery allowlist."""
 
@@ -70,7 +69,6 @@ class TestCreateProviderAllowlist:
 # ── Provider delete removes from allowlist ───────────────────────
 
 
-@pytest.mark.unit
 class TestDeleteProviderAllowlist:
     """Deleting a provider updates the discovery allowlist."""
 
@@ -117,7 +115,6 @@ class TestDeleteProviderAllowlist:
 # ── Provider update modifies allowlist ───────────────────────────
 
 
-@pytest.mark.unit
 class TestUpdateProviderAllowlist:
     """Updating a provider's base_url updates the allowlist."""
 
@@ -160,7 +157,6 @@ class TestUpdateProviderAllowlist:
 # ── Discovery trust uses allowlist ───────────────────────────────
 
 
-@pytest.mark.unit
 class TestDiscoveryTrustViaAllowlist:
     """Trust resolution now uses the allowlist, not _resolve_discovery_trust."""
 
@@ -207,7 +203,6 @@ class TestDiscoveryTrustViaAllowlist:
 # ── Custom allowlist entry API ───────────────────────────────────
 
 
-@pytest.mark.unit
 class TestCustomAllowlistEntries:
     """Public API for adding/removing custom allowlist entries."""
 
@@ -261,7 +256,6 @@ class TestCustomAllowlistEntries:
 # ── Seed includes preset entries ─────────────────────────────────
 
 
-@pytest.mark.unit
 class TestAllowlistSeeding:
     """The initial allowlist is seeded from preset candidate URLs."""
 
@@ -293,7 +287,6 @@ class TestAllowlistSeeding:
 # ── create_from_preset trust ─────────────────────────────────────
 
 
-@pytest.mark.unit
 class TestCreateFromPresetAllowlistTrust:
     """Preset creation uses the allowlist for trust decisions."""
 
@@ -335,3 +328,80 @@ class TestCreateFromPresetAllowlistTrust:
 
         mock_discover.assert_awaited_once()
         assert mock_discover.call_args.kwargs["trust_url"] is False
+
+
+# ── Edge cases ───────────────────────────────────────────────
+
+
+class TestAllowlistEdgeCases:
+    """Edge cases and error recovery."""
+
+    async def test_corrupted_policy_reseeds(
+        self,
+        service: ProviderManagementService,
+        fake_persistence: object,
+    ) -> None:
+        """Corrupted persisted policy triggers re-seed."""
+        from datetime import UTC, datetime
+
+        # Write corrupted JSON directly to the raw repository,
+        # bypassing SettingsService validation.
+        repo = fake_persistence.settings  # type: ignore[union-attr]
+        repo._store[("providers", "discovery_allowlist")] = (
+            "not-valid-json",
+            datetime.now(tz=UTC).isoformat(),
+        )
+        policy = await service.get_discovery_policy()
+        # Re-seeded: should contain preset entries
+        assert "localhost:11434" in policy.host_port_allowlist
+
+    async def test_invalid_schema_reseeds(
+        self,
+        service: ProviderManagementService,
+        fake_persistence: object,
+    ) -> None:
+        """Valid JSON with invalid schema triggers re-seed."""
+        from datetime import UTC, datetime
+
+        repo = fake_persistence.settings  # type: ignore[union-attr]
+        repo._store[("providers", "discovery_allowlist")] = (
+            '{"block_private_ips": "not-a-bool"}',
+            datetime.now(tz=UTC).isoformat(),
+        )
+        policy = await service.get_discovery_policy()
+        assert "localhost:11434" in policy.host_port_allowlist
+
+    async def test_update_from_none_to_url(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Updating provider from no base_url to a URL adds to allowlist."""
+        await service.create_provider(
+            make_create_request(base_url=None),
+        )
+        await service.update_provider(
+            "test-provider",
+            UpdateProviderRequest(base_url="http://new-host:7070"),
+        )
+        policy = await _read_persisted_policy(service)
+        assert "new-host:7070" in policy.host_port_allowlist
+
+    async def test_delete_provider_without_base_url(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Deleting a provider with no base_url does not error."""
+        await service.create_provider(
+            make_create_request(base_url=None),
+        )
+        await service.delete_provider("test-provider")
+        # Should not raise -- just a no-op for the allowlist
+
+    async def test_add_custom_entry_normalizes_case(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Custom entry is normalized to lowercase."""
+        policy = await service.add_custom_allowlist_entry("MY-HOST:8080")
+        assert "my-host:8080" in policy.host_port_allowlist
+        assert "MY-HOST:8080" not in policy.host_port_allowlist
