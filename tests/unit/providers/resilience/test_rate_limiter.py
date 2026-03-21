@@ -100,25 +100,19 @@ class TestRateLimiterPause:
         config = RateLimiterConfig(max_concurrent=10)
         limiter = RateLimiter(config, provider_name="test-provider")
 
-        base_t = 500_000.0
-        call_count = 0
+        # Use a mutable clock instead of call-count to avoid flakiness
+        # when logging or asyncio internals call time.monotonic().
+        current_time = 500_000.0
 
         def time_fn() -> float:
-            nonlocal call_count
-            call_count += 1
-            # pause() sees base_t; acquire() loop sees base_t + 0.02
-            # (still within pause window); after sleep sees base_t + 0.2
-            if call_count <= 2:
-                return base_t
-            if call_count == 3:
-                return base_t + 0.02
-            return base_t + 0.2
+            return current_time
 
         slept_for: float | None = None
 
         async def fake_sleep(seconds: float) -> None:
-            nonlocal slept_for
+            nonlocal current_time, slept_for
             slept_for = seconds
+            current_time += seconds
 
         with (
             mock.patch(
@@ -142,23 +136,19 @@ class TestRateLimiterPause:
         config = RateLimiterConfig(max_concurrent=10)
         limiter = RateLimiter(config, provider_name="test-provider")
 
-        base_t = 600_000.0
-        call_count = 0
+        # Use a mutable clock instead of call-count to avoid flakiness
+        # when logging or asyncio internals call time.monotonic().
+        current_time = 600_000.0
 
         def time_fn() -> float:
-            nonlocal call_count
-            call_count += 1
-            if call_count <= 3:
-                return base_t
-            if call_count == 4:
-                return base_t + 0.01  # still in pause window
-            return base_t + 0.2  # after sleep, past pause
+            return current_time
 
         slept_for: float | None = None
 
         async def fake_sleep(seconds: float) -> None:
-            nonlocal slept_for
+            nonlocal current_time, slept_for
             slept_for = seconds
+            current_time += seconds
 
         with (
             mock.patch(

@@ -166,11 +166,17 @@ class TestDeleteSnapshotEvent:
                 make_create_data(),
                 requested_by="alice",
             )
-            await asyncio.sleep(0)  # let snapshot publish
+            # Yield multiple times so the background processing loop
+            # can consume the mutation queue and publish the snapshot.
+            for _ in range(3):
+                await asyncio.sleep(0)
             message_bus.published.clear()
 
             await eng.delete_task(task.id, requested_by="alice")
-            await asyncio.sleep(0)  # let snapshot publish
+            # Yield multiple times so the background processing loop
+            # can consume the mutation queue and publish the snapshot.
+            for _ in range(3):
+                await asyncio.sleep(0)
 
             assert len(message_bus.published) == 1
             event = TaskStateChanged.model_validate_json(

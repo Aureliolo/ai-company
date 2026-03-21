@@ -578,7 +578,7 @@ class TestRunGitErrorPaths:
             nonlocal calls
             calls += 1
             if calls == 1:
-                await asyncio.sleep(999)
+                await asyncio.Event().wait()  # blocks until cancelled
             return b"", b""
 
         mock_proc = MagicMock()
@@ -606,7 +606,7 @@ class TestRunGitErrorPaths:
             nonlocal calls
             calls += 1
             if calls == 1:
-                await asyncio.sleep(999)
+                await asyncio.Event().wait()  # blocks until cancelled
             return b"", b"fatal: could not access repository"
 
         mock_proc = MagicMock()
@@ -635,7 +635,7 @@ class TestRunGitErrorPaths:
             nonlocal calls
             calls += 1
             if calls == 1:
-                await asyncio.sleep(999)
+                await asyncio.Event().wait()  # blocks until cancelled
             return b"", b"error\x00with\x07control\x1fchars"
 
         mock_proc = MagicMock()
@@ -665,7 +665,7 @@ class TestRunGitErrorPaths:
             nonlocal calls
             calls += 1
             if calls == 1:
-                await asyncio.sleep(999)
+                await asyncio.Event().wait()  # blocks until cancelled
             return b"", ("x" * 1000).encode()
 
         mock_proc = MagicMock()

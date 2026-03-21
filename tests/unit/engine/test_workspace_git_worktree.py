@@ -511,18 +511,15 @@ class TestConcurrentSetup:
             )
         )
 
-        call_count = 0
-
         async def mock_git(
             self_: PlannerWorktreeStrategy,
             *args: str,
             timeout: float = 60.0,  # noqa: ASYNC109
         ) -> tuple[int, str, str]:
-            nonlocal call_count
-            call_count += 1
-            # Slow down first call to ensure overlap
-            if call_count <= 2:
-                await asyncio.sleep(0.01)
+            # Yield control multiple times so the concurrent task can
+            # attempt to acquire the semaphore while we hold it.
+            for _ in range(5):
+                await asyncio.sleep(0)
             return (0, "", "")
 
         results: list[object] = []

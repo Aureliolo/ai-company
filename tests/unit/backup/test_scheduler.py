@@ -81,9 +81,9 @@ class TestSchedulerStop:
         service = _make_mock_service()
         scheduler = BackupScheduler(service, interval_hours=1)
 
-        # Create a real task that just sleeps forever
+        # Create a task that blocks until cancelled
         async def _forever() -> None:
-            await asyncio.sleep(999999)
+            await asyncio.Event().wait()
 
         scheduler._task = asyncio.create_task(_forever())
         assert scheduler.is_running

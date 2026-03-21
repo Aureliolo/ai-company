@@ -1,6 +1,5 @@
 """Tests for OffboardingService."""
 
-import asyncio
 from typing import Any
 
 import pytest
@@ -147,8 +146,6 @@ class FakeMessageBus:
         *,
         timeout: float | None = None,  # noqa: ASYNC109
     ) -> Any:
-        if timeout is not None:
-            await asyncio.sleep(min(timeout, 0.01))
         return None
 
     async def create_channel(self, channel: Channel) -> Channel:

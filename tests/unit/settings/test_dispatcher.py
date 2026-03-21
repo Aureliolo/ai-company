@@ -234,8 +234,8 @@ async def _wait_for_queue_drain(
         if loop.time() > deadline:
             msg = "Queue drain timed out"
             raise TimeoutError(msg)
-        await asyncio.sleep(0.01)
-    # One event-loop tick for the dispatcher to finish processing
+        await asyncio.sleep(0)
+    # One extra event-loop tick for the dispatcher to finish processing
     await asyncio.sleep(0)
 
 

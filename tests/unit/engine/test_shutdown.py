@@ -116,7 +116,7 @@ class TestCooperativeTimeoutForceCancel:
         strategy = CooperativeTimeoutStrategy(grace_seconds=0.1)
 
         async def stubborn_task() -> None:
-            await asyncio.sleep(100)  # ignores shutdown
+            await asyncio.Event().wait()  # ignores shutdown
 
         task = asyncio.create_task(stubborn_task())
         result = await strategy.execute_shutdown(
@@ -135,7 +135,7 @@ class TestCooperativeTimeoutForceCancel:
             await shutdown_event.wait()
 
         async def stubborn() -> None:
-            await asyncio.sleep(100)
+            await asyncio.Event().wait()
 
         t1 = asyncio.create_task(cooperative())
         t2 = asyncio.create_task(stubborn())
@@ -177,7 +177,7 @@ class TestCooperativeTimeoutCleanup:
         strategy = CooperativeTimeoutStrategy(cleanup_seconds=0.1)
 
         async def slow_callback() -> None:
-            await asyncio.sleep(100)
+            await asyncio.Event().wait()
 
         result = await strategy.execute_shutdown(
             running_tasks={},

@@ -104,9 +104,11 @@ describe('usePolling', () => {
     const { start } = usePolling(fn, 100)
 
     start()
-    // Advance past several intervals -- with setTimeout-based scheduling,
-    // next tick only starts after previous completes
-    await vi.advanceTimersByTimeAsync(2000)
+    // Advance in small increments to properly interleave async
+    // promise resolution with timer advancement.
+    for (let i = 0; i < 20; i++) {
+      await vi.advanceTimersByTimeAsync(100)
+    }
     expect(maxConcurrent).toBe(1)
   })
 

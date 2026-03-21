@@ -308,7 +308,7 @@ class TestAgentEngineTimeout:
         """Slow provider triggers timeout → ERROR result."""
 
         async def slow_execute(**kwargs: Any) -> ExecutionResult:
-            await asyncio.sleep(10)
+            await asyncio.Event().wait()  # blocks until cancelled by timeout
             msg = "Should not reach here"
             raise AssertionError(msg)
 
@@ -448,7 +448,7 @@ class TestAgentEngineTimeoutEdgeCases:
         """Timeout result has no turns, so no costs are recorded."""
 
         async def slow_execute(**kwargs: Any) -> ExecutionResult:
-            await asyncio.sleep(10)
+            await asyncio.Event().wait()  # blocks until cancelled by timeout
             msg = "Should not reach here"
             raise AssertionError(msg)
 

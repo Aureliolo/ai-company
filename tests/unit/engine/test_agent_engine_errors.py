@@ -563,7 +563,7 @@ class TestAgentEngineRecovery:
         import asyncio
 
         async def slow_execute(**_kwargs: object) -> ExecutionResult:
-            await asyncio.sleep(10)
+            await asyncio.Event().wait()  # blocks until cancelled by timeout
             ctx = AgentContext.from_identity(
                 sample_agent_with_personality,
                 task=sample_task_with_criteria,
