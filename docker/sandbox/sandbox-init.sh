@@ -13,8 +13,8 @@
 #   - Hostnames are resolved to IPv4 addresses at container startup;
 #     subsequent DNS changes (CDN rotation, geo-DNS) are not reflected
 #     in the iptables rules.  Use stable IPs for production allowed_hosts.
-#   - NET_ADMIN/NET_RAW capabilities are granted at the container level for
-#     iptables setup. setpriv clears bounding/ambient/inheritable sets before
+#   - NET_ADMIN capability is granted at the container level for iptables
+#     setup. setpriv clears bounding/ambient/inheritable sets before
 #     executing the user command, but the container-level grant persists
 #     (Docker limitation -- cannot drop capabilities mid-lifecycle).
 set -eu

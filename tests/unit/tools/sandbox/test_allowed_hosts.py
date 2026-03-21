@@ -60,8 +60,7 @@ class TestAllowedHostsEnforcementActive:
     def test_cap_add_includes_net_admin(self, tmp_path: Path) -> None:
         result = _build_config(tmp_path)
         cap_add = result["HostConfig"]["CapAdd"]
-        assert "NET_ADMIN" in cap_add
-        assert "NET_RAW" in cap_add
+        assert cap_add == ["NET_ADMIN"]
 
     def test_user_set_to_root(self, tmp_path: Path) -> None:
         result = _build_config(tmp_path)
@@ -193,7 +192,19 @@ class TestAllowedHostsWithEnvOverrides:
         assert "MY_VAR=hello" in env
         assert any(e.startswith("SANDBOX_ALLOWED_HOSTS=") for e in env)
 
-    def test_reserved_env_key_rejected(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize(
+        "env_key",
+        [
+            "SANDBOX_ALLOWED_HOSTS",
+            "SANDBOX_DNS_ALLOWED",
+            "SANDBOX_LOOPBACK_ALLOWED",
+        ],
+    )
+    def test_reserved_env_key_rejected(
+        self,
+        tmp_path: Path,
+        env_key: str,
+    ) -> None:
         from synthorg.tools.sandbox.errors import SandboxError
 
         config = DockerSandboxConfig(
@@ -206,5 +217,5 @@ class TestAllowedHostsWithEnvOverrides:
                 command="echo",
                 args=(),
                 container_cwd="/workspace",
-                env_overrides={"SANDBOX_ALLOWED_HOSTS": "evil.com:80"},
+                env_overrides={env_key: "evil"},
             )
