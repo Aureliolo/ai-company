@@ -43,12 +43,12 @@ describe('ArtifactBrowserPage', () => {
     expect(wrapper.text()).toContain('Coming Soon')
   })
 
-  it('renders GitHub issue link to #233', () => {
+  it('renders GitHub issue link to #612', () => {
     const wrapper = mount(ArtifactBrowserPage)
     const link = wrapper.find('a[href*="github.com"]')
     expect(link.exists()).toBe(true)
-    expect(link.attributes('href')).toContain('/issues/233')
-    expect(link.text()).toContain('#233')
+    expect(link.attributes('href')).toContain('/issues/612')
+    expect(link.text()).toContain('#612')
   })
 
   it('opens GitHub link in new tab', () => {
