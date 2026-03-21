@@ -43,6 +43,7 @@ from synthorg.observability.events.setup import (
     SETUP_TEMPLATES_LISTED,
 )
 from synthorg.persistence.errors import QueryError
+from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
@@ -360,7 +361,12 @@ async def _check_has_company(
     *,
     strict: bool = False,
 ) -> bool:
-    """Check whether a company name has been configured.
+    """Check whether a company name has been explicitly created.
+
+    Only values persisted to the database (i.e. saved by the user
+    through the setup wizard) count.  YAML/code defaults like
+    ``"SynthOrg"`` must not cause a fresh setup to report the
+    company as already existing.
 
     Args:
         settings_svc: Settings service instance.
@@ -368,10 +374,12 @@ async def _check_has_company(
             returning False (use for validation gates, not status checks).
 
     Returns:
-        True if a non-empty company name is stored, False otherwise.
+        True if a user-created company name exists, False otherwise.
     """
     try:
         entry = await settings_svc.get_entry("company", "company_name")
+        if entry.source != SettingSource.DATABASE:
+            return False
         return bool(entry.value and entry.value.strip())
     except MemoryError, RecursionError:
         raise

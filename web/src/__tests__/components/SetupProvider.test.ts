@@ -11,7 +11,6 @@ import type { ProviderConfig, ProviderPreset } from '@/api/types'
 vi.mock('@/api/endpoints/providers', () => ({
   listProviders: vi.fn().mockResolvedValue({}),
   listPresets: vi.fn().mockResolvedValue([]),
-  testConnection: vi.fn().mockResolvedValue({ success: true, latency_ms: 42, error: null, model_tested: 'test-small-001' }),
   createFromPreset: vi.fn(),
   discoverModels: vi.fn(),
   probePreset: vi.fn().mockResolvedValue({ url: null, model_count: 0, candidates_tried: 0 }),
@@ -122,7 +121,6 @@ describe('SetupProvider', () => {
     // Re-establish factory defaults after resetAllMocks clears implementations
     vi.mocked(providersApi.listProviders).mockResolvedValue({})
     vi.mocked(providersApi.listPresets).mockResolvedValue([])
-    vi.mocked(providersApi.testConnection).mockResolvedValue({ success: true, latency_ms: 42, error: null, model_tested: 'test-small-001' })
   })
 
   afterEach(() => {
@@ -130,15 +128,8 @@ describe('SetupProvider', () => {
     wrapper = undefined
   })
 
-  describe('auto-test on mount', () => {
-    it('triggers connection test when existing provider has models', async () => {
-      wrapper = mountWithExistingProvider()
-      await flushPromises()
-
-      expect(providersApi.testConnection).toHaveBeenCalledWith('test-provider', undefined)
-    })
-
-    it('enables Next button when auto-test succeeds', async () => {
+  describe('discovery as connection verification', () => {
+    it('enables Next when existing provider has models', async () => {
       wrapper = mountWithExistingProvider()
       await flushPromises()
 
@@ -147,15 +138,8 @@ describe('SetupProvider', () => {
       expect(nextBtn!.attributes('disabled')).toBeUndefined()
     })
 
-    it('disables Next button when auto-test fails', async () => {
-      vi.mocked(providersApi.testConnection).mockResolvedValue({
-        success: false,
-        latency_ms: null,
-        error: 'Connection refused',
-        model_tested: null,
-      })
-
-      wrapper = mountWithExistingProvider()
+    it('disables Next when provider has no models', async () => {
+      wrapper = mountWithExistingProvider(mockProviderNoModels)
       await flushPromises()
 
       const nextBtn = findButton(wrapper, 'Next')
@@ -163,47 +147,47 @@ describe('SetupProvider', () => {
       expect(nextBtn!.attributes('disabled')).toBe('')
     })
 
-    it('shows error when auto-test fails', async () => {
-      vi.mocked(providersApi.testConnection).mockResolvedValue({
-        success: false,
-        latency_ms: null,
-        error: 'Connection refused',
-        model_tested: null,
-      })
-
+    it('shows model count when models are available', async () => {
       wrapper = mountWithExistingProvider()
       await flushPromises()
 
-      expect(wrapper.text()).toContain('Connection refused')
+      expect(wrapper.text()).toContain('1 model available')
     })
 
-    it('handles auto-test network error gracefully', async () => {
-      vi.mocked(providersApi.testConnection).mockRejectedValue(new Error('Network error'))
+    it('shows no-models guidance for Ollama when no models exist', async () => {
+      vi.mocked(providersApi.listProviders).mockResolvedValue({ 'test-provider': mockProviderNoModels })
+      vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
+      vi.mocked(providersApi.probePreset).mockResolvedValue({ url: null, model_count: 0, candidates_tried: 0 })
 
+      wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
+      await flushPromises()
+
+      // The guidance won't show the Ollama-specific message because
+      // selectedPreset is null when mounting with existing provider.
+      // It shows the generic message instead.
+      expect(wrapper.text()).toContain('No models detected')
+    })
+
+    it('does not call testConnection at all', async () => {
       wrapper = mountWithExistingProvider()
       await flushPromises()
 
-      expect(wrapper.text()).toContain('Network error')
-      const nextBtn = findButton(wrapper, 'Next')
-      expect(nextBtn).toBeTruthy()
-      expect(nextBtn!.attributes('disabled')).toBe('')
+      expect(providersApi.listProviders).toHaveBeenCalled()
+      // testConnection is not imported/mocked -- verify the module
+      // mock does not include it.
+      expect('testConnection' in providersApi).toBe(false)
     })
 
-    it('does not auto-test when no existing providers', async () => {
+    it('disables Next when no providers exist', async () => {
       vi.mocked(providersApi.listProviders).mockResolvedValue({})
       vi.mocked(providersApi.listPresets).mockResolvedValue([mockPreset])
 
       wrapper = mount(SetupProvider, { global: { stubs: globalStubs } })
       await flushPromises()
 
-      expect(providersApi.testConnection).not.toHaveBeenCalled()
-    })
-
-    it('does not auto-test when provider has no models', async () => {
-      wrapper = mountWithExistingProvider(mockProviderNoModels)
-      await flushPromises()
-
-      expect(providersApi.testConnection).not.toHaveBeenCalled()
+      const nextBtn = findButton(wrapper, 'Next')
+      expect(nextBtn).toBeTruthy()
+      expect(nextBtn!.attributes('disabled')).toBe('')
     })
   })
 
@@ -289,13 +273,6 @@ describe('SetupProvider', () => {
 
   describe('navigation events', () => {
     it('emits next when Next button is clicked and canProceed is true', async () => {
-      vi.mocked(providersApi.testConnection).mockResolvedValue({
-        success: true,
-        latency_ms: 42,
-        error: null,
-        model_tested: 'test-small-001',
-      })
-
       wrapper = mountWithExistingProvider()
       await flushPromises()
 

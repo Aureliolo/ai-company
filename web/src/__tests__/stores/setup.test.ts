@@ -143,6 +143,47 @@ describe('useSetupStore', () => {
       expect(store.isStepComplete('agent')).toBe(false)
     })
 
+    it('enforces sequential ordering (company without provider is incomplete)', async () => {
+      mockGetSetupStatus.mockResolvedValue({
+        needs_admin: false,
+        needs_setup: true,
+        has_providers: false,
+        has_company: true,
+        has_agents: false,
+        min_password_length: 12,
+      })
+
+      const store = useSetupStore()
+      await store.fetchStatus()
+
+      expect(store.isStepComplete('admin')).toBe(true)
+      expect(store.isStepComplete('provider')).toBe(false)
+      // Company exists in backend but provider is missing, so
+      // the stepper must not show company as done.
+      expect(store.isStepComplete('company')).toBe(false)
+      expect(store.isStepComplete('agent')).toBe(false)
+    })
+
+    it('enforces sequential ordering (agent without admin is incomplete)', async () => {
+      mockGetSetupStatus.mockResolvedValue({
+        needs_admin: true,
+        needs_setup: true,
+        has_providers: true,
+        has_company: true,
+        has_agents: true,
+        min_password_length: 12,
+      })
+
+      const store = useSetupStore()
+      await store.fetchStatus()
+
+      // Nothing should be complete because admin is not done.
+      expect(store.isStepComplete('admin')).toBe(false)
+      expect(store.isStepComplete('provider')).toBe(false)
+      expect(store.isStepComplete('company')).toBe(false)
+      expect(store.isStepComplete('agent')).toBe(false)
+    })
+
     it('correctly re-syncs when status regresses (provider deleted)', async () => {
       // First fetch: provider exists
       mockGetSetupStatus.mockResolvedValue({

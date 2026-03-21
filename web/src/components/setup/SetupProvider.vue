@@ -6,7 +6,7 @@ import Tag from 'primevue/tag'
 import { useProviderStore } from '@/stores/providers'
 import { useSetupStore } from '@/stores/setup'
 import { getErrorMessage } from '@/utils/errors'
-import type { ProviderPreset, TestConnectionResponse } from '@/api/types'
+import type { ProviderPreset } from '@/api/types'
 
 const emit = defineEmits<{
   next: []
@@ -22,15 +22,12 @@ const baseUrl = ref('')
 const apiKey = ref('')
 const error = ref<string | null>(null)
 const creating = ref(false)
-const testing = ref(false)
 const discovering = ref(false)
 const probing = ref(false)
 const probeMessage = ref<string | null>(null)
 const probedUrl = ref<string | null>(null)
 let probeGeneration = 0
 const createdProviderName = ref<string | null>(null)
-const testPassed = ref(false)
-const testResult = ref<TestConnectionResponse | null>(null)
 /** Whether user is changing an existing provider. */
 const changingProvider = ref(false)
 
@@ -46,7 +43,9 @@ const hasModels = computed(() => {
   return createdProvider.value.models.length > 0
 })
 
-const canProceed = computed(() => hasProviders.value && hasModels.value && testPassed.value)
+// Discovery = connection test.  If the provider is reachable and
+// models were listed, the connection is verified.
+const canProceed = computed(() => hasProviders.value && hasModels.value)
 
 /** Whether to show the completed summary state. */
 const showSummary = computed(() =>
@@ -80,7 +79,7 @@ const noModelsGuidance = computed(() => {
   if (!selectedPreset.value && !createdProviderName.value) return null
   const preset = selectedPreset.value?.name
   if (preset === 'ollama') {
-    return 'Make sure Ollama is running and you have pulled at least one model (e.g. ollama pull llama3.2).'
+    return 'Make sure Ollama is running and you have pulled at least one model (e.g. ollama pull qwen2.5:0.5b).'
   }
   if (preset === 'lm-studio') {
     return 'Make sure LM Studio is running with at least one model loaded.'
@@ -118,8 +117,6 @@ async function selectPreset(preset: ProviderPreset) {
   apiKey.value = ''
   error.value = null
   createdProviderName.value = null
-  testPassed.value = false
-  testResult.value = null
   probeMessage.value = null
   probedUrl.value = null
   probing.value = false
@@ -175,8 +172,6 @@ async function handleChangeProvider() {
   }
   createdProviderName.value = null
   selectedPreset.value = null
-  testPassed.value = false
-  testResult.value = null
   error.value = null
   changingProvider.value = true
 }
@@ -221,33 +216,6 @@ async function handleDiscoverModels() {
   }
 }
 
-async function handleTestConnection() {
-  if (!createdProviderName.value) return
-  testing.value = true
-  error.value = null
-  try {
-    const res = await store.testConnection(createdProviderName.value)
-    testResult.value = res
-    testPassed.value = res.success
-    if (!res.success) {
-      error.value = res.error ?? 'Connection test failed'
-    } else {
-      error.value = null
-    }
-  } catch (err) {
-    testResult.value = {
-      success: false,
-      latency_ms: null,
-      error: getErrorMessage(err),
-      model_tested: null,
-    }
-    testPassed.value = false
-    error.value = getErrorMessage(err)
-  } finally {
-    testing.value = false
-  }
-}
-
 onMounted(async () => {
   try {
     await Promise.all([store.fetchPresets(), store.fetchProviders()])
@@ -257,10 +225,6 @@ onMounted(async () => {
   if (hasProviders.value) {
     const names = Object.keys(store.providers)
     createdProviderName.value = names[0] ?? null
-    // Auto-trigger connection test instead of silently auto-passing.
-    if (hasModels.value) {
-      await handleTestConnection()
-    }
   }
 })
 </script>
@@ -285,9 +249,6 @@ onMounted(async () => {
           <p>Name: <strong>{{ createdProviderName }}</strong></p>
           <p v-if="createdProvider.base_url">URL: {{ createdProvider.base_url }}</p>
           <p>Models: {{ createdProvider.models.length }} available</p>
-          <p v-if="testPassed" class="text-green-400">
-            <i class="pi pi-check-circle mr-1" />Connection tested
-          </p>
         </div>
         <Button
           label="Change Provider"
@@ -430,7 +391,7 @@ onMounted(async () => {
         </form>
       </template>
 
-      <!-- Post-creation: discovery + test connection -->
+      <!-- Post-creation: model discovery status -->
       <template v-if="createdProviderName">
         <div class="mt-4 flex flex-col items-center gap-3">
           <!-- No models guidance -->
@@ -466,30 +427,6 @@ onMounted(async () => {
               {{ createdProvider.models.length }} model{{ createdProvider.models.length !== 1 ? 's' : '' }} available
             </p>
           </div>
-
-          <!-- Test connection (only show when models exist) -->
-          <template v-if="hasModels">
-            <div v-if="!testPassed" class="flex items-center gap-3">
-              <Button
-                label="Test Connection"
-                icon="pi pi-bolt"
-                severity="info"
-                size="small"
-                :loading="testing"
-                @click="handleTestConnection"
-              />
-            </div>
-            <div v-if="testResult" class="text-center">
-              <p v-if="testResult.success" class="text-sm text-green-400">
-                <i class="pi pi-check-circle mr-1" />
-                Connection successful{{ testResult.latency_ms != null ? ` (${testResult.latency_ms}ms)` : '' }}
-              </p>
-              <p v-else class="text-sm text-red-400">
-                <i class="pi pi-times-circle mr-1" />
-                {{ testResult.error ?? 'Connection failed' }}
-              </p>
-            </div>
-          </template>
 
           <!-- Change provider button -->
           <Button

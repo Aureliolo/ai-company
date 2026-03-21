@@ -126,7 +126,7 @@ async function handleSetup() {
             />
             <button
               type="button"
-              class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-white"
+              class="absolute right-3 top-1/2 z-10 -translate-y-1/2 text-slate-300 hover:text-white"
               :title="showPassword ? 'Hide password' : 'Show password'"
               :aria-label="showPassword ? 'Hide password' : 'Show password'"
               @click="showPassword = !showPassword"
@@ -152,7 +152,7 @@ async function handleSetup() {
             />
             <button
               type="button"
-              class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-white"
+              class="absolute right-3 top-1/2 z-10 -translate-y-1/2 text-slate-300 hover:text-white"
               :title="showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'"
               :aria-label="showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'"
               @click="showConfirmPassword = !showConfirmPassword"

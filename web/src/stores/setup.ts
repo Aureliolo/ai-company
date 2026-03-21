@@ -39,19 +39,25 @@ export const useSetupStore = defineStore('setup', () => {
     return completedSteps.value[stepId] ?? false
   }
 
-  /** Sync completion map from the backend status response. */
+  /** Sync completion map from the backend status response.
+   *
+   * Enforces sequential ordering: a step is only marked complete
+   * if all prior steps are also complete.  This prevents a stale
+   * backend flag (e.g. company from a previous attempt) from
+   * lighting up a later step while an earlier one is incomplete.
+   */
   function syncCompletionFromStatus(): void {
     if (!status.value) return
+    const adminDone = !status.value.needs_admin
+    const providerDone = adminDone && status.value.has_providers
+    const companyDone = providerDone && status.value.has_company
+    const agentDone = companyDone && status.value.has_agents
     completedSteps.value = {
-      ...completedSteps.value,
-      admin: !status.value.needs_admin,
-      provider: status.value.has_providers,
-      company: status.value.has_company,
-      agent: status.value.has_agents,
-    }
-    // Welcome is always complete once we've moved past it.
-    if (currentStep.value > 0) {
-      completedSteps.value = { ...completedSteps.value, welcome: true }
+      welcome: currentStep.value > 0,
+      admin: adminDone,
+      provider: providerDone,
+      company: companyDone,
+      agent: agentDone,
     }
   }
 

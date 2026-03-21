@@ -637,23 +637,33 @@ class TestSetupComplete:
     ) -> None:
         """Completion requires company, agents, and providers.
 
-        The test fixture's root_config provides company_name, so the
-        company check passes automatically. This test walks through
-        the remaining prerequisite checks: agents, then providers,
-        then confirms success once all are satisfied.
+        The company must be persisted to the DB (not just present in
+        YAML defaults) for ``_check_has_company`` to recognise it.
+        This test walks through the prerequisite checks in order:
+        company, agents, providers, then confirms success.
         """
         app_state = test_client.app.state.app_state
         settings_repo = app_state.persistence._settings_repo
         now = datetime.now(UTC).isoformat()
 
-        # 1. No agents -- rejected (company comes from root_config).
+        company_key = ("company", "company_name")
+        agents_key = ("company", "agents")
+        original_company = settings_repo._store.get(company_key)
+        original_agents = settings_repo._store.get(agents_key)
+
+        # 1. No DB company_name -- rejected (YAML default doesn't count).
+        settings_repo._store.pop(company_key, None)
+        resp = test_client.post("/api/v1/setup/complete")
+        assert resp.status_code == 422
+        assert "company" in resp.json()["error"].lower()
+
+        # 2. Company set in DB, no agents -- rejected.
+        settings_repo._store[company_key] = ("Test Corp", now)
         resp = test_client.post("/api/v1/setup/complete")
         assert resp.status_code == 422
         assert "agent" in resp.json()["error"].lower()
 
-        # 2. Agents set, no providers -- rejected.
-        agents_key = ("company", "agents")
-        original_agents = settings_repo._store.get(agents_key)
+        # 3. Agents set, no providers -- rejected.
         agents_json = json.dumps([{"name": "agent-001", "role": "CEO"}])
         settings_repo._store[agents_key] = (agents_json, now)
         try:
@@ -661,7 +671,7 @@ class TestSetupComplete:
             assert resp.status_code == 422
             assert "provider" in resp.json()["error"].lower()
 
-            # 3. All present -- success.
+            # 4. All present -- success.
             stub = MagicMock(spec=BaseCompletionProvider)
             original_registry = app_state._provider_registry
             app_state._provider_registry = ProviderRegistry(
@@ -680,6 +690,10 @@ class TestSetupComplete:
                 settings_repo._store.pop(agents_key, None)
             else:
                 settings_repo._store[agents_key] = original_agents
+            if original_company is None:
+                settings_repo._store.pop(company_key, None)
+            else:
+                settings_repo._store[company_key] = original_company
 
 
 @pytest.mark.unit
