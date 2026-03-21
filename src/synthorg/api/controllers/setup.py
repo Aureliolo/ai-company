@@ -88,39 +88,22 @@ class SetupController(Controller):
             Setup status envelope.
         """
         app_state: AppState = state.app_state
-        persistence = app_state.persistence
-
-        admin_count: int | None = None
-        try:
-            admin_count = await persistence.users.count_by_role(HumanRole.CEO)
-        except QueryError:
-            logger.warning(
-                SETUP_STATUS_SETTINGS_UNAVAILABLE,
-                context="admin_count",
-                exc_info=True,
-            )
-        needs_admin = admin_count == 0 if admin_count is not None else True
-
         settings_svc = app_state.settings_service
-        try:
-            entry = await settings_svc.get_entry("api", "setup_complete")
-            needs_setup = entry.value != "true"
-        except MemoryError, RecursionError:
-            raise
-        except Exception:
-            logger.warning(
-                SETUP_STATUS_SETTINGS_UNAVAILABLE,
-                exc_info=True,
-            )
-            needs_setup = True
 
+        needs_admin = await _check_needs_admin(app_state.persistence)
+        needs_setup = await _check_needs_setup(settings_svc)
         has_providers = (
             app_state.has_provider_registry and len(app_state.provider_registry) > 0
         )
-
-        has_company = await _check_has_company(settings_svc)
-        has_agents = await _check_has_agents(settings_svc)
-        min_password_length = await _resolve_min_password_length(settings_svc)
+        async with asyncio.TaskGroup() as tg:
+            co_task = tg.create_task(_check_has_company(settings_svc))
+            ag_task = tg.create_task(_check_has_agents(settings_svc))
+            pw_task = tg.create_task(
+                _resolve_min_password_length(settings_svc),
+            )
+        has_company = co_task.result()
+        has_agents = ag_task.result()
+        min_password_length = pw_task.result()
 
         logger.debug(
             SETUP_STATUS_CHECKED,
@@ -130,7 +113,6 @@ class SetupController(Controller):
             has_company=has_company,
             has_agents=has_agents,
         )
-
         return ApiResponse(
             data=SetupStatusResponse(
                 needs_admin=needs_admin,
@@ -186,10 +168,8 @@ class SetupController(Controller):
     ) -> ApiResponse[SetupCompanyResponse]:
         """Create company configuration during first-run setup.
 
-        Persists the company name, optional description, and optionally
-        applies a template to create department structure. Calling this
-        endpoint again overwrites the previously set company name,
-        description, and departments.
+        Persists company name, description, and optionally applies a
+        template.  Re-calling overwrites previous values.
 
         Args:
             data: Company creation payload.
@@ -247,8 +227,8 @@ class SetupController(Controller):
     ) -> ApiResponse[SetupAgentResponse]:
         """Create an agent during first-run setup.
 
-        Validates the provider and model, builds an agent configuration,
-        and appends it to the company settings.
+        Validates provider/model, builds agent config, and appends
+        to company settings.
 
         Args:
             data: Agent creation payload.
@@ -333,9 +313,9 @@ class SetupController(Controller):
             logger.warning(SETUP_NO_COMPANY)
             raise ApiValidationError(msg)
 
-        # Verify at least one agent has been created.
-        existing_agents = await _get_existing_agents(settings_svc)
-        if not existing_agents:
+        # Verify at least one agent has been created (strict: propagate errors).
+        has_agents = await _check_has_agents(settings_svc, strict=True)
+        if not has_agents:
             msg = "At least one agent must be created before completing setup"
             logger.warning(SETUP_NO_AGENTS)
             raise ApiValidationError(msg)
@@ -354,6 +334,51 @@ class SetupController(Controller):
 
 
 # ── Helpers ──────────────────────────────────────────────────
+
+
+async def _check_needs_admin(persistence: Any) -> bool:
+    """Check whether an admin (CEO) user needs to be created.
+
+    Args:
+        persistence: Persistence backend instance.
+
+    Returns:
+        True if no CEO-role user exists, True on query error (fail-open).
+    """
+    count: int | None = None
+    try:
+        count = await persistence.users.count_by_role(HumanRole.CEO)
+    except QueryError:
+        logger.warning(
+            SETUP_STATUS_SETTINGS_UNAVAILABLE,
+            context="admin_count",
+            exc_info=True,
+        )
+        return True
+    return count == 0 if count is not None else True
+
+
+async def _check_needs_setup(settings_svc: SettingsService) -> bool:
+    """Check whether first-run setup has been completed.
+
+    Args:
+        settings_svc: Settings service instance.
+
+    Returns:
+        True if setup is still needed, True on error (fail-open).
+    """
+    try:
+        entry = await settings_svc.get_entry("api", "setup_complete")
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            SETUP_STATUS_SETTINGS_UNAVAILABLE,
+            exc_info=True,
+        )
+        return True
+    else:
+        return entry.value != "true"
 
 
 async def _check_has_company(
@@ -405,7 +430,11 @@ async def _check_has_company(
         return False
 
 
-async def _check_has_agents(settings_svc: SettingsService) -> bool:
+async def _check_has_agents(
+    settings_svc: SettingsService,
+    *,
+    strict: bool = False,
+) -> bool:
     """Check whether any agents have been explicitly created.
 
     Only values persisted to the database (i.e. saved by the user
@@ -414,6 +443,8 @@ async def _check_has_agents(settings_svc: SettingsService) -> bool:
 
     Args:
         settings_svc: Settings service instance.
+        strict: When True, propagate unexpected exceptions instead of
+            returning False (use for validation gates, not status checks).
 
     Returns:
         True if user-created agents exist, False otherwise.
@@ -447,6 +478,8 @@ async def _check_has_agents(settings_svc: SettingsService) -> bool:
         )
         return False
     except Exception:
+        if strict:
+            raise
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             setting="agents",
@@ -631,13 +664,16 @@ async def _persist_company_settings(
     Stores ``""`` when description is None (settings values are strings);
     consumers should treat ``""`` as absent.
     """
-    await settings_svc.set("company", "company_name", company_name)
-    await settings_svc.set("company", "description", description or "")
-    await settings_svc.set(
-        "company",
-        "departments",
-        departments_json or "[]",
-    )
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(
+            settings_svc.set("company", "company_name", company_name),
+        )
+        tg.create_task(
+            settings_svc.set("company", "description", description or ""),
+        )
+        tg.create_task(
+            settings_svc.set("company", "departments", departments_json or "[]"),
+        )
 
 
 def _extract_template_departments(template_name: str) -> str:
@@ -714,6 +750,14 @@ async def _get_existing_agents(
         raise
     except SettingNotFoundError:
         logger.debug(SETUP_AGENTS_READ_FALLBACK, reason="entry_not_found")
+        return []
+
+    if entry.source != SettingSource.DATABASE:
+        logger.debug(
+            SETUP_AGENTS_READ_FALLBACK,
+            reason="non_database_source",
+            source=entry.source,
+        )
         return []
 
     try:
