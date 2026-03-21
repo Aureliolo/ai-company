@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -222,8 +223,11 @@ func FuzzParseDockerSize(f *testing.F) {
 	f.Add("NaNMB")
 	f.Add("InfGB")
 	f.Add("-InfTB")
-	f.Fuzz(func(_ *testing.T, s string) {
-		// Exercise the parser with arbitrary input -- must not panic.
-		_ = parseDockerSize(s)
+	f.Fuzz(func(t *testing.T, s string) {
+		v := parseDockerSize(s)
+		// Invariant: result must always be finite (NaN/Inf rejected).
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			t.Errorf("parseDockerSize(%q) = %v, want finite value", s, v)
+		}
 	})
 }
