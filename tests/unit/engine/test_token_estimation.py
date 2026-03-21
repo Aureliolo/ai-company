@@ -12,7 +12,6 @@ from synthorg.providers.models import ChatMessage, ToolCall, ToolResult
 pytestmark = pytest.mark.unit
 
 
-@pytest.mark.unit
 class TestProtocolCompliance:
     """DefaultTokenEstimator satisfies the PromptTokenEstimator protocol."""
 
@@ -20,7 +19,6 @@ class TestProtocolCompliance:
         assert isinstance(DefaultTokenEstimator(), PromptTokenEstimator)
 
 
-@pytest.mark.unit
 class TestEstimateTokens:
     """Tests for estimate_tokens (len(text) // 4 heuristic)."""
 
@@ -50,7 +48,6 @@ class TestEstimateTokens:
         assert estimator.estimate_tokens(text) == expected
 
 
-@pytest.mark.unit
 class TestEstimateConversationTokens:
     """Tests for estimate_conversation_tokens."""
 
@@ -91,7 +88,7 @@ class TestEstimateConversationTokens:
         result = estimator.estimate_conversation_tokens((msg,))
         assert result == 14
 
-    def test_tool_result_none_content(self) -> None:
+    def test_tool_result_empty_content(self) -> None:
         estimator = DefaultTokenEstimator()
         msg = ChatMessage(
             role=MessageRole.TOOL,
@@ -100,7 +97,7 @@ class TestEstimateConversationTokens:
                 content="",
             ),
         )
-        # tool_result.content "" -> len("") // 4 = 0, + 4 overhead = 4
+        # tool_result.content "" (empty) -> len("") // 4 = 0, + 4 overhead = 4
         result = estimator.estimate_conversation_tokens((msg,))
         assert result == 4
 

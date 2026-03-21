@@ -1,7 +1,9 @@
 """Tests for QuotaTracker service."""
 
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import UTC, datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -42,6 +44,21 @@ def _hour_quota(max_requests: int = 60) -> QuotaLimit:
 
 def _day_token_quota(max_tokens: int = 1_000_000) -> QuotaLimit:
     return QuotaLimit(window=QuotaWindow.PER_DAY, max_tokens=max_tokens)
+
+
+@contextmanager
+def _patched_tracker_datetime() -> Generator[MagicMock]:
+    """Patch ``datetime`` in the quota_tracker module with ``_NOW``.
+
+    The mock forwards ``datetime(...)`` constructor calls to the real
+    ``datetime`` class while intercepting ``datetime.now()`` to return
+    ``_NOW``.  The yielded mock allows tests to advance time by setting
+    ``mock_dt.now.return_value = <new time>``.
+    """
+    with patch("synthorg.budget.quota_tracker.datetime") as mock_dt:
+        mock_dt.now.return_value = _NOW
+        mock_dt.side_effect = datetime
+        yield mock_dt
 
 
 # ── Construction ───────────────────────────────────────────────────
@@ -131,13 +148,7 @@ class TestRecordUsage:
             max_requests=60,
         )
 
-        # Mock datetime for entire test to avoid hour-boundary races
-        with patch(
-            "synthorg.budget.quota_tracker.datetime",
-        ) as mock_dt:
-            mock_dt.now.return_value = _NOW
-            mock_dt.side_effect = datetime
-
+        with _patched_tracker_datetime() as mock_dt:
             tracker = _make_tracker(quotas=(hour_quota,))
             await tracker.record_usage("test-provider", requests=10)
 
@@ -253,13 +264,7 @@ class TestCheckQuota:
             max_requests=10,
         )
 
-        # Mock datetime for entire test to avoid hour-boundary races
-        with patch(
-            "synthorg.budget.quota_tracker.datetime",
-        ) as mock_dt:
-            mock_dt.now.return_value = _NOW
-            mock_dt.side_effect = datetime
-
+        with _patched_tracker_datetime() as mock_dt:
             tracker = _make_tracker(quotas=(hour_quota,))
             await tracker.record_usage("test-provider", requests=10)
 
@@ -324,13 +329,7 @@ class TestGetSnapshot:
             max_requests=60,
         )
 
-        # Mock datetime for entire test to avoid hour-boundary races
-        with patch(
-            "synthorg.budget.quota_tracker.datetime",
-        ) as mock_dt:
-            mock_dt.now.return_value = _NOW
-            mock_dt.side_effect = datetime
-
+        with _patched_tracker_datetime() as mock_dt:
             tracker = _make_tracker(quotas=(hour_quota,))
             await tracker.record_usage("test-provider", requests=10)
 
