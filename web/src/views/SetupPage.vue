@@ -103,10 +103,8 @@ async function handleReviewComplete(providerName: string) {
   // dedicated API to fetch it separately. The actual name is stored in
   // settings as "company.name" but exposing it here requires a backend
   // change. Using a placeholder until then.
-  if (!createdCompanyName.value && setup.status?.has_company) {
-    createdCompanyName.value = 'Your Company'
-    createdAgentCount.value = setup.agents.length
-  }
+  // TODO: Add company_name to SetupStatusResponse or a dedicated endpoint
+  // so the completion screen can show the real name after page refresh.
   if (!createdAgentCount.value && setup.agents.length > 0) {
     createdAgentCount.value = setup.agents.length
   }
@@ -151,8 +149,9 @@ onMounted(async () => {
     if (resumeStep > 0) {
       setup.setStep(resumeStep, steps.value.length)
     }
-    // Restore completion summary values from store when resuming after refresh.
-    if (setup.status?.has_company && !createdCompanyName.value) {
+    // Restore agent count from store when resuming after refresh.
+    // Only fetch if admin exists (implies auth token is available).
+    if (setup.status?.has_company && !setup.status?.needs_admin) {
       try {
         await setup.fetchAgents()
       } catch {

@@ -92,7 +92,7 @@ def expand_template_agents(template: CompanyTemplate) -> list[dict[str, Any]]:
             "level": agent_cfg.level.value,
             "personality": personality,
             "personality_preset": preset_name,
-            "tier": agent_cfg.model,
+            "tier": agent_cfg.model,  # Template tier alias, not LLM model ID
             "model": {"provider": "", "model_id": ""},
         }
         agents.append(agent_dict)
