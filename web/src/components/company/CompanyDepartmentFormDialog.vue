@@ -125,7 +125,13 @@ function handleSave() {
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label for="dept-name" class="mb-1 block text-xs text-slate-400">Name</label>
-          <InputText id="dept-name" v-model="name" class="w-full" :disabled="mode === 'edit'" placeholder="e.g. engineering" />
+          <InputText
+            id="dept-name"
+            v-model="name"
+            class="w-full"
+            :disabled="mode === 'edit'"
+            placeholder="e.g. engineering"
+          />
         </div>
         <div>
           <label for="dept-head" class="mb-1 block text-xs text-slate-400">Head (agent name)</label>

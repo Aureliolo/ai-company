@@ -63,7 +63,10 @@ function handleDirty(payload: { namespace: SettingNamespace; key: string; value:
 </script>
 
 <template>
-  <div v-if="basicEntries.length === 0 && advancedEntries.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
+  <div
+    v-if="basicEntries.length === 0 && advancedEntries.length === 0"
+    class="rounded-lg border border-dashed border-slate-700 p-8 text-center"
+  >
     <p class="text-sm text-slate-400">No settings available in this section.</p>
   </div>
 

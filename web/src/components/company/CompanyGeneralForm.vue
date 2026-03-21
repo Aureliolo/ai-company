@@ -23,7 +23,10 @@ const generalEntries = computed(() =>
 </script>
 
 <template>
-  <div v-if="generalEntries.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
+  <div
+    v-if="generalEntries.length === 0"
+    class="rounded-lg border border-dashed border-slate-700 p-8 text-center"
+  >
     <p class="text-sm text-slate-400">No general company settings available.</p>
   </div>
   <div v-else class="grid grid-cols-1 gap-4 xl:grid-cols-2">

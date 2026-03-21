@@ -23,7 +23,10 @@ const emit = defineEmits<{
   save: [agent: AgentConfigEntry]
 }>()
 
-const LEVELS: SeniorityLevel[] = ['junior', 'mid', 'senior', 'lead', 'principal', 'director', 'vp', 'c_suite']
+const LEVELS: SeniorityLevel[] = [
+  'junior', 'mid', 'senior', 'lead',
+  'principal', 'director', 'vp', 'c_suite',
+]
 const AUTONOMY_LEVELS: AutonomyLevel[] = ['full', 'semi', 'supervised', 'locked']
 
 // Form state
@@ -126,7 +129,13 @@ function handleSave() {
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label for="agent-name" class="mb-1 block text-xs text-slate-400">Name</label>
-          <InputText id="agent-name" v-model="name" class="w-full" :disabled="mode === 'edit'" placeholder="agent-name" />
+          <InputText
+            id="agent-name"
+            v-model="name"
+            class="w-full"
+            :disabled="mode === 'edit'"
+            placeholder="agent-name"
+          />
         </div>
         <div>
           <label for="agent-role" class="mb-1 block text-xs text-slate-400">Role</label>
@@ -143,11 +152,22 @@ function handleSave() {
             editable
             placeholder="Select or type..."
           />
-          <InputText v-else id="agent-department" v-model="department" class="w-full" placeholder="e.g. engineering" />
+          <InputText
+            v-else
+            id="agent-department"
+            v-model="department"
+            class="w-full"
+            placeholder="e.g. engineering"
+          />
         </div>
         <div>
           <label for="agent-level" class="mb-1 block text-xs text-slate-400">Level</label>
-          <Select input-id="agent-level" v-model="level" :options="LEVELS" class="w-full" />
+          <Select
+            input-id="agent-level"
+            v-model="level"
+            :options="LEVELS"
+            class="w-full"
+          />
         </div>
         <div>
           <label for="agent-autonomy" class="mb-1 block text-xs text-slate-400">Autonomy Level (optional)</label>
@@ -204,8 +224,19 @@ function handleSave() {
 
     <template #footer>
       <div class="flex justify-end gap-2">
-        <Button label="Cancel" severity="secondary" text size="small" @click="emit('update:visible', false)" />
-        <Button :label="mode === 'create' ? 'Add Agent' : 'Save'" size="small" :disabled="!canSave" @click="handleSave" />
+        <Button
+          label="Cancel"
+          severity="secondary"
+          text
+          size="small"
+          @click="emit('update:visible', false)"
+        />
+        <Button
+          :label="mode === 'create' ? 'Add Agent' : 'Save'"
+          size="small"
+          :disabled="!canSave"
+          @click="handleSave"
+        />
       </div>
     </template>
   </Dialog>

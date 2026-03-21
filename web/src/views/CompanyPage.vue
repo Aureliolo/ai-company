@@ -283,7 +283,10 @@ async function handleCodeViewSave(updates: Array<{ namespace: SettingNamespace; 
             <Button label="Add Agent" size="small" :disabled="!!agentParseError" @click="openAddAgent" />
           </div>
 
-          <div v-if="!agentParseError && agents.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
+          <div
+            v-if="!agentParseError && agents.length === 0"
+            class="rounded-lg border border-dashed border-slate-700 p-8 text-center"
+          >
             <p class="text-sm text-slate-400">No agents configured. Add one to get started.</p>
           </div>
 
@@ -308,7 +311,10 @@ async function handleCodeViewSave(updates: Array<{ namespace: SettingNamespace; 
             <Button label="Add Department" size="small" :disabled="!!deptParseError" @click="openAddDept" />
           </div>
 
-          <div v-if="!deptParseError && departments.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
+          <div
+            v-if="!deptParseError && departments.length === 0"
+            class="rounded-lg border border-dashed border-slate-700 p-8 text-center"
+          >
             <p class="text-sm text-slate-400">No departments configured. Add one to get started.</p>
           </div>
 
