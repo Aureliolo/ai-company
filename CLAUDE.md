@@ -110,10 +110,10 @@ src/synthorg/
   core/           # Shared domain models, base classes, resilience config
   engine/         # Orchestration, execution loops, task engine, coordination, checkpoint recovery, approval/review gates, stagnation detection, context budget, compaction, hybrid loop
   hr/             # Hiring, firing, onboarding, agent registry, performance tracking, promotion/demotion
-  memory/         # Pluggable MemoryBackend, Mem0 adapter, retrieval pipeline (RRF), org memory, consolidation
-  persistence/    # Pluggable PersistenceBackend, SQLite, SettingsRepository, UserRepository
-  observability/  # Structured logging (8-sink pipeline), correlation tracking, redaction, third-party logger taming, events/
-  providers/      # LLM provider abstraction (LiteLLM), presets, model auto-discovery, runtime CRUD (management/), provider families
+  memory/         # Pluggable MemoryBackend, retrieval pipeline, org memory, consolidation
+  persistence/    # Pluggable PersistenceBackend, SQLite, settings + user repositories
+  observability/  # Structured logging, correlation tracking, redaction, third-party logger taming, events/
+  providers/      # LLM provider abstraction, presets, model auto-discovery, runtime CRUD (management/), provider families
   settings/       # Runtime-editable settings (DB > env > YAML > code), Fernet encryption, ConfigResolver, definitions/, subscribers/
   security/       # Rule engine, audit log, output scanner, progressive trust, autonomy levels, timeout policies, LLM fallback evaluator
   templates/      # Pre-built company templates, personality presets
@@ -123,7 +123,10 @@ web/src/          # Vue 3 + PrimeVue + Tailwind CSS dashboard
   api/            # Axios client, endpoint modules, TypeScript types
   components/     # Vue components by feature (agents/, approvals/, budget/, setup/, etc.)
   composables/    # useAuth, usePolling, useOptimisticUpdate, useWebSocketSubscription, etc.
+  router/         # Vue Router config with auth guards
   stores/         # Pinia stores (auth, agents, tasks, budget, messages, approvals, websocket, etc.)
+  styles/         # Global CSS and PrimeVue theme
+  utils/          # Constants, formatters, error helpers
   views/          # Page-level components (Login, Setup, Dashboard, OrgChart, TaskBoard, etc.)
   __tests__/      # Vitest unit tests
 
@@ -235,8 +238,9 @@ site/             # Astro landing page (synthorg.io)
 - **Dependabot**: daily updates (uv, github-actions, npm, pre-commit, docker, gomod), grouped minor/patch, no auto-merge. Use `/review-dep-pr` before merging
 - **Security scanning**: gitleaks (push/PR + weekly), zizmor (workflow analysis), OSSF Scorecard (weekly), Socket.dev (PR supply chain), ZAP DAST (main + weekly, rules: `.github/zap-rules.tsv`)
 - **Coverage**: Codecov (best-effort, CI not gated on availability)
+- **Dependency review**: `dependency-review.yml` -- license allow-list (permissive only), PR comment summaries
 - **CLA**: `cla.yml` -- contributor-assistant check on PRs, signatures in `.github/cla-signatures.json`
-- **Release**: `release.yml` -- Release Please creates draft release PR. Uses `RELEASE_PLEASE_TOKEN` (PAT). Config: `.github/release-please-config.json`, `.github/.release-please-manifest.json`
+- **Release**: `release.yml` -- Release Please creates draft release PR. Uses `RELEASE_PLEASE_TOKEN` (PAT)
 - **Finalize Release**: `finalize-release.yml` -- publishes draft after Docker + CLI workflows succeed for tag. Immutable releases enabled.
 
 ## Dependencies
