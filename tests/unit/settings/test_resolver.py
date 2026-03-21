@@ -92,7 +92,7 @@ class _FakeCorsConfig(BaseModel):
 class _FakeServerConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
     host: str = "127.0.0.1"
-    port: int = 8000
+    port: int = 3001
 
 
 class _FakeApiConfig(BaseModel):

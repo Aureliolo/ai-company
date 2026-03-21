@@ -79,6 +79,12 @@ class TestIsSelfUrl:
                 False,
                 id="malformed-url",
             ),
+            pytest.param(
+                "http://localhost:abc/v1",
+                8000,
+                False,
+                id="non-numeric-port",
+            ),
         ],
     )
     def test_detection(

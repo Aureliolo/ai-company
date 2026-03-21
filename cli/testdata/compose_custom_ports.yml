@@ -41,6 +41,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # Healthcheck defined in Dockerfile -- do not override here.
 
   web:
     image: ghcr.io/aureliolo/synthorg-web:v0.2.0

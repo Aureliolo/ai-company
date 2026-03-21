@@ -32,7 +32,7 @@ _r.register(
         namespace=SettingNamespace.API,
         key="server_port",
         type=SettingType.INTEGER,
-        default="8000",
+        default="3001",
         description="Server bind port",
         group="Server",
         restart_required=True,
