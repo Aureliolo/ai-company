@@ -147,7 +147,7 @@ def build_discovery_headers(
     ):
         return {config.custom_header_name: config.custom_header_value}
     if config.auth_type == AuthType.OAUTH:
-        logger.info(
+        logger.debug(
             PROVIDER_DISCOVERY_FAILED,
             reason="oauth_discovery_unsupported",
             auth_type=config.auth_type.value,
