@@ -16,8 +16,8 @@ func TestClassifyDoctor(t *testing.T) {
 		name         string
 		report       diagnostics.Report
 		wantStatus   doctorStatus
-		wantCount    int    // expected number of issues
-		wantContains string // substring that must appear in at least one issue
+		wantCount    int      // expected number of issues
+		wantContains []string // substrings that must each appear in at least one issue
 	}{
 		{
 			name: "all healthy",
@@ -42,7 +42,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorErrors,
 			wantCount:    1,
-			wantContains: "backend unreachable",
+			wantContains: []string{"backend unreachable"},
 		},
 		{
 			name: "backend unhealthy status code",
@@ -53,7 +53,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorErrors,
 			wantCount:    1,
-			wantContains: "HTTP 503",
+			wantContains: []string{"HTTP 503"},
 		},
 		{
 			name: "container starting is warning",
@@ -68,7 +68,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorWarnings,
 			wantCount:    1,
-			wantContains: "sandbox still starting",
+			wantContains: []string{"sandbox still starting"},
 		},
 		{
 			name: "container unhealthy is error",
@@ -82,7 +82,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorErrors,
 			wantCount:    1,
-			wantContains: "backend unhealthy",
+			wantContains: []string{"backend unhealthy"},
 		},
 		{
 			name: "container exited is error",
@@ -96,7 +96,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorErrors,
 			wantCount:    1,
-			wantContains: "web exited",
+			wantContains: []string{"web exited"},
 		},
 		{
 			name: "compose missing",
@@ -106,7 +106,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorErrors,
 			wantCount:    1,
-			wantContains: "compose.yml not found",
+			wantContains: []string{"compose.yml not found"},
 		},
 		{
 			name: "compose invalid",
@@ -117,7 +117,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorErrors,
 			wantCount:    1,
-			wantContains: "compose.yml is invalid",
+			wantContains: []string{"compose.yml is invalid"},
 		},
 		{
 			name: "port conflicts",
@@ -129,7 +129,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorErrors,
 			wantCount:    1,
-			wantContains: "port conflict",
+			wantContains: []string{"port conflict"},
 		},
 		{
 			name: "collection errors propagated",
@@ -141,7 +141,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorErrors,
 			wantCount:    2,
-			wantContains: "docker not found",
+			wantContains: []string{"docker not found", "compose not found"},
 		},
 		{
 			name: "errors take precedence over warnings",
@@ -155,7 +155,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorErrors,
 			wantCount:    1, // only errors returned, warnings discarded
-			wantContains: "backend unreachable",
+			wantContains: []string{"backend unreachable"},
 		},
 		{
 			name: "empty health status is not checked",
@@ -179,7 +179,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorWarnings,
 			wantCount:    1,
-			wantContains: "no containers detected",
+			wantContains: []string{"no containers detected"},
 		},
 		{
 			name: "compose validity not checked is warning",
@@ -193,7 +193,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorWarnings,
 			wantCount:    1,
-			wantContains: "validity not checked",
+			wantContains: []string{"validity not checked"},
 		},
 		{
 			name: "unavailable image is warning",
@@ -208,7 +208,7 @@ func TestClassifyDoctor(t *testing.T) {
 			},
 			wantStatus:   doctorWarnings,
 			wantCount:    1,
-			wantContains: "not found",
+			wantContains: []string{"not found"},
 		},
 	}
 
@@ -222,16 +222,16 @@ func TestClassifyDoctor(t *testing.T) {
 			if len(gotIssues) != tt.wantCount {
 				t.Errorf("classifyDoctor() issues count = %d, want %d: %v", len(gotIssues), tt.wantCount, gotIssues)
 			}
-			if tt.wantContains != "" {
+			for _, want := range tt.wantContains {
 				found := false
 				for _, issue := range gotIssues {
-					if strings.Contains(issue, tt.wantContains) {
+					if strings.Contains(issue, want) {
 						found = true
 						break
 					}
 				}
 				if !found {
-					t.Errorf("classifyDoctor() issues %v missing expected substring %q", gotIssues, tt.wantContains)
+					t.Errorf("classifyDoctor() issues %v missing expected substring %q", gotIssues, want)
 				}
 			}
 		})
