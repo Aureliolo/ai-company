@@ -36,7 +36,8 @@ def is_self_url(url: str, *, backend_port: int) -> bool:
         return False
     if hostname is None or port is None:
         return False
-    return port == backend_port and hostname in LOCALHOST_ALIASES
+    normalized_host = hostname.rstrip(".").lower()
+    return port == backend_port and normalized_host in LOCALHOST_ALIASES
 
 
 def redact_url(url: str) -> str:

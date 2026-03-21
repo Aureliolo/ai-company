@@ -86,8 +86,9 @@ PROVIDER_PRESETS: tuple[ProviderPreset, ...] = (
         auth_type=AuthType.NONE,
         default_base_url="http://localhost:8000/v1",
         # candidate_urls intentionally empty: vLLM's default port (8000)
-        # collides with the SynthOrg backend.  Users must specify the
-        # vLLM URL explicitly or remap vLLM to a non-colliding port.
+        # is a common collision risk (the SynthOrg backend formerly used
+        # 8000).  Users must specify the vLLM URL explicitly or remap
+        # vLLM to a non-colliding port.
         default_models=(),
     ),
 )

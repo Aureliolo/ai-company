@@ -38,8 +38,8 @@ class TestProviderPresets:
     def test_local_presets_have_candidate_urls(self) -> None:
         """Local presets with non-colliding ports have candidate URLs.
 
-        vLLM is excluded: its default port (8000) collides with the
-        SynthOrg backend, so candidate_urls are intentionally empty.
+        vLLM is excluded: its default port (8000) is a common collision
+        risk, so candidate_urls are intentionally empty.
         """
         for name in ("ollama", "lm-studio"):
             preset = get_preset(name)
@@ -53,7 +53,7 @@ class TestProviderPresets:
                 )
 
     def test_vllm_preset_has_no_candidate_urls(self) -> None:
-        """vLLM preset must not have candidate_urls (port 8000 collision)."""
+        """vLLM preset must not have candidate_urls (port 8000 collision risk)."""
         preset = get_preset("vllm")
         assert preset is not None
         assert preset.candidate_urls == ()

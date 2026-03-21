@@ -122,7 +122,7 @@ uv sync --group docs     # install docs toolchain (zensical)
 ```bash
 cp docker/.env.example docker/.env
 docker compose -f docker/compose.yml up -d
-curl http://localhost:3001/api/v1/health   # verify
+curl http://localhost:3001/api/v1/health   # verify (replace 3001 if BACKEND_PORT was changed)
 docker compose -f docker/compose.yml down  # stop
 ```
 

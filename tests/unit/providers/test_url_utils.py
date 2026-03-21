@@ -85,6 +85,18 @@ class TestIsSelfUrl:
                 False,
                 id="non-numeric-port",
             ),
+            pytest.param(
+                "http://localhost.:8000/v1",
+                8000,
+                True,
+                id="trailing-dot-normalized",
+            ),
+            pytest.param(
+                "http://LOCALHOST:8000/v1",
+                8000,
+                True,
+                id="uppercase-normalized",
+            ),
         ],
     )
     def test_detection(

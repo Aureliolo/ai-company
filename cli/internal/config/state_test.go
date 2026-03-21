@@ -45,7 +45,7 @@ func TestSaveAndLoad(t *testing.T) {
 		DataDir:            tmp,
 		ImageTag:           "v0.1.5",
 		BackendPort:        9000,
-		WebPort:            3001,
+		WebPort:            4000,
 		LogLevel:           "debug",
 		JWTSecret:          "test-secret",
 		SettingsKey:        "test-settings-key",

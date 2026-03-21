@@ -355,7 +355,7 @@ class TestSelfConnectionGuard:
                 id="docker-bridge-backend-port-rejected",
             ),
             pytest.param(
-                "http://real-vllm.example.com:3001/v1",
+                "http://example-provider.example.com:3001/v1",
                 True,
                 id="remote-host-same-port-allowed",
             ),
@@ -400,3 +400,85 @@ class TestSelfConnectionGuard:
         mock_discover.assert_awaited_once()
         call_kwargs = mock_discover.call_args
         assert call_kwargs.kwargs["trust_url"] is expected_trust
+
+    async def test_self_connection_via_default_base_url(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Self-connection guard fires even when URL matches via default_base_url."""
+        fake_preset = ProviderPreset(
+            name="test-local",
+            display_name="Test Local",
+            description="Fake preset with self-URL as default_base_url",
+            driver="litellm",
+            auth_type=AuthType.NONE,
+            default_base_url="http://localhost:3001/v1",
+        )
+        await service.create_provider(
+            make_create_request(base_url="http://localhost:3001/v1"),
+        )
+
+        with (
+            patch(
+                "synthorg.providers.management.service.get_preset",
+                return_value=fake_preset,
+            ),
+            patch(
+                "synthorg.providers.management.service.discover_models",
+                new_callable=AsyncMock,
+                return_value=(),
+            ) as mock_discover,
+        ):
+            await service.discover_models_for_provider(
+                "test-provider",
+                preset_hint="test-local",
+            )
+
+        mock_discover.assert_awaited_once()
+        assert mock_discover.call_args.kwargs["trust_url"] is False
+
+    async def test_self_connection_logs_warning(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Self-connection guard emits a warning log on rejection."""
+        fake_preset = ProviderPreset(
+            name="test-local",
+            display_name="Test Local",
+            description="Fake preset for log assertion",
+            driver="litellm",
+            auth_type=AuthType.NONE,
+            candidate_urls=("http://localhost:3001/v1",),
+        )
+        await service.create_provider(
+            make_create_request(base_url="http://localhost:3001/v1"),
+        )
+
+        with (
+            patch(
+                "synthorg.providers.management.service.get_preset",
+                return_value=fake_preset,
+            ),
+            patch(
+                "synthorg.providers.management.service.discover_models",
+                new_callable=AsyncMock,
+                return_value=(),
+            ),
+            patch(
+                "synthorg.providers.management.service.logger",
+            ) as mock_logger,
+        ):
+            await service.discover_models_for_provider(
+                "test-provider",
+                preset_hint="test-local",
+            )
+
+        mock_logger.warning.assert_called_once()
+        call_args = mock_logger.warning.call_args
+        from synthorg.observability.events.provider import (
+            PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
+        )
+
+        assert call_args.args[0] == PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED
+        assert call_args.kwargs["url"] == "http://localhost:3001/v1"
+        assert call_args.kwargs["backend_port"] == 3001

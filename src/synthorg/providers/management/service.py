@@ -404,6 +404,14 @@ class ProviderManagementService:
         """
         if models or preset.auth_type != AuthType.NONE or not base_url:
             return models
+        backend_port = self._config.api.server.port
+        if is_self_url(base_url, backend_port=backend_port):
+            logger.warning(
+                PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
+                url=base_url,
+                backend_port=backend_port,
+            )
+            return models
         discovered = await discover_models(
             base_url,
             preset.name,
@@ -795,7 +803,10 @@ def _infer_preset_hint(base_url: str) -> str | None:
     Returns:
         Preset name hint, or ``None`` if unrecognized.
     """
-    port = urlparse(base_url).port
+    try:
+        port = urlparse(base_url).port
+    except ValueError:
+        return None
     if port is None:
         return None
     return _PORT_TO_PRESET.get(port)

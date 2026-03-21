@@ -77,7 +77,7 @@ func FuzzValidateParams(f *testing.F) {
 	f.Add("latest", 1, 65535, "error", "", false, "")
 	f.Add("", 0, 0, "invalid", "", false, "")
 	f.Add("tag!@#", -1, 99999, "", "", true, "")
-	f.Add("latest", 3001, 3001, "info", "", false, "")
+	f.Add("latest", 3001, 3001, "info", "", false, "") // equal ports -- must be rejected by validateParams
 	f.Add("latest", 3001, 3000, "info", "", true, `path"with"quotes`)
 
 	f.Fuzz(func(t *testing.T, imageTag string, backendPort, webPort int, logLevel, jwtSecret string, sandbox bool, dockerSock string) {
