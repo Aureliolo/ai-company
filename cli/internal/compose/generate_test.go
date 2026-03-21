@@ -50,6 +50,11 @@ func TestGenerateDefault(t *testing.T) {
 		t.Error("default output should not contain SETTINGS_KEY")
 	}
 
+	// Compose must not override Dockerfile healthchecks.
+	if strings.Contains(yaml, "healthcheck:") {
+		t.Error("compose output must not override healthcheck (defined in Dockerfile)")
+	}
+
 	compareGolden(t, "compose_default.yml", out)
 }
 
@@ -106,6 +111,12 @@ func TestGenerateWithSandbox(t *testing.T) {
 	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock:ro")
 	assertContains(t, yaml, "no-new-privileges:true")
 
+	// Compose must not override Dockerfile healthchecks.
+	if strings.Contains(yaml, "healthcheck:") {
+		t.Error("compose output must not override healthcheck (defined in Dockerfile)")
+	}
+
+	compareGolden(t, "compose_sandbox.yml", out)
 }
 
 func TestGenerateWithDigestPins(t *testing.T) {
