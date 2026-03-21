@@ -127,6 +127,7 @@ func serviceNames(state config.State) []string {
 func pullServicesLive(ctx context.Context, info docker.Info, safeDir string, state config.State, out *ui.UI) error {
 	services := serviceNames(state)
 	lb := out.NewLiveBox("Pull Images", services)
+	defer lb.Finish()
 
 	var (
 		mu      sync.Mutex
@@ -141,7 +142,7 @@ func pullServicesLive(ctx context.Context, info docker.Info, safeDir string, sta
 			if err != nil {
 				lb.UpdateLine(idx, ui.IconError)
 				mu.Lock()
-				pullErr = fmt.Errorf("pulling %s: %w", name, err)
+				pullErr = errors.Join(pullErr, fmt.Errorf("pulling %s: %w", name, err))
 				mu.Unlock()
 			} else {
 				lb.UpdateLine(idx, ui.IconSuccess)
@@ -149,12 +150,8 @@ func pullServicesLive(ctx context.Context, info docker.Info, safeDir string, sta
 		}(i, svc)
 	}
 	wg.Wait()
-	lb.Finish()
 
-	if pullErr != nil {
-		return pullErr
-	}
-	return nil
+	return pullErr
 }
 
 // verifyAndPinImages verifies image signatures (unless --skip-verify) and

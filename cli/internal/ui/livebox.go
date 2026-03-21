@@ -19,14 +19,16 @@ type LiveBoxLine struct {
 // Each line shows an animated spinner until marked finished. On non-TTY
 // writers, each finish prints a plain status line instead.
 type LiveBox struct {
-	ui      *UI
-	title   string
-	lines   []LiveBoxLine
-	innerW  int
-	mu      sync.Mutex
-	done    chan struct{}
-	wg      sync.WaitGroup
-	started bool
+	ui         *UI
+	title      string
+	lines      []LiveBoxLine
+	innerW     int
+	mu         sync.Mutex
+	done       chan struct{}
+	closeOnce  sync.Once
+	finishOnce sync.Once
+	wg         sync.WaitGroup
+	started    bool
 }
 
 // NewLiveBox creates a live-updating box and renders it immediately.
@@ -66,7 +68,8 @@ func (u *UI) NewLiveBox(title string, labels []string) *LiveBox {
 		return lb
 	}
 
-	// Render initial box frame.
+	// Render initial box frame. The goroutine has not started yet,
+	// so these writes cannot race with the animation loop.
 	u.renderBoxTop(lb.title, titleW, innerW)
 	contentLines := lb.buildLines(0)
 	u.renderBoxContent(contentLines, innerW)
@@ -93,7 +96,8 @@ func (lb *LiveBox) UpdateLine(index int, status string) {
 
 	if !lb.ui.isTTY {
 		// Non-TTY: print a status line immediately.
-		if status == IconError {
+		// Compare the stored (already-stripped) value, not the raw input.
+		if lb.lines[index].Status == IconError {
 			lb.ui.Error(lb.lines[index].Label)
 		} else {
 			lb.ui.Success(lb.lines[index].Label)
@@ -102,25 +106,28 @@ func (lb *LiveBox) UpdateLine(index int, status string) {
 }
 
 // Finish stops the animation and leaves the final box state on screen.
-// Safe to call multiple times.
+// Safe to call multiple times and concurrently with the animation goroutine.
 func (lb *LiveBox) Finish() {
 	if !lb.started {
 		return
 	}
-	select {
-	case <-lb.done:
-		return // already finished
-	default:
-		close(lb.done)
-	}
-	lb.wg.Wait()
+	lb.finishOnce.Do(func() {
+		lb.closeDone()
+		lb.wg.Wait()
 
-	// Final redraw with all current states.
-	lb.mu.Lock()
-	contentLines := lb.buildLines(-1) // no spinner frame
-	lb.mu.Unlock()
+		// Final redraw with all current states.
+		lb.mu.Lock()
+		contentLines := lb.buildLines(-1) // no spinner frame
+		lb.mu.Unlock()
 
-	lb.redraw(contentLines)
+		lb.redraw(contentLines)
+	})
+}
+
+// closeDone signals the animation goroutine to stop.
+// Safe to call from both Finish and the auto-close path in run.
+func (lb *LiveBox) closeDone() {
+	lb.closeOnce.Do(func() { close(lb.done) })
 }
 
 // run drives the spinner animation until Finish is called or all lines complete.
@@ -143,11 +150,7 @@ func (lb *LiveBox) run() {
 			frame = (frame + 1) % len(spinnerFrames)
 
 			if allDone {
-				select {
-				case <-lb.done:
-				default:
-					close(lb.done)
-				}
+				lb.closeDone()
 				return
 			}
 		}
@@ -183,7 +186,11 @@ func (lb *LiveBox) allFinished() bool {
 }
 
 // redraw moves the cursor up over the content + bottom border and redraws them.
+// No-op on non-TTY writers to avoid emitting raw ANSI escape sequences.
 func (lb *LiveBox) redraw(contentLines []string) {
+	if !lb.ui.isTTY {
+		return
+	}
 	moveUp := len(lb.lines) + 1 // content lines + bottom border
 	_, _ = fmt.Fprintf(lb.ui.w, "\033[%dA", moveUp)
 

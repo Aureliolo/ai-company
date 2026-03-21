@@ -88,25 +88,25 @@ const (
 
 // classifyDoctor inspects the report to determine the overall status.
 func classifyDoctor(r diagnostics.Report) (doctorStatus, []string) {
-	var warnings, errors []string
+	var warnings, errs []string
 
 	// Backend health.
 	switch r.HealthStatus {
 	case "200":
 		// ok
 	case "unreachable":
-		errors = append(errors, "backend unreachable")
+		errs = append(errs, "backend unreachable")
 	case "":
 		// not checked
 	default:
-		errors = append(errors, fmt.Sprintf("backend unhealthy (HTTP %s)", r.HealthStatus))
+		errs = append(errs, fmt.Sprintf("backend unhealthy (HTTP %s)", r.HealthStatus))
 	}
 
 	// Container states.
 	for _, c := range r.ContainerSummary {
 		switch {
 		case c.Health == "unhealthy", c.State == "exited":
-			errors = append(errors, fmt.Sprintf("%s %s", c.Name, c.Health))
+			errs = append(errs, fmt.Sprintf("%s %s", c.Name, c.Health))
 		case c.Health == "starting":
 			warnings = append(warnings, fmt.Sprintf("%s still starting", c.Name))
 		}
@@ -114,21 +114,21 @@ func classifyDoctor(r diagnostics.Report) (doctorStatus, []string) {
 
 	// Compose file.
 	if !r.ComposeFileExists {
-		errors = append(errors, "compose.yml not found")
+		errs = append(errs, "compose.yml not found")
 	} else if r.ComposeFileValid != nil && !*r.ComposeFileValid {
-		errors = append(errors, "compose.yml is invalid")
+		errs = append(errs, "compose.yml is invalid")
 	}
 
 	// Port conflicts.
 	for _, p := range r.PortConflicts {
-		errors = append(errors, fmt.Sprintf("port conflict: %s", p))
+		errs = append(errs, fmt.Sprintf("port conflict: %s", p))
 	}
 
 	// Explicit errors from collection.
-	errors = append(errors, r.Errors...)
+	errs = append(errs, r.Errors...)
 
-	if len(errors) > 0 {
-		return doctorErrors, errors
+	if len(errs) > 0 {
+		return doctorErrors, errs
 	}
 	if len(warnings) > 0 {
 		return doctorWarnings, warnings
