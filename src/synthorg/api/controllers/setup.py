@@ -337,14 +337,7 @@ class SetupController(Controller):
 
 
 async def _check_needs_admin(persistence: Any) -> bool:
-    """Check whether an admin (CEO) user needs to be created.
-
-    Args:
-        persistence: Persistence backend instance.
-
-    Returns:
-        True if no CEO-role user exists, True on query error (fail-open).
-    """
+    """Return True if no CEO-role user exists (fail-open on error)."""
     count: int | None = None
     try:
         count = await persistence.users.count_by_role(HumanRole.CEO)
@@ -359,14 +352,7 @@ async def _check_needs_admin(persistence: Any) -> bool:
 
 
 async def _check_needs_setup(settings_svc: SettingsService) -> bool:
-    """Check whether first-run setup has been completed.
-
-    Args:
-        settings_svc: Settings service instance.
-
-    Returns:
-        True if setup is still needed, True on error (fail-open).
-    """
+    """Return True if setup is still needed (fail-open on error)."""
     try:
         entry = await settings_svc.get_entry("api", "setup_complete")
     except MemoryError, RecursionError:
@@ -420,13 +406,13 @@ async def _check_has_company(
         )
         return False
     except Exception:
-        if strict:
-            raise
         logger.warning(
             SETUP_STATUS_SETTINGS_UNAVAILABLE,
             setting="company_name",
             exc_info=True,
         )
+        if strict:
+            raise
         return False
 
 
@@ -443,25 +429,14 @@ async def _check_has_agents(
 
     Args:
         settings_svc: Settings service instance.
-        strict: When True, propagate unexpected exceptions instead of
-            returning False (use for validation gates, not status checks).
+        strict: When True, propagate parsing/validation exceptions
+            instead of returning False (use for validation gates).
 
     Returns:
         True if user-created agents exist, False otherwise.
     """
     try:
         entry = await settings_svc.get_entry("company", "agents")
-        if entry.source != SettingSource.DATABASE:
-            logger.debug(
-                SETUP_STATUS_SETTINGS_DEFAULT_USED,
-                setting="agents",
-                source=entry.source,
-            )
-            return False
-        if not entry.value:
-            return False
-        parsed = json.loads(entry.value)
-        return isinstance(parsed, list) and bool(parsed)
     except MemoryError, RecursionError:
         raise
     except SettingNotFoundError:
@@ -470,22 +445,59 @@ async def _check_has_agents(
             setting="agents",
         )
         return False
+    except Exception:
+        logger.warning(
+            SETUP_STATUS_SETTINGS_UNAVAILABLE,
+            setting="agents",
+            exc_info=True,
+        )
+        if strict:
+            raise
+        return False
+
+    if entry.source != SettingSource.DATABASE:
+        logger.debug(
+            SETUP_STATUS_SETTINGS_DEFAULT_USED,
+            setting="agents",
+            source=entry.source,
+        )
+        return False
+    if not entry.value:
+        return False
+    return _validate_agents_value(entry.value, strict=strict)
+
+
+def _validate_agents_value(raw: str, *, strict: bool) -> bool:
+    """Parse *raw* as JSON and return True if it is a non-empty list.
+
+    When *strict* is True, raises ``ApiValidationError`` on corrupted
+    data instead of returning False.
+    """
+    try:
+        parsed = json.loads(raw)
     except json.JSONDecodeError:
         logger.warning(
             SETUP_AGENTS_CORRUPTED,
             reason="invalid_json",
             exc_info=True,
         )
-        return False
-    except Exception:
         if strict:
-            raise
-        logger.warning(
-            SETUP_STATUS_SETTINGS_UNAVAILABLE,
-            setting="agents",
-            exc_info=True,
-        )
+            msg = "Stored agents list is not valid JSON"
+            raise ApiValidationError(msg) from None
         return False
+
+    if not isinstance(parsed, list):
+        logger.warning(
+            SETUP_AGENTS_CORRUPTED,
+            reason="non_list_json",
+            raw_type=type(parsed).__name__,
+        )
+        if strict:
+            msg = f"Stored agents list is {type(parsed).__name__}, expected list"
+            raise ApiValidationError(msg)
+        return False
+
+    return bool(parsed)
 
 
 async def _resolve_min_password_length(
@@ -664,16 +676,13 @@ async def _persist_company_settings(
     Stores ``""`` when description is None (settings values are strings);
     consumers should treat ``""`` as absent.
     """
-    async with asyncio.TaskGroup() as tg:
-        tg.create_task(
-            settings_svc.set("company", "company_name", company_name),
-        )
-        tg.create_task(
-            settings_svc.set("company", "description", description or ""),
-        )
-        tg.create_task(
-            settings_svc.set("company", "departments", departments_json or "[]"),
-        )
+    await settings_svc.set("company", "company_name", company_name)
+    await settings_svc.set("company", "description", description or "")
+    await settings_svc.set(
+        "company",
+        "departments",
+        departments_json or "[]",
+    )
 
 
 def _extract_template_departments(template_name: str) -> str:

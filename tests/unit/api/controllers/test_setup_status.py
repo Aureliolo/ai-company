@@ -7,7 +7,10 @@ from typing import Any
 import pytest
 from litestar.testing import TestClient
 
+from synthorg.api.auth.config import AuthConfig
 from synthorg.api.guards import HumanRole
+
+_DEFAULT_MIN_PW = AuthConfig.model_fields["min_password_length"].default
 
 
 @pytest.mark.unit
@@ -100,7 +103,7 @@ class TestSetupStatus:
         data = resp.json()["data"]
         assert "min_password_length" in data
         assert isinstance(data["min_password_length"], int)
-        assert data["min_password_length"] == 12
+        assert data["min_password_length"] == _DEFAULT_MIN_PW
 
     def test_status_returns_configured_min_password_length(
         self,
@@ -182,7 +185,7 @@ class TestSetupStatus:
             resp = test_client.get("/api/v1/setup/status")
             assert resp.status_code == 200
             data = resp.json()["data"]
-            assert data["min_password_length"] == 12
+            assert data["min_password_length"] == _DEFAULT_MIN_PW
         finally:
             if original is None:
                 settings_repo._store.pop(pw_key, None)
@@ -205,7 +208,7 @@ class TestSetupStatus:
             resp = test_client.get("/api/v1/setup/status")
             assert resp.status_code == 200
             data = resp.json()["data"]
-            assert data["min_password_length"] == 12
+            assert data["min_password_length"] == _DEFAULT_MIN_PW
         finally:
             if original is None:
                 settings_repo._store.pop(pw_key, None)
