@@ -625,7 +625,7 @@ func patchComposeImageRefs(tag string, digestPins map[string]string, sandboxEnab
 		}
 		prefix := sub[1] // e.g. "    image: "
 		name := sub[2]   // e.g. "backend"
-		repo := "ghcr.io/aureliolo/synthorg-" + name
+		repo := imageRepoPrefix + name
 		replaced[name] = true
 
 		if d, ok := digestPins[name]; ok && d != "" {
@@ -684,16 +684,19 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 
 	uiOut := ui.NewUI(out)
 
-	sp := uiOut.StartSpinner("Restarting containers...")
+	sp := uiOut.StartSpinner("Stopping containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "down"); err != nil {
 		sp.Error("Failed to stop containers")
 		return false, fmt.Errorf("stopping containers: %w", err)
 	}
+	sp.Success("Containers stopped")
+
+	sp = uiOut.StartSpinner("Starting containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
 		sp.Error("Failed to start containers")
 		return false, fmt.Errorf("restarting containers: %w", err)
 	}
-	sp.Success("Containers restarted")
+	sp.Success("Containers started")
 
 	sp = uiOut.StartSpinner("Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)

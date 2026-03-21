@@ -164,12 +164,17 @@ func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info, out, errUI *ui
 }
 
 // removeImagesOneByOne removes images individually with per-image feedback.
+// Uses --force (unlike cleanup) since uninstall is a destructive operation.
 func removeImagesOneByOne(ctx context.Context, info docker.Info, out *ui.UI, images []oldImage) {
 	var removed int
 	for _, img := range images {
+		if ctx.Err() != nil {
+			out.Warn("operation cancelled")
+			break
+		}
 		_, rmiErr := docker.RunCmd(ctx, info.DockerPath, "rmi", "--force", img.id)
 		if rmiErr != nil {
-			out.Warn(fmt.Sprintf("%-12s skipped (in use)", img.id))
+			out.Warn(fmt.Sprintf("%-12s skipped: %v", img.id, rmiErr))
 		} else {
 			out.Success(fmt.Sprintf("%-12s removed", img.id))
 			removed++

@@ -103,6 +103,7 @@ synthorg start      # pull images + start containers
 synthorg status     # check health
 synthorg doctor     # diagnostics if something is wrong
 synthorg setup      # re-run first-run setup wizard
+synthorg cleanup    # remove old container images
 ```
 
 Open [http://localhost:3000](http://localhost:3000) after `synthorg start` -- on a fresh install, the **setup wizard** guides you through creating an admin account, configuring an LLM provider, naming your company, and hiring your first agent.

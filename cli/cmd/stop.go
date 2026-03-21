@@ -22,7 +22,7 @@ func init() {
 	rootCmd.AddCommand(stopCmd)
 }
 
-func runStop(cmd *cobra.Command, args []string) error {
+func runStop(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	dir := resolveDataDir()
 

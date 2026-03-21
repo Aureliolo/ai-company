@@ -192,31 +192,49 @@ func (u *UI) Table(headers []string, rows [][]string) {
 	if len(headers) == 0 {
 		return
 	}
-	// Sanitize all inputs -- strip control chars and collapse whitespace
-	// that would break column alignment.
+	sanHeaders, sanRows := sanitizeTable(headers, rows)
+	widths := calcColumnWidths(sanHeaders, sanRows)
+	u.printTableRow(widths, sanHeaders)
+	sep := make([]string, len(sanHeaders))
+	for i, w := range widths {
+		sep[i] = strings.Repeat("\u2500", w)
+	}
+	u.printTableRow(widths, sep)
+	for _, row := range sanRows {
+		u.printTableRow(widths, row)
+	}
+}
+
+// sanitizeTable strips control chars and collapses whitespace in all cells.
+func sanitizeTable(headers []string, rows [][]string) ([]string, [][]string) {
 	sanitize := func(s string) string {
 		s = stripControl(s)
 		s = strings.ReplaceAll(s, "\n", " ")
 		s = strings.ReplaceAll(s, "\t", " ")
 		return s
 	}
-	sanHeaders := make([]string, len(headers))
+	sh := make([]string, len(headers))
 	for i, h := range headers {
-		sanHeaders[i] = sanitize(h)
+		sh[i] = sanitize(h)
 	}
-	sanRows := make([][]string, len(rows))
+	sr := make([][]string, len(rows))
 	for i, row := range rows {
-		sanRow := make([]string, len(row))
+		r := make([]string, len(row))
 		for j, cell := range row {
-			sanRow[j] = sanitize(cell)
+			r[j] = sanitize(cell)
 		}
-		sanRows[i] = sanRow
+		sr[i] = r
 	}
-	widths := make([]int, len(sanHeaders))
-	for i, h := range sanHeaders {
+	return sh, sr
+}
+
+// calcColumnWidths computes the maximum visual width per column.
+func calcColumnWidths(headers []string, rows [][]string) []int {
+	widths := make([]int, len(headers))
+	for i, h := range headers {
 		widths[i] = runewidth.StringWidth(h)
 	}
-	for _, row := range sanRows {
+	for _, row := range rows {
 		for i := range widths {
 			if i < len(row) {
 				if w := runewidth.StringWidth(row[i]); w > widths[i] {
@@ -225,34 +243,28 @@ func (u *UI) Table(headers []string, rows [][]string) {
 			}
 		}
 	}
-	printRow := func(cells []string) {
-		var b strings.Builder
-		b.WriteString("  ")
-		for i, w := range widths {
-			cell := ""
-			if i < len(cells) {
-				cell = cells[i]
-			}
-			if i > 0 {
-				b.WriteString("  ")
-			}
-			b.WriteString(cell)
-			pad := w - runewidth.StringWidth(cell)
-			if pad > 0 {
-				b.WriteString(strings.Repeat(" ", pad))
-			}
-		}
-		_, _ = fmt.Fprintln(u.w, b.String())
-	}
-	printRow(sanHeaders)
-	sep := make([]string, len(sanHeaders))
+	return widths
+}
+
+// printTableRow prints a single table row with aligned columns.
+func (u *UI) printTableRow(widths []int, cells []string) {
+	var b strings.Builder
+	b.WriteString("  ")
 	for i, w := range widths {
-		sep[i] = strings.Repeat("─", w)
+		cell := ""
+		if i < len(cells) {
+			cell = cells[i]
+		}
+		if i > 0 {
+			b.WriteString("  ")
+		}
+		b.WriteString(cell)
+		pad := w - runewidth.StringWidth(cell)
+		if pad > 0 {
+			b.WriteString(strings.Repeat(" ", pad))
+		}
 	}
-	printRow(sep)
-	for _, row := range sanRows {
-		printRow(row)
-	}
+	_, _ = fmt.Fprintln(u.w, b.String())
 }
 
 // stripControl removes ASCII control characters (except tab and newline)
@@ -260,6 +272,18 @@ func (u *UI) Table(headers []string, rows [][]string) {
 func stripControl(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r < 0x20 && r != '\t' && r != '\n' {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// stripControlStrict removes all ASCII control characters (< 0x20) including
+// tab, newline, and ESC. Use for single-line contexts (box content, spinner
+// messages) where embedded newlines or tabs would corrupt layout.
+func stripControlStrict(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 {
 			return -1
 		}
 		return r

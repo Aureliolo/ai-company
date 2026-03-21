@@ -202,7 +202,7 @@ func printResourceUsage(ctx context.Context, out *ui.UI, info docker.Info, dataD
 	ids := strings.Fields(strings.TrimSpace(psOut))
 	statsArgs := append([]string{"stats", "--no-stream", "--format",
 		"table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}"}, ids...)
-	statsOut, err := docker.RunCmd(ctx, "docker", statsArgs...)
+	statsOut, err := docker.RunCmd(ctx, info.DockerPath, statsArgs...)
 	if err != nil {
 		out.Warn(fmt.Sprintf("Could not get resource usage: %v", err))
 		return

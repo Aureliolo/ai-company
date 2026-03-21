@@ -1,6 +1,9 @@
 package cmd
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestIsValidDockerID(t *testing.T) {
 	t.Parallel()
@@ -179,17 +182,7 @@ func TestBuildImageDisplay(t *testing.T) {
 			if got == "" {
 				t.Fatal("buildImageDisplay returned empty string")
 			}
-			if len(got) < len(tt.wantIn) {
-				t.Fatalf("display too short: %q", got)
-			}
-			found := false
-			for i := range len(got) - len(tt.wantIn) + 1 {
-				if got[i:i+len(tt.wantIn)] == tt.wantIn {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !strings.Contains(got, tt.wantIn) {
 				t.Errorf("display %q missing %q", got, tt.wantIn)
 			}
 		})

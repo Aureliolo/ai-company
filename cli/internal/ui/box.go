@@ -8,8 +8,8 @@ import (
 )
 
 // Box draws a bordered box with a title integrated into the top border.
-// Lines may contain pre-rendered ANSI escape codes; visual width is
-// measured via lipgloss.Width for correct padding.
+// Content lines are sanitized with stripControlStrict (all control chars
+// removed, including ESC) -- pass plain text, not ANSI-styled strings.
 //
 //	+- Title -----------+
 //	| line 1            |
@@ -20,15 +20,14 @@ func (u *UI) Box(title string, lines []string) {
 		return
 	}
 
-	// Sanitize lines: strip C0 control characters but preserve ANSI escape
-	// codes (needed for pre-rendered styled content like colored icons).
-	// Measure visual width via lipgloss.Width which handles ANSI correctly.
+	safeTitle := stripControlStrict(title)
+	titleW := lipgloss.Width(safeTitle)
+
 	sanitized := make([]string, len(lines))
 	for i, line := range lines {
-		sanitized[i] = stripControl(line)
+		sanitized[i] = stripControlStrict(line)
 	}
 
-	titleW := lipgloss.Width(title)
 	maxContentW := 0
 	for _, line := range sanitized {
 		if w := lipgloss.Width(line); w > maxContentW {
@@ -36,41 +35,47 @@ func (u *UI) Box(title string, lines []string) {
 		}
 	}
 
-	// Inner width = content area (between left padding and right padding).
-	// Minimum: title + 2 (space after title + at least 1 dash before corner).
 	innerW := max(maxContentW, titleW+2, 18)
 
-	// Box-drawing characters.
-	const (
-		tl = "\u250c" // top-left corner
-		tr = "\u2510" // top-right corner
-		bl = "\u2514" // bottom-left corner
-		br = "\u2518" // bottom-right corner
-		hz = "\u2500" // horizontal line
-		vt = "\u2502" // vertical line
-	)
+	u.renderBoxTop(safeTitle, titleW, innerW)
+	u.renderBoxContent(sanitized, innerW)
+	u.renderBoxBottom(innerW)
+}
 
-	// Top border: "  +- Title --...--+"
-	dashesAfterTitle := max(innerW-titleW-1, 1) // -1 for the space after title
+// renderBoxTop prints the top border with an embedded title.
+func (u *UI) renderBoxTop(title string, titleW, innerW int) {
+	const (
+		tl = "\u250c"
+		tr = "\u2510"
+		hz = "\u2500"
+	)
+	dashes := max(innerW-titleW, 1)
 	top := fmt.Sprintf("  %s %s %s%s",
 		u.muted.Render(tl),
-		u.brandBold.Render(stripControl(title)),
-		u.muted.Render(strings.Repeat(hz, dashesAfterTitle)),
+		u.brandBold.Render(title),
+		u.muted.Render(strings.Repeat(hz, dashes)),
 		u.muted.Render(tr))
 	_, _ = fmt.Fprintln(u.w, top)
+}
 
-	// Content lines: "  | content        |"
-	for _, line := range sanitized {
-		contentW := lipgloss.Width(line)
-		pad := max(innerW-contentW, 0)
+// renderBoxContent prints the content lines with vertical borders.
+func (u *UI) renderBoxContent(lines []string, innerW int) {
+	const vt = "\u2502"
+	for _, line := range lines {
+		pad := max(innerW-lipgloss.Width(line), 0)
 		_, _ = fmt.Fprintf(u.w, "  %s %s%s %s\n",
-			u.muted.Render(vt),
-			line,
-			strings.Repeat(" ", pad),
-			u.muted.Render(vt))
+			u.muted.Render(vt), line,
+			strings.Repeat(" ", pad), u.muted.Render(vt))
 	}
+}
 
-	// Bottom border: "  +---...---+"
+// renderBoxBottom prints the bottom border.
+func (u *UI) renderBoxBottom(innerW int) {
+	const (
+		bl = "\u2514"
+		br = "\u2518"
+		hz = "\u2500"
+	)
 	_, _ = fmt.Fprintf(u.w, "  %s%s\n",
 		u.muted.Render(bl+strings.Repeat(hz, innerW+2)),
 		u.muted.Render(br))

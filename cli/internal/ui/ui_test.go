@@ -7,6 +7,7 @@ import (
 )
 
 func TestLogo(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Logo("v1.2.3")
@@ -25,6 +26,7 @@ func TestLogo(t *testing.T) {
 }
 
 func TestOutputMethods(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		call func(*UI)
@@ -56,6 +58,7 @@ func TestOutputMethods(t *testing.T) {
 }
 
 func TestLink(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Link("Dashboard", "http://localhost:3000")
@@ -69,6 +72,7 @@ func TestLink(t *testing.T) {
 }
 
 func TestTable(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Table(
@@ -88,6 +92,7 @@ func TestTable(t *testing.T) {
 }
 
 func TestTableEmpty(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Table(nil, nil)
@@ -97,6 +102,7 @@ func TestTableEmpty(t *testing.T) {
 }
 
 func TestWriter(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	if u.Writer() != &buf {
@@ -236,4 +242,98 @@ func TestSpinnerDoubleStop(t *testing.T) {
 	s := u.StartSpinner("work")
 	s.Stop()
 	s.Stop() // should not panic
+}
+
+func TestStripControl(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain text", "hello", "hello"},
+		{"bell char", "hello\x07world", "helloworld"},
+		{"backspace", "hello\x08world", "helloworld"},
+		{"carriage return", "hello\rworld", "helloworld"},
+		{"ESC byte", "hello\x1b[2Jworld", "hello[2Jworld"},
+		{"null byte", "hello\x00world", "helloworld"},
+		{"preserves tab", "hello\tworld", "hello\tworld"},
+		{"preserves newline", "hello\nworld", "hello\nworld"},
+		{"multiple controls", "\x01\x02\x03ok", "ok"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := stripControl(tt.input)
+			if got != tt.want {
+				t.Errorf("stripControl(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripControlStrict(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain text", "hello", "hello"},
+		{"strips tab", "hello\tworld", "helloworld"},
+		{"strips newline", "hello\nworld", "helloworld"},
+		{"strips ESC", "hello\x1b[32mworld", "hello[32mworld"},
+		{"strips all controls", "\x00\x01\t\n\x1bok", "ok"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := stripControlStrict(tt.input)
+			if got != tt.want {
+				t.Errorf("stripControlStrict(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSpinnerConcurrentStop exercises the Spinner's concurrency safety by
+// calling Stop from multiple goroutines concurrently. The sync.Once in
+// waitAndClear should prevent any panics from double-closing the done channel.
+// Note: full TTY spinner animation testing requires a pseudo-terminal which
+// is not available in unit tests; CI uses the race detector to catch races.
+func TestSpinnerConcurrentStop(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	s := u.StartSpinner("concurrent work")
+
+	done := make(chan struct{})
+	for range 5 {
+		go func() {
+			s.Stop()
+			done <- struct{}{}
+		}()
+	}
+	for range 5 {
+		<-done
+	}
+}
+
+func TestInlineKVOddArgs(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	// Odd number of args: last key should be dropped silently.
+	u.InlineKV("Docker", "29.2.1", "Orphan")
+	out := buf.String()
+	if !strings.Contains(out, "Docker") || !strings.Contains(out, "29.2.1") {
+		t.Error("InlineKV should render complete pairs")
+	}
+	if strings.Contains(out, "Orphan") {
+		t.Error("InlineKV should drop unpaired trailing key")
+	}
 }

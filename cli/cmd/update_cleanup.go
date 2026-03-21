@@ -22,21 +22,19 @@ type oldImage struct {
 }
 
 // hintThresholdBytes is the minimum total size of old images before the
-// update command prints a cleanup hint (~5 GiB / 5.4 GB).
-// Note: uses binary base (1024^3) while parseDockerSize uses decimal (1e9).
-const hintThresholdBytes = 5 * 1024 * 1024 * 1024
+// update command prints a cleanup hint (5 GB decimal, matching Docker's
+// output format which uses decimal units via parseDockerSize).
+const hintThresholdBytes = 5e9
 
 // hintOldImages prints a passive hint about old images after a successful
 // update, but only when the total old image size exceeds hintThresholdBytes.
 // Replaces the former interactive cleanup prompt.
 func hintOldImages(cmd *cobra.Command, info docker.Info, state config.State) {
 	out := ui.NewUI(cmd.OutOrStdout())
-	// Best-effort: findOldImages already logs errors to errOut internally.
-	old, _ := findOldImages(cmd.Context(), cmd.ErrOrStderr(), info, state) //nolint:errcheck // logged internally
-	if len(old) == 0 {
+	old, err := findOldImages(cmd.Context(), cmd.ErrOrStderr(), info, state)
+	if err != nil || len(old) == 0 {
 		return
 	}
-
 	var totalB float64
 	for _, img := range old {
 		totalB += img.sizeB
@@ -68,7 +66,7 @@ func findOldImages(ctx context.Context, errOut io.Writer, info docker.Info, stat
 // currentIDs set. Used by both findOldImages (which resolves current IDs
 // from state) and the cleanup command.
 func listNonCurrentImages(ctx context.Context, errOut io.Writer, info docker.Info, currentIDs map[string]bool) ([]oldImage, error) {
-	imageRef := "ghcr.io/aureliolo/synthorg-*"
+	imageRef := imageRepoPrefix + "*"
 	// Include size in bytes for threshold calculations and digest for display.
 	allOut, listErr := docker.RunCmd(ctx, info.DockerPath, "images",
 		"--filter", "reference="+imageRef,
@@ -89,6 +87,8 @@ func listNonCurrentImages(ctx context.Context, errOut io.Writer, info docker.Inf
 			continue
 		}
 		repo, tag, sizeStr, id, digest := parts[0], parts[1], parts[2], parts[3], parts[4]
+		// currentIDs may be nil (when listing all images); reading a nil map
+		// returns the zero value (false), which is the intended behavior.
 		if !isValidDockerID(id) || currentIDs[id] || seen[id] {
 			continue
 		}
@@ -106,6 +106,7 @@ func listNonCurrentImages(ctx context.Context, errOut io.Writer, info docker.Inf
 // Prefers tag, falls back to digest short form, then Docker ID.
 func buildImageDisplay(repo, tag, digest, size string) string {
 	// Strip the registry prefix for brevity.
+	// Strip registry org prefix for brevity in display.
 	short := strings.TrimPrefix(repo, "ghcr.io/aureliolo/")
 
 	label := short

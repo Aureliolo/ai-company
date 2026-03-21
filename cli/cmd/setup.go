@@ -87,23 +87,26 @@ func runSetup(cmd *cobra.Command, _ []string) error {
 // backend container via docker compose exec. This avoids the need for API
 // authentication -- the CLI manages the Docker stack locally and can exec
 // into containers it controls.
-func resetSetupFlag(ctx context.Context, info docker.Info, dataDir string) error {
-	// Python one-liner that deletes the setup_complete row from the settings
-	// table in the SQLite database. Uses the SYNTHORG_DB_PATH environment
-	// variable (set in compose.yml) with a safe fallback.
+func resetSetupFlag(ctx context.Context, info docker.Info, safeDir string) error {
+	// Fully hardcoded Python script -- no user data is interpolated.
+	// If parameterization is added, values MUST be escaped before embedding.
 	pyScript := strings.Join([]string{
-		"import sqlite3, os",
-		"c = sqlite3.connect(os.environ.get('SYNTHORG_DB_PATH', '/data/synthorg.db'))",
-		"c.execute(\"DELETE FROM settings WHERE namespace='api' AND key='setup_complete'\")",
-		"c.commit()",
-		"print('ok')",
-	}, "; ")
+		"import sqlite3, os, sys",
+		"try:",
+		"  db_path = os.environ.get('SYNTHORG_DB_PATH', '/data/synthorg.db')",
+		"  with sqlite3.connect(db_path) as c:",
+		"    c.execute(\"DELETE FROM settings WHERE namespace='api' AND key='setup_complete'\")",
+		"  print('ok')",
+		"except Exception as e:",
+		"  print(f'error: {e}', file=sys.stderr)",
+		"  sys.exit(1)",
+	}, "\n")
 
-	out, err := docker.ComposeExecOutput(ctx, info, dataDir, "exec", "-T", "backend", "python", "-c", pyScript)
+	out, err := docker.ComposeExecOutput(ctx, info, safeDir, "exec", "-T", "backend", "python", "-c", pyScript)
 	if err != nil {
 		return fmt.Errorf("docker exec failed: %w", err)
 	}
-	if !strings.Contains(strings.TrimSpace(out), "ok") {
+	if strings.TrimSpace(out) != "ok" {
 		return fmt.Errorf("unexpected output from backend: %s", strings.TrimSpace(out))
 	}
 	return nil
@@ -124,14 +127,18 @@ func openBrowser(ctx context.Context, rawURL string) error {
 		return fmt.Errorf("refusing to open URL with host %q -- only localhost and 127.0.0.1 are allowed", host)
 	}
 
+	// Use the re-serialized URL, not the raw input string, to ensure
+	// only the normalized, validated URL is passed to the OS launcher.
+	normalizedURL := parsed.String()
+
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", rawURL)
+		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", normalizedURL)
 	case "darwin":
-		cmd = exec.CommandContext(ctx, "open", rawURL)
+		cmd = exec.CommandContext(ctx, "open", normalizedURL)
 	default:
-		cmd = exec.CommandContext(ctx, "xdg-open", rawURL)
+		cmd = exec.CommandContext(ctx, "xdg-open", normalizedURL)
 	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting browser: %w", err)

@@ -31,7 +31,7 @@ func init() {
 	rootCmd.AddCommand(startCmd)
 }
 
-func runStart(cmd *cobra.Command, args []string) error {
+func runStart(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	dir := resolveDataDir()
 
@@ -55,10 +55,8 @@ func runStart(cmd *cobra.Command, args []string) error {
 	out := ui.NewUI(cmd.OutOrStdout())
 	errOut := ui.NewUI(cmd.ErrOrStderr())
 
-	// Logo.
 	out.Logo(version.Version)
 
-	// Docker detection.
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		return err
@@ -69,18 +67,29 @@ func runStart(cmd *cobra.Command, args []string) error {
 	)
 	out.Blank()
 
-	// Check minimum versions.
 	for _, w := range docker.CheckMinVersions(info) {
 		errOut.Warn(w)
 	}
 
-	// Verify container image signatures -- spinner + box result.
 	if err := verifyAndPinImages(ctx, cmd, state, safeDir, out, errOut); err != nil {
 		return err
 	}
 	out.Blank()
 
-	// Pull images.
+	if err := pullStartAndWait(ctx, info, safeDir, state, out, errOut); err != nil {
+		return err
+	}
+
+	out.Blank()
+	out.Box("Ready", []string{
+		fmt.Sprintf("  %-12s http://localhost:%d/api/v1/health", "API", state.BackendPort),
+		fmt.Sprintf("  %-12s http://localhost:%d", "Dashboard", state.WebPort),
+	})
+	return nil
+}
+
+// pullStartAndWait pulls images, starts containers, and waits for health.
+func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI) error {
 	sp := out.StartSpinner("Pulling images...")
 	if err := composeRunQuiet(ctx, info, safeDir, "pull"); err != nil {
 		sp.Error("Failed to pull images")
@@ -88,7 +97,6 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 	sp.Success("Images pulled")
 
-	// Start containers.
 	sp = out.StartSpinner("Starting containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
 		sp.Error("Failed to start containers")
@@ -96,7 +104,6 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 	sp.Success("Containers started")
 
-	// Wait for health.
 	sp = out.StartSpinner("Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
 	if err := health.WaitForHealthy(ctx, healthURL, 90*time.Second, 2*time.Second, 5*time.Second); err != nil {
@@ -105,15 +112,6 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("health check did not pass: %w", err)
 	}
 	sp.Success("Backend healthy")
-
-	out.Blank()
-
-	// Ready box.
-	out.Box("Ready", []string{
-		fmt.Sprintf("  %-12s http://localhost:%d/api/v1/health", "API", state.BackendPort),
-		fmt.Sprintf("  %-12s http://localhost:%d", "Dashboard", state.WebPort),
-	})
-
 	return nil
 }
 
@@ -241,13 +239,15 @@ func digestPinMap(results []verify.VerifyResult) (map[string]string, error) {
 
 // renderVerifyBox displays image verification results in a bordered box.
 // Shared by start.go and update.go verification flows.
+// Uses plain glyph constants (not ANSI-styled icons) because Box()
+// sanitizes content with stripControlStrict which removes ESC bytes.
 func renderVerifyBox(out *ui.UI, results []verify.VerifyResult) {
 	boxLines := make([]string, 0, len(results))
 	for _, r := range results {
-		sigIcon := out.SuccessIcon()
-		slsaIcon := out.SuccessIcon()
+		sigIcon := ui.IconSuccess
+		slsaIcon := ui.IconSuccess
 		if !r.ProvenanceVerified {
-			slsaIcon = out.WarnIcon()
+			slsaIcon = ui.IconWarning
 		}
 		boxLines = append(boxLines, fmt.Sprintf("  %-12s sig %s  slsa %s",
 			r.Ref.Name(), sigIcon, slsaIcon))
