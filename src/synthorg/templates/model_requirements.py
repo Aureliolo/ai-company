@@ -6,12 +6,14 @@ preset-keyed affinity mapping that supplies soft defaults when the
 template does not specify full requirements.
 """
 
-from typing import Any, Literal
+from types import MappingProxyType
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
+    TEMPLATE_MODEL_REQUIREMENT_INVALID_TIER,
     TEMPLATE_MODEL_REQUIREMENT_PARSED,
     TEMPLATE_MODEL_REQUIREMENT_RESOLVED,
 )
@@ -22,7 +24,7 @@ logger = get_logger(__name__)
 ModelTier = Literal["large", "medium", "small"]
 ModelPriority = Literal["quality", "balanced", "speed", "cost"]
 
-_VALID_TIERS: frozenset[str] = frozenset({"large", "medium", "small"})
+_VALID_TIERS: frozenset[str] = frozenset(get_args(ModelTier))
 
 
 class ModelRequirement(BaseModel):
@@ -78,6 +80,11 @@ def parse_model_requirement(raw: str | dict[str, Any]) -> ModelRequirement:
         key = raw.strip().lower()
         if key not in _VALID_TIERS:
             msg = f"Invalid model tier {raw!r}. Valid tiers: {sorted(_VALID_TIERS)}"
+            logger.warning(
+                TEMPLATE_MODEL_REQUIREMENT_INVALID_TIER,
+                raw_tier=raw,
+                valid_tiers=sorted(_VALID_TIERS),
+            )
             raise ValueError(msg)
         result = ModelRequirement(tier=key)  # type: ignore[arg-type]
     else:
@@ -125,8 +132,10 @@ _RAW_AFFINITY: dict[str, dict[str, Any]] = {
     "technical_communicator": {"priority": "balanced"},
 }
 
-# Immutable at runtime.
-MODEL_AFFINITY: dict[str, dict[str, Any]] = _RAW_AFFINITY
+# Both the outer mapping and each inner mapping are read-only.
+MODEL_AFFINITY: MappingProxyType[str, MappingProxyType[str, Any]] = MappingProxyType(
+    {k: MappingProxyType(v) for k, v in _RAW_AFFINITY.items()},
+)
 del _RAW_AFFINITY
 
 
@@ -146,7 +155,9 @@ def resolve_model_requirement(
     Returns:
         Resolved ``ModelRequirement``.
     """
-    affinity = MODEL_AFFINITY.get((preset_name or "").strip().lower(), {})
+    affinity: dict[str, Any] = dict(
+        MODEL_AFFINITY.get((preset_name or "").strip().lower(), {}),
+    )
 
     merged: dict[str, Any] = {"tier": tier_str.strip().lower()}
     # Affinity provides defaults; explicit template values override.

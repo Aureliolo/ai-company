@@ -50,9 +50,8 @@ function modelOptionsForProvider(providerName: string) {
 const allModelOptions = computed(() => {
   const options: { label: string; value: string; provider: string }[] = []
   for (const [pname, pcfg] of Object.entries(providerStore.providers)) {
-    const p = pcfg as { models?: { id: string }[] }
-    if (!p.models) continue
-    for (const m of p.models) {
+    if (!pcfg.models) continue
+    for (const m of pcfg.models) {
       options.push({
         label: `${pname} / ${m.id}`,
         value: `${pname}::${m.id}`,
@@ -72,7 +71,11 @@ async function handleModelChange(index: number, value: string) {
   const [provider, ...modelParts] = value.split('::')
   const modelId = modelParts.join('::')
   if (!provider || !modelId) return
+  error.value = null
   await setup.updateAgentModel(index, provider, modelId)
+  if (setup.error) {
+    error.value = setup.error
+  }
 }
 
 function tierBadgeClass(tier: string): string {
@@ -106,6 +109,8 @@ async function handleAddAgent() {
     showAddAgent.value = false
     newAgentRole.value = ''
     newAgentName.value = ''
+    newAgentProvider.value = ''
+    newAgentModel.value = ''
   } catch (err) {
     error.value = getErrorMessage(err)
   } finally {
@@ -183,6 +188,7 @@ onMounted(async () => {
           option-label="label"
           option-value="value"
           placeholder="Select model..."
+          :aria-label="`Model for ${agent.name}`"
           class="w-full"
           @update:model-value="handleModelChange(index, $event)"
         />

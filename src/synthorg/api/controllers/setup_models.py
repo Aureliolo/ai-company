@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.core.enums import SeniorityLevel
 from synthorg.core.types import NotBlankStr  # noqa: TC001
@@ -108,8 +108,13 @@ class SetupCompanyResponse(BaseModel):
     description: str | None
     template_applied: NotBlankStr | None
     department_count: int = Field(ge=0)
-    agent_count: int = Field(default=0, ge=0)
     agents: tuple[SetupAgentSummary, ...] = ()
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def agent_count(self) -> int:
+        """Number of agents auto-created from template."""
+        return len(self.agents)
 
 
 class SetupAgentRequest(BaseModel):

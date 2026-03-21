@@ -15,6 +15,7 @@ from synthorg.api.controllers.setup_agents import (
     get_existing_agents,
     match_and_assign_models,
     validate_agents_value,
+    validate_model_assignment,
     validate_provider_and_model,
 )
 from synthorg.api.controllers.setup_models import (
@@ -36,6 +37,7 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_AGENT_CREATED,
+    SETUP_AGENT_INDEX_OUT_OF_RANGE,
     SETUP_AGENT_MODEL_UPDATED,
     SETUP_AGENTS_AUTO_CREATED,
     SETUP_AGENTS_LISTED,
@@ -57,7 +59,11 @@ from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from synthorg.settings.service import SettingsService
+    from synthorg.templates.loader import LoadedTemplate
+    from synthorg.templates.schema import CompanyTemplate, TemplateDepartmentConfig
 
 logger = get_logger(__name__)
 
@@ -214,7 +220,7 @@ class SetupController(Controller):
         if template_result.template is not None:
             agents = expand_template_agents(template_result.template)
             providers = await app_state.provider_management.list_providers()
-            match_and_assign_models(agents, providers)
+            agents = match_and_assign_models(agents, providers)
 
             async with _AGENT_LOCK:
                 await settings_svc.set(
@@ -246,7 +252,6 @@ class SetupController(Controller):
                 description=description,
                 template_applied=template_applied,
                 department_count=department_count,
-                agent_count=len(agent_summaries),
                 agents=agent_summaries,
             ),
         )
@@ -373,10 +378,19 @@ class SetupController(Controller):
         settings_svc = app_state.settings_service
         await _check_setup_not_complete(settings_svc)
 
+        # Validate provider/model before acquiring the lock.
+        providers = await app_state.provider_management.list_providers()
+        validate_model_assignment(providers, data)
+
         async with _AGENT_LOCK:
             agents = await get_existing_agents(settings_svc)
             if agent_index < 0 or agent_index >= len(agents):
                 msg = f"Agent index {agent_index} out of range (0-{len(agents) - 1})"
+                logger.warning(
+                    SETUP_AGENT_INDEX_OUT_OF_RANGE,
+                    agent_index=agent_index,
+                    agent_count=len(agents),
+                )
                 raise NotFoundError(msg)
 
             agents[agent_index]["model"] = {
@@ -676,16 +690,11 @@ class _TemplateResult(NamedTuple):
     departments_json: str
     department_count: int
     template_applied: str | None
-    template: Any
+    template: CompanyTemplate | None
 
 
 def _resolve_template(template_name: str | None) -> _TemplateResult:
-    """Validate template and extract department data + template object.
-
-    Returns:
-        ``_TemplateResult`` with departments, counts, and the parsed
-        ``CompanyTemplate`` (None for blank companies).
-    """
+    """Validate template and extract department data + template object."""
     if template_name is None:
         return _TemplateResult("", 0, None, None)
 
@@ -721,7 +730,7 @@ async def _persist_company_settings(
     )
 
 
-def _load_template_safe(template_name: str) -> Any:
+def _load_template_safe(template_name: str) -> LoadedTemplate:
     """Load a template by name with API-friendly error handling.
 
     Args:
@@ -757,7 +766,9 @@ def _load_template_safe(template_name: str) -> Any:
         raise ApiValidationError(msg) from exc
 
 
-def _departments_to_json(departments: Any) -> str:
+def _departments_to_json(
+    departments: Sequence[TemplateDepartmentConfig],
+) -> str:
     """Convert template departments to a JSON string."""
     if not departments:
         return ""

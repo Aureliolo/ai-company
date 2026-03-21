@@ -233,11 +233,12 @@ Scalars (`company_name`, `company_type`)
 
 ## Company Builder
 
-!!! warning "Planned"
-
-    The template system already supports creating companies from YAML configs. An interactive
-    wizard is planned as a future addition after the REST API is complete -- it could be a
-    thin CLI utility or a web form that posts to `/api/v1/company`.
+The web dashboard includes a 5-step setup wizard (Welcome, Admin, Provider, Company, Review Org)
+that guides first-run configuration. When a template is selected in the Company step, all
+template agents are auto-created with models matched to configured providers via a cost-based
+tier classification engine. The Review Org step lets users inspect agents and reassign models
+before completing setup. All configuration is persisted to the database via REST API calls.
+The CLI equivalent (`synthorg setup`) is planned as a future addition.
 
 ---
 

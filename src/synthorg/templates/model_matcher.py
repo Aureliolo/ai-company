@@ -16,6 +16,7 @@ from synthorg.observability.events.template import (
     TEMPLATE_MODEL_MATCH_FAILED,
     TEMPLATE_MODEL_MATCH_SUCCESS,
 )
+from synthorg.templates.model_requirements import ModelTier  # noqa: TC001
 
 if TYPE_CHECKING:
     from synthorg.config.schema import ProviderModelConfig
@@ -40,7 +41,7 @@ class ModelMatch(BaseModel):
     agent_index: int = Field(ge=0)
     provider_name: NotBlankStr
     model_id: NotBlankStr
-    tier: NotBlankStr
+    tier: ModelTier
     score: float = Field(ge=0.0, le=1.0)
 
 
@@ -122,7 +123,7 @@ def match_all_agents(
     ]
 
     for idx, agent in enumerate(agents):
-        tier = str(agent.get("tier", "medium"))
+        tier: ModelTier = agent.get("tier", "medium")
         preset = agent.get("personality_preset")
         req = resolve_model_requirement(tier, preset)
 
@@ -188,6 +189,9 @@ def match_all_agents(
 # ── Internal helpers ─────────────────────────────────────────
 
 
+# Minimum number of models required for meaningful tier classification.
+_MIN_TIER_SIZE: int = 3
+
 # Tier fallback order: if exact tier has no models, try these.
 _TIER_FALLBACK: dict[str, list[str]] = {
     "large": ["medium", "small"],
@@ -205,8 +209,7 @@ def _classify_tiers(
     third is ``small``, middle third is ``medium``, top third is
     ``large``.  With fewer than 3 models, all tiers map to all models.
     """
-    _min_tier_size = 3
-    if len(models) < _min_tier_size:
+    if len(models) < _MIN_TIER_SIZE:
         # Too few to meaningfully tier -- every tier gets all models.
         return {"large": list(models), "medium": list(models), "small": list(models)}
 
@@ -268,13 +271,14 @@ def _compute_score(
     if len(tier_candidates) <= 1:
         score += 0.25
     else:
-        costs = sorted(m.cost_per_1k_input for m in tier_candidates)
+        ranked = sorted(tier_candidates, key=lambda m: m.cost_per_1k_input)
+        rank_map = {id(m): r for r, m in enumerate(ranked)}
+        model_rank = rank_map.get(id(model), 0)
+        max_rank = len(ranked) - 1
         if requirement.priority == "quality":
-            rank = costs.index(model.cost_per_1k_input)
-            score += 0.25 * (rank / (len(costs) - 1))
+            score += 0.25 * (model_rank / max_rank)
         elif requirement.priority == "cost":
-            rank = costs.index(model.cost_per_1k_input)
-            score += 0.25 * (1 - rank / (len(costs) - 1))
+            score += 0.25 * (1 - model_rank / max_rank)
         else:
             score += 0.125  # Balanced/speed get partial.
 

@@ -19,7 +19,10 @@ from synthorg.settings.enums import SettingSource
 from synthorg.settings.errors import SettingNotFoundError
 
 if TYPE_CHECKING:
-    from synthorg.api.controllers.setup_models import SetupAgentRequest
+    from synthorg.api.controllers.setup_models import (
+        SetupAgentRequest,
+        UpdateAgentModelRequest,
+    )
     from synthorg.settings.service import SettingsService
     from synthorg.templates.schema import CompanyTemplate
 
@@ -85,27 +88,59 @@ def match_and_assign_models(
 ) -> list[dict[str, Any]]:
     """Auto-assign models to template agents using the matching engine.
 
-    Mutates the agent dicts in-place, setting ``model.provider`` and
-    ``model.model_id`` to the best available match.
+    Returns a new list of agent dicts with ``model.provider`` and
+    ``model.model_id`` set to the best available match.  The input
+    list is not modified.
 
     Args:
         agents: Expanded agent config dicts from ``expand_template_agents``.
         providers: Provider name -> config mapping.
 
     Returns:
-        The same agent list (mutated in-place for convenience).
+        New list of agent dicts with model assignments applied.
     """
     from synthorg.templates.model_matcher import match_all_agents  # noqa: PLC0415
 
     matches = match_all_agents(agents, providers)
-    for m in matches:
-        if m.agent_index < len(agents):
-            agents[m.agent_index]["model"] = {
-                "provider": m.provider_name,
-                "model_id": m.model_id,
-            }
+    match_map = {
+        m.agent_index: {"provider": m.provider_name, "model_id": m.model_id}
+        for m in matches
+    }
+    return [
+        {**agent, "model": match_map[idx]} if idx in match_map else dict(agent)
+        for idx, agent in enumerate(agents)
+    ]
 
-    return agents
+
+def validate_model_assignment(
+    providers: dict[str, Any],
+    data: UpdateAgentModelRequest,
+) -> None:
+    """Validate provider and model for a model reassignment request.
+
+    Args:
+        providers: Provider name -> config mapping.
+        data: Model assignment payload.
+
+    Raises:
+        NotFoundError: If the provider does not exist.
+        ApiValidationError: If the model is not in the provider.
+    """
+    if data.model_provider not in providers:
+        msg = f"Provider {data.model_provider!r} not found"
+        logger.warning(SETUP_PROVIDER_NOT_FOUND, provider=data.model_provider)
+        raise NotFoundError(msg)
+
+    provider_config = providers[data.model_provider]
+    model_ids = {m.id for m in provider_config.models}
+    if data.model_id not in model_ids:
+        msg = f"Model {data.model_id!r} not found in provider {data.model_provider!r}"
+        logger.warning(
+            SETUP_MODEL_NOT_FOUND,
+            provider=data.model_provider,
+            model=data.model_id,
+        )
+        raise ApiValidationError(msg)
 
 
 def validate_provider_and_model(

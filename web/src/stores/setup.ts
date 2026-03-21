@@ -116,7 +116,9 @@ export const useSetupStore = defineStore('setup', () => {
         model_id: modelId,
       })
       if (index < agents.value.length) {
-        agents.value[index] = updated
+        const copy = [...agents.value]
+        copy[index] = updated
+        agents.value = copy
       }
     } catch (err) {
       error.value = getErrorMessage(err)

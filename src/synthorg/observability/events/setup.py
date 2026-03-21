@@ -69,3 +69,6 @@ SETUP_AGENTS_LISTED: Final[str] = "setup.agents.listed"
 
 # Agent model assignment updated in review step
 SETUP_AGENT_MODEL_UPDATED: Final[str] = "setup.agent.model_updated"
+
+# Agent index out of range during model update
+SETUP_AGENT_INDEX_OUT_OF_RANGE: Final[str] = "setup.agent.index_out_of_range"
