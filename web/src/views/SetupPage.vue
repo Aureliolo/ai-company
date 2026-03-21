@@ -99,6 +99,10 @@ async function handleReviewComplete(providerName: string) {
   createdProviderName.value = providerName
   await setup.fetchStatus()
   // Populate summary values from store if not already set (e.g. after refresh).
+  // NOTE: SetupStatusResponse has no company_name field, and there is no
+  // dedicated API to fetch it separately. The actual name is stored in
+  // settings as "company.name" but exposing it here requires a backend
+  // change. Using a placeholder until then.
   if (!createdCompanyName.value && setup.status?.has_company) {
     createdCompanyName.value = 'Your Company'
     createdAgentCount.value = setup.agents.length

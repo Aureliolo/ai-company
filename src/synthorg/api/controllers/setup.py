@@ -232,6 +232,10 @@ class SetupController(Controller):
                 count=len(agent_summaries),
                 template=template_applied,
             )
+        else:
+            # Blank path: clear any agents persisted by a previous
+            # template selection so GET /setup/agents returns empty.
+            await settings_svc.set("company", "agents", "[]")
 
         logger.info(
             SETUP_COMPANY_CREATED,

@@ -31,9 +31,7 @@ TEMPLATE_LOAD_INVALID_NAME: Final[str] = "template.load.invalid_name"
 TEMPLATE_SCHEMA_VALIDATION_ERROR: Final[str] = "template.schema.validation_error"
 
 # Model requirement parsing and resolution
-TEMPLATE_MODEL_REQUIREMENT_INVALID_TIER: Final[str] = (
-    "template.model_requirement.invalid_tier"
-)
+TEMPLATE_MODEL_REQUIREMENT_INVALID: Final[str] = "template.model_requirement.invalid"
 TEMPLATE_MODEL_REQUIREMENT_PARSED: Final[str] = "template.model_requirement.parsed"
 TEMPLATE_MODEL_REQUIREMENT_RESOLVED: Final[str] = "template.model_requirement.resolved"
 

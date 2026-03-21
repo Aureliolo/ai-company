@@ -319,6 +319,7 @@ describe('useSetupStore', () => {
       // Agent at index 0 is unchanged because index 5 is out of bounds.
       expect(store.agents).toHaveLength(1)
       expect(store.agents[0].model_provider).toBe('test-provider')
+      expect(mockUpdateAgentModel).not.toHaveBeenCalled()
     })
 
     it('leaves agents unchanged when index is negative', async () => {

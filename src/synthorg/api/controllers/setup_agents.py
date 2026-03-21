@@ -33,6 +33,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Required keys every agent dict must have in the persisted list.
+_REQUIRED_AGENT_KEYS: frozenset[str] = frozenset({"name", "role"})
+
 
 def expand_template_agents(template: CompanyTemplate) -> list[dict[str, Any]]:
     """Expand template agent configs into persistable agent dicts.
@@ -287,6 +290,22 @@ async def get_existing_agents(
         )
         msg = f"Stored agents list is {type(parsed).__name__}, expected list"
         raise ApiValidationError(msg)
+
+    for idx, element in enumerate(parsed):
+        if not isinstance(element, dict) or not _REQUIRED_AGENT_KEYS.issubset(
+            element.keys(),
+        ):
+            logger.warning(
+                SETUP_AGENTS_CORRUPTED,
+                reason="invalid_element",
+                element_index=idx,
+                element_type=type(element).__name__,
+            )
+            msg = (
+                f"Agent at index {idx} is not a valid agent dict "
+                f"(must be a dict with 'name' and 'role' keys)"
+            )
+            raise ApiValidationError(msg)
 
     return parsed
 

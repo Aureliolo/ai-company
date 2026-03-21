@@ -665,6 +665,7 @@ class TestSetupAgentsList:
         assert resp.status_code == 200
         data = resp.json()["data"]
         assert data["agents"] == []
+        assert data["agent_count"] == 0
 
     def test_returns_agents_after_company_creation(
         self,
@@ -683,8 +684,10 @@ class TestSetupAgentsList:
             # Now list agents.
             resp = test_client.get("/api/v1/setup/agents")
             assert resp.status_code == 200
-            agents = resp.json()["data"]["agents"]
+            list_data = resp.json()["data"]
+            agents = list_data["agents"]
             assert len(agents) >= 1
+            assert list_data["agent_count"] == len(agents)
             assert agents[0]["role"]
         finally:
             app_state._provider_management = original

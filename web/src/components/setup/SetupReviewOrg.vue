@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
 import InputText from 'primevue/inputtext'
@@ -27,6 +27,12 @@ const newAgentName = ref('')
 const newAgentProvider = ref('')
 const newAgentModel = ref('')
 const addingAgent = ref(false)
+
+// Reset model selection when the provider changes to prevent
+// submitting an invalid provider/model pair.
+watch(newAgentProvider, () => {
+  newAgentModel.value = ''
+})
 
 const hasAgents = computed(() => setup.agents.length > 0)
 
@@ -109,18 +115,25 @@ async function handleAddAgent() {
       department: 'engineering',
       budget_limit_monthly: null,
     })
-    // Refresh the agents list.
-    await setup.fetchAgents()
-    showAddAgent.value = false
-    newAgentRole.value = ''
-    newAgentName.value = ''
-    newAgentProvider.value = ''
-    newAgentModel.value = ''
   } catch (err) {
     error.value = getErrorMessage(err)
-  } finally {
     addingAgent.value = false
+    return
   }
+  // Create succeeded -- refresh the agents list. A refresh failure
+  // should not revert the successful create, so use a separate block.
+  try {
+    await setup.fetchAgents()
+  } catch {
+    // Agent was created; list refresh failed. The list will be stale
+    // but the next mount/navigation will re-fetch.
+  }
+  showAddAgent.value = false
+  newAgentRole.value = ''
+  newAgentName.value = ''
+  newAgentProvider.value = ''
+  newAgentModel.value = ''
+  addingAgent.value = false
 }
 
 async function handleComplete() {

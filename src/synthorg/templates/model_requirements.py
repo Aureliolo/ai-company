@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
-    TEMPLATE_MODEL_REQUIREMENT_INVALID_TIER,
+    TEMPLATE_MODEL_REQUIREMENT_INVALID,
     TEMPLATE_MODEL_REQUIREMENT_PARSED,
     TEMPLATE_MODEL_REQUIREMENT_RESOLVED,
 )
@@ -81,7 +81,7 @@ def parse_model_requirement(raw: str | dict[str, Any]) -> ModelRequirement:
         if key not in _VALID_TIERS:
             msg = f"Invalid model tier {raw!r}. Valid tiers: {sorted(_VALID_TIERS)}"
             logger.warning(
-                TEMPLATE_MODEL_REQUIREMENT_INVALID_TIER,
+                TEMPLATE_MODEL_REQUIREMENT_INVALID,
                 raw_tier=raw,
                 valid_tiers=sorted(_VALID_TIERS),
             )
@@ -92,7 +92,7 @@ def parse_model_requirement(raw: str | dict[str, Any]) -> ModelRequirement:
             result = ModelRequirement(**raw)
         except ValidationError:
             logger.warning(
-                TEMPLATE_MODEL_REQUIREMENT_INVALID_TIER,
+                TEMPLATE_MODEL_REQUIREMENT_INVALID,
                 raw_requirement=raw,
                 reason="dict_validation_failed",
                 exc_info=True,
