@@ -1,6 +1,7 @@
 """Tests for quota and subscription domain models."""
 
 from datetime import UTC, datetime
+from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
@@ -436,14 +437,12 @@ class TestWindowStart:
 
     def test_defaults_to_now(self) -> None:
         """Uses current time when now is not provided."""
-        before = datetime.now(UTC)
-        result = window_start(QuotaWindow.PER_MONTH)
-        after = datetime.now(UTC)
-        # PER_MONTH truncates to 1st of month -- stable within a month
-        assert result.year == before.year
-        assert result.month == before.month
-        assert result.day == 1
-        assert before <= after  # sanity
+        fixed_now = datetime(2026, 3, 15, 14, 30, 0, tzinfo=UTC)
+        with patch("synthorg.budget.quota.datetime") as mock_dt:
+            mock_dt.now.return_value = fixed_now
+            mock_dt.side_effect = datetime
+            result = window_start(QuotaWindow.PER_MONTH)
+        assert result == datetime(2026, 3, 1, tzinfo=UTC)
 
 
 # ── effective_cost_per_1k ──────────────────────────────────────────

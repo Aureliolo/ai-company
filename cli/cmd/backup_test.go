@@ -16,6 +16,10 @@ import (
 
 // NOTE: Tests in this file share the global rootCmd and must NOT call t.Parallel().
 // See runBackupCmd for the flag-reset workaround.
+// When adding new boolean flags to backup subcommands, add a
+// corresponding <theCmd>.Flags().Set("flag-name", "false") call in
+// runBackupCmd (targeting the specific command that owns the flag) to
+// prevent state leakage between tests.
 
 // --- Unit tests for helper functions ---
 

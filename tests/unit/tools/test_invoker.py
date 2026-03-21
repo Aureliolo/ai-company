@@ -1,6 +1,5 @@
 """Tests for ToolInvoker."""
 
-import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -446,23 +445,21 @@ class TestInvokeAllConcurrency:
     async def test_concurrent_faster_than_sequential(
         self,
         concurrency_invoker: ToolInvoker,
+        concurrency_tracking_tool: _ConcurrencyTrackingTool,
     ) -> None:
-        """Three 0.1s delay tools complete in less than 0.3s total."""
+        """Three concurrent tools achieve peak concurrency > 1."""
         calls = [
             ToolCall(
                 id=f"d{i}",
-                name="delay",
-                arguments={"delay": 0.1, "value": f"v{i}"},
+                name="tracking",
+                arguments={"duration": 0},
             )
             for i in range(3)
         ]
-        start = time.monotonic()
         results = await concurrency_invoker.invoke_all(calls)
-        elapsed = time.monotonic() - start
         assert len(results) == 3
-        assert all(r.content == f"v{i}" for i, r in enumerate(results))
-        # Sequential would take >= 0.3s; proves parallel execution
-        assert elapsed < 0.5
+        # Peak > 1 proves parallel execution (no wall-clock assertion)
+        assert concurrency_tracking_tool.peak >= 2
 
     async def test_concurrent_results_in_input_order(
         self,

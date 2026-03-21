@@ -511,18 +511,18 @@ class TestConcurrentSetup:
             )
         )
 
-        call_count = 0
+        # Events ensure deterministic overlap: task-1 signals when it
+        # holds the semaphore, task-2 only starts after that signal.
+        first_entered = asyncio.Event()
+        release_first = asyncio.Event()
 
         async def mock_git(
             self_: PlannerWorktreeStrategy,
             *args: str,
             timeout: float = 60.0,  # noqa: ASYNC109
         ) -> tuple[int, str, str]:
-            nonlocal call_count
-            call_count += 1
-            # Slow down first call to ensure overlap
-            if call_count <= 2:
-                await asyncio.sleep(0.01)
+            first_entered.set()
+            await release_first.wait()
             return (0, "", "")
 
         results: list[object] = []
@@ -541,10 +541,11 @@ class TestConcurrentSetup:
             "_run_git",
             side_effect=mock_git,
         ):
-            await asyncio.gather(
-                setup_one("task-1"),
-                setup_one("task-2"),
-            )
+            t1 = asyncio.create_task(setup_one("task-1"))
+            await first_entered.wait()
+            t2 = asyncio.create_task(setup_one("task-2"))
+            release_first.set()
+            await asyncio.gather(t1, t2)
 
         successes = [r for r in results if isinstance(r, Workspace)]
         failures = [r for r in results if isinstance(r, WorkspaceLimitError)]

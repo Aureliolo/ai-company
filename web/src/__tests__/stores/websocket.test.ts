@@ -290,9 +290,11 @@ describe('useWebSocketStore', () => {
     ws.readyState = MockWebSocket.CLOSED
     ws.onclose?.()
 
-    // Drive through all 20 reconnect attempts
+    // Drive through all 20 reconnect attempts (extra iterations to
+    // ensure timers and constructor timeouts fully flush).
     for (let i = 0; i < 25; i++) {
       await vi.advanceTimersByTimeAsync(120_000)
+      await vi.advanceTimersByTimeAsync(0)
     }
 
     expect(store.reconnectExhausted).toBe(true)

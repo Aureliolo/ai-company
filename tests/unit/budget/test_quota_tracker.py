@@ -1,7 +1,9 @@
 """Tests for QuotaTracker service."""
 
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import UTC, datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -42,6 +44,21 @@ def _hour_quota(max_requests: int = 60) -> QuotaLimit:
 
 def _day_token_quota(max_tokens: int = 1_000_000) -> QuotaLimit:
     return QuotaLimit(window=QuotaWindow.PER_DAY, max_tokens=max_tokens)
+
+
+@contextmanager
+def _patched_tracker_datetime() -> Generator[MagicMock]:
+    """Patch ``datetime`` in the quota_tracker module with ``_NOW``.
+
+    The mock forwards ``datetime(...)`` constructor calls to the real
+    ``datetime`` class while intercepting ``datetime.now()`` to return
+    ``_NOW``.  The yielded mock allows tests to advance time by setting
+    ``mock_dt.now.return_value = <new time>``.
+    """
+    with patch("synthorg.budget.quota_tracker.datetime") as mock_dt:
+        mock_dt.now.return_value = _NOW
+        mock_dt.side_effect = datetime
+        yield mock_dt
 
 
 # ── Construction ───────────────────────────────────────────────────
@@ -126,33 +143,26 @@ class TestRecordUsage:
 
     async def test_window_rotation(self) -> None:
         """Counters reset when window boundary is crossed."""
-        # Use per_hour to avoid minute-boundary flakiness
         hour_quota = QuotaLimit(
             window=QuotaWindow.PER_HOUR,
             max_requests=60,
         )
-        tracker = _make_tracker(quotas=(hour_quota,))
 
-        # Record 10 requests (same hour as tracker creation)
-        await tracker.record_usage("test-provider", requests=10)
+        with _patched_tracker_datetime() as mock_dt:
+            tracker = _make_tracker(quotas=(hour_quota,))
+            await tracker.record_usage("test-provider", requests=10)
 
-        # Verify initial count
-        snapshots = await tracker.get_snapshot(
-            "test-provider",
-            window=QuotaWindow.PER_HOUR,
-        )
-        assert snapshots[0].requests_used == 10
+            snapshots = await tracker.get_snapshot(
+                "test-provider",
+                window=QuotaWindow.PER_HOUR,
+            )
+            assert snapshots[0].requests_used == 10
 
-        # Force window rotation by mocking time to next hour
-        next_hour = datetime(2099, 1, 1, 1, 0, 0, tzinfo=UTC)
-        with patch(
-            "synthorg.budget.quota_tracker.datetime",
-        ) as mock_dt:
+            # Force window rotation by advancing to next hour
+            next_hour = datetime(2026, 3, 15, 15, 0, 0, tzinfo=UTC)
             mock_dt.now.return_value = next_hour
-            mock_dt.side_effect = datetime
             await tracker.record_usage("test-provider", requests=1)
 
-            # Query in same mocked time so window matches
             snapshots = await tracker.get_snapshot(
                 "test-provider",
                 window=QuotaWindow.PER_HOUR,
@@ -249,27 +259,21 @@ class TestCheckQuota:
 
     async def test_rotated_window_resets_check(self) -> None:
         """Rotated window allows requests again."""
-        # Use per_hour to avoid minute-boundary flakiness
         hour_quota = QuotaLimit(
             window=QuotaWindow.PER_HOUR,
             max_requests=10,
         )
-        tracker = _make_tracker(quotas=(hour_quota,))
 
-        # Exhaust quota
-        await tracker.record_usage("test-provider", requests=10)
+        with _patched_tracker_datetime() as mock_dt:
+            tracker = _make_tracker(quotas=(hour_quota,))
+            await tracker.record_usage("test-provider", requests=10)
 
-        # Verify exhausted
-        result = await tracker.check_quota("test-provider")
-        assert result.allowed is False
+            result = await tracker.check_quota("test-provider")
+            assert result.allowed is False
 
-        # Check in next hour (window rotated -- check sees fresh window)
-        next_hour = datetime(2099, 1, 1, 1, 0, 0, tzinfo=UTC)
-        with patch(
-            "synthorg.budget.quota_tracker.datetime",
-        ) as mock_dt:
+            # Check in next hour (window rotated -- check sees fresh window)
+            next_hour = datetime(2026, 3, 15, 15, 0, 0, tzinfo=UTC)
             mock_dt.now.return_value = next_hour
-            mock_dt.side_effect = datetime
             result = await tracker.check_quota("test-provider")
 
         assert result.allowed is True
@@ -320,23 +324,18 @@ class TestGetSnapshot:
 
     async def test_rotated_window_shows_zero(self) -> None:
         """Rotated window shows zero usage in snapshot."""
-        # Use per_hour to avoid minute-boundary flakiness
         hour_quota = QuotaLimit(
             window=QuotaWindow.PER_HOUR,
             max_requests=60,
         )
-        tracker = _make_tracker(quotas=(hour_quota,))
 
-        # Record requests
-        await tracker.record_usage("test-provider", requests=10)
+        with _patched_tracker_datetime() as mock_dt:
+            tracker = _make_tracker(quotas=(hour_quota,))
+            await tracker.record_usage("test-provider", requests=10)
 
-        # Query in next hour
-        next_hour = datetime(2099, 1, 1, 1, 0, 0, tzinfo=UTC)
-        with patch(
-            "synthorg.budget.quota_tracker.datetime",
-        ) as mock_dt:
+            # Query in next hour
+            next_hour = datetime(2026, 3, 15, 15, 0, 0, tzinfo=UTC)
             mock_dt.now.return_value = next_hour
-            mock_dt.side_effect = datetime
             snapshots = await tracker.get_snapshot("test-provider")
 
         assert snapshots[0].requests_used == 0

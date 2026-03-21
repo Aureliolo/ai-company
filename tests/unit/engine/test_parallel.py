@@ -289,8 +289,8 @@ class TestParallelExecutorFailFast:
             if call_count == 1:
                 msg = "first agent failed"
                 raise RuntimeError(msg)
-            # Others take longer (would be cancelled)
-            await asyncio.sleep(10)
+            # Others block until cancelled by fail_fast
+            await asyncio.Event().wait()
             identity = kwargs.get("identity")
             task = kwargs.get("task")
             return _make_run_result(identity, task)  # type: ignore[arg-type]
@@ -623,7 +623,7 @@ class TestParallelExecutorCancellation:
                 msg = "fail fast"
                 raise RuntimeError(msg)
             peer_started.set()
-            await asyncio.sleep(10)
+            await asyncio.Event().wait()  # blocks until cancelled
             identity = kwargs.get("identity")
             task = kwargs.get("task")
             return _make_run_result(identity, task)  # type: ignore[arg-type]

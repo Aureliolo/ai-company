@@ -160,17 +160,32 @@ class TestDeleteSnapshotEvent:
             message_bus=message_bus,  # type: ignore[arg-type]
             config=config,
         )
+
+        async def _wait_for_publish(
+            bus: FakeMessageBus,
+            *,
+            count: int = 1,
+            timeout: float = 2.0,  # noqa: ASYNC109
+        ) -> None:
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + timeout
+            while len(bus.published) < count:
+                if loop.time() > deadline:
+                    msg = "Expected publish did not arrive"
+                    raise TimeoutError(msg)
+                await asyncio.sleep(0)
+
         eng.start()
         try:
             task = await eng.create_task(
                 make_create_data(),
                 requested_by="alice",
             )
-            await asyncio.sleep(0)  # let snapshot publish
+            await _wait_for_publish(message_bus)
             message_bus.published.clear()
 
             await eng.delete_task(task.id, requested_by="alice")
-            await asyncio.sleep(0)  # let snapshot publish
+            await _wait_for_publish(message_bus)
 
             assert len(message_bus.published) == 1
             event = TaskStateChanged.model_validate_json(
