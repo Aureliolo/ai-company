@@ -1,3 +1,13 @@
+<blockquote>
+
+> [!CAUTION]
+> **MASSIVE WORK IN PROGRESS** -- SynthOrg is under active development and is **not ready for production use**.
+> APIs, configuration formats, and behavior may change without notice between releases.
+> Some features shown in the documentation are planned but not yet fully implemented.
+> Follow progress on [GitHub](https://github.com/Aureliolo/synthorg) or check the [roadmap](docs/roadmap/).
+
+</blockquote>
+
 <p align="center">
   <strong>SynthOrg</strong>
 </p>
