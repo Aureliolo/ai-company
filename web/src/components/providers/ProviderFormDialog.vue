@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
+import Password from 'primevue/password'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
 import { useProviderStore } from '@/stores/providers'
@@ -258,7 +259,7 @@ function handleSave() {
         <label for="pf-api-key" class="mb-1 block text-xs text-slate-400">
           {{ authType === 'oauth' ? 'Access Token (pre-fetched)' : 'API Key' }}
         </label>
-        <InputText id="pf-api-key" v-model="apiKey" type="password" class="w-full" placeholder="sk-..." />
+        <Password inputId="pf-api-key" v-model="apiKey" :toggle-mask="true" :feedback="false" fluid placeholder="sk-..." :input-props="{ autocomplete: 'off' }" />
       </div>
 
       <!-- OAuth fields -->
@@ -273,7 +274,7 @@ function handleSave() {
         </div>
         <div>
           <label for="pf-oauth-secret" class="mb-1 block text-xs text-slate-400">Client Secret</label>
-          <InputText id="pf-oauth-secret" v-model="oauthClientSecret" type="password" class="w-full" />
+          <Password inputId="pf-oauth-secret" v-model="oauthClientSecret" :toggle-mask="true" :feedback="false" fluid :input-props="{ autocomplete: 'off' }" />
         </div>
         <div>
           <label for="pf-oauth-scope" class="mb-1 block text-xs text-slate-400">Scope (optional)</label>
@@ -289,7 +290,7 @@ function handleSave() {
         </div>
         <div>
           <label for="pf-header-value" class="mb-1 block text-xs text-slate-400">Header Value</label>
-          <InputText id="pf-header-value" v-model="customHeaderValue" type="password" class="w-full" />
+          <Password inputId="pf-header-value" v-model="customHeaderValue" :toggle-mask="true" :feedback="false" fluid :input-props="{ autocomplete: 'off' }" />
         </div>
       </template>
     </div>

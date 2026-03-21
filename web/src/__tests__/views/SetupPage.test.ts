@@ -24,6 +24,24 @@ vi.mock('primevue/inputtext', () => ({
   }),
 }))
 
+vi.mock('primevue/password', () => ({
+  default: defineComponent({
+    props: ['modelValue', 'inputId', 'toggleMask', 'feedback', 'placeholder', 'fluid', 'disabled', 'inputProps'],
+    emits: ['update:modelValue'],
+    setup(props, { emit }) {
+      return () =>
+        h('input', {
+          id: props.inputId,
+          type: 'password',
+          value: props.modelValue,
+          disabled: props.disabled,
+          ...props.inputProps,
+          onInput: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).value),
+        })
+    },
+  }),
+}))
+
 vi.mock('primevue/button', () => ({
   default: defineComponent({
     props: ['label', 'icon', 'type', 'loading', 'disabled', 'severity', 'size', 'outlined'],

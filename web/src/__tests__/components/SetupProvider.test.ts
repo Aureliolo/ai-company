@@ -44,6 +44,23 @@ const InputTextStub = defineComponent({
   },
 })
 
+const PasswordStub = defineComponent({
+  name: 'PvPassword',
+  props: ['modelValue', 'inputId', 'toggleMask', 'feedback', 'placeholder', 'fluid', 'disabled', 'inputProps'],
+  emits: ['update:modelValue'],
+  setup(props, { emit }) {
+    return () =>
+      h('input', {
+        id: props.inputId,
+        type: 'password',
+        value: props.modelValue,
+        disabled: props.disabled,
+        ...props.inputProps,
+        onInput: (e: Event) => emit('update:modelValue', (e.target as HTMLInputElement).value),
+      })
+  },
+})
+
 const TagStub = defineComponent({
   name: 'PvTag',
   props: ['value', 'severity', 'class'],
@@ -55,6 +72,7 @@ const TagStub = defineComponent({
 const globalStubs = {
   Button: ButtonStub,
   InputText: InputTextStub,
+  Password: PasswordStub,
   Tag: TagStub,
 }
 
