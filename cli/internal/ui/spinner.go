@@ -19,10 +19,11 @@ const spinnerInterval = 80 * time.Millisecond
 // Spinner renders an animated inline spinner on a terminal.
 // Non-TTY writers get a static status line instead.
 type Spinner struct {
-	ui   *UI
-	msg  string
-	mu   sync.Mutex
-	done chan struct{}
+	ui        *UI
+	msg       string
+	done      chan struct{}
+	closeOnce sync.Once
+	wg        sync.WaitGroup
 }
 
 // StartSpinner begins an animated spinner with the given message.
@@ -39,7 +40,11 @@ func (u *UI) StartSpinner(msg string) *Spinner {
 		u.Step(msg)
 		return s
 	}
-	go s.run()
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.run()
+	}()
 	return s
 }
 
@@ -54,12 +59,10 @@ func (s *Spinner) run() {
 		case <-s.done:
 			return
 		case <-ticker.C:
-			s.mu.Lock()
 			_, _ = fmt.Fprintf(s.ui.w, "\r\033[K%s %s",
 				s.ui.brand.Render(spinnerFrames[frame]),
 				s.ui.bold.Render(s.msg))
 			frame = (frame + 1) % len(spinnerFrames)
-			s.mu.Unlock()
 		}
 	}
 }
@@ -71,41 +74,34 @@ func (s *Spinner) clearLine() {
 	}
 }
 
+// waitAndClear signals the goroutine to stop, waits for it to finish,
+// then clears the spinner line. This ensures no race between the
+// goroutine's final write and the caller's subsequent write.
+func (s *Spinner) waitAndClear() {
+	s.closeOnce.Do(func() { close(s.done) })
+	s.wg.Wait()
+	s.clearLine()
+}
+
 // Success stops the spinner and prints a green success line.
 func (s *Spinner) Success(msg string) {
-	s.stop()
-	s.clearLine()
+	s.waitAndClear()
 	s.ui.Success(msg)
 }
 
 // Error stops the spinner and prints a red error line.
 func (s *Spinner) Error(msg string) {
-	s.stop()
-	s.clearLine()
+	s.waitAndClear()
 	s.ui.Error(msg)
 }
 
 // Warn stops the spinner and prints an orange warning line.
 func (s *Spinner) Warn(msg string) {
-	s.stop()
-	s.clearLine()
+	s.waitAndClear()
 	s.ui.Warn(msg)
 }
 
 // Stop halts the spinner animation without printing a final line.
 func (s *Spinner) Stop() {
-	s.stop()
-	s.clearLine()
-}
-
-// stop signals the animation goroutine to exit. Safe to call multiple times.
-func (s *Spinner) stop() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	select {
-	case <-s.done:
-		// Already stopped.
-	default:
-		close(s.done)
-	}
+	s.waitAndClear()
 }

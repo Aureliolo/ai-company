@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
@@ -142,19 +143,7 @@ func verifyAndPinImages(ctx context.Context, _ *cobra.Command, state config.Stat
 		return fmt.Errorf("image verification failed: %w", err)
 	}
 	sp.Stop()
-
-	// Render verification results in a box.
-	var boxLines []string
-	for _, r := range results {
-		sigIcon := out.SuccessIcon()
-		slsaIcon := out.SuccessIcon()
-		if !r.ProvenanceVerified {
-			slsaIcon = out.WarnIcon()
-		}
-		boxLines = append(boxLines, fmt.Sprintf("  %-12s sig %s  slsa %s",
-			r.Ref.Name(), sigIcon, slsaIcon))
-	}
-	out.Box("Verify Images", boxLines)
+	renderVerifyBox(out, results)
 
 	pins, err := digestPinMap(results)
 	if err != nil {
@@ -250,6 +239,22 @@ func digestPinMap(results []verify.VerifyResult) (map[string]string, error) {
 	return pins, nil
 }
 
+// renderVerifyBox displays image verification results in a bordered box.
+// Shared by start.go and update.go verification flows.
+func renderVerifyBox(out *ui.UI, results []verify.VerifyResult) {
+	boxLines := make([]string, 0, len(results))
+	for _, r := range results {
+		sigIcon := out.SuccessIcon()
+		slsaIcon := out.SuccessIcon()
+		if !r.ProvenanceVerified {
+			slsaIcon = out.WarnIcon()
+		}
+		boxLines = append(boxLines, fmt.Sprintf("  %-12s sig %s  slsa %s",
+			r.Ref.Name(), sigIcon, slsaIcon))
+	}
+	out.Box("Verify Images", boxLines)
+}
+
 // composeRun runs a docker compose command with output forwarded to the
 // Cobra command's stdout/stderr.
 func composeRun(ctx context.Context, cobraCmd *cobra.Command, info docker.Info, dir string, args ...string) error {
@@ -278,7 +283,11 @@ func composeRunQuiet(ctx context.Context, info docker.Info, dir string, args ...
 	c.Stdout = &buf
 	c.Stderr = &buf
 	if err := c.Run(); err != nil {
-		return fmt.Errorf("%w\n%s", err, buf.String())
+		output := strings.TrimSpace(buf.String())
+		if output != "" {
+			return fmt.Errorf("%w: %s", err, output)
+		}
+		return err
 	}
 	return nil
 }

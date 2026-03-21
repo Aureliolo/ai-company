@@ -48,7 +48,7 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 	}
 
 	if len(old) == 0 {
-		out.Success("No old images found -- nothing to clean up.")
+		out.Success("No old images found -- nothing to clean up")
 		return nil
 	}
 

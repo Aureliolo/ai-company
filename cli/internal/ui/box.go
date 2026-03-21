@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-runewidth"
 )
 
 // Box draws a bordered box with a title integrated into the top border.
@@ -21,10 +20,17 @@ func (u *UI) Box(title string, lines []string) {
 		return
 	}
 
-	// Measure widths.
-	titleW := runewidth.StringWidth(title)
+	// Sanitize lines: strip C0 control characters but preserve ANSI escape
+	// codes (needed for pre-rendered styled content like colored icons).
+	// Measure visual width via lipgloss.Width which handles ANSI correctly.
+	sanitized := make([]string, len(lines))
+	for i, line := range lines {
+		sanitized[i] = stripControl(line)
+	}
+
+	titleW := lipgloss.Width(title)
 	maxContentW := 0
-	for _, line := range lines {
+	for _, line := range sanitized {
 		if w := lipgloss.Width(line); w > maxContentW {
 			maxContentW = w
 		}
@@ -54,7 +60,7 @@ func (u *UI) Box(title string, lines []string) {
 	_, _ = fmt.Fprintln(u.w, top)
 
 	// Content lines: "  | content        |"
-	for _, line := range lines {
+	for _, line := range sanitized {
 		contentW := lipgloss.Width(line)
 		pad := max(innerW-contentW, 0)
 		_, _ = fmt.Fprintf(u.w, "  %s %s%s %s\n",

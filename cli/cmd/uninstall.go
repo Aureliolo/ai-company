@@ -86,7 +86,7 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 	}
 
 	out.Blank()
-	out.Success("SynthOrg uninstalled.")
+	out.Success("SynthOrg uninstalled")
 	return nil
 }
 
@@ -126,45 +126,16 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, 
 }
 
 // confirmAndRemoveImages offers to remove SynthOrg container images.
-// Lists images deduplicated by Docker ID with digest info for identification.
+// Lists all images (not just old ones) deduplicated by Docker ID.
 func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info, out, errUI *ui.UI) error {
 	ctx := cmd.Context()
 
-	// List all SynthOrg images with deduplication by Docker ID.
-	imageRef := "ghcr.io/aureliolo/synthorg-*"
-	allOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
-		"--filter", "reference="+imageRef,
-		"--format", "{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.ID}}\t{{.Digest}}")
-	if err != nil {
-		errUI.Warn(fmt.Sprintf("Could not list images: %v", err))
-		return nil
-	}
-
-	type imageEntry struct {
-		display string
-		id      string
-	}
-	var images []imageEntry
-	seen := make(map[string]bool)
-	for _, line := range strings.Split(strings.TrimSpace(strings.ReplaceAll(allOut, "\r\n", "\n")), "\n") {
-		if line == "" {
-			continue
+	// List all SynthOrg images (pass empty currentIDs to include everything).
+	images, err := listNonCurrentImages(ctx, errUI.Writer(), info, nil)
+	if err != nil || len(images) == 0 {
+		if len(images) == 0 && err == nil {
+			out.Success("No SynthOrg images found locally.")
 		}
-		parts := strings.SplitN(line, "\t", 5)
-		if len(parts) < 5 {
-			continue
-		}
-		repo, tag, sizeStr, id, digest := parts[0], parts[1], parts[2], parts[3], parts[4]
-		if !isValidDockerID(id) || seen[id] {
-			continue
-		}
-		seen[id] = true
-		display := buildImageDisplay(repo, tag, digest, sizeStr)
-		images = append(images, imageEntry{display: display, id: id})
-	}
-
-	if len(images) == 0 {
-		out.Success("No SynthOrg images found locally.")
 		return nil
 	}
 
@@ -176,13 +147,11 @@ func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info, out, errUI *ui
 	out.Blank()
 
 	var removeImages bool
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title(fmt.Sprintf("Remove %d image(s)?", len(images))).
-				Value(&removeImages),
-		),
-	)
+	form := huh.NewForm(huh.NewGroup(
+		huh.NewConfirm().
+			Title(fmt.Sprintf("Remove %d image(s)?", len(images))).
+			Value(&removeImages),
+	))
 	if err := form.Run(); err != nil {
 		return err
 	}
@@ -190,7 +159,12 @@ func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info, out, errUI *ui
 		return nil
 	}
 
-	// Remove images one at a time for granular feedback.
+	removeImagesOneByOne(ctx, info, out, images)
+	return nil
+}
+
+// removeImagesOneByOne removes images individually with per-image feedback.
+func removeImagesOneByOne(ctx context.Context, info docker.Info, out *ui.UI, images []oldImage) {
 	var removed int
 	for _, img := range images {
 		_, rmiErr := docker.RunCmd(ctx, info.DockerPath, "rmi", "--force", img.id)
@@ -204,8 +178,6 @@ func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info, out, errUI *ui
 	if removed > 0 {
 		out.Success(fmt.Sprintf("Removed %d image(s)", removed))
 	}
-
-	return nil
 }
 
 func confirmAndRemoveData(cmd *cobra.Command, dataDir string) error {

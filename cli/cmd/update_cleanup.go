@@ -22,7 +22,8 @@ type oldImage struct {
 }
 
 // hintThresholdBytes is the minimum total size of old images before the
-// update command prints a cleanup hint (5 GB).
+// update command prints a cleanup hint (~5 GiB / 5.4 GB).
+// Note: uses binary base (1024^3) while parseDockerSize uses decimal (1e9).
 const hintThresholdBytes = 5 * 1024 * 1024 * 1024
 
 // hintOldImages prints a passive hint about old images after a successful
@@ -30,7 +31,8 @@ const hintThresholdBytes = 5 * 1024 * 1024 * 1024
 // Replaces the former interactive cleanup prompt.
 func hintOldImages(cmd *cobra.Command, info docker.Info, state config.State) {
 	out := ui.NewUI(cmd.OutOrStdout())
-	old, _ := findOldImages(cmd.Context(), cmd.ErrOrStderr(), info, state)
+	// Best-effort: findOldImages already logs errors to errOut internally.
+	old, _ := findOldImages(cmd.Context(), cmd.ErrOrStderr(), info, state) //nolint:errcheck // logged internally
 	if len(old) == 0 {
 		return
 	}

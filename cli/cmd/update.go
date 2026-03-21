@@ -574,19 +574,7 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 		return nil, fmt.Errorf("image verification failed: %w", err)
 	}
 	sp.Stop()
-
-	// Render verification results in a box.
-	var boxLines []string
-	for _, r := range results {
-		sigIcon := out.SuccessIcon()
-		slsaIcon := out.SuccessIcon()
-		if !r.ProvenanceVerified {
-			slsaIcon = out.WarnIcon()
-		}
-		boxLines = append(boxLines, fmt.Sprintf("  %-12s sig %s  slsa %s",
-			r.Ref.Name(), sigIcon, slsaIcon))
-	}
-	out.Box("Verify Images", boxLines)
+	renderVerifyBox(out, results)
 	out.Blank()
 
 	pins, err := digestPinMap(results)

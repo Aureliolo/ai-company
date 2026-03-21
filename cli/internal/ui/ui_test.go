@@ -105,6 +105,7 @@ func TestWriter(t *testing.T) {
 }
 
 func TestBlank(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Blank()
@@ -114,6 +115,7 @@ func TestBlank(t *testing.T) {
 }
 
 func TestPlain(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Plain("hello world")
@@ -123,6 +125,7 @@ func TestPlain(t *testing.T) {
 }
 
 func TestDivider(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Divider()
@@ -133,6 +136,7 @@ func TestDivider(t *testing.T) {
 }
 
 func TestInlineKV(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.InlineKV("Docker", "29.2.1", "Compose", "5.1.0")
@@ -146,6 +150,7 @@ func TestInlineKV(t *testing.T) {
 }
 
 func TestIconAccessors(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	if !strings.Contains(u.SuccessIcon(), IconSuccess) {
@@ -160,6 +165,7 @@ func TestIconAccessors(t *testing.T) {
 }
 
 func TestIsTTY(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	// A bytes.Buffer is not a TTY.
@@ -169,6 +175,7 @@ func TestIsTTY(t *testing.T) {
 }
 
 func TestBox(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Box("Test Box", []string{"line one", "line two"})
@@ -195,6 +202,7 @@ func TestBox(t *testing.T) {
 }
 
 func TestBoxEmpty(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Box("Empty", nil)
@@ -204,6 +212,7 @@ func TestBoxEmpty(t *testing.T) {
 }
 
 func TestSpinnerNonTTY(t *testing.T) {
+	t.Parallel()
 	// On a non-TTY writer (bytes.Buffer), the spinner should print a
 	// static step line immediately and Stop/Success should work without
 	// animation.
@@ -221,6 +230,7 @@ func TestSpinnerNonTTY(t *testing.T) {
 }
 
 func TestSpinnerDoubleStop(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	s := u.StartSpinner("work")

@@ -152,6 +152,9 @@ func (u *UI) Divider() {
 // Pairs are given as alternating key, value strings.
 // Example: InlineKV("Docker", "29.2.1 "+IconSuccess, "Compose", "5.1.0 "+IconSuccess)
 func (u *UI) InlineKV(pairs ...string) {
+	if len(pairs)%2 != 0 {
+		pairs = pairs[:len(pairs)-1] // drop unpaired trailing key
+	}
 	var b strings.Builder
 	b.WriteString("  ")
 	for i := 0; i+1 < len(pairs); i += 2 {
