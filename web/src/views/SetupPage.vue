@@ -153,7 +153,11 @@ onMounted(async () => {
     }
     // Restore completion summary values from store when resuming after refresh.
     if (setup.status?.has_company && !createdCompanyName.value) {
-      await setup.fetchAgents()
+      try {
+        await setup.fetchAgents()
+      } catch {
+        // Non-critical: agent count will show 0 on the summary screen.
+      }
       createdAgentCount.value = setup.agents.length
     }
   }

@@ -2,7 +2,7 @@
 
 import sqlite3
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -338,17 +338,17 @@ class TestSQLiteOrgFactStoreOperations:
         """Item 12: list_by_category wraps sqlite3.Error."""
         store = SQLiteOrgFactStore(":memory:")
         await store.connect()
+        real_db = store._db
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(
+            side_effect=sqlite3.Error("disk I/O error"),
+        )
+        store._db = mock_db
         try:
-            with (
-                patch.object(
-                    store._db,
-                    "execute",
-                    side_effect=sqlite3.Error("disk I/O error"),
-                ),
-                pytest.raises(OrgMemoryQueryError, match="disk I/O error"),
-            ):
+            with pytest.raises(OrgMemoryQueryError, match="disk I/O error"):
                 await store.list_by_category(OrgFactCategory.ADR)
         finally:
+            store._db = real_db
             await store.disconnect()
 
     async def test_row_parse_error_wraps_in_query_error(self) -> None:

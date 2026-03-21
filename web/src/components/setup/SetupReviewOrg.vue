@@ -124,9 +124,8 @@ async function handleAddAgent() {
   // should not revert the successful create, so use a separate block.
   try {
     await setup.fetchAgents()
-  } catch {
-    // Agent was created; list refresh failed. The list will be stale
-    // but the next mount/navigation will re-fetch.
+  } catch (refreshErr) {
+    error.value = `Agent created, but list refresh failed: ${getErrorMessage(refreshErr)}`
   }
   showAddAgent.value = false
   newAgentRole.value = ''

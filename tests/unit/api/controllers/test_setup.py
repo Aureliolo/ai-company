@@ -756,14 +756,16 @@ class TestSetupAgentModelUpdate:
     ) -> None:
         app_state, original = _setup_mock_providers(test_client)
         try:
-            # Create agents first.
-            test_client.post(
+            # Create agents first -- verify seed succeeded.
+            seed = test_client.post(
                 "/api/v1/setup/company",
                 json={
                     "company_name": "Validation Test",
                     "template_name": "solo_founder",
                 },
             )
+            assert seed.status_code == 201
+            assert seed.json()["data"]["agent_count"] >= 1
             resp = test_client.put(
                 "/api/v1/setup/agents/0/model",
                 json={

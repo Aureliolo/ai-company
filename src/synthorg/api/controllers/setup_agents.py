@@ -393,12 +393,12 @@ def agent_dict_to_summary(
         )
     model = agent.get("model", {})
     return SetupAgentSummary(
-        name=agent.get("name", "unknown"),
-        role=agent.get("role", "unknown"),
-        department=agent.get("department", "general"),
-        level=agent.get("level", ""),
-        model_provider=model.get("provider", ""),
-        model_id=model.get("model_id", ""),
-        tier=agent.get("tier", "medium"),
-        personality_preset=agent.get("personality_preset"),
+        name=agent.get("name") or "unknown",
+        role=agent.get("role") or "unknown",
+        department=agent.get("department") or "general",
+        level=agent.get("level") or "",
+        model_provider=model.get("provider") or "",
+        model_id=model.get("model_id") or "",
+        tier=agent.get("tier") or "medium",
+        personality_preset=agent.get("personality_preset") or None,
     )
