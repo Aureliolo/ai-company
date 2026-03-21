@@ -111,7 +111,6 @@ vi.mock('@/api/endpoints/providers', () => ({
   listProviders: vi.fn().mockResolvedValue({}),
   listPresets: vi.fn().mockResolvedValue([]),
   createFromPreset: vi.fn().mockResolvedValue({}),
-  testConnection: vi.fn().mockResolvedValue({ success: true, latency_ms: 42 }),
 }))
 
 import SetupPage from '@/views/SetupPage.vue'

@@ -65,11 +65,11 @@ Configuration is in `docker/.env` (copy from `docker/.env.example`):
 After the containers are running, open the web dashboard at [http://localhost:3000](http://localhost:3000). On a fresh install, the **setup wizard** will appear automatically and guide you through:
 
 1. **Create an admin account** -- set up the first admin (CEO) user.
-2. **Configure an LLM provider** -- select a preset (Ollama, OpenRouter, etc.) or add a custom provider. Test the connection inline.
+2. **Configure an LLM provider** -- select a preset (Ollama, OpenRouter, etc.) or add a custom provider. Model discovery verifies the connection automatically.
 3. **Create your company** -- name your synthetic organization and optionally start from a template.
 4. **Hire your first agent** -- choose a role, model, and personality for the first AI agent.
 
-The wizard shows five steps (Welcome, then the four above). All four substantive steps must be completed -- the backend validates that a company, at least one agent, and at least one provider exist before allowing setup to finish. Completed steps show a summary and can be revisited via the step indicator. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
+The wizard shows five steps (Welcome, then the four above). All four substantive steps must be completed -- the backend validates that a company, at least one agent, and at least one provider exist before allowing setup to finish. Steps are completed sequentially -- a later step only appears done if all prior steps are also complete. Completed steps show a summary and can be revisited via the step indicator. After completing the wizard, the dashboard appears and the setup wizard is not shown again.
 
 To re-run the wizard later, use `synthorg setup` (resets the flag and opens the browser) or delete the `api.setup_complete` setting via the settings API.
 

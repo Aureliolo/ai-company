@@ -61,7 +61,13 @@ export const useSetupStore = defineStore('setup', () => {
     }
   }
 
-  /** Mark a single step as complete (immutable update). */
+  /** Mark a single step as complete (immutable update).
+   *
+   * This bypasses the sequential ordering enforced by
+   * ``syncCompletionFromStatus``.  Only use for steps that are
+   * completed locally without a backend round-trip (currently
+   * only ``'welcome'``).
+   */
   function markStepComplete(stepId: string): void {
     completedSteps.value = { ...completedSteps.value, [stepId]: true }
   }

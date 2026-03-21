@@ -631,69 +631,82 @@ class TestSetupComplete:
         finally:
             settings_repo._store.pop(("company", "company_name"), None)
 
-    def test_complete_validates_all_prerequisites(
+    def test_complete_rejects_without_db_company(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Completion requires company, agents, and providers.
+        """Completion rejects when company_name is only in YAML defaults."""
+        repo = test_client.app.state.app_state.persistence._settings_repo
+        key = ("company", "company_name")
+        original = repo._store.get(key)
+        repo._store.pop(key, None)
+        try:
+            resp = test_client.post("/api/v1/setup/complete")
+            assert resp.status_code == 422
+            assert "company" in resp.json()["error"].lower()
+        finally:
+            if original is not None:
+                repo._store[key] = original
 
-        The company must be persisted to the DB (not just present in
-        YAML defaults) for ``_check_has_company`` to recognise it.
-        This test walks through the prerequisite checks in order:
-        company, agents, providers, then confirms success.
-        """
-        app_state = test_client.app.state.app_state
-        settings_repo = app_state.persistence._settings_repo
+    def test_complete_rejects_without_agents(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Completion rejects when company exists but no agents."""
+        repo = test_client.app.state.app_state.persistence._settings_repo
         now = datetime.now(UTC).isoformat()
+        repo._store[("company", "company_name")] = ("Test Corp", now)
+        try:
+            resp = test_client.post("/api/v1/setup/complete")
+            assert resp.status_code == 422
+            assert "agent" in resp.json()["error"].lower()
+        finally:
+            repo._store.pop(("company", "company_name"), None)
 
-        company_key = ("company", "company_name")
-        agents_key = ("company", "agents")
-        original_company = settings_repo._store.get(company_key)
-        original_agents = settings_repo._store.get(agents_key)
-
-        # 1. No DB company_name -- rejected (YAML default doesn't count).
-        settings_repo._store.pop(company_key, None)
-        resp = test_client.post("/api/v1/setup/complete")
-        assert resp.status_code == 422
-        assert "company" in resp.json()["error"].lower()
-
-        # 2. Company set in DB, no agents -- rejected.
-        settings_repo._store[company_key] = ("Test Corp", now)
-        resp = test_client.post("/api/v1/setup/complete")
-        assert resp.status_code == 422
-        assert "agent" in resp.json()["error"].lower()
-
-        # 3. Agents set, no providers -- rejected.
-        agents_json = json.dumps([{"name": "agent-001", "role": "CEO"}])
-        settings_repo._store[agents_key] = (agents_json, now)
+    def test_complete_rejects_without_providers(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Completion rejects when company and agents exist but no providers."""
+        repo = test_client.app.state.app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "company_name")] = ("Test Corp", now)
+        agents = json.dumps([{"name": "agent-001", "role": "CEO"}])
+        repo._store[("company", "agents")] = (agents, now)
         try:
             resp = test_client.post("/api/v1/setup/complete")
             assert resp.status_code == 422
             assert "provider" in resp.json()["error"].lower()
-
-            # 4. All present -- success.
-            stub = MagicMock(spec=BaseCompletionProvider)
-            original_registry = app_state._provider_registry
-            app_state._provider_registry = ProviderRegistry(
-                {"test-provider": stub},
-            )
-            try:
-                resp = test_client.post("/api/v1/setup/complete")
-                assert resp.status_code == 201
-                body = resp.json()
-                assert body["success"] is True
-                assert body["data"]["setup_complete"] is True
-            finally:
-                app_state._provider_registry = original_registry
         finally:
-            if original_agents is None:
-                settings_repo._store.pop(agents_key, None)
-            else:
-                settings_repo._store[agents_key] = original_agents
-            if original_company is None:
-                settings_repo._store.pop(company_key, None)
-            else:
-                settings_repo._store[company_key] = original_company
+            repo._store.pop(("company", "company_name"), None)
+            repo._store.pop(("company", "agents"), None)
+
+    def test_complete_succeeds_with_all_prerequisites(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Completion succeeds when company, agents, and providers exist."""
+        app_state = test_client.app.state.app_state
+        repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "company_name")] = ("Test Corp", now)
+        agents = json.dumps([{"name": "agent-001", "role": "CEO"}])
+        repo._store[("company", "agents")] = (agents, now)
+        stub = MagicMock(spec=BaseCompletionProvider)
+        original_registry = app_state._provider_registry
+        app_state._provider_registry = ProviderRegistry(
+            {"test-provider": stub},
+        )
+        try:
+            resp = test_client.post("/api/v1/setup/complete")
+            assert resp.status_code == 201
+            body = resp.json()
+            assert body["success"] is True
+            assert body["data"]["setup_complete"] is True
+        finally:
+            app_state._provider_registry = original_registry
+            repo._store.pop(("company", "company_name"), None)
+            repo._store.pop(("company", "agents"), None)
 
 
 @pytest.mark.unit

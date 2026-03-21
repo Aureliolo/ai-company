@@ -11,6 +11,7 @@ import type { ProviderConfig, ProviderPreset } from '@/api/types'
 vi.mock('@/api/endpoints/providers', () => ({
   listProviders: vi.fn().mockResolvedValue({}),
   listPresets: vi.fn().mockResolvedValue([]),
+  testConnection: vi.fn(),
   createFromPreset: vi.fn(),
   discoverModels: vi.fn(),
   probePreset: vi.fn().mockResolvedValue({ url: null, model_count: 0, candidates_tried: 0 }),
@@ -168,14 +169,11 @@ describe('SetupProvider', () => {
       expect(wrapper.text()).toContain('No models detected')
     })
 
-    it('does not call testConnection at all', async () => {
+    it('does not call testConnection', async () => {
       wrapper = mountWithExistingProvider()
       await flushPromises()
 
-      expect(providersApi.listProviders).toHaveBeenCalled()
-      // testConnection is not imported/mocked -- verify the module
-      // mock does not include it.
-      expect('testConnection' in providersApi).toBe(false)
+      expect(providersApi.testConnection).not.toHaveBeenCalled()
     })
 
     it('disables Next when no providers exist', async () => {

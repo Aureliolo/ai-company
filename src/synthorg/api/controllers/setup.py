@@ -379,6 +379,11 @@ async def _check_has_company(
     try:
         entry = await settings_svc.get_entry("company", "company_name")
         if entry.source != SettingSource.DATABASE:
+            logger.debug(
+                SETUP_STATUS_SETTINGS_DEFAULT_USED,
+                setting="company_name",
+                source=entry.source,
+            )
             return False
         return bool(entry.value and entry.value.strip())
     except MemoryError, RecursionError:
@@ -401,16 +406,27 @@ async def _check_has_company(
 
 
 async def _check_has_agents(settings_svc: SettingsService) -> bool:
-    """Check whether any agents have been created.
+    """Check whether any agents have been explicitly created.
+
+    Only values persisted to the database (i.e. saved by the user
+    through the setup wizard) count.  YAML/code defaults must not
+    cause a fresh setup to report agents as already existing.
 
     Args:
         settings_svc: Settings service instance.
 
     Returns:
-        True if a non-empty agents list is stored, False otherwise.
+        True if user-created agents exist, False otherwise.
     """
     try:
         entry = await settings_svc.get_entry("company", "agents")
+        if entry.source != SettingSource.DATABASE:
+            logger.debug(
+                SETUP_STATUS_SETTINGS_DEFAULT_USED,
+                setting="agents",
+                source=entry.source,
+            )
+            return False
         if not entry.value:
             return False
         parsed = json.loads(entry.value)
