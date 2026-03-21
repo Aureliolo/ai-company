@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.3](https://github.com/Aureliolo/synthorg/compare/v0.4.2...v0.4.3) (2026-03-21)
+
+
+### Bug Fixes
+
+* harden third-party logger taming with proper cleanup and broader coverage ([#656](https://github.com/Aureliolo/synthorg/issues/656)) ([6d9874d](https://github.com/Aureliolo/synthorg/commit/6d9874d8acd10537036940cdee84db5e2ac3afa2))
+* setup wizard -- password toggle, stepper, discovery-as-test ([#655](https://github.com/Aureliolo/synthorg/issues/655)) ([54dd199](https://github.com/Aureliolo/synthorg/commit/54dd19947ed96c0503d6c01935573354ab0893a0))
+
+
+### Maintenance
+
+* bump h3 from 1.15.6 to 1.15.9 in /site ([#653](https://github.com/Aureliolo/synthorg/issues/653)) ([b184ee2](https://github.com/Aureliolo/synthorg/commit/b184ee2b6a579337422aa6eaeca9147100b9ce93))
+
 ## [0.4.2](https://github.com/Aureliolo/synthorg/compare/v0.4.1...v0.4.2) (2026-03-20)
 
 
