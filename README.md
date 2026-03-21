@@ -102,7 +102,7 @@ synthorg init       # interactive setup wizard
 synthorg start      # pull images + start containers
 synthorg status     # check health
 synthorg doctor     # diagnostics if something is wrong
-synthorg setup      # re-run first-run setup wizard
+synthorg wipe       # factory-reset: backup, wipe data, restart fresh
 synthorg cleanup    # remove old container images
 ```
 

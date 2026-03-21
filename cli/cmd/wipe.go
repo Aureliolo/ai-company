@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -70,17 +71,55 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// Ensure containers are running so we can offer a backup.
 	if err := ensureRunning(ctx, cmd, state, info, safeDir, out, errOut); err != nil {
 		return err
 	}
 
-	// Offer backup before wiping.
 	if err := offerBackup(ctx, cmd, state, info, safeDir, out, errOut); err != nil {
 		return err
 	}
 
-	// Final confirmation gate.
+	return confirmAndWipe(ctx, cmd, state, info, safeDir, out, errOut)
+}
+
+// confirmAndWipe asks for final confirmation, then stops containers,
+// removes volumes, starts fresh, and opens the setup wizard.
+func confirmAndWipe(ctx context.Context, cmd *cobra.Command, state config.State, info docker.Info, safeDir string, out, errOut *ui.UI) error {
+	confirmed, err := confirmWipe(cmd)
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		out.Hint("Wipe cancelled.")
+		return nil
+	}
+
+	sp := out.StartSpinner("Stopping containers and removing volumes...")
+	if err := composeRunQuiet(ctx, info, safeDir, "down", "-v"); err != nil {
+		sp.Error("Failed to stop containers")
+		return fmt.Errorf("stopping containers: %w", err)
+	}
+	sp.Success("Containers stopped and volumes removed")
+
+	out.Blank()
+	if err := pullStartAndWait(ctx, info, safeDir, state, out, errOut); err != nil {
+		return err
+	}
+
+	out.Blank()
+	setupURL := fmt.Sprintf("http://localhost:%d/setup", state.WebPort)
+	out.Success("Factory reset complete")
+	out.Hint(fmt.Sprintf("Opening %s", setupURL))
+	if err := openBrowser(ctx, setupURL); err != nil {
+		errOut.Warn(fmt.Sprintf("Could not open browser: %v", err))
+		errOut.Hint(fmt.Sprintf("Open %s manually in your browser.", setupURL))
+	}
+
+	return nil
+}
+
+// confirmWipe prompts for final destructive-action confirmation.
+func confirmWipe(cmd *cobra.Command) (bool, error) {
 	var confirmed bool
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
@@ -93,38 +132,9 @@ func runWipe(cmd *cobra.Command, _ []string) error {
 	form.WithInput(cmd.InOrStdin())
 	form.WithOutput(cmd.OutOrStdout())
 	if err := form.Run(); err != nil {
-		return fmt.Errorf("confirmation prompt: %w", err)
+		return false, fmt.Errorf("confirmation prompt: %w", err)
 	}
-	if !confirmed {
-		out.Hint("Wipe cancelled.")
-		return nil
-	}
-
-	// Stop containers and remove volumes.
-	sp := out.StartSpinner("Stopping containers and removing volumes...")
-	if err := composeRunQuiet(ctx, info, safeDir, "down", "-v"); err != nil {
-		sp.Error("Failed to stop containers")
-		return fmt.Errorf("stopping containers: %w", err)
-	}
-	sp.Success("Containers stopped and volumes removed")
-
-	// Start fresh.
-	out.Blank()
-	if err := pullStartAndWait(ctx, info, safeDir, state, out, errOut); err != nil {
-		return err
-	}
-
-	// Open browser to setup wizard.
-	out.Blank()
-	setupURL := fmt.Sprintf("http://localhost:%d/setup", state.WebPort)
-	out.Success("Factory reset complete")
-	out.Hint(fmt.Sprintf("Opening %s", setupURL))
-	if err := openBrowser(ctx, setupURL); err != nil {
-		errOut.Warn(fmt.Sprintf("Could not open browser: %v", err))
-		errOut.Hint(fmt.Sprintf("Open %s manually in your browser.", setupURL))
-	}
-
-	return nil
+	return confirmed, nil
 }
 
 // ensureRunning checks whether the SynthOrg stack is running. If not, it
@@ -145,7 +155,7 @@ func ensureRunning(ctx context.Context, cmd *cobra.Command, state config.State, 
 	// Containers exist but backend may not be healthy yet.
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
 	if err := health.WaitForHealthy(ctx, healthURL, 30*time.Second, 2*time.Second, 5*time.Second); err != nil {
-		errOut.Warn("Backend not healthy -- backup may not be available")
+		errOut.Warn(fmt.Sprintf("Backend not healthy -- backup may not be available: %v", err))
 	}
 	return nil
 }
@@ -153,6 +163,24 @@ func ensureRunning(ctx context.Context, cmd *cobra.Command, state config.State, 
 // offerBackup prompts whether to create a backup, and if so, creates one
 // via the backend API and copies the archive to a local path.
 func offerBackup(ctx context.Context, cmd *cobra.Command, state config.State, info docker.Info, safeDir string, out, errOut *ui.UI) error {
+	wantBackup, err := promptForBackup(cmd)
+	if err != nil {
+		return err
+	}
+	if !wantBackup {
+		return nil
+	}
+
+	savePath, err := promptSavePath(cmd)
+	if err != nil {
+		return err
+	}
+
+	return createAndCopyBackup(ctx, cmd, state, info, safeDir, savePath, out, errOut)
+}
+
+// promptForBackup asks whether the user wants a backup before wiping.
+func promptForBackup(cmd *cobra.Command) (bool, error) {
 	var wantBackup bool
 	form := huh.NewForm(huh.NewGroup(
 		huh.NewConfirm().
@@ -165,14 +193,17 @@ func offerBackup(ctx context.Context, cmd *cobra.Command, state config.State, in
 	form.WithInput(cmd.InOrStdin())
 	form.WithOutput(cmd.OutOrStdout())
 	if err := form.Run(); err != nil {
-		return fmt.Errorf("backup prompt: %w", err)
+		return false, fmt.Errorf("backup prompt: %w", err)
 	}
-	if !wantBackup {
-		return nil
-	}
+	return wantBackup, nil
+}
 
-	// Ask where to save.
-	homeDir, _ := os.UserHomeDir()
+// promptSavePath asks the user for a local path to save the backup archive.
+func promptSavePath(cmd *cobra.Command) (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = os.TempDir()
+	}
 	defaultPath := filepath.Join(homeDir, fmt.Sprintf("synthorg-backup-%s.tar.gz", time.Now().Format("20060102-150405")))
 
 	savePath := defaultPath
@@ -185,47 +216,37 @@ func offerBackup(ctx context.Context, cmd *cobra.Command, state config.State, in
 	pathForm.WithInput(cmd.InOrStdin())
 	pathForm.WithOutput(cmd.OutOrStdout())
 	if err := pathForm.Run(); err != nil {
-		return fmt.Errorf("save path prompt: %w", err)
+		return "", fmt.Errorf("save path prompt: %w", err)
 	}
 	savePath = strings.TrimSpace(savePath)
 	if savePath == "" {
 		savePath = defaultPath
 	}
 
-	// Create backup via API.
+	// Expand leading ~/ to the user's home directory.
+	if strings.HasPrefix(savePath, "~/") || strings.HasPrefix(savePath, "~\\") {
+		savePath = filepath.Join(homeDir, savePath[2:])
+	}
+
+	savePath = filepath.Clean(savePath)
+	absPath, err := filepath.Abs(savePath)
+	if err != nil {
+		return "", fmt.Errorf("resolving save path: %w", err)
+	}
+	return absPath, nil
+}
+
+// createAndCopyBackup creates a backup via the API and copies it locally.
+func createAndCopyBackup(ctx context.Context, cmd *cobra.Command, state config.State, info docker.Info, safeDir, savePath string, out, errOut *ui.UI) error {
 	sp := out.StartSpinner("Creating backup...")
-	body, statusCode, err := backupAPIRequest(
-		ctx, state.BackendPort, http.MethodPost, "", nil,
-		60*time.Second, state.JWTSecret,
-	)
+	manifest, err := createBackupViaAPI(ctx, state)
 	if err != nil {
 		sp.Error("Backup failed")
 		errOut.Warn(fmt.Sprintf("Could not create backup: %v", err))
 		return askContinueWithoutBackup(cmd, out)
 	}
-	if statusCode < 200 || statusCode >= 300 {
-		sp.Error("Backup failed")
-		msg := apiErrorMessage(body, "backup failed")
-		errOut.Warn(fmt.Sprintf("Backup API error: %s", sanitizeAPIMessage(msg)))
-		return askContinueWithoutBackup(cmd, out)
-	}
-
-	data, err := parseAPIResponse(body)
-	if err != nil {
-		sp.Error("Backup failed")
-		errOut.Warn(fmt.Sprintf("Could not parse backup response: %v", err))
-		return askContinueWithoutBackup(cmd, out)
-	}
-
-	var manifest backupManifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		sp.Error("Backup failed")
-		errOut.Warn(fmt.Sprintf("Could not parse manifest: %v", err))
-		return askContinueWithoutBackup(cmd, out)
-	}
 	sp.Success("Backup created")
 
-	// Copy the backup archive from the container to the local path.
 	sp = out.StartSpinner("Copying backup to local path...")
 	if err := copyBackupFromContainer(ctx, info, safeDir, manifest.BackupID, savePath); err != nil {
 		sp.Error("Failed to copy backup")
@@ -235,6 +256,32 @@ func offerBackup(ctx context.Context, cmd *cobra.Command, state config.State, in
 	sp.Success(fmt.Sprintf("Backup saved to %s", savePath))
 
 	return nil
+}
+
+// createBackupViaAPI triggers a manual backup and returns the manifest.
+func createBackupViaAPI(ctx context.Context, state config.State) (backupManifest, error) {
+	body, statusCode, err := backupAPIRequest(
+		ctx, state.BackendPort, http.MethodPost, "", nil,
+		60*time.Second, state.JWTSecret,
+	)
+	if err != nil {
+		return backupManifest{}, fmt.Errorf("backup API request: %w", err)
+	}
+	if statusCode < 200 || statusCode >= 300 {
+		msg := apiErrorMessage(body, "backup failed")
+		return backupManifest{}, fmt.Errorf("backup API error: %s", sanitizeAPIMessage(msg))
+	}
+
+	data, err := parseAPIResponse(body)
+	if err != nil {
+		return backupManifest{}, fmt.Errorf("parsing backup response: %w", err)
+	}
+
+	var manifest backupManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return backupManifest{}, fmt.Errorf("parsing backup manifest: %w", err)
+	}
+	return manifest, nil
 }
 
 // copyBackupFromContainer copies the backup archive from the backend
@@ -282,14 +329,15 @@ func tarDirectory(srcDir, dstPath string) error {
 		return fmt.Errorf("backup directory is empty")
 	}
 
-	// Use the Go tar/gzip approach consistent with the Python backend.
-	f, err := os.Create(dstPath)
+	dstPath = filepath.Clean(dstPath)
+	f, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("creating archive: %w", err)
 	}
 
 	if err := createTarGz(f, srcDir); err != nil {
 		_ = f.Close()
+		_ = os.Remove(dstPath)
 		return err
 	}
 	return f.Close()
@@ -314,7 +362,7 @@ func askContinueWithoutBackup(cmd *cobra.Command, out *ui.UI) error {
 	}
 	if !proceed {
 		out.Hint("Wipe cancelled.")
-		return fmt.Errorf("wipe cancelled by user")
+		return nil
 	}
 	return nil
 }
@@ -361,13 +409,19 @@ func openBrowser(ctx context.Context, rawURL string) error {
 }
 
 // createTarGz writes a gzip-compressed tar archive of srcDir's contents to w.
+// Symlinks are skipped to prevent following links outside the source directory.
 func createTarGz(w io.Writer, srcDir string) error {
 	gw := gzip.NewWriter(w)
 	tw := tar.NewWriter(gw)
 
-	walkErr := filepath.Walk(srcDir, func(path string, fi os.FileInfo, err error) error {
+	walkErr := filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+
+		// Skip symlinks to prevent following links outside the source.
+		if d.Type()&fs.ModeSymlink != 0 {
+			return nil
 		}
 
 		rel, err := filepath.Rel(srcDir, path)
@@ -376,6 +430,11 @@ func createTarGz(w io.Writer, srcDir string) error {
 		}
 		if rel == "." {
 			return nil
+		}
+
+		fi, err := d.Info()
+		if err != nil {
+			return fmt.Errorf("stat %s: %w", rel, err)
 		}
 
 		header, err := tar.FileInfoHeader(fi, "")
@@ -388,7 +447,7 @@ func createTarGz(w io.Writer, srcDir string) error {
 			return fmt.Errorf("writing tar header for %s: %w", rel, err)
 		}
 
-		if fi.IsDir() {
+		if d.IsDir() {
 			return nil
 		}
 

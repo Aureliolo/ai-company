@@ -238,8 +238,8 @@ Provider, Company, Review Org) followed by a completion screen. When a template 
 in the Company step, all template agents are auto-created with models matched to configured
 providers via a cost-based tier classification engine. The Review Org step lets users inspect
 agents and reassign models before completing setup. All configuration is persisted to the
-database via REST API calls. The CLI equivalent (`synthorg setup`) is planned as a future
-addition.
+database via REST API calls. To re-run the setup wizard from scratch, use `synthorg wipe`
+(creates a backup, wipes all data, restarts the stack, and re-opens the wizard).
 
 ---
 

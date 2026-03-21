@@ -1042,7 +1042,7 @@ future CLI tool are thin clients that call the API -- they contain no business l
     from GitHub Releases with automatic re-exec, compose template refresh with diff
     approval, container image update with version matching), `doctor`
     (diagnostics + bug report URL), `uninstall`, `version`, `config`, `completion-install`,
-    `backup` (create/list/restore via backend API), `setup` (re-open first-run wizard),
+    `backup` (create/list/restore via backend API), `wipe` (factory-reset with backup offer),
     `cleanup` (remove old container images to free disk space).
     Built with Cobra + charmbracelet/huh. Distributed via GoReleaser + install scripts
     (`curl | sh` for Linux/macOS, `irm | iex` for Windows).

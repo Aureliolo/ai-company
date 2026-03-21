@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -50,7 +52,7 @@ func TestOpenBrowser_RejectsNonLocalhost(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error, got nil")
 			}
-			if !contains(err.Error(), tt.wantErr) {
+			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("error %q does not contain %q", err.Error(), tt.wantErr)
 			}
 		})
@@ -72,7 +74,7 @@ func TestOpenBrowser_AcceptsLocalhost(t *testing.T) {
 			err := openBrowser(t.Context(), u)
 			if err != nil {
 				// "starting browser" errors are expected in CI (no browser)
-				if contains(err.Error(), "starting browser") {
+				if strings.Contains(err.Error(), "starting browser") {
 					return
 				}
 				t.Errorf("unexpected error for valid URL %q: %v", u, err)
@@ -140,7 +142,7 @@ func TestTarDirectory_EmptyDir(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty directory")
 	}
-	if !contains(err.Error(), "empty") {
+	if !strings.Contains(err.Error(), "empty") {
 		t.Errorf("error %q does not mention empty", err.Error())
 	}
 }
@@ -184,16 +186,27 @@ func TestTarDirectory_RoundTrip(t *testing.T) {
 	}
 }
 
-// contains is a test helper to avoid importing strings.
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
+func TestTarDirectory_RestrictedPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file permission bits are not enforced on Windows")
 	}
-	return false
+
+	srcDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(srcDir, "secret.db"), []byte("sensitive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	dstPath := filepath.Join(t.TempDir(), "backup.tar.gz")
+	if err := tarDirectory(srcDir, dstPath); err != nil {
+		t.Fatalf("tarDirectory: %v", err)
+	}
+
+	// Verify the archive file has restricted permissions (0o600).
+	info, err := os.Stat(dstPath)
+	if err != nil {
+		t.Fatalf("stat archive: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm&0o077 != 0 {
+		t.Errorf("archive permissions = %o, want no group/other access", perm)
+	}
 }

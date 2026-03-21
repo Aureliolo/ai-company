@@ -131,7 +131,7 @@ web/src/          # Vue 3 + PrimeVue + Tailwind CSS dashboard
   __tests__/      # Vitest unit tests
 
 cli/              # Go CLI binary (cross-platform, manages Docker lifecycle)
-  cmd/            # Cobra commands (init, start, stop, status, logs, doctor, update, cleanup, etc.)
+  cmd/            # Cobra commands (init, start, stop, status, logs, doctor, update, cleanup, wipe, etc.)
   internal/       # version, config, docker, compose, health, diagnostics, selfupdate, completion, ui, verify
 
 site/             # Astro landing page (synthorg.io)
