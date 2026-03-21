@@ -1212,18 +1212,21 @@ redaction, async-safe correlation tracking, and per-domain log routing.
 
 ### Sink Layout
 
-Eight default sinks, activated at startup via `bootstrap_logging()`:
+Eleven default sinks, activated at startup via `bootstrap_logging()`:
 
 | Sink | Type | Level | Format | Routes | Description |
 |------|------|-------|--------|--------|-------------|
 | Console | stderr | INFO | Colored text | All loggers | Human-readable development output |
 | `synthorg.log` | File | INFO | JSON | All loggers | Main application log (catch-all) |
-| `audit.log` | File | INFO | JSON | `synthorg.security.*`, `synthorg.hr.*`, `synthorg.backup.*`, `synthorg.settings.*`, `synthorg.observability.*` | Audit-relevant events (security, HR, backup, settings, observability) |
+| `audit.log` | File | INFO | JSON | `synthorg.security.*`, `synthorg.hr.*`, `synthorg.observability.*` | Audit-relevant events (security, HR, observability) |
 | `errors.log` | File | ERROR | JSON | All loggers | Errors and above only |
 | `agent_activity.log` | File | DEBUG | JSON | `synthorg.engine.*`, `synthorg.core.*`, `synthorg.communication.*`, `synthorg.tools.*`, `synthorg.memory.*` | Agent execution, communication, tools, and memory |
 | `cost_usage.log` | File | INFO | JSON | `synthorg.budget.*`, `synthorg.providers.*` | Cost records and provider calls |
 | `debug.log` | File | DEBUG | JSON | All loggers | Full debug trace (catch-all) |
 | `access.log` | File | INFO | JSON | `synthorg.api.*` | HTTP request/response access log |
+| `persistence.log` | File | INFO | JSON | `synthorg.persistence.*` | Database operations, migrations, CRUD |
+| `configuration.log` | File | INFO | JSON | `synthorg.settings.*`, `synthorg.config.*` | Settings resolution, config loading |
+| `backup.log` | File | INFO | JSON | `synthorg.backup.*` | Backup/restore lifecycle |
 
 Logger name routing is implemented via `_LoggerNameFilter` on file handlers. Sinks without
 explicit routing are catch-all (accept all loggers at their configured level).
@@ -1301,7 +1304,7 @@ Litestar's built-in logging configuration is **disabled** (`logging_config=None`
 `Litestar()` constructor). Without this, Litestar reconfigures stdlib's root handler on
 startup via `dictConfig()`, which triggers `_clearExistingHandlers` and destroys the structlog
 file sink handlers attached by `_bootstrap_app_logging()`. The bootstrap call in `create_app`
-runs before the Litestar constructor and sets up all 8 sinks; `logging_config=None` ensures
+runs before the Litestar constructor and sets up all 11 sinks; `logging_config=None` ensures
 they survive.
 
 ### Third-Party Logger Taming
@@ -1330,7 +1333,7 @@ that duplicates or contradicts those structured events.
 
 Two layers of log management:
 
-1. **App-level** (structlog): 8 file sinks with `RotatingFileHandler` (10 MB x 5) writing
+1. **App-level** (structlog): 10 file sinks with `RotatingFileHandler` (10 MB x 5) writing
    JSON to `/data/logs/`. Console sink writes colored text to stderr.
 2. **Container-level** (Docker): `json-file` driver with 10 MB x 3 rotation on
    stdout/stderr. Captures console sink output and any uncaught stderr.

@@ -5,8 +5,8 @@ configuration.  All models are immutable and validated on construction.
 
 .. note::
 
-    ``DEFAULT_SINKS`` provides the standard eight-sink layout described
-    in the design spec (console + seven file sinks).
+    ``DEFAULT_SINKS`` provides the standard eleven-sink layout described
+    in the design spec (console + ten file sinks).
 """
 
 from collections import Counter

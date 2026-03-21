@@ -157,8 +157,8 @@ class TestSinkRoutingIntegration:
         assert "hired agent" in content
         assert "engine event" not in content
 
-    def test_backup_routed_to_audit_log(self, log_dir: Path) -> None:
-        _configure_single_sink(log_dir, "audit.log")
+    def test_backup_routed_to_backup_log(self, log_dir: Path) -> None:
+        _configure_single_sink(log_dir, "backup.log")
 
         backup_logger = logging.getLogger("synthorg.backup.scheduler")
         engine_logger = logging.getLogger("synthorg.engine.run")
@@ -166,12 +166,12 @@ class TestSinkRoutingIntegration:
         backup_logger.info("backup completed")
         engine_logger.info("engine event")
 
-        content = _read_log(log_dir / "audit.log")
+        content = _read_log(log_dir / "backup.log")
         assert "backup completed" in content
         assert "engine event" not in content
 
-    def test_settings_routed_to_audit_log(self, log_dir: Path) -> None:
-        _configure_single_sink(log_dir, "audit.log")
+    def test_settings_routed_to_configuration_log(self, log_dir: Path) -> None:
+        _configure_single_sink(log_dir, "configuration.log")
 
         settings_logger = logging.getLogger("synthorg.settings.service")
         engine_logger = logging.getLogger("synthorg.engine.run")
@@ -179,7 +179,7 @@ class TestSinkRoutingIntegration:
         settings_logger.info("setting changed")
         engine_logger.info("engine event")
 
-        content = _read_log(log_dir / "audit.log")
+        content = _read_log(log_dir / "configuration.log")
         assert "setting changed" in content
         assert "engine event" not in content
 
