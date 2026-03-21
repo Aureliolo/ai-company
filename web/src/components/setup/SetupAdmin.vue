@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import InputText from 'primevue/inputtext'
+import Password from 'primevue/password'
 import Button from 'primevue/button'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupStore } from '@/stores/setup'
@@ -19,8 +20,6 @@ const { locked, checkAndClearLockout, recordFailure } = useLoginLockout()
 const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
-const showPassword = ref(false)
-const showConfirmPassword = ref(false)
 const error = ref<string | null>(null)
 
 /** Whether the admin step has already been completed (reactive). */
@@ -113,53 +112,37 @@ async function handleSetup() {
         </div>
         <div>
           <label for="setup-password" class="mb-1 block text-sm text-slate-300">Password</label>
-          <div class="relative">
-            <InputText
-              id="setup-password"
-              v-model="password"
-              name="new-password"
-              :type="showPassword ? 'text' : 'password'"
-              class="w-full pr-10"
-              :placeholder="`Min ${setupStore.minPasswordLength} characters`"
-              autocomplete="new-password"
-              :aria-describedby="error ? 'setup-error' : undefined"
-            />
-            <button
-              type="button"
-              class="absolute right-3 top-1/2 z-10 -translate-y-1/2 text-slate-300 hover:text-white"
-              :title="showPassword ? 'Hide password' : 'Show password'"
-              :aria-label="showPassword ? 'Hide password' : 'Show password'"
-              @click="showPassword = !showPassword"
-            >
-              <i :class="showPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" />
-            </button>
-          </div>
+          <Password
+            inputId="setup-password"
+            v-model="password"
+            :toggle-mask="true"
+            :feedback="false"
+            fluid
+            :placeholder="`Min ${setupStore.minPasswordLength} characters`"
+            :input-props="{
+              name: 'new-password',
+              autocomplete: 'new-password',
+              'aria-describedby': error ? 'setup-error' : undefined,
+            }"
+          />
         </div>
         <div>
           <label for="setup-confirm" class="mb-1 block text-sm text-slate-300">
             Confirm Password
           </label>
-          <div class="relative">
-            <InputText
-              id="setup-confirm"
-              v-model="confirmPassword"
-              name="confirm-password"
-              :type="showConfirmPassword ? 'text' : 'password'"
-              class="w-full pr-10"
-              placeholder="Re-enter password"
-              autocomplete="new-password"
-              :aria-describedby="error ? 'setup-error' : undefined"
-            />
-            <button
-              type="button"
-              class="absolute right-3 top-1/2 z-10 -translate-y-1/2 text-slate-300 hover:text-white"
-              :title="showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'"
-              :aria-label="showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'"
-              @click="showConfirmPassword = !showConfirmPassword"
-            >
-              <i :class="showConfirmPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" />
-            </button>
-          </div>
+          <Password
+            inputId="setup-confirm"
+            v-model="confirmPassword"
+            :toggle-mask="true"
+            :feedback="false"
+            fluid
+            placeholder="Re-enter password"
+            :input-props="{
+              name: 'confirm-password',
+              autocomplete: 'new-password',
+              'aria-describedby': error ? 'setup-error' : undefined,
+            }"
+          />
         </div>
 
         <div

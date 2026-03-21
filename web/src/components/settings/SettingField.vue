@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
+import Password from 'primevue/password'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Select from 'primevue/select'
 import Textarea from 'primevue/textarea'
@@ -26,12 +27,10 @@ const def = computed(() => props.entry.definition)
 
 // Local edit state -- initialized from server value
 const localValue = ref(props.entry.value)
-const showPassword = ref(false)
 
 // Re-sync local value when server value changes (after save/reset)
 watch(() => props.entry.value, (newVal) => {
   localValue.value = newVal
-  showPassword.value = false
 })
 
 // Derived state for bool toggle (convert string to boolean)
@@ -108,21 +107,14 @@ function formatJson() {
       />
 
       <!-- String (sensitive) -->
-      <div v-else-if="def.type === 'str' && def.sensitive" class="flex gap-2">
-        <InputText
-          v-model="localValue"
-          :type="showPassword ? 'text' : 'password'"
-          class="w-full"
-          :disabled="saving"
-        />
-        <Button
-          :icon="showPassword ? 'pi pi-eye-slash' : 'pi pi-eye'"
-          :aria-label="showPassword ? 'Hide password' : 'Show password'"
-          text
-          size="small"
-          @click="showPassword = !showPassword"
-        />
-      </div>
+      <Password
+        v-else-if="def.type === 'str' && def.sensitive"
+        v-model="localValue"
+        :toggle-mask="true"
+        :feedback="false"
+        fluid
+        :disabled="saving"
+      />
 
       <!-- Integer -->
       <InputNumber

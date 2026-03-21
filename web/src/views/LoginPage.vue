@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import InputText from 'primevue/inputtext'
+import Password from 'primevue/password'
 import Button from 'primevue/button'
 import { useToast } from 'primevue/usetoast'
 import { useAuthStore } from '@/stores/auth'
@@ -73,14 +74,17 @@ function goToSetup() {
         </div>
         <div>
           <label for="password" class="mb-1 block text-sm text-slate-300">Password</label>
-          <InputText
-            id="password"
+          <Password
+            inputId="password"
             v-model="password"
-            type="password"
-            class="w-full"
+            :toggle-mask="true"
+            :feedback="false"
+            fluid
             :placeholder="`Password (min ${MIN_PASSWORD_LENGTH} chars)`"
-            autocomplete="current-password"
-            :aria-describedby="error ? 'login-error' : undefined"
+            :input-props="{
+              autocomplete: 'current-password',
+              'aria-describedby': error ? 'login-error' : undefined,
+            }"
           />
         </div>
 

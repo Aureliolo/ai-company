@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import InputText from 'primevue/inputtext'
+import Password from 'primevue/password'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useProviderStore } from '@/stores/providers'
@@ -363,11 +364,12 @@ onMounted(async () => {
 
           <div v-if="selectedPreset.auth_type === 'api_key'">
             <label for="sp-api-key" class="mb-1 block text-sm text-slate-300">API Key</label>
-            <InputText
-              id="sp-api-key"
+            <Password
+              inputId="sp-api-key"
               v-model="apiKey"
-              type="password"
-              class="w-full"
+              :toggle-mask="true"
+              :feedback="false"
+              fluid
               placeholder="sk-..."
             />
           </div>

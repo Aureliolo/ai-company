@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import type { SettingDefinition, SettingEntry } from '@/api/types'
 
+vi.mock('primevue/password', () => ({
+  default: {
+    props: ['modelValue', 'inputId', 'toggleMask', 'feedback', 'placeholder', 'fluid', 'disabled'],
+    emits: ['update:modelValue'],
+    template: '<input type="password" :value="modelValue" :disabled="disabled" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+  },
+}))
+
 vi.mock('primevue/inputtext', () => ({
   default: {
     props: ['modelValue', 'type', 'placeholder', 'disabled'],
@@ -279,9 +287,9 @@ describe('SettingField', () => {
     expect(wrapper.text()).toContain('Must be at most 100')
   })
 
-  // ── Sensitive toggle ──────────────────────────────────────
+  // ── Sensitive field ──────────────────────────────────────
 
-  it('toggles password visibility on eye button click', async () => {
+  it('renders Password component with toggleMask for sensitive string', () => {
     const wrapper = mount(SettingField, {
       props: {
         entry: makeEntry({}, { type: 'str', sensitive: true }),
@@ -289,15 +297,11 @@ describe('SettingField', () => {
       },
     })
     expect(wrapper.find('input[type="password"]').exists()).toBe(true)
-
-    // Find the eye toggle button (not Save/Reset)
-    const eyeBtn = wrapper.findAll('button').find(
+    // No separate eye button -- toggle is handled natively by PrimeVue Password
+    const nonActionButtons = wrapper.findAll('button').filter(
       (b) => b.text() !== 'Save' && b.text() !== 'Reset',
     )
-    expect(eyeBtn).toBeDefined()
-    await eyeBtn!.trigger('click')
-    await flushPromises()
-    expect(wrapper.find('input[type="text"]').exists()).toBe(true)
+    expect(nonActionButtons).toHaveLength(0)
   })
 
   // ── Format JSON ───────────────────────────────────────────

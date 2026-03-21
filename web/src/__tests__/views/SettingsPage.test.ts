@@ -53,6 +53,14 @@ vi.mock('primevue/inputtext', () => ({
   },
 }))
 
+vi.mock('primevue/password', () => ({
+  default: {
+    props: ['modelValue', 'inputId', 'toggleMask', 'feedback', 'placeholder', 'fluid', 'inputProps'],
+    emits: ['update:modelValue'],
+    template: '<input :id="inputId" type="password" />',
+  },
+}))
+
 vi.mock('primevue/button', () => ({
   default: {
     props: ['label', 'icon', 'type', 'size', 'loading', 'disabled', 'severity', 'text'],

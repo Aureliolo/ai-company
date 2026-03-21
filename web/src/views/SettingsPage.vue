@@ -7,6 +7,7 @@ import Tab from 'primevue/tab'
 import TabPanels from 'primevue/tabpanels'
 import TabPanel from 'primevue/tabpanel'
 import InputText from 'primevue/inputtext'
+import Password from 'primevue/password'
 import Button from 'primevue/button'
 import ToggleSwitch from 'primevue/toggleswitch'
 import { useToast } from 'primevue/usetoast'
@@ -308,15 +309,15 @@ function namespaceLabel(ns: SettingNamespace): string {
               <form class="space-y-3" @submit.prevent="handleChangePassword">
                 <div>
                   <label for="current-password" class="mb-1 block text-xs text-slate-400">Current Password</label>
-                  <InputText id="current-password" v-model="currentPassword" type="password" class="w-full" placeholder="Current password" aria-required="true" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+                  <Password inputId="current-password" v-model="currentPassword" :toggle-mask="true" :feedback="false" fluid placeholder="Current password" :input-props="{ autocomplete: 'current-password', 'aria-required': 'true', 'aria-describedby': pwdError ? 'pwd-error' : undefined }" />
                 </div>
                 <div>
                   <label for="new-password" class="mb-1 block text-xs text-slate-400">New Password</label>
-                  <InputText id="new-password" v-model="newPassword" type="password" class="w-full" :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`" aria-required="true" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+                  <Password inputId="new-password" v-model="newPassword" :toggle-mask="true" :feedback="false" fluid :placeholder="`New password (min ${MIN_PASSWORD_LENGTH} chars)`" :input-props="{ autocomplete: 'new-password', 'aria-required': 'true', 'aria-describedby': pwdError ? 'pwd-error' : undefined }" />
                 </div>
                 <div>
                   <label for="confirm-password" class="mb-1 block text-xs text-slate-400">Confirm Password</label>
-                  <InputText id="confirm-password" v-model="confirmPassword" type="password" class="w-full" placeholder="Confirm new password" aria-required="true" :aria-describedby="pwdError ? 'pwd-error' : undefined" />
+                  <Password inputId="confirm-password" v-model="confirmPassword" :toggle-mask="true" :feedback="false" fluid placeholder="Confirm new password" :input-props="{ autocomplete: 'new-password', 'aria-required': 'true', 'aria-describedby': pwdError ? 'pwd-error' : undefined }" />
                 </div>
                 <div v-if="pwdError" id="pwd-error" role="alert" class="rounded bg-red-500/10 p-2 text-sm text-red-400">{{ pwdError }}</div>
                 <Button
