@@ -37,7 +37,7 @@ uv sync
 Run the smoke tests to confirm everything is working:
 
 ```bash
-uv run pytest tests/ -m unit -n auto
+uv run python -m pytest tests/ -m unit -n auto
 ```
 
 You should see all tests passing.
@@ -85,7 +85,7 @@ uv run ruff format --check src/ tests/
 uv run mypy src/ tests/
 
 # Tests with coverage
-uv run pytest tests/ -n auto --cov=synthorg --cov-fail-under=80
+uv run python -m pytest tests/ -n auto --cov=synthorg --cov-fail-under=80
 ```
 
 To auto-fix lint issues and reformat:

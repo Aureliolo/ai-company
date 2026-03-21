@@ -77,7 +77,7 @@ All significant design and architecture decisions, organized by domain. Each ent
 
 | ID | Decision | Rationale | Alternatives considered |
 |----|----------|-----------|------------------------|
-| D22 | Remove tools section from system prompt | API's `tools` parameter injects richer definitions (with JSON schemas). Eliminates 200-400+ token redundancy per call. Both Anthropic and OpenAI inject tool definitions internally | Keep as-is (wastes tokens, contradicts provider best practices), replace with behavioral guidance (requires per-tool-set crafting). Evidence: arXiv 2602.11988 shows redundant context increases cost 20%+ with minimal benefit |
+| D22 | Remove tools section from system prompt | API's `tools` parameter injects richer definitions (with JSON schemas). Eliminates 200-400+ token redundancy per call. Major LLM providers inject tool definitions internally | Keep as-is (wastes tokens, contradicts provider best practices), replace with behavioral guidance (requires per-tool-set crafting). Evidence: arXiv 2602.11988 shows redundant context increases cost 20%+ with minimal benefit |
 | D23 | Pluggable `MemoryFilterStrategy`; initial: tag-based at write time | Zero retrieval cost. Uses existing `MemoryMetadata.tags`. Non-inferable tag convention enforced at `MemoryBackend.store()` boundary | LLM classification at retrieval (2K-10K extra tokens, adds latency, recursive problem), keyword heuristic (low accuracy), documentation only (no enforcement). Evidence: arXiv 2602.11988 confirms agents store inferable content without enforcement |
 
 ## Documentation (2026-03-12)

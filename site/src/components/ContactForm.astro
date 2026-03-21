@@ -119,7 +119,8 @@ const recaptchaSiteKey = import.meta.env.PUBLIC_RECAPTCHA_SITE_KEY || "6LdQkossA
         const siteKey = form.dataset.recaptchaKey;
         const captchaInput = form.querySelector<HTMLInputElement>("#captchaResponse");
         if (typeof grecaptcha === "undefined" || !siteKey || !captchaInput) {
-          errorMsg.textContent = "Security verification unavailable. Please disable ad-blockers or try a different browser.";
+          const u = "info"; const d = "synthorg.io";
+          errorMsg.innerHTML = `Security verification unavailable. Please email us at <a href="mailto:${u}@${d}" class="underline text-red-300 hover:text-white">${u}@${d}</a> or try disabling ad-blockers.`;
           errorMsg.classList.remove("hidden");
           errorMsg.focus();
           return;

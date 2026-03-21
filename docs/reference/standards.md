@@ -6,9 +6,9 @@ SynthOrg aligns with emerging industry standards for agent-to-tool and agent-to-
 
 | Standard | Owner | Purpose | SynthOrg Usage |
 |----------|-------|---------|----------------|
-| **MCP** (Model Context Protocol) | Anthropic, now Linux Foundation (AAIF) | Standardized LLM-to-tool integration | Tool system backbone |
+| **MCP** (Model Context Protocol) | Linux Foundation (AAIF) | Standardized LLM-to-tool integration | Tool system backbone |
 | **A2A** (Agent-to-Agent Protocol) | Google, now Linux Foundation | Agent-to-agent communication | Future agent interoperability |
-| **OpenAI API format** | OpenAI (de facto standard) | LLM API | Via provider abstraction layer (LiteLLM) |
+| **Chat completions API format** | De facto industry standard | LLM API | Via provider abstraction layer (LiteLLM) |
 
 ---
 
@@ -34,8 +34,8 @@ The framework currently uses an internal message bus for inter-agent communicati
 
 ---
 
-## OpenAI API Format
+## Chat Completions API Format
 
-The OpenAI chat completions API format has become the de facto standard for LLM interactions. SynthOrg accesses this format through LiteLLM, which provides a unified interface across 100+ providers that all speak the OpenAI API format (or are translated to it).
+The chat completions API format has become the de facto standard for LLM interactions. SynthOrg accesses this format through LiteLLM, which provides a unified interface across 100+ providers that all speak this format (or are translated to it).
 
 This means SynthOrg is not coupled to any single LLM provider. Switching between providers is a configuration change, not a code change. The provider abstraction layer handles request/response mapping, cost tracking, retries, fallbacks, and rate limiting transparently.
