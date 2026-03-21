@@ -52,6 +52,8 @@ class PassthroughParticipantResolver:
     preserving insertion order.
     """
 
+    __slots__ = ()
+
     async def resolve(
         self,
         participant_refs: tuple[str, ...],
@@ -79,9 +81,22 @@ class PassthroughParticipantResolver:
                     stripped = val.strip()
                     if stripped:
                         resolved.append(stripped)
+                    else:
+                        logger.warning(
+                            MEETING_NO_PARTICIPANTS,
+                            entry=entry,
+                            note="context string value is blank, skipping",
+                        )
                 elif isinstance(val, (list, tuple)):
                     resolved.extend(
                         v.strip() for v in val if isinstance(v, str) and v.strip()
+                    )
+                else:
+                    logger.warning(
+                        MEETING_NO_PARTICIPANTS,
+                        entry=entry,
+                        ctx_value_type=type(val).__name__,
+                        note="context value is not str or list, skipping",
                     )
             else:
                 resolved.append(entry)

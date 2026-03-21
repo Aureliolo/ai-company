@@ -175,7 +175,7 @@ class TestAutoWireMeetings:
         assert result.meeting_orchestrator is explicit_orch
         assert result.meeting_scheduler is explicit_sched
 
-    def test_logs_auto_wire_events(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_logs_auto_wire_events(self, capfd: pytest.CaptureFixture[str]) -> None:
         from synthorg.api.auto_wire import auto_wire_meetings
 
         config = _default_config()
@@ -187,6 +187,7 @@ class TestAutoWireMeetings:
             agent_registry=None,
         )
 
-        captured = capsys.readouterr().out
-        assert "meeting_orchestrator" in captured
-        assert "meeting_scheduler" in captured
+        captured = capfd.readouterr()
+        output = captured.out + captured.err
+        assert "meeting_orchestrator" in output
+        assert "meeting_scheduler" in output

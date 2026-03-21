@@ -32,6 +32,10 @@ if TYPE_CHECKING:
     from synthorg.api.state import AppState
     from synthorg.backup.service import BackupService
     from synthorg.communication.bus_protocol import MessageBus
+    from synthorg.communication.meeting.participant import (
+        PassthroughParticipantResolver,
+        RegistryParticipantResolver,
+    )
     from synthorg.communication.meeting.protocol import (
         AgentCaller,
         MeetingProtocol,
@@ -55,10 +59,15 @@ class Phase1Result(NamedTuple):
 
 
 class MeetingWireResult(NamedTuple):
-    """Services created during meeting auto-wiring."""
+    """Services created during meeting auto-wiring.
 
-    meeting_orchestrator: MeetingOrchestrator | None
-    meeting_scheduler: MeetingScheduler | None
+    Both fields are guaranteed non-``None`` after
+    ``auto_wire_meetings()`` returns -- explicit values pass through
+    and ``None`` inputs are replaced with auto-wired instances.
+    """
+
+    meeting_orchestrator: MeetingOrchestrator
+    meeting_scheduler: MeetingScheduler
 
 
 class BuildDispatcherFn(Protocol):
@@ -310,24 +319,20 @@ def _build_stub_agent_caller() -> AgentCaller:
     Returns:
         An ``AgentCaller`` compatible async callback.
     """
-    _warned = False
 
     async def _stub_caller(
         agent_id: str,
         _prompt: str,
         _max_tokens: int,
     ) -> AgentResponse:
-        nonlocal _warned
-        if not _warned:
-            logger.warning(
-                MEETING_STUB_AGENT_CALLER,
-                note=(
-                    "Using stub agent caller -- meeting agent "
-                    "responses will be empty until a coordinator "
-                    "is configured"
-                ),
-            )
-            _warned = True
+        logger.warning(
+            MEETING_STUB_AGENT_CALLER,
+            agent_id=agent_id,
+            note=(
+                "Stub agent caller invoked -- response will be "
+                "empty until a coordinator is configured"
+            ),
+        )
         return AgentResponse(
             agent_id=agent_id,
             content="",
@@ -362,16 +367,42 @@ def _wire_meeting_orchestrator() -> MeetingOrchestrator:
     return orchestrator
 
 
+def _select_participant_resolver(
+    agent_registry: AgentRegistryService | None,
+) -> RegistryParticipantResolver | PassthroughParticipantResolver:
+    """Choose a participant resolver based on registry availability.
+
+    Args:
+        agent_registry: Agent registry (may be ``None``).
+
+    Returns:
+        ``RegistryParticipantResolver`` if *agent_registry* is
+        available, otherwise ``PassthroughParticipantResolver``.
+    """
+    from synthorg.communication.meeting.participant import (  # noqa: PLC0415
+        PassthroughParticipantResolver,
+        RegistryParticipantResolver,
+    )
+
+    if agent_registry is not None:
+        return RegistryParticipantResolver(agent_registry)
+    logger.info(
+        API_APP_STARTUP,
+        note=(
+            "No agent registry available -- meeting "
+            "scheduler using passthrough participant "
+            "resolver (literal IDs only)"
+        ),
+    )
+    return PassthroughParticipantResolver()
+
+
 def _wire_meeting_scheduler(
     effective_config: RootConfig,
     orchestrator: MeetingOrchestrator,
     agent_registry: AgentRegistryService | None,
 ) -> MeetingScheduler:
     """Create a MeetingScheduler with participant resolver.
-
-    Uses ``RegistryParticipantResolver`` when *agent_registry* is
-    available, otherwise falls back to
-    ``PassthroughParticipantResolver``.
 
     Args:
         effective_config: Root company configuration.
@@ -381,28 +412,10 @@ def _wire_meeting_scheduler(
     Returns:
         A configured ``MeetingScheduler`` instance.
     """
-    from synthorg.communication.meeting.participant import (  # noqa: PLC0415
-        PassthroughParticipantResolver,
-        RegistryParticipantResolver,
-    )
-
     try:
-        resolver: RegistryParticipantResolver | PassthroughParticipantResolver
-        if agent_registry is not None:
-            resolver = RegistryParticipantResolver(agent_registry)
-        else:
-            resolver = PassthroughParticipantResolver()
-            logger.info(
-                API_APP_STARTUP,
-                note=(
-                    "No agent registry available -- meeting "
-                    "scheduler using passthrough participant "
-                    "resolver (literal IDs only)"
-                ),
-            )
-        meetings_config = effective_config.communication.meetings
+        resolver = _select_participant_resolver(agent_registry)
         scheduler = MeetingScheduler(
-            config=meetings_config,
+            config=effective_config.communication.meetings,
             orchestrator=orchestrator,
             participant_resolver=resolver,
         )

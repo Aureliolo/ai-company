@@ -406,3 +406,17 @@ uses the `AgentRegistryService` with a five-step cascade:
 
 Results are deduplicated while preserving insertion order. The first resolved
 participant is designated as the meeting leader.
+
+When no `AgentRegistryService` is available (e.g. during auto-wiring without an
+explicit registry), the `PassthroughParticipantResolver` is used as a fallback.
+It supports only context lookup and literal pass-through (steps 1 and 5 above),
+skipping the registry-dependent steps (2--4).
+
+### Auto-Wiring
+
+The `MeetingOrchestrator` and `MeetingScheduler` are auto-wired at startup
+alongside Phase 1 services (no persistence dependency). All three meeting
+protocols are registered with default configs. A stub `agent_caller` returns
+empty `AgentResponse` instances, making the meeting endpoints structurally
+available (no 503 on listing) while actual agent invocation requires a
+coordinator to be explicitly provided.
