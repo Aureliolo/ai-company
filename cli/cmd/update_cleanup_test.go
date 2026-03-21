@@ -1,6 +1,10 @@
 package cmd
 
-import "testing"
+import (
+	"math"
+	"strings"
+	"testing"
+)
 
 func TestIsValidDockerID(t *testing.T) {
 	t.Parallel()
@@ -81,6 +85,116 @@ func FuzzIsValidDockerID(f *testing.F) {
 	})
 }
 
+func TestParseDockerSize(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		s    string
+		want float64
+	}{
+		{"megabytes", "646MB", 646e6},
+		{"megabytes with decimal", "85.8MB", 85.8e6},
+		{"gigabytes", "1.2GB", 1.2e9},
+		{"terabytes", "2.5TB", 2.5e12},
+		{"kilobytes lowercase", "512kB", 512e3},
+		{"kilobytes uppercase", "512KB", 512e3},
+		{"bytes", "100B", 100},
+		{"empty", "", 0},
+		{"no unit", "123", 0},
+		{"invalid", "fooMB", 0},
+		{"with comma", "1,024MB", 1024e6},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := parseDockerSize(tt.s)
+			// Allow small floating point tolerance.
+			diff := got - tt.want
+			if diff < 0 {
+				diff = -diff
+			}
+			if diff > 1 { // 1 byte tolerance
+				t.Errorf("parseDockerSize(%q) = %v, want %v", tt.s, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFormatBytes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		b    float64
+		want string
+	}{
+		{"terabytes", 2.5e12, "2.5 TB"},
+		{"gigabytes", 1.2e9, "1.2 GB"},
+		{"megabytes", 646e6, "646.0 MB"},
+		{"kilobytes", 512e3, "512.0 kB"},
+		{"bytes", 100, "100 B"},
+		{"zero", 0, "0 B"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := formatBytes(tt.b)
+			if got != tt.want {
+				t.Errorf("formatBytes(%v) = %q, want %q", tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildImageDisplay(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		repo   string
+		tag    string
+		digest string
+		size   string
+		id     string
+		wantIn string // substring that should appear
+	}{
+		{
+			"with tag",
+			"ghcr.io/aureliolo/synthorg-backend", "0.4.3", "sha256:abc123", "646MB", "abc123def456",
+			"synthorg-backend:0.4.3",
+		},
+		{
+			"no tag, has digest",
+			"ghcr.io/aureliolo/synthorg-web", "<none>", "sha256:abcdef1234567890abcdef", "85.8MB", "abcdef123456",
+			"synthorg-web@abcdef1234567890",
+		},
+		{
+			"no tag, no digest, shows id",
+			"ghcr.io/aureliolo/synthorg-sandbox", "<none>", "<none>", "514MB", "deadbeef1234",
+			"deadbeef1234",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := buildImageDisplay(tt.repo, tt.tag, tt.digest, tt.size, tt.id)
+			if got == "" {
+				t.Fatal("buildImageDisplay returned empty string")
+			}
+			if !strings.Contains(got, tt.wantIn) {
+				t.Errorf("display %q missing label %q", got, tt.wantIn)
+			}
+			if !strings.Contains(got, tt.size) {
+				t.Errorf("display %q missing size %q", got, tt.size)
+			}
+		})
+	}
+}
+
 func FuzzIsAllHex(f *testing.F) {
 	f.Add("0123456789abcdef")
 	f.Add("0123456789ABCDEF")
@@ -93,6 +207,30 @@ func FuzzIsAllHex(f *testing.F) {
 		// Cross-check: isAllHex && len==12 must imply isValidDockerID.
 		if result && len(s) == 12 && !isValidDockerID(s) {
 			t.Errorf("isAllHex(%q)=true, len=12, but isValidDockerID=false", s)
+		}
+	})
+}
+
+func FuzzParseDockerSize(f *testing.F) {
+	f.Add("646MB")
+	f.Add("85.8MB")
+	f.Add("1.2GB")
+	f.Add("2.5TB")
+	f.Add("512kB")
+	f.Add("512KB")
+	f.Add("100B")
+	f.Add("1,024MB")
+	f.Add("")
+	f.Add("fooMB")
+	f.Add("123")
+	f.Add("NaNMB")
+	f.Add("InfGB")
+	f.Add("-InfTB")
+	f.Fuzz(func(t *testing.T, s string) {
+		v := parseDockerSize(s)
+		// Invariant: result must always be finite (NaN/Inf rejected).
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			t.Errorf("parseDockerSize(%q) = %v, want finite value", s, v)
 		}
 	})
 }

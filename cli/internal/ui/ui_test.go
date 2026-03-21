@@ -7,6 +7,7 @@ import (
 )
 
 func TestLogo(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Logo("v1.2.3")
@@ -25,6 +26,7 @@ func TestLogo(t *testing.T) {
 }
 
 func TestOutputMethods(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		call func(*UI)
@@ -56,6 +58,7 @@ func TestOutputMethods(t *testing.T) {
 }
 
 func TestLink(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Link("Dashboard", "http://localhost:3000")
@@ -69,6 +72,7 @@ func TestLink(t *testing.T) {
 }
 
 func TestTable(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Table(
@@ -88,6 +92,7 @@ func TestTable(t *testing.T) {
 }
 
 func TestTableEmpty(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	u.Table(nil, nil)
@@ -97,9 +102,238 @@ func TestTableEmpty(t *testing.T) {
 }
 
 func TestWriter(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	u := NewUI(&buf)
 	if u.Writer() != &buf {
 		t.Error("Writer() should return the underlying writer")
+	}
+}
+
+func TestBlank(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	u.Blank()
+	if buf.String() != "\n" {
+		t.Errorf("Blank should produce single newline, got %q", buf.String())
+	}
+}
+
+func TestPlain(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	u.Plain("hello world")
+	if !strings.Contains(buf.String(), "hello world") {
+		t.Error("Plain missing message")
+	}
+}
+
+func TestDivider(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	u.Divider()
+	out := buf.String()
+	if !strings.Contains(out, "\u2500") {
+		t.Error("Divider missing horizontal line character")
+	}
+}
+
+func TestInlineKV(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	u.InlineKV("Docker", "29.2.1", "Compose", "5.1.0")
+	out := buf.String()
+	if !strings.Contains(out, "Docker") || !strings.Contains(out, "29.2.1") {
+		t.Error("InlineKV missing first pair")
+	}
+	if !strings.Contains(out, "Compose") || !strings.Contains(out, "5.1.0") {
+		t.Error("InlineKV missing second pair")
+	}
+}
+
+func TestIconAccessors(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	if !strings.Contains(u.SuccessIcon(), IconSuccess) {
+		t.Error("SuccessIcon missing checkmark")
+	}
+	if !strings.Contains(u.ErrorIcon(), IconError) {
+		t.Error("ErrorIcon missing cross")
+	}
+	if !strings.Contains(u.WarnIcon(), IconWarning) {
+		t.Error("WarnIcon missing exclamation")
+	}
+}
+
+func TestIsTTY(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	// A bytes.Buffer is not a TTY.
+	if u.IsTTY() {
+		t.Error("bytes.Buffer should not be detected as TTY")
+	}
+}
+
+func TestBox(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	u.Box("Test Box", []string{"line one", "line two"})
+	out := buf.String()
+	if !strings.Contains(out, "Test Box") {
+		t.Error("Box missing title")
+	}
+	if !strings.Contains(out, "line one") {
+		t.Error("Box missing first line")
+	}
+	if !strings.Contains(out, "line two") {
+		t.Error("Box missing second line")
+	}
+	// Check box-drawing characters.
+	if !strings.Contains(out, "\u250c") { // top-left corner
+		t.Error("Box missing top-left corner")
+	}
+	if !strings.Contains(out, "\u2514") { // bottom-left corner
+		t.Error("Box missing bottom-left corner")
+	}
+	if !strings.Contains(out, "\u2502") { // vertical line
+		t.Error("Box missing vertical line")
+	}
+}
+
+func TestBoxEmpty(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	u.Box("Empty", nil)
+	if buf.Len() != 0 {
+		t.Error("Box with no lines should produce no output")
+	}
+}
+
+func TestSpinnerNonTTY(t *testing.T) {
+	t.Parallel()
+	// On a non-TTY writer (bytes.Buffer), the spinner should print a
+	// static step line immediately and Stop/Success should work without
+	// animation.
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	s := u.StartSpinner("loading...")
+	s.Success("done!")
+	out := buf.String()
+	if !strings.Contains(out, "loading...") {
+		t.Error("Spinner should print step message on non-TTY")
+	}
+	if !strings.Contains(out, "done!") {
+		t.Error("Spinner.Success should print final message")
+	}
+}
+
+func TestSpinnerDoubleStop(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	s := u.StartSpinner("work")
+	s.Stop()
+	s.Stop() // should not panic
+}
+
+func TestStripControl(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain text", "hello", "hello"},
+		{"bell char", "hello\x07world", "helloworld"},
+		{"backspace", "hello\x08world", "helloworld"},
+		{"carriage return", "hello\rworld", "helloworld"},
+		{"ESC byte", "hello\x1b[2Jworld", "hello[2Jworld"},
+		{"null byte", "hello\x00world", "helloworld"},
+		{"preserves tab", "hello\tworld", "hello\tworld"},
+		{"preserves newline", "hello\nworld", "hello\nworld"},
+		{"multiple controls", "\x01\x02\x03ok", "ok"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := stripControl(tt.input)
+			if got != tt.want {
+				t.Errorf("stripControl(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripControlStrict(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain text", "hello", "hello"},
+		{"strips tab", "hello\tworld", "helloworld"},
+		{"strips newline", "hello\nworld", "helloworld"},
+		{"strips ESC", "hello\x1b[32mworld", "hello[32mworld"},
+		{"strips all controls", "\x00\x01\t\n\x1bok", "ok"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := stripControlStrict(tt.input)
+			if got != tt.want {
+				t.Errorf("stripControlStrict(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSpinnerConcurrentStop exercises the Spinner's concurrency safety by
+// calling Stop from multiple goroutines concurrently. The sync.Once in
+// waitAndClear should prevent any panics from double-closing the done channel.
+// Note: full TTY spinner animation testing requires a pseudo-terminal which
+// is not available in unit tests; CI uses the race detector to catch races.
+func TestSpinnerConcurrentStop(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	s := u.StartSpinner("concurrent work")
+
+	done := make(chan struct{})
+	for range 5 {
+		go func() {
+			s.Stop()
+			done <- struct{}{}
+		}()
+	}
+	for range 5 {
+		<-done
+	}
+}
+
+func TestInlineKVOddArgs(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	// Odd number of args: last key should be dropped silently.
+	u.InlineKV("Docker", "29.2.1", "Orphan")
+	out := buf.String()
+	if !strings.Contains(out, "Docker") || !strings.Contains(out, "29.2.1") {
+		t.Error("InlineKV should render complete pairs")
+	}
+	if strings.Contains(out, "Orphan") {
+		t.Error("InlineKV should drop unpaired trailing key")
 	}
 }

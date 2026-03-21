@@ -4,28 +4,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"time"
+	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
-
-// setupClient is the shared HTTP client for setup API requests.
-// Per-request timeouts are controlled via context.WithTimeout.
-var setupClient = &http.Client{
-	CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-		return http.ErrUseLastResponse
-	},
-}
 
 var setupCmd = &cobra.Command{
 	Use:   "setup",
@@ -74,16 +64,17 @@ func runSetup(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("no containers running -- run 'synthorg start' first")
 	}
 
-	// Reset the setup_complete flag via the settings API.
-	out.Step("Resetting setup flag...")
-	if err := resetSetupFlag(ctx, state); err != nil {
+	// Reset the setup_complete flag via docker exec into the backend container.
+	sp := out.StartSpinner("Resetting setup flag...")
+	if err := resetSetupFlag(ctx, info, safeDir); err != nil {
+		sp.Error("Failed to reset setup flag")
 		return fmt.Errorf("resetting setup flag: %w", err)
 	}
-	out.Success("Setup flag reset")
+	sp.Success("Setup flag reset")
 
 	// Open browser to the setup page.
 	setupURL := fmt.Sprintf("http://localhost:%d/setup", state.WebPort)
-	out.Step(fmt.Sprintf("Opening %s", setupURL))
+	out.Hint(fmt.Sprintf("Opening %s", setupURL))
 	if err := openBrowser(ctx, setupURL); err != nil {
 		errOut.Warn(fmt.Sprintf("Could not open browser: %v", err))
 		errOut.Hint(fmt.Sprintf("Open %s manually in your browser.", setupURL))
@@ -92,31 +83,35 @@ func runSetup(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// resetSetupFlag calls DELETE /api/v1/settings/api/setup_complete to reset
-// the first-run flag so the setup wizard re-appears.
-func resetSetupFlag(ctx context.Context, state config.State) error {
-	apiURL := fmt.Sprintf("http://localhost:%d/api/v1/settings/api/setup_complete", state.BackendPort)
+// resetSetupFlag deletes the setup_complete setting directly inside the
+// backend container via docker compose exec. This avoids the need for API
+// authentication -- the CLI manages the Docker stack locally and can exec
+// into containers it controls.
+func resetSetupFlag(ctx context.Context, info docker.Info, safeDir string) error {
+	// Fully hardcoded Python script -- no user data is interpolated.
+	// If parameterization is added, values MUST be escaped before embedding.
+	pyScript := strings.Join([]string{
+		"import sqlite3, os, sys",
+		"try:",
+		"  db_path = os.environ.get('SYNTHORG_DB_PATH', '/data/synthorg.db')",
+		"  with sqlite3.connect(db_path) as c:",
+		"    c.execute(\"DELETE FROM settings WHERE namespace='api' AND key='setup_complete'\")",
+		"  print('ok')",
+		"except Exception as e:",
+		"  print(f'error: {e}', file=sys.stderr)",
+		"  sys.exit(1)",
+	}, "\n")
 
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, apiURL, nil)
+	out, err := docker.ComposeExecOutput(ctx, info, safeDir, "exec", "-T", "backend", "python", "-c", pyScript)
 	if err != nil {
-		return fmt.Errorf("creating request: %w", err)
+		trimmed := strings.TrimSpace(out)
+		if trimmed != "" {
+			return fmt.Errorf("docker exec failed: %w; output: %s", err, trimmed)
+		}
+		return fmt.Errorf("docker exec failed: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+buildLocalJWT(state.JWTSecret))
-
-	resp, err := setupClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer func() {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64*1024))
-		_ = resp.Body.Close()
-	}()
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("API returned status %d", resp.StatusCode)
+	if strings.TrimSpace(out) != "ok" {
+		return fmt.Errorf("unexpected output from backend: %s", strings.TrimSpace(out))
 	}
 	return nil
 }
@@ -136,14 +131,18 @@ func openBrowser(ctx context.Context, rawURL string) error {
 		return fmt.Errorf("refusing to open URL with host %q -- only localhost and 127.0.0.1 are allowed", host)
 	}
 
+	// Use the re-serialized URL, not the raw input string, to ensure
+	// only the normalized, validated URL is passed to the OS launcher.
+	normalizedURL := parsed.String()
+
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", rawURL)
+		cmd = exec.CommandContext(ctx, "rundll32", "url.dll,FileProtocolHandler", normalizedURL)
 	case "darwin":
-		cmd = exec.CommandContext(ctx, "open", rawURL)
+		cmd = exec.CommandContext(ctx, "open", normalizedURL)
 	default:
-		cmd = exec.CommandContext(ctx, "xdg-open", rawURL)
+		cmd = exec.CommandContext(ctx, "xdg-open", normalizedURL)
 	}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting browser: %w", err)

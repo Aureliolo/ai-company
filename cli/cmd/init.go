@@ -34,6 +34,9 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("synthorg init requires an interactive terminal")
 	}
 
+	out := ui.NewUI(cmd.OutOrStdout())
+	out.Logo(version.Version)
+
 	answers, err := runSetupForm()
 	if err != nil {
 		return err
@@ -81,8 +84,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	out := ui.NewUI(cmd.OutOrStdout())
-	out.Logo(version.Version)
+	out.Blank()
 	out.Success("SynthOrg initialized")
 	out.KeyValue("Data dir", safeDir)
 	out.KeyValue("Compose file", filepath.Join(safeDir, "compose.yml"))
