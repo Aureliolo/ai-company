@@ -125,20 +125,14 @@ func (lb *LiveBox) Finish() {
 		lb.closeDone()
 		lb.wg.Wait()
 
-		// Only redraw if some lines are still in progress. When the
-		// animation goroutine detected all lines finished, it already
-		// drew the final state before exiting.
+		// Always redraw to ensure the final state is rendered. The last
+		// UpdateLine calls may have landed between ticker ticks, so run()
+		// could have exited via <-lb.done without drawing the finished icons.
 		lb.mu.Lock()
-		done := lb.allFinished()
-		var contentLines []string
-		if !done {
-			contentLines = lb.buildLines(-1) // no spinner frame
-		}
+		contentLines := lb.buildLines(-1) // no spinner frame
 		lb.mu.Unlock()
 
-		if !done {
-			lb.redraw(contentLines)
-		}
+		lb.redraw(contentLines)
 	})
 }
 

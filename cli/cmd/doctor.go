@@ -103,6 +103,9 @@ func classifyDoctor(r diagnostics.Report) (doctorStatus, []string) {
 	}
 
 	// Container states.
+	if len(r.ContainerSummary) == 0 && r.ComposeFileExists {
+		warnings = append(warnings, "no containers detected")
+	}
 	for _, c := range r.ContainerSummary {
 		switch {
 		case c.Health == "unhealthy", c.State == "exited":
@@ -113,6 +116,13 @@ func classifyDoctor(r diagnostics.Report) (doctorStatus, []string) {
 			errs = append(errs, fmt.Sprintf("%s %s", c.Name, status))
 		case c.Health == "starting":
 			warnings = append(warnings, fmt.Sprintf("%s still starting", c.Name))
+		}
+	}
+
+	// Image availability.
+	for _, img := range r.ImageStatus {
+		if !strings.HasSuffix(img, ": available") {
+			warnings = append(warnings, img)
 		}
 	}
 

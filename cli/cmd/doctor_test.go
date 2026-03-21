@@ -160,12 +160,41 @@ func TestClassifyDoctor(t *testing.T) {
 		{
 			name: "empty health status is not checked",
 			report: diagnostics.Report{
-				HealthStatus:      "",
+				HealthStatus: "",
+				ContainerSummary: []diagnostics.ContainerDetail{
+					{Name: "backend", Health: "healthy"},
+				},
 				ComposeFileExists: true,
 				ComposeFileValid:  boolPtr(true),
 			},
 			wantStatus: doctorHealthy,
 			wantCount:  0,
+		},
+		{
+			name: "no containers with compose is warning",
+			report: diagnostics.Report{
+				HealthStatus:      "200",
+				ComposeFileExists: true,
+				ComposeFileValid:  boolPtr(true),
+			},
+			wantStatus:   doctorWarnings,
+			wantCount:    1,
+			wantContains: "no containers detected",
+		},
+		{
+			name: "unavailable image is warning",
+			report: diagnostics.Report{
+				HealthStatus: "200",
+				ContainerSummary: []diagnostics.ContainerDetail{
+					{Name: "backend", Health: "healthy"},
+				},
+				ComposeFileExists: true,
+				ComposeFileValid:  boolPtr(true),
+				ImageStatus:       []string{"ghcr.io/aureliolo/synthorg-backend:latest: not found"},
+			},
+			wantStatus:   doctorWarnings,
+			wantCount:    1,
+			wantContains: "not found",
 		},
 	}
 
