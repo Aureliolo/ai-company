@@ -236,7 +236,7 @@ site/             # Astro landing page (synthorg.io)
 - **Docker**: `docker.yml` -- build + Trivy/Grype scan + push to GHCR + cosign sign + SLSA L3 provenance. CVE triage: `.github/.trivyignore.yaml`, `.github/.grype.yaml`
 - **CLI**: `cli.yml` -- Go lint/test/build (cross-compile) + govulncheck + fuzz. GoReleaser release on `v*` tags with cosign signing + SLSA provenance
 - **Dependabot**: daily updates (uv, github-actions, npm, pre-commit, docker, gomod), grouped minor/patch, no auto-merge. Use `/review-dep-pr` before merging
-- **Security scanning**: gitleaks (push/PR + weekly), zizmor (workflow analysis), OSSF Scorecard (weekly), Socket.dev (PR supply chain), ZAP DAST (main + weekly, rules: `.github/zap-rules.tsv`)
+- **Security scanning**: gitleaks (push/PR + weekly), zizmor (workflow analysis), OSSF Scorecard (weekly), Socket.dev (PR supply chain), ZAP DAST (weekly + manual, rules: `.github/zap-rules.tsv`)
 - **Coverage**: Codecov (best-effort, CI not gated on availability)
 - **Dependency review**: `dependency-review.yml` -- license allow-list (permissive only), PR comment summaries
 - **CLA**: `cla.yml` -- contributor-assistant check on PRs, signatures in `.github/cla-signatures.json`

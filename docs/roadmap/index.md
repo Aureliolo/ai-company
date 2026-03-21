@@ -12,41 +12,16 @@ What remains is significant: integration testing across subsystem boundaries, wi
 
 Think of it as: the building blocks are shaped, but they haven't been assembled and stress-tested as a structure yet.
 
-## In Progress
+## What's Next
 
-| Area | Description | Tracking |
-|------|-------------|----------|
-| **Custom security policies** | Enforce user-defined security policies and sandbox network filtering | [#610](https://github.com/Aureliolo/synthorg/issues/610) |
-| **Artifact persistence** | Project and artifact storage layer | [#612](https://github.com/Aureliolo/synthorg/issues/612) |
-| **Semantic conflict detection** | Workspace merge conflict detection using semantic analysis | [#611](https://github.com/Aureliolo/synthorg/issues/611) |
+Current priorities and in-progress work are tracked on the [GitHub issue tracker](https://github.com/Aureliolo/synthorg/issues). Key areas:
 
-## Near-Term
+- **Integration and end-to-end validation** -- wiring subsystems into working workflows
+- **Security hardening** -- custom policy enforcement, sandbox network isolation
+- **Human interaction layer** -- roles, access control, approval workflows
+- **Production readiness** -- database backend beyond SQLite, runtime configuration, monitoring
 
-| Area | Description | Tracking |
-|------|-------------|----------|
-| **Human roles and access control** | Human user types with tiered permissions | [#257](https://github.com/Aureliolo/synthorg/issues/257) |
-| **Runtime sink configuration** | Add/remove/reconfigure log sinks at runtime | [#564](https://github.com/Aureliolo/synthorg/issues/564) |
-| **Granular tool access** | Sub-constraints for tool permissions | [#220](https://github.com/Aureliolo/synthorg/issues/220) |
-| **Web/database/terminal tools** | Essential built-in tool implementations | [#212](https://github.com/Aureliolo/synthorg/issues/212), [#213](https://github.com/Aureliolo/synthorg/issues/213), [#214](https://github.com/Aureliolo/synthorg/issues/214) |
-| **Production database backend** | Move beyond SQLite for production deployments | [#210](https://github.com/Aureliolo/synthorg/issues/210) |
-| **Procedural memory** | Auto-generate reusable memory from agent failures | [#420](https://github.com/Aureliolo/synthorg/issues/420) |
-| **User guides** | Documentation for actual usage | [#293](https://github.com/Aureliolo/synthorg/issues/293) |
-
-## Long-Term
-
-These are tracked as open issues but are lower priority. See [Future Vision](future-vision.md) for the full list.
-
-| Area | Tracking |
-|------|----------|
-| Plugin system | [#241](https://github.com/Aureliolo/synthorg/issues/241) |
-| Multi-project support | [#242](https://github.com/Aureliolo/synthorg/issues/242) |
-| External integrations (Slack, GitHub, Jira) | [#246](https://github.com/Aureliolo/synthorg/issues/246) |
-| Kubernetes sandbox backend | [#219](https://github.com/Aureliolo/synthorg/issues/219) |
-| Distributed message bus | [#236](https://github.com/Aureliolo/synthorg/issues/236) |
-| A2A Protocol compatibility | [#235](https://github.com/Aureliolo/synthorg/issues/235) |
-| GraphRAG / Temporal KG memory | [#266](https://github.com/Aureliolo/synthorg/issues/266) |
-| Visual workflow editor | [#247](https://github.com/Aureliolo/synthorg/issues/247) |
-| Benchmarking suite | [#248](https://github.com/Aureliolo/synthorg/issues/248) |
+For long-term vision (plugin system, distributed backends, inter-company communication, and more), see [Future Vision](future-vision.md).
 
 ## Tracking
 

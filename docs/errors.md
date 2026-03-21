@@ -91,8 +91,8 @@ category-specific section of this page.
 | `not_found` | Resource Not Found | 404 | `https://synthorg.io/docs/errors#not_found` |
 | `conflict` | Resource Conflict | 409 | `https://synthorg.io/docs/errors#conflict` |
 | `rate_limit` | Rate Limit Exceeded | 429 | `https://synthorg.io/docs/errors#rate_limit` |
-| `budget_exhausted` | Budget Exhausted | 402 (planned) | `https://synthorg.io/docs/errors#budget_exhausted` |
-| `provider_error` | Provider Error | 502 (planned) | `https://synthorg.io/docs/errors#provider_error` |
+| `budget_exhausted` | Budget Exhausted | 402 | `https://synthorg.io/docs/errors#budget_exhausted` |
+| `provider_error` | Provider Error | 502 | `https://synthorg.io/docs/errors#provider_error` |
 | `internal` | Internal Server Error | 500, 503 | `https://synthorg.io/docs/errors#internal` |
 
 ---

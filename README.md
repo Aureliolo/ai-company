@@ -165,8 +165,8 @@ graph TB
 
 ## Status
 
-Core framework complete -- agent engine, multi-agent coordination, API, security, HR, memory (including Mem0 backend adapter), budget systems, approval workflow gates, review gate, and timeout scheduler are implemented. Web dashboard (Vue 3 + PrimeVue + Tailwind CSS) is built. CLI (Go binary) provides install, setup wizard, container lifecycle, backup management, self-updates, and diagnostics. Remaining: agent re-execution orchestrator (parked context loading is implemented; re-enqueueing an agent after resume requires a future orchestrator). See the [roadmap](docs/roadmap/index.md) for details.
+Early development. The core subsystems (agent engine, security, communication, memory, tools, budget, HR, persistence, observability) are built and unit-tested, but the project has not been run end-to-end as a cohesive product. See the [roadmap](docs/roadmap/) for what's next.
 
 ## License
 
-[Business Source License 1.1](LICENSE) -- free production use for non-competing organizations with fewer than 500 employees and contractors. Each version converts to Apache 2.0 three years after release. See [licensing details](https://synthorg.io/docs/licensing/) for the full rationale and what's permitted.
+[Business Source License 1.1](LICENSE) -- free production use for non-competing organizations with fewer than 500 employees and contractors. Converts to Apache 2.0 on the change date specified in [LICENSE](LICENSE). See [licensing details](https://synthorg.io/docs/licensing/) for the full rationale and what's permitted.
