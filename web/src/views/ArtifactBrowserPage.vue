@@ -14,12 +14,12 @@ import EmptyState from '@/components/common/EmptyState.vue'
     >
       <template #action>
         <a
-          href="https://github.com/Aureliolo/synthorg/issues/233"
+          href="https://github.com/Aureliolo/synthorg/issues/612"
           target="_blank"
           rel="noopener noreferrer"
           class="text-sm text-brand-400 hover:text-brand-300"
         >
-          Track progress on GitHub (#233)
+          Track progress on GitHub (#612)
         </a>
       </template>
     </EmptyState>

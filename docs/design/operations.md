@@ -1130,7 +1130,7 @@ and retry guidance.
 - **Approval Queue**: Pending approvals with context and recommendations
 - **Agent Profiles**: Detailed view of each agent's identity, history, metrics
 - **Budget Panel**: Spending charts, per-agent breakdown (projections/alerts planned)
-- **Meeting Logs**: View meeting transcripts and decisions
+- **Meeting Logs**: View meeting transcripts and outcomes
 - **Artifact Browser**: Placeholder -- pending artifact persistence backend ([#612](https://github.com/Aureliolo/synthorg/issues/612))
 - **Settings**:
     - *Provider management*: Add/edit/delete providers, connection test, preset-based creation, model auto-discovery (Ollama `/api/tags`, standard `/models`) -- integrated as a tab alongside company config and user settings.
