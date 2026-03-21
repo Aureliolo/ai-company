@@ -43,9 +43,20 @@ watch(() => props.entry.value, (newVal) => {
   localValue.value = newVal
 })
 
-// Emit dirty state on every local value change
+// Emit dirty state on every local value change.
+// Canonicalize JSON before comparing to avoid false dirty flags
+// from formatting differences (e.g. compact vs pretty-printed).
 watch(localValue, (val) => {
-  const isDirty = val !== props.entry.value
+  let isDirty = val !== props.entry.value
+  if (isDirty && def.value.type === 'json') {
+    try {
+      const a = JSON.parse(val)
+      const b = JSON.parse(props.entry.value)
+      isDirty = JSON.stringify(a) !== JSON.stringify(b)
+    } catch {
+      // Parse failure means genuinely different
+    }
+  }
   emit('dirty', {
     namespace: def.value.namespace,
     key: def.value.key,

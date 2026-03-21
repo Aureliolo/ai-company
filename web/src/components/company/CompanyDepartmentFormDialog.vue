@@ -34,27 +34,37 @@ const teamsJson = ref('[]')
 const reportingLinesJson = ref('[]')
 const policiesJson = ref('{}')
 
-// Reset form when dialog opens
-watch(() => props.visible, (vis) => {
-  if (!vis) return
-  if (props.mode === 'edit' && props.department) {
-    name.value = props.department.name
-    head.value = props.department.head ?? ''
-    budgetPercent.value = props.department.budget_percent ?? null
-    autonomyLevel.value = props.department.autonomy_level ?? null
-    teamsJson.value = JSON.stringify(props.department.teams ?? [], null, 2)
-    reportingLinesJson.value = JSON.stringify(props.department.reporting_lines ?? [], null, 2)
-    policiesJson.value = JSON.stringify(props.department.policies ?? {}, null, 2)
-  } else {
-    name.value = ''
-    head.value = ''
-    budgetPercent.value = null
-    autonomyLevel.value = null
-    teamsJson.value = '[]'
-    reportingLinesJson.value = '[]'
-    policiesJson.value = '{}'
-  }
-})
+// Reset form when dialog opens, mode changes, or department changes
+watch(
+  [() => props.visible, () => props.mode, () => props.department],
+  ([vis]) => {
+    if (!vis) return
+    jsonError.value = null
+    if (props.mode === 'edit' && props.department) {
+      name.value = props.department.name
+      head.value = props.department.head ?? ''
+      budgetPercent.value = props.department.budget_percent ?? null
+      autonomyLevel.value = props.department.autonomy_level ?? null
+      teamsJson.value = JSON.stringify(
+        props.department.teams ?? [], null, 2,
+      )
+      reportingLinesJson.value = JSON.stringify(
+        props.department.reporting_lines ?? [], null, 2,
+      )
+      policiesJson.value = JSON.stringify(
+        props.department.policies ?? {}, null, 2,
+      )
+    } else {
+      name.value = ''
+      head.value = ''
+      budgetPercent.value = null
+      autonomyLevel.value = null
+      teamsJson.value = '[]'
+      reportingLinesJson.value = '[]'
+      policiesJson.value = '{}'
+    }
+  },
+)
 
 const jsonError = ref<string | null>(null)
 
