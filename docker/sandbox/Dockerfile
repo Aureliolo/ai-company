@@ -25,8 +25,7 @@ RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 
 # Entrypoint for allowed_hosts enforcement (iptables + privilege drop).
 # Only activated via container config override; default USER remains sandbox.
-COPY docker/sandbox/sandbox-init.sh /usr/local/bin/sandbox-init
-RUN chmod +x /usr/local/bin/sandbox-init
+COPY --chmod=755 docker/sandbox/sandbox-init.sh /usr/local/bin/sandbox-init
 
 WORKDIR /workspace
 

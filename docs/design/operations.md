@@ -477,7 +477,7 @@ isolation for high-risk tools.
 | Backend | Isolation | Latency | Dependencies | Status |
 |---------|-----------|---------|--------------|--------|
 | `SubprocessSandbox` | Process-level: env filtering (allowlist + denylist), restricted PATH (configurable via `extra_safe_path_prefixes`), workspace-scoped cwd, timeout + process-group kill, library injection var blocking, explicit transport cleanup on Windows | ~ms | None | Implemented |
-| `DockerSandbox` | Container-level: ephemeral container, mounted workspace, no network, resource limits (CPU/memory/time) | ~1-2s cold start | Docker | Implemented |
+| `DockerSandbox` | Container-level: ephemeral container, mounted workspace, no network (default) or iptables-based host:port allowlist, resource limits (CPU/memory/time) | ~1-2s cold start | Docker | Implemented |
 | `K8sSandbox` | Pod-level: per-agent containers, namespace isolation, resource quotas, network policies | ~2-5s | Kubernetes | Future |
 
 ???+ note "Default Layered Sandbox Configuration"
@@ -502,7 +502,9 @@ isolation for high-risk tools.
         network_overrides:                 # category-specific network policies
           database: "bridge"               # database tools need TCP access to DB host
           web: "egress-only"               # web tools need outbound HTTP; no inbound
-        allowed_hosts: []                  # allowlist of host:port pairs
+        allowed_hosts: []                  # allowlist of host:port pairs (TCP only)
+        dns_allowed: true                  # allow outbound DNS when allowed_hosts restricts network
+        loopback_allowed: true             # allow loopback traffic in restricted network mode
         memory_limit: "512m"
         cpu_limit: "1.0"
         timeout_seconds: 120
@@ -860,8 +862,9 @@ A special meta-agent that reviews all actions before execution:
 - **Cannot be overridden by other agents** (only human can override)
 
 **Rule engine** ([Decision Log](../architecture/decisions.md) D4): Hybrid
-approach. Rule engine for known patterns (credentials, path traversal, destructive ops) --
-sub-ms, covers ~95% of cases. LLM fallback only for uncertain cases (~5%). Full autonomy mode:
+approach. Rule engine for known patterns (credentials, path traversal, destructive ops) plus
+user-defined custom policy rules (`custom_policies` in security config) -- sub-ms, covers ~95%
+of cases. LLM fallback only for uncertain cases (~5%). Full autonomy mode:
 rules + audit logging only, no LLM path. Hard safety rules (credential exposure, data
 destruction) **never bypass** regardless of autonomy level.
 

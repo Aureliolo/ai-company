@@ -238,29 +238,45 @@ class DockerSandbox:
             "AttachStderr": True,
         }
 
-        # Enforce allowed_hosts via iptables in the sandbox-init
-        # entrypoint.  Only active when hosts are configured and
-        # network is not "none" (no network = no enforcement needed).
-        if self._config.allowed_hosts and self._config.network != "none":
-            hosts_csv = ",".join(self._config.allowed_hosts)
-            env_list.append(f"SANDBOX_ALLOWED_HOSTS={hosts_csv}")
-            dns_flag = "1" if self._config.dns_allowed else "0"
-            lo_flag = "1" if self._config.loopback_allowed else "0"
-            env_list.append(f"SANDBOX_DNS_ALLOWED={dns_flag}")
-            env_list.append(f"SANDBOX_LOOPBACK_ALLOWED={lo_flag}")
-            host_config["CapAdd"] = ["NET_ADMIN", "NET_RAW"]
-            container_config["User"] = "root"
-            container_config["Entrypoint"] = [
-                "/usr/local/bin/sandbox-init",
-            ]
-            logger.debug(
-                SANDBOX_NETWORK_ENFORCEMENT,
-                allowed_hosts=hosts_csv,
-                dns_allowed=self._config.dns_allowed,
-                loopback_allowed=self._config.loopback_allowed,
-            )
-
+        self._apply_network_enforcement(
+            container_config,
+            host_config,
+            env_list,
+        )
         return container_config
+
+    def _apply_network_enforcement(
+        self,
+        container_config: dict[str, Any],
+        host_config: dict[str, Any],
+        env_list: list[str],
+    ) -> None:
+        """Apply allowed_hosts iptables enforcement if configured.
+
+        Modifies *container_config*, *host_config*, and *env_list*
+        in place when ``allowed_hosts`` is non-empty and network is
+        not ``"none"``.
+        """
+        if not self._config.allowed_hosts:
+            return
+        if self._config.network == "none":
+            return
+
+        hosts_csv = ",".join(self._config.allowed_hosts)
+        env_list.append(f"SANDBOX_ALLOWED_HOSTS={hosts_csv}")
+        dns_flag = "1" if self._config.dns_allowed else "0"
+        lo_flag = "1" if self._config.loopback_allowed else "0"
+        env_list.append(f"SANDBOX_DNS_ALLOWED={dns_flag}")
+        env_list.append(f"SANDBOX_LOOPBACK_ALLOWED={lo_flag}")
+        host_config["CapAdd"] = ["NET_ADMIN", "NET_RAW"]
+        container_config["User"] = "root"
+        container_config["Entrypoint"] = ["/usr/local/bin/sandbox-init"]
+        logger.debug(
+            SANDBOX_NETWORK_ENFORCEMENT,
+            allowed_hosts=hosts_csv,
+            dns_allowed=self._config.dns_allowed,
+            loopback_allowed=self._config.loopback_allowed,
+        )
 
     @staticmethod
     def _parse_memory_limit(limit: str) -> int:

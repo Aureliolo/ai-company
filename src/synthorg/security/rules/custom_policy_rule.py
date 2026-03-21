@@ -23,9 +23,13 @@ class CustomPolicyRule:
     The rule matches when the context's ``action_type`` appears in the
     policy's ``action_types`` tuple and the policy is enabled.
 
-    Custom policy rules are placed after all built-in detectors in the
-    evaluation pipeline, ensuring that credential, path-traversal, and
-    other security detectors always run first.
+    By default, custom policy rules are placed after all built-in
+    detectors in the evaluation pipeline, ensuring that credential,
+    path-traversal, and other security detectors always run first.
+    When ``RuleEngineConfig.custom_allow_bypasses_detectors`` is
+    ``True``, rules are placed before detectors instead -- a custom
+    ALLOW can then short-circuit security scanning for matched
+    action types.
 
     Attributes:
         policy: The wrapped ``SecurityPolicyRule`` config.

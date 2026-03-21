@@ -134,7 +134,10 @@ def _build_rule_engine(cfg: SecurityConfig) -> RuleEngine:
         rules.extend(custom_rules)
 
     if custom_rules:
-        logger.debug(
+        log_level = (
+            logger.warning if re_cfg.custom_allow_bypasses_detectors else logger.debug
+        )
+        log_level(
             SECURITY_CONFIG_LOADED,
             custom_policy_count=len(custom_rules),
             bypasses_detectors=re_cfg.custom_allow_bypasses_detectors,
