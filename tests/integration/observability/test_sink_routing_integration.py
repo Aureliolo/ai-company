@@ -120,7 +120,7 @@ class TestSinkRoutingIntegration:
         [
             pytest.param(
                 "cost_usage.log",
-                ("synthorg.providers.litellm", "provider call"),
+                ("synthorg.providers.driver", "provider call"),
                 ("synthorg.engine.run", "engine event"),
                 id="providers-to-cost-usage",
             ),

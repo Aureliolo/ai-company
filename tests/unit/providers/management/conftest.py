@@ -37,11 +37,13 @@ async def fake_message_bus() -> AsyncIterator[FakeMessageBus]:
 
 @pytest.fixture
 def root_config() -> RootConfig:
+    """Default RootConfig for provider management tests."""
     return RootConfig(company_name="test-company")
 
 
 @pytest.fixture
 def encryptor() -> SettingsEncryptor:
+    """SettingsEncryptor with a freshly generated Fernet key."""
     from cryptography.fernet import Fernet
 
     return SettingsEncryptor(Fernet.generate_key())
@@ -53,6 +55,7 @@ def settings_service(
     root_config: RootConfig,
     encryptor: SettingsEncryptor,
 ) -> SettingsService:
+    """SettingsService wired to fake persistence and a fresh registry."""
     return SettingsService(
         repository=fake_persistence.settings,
         registry=get_registry(),
@@ -68,6 +71,7 @@ def app_state(
     fake_message_bus: FakeMessageBus,
     settings_service: SettingsService,
 ) -> AppState:
+    """AppState assembled from fakes for isolated service tests."""
     from synthorg.api.approval_store import ApprovalStore
 
     return AppState(
@@ -85,6 +89,7 @@ def service(
     app_state: AppState,
     root_config: RootConfig,
 ) -> ProviderManagementService:
+    """ProviderManagementService wired to fake-backed app state."""
     return ProviderManagementService(
         settings_service=settings_service,
         config_resolver=app_state.config_resolver,
