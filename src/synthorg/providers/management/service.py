@@ -41,7 +41,7 @@ from synthorg.providers.errors import (
 from synthorg.providers.models import ChatMessage
 from synthorg.providers.presets import ProviderPreset, get_preset
 from synthorg.providers.registry import ProviderRegistry
-from synthorg.providers.url_utils import is_self_url
+from synthorg.providers.url_utils import is_self_url, redact_url
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -486,7 +486,7 @@ class ProviderManagementService:
         if is_self_url(base_url, backend_port=backend_port):
             logger.warning(
                 PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
-                url=base_url,
+                url=redact_url(base_url),
                 backend_port=backend_port,
             )
             return True
