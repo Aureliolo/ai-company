@@ -1,0 +1,319 @@
+"""Tests for provider discovery and trust resolution."""
+
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from synthorg.api.dto import CreateFromPresetRequest, UpdateProviderRequest
+from synthorg.config.schema import ProviderModelConfig
+from synthorg.providers.errors import ProviderNotFoundError
+from synthorg.providers.management.service import ProviderManagementService
+
+from .conftest import make_create_request
+
+pytestmark = pytest.mark.timeout(30)
+
+
+@pytest.mark.unit
+class TestDiscoverModelsForProvider:
+    """Tests for discover_models_for_provider."""
+
+    async def test_discover_models_updates_provider(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Discovery with results updates the provider config."""
+        await service.create_provider(
+            make_create_request(
+                base_url="http://localhost:11434",
+            ),
+        )
+        discovered = (
+            ProviderModelConfig(id="ollama/test-model-a"),
+            ProviderModelConfig(id="ollama/test-model-b"),
+        )
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=discovered,
+        ):
+            result = await service.discover_models_for_provider(
+                "test-provider",
+            )
+
+        assert result == discovered
+        # Verify the provider was updated with discovered models.
+        updated = await service.get_provider("test-provider")
+        assert updated.models == discovered
+
+    async def test_discover_models_no_base_url_returns_empty(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Provider with no base_url returns empty tuple without discovery."""
+        await service.create_provider(
+            make_create_request(base_url=None),
+        )
+        result = await service.discover_models_for_provider(
+            "test-provider",
+        )
+        assert result == ()
+
+    async def test_discover_models_provider_not_found_raises(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Non-existent provider name raises ProviderNotFoundError."""
+        with pytest.raises(ProviderNotFoundError, match="not found"):
+            await service.discover_models_for_provider("nonexistent")
+
+    async def test_discover_models_empty_result_no_update(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Empty discovery result does not call update_provider."""
+        await service.create_provider(
+            make_create_request(
+                base_url="http://localhost:11434",
+            ),
+        )
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=(),
+        ) as mock_discover:
+            result = await service.discover_models_for_provider(
+                "test-provider",
+            )
+
+        assert result == ()
+        mock_discover.assert_awaited_once()
+        # Original models should remain unchanged.
+        original = await service.get_provider("test-provider")
+        assert original.models == (
+            ProviderModelConfig(
+                id="test-model-001",
+                alias="medium",
+            ),
+        )
+
+
+@pytest.mark.unit
+class TestCreateFromPresetAutoDiscovery:
+    """Tests for auto-discovery in create_from_preset."""
+
+    async def test_create_from_preset_auto_discovers_models(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Preset with auth_type=none, empty models, and base_url triggers discovery."""
+        discovered = (
+            ProviderModelConfig(id="ollama/test-model-x"),
+            ProviderModelConfig(id="ollama/test-model-y"),
+        )
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=discovered,
+        ) as mock_discover:
+            request = CreateFromPresetRequest(
+                preset_name="ollama",
+                name="my-ollama",
+            )
+            result = await service.create_from_preset(request)
+
+        mock_discover.assert_awaited_once_with(
+            "http://localhost:11434",
+            "ollama",
+            trust_url=True,
+        )
+        assert result.models == discovered
+
+    async def test_create_from_preset_user_base_url_not_trusted(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """User-supplied base_url is NOT trusted (trust_url=False)."""
+        discovered = (ProviderModelConfig(id="ollama/test-model-z"),)
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=discovered,
+        ) as mock_discover:
+            request = CreateFromPresetRequest(
+                preset_name="ollama",
+                name="my-ollama",
+                base_url="http://custom-host:11434",
+            )
+            result = await service.create_from_preset(request)
+
+        mock_discover.assert_awaited_once_with(
+            "http://custom-host:11434",
+            "ollama",
+            trust_url=False,
+        )
+        assert result.models == discovered
+
+
+@pytest.mark.unit
+class TestDiscoverModelsForProviderTrust:
+    """Parametrized tests for trust logic in discover_models_for_provider.
+
+    Each scenario creates a provider with a specific base_url, optionally
+    passes a preset_hint, and asserts the resulting trust_url value.
+
+    Regression note: the ``port-inferred-known-url-trusts`` case is the
+    exact regression scenario for the SSRF trust bug fixed in this PR --
+    before the fix, ``_resolve_discovery_trust`` received the raw
+    ``preset_hint`` (None) instead of the port-inferred ``resolved_hint``.
+    """
+
+    @pytest.mark.parametrize(
+        ("base_url", "preset_hint", "expected_trust"),
+        [
+            pytest.param(
+                "http://localhost:11434",
+                "ollama",
+                True,
+                id="valid-preset-hint-trusts",
+            ),
+            pytest.param(
+                "http://localhost:11434",
+                "fake",
+                False,
+                id="invalid-preset-hint-no-trust",
+            ),
+            pytest.param(
+                "http://localhost:9999",
+                None,
+                False,
+                id="unknown-port-no-trust",
+            ),
+            pytest.param(
+                "http://localhost:11434",
+                None,
+                True,
+                id="port-inferred-known-url-trusts",
+            ),
+            pytest.param(
+                "http://host.docker.internal:11434",
+                None,
+                True,
+                id="port-inferred-docker-internal-trusts",
+            ),
+            pytest.param(
+                "http://evil.example.com:11434",
+                None,
+                False,
+                id="port-inferred-mismatched-url-no-trust",
+            ),
+            pytest.param(
+                "http://evil.example.com:11434",
+                "ollama",
+                False,
+                id="explicit-hint-non-whitelisted-url-no-trust",
+            ),
+        ],
+    )
+    async def test_trust_resolution(
+        self,
+        service: ProviderManagementService,
+        base_url: str,
+        preset_hint: str | None,
+        expected_trust: bool,
+    ) -> None:
+        """Trust is granted only when hint is valid AND URL is whitelisted."""
+        await service.create_provider(
+            make_create_request(base_url=base_url),
+        )
+        kwargs: dict[str, str] = {}
+        if preset_hint is not None:
+            kwargs["preset_hint"] = preset_hint
+
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            new_callable=AsyncMock,
+            return_value=(),
+        ) as mock_discover:
+            await service.discover_models_for_provider(
+                "test-provider",
+                **kwargs,
+            )
+
+        mock_discover.assert_awaited_once()
+        call_kwargs = mock_discover.call_args
+        assert call_kwargs.kwargs["trust_url"] is expected_trust
+
+
+@pytest.mark.unit
+class TestApplyDiscoveredModelsTOCTOU:
+    """Tests for TOCTOU abort paths in _apply_discovered_models."""
+
+    async def test_discover_aborts_if_provider_deleted(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Discovery aborts if provider is deleted between read and apply."""
+        await service.create_provider(
+            make_create_request(
+                base_url="http://localhost:11434",
+            ),
+        )
+
+        async def discover_then_delete(
+            *_args: object,
+            **_kwargs: object,
+        ) -> tuple[ProviderModelConfig, ...]:
+            await service.delete_provider("test-provider")
+            return (ProviderModelConfig(id="test-discovered"),)
+
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            side_effect=discover_then_delete,
+        ):
+            result = await service.discover_models_for_provider(
+                "test-provider",
+            )
+
+        # _apply_discovered_models returns False -> method returns ()
+        assert result == ()
+
+    async def test_discover_aborts_if_base_url_changed(
+        self,
+        service: ProviderManagementService,
+    ) -> None:
+        """Discovery aborts if base_url changes between read and apply."""
+        await service.create_provider(
+            make_create_request(
+                base_url="http://localhost:11434",
+            ),
+        )
+
+        async def discover_then_change_url(
+            *_args: object,
+            **_kwargs: object,
+        ) -> tuple[ProviderModelConfig, ...]:
+            await service.update_provider(
+                "test-provider",
+                UpdateProviderRequest(
+                    base_url="http://evil.example.com:9999",
+                ),
+            )
+            return (ProviderModelConfig(id="test-discovered"),)
+
+        with patch(
+            "synthorg.providers.management.service.discover_models",
+            side_effect=discover_then_change_url,
+        ):
+            result = await service.discover_models_for_provider(
+                "test-provider",
+            )
+
+        # _apply_discovered_models returns False -> method returns ()
+        assert result == ()
+        # Provider should retain its changed URL, not the discovered models
+        provider = await service.get_provider("test-provider")
+        assert provider.base_url == "http://evil.example.com:9999"
+        assert provider.models == (
+            ProviderModelConfig(id="test-model-001", alias="medium"),
+        )

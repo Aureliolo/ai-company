@@ -58,8 +58,6 @@ _SINK_ROUTING: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
         "audit.log": (
             "synthorg.security.",
             "synthorg.hr.",
-            "synthorg.backup.",
-            "synthorg.settings.",
             "synthorg.observability.",
         ),
         "cost_usage.log": ("synthorg.budget.", "synthorg.providers."),
@@ -71,6 +69,9 @@ _SINK_ROUTING: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
             "synthorg.memory.",
         ),
         "access.log": ("synthorg.api.",),
+        "persistence.log": ("synthorg.persistence.",),
+        "configuration.log": ("synthorg.settings.", "synthorg.config."),
+        "backup.log": ("synthorg.backup.",),
     }
 )
 
@@ -105,10 +106,8 @@ class _LoggerNameFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         """Return True if *record* passes the prefix filters."""
         name = record.name
-        if self._exclude:
-            for prefix in self._exclude:
-                if name.startswith(prefix):
-                    return False
+        if self._exclude and any(name.startswith(prefix) for prefix in self._exclude):
+            return False
         if self._include:
             return any(name.startswith(prefix) for prefix in self._include)
         return True

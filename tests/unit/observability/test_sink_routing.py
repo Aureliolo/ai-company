@@ -92,21 +92,25 @@ class TestSinkRoutingTable:
         ("sink", "prefix"),
         [
             ("audit.log", "synthorg.hr."),
-            ("audit.log", "synthorg.backup."),
-            ("audit.log", "synthorg.settings."),
             ("audit.log", "synthorg.observability."),
             ("agent_activity.log", "synthorg.communication."),
             ("agent_activity.log", "synthorg.tools."),
             ("agent_activity.log", "synthorg.memory."),
+            ("persistence.log", "synthorg.persistence."),
+            ("configuration.log", "synthorg.settings."),
+            ("configuration.log", "synthorg.config."),
+            ("backup.log", "synthorg.backup."),
         ],
         ids=[
             "audit-hr",
-            "audit-backup",
-            "audit-settings",
             "audit-observability",
             "activity-communication",
             "activity-tools",
             "activity-memory",
+            "persistence-persistence",
+            "configuration-settings",
+            "configuration-config",
+            "backup-backup",
         ],
     )
     def test_sink_routes_prefix(self, sink: str, prefix: str) -> None:
@@ -118,6 +122,9 @@ class TestSinkRoutingTable:
             "cost_usage.log",
             "agent_activity.log",
             "access.log",
+            "persistence.log",
+            "configuration.log",
+            "backup.log",
         }
 
     def test_catchall_sinks_not_in_routing(self) -> None:

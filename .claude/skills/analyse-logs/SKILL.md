@@ -21,18 +21,21 @@ Extract, parse, and analyse SynthOrg application logs from Docker containers. De
 
 ## Architecture Context
 
-The SynthOrg backend has an 8-sink structlog pipeline:
+The SynthOrg backend has an 11-sink structlog pipeline:
 
 | Sink | File | Level | Filter | Format |
 |------|------|-------|--------|--------|
 | Console | (stderr/Docker logs) | INFO | none | colored text |
 | Main | `synthorg.log` | INFO | none (catch-all) | JSON |
-| Audit | `audit.log` | INFO | `synthorg.security.*` | JSON |
+| Audit | `audit.log` | INFO | `synthorg.security.*`, `synthorg.hr.*`, `synthorg.observability.*` | JSON |
 | Errors | `errors.log` | ERROR | none | JSON |
-| Agent | `agent_activity.log` | DEBUG | `synthorg.engine.*`, `synthorg.core.*` | JSON |
+| Agent | `agent_activity.log` | DEBUG | `synthorg.engine.*`, `synthorg.core.*`, `synthorg.communication.*`, `synthorg.tools.*`, `synthorg.memory.*` | JSON |
 | Cost | `cost_usage.log` | INFO | `synthorg.budget.*`, `synthorg.providers.*` | JSON |
 | Debug | `debug.log` | DEBUG | none (catch-all) | JSON |
 | Access | `access.log` | INFO | `synthorg.api.*` | JSON |
+| Persistence | `persistence.log` | INFO | `synthorg.persistence.*` | JSON |
+| Configuration | `configuration.log` | INFO | `synthorg.settings.*`, `synthorg.config.*` | JSON |
+| Backup | `backup.log` | INFO | `synthorg.backup.*` | JSON |
 
 **Key invariant**: Every message that appears in Docker logs (console sink, INFO+) MUST also appear in `synthorg.log` (catch-all, INFO+) and `debug.log` (catch-all, DEBUG+). A message in Docker logs but missing from file sinks is a **routing bug** in the observability pipeline.
 
@@ -315,4 +318,5 @@ rm -rf logs/
 - **Rotation**: log files may have rotated copies (`.1`, `.2`, etc.) -- include them in analysis if `--since` spans beyond current file
 - **Sensitive data**: the logs have already been through `sanitize_sensitive_fields` (passwords, tokens, API keys are `**REDACTED**`), but still avoid dumping large volumes of log data into the conversation unnecessarily
 - **Container access**: use `docker ps -a --filter "name=synthorg"` for discovery and `docker cp`/`docker exec`/`docker logs` with the container name (`synthorg-backend-1`) directly. Use `synthorg logs` CLI when available. Do NOT use `docker compose -f docker/compose.yml` -- the running compose file is in the CLI data directory (e.g. `~/.synthorg/` on Linux/macOS, `%LOCALAPPDATA%\synthorg\` on Windows), not the repo's `docker/` directory. Volumes and container metadata live in the Docker VM, so accessing repo files directly will target the wrong or non-existent containers.
+- **Distroless container**: The backend uses a Chainguard distroless base image -- there is no `/bin/sh` or `/bin/bash`. Commands like `docker exec synthorg-backend-1 sh -c '...'` will fail. Use `docker cp` to extract files (primary method) and `docker exec synthorg-backend-1 /app/.venv/bin/python -c '...'` for any in-container Python execution.
 - **If containers are down**: report clearly and stop -- don't try to access volumes directly (they may be on a Docker VM)

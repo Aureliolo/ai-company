@@ -249,7 +249,7 @@ For each:
 For each audit category that found ZERO issues in Phase 2:
 
 1. **Research the relevant architecture first** -- read the actual implementation files to understand how the system works
-2. **Craft a targeted, informed prompt** -- include specific architectural details (e.g., "the observability stack uses structlog with 8 sinks routed by logger name prefix via _SINK_ROUTING in sinks.py")
+2. **Craft a targeted, informed prompt** -- include specific architectural details (e.g., "the observability stack uses structlog with 11 sinks routed by logger name prefix via _SINK_ROUTING in sinks.py")
 3. **Launch a second agent** with the enriched prompt and explicit instructions: "The first audit found nothing. Dig deeper. Check specific functions, look for subtle gaps, verify edge cases."
 4. **Validate any new findings** (same as Phase 4)
 5. Add validated findings to the main list

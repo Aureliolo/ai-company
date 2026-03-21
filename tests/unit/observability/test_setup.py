@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-from synthorg.observability.config import LogConfig, SinkConfig
+from synthorg.observability.config import DEFAULT_SINKS, LogConfig, SinkConfig
 from synthorg.observability.correlation import bind_correlation_id
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.setup import (
@@ -60,7 +60,7 @@ class TestConfigureLogging:
     def test_default_config_creates_handlers(self) -> None:
         configure_logging()
         root = logging.getLogger()
-        assert len(root.handlers) == 8
+        assert len(root.handlers) == len(DEFAULT_SINKS)
 
     def test_custom_config_creates_handlers(self) -> None:
         configure_logging(_console_only_config())
@@ -113,7 +113,7 @@ class TestConfigureLogging:
     def test_none_config_uses_defaults(self) -> None:
         configure_logging(None)
         root = logging.getLogger()
-        assert len(root.handlers) == 8
+        assert len(root.handlers) == len(DEFAULT_SINKS)
 
 
 @pytest.mark.unit
@@ -684,8 +684,8 @@ class TestTameThirdPartyLoggers:
 
 
 @pytest.mark.unit
-class TestConfigureLoggingIntegration:
-    """Integration tests for configure_logging with env var overrides."""
+class TestConfigureLoggingEnvOverride:
+    """Tests for configure_logging with env var overrides."""
 
     def test_synthorg_log_level_applied_end_to_end(
         self,

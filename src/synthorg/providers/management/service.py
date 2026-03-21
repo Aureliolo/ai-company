@@ -434,6 +434,10 @@ class ProviderManagementService:
         Raises:
             ProviderNotFoundError: If the provider does not exist.
         """
+        # Optimistic read (no lock): early-exit if base_url is None.
+        # The authoritative check happens under the lock in
+        # _apply_discovered_models, which re-reads and verifies base_url
+        # has not changed before persisting discovered models.
         config = await self.get_provider(name)
 
         if config.base_url is None:
@@ -446,7 +450,7 @@ class ProviderManagementService:
 
         resolved_hint = preset_hint or _infer_preset_hint(config.base_url)
         headers = _build_discovery_headers(config)
-        trust = self._resolve_discovery_trust(preset_hint, config.base_url)
+        trust = self._resolve_discovery_trust(resolved_hint, config.base_url)
         discovered = await discover_models(
             config.base_url,
             resolved_hint,
