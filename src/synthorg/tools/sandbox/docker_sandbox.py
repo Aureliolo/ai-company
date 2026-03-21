@@ -295,6 +295,9 @@ class DockerSandbox:
         env_list.append(f"SANDBOX_DNS_ALLOWED={dns_flag}")
         env_list.append(f"SANDBOX_LOOPBACK_ALLOWED={lo_flag}")
         host_config["CapAdd"] = ["NET_ADMIN", "NET_RAW"]
+        # iptables needs /run/xtables.lock which requires a writable /run.
+        # ReadonlyRootfs is True, so mount a tmpfs on /run.
+        host_config["Tmpfs"]["/run"] = "size=1m,nosuid,noexec"
         container_config["User"] = "root"
         container_config["Entrypoint"] = ["/usr/local/bin/sandbox-init"]
         logger.debug(

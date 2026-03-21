@@ -1,7 +1,7 @@
 """Tests for sandbox allowed_hosts network enforcement in container config."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -14,14 +14,14 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
 def _build_config(
     tmp_path: Path,
     *,
-    network: str = "bridge",
+    network: Literal["none", "bridge", "host"] = "bridge",
     allowed_hosts: tuple[str, ...] = ("example.com:443",),
     dns_allowed: bool = True,
     loopback_allowed: bool = True,
 ) -> dict[str, Any]:
     """Build container config for the given sandbox settings."""
     config = DockerSandboxConfig(
-        network=network,  # type: ignore[arg-type]
+        network=network,
         allowed_hosts=allowed_hosts,
         dns_allowed=dns_allowed,
         loopback_allowed=loopback_allowed,
@@ -75,6 +75,11 @@ class TestAllowedHostsEnforcementActive:
         result = _build_config(tmp_path)
         assert result["HostConfig"]["CapDrop"] == ["ALL"]
 
+    def test_run_tmpfs_mounted_for_xtables_lock(self, tmp_path: Path) -> None:
+        result = _build_config(tmp_path)
+        tmpfs = result["HostConfig"]["Tmpfs"]
+        assert "/run" in tmpfs
+
 
 # -- DNS and loopback settings ---------------------------------------
 
@@ -83,12 +88,12 @@ class TestAllowedHostsDnsLoopbackSettings:
     """DNS and loopback settings are passed as environment variables."""
 
     @pytest.mark.parametrize(
-        ("dns", "loopback", "expected"),
+        ("dns", "loopback", "expected", "not_expected"),
         [
-            (True, True, "SANDBOX_DNS_ALLOWED=1"),
-            (False, True, "SANDBOX_DNS_ALLOWED=0"),
-            (True, True, "SANDBOX_LOOPBACK_ALLOWED=1"),
-            (True, False, "SANDBOX_LOOPBACK_ALLOWED=0"),
+            (True, True, "SANDBOX_DNS_ALLOWED=1", "SANDBOX_DNS_ALLOWED=0"),
+            (False, True, "SANDBOX_DNS_ALLOWED=0", "SANDBOX_DNS_ALLOWED=1"),
+            (True, True, "SANDBOX_LOOPBACK_ALLOWED=1", "SANDBOX_LOOPBACK_ALLOWED=0"),
+            (True, False, "SANDBOX_LOOPBACK_ALLOWED=0", "SANDBOX_LOOPBACK_ALLOWED=1"),
         ],
     )
     def test_env_flag_set(
@@ -97,13 +102,17 @@ class TestAllowedHostsDnsLoopbackSettings:
         dns: bool,
         loopback: bool,
         expected: str,
+        not_expected: str,
     ) -> None:
         result = _build_config(
             tmp_path,
             dns_allowed=dns,
             loopback_allowed=loopback,
         )
-        assert expected in result["Env"]
+        env = result["Env"]
+        assert expected in env
+        assert not_expected not in env
+        assert env.count(expected) == 1
 
 
 # -- Enforcement NOT activated ---------------------------------------
