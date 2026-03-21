@@ -8,7 +8,7 @@ import (
 
 func FuzzLoadState(f *testing.F) {
 	// Seed corpus: valid JSON, partial JSON, garbage, empty.
-	f.Add([]byte(`{"image_tag":"latest","backend_port":8000,"web_port":3000,"log_level":"info"}`))
+	f.Add([]byte(`{"image_tag":"latest","backend_port":3001,"web_port":3000,"log_level":"info"}`))
 	f.Add([]byte(`{}`))
 	f.Add([]byte(`{"backend_port":-1,"web_port":999999}`))
 	f.Add([]byte(`{"data_dir":"/tmp/test","sandbox":true,"docker_sock":"/var/run/docker.sock"}`))

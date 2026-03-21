@@ -18,7 +18,7 @@ class TestApiConfig:
         config = ApiConfig()
         assert config.api_prefix == "/api/v1"
         assert config.server.host == "127.0.0.1"
-        assert config.server.port == 8000
+        assert config.server.port == 3001
 
     def test_cors_defaults(self) -> None:
         cors = CorsConfig()

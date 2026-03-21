@@ -6,8 +6,10 @@ import pytest
 
 from synthorg.api.dto import CreateFromPresetRequest, UpdateProviderRequest
 from synthorg.config.schema import ProviderModelConfig
+from synthorg.providers.enums import AuthType
 from synthorg.providers.errors import ProviderNotFoundError
 from synthorg.providers.management.service import ProviderManagementService
+from synthorg.providers.presets import ProviderPreset
 
 from .conftest import make_create_request
 
@@ -317,3 +319,84 @@ class TestApplyDiscoveredModelsTOCTOU:
         assert provider.models == (
             ProviderModelConfig(id="test-model-001", alias="medium"),
         )
+
+
+@pytest.mark.unit
+class TestSelfConnectionGuard:
+    """Tests for the self-connection guard in trust resolution.
+
+    The guard rejects URLs that point at the backend itself, even
+    when the URL matches a preset's candidate_urls.  The default
+    ``RootConfig`` uses ``api.server.port=3001``, so self-connection
+    tests use port 3001.
+    """
+
+    @pytest.mark.parametrize(
+        ("base_url", "expected_trust"),
+        [
+            pytest.param(
+                "http://localhost:3001/v1",
+                False,
+                id="localhost-backend-port-rejected",
+            ),
+            pytest.param(
+                "http://127.0.0.1:3001/v1",
+                False,
+                id="loopback-backend-port-rejected",
+            ),
+            pytest.param(
+                "http://host.docker.internal:3001/v1",
+                False,
+                id="docker-internal-backend-port-rejected",
+            ),
+            pytest.param(
+                "http://172.17.0.1:3001/v1",
+                False,
+                id="docker-bridge-backend-port-rejected",
+            ),
+            pytest.param(
+                "http://real-vllm.example.com:3001/v1",
+                True,
+                id="remote-host-same-port-allowed",
+            ),
+        ],
+    )
+    async def test_self_connection_detection(
+        self,
+        service: ProviderManagementService,
+        base_url: str,
+        *,
+        expected_trust: bool,
+    ) -> None:
+        """URLs pointing at the backend itself are never trusted."""
+        fake_preset = ProviderPreset(
+            name="test-local",
+            display_name="Test Local",
+            description="Fake preset for self-connection guard tests",
+            driver="litellm",
+            auth_type=AuthType.NONE,
+            candidate_urls=(base_url,),
+        )
+        await service.create_provider(
+            make_create_request(base_url=base_url),
+        )
+
+        with (
+            patch(
+                "synthorg.providers.management.service.get_preset",
+                return_value=fake_preset,
+            ),
+            patch(
+                "synthorg.providers.management.service.discover_models",
+                new_callable=AsyncMock,
+                return_value=(),
+            ) as mock_discover,
+        ):
+            await service.discover_models_for_provider(
+                "test-provider",
+                preset_hint="test-local",
+            )
+
+        mock_discover.assert_awaited_once()
+        call_kwargs = mock_discover.call_args
+        assert call_kwargs.kwargs["trust_url"] is expected_trust

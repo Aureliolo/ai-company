@@ -125,7 +125,7 @@ func TestClassifyDoctor(t *testing.T) {
 				HealthStatus:      "200",
 				ComposeFileExists: true,
 				ComposeFileValid:  boolPtr(true),
-				PortConflicts:     []string{"8000 in use by other-process"},
+				PortConflicts:     []string{"3001 in use by other-process"},
 			},
 			wantStatus:   doctorErrors,
 			wantCount:    1,

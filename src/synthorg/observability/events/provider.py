@@ -58,6 +58,9 @@ PROVIDER_DISCOVERY_FAILED: Final[str] = "provider.management.discovery_failed"
 PROVIDER_DISCOVERY_SSRF_BYPASSED: Final[str] = (
     "provider.management.discovery_ssrf_bypassed"
 )
+PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED: Final[str] = (
+    "provider.management.discovery_self_connection_blocked"
+)
 
 # ── Provider URL probing ──────────────────────────────────
 

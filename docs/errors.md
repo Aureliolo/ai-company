@@ -28,7 +28,7 @@ Send `Accept: application/problem+json` to receive bare RFC 9457 responses:
 ```bash
 curl -H "Accept: application/problem+json" \
      -H "Authorization: Bearer $TOKEN" \
-     http://localhost:8000/api/v1/tasks/nonexistent
+     http://localhost:3001/api/v1/tasks/nonexistent
 ```
 
 Response (`404 Not Found`, `Content-Type: application/problem+json`):
@@ -54,7 +54,7 @@ in the standard `ApiResponse` envelope:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-     http://localhost:8000/api/v1/tasks/nonexistent
+     http://localhost:3001/api/v1/tasks/nonexistent
 ```
 
 Response (`404 Not Found`):

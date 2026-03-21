@@ -25,6 +25,7 @@ from synthorg.observability.events.provider import (
     PROVIDER_CREATED,
     PROVIDER_DELETED,
     PROVIDER_DISCOVERY_FAILED,
+    PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
     PROVIDER_NOT_FOUND,
     PROVIDER_UPDATED,
     PROVIDER_VALIDATION_FAILED,
@@ -40,6 +41,7 @@ from synthorg.providers.errors import (
 from synthorg.providers.models import ChatMessage
 from synthorg.providers.presets import ProviderPreset, get_preset
 from synthorg.providers.registry import ProviderRegistry
+from synthorg.providers.url_utils import is_self_url
 
 if TYPE_CHECKING:
     from synthorg.api.state import AppState
@@ -469,22 +471,26 @@ class ProviderManagementService:
 
         return discovered
 
-    @staticmethod
     def _resolve_discovery_trust(
+        self,
         preset_hint: str | None,
         base_url: str,
     ) -> bool:
         """Determine whether to trust a URL for SSRF-free discovery.
 
-        Trust is granted only when both conditions are met:
+        Trust is granted only when all conditions are met:
 
         1. ``preset_hint`` resolves to a known preset in the registry.
         2. ``base_url`` matches one of the preset's ``candidate_urls``
            or its ``default_base_url`` (trailing-slash-insensitive).
+        3. ``base_url`` does not point at the backend itself
+           (self-connection guard).
 
         This prevents an attacker from storing an arbitrary URL in
         the provider config and passing a valid ``preset_hint`` to
-        bypass SSRF validation.
+        bypass SSRF validation.  The self-connection guard is a
+        safety net against the backend discovering itself as a
+        provider (e.g. when a preset uses the same port).
 
         Args:
             preset_hint: Optional preset name hint.
@@ -502,7 +508,17 @@ class ProviderManagementService:
         trusted_urls = {u.rstrip("/") for u in preset.candidate_urls}
         if preset.default_base_url:
             trusted_urls.add(preset.default_base_url.rstrip("/"))
-        return normalized in trusted_urls
+        if normalized not in trusted_urls:
+            return False
+        backend_port = self._config.api.server.port
+        if is_self_url(base_url, backend_port=backend_port):
+            logger.warning(
+                PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
+                url=base_url,
+                backend_port=backend_port,
+            )
+            return False
+        return True
 
     async def _apply_discovered_models(
         self,
@@ -731,7 +747,6 @@ def _serialize_providers(
 _PORT_TO_PRESET: Final[dict[int, str]] = {
     11434: "ollama",
     1234: "lm-studio",
-    8000: "vllm",
 }
 
 
@@ -771,10 +786,8 @@ def _build_discovery_headers(
 def _infer_preset_hint(base_url: str) -> str | None:
     """Infer the preset name from a provider base URL.
 
-    Uses port-based heuristics for common local providers.  Only
-    three ports are recognized: 11434 (ollama), 1234 (lm-studio),
-    8000 (vllm).  Port 8000 is mapped to vLLM as a best-effort
-    guess; it is also used by the SynthOrg backend and other services.
+    Uses port-based heuristics for common local providers.
+    Recognized ports: 11434 (ollama), 1234 (lm-studio).
 
     Args:
         base_url: Provider base URL.

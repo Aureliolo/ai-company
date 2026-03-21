@@ -14,7 +14,7 @@ func TestGenerateDefault(t *testing.T) {
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "latest",
-		BackendPort:        8000,
+		BackendPort:        3001,
 		WebPort:            3000,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
@@ -29,7 +29,7 @@ func TestGenerateDefault(t *testing.T) {
 	// Verify key elements.
 	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-backend:latest")
 	assertContains(t, yaml, "ghcr.io/aureliolo/synthorg-web:latest")
-	assertContains(t, yaml, `"8000:8000"`)
+	assertContains(t, yaml, `"3001:3001"`)
 	assertContains(t, yaml, `"3000:8080"`)
 	assertContains(t, yaml, "no-new-privileges:true")
 	assertContains(t, yaml, "cap_drop:")
@@ -77,7 +77,7 @@ func TestGenerateCustomPorts(t *testing.T) {
 	}
 	yaml := string(out)
 
-	assertContains(t, yaml, `"9000:8000"`)
+	assertContains(t, yaml, `"9000:3001"`)
 	assertContains(t, yaml, `"4000:8080"`)
 	assertContains(t, yaml, "synthorg-backend:v0.2.0")
 	assertContains(t, yaml, "SYNTHORG_JWT_SECRET")
@@ -93,7 +93,7 @@ func TestGenerateWithSandbox(t *testing.T) {
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "latest",
-		BackendPort:        8000,
+		BackendPort:        3001,
 		WebPort:            3000,
 		LogLevel:           "info",
 		Sandbox:            true,
@@ -124,7 +124,7 @@ func TestGenerateWithDigestPins(t *testing.T) {
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "0.3.0",
-		BackendPort:        8000,
+		BackendPort:        3001,
 		WebPort:            3000,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
@@ -160,7 +160,7 @@ func TestGenerateWithDigestPinsAndSandbox(t *testing.T) {
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "0.3.0",
-		BackendPort:        8000,
+		BackendPort:        3001,
 		WebPort:            3000,
 		LogLevel:           "info",
 		Sandbox:            true,
@@ -189,7 +189,7 @@ func TestGenerateNilDigestPinsFallsBackToTag(t *testing.T) {
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "0.3.0",
-		BackendPort:        8000,
+		BackendPort:        3001,
 		WebPort:            3000,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",
@@ -211,7 +211,7 @@ func TestGenerateHardeningPresent(t *testing.T) {
 	p := Params{
 		CLIVersion:         "dev",
 		ImageTag:           "latest",
-		BackendPort:        8000,
+		BackendPort:        3001,
 		WebPort:            3000,
 		LogLevel:           "info",
 		PersistenceBackend: "sqlite",

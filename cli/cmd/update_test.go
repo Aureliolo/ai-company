@@ -290,7 +290,7 @@ services:
   backend:
     image: ghcr.io/aureliolo/synthorg-backend@sha256:olddigest111
     ports:
-      - "8000:8000"
+      - "3001:3001"
     environment:
       SYNTHORG_LOG_LEVEL: "debug"
   web:
@@ -400,7 +400,7 @@ func TestMigrateSettingsKey(t *testing.T) {
 	state := config.State{
 		DataDir:            dir,
 		ImageTag:           "v0.3.8",
-		BackendPort:        8000,
+		BackendPort:        3001,
 		WebPort:            3000,
 		LogLevel:           "info",
 		JWTSecret:          "test-jwt-secret-at-least-32-chars-long!!",

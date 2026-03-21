@@ -44,7 +44,7 @@ jobs:
       - name: Wait for healthy
         run: |
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+            if curl -sf http://localhost:3001/api/v1/health > /dev/null 2>&1; then
               echo "Backend healthy"
               exit 0
             fi
@@ -60,7 +60,7 @@ jobs:
       - name: ZAP API Scan
         uses: zaproxy/action-api-scan@5158fe4d9d8fcc75ea204db81317cce7f9e5453d # v0.10.0
         with:
-          target: http://localhost:8000/docs/openapi.json
+          target: http://localhost:3001/docs/openapi.json
           format: openapi
           fail_action: false
           cmd_options: "-a"

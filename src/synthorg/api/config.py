@@ -118,7 +118,7 @@ class ServerConfig(BaseModel):
         description="Bind address",
     )
     port: int = Field(
-        default=8000,
+        default=3001,
         ge=1,
         le=65535,
         description="Bind port",

@@ -56,7 +56,7 @@ Configuration is in `docker/.env` (copy from `docker/.env.example`):
 | `SYNTHORG_MEMORY_DIR` | `/data/memory` | Agent memory storage directory (inside container). |
 | `SYNTHORG_PERSISTENCE_BACKEND` | `sqlite` | Persistence backend for operational data. |
 | `SYNTHORG_MEMORY_BACKEND` | `mem0` | Memory backend for agent memory. |
-| `BACKEND_PORT` | `8000` | Host port for the backend API. |
+| `BACKEND_PORT` | `3001` | Host port for the backend API. |
 | `WEB_PORT` | `3000` | Host port for the web dashboard. |
 | `DOCKER_HOST` | *(unset)* | Docker socket for agent code execution sandbox (optional). |
 

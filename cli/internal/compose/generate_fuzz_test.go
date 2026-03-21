@@ -71,14 +71,14 @@ func FuzzYamlStr(f *testing.F) {
 
 func FuzzValidateParams(f *testing.F) {
 	// Seed corpus: imageTag, backendPort, webPort, logLevel, jwtSecret, sandbox, dockerSock.
-	f.Add("latest", 8000, 3000, "info", "", false, "")
+	f.Add("latest", 3001, 3000, "info", "", false, "")
 	f.Add("v1.0.0", 9000, 4000, "debug", "secret", false, "")
-	f.Add("v2.0.0-rc1", 8080, 3001, "warn", "jwt-secret", true, "/var/run/docker.sock")
+	f.Add("v2.0.0-rc1", 8080, 3002, "warn", "jwt-secret", true, "/var/run/docker.sock")
 	f.Add("latest", 1, 65535, "error", "", false, "")
 	f.Add("", 0, 0, "invalid", "", false, "")
 	f.Add("tag!@#", -1, 99999, "", "", true, "")
-	f.Add("latest", 8000, 8000, "info", "", false, "")
-	f.Add("latest", 8000, 3000, "info", "", true, `path"with"quotes`)
+	f.Add("latest", 3001, 3001, "info", "", false, "")
+	f.Add("latest", 3001, 3000, "info", "", true, `path"with"quotes`)
 
 	f.Fuzz(func(t *testing.T, imageTag string, backendPort, webPort int, logLevel, jwtSecret string, sandbox bool, dockerSock string) {
 		p := Params{
@@ -115,9 +115,9 @@ func FuzzValidateParams(f *testing.F) {
 
 func FuzzGenerate(f *testing.F) {
 	// Seed corpus with valid-ish parameters that pass validateParams.
-	f.Add("latest", 8000, 3000, "info", "", false, "")
+	f.Add("latest", 3001, 3000, "info", "", false, "")
 	f.Add("v1.0.0", 9000, 4000, "debug", "my-secret", false, "")
-	f.Add("v2.0.0", 8080, 3001, "warn", "jwt-key", true, "/var/run/docker.sock")
+	f.Add("v2.0.0", 8080, 3002, "warn", "jwt-key", true, "/var/run/docker.sock")
 	f.Add("v0.1.5", 1, 2, "error", "", false, "")
 	f.Add("latest", 65534, 65535, "", "", false, "")
 

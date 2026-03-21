@@ -36,8 +36,12 @@ class TestProviderPresets:
         assert presets == PROVIDER_PRESETS
 
     def test_local_presets_have_candidate_urls(self) -> None:
-        """Local presets (ollama, lm-studio, vllm) must have candidate URLs."""
-        for name in ("ollama", "lm-studio", "vllm"):
+        """Local presets with non-colliding ports have candidate URLs.
+
+        vLLM is excluded: its default port (8000) collides with the
+        SynthOrg backend, so candidate_urls are intentionally empty.
+        """
+        for name in ("ollama", "lm-studio"):
             preset = get_preset(name)
             assert preset is not None, f"Preset {name!r} not found"
             assert len(preset.candidate_urls) > 0, (
@@ -47,6 +51,13 @@ class TestProviderPresets:
                 assert url.startswith(("http://", "https://")), (
                     f"candidate_url {url!r} in preset {name!r} must have http(s) scheme"
                 )
+
+    def test_vllm_preset_has_no_candidate_urls(self) -> None:
+        """vLLM preset must not have candidate_urls (port 8000 collision)."""
+        preset = get_preset("vllm")
+        assert preset is not None
+        assert preset.candidate_urls == ()
+        assert preset.default_base_url == "http://localhost:8000/v1"
 
     def test_cloud_presets_have_no_candidate_urls(self) -> None:
         """Cloud presets (openrouter) should not have candidate URLs."""

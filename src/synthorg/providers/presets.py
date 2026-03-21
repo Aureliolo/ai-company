@@ -85,11 +85,9 @@ PROVIDER_PRESETS: tuple[ProviderPreset, ...] = (
         driver="litellm",
         auth_type=AuthType.NONE,
         default_base_url="http://localhost:8000/v1",
-        candidate_urls=(
-            "http://host.docker.internal:8000/v1",
-            "http://172.17.0.1:8000/v1",
-            "http://localhost:8000/v1",
-        ),
+        # candidate_urls intentionally empty: vLLM's default port (8000)
+        # collides with the SynthOrg backend.  Users must specify the
+        # vLLM URL explicitly or remap vLLM to a non-colliding port.
         default_models=(),
     ),
 )

@@ -9,14 +9,17 @@ services:
     build:
       context: ..
       dockerfile: docker/backend/Dockerfile
+    # Default port 3001 avoids collision with vLLM's default (8000).
+    # Override with BACKEND_PORT env var.  If co-hosting vLLM, expose
+    # it on a different host port (e.g. -p 5000:8000 for vLLM).
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_PORT:-3001}:3001"
     volumes:
       - synthorg-data:/data
     env_file: .env
     environment:
       SYNTHORG_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
-      SYNTHORG_PORT: "${SYNTHORG_PORT:-8000}"
+      SYNTHORG_PORT: "${SYNTHORG_PORT:-3001}"
       SYNTHORG_DB_PATH: "/data/synthorg.db"
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_LOG_DIR: "${SYNTHORG_LOG_DIR:-/data/logs}"
@@ -25,7 +28,7 @@ services:
       MEM0_TELEMETRY: "${MEM0_TELEMETRY:-false}"
       # Bridge SYNTHORG_* to uvicorn's native env vars (exec form CMD, no shell)
       UVICORN_HOST: "${SYNTHORG_HOST:-0.0.0.0}"
-      UVICORN_PORT: "${SYNTHORG_PORT:-8000}"
+      UVICORN_PORT: "${SYNTHORG_PORT:-3001}"
     user: "65532:65532"
     # CIS Docker Benchmark v1.6.0 hardening (5.3, 5.12, 5.25, 5.28)
     security_opt:

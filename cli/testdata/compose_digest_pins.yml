@@ -5,12 +5,12 @@ services:
   backend:
     image: ghcr.io/aureliolo/synthorg-backend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     ports:
-      - "8000:8000"
+      - "3001:3001"
     volumes:
       - synthorg-data:/data
     environment:
       SYNTHORG_HOST: "0.0.0.0"
-      SYNTHORG_PORT: "8000"
+      SYNTHORG_PORT: "3001"
       SYNTHORG_DB_PATH: "/data/synthorg.db"
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_PERSISTENCE_BACKEND: "sqlite"

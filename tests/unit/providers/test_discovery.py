@@ -416,7 +416,7 @@ class TestInferPresetHint:
         [
             ("http://localhost:11434", "ollama"),
             ("http://localhost:1234/v1", "lm-studio"),
-            ("http://localhost:8000", "vllm"),
+            ("http://localhost:8000", None),
             ("http://localhost:9999", None),
             ("http://example.com", None),
             ("http://localhost:11434/api", "ollama"),

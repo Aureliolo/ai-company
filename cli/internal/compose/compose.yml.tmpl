@@ -5,12 +5,12 @@ services:
   backend:
     image: {{digestPin "backend" "ghcr.io/aureliolo/synthorg-backend" .ImageTag}}
     ports:
-      - "{{.BackendPort}}:8000"
+      - "{{.BackendPort}}:3001"
     volumes:
       - synthorg-data:/data
     environment:
       SYNTHORG_HOST: "0.0.0.0"
-      SYNTHORG_PORT: "8000"
+      SYNTHORG_PORT: "3001"
       SYNTHORG_DB_PATH: "/data/synthorg.db"
       SYNTHORG_MEMORY_DIR: "/data/memory"
       SYNTHORG_PERSISTENCE_BACKEND: {{yamlStr .PersistenceBackend}}

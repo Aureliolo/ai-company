@@ -249,7 +249,7 @@ func TestFormatTextNewSections(t *testing.T) {
 		CLICommit:         "none",
 		ComposeFileExists: true,
 		ComposeFileValid:  ptrBool(true),
-		PortConflicts:     []string{"port 8000 (backend) is already in use"},
+		PortConflicts:     []string{"port 3001 (backend) is already in use"},
 		ImageStatus:       []string{"ghcr.io/aureliolo/synthorg-backend:latest: available"},
 		ContainerSummary: []ContainerDetail{
 			{Name: "backend", State: "running", Health: "healthy"},
@@ -262,7 +262,7 @@ func TestFormatTextNewSections(t *testing.T) {
 		"Container Summary",
 		"backend: running (healthy)",
 		"Port Conflicts",
-		"port 8000",
+		"port 3001",
 		"Docker Images",
 		"synthorg-backend",
 	} {
@@ -279,7 +279,7 @@ func TestParseComposeImageRefs(t *testing.T) {
   backend:
     image: ghcr.io/aureliolo/synthorg-backend@sha256:abc123
     ports:
-      - "8000:8000"
+      - "3001:3001"
   web:
     image: ghcr.io/aureliolo/synthorg-web@sha256:def456
   sandbox:

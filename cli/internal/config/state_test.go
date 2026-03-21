@@ -10,8 +10,8 @@ import (
 
 func TestDefaultState(t *testing.T) {
 	s := DefaultState()
-	if s.BackendPort != 8000 {
-		t.Errorf("BackendPort = %d, want 8000", s.BackendPort)
+	if s.BackendPort != 3001 {
+		t.Errorf("BackendPort = %d, want 3001", s.BackendPort)
 	}
 	if s.WebPort != 3000 {
 		t.Errorf("WebPort = %d, want 3000", s.WebPort)
@@ -94,7 +94,7 @@ func TestSaveCreatesDirectory(t *testing.T) {
 	s := State{
 		DataDir:     nested,
 		ImageTag:    "latest",
-		BackendPort: 8000,
+		BackendPort: 3001,
 		WebPort:     3000,
 		LogLevel:    "info",
 	}
@@ -111,7 +111,7 @@ func TestSaveCreatesDirectory(t *testing.T) {
 
 func TestSaveFilePermissions(t *testing.T) {
 	tmp := t.TempDir()
-	s := State{DataDir: tmp, ImageTag: "latest", BackendPort: 8000, WebPort: 3000, LogLevel: "info", JWTSecret: "secret"}
+	s := State{DataDir: tmp, ImageTag: "latest", BackendPort: 3001, WebPort: 3000, LogLevel: "info", JWTSecret: "secret"}
 
 	if err := Save(s); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -149,8 +149,8 @@ func TestLoadMissing(t *testing.T) {
 		t.Fatalf("Load missing file: %v", err)
 	}
 	// Should return defaults.
-	if s.BackendPort != 8000 {
-		t.Errorf("expected default BackendPort 8000, got %d", s.BackendPort)
+	if s.BackendPort != 3001 {
+		t.Errorf("expected default BackendPort 3001, got %d", s.BackendPort)
 	}
 	// Conservative fallback: sandbox disabled when no config exists.
 	if s.Sandbox {
@@ -187,7 +187,7 @@ func TestLoadRejectsInvalidBackends(t *testing.T) {
 			raw, _ := json.Marshal(map[string]any{
 				"data_dir":            tmp,
 				"image_tag":           "latest",
-				"backend_port":        8000,
+				"backend_port":        3001,
 				"web_port":            3000,
 				"log_level":           "info",
 				"persistence_backend": tt.persist,

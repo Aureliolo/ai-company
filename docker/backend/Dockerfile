@@ -99,18 +99,18 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     SYNTHORG_HOST="0.0.0.0" \
-    SYNTHORG_PORT="8000" \
+    SYNTHORG_PORT="3001" \
     UVICORN_HOST="0.0.0.0" \
-    UVICORN_PORT="8000"
+    UVICORN_PORT="3001"
 
 USER 65532
 
-EXPOSE 8000
+EXPOSE 3001
 
 # Healthcheck -- exec form (no shell needed, works with distroless)
 # Reads UVICORN_PORT so the check stays valid if the port is overridden.
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=30s \
-    CMD ["/usr/bin/python", "-c", "import json,urllib.request,sys,os; port=os.environ.get('UVICORN_PORT','8000'); r=urllib.request.urlopen(f'http://127.0.0.1:{port}/api/v1/health'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='ok' else 1)"]
+    CMD ["/usr/bin/python", "-c", "import json,urllib.request,sys,os; port=os.environ.get('UVICORN_PORT','3001'); r=urllib.request.urlopen(f'http://127.0.0.1:{port}/api/v1/health'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='ok' else 1)"]
 
 # Reset Chainguard base entrypoint (/usr/bin/python) so CMD runs uvicorn
 # directly instead of being passed as Python arguments.
