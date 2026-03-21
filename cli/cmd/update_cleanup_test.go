@@ -206,3 +206,24 @@ func FuzzIsAllHex(f *testing.F) {
 		}
 	})
 }
+
+func FuzzParseDockerSize(f *testing.F) {
+	f.Add("646MB")
+	f.Add("85.8MB")
+	f.Add("1.2GB")
+	f.Add("2.5TB")
+	f.Add("512kB")
+	f.Add("512KB")
+	f.Add("100B")
+	f.Add("1,024MB")
+	f.Add("")
+	f.Add("fooMB")
+	f.Add("123")
+	f.Add("NaNMB")
+	f.Add("InfGB")
+	f.Add("-InfTB")
+	f.Fuzz(func(_ *testing.T, s string) {
+		// Exercise the parser with arbitrary input -- must not panic.
+		_ = parseDockerSize(s)
+	})
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 
@@ -183,6 +184,9 @@ func parseDockerSize(s string) float64 {
 		if strings.HasSuffix(s, m.suffix) {
 			numStr := strings.TrimSuffix(s, m.suffix)
 			if v, err := strconv.ParseFloat(strings.TrimSpace(numStr), 64); err == nil {
+				if math.IsNaN(v) || math.IsInf(v, 0) {
+					return 0
+				}
 				return v * m.mult
 			}
 			return 0
