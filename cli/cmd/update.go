@@ -523,13 +523,10 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 		return err
 	}
 
-	sp := out.StartSpinner(fmt.Sprintf("Pulling container images (%s)...", tag))
-	if err := composeRunQuiet(ctx, info, safeDir, "pull"); err != nil {
-		sp.Error("Failed to pull images")
+	if err := pullServicesLive(ctx, info, safeDir, state, out); err != nil {
 		rollback()
-		return fmt.Errorf("pulling images: %w", err)
+		return err
 	}
-	sp.Success(fmt.Sprintf("Images pulled (%s)", tag))
 
 	// Persist config only after successful pull so a failed pull
 	// doesn't leave state claiming images are at the new version.

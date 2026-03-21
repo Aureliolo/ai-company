@@ -1,0 +1,192 @@
+package ui
+
+import (
+	"fmt"
+	"sync"
+	"time"
+
+	"github.com/charmbracelet/lipgloss"
+)
+
+// LiveBoxLine holds the current state of a single line in a LiveBox.
+type LiveBoxLine struct {
+	Label    string // left-aligned label (e.g. service name)
+	Status   string // right-aligned status icon/text (set on finish)
+	finished bool
+}
+
+// LiveBox renders a bordered box whose content lines update in place.
+// Each line shows an animated spinner until marked finished. On non-TTY
+// writers, each finish prints a plain status line instead.
+type LiveBox struct {
+	ui      *UI
+	title   string
+	lines   []LiveBoxLine
+	innerW  int
+	mu      sync.Mutex
+	done    chan struct{}
+	wg      sync.WaitGroup
+	started bool
+}
+
+// NewLiveBox creates a live-updating box and renders it immediately.
+// Labels are the left-aligned text for each line. The box animates
+// spinners on unfinished lines until all lines are finished or
+// Finish is called.
+func (u *UI) NewLiveBox(title string, labels []string) *LiveBox {
+	lines := make([]LiveBoxLine, len(labels))
+	for i, l := range labels {
+		lines[i] = LiveBoxLine{Label: stripControlStrict(l)}
+	}
+
+	// Compute inner width from the widest possible line content.
+	// Format: "  <label>  <status>" -- status is at most a few chars.
+	maxContentW := 0
+	for _, line := range lines {
+		// "  %-14s %s" with a spinner or icon
+		w := lipgloss.Width(fmt.Sprintf("  %-14s %s", line.Label, IconSuccess))
+		if w > maxContentW {
+			maxContentW = w
+		}
+	}
+	titleW := lipgloss.Width(stripControlStrict(title))
+	innerW := max(maxContentW, titleW+2, 18)
+
+	lb := &LiveBox{
+		ui:     u,
+		title:  stripControlStrict(title),
+		lines:  lines,
+		innerW: innerW,
+		done:   make(chan struct{}),
+	}
+
+	if !u.isTTY {
+		// Non-TTY: print the title as a step, updates come as plain lines.
+		u.Step(lb.title)
+		return lb
+	}
+
+	// Render initial box frame.
+	u.renderBoxTop(lb.title, titleW, innerW)
+	contentLines := lb.buildLines(0)
+	u.renderBoxContent(contentLines, innerW)
+	u.renderBoxBottom(innerW)
+
+	// Start animation goroutine.
+	lb.started = true
+	lb.wg.Go(lb.run)
+
+	return lb
+}
+
+// UpdateLine marks a line as finished with the given status icon/text.
+// Thread-safe -- can be called from multiple goroutines.
+func (lb *LiveBox) UpdateLine(index int, status string) {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+
+	if index < 0 || index >= len(lb.lines) {
+		return
+	}
+	lb.lines[index].Status = stripControlStrict(status)
+	lb.lines[index].finished = true
+
+	if !lb.ui.isTTY {
+		// Non-TTY: print a status line immediately.
+		if status == IconError {
+			lb.ui.Error(lb.lines[index].Label)
+		} else {
+			lb.ui.Success(lb.lines[index].Label)
+		}
+	}
+}
+
+// Finish stops the animation and leaves the final box state on screen.
+// Safe to call multiple times.
+func (lb *LiveBox) Finish() {
+	if !lb.started {
+		return
+	}
+	select {
+	case <-lb.done:
+		return // already finished
+	default:
+		close(lb.done)
+	}
+	lb.wg.Wait()
+
+	// Final redraw with all current states.
+	lb.mu.Lock()
+	contentLines := lb.buildLines(-1) // no spinner frame
+	lb.mu.Unlock()
+
+	lb.redraw(contentLines)
+}
+
+// run drives the spinner animation until Finish is called or all lines complete.
+func (lb *LiveBox) run() {
+	ticker := time.NewTicker(spinnerInterval)
+	defer ticker.Stop()
+
+	frame := 0
+	for {
+		select {
+		case <-lb.done:
+			return
+		case <-ticker.C:
+			lb.mu.Lock()
+			allDone := lb.allFinished()
+			contentLines := lb.buildLines(frame)
+			lb.mu.Unlock()
+
+			lb.redraw(contentLines)
+			frame = (frame + 1) % len(spinnerFrames)
+
+			if allDone {
+				select {
+				case <-lb.done:
+				default:
+					close(lb.done)
+				}
+				return
+			}
+		}
+	}
+}
+
+// buildLines generates the current display strings for all lines.
+// Must be called with lb.mu held.
+func (lb *LiveBox) buildLines(frame int) []string {
+	result := make([]string, len(lb.lines))
+	for i, line := range lb.lines {
+		switch {
+		case line.finished:
+			result[i] = fmt.Sprintf("  %-14s %s", line.Label, line.Status)
+		case frame >= 0:
+			result[i] = fmt.Sprintf("  %-14s %s", line.Label, spinnerFrames[frame])
+		default:
+			result[i] = fmt.Sprintf("  %-14s ...", line.Label)
+		}
+	}
+	return result
+}
+
+// allFinished reports whether every line has been marked finished.
+// Must be called with lb.mu held.
+func (lb *LiveBox) allFinished() bool {
+	for _, line := range lb.lines {
+		if !line.finished {
+			return false
+		}
+	}
+	return true
+}
+
+// redraw moves the cursor up over the content + bottom border and redraws them.
+func (lb *LiveBox) redraw(contentLines []string) {
+	moveUp := len(lb.lines) + 1 // content lines + bottom border
+	_, _ = fmt.Fprintf(lb.ui.w, "\033[%dA", moveUp)
+
+	lb.ui.renderBoxContent(contentLines, lb.innerW)
+	lb.ui.renderBoxBottom(lb.innerW)
+}

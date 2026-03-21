@@ -68,10 +68,98 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	out.Link("API docs", fmt.Sprintf("http://localhost:%d/docs/api", state.BackendPort))
 
 	_, _ = fmt.Fprintln(out.Writer())
+	renderDoctorSummary(out, report)
+
+	_, _ = fmt.Fprintln(out.Writer())
 	out.Hint("Run 'synthorg doctor report' to file a bug report")
 	out.Hint("Run 'synthorg logs' to view container logs")
 
 	return nil
+}
+
+// doctorStatus classifies the overall health of the system from a diagnostic report.
+type doctorStatus int
+
+const (
+	doctorHealthy doctorStatus = iota
+	doctorWarnings
+	doctorErrors
+)
+
+// classifyDoctor inspects the report to determine the overall status.
+func classifyDoctor(r diagnostics.Report) (doctorStatus, []string) {
+	var warnings, errors []string
+
+	// Backend health.
+	switch r.HealthStatus {
+	case "200":
+		// ok
+	case "unreachable":
+		errors = append(errors, "backend unreachable")
+	case "":
+		// not checked
+	default:
+		errors = append(errors, fmt.Sprintf("backend unhealthy (HTTP %s)", r.HealthStatus))
+	}
+
+	// Container states.
+	for _, c := range r.ContainerSummary {
+		switch {
+		case c.Health == "unhealthy", c.State == "exited":
+			errors = append(errors, fmt.Sprintf("%s %s", c.Name, c.Health))
+		case c.Health == "starting":
+			warnings = append(warnings, fmt.Sprintf("%s still starting", c.Name))
+		}
+	}
+
+	// Compose file.
+	if !r.ComposeFileExists {
+		errors = append(errors, "compose.yml not found")
+	} else if r.ComposeFileValid != nil && !*r.ComposeFileValid {
+		errors = append(errors, "compose.yml is invalid")
+	}
+
+	// Port conflicts.
+	for _, p := range r.PortConflicts {
+		errors = append(errors, fmt.Sprintf("port conflict: %s", p))
+	}
+
+	// Explicit errors from collection.
+	errors = append(errors, r.Errors...)
+
+	if len(errors) > 0 {
+		return doctorErrors, errors
+	}
+	if len(warnings) > 0 {
+		return doctorWarnings, warnings
+	}
+	return doctorHealthy, nil
+}
+
+// renderDoctorSummary prints a final summary box showing overall system status.
+func renderDoctorSummary(out *ui.UI, r diagnostics.Report) {
+	status, issues := classifyDoctor(r)
+
+	switch status {
+	case doctorHealthy:
+		out.Box("Status", []string{
+			fmt.Sprintf("  %s All systems healthy", ui.IconSuccess),
+		})
+	case doctorWarnings:
+		lines := make([]string, 0, len(issues)+1)
+		lines = append(lines, fmt.Sprintf("  %s %d warning(s) detected", ui.IconWarning, len(issues)))
+		for _, w := range issues {
+			lines = append(lines, fmt.Sprintf("    %s %s", ui.IconHint, w))
+		}
+		out.Box("Status", lines)
+	case doctorErrors:
+		lines := make([]string, 0, len(issues)+1)
+		lines = append(lines, fmt.Sprintf("  %s %d issue(s) found", ui.IconError, len(issues)))
+		for _, e := range issues {
+			lines = append(lines, fmt.Sprintf("    %s %s", ui.IconHint, e))
+		}
+		out.Box("Status", lines)
+	}
 }
 
 func renderDoctorEnvironment(out *ui.UI, r diagnostics.Report) {

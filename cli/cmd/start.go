@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Aureliolo/synthorg/cli/internal/compose"
@@ -90,14 +91,11 @@ func runStart(cmd *cobra.Command, _ []string) error {
 
 // pullStartAndWait pulls images, starts containers, and waits for health.
 func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, state config.State, out, errOut *ui.UI) error {
-	sp := out.StartSpinner("Pulling images...")
-	if err := composeRunQuiet(ctx, info, safeDir, "pull"); err != nil {
-		sp.Error("Failed to pull images")
-		return fmt.Errorf("pulling images: %w", err)
+	if err := pullServicesLive(ctx, info, safeDir, state, out); err != nil {
+		return err
 	}
-	sp.Success("Images pulled")
 
-	sp = out.StartSpinner("Starting containers...")
+	sp := out.StartSpinner("Starting containers...")
 	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
 		sp.Error("Failed to start containers")
 		return fmt.Errorf("starting containers: %w", err)
@@ -112,6 +110,50 @@ func pullStartAndWait(ctx context.Context, info docker.Info, safeDir string, sta
 		return fmt.Errorf("health check did not pass: %w", err)
 	}
 	sp.Success("Backend healthy")
+	return nil
+}
+
+// serviceNames returns the list of compose service names for the current config.
+func serviceNames(state config.State) []string {
+	names := []string{"backend", "web"}
+	if state.Sandbox {
+		names = append(names, "sandbox")
+	}
+	return names
+}
+
+// pullServicesLive pulls each compose service concurrently, showing
+// per-service progress in a live-updating box.
+func pullServicesLive(ctx context.Context, info docker.Info, safeDir string, state config.State, out *ui.UI) error {
+	services := serviceNames(state)
+	lb := out.NewLiveBox("Pull Images", services)
+
+	var (
+		mu      sync.Mutex
+		pullErr error
+	)
+	var wg sync.WaitGroup
+	for i, svc := range services {
+		wg.Add(1)
+		go func(idx int, name string) {
+			defer wg.Done()
+			err := composeRunQuiet(ctx, info, safeDir, "pull", name)
+			if err != nil {
+				lb.UpdateLine(idx, ui.IconError)
+				mu.Lock()
+				pullErr = fmt.Errorf("pulling %s: %w", name, err)
+				mu.Unlock()
+			} else {
+				lb.UpdateLine(idx, ui.IconSuccess)
+			}
+		}(i, svc)
+	}
+	wg.Wait()
+	lb.Finish()
+
+	if pullErr != nil {
+		return pullErr
+	}
 	return nil
 }
 

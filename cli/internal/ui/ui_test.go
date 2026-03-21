@@ -323,6 +323,93 @@ func TestSpinnerConcurrentStop(t *testing.T) {
 	}
 }
 
+func TestLiveBoxNonTTY(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	lb := u.NewLiveBox("Pull Images", []string{"backend", "web", "sandbox"})
+
+	// Non-TTY: NewLiveBox prints a step line with the title.
+	out := buf.String()
+	if !strings.Contains(out, "Pull Images") {
+		t.Error("NewLiveBox should print title on non-TTY")
+	}
+
+	// Updating lines should print status lines.
+	lb.UpdateLine(0, IconSuccess)
+	out = buf.String()
+	if !strings.Contains(out, "backend") {
+		t.Error("UpdateLine should print label on non-TTY")
+	}
+
+	lb.UpdateLine(1, IconError)
+	out = buf.String()
+	if !strings.Contains(out, "web") {
+		t.Error("UpdateLine error should print label on non-TTY")
+	}
+
+	lb.UpdateLine(2, IconSuccess)
+	lb.Finish()
+}
+
+func TestLiveBoxFinishIdempotent(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	lb := u.NewLiveBox("Test", []string{"a"})
+	lb.UpdateLine(0, IconSuccess)
+	lb.Finish()
+	lb.Finish() // should not panic
+}
+
+func TestLiveBoxOutOfBounds(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	lb := u.NewLiveBox("Test", []string{"a"})
+	lb.UpdateLine(-1, IconSuccess) // should not panic
+	lb.UpdateLine(5, IconSuccess)  // should not panic
+	lb.UpdateLine(0, IconSuccess)
+	lb.Finish()
+}
+
+func TestLiveBoxBuildLines(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	u := NewUI(&buf)
+	lb := u.NewLiveBox("Test", []string{"svc1", "svc2"})
+
+	lb.mu.Lock()
+	// Before any updates, all lines should show spinner frame.
+	lines := lb.buildLines(0)
+	lb.mu.Unlock()
+
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(lines))
+	}
+	if !strings.Contains(lines[0], "svc1") {
+		t.Error("line 0 missing label svc1")
+	}
+	if !strings.Contains(lines[0], spinnerFrames[0]) {
+		t.Error("line 0 should contain spinner frame")
+	}
+
+	// After marking finished, line should show status.
+	lb.UpdateLine(0, IconSuccess)
+	lb.mu.Lock()
+	lines = lb.buildLines(0)
+	lb.mu.Unlock()
+	if !strings.Contains(lines[0], IconSuccess) {
+		t.Error("finished line should show success icon")
+	}
+	if !strings.Contains(lines[1], spinnerFrames[0]) {
+		t.Error("unfinished line should still show spinner")
+	}
+
+	lb.UpdateLine(1, IconSuccess)
+	lb.Finish()
+}
+
 func TestInlineKVOddArgs(t *testing.T) {
 	t.Parallel()
 	var buf bytes.Buffer
