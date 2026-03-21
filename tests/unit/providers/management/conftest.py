@@ -93,18 +93,21 @@ def service(
 def make_create_request(
     name: str = "test-provider",
     auth_type: AuthType = AuthType.NONE,
+    models: tuple[ProviderModelConfig, ...] | None = None,
     **kwargs: Any,
 ) -> CreateProviderRequest:
     """Build a ``CreateProviderRequest`` with sensible defaults."""
-    return CreateProviderRequest(
-        name=name,
-        driver="litellm",
-        auth_type=auth_type,
-        models=(
+    if models is None:
+        models = (
             ProviderModelConfig(
                 id="test-model-001",
                 alias="medium",
             ),
-        ),
+        )
+    return CreateProviderRequest(
+        name=name,
+        driver="litellm",
+        auth_type=auth_type,
+        models=models,
         **kwargs,
     )

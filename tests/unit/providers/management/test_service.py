@@ -22,7 +22,9 @@ from synthorg.providers.errors import (
 from synthorg.providers.management.service import ProviderManagementService
 from synthorg.settings.service import SettingsService
 
-from .conftest import make_create_request as _make_create_request
+from .conftest import make_create_request
+
+pytestmark = pytest.mark.timeout(30)
 
 
 @pytest.mark.unit
@@ -31,7 +33,7 @@ class TestCreateProvider:
         self,
         service: ProviderManagementService,
     ) -> None:
-        request = _make_create_request()
+        request = make_create_request()
         result = await service.create_provider(request)
         assert result.driver == "litellm"
         assert result.auth_type == AuthType.NONE
@@ -40,7 +42,7 @@ class TestCreateProvider:
         self,
         service: ProviderManagementService,
     ) -> None:
-        request = _make_create_request()
+        request = make_create_request()
         await service.create_provider(request)
 
         with pytest.raises(ProviderAlreadyExistsError, match="already exists"):
@@ -51,7 +53,7 @@ class TestCreateProvider:
         service: ProviderManagementService,
         settings_service: SettingsService,
     ) -> None:
-        request = _make_create_request()
+        request = make_create_request()
         await service.create_provider(request)
 
         result = await settings_service.get("providers", "configs")
@@ -63,7 +65,7 @@ class TestCreateProvider:
         service: ProviderManagementService,
         app_state: AppState,
     ) -> None:
-        request = _make_create_request()
+        request = make_create_request()
         await service.create_provider(request)
         assert app_state.has_provider_registry
         assert "test-provider" in app_state.provider_registry
@@ -73,7 +75,7 @@ class TestCreateProvider:
         service: ProviderManagementService,
         app_state: AppState,
     ) -> None:
-        request = _make_create_request()
+        request = make_create_request()
         await service.create_provider(request)
         assert app_state.has_model_router
 
@@ -84,7 +86,7 @@ class TestUpdateProvider:
         self,
         service: ProviderManagementService,
     ) -> None:
-        await service.create_provider(_make_create_request())
+        await service.create_provider(make_create_request())
         update = UpdateProviderRequest(
             base_url="http://localhost:9999",
         )
@@ -104,7 +106,7 @@ class TestUpdateProvider:
         service: ProviderManagementService,
     ) -> None:
         await service.create_provider(
-            _make_create_request(
+            make_create_request(
                 auth_type=AuthType.API_KEY,
                 api_key="sk-original",
             ),
@@ -123,7 +125,7 @@ class TestDeleteProvider:
         self,
         service: ProviderManagementService,
     ) -> None:
-        await service.create_provider(_make_create_request())
+        await service.create_provider(make_create_request())
         await service.delete_provider("test-provider")
 
         providers = await service.list_providers()
@@ -168,7 +170,7 @@ class TestTestConnection:
         self,
         service: ProviderManagementService,
     ) -> None:
-        await service.create_provider(_make_create_request())
+        await service.create_provider(make_create_request())
 
         mock_response = MagicMock()
         mock_response.choices = [MagicMock()]
@@ -197,7 +199,7 @@ class TestTestConnection:
         self,
         service: ProviderManagementService,
     ) -> None:
-        await service.create_provider(_make_create_request())
+        await service.create_provider(make_create_request())
 
         from synthorg.providers.errors import AuthenticationError
 
@@ -291,7 +293,7 @@ class TestClearApiKey:
         service: ProviderManagementService,
     ) -> None:
         await service.create_provider(
-            _make_create_request(
+            make_create_request(
                 auth_type=AuthType.API_KEY,
                 api_key="sk-original",
             ),
@@ -350,7 +352,7 @@ class TestAuthTypeTransitions:
     ) -> None:
         """Switching from oauth to api_key clears all OAuth fields."""
         await service.create_provider(
-            _make_create_request(
+            make_create_request(
                 auth_type=AuthType.OAUTH,
                 api_key="oauth-token",
                 oauth_token_url="https://auth.example.com/token",
@@ -374,7 +376,7 @@ class TestAuthTypeTransitions:
     ) -> None:
         """Switching to none auth clears API key and all credential fields."""
         await service.create_provider(
-            _make_create_request(
+            make_create_request(
                 auth_type=AuthType.API_KEY,
                 api_key="sk-test-key",
             ),
@@ -392,7 +394,7 @@ class TestAuthTypeTransitions:
     ) -> None:
         """Switching from oauth to custom_header clears all OAuth fields."""
         await service.create_provider(
-            _make_create_request(
+            make_create_request(
                 auth_type=AuthType.OAUTH,
                 api_key="oauth-token",
                 oauth_token_url="https://auth.example.com/token",
@@ -418,7 +420,7 @@ class TestAuthTypeTransitions:
     ) -> None:
         """Explicit credentials win over auth-type-transition clearing."""
         await service.create_provider(
-            _make_create_request(
+            make_create_request(
                 auth_type=AuthType.OAUTH,
                 api_key="old-token",
                 oauth_token_url="https://auth.example.com/token",
@@ -449,7 +451,7 @@ class TestValidateAndPersistFailure:
         service: ProviderManagementService,
     ) -> None:
         """ProviderRegistry.from_config failure wraps into ProviderValidationError."""
-        request = _make_create_request()
+        request = make_create_request()
         with (
             patch(
                 "synthorg.providers.management.service.ProviderRegistry.from_config",
@@ -507,7 +509,7 @@ class TestTestConnectionExtended:
         service: ProviderManagementService,
     ) -> None:
         """Generic exceptions are caught and include the type name in error."""
-        await service.create_provider(_make_create_request())
+        await service.create_provider(make_create_request())
 
         with patch(
             "synthorg.providers.drivers.litellm_driver.LiteLLMDriver.__init__",
@@ -531,7 +533,7 @@ class TestSerializeRoundTrip:
     ) -> None:
         """Providers survive a serialize -> deserialize cycle."""
         await service.create_provider(
-            _make_create_request(
+            make_create_request(
                 auth_type=AuthType.API_KEY,
                 api_key="sk-round-trip",
                 base_url="http://localhost:8080",

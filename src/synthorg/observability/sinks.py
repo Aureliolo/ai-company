@@ -106,10 +106,8 @@ class _LoggerNameFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         """Return True if *record* passes the prefix filters."""
         name = record.name
-        if self._exclude:
-            for prefix in self._exclude:
-                if name.startswith(prefix):
-                    return False
+        if self._exclude and any(name.startswith(prefix) for prefix in self._exclude):
+            return False
         if self._include:
             return any(name.startswith(prefix) for prefix in self._include)
         return True

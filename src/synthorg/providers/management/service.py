@@ -434,6 +434,10 @@ class ProviderManagementService:
         Raises:
             ProviderNotFoundError: If the provider does not exist.
         """
+        # Optimistic read (no lock): early-exit if base_url is None.
+        # The authoritative check happens under the lock in
+        # _apply_discovered_models, which re-reads and verifies base_url
+        # has not changed before persisting discovered models.
         config = await self.get_provider(name)
 
         if config.base_url is None:
