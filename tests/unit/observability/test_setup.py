@@ -15,8 +15,10 @@ from synthorg.observability.correlation import bind_correlation_id
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.setup import (
     _DEFAULT_LOGGER_LEVELS,
+    _THIRD_PARTY_LOGGER_LEVELS,
     _apply_console_level_override,
     _attach_handlers,
+    _tame_third_party_loggers,
     configure_logging,
 )
 
@@ -502,6 +504,93 @@ class TestReconfigurationLogRouting:
         configure_logging(_console_only_config())
         cfg = structlog.get_config()
         assert cfg["cache_logger_on_first_use"] is False
+
+
+@pytest.mark.unit
+class TestTameThirdPartyLoggers:
+    """Tests for _tame_third_party_loggers."""
+
+    def test_clears_litellm_handlers(self) -> None:
+        """LiteLLM's own StreamHandler is removed after taming."""
+        lg = logging.getLogger("LiteLLM")
+        lg.addHandler(logging.StreamHandler())
+        assert len(lg.handlers) >= 1
+        _tame_third_party_loggers()
+        assert lg.handlers == []
+
+    def test_sets_level_to_warning(self) -> None:
+        """Third-party loggers are set to WARNING."""
+        for name, _expected_level in _THIRD_PARTY_LOGGER_LEVELS:
+            lg = logging.getLogger(name)
+            lg.setLevel(logging.DEBUG)  # reset to DEBUG first
+        _tame_third_party_loggers()
+        for name, expected_level in _THIRD_PARTY_LOGGER_LEVELS:
+            lg = logging.getLogger(name)
+            assert lg.level == expected_level, name
+
+    def test_propagate_stays_true(self) -> None:
+        """Third-party loggers propagate to root (our sinks)."""
+        _tame_third_party_loggers()
+        for name, _ in _THIRD_PARTY_LOGGER_LEVELS:
+            lg = logging.getLogger(name)
+            assert lg.propagate is True, name
+
+    def test_litellm_set_verbose_disabled(self) -> None:
+        """litellm.set_verbose is set to False."""
+        import litellm
+
+        litellm.set_verbose = True  # type: ignore[attr-defined]
+        _tame_third_party_loggers()
+        assert litellm.set_verbose is False  # type: ignore[attr-defined]
+
+    def test_litellm_suppress_debug_info_enabled(self) -> None:
+        """litellm.suppress_debug_info is set to True."""
+        import litellm
+
+        _tame_third_party_loggers()
+        assert litellm.suppress_debug_info is True
+
+    def test_idempotent(self) -> None:
+        """Calling twice does not raise or duplicate state."""
+        _tame_third_party_loggers()
+        _tame_third_party_loggers()
+        for name, expected_level in _THIRD_PARTY_LOGGER_LEVELS:
+            lg = logging.getLogger(name)
+            assert lg.handlers == []
+            assert lg.level == expected_level
+
+    def test_called_by_configure_logging(self) -> None:
+        """configure_logging invokes third-party taming."""
+        lg = logging.getLogger("LiteLLM")
+        lg.addHandler(logging.StreamHandler())
+        configure_logging(_console_only_config())
+        assert lg.handlers == []
+
+    def test_messages_still_reach_root_sinks(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """LiteLLM WARNING+ messages propagate to file sinks."""
+        configure_logging(_file_config(tmp_path))
+        lg = logging.getLogger("LiteLLM")
+        lg.warning("test litellm warning")
+        log_file = tmp_path / "test.log"
+        lines = [ln for ln in log_file.read_text().strip().splitlines() if ln.strip()]
+        assert lines
+        records = [json.loads(ln) for ln in lines]
+        assert any(r["event"] == "test litellm warning" for r in records)
+
+    def test_debug_messages_suppressed(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """LiteLLM DEBUG messages do not reach file sinks."""
+        configure_logging(_file_config(tmp_path))
+        lg = logging.getLogger("LiteLLM")
+        lg.debug("should not appear")
+        log_file = tmp_path / "test.log"
+        content = log_file.read_text().strip() if log_file.exists() else ""
+        assert "should not appear" not in content
 
 
 @pytest.mark.unit
