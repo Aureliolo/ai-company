@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.5](https://github.com/Aureliolo/synthorg/compare/v0.4.4...v0.4.5) (2026-03-21)
+
+
+### Bug Fixes
+
+* add empty state, fitView safety net, and node interactivity to org chart ([#677](https://github.com/Aureliolo/synthorg/issues/677)) ([07a92da](https://github.com/Aureliolo/synthorg/commit/07a92da575e608e5fdc156c4edb81925cae2a76a))
+* live pull progress box, sandbox healthcheck, doctor summary ([#668](https://github.com/Aureliolo/synthorg/issues/668)) ([67047bd](https://github.com/Aureliolo/synthorg/commit/67047bdf70aabf5dc346ae1e42b8399c8945c91a))
+* replace manual agent hiring with template auto-creation in setup wizard ([#672](https://github.com/Aureliolo/synthorg/issues/672)) ([7a16607](https://github.com/Aureliolo/synthorg/commit/7a166073f4939549028a5baefc518cda610c95e7))
+* resolve SSRF trust bug, add log sinks, fix Pydantic warning ([#673](https://github.com/Aureliolo/synthorg/issues/673)) ([e6a18cc](https://github.com/Aureliolo/synthorg/commit/e6a18ccbe1be0ff3b4e8b87ca5738105aebcf6ca))
+
 ## [0.4.4](https://github.com/Aureliolo/synthorg/compare/v0.4.3...v0.4.4) (2026-03-21)
 
 
