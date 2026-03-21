@@ -48,14 +48,15 @@ function modelOptionsForProvider(providerName: string) {
 
 /** All models from all providers, flattened for the per-agent dropdowns. */
 const allModelOptions = computed(() => {
-  const options: { label: string; value: string; provider: string }[] = []
+  const options: { label: string; value: string; provider: string; modelId: string }[] = []
   for (const [pname, pcfg] of Object.entries(providerStore.providers)) {
     if (!pcfg.models) continue
     for (const m of pcfg.models) {
       options.push({
         label: `${pname} / ${m.id}`,
-        value: `${pname}::${m.id}`,
+        value: JSON.stringify({ provider: pname, modelId: m.id }),
         provider: pname,
+        modelId: m.id,
       })
     }
   }
@@ -64,15 +65,19 @@ const allModelOptions = computed(() => {
 
 function currentModelValue(agent: SetupAgentSummary): string {
   if (!agent.model_provider || !agent.model_id) return ''
-  return `${agent.model_provider}::${agent.model_id}`
+  return JSON.stringify({ provider: agent.model_provider, modelId: agent.model_id })
 }
 
 async function handleModelChange(index: number, value: string) {
-  const [provider, ...modelParts] = value.split('::')
-  const modelId = modelParts.join('::')
-  if (!provider || !modelId) return
+  let parsed: { provider: string; modelId: string }
+  try {
+    parsed = JSON.parse(value)
+  } catch {
+    return
+  }
+  if (!parsed.provider || !parsed.modelId) return
   error.value = null
-  await setup.updateAgentModel(index, provider, modelId)
+  await setup.updateAgentModel(index, parsed.provider, parsed.modelId)
   if (setup.error) {
     error.value = setup.error
   }
@@ -168,7 +173,7 @@ onMounted(async () => {
     <div v-if="hasAgents" class="mb-6 space-y-3">
       <div
         v-for="(agent, index) in setup.agents"
-        :key="agent.name"
+        :key="agent.name || `${agent.role}-${index}`"
         class="rounded-lg border border-slate-700 bg-slate-900 p-4"
       >
         <div class="mb-2 flex items-center justify-between">

@@ -363,7 +363,9 @@ def agent_dict_to_summary(
         SetupAgentSummary,
     )
 
-    missing = [f for f in ("name", "role") if not agent.get(f, "").strip()]
+    missing = [
+        f for f in ("name", "role", "department") if not agent.get(f, "").strip()
+    ]
     if missing:
         logger.warning(
             SETUP_AGENT_SUMMARY_MISSING_FIELDS,
@@ -372,9 +374,9 @@ def agent_dict_to_summary(
         )
     model = agent.get("model", {})
     return SetupAgentSummary(
-        name=agent.get("name", ""),
-        role=agent.get("role", ""),
-        department=agent.get("department", ""),
+        name=agent.get("name", "unknown"),
+        role=agent.get("role", "unknown"),
+        department=agent.get("department", "general"),
         level=agent.get("level", ""),
         model_provider=model.get("provider", ""),
         model_id=model.get("model_id", ""),

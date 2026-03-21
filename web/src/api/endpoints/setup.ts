@@ -43,6 +43,9 @@ export async function updateAgentModel(
   index: number,
   data: UpdateAgentModelRequest,
 ): Promise<SetupAgentSummary> {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`Invalid agent index: ${index}`)
+  }
   const response = await apiClient.put<ApiResponse<SetupAgentSummary>>(
     `/setup/agents/${index}/model`,
     data,

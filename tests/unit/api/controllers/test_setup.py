@@ -628,11 +628,13 @@ class TestSetupCompanyAutoAgents:
             data = resp.json()["data"]
             assert data["agent_count"] >= 3
             assert len(data["agents"]) >= 3
-            # Each agent should have a name and role.
+            # Each agent should have a name, role, and model assignment.
             for agent in data["agents"]:
                 assert agent["name"]
                 assert agent["role"]
                 assert agent["tier"] in {"large", "medium", "small"}
+                assert agent["model_provider"], "model_provider must be set"
+                assert agent["model_id"], "model_id must be set"
         finally:
             app_state._provider_management = original
 

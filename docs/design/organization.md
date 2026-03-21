@@ -233,12 +233,13 @@ Scalars (`company_name`, `company_type`)
 
 ## Company Builder
 
-The web dashboard includes a 5-step setup wizard (Welcome, Admin, Provider, Company, Review Org)
-that guides first-run configuration. When a template is selected in the Company step, all
-template agents are auto-created with models matched to configured providers via a cost-based
-tier classification engine. The Review Org step lets users inspect agents and reassign models
-before completing setup. All configuration is persisted to the database via REST API calls.
-The CLI equivalent (`synthorg setup`) is planned as a future addition.
+The web dashboard includes a setup wizard with five substantive steps (Welcome, Admin,
+Provider, Company, Review Org) followed by a completion screen. When a template is selected
+in the Company step, all template agents are auto-created with models matched to configured
+providers via a cost-based tier classification engine. The Review Org step lets users inspect
+agents and reassign models before completing setup. All configuration is persisted to the
+database via REST API calls. The CLI equivalent (`synthorg setup`) is planned as a future
+addition.
 
 ---
 

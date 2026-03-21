@@ -100,6 +100,10 @@ async function handleReviewComplete(providerName: string) {
   await setup.fetchStatus()
   // Populate summary values from store if not already set (e.g. after refresh).
   if (!createdCompanyName.value && setup.status?.has_company) {
+    createdCompanyName.value = 'Your Company'
+    createdAgentCount.value = setup.agents.length
+  }
+  if (!createdAgentCount.value && setup.agents.length > 0) {
     createdAgentCount.value = setup.agents.length
   }
   if (setup.statusLoaded) {

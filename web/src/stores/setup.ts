@@ -109,21 +109,21 @@ export const useSetupStore = defineStore('setup', () => {
       agents.value = await setupApi.getAgents()
     } catch (err) {
       error.value = getErrorMessage(err)
+      throw err
     }
   }
 
   async function updateAgentModel(index: number, provider: string, modelId: string) {
+    if (index < 0 || index >= agents.value.length) return
     error.value = null
     try {
       const updated = await setupApi.updateAgentModel(index, {
         model_provider: provider,
         model_id: modelId,
       })
-      if (index < agents.value.length) {
-        const copy = [...agents.value]
-        copy[index] = updated
-        agents.value = copy
-      }
+      const copy = [...agents.value]
+      copy[index] = updated
+      agents.value = copy
     } catch (err) {
       error.value = getErrorMessage(err)
     }

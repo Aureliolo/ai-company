@@ -84,7 +84,7 @@ class TestParseModelRequirement:
         req = parse_model_requirement(
             {
                 "tier": "large",
-                "capabilities": ("reasoning", "tool_use"),
+                "capabilities": ["reasoning", "tool_use"],
             }
         )
         assert req.capabilities == ("reasoning", "tool_use")

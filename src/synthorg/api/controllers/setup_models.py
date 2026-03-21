@@ -88,7 +88,7 @@ class SetupAgentSummary(BaseModel):
     model_provider: str = ""
     model_id: str = ""
     tier: ModelTier = "medium"
-    personality_preset: str | None = None
+    personality_preset: NotBlankStr | None = None
 
 
 class SetupCompanyResponse(BaseModel):

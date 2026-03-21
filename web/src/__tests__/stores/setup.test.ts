@@ -251,11 +251,11 @@ describe('useSetupStore', () => {
       expect(store.error).toBeNull()
     })
 
-    it('sets error on failure', async () => {
+    it('sets error on failure and re-throws', async () => {
       mockGetAgents.mockRejectedValue(new Error('Network error'))
 
       const store = useSetupStore()
-      await store.fetchAgents()
+      await expect(store.fetchAgents()).rejects.toThrow('Network error')
 
       expect(store.agents).toEqual([])
       expect(store.error).toBe('Network error')
@@ -319,6 +319,27 @@ describe('useSetupStore', () => {
       // Agent at index 0 is unchanged because index 5 is out of bounds.
       expect(store.agents).toHaveLength(1)
       expect(store.agents[0].model_provider).toBe('test-provider')
+    })
+
+    it('leaves agents unchanged when index is negative', async () => {
+      const store = useSetupStore()
+      const originalAgent = {
+        name: 'agent-ceo',
+        role: 'CEO',
+        department: 'executive',
+        level: 'senior',
+        model_provider: 'test-provider',
+        model_id: 'test-large-001',
+        tier: 'large',
+        personality_preset: 'visionary_leader',
+      }
+      store.agents = [originalAgent]
+
+      await store.updateAgentModel(-1, 'new-prov', 'new-model')
+
+      expect(store.agents).toHaveLength(1)
+      expect(store.agents[0].model_provider).toBe('test-provider')
+      expect(mockUpdateAgentModel).not.toHaveBeenCalled()
     })
 
     it('sets error on failure', async () => {

@@ -9,7 +9,7 @@ template does not specify full requirements.
 from types import MappingProxyType
 from typing import Any, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
@@ -88,7 +88,16 @@ def parse_model_requirement(raw: str | dict[str, Any]) -> ModelRequirement:
             raise ValueError(msg)
         result = ModelRequirement(tier=key)  # type: ignore[arg-type]
     else:
-        result = ModelRequirement(**raw)
+        try:
+            result = ModelRequirement(**raw)
+        except ValidationError:
+            logger.warning(
+                TEMPLATE_MODEL_REQUIREMENT_INVALID_TIER,
+                raw_requirement=raw,
+                reason="dict_validation_failed",
+                exc_info=True,
+            )
+            raise
 
     logger.debug(
         TEMPLATE_MODEL_REQUIREMENT_PARSED,
