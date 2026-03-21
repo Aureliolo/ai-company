@@ -81,7 +81,7 @@ func TestAssertSLSAProvenanceWrongPayloadType(t *testing.T) {
 }
 
 func TestAssertSLSAProvenanceNoDSSE(t *testing.T) {
-	// Bundle with message signature (not DSSE) — should pass silently.
+	// Bundle with message signature (not DSSE) -- should pass silently.
 	b := &bundle.Bundle{Bundle: &protobundle.Bundle{
 		Content: &protobundle.Bundle_MessageSignature{
 			MessageSignature: &protocommon.MessageSignature{

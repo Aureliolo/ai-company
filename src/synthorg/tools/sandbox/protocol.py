@@ -1,7 +1,7 @@
 """Sandbox backend protocol definition."""
 
 from pathlib import (
-    Path,  # noqa: TC003 — needed at runtime for @runtime_checkable Protocol
+    Path,  # noqa: TC003 -- needed at runtime for @runtime_checkable Protocol
 )
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 

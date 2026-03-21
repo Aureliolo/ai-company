@@ -180,7 +180,7 @@ class TaskEngine:
                     TASK_ENGINE_DRAIN_TIMEOUT,
                     remaining=self._queue.qsize(),
                 )
-                # Capture in-flight ref before cancel — the finally block
+                # Capture in-flight ref before cancel -- the finally block
                 # in _process_one clears self._in_flight on CancelledError.
                 saved_in_flight = self._in_flight
                 self._processing_task.cancel()
@@ -203,7 +203,7 @@ class TaskEngine:
 
         Args:
             saved_in_flight: In-flight envelope captured before task
-                cancellation — needed because ``_process_one``'s
+                cancellation -- needed because ``_process_one``'s
                 ``finally`` block clears ``self._in_flight`` on
                 ``CancelledError``.
         """
@@ -561,7 +561,7 @@ class TaskEngine:
             project: Filter by project.
 
         Returns:
-            ``(tasks, total)`` — *tasks* may be capped at
+            ``(tasks, total)`` -- *tasks* may be capped at
             ``_MAX_LIST_RESULTS``; *total* is the true count.
 
         Raises:

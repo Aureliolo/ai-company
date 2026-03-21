@@ -23,7 +23,7 @@ app.config.errorHandler = (err, _instance, info) => {
   console.error('Unhandled Vue error:', sanitizeForLog(err), 'Info:', sanitizeForLog(info))
 }
 
-// Catch unhandled promise rejections — log but don't preventDefault() so the
+// Catch unhandled promise rejections -- log but don't preventDefault() so the
 // browser's default handler and error-monitoring integrations still fire.
 window.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled promise rejection:', sanitizeForLog(event.reason))

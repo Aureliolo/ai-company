@@ -2,8 +2,8 @@
 # Usage: irm https://synthorg.io/get/install.ps1 | iex
 #
 # Environment variables:
-#   SYNTHORG_VERSION  — specific version to install (default: latest)
-#   INSTALL_DIR       — installation directory (default: $env:LOCALAPPDATA\synthorg\bin)
+#   SYNTHORG_VERSION  -- specific version to install (default: latest)
+#   INSTALL_DIR       -- installation directory (default: $env:LOCALAPPDATA\synthorg\bin)
 
 $ErrorActionPreference = "Stop"
 

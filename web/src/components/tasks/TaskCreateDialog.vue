@@ -124,7 +124,7 @@ const isValid = computed(() => !!title.value.trim() && !!description.value.trim(
         </div>
         <div>
           <span class="mb-1 block text-sm text-slate-300">Created By</span>
-          <p class="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300">{{ auth.user?.username ?? '—' }}</p>
+          <p class="rounded border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-300">{{ auth.user?.username ?? '--' }}</p>
         </div>
       </div>
       <div class="grid grid-cols-2 gap-4">

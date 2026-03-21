@@ -132,7 +132,7 @@ class TestMCPClientConnection:
         mock_client._exit_stack.aclose = AsyncMock(
             side_effect=RuntimeError("cleanup failed"),
         )
-        # Should not raise — error is logged and swallowed
+        # Should not raise -- error is logged and swallowed
         await mock_client.disconnect()
         assert not mock_client.is_connected
         assert mock_client._exit_stack is None

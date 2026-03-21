@@ -1,4 +1,4 @@
-"""Config bridge — extract setting values from RootConfig by dotted path.
+"""Config bridge -- extract setting values from RootConfig by dotted path.
 
 Maps ``(namespace, key)`` pairs to dotted attribute paths in
 ``RootConfig`` for YAML-layer resolution in the settings service.

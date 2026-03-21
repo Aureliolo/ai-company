@@ -1,13 +1,13 @@
 """In-memory store for short-lived, single-use WebSocket tickets.
 
-Tickets are ephemeral — they do not survive a server restart, which
+Tickets are ephemeral -- they do not survive a server restart, which
 forces re-authentication (correct security behaviour).  The store
 uses ``time.monotonic()`` for expiry so it is immune to wall-clock
 adjustments.
 
 .. note::
 
-   The store is per-process — if the ASGI server runs multiple
+   The store is per-process -- if the ASGI server runs multiple
    worker processes, a ticket issued by one worker cannot be
    consumed by another.  ``ServerConfig.workers`` must be ``1``
    (the default) for ticket auth to work correctly.

@@ -304,7 +304,7 @@ class TestStructuredPhasesExecution:
         leader_id: str,
         meeting_id: str,
     ) -> None:
-        # Very tight budget — will exhaust before synthesis
+        # Very tight budget -- will exhaust before synthesis
         caller = make_mock_agent_caller(
             input_tokens=30,
             output_tokens=30,

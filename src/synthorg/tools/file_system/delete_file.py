@@ -1,4 +1,4 @@
-"""Delete file tool — removes a single file from the workspace."""
+"""Delete file tool -- removes a single file from the workspace."""
 
 import asyncio
 from typing import TYPE_CHECKING, Any
@@ -35,7 +35,7 @@ def _delete_sync(resolved: Path) -> int:
 class DeleteFileTool(BaseFileSystemTool):
     """Deletes a single file within the workspace.
 
-    Directories cannot be deleted with this tool — only regular files.
+    Directories cannot be deleted with this tool -- only regular files.
     The ``require_elevated`` property is defined for future use by the
     engine's permission system (not yet enforced).
 

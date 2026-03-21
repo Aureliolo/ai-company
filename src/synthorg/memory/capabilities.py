@@ -1,4 +1,4 @@
-"""MemoryCapabilities protocol — capability discovery.
+"""MemoryCapabilities protocol -- capability discovery.
 
 Backends that implement ``MemoryCapabilities`` expose what features
 they support, enabling runtime capability checks.

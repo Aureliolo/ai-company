@@ -212,5 +212,5 @@ class TestBridgeToolWithCache:
         )
         result = await bridge.execute(arguments={"q": "fail"})
         assert result.is_error
-        # Cache should be empty — error not cached
+        # Cache should be empty -- error not cached
         assert result_cache.get("test-tool", {"q": "fail"}) is None

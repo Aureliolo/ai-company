@@ -1,4 +1,4 @@
-"""Tests for AutonomyResolver — resolution chain, expansion, seniority."""
+"""Tests for AutonomyResolver -- resolution chain, expansion, seniority."""
 
 import pytest
 
@@ -61,7 +61,7 @@ class TestCategoryExpansion:
     def test_category_expansion(self) -> None:
         resolver = _make_resolver(level=AutonomyLevel.SEMI)
         result = resolver.resolve()
-        # SEMI auto-approves "code" category — includes code:read, etc.
+        # SEMI auto-approves "code" category -- includes code:read, etc.
         assert ActionType.CODE_READ in result.auto_approve_actions
         assert ActionType.CODE_WRITE in result.auto_approve_actions
         assert ActionType.CODE_CREATE in result.auto_approve_actions
@@ -70,7 +70,7 @@ class TestCategoryExpansion:
     def test_all_shortcut_full(self) -> None:
         resolver = _make_resolver(level=AutonomyLevel.FULL)
         result = resolver.resolve()
-        # FULL auto-approves "all" — should include every registered type.
+        # FULL auto-approves "all" -- should include every registered type.
         all_types = ActionTypeRegistry().all_types()
         assert result.auto_approve_actions == all_types
 

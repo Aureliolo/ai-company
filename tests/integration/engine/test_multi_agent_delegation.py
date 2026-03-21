@@ -545,7 +545,7 @@ class TestPartialFailure:
     """Scenario 2: One subtask fails, other succeeds."""
 
     async def test_partial_failure(self) -> None:
-        """Backend fails, frontend succeeds — rollup is FAILED."""
+        """Backend fails, frontend succeeds -- rollup is FAILED."""
         agents = _build_agent_pool()
         delegation_svc, _, _ = _build_pipeline(agents)
 
@@ -566,7 +566,7 @@ class TestPartialFailure:
         delegated_task = dr.delegated_task
         assert delegated_task is not None
 
-        # Decompose — embed task IDs in descriptions so
+        # Decompose -- embed task IDs in descriptions so
         # the mock provider can identify which task is executing
         subtasks = (
             SubtaskDefinition(
@@ -757,7 +757,7 @@ class TestParallelExecutionConcurrency:
     """Scenario 4: Parallel execution with concurrency limit."""
 
     async def test_concurrency_limit(self) -> None:
-        """3 agents, 3 subtasks, max_concurrency=2 — all succeed."""
+        """3 agents, 3 subtasks, max_concurrency=2 -- all succeed."""
         agents = _build_agent_pool()
 
         # Add QA agent as 3rd worker

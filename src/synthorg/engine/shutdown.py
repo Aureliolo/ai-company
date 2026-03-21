@@ -1,6 +1,6 @@
 """Graceful shutdown strategy and manager.
 
-Implements the Graceful Shutdown section of the Engine design page —
+Implements the Graceful Shutdown section of the Engine design page --
 cooperative timeout strategy for clean process shutdown.
 When SIGINT/SIGTERM is received the framework signals
 agents to exit at turn boundaries, waits a grace period, force-cancels
@@ -15,7 +15,7 @@ import contextlib
 import signal
 import sys
 import time
-import types  # noqa: TC003 — used in runtime-visible annotation
+import types  # noqa: TC003 -- used in runtime-visible annotation
 from collections.abc import Callable, Coroutine, Mapping, Sequence
 from typing import Any, Protocol, runtime_checkable
 
@@ -215,7 +215,7 @@ class CooperativeTimeoutStrategy:
 
         # Retrieve exceptions from done tasks to prevent
         # "Task exception was never retrieved" warnings.
-        # Tasks that raised are not counted as "completed" — only
+        # Tasks that raised are not counted as "completed" -- only
         # cleanly-finished tasks count.
         tasks_completed = 0
         for task in done:
@@ -385,7 +385,7 @@ class ShutdownManager:
             logger.exception(
                 EXECUTION_SHUTDOWN_SIGNAL,
                 signal=sig.name,
-                error="request_shutdown() raised — falling back to loop.stop()",
+                error="request_shutdown() raised -- falling back to loop.stop()",
             )
             # If request_shutdown() itself fails, stop the event loop as
             # a last resort to avoid a process that ignores signals.
@@ -418,7 +418,7 @@ class ShutdownManager:
                 logger.exception(
                     EXECUTION_SHUTDOWN_SIGNAL,
                     signal=sig_name,
-                    error="request_shutdown() raised — falling back to loop.stop()",
+                    error="request_shutdown() raised -- falling back to loop.stop()",
                 )
                 with contextlib.suppress(Exception):
                     asyncio.get_running_loop().stop()
@@ -427,7 +427,7 @@ class ShutdownManager:
             loop = asyncio.get_running_loop()
             loop.call_soon_threadsafe(_on_loop)
         except RuntimeError:
-            # No running event loop — call directly (best-effort).
+            # No running event loop -- call directly (best-effort).
             # Cannot use structlog (acquires locks) so fall back to
             # stderr for last-resort visibility.
             try:
@@ -484,7 +484,7 @@ class ShutdownManager:
 
         Callbacks run sequentially in registration order during
         shutdown.  Each callback is individually guarded against
-        exceptions — a failing callback does not prevent subsequent
+        exceptions -- a failing callback does not prevent subsequent
         ones from running.
         """
         self._cleanup_callbacks.append(callback)

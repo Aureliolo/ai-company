@@ -72,7 +72,7 @@ class PersistenceConfig(BaseModel):
     """Top-level persistence configuration.
 
     Attributes:
-        backend: Backend name — currently only ``"sqlite"`` is
+        backend: Backend name -- currently only ``"sqlite"`` is
             implemented.
         sqlite: SQLite-specific settings (used when
             ``backend="sqlite"``).

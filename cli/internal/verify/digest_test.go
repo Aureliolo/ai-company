@@ -81,7 +81,7 @@ func TestResolveDigestNotFound(t *testing.T) {
 }
 
 func TestResolveDigestServerError(t *testing.T) {
-	// Registry that returns 500 for both HEAD and GET — verifies that
+	// Registry that returns 500 for both HEAD and GET -- verifies that
 	// errors propagate when the GET fallback also fails.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v2/" {

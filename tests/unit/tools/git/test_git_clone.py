@@ -142,7 +142,7 @@ class TestGitCloneToolSsrf:
             },
         )
         # SSRF check passes (allowlisted); clone fails for other
-        # reasons (host doesn't exist) — but NOT an SSRF error.
+        # reasons (host doesn't exist) -- but NOT an SSRF error.
         assert "blocked" not in result.content.lower()
         assert "ssrf" not in result.content.lower()
 

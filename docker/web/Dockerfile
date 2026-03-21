@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # =============================================================================
-# SynthOrg Web — Multi-stage build: Node builder → nginx runtime
+# SynthOrg Web -- Multi-stage build: Node builder → nginx runtime
 # CIS hardening applied via compose.yml (no-new-privileges, drop caps, etc.)
 # =============================================================================
 
@@ -11,7 +11,7 @@ RUN addgroup -S build && adduser -S build -G build && mkdir /app && chown build:
 WORKDIR /app
 COPY --chown=build:build web/package.json web/package-lock.json ./
 # Run npm ci as build user so node_modules (including .vite cache) is owned by
-# the same user that runs the build — avoids permission errors in Vite.
+# the same user that runs the build -- avoids permission errors in Vite.
 USER build
 # --ignore-scripts: security hardening; safe for current pure-JS deps.
 # If a future dep needs postinstall, add `npm rebuild <pkg>` after this step.

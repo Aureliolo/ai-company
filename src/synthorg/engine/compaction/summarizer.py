@@ -114,7 +114,7 @@ def _do_compaction(
     )
 
     # Re-estimate fill with compressed conversation.  Counts
-    # conversation tokens only — system prompt and tool overhead
+    # conversation tokens only -- system prompt and tool overhead
     # are excluded.  The loop's next ``update_context_fill``
     # call restores the full estimate.
     new_fill = estimator.estimate_conversation_tokens(compressed)

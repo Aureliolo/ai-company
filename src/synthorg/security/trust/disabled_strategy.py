@@ -1,6 +1,6 @@
 """Disabled trust strategy.
 
-Static access level — agents keep their hire-time access level
+Static access level -- agents keep their hire-time access level
 with no automated trust evolution.
 """
 

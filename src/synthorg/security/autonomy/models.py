@@ -1,4 +1,4 @@
-"""Autonomy data models — presets, config, effective resolution, overrides."""
+"""Autonomy data models -- presets, config, effective resolution, overrides."""
 
 from types import MappingProxyType
 from typing import Final, Self
@@ -14,7 +14,7 @@ class AutonomyPreset(BaseModel):
 
     Actions listed in ``auto_approve`` are executed without human
     review. Actions in ``human_approval`` require a human decision.
-    The two sets must be disjoint — an action cannot be both
+    The two sets must be disjoint -- an action cannot be both
     auto-approved and human-approval.
 
     Attributes:
@@ -64,7 +64,7 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
     {
         AutonomyLevel.FULL: AutonomyPreset(
             level=AutonomyLevel.FULL,
-            description="Fully autonomous — all actions auto-approved",
+            description="Fully autonomous -- all actions auto-approved",
             auto_approve=("all",),
             human_approval=(),
             security_agent=False,
@@ -74,7 +74,7 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
         AutonomyLevel.SEMI: AutonomyPreset(
             level=AutonomyLevel.SEMI,
             description=(
-                "Semi-autonomous — code, test, docs, vcs auto-approved; "
+                "Semi-autonomous -- code, test, docs, vcs auto-approved; "
                 "deploy, org, budget require human approval"
             ),
             auto_approve=("code", "test", "docs", "vcs", "comms:internal", "db:query"),
@@ -84,7 +84,7 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
         AutonomyLevel.SUPERVISED: AutonomyPreset(
             level=AutonomyLevel.SUPERVISED,
             description=(
-                "Supervised — read-only and test actions auto-approved; "
+                "Supervised -- read-only and test actions auto-approved; "
                 "all mutations require human approval"
             ),
             auto_approve=("code:read", "vcs:read", "test:run", "db:query"),
@@ -110,7 +110,7 @@ BUILTIN_PRESETS: Final[MappingProxyType[str, AutonomyPreset]] = MappingProxyType
         ),
         AutonomyLevel.LOCKED: AutonomyPreset(
             level=AutonomyLevel.LOCKED,
-            description="Locked — all actions require human approval",
+            description="Locked -- all actions require human approval",
             auto_approve=(),
             human_approval=("all",),
             security_agent=True,
@@ -221,7 +221,7 @@ class AutonomyOverride(BaseModel):
         if compare_autonomy(self.current_level, self.original_level) > 0:
             msg = (
                 f"current_level {self.current_level.value!r} is higher than "
-                f"original_level {self.original_level.value!r} — "
+                f"original_level {self.original_level.value!r} -- "
                 f"downgrades must not increase autonomy"
             )
             raise ValueError(msg)

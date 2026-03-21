@@ -1,4 +1,4 @@
-"""List directory tool — lists entries in a workspace directory."""
+"""List directory tool -- lists entries in a workspace directory."""
 
 import asyncio
 import itertools

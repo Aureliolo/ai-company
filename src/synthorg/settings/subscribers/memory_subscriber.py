@@ -1,4 +1,4 @@
-"""Memory settings subscriber — operator notification for memory config."""
+"""Memory settings subscriber -- operator notification for memory config."""
 
 from synthorg.observability import get_logger
 from synthorg.observability.events.settings import SETTINGS_SUBSCRIBER_NOTIFIED

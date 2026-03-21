@@ -57,7 +57,7 @@ class QuotaTracker:
         TOCTOU gap: another coroutine could record usage between the
         check and the record, pushing the counter past the limit.
         This is by-design for the single-loop ``asyncio`` concurrency
-        model — the gap only exists across ``await`` points and is
+        model -- the gap only exists across ``await`` points and is
         acceptable for quota enforcement (the in-flight budget checker
         is the true safety net).
 
@@ -153,7 +153,7 @@ class QuotaTracker:
                 expected_start = window_start(window_type, now=now)
 
                 if expected_start != current.window_start:
-                    # Window boundary crossed — rotate
+                    # Window boundary crossed -- rotate
                     provider_usage[window_type] = _WindowUsage(
                         requests=requests,
                         tokens=tokens,
@@ -388,7 +388,7 @@ def _is_window_exhausted(
 ) -> bool:
     """Check if a window's quota is exhausted.
 
-    Request check uses ``>=`` (hard limit — *at* the limit means
+    Request check uses ``>=`` (hard limit -- *at* the limit means
     exhausted because the next request would exceed it).  Token check
     uses ``>`` for projected tokens (``usage + estimated``), allowing
     exact-fill: a request whose projected total exactly matches the
@@ -430,7 +430,7 @@ def _window_end(window: QuotaWindow, start: datetime) -> datetime:
     delta = _WINDOW_DELTAS.get(window)
     if delta is not None:
         return start + delta
-    # PER_MONTH — advance to first of next month
+    # PER_MONTH -- advance to first of next month
     month = start.month % _MONTHS_PER_YEAR + 1
     year = start.year + (1 if start.month == _MONTHS_PER_YEAR else 0)
     return start.replace(year=year, month=month)

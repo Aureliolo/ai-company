@@ -1,4 +1,4 @@
-"""PersistenceBackend protocol — lifecycle + repository access.
+"""PersistenceBackend protocol -- lifecycle + repository access.
 
 Application code depends on this protocol for storage lifecycle
 management.  Repository protocols provide entity-level access.
@@ -183,7 +183,7 @@ class PersistenceBackend(Protocol):
     async def set_setting(self, key: NotBlankStr, value: str) -> None:
         """Store a setting value.
 
-        Upserts — creates or updates the key.
+        Upserts -- creates or updates the key.
 
         Args:
             key: Setting key.

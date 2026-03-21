@@ -1,7 +1,7 @@
 """Integration tests for Mem0 backend with retrieval pipeline.
 
 Tests the adapter plugged into the retrieval pipeline (ranking +
-context injection) using a mocked Mem0 client — validates the full
+context injection) using a mocked Mem0 client -- validates the full
 store -> retrieve -> rank -> format flow.
 """
 

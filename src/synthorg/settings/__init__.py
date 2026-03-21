@@ -1,4 +1,4 @@
-"""Settings persistence layer — DB-backed runtime configuration.
+"""Settings persistence layer -- DB-backed runtime configuration.
 
 Provides a resolution chain (DB > env > YAML > code defaults) so
 settings can be edited at runtime via the REST API without restarts.

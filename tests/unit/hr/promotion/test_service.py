@@ -435,7 +435,7 @@ class TestLevelHelpers:
     """Tests for _next_level and _prev_level edge cases."""
 
     def test_next_level_at_c_suite_returns_none(self) -> None:
-        """C_SUITE is the maximum level — _next_level returns None."""
+        """C_SUITE is the maximum level -- _next_level returns None."""
         from synthorg.hr.promotion.service import _next_level
 
         assert _next_level(SeniorityLevel.C_SUITE) is None
@@ -446,7 +446,7 @@ class TestLevelHelpers:
         assert _next_level(SeniorityLevel.JUNIOR) == SeniorityLevel.MID
 
     def test_prev_level_at_junior_returns_none(self) -> None:
-        """JUNIOR is the minimum level — _prev_level returns None."""
+        """JUNIOR is the minimum level -- _prev_level returns None."""
         from synthorg.hr.promotion.service import _prev_level
 
         assert _prev_level(SeniorityLevel.JUNIOR) is None

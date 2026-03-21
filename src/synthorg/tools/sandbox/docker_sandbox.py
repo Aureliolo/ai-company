@@ -283,7 +283,7 @@ class DockerSandbox:
             command: Executable name or path.
             args: Command arguments.
             cwd: Working directory (defaults to workspace root).
-            env_overrides: Extra env vars (only these — no host leakage).
+            env_overrides: Extra env vars (only these -- no host leakage).
             timeout: Seconds before the container is killed. Clamped
                 to ``config.timeout_seconds`` if larger.
 

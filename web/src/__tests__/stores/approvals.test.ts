@@ -280,7 +280,7 @@ describe('useApprovalStore', () => {
       store.handleWsEvent(event)
       await flushPromises()
 
-      // Should have re-fetched with filters — listApprovals called again
+      // Should have re-fetched with filters -- listApprovals called again
       expect(mockListApprovals).toHaveBeenCalledTimes(2)
       expect(mockListApprovals).toHaveBeenLastCalledWith({ status: 'pending' })
       expect(store.total).toBe(2)

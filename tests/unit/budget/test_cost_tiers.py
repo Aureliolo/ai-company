@@ -301,7 +301,7 @@ class TestClassifyModelTier:
 
     def test_no_matching_tier_returns_none(self) -> None:
         """Returns None when no tier matches."""
-        # Tier with range [0.01, 0.02) — cost of 0.0 won't match
+        # Tier with range [0.01, 0.02) -- cost of 0.0 won't match
         tiers = (
             CostTierDefinition(
                 id="narrow",

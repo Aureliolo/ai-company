@@ -1,4 +1,4 @@
-"""Output scan result handler — routes sensitive scan results.
+"""Output scan result handler -- routes sensitive scan results.
 
 Standalone function extracted from ``ToolInvoker`` to keep
 ``invoker.py`` under the 800-line file limit.
@@ -51,7 +51,7 @@ def handle_sensitive_scan(
             note="content withheld by security policy",
         )
         return ToolExecutionResult(
-            content=("Sensitive data detected — content withheld by security policy."),
+            content=("Sensitive data detected -- content withheld by security policy."),
             is_error=True,
             metadata={**result.metadata, "output_withheld": True},
         )
@@ -74,14 +74,14 @@ def handle_sensitive_scan(
     # Defensive: model_copy() skips model validators, so a policy
     # that clears redacted_content without updating outcome could
     # produce REDACTED with redacted_content=None.  This branch
-    # catches that case (and future outcome values) — fail-closed.
+    # catches that case (and future outcome values) -- fail-closed.
     logger.warning(
         TOOL_OUTPUT_WITHHELD,
         tool_call_id=tool_call.id,
         tool_name=tool_call.name,
         findings=scan_result.findings,
         outcome=scan_result.outcome.value,
-        note="no redacted content available — withholding output",
+        note="no redacted content available -- withholding output",
     )
     return ToolExecutionResult(
         content="Sensitive data detected (fail-closed). Tool output withheld.",

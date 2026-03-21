@@ -328,7 +328,7 @@ class TestAuditTrail:
             ],
         )
         await service.resolve(conflict)
-        # Query with future timestamp — should return empty
+        # Query with future timestamp -- should return empty
         future = datetime(2099, 1, 1, tzinfo=UTC)
         results = service.query_dissent_records(since=future)
         assert len(results) == 0

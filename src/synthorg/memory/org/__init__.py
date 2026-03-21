@@ -1,4 +1,4 @@
-"""Shared organizational memory — protocols, models, config, and factory.
+"""Shared organizational memory -- protocols, models, config, and factory.
 
 Re-exports the public API so consumers can import from
 ``synthorg.memory.org`` directly.

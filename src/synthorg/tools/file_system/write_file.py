@@ -1,4 +1,4 @@
-"""Write file tool — creates or overwrites files in the workspace."""
+"""Write file tool -- creates or overwrites files in the workspace."""
 
 import asyncio
 import os

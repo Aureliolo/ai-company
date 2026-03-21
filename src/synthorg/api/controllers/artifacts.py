@@ -1,4 +1,4 @@
-"""Artifact controller (stub — no ArtifactRepository yet)."""
+"""Artifact controller (stub -- no ArtifactRepository yet)."""
 
 from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
@@ -30,7 +30,7 @@ class ArtifactController(Controller):
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
     ) -> PaginatedResponse[object]:
-        """List artifacts (empty — no repository yet).
+        """List artifacts (empty -- no repository yet).
 
         Args:
             state: Application state.

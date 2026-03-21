@@ -1,4 +1,4 @@
-"""Coordination controller — multi-agent coordination endpoint."""
+"""Coordination controller -- multi-agent coordination endpoint."""
 
 import asyncio
 from datetime import UTC, datetime

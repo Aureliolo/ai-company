@@ -35,7 +35,7 @@ export interface WebSocketSubscriptionReturn {
  * subscribes to deduplicated channels, and wires event handlers on mount.
  * Automatically unsubscribes and removes handlers on unmount.
  *
- * Channels are deduplicated for subscription — multiple bindings on the same
+ * Channels are deduplicated for subscription -- multiple bindings on the same
  * channel register multiple handlers but only one subscription.
  *
  * Setup errors (connect/subscribe failures) are caught and logged to console

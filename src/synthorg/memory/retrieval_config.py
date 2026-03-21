@@ -1,6 +1,6 @@
 """Memory retrieval pipeline configuration.
 
-Frozen Pydantic config for the retrieval pipeline — weights,
+Frozen Pydantic config for the retrieval pipeline -- weights,
 thresholds, and strategy selection.
 """
 
@@ -35,7 +35,7 @@ class MemoryRetrievalConfig(BaseModel):
         injection_point: Message role for context injection.
         non_inferable_only: When True, auto-creates a ``TagBasedMemoryFilter``
             in ``ContextInjectionStrategy`` if no explicit filter is provided.
-        fusion_strategy: Ranking fusion strategy — LINEAR for single-source
+        fusion_strategy: Ranking fusion strategy -- LINEAR for single-source
             relevance+recency, RRF for multi-source ranked list merging.
         rrf_k: RRF smoothing constant (1-1000, only used with RRF strategy).
     """

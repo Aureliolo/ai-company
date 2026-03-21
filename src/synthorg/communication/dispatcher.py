@@ -1,4 +1,4 @@
-"""Message dispatcher — routes incoming messages to registered handlers.
+"""Message dispatcher -- routes incoming messages to registered handlers.
 
 See the Communication design page.
 """
@@ -101,7 +101,7 @@ class MessageDispatcher:
         elif not inspect.iscoroutinefunction(handler.handle):
             msg = (
                 f"MessageHandler {type(handler).__name__!r} has a "
-                f"synchronous handle() — must be async"
+                f"synchronous handle() -- must be async"
             )
             logger.warning(
                 COMM_HANDLER_INVALID,
@@ -155,7 +155,7 @@ class MessageDispatcher:
     async def dispatch(self, message: Message) -> DispatchResult:
         """Route a message to all matching handlers concurrently.
 
-        Handlers that raise ``Exception`` subclasses are isolated —
+        Handlers that raise ``Exception`` subclasses are isolated --
         their errors are captured without affecting other handlers.
         ``BaseException`` subclasses (e.g. ``KeyboardInterrupt``,
         ``CancelledError``) propagate through the ``TaskGroup``,

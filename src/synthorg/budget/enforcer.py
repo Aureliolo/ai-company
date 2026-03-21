@@ -442,7 +442,7 @@ class BudgetEnforcer:
         monthly_budget = cfg.total_monthly
         daily_limit = cfg.per_agent_daily_limit
 
-        # All enforcement disabled — monthly, task, and daily all off.
+        # All enforcement disabled -- monthly, task, and daily all off.
         if monthly_budget <= 0 and task_limit <= 0 and daily_limit <= 0:
             return None
 

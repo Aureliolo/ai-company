@@ -1,5 +1,5 @@
 """SQLite repository implementation for checkpoint persistence."""
-# ruff: noqa: S608 — dynamic WHERE built from hardcoded column names only
+# ruff: noqa: S608 -- dynamic WHERE built from hardcoded column names only
 
 import sqlite3
 
@@ -94,7 +94,7 @@ INSERT OR REPLACE INTO checkpoints (
 
         where = " AND ".join(conditions)
         # where is built from hardcoded column names; only values
-        # use parameterized placeholders — no injection risk.
+        # use parameterized placeholders -- no injection risk.
         query = (
             "SELECT id, execution_id, agent_id, task_id, "
             "turn_number, context_json, created_at "

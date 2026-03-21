@@ -134,7 +134,7 @@ class TestTaskEngineConfig:
             TaskEngineConfig(**kwargs)
 
     def test_zero_queue_size_allowed(self) -> None:
-        """Zero means unbounded — should be accepted."""
+        """Zero means unbounded -- should be accepted."""
         cfg = TaskEngineConfig(max_queue_size=0)
         assert cfg.max_queue_size == 0
 

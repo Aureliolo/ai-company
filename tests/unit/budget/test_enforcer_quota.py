@@ -276,7 +276,7 @@ class TestCheckQuota:
 
         billing_patch, daily_patch = _patch_periods()
         with billing_patch, daily_patch:
-            # Should not raise — graceful degradation
+            # Should not raise -- graceful degradation
             await enforcer.check_can_execute(
                 "alice",
                 provider_name="test-provider",

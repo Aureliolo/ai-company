@@ -1,1 +1,1 @@
-"""Performance tracking — quality scoring, collaboration, trends."""
+"""Performance tracking -- quality scoring, collaboration, trends."""

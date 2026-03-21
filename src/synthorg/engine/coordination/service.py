@@ -135,7 +135,7 @@ class MultiAgentCoordinator:
             # Phase 3: Resolve topology
             topology = self._resolve_topology(routing_result)
 
-            # Phase 4: Validate — fail if all unroutable
+            # Phase 4: Validate -- fail if all unroutable
             self._validate_routing(routing_result, phases)
 
             # Phase 5: Dispatch (workspace setup → execute → merge)
@@ -359,7 +359,7 @@ class MultiAgentCoordinator:
         routing_result: RoutingResult,
         phases: list[CoordinationPhaseResult],
     ) -> None:
-        """Validate routing result — fail if all subtasks unroutable."""
+        """Validate routing result -- fail if all subtasks unroutable."""
         if not routing_result.decisions and routing_result.unroutable:
             error_msg = (
                 f"All {len(routing_result.unroutable)} subtask(s) are unroutable"
@@ -377,7 +377,7 @@ class MultiAgentCoordinator:
                 error=error_msg,
             )
             phases.append(phase)
-            msg = "All subtasks are unroutable — no agents matched"
+            msg = "All subtasks are unroutable -- no agents matched"
             raise CoordinationPhaseError(
                 msg,
                 phase="validate",
@@ -440,7 +440,7 @@ class MultiAgentCoordinator:
     ) -> SubtaskStatusRollup | None:
         """Compute status rollup from execution outcomes.
 
-        Includes all expected subtasks — those missing from waves
+        Includes all expected subtasks -- those missing from waves
         (unroutable, blocked by prerequisites, or skipped by
         fail-fast) are counted as BLOCKED.
         """
@@ -518,7 +518,7 @@ class MultiAgentCoordinator:
             return
         if rollup is None:
             phase_name = "update_parent"
-            note = "Skipped — rollup is None (rollup phase failed)"
+            note = "Skipped -- rollup is None (rollup phase failed)"
             logger.warning(
                 COORDINATION_PHASE_FAILED,
                 phase=phase_name,

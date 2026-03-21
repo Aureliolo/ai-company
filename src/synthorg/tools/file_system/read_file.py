@@ -1,4 +1,4 @@
-"""Read file tool — reads file content from the workspace.
+"""Read file tool -- reads file content from the workspace.
 
 Supports optional line-range selection and enforces a maximum
 file-size guard to prevent loading excessively large files into memory.

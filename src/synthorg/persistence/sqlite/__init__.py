@@ -1,4 +1,4 @@
-"""SQLite persistence backend (see Memory design page — initial backend)."""
+"""SQLite persistence backend (see Memory design page -- initial backend)."""
 
 from synthorg.persistence.sqlite.agent_state_repo import (
     SQLiteAgentStateRepository,

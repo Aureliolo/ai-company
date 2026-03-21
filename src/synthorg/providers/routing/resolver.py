@@ -1,4 +1,4 @@
-"""Model resolver — maps aliases and model IDs to ``ResolvedModel``.
+"""Model resolver -- maps aliases and model IDs to ``ResolvedModel``.
 
 Indexes every model ID and alias to a ``ResolvedModel``.  Typically
 built via the ``from_config`` classmethod from

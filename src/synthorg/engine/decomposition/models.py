@@ -250,7 +250,7 @@ class SubtaskStatusRollup(BaseModel):
             return TaskStatus.BLOCKED
 
         # All subtasks in terminal states but mixed completed + cancelled
-        # — not fully completed (pure completed already handled above),
+        # -- not fully completed (pure completed already handled above),
         # and not fully cancelled (pure cancelled already handled above).
         # Report as CANCELLED since some work was abandoned.
         if self.completed + self.cancelled == self.total:

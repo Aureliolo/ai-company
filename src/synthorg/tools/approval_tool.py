@@ -269,7 +269,7 @@ class RequestHumanApprovalTool(BaseTool):
                 logger.exception(
                     APPROVAL_GATE_RISK_CLASSIFY_FAILED,
                     action_type=action_type,
-                    note="Risk classification failed — defaulting to HIGH",
+                    note="Risk classification failed -- defaulting to HIGH",
                 )
                 return ApprovalRiskLevel.HIGH
             logger.debug(

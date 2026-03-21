@@ -389,7 +389,7 @@ class TestRetentionPruning:
         )
         sampler._records["agent-001"] = [old_cal]
 
-        # Sample a new record — triggers pruning of old records.
+        # Sample a new record -- triggers pruning of old records.
         new_record = make_collab_metric(
             recorded_at=NOW,
             interaction_summary="New interaction",

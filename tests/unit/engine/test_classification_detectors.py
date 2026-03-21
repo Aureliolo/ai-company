@@ -174,7 +174,7 @@ class TestDetectNumericalDrift:
             _user("And the updated cost?"),
             _assistant("The cost was about 103 USD."),
         )
-        # 3% drift — default 5% threshold should NOT flag it
+        # 3% drift -- default 5% threshold should NOT flag it
         result_default = detect_numerical_drift(conversation)
         # Check that this specific pair is not flagged at default threshold
         cost_findings = [f for f in result_default if "cost" in f.description.lower()]
@@ -201,7 +201,7 @@ class TestDetectNumericalDrift:
             _assistant("The count is exactly 105 tokens."),
         )
         result = detect_numerical_drift(conversation, threshold_percent=5.0)
-        # 5% drift is exactly at threshold — should NOT be flagged
+        # 5% drift is exactly at threshold -- should NOT be flagged
         count_findings = [f for f in result if "count" in f.description.lower()]
         assert len(count_findings) == 0
 

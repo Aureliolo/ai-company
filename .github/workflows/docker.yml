@@ -127,14 +127,14 @@ jobs:
       - name: Evaluate Trivy results
         run: |
           if [ ! -f trivy-backend.json ]; then
-            echo "::error::trivy-backend.json not found — Trivy scan may have failed to produce output"
+            echo "::error::trivy-backend.json not found -- Trivy scan may have failed to produce output"
             exit 1
           fi
-          echo "## Trivy Scan — Backend"
+          echo "## Trivy Scan -- Backend"
           TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-backend.json)
           if [ "$TOTAL" -eq 0 ]; then
             echo "No CRITICAL or HIGH vulnerabilities found."
-            echo "## Trivy Scan — Backend: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
+            echo "## Trivy Scan -- Backend: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
           else
             TABLE=$(jq -r '
               ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
@@ -143,7 +143,7 @@ jobs:
               @tsv
             ' trivy-backend.json | column -t -s$'\t')
             echo "$TABLE"
-            printf '## Trivy Scan — Backend\n```\n%s\n```\n' "$TABLE" >> "$GITHUB_STEP_SUMMARY"
+            printf '## Trivy Scan -- Backend\n```\n%s\n```\n' "$TABLE" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-backend.json)
@@ -154,7 +154,7 @@ jobs:
             echo "::warning::Found $HIGH HIGH severity vulnerabilities"
           fi
           if [ "$CRITICAL" -gt 0 ]; then
-            echo "::error::Found $CRITICAL CRITICAL vulnerabilities — failing build"
+            echo "::error::Found $CRITICAL CRITICAL vulnerabilities -- failing build"
             exit 1
           fi
 
@@ -175,7 +175,7 @@ jobs:
           config: .github/.grype.yaml
 
       # CIS Docker Benchmark v1.6.0 compliance check (uses trivy installed above).
-      # Informational for now — remove continue-on-error once baseline is clean.
+      # Informational for now -- remove continue-on-error once baseline is clean.
       - name: CIS Docker Benchmark (backend)
         continue-on-error: true
         env:
@@ -184,7 +184,7 @@ jobs:
           command -v trivy >/dev/null 2>&1 || { echo "::warning::trivy not on PATH, skipping CIS scan"; exit 0; }
           trivy image --compliance docker-cis-1.6.0 --format table "$IMAGE_REF"
 
-      # Push only after scans pass — prevents publishing vulnerable images.
+      # Push only after scans pass -- prevents publishing vulnerable images.
       # NOTE: This is a separate build invocation from the scan step. GHA cache
       # ensures deterministic layer content, but the manifest digest differs due
       # to SBOM + provenance attestation layers added only on push.
@@ -314,14 +314,14 @@ jobs:
       - name: Evaluate Trivy results
         run: |
           if [ ! -f trivy-web.json ]; then
-            echo "::error::trivy-web.json not found — Trivy scan may have failed to produce output"
+            echo "::error::trivy-web.json not found -- Trivy scan may have failed to produce output"
             exit 1
           fi
-          echo "## Trivy Scan — Web"
+          echo "## Trivy Scan -- Web"
           TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-web.json)
           if [ "$TOTAL" -eq 0 ]; then
             echo "No CRITICAL or HIGH vulnerabilities found."
-            echo "## Trivy Scan — Web: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
+            echo "## Trivy Scan -- Web: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
           else
             TABLE=$(jq -r '
               ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
@@ -330,7 +330,7 @@ jobs:
               @tsv
             ' trivy-web.json | column -t -s$'\t')
             echo "$TABLE"
-            printf '## Trivy Scan — Web\n```\n%s\n```\n' "$TABLE" >> "$GITHUB_STEP_SUMMARY"
+            printf '## Trivy Scan -- Web\n```\n%s\n```\n' "$TABLE" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-web.json)
@@ -341,7 +341,7 @@ jobs:
             echo "::warning::Found $HIGH HIGH severity vulnerabilities"
           fi
           if [ "$CRITICAL" -gt 0 ]; then
-            echo "::error::Found $CRITICAL CRITICAL vulnerabilities — failing build"
+            echo "::error::Found $CRITICAL CRITICAL vulnerabilities -- failing build"
             exit 1
           fi
 
@@ -369,7 +369,7 @@ jobs:
           command -v trivy >/dev/null 2>&1 || { echo "::warning::trivy not on PATH, skipping CIS scan"; exit 0; }
           trivy image --compliance docker-cis-1.6.0 --format table "$IMAGE_REF"
 
-      # Push only after scans pass — prevents publishing vulnerable images.
+      # Push only after scans pass -- prevents publishing vulnerable images.
       # NOTE: Separate build invocation; GHA cache ensures deterministic layers,
       # but manifest digest differs due to SBOM + provenance attestation layers.
       - name: Push image
@@ -498,14 +498,14 @@ jobs:
       - name: Evaluate Trivy results
         run: |
           if [ ! -f trivy-sandbox.json ]; then
-            echo "::error::trivy-sandbox.json not found — Trivy scan may have failed to produce output"
+            echo "::error::trivy-sandbox.json not found -- Trivy scan may have failed to produce output"
             exit 1
           fi
-          echo "## Trivy Scan — Sandbox"
+          echo "## Trivy Scan -- Sandbox"
           TOTAL=$(jq '[.Results[]?.Vulnerabilities[]?] | length' trivy-sandbox.json)
           if [ "$TOTAL" -eq 0 ]; then
             echo "No CRITICAL or HIGH vulnerabilities found."
-            echo "## Trivy Scan — Sandbox: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
+            echo "## Trivy Scan -- Sandbox: No CRITICAL or HIGH vulnerabilities found." >> "$GITHUB_STEP_SUMMARY"
           else
             TABLE=$(jq -r '
               ["SEVERITY","CVE","PACKAGE","VERSION","TITLE"],
@@ -514,7 +514,7 @@ jobs:
               @tsv
             ' trivy-sandbox.json | column -t -s$'\t')
             echo "$TABLE"
-            printf '## Trivy Scan — Sandbox\n```\n%s\n```\n' "$TABLE" >> "$GITHUB_STEP_SUMMARY"
+            printf '## Trivy Scan -- Sandbox\n```\n%s\n```\n' "$TABLE" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' trivy-sandbox.json)
@@ -525,7 +525,7 @@ jobs:
             echo "::warning::Found $HIGH HIGH severity vulnerabilities"
           fi
           if [ "$CRITICAL" -gt 0 ]; then
-            echo "::error::Found $CRITICAL CRITICAL vulnerabilities — failing build"
+            echo "::error::Found $CRITICAL CRITICAL vulnerabilities -- failing build"
             exit 1
           fi
 
@@ -553,7 +553,7 @@ jobs:
           command -v trivy >/dev/null 2>&1 || { echo "::warning::trivy not on PATH, skipping CIS scan"; exit 0; }
           trivy image --compliance docker-cis-1.6.0 --format table "$IMAGE_REF"
 
-      # Push only after scans pass — prevents publishing vulnerable images.
+      # Push only after scans pass -- prevents publishing vulnerable images.
       # NOTE: Separate build invocation; GHA cache ensures deterministic layers,
       # but manifest digest differs due to SBOM + provenance attestation layers.
       - name: Push image
@@ -645,7 +645,7 @@ jobs:
             exit 1
           fi
 
-          # Bounded retry — Release Please may still be creating the release
+          # Bounded retry -- Release Please may still be creating the release
           EXISTING=""
           FOUND=0
           for i in $(seq 1 6); do

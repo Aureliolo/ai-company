@@ -1,4 +1,4 @@
-"""Settings controller — CRUD for runtime-editable settings."""
+"""Settings controller -- CRUD for runtime-editable settings."""
 
 from litestar import Controller, delete, get, put
 from litestar.datastructures import State  # noqa: TC002

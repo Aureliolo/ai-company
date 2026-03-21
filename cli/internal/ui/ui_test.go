@@ -11,7 +11,7 @@ func TestLogo(t *testing.T) {
 	u := NewUI(&buf)
 	u.Logo("v1.2.3")
 	out := buf.String()
-	// Box-drawing banner doesn't spell "SynthOrg" literally — check structure.
+	// Box-drawing banner doesn't spell "SynthOrg" literally -- check structure.
 	if !strings.Contains(out, "╔") {
 		t.Error("Logo output missing expected box-drawing content")
 	}

@@ -24,7 +24,7 @@ def create_backend(config: PersistenceConfig) -> PersistenceBackend:
 
     Factory function that maps ``config.backend`` to the correct
     concrete backend class.  Each call returns a new, disconnected
-    backend instance — the caller is responsible for calling
+    backend instance -- the caller is responsible for calling
     ``connect()`` and ``migrate()``.
 
     Args:

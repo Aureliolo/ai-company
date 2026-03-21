@@ -1,4 +1,4 @@
-"""Provider settings subscriber — rebuilds ModelRouter on strategy change."""
+"""Provider settings subscriber -- rebuilds ModelRouter on strategy change."""
 
 from typing import TYPE_CHECKING
 
@@ -88,7 +88,7 @@ class ProviderSettingsSubscriber:
                 subscriber=self.subscriber_name,
                 namespace=namespace,
                 key=key,
-                note="advisory — read through ConfigResolver at use time",
+                note="advisory -- read through ConfigResolver at use time",
             )
 
     async def _rebuild_router(self) -> None:

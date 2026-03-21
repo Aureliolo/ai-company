@@ -1,13 +1,13 @@
 """Built-in git tools for version control operations.
 
 Provides workspace-scoped git tools that agents use to interact with
-git repositories.  All tools enforce workspace boundary security — the
+git repositories.  All tools enforce workspace boundary security -- the
 LLM never controls absolute paths.  See ``_git_base._BaseGitTool`` for
 the subprocess execution model, environment hardening, and path
 validation shared by all tools.
 """
 
-from pathlib import Path  # noqa: TC003 — used at runtime
+from pathlib import Path  # noqa: TC003 -- used at runtime
 from typing import TYPE_CHECKING, Any, Final
 
 from synthorg.core.enums import ActionType
@@ -369,7 +369,7 @@ class GitDiffTool(_BaseGitTool):
 
 
 class GitBranchTool(_BaseGitTool):
-    """Manage branches — list, create, switch, or delete.
+    """Manage branches -- list, create, switch, or delete.
 
     Supports listing all branches, creating new branches (optionally
     from a start point), switching between branches, and deleting

@@ -20,7 +20,7 @@ class TestMemorySubscriberProtocol:
         sub = MemorySettingsSubscriber()
         assert ("memory", "default_level") in sub.watched_keys
         assert ("memory", "consolidation_interval") in sub.watched_keys
-        # memory/backend has restart_required=True — filtered by
+        # memory/backend has restart_required=True -- filtered by
         # dispatcher, not watched by subscriber
         assert ("memory", "backend") not in sub.watched_keys
 
@@ -35,7 +35,7 @@ class TestMemorySubscriberBehavior:
 
     async def test_on_settings_changed_does_not_raise(self) -> None:
         sub = MemorySettingsSubscriber()
-        # Should not raise — just logs INFO
+        # Should not raise -- just logs INFO
         await sub.on_settings_changed("memory", "default_level")
         await sub.on_settings_changed("memory", "consolidation_interval")
 

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A framework for building synthetic organizations — autonomous AI agents orchestrated as a virtual company.
+  A framework for building synthetic organizations -- autonomous AI agents orchestrated as a virtual company.
 </p>
 
 <p align="center">
@@ -20,9 +20,9 @@
 
 ## What is SynthOrg?
 
-SynthOrg lets you define agents with roles, personalities, budgets, and tools, then orchestrate them to collaborate on complex tasks as a virtual organization. Each agent has a defined role (CEO, developer, designer, QA), persistent memory, and access to real tools. Agents collaborate through structured communication, follow workflows, and produce real artifacts — code, documents, designs, and more.
+SynthOrg lets you define agents with roles, personalities, budgets, and tools, then orchestrate them to collaborate on complex tasks as a virtual organization. Each agent has a defined role (CEO, developer, designer, QA), persistent memory, and access to real tools. Agents collaborate through structured communication, follow workflows, and produce real artifacts -- code, documents, designs, and more.
 
-The framework is provider-agnostic (any LLM via LiteLLM), configuration-driven (YAML + Pydantic), and designed for the full autonomy spectrum — from locked-down human approval of every action to fully autonomous operation.
+The framework is provider-agnostic (any LLM via LiteLLM), configuration-driven (YAML + Pydantic), and designed for the full autonomy spectrum -- from locked-down human approval of every action to fully autonomous operation.
 
 ## Capabilities
 
@@ -151,7 +151,7 @@ graph TB
 | [Developer Setup](docs/getting_started.md) | Clone, test, lint, contribute |
 | [User Guide](docs/user_guide.md) | Install, configure, run via Docker |
 
-> **Contributors:** Start with the [Design Overview](docs/design/index.md) before implementing any feature — it is the mandatory starting point for architecture, data models, and behavior. [`DESIGN_SPEC.md`](docs/DESIGN_SPEC.md) serves as a pointer to the full design set.
+> **Contributors:** Start with the [Design Overview](docs/design/index.md) before implementing any feature -- it is the mandatory starting point for architecture, data models, and behavior. [`DESIGN_SPEC.md`](docs/DESIGN_SPEC.md) serves as a pointer to the full design set.
 
 ## Status
 
@@ -159,4 +159,4 @@ Core framework complete -- agent engine, multi-agent coordination, API, security
 
 ## License
 
-[Business Source License 1.1](LICENSE) — free production use for non-competing organizations with fewer than 500 employees and contractors. Each version converts to Apache 2.0 three years after release. See [licensing details](https://synthorg.io/docs/licensing/) for the full rationale and what's permitted.
+[Business Source License 1.1](LICENSE) -- free production use for non-competing organizations with fewer than 500 employees and contractors. Each version converts to Apache 2.0 three years after release. See [licensing details](https://synthorg.io/docs/licensing/) for the full rationale and what's permitted.

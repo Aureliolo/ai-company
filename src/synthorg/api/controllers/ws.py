@@ -382,9 +382,9 @@ def _handle_subscribe(
     """Process a subscribe action.
 
     Filter semantics:
-        ``None``  — filters key absent, leave existing filters unchanged.
-        ``{}``    — explicitly clear filters for the subscribed channels.
-        ``{...}`` — set new filters for the subscribed channels.
+        ``None``  -- filters key absent, leave existing filters unchanged.
+        ``{}``    -- explicitly clear filters for the subscribed channels.
+        ``{...}`` -- set new filters for the subscribed channels.
     """
     if client_filters is not None and (
         len(client_filters) > _MAX_FILTER_KEYS

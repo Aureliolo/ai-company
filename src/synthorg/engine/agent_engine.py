@@ -1,4 +1,4 @@
-"""Agent engine — top-level orchestrator.
+"""Agent engine -- top-level orchestrator.
 
 Ties together prompt construction, execution context, execution loop,
 tool invocation, and budget tracking into a single ``run()`` entry point.
@@ -546,7 +546,7 @@ class AgentEngine:
         (best-effort).  Classification and sync failures are logged,
         never fatal.
         """
-        # Costs are recorded BEFORE recovery intentionally — the
+        # Costs are recorded BEFORE recovery intentionally -- the
         # pre-recovery execution's cost (including partial turns that
         # led to the error) should be tracked.  The resumed execution
         # records its own costs inside _finalize_resume.
@@ -616,7 +616,7 @@ class AgentEngine:
                 self._heartbeat_repo,
                 exec_id,
             )
-        # Classification is non-critical — never destroys a result.
+        # Classification is non-critical -- never destroys a result.
         if self._error_taxonomy_config is not None:
             try:
                 await classify_execution_errors(
@@ -1060,7 +1060,7 @@ class AgentEngine:
     def _make_approval_gate(self) -> ApprovalGate | None:
         """Build an ApprovalGate if an approval store is configured.
 
-        Returns ``None`` when no approval store is available — the
+        Returns ``None`` when no approval store is available -- the
         execution loop skips approval-gate checks in that case.
         """
         if self._approval_store is None:
@@ -1313,7 +1313,7 @@ class AgentEngine:
         ctx: AgentContext | None = None,
         system_prompt: SystemPrompt | None = None,
     ) -> AgentRunResult:
-        """Build a BUDGET_EXHAUSTED result (no recovery — controlled stop)."""
+        """Build a BUDGET_EXHAUSTED result (no recovery -- controlled stop)."""
         logger.warning(
             EXECUTION_ENGINE_BUDGET_STOPPED,
             agent_id=agent_id,

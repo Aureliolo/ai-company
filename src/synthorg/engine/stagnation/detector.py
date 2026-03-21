@@ -1,4 +1,4 @@
-"""Default stagnation detector — tool repetition analysis.
+"""Default stagnation detector -- tool repetition analysis.
 
 Implements the ``StagnationDetector`` protocol using dual-signal
 detection: repetition ratio and cycle detection across a sliding
@@ -29,9 +29,9 @@ class ToolRepetitionDetector:
 
     Uses two signals:
 
-    1. **Repetition ratio** — fraction of fingerprints in the window
+    1. **Repetition ratio** -- fraction of fingerprints in the window
        that appear more than once.
-    2. **Cycle detection** — checks for repeating A->B->A->B patterns
+    2. **Cycle detection** -- checks for repeating A->B->A->B patterns
        at the turn level.
 
     Args:
@@ -218,7 +218,7 @@ def _build_corrective_message(repeated_tools: list[str]) -> str:
 
     Args:
         repeated_tools: Sorted list of repeated tool fingerprints.
-            Always non-empty — stagnation detection requires at least
+            Always non-empty -- stagnation detection requires at least
             one repeated fingerprint (ratio or cycle signal).
 
     Returns:
@@ -226,7 +226,7 @@ def _build_corrective_message(repeated_tools: list[str]) -> str:
     """
     tool_list = ", ".join(repeated_tools)
     return (
-        "[SYSTEM INTERVENTION: Stagnation detected — your recent tool "
+        "[SYSTEM INTERVENTION: Stagnation detected -- your recent tool "
         "calls show a repeating pattern without progress. The following "
         "tools have been called with identical arguments multiple "
         f"times: {tool_list}. Try a different approach: modify your "

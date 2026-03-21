@@ -39,7 +39,7 @@ class MessageBusBridge:
 
     Uses bare ``asyncio.create_task`` instead of ``TaskGroup``
     because the polling tasks must outlive the ``start()`` call
-    frame — they run continuously until ``stop()`` is called.
+    frame -- they run continuously until ``stop()`` is called.
 
     Attributes:
         _bus: The internal message bus to poll.

@@ -337,7 +337,7 @@ class TestBuildResumeMessage:
             decided_by="admin",
             decision_reason="",
         )
-        # Empty string is falsy — no USER-SUPPLIED REASON section
+        # Empty string is falsy -- no USER-SUPPLIED REASON section
         assert "USER-SUPPLIED REASON" not in msg
 
     def test_special_characters_in_reason_are_repr_escaped(self) -> None:
@@ -357,7 +357,7 @@ class TestApprovalGateInit:
     """__init__ logs warning when no repo provided."""
 
     def test_warns_without_repo(self) -> None:
-        # Should not raise — just logs a warning
+        # Should not raise -- just logs a warning
         gate = ApprovalGate(park_service=ParkService())
         assert gate is not None
 

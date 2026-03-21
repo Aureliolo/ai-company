@@ -15,7 +15,7 @@ class SandboxTimeoutError(SandboxError):
     """Execution was killed because it exceeded the timeout.
 
     Reserved for sandbox backends that need to signal timeout as an
-    exception rather than a result flag. Currently unused — both
+    exception rather than a result flag. Currently unused -- both
     subprocess and Docker return ``SandboxResult.timed_out`` instead.
     """
 

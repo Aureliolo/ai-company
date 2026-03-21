@@ -10,11 +10,11 @@ import {
 
 describe('formatDate', () => {
   it('returns dash for null', () => {
-    expect(formatDate(null)).toBe('—')
+    expect(formatDate(null)).toBe('--')
   })
 
   it('returns dash for undefined', () => {
-    expect(formatDate(undefined)).toBe('—')
+    expect(formatDate(undefined)).toBe('--')
   })
 
   it('formats valid ISO date', () => {
@@ -25,13 +25,13 @@ describe('formatDate', () => {
   })
 
   it('returns dash for invalid date string', () => {
-    expect(formatDate('not-a-date')).toBe('—')
+    expect(formatDate('not-a-date')).toBe('--')
   })
 })
 
 describe('formatRelativeTime', () => {
   it('returns dash for null', () => {
-    expect(formatRelativeTime(null)).toBe('—')
+    expect(formatRelativeTime(null)).toBe('--')
   })
 
   it('returns "just now" for recent timestamps', () => {
@@ -44,11 +44,11 @@ describe('formatRelativeTime', () => {
     // Future dates fall through to formatDate instead of 'just now'
     const result = formatRelativeTime(future)
     expect(result).not.toBe('just now')
-    expect(result).not.toBe('—')
+    expect(result).not.toBe('--')
   })
 
   it('returns dash for invalid date string', () => {
-    expect(formatRelativeTime('not-a-date')).toBe('—')
+    expect(formatRelativeTime('not-a-date')).toBe('--')
   })
 })
 

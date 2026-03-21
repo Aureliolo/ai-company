@@ -73,7 +73,7 @@ class DelegationGuard:
         Returns:
             First failing outcome or an all-passed success.
         """
-        # Pure (stateless) checks first — sequential to short-circuit
+        # Pure (stateless) checks first -- sequential to short-circuit
         outcome = check_ancestry(delegation_chain, delegatee_id)
         if not outcome.passed:
             return self._log_and_return(outcome, delegator_id, delegatee_id)
@@ -85,7 +85,7 @@ class DelegationGuard:
         if not outcome.passed:
             return self._log_and_return(outcome, delegator_id, delegatee_id)
 
-        # Stateful checks — only run if pure checks passed
+        # Stateful checks -- only run if pure checks passed
         outcome = self._deduplicator.check(
             delegator_id,
             delegatee_id,

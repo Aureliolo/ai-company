@@ -1,6 +1,6 @@
 """Coordination error classification pipeline.
 
-Re-exports the public API for error taxonomy classification —
+Re-exports the public API for error taxonomy classification --
 models and the main pipeline entry point.
 """
 

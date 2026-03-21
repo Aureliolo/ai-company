@@ -76,7 +76,7 @@ export const useApprovalStore = defineStore('approvals', () => {
           case 'approval.submitted':
             if (!approvals.value.some((a) => a.id === approvalId)) {
               if (activeFilters.value) {
-                // Filters active — re-fetch the filtered query to stay consistent
+                // Filters active -- re-fetch the filtered query to stay consistent
                 await fetchApprovals(activeFilters.value)
               } else {
                 try {
@@ -88,7 +88,7 @@ export const useApprovalStore = defineStore('approvals', () => {
                   }
                 } catch (err) {
                   if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 410)) {
-                    // Item genuinely gone — skip
+                    // Item genuinely gone -- skip
                   } else {
                     console.warn('Failed to fetch approval:', approvalId, err)
                   }
@@ -100,7 +100,7 @@ export const useApprovalStore = defineStore('approvals', () => {
           case 'approval.rejected':
           case 'approval.expired':
             if (activeFilters.value) {
-              // Filters active — re-fetch to reconcile (items may enter/leave the filtered set)
+              // Filters active -- re-fetch to reconcile (items may enter/leave the filtered set)
               await fetchApprovals(activeFilters.value)
             } else {
               try {
@@ -110,7 +110,7 @@ export const useApprovalStore = defineStore('approvals', () => {
                 )
               } catch (err) {
                 if (axios.isAxiosError(err) && (err.response?.status === 404 || err.response?.status === 410)) {
-                  // Item genuinely gone — remove from local list
+                  // Item genuinely gone -- remove from local list
                   const lengthBefore = approvals.value.length
                   approvals.value = approvals.value.filter((a) => a.id !== approvalId)
                   const removed = lengthBefore - approvals.value.length

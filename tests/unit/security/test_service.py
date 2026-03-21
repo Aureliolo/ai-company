@@ -508,7 +508,7 @@ class TestAutonomyPrecheck:
         verdict = await service.evaluate_pre_tool(ctx)
 
         assert verdict.verdict == SecurityVerdictType.ALLOW
-        # Rule engine always runs first — even for auto-approved actions.
+        # Rule engine always runs first -- even for auto-approved actions.
         service._test_rule_engine.evaluate.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_human_approval_escalates_with_store(self) -> None:
@@ -553,7 +553,7 @@ class TestAutonomyPrecheck:
 
         assert verdict.verdict == SecurityVerdictType.DENY
         assert "escalation unavailable" in verdict.reason.lower()
-        # Rule engine always runs first — even when escalation fails.
+        # Rule engine always runs first -- even when escalation fails.
         service._test_rule_engine.evaluate.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_rule_engine_deny_overrides_auto_approve(self) -> None:
@@ -796,7 +796,7 @@ class TestSecOpsScanOutputPolicy:
         )
         ctx = _make_context()
 
-        # Should NOT raise — returns raw scan result.
+        # Should NOT raise -- returns raw scan result.
         result = await service.scan_output(ctx, "Bearer eyJ...")
 
         assert result == finding

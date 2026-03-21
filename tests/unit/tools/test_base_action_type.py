@@ -103,7 +103,7 @@ class TestExplicitActionTypeOverride:
             category=ToolCategory.FILE_SYSTEM,
             action_type="custom:action",
         )
-        # Default for FILE_SYSTEM is code:write — verify override
+        # Default for FILE_SYSTEM is code:write -- verify override
         assert tool.action_type == "custom:action"
         assert tool.action_type != str(ActionType.CODE_WRITE)
 

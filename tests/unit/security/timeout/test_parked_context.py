@@ -83,7 +83,7 @@ class TestParkedContext:
             _make_parked_context(agent_id="   ")
 
     def test_metadata_deep_copied(self) -> None:
-        """Metadata dict is deep-copied — mutations don't affect the model."""
+        """Metadata dict is deep-copied -- mutations don't affect the model."""
         original = {"key": "value"}
         parked = _make_parked_context(metadata=original)
         original["key"] = "mutated"

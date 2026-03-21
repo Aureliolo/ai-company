@@ -1,6 +1,6 @@
 """Unit tests for LiteLLMDriver.
 
-All tests mock ``litellm.acompletion`` — no real API calls are made.
+All tests mock ``litellm.acompletion`` -- no real API calls are made.
 """
 
 from typing import TYPE_CHECKING

@@ -1,4 +1,4 @@
-"""Unit tests for task_sync module — AgentEngine → TaskEngine sync functions."""
+"""Unit tests for task_sync module -- AgentEngine → TaskEngine sync functions."""
 
 import asyncio
 from typing import TYPE_CHECKING

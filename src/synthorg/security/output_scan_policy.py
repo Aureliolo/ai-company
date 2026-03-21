@@ -2,7 +2,7 @@
 
 Pluggable strategies that transform ``OutputScanResult`` after the
 output scanner runs.  Each policy decides how to handle detected
-sensitive data — redact, withhold, log-only, or delegate based on
+sensitive data -- redact, withhold, log-only, or delegate based on
 autonomy level.
 """
 
@@ -32,7 +32,7 @@ class OutputScanResponsePolicy(Protocol):
     Implementations decide how to transform an ``OutputScanResult``
     before it is returned to the invoker.
 
-    Implementations are expected to be stateless / immutable — the
+    Implementations are expected to be stateless / immutable -- the
     ``AutonomyTieredPolicy`` stores policy instances by reference
     (shallow copy) and wraps the mapping as read-only.
     """
@@ -62,7 +62,7 @@ class OutputScanResponsePolicy(Protocol):
 class RedactPolicy:
     """Return scan result as-is (redacted content preserved).
 
-    This is the default policy — the scanner's redaction stands.
+    This is the default policy -- the scanner's redaction stands.
     """
 
     @property
@@ -96,7 +96,7 @@ class WithholdPolicy:
     """Clear redacted content when sensitive data is found.
 
     Sets ``ScanOutcome.WITHHELD`` so the invoker returns a dedicated
-    "withheld by policy" error — no partial data is returned.  This
+    "withheld by policy" error -- no partial data is returned.  This
     is distinct from the fail-closed path used for scanner errors.
     The ``findings`` tuple is deliberately preserved so that audit
     consumers can categorise what was detected without seeing the
@@ -281,7 +281,7 @@ class AutonomyTieredPolicy:
                     policy="autonomy_tiered",
                     autonomy_level=autonomy_level.value,
                     fallback_to=self._fallback.name,
-                    note="No policy mapped for autonomy level — falling back",
+                    note="No policy mapped for autonomy level -- falling back",
                 )
 
         logger.debug(

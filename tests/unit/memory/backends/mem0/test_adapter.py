@@ -1,4 +1,4 @@
-"""Tests for Mem0 adapter — properties, capabilities, protocol, lifecycle."""
+"""Tests for Mem0 adapter -- properties, capabilities, protocol, lifecycle."""
 
 import builtins
 import sys
@@ -189,7 +189,7 @@ class TestLifecycle:
         backend: Mem0MemoryBackend,
         mock_client: MagicMock,
     ) -> None:
-        """disconnect() must never call reset() — that wipes all data."""
+        """disconnect() must never call reset() -- that wipes all data."""
         await backend.disconnect()
         mock_client.reset.assert_not_called()
 

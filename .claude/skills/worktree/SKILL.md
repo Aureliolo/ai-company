@@ -24,14 +24,14 @@ Create worktrees, copy settings, and generate Claude Code prompts.
 
 ### Input formats (3 modes, from most to least explicit)
 
-**Mode 1 — Full explicit:**
+**Mode 1 -- Full explicit:**
 ```
 /worktree setup
 feat/delegation-loop-prevention #12,#17 "Delegation + Loop Prevention"
 feat/parallel-execution #22 "Parallel Agent Execution"
 ```
 
-**Mode 2 — Shorthand (issues + description only):**
+**Mode 2 -- Shorthand (issues + description only):**
 ```
 /worktree setup
 #12,#17 "Delegation + Loop Prevention"
@@ -40,7 +40,7 @@ feat/parallel-execution #22 "Parallel Agent Execution"
 Branch names auto-generated from description: `feat/delegation-loop-prevention`.
 Default branch type prefix is `feat/` unless the user specifies otherwise or the issue labels suggest a different type (e.g., `type:bug` → `fix/`, `type:refactor` → `refactor/`).
 
-**Mode 3 — Issue list only:**
+**Mode 3 -- Issue list only:**
 
 ```text
 /worktree setup --issues #26,#30,#133,#168
@@ -105,7 +105,7 @@ Directory suffix is auto-derived from the branch name:
    test -f .claude/settings.local.json
    ```
 
-   If missing, warn: "No .claude/settings.local.json found — worktrees will prompt for tool permissions." Continue anyway.
+   If missing, warn: "No .claude/settings.local.json found -- worktrees will prompt for tool permissions." Continue anyway.
 
 3. **For each worktree definition**, run in sequence:
 
@@ -137,7 +137,7 @@ Directory suffix is auto-derived from the branch name:
    for f in .claude/*.local.*; do test -f "$f" && cp "$f" "<dir-path>/.claude/$(basename "$f")"; done
    ```
 
-   d. **Pre-sync the venv** to prevent uv cache lock contention when multiple Claude Code instances run concurrently. `uv` uses a global cache lock (`$LOCALAPPDATA/uv/cache/.lock` on Windows, `$HOME/.cache/uv/.lock` on Linux, `~/Library/Caches/uv/.lock` on macOS) — if multiple worktrees run `uv run`/`uv sync` simultaneously, they serialize on this lock and all appear to hang. Pre-syncing sequentially here avoids this:
+   d. **Pre-sync the venv** to prevent uv cache lock contention when multiple Claude Code instances run concurrently. `uv` uses a global cache lock (`$LOCALAPPDATA/uv/cache/.lock` on Windows, `$HOME/.cache/uv/.lock` on Linux, `~/Library/Caches/uv/.lock` on macOS) -- if multiple worktrees run `uv run`/`uv sync` simultaneously, they serialize on this lock and all appear to hang. Pre-syncing sequentially here avoids this:
 
    ```bash
    cd <dir-path> && uv sync; cd -
@@ -201,7 +201,7 @@ Directory suffix is auto-derived from the branch name:
    - #<N>: <summarize acceptance criteria from issue body>
 
    ## Workflow
-   - Plan the full implementation before writing any code — present the plan for approval
+   - Plan the full implementation before writing any code -- present the plan for approval
    - Follow TDD: write tests first, then implement
    - Follow all conventions in CLAUDE.md (immutability, PEP 758, no __future__ imports, structlog logging, etc.)
    - After implementation: create commits on this branch, push with -u, then use /pre-pr-review
@@ -211,7 +211,7 @@ Directory suffix is auto-derived from the branch name:
 
 6. **Present the output** to the user:
    - For each worktree: show the **absolute path** to the worktree directory and a separate `claude` invocation command, followed by the prompt in a code block. Derive the absolute path dynamically by resolving the worktree directory (e.g., using `realpath <dir-path>` or `pwd` from within the worktree) and converting to the platform's native format. On Windows, use backslash paths (e.g., `C:\Users\Aurelio\synthorg-wt-delegation-loop-prevention`).
-   - **Note:** The `cd <path> && claude` instruction is for the **user's own terminal** (they will paste it into a new shell). This is NOT a Bash tool invocation — do not confuse with CLAUDE.md's "never use cd in Bash commands" rule, which applies to Bash tool calls within the skill.
+   - **Note:** The `cd <path> && claude` instruction is for the **user's own terminal** (they will paste it into a new shell). This is NOT a Bash tool invocation -- do not confuse with CLAUDE.md's "never use cd in Bash commands" rule, which applies to Bash tool calls within the skill.
    - End with a count: "N worktrees ready. Go."
 
 ---
@@ -250,8 +250,8 @@ Remove worktrees and clean up branches after PRs are merged.
 
    For each worktree branch:
    - If PR is **merged**: safe to remove. Proceed.
-   - If PR is **open**: warn user — "Branch <name> has open PR #N. Still remove?" Ask via AskUserQuestion.
-   - If **no PR found**: warn — "No PR found for <branch>. `git branch -D` will permanently delete any unpushed commits on this branch. Still remove?" Ask via AskUserQuestion.
+   - If PR is **open**: warn user -- "Branch <name> has open PR #N. Still remove?" Ask via AskUserQuestion.
+   - If **no PR found**: warn -- "No PR found for <branch>. `git branch -D` will permanently delete any unpushed commits on this branch. Still remove?" Ask via AskUserQuestion.
 
 5. **For each approved worktree**, remove it and track success:
 
@@ -259,15 +259,15 @@ Remove worktrees and clean up branches after PRs are merged.
    git worktree remove <path>
    ```
 
-   If removal fails (dirty worktree), warn the user and ask via AskUserQuestion whether to force-remove. Track which worktrees were **successfully removed** — only these branches are eligible for deletion in Step 6.
+   If removal fails (dirty worktree), warn the user and ask via AskUserQuestion whether to force-remove. Track which worktrees were **successfully removed** -- only these branches are eligible for deletion in Step 6.
 
-6. **Delete local feature branches only for successfully removed worktrees.** These are squash-merged so git won't recognize them as merged — use `-D`:
+6. **Delete local feature branches only for successfully removed worktrees.** These are squash-merged so git won't recognize them as merged -- use `-D`:
 
    ```bash
    git branch -D <successfully-removed-branch1> <successfully-removed-branch2> ...
    ```
 
-   Do NOT delete branches for worktrees that failed removal or where the user declined force-remove — this would orphan the worktree.
+   Do NOT delete branches for worktrees that failed removal or where the user declined force-remove -- this would orphan the worktree.
 
 7. **Verify clean state:**
 
@@ -318,7 +318,7 @@ Show current worktree state and how they compare to main.
    ```
    Worktree             | Branch                    | vs Main          | PR     | Status
    wt-delegation        | feat/delegation-loop-prev | +5 ahead         | #142   | clean
-   wt-parallel          | feat/parallel-execution   | +3 ahead -2 behind | —    | 2 modified
+   wt-parallel          | feat/parallel-execution   | +3 ahead -2 behind | --    | 2 modified
    wt-memory            | feat/memory-layer         | up to date       | #155   | clean
    ```
 
@@ -367,12 +367,12 @@ If no issues specified, try to detect from current worktree branches or ask via 
    ```
    ISSUES: 4 total (3/4 done)
 
-   TIER 0 — No dependencies (all prereqs closed)
+   TIER 0 -- No dependencies (all prereqs closed)
      ✅ #8   Message bus                    [critical]  communication/
      ✅ #10  Agent-to-agent messaging       [critical]  communication/
      ⬜ #134 Plan-and-Execute loop          [medium]    engine/
 
-   TIER 1 — Depends on Tier 0
+   TIER 1 -- Depends on Tier 0
      ✅ #12  Hierarchical delegation        [high]      communication/, engine/
      ...
    ```
@@ -404,7 +404,7 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
    git -C <path> status --short
    ```
 
-   If dirty, warn and skip immediately: "Worktree <name> has uncommitted changes — skipping rebase."
+   If dirty, warn and skip immediately: "Worktree <name> has uncommitted changes -- skipping rebase."
 
 3. **Then check ahead/behind status relative to main:**
 
@@ -414,9 +414,9 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 
    This outputs two tab-separated numbers: `<left>\t<right>` where left = commits on main not on branch (behind), right = commits on branch not on main (ahead).
 
-   - If **0 behind AND 0 ahead**: fully up to date — skip.
-   - If **0 behind AND N ahead**: branch is ahead but main hasn't moved — skip (rebase is a no-op, branch already contains everything from main).
-   - If **M behind** (regardless of ahead count): this worktree needs rebasing. Warn the user — "Worktree <name> is M commits behind main (and N ahead). Rebase may cause conflicts." Ask via AskUserQuestion: rebase anyway / skip / abort all.
+   - If **0 behind AND 0 ahead**: fully up to date -- skip.
+   - If **0 behind AND N ahead**: branch is ahead but main hasn't moved -- skip (rebase is a no-op, branch already contains everything from main).
+   - If **M behind** (regardless of ahead count): this worktree needs rebasing. Warn the user -- "Worktree <name> is M commits behind main (and N ahead). Rebase may cause conflicts." Ask via AskUserQuestion: rebase anyway / skip / abort all.
 
 4. **For approved worktrees**, rebase:
 
@@ -443,12 +443,12 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
 
 - **Never force-remove** a worktree without asking the user first.
 - **Never delete branches** without checking PR merge status first.
-- **Always check `.claude/` local files exist** before copying — warn if missing.
+- **Always check `.claude/` local files exist** before copying -- warn if missing.
 - **Repo name detection**: extract from the repository's canonical root (`basename $(git rev-parse --show-toplevel)`), not the current directory basename. Strip any existing `wt-` prefix to avoid nested names when running from inside a linked worktree.
 - **Owner/repo detection**: extract from `git remote get-url origin`.
 - **Platform-aware paths**: derive worktree absolute paths dynamically at runtime. On Windows, convert to backslash paths for user-facing output. The `cd <path> && claude` instructions are for the user's own terminal, not Bash tool invocations.
 - Worktree directories are always siblings of the main repo directory (`../`).
-- When generating prompts, read the actual issue bodies — do not guess or use stale information.
+- When generating prompts, read the actual issue bodies -- do not guess or use stale information.
 - Parse `spec:*` labels to auto-match source directories for prompt generation.
 - Parse `## Dependencies` sections to auto-detect implementation order.
 - **Input validation (CRITICAL):** Before interpolating any user-provided value into shell commands, validate:
@@ -457,15 +457,15 @@ Update all worktrees to latest main. Pulls main first, then rebases clean worktr
   - Label/filter values: must be a reasonable alphanumeric pattern (no shell metacharacters)
   - Owner/repo (from `git remote`): must match `^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`
   - Directory paths: must not contain shell metacharacters (`;`, `|`, `&`, `$`, `` ` ``, `(`, `)`)
-  - Reject and warn if any value fails validation — do not execute the command.
+  - Reject and warn if any value fails validation -- do not execute the command.
 - **uv cache lock contention:** `uv` uses a global cache lock file (`$LOCALAPPDATA/uv/cache/.lock` on Windows, `$HOME/.cache/uv/.lock` on Linux, `~/Library/Caches/uv/.lock` on macOS). When multiple worktrees run `uv run` or `uv sync` concurrently, they serialize on this lock, causing all instances to appear stuck. The `setup` command pre-syncs each worktree's venv sequentially to avoid this. If users report all instances hanging on python/uv commands, first verify no `uv` processes are still running (`ps aux | grep uv` or Task Manager), then remove the stale lock: `rm -f "$LOCALAPPDATA/uv/cache/.lock"` (Windows), `rm -f ~/.cache/uv/.lock` (Linux), or `rm -f ~/Library/Caches/uv/.lock` (macOS).
 - If `$ARGUMENTS` is empty or doesn't match a command, show a brief usage guide:
 
   ```text
-  /worktree setup <definitions>   — Create worktrees with prompts
-  /worktree setup --issues #26,#30  — Issue-aware setup
-  /worktree cleanup                — Remove worktrees after merge
-  /worktree status                 — Show worktree state
-  /worktree tree --issues #26,#30  — Dependency tree view
-  /worktree rebase                 — Update worktrees to latest main
+  /worktree setup <definitions>   -- Create worktrees with prompts
+  /worktree setup --issues #26,#30  -- Issue-aware setup
+  /worktree cleanup                -- Remove worktrees after merge
+  /worktree status                 -- Show worktree state
+  /worktree tree --issues #26,#30  -- Dependency tree view
+  /worktree rebase                 -- Update worktrees to latest main
   ```

@@ -63,7 +63,7 @@ class TestValidateMemoryTags:
         assert len(warning_events) == 1
 
     def test_store_never_blocked(self) -> None:
-        """validate_memory_tags never raises — advisory only."""
+        """validate_memory_tags never raises -- advisory only."""
         request = MemoryStoreRequest(
             category=MemoryCategory.EPISODIC,
             content="any content",

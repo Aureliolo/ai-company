@@ -109,7 +109,7 @@ class TagBasedMemoryFilter:
 class PassthroughMemoryFilter:
     """No-op filter that returns all memories unchanged.
 
-    Useful for backward compatibility and testing — all memories pass
+    Useful for backward compatibility and testing -- all memories pass
     through without filtering.
     """
 

@@ -168,7 +168,7 @@ def build_system_prompt(  # noqa: PLR0913
     _validate_max_tokens(agent, max_tokens)
     _validate_org_policies(agent, org_policies)
 
-    # Advisory only — issues are logged but never block prompt construction.
+    # Advisory only -- issues are logged but never block prompt construction.
     if org_policies:
         try:
             validate_policy_quality(org_policies)
@@ -580,7 +580,7 @@ def _trim_sections(  # noqa: PLR0913
 
         trimmed_sections.append(section)
     else:
-        # All sections exhausted — do a final render.
+        # All sections exhausted -- do a final render.
         content, estimated = _render_and_estimate(
             template_str,
             agent,

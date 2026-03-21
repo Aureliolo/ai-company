@@ -216,7 +216,7 @@ class TestExecuteToolCallsWithGate:
         mock_build_result.return_value = parked_result
 
         ctx = _make_context()
-        ctx.task_execution = None  # No task — taskless agent
+        ctx.task_execution = None  # No task -- taskless agent
         escalation = _make_escalation()
         invoker = _make_tool_invoker(escalations=(escalation,))
         response = _make_response_with_tool_calls()

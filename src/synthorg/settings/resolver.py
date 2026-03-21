@@ -1,4 +1,4 @@
-"""Config resolver — typed config access backed by SettingsService.
+"""Config resolver -- typed config access backed by SettingsService.
 
 Bridges the gap between :class:`SettingsService` (which returns
 :class:`~synthorg.settings.models.SettingValue` objects with a string
@@ -549,7 +549,7 @@ class ConfigResolver:
         Bootstrap-only settings (``server_host``, ``server_port``,
         ``api_prefix``, ``cors_allowed_origins``,
         ``rate_limit_exclude_paths``, ``auth_exclude_paths``) are
-        **not** resolved — they are baked into the Litestar app at
+        **not** resolved -- they are baked into the Litestar app at
         construction and require a restart to take effect.
 
         Uses ``asyncio.TaskGroup`` to resolve all settings in parallel.

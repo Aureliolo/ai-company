@@ -1,4 +1,4 @@
-"""MemoryBackend protocol — lifecycle + memory operations.
+"""MemoryBackend protocol -- lifecycle + memory operations.
 
 Application code depends on this protocol for agent memory storage
 and retrieval.  Concrete backends implement this protocol to provide
@@ -124,7 +124,7 @@ class MemoryBackend(Protocol):
     ) -> MemoryEntry | None:
         """Get a specific memory entry by ID.
 
-        Returns ``None`` when the entry does not exist —
+        Returns ``None`` when the entry does not exist --
         ``MemoryNotFoundError`` is never raised by this method.
 
         Args:

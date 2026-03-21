@@ -1,4 +1,4 @@
-"""Output scanner — post-tool output scanning for sensitive data.
+"""Output scanner -- post-tool output scanning for sensitive data.
 
 Reuses credential patterns from ``credential_detector`` and PII
 patterns from ``data_leak_detector`` to scan tool output for

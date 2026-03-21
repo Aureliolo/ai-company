@@ -1,4 +1,4 @@
-"""Agent memory system — protocols, models, config, and factory.
+"""Agent memory system -- protocols, models, config, and factory.
 
 Re-exports protocols (``MemoryBackend``, ``MemoryCapabilities``,
 ``SharedKnowledgeStore``, ``MemoryInjectionStrategy``,

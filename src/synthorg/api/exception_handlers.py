@@ -185,7 +185,7 @@ def _build_response(  # noqa: PLR0913
     ``ProblemDetail`` body with the appropriate content type.
 
     Wrapped in a defensive try/except because this runs inside
-    exception handlers — a failure here would lose the original error.
+    exception handlers -- a failure here would lose the original error.
     """
     try:
         if _wants_problem_json(request):
@@ -343,7 +343,7 @@ def handle_api_error(
     _log_error(request, exc, status=exc.status_code)
     # For 5xx errors return the generic class-level default to avoid
     # leaking internals.  For 4xx client errors return the actual
-    # exception message — it was set by the controller and is user-safe.
+    # exception message -- it was set by the controller and is user-safe.
     if exc.status_code >= _SERVER_ERROR_THRESHOLD:
         msg = type(exc).default_message
     else:
@@ -491,7 +491,7 @@ def handle_http_exception(
 
 
 # Litestar resolves exception handlers by walking the raised exception's
-# MRO — the first matching type found in this dict wins.  Dict insertion
+# MRO -- the first matching type found in this dict wins.  Dict insertion
 # order does NOT affect resolution priority.  (For HTTPException subclasses,
 # Litestar also checks integer status-code keys first, but this dict uses
 # only type keys.)

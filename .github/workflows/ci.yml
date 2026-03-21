@@ -117,7 +117,7 @@ jobs:
             --cov-fail-under=80 \
             --junitxml=junit.xml
 
-      # Codecov upload is best-effort — CI should not fail on Codecov outages
+      # Codecov upload is best-effort -- CI should not fail on Codecov outages
       # or missing tokens. Coverage enforcement is handled by --cov-fail-under.
       - name: Upload coverage to Codecov
         if: ${{ !cancelled() }}

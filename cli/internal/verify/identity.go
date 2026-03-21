@@ -19,7 +19,7 @@ const (
 
 	// ExpectedSANRegex matches the docker.yml workflow identity from the
 	// SynthOrg repo on version tags or the main branch. Only accepts
-	// signatures from the docker workflow — not from arbitrary workflows
+	// signatures from the docker workflow -- not from arbitrary workflows
 	// or feature branches.
 	ExpectedSANRegex = `^https://github\.com/Aureliolo/synthorg/\.github/workflows/docker\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.\-]+)?(\+[0-9A-Za-z.\-]+)?|heads/main)$`
 

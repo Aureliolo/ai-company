@@ -1,4 +1,4 @@
-"""Timeout action model — the result of evaluating a timeout policy."""
+"""Timeout action model -- the result of evaluating a timeout policy."""
 
 from typing import Self
 

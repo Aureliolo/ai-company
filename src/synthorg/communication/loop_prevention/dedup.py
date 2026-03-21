@@ -18,7 +18,7 @@ class DelegationDeduplicator:
     """Rejects identical delegations within a time window.
 
     Identity is determined by the directional tuple
-    ``(delegator_id, delegatee_id, task_id)`` — the unique task ID is
+    ``(delegator_id, delegatee_id, task_id)`` -- the unique task ID is
     used instead of the title so that different tasks with the same
     title are not falsely blocked, and refined re-delegations of the
     same task are correctly deduplicated.

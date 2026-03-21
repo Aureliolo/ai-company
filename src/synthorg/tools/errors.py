@@ -2,7 +2,7 @@
 
 All tool errors carry an immutable context mapping for structured
 metadata.  Unlike provider errors, tool errors have no ``is_retryable``
-flag — retry decisions are made at higher layers.
+flag -- retry decisions are made at higher layers.
 """
 
 from types import MappingProxyType

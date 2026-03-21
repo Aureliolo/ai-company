@@ -1,4 +1,4 @@
-"""Context injection strategy — pre-retrieves and injects memories.
+"""Context injection strategy -- pre-retrieves and injects memories.
 
 Orchestrates the full retrieval pipeline: backend query → ranking →
 budget-fit → format.  Implements ``MemoryInjectionStrategy`` protocol.
@@ -95,7 +95,7 @@ async def _safe_call(
 
 
 class ContextInjectionStrategy:
-    """Context injection strategy — pre-retrieves and injects memories.
+    """Context injection strategy -- pre-retrieves and injects memories.
 
     Implements ``MemoryInjectionStrategy`` protocol.  Orchestrates
     the full pipeline: retrieve → rank → budget-fit → format.
@@ -207,7 +207,7 @@ class ContextInjectionStrategy:
             return ()
         except Exception as exc:
             # ExceptionGroup may wrap system-level errors that must
-            # propagate — inspect and re-raise them.
+            # propagate -- inspect and re-raise them.
             if isinstance(exc, ExceptionGroup):
                 system_errors = exc.subgroup(
                     lambda e: isinstance(

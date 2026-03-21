@@ -35,7 +35,7 @@ class RecoveryResult(BaseModel):
         task_execution: Execution state after recovery (``FAILED`` for
             fail-and-reassign, original state for checkpoint resume).
         strategy_type: Identifier of the strategy used (e.g. ``"fail_reassign"``).
-        can_reassign: Computed — ``True`` when retry_count < task.max_retries.
+        can_reassign: Computed -- ``True`` when retry_count < task.max_retries.
             The caller (task router) is responsible for incrementing
             ``retry_count`` when creating the next ``TaskExecution``.
         context_snapshot: Redacted snapshot (no message contents).

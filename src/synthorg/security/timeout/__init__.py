@@ -1,4 +1,4 @@
-"""Approval timeout policies — wait, deny, tiered, escalation chain."""
+"""Approval timeout policies -- wait, deny, tiered, escalation chain."""
 
 from synthorg.security.timeout.factory import create_timeout_policy
 from synthorg.security.timeout.models import TimeoutAction

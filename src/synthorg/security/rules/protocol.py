@@ -1,4 +1,4 @@
-"""SecurityRule protocol — interface for synchronous rule evaluators."""
+"""SecurityRule protocol -- interface for synchronous rule evaluators."""
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 

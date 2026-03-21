@@ -771,7 +771,7 @@ class TestExecuteWavesExceptionContinuation:
 
 
 class TestMergeGating:
-    """Tests for merge gating — merge skipped when waves fail."""
+    """Tests for merge gating -- merge skipped when waves fail."""
 
     @pytest.mark.unit
     async def test_centralized_skips_merge_on_wave_failure(self) -> None:

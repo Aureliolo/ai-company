@@ -1,4 +1,4 @@
-"""Settings metadata registry — single source of truth for setting definitions."""
+"""Settings metadata registry -- single source of truth for setting definitions."""
 
 from types import MappingProxyType
 
@@ -104,7 +104,7 @@ class SettingsRegistry:
         return len(self._read_view)
 
 
-# Module-level singleton — populated by definitions/ sub-package imports.
+# Module-level singleton -- populated by definitions/ sub-package imports.
 _registry = SettingsRegistry()
 
 

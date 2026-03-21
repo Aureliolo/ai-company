@@ -15,7 +15,7 @@ var completionInstallCmd = &cobra.Command{
 
 Supported shells: bash, zsh, fish, powershell.
 
-This is idempotent — running it again will not duplicate the setup.
+This is idempotent -- running it again will not duplicate the setup.
 To generate raw completion scripts without installing, use 'synthorg completion [shell]'.`,
 	RunE: runCompletionInstall,
 }

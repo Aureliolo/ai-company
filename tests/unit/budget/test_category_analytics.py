@@ -186,7 +186,7 @@ class TestComputeOrchestrationRatio:
             productive_tokens=700,
             coordination_tokens=300,
         )
-        # ratio = 300/1000 = 0.30 — exactly at info threshold
+        # ratio = 300/1000 = 0.30 -- exactly at info threshold
         result = compute_orchestration_ratio(breakdown)
         assert result.ratio == 0.3
         assert result.alert_level == OrchestrationAlertLevel.INFO

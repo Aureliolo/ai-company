@@ -83,7 +83,7 @@ class HybridResolver:
         self._review_evaluator = review_evaluator
 
     async def resolve(self, conflict: Conflict) -> ConflictResolution:
-        """Resolve via hybrid review — auto-resolve or escalate.
+        """Resolve via hybrid review -- auto-resolve or escalate.
 
         Args:
             conflict: The conflict to resolve.
@@ -136,7 +136,7 @@ class HybridResolver:
                 resolved_at=datetime.now(UTC),
             )
 
-        # Ambiguous result — winner not found in positions
+        # Ambiguous result -- winner not found in positions
         logger.warning(
             CONFLICT_AMBIGUOUS_RESULT,
             conflict_id=conflict.id,
@@ -234,7 +234,7 @@ class HybridResolver:
             winning_position=best.position,
             decided_by=best.agent_id,
             reasoning=(
-                f"Hybrid fallback: authority-based — "
+                f"Hybrid fallback: authority-based -- "
                 f"{best.agent_id} ({best.agent_level}) has highest "
                 f"seniority"
             ),

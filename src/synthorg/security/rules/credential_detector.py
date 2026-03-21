@@ -1,4 +1,4 @@
-"""Credential detector rule — finds secrets in tool arguments."""
+"""Credential detector rule -- finds secrets in tool arguments."""
 
 import re
 from datetime import UTC, datetime

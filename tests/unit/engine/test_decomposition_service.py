@@ -164,7 +164,7 @@ class TestDecompositionService:
             dependencies=("dep-1",),
         )
         # Plan defaults to SEQUENTIAL, but classifier should also return
-        # SEQUENTIAL based on dependencies — so they agree.
+        # SEQUENTIAL based on dependencies -- so they agree.
         # Use a plan with PARALLEL structure to test override.
         plan = DecompositionPlan(
             parent_task_id=task.id,

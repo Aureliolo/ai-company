@@ -5,7 +5,7 @@ search:
 
 # Persistence
 
-Pluggable operational data persistence — protocol, configuration, and SQLite backend.
+Pluggable operational data persistence -- protocol, configuration, and SQLite backend.
 
 ## Protocol
 

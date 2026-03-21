@@ -128,7 +128,7 @@ func TestSaveFilePermissions(t *testing.T) {
 		t.Fatalf("saved file is not valid JSON: %v", err)
 	}
 
-	// Verify file permissions (0600 — owner read/write only).
+	// Verify file permissions (0600 -- owner read/write only).
 	// Skip on Windows where Unix permissions are not enforced.
 	if runtime.GOOS != "windows" {
 		info, err := os.Stat(path)

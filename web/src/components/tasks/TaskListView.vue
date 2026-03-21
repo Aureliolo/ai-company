@@ -44,7 +44,7 @@ defineEmits<{
     </Column>
     <Column field="assigned_to" header="Assignee" style="width: 150px">
       <template #body="{ data }">
-        <span class="text-slate-300">{{ data.assigned_to ?? '—' }}</span>
+        <span class="text-slate-300">{{ data.assigned_to ?? '--' }}</span>
       </template>
     </Column>
     <Column field="type" header="Type" sortable style="width: 100px" />

@@ -2,7 +2,7 @@
 
 Heuristic-based classifier that determines whether memory content is
 sparse (conversational, narrative) or dense (code, structured data,
-identifiers).  Classification is deterministic — no LLM calls.
+identifiers).  Classification is deterministic -- no LLM calls.
 """
 
 import re

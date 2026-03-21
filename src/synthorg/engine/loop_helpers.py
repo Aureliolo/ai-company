@@ -291,7 +291,7 @@ async def execute_tool_calls(  # noqa: PLR0913
             turn=turn_number,
             error=error_msg,
         )
-        # Clear tool_calls on the turn record — tools were never executed
+        # Clear tool_calls on the turn record -- tools were never executed
         clear_last_turn_tool_calls(turns)
         return build_result(
             ctx,
@@ -364,7 +364,7 @@ async def _park_for_approval(
     """Park the context for approval and return a PARKED or ERROR result.
 
     On success, returns PARKED with the approval_id in metadata.
-    On failure (serialization/persistence error), returns ERROR — the
+    On failure (serialization/persistence error), returns ERROR -- the
     agent should not continue, and the caller should treat this as a
     non-resumable failure.
 
@@ -386,7 +386,7 @@ async def _park_for_approval(
             APPROVAL_GATE_PARK_TASKLESS,
             approval_id=escalation.approval_id,
             agent_id=agent_id,
-            note="No task_execution on context — task_id will be None",
+            note="No task_execution on context -- task_id will be None",
         )
 
     try:
@@ -406,7 +406,7 @@ async def _park_for_approval(
             turns,
             error_message=(
                 f"Approval escalation detected (id={escalation.approval_id}) "
-                f"but context parking failed — cannot resume"
+                f"but context parking failed -- cannot resume"
             ),
             metadata={
                 "approval_id": escalation.approval_id,
@@ -429,7 +429,7 @@ def clear_last_turn_tool_calls(turns: list[TurnRecord]) -> None:
     """Clear tool_calls_made on the last TurnRecord.
 
     Used when shutdown fires between recording a turn and executing
-    tools — the turn should not overstate what happened.
+    tools -- the turn should not overstate what happened.
 
     Args:
         turns: Mutable list of turn records (modified in-place).
@@ -538,7 +538,7 @@ async def check_stagnation(  # noqa: PLR0913
 ) -> tuple[AgentContext, int] | ExecutionResult | None:
     """Run stagnation detection and handle the verdict.
 
-    Stagnation detection is advisory — detector failures are logged
+    Stagnation detection is advisory -- detector failures are logged
     and skipped so they never interrupt an otherwise-healthy loop.
 
     Args:
@@ -658,7 +658,7 @@ async def invoke_compaction(
 ) -> AgentContext | None:
     """Invoke compaction callback if configured.
 
-    Errors are logged but never propagated — compaction must
+    Errors are logged but never propagated -- compaction must
     not interrupt execution.
 
     Args:

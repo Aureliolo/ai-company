@@ -4,7 +4,7 @@
 
 The following design questions remain unresolved. Each carries potential impact on architecture or behavior and will be addressed as the project progresses.
 
-Numbers are stable identifiers — resolved questions are removed without renumbering to preserve cross-references.
+Numbers are stable identifiers -- resolved questions are removed without renumbering to preserve cross-references.
 
 | # | Question | Impact | Notes |
 |---|----------|--------|-------|

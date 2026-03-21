@@ -1,4 +1,4 @@
-"""Model routing engine — strategy-based LLM model selection.
+"""Model routing engine -- strategy-based LLM model selection.
 
 Exports the router, resolver, domain models, errors, strategies,
 and the ``RoutingStrategy`` protocol.

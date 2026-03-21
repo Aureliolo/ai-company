@@ -880,7 +880,7 @@ distinguish intentional policy decisions from scanner failures:
 | Policy | Behavior | `ScanOutcome` | Default for |
 |--------|----------|---------------|-------------|
 | **Redact** (default) | Return scanner's redacted content as-is | `REDACTED` | `SEMI`, `SUPERVISED` autonomy |
-| **Withhold** | Clear redacted content — content withheld by policy | `WITHHELD` | `LOCKED` autonomy |
+| **Withhold** | Clear redacted content -- content withheld by policy | `WITHHELD` | `LOCKED` autonomy |
 | **Log-only** | Discard findings (logs at WARNING), pass original output through | `LOG_ONLY` | `FULL` autonomy |
 | **Autonomy-tiered** | Delegate to a sub-policy based on effective autonomy level | *(set by delegate)* | Composite policy |
 
@@ -888,7 +888,7 @@ The `ScanOutcome` enum (`CLEAN`, `REDACTED`, `WITHHELD`, `LOG_ONLY`) is set by t
 (initial `REDACTED` when findings are detected) and may be transformed by the policy (e.g.
 `WithholdPolicy` changes `REDACTED` → `WITHHELD`). The `ToolInvoker._scan_output` method
 branches on `ScanOutcome.WITHHELD` first to return a dedicated error message ("content
-withheld by security policy") with `output_withheld` metadata — distinct from the generic
+withheld by security policy") with `output_withheld` metadata -- distinct from the generic
 fail-closed path used for scanner exceptions.
 
 Policy selection is declarative via `SecurityConfig.output_scan_policy_type`
@@ -1121,7 +1121,7 @@ and retry guidance.
 !!! note "Status"
 
     The Web UI is built as a Vue 3 + PrimeVue + Tailwind CSS dashboard. The API
-    remains fully self-sufficient for all operations — the dashboard is a thin client.
+    remains fully self-sufficient for all operations -- the dashboard is a thin client.
 
 - **Dashboard**: Real-time company overview, active tasks, spending
 - **Org Chart**: Visual hierarchy, click to inspect any agent
@@ -1130,8 +1130,8 @@ and retry guidance.
 - **Approval Queue**: Pending approvals with context and recommendations
 - **Agent Profiles**: Detailed view of each agent's identity, history, metrics
 - **Budget Panel**: Spending charts, per-agent breakdown (projections/alerts planned)
-- **Meeting Logs**: Placeholder — coming soon
-- **Artifact Browser**: Placeholder — coming soon
+- **Meeting Logs**: Placeholder -- coming soon
+- **Artifact Browser**: Placeholder -- coming soon
 - **Settings**:
     - *Provider management*: Add/edit/delete providers, connection test, preset-based creation, model auto-discovery (Ollama `/api/tags`, standard `/models`) -- integrated as a tab alongside company config and user settings.
     - *DB-backed persistence*: 9 namespaces (api, company, providers, memory, budget, security, coordination, observability, backup). Setting types: `STRING`, `INTEGER`, `FLOAT`, `BOOLEAN`, `ENUM`, `JSON`. 4-layer resolution: DB > env > YAML > code defaults. Fernet encryption for `sensitive` values. REST API (`GET`/`PUT`/`DELETE` + schema endpoints for dynamic UI generation), change notifications via message bus.

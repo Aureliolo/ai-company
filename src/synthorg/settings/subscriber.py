@@ -46,7 +46,7 @@ class SettingsSubscriber(Protocol):
 
         Only called for settings where ``restart_required=False``.
         Implementations must be idempotent.  Errors are caught by the
-        dispatcher — they do not crash the polling loop.
+        dispatcher -- they do not crash the polling loop.
 
         Args:
             namespace: Changed setting namespace.

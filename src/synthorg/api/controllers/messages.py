@@ -1,4 +1,4 @@
-"""Message controller — read-only access via MessageRepository."""
+"""Message controller -- read-only access via MessageRepository."""
 
 from litestar import Controller, get
 from litestar.datastructures import State  # noqa: TC002
@@ -32,7 +32,7 @@ class MessageController(Controller):
         """List messages, optionally filtered by channel.
 
         When no ``channel`` filter is provided, returns an empty
-        list — use ``GET /messages/channels`` to discover available
+        list -- use ``GET /messages/channels`` to discover available
         channels first.
 
         Args:

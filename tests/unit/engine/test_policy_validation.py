@@ -185,8 +185,8 @@ class TestEdgeCases:
     @pytest.mark.parametrize(
         ("policy", "expect_short"),
         [
-            ("123456789", True),  # 9 chars — below _MIN_POLICY_LENGTH (10)
-            ("1234567890", False),  # 10 chars — exactly at boundary
+            ("123456789", True),  # 9 chars -- below _MIN_POLICY_LENGTH (10)
+            ("1234567890", False),  # 10 chars -- exactly at boundary
         ],
     )
     def test_min_length_boundary(self, policy: str, *, expect_short: bool) -> None:

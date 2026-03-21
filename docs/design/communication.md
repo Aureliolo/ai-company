@@ -382,7 +382,7 @@ triggering:
 Meetings with a `frequency` field (e.g. `daily`, `weekly`, `bi_weekly`,
 `per_sprint_day`, `monthly`) are scheduled as periodic asyncio tasks. The
 `MeetingFrequency` enum maps each value to a sleep interval in seconds. Periodic
-tasks survive transient errors — a single execution failure does not kill the
+tasks survive transient errors -- a single execution failure does not kill the
 background loop.
 
 ### Event-Triggered Meetings
@@ -398,11 +398,11 @@ The `ParticipantResolver` protocol resolves participant reference strings from
 config into concrete agent IDs. The `RegistryParticipantResolver` implementation
 uses the `AgentRegistryService` with a five-step cascade:
 
-1. **Context lookup** — if the event context dict has a matching key, use its value.
-2. **Special `"all"`** — resolves to all active agents.
-3. **Department lookup** — resolves to all agents in the named department.
-4. **Agent name lookup** — resolves to the agent with that name.
-5. **Pass-through** — assumes the entry is a literal agent ID.
+1. **Context lookup** -- if the event context dict has a matching key, use its value.
+2. **Special `"all"`** -- resolves to all active agents.
+3. **Department lookup** -- resolves to all agents in the named department.
+4. **Agent name lookup** -- resolves to the agent with that name.
+5. **Pass-through** -- assumes the entry is a literal agent ID.
 
 Results are deduplicated while preserving insertion order. The first resolved
 participant is designated as the meeting leader.

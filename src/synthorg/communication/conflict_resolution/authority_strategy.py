@@ -1,7 +1,7 @@
 """Authority + dissent log conflict resolution strategy (see Communication design page).
 
 Strategy 1: The agent with higher seniority wins.  For equal seniority,
-hierarchy position decides — using the lowest common manager for
+hierarchy position decides -- using the lowest common manager for
 cross-department agents as the tiebreaker.
 
 For N-party conflicts, positions are compared pairwise, accumulating
@@ -40,7 +40,7 @@ class AuthorityResolver:
     """Resolve conflicts by seniority and hierarchy position.
 
     The agent with higher seniority wins.  For equal seniority,
-    hierarchy proximity is used as a tiebreaker — the agent closer
+    hierarchy proximity is used as a tiebreaker -- the agent closer
     to the hierarchy root (same department) or the lowest common
     manager (cross-department) wins.
 
@@ -54,7 +54,7 @@ class AuthorityResolver:
         self._hierarchy = hierarchy
 
     async def resolve(self, conflict: Conflict) -> ConflictResolution:
-        """Resolve by authority — highest seniority wins.
+        """Resolve by authority -- highest seniority wins.
 
         Args:
             conflict: The conflict to resolve.

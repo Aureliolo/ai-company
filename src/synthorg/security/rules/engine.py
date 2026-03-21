@@ -1,4 +1,4 @@
-"""Rule engine — evaluates security rules in order."""
+"""Rule engine -- evaluates security rules in order."""
 
 import time
 from datetime import UTC, datetime
@@ -51,7 +51,7 @@ class RuleEngine:
     auto-approved action types are still scanned for credentials,
     path traversal, etc.
 
-    All rules are synchronous — the engine itself is synchronous.
+    All rules are synchronous -- the engine itself is synchronous.
     """
 
     def __init__(
@@ -82,7 +82,7 @@ class RuleEngine:
             context: The tool invocation security context.
 
         Returns:
-            A ``SecurityVerdict`` — DENY/ESCALATE from the first
+            A ``SecurityVerdict`` -- DENY/ESCALATE from the first
             matching rule, or ALLOW with risk from the classifier.
         """
         start = time.monotonic()
@@ -132,7 +132,7 @@ class RuleEngine:
             )
 
         # Fallback: ALLOW with risk from classifier.
-        # Low confidence — no rule matched, only risk-classified.
+        # Low confidence -- no rule matched, only risk-classified.
         # This is the ~5% of cases where LLM fallback may trigger.
         risk = self._risk_classifier.classify(context.action_type)
         logger.debug(

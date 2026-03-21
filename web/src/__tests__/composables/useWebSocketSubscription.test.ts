@@ -3,7 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { onMounted, onUnmounted } from 'vue'
 
 // Mock Vue lifecycle hooks since we're not in a component context.
-// onMounted callback is now async — we invoke it and store the promise
+// onMounted callback is now async -- we invoke it and store the promise
 // so tests can await it when they need to verify post-connect behaviour.
 let mountedPromise: Promise<void> | undefined
 vi.mock('vue', async () => {

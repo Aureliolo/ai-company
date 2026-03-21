@@ -331,7 +331,7 @@ def _build_lifecycle(  # noqa: PLR0913, C901
 # ── 2-Phase Initialisation ────────────────────────────────────────
 #
 # Phase 1 (construct): Litestar bakes middleware, CORS, and routes
-#   into the app at construction time — these read directly from
+#   into the app at construction time -- these read directly from
 #   RootConfig and are immutable after construction.  Bootstrap-only
 #   settings (server_host, server_port, api_prefix, cors_allowed_origins,
 #   rate_limit_exclude_paths, auth_exclude_paths) are therefore NOT

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # =============================================================================
-# SynthOrg Backend — Multi-stage, CIS-hardened container
+# SynthOrg Backend -- Multi-stage, CIS-hardened container
 # =============================================================================
 # Three stages: builder → setup → runtime (distroless).
 # Chainguard Python distroless: minimal attack surface (no shell, no package
@@ -11,7 +11,7 @@
 # =============================================================================
 
 # ---------------------------------------------------------------------------
-# Stage 1 — Builder (ephemeral: compiles deps + project wheel)
+# Stage 1 -- Builder (ephemeral: compiles deps + project wheel)
 # ---------------------------------------------------------------------------
 FROM python:3.14.3-slim@sha256:fb83750094b46fd6b8adaa80f66e2302ecbe45d513f6cece637a841e1025b4ca AS builder
 
@@ -26,7 +26,7 @@ RUN addgroup --gid 10000 --system build \
 
 WORKDIR /app
 
-# Install dependencies first (layer cache — only invalidated on lock change)
+# Install dependencies first (layer cache -- only invalidated on lock change)
 COPY --chown=build:build pyproject.toml uv.lock ./
 USER build
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=10000,gid=10000 \
@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/home/build/.cache/uv,uid=10000,gid=10000 \
 
 # Copy source and install project.
 # touch README.md: hatchling requires README.md for package metadata but
-# .dockerignore excludes it — create an empty file to satisfy the build.
+# .dockerignore excludes it -- create an empty file to satisfy the build.
 RUN touch README.md
 COPY --chown=build:build src/ src/
 RUN --mount=type=cache,target=/home/build/.cache/uv,uid=10000,gid=10000 \
@@ -44,10 +44,10 @@ RUN --mount=type=cache,target=/home/build/.cache/uv,uid=10000,gid=10000 \
 RUN find /app/src -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# Stage 2 — Setup (ephemeral: fix symlinks + create dirs, needs shell)
+# Stage 2 -- Setup (ephemeral: fix symlinks + create dirs, needs shell)
 # ---------------------------------------------------------------------------
 # Chainguard Python -dev variant (has shell for RUN commands).
-# Pinned by digest — free tier only exposes latest/latest-dev tags.
+# Pinned by digest -- free tier only exposes latest/latest-dev tags.
 # To update: docker buildx imagetools inspect cgr.dev/chainguard/python:latest-dev
 FROM cgr.dev/chainguard/python@sha256:4decc0a7de3d586bbb38307244f32a10f50c96627714ac2785a347a8b63ceeb4 AS setup
 
@@ -63,14 +63,14 @@ RUN rm -f /app/.venv/bin/python && ln -s /usr/bin/python /app/.venv/bin/python \
     && mkdir -p /data && chown 65532:65532 /data \
     && chown -R 65532:65532 /app
 
-# Drop root after setup — all stages must end as non-root
+# Drop root after setup -- all stages must end as non-root
 USER 65532
 
 # ---------------------------------------------------------------------------
-# Stage 3 — Runtime (distroless: no shell, no uv, no package manager)
+# Stage 3 -- Runtime (distroless: no shell, no uv, no package manager)
 # ---------------------------------------------------------------------------
-# Chainguard Python distroless — minimal attack surface, continuously scanned.
-# Pinned by digest — free tier only exposes latest/latest-dev tags.
+# Chainguard Python distroless -- minimal attack surface, continuously scanned.
+# Pinned by digest -- free tier only exposes latest/latest-dev tags.
 # To update: docker buildx imagetools inspect cgr.dev/chainguard/python:latest
 FROM cgr.dev/chainguard/python@sha256:308d2fda1d9ad9620454de97cb84fa407bd20e24dd66902909f4b3b44b310836 AS runtime
 
@@ -92,7 +92,7 @@ COPY --from=setup --chown=65532:65532 /data /data
 # Runtime environment
 # UVICORN_HOST / UVICORN_PORT control the server bind address (read natively
 # by uvicorn via its Click auto_envvar_prefix). SYNTHORG_HOST / SYNTHORG_PORT
-# are application-level config — they do NOT control uvicorn directly.
+# are application-level config -- they do NOT control uvicorn directly.
 # When running standalone (`docker run`), override UVICORN_* to change the
 # listening address. compose.yml bridges SYNTHORG_* → UVICORN_* automatically.
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -107,14 +107,14 @@ USER 65532
 
 EXPOSE 8000
 
-# Healthcheck — exec form (no shell needed, works with distroless)
+# Healthcheck -- exec form (no shell needed, works with distroless)
 # Reads UVICORN_PORT so the check stays valid if the port is overridden.
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=30s \
     CMD ["/usr/bin/python", "-c", "import json,urllib.request,sys,os; port=os.environ.get('UVICORN_PORT','8000'); r=urllib.request.urlopen(f'http://127.0.0.1:{port}/api/v1/health'); d=json.loads(r.read()); sys.exit(0 if d.get('data',{}).get('status')=='ok' else 1)"]
 
 # Reset Chainguard base entrypoint (/usr/bin/python) so CMD runs uvicorn
 # directly instead of being passed as Python arguments.
-# Exec form (no shell) — works with distroless. Uvicorn reads UVICORN_HOST
+# Exec form (no shell) -- works with distroless. Uvicorn reads UVICORN_HOST
 # and UVICORN_PORT env vars natively; compose bridges SYNTHORG_* to these.
 # Suppress Pydantic v1 compatibility warning from Litestar's plugin detection
 # on Python 3.14+ (harmless import-time check, not actual v1 usage).

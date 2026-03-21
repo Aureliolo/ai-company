@@ -1,4 +1,4 @@
-"""Provider registry — the Employment Agency.
+"""Provider registry -- the Employment Agency.
 
 Maps provider names to concrete ``BaseCompletionProvider`` driver
 instances.  Built from config via ``from_config``, which reads each

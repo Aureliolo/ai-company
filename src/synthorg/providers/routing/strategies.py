@@ -1,4 +1,4 @@
-"""Routing strategies — stateless implementations of ``RoutingStrategy``.
+"""Routing strategies -- stateless implementations of ``RoutingStrategy``.
 
 Each strategy selects a model given a ``RoutingRequest``, a
 ``RoutingConfig``, and a ``ModelResolver``.  Strategies are stateless
@@ -461,7 +461,7 @@ class SmartStrategy:
         """Attempt to resolve model_override as a soft preference.
 
         Unlike ``ManualStrategy`` (which raises on unresolvable overrides),
-        SmartStrategy treats overrides as best-effort hints — if the
+        SmartStrategy treats overrides as best-effort hints -- if the
         override cannot be resolved, the strategy falls through to the
         next signal in the priority chain rather than failing the request.
         """

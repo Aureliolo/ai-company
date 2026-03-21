@@ -1,4 +1,4 @@
-"""Tests for CostOptimizer — init, classify severity, input validation."""
+"""Tests for CostOptimizer -- init, classify severity, input validation."""
 
 import pytest
 

@@ -35,7 +35,7 @@ func FuzzLoadState(f *testing.F) {
 			t.Fatalf("failed to write temp config: %v", err)
 		}
 
-		// Must not panic — either returns a State or an error.
+		// Must not panic -- either returns a State or an error.
 		state, err := Load(tmpDir)
 		if err != nil {
 			// Errors are expected for invalid JSON, etc.

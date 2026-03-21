@@ -1,4 +1,4 @@
-"""Risk classifier — maps action types to default risk levels."""
+"""Risk classifier -- maps action types to default risk levels."""
 
 from types import MappingProxyType
 from typing import Final

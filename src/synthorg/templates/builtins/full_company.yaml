@@ -110,7 +110,7 @@ template:
       model: "medium"
       personality_preset: "user_advocate"
       department: "design"
-    # Engineering — static (3)
+    # Engineering -- static (3)
     - role: "Software Architect"
       level: "principal"
       model: "large"
@@ -126,7 +126,7 @@ template:
       model: "medium"
       personality_preset: "systems_thinker"
       department: "engineering"
-    # Engineering — dynamic backend devs
+    # Engineering -- dynamic backend devs
 {% for i in range(num_backend_devs | default(3) | int) %}
     - role: "Backend Developer"
       merge_id: "backend-{{ i }}"
@@ -141,7 +141,7 @@ template:
 {% endif %}
       department: "engineering"
 {% endfor %}
-    # Engineering — dynamic frontend devs
+    # Engineering -- dynamic frontend devs
 {% for i in range(num_frontend_devs | default(2) | int) %}
     - role: "Frontend Developer"
       merge_id: "frontend-{{ i }}"

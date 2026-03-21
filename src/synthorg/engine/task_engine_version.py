@@ -17,12 +17,12 @@ class VersionTracker:
 
     After a restart the tracker is empty.  The first time an unknown
     task is encountered during a ``check()`` call, it is seeded at
-    version 1 — a heuristic baseline, **not** loaded from persistence.
+    version 1 -- a heuristic baseline, **not** loaded from persistence.
     This makes subsequent optimistic-concurrency checks work within the
     current engine lifetime but cannot detect conflicts that span
     restarts.
 
-    **Limitation:** version tracking is volatile — it resets on process
+    **Limitation:** version tracking is volatile -- it resets on process
     restart.  After a restart, the first ``expected_version=1`` check
     for any task will pass even if the task was mutated many times in a
     prior lifetime.  Durable version tracking (persisted alongside the

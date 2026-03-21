@@ -111,7 +111,7 @@ def coordination_client(
         message_bus=EngineMessageBus(),  # type: ignore[arg-type]
     )
 
-    import synthorg.settings.definitions  # noqa: F401 — trigger registration
+    import synthorg.settings.definitions  # noqa: F401 -- trigger registration
     from synthorg.settings.registry import get_registry
     from synthorg.settings.service import SettingsService
 

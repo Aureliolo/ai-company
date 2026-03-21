@@ -140,7 +140,7 @@ def _map_task_engine_errors(
             error_type="TaskMutationError",
         )
         return ApiValidationError(str(exc))
-    # Unknown error type — log and wrap to prevent leaking internals
+    # Unknown error type -- log and wrap to prevent leaking internals
     logger.error(
         API_TASK_MUTATION_FAILED,
         resource="task",

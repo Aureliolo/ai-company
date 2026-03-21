@@ -201,7 +201,7 @@ class TrustService:
             details=result.details,
         )
 
-        # Update state — only set last_promoted_at on actual promotions
+        # Update state -- only set last_promoted_at on actual promotions
         from synthorg.security.trust.levels import (  # noqa: PLC0415
             TRUST_LEVEL_RANK,
         )

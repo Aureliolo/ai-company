@@ -56,7 +56,7 @@ def build_output_scan_policy(
                     SECURITY_CONFIG_LOADED,
                     policy_type=policy_type.value,
                     note="output_scan_policy_type=autonomy_tiered "
-                    "but no effective_autonomy — "
+                    "but no effective_autonomy -- "
                     "AutonomyTieredPolicy will fall back to "
                     "RedactPolicy",
                 )

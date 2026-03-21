@@ -1,4 +1,4 @@
-"""Data leak detector rule — finds sensitive file paths and PII."""
+"""Data leak detector rule -- finds sensitive file paths and PII."""
 
 import re
 from datetime import UTC, datetime

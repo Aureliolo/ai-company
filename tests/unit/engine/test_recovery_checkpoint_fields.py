@@ -190,7 +190,7 @@ class TestFailAndReassignFinalize:
 
     async def test_finalize_is_noop(self) -> None:
         strategy = FailAndReassignStrategy()
-        # Should not raise — no state to clean up
+        # Should not raise -- no state to clean up
         await strategy.finalize("exec-001")
 
     async def test_finalize_idempotent(self) -> None:

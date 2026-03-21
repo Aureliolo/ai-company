@@ -207,7 +207,7 @@ class TestEscalationChainPolicy:
             on_chain_exhausted=TimeoutActionType.DENY,
         )
         item = _make_item()
-        # 10 min — still within first step, should WAIT (not ESCALATE)
+        # 10 min -- still within first step, should WAIT (not ESCALATE)
         result = await policy.determine_action(item, 600.0)
         assert result.action == TimeoutActionType.WAIT
 

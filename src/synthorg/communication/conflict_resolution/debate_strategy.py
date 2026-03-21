@@ -74,7 +74,7 @@ class DebateResolver:
         self._judge_evaluator = judge_evaluator
 
     async def resolve(self, conflict: Conflict) -> ConflictResolution:
-        """Resolve via debate — judge picks a winner.
+        """Resolve via debate -- judge picks a winner.
 
         Args:
             conflict: The conflict to resolve.
@@ -203,7 +203,7 @@ class DebateResolver:
             )
             if lcm is None:
                 msg = (
-                    "No shared manager for conflict participants — cannot select judge"
+                    "No shared manager for conflict participants -- cannot select judge"
                 )
                 logger.warning(
                     CONFLICT_HIERARCHY_ERROR,
@@ -236,7 +236,7 @@ class DebateResolver:
             )
             return agent_id
 
-        # Named agent — not validated against hierarchy at config time;
+        # Named agent -- not validated against hierarchy at config time;
         # invalid names surface at evaluation time.
         return self._config.judge
 
@@ -258,7 +258,7 @@ class DebateResolver:
         return JudgeDecision(
             winning_agent_id=best.agent_id,
             reasoning=(
-                f"Debate fallback: authority-based judging — "
+                f"Debate fallback: authority-based judging -- "
                 f"{best.agent_id} ({best.agent_level}) has highest "
                 f"seniority"
             ),

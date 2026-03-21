@@ -92,7 +92,7 @@ func FuzzValidateParams(f *testing.F) {
 			DockerSock:  dockerSock,
 		}
 
-		// Must not panic — either returns nil or a non-nil error.
+		// Must not panic -- either returns nil or a non-nil error.
 		err := validateParams(p)
 		if err != nil {
 			return

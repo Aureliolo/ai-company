@@ -69,7 +69,7 @@ class TestCooperativeTimeoutRequestShutdown:
         assert strategy.get_strategy_type() == "cooperative_timeout"
 
 
-# ── execute_shutdown — cooperative exit ──────────────────────────
+# ── execute_shutdown -- cooperative exit ──────────────────────────
 
 
 @pytest.mark.unit
@@ -105,7 +105,7 @@ class TestCooperativeTimeoutExecuteCooperative:
         assert result.tasks_interrupted == 0
 
 
-# ── execute_shutdown — force cancel ──────────────────────────────
+# ── execute_shutdown -- force cancel ──────────────────────────────
 
 
 @pytest.mark.unit
@@ -148,7 +148,7 @@ class TestCooperativeTimeoutForceCancel:
         assert result.tasks_interrupted >= 1
 
 
-# ── execute_shutdown — cleanup callbacks ─────────────────────────
+# ── execute_shutdown -- cleanup callbacks ─────────────────────────
 
 
 @pytest.mark.unit
@@ -454,7 +454,7 @@ class TestLogPostCancelExceptions:
         task.cancelled.return_value = False
         task.exception.side_effect = asyncio.InvalidStateError
         task.get_name.return_value = "test-task"
-        # Should not raise — logs at DEBUG instead of silent pass
+        # Should not raise -- logs at DEBUG instead of silent pass
         strategy._log_post_cancel_exceptions({task})
 
 

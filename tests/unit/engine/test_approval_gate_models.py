@@ -1,4 +1,4 @@
-"""Tests for approval gate models — EscalationInfo and ResumePayload."""
+"""Tests for approval gate models -- EscalationInfo and ResumePayload."""
 
 import pytest
 from pydantic import ValidationError

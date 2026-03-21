@@ -147,8 +147,8 @@ npm --prefix web run build       # production build
 
 Recommended extensions:
 
-- **Ruff** (`charliermarsh.ruff`) — linting and formatting
-- **Pylance** (`ms-python.vscode-pylance`) — type checking and IntelliSense
+- **Ruff** (`charliermarsh.ruff`) -- linting and formatting
+- **Pylance** (`ms-python.vscode-pylance`) -- type checking and IntelliSense
 
 Both Pylance (pyright) and mypy are configured in strict mode. They complement each other: Pylance provides real-time IDE feedback while mypy runs in CI as the authoritative check.
 
@@ -163,6 +163,6 @@ VS Code should auto-detect the `.venv` directory. If not, use **Python: Select I
 
 ## Next Steps
 
-- [CONTRIBUTING.md](https://github.com/Aureliolo/synthorg/blob/main/.github/CONTRIBUTING.md) — branch, commit, and PR workflow
-- [CLAUDE.md](https://github.com/Aureliolo/synthorg/blob/main/CLAUDE.md) — code conventions and quick command reference
-- [Design Specification](design/index.md) — full high-level design specification
+- [CONTRIBUTING.md](https://github.com/Aureliolo/synthorg/blob/main/.github/CONTRIBUTING.md) -- branch, commit, and PR workflow
+- [CLAUDE.md](https://github.com/Aureliolo/synthorg/blob/main/CLAUDE.md) -- code conventions and quick command reference
+- [Design Specification](design/index.md) -- full high-level design specification

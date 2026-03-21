@@ -372,7 +372,7 @@ class TestPlanExecuteLoopBudget:
             nonlocal call_count
             call_count += 1
             # Budget checks: (1) before plan, (2) in step mini-ReAct
-            # Exhaust on the second check — during step execution
+            # Exhaust on the second check -- during step execution
             return call_count > 1
 
         provider = mock_provider_factory(
@@ -425,7 +425,7 @@ class TestPlanExecuteLoopShutdown:
             nonlocal call_count
             call_count += 1
             # Shutdown checks: (1) before plan, (2) in step mini-ReAct
-            # Trigger on second check — during step execution
+            # Trigger on second check -- during step execution
             return call_count > 1
 
         provider = mock_provider_factory(
@@ -750,7 +750,7 @@ class TestPlanExecuteLoopProtocol:
 
 @pytest.mark.unit
 class TestPlanExecuteMultiStepWithTools:
-    """Multi-step plan where steps use tools — integration-style test."""
+    """Multi-step plan where steps use tools -- integration-style test."""
 
     async def test_multi_step_with_tool_calls(
         self,

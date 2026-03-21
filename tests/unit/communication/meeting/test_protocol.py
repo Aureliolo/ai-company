@@ -77,7 +77,7 @@ class TestTypeAliases:
     """Tests for AgentCaller and TaskCreator type aliases."""
 
     def test_agent_caller_is_callable(self) -> None:
-        # AgentCaller is a type alias — just verify it's importable
+        # AgentCaller is a type alias -- just verify it's importable
         assert AgentCaller is not None
 
     def test_task_creator_is_callable(self) -> None:

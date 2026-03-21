@@ -54,7 +54,7 @@ def _make_definition(  # noqa: PLR0913
     validator_pattern: str | None = None,
 ) -> SettingDefinition:
     # Only use the "100.0" default when type is FLOAT and no explicit
-    # default was provided — avoids model_validator rejecting mismatched
+    # default was provided -- avoids model_validator rejecting mismatched
     # defaults (e.g. "100.0" for an ENUM type).
     resolved_default: str | None
     if default is _UNSET:
@@ -196,7 +196,7 @@ class TestCache:
         mock_repo.get.return_value = ("200.0", "2026-03-16T10:00:00Z")
         await service.get("budget", "total_monthly")
         await service.get("budget", "total_monthly")
-        # Only one DB call — second was cached
+        # Only one DB call -- second was cached
         assert mock_repo.get.call_count == 1
 
     async def test_cache_invalidated_on_set(
@@ -702,7 +702,7 @@ class TestCiphertextLeakGuard:
         mock_repo.get_namespace.return_value = (
             ("api_key", ciphertext, "2026-01-01T00:00:00Z"),
         )
-        # Service without encryptor — batch should mask, not leak
+        # Service without encryptor -- batch should mask, not leak
         svc = SettingsService(
             repository=mock_repo,
             registry=registry,
@@ -726,7 +726,7 @@ class TestCiphertextLeakGuard:
                 yaml_path=None,
             )
         )
-        # Use a different key's ciphertext — decrypt will fail
+        # Use a different key's ciphertext -- decrypt will fail
         other_enc = SettingsEncryptor(Fernet.generate_key())
         bad_ciphertext = other_enc.encrypt("secret")
         mock_repo.get_namespace.return_value = (

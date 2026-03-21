@@ -6,7 +6,7 @@ description: Security architecture, hardening measures, and compliance posture o
 # Security
 
 SynthOrg is designed to run autonomous AI agents with real tools and real consequences.
-Security is not an afterthought — it is a core architectural concern woven through
+Security is not an afterthought -- it is a core architectural concern woven through
 every layer of the framework, from the application runtime to the CI/CD pipeline
 and container infrastructure.
 
@@ -26,7 +26,7 @@ with five built-in detectors:
 | **Credential Detector** | API keys, passwords, tokens, private keys in arguments or output |
 | **Path Traversal Detector** | `../`, absolute paths, symlink escape attempts |
 | **Destructive Operation Detector** | `rm -rf`, `git reset --hard`, destructive shell commands |
-| **Data Leak Detector** | PII patterns — emails, SSNs, credit card numbers, phone numbers |
+| **Data Leak Detector** | PII patterns -- emails, SSNs, credit card numbers, phone numbers |
 
 Rules are evaluated sequentially by priority. The first `DENY` or `ESCALATE`
 verdict wins. If a rule raises an exception, the engine defaults to **DENY**
@@ -37,30 +37,30 @@ verdict wins. If a rule raises an exception, the engine defaults to **DENY**
 After tool execution, the **output scanner** inspects results for sensitive data
 using the same credential and PII patterns. Configurable response policies:
 
-- **Redact** — replace matches with `[REDACTED]` before returning to the agent
-- **Withhold** — suppress the entire output
-- **Log-only** — record the finding, return unmodified output
-- **Autonomy-tiered** — different policies per autonomy level
+- **Redact** -- replace matches with `[REDACTED]` before returning to the agent
+- **Withhold** -- suppress the entire output
+- **Log-only** -- record the finding, return unmodified output
+- **Autonomy-tiered** -- different policies per autonomy level
 
 ### Progressive Trust
 
 Agents start with restricted permissions and earn autonomy over time.
 Four pluggable strategies behind the `TrustStrategy` protocol:
 
-1. **Disabled** — all actions require approval regardless of history
-2. **Weighted** — accumulate a trust score from successful actions
-3. **Per-category** — independent trust tracks per action type (read, write, delete)
-4. **Milestone gates** — unlock action categories after specific success thresholds
+1. **Disabled** -- all actions require approval regardless of history
+2. **Weighted** -- accumulate a trust score from successful actions
+3. **Per-category** -- independent trust tracks per action type (read, write, delete)
+4. **Milestone gates** -- unlock action categories after specific success thresholds
 
 ### Approval Workflow
 
 Actions that trigger `ESCALATE` verdicts create approval items with configurable
 timeout policies:
 
-- **Wait forever** — block until a human responds
-- **Auto-deny** — reject after timeout
-- **Tiered** — different timeouts by risk level
-- **Escalation chain** — escalate to supervisor on timeout
+- **Wait forever** -- block until a human responds
+- **Auto-deny** -- reject after timeout
+- **Tiered** -- different timeouts by risk level
+- **Escalation chain** -- escalate to supervisor on timeout
 
 Tasks are parked (suspended) while awaiting approval and resumed automatically
 on resolution.
@@ -70,8 +70,8 @@ on resolution.
 - **JWT bearer tokens** with password-change detection (`pwd_sig` claim)
 - **API key authentication** via HMAC-SHA256 deterministic hashing
 - **Argon2id password hashing** (time_cost=3, memory_cost=64 MB, parallelism=4)
-- **Timing-attack prevention** — dummy hash computation for non-existent users
-- **Forced password change** — `must_change_password` flag blocks API access
+- **Timing-attack prevention** -- dummy hash computation for non-existent users
+- **Forced password change** -- `must_change_password` flag blocks API access
 - **One-time WebSocket tickets** -- short-lived (30 s), single-use, cryptographically random tokens exchanged via ``POST /api/v1/auth/ws-ticket`` (requires valid JWT). Prevents long-lived JWT leakage by replacing it with an ephemeral ticket in the WebSocket query parameter. In-memory store, monotonic clock expiry, per-process scope. JWT/API key auth middleware is scoped to HTTP requests only (`ScopeType.HTTP`) -- WebSocket connections bypass the middleware entirely and rely on handler-level ticket validation.
 - **Rate limiting** -- configurable per-deployment (default: 100 req/min). The WebSocket path is excluded from rate limiting -- HTTP-style per-request rate limiting is inappropriate for persistent WebSocket connections. Auth-sensitive endpoints (``/auth/login``, ``/auth/setup``, ``/auth/change-password``) have a stricter route-level rate limit of 10 req/min to mitigate credential brute-forcing.
 
@@ -97,13 +97,13 @@ All API responses include:
 
 ### Distroless Runtime
 
-The backend runs on a **Chainguard distroless Python image** — no shell,
+The backend runs on a **Chainguard distroless Python image** -- no shell,
 no package manager, minimal attack surface. The build uses a 3-stage
 Dockerfile:
 
-1. **Builder** — compiles dependencies and project wheel
-2. **Setup** — fixes paths and creates directories (dev image with shell)
-3. **Runtime** — distroless production image (no shell, UID 65532)
+1. **Builder** -- compiles dependencies and project wheel
+2. **Setup** -- fixes paths and creates directories (dev image with shell)
+3. **Runtime** -- distroless production image (no shell, UID 65532)
 
 ### CIS Docker Benchmark
 
@@ -143,15 +143,15 @@ Resource limits (`deploy.resources.limits`) cap memory, CPU, and PIDs per contai
 | GitHub Actions | Dependabot | Daily updates, pinned by SHA |
 | Pre-commit hooks | Dependabot | Daily updates, version-pinned `rev:` tags |
 | License | `dependency-review-action` | Permissive-only allowlist (MIT, Apache-2.0, BSD, ISC, etc.) |
-| Supply chain | Socket.dev | GitHub App — detects typosquatting, malware, suspicious ownership changes |
+| Supply chain | Socket.dev | GitHub App -- detects typosquatting, malware, suspicious ownership changes |
 
 ### Container Scanning
 
 Every container image is scanned by **two independent tools** before push:
 
-- **Trivy** — CRITICAL = hard fail, HIGH = warn-only (`.trivyignore.yaml` for vetted CVEs)
-- **Grype** — critical severity cutoff (`.grype.yaml` for overrides)
-- **CIS Docker Benchmark** — `trivy image --compliance docker-cis-1.6.0` run against all three images (informational; will become enforced once baseline is clean)
+- **Trivy** -- CRITICAL = hard fail, HIGH = warn-only (`.trivyignore.yaml` for vetted CVEs)
+- **Grype** -- critical severity cutoff (`.grype.yaml` for overrides)
+- **CIS Docker Benchmark** -- `trivy image --compliance docker-cis-1.6.0` run against all three images (informational; will become enforced once baseline is clean)
 
 Images are **only pushed to GHCR after both vulnerability scanners pass**.
 
@@ -186,11 +186,11 @@ Every release includes CycloneDX JSON SBOMs for all released artifacts:
 
 Every commit is checked locally before it reaches the remote:
 
-- **gitleaks** — secret detection on every commit
-- **hadolint** — Dockerfile linting
-- **ruff** — Python linting and formatting
-- **commitizen** — conventional commit message enforcement
-- **Large file prevention** — blocks files over 1 MB
+- **gitleaks** -- secret detection on every commit
+- **hadolint** -- Dockerfile linting
+- **ruff** -- Python linting and formatting
+- **commitizen** -- conventional commit message enforcement
+- **Large file prevention** -- blocks files over 1 MB
 
 Pre-push hooks run **mypy type checking** and **unit tests** as a fast gate.
 
@@ -242,7 +242,7 @@ client and proxy caching since they serve public, non-user-specific content.
 The `protect-main` ruleset enforces:
 
 - **Signed commits** required
-- **No direct pushes** — all changes via pull request
+- **No direct pushes** -- all changes via pull request
 - **1 approving review** required (stale reviews dismissed on push)
 - **`ci-pass` status check** required before merge
 - **No branch deletion** or non-fast-forward pushes

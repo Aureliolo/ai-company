@@ -225,12 +225,12 @@ func TestRemoveMarkerBlock(t *testing.T) {
 			want:  "line1",
 		},
 		{
-			name:  "no marker — unchanged",
+			name:  "no marker -- unchanged",
 			input: "export PATH=/usr/bin\n",
 			want:  "export PATH=/usr/bin\n",
 		},
 		{
-			name:    "file does not exist — no-op",
+			name:    "file does not exist -- no-op",
 			missing: true,
 		},
 		{

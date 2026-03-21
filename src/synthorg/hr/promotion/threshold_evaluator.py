@@ -158,7 +158,7 @@ class ThresholdEvaluator:
             )
         )
 
-        # Success rate criterion — use most recent window value
+        # Success rate criterion -- use most recent window value
         success_rate = 0.0
         for window in snapshot.windows:
             if window.success_rate is not None:
@@ -178,7 +178,7 @@ class ThresholdEvaluator:
             )
         )
 
-        # Tasks completed criterion — best single-window count
+        # Tasks completed criterion -- best single-window count
         max_tasks_completed = 0.0
         for window in snapshot.windows:
             max_tasks_completed = max(

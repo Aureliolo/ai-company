@@ -1,6 +1,6 @@
 /**
  * Shared client-side lockout logic for Login and Setup pages.
- * This is a UX hint only — real brute-force protection is server-side.
+ * This is a UX hint only -- real brute-force protection is server-side.
  */
 
 import { ref, computed, onUnmounted } from 'vue'

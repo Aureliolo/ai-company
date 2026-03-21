@@ -11,7 +11,7 @@ class SandboxResult(BaseModel):
         stderr: Captured standard error.
         returncode: Process exit code.
         timed_out: Whether the process was killed due to timeout.
-        success: Computed — ``True`` when returncode is 0 and not timed out.
+        success: Computed -- ``True`` when returncode is 0 and not timed out.
     """
 
     model_config = ConfigDict(frozen=True)

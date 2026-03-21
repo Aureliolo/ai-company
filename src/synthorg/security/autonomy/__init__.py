@@ -1,4 +1,4 @@
-"""Autonomy level management — presets, resolution, and runtime changes.
+"""Autonomy level management -- presets, resolution, and runtime changes.
 
 Note: ``AutonomyResolver`` and ``HumanOnlyPromotionStrategy`` are **not**
 re-exported here to avoid a circular import chain

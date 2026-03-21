@@ -101,7 +101,7 @@ class CheckpointRecoveryStrategy:
             context: Full agent context at the time of failure.
 
         Returns:
-            ``RecoveryResult`` — either resumable or fallback.
+            ``RecoveryResult`` -- either resumable or fallback.
         """
         execution_id = context.execution_id
         task_id = task_execution.task.id
@@ -177,7 +177,7 @@ class CheckpointRecoveryStrategy:
 
         Only ``PersistenceError`` is swallowed (returns ``None`` to
         trigger fallback).  Other exceptions (e.g. ``ValueError``)
-        propagate — they indicate programming errors, not transient
+        propagate -- they indicate programming errors, not transient
         storage failures.
         """
         try:
@@ -239,7 +239,7 @@ class CheckpointRecoveryStrategy:
             self._resume_counts[execution_id] = new_count
 
             # Evict oldest entry (FIFO).  LRU would be more precise
-            # but FIFO is acceptable given the 10k safety bound — the
+            # but FIFO is acceptable given the 10k safety bound -- the
             # dict only contains active executions that have crashed at
             # least once, which should be far fewer than 10k.
             if len(self._resume_counts) > _MAX_TRACKED_EXECUTIONS:

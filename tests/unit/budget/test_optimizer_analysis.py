@@ -1,4 +1,4 @@
-"""Tests for CostOptimizer — anomaly detection and efficiency analysis."""
+"""Tests for CostOptimizer -- anomaly detection and efficiency analysis."""
 
 from datetime import timedelta
 

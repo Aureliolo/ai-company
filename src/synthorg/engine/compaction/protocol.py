@@ -1,6 +1,6 @@
 """Compaction callback type alias.
 
-Follows the ``CheckpointCallback`` pattern — a simple callable type
+Follows the ``CheckpointCallback`` pattern -- a simple callable type
 alias rather than a protocol class, since the callback has a single
 responsibility with no configuration methods.
 """

@@ -65,13 +65,13 @@ class TestBuildAgendaPrompt:
         assert "1. Topic A" in result
         assert "2. Topic B" in result
         # No em dash separator when no description
-        assert " — " not in result
+        assert " -- " not in result
 
     def test_items_with_descriptions_use_em_dash(self) -> None:
         items = (MeetingAgendaItem(title="Auth", description="OAuth flow"),)
         agenda = MeetingAgenda(title="Design", items=items)
         result = build_agenda_prompt(agenda)
-        assert "1. Auth — OAuth flow" in result
+        assert "1. Auth -- OAuth flow" in result
 
     def test_items_with_presenter_id(self) -> None:
         """Presenter ID is included in the formatted prompt."""

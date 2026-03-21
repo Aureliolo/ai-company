@@ -160,7 +160,7 @@ class TestTransitionGuardEdgeCases:
     def test_module_level_guard_detects_missing_status(self) -> None:
         """The module-level guard raises ValueError for missing entries.
 
-        We verify by checking the guard logic directly — adding a new
+        We verify by checking the guard logic directly -- adding a new
         member at runtime would be impractical.
         """
         missing = set(TaskStatus) - set(VALID_TRANSITIONS)

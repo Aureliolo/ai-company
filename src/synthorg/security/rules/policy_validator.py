@@ -1,4 +1,4 @@
-"""Policy validator rule — checks action types against config lists."""
+"""Policy validator rule -- checks action types against config lists."""
 
 from datetime import UTC, datetime
 from typing import Final
@@ -23,7 +23,7 @@ _RULE_NAME: Final[str] = "policy_validator"
 class PolicyValidator:
     """Checks action type against hard-deny and auto-approve lists.
 
-    This is the first rule evaluated — it provides the fast path for
+    This is the first rule evaluated -- it provides the fast path for
     action types that are always denied or always approved.
 
     Hard deny takes priority over auto approve.

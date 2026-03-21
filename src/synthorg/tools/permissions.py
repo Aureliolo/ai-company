@@ -1,4 +1,4 @@
-"""Tool permission checker — enforces access-level gating.
+"""Tool permission checker -- enforces access-level gating.
 
 Resolves tool permissions using a priority-based system:
 1. If tool name is in ``denied`` → **DENIED**
@@ -79,7 +79,7 @@ class ToolPermissionChecker:
                         ToolCategory.ANALYTICS,
                     }
                 ),
-                # all categories — new ToolCategory members are auto-included;
+                # all categories -- new ToolCategory members are auto-included;
                 # review new categories with ELEVATED access in mind
                 ToolAccessLevel.ELEVATED: frozenset(ToolCategory),
                 ToolAccessLevel.CUSTOM: frozenset(),

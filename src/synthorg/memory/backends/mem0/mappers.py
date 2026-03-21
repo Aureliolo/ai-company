@@ -1,6 +1,6 @@
 """Bidirectional mapping between SynthOrg domain models and Mem0 dicts.
 
-Stateless mapping functions — no I/O, no persistent side effects.
+Stateless mapping functions -- no I/O, no persistent side effects.
 Each mapper handles one direction of the conversion so the adapter
 stays thin.
 """
@@ -427,7 +427,7 @@ def apply_post_filters(
     Filters expired entries, then applies category, tags, time range,
     and minimum relevance filters.  Entries with
     ``relevance_score=None`` (e.g. from ``get_all``) are never
-    excluded by ``min_relevance`` — the filter only applies when a
+    excluded by ``min_relevance`` -- the filter only applies when a
     score is present.
 
     Time range uses a half-open interval: entries with
@@ -627,7 +627,7 @@ def resolve_publisher(item: dict[str, Any]) -> str:
         logger.debug(
             MEMORY_MODEL_INVALID,
             memory_id=item.get("id", "?"),
-            reason="no publisher metadata — attributing to shared namespace",
+            reason="no publisher metadata -- attributing to shared namespace",
         )
         return SHARED_NAMESPACE
     return publisher
@@ -664,7 +664,7 @@ def check_delete_ownership(
     owner = existing.get("user_id")
     if owner is None:
         msg = (
-            f"Memory {memory_id} has no user_id — ownership "
+            f"Memory {memory_id} has no user_id -- ownership "
             f"unverifiable, refusing deletion"
         )
         logger.warning(
@@ -676,7 +676,7 @@ def check_delete_ownership(
         raise MemoryStoreError(msg)
     if str(owner) == SHARED_NAMESPACE:
         msg = (
-            f"Memory {memory_id} belongs to the shared namespace — "
+            f"Memory {memory_id} belongs to the shared namespace -- "
             f"use retract() to remove shared entries"
         )
         logger.warning(

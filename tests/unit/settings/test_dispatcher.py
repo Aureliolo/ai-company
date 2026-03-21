@@ -224,7 +224,7 @@ async def _wait_for_queue_drain(
 ) -> None:
     """Wait for the bus queue to empty (for negative/skip assertions).
 
-    Used when no subscriber is expected to be called — we wait for the
+    Used when no subscriber is expected to be called -- we wait for the
     dispatcher to consume the message from the queue, then give it a
     tick to finish the dispatch decision (skip/restart_required).
     """
@@ -299,7 +299,7 @@ class TestDispatchRouting:
     ) -> None:
         msg = _settings_message("providers", "routing_strategy")
         bus.enqueue(_envelope(msg))
-        # provider_sub matches and gets called — wait on it
+        # provider_sub matches and gets called -- wait on it
         await _wait_for_subscriber(provider_sub)
         assert len(memory_sub.calls) == 0
 

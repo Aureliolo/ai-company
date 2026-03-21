@@ -1,4 +1,4 @@
-"""Authentication service — password hashing, JWT ops, API key hashing."""
+"""Authentication service -- password hashing, JWT ops, API key hashing."""
 
 import asyncio
 import hashlib
@@ -152,9 +152,9 @@ class AuthService:
     def create_token(self, user: User) -> tuple[str, int]:
         """Create a JWT for the given user.
 
-        The token includes a ``pwd_sig`` claim — a 16-character
+        The token includes a ``pwd_sig`` claim -- a 16-character
         truncated SHA-256 of the stored password hash.  This is
-        plain SHA-256, not HMAC — the password hash is already a
+        plain SHA-256, not HMAC -- the password hash is already a
         high-entropy Argon2id output, and the claim is protected
         by the JWT signature.  The auth middleware validates this
         claim on every request so that tokens issued before a

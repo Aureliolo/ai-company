@@ -109,7 +109,7 @@ class LlmCalibrationSampler:
         """Sample and evaluate a collaboration interaction via LLM.
 
         Skips records without ``interaction_summary``.  Provider failures
-        are caught and logged — this is best-effort calibration.
+        are caught and logged -- this is best-effort calibration.
 
         Args:
             record: The collaboration metric record to evaluate.

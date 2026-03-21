@@ -1,4 +1,4 @@
-"""Project controller (stub — no ProjectRepository yet)."""
+"""Project controller (stub -- no ProjectRepository yet)."""
 
 from litestar import Controller, Response, get
 from litestar.datastructures import State  # noqa: TC002
@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 class ProjectController(Controller):
     """Stub controller for project management.
 
-    Projects are not yet persisted — returns empty results.
+    Projects are not yet persisted -- returns empty results.
     Full CRUD will be added when a ``ProjectRepository`` exists.
     """
 
@@ -30,7 +30,7 @@ class ProjectController(Controller):
         offset: PaginationOffset = 0,
         limit: PaginationLimit = 50,
     ) -> PaginatedResponse[object]:
-        """List projects (empty — no repository yet).
+        """List projects (empty -- no repository yet).
 
         Args:
             state: Application state.

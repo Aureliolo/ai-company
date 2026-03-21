@@ -1,4 +1,4 @@
-"""Meeting scheduler — background service for periodic and event-triggered meetings.
+"""Meeting scheduler -- background service for periodic and event-triggered meetings.
 
 Bridges meeting configuration and meeting execution by scheduling
 frequency-based meetings as periodic asyncio tasks and providing
@@ -454,7 +454,7 @@ class MeetingScheduler:
 
         Args:
             meeting_type: The meeting type configuration.
-            context: Optional context dict — keys become agenda items.
+            context: Optional context dict -- keys become agenda items.
 
         Returns:
             A meeting agenda with title and optional context items.

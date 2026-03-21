@@ -27,14 +27,14 @@ class ToolExecutionResult(BaseModel):
 
     This is the internal result type returned by ``BaseTool.execute``.
     The invoker converts it into a ``ToolResult`` for the LLM, carrying
-    only ``content`` and ``is_error`` — ``metadata`` is not forwarded
+    only ``content`` and ``is_error`` -- ``metadata`` is not forwarded
     to the LLM and is available only for programmatic consumers.
 
     Note:
         The ``metadata`` dict is shallowly frozen by Pydantic's
         ``frozen=True``.  Tool implementations construct and return
         this model, but the invoker converts it into a provider-facing
-        ``ToolResult`` — ``metadata`` is not forwarded to LLM providers
+        ``ToolResult`` -- ``metadata`` is not forwarded to LLM providers
         or other external boundaries, so no additional boundary copy
         is needed at this layer.
 

@@ -46,7 +46,7 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	statePath := config.StatePath(safeDir)
 	if _, err := os.Stat(statePath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			out.Warn("Not initialized — no config found at " + statePath)
+			out.Warn("Not initialized -- no config found at " + statePath)
 			out.Hint("Run 'synthorg init' to set up")
 			return nil
 		}

@@ -77,7 +77,7 @@ class StagnationConfig(BaseModel):
         if self.min_tool_turns > self.window_size:
             msg = (
                 f"min_tool_turns ({self.min_tool_turns}) exceeds "
-                f"window_size ({self.window_size}) — stagnation "
+                f"window_size ({self.window_size}) -- stagnation "
                 f"check will never fire within the window"
             )
             raise ValueError(msg)

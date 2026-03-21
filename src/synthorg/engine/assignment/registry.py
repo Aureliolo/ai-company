@@ -39,7 +39,7 @@ logger = get_logger(__name__)
 
 _DEFAULT_SCORER = AgentTaskScorer()
 
-# Excludes HierarchicalAssignmentStrategy — it requires a
+# Excludes HierarchicalAssignmentStrategy -- it requires a
 # HierarchyResolver at construction.  Use
 # build_strategy_map(hierarchy=...) to get a complete map
 # that includes all strategies.

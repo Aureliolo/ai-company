@@ -166,7 +166,7 @@ class TestRuleEngineNoMatch:
 
 @pytest.mark.unit
 class TestRuleEngineDeny:
-    """First DENY rule wins — subsequent rules are not evaluated."""
+    """First DENY rule wins -- subsequent rules are not evaluated."""
 
     def test_first_deny_wins(self) -> None:
         deny_rule = _StubRule("deny-first", verdict=_make_deny_verdict("first"))
@@ -207,7 +207,7 @@ class TestRuleEngineDeny:
 
 @pytest.mark.unit
 class TestRuleEngineEscalate:
-    """First ESCALATE rule wins — subsequent rules are not evaluated."""
+    """First ESCALATE rule wins -- subsequent rules are not evaluated."""
 
     def test_first_escalate_wins(self) -> None:
         escalate = _StubRule(

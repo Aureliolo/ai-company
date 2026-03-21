@@ -1,4 +1,4 @@
-"""Action type taxonomy — categories, registry, and validation.
+"""Action type taxonomy -- categories, registry, and validation.
 
 Provides ``ActionTypeCategory`` for the 10 top-level categories and
 ``ActionTypeRegistry`` for validating built-in and custom action types,

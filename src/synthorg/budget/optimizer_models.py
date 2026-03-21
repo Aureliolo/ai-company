@@ -6,7 +6,7 @@ downgrade recommendations, and approval decisions. Used by
 :class:`~synthorg.budget.reports.ReportGenerator`.
 """
 
-from datetime import datetime  # noqa: TC003 — required at runtime by Pydantic
+from datetime import datetime  # noqa: TC003 -- required at runtime by Pydantic
 from enum import StrEnum
 from typing import Self
 

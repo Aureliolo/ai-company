@@ -1,6 +1,6 @@
 """E2E tests: single agent completes real tasks end-to-end.
 
-Validates the core MVP hypothesis — a single agent can complete a real
+Validates the core MVP hypothesis -- a single agent can complete a real
 task through the full execution pipeline (engine, execution loop, real tools,
 cost tracking, task lifecycle).
 """
@@ -335,7 +335,7 @@ class TestMaxTurnsExhausted:
             max_turns=2,
         )
 
-        # MAX_TURNS termination — not a success
+        # MAX_TURNS termination -- not a success
         assert result.is_success is False
         assert result.termination_reason == TerminationReason.MAX_TURNS
         assert result.total_turns == 2
@@ -381,7 +381,7 @@ class TestRealLLMIntegration:
     """Optional smoke test with a real LLM provider.
 
     Skipped unless REAL_LLM_TEST=1 is set; not expected to run in CI.
-    Currently a placeholder — all methods skip until a real provider
+    Currently a placeholder -- all methods skip until a real provider
     is configured via environment variables.
     """
 
@@ -397,5 +397,5 @@ class TestRealLLMIntegration:
                 "(e.g. 'example-large-001') to run this test"
             )
         pytest.skip(
-            f"Real LLM provider integration not yet wired — model={provider_model}"
+            f"Real LLM provider integration not yet wired -- model={provider_model}"
         )

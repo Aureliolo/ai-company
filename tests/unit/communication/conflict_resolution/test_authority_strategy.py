@@ -162,7 +162,7 @@ class TestAuthorityResolverHierarchy:
             ),
         )
         resolution = await resolver.resolve(conflict)
-        # backend_lead is closer to LCM (cto) — depth 0 (IS the LCM) or 1
+        # backend_lead is closer to LCM (cto) -- depth 0 (IS the LCM) or 1
         assert resolution.winning_agent_id == "backend_lead"
 
 
@@ -299,7 +299,7 @@ class TestAuthorityResolverDissentRecord:
     ) -> None:
         """Cross-department flag triggers logging but resolution works."""
         resolver = AuthorityResolver(hierarchy=hierarchy)
-        # sr_dev (eng, SENIOR) vs qa_eng (qa, JUNIOR) — different seniority
+        # sr_dev (eng, SENIOR) vs qa_eng (qa, JUNIOR) -- different seniority
         conflict = make_conflict(
             positions=(
                 make_position(

@@ -75,7 +75,7 @@ class ProviderCostModel(StrEnum):
         LOCAL: Zero monetary cost; only hardware constraints.
     """
 
-    PER_TOKEN = "per_token"  # noqa: S105 — billing concept, not a secret
+    PER_TOKEN = "per_token"  # noqa: S105 -- billing concept, not a secret
     SUBSCRIPTION = "subscription"
     LOCAL = "local"
 
@@ -378,7 +378,7 @@ def window_start(
             now.day,
             tzinfo=UTC,
         )
-    # PER_MONTH — first day of the month
+    # PER_MONTH -- first day of the month
     return datetime(now.year, now.month, 1, tzinfo=UTC)
 
 

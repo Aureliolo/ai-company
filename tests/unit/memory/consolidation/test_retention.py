@@ -86,7 +86,7 @@ class TestRetentionEnforcer:
 
     async def test_mixed_categories(self) -> None:
         working_entry = _make_entry("w1", MemoryCategory.WORKING)
-        # e1 is created but not expired — no assignment needed
+        # e1 is created but not expired -- no assignment needed
 
         backend = AsyncMock()
         backend.retrieve = AsyncMock(

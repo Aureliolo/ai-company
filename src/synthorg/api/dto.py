@@ -244,7 +244,7 @@ class CreateTaskRequest(BaseModel):
 class UpdateTaskRequest(BaseModel):
     """Payload for updating task fields.
 
-    All fields are optional — only provided fields are updated.
+    All fields are optional -- only provided fields are updated.
 
     Attributes:
         title: New title.

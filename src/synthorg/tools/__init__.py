@@ -1,4 +1,4 @@
-"""Tool system — base abstraction, registry, invoker, permissions, and errors."""
+"""Tool system -- base abstraction, registry, invoker, permissions, and errors."""
 
 from .approval_tool import RequestHumanApprovalTool
 from .base import BaseTool, ToolExecutionResult

@@ -490,7 +490,7 @@ class TestOperationInjection:
         assert "503" not in responses
 
     def test_delete_skip_409(self, base_schema: dict[str, Any]) -> None:
-        """DELETE is idempotent — conflicts are a create/update concern."""
+        """DELETE is idempotent -- conflicts are a create/update concern."""
         result = inject_rfc9457_responses(base_schema)
         responses = result["paths"]["/api/v1/tasks/{task_id}"]["delete"]["responses"]
         assert "409" not in responses

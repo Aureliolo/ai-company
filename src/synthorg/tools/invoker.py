@@ -1,4 +1,4 @@
-"""Tool invoker — validates and executes tool calls.
+"""Tool invoker -- validates and executes tool calls.
 
 Bridges LLM ``ToolCall`` objects with concrete ``BaseTool.execute``
 methods.  Recoverable errors are returned as ``ToolResult(is_error=True)``;
@@ -292,7 +292,7 @@ class ToolInvoker:
         data is detected (including ``LOG_ONLY`` and ``CLEAN``
         outcomes), the original output passes through unchanged.
 
-        Scanner exceptions are caught and fail-closed — a generic error
+        Scanner exceptions are caught and fail-closed -- a generic error
         result is returned to prevent leaking sensitive data.
         """
         if self._security_interceptor is None:
@@ -601,7 +601,7 @@ class ToolInvoker:
 
         Returns:
             ``None`` on success, or an error ``ToolResult`` if tracking
-            fails — ensures the agent does not silently bypass the
+            fails -- ensures the agent does not silently bypass the
             approval gate.
         """
         if result.metadata.get("requires_parking") is not True:
@@ -617,7 +617,7 @@ class ToolInvoker:
                 tool_call_id=tool_call.id,
                 content=(
                     "Tool signalled requires_parking=True but did not "
-                    "provide an approval_id — cannot track escalation"
+                    "provide an approval_id -- cannot track escalation"
                 ),
                 is_error=True,
             )

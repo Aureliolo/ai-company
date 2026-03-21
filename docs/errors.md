@@ -101,21 +101,21 @@ category-specific section of this page.
 
 Error codes are 4-digit integers grouped by category (first digit = category).
 
-### 1xxx — Authentication { #auth }
+### 1xxx -- Authentication { #auth }
 
 | Code | Name | Description |
 |------|------|-------------|
 | 1000 | `UNAUTHORIZED` | Missing or invalid authentication credentials |
 | 1001 | `FORBIDDEN` | Authenticated but insufficient permissions |
 
-### 2xxx — Validation { #validation }
+### 2xxx -- Validation { #validation }
 
 | Code | Name | Description |
 |------|------|-------------|
 | 2000 | `VALIDATION_ERROR` | Application-level validation failure (e.g. invalid field values) |
 | 2001 | `REQUEST_VALIDATION_ERROR` | Request structure/format validation failure |
 
-### 3xxx — Not Found { #not_found }
+### 3xxx -- Not Found { #not_found }
 
 | Code | Name | Description |
 |------|------|-------------|
@@ -123,32 +123,32 @@ Error codes are 4-digit integers grouped by category (first digit = category).
 | 3001 | `RECORD_NOT_FOUND` | Database record not found |
 | 3002 | `ROUTE_NOT_FOUND` | API endpoint does not exist |
 
-### 4xxx — Conflict { #conflict }
+### 4xxx -- Conflict { #conflict }
 
 | Code | Name | Description |
 |------|------|-------------|
 | 4000 | `RESOURCE_CONFLICT` | Operation conflicts with current resource state |
 | 4001 | `DUPLICATE_RECORD` | Attempted to create a resource that already exists |
 
-### 5xxx — Rate Limit { #rate_limit }
+### 5xxx -- Rate Limit { #rate_limit }
 
 | Code | Name | Description |
 |------|------|-------------|
 | 5000 | `RATE_LIMITED` | Too many requests; back off and retry |
 
-### 6xxx — Budget Exhausted { #budget_exhausted }
+### 6xxx -- Budget Exhausted { #budget_exhausted }
 
 | Code | Name | Description |
 |------|------|-------------|
 | 6000 | `BUDGET_EXHAUSTED` | Budget limit reached; no further spending allowed |
 
-### 7xxx — Provider Error { #provider_error }
+### 7xxx -- Provider Error { #provider_error }
 
 | Code | Name | Description |
 |------|------|-------------|
 | 7000 | `PROVIDER_ERROR` | Upstream LLM provider returned an error |
 
-### 8xxx — Internal { #internal }
+### 8xxx -- Internal { #internal }
 
 | Code | Name | Description |
 |------|------|-------------|
@@ -197,9 +197,9 @@ Nested inside `ApiResponse.error_detail`:
 
 Agents should use `retryable` and `retry_after` for autonomous retry decisions:
 
-- **`retryable: true`** — the request may succeed if retried after a delay
-- **`retry_after`** — when set, wait this many seconds before retrying
-- **`retryable: false`** — do not retry; the request needs to be fixed
+- **`retryable: true`** -- the request may succeed if retried after a delay
+- **`retry_after`** -- when set, wait this many seconds before retrying
+- **`retryable: false`** -- do not retry; the request needs to be fixed
 
 Currently retryable error codes:
 
@@ -210,7 +210,7 @@ Currently retryable error codes:
 
 ### Recommended Retry Strategy
 
-1. Check `retryable` — if `false`, do not retry
+1. Check `retryable` -- if `false`, do not retry
 2. If `retry_after` is set, wait that many seconds
 3. Otherwise, use exponential backoff starting at 1 second
 4. Cap retries at 3 attempts

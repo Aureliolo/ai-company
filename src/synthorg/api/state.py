@@ -387,12 +387,12 @@ class AppState:
         """Replace the provider registry (hot-reload).
 
         Unlike ``set_*`` methods, this does not guard against
-        replacement — it is designed for repeated hot-reload swaps.
-        Atomic under asyncio's cooperative scheduling — no ``await``
+        replacement -- it is designed for repeated hot-reload swaps.
+        Atomic under asyncio's cooperative scheduling -- no ``await``
         points, so no coroutine can observe a partially-updated state.
 
         .. note::
-            Not yet wired to a subscriber — provided for the provider
+            Not yet wired to a subscriber -- provided for the provider
             runtime CRUD feature (issue #451).
 
         Args:
@@ -423,8 +423,8 @@ class AppState:
         """Replace the model router (hot-reload).
 
         Unlike ``set_*`` methods, this does not guard against
-        replacement — it is designed for repeated hot-reload swaps.
-        Atomic under asyncio's cooperative scheduling — no ``await``
+        replacement -- it is designed for repeated hot-reload swaps.
+        Atomic under asyncio's cooperative scheduling -- no ``await``
         points, so no coroutine can observe a partially-updated state.
 
         Args:

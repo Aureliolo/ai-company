@@ -1,4 +1,4 @@
-"""Memory consolidation — strategies, retention, archival, and service.
+"""Memory consolidation -- strategies, retention, archival, and service.
 
 Re-exports the public API so consumers can import from
 ``synthorg.memory.consolidation`` directly.

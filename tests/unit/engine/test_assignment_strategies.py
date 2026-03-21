@@ -613,7 +613,7 @@ class TestMaxConcurrentTasksEnforcement:
             available_agents=(dev,),
             required_skills=("python",),
             max_concurrent_tasks=1,
-            # No workloads — capacity filter should not apply
+            # No workloads -- capacity filter should not apply
         )
 
         result = strategy.assign(request)

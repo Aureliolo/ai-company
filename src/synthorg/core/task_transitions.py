@@ -84,7 +84,7 @@ def validate_transition(current: TaskStatus, target: TaskStatus) -> None:
         )
         msg = (
             f"TaskStatus {current.value!r} has no entry in VALID_TRANSITIONS. "
-            f"This is a configuration error — update task_transitions.py."
+            f"This is a configuration error -- update task_transitions.py."
         )
         raise ValueError(msg)
     allowed = VALID_TRANSITIONS[current]
