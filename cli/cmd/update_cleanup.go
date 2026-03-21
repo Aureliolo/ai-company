@@ -175,6 +175,7 @@ func parseDockerSize(s string) float64 {
 		{"GB", 1e9},
 		{"MB", 1e6},
 		{"kB", 1e3},
+		{"KB", 1e3},
 		{"B", 1},
 	}
 

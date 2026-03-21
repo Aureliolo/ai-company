@@ -104,6 +104,10 @@ func resetSetupFlag(ctx context.Context, info docker.Info, safeDir string) error
 
 	out, err := docker.ComposeExecOutput(ctx, info, safeDir, "exec", "-T", "backend", "python", "-c", pyScript)
 	if err != nil {
+		trimmed := strings.TrimSpace(out)
+		if trimmed != "" {
+			return fmt.Errorf("docker exec failed: %w; output: %s", err, trimmed)
+		}
 		return fmt.Errorf("docker exec failed: %w", err)
 	}
 	if strings.TrimSpace(out) != "ok" {
