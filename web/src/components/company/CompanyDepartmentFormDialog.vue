@@ -135,11 +135,24 @@ function handleSave() {
         </div>
         <div>
           <label for="dept-head" class="mb-1 block text-xs text-slate-400">Head (agent name)</label>
-          <InputText id="dept-head" v-model="head" class="w-full" placeholder="e.g. agent-cto-001" />
+          <InputText
+            id="dept-head"
+            v-model="head"
+            class="w-full"
+            placeholder="e.g. agent-cto-001"
+          />
         </div>
         <div>
           <label for="dept-budget" class="mb-1 block text-xs text-slate-400">Budget %</label>
-          <InputNumber input-id="dept-budget" v-model="budgetPercent" :min="0" :max="100" :use-grouping="false" class="w-full" placeholder="0-100" />
+          <InputNumber
+            input-id="dept-budget"
+            v-model="budgetPercent"
+            :min="0"
+            :max="100"
+            :use-grouping="false"
+            class="w-full"
+            placeholder="0-100"
+          />
         </div>
         <div>
           <label for="dept-autonomy" class="mb-1 block text-xs text-slate-400">Autonomy Level (optional)</label>
@@ -184,8 +197,19 @@ function handleSave() {
 
     <template #footer>
       <div class="flex justify-end gap-2">
-        <Button label="Cancel" severity="secondary" text size="small" @click="emit('update:visible', false)" />
-        <Button :label="mode === 'create' ? 'Add Department' : 'Save'" size="small" :disabled="!canSave" @click="handleSave" />
+        <Button
+          label="Cancel"
+          severity="secondary"
+          text
+          size="small"
+          @click="emit('update:visible', false)"
+        />
+        <Button
+          :label="mode === 'create' ? 'Add Department' : 'Save'"
+          size="small"
+          :disabled="!canSave"
+          @click="handleSave"
+        />
       </div>
     </template>
   </Dialog>

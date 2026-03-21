@@ -57,7 +57,14 @@ function handleReset(entry: SettingEntry) {
   emit('reset', entry)
 }
 
-function handleDirty(payload: { namespace: SettingNamespace; key: string; value: string; isDirty: boolean }) {
+interface DirtyPayload {
+  namespace: SettingNamespace
+  key: string
+  value: string
+  isDirty: boolean
+}
+
+function handleDirty(payload: DirtyPayload) {
   emit('dirty', payload)
 }
 </script>

@@ -90,18 +90,37 @@ function openEditDialog(name: string) {
   formDialogVisible.value = true
 }
 
-async function handleFormSave(data: CreateProviderRequest | UpdateProviderRequest) {
+async function handleFormSave(
+  data: CreateProviderRequest | UpdateProviderRequest,
+) {
   try {
     if (formDialogMode.value === 'create') {
-      await providerStore.createProvider(data as CreateProviderRequest)
-      toast.add({ severity: 'success', summary: 'Provider created', life: 3000 })
+      await providerStore.createProvider(
+        data as CreateProviderRequest,
+      )
+      toast.add({
+        severity: 'success',
+        summary: 'Provider created',
+        life: 3000,
+      })
     } else if (editingProviderName.value) {
-      await providerStore.updateProvider(editingProviderName.value, data as UpdateProviderRequest)
-      toast.add({ severity: 'success', summary: 'Provider updated', life: 3000 })
+      await providerStore.updateProvider(
+        editingProviderName.value,
+        data as UpdateProviderRequest,
+      )
+      toast.add({
+        severity: 'success',
+        summary: 'Provider updated',
+        life: 3000,
+      })
     }
     formDialogVisible.value = false
   } catch (err) {
-    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+    toast.add({
+      severity: 'error',
+      summary: getErrorMessage(err),
+      life: 5000,
+    })
   }
 }
 
@@ -116,48 +135,116 @@ async function handleFormSavePreset(data: CreateFromPresetRequest) {
 }
 
 function handleDelete(name: string) {
+  const shortName = name.slice(0, 64)
   confirm.require({
     header: 'Delete Provider',
-    message: `Are you sure you want to delete provider "${name.slice(0, 64)}"? Credentials will be lost.`,
+    message: `Delete provider "${shortName}"? Credentials will be lost.`,
     acceptClass: 'p-button-danger',
     accept: async () => {
       try {
         await providerStore.deleteProvider(name)
-        toast.add({ severity: 'success', summary: `Provider ${name} deleted`, life: 3000 })
+        toast.add({
+          severity: 'success',
+          summary: `Provider ${shortName} deleted`,
+          life: 3000,
+        })
       } catch (err) {
-        toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+        toast.add({
+          severity: 'error',
+          summary: getErrorMessage(err),
+          life: 5000,
+        })
       }
     },
   })
 }
 
 // Settings handlers
-async function handleSettingSave(entry: SettingEntry, value: string) {
+async function handleSettingSave(
+  entry: SettingEntry, value: string,
+) {
+  const { namespace, key } = entry.definition
   try {
-    await settingsStore.updateSetting(entry.definition.namespace, entry.definition.key, value)
-    toast.add({ severity: 'success', summary: `${entry.definition.key} updated`, life: 3000 })
+    await settingsStore.updateSetting(namespace, key, value)
+    toast.add({
+      severity: 'success',
+      summary: `${key} updated`,
+      life: 3000,
+    })
   } catch (err) {
-    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+    toast.add({
+      severity: 'error',
+      summary: getErrorMessage(err),
+      life: 5000,
+    })
   }
 }
 
 async function handleSettingReset(entry: SettingEntry) {
+  const { namespace, key } = entry.definition
   try {
-    await settingsStore.resetSetting(entry.definition.namespace, entry.definition.key)
-    toast.add({ severity: 'success', summary: `${entry.definition.key} reset to default`, life: 3000 })
+    await settingsStore.resetSetting(namespace, key)
+    toast.add({
+      severity: 'success',
+      summary: `${key} reset to default`,
+      life: 3000,
+    })
   } catch (err) {
-    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+    toast.add({
+      severity: 'error',
+      summary: getErrorMessage(err),
+      life: 5000,
+    })
   }
 }
 
-async function handleCodeViewSave(updates: Array<{ namespace: SettingNamespace; key: string; value: string }>) {
+function handleDirty(payload: {
+  namespace: SettingNamespace
+  key: string
+  value: string
+  isDirty: boolean
+}) {
+  if (payload.isDirty) {
+    settingsStore.setDirty(
+      payload.namespace, payload.key, payload.value,
+    )
+  } else {
+    settingsStore.clearDirty(payload.namespace, payload.key)
+  }
+}
+
+async function handleCodeViewSave(
+  updates: Array<{
+    namespace: SettingNamespace
+    key: string
+    value: string
+  }>,
+) {
   const results = await Promise.allSettled(
-    updates.map((u) => settingsStore.updateSetting(u.namespace, u.key, u.value)),
+    updates.map((u) =>
+      settingsStore.updateSetting(u.namespace, u.key, u.value),
+    ),
   )
-  const saved = results.filter((r) => r.status === 'fulfilled').length
-  const failed = results.filter((r) => r.status === 'rejected').length
-  if (saved > 0) toast.add({ severity: 'success', summary: `${saved} setting(s) saved`, life: 3000 })
-  if (failed > 0) toast.add({ severity: 'error', summary: `${failed} setting(s) failed to save`, life: 5000 })
+  const saved = results.filter(
+    (r) => r.status === 'fulfilled',
+  ).length
+  const failed = results.filter(
+    (r) => r.status === 'rejected',
+  ).length
+  if (saved > 0) {
+    toast.add({
+      severity: 'success',
+      summary: `${saved} setting(s) saved`,
+      life: 3000,
+    })
+  }
+  if (failed > 0) {
+    toast.add({
+      severity: 'error',
+      summary: `${failed} setting(s) failed to save`,
+      life: 5000,
+    })
+  }
 }
 </script>
 
@@ -211,6 +298,7 @@ async function handleCodeViewSave(updates: Array<{ namespace: SettingNamespace; 
           :saving-key="settingsStore.savingKey"
           @save="handleSettingSave"
           @reset="handleSettingReset"
+          @dirty="handleDirty"
         />
         <SettingsCodeView
           v-else

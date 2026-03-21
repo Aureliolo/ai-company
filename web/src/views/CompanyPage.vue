@@ -143,17 +143,28 @@ async function saveAgent(agent: AgentConfigEntry) {
 
 function deleteAgent(index: number) {
   const agent = agents.value[index]
+  const shortName = agent.name.slice(0, 64)
   confirm.require({
     header: 'Delete Agent',
-    message: `Are you sure you want to delete agent "${agent.name.slice(0, 64)}"?`,
+    message: `Are you sure you want to delete agent "${shortName}"?`,
     acceptClass: 'p-button-danger',
     accept: async () => {
       const updated = agents.value.filter((_, i) => i !== index)
       try {
-        await settingsStore.updateSetting('company', 'agents', JSON.stringify(updated))
-        toast.add({ severity: 'success', summary: `Agent ${agent.name.slice(0, 64)} deleted`, life: 3000 })
+        await settingsStore.updateSetting(
+          'company', 'agents', JSON.stringify(updated),
+        )
+        toast.add({
+          severity: 'success',
+          summary: `Agent ${shortName} deleted`,
+          life: 3000,
+        })
       } catch (err) {
-        toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+        toast.add({
+          severity: 'error',
+          summary: getErrorMessage(err),
+          life: 5000,
+        })
       }
     },
   })
@@ -198,17 +209,28 @@ async function saveDept(dept: DepartmentEntry) {
 
 function deleteDept(index: number) {
   const dept = departments.value[index]
+  const shortName = dept.name.slice(0, 64)
   confirm.require({
     header: 'Delete Department',
-    message: `Are you sure you want to delete department "${dept.name.slice(0, 64)}"?`,
+    message: `Are you sure you want to delete department "${shortName}"?`,
     acceptClass: 'p-button-danger',
     accept: async () => {
       const updated = departments.value.filter((_, i) => i !== index)
       try {
-        await settingsStore.updateSetting('company', 'departments', JSON.stringify(updated))
-        toast.add({ severity: 'success', summary: `Department ${dept.name.slice(0, 64)} deleted`, life: 3000 })
+        await settingsStore.updateSetting(
+          'company', 'departments', JSON.stringify(updated),
+        )
+        toast.add({
+          severity: 'success',
+          summary: `Department ${shortName} deleted`,
+          life: 3000,
+        })
       } catch (err) {
-        toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+        toast.add({
+          severity: 'error',
+          summary: getErrorMessage(err),
+          life: 5000,
+        })
       }
     },
   })

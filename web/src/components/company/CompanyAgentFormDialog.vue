@@ -153,7 +153,12 @@ function handleSave() {
         </div>
         <div>
           <label for="agent-role" class="mb-1 block text-xs text-slate-400">Role</label>
-          <InputText id="agent-role" v-model="role" class="w-full" placeholder="e.g. CTO" />
+          <InputText
+            id="agent-role"
+            v-model="role"
+            class="w-full"
+            placeholder="e.g. CTO"
+          />
         </div>
         <div>
           <label for="agent-department" class="mb-1 block text-xs text-slate-400">Department</label>
