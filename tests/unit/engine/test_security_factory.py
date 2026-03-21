@@ -119,7 +119,7 @@ class TestCustomPolicyWiring:
         svc = make_security_interceptor(cfg, _make_audit_log())
 
         assert svc is not None
-        engine = svc._rule_engine  # type: ignore[union-attr]
+        engine = svc._rule_engine  # type: ignore[attr-defined]
         custom_rules = [r for r in engine._rules if isinstance(r, CustomPolicyRule)]
         assert len(custom_rules) == 1
         assert custom_rules[0].name == "custom_policy:block-deploy"
@@ -147,7 +147,7 @@ class TestCustomPolicyWiring:
         svc = make_security_interceptor(cfg, _make_audit_log())
 
         assert svc is not None
-        engine = svc._rule_engine  # type: ignore[union-attr]
+        engine = svc._rule_engine  # type: ignore[attr-defined]
         custom_rules = [r for r in engine._rules if isinstance(r, CustomPolicyRule)]
         assert len(custom_rules) == 0
 
@@ -178,7 +178,7 @@ class TestCustomPolicyWiring:
         svc = make_security_interceptor(cfg, _make_audit_log())
 
         assert svc is not None
-        engine = svc._rule_engine  # type: ignore[union-attr]
+        engine = svc._rule_engine  # type: ignore[attr-defined]
         rules = engine._rules
 
         # Find positions
@@ -218,7 +218,7 @@ class TestCustomPolicyWiring:
         svc = make_security_interceptor(cfg, _make_audit_log())
 
         assert svc is not None
-        engine = svc._rule_engine  # type: ignore[union-attr]
+        engine = svc._rule_engine  # type: ignore[attr-defined]
         rules = engine._rules
 
         detector_idx = next(

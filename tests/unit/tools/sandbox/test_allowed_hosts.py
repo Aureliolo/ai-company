@@ -1,6 +1,7 @@
 """Tests for sandbox allowed_hosts network enforcement in container config."""
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -17,7 +18,7 @@ def _build_config(
     allowed_hosts: tuple[str, ...] = ("example.com:443",),
     dns_allowed: bool = True,
     loopback_allowed: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     """Build container config for the given sandbox settings."""
     config = DockerSandboxConfig(
         network=network,  # type: ignore[arg-type]
