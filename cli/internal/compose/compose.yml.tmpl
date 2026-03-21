@@ -84,7 +84,7 @@ services:
         condition: service_healthy
     volumes:
       - "{{.DockerSock}}:/var/run/docker.sock:ro"
-    user: "65532:65532"
+    user: "10001:10001"
     security_opt:
       - no-new-privileges:true
     cap_drop:
