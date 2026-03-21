@@ -6,6 +6,7 @@ require (
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/google/go-containerregistry v0.21.3
+	github.com/mattn/go-isatty v0.0.20
 	github.com/mattn/go-runewidth v0.0.21
 	github.com/sigstore/protobuf-specs v0.5.0
 	github.com/sigstore/sigstore-go v1.1.4
@@ -72,7 +73,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.18.4 // indirect
 	github.com/lucasb-eyer/go-colorful v1.3.0 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect

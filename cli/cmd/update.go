@@ -456,10 +456,11 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 		return restartErr
 	}
 
-	// Only offer old image cleanup when the new images are confirmed running.
-	// Removing images while old containers are still active would break them.
+	// Show a hint about old images if they exceed the size threshold.
+	// Actual cleanup is deferred to 'synthorg cleanup' to avoid removing
+	// images that might still be referenced by other containers.
 	if restarted {
-		return cleanupOldImages(cmd, info, updatedState)
+		hintOldImages(cmd, info, updatedState)
 	}
 	return nil
 }
@@ -522,11 +523,13 @@ func pullAndPersist(ctx context.Context, cmd *cobra.Command, info docker.Info, s
 		return err
 	}
 
-	out.Step(fmt.Sprintf("Pulling container images (%s)...", tag))
-	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
+	sp := out.StartSpinner(fmt.Sprintf("Pulling container images (%s)...", tag))
+	if err := composeRunQuiet(ctx, info, safeDir, "pull"); err != nil {
+		sp.Error("Failed to pull images")
 		rollback()
 		return fmt.Errorf("pulling images: %w", err)
 	}
+	sp.Success(fmt.Sprintf("Images pulled (%s)", tag))
 
 	// Persist config only after successful pull so a failed pull
 	// doesn't leave state claiming images are at the new version.
@@ -555,19 +558,37 @@ func verifyAndPinForUpdate(ctx context.Context, state config.State, tag, safeDir
 		return nil, nil
 	}
 
-	out.Step("Verifying container image signatures...")
+	sp := out.StartSpinner("Verifying container image signatures...")
 	verifyCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
+	var buf bytes.Buffer
 	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
 		Images: verify.BuildImageRefs(tag, state.Sandbox),
-		Output: out.Writer(),
+		Output: &buf,
 	})
 	if err != nil {
+		sp.Error("Image verification failed")
 		if isTransportError(err) {
 			errOut.Hint("Use --skip-verify for air-gapped environments")
 		}
 		return nil, fmt.Errorf("image verification failed: %w", err)
 	}
+	sp.Stop()
+
+	// Render verification results in a box.
+	var boxLines []string
+	for _, r := range results {
+		sigIcon := out.SuccessIcon()
+		slsaIcon := out.SuccessIcon()
+		if !r.ProvenanceVerified {
+			slsaIcon = out.WarnIcon()
+		}
+		boxLines = append(boxLines, fmt.Sprintf("  %-12s sig %s  slsa %s",
+			r.Ref.Name(), sigIcon, slsaIcon))
+	}
+	out.Box("Verify Images", boxLines)
+	out.Blank()
+
 	pins, err := digestPinMap(results)
 	if err != nil {
 		return nil, fmt.Errorf("digest pin map: %w", err)
@@ -673,22 +694,27 @@ func restartIfRunning(cmd *cobra.Command, info docker.Info, safeDir string, stat
 		return false, nil
 	}
 
-	_, _ = fmt.Fprintln(out, "Restarting...")
-	if err := composeRun(ctx, cmd, info, safeDir, "down"); err != nil {
+	uiOut := ui.NewUI(out)
+
+	sp := uiOut.StartSpinner("Restarting containers...")
+	if err := composeRunQuiet(ctx, info, safeDir, "down"); err != nil {
+		sp.Error("Failed to stop containers")
 		return false, fmt.Errorf("stopping containers: %w", err)
 	}
-	if err := composeRun(ctx, cmd, info, safeDir, "up", "-d"); err != nil {
+	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
+		sp.Error("Failed to start containers")
 		return false, fmt.Errorf("restarting containers: %w", err)
 	}
+	sp.Success("Containers restarted")
 
-	_, _ = fmt.Fprintln(out, "Waiting for backend to become healthy...")
+	sp = uiOut.StartSpinner("Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
 	if err := health.WaitForHealthy(ctx, healthURL, 90*time.Second, 2*time.Second, 5*time.Second); err != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: health check did not pass after restart: %v\n", err)
+		sp.Warn(fmt.Sprintf("Health check did not pass after restart: %v", err))
 		return false, nil
 	}
-	_, _ = fmt.Fprintln(out, "Containers restarted with new images and healthy.")
-	_, _ = fmt.Fprintf(out, "Dashboard: http://localhost:%d\n", state.WebPort)
+	sp.Success("Backend healthy")
+	uiOut.KeyValue("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
 	return true, nil
 }
 

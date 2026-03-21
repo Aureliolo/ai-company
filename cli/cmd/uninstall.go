@@ -14,7 +14,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/completion"
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
-	"github.com/Aureliolo/synthorg/cli/internal/verify"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 )
@@ -36,7 +36,8 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 
 	ctx := cmd.Context()
 	dir := resolveDataDir()
-	out := cmd.OutOrStdout()
+	out := ui.NewUI(cmd.OutOrStdout())
+	errUI := ui.NewUI(cmd.ErrOrStderr())
 
 	state, err := config.Load(dir)
 	if err != nil {
@@ -51,13 +52,13 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 	// Stop containers and optionally remove volumes.
 	info, dockerErr := docker.Detect(ctx)
 	if dockerErr != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: Docker not available, cannot stop containers: %v\n", dockerErr)
+		errUI.Warn(fmt.Sprintf("Docker not available, cannot stop containers: %v", dockerErr))
 	} else {
-		if err := stopAndRemoveVolumes(cmd, info, safeDir); err != nil {
+		if err := stopAndRemoveVolumes(cmd, info, safeDir, out); err != nil {
 			return err
 		}
 		// Offer to remove SynthOrg container images.
-		if err := confirmAndRemoveImages(cmd, info); err != nil {
+		if err := confirmAndRemoveImages(cmd, info, out, errUI); err != nil {
 			return err
 		}
 	}
@@ -69,25 +70,27 @@ func runUninstall(cmd *cobra.Command, _ []string) error {
 
 	// Remove shell completion snippets for all supported shells
 	// (user may have installed completions for multiple shells).
-	_, _ = fmt.Fprintln(out, "Removing shell completions...")
+	sp := out.StartSpinner("Removing shell completions...")
 	for _, shell := range []completion.ShellType{
 		completion.Bash, completion.Zsh, completion.Fish, completion.PowerShell,
 	} {
 		if err := completion.Uninstall(ctx, shell); err != nil {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove %s completions: %v\n", shell, err)
+			errUI.Warn(fmt.Sprintf("Could not remove %s completions: %v", shell, err))
 		}
 	}
+	sp.Success("Shell completions removed")
 
 	// Optionally remove CLI binary.
 	if err := confirmAndRemoveBinary(cmd, safeDir); err != nil {
 		return err
 	}
 
-	_, _ = fmt.Fprintln(out, "SynthOrg uninstalled.")
+	out.Blank()
+	out.Success("SynthOrg uninstalled.")
 	return nil
 }
 
-func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string) error {
+func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string, out *ui.UI) error {
 	ctx := cmd.Context()
 
 	var removeVolumes bool
@@ -103,58 +106,80 @@ func stopAndRemoveVolumes(cmd *cobra.Command, info docker.Info, dataDir string) 
 		return err
 	}
 
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Stopping containers...")
-
-	// Use "down -v" if removing volumes (handles both stop and volume removal
-	// in a single command), otherwise just "down".
 	downArgs := []string{"down"}
 	if removeVolumes {
 		downArgs = append(downArgs, "-v")
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Removing volumes...")
 	}
 
-	if err := composeRun(ctx, cmd, info, dataDir, downArgs...); err != nil {
+	sp := out.StartSpinner("Stopping containers...")
+	if err := composeRunQuiet(ctx, info, dataDir, downArgs...); err != nil {
+		sp.Error("Failed to stop containers")
 		return fmt.Errorf("stopping containers: %w", err)
 	}
+	msg := "Containers stopped"
+	if removeVolumes {
+		msg += " and volumes removed"
+	}
+	sp.Success(msg)
 
 	return nil
 }
 
-// confirmAndRemoveImages offers to remove SynthOrg container images from
-// the local Docker cache. Lists matching images first so the user sees
-// what will be removed.
-func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info) error {
+// confirmAndRemoveImages offers to remove SynthOrg container images.
+// Lists images deduplicated by Docker ID with digest info for identification.
+func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info, out, errUI *ui.UI) error {
 	ctx := cmd.Context()
-	out := cmd.OutOrStdout()
 
-	// List SynthOrg images using the Docker CLI directly (not docker-compose,
-	// which doesn't support --filter/--format for image listing).
-	imageRef := verify.RegistryHost + "/" + verify.ImageRepoPrefix
-	listOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
-		"--filter", "reference="+imageRef+"*",
-		"--format", "{{.Repository}}:{{.Tag}} ({{.Size}})",
-	)
+	// List all SynthOrg images with deduplication by Docker ID.
+	imageRef := "ghcr.io/aureliolo/synthorg-*"
+	allOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
+		"--filter", "reference="+imageRef,
+		"--format", "{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.ID}}\t{{.Digest}}")
 	if err != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not list images: %v\n", err)
+		errUI.Warn(fmt.Sprintf("Could not list images: %v", err))
 		return nil
 	}
 
-	images := strings.TrimSpace(listOut)
-	if images == "" {
-		_, _ = fmt.Fprintln(out, "No SynthOrg images found locally.")
+	type imageEntry struct {
+		display string
+		id      string
+	}
+	var images []imageEntry
+	seen := make(map[string]bool)
+	for _, line := range strings.Split(strings.TrimSpace(strings.ReplaceAll(allOut, "\r\n", "\n")), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 5)
+		if len(parts) < 5 {
+			continue
+		}
+		repo, tag, sizeStr, id, digest := parts[0], parts[1], parts[2], parts[3], parts[4]
+		if !isValidDockerID(id) || seen[id] {
+			continue
+		}
+		seen[id] = true
+		display := buildImageDisplay(repo, tag, digest, sizeStr)
+		images = append(images, imageEntry{display: display, id: id})
+	}
+
+	if len(images) == 0 {
+		out.Success("No SynthOrg images found locally.")
 		return nil
 	}
 
-	_, _ = fmt.Fprintln(out, "SynthOrg images found locally:")
-	for _, line := range strings.Split(images, "\n") {
-		_, _ = fmt.Fprintf(out, "  %s\n", line)
+	var lines []string
+	for _, img := range images {
+		lines = append(lines, img.display)
 	}
+	out.Box("SynthOrg Images", lines)
+	out.Blank()
 
 	var removeImages bool
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewConfirm().
-				Title("Remove these container images?").
+				Title(fmt.Sprintf("Remove %d image(s)?", len(images))).
 				Value(&removeImages),
 		),
 	)
@@ -165,27 +190,19 @@ func confirmAndRemoveImages(cmd *cobra.Command, info docker.Info) error {
 		return nil
 	}
 
-	// Get image IDs for removal (more reliable than names for rmi).
-	idsOut, err := docker.RunCmd(ctx, info.DockerPath, "images",
-		"--filter", "reference="+imageRef+"*",
-		"--format", "{{.ID}}",
-	)
-	if err != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not get image IDs: %v\n", err)
-		return nil
+	// Remove images one at a time for granular feedback.
+	var removed int
+	for _, img := range images {
+		_, rmiErr := docker.RunCmd(ctx, info.DockerPath, "rmi", "--force", img.id)
+		if rmiErr != nil {
+			out.Warn(fmt.Sprintf("%-12s skipped (in use)", img.id))
+		} else {
+			out.Success(fmt.Sprintf("%-12s removed", img.id))
+			removed++
+		}
 	}
-
-	ids := strings.Fields(strings.TrimSpace(idsOut))
-	if len(ids) == 0 {
-		return nil
-	}
-
-	_, _ = fmt.Fprintln(out, "Removing SynthOrg images...")
-	rmiArgs := append([]string{"rmi", "--force"}, ids...)
-	if _, rmiErr := docker.RunCmd(ctx, info.DockerPath, rmiArgs...); rmiErr != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: some images could not be removed: %v\n", rmiErr)
-	} else {
-		_, _ = fmt.Fprintf(out, "Removed %d image(s).\n", len(ids))
+	if removed > 0 {
+		out.Success(fmt.Sprintf("Removed %d image(s)", removed))
 	}
 
 	return nil
@@ -244,6 +261,7 @@ func rejectUnsafeDir(dir string) error {
 // removeDataDir removes the data directory. On Windows, if the running
 // binary lives inside the directory, it removes everything except the binary.
 func removeDataDir(cmd *cobra.Command, dir string) error {
+	out := ui.NewUI(cmd.OutOrStdout())
 	execPath, execErr := os.Executable()
 	if execErr != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: cannot resolve executable path: %v\n", execErr)
@@ -257,12 +275,12 @@ func removeDataDir(cmd *cobra.Command, dir string) error {
 		if err := removeAllExcept(dir, execPath); err != nil {
 			return fmt.Errorf("removing config directory: %w", err)
 		}
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed contents of %s (binary skipped -- still running)\n", dir)
+		out.Success(fmt.Sprintf("Removed contents of %s (binary skipped -- still running)", dir))
 	} else {
 		if err := os.RemoveAll(dir); err != nil {
 			return fmt.Errorf("removing config directory: %w", err)
 		}
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed %s\n", dir)
+		out.Success(fmt.Sprintf("Removed %s", dir))
 	}
 	return nil
 }
@@ -304,11 +322,12 @@ func confirmAndRemoveBinary(cmd *cobra.Command, dataDir string) error {
 }
 
 func removeUnixBinary(cmd *cobra.Command, execPath string) error {
+	out := ui.NewUI(cmd.OutOrStdout())
 	if err := os.Remove(execPath); err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove binary: %v\n", err)
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Manually remove: %s\n", execPath)
+		out.Hint(fmt.Sprintf("Manually remove: %s", execPath))
 	} else {
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "CLI binary removed.")
+		out.Success("CLI binary removed")
 	}
 	return nil
 }
@@ -318,7 +337,7 @@ func removeUnixBinary(cmd *cobra.Command, execPath string) error {
 // and the .bat file itself. Uses a temp .bat instead of inline cmd /c
 // because goto/labels don't work in single-line cmd /c commands.
 func scheduleWindowsCleanup(cmd *cobra.Command, execPath, dataDir string) error {
-	out := cmd.OutOrStdout()
+	out := ui.NewUI(cmd.OutOrStdout())
 	pid := os.Getpid()
 	binDir := filepath.Dir(execPath)
 
@@ -370,16 +389,15 @@ func scheduleWindowsCleanup(cmd *cobra.Command, execPath, dataDir string) error 
 	// Detach -- don't wait for the cleanup process.
 	_ = c.Process.Release()
 
-	_, _ = fmt.Fprintln(out, "CLI binary will be removed automatically after exit.")
+	out.Success("CLI binary will be removed automatically after exit")
 	return nil
 }
 
 func fallbackManualCleanup(cmd *cobra.Command, execPath string, cause error) error {
-	out := cmd.OutOrStdout()
-	_, _ = fmt.Fprintf(out, "Could not schedule automatic cleanup: %v\n", cause)
-	_, _ = fmt.Fprintln(out, "To finish cleanup after exit, run:")
+	out := ui.NewUI(cmd.OutOrStdout())
+	out.Warn(fmt.Sprintf("Could not schedule automatic cleanup: %v", cause))
 	escaped := strings.ReplaceAll(execPath, "'", "''")
-	_, _ = fmt.Fprintf(out, "  powershell -Command \"Remove-Item -LiteralPath '%s'\"\n", escaped)
+	out.Hint(fmt.Sprintf("To finish cleanup after exit, run: powershell -Command \"Remove-Item -LiteralPath '%s'\"", escaped))
 	return nil
 }
 

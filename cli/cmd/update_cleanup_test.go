@@ -81,6 +81,121 @@ func FuzzIsValidDockerID(f *testing.F) {
 	})
 }
 
+func TestParseDockerSize(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		s    string
+		want float64
+	}{
+		{"megabytes", "646MB", 646e6},
+		{"megabytes with decimal", "85.8MB", 85.8e6},
+		{"gigabytes", "1.2GB", 1.2e9},
+		{"terabytes", "2.5TB", 2.5e12},
+		{"kilobytes", "512kB", 512e3},
+		{"bytes", "100B", 100},
+		{"empty", "", 0},
+		{"no unit", "123", 0},
+		{"invalid", "fooMB", 0},
+		{"with comma", "1,024MB", 1024e6},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := parseDockerSize(tt.s)
+			// Allow small floating point tolerance.
+			diff := got - tt.want
+			if diff < 0 {
+				diff = -diff
+			}
+			if diff > 1 { // 1 byte tolerance
+				t.Errorf("parseDockerSize(%q) = %v, want %v", tt.s, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFormatBytes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		b    float64
+		want string
+	}{
+		{"terabytes", 2.5e12, "2.5 TB"},
+		{"gigabytes", 1.2e9, "1.2 GB"},
+		{"megabytes", 646e6, "646.0 MB"},
+		{"kilobytes", 512e3, "512.0 kB"},
+		{"bytes", 100, "100 B"},
+		{"zero", 0, "0 B"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := formatBytes(tt.b)
+			if got != tt.want {
+				t.Errorf("formatBytes(%v) = %q, want %q", tt.b, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildImageDisplay(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		repo   string
+		tag    string
+		digest string
+		size   string
+		wantIn string // substring that should appear
+	}{
+		{
+			"with tag",
+			"ghcr.io/aureliolo/synthorg-backend", "0.4.3", "sha256:abc123", "646MB",
+			"synthorg-backend:0.4.3",
+		},
+		{
+			"no tag, has digest",
+			"ghcr.io/aureliolo/synthorg-web", "<none>", "sha256:abcdef1234567890abcdef", "85.8MB",
+			"synthorg-web@abcdef1234567890",
+		},
+		{
+			"no tag, no digest",
+			"ghcr.io/aureliolo/synthorg-sandbox", "<none>", "<none>", "514MB",
+			"synthorg-sandbox",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := buildImageDisplay(tt.repo, tt.tag, tt.digest, tt.size)
+			if got == "" {
+				t.Fatal("buildImageDisplay returned empty string")
+			}
+			if len(got) < len(tt.wantIn) {
+				t.Fatalf("display too short: %q", got)
+			}
+			found := false
+			for i := range len(got) - len(tt.wantIn) + 1 {
+				if got[i:i+len(tt.wantIn)] == tt.wantIn {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("display %q missing %q", got, tt.wantIn)
+			}
+		})
+	}
+}
+
 func FuzzIsAllHex(f *testing.F) {
 	f.Add("0123456789abcdef")
 	f.Add("0123456789ABCDEF")

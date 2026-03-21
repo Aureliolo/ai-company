@@ -8,6 +8,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -39,16 +40,19 @@ func runStop(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("compose.yml not found in %s -- run 'synthorg init' first", safeDir)
 	}
 
+	out := ui.NewUI(cmd.OutOrStdout())
+
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		return err
 	}
 
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Stopping containers...")
-	if err := composeRun(ctx, cmd, info, safeDir, "down"); err != nil {
+	sp := out.StartSpinner("Stopping containers...")
+	if err := composeRunQuiet(ctx, info, safeDir, "down"); err != nil {
+		sp.Error("Failed to stop containers")
 		return fmt.Errorf("stopping containers: %w", err)
 	}
+	sp.Success("SynthOrg stopped")
 
-	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "SynthOrg stopped.")
 	return nil
 }

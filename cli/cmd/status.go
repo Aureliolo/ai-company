@@ -294,8 +294,10 @@ func formatUptime(seconds float64) string {
 }
 
 func printLinks(out *ui.UI, state config.State) {
-	_, _ = fmt.Fprintln(out.Writer())
-	out.Link("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
-	out.Link("API docs", fmt.Sprintf("http://localhost:%d/api", state.BackendPort))
-	out.Link("Health", fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort))
+	out.Blank()
+	out.Box("Links", []string{
+		fmt.Sprintf("  %-12s http://localhost:%d", "Dashboard", state.WebPort),
+		fmt.Sprintf("  %-12s http://localhost:%d/api", "API docs", state.BackendPort),
+		fmt.Sprintf("  %-12s http://localhost:%d/api/v1/health", "Health", state.BackendPort),
+	})
 }

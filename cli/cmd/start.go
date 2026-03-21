@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/health"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/verify"
+	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -52,71 +54,107 @@ func runStart(cmd *cobra.Command, args []string) error {
 	out := ui.NewUI(cmd.OutOrStdout())
 	errOut := ui.NewUI(cmd.ErrOrStderr())
 
+	// Logo.
+	out.Logo(version.Version)
+
+	// Docker detection.
 	info, err := docker.Detect(ctx)
 	if err != nil {
 		return err
 	}
-	out.Success(fmt.Sprintf("Docker %s, Compose %s", info.DockerVersion, info.ComposeVersion))
+	out.InlineKV(
+		"Docker", info.DockerVersion+" "+ui.IconSuccess,
+		"Compose", info.ComposeVersion+" "+ui.IconSuccess,
+	)
+	out.Blank()
 
 	// Check minimum versions.
 	for _, w := range docker.CheckMinVersions(info) {
 		errOut.Warn(w)
 	}
 
-	// Verify container image signatures before pulling.
+	// Verify container image signatures -- spinner + box result.
 	if err := verifyAndPinImages(ctx, cmd, state, safeDir, out, errOut); err != nil {
 		return err
 	}
+	out.Blank()
 
 	// Pull images.
-	out.Step("Pulling images...")
-	if err := composeRun(ctx, cmd, info, safeDir, "pull"); err != nil {
+	sp := out.StartSpinner("Pulling images...")
+	if err := composeRunQuiet(ctx, info, safeDir, "pull"); err != nil {
+		sp.Error("Failed to pull images")
 		return fmt.Errorf("pulling images: %w", err)
 	}
+	sp.Success("Images pulled")
 
 	// Start containers.
-	out.Step("Starting containers...")
-	if err := composeRun(ctx, cmd, info, safeDir, "up", "-d"); err != nil {
+	sp = out.StartSpinner("Starting containers...")
+	if err := composeRunQuiet(ctx, info, safeDir, "up", "-d"); err != nil {
+		sp.Error("Failed to start containers")
 		return fmt.Errorf("starting containers: %w", err)
 	}
+	sp.Success("Containers started")
 
 	// Wait for health.
-	out.Step("Waiting for backend to become healthy...")
+	sp = out.StartSpinner("Waiting for backend to become healthy...")
 	healthURL := fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort)
 	if err := health.WaitForHealthy(ctx, healthURL, 90*time.Second, 2*time.Second, 5*time.Second); err != nil {
-		errOut.Error("Containers are running but health check failed.")
+		sp.Error("Health check failed")
 		errOut.Hint("Run 'synthorg doctor' for diagnostics.")
 		return fmt.Errorf("health check did not pass: %w", err)
 	}
+	sp.Success("Backend healthy")
 
-	out.Success("SynthOrg is running!")
-	out.KeyValue("API", fmt.Sprintf("http://localhost:%d/api/v1/health", state.BackendPort))
-	out.KeyValue("Dashboard", fmt.Sprintf("http://localhost:%d", state.WebPort))
+	out.Blank()
+
+	// Ready box.
+	out.Box("Ready", []string{
+		fmt.Sprintf("  %-12s http://localhost:%d/api/v1/health", "API", state.BackendPort),
+		fmt.Sprintf("  %-12s http://localhost:%d", "Dashboard", state.WebPort),
+	})
+
 	return nil
 }
 
 // verifyAndPinImages verifies image signatures (unless --skip-verify) and
 // pins the verified digests in the compose file and config.
-func verifyAndPinImages(ctx context.Context, cmd *cobra.Command, state config.State, safeDir string, out, errOut *ui.UI) error {
+func verifyAndPinImages(ctx context.Context, _ *cobra.Command, state config.State, safeDir string, out, errOut *ui.UI) error {
 	if skipVerify {
 		errOut.Warn("Image verification skipped (--skip-verify). Containers are NOT verified.")
 		return nil
 	}
 
-	out.Step("Verifying container image signatures...")
-	// Bound OCI registry calls to prevent indefinite hangs.
+	sp := out.StartSpinner("Verifying container image signatures...")
+
+	// Buffer verify output -- we'll render results in a box instead.
+	var buf bytes.Buffer
 	verifyCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	results, err := verify.VerifyImages(verifyCtx, verify.VerifyOptions{
 		Images: verify.BuildImageRefs(state.ImageTag, state.Sandbox),
-		Output: cmd.OutOrStdout(),
+		Output: &buf,
 	})
 	if err != nil {
+		sp.Error("Image verification failed")
 		if isTransportError(err) {
 			errOut.Hint("Use --skip-verify for air-gapped environments")
 		}
 		return fmt.Errorf("image verification failed: %w", err)
 	}
+	sp.Stop()
+
+	// Render verification results in a box.
+	var boxLines []string
+	for _, r := range results {
+		sigIcon := out.SuccessIcon()
+		slsaIcon := out.SuccessIcon()
+		if !r.ProvenanceVerified {
+			slsaIcon = out.WarnIcon()
+		}
+		boxLines = append(boxLines, fmt.Sprintf("  %-12s sig %s  slsa %s",
+			r.Ref.Name(), sigIcon, slsaIcon))
+	}
+	out.Box("Verify Images", boxLines)
 
 	pins, err := digestPinMap(results)
 	if err != nil {
@@ -198,7 +236,7 @@ func atomicWriteFile(targetPath string, data []byte, tmpDir string) error {
 	return nil
 }
 
-// digestPinMap converts verification results to a map of image name → digest
+// digestPinMap converts verification results to a map of image name -> digest
 // for use in compose generation. Returns an error if any result has an empty
 // digest -- after successful verification all digests must be resolved.
 func digestPinMap(results []verify.VerifyResult) (map[string]string, error) {
@@ -212,6 +250,8 @@ func digestPinMap(results []verify.VerifyResult) (map[string]string, error) {
 	return pins, nil
 }
 
+// composeRun runs a docker compose command with output forwarded to the
+// Cobra command's stdout/stderr.
 func composeRun(ctx context.Context, cobraCmd *cobra.Command, info docker.Info, dir string, args ...string) error {
 	fullArgs := make([]string, 0, len(info.ComposeCmd)-1+len(args))
 	fullArgs = append(fullArgs, info.ComposeCmd[1:]...)
@@ -222,4 +262,23 @@ func composeRun(ctx context.Context, cobraCmd *cobra.Command, info docker.Info, 
 	c.Stdout = cobraCmd.OutOrStdout()
 	c.Stderr = cobraCmd.ErrOrStderr()
 	return c.Run()
+}
+
+// composeRunQuiet runs a docker compose command with output captured in
+// a buffer. On error, the captured output is included in the error message.
+// Used when a spinner is shown and Docker's verbose output should be hidden.
+func composeRunQuiet(ctx context.Context, info docker.Info, dir string, args ...string) error {
+	fullArgs := make([]string, 0, len(info.ComposeCmd)-1+len(args))
+	fullArgs = append(fullArgs, info.ComposeCmd[1:]...)
+	fullArgs = append(fullArgs, args...)
+
+	var buf bytes.Buffer
+	c := exec.CommandContext(ctx, info.ComposeCmd[0], fullArgs...)
+	c.Dir = dir
+	c.Stdout = &buf
+	c.Stderr = &buf
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("%w\n%s", err, buf.String())
+	}
+	return nil
 }

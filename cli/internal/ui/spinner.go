@@ -1,0 +1,111 @@
+package ui
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+// spinnerFrames are Braille dot patterns for smooth animation.
+var spinnerFrames = [...]string{
+	"\u280b", "\u2819", "\u2839", "\u2838",
+	"\u283c", "\u2834", "\u2826", "\u2827",
+	"\u2807", "\u280f",
+}
+
+// spinnerInterval controls the animation speed.
+const spinnerInterval = 80 * time.Millisecond
+
+// Spinner renders an animated inline spinner on a terminal.
+// Non-TTY writers get a static status line instead.
+type Spinner struct {
+	ui   *UI
+	msg  string
+	mu   sync.Mutex
+	done chan struct{}
+}
+
+// StartSpinner begins an animated spinner with the given message.
+// Returns a handle to stop the spinner and print a final status line.
+// On non-TTY writers, prints a static step line immediately.
+func (u *UI) StartSpinner(msg string) *Spinner {
+	s := &Spinner{
+		ui:   u,
+		msg:  stripControl(msg),
+		done: make(chan struct{}),
+	}
+	if !u.isTTY {
+		// Non-interactive: print a plain step line and return.
+		u.Step(msg)
+		return s
+	}
+	go s.run()
+	return s
+}
+
+// run drives the spinner animation until Stop is called.
+func (s *Spinner) run() {
+	ticker := time.NewTicker(spinnerInterval)
+	defer ticker.Stop()
+
+	frame := 0
+	for {
+		select {
+		case <-s.done:
+			return
+		case <-ticker.C:
+			s.mu.Lock()
+			_, _ = fmt.Fprintf(s.ui.w, "\r\033[K%s %s",
+				s.ui.brand.Render(spinnerFrames[frame]),
+				s.ui.bold.Render(s.msg))
+			frame = (frame + 1) % len(spinnerFrames)
+			s.mu.Unlock()
+		}
+	}
+}
+
+// clearLine erases the current terminal line.
+func (s *Spinner) clearLine() {
+	if s.ui.isTTY {
+		_, _ = fmt.Fprint(s.ui.w, "\r\033[K")
+	}
+}
+
+// Success stops the spinner and prints a green success line.
+func (s *Spinner) Success(msg string) {
+	s.stop()
+	s.clearLine()
+	s.ui.Success(msg)
+}
+
+// Error stops the spinner and prints a red error line.
+func (s *Spinner) Error(msg string) {
+	s.stop()
+	s.clearLine()
+	s.ui.Error(msg)
+}
+
+// Warn stops the spinner and prints an orange warning line.
+func (s *Spinner) Warn(msg string) {
+	s.stop()
+	s.clearLine()
+	s.ui.Warn(msg)
+}
+
+// Stop halts the spinner animation without printing a final line.
+func (s *Spinner) Stop() {
+	s.stop()
+	s.clearLine()
+}
+
+// stop signals the animation goroutine to exit. Safe to call multiple times.
+func (s *Spinner) stop() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	select {
+	case <-s.done:
+		// Already stopped.
+	default:
+		close(s.done)
+	}
+}

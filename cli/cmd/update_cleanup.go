@@ -4,40 +4,54 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
-	"github.com/charmbracelet/huh"
+	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
-// oldImage holds display info and Docker ID for a non-current SynthOrg image.
+// oldImage holds display info, Docker ID, and raw size for a non-current
+// SynthOrg image.
 type oldImage struct {
-	display string
-	id      string
+	display string  // human-readable line (repo, digest short, size)
+	id      string  // Docker short ID (12 hex chars)
+	sizeB   float64 // image size in bytes (0 if unparseable)
 }
 
-// cleanupOldImages offers to remove non-current SynthOrg images after a
-// successful upgrade. Identifies current images by their Docker image ID
-// (handles both tagged and digest-pinned references).
-func cleanupOldImages(cmd *cobra.Command, info docker.Info, state config.State) error {
+// hintThresholdBytes is the minimum total size of old images before the
+// update command prints a cleanup hint (5 GB).
+const hintThresholdBytes = 5 * 1024 * 1024 * 1024
+
+// hintOldImages prints a passive hint about old images after a successful
+// update, but only when the total old image size exceeds hintThresholdBytes.
+// Replaces the former interactive cleanup prompt.
+func hintOldImages(cmd *cobra.Command, info docker.Info, state config.State) {
+	out := ui.NewUI(cmd.OutOrStdout())
 	old, _ := findOldImages(cmd.Context(), cmd.ErrOrStderr(), info, state)
 	if len(old) == 0 {
-		return nil
+		return
 	}
 
-	out := cmd.OutOrStdout()
-	_, _ = fmt.Fprintln(out, "\nOld SynthOrg images found locally:")
+	var totalB float64
 	for _, img := range old {
-		_, _ = fmt.Fprintf(out, "  %s\n", img.display)
+		totalB += img.sizeB
 	}
 
-	return promptAndRemoveImages(cmd, info, old)
+	if totalB < hintThresholdBytes {
+		return
+	}
+
+	out.Blank()
+	out.Hint(fmt.Sprintf("%d old image(s) using %s. Run 'synthorg cleanup' to free space.",
+		len(old), formatBytes(totalB)))
 }
 
-// findOldImages lists SynthOrg images that don't match the current version.
-// Returns nil if current image IDs cannot be reliably determined.
+// findOldImages lists SynthOrg images whose Docker ID does not match
+// any current service image. Deduplicates by Docker ID. Returns nil
+// if current image IDs cannot be reliably determined.
 func findOldImages(ctx context.Context, errOut io.Writer, info docker.Info, state config.State) ([]oldImage, error) {
 	currentIDs, err := collectCurrentImageIDs(ctx, info, state)
 	if err != nil {
@@ -45,10 +59,18 @@ func findOldImages(ctx context.Context, errOut io.Writer, info docker.Info, stat
 		return nil, err
 	}
 
+	return listNonCurrentImages(ctx, errOut, info, currentIDs)
+}
+
+// listNonCurrentImages lists all SynthOrg images that are not in the
+// currentIDs set. Used by both findOldImages (which resolves current IDs
+// from state) and the cleanup command.
+func listNonCurrentImages(ctx context.Context, errOut io.Writer, info docker.Info, currentIDs map[string]bool) ([]oldImage, error) {
 	imageRef := "ghcr.io/aureliolo/synthorg-*"
+	// Include size in bytes for threshold calculations and digest for display.
 	allOut, listErr := docker.RunCmd(ctx, info.DockerPath, "images",
 		"--filter", "reference="+imageRef,
-		"--format", "{{.Repository}}:{{.Tag}} ({{.Size}})\t{{.ID}}")
+		"--format", "{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.ID}}\t{{.Digest}}")
 	if listErr != nil {
 		_, _ = fmt.Fprintf(errOut, "Note: could not list images for cleanup: %v\n", listErr)
 		return nil, listErr
@@ -60,18 +82,43 @@ func findOldImages(ctx context.Context, errOut io.Writer, info docker.Info, stat
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) < 2 {
+		parts := strings.SplitN(line, "\t", 5)
+		if len(parts) < 5 {
 			continue
 		}
-		display, id := parts[0], parts[1]
+		repo, tag, sizeStr, id, digest := parts[0], parts[1], parts[2], parts[3], parts[4]
 		if !isValidDockerID(id) || currentIDs[id] || seen[id] {
 			continue
 		}
 		seen[id] = true
-		old = append(old, oldImage{display: display, id: id})
+
+		// Build a human-readable display string.
+		display := buildImageDisplay(repo, tag, digest, sizeStr)
+		sizeB := parseDockerSize(sizeStr)
+		old = append(old, oldImage{display: display, id: id, sizeB: sizeB})
 	}
 	return old, nil
+}
+
+// buildImageDisplay creates a readable display string for an image.
+// Prefers tag, falls back to digest short form, then Docker ID.
+func buildImageDisplay(repo, tag, digest, size string) string {
+	// Strip the registry prefix for brevity.
+	short := strings.TrimPrefix(repo, "ghcr.io/aureliolo/")
+
+	label := short
+	if tag != "" && tag != "<none>" {
+		label += ":" + tag
+	} else if digest != "" && digest != "<none>" {
+		// Show first 16 chars of the digest hash for identification.
+		d := strings.TrimPrefix(digest, "sha256:")
+		if len(d) > 16 {
+			d = d[:16]
+		}
+		label += "@" + d
+	}
+
+	return fmt.Sprintf("%-40s %s", label, size)
 }
 
 // collectCurrentImageIDs resolves Docker image IDs for the services at the
@@ -101,39 +148,49 @@ func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.
 	return currentIDs, nil
 }
 
-// promptAndRemoveImages asks the user and removes old images.
-func promptAndRemoveImages(cmd *cobra.Command, info docker.Info, old []oldImage) error {
-	if !isInteractive() {
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Non-interactive mode: skipping image cleanup. Remove manually with 'docker rmi'.")
-		return nil
+// parseDockerSize converts Docker's human-readable size strings (e.g.
+// "646MB", "85.8MB", "1.2GB") to bytes. Returns 0 if unparseable.
+func parseDockerSize(s string) float64 {
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, ",", "") // some locales use comma separators
+
+	multipliers := []struct {
+		suffix string
+		mult   float64
+	}{
+		{"TB", 1e12},
+		{"GB", 1e9},
+		{"MB", 1e6},
+		{"kB", 1e3},
+		{"B", 1},
 	}
 
-	var remove bool
-	form := huh.NewForm(huh.NewGroup(
-		huh.NewConfirm().
-			Title(fmt.Sprintf("Remove %d old image(s)?", len(old))).
-			Value(&remove),
-	))
-	if err := form.Run(); err != nil {
-		return err
+	for _, m := range multipliers {
+		if strings.HasSuffix(s, m.suffix) {
+			numStr := strings.TrimSuffix(s, m.suffix)
+			if v, err := strconv.ParseFloat(strings.TrimSpace(numStr), 64); err == nil {
+				return v * m.mult
+			}
+			return 0
+		}
 	}
-	if !remove {
-		return nil
-	}
+	return 0
+}
 
-	ids := make([]string, 0, len(old))
-	for _, img := range old {
-		ids = append(ids, img.id)
+// formatBytes formats a byte count as a human-readable string (e.g. "1.2 GB").
+func formatBytes(b float64) string {
+	switch {
+	case b >= 1e12:
+		return fmt.Sprintf("%.1f TB", b/1e12)
+	case b >= 1e9:
+		return fmt.Sprintf("%.1f GB", b/1e9)
+	case b >= 1e6:
+		return fmt.Sprintf("%.1f MB", b/1e6)
+	case b >= 1e3:
+		return fmt.Sprintf("%.1f kB", b/1e3)
+	default:
+		return fmt.Sprintf("%.0f B", b)
 	}
-	rmiArgs := make([]string, 0, 1+len(ids))
-	rmiArgs = append(rmiArgs, "rmi")
-	rmiArgs = append(rmiArgs, ids...)
-	if _, rmiErr := docker.RunCmd(cmd.Context(), info.DockerPath, rmiArgs...); rmiErr != nil {
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: some images could not be removed: %v\n", rmiErr)
-	} else {
-		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Removed %d old image(s).\n", len(old))
-	}
-	return nil
 }
 
 // isValidDockerID checks that id looks like a Docker short ID (12 hex chars).
