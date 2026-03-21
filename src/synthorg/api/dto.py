@@ -745,6 +745,46 @@ class ProbePresetResponse(BaseModel):
     candidates_tried: int = Field(default=0, ge=0)
 
 
+class DiscoveryPolicyResponse(BaseModel):
+    """Current state of the provider discovery SSRF allowlist.
+
+    Attributes:
+        host_port_allowlist: Trusted host:port pairs.
+        block_private_ips: Whether private IP blocking is active.
+        entry_count: Number of entries in the allowlist.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    host_port_allowlist: tuple[str, ...] = ()
+    block_private_ips: bool = True
+    entry_count: int = Field(default=0, ge=0)
+
+
+class AddAllowlistEntryRequest(BaseModel):
+    """Payload for adding a host:port entry to the discovery allowlist.
+
+    Attributes:
+        host_port: Entry to add (e.g. ``"my-server:8080"``).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    host_port: NotBlankStr = Field(max_length=256)
+
+
+class RemoveAllowlistEntryRequest(BaseModel):
+    """Payload for removing a host:port entry from the discovery allowlist.
+
+    Attributes:
+        host_port: Entry to remove.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    host_port: NotBlankStr = Field(max_length=256)
+
+
 def to_provider_response(config: ProviderConfig) -> ProviderResponse:
     """Convert a ProviderConfig to a safe ProviderResponse.
 

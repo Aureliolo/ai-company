@@ -8,13 +8,16 @@ from litestar.params import Parameter
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.dto import (
+    AddAllowlistEntryRequest,
     ApiResponse,
     CreateFromPresetRequest,
     CreateProviderRequest,
     DiscoverModelsResponse,
+    DiscoveryPolicyResponse,
     ProbePresetRequest,
     ProbePresetResponse,
     ProviderResponse,
+    RemoveAllowlistEntryRequest,
     TestConnectionResponse,
     UpdateProviderRequest,
     to_provider_response,
@@ -448,3 +451,91 @@ class ProviderController(Controller):
             )
             raise NotFoundError(str(exc)) from exc
         return ApiResponse(data=result)
+
+    # ── Discovery allowlist ────────────────────────────────────
+
+    @get(
+        "/discovery-policy",
+        guards=[require_read_access],
+    )
+    async def get_discovery_policy(
+        self,
+        state: State,
+    ) -> ApiResponse[DiscoveryPolicyResponse]:
+        """Return the current provider discovery SSRF allowlist.
+
+        Args:
+            state: Application state.
+
+        Returns:
+            Current discovery policy envelope.
+        """
+        app_state: AppState = state.app_state
+        policy = await app_state.provider_management.get_discovery_policy()
+        return ApiResponse(
+            data=DiscoveryPolicyResponse(
+                host_port_allowlist=policy.host_port_allowlist,
+                block_private_ips=policy.block_private_ips,
+                entry_count=len(policy.host_port_allowlist),
+            ),
+        )
+
+    @post(
+        "/discovery-policy/entries",
+        guards=[require_write_access],
+    )
+    async def add_allowlist_entry(
+        self,
+        state: State,
+        data: AddAllowlistEntryRequest,
+    ) -> ApiResponse[DiscoveryPolicyResponse]:
+        """Add a custom host:port entry to the discovery allowlist.
+
+        Args:
+            state: Application state.
+            data: Request with the host:port entry to add.
+
+        Returns:
+            Updated discovery policy envelope.
+        """
+        app_state: AppState = state.app_state
+        policy = await app_state.provider_management.add_custom_allowlist_entry(
+            data.host_port,
+        )
+        return ApiResponse(
+            data=DiscoveryPolicyResponse(
+                host_port_allowlist=policy.host_port_allowlist,
+                block_private_ips=policy.block_private_ips,
+                entry_count=len(policy.host_port_allowlist),
+            ),
+        )
+
+    @post(
+        "/discovery-policy/remove-entry",
+        guards=[require_write_access],
+    )
+    async def remove_allowlist_entry(
+        self,
+        state: State,
+        data: RemoveAllowlistEntryRequest,
+    ) -> ApiResponse[DiscoveryPolicyResponse]:
+        """Remove a host:port entry from the discovery allowlist.
+
+        Args:
+            state: Application state.
+            data: Request with the host:port entry to remove.
+
+        Returns:
+            Updated discovery policy envelope.
+        """
+        app_state: AppState = state.app_state
+        policy = await app_state.provider_management.remove_custom_allowlist_entry(
+            data.host_port,
+        )
+        return ApiResponse(
+            data=DiscoveryPolicyResponse(
+                host_port_allowlist=policy.host_port_allowlist,
+                block_private_ips=policy.block_private_ips,
+                entry_count=len(policy.host_port_allowlist),
+            ),
+        )

@@ -24,6 +24,8 @@ from synthorg.observability.events.provider import (
     PROVIDER_CONNECTION_TESTED,
     PROVIDER_CREATED,
     PROVIDER_DELETED,
+    PROVIDER_DISCOVERY_ALLOWLIST_SEEDED,
+    PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
     PROVIDER_DISCOVERY_FAILED,
     PROVIDER_DISCOVERY_SELF_CONNECTION_BLOCKED,
     PROVIDER_NOT_FOUND,
@@ -31,6 +33,12 @@ from synthorg.observability.events.provider import (
     PROVIDER_VALIDATION_FAILED,
 )
 from synthorg.providers.discovery import discover_models
+from synthorg.providers.discovery_policy import (
+    ProviderDiscoveryPolicy,
+    build_seed_allowlist,
+    extract_host_port,
+    is_url_allowed,
+)
 from synthorg.providers.enums import AuthType, MessageRole
 from synthorg.providers.errors import (
     ProviderAlreadyExistsError,
@@ -139,6 +147,7 @@ class ProviderManagementService:
             new_config = _build_provider_config(request)
             new_providers = {**providers, request.name: new_config}
             await self._validate_and_persist(new_providers)
+            await self._update_allowlist_for_create(new_config)
 
             logger.info(
                 PROVIDER_CREATED,
@@ -177,6 +186,11 @@ class ProviderManagementService:
             updated = _apply_update(existing, request)
             new_providers = {**providers, name: updated}
             await self._validate_and_persist(new_providers)
+            await self._update_allowlist_for_update(
+                existing,
+                updated,
+                new_providers,
+            )
 
             logger.info(
                 PROVIDER_UPDATED,
@@ -202,8 +216,13 @@ class ProviderManagementService:
                 logger.warning(PROVIDER_NOT_FOUND, provider=name, error=msg)
                 raise ProviderNotFoundError(msg)
 
+            removed_config = providers[name]
             new_providers = {k: v for k, v in providers.items() if k != name}
             await self._validate_and_persist(new_providers)
+            await self._update_allowlist_for_delete(
+                removed_config,
+                new_providers,
+            )
 
             logger.info(PROVIDER_DELETED, provider=name)
 
@@ -365,7 +384,6 @@ class ProviderManagementService:
             preset,
             base_url,
             models,
-            trust_url=request.base_url is None,
         )
 
         create_request = CreateProviderRequest(
@@ -383,21 +401,18 @@ class ProviderManagementService:
         preset: ProviderPreset,
         base_url: str | None,
         models: tuple[ProviderModelConfig, ...],
-        *,
-        trust_url: bool,
     ) -> tuple[ProviderModelConfig, ...]:
         """Auto-discover models for no-auth presets when none are provided.
 
         Only attempts discovery when the preset uses ``AuthType.NONE``,
         a base URL is available, and no models were explicitly provided.
-        Only trusts the URL (skips SSRF) when using the preset's own
-        default -- user-supplied overrides go through normal validation.
+        Trust is determined by the discovery allowlist -- preset default
+        URLs are seeded at startup, so they are automatically trusted.
 
         Args:
             preset: Resolved preset definition.
             base_url: Provider base URL (may be user-overridden).
             models: Explicitly provided models (may be empty).
-            trust_url: Whether to skip SSRF validation.
 
         Returns:
             Discovered models if any, otherwise the original models.
@@ -406,10 +421,12 @@ class ProviderManagementService:
             return models
         if self._is_self_connection(base_url):
             return models
+        policy = await self._load_discovery_policy()
+        trust = is_url_allowed(base_url, policy)
         discovered = await discover_models(
             base_url,
             preset.name,
-            trust_url=trust_url,
+            trust_url=trust,
         )
         return discovered or models
 
@@ -454,7 +471,8 @@ class ProviderManagementService:
 
         resolved_hint = preset_hint or _infer_preset_hint(config.base_url)
         headers = _build_discovery_headers(config)
-        trust = self._resolve_discovery_trust(resolved_hint, config.base_url)
+        policy = await self._load_discovery_policy()
+        trust = is_url_allowed(config.base_url, policy)
         discovered = await discover_models(
             config.base_url,
             resolved_hint,
@@ -492,46 +510,243 @@ class ProviderManagementService:
             return True
         return False
 
-    def _resolve_discovery_trust(
-        self,
-        preset_hint: str | None,
-        base_url: str,
-    ) -> bool:
-        """Determine whether to trust a URL for SSRF-free discovery.
+    async def _load_discovery_policy(self) -> ProviderDiscoveryPolicy:
+        """Load the current discovery policy from settings.
 
-        Trust is granted only when all conditions are met:
-
-        1. ``preset_hint`` resolves to a known preset in the registry.
-        2. ``base_url`` matches one of the preset's ``candidate_urls``
-           or its ``default_base_url`` (trailing-slash-insensitive).
-        3. ``base_url`` does not point at the backend itself
-           (self-connection guard).
-
-        This prevents an attacker from storing an arbitrary URL in
-        the provider config and passing a valid ``preset_hint`` to
-        bypass SSRF validation.  The self-connection guard is a
-        safety net against the backend discovering itself as a
-        provider (e.g. when a preset uses the same port).
-
-        Args:
-            preset_hint: Optional preset name hint.
-            base_url: The stored provider base URL.
+        If no persisted policy exists, seeds the allowlist from
+        presets and installed providers, persists it, and returns
+        the new policy.
 
         Returns:
-            True if the URL is trusted, False otherwise.
+            Current discovery policy.
         """
-        if preset_hint is None:
-            return False
-        preset = get_preset(preset_hint)
-        if preset is None:
-            return False
-        normalized = base_url.rstrip("/")
-        trusted_urls = {u.rstrip("/") for u in preset.candidate_urls}
-        if preset.default_base_url:
-            trusted_urls.add(preset.default_base_url.rstrip("/"))
-        if normalized not in trusted_urls:
-            return False
-        return not self._is_self_connection(base_url)
+        result = await self._settings_service.get(
+            "providers",
+            "discovery_allowlist",
+        )
+        if result.value:
+            try:
+                data = json.loads(result.value)
+                return ProviderDiscoveryPolicy.model_validate(data)
+            except json.JSONDecodeError, ValueError:
+                pass
+
+        # Seed from presets + installed providers.
+        providers = await self._config_resolver.get_provider_configs()
+        seeds = build_seed_allowlist(providers)
+        policy = ProviderDiscoveryPolicy(host_port_allowlist=seeds)
+        await self._persist_discovery_policy(policy)
+        logger.info(
+            PROVIDER_DISCOVERY_ALLOWLIST_SEEDED,
+            entry_count=len(policy.host_port_allowlist),
+        )
+        return policy
+
+    async def _persist_discovery_policy(
+        self,
+        policy: ProviderDiscoveryPolicy,
+    ) -> None:
+        """Serialize and persist the discovery policy to settings.
+
+        Args:
+            policy: Policy to persist.
+        """
+        await self._settings_service.set(
+            "providers",
+            "discovery_allowlist",
+            json.dumps(policy.model_dump(mode="json")),
+        )
+
+    async def _update_allowlist_for_create(
+        self,
+        config: ProviderConfig,
+    ) -> None:
+        """Add a newly created provider's host:port to the allowlist.
+
+        Args:
+            config: The created provider config.
+        """
+        if config.base_url is None:
+            return
+        hp = extract_host_port(config.base_url)
+        if hp is None:
+            return
+        policy = await self._load_discovery_policy()
+        if hp in policy.host_port_allowlist:
+            return
+        new_entries = (*policy.host_port_allowlist, hp)
+        updated = ProviderDiscoveryPolicy(
+            host_port_allowlist=new_entries,
+            block_private_ips=policy.block_private_ips,
+        )
+        await self._persist_discovery_policy(updated)
+        logger.info(
+            PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
+            action="add",
+            host_port=hp,
+            entry_count=len(updated.host_port_allowlist),
+        )
+
+    async def _update_allowlist_for_delete(
+        self,
+        removed_config: ProviderConfig,
+        remaining_providers: dict[str, ProviderConfig],
+    ) -> None:
+        """Remove a deleted provider's host:port from the allowlist.
+
+        Only removes the entry if no other provider still uses
+        the same host:port.
+
+        Args:
+            removed_config: The deleted provider's config.
+            remaining_providers: All remaining provider configs.
+        """
+        if removed_config.base_url is None:
+            return
+        hp = extract_host_port(removed_config.base_url)
+        if hp is None:
+            return
+        # Check whether any remaining provider shares this host:port.
+        for config in remaining_providers.values():
+            if config.base_url is not None:
+                other_hp = extract_host_port(config.base_url)
+                if other_hp == hp:
+                    return
+        policy = await self._load_discovery_policy()
+        if hp not in policy.host_port_allowlist:
+            return
+        new_entries = tuple(e for e in policy.host_port_allowlist if e != hp)
+        updated = ProviderDiscoveryPolicy(
+            host_port_allowlist=new_entries,
+            block_private_ips=policy.block_private_ips,
+        )
+        await self._persist_discovery_policy(updated)
+        logger.info(
+            PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
+            action="remove",
+            host_port=hp,
+            entry_count=len(updated.host_port_allowlist),
+        )
+
+    async def _update_allowlist_for_update(
+        self,
+        old_config: ProviderConfig,
+        new_config: ProviderConfig,
+        all_providers: dict[str, ProviderConfig],
+    ) -> None:
+        """Update the allowlist when a provider's base_url changes.
+
+        Args:
+            old_config: Previous provider config.
+            new_config: Updated provider config.
+            all_providers: All current provider configs (after update).
+        """
+        old_hp = extract_host_port(old_config.base_url) if old_config.base_url else None
+        new_hp = extract_host_port(new_config.base_url) if new_config.base_url else None
+        if old_hp == new_hp:
+            return
+
+        policy = await self._load_discovery_policy()
+        entries = list(policy.host_port_allowlist)
+
+        # Remove old entry if unshared.
+        if old_hp is not None and old_hp in entries:
+            shared = any(
+                extract_host_port(c.base_url) == old_hp
+                for c in all_providers.values()
+                if c.base_url is not None
+            )
+            if not shared:
+                entries = [e for e in entries if e != old_hp]
+
+        # Add new entry if not present.
+        if new_hp is not None and new_hp not in entries:
+            entries.append(new_hp)
+
+        updated = ProviderDiscoveryPolicy(
+            host_port_allowlist=tuple(entries),
+            block_private_ips=policy.block_private_ips,
+        )
+        await self._persist_discovery_policy(updated)
+        logger.info(
+            PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
+            action="update",
+            old_host_port=old_hp,
+            new_host_port=new_hp,
+            entry_count=len(updated.host_port_allowlist),
+        )
+
+    async def get_discovery_policy(self) -> ProviderDiscoveryPolicy:
+        """Return the current discovery allowlist policy.
+
+        Returns:
+            Current policy (seeded on first access if needed).
+        """
+        return await self._load_discovery_policy()
+
+    async def add_custom_allowlist_entry(
+        self,
+        host_port: str,
+    ) -> ProviderDiscoveryPolicy:
+        """Add a custom host:port entry to the discovery allowlist.
+
+        Args:
+            host_port: Entry to add (e.g. ``"my-server:8080"``).
+
+        Returns:
+            Updated policy.
+        """
+        async with self._lock:
+            policy = await self._load_discovery_policy()
+            normalized = host_port.lower()
+            if normalized in policy.host_port_allowlist:
+                return policy
+            new_entries = (*policy.host_port_allowlist, normalized)
+            updated = ProviderDiscoveryPolicy(
+                host_port_allowlist=new_entries,
+                block_private_ips=policy.block_private_ips,
+            )
+            await self._persist_discovery_policy(updated)
+            logger.info(
+                PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
+                action="add_custom",
+                host_port=normalized,
+                entry_count=len(updated.host_port_allowlist),
+            )
+            return updated
+
+    async def remove_custom_allowlist_entry(
+        self,
+        host_port: str,
+    ) -> ProviderDiscoveryPolicy:
+        """Remove a host:port entry from the discovery allowlist.
+
+        Args:
+            host_port: Entry to remove.
+
+        Returns:
+            Updated policy.
+        """
+        async with self._lock:
+            policy = await self._load_discovery_policy()
+            normalized = host_port.lower()
+            if normalized not in policy.host_port_allowlist:
+                return policy
+            new_entries = tuple(
+                e for e in policy.host_port_allowlist if e != normalized
+            )
+            updated = ProviderDiscoveryPolicy(
+                host_port_allowlist=new_entries,
+                block_private_ips=policy.block_private_ips,
+            )
+            await self._persist_discovery_policy(updated)
+            logger.info(
+                PROVIDER_DISCOVERY_ALLOWLIST_UPDATED,
+                action="remove_custom",
+                host_port=normalized,
+                entry_count=len(updated.host_port_allowlist),
+            )
+            return updated
 
     async def _apply_discovered_models(
         self,

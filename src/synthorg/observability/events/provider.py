@@ -68,3 +68,11 @@ PROVIDER_PROBE_STARTED: Final[str] = "provider.management.probe_started"
 PROVIDER_PROBE_HIT: Final[str] = "provider.management.probe_hit"
 PROVIDER_PROBE_MISS: Final[str] = "provider.management.probe_miss"
 PROVIDER_PROBE_COMPLETED: Final[str] = "provider.management.probe_completed"
+
+# ── Provider discovery allowlist ─────────────────────────────
+
+PROVIDER_DISCOVERY_ALLOWLIST_SEEDED: Final[str] = "provider.discovery.allowlist_seeded"
+PROVIDER_DISCOVERY_ALLOWLIST_UPDATED: Final[str] = (
+    "provider.discovery.allowlist_updated"
+)
+PROVIDER_DISCOVERY_URL_ALLOWED: Final[str] = "provider.discovery.url_allowed"

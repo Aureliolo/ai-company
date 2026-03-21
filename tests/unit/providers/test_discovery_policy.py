@@ -1,0 +1,327 @@
+"""Tests for provider discovery SSRF allowlist policy."""
+
+import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from pydantic import ValidationError
+
+from synthorg.config.schema import ProviderConfig
+from synthorg.providers.discovery_policy import (
+    ProviderDiscoveryPolicy,
+    build_seed_allowlist,
+    extract_host_port,
+    is_url_allowed,
+    seed_from_presets,
+)
+
+pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+
+
+# ── ProviderDiscoveryPolicy model ────────────────────────────────
+
+
+class TestProviderDiscoveryPolicyConstruction:
+    """Construction, normalization, and immutability."""
+
+    def test_defaults(self) -> None:
+        policy = ProviderDiscoveryPolicy()
+        assert policy.host_port_allowlist == ()
+        assert policy.block_private_ips is True
+
+    def test_with_entries(self) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=("localhost:11434", "myhost:8080"),
+        )
+        assert policy.host_port_allowlist == ("localhost:11434", "myhost:8080")
+
+    def test_normalizes_to_lowercase(self) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=("HOST.EXAMPLE.COM:443", "Localhost:11434"),
+        )
+        assert policy.host_port_allowlist == (
+            "host.example.com:443",
+            "localhost:11434",
+        )
+
+    def test_deduplicates_preserving_order(self) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=(
+                "localhost:11434",
+                "myhost:8080",
+                "localhost:11434",
+            ),
+        )
+        assert policy.host_port_allowlist == ("localhost:11434", "myhost:8080")
+
+    def test_deduplication_is_case_insensitive(self) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=("HOST:8080", "host:8080"),
+        )
+        assert policy.host_port_allowlist == ("host:8080",)
+
+    def test_frozen(self) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=("localhost:11434",),
+        )
+        with pytest.raises(ValidationError):
+            policy.host_port_allowlist = ("new:1234",)  # type: ignore[misc]
+
+    def test_block_private_ips_false(self) -> None:
+        policy = ProviderDiscoveryPolicy(block_private_ips=False)
+        assert policy.block_private_ips is False
+
+
+# ── extract_host_port ────────────────────────────────────────────
+
+
+class TestExtractHostPort:
+    """URL to host:port extraction."""
+
+    @pytest.mark.parametrize(
+        ("url", "expected"),
+        [
+            ("http://localhost:11434", "localhost:11434"),
+            ("http://localhost:11434/", "localhost:11434"),
+            ("http://localhost:11434/api/tags", "localhost:11434"),
+            ("https://example.com:8443/v1", "example.com:8443"),
+            ("http://host.docker.internal:11434", "host.docker.internal:11434"),
+            ("http://172.17.0.1:1234/v1", "172.17.0.1:1234"),
+            # Default ports
+            ("http://example.com/v1", "example.com:80"),
+            ("https://example.com/v1", "example.com:443"),
+            # Uppercase normalized
+            ("http://HOST.EXAMPLE.COM:8080", "host.example.com:8080"),
+        ],
+        ids=[
+            "http-with-port",
+            "trailing-slash",
+            "with-path",
+            "https-with-port",
+            "docker-internal",
+            "docker-bridge-ip",
+            "http-default-port",
+            "https-default-port",
+            "uppercase-normalized",
+        ],
+    )
+    def test_standard_urls(self, url: str, expected: str) -> None:
+        assert extract_host_port(url) == expected
+
+    def test_ipv6_literal(self) -> None:
+        result = extract_host_port("http://[::1]:11434/v1")
+        assert result == "::1:11434"
+
+    def test_no_hostname_returns_none(self) -> None:
+        assert extract_host_port("not-a-url") is None
+
+    def test_no_scheme_returns_none(self) -> None:
+        assert extract_host_port("://host:8080") is None
+
+    def test_empty_string_returns_none(self) -> None:
+        assert extract_host_port("") is None
+
+    def test_file_scheme_returns_none(self) -> None:
+        assert extract_host_port("file:///etc/passwd") is None
+
+
+# ── seed_from_presets ────────────────────────────────────────────
+
+
+class TestSeedFromPresets:
+    """Seeding allowlist from preset candidate URLs."""
+
+    def test_includes_ollama_candidates(self) -> None:
+        seeds = seed_from_presets()
+        assert "host.docker.internal:11434" in seeds
+        assert "172.17.0.1:11434" in seeds
+        assert "localhost:11434" in seeds
+
+    def test_includes_lm_studio_candidates(self) -> None:
+        seeds = seed_from_presets()
+        assert "host.docker.internal:1234" in seeds
+        assert "172.17.0.1:1234" in seeds
+        assert "localhost:1234" in seeds
+
+    def test_includes_vllm_candidates(self) -> None:
+        seeds = seed_from_presets()
+        assert "host.docker.internal:8000" in seeds
+        assert "172.17.0.1:8000" in seeds
+        assert "localhost:8000" in seeds
+
+    def test_no_duplicates(self) -> None:
+        seeds = seed_from_presets()
+        assert len(seeds) == len(set(seeds))
+
+    def test_all_entries_are_lowercase(self) -> None:
+        seeds = seed_from_presets()
+        for entry in seeds:
+            assert entry == entry.lower()
+
+    def test_returns_tuple(self) -> None:
+        seeds = seed_from_presets()
+        assert isinstance(seeds, tuple)
+
+
+# ── build_seed_allowlist ─────────────────────────────────────────
+
+
+class TestBuildSeedAllowlist:
+    """Merge preset seeds with installed provider base_urls."""
+
+    def test_empty_providers_returns_preset_seeds(self) -> None:
+        result = build_seed_allowlist({})
+        preset_seeds = seed_from_presets()
+        assert set(result) == set(preset_seeds)
+
+    def test_adds_provider_base_url(self) -> None:
+        providers = {
+            "custom": ProviderConfig(
+                driver="litellm",
+                base_url="http://my-server:9090/v1",
+            ),
+        }
+        result = build_seed_allowlist(providers)
+        assert "my-server:9090" in result
+
+    def test_skips_provider_with_no_base_url(self) -> None:
+        providers = {
+            "cloud": ProviderConfig(driver="litellm", base_url=None),
+        }
+        result = build_seed_allowlist(providers)
+        # Should just be preset seeds
+        assert set(result) == set(seed_from_presets())
+
+    def test_deduplicates_with_presets(self) -> None:
+        providers = {
+            "ollama": ProviderConfig(
+                driver="litellm",
+                base_url="http://localhost:11434",
+            ),
+        }
+        result = build_seed_allowlist(providers)
+        # localhost:11434 is already in preset seeds
+        assert result.count("localhost:11434") == 1
+
+    def test_no_duplicates(self) -> None:
+        providers = {
+            "a": ProviderConfig(
+                driver="litellm",
+                base_url="http://my-server:9090",
+            ),
+            "b": ProviderConfig(
+                driver="litellm",
+                base_url="http://my-server:9090",
+            ),
+        }
+        result = build_seed_allowlist(providers)
+        assert result.count("my-server:9090") == 1
+
+    def test_returns_tuple(self) -> None:
+        result = build_seed_allowlist({})
+        assert isinstance(result, tuple)
+
+
+# ── is_url_allowed ───────────────────────────────────────────────
+
+
+class TestIsUrlAllowed:
+    """URL allowlist checking."""
+
+    def test_allowed_url(self) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=("localhost:11434",),
+        )
+        assert is_url_allowed("http://localhost:11434/api/tags", policy) is True
+
+    def test_disallowed_url(self) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=("localhost:11434",),
+        )
+        assert is_url_allowed("http://localhost:9999/v1", policy) is False
+
+    def test_case_insensitive(self) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=("host.example.com:8080",),
+        )
+        assert is_url_allowed("http://HOST.EXAMPLE.COM:8080/v1", policy) is True
+
+    def test_different_port_not_allowed(self) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=("localhost:11434",),
+        )
+        assert is_url_allowed("http://localhost:1234/v1", policy) is False
+
+    def test_block_private_ips_false_allows_all(self) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=(),
+            block_private_ips=False,
+        )
+        assert is_url_allowed("http://anything:9999/v1", policy) is True
+
+    def test_empty_allowlist_blocks(self) -> None:
+        policy = ProviderDiscoveryPolicy(host_port_allowlist=())
+        assert is_url_allowed("http://localhost:11434", policy) is False
+
+    def test_invalid_url_returns_false(self) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=("localhost:11434",),
+        )
+        assert is_url_allowed("not-a-url", policy) is False
+
+    def test_with_path_still_matches(self) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=("localhost:1234",),
+        )
+        assert is_url_allowed("http://localhost:1234/v1/models", policy) is True
+
+
+# ── Property-based tests ─────────────────────────────────────────
+
+
+class TestDiscoveryPolicyProperties:
+    """Hypothesis property-based tests."""
+
+    @given(
+        entries=st.lists(
+            st.from_regex(r"[a-z][a-z0-9\.\-]{0,20}:[0-9]{1,5}", fullmatch=True),
+            min_size=0,
+            max_size=10,
+        ),
+    )
+    @settings(max_examples=200)
+    def test_normalization_is_idempotent(self, entries: list[str]) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=tuple(entries),
+        )
+        policy2 = ProviderDiscoveryPolicy(
+            host_port_allowlist=policy.host_port_allowlist,
+        )
+        assert policy.host_port_allowlist == policy2.host_port_allowlist
+
+    @given(
+        entry=st.from_regex(
+            r"[a-zA-Z][a-zA-Z0-9\.\-]{0,20}:[0-9]{1,5}",
+            fullmatch=True,
+        ),
+    )
+    @settings(max_examples=200)
+    def test_allowlist_entries_always_lowercase(self, entry: str) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=(entry,),
+        )
+        for e in policy.host_port_allowlist:
+            assert e == e.lower()
+
+    @given(
+        entries=st.lists(
+            st.from_regex(r"[a-z][a-z0-9\.\-]{0,20}:[0-9]{1,5}", fullmatch=True),
+            min_size=0,
+            max_size=10,
+        ),
+    )
+    @settings(max_examples=200)
+    def test_no_duplicates_after_normalization(self, entries: list[str]) -> None:
+        policy = ProviderDiscoveryPolicy(
+            host_port_allowlist=tuple(entries),
+        )
+        assert len(policy.host_port_allowlist) == len(set(policy.host_port_allowlist))

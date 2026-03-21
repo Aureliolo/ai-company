@@ -129,18 +129,16 @@ class TestCreateFromPresetAutoDiscovery:
             )
             result = await service.create_from_preset(request)
 
-        mock_discover.assert_awaited_once_with(
-            "http://localhost:11434",
-            "ollama",
-            trust_url=True,
-        )
+        mock_discover.assert_awaited_once()
+        call_kwargs = mock_discover.call_args
+        assert call_kwargs.kwargs["trust_url"] is True
         assert result.models == discovered
 
     async def test_create_from_preset_user_base_url_not_trusted(
         self,
         service: ProviderManagementService,
     ) -> None:
-        """User-supplied base_url is NOT trusted (trust_url=False)."""
+        """User-supplied base_url not in seeded allowlist is NOT trusted."""
         discovered = (ProviderModelConfig(id="ollama/test-model-z"),)
         with patch(
             "synthorg.providers.management.service.discover_models",
@@ -154,11 +152,9 @@ class TestCreateFromPresetAutoDiscovery:
             )
             result = await service.create_from_preset(request)
 
-        mock_discover.assert_awaited_once_with(
-            "http://custom-host:11434",
-            "ollama",
-            trust_url=False,
-        )
+        mock_discover.assert_awaited_once()
+        call_kwargs = mock_discover.call_args
+        assert call_kwargs.kwargs["trust_url"] is False
         assert result.models == discovered
 
 
@@ -166,13 +162,10 @@ class TestCreateFromPresetAutoDiscovery:
 class TestDiscoverModelsForProviderTrust:
     """Parametrized tests for trust logic in discover_models_for_provider.
 
-    Each scenario creates a provider with a specific base_url, optionally
-    passes a preset_hint, and asserts the resulting trust_url value.
-
-    Regression note: the ``port-inferred-known-url-trusts`` case is the
-    exact regression scenario for the SSRF trust bug fixed in this PR --
-    before the fix, ``_resolve_discovery_trust`` received the raw
-    ``preset_hint`` (None) instead of the port-inferred ``resolved_hint``.
+    Trust is now determined by the dynamic SSRF allowlist rather than
+    preset-hint matching.  Creating a provider auto-adds its host:port
+    to the allowlist, so all installed providers' URLs are trusted.
+    Preset candidate URLs are seeded at startup.
     """
 
     @pytest.mark.parametrize(
@@ -182,43 +175,43 @@ class TestDiscoverModelsForProviderTrust:
                 "http://localhost:11434",
                 "ollama",
                 True,
-                id="valid-preset-hint-trusts",
+                id="preset-url-in-seeded-allowlist",
             ),
             pytest.param(
                 "http://localhost:11434",
                 "fake",
-                False,
-                id="invalid-preset-hint-no-trust",
+                True,
+                id="preset-hint-irrelevant-url-in-allowlist",
             ),
             pytest.param(
                 "http://localhost:9999",
                 None,
-                False,
-                id="unknown-port-no-trust",
+                True,
+                id="auto-added-by-create",
             ),
             pytest.param(
                 "http://localhost:11434",
                 None,
                 True,
-                id="port-inferred-known-url-trusts",
+                id="seeded-preset-url",
             ),
             pytest.param(
                 "http://host.docker.internal:11434",
                 None,
                 True,
-                id="port-inferred-docker-internal-trusts",
+                id="docker-internal-in-seeded-allowlist",
             ),
             pytest.param(
                 "http://evil.example.com:11434",
                 None,
-                False,
-                id="port-inferred-mismatched-url-no-trust",
+                True,
+                id="auto-added-on-create",
             ),
             pytest.param(
                 "http://evil.example.com:11434",
                 "ollama",
-                False,
-                id="explicit-hint-non-whitelisted-url-no-trust",
+                True,
+                id="auto-added-preset-hint-irrelevant",
             ),
         ],
     )
@@ -229,7 +222,7 @@ class TestDiscoverModelsForProviderTrust:
         preset_hint: str | None,
         expected_trust: bool,
     ) -> None:
-        """Trust is granted only when hint is valid AND URL is whitelisted."""
+        """All installed provider URLs are trusted via the allowlist."""
         await service.create_provider(
             make_create_request(base_url=base_url),
         )
