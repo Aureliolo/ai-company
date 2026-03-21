@@ -18,6 +18,7 @@ from synthorg.communication.meeting.models import (
     MeetingMinutes,
     MeetingRecord,
 )
+from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 
 # Re-use the shared conftest helpers.
 from tests.unit.api.conftest import (
@@ -63,7 +64,7 @@ def _make_record(
 @pytest.fixture
 def mock_orchestrator() -> MagicMock:
     """Mock orchestrator with pre-loaded records."""
-    orch = MagicMock()
+    orch = MagicMock(spec=MeetingOrchestrator)
     records = (
         _make_record("mtg-001", "standup", MeetingStatus.COMPLETED),
         _make_record("mtg-002", "retro", MeetingStatus.FAILED),
@@ -75,6 +76,8 @@ def mock_orchestrator() -> MagicMock:
 @pytest.fixture
 def mock_scheduler() -> MagicMock:
     """Mock scheduler."""
+    # Cannot use spec=MeetingScheduler: PEP 649 deferred annotation
+    # for MeetingsConfig in __init__ causes NameError in inspect.
     sched = MagicMock()
     sched.trigger_event = AsyncMock(return_value=())
     sched.start = AsyncMock()
@@ -221,15 +224,18 @@ class TestMeetingController:
         )
         assert resp.status_code == 422
 
-    def test_503_when_orchestrator_not_configured(
+    def test_auto_wired_meetings_returns_200(
         self,
     ) -> None:
-        """Without meeting_orchestrator, list should 503."""
-        app = _create_app_without_meetings()
+        """Auto-wired meeting services should return 200 (empty list)."""
+        app = _create_app_without_explicit_meetings()
         with TestClient(app) as client:
             client.headers.update(make_auth_headers("ceo"))
             resp = client.get("/api/v1/meetings")
-            assert resp.status_code == 503
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["success"] is True
+            assert body["data"] == []
 
 
 @pytest.mark.unit
@@ -312,8 +318,8 @@ class TestTriggerMeetingRequestValidation:
         assert req.context[key] == value
 
 
-def _create_app_without_meetings() -> Any:
-    """Create app without meeting services for 503 testing."""
+def _create_app_without_explicit_meetings() -> Any:
+    """Create app without explicit meeting services (auto-wired)."""
     from synthorg.api.approval_store import ApprovalStore
     from synthorg.api.auth.service import AuthService
     from synthorg.budget.tracker import CostTracker
@@ -338,5 +344,5 @@ def _create_app_without_meetings() -> Any:
         cost_tracker=CostTracker(),
         approval_store=ApprovalStore(),
         auth_service=auth_service,
-        # No meeting_orchestrator or meeting_scheduler
+        # No meeting_orchestrator or meeting_scheduler -- auto-wired.
     )

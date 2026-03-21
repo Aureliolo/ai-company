@@ -7,8 +7,12 @@ import pytest
 
 from synthorg.communication.meeting.errors import NoParticipantsResolvedError
 from synthorg.communication.meeting.participant import (
+    PassthroughParticipantResolver,
     RegistryParticipantResolver,
 )
+from synthorg.core.agent import AgentIdentity
+
+pytestmark = pytest.mark.timeout(30)
 
 
 def _make_identity(
@@ -17,7 +21,7 @@ def _make_identity(
     department: str = "engineering",
 ) -> MagicMock:
     """Create a mock AgentIdentity."""
-    identity = MagicMock()
+    identity = MagicMock(spec=AgentIdentity)
     identity.id = agent_id or str(uuid4())
     identity.name = name
     identity.department = department
@@ -155,3 +159,107 @@ class TestRegistryParticipantResolver:
         """Empty participant refs raise NoParticipantsResolvedError."""
         with pytest.raises(NoParticipantsResolvedError):
             await resolver.resolve(())
+
+
+@pytest.mark.unit
+class TestPassthroughParticipantResolver:
+    """Tests for PassthroughParticipantResolver."""
+
+    @pytest.fixture
+    def resolver(self) -> PassthroughParticipantResolver:
+        return PassthroughParticipantResolver()
+
+    async def test_resolve_returns_refs_as_literal_ids(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Refs are returned as-is as literal agent IDs."""
+        result = await resolver.resolve(("agent-1", "agent-2", "agent-3"))
+
+        assert result == ("agent-1", "agent-2", "agent-3")
+
+    async def test_resolve_deduplicates_preserving_order(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Duplicate refs are removed, first occurrence wins."""
+        result = await resolver.resolve(("a", "b", "a", "c", "b"))
+
+        assert result == ("a", "b", "c")
+
+    async def test_resolve_raises_on_empty_refs(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Empty refs raise NoParticipantsResolvedError."""
+        with pytest.raises(NoParticipantsResolvedError):
+            await resolver.resolve(())
+
+    async def test_resolve_uses_context_when_available(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Context values are resolved before pass-through."""
+        result = await resolver.resolve(
+            ("author", "reviewer"),
+            context={"author": "ctx-agent-1"},
+        )
+
+        assert result == ("ctx-agent-1", "reviewer")
+
+    async def test_resolve_context_blank_string_skipped(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Blank context string values are skipped."""
+        result = await resolver.resolve(
+            ("author", "fallback-agent"),
+            context={"author": "   "},
+        )
+
+        assert result == ("fallback-agent",)
+
+    async def test_resolve_context_non_string_skipped(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Non-string/non-list context values are skipped."""
+        result = await resolver.resolve(
+            ("author", "fallback-agent"),
+            context={"author": 42},
+        )
+
+        assert result == ("fallback-agent",)
+
+    async def test_resolve_context_list_value(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Context list values are flattened into resolved IDs."""
+        result = await resolver.resolve(
+            ("reviewers",),
+            context={"reviewers": ["r-1", "r-2"]},
+        )
+
+        assert result == ("r-1", "r-2")
+
+    async def test_resolve_context_tuple_value(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Context tuple values are flattened into resolved IDs."""
+        result = await resolver.resolve(
+            ("reviewers",),
+            context={"reviewers": ("r-1", "r-2")},
+        )
+
+        assert result == ("r-1", "r-2")
+
+    async def test_resolve_strips_whitespace_from_passthrough(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Whitespace-only passthrough entries are stripped and skipped."""
+        result = await resolver.resolve((" agent-1 ", "  ", "agent-2"))
+
+        assert result == ("agent-1", "agent-2")

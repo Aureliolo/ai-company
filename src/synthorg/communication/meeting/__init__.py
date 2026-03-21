@@ -42,6 +42,7 @@ from synthorg.communication.meeting.models import (
 from synthorg.communication.meeting.orchestrator import MeetingOrchestrator
 from synthorg.communication.meeting.participant import (
     ParticipantResolver,
+    PassthroughParticipantResolver,
     RegistryParticipantResolver,
 )
 from synthorg.communication.meeting.position_papers import (
@@ -87,6 +88,7 @@ __all__ = [
     "MeetingStatus",
     "NoParticipantsResolvedError",
     "ParticipantResolver",
+    "PassthroughParticipantResolver",
     "PositionPapersConfig",
     "PositionPapersProtocol",
     "RegistryParticipantResolver",

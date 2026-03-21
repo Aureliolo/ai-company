@@ -27,7 +27,11 @@ from synthorg.api.approval_store import ApprovalStore
 from synthorg.api.auth.controller import require_password_changed
 from synthorg.api.auth.middleware import create_auth_middleware_class
 from synthorg.api.auth.service import AuthService  # noqa: TC001
-from synthorg.api.auto_wire import auto_wire_phase1, auto_wire_settings
+from synthorg.api.auto_wire import (
+    auto_wire_meetings,
+    auto_wire_phase1,
+    auto_wire_settings,
+)
 from synthorg.api.bus_bridge import MessageBusBridge
 from synthorg.api.channels import (
     CHANNEL_APPROVALS,
@@ -505,6 +509,16 @@ def create_app(  # noqa: PLR0913
     cost_tracker = phase1.cost_tracker
     task_engine = phase1.task_engine
     provider_registry = phase1.provider_registry
+
+    # ── Meeting auto-wire: orchestrator + scheduler (Phase 1 level) ──
+    meeting_wire = auto_wire_meetings(
+        effective_config=effective_config,
+        meeting_orchestrator=meeting_orchestrator,
+        meeting_scheduler=meeting_scheduler,
+        agent_registry=agent_registry,
+    )
+    meeting_orchestrator = meeting_wire.meeting_orchestrator
+    meeting_scheduler = meeting_wire.meeting_scheduler
 
     channels_plugin = create_channels_plugin()
     expire_callback = _make_expire_callback(channels_plugin)
