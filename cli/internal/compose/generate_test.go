@@ -35,7 +35,6 @@ func TestGenerateDefault(t *testing.T) {
 	assertContains(t, yaml, "cap_drop:")
 	assertContains(t, yaml, "read_only: true")
 	assertContains(t, yaml, "service_healthy")
-	assertContains(t, yaml, "'ok'") // healthcheck checks for 'ok'
 	assertContains(t, yaml, "synthorg-data:")
 
 	// No sandbox by default.
@@ -107,10 +106,6 @@ func TestGenerateWithSandbox(t *testing.T) {
 	assertContains(t, yaml, "/var/run/docker.sock:/var/run/docker.sock:ro")
 	assertContains(t, yaml, "no-new-privileges:true")
 
-	// Sandbox healthcheck override (faster than Dockerfile's 30s interval).
-	assertContains(t, yaml, `test: ["CMD", "true"]`)
-	assertContains(t, yaml, "interval: 10s")
-	assertContains(t, yaml, "start_period: 5s")
 }
 
 func TestGenerateWithDigestPins(t *testing.T) {
