@@ -201,15 +201,17 @@ describe('settings store (property-based)', () => {
     )
   })
 
-  it('toggleAdvanced always produces a boolean', () => {
+  it('toggleAdvanced always returns "toggled" or "needs_warning"', () => {
     fc.assert(
       fc.property(
         fc.array(fc.boolean(), { minLength: 1, maxLength: 20 }),
         (toggles) => {
           setActivePinia(createPinia())
+          sessionStorage.clear()
           const store = useSettingsStore()
           for (const _ of toggles) {
-            store.toggleAdvanced()
+            const result = store.toggleAdvanced()
+            expect(['toggled', 'needs_warning']).toContain(result)
           }
           expect(typeof store.showAdvanced).toBe('boolean')
         },

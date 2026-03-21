@@ -290,17 +290,58 @@ describe('useSettingsStore', () => {
     expect(store.entries[0].source).toBe('default')
   })
 
-  it('toggleAdvanced flips state and persists to localStorage', () => {
+  it('toggleAdvanced returns "toggled" when toggling OFF', () => {
     const store = useSettingsStore()
-    expect(store.showAdvanced).toBe(false)
-
-    store.toggleAdvanced()
-    expect(store.showAdvanced).toBe(true)
-    expect(localStorage.getItem(SETTINGS_ADVANCED_KEY)).toBe('true')
-
-    store.toggleAdvanced()
+    store.confirmAdvanced() // set to true first
+    const result = store.toggleAdvanced()
+    expect(result).toBe('toggled')
     expect(store.showAdvanced).toBe(false)
     expect(localStorage.getItem(SETTINGS_ADVANCED_KEY)).toBe('false')
+  })
+
+  it('toggleAdvanced returns "needs_warning" when toggling ON (never warned)', () => {
+    const store = useSettingsStore()
+    sessionStorage.removeItem('settings_advanced_warned')
+    const result = store.toggleAdvanced()
+    expect(result).toBe('needs_warning')
+    expect(store.showAdvanced).toBe(false) // Not toggled yet
+  })
+
+  it('toggleAdvanced returns "toggled" when toggling ON (already warned)', () => {
+    const store = useSettingsStore()
+    sessionStorage.setItem('settings_advanced_warned', 'true')
+    const result = store.toggleAdvanced()
+    expect(result).toBe('toggled')
+    expect(store.showAdvanced).toBe(true)
+    expect(localStorage.getItem(SETTINGS_ADVANCED_KEY)).toBe('true')
+  })
+
+  it('confirmAdvanced sets showAdvanced and persists warning flag', () => {
+    const store = useSettingsStore()
+    expect(store.showAdvanced).toBe(false)
+    store.confirmAdvanced()
+    expect(store.showAdvanced).toBe(true)
+    expect(localStorage.getItem(SETTINGS_ADVANCED_KEY)).toBe('true')
+    expect(sessionStorage.getItem('settings_advanced_warned')).toBe('true')
+  })
+
+  it('setDirty/clearDirty/clearAllDirty track dirty fields', () => {
+    const store = useSettingsStore()
+    expect(store.hasDirty).toBe(false)
+    expect(store.dirtyCount).toBe(0)
+
+    store.setDirty('budget', 'total_monthly', '200.0')
+    expect(store.hasDirty).toBe(true)
+    expect(store.dirtyCount).toBe(1)
+
+    store.setDirty('security', 'enabled', 'false')
+    expect(store.dirtyCount).toBe(2)
+
+    store.clearDirty('budget', 'total_monthly')
+    expect(store.dirtyCount).toBe(1)
+
+    store.clearAllDirty()
+    expect(store.hasDirty).toBe(false)
   })
 
   it('reads showAdvanced from localStorage on init', () => {

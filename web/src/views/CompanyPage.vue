@@ -1,0 +1,328 @@
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import Tabs from 'primevue/tabs'
+import TabList from 'primevue/tablist'
+import Tab from 'primevue/tab'
+import TabPanels from 'primevue/tabpanels'
+import TabPanel from 'primevue/tabpanel'
+import Button from 'primevue/button'
+import { useToast } from 'primevue/usetoast'
+import AppShell from '@/components/layout/AppShell.vue'
+import PageHeader from '@/components/common/PageHeader.vue'
+import LoadingSkeleton from '@/components/common/LoadingSkeleton.vue'
+import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
+import EditModeToggle from '@/components/common/EditModeToggle.vue'
+import CompanyGeneralForm from '@/components/company/CompanyGeneralForm.vue'
+import CompanyAgentCard from '@/components/company/CompanyAgentCard.vue'
+import CompanyAgentFormDialog from '@/components/company/CompanyAgentFormDialog.vue'
+import CompanyDepartmentCard from '@/components/company/CompanyDepartmentCard.vue'
+import CompanyDepartmentFormDialog from '@/components/company/CompanyDepartmentFormDialog.vue'
+import SettingsCodeView from '@/components/settings/SettingsCodeView.vue'
+import { useSettingsStore } from '@/stores/settings'
+import { useEditMode } from '@/composables/useEditMode'
+import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
+import type { AgentConfigEntry } from '@/components/company/CompanyAgentCard.vue'
+import type { DepartmentEntry } from '@/components/company/CompanyDepartmentCard.vue'
+import type { SettingEntry, SettingNamespace } from '@/api/types'
+
+const toast = useToast()
+const settingsStore = useSettingsStore()
+const editMode = useEditMode()
+const loading = ref(true)
+const activeTab = ref('general')
+
+// Company entries from settings
+const companyEntries = computed(() => settingsStore.entriesByNamespace('company'))
+
+// Company name for page title
+const companyName = computed(() => {
+  const entry = companyEntries.value.find((e) => e.definition.key === 'company_name')
+  return entry?.value || 'Company'
+})
+
+// Parse agents from JSON setting
+const agents = computed<AgentConfigEntry[]>(() => {
+  const entry = companyEntries.value.find((e) => e.definition.key === 'agents')
+  if (!entry?.value) return []
+  try {
+    const parsed = JSON.parse(entry.value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+})
+
+// Parse departments from JSON setting
+const departments = computed<DepartmentEntry[]>(() => {
+  const entry = companyEntries.value.find((e) => e.definition.key === 'departments')
+  if (!entry?.value) return []
+  try {
+    const parsed = JSON.parse(entry.value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+})
+
+// Department names for agent form dropdown
+const departmentNames = computed(() => departments.value.map((d) => d.name))
+
+/** Effective edit mode for the company page (cast-safe for template). */
+const companyEditMode = editMode.getEffectiveMode('company')
+const companyCodeMode = computed(() => {
+  const mode = companyEditMode.value
+  return mode === 'yaml' ? 'yaml' : 'json'
+})
+
+// Agent form dialog state
+const agentDialogVisible = ref(false)
+const agentDialogMode = ref<'create' | 'edit'>('create')
+const editingAgentIndex = ref(-1)
+const editingAgent = computed(() =>
+  editingAgentIndex.value >= 0 ? agents.value[editingAgentIndex.value] : undefined,
+)
+
+// Department form dialog state
+const deptDialogVisible = ref(false)
+const deptDialogMode = ref<'create' | 'edit'>('create')
+const editingDeptIndex = ref(-1)
+const editingDept = computed(() =>
+  editingDeptIndex.value >= 0 ? departments.value[editingDeptIndex.value] : undefined,
+)
+
+async function retryFetch() {
+  loading.value = true
+  try {
+    await settingsStore.fetchAll()
+  } catch (err) {
+    console.error('Company data fetch failed:', sanitizeForLog(err))
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(retryFetch)
+
+// ── Agent CRUD ─────────────────────────────────────────────
+
+function openAddAgent() {
+  agentDialogMode.value = 'create'
+  editingAgentIndex.value = -1
+  agentDialogVisible.value = true
+}
+
+function openEditAgent(index: number) {
+  agentDialogMode.value = 'edit'
+  editingAgentIndex.value = index
+  agentDialogVisible.value = true
+}
+
+async function saveAgent(agent: AgentConfigEntry) {
+  const updated = [...agents.value]
+  if (agentDialogMode.value === 'edit' && editingAgentIndex.value >= 0) {
+    updated[editingAgentIndex.value] = agent
+  } else {
+    updated.push(agent)
+  }
+  try {
+    await settingsStore.updateSetting('company', 'agents', JSON.stringify(updated))
+    toast.add({ severity: 'success', summary: `Agent ${agent.name} ${agentDialogMode.value === 'create' ? 'added' : 'updated'}`, life: 3000 })
+  } catch (err) {
+    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+  }
+}
+
+async function deleteAgent(index: number) {
+  const agent = agents.value[index]
+  const updated = agents.value.filter((_, i) => i !== index)
+  try {
+    await settingsStore.updateSetting('company', 'agents', JSON.stringify(updated))
+    toast.add({ severity: 'success', summary: `Agent ${agent.name} deleted`, life: 3000 })
+  } catch (err) {
+    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+  }
+}
+
+// ── Department CRUD ────────────────────────────────────────
+
+function openAddDept() {
+  deptDialogMode.value = 'create'
+  editingDeptIndex.value = -1
+  deptDialogVisible.value = true
+}
+
+function openEditDept(index: number) {
+  deptDialogMode.value = 'edit'
+  editingDeptIndex.value = index
+  deptDialogVisible.value = true
+}
+
+async function saveDept(dept: DepartmentEntry) {
+  const updated = [...departments.value]
+  if (deptDialogMode.value === 'edit' && editingDeptIndex.value >= 0) {
+    updated[editingDeptIndex.value] = dept
+  } else {
+    updated.push(dept)
+  }
+  try {
+    await settingsStore.updateSetting('company', 'departments', JSON.stringify(updated))
+    toast.add({ severity: 'success', summary: `Department ${dept.name} ${deptDialogMode.value === 'create' ? 'added' : 'updated'}`, life: 3000 })
+  } catch (err) {
+    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+  }
+}
+
+async function deleteDept(index: number) {
+  const dept = departments.value[index]
+  const updated = departments.value.filter((_, i) => i !== index)
+  try {
+    await settingsStore.updateSetting('company', 'departments', JSON.stringify(updated))
+    toast.add({ severity: 'success', summary: `Department ${dept.name} deleted`, life: 3000 })
+  } catch (err) {
+    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+  }
+}
+
+// ── Settings handlers (for general form) ───────────────────
+
+async function handleSettingSave(entry: SettingEntry, value: string) {
+  try {
+    await settingsStore.updateSetting(entry.definition.namespace, entry.definition.key, value)
+    toast.add({ severity: 'success', summary: `${entry.definition.key} updated`, life: 3000 })
+  } catch (err) {
+    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+  }
+}
+
+async function handleSettingReset(entry: SettingEntry) {
+  try {
+    await settingsStore.resetSetting(entry.definition.namespace, entry.definition.key)
+    toast.add({ severity: 'success', summary: `${entry.definition.key} reset to default`, life: 3000 })
+  } catch (err) {
+    toast.add({ severity: 'error', summary: getErrorMessage(err), life: 5000 })
+  }
+}
+
+async function handleCodeViewSave(updates: Array<{ namespace: string; key: string; value: string }>) {
+  let saved = 0
+  let failed = 0
+  for (const u of updates) {
+    try {
+      await settingsStore.updateSetting(u.namespace as SettingNamespace, u.key, u.value)
+      saved++
+    } catch {
+      failed++
+    }
+  }
+  if (saved > 0) toast.add({ severity: 'success', summary: `${saved} setting(s) saved`, life: 3000 })
+  if (failed > 0) toast.add({ severity: 'error', summary: `${failed} setting(s) failed to save`, life: 5000 })
+}
+</script>
+
+<template>
+  <AppShell>
+    <PageHeader :title="companyName" subtitle="Company configuration, agents, and departments">
+      <template #actions>
+        <EditModeToggle
+          :model-value="companyEditMode"
+          size="small"
+          @update:model-value="editMode.setTabMode('company', $event)"
+        />
+      </template>
+    </PageHeader>
+
+    <ErrorBoundary :error="settingsStore.error" @retry="retryFetch">
+    <LoadingSkeleton v-if="loading" :lines="6" />
+
+    <!-- Code view mode (JSON/YAML) -->
+    <SettingsCodeView
+      v-else-if="companyEditMode !== 'gui'"
+      :entries="companyEntries"
+      :mode="companyCodeMode"
+      :saving="settingsStore.savingKey !== null"
+      @save="handleCodeViewSave"
+    />
+
+    <!-- GUI mode -->
+    <Tabs v-else v-model:value="activeTab">
+      <TabList>
+        <Tab value="general">General</Tab>
+        <Tab value="agents">Agents ({{ agents.length }})</Tab>
+        <Tab value="departments">Departments ({{ departments.length }})</Tab>
+      </TabList>
+
+      <TabPanels>
+        <!-- General tab -->
+        <TabPanel value="general">
+          <CompanyGeneralForm
+            :entries="companyEntries"
+            :saving-key="settingsStore.savingKey"
+            @save="handleSettingSave"
+            @reset="handleSettingReset"
+          />
+        </TabPanel>
+
+        <!-- Agents tab -->
+        <TabPanel value="agents">
+          <div class="mb-4">
+            <Button label="Add Agent" size="small" @click="openAddAgent" />
+          </div>
+
+          <div v-if="agents.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
+            <p class="text-sm text-slate-400">No agents configured. Add one to get started.</p>
+          </div>
+
+          <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <CompanyAgentCard
+              v-for="(agent, index) in agents"
+              :key="agent.name"
+              :agent="agent"
+              :index="index"
+              @edit="openEditAgent"
+              @delete="deleteAgent"
+            />
+          </div>
+        </TabPanel>
+
+        <!-- Departments tab -->
+        <TabPanel value="departments">
+          <div class="mb-4">
+            <Button label="Add Department" size="small" @click="openAddDept" />
+          </div>
+
+          <div v-if="departments.length === 0" class="rounded-lg border border-dashed border-slate-700 p-8 text-center">
+            <p class="text-sm text-slate-400">No departments configured. Add one to get started.</p>
+          </div>
+
+          <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <CompanyDepartmentCard
+              v-for="(dept, index) in departments"
+              :key="dept.name"
+              :department="dept"
+              :index="index"
+              @edit="openEditDept"
+              @delete="deleteDept"
+            />
+          </div>
+        </TabPanel>
+      </TabPanels>
+    </Tabs>
+    </ErrorBoundary>
+
+    <!-- Dialogs -->
+    <CompanyAgentFormDialog
+      v-model:visible="agentDialogVisible"
+      :mode="agentDialogMode"
+      :agent="editingAgent"
+      :departments="departmentNames"
+      @save="saveAgent"
+    />
+    <CompanyDepartmentFormDialog
+      v-model:visible="deptDialogVisible"
+      :mode="deptDialogMode"
+      :department="editingDept"
+      @save="saveDept"
+    />
+  </AppShell>
+</template>
