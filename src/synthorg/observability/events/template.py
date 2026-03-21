@@ -29,3 +29,11 @@ TEMPLATE_LOAD_PARSE_ERROR: Final[str] = "template.load.parse_error"
 TEMPLATE_LOAD_STRUCTURE_ERROR: Final[str] = "template.load.structure_error"
 TEMPLATE_LOAD_INVALID_NAME: Final[str] = "template.load.invalid_name"
 TEMPLATE_SCHEMA_VALIDATION_ERROR: Final[str] = "template.schema.validation_error"
+
+# Model requirement parsing and resolution
+TEMPLATE_MODEL_REQUIREMENT_PARSED: Final[str] = "template.model_requirement.parsed"
+TEMPLATE_MODEL_REQUIREMENT_RESOLVED: Final[str] = "template.model_requirement.resolved"
+
+# Model matching
+TEMPLATE_MODEL_MATCH_SUCCESS: Final[str] = "template.model_match.success"
+TEMPLATE_MODEL_MATCH_FAILED: Final[str] = "template.model_match.failed"

@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import * as setupApi from '@/api/endpoints/setup'
 import { getErrorMessage } from '@/utils/errors'
 import { MIN_PASSWORD_LENGTH } from '@/utils/constants'
-import type { SetupStatusResponse, TemplateInfoResponse } from '@/api/types'
+import type { SetupAgentSummary, SetupStatusResponse, TemplateInfoResponse } from '@/api/types'
 
 export const useSetupStore = defineStore('setup', () => {
   const status = ref<SetupStatusResponse | null>(null)
@@ -11,6 +11,8 @@ export const useSetupStore = defineStore('setup', () => {
   const statusLoaded = ref(false)
   const currentStep = ref(0)
   const templates = ref<TemplateInfoResponse[]>([])
+  /** Agents created from template, cached for the Review Org step. */
+  const agents = ref<SetupAgentSummary[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -20,7 +22,7 @@ export const useSetupStore = defineStore('setup', () => {
     admin: false,
     provider: false,
     company: false,
-    agent: false,
+    review: false,
   })
 
   // Fail-closed: if status hasn't loaded, assume setup IS needed.
@@ -51,13 +53,13 @@ export const useSetupStore = defineStore('setup', () => {
     const adminDone = !status.value.needs_admin
     const providerDone = adminDone && status.value.has_providers
     const companyDone = providerDone && status.value.has_company
-    const agentDone = companyDone && status.value.has_agents
+    const reviewDone = companyDone && status.value.has_agents
     completedSteps.value = {
       welcome: currentStep.value > 0,
       admin: adminDone,
       provider: providerDone,
       company: companyDone,
-      agent: agentDone,
+      review: reviewDone,
     }
   }
 
@@ -92,6 +94,30 @@ export const useSetupStore = defineStore('setup', () => {
     error.value = null
     try {
       templates.value = await setupApi.listTemplates()
+    } catch (err) {
+      error.value = getErrorMessage(err)
+    }
+  }
+
+  async function fetchAgents() {
+    error.value = null
+    try {
+      agents.value = await setupApi.getAgents()
+    } catch (err) {
+      error.value = getErrorMessage(err)
+    }
+  }
+
+  async function updateAgentModel(index: number, provider: string, modelId: string) {
+    error.value = null
+    try {
+      const updated = await setupApi.updateAgentModel(index, {
+        model_provider: provider,
+        model_id: modelId,
+      })
+      if (index < agents.value.length) {
+        agents.value[index] = updated
+      }
     } catch (err) {
       error.value = getErrorMessage(err)
     }
@@ -136,6 +162,7 @@ export const useSetupStore = defineStore('setup', () => {
     currentStep,
     completedSteps,
     templates,
+    agents,
     loading,
     error,
     isSetupNeeded,
@@ -146,6 +173,8 @@ export const useSetupStore = defineStore('setup', () => {
     syncCompletionFromStatus,
     fetchStatus,
     fetchTemplates,
+    fetchAgents,
+    updateAgentModel,
     nextStep,
     prevStep,
     setStep,

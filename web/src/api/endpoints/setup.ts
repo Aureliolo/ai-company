@@ -3,10 +3,13 @@ import type {
   ApiResponse,
   SetupAgentRequest,
   SetupAgentResponse,
+  SetupAgentSummary,
+  SetupAgentsListResponse,
   SetupCompanyRequest,
   SetupCompanyResponse,
   SetupStatusResponse,
   TemplateInfoResponse,
+  UpdateAgentModelRequest,
 } from '../types'
 
 // Note: getSetupStatus doesn't need auth -- the endpoint is public.
@@ -28,6 +31,22 @@ export async function createCompany(data: SetupCompanyRequest): Promise<SetupCom
 
 export async function createAgent(data: SetupAgentRequest): Promise<SetupAgentResponse> {
   const response = await apiClient.post<ApiResponse<SetupAgentResponse>>('/setup/agent', data)
+  return unwrap(response)
+}
+
+export async function getAgents(): Promise<SetupAgentSummary[]> {
+  const response = await apiClient.get<ApiResponse<SetupAgentsListResponse>>('/setup/agents')
+  return unwrap(response).agents
+}
+
+export async function updateAgentModel(
+  index: number,
+  data: UpdateAgentModelRequest,
+): Promise<SetupAgentSummary> {
+  const response = await apiClient.put<ApiResponse<SetupAgentSummary>>(
+    `/setup/agents/${index}/model`,
+    data,
+  )
   return unwrap(response)
 }
 

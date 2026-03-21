@@ -60,3 +60,12 @@ SETUP_ALREADY_COMPLETE: Final[str] = "setup.flow.already_complete"
 
 # Agents list corrupted in settings (JSON parse failure)
 SETUP_AGENTS_CORRUPTED: Final[str] = "setup.agents.corrupted"
+
+# Auto-created agents from template during company setup
+SETUP_AGENTS_AUTO_CREATED: Final[str] = "setup.agents.auto_created"
+
+# Agents list retrieved for review step
+SETUP_AGENTS_LISTED: Final[str] = "setup.agents.listed"
+
+# Agent model assignment updated in review step
+SETUP_AGENT_MODEL_UPDATED: Final[str] = "setup.agent.model_updated"

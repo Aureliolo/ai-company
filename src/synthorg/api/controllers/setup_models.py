@@ -64,6 +64,32 @@ class SetupCompanyRequest(BaseModel):
     template_name: NotBlankStr | None = Field(default=None, max_length=100)
 
 
+class SetupAgentSummary(BaseModel):
+    """Summary of an agent for the Review Org step.
+
+    Attributes:
+        name: Agent display name.
+        role: Agent role.
+        department: Assigned department.
+        level: Seniority level string.
+        model_provider: LLM provider name (empty if unassigned).
+        model_id: Model identifier (empty if unassigned).
+        tier: Original tier requirement from the template.
+        personality_preset: Personality preset name, if any.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    role: str
+    department: str
+    level: str = ""
+    model_provider: str = ""
+    model_id: str = ""
+    tier: str = "medium"
+    personality_preset: str | None = None
+
+
 class SetupCompanyResponse(BaseModel):
     """Company creation result.
 
@@ -72,6 +98,8 @@ class SetupCompanyResponse(BaseModel):
         description: The company description that was set, if any.
         template_applied: Name of the template that was applied, if any.
         department_count: Number of departments created.
+        agent_count: Number of agents auto-created from template.
+        agents: Agent summaries for the Review Org step.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -80,6 +108,8 @@ class SetupCompanyResponse(BaseModel):
     description: str | None
     template_applied: NotBlankStr | None
     department_count: int = Field(ge=0)
+    agent_count: int = Field(default=0, ge=0)
+    agents: tuple[SetupAgentSummary, ...] = ()
 
 
 class SetupAgentRequest(BaseModel):
@@ -144,6 +174,32 @@ class SetupAgentResponse(BaseModel):
     department: NotBlankStr
     model_provider: NotBlankStr
     model_id: NotBlankStr
+
+
+class UpdateAgentModelRequest(BaseModel):
+    """Request to update an agent's model assignment during setup.
+
+    Attributes:
+        model_provider: Provider name.
+        model_id: Model identifier from that provider.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    model_provider: NotBlankStr = Field(max_length=100)
+    model_id: NotBlankStr = Field(max_length=200)
+
+
+class SetupAgentsListResponse(BaseModel):
+    """List of agents currently configured in setup.
+
+    Attributes:
+        agents: Agent summaries.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    agents: tuple[SetupAgentSummary, ...]
 
 
 class SetupCompleteResponse(BaseModel):

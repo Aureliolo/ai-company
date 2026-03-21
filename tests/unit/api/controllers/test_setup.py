@@ -560,20 +560,24 @@ class TestSetupDTOs:
 
 @pytest.mark.unit
 class TestExtractTemplateDepartments:
-    """Unit tests for the _extract_template_departments helper."""
+    """Unit tests for the _load_template_safe + _departments_to_json helpers."""
 
     def test_valid_template(self) -> None:
-        from synthorg.api.controllers.setup import _extract_template_departments
+        from synthorg.api.controllers.setup import (
+            _departments_to_json,
+            _load_template_safe,
+        )
 
-        result = _extract_template_departments("solo_founder")
+        loaded = _load_template_safe("solo_founder")
+        result = _departments_to_json(loaded.template.departments)
         assert result != ""
         departments = json.loads(result)
         assert len(departments) >= 1
         assert departments[0]["name"] in {"executive", "engineering"}
 
     def test_invalid_template(self) -> None:
-        from synthorg.api.controllers.setup import _extract_template_departments
+        from synthorg.api.controllers.setup import _load_template_safe
         from synthorg.api.errors import NotFoundError
 
         with pytest.raises(NotFoundError):
-            _extract_template_departments("nonexistent_template")
+            _load_template_safe("nonexistent_template")

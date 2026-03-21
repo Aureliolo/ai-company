@@ -4,7 +4,7 @@ import Button from 'primevue/button'
 
 defineProps<{
   companyName: string
-  agentName: string
+  agentCount: number
   providerName: string
 }>()
 
@@ -29,8 +29,8 @@ function goToDashboard() {
         <span class="text-sm font-medium text-slate-100">{{ companyName }}</span>
       </div>
       <div class="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-900 px-4 py-3">
-        <span class="text-xs text-slate-400">First Agent</span>
-        <span class="text-sm font-medium text-slate-100">{{ agentName }}</span>
+        <span class="text-xs text-slate-400">Agents</span>
+        <span class="text-sm font-medium text-slate-100">{{ agentCount }} agent{{ agentCount === 1 ? '' : 's' }} ready</span>
       </div>
       <div class="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-900 px-4 py-3">
         <span class="text-xs text-slate-400">LLM Provider</span>

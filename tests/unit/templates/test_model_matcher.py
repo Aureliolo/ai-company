@@ -1,0 +1,244 @@
+"""Tests for the tier-to-model matching engine."""
+
+import pytest
+
+from synthorg.config.schema import ProviderModelConfig
+from synthorg.templates.model_matcher import (
+    ModelMatch,
+    _classify_tiers,
+    _rank_by_priority,
+    match_all_agents,
+    match_model,
+)
+from synthorg.templates.model_requirements import ModelRequirement
+
+
+def _make_model(
+    model_id: str,
+    cost_input: float = 0.01,
+    cost_output: float = 0.02,
+    max_context: int = 200_000,
+    latency_ms: int | None = None,
+) -> ProviderModelConfig:
+    """Factory for test ProviderModelConfig instances."""
+    return ProviderModelConfig(
+        id=model_id,
+        cost_per_1k_input=cost_input,
+        cost_per_1k_output=cost_output,
+        max_context=max_context,
+        estimated_latency_ms=latency_ms,
+    )
+
+
+# ── Tier classification ──────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestClassifyTiers:
+    def test_single_model_all_tiers(self) -> None:
+        model = _make_model("only-one", cost_input=0.01)
+        tiers = _classify_tiers([model])
+        assert model in tiers["large"]
+        assert model in tiers["medium"]
+        assert model in tiers["small"]
+
+    def test_two_models_all_tiers(self) -> None:
+        cheap = _make_model("cheap", cost_input=0.001)
+        expensive = _make_model("expensive", cost_input=0.1)
+        tiers = _classify_tiers([cheap, expensive])
+        # Both appear in all tiers since < 3.
+        assert cheap in tiers["small"]
+        assert expensive in tiers["large"]
+
+    def test_three_models_split(self) -> None:
+        s = _make_model("small-m", cost_input=0.001)
+        m = _make_model("medium-m", cost_input=0.01)
+        lg = _make_model("large-m", cost_input=0.1)
+        tiers = _classify_tiers([lg, s, m])  # Unordered input.
+        assert s in tiers["small"]
+        assert m in tiers["medium"]
+        assert lg in tiers["large"]
+
+    def test_six_models_even_split(self) -> None:
+        models = [_make_model(f"m{i}", cost_input=i * 0.01) for i in range(1, 7)]
+        tiers = _classify_tiers(models)
+        assert len(tiers["small"]) == 2
+        assert len(tiers["medium"]) == 2
+        assert len(tiers["large"]) == 2
+
+
+# ── Rank by priority ─────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestRankByPriority:
+    def test_quality_picks_most_expensive(self) -> None:
+        models = [
+            _make_model("cheap", cost_input=0.001),
+            _make_model("pricey", cost_input=0.1),
+        ]
+        result = _rank_by_priority(models, "quality")
+        assert result.id == "pricey"
+
+    def test_cost_picks_cheapest(self) -> None:
+        models = [
+            _make_model("cheap", cost_input=0.001),
+            _make_model("pricey", cost_input=0.1),
+        ]
+        result = _rank_by_priority(models, "cost")
+        assert result.id == "cheap"
+
+    def test_speed_picks_lowest_latency(self) -> None:
+        models = [
+            _make_model("slow", cost_input=0.01, latency_ms=500),
+            _make_model("fast", cost_input=0.01, latency_ms=50),
+        ]
+        result = _rank_by_priority(models, "speed")
+        assert result.id == "fast"
+
+    def test_speed_with_no_latency_data(self) -> None:
+        models = [
+            _make_model("no-latency", cost_input=0.01),
+            _make_model("has-latency", cost_input=0.01, latency_ms=100),
+        ]
+        result = _rank_by_priority(models, "speed")
+        assert result.id == "has-latency"
+
+    def test_balanced_picks_mid_range(self) -> None:
+        models = [
+            _make_model("cheap", cost_input=0.001),
+            _make_model("mid", cost_input=0.05),
+            _make_model("pricey", cost_input=0.1),
+        ]
+        result = _rank_by_priority(models, "balanced")
+        assert result.id == "mid"
+
+
+# ── match_model ──────────────────────────────────────────────
+
+
+@pytest.mark.unit
+class TestMatchModel:
+    def test_no_models_returns_none(self) -> None:
+        req = ModelRequirement(tier="medium")
+        model, score = match_model(req, ())
+        assert model is None
+        assert score == 0.0
+
+    def test_single_model_always_matches(self) -> None:
+        req = ModelRequirement(tier="large")
+        only = _make_model("only-one", cost_input=0.01)
+        model, score = match_model(req, (only,))
+        assert model is not None
+        assert model.id == "only-one"
+        assert score > 0.0
+
+    def test_min_context_filters(self) -> None:
+        req = ModelRequirement(tier="medium", min_context=500_000)
+        small_ctx = _make_model("small-ctx", max_context=100_000)
+        model, score = match_model(req, (small_ctx,))
+        assert model is None
+        assert score == 0.0
+
+    def test_min_context_passes(self) -> None:
+        req = ModelRequirement(tier="medium", min_context=100_000)
+        big_ctx = _make_model("big-ctx", max_context=200_000)
+        model, _score = match_model(req, (big_ctx,))
+        assert model is not None
+
+    def test_tier_preference(self) -> None:
+        req = ModelRequirement(tier="large", priority="quality")
+        models = tuple(_make_model(f"m{i}", cost_input=i * 0.01) for i in range(1, 7))
+        model, _score = match_model(req, models)
+        assert model is not None
+        # Should pick from the large tier (most expensive).
+        assert model.cost_per_1k_input >= 0.04
+
+    def test_tier_fallback_when_exact_empty(self) -> None:
+        """When all models have similar cost, tiers overlap."""
+        req = ModelRequirement(tier="large")
+        model = _make_model("only", cost_input=0.01)
+        result, _score = match_model(req, (model,))
+        assert result is not None
+
+    def test_score_range(self) -> None:
+        req = ModelRequirement(tier="medium")
+        model = _make_model("test", cost_input=0.01)
+        _, score = match_model(req, (model,))
+        assert 0.0 <= score <= 1.0
+
+
+# ── match_all_agents ─────────────────────────────────────────
+
+
+class _FakeProviderConfig:
+    """Minimal stand-in for ProviderConfig with a models attribute."""
+
+    def __init__(self, models: tuple[ProviderModelConfig, ...]) -> None:
+        self.models = models
+
+
+@pytest.mark.unit
+class TestMatchAllAgents:
+    def test_empty_agents(self) -> None:
+        results = match_all_agents([], {})
+        assert results == []
+
+    def test_single_agent_single_provider(self) -> None:
+        agents = [{"tier": "medium", "personality_preset": "pragmatic_builder"}]
+        providers = {
+            "test-provider": _FakeProviderConfig(
+                models=(_make_model("test-model", cost_input=0.01),),
+            ),
+        }
+        results = match_all_agents(agents, providers)
+        assert len(results) == 1
+        assert isinstance(results[0], ModelMatch)
+        assert results[0].provider_name == "test-provider"
+        assert results[0].model_id == "test-model"
+
+    def test_multiple_agents_matched(self) -> None:
+        agents = [
+            {"tier": "large", "personality_preset": "visionary_leader"},
+            {"tier": "small", "personality_preset": "eager_learner"},
+        ]
+        models = (
+            _make_model("cheap", cost_input=0.001),
+            _make_model("mid", cost_input=0.01),
+            _make_model("expensive", cost_input=0.1),
+        )
+        providers = {"test-provider": _FakeProviderConfig(models=models)}
+        results = match_all_agents(agents, providers)
+        assert len(results) == 2
+        # Large tier agent should get a more expensive model.
+        assert results[0].model_id != results[1].model_id
+
+    def test_no_providers_returns_empty(self) -> None:
+        agents = [{"tier": "medium"}]
+        results = match_all_agents(agents, {})
+        assert results == []
+
+    def test_fallback_when_no_tier_match(self) -> None:
+        agents = [{"tier": "large", "personality_preset": None}]
+        # Single cheap model, large tier requested.
+        providers = {
+            "test-provider": _FakeProviderConfig(
+                models=(_make_model("only", cost_input=0.001),),
+            ),
+        }
+        results = match_all_agents(agents, providers)
+        assert len(results) == 1
+        # Should still get assigned (fallback or single-model-all-tiers).
+        assert results[0].model_id == "only"
+
+    def test_agent_index_preserved(self) -> None:
+        agents = [
+            {"tier": "small"},
+            {"tier": "large"},
+            {"tier": "medium"},
+        ]
+        models = (_make_model("m1", cost_input=0.01),)
+        providers = {"p": _FakeProviderConfig(models=models)}
+        results = match_all_agents(agents, providers)
+        for i, result in enumerate(results):
+            assert result.agent_index == i

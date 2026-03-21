@@ -7,7 +7,7 @@ import SetupWelcome from '@/components/setup/SetupWelcome.vue'
 import SetupAdmin from '@/components/setup/SetupAdmin.vue'
 import SetupProvider from '@/components/setup/SetupProvider.vue'
 import SetupCompany from '@/components/setup/SetupCompany.vue'
-import SetupAgent from '@/components/setup/SetupAgent.vue'
+import SetupReviewOrg from '@/components/setup/SetupReviewOrg.vue'
 import SetupComplete from '@/components/setup/SetupComplete.vue'
 
 const router = useRouter()
@@ -16,7 +16,7 @@ const setup = useSetupStore()
 
 // Track created resources for the completion screen
 const createdCompanyName = ref('')
-const createdAgentName = ref('')
+const createdAgentCount = ref(0)
 const createdProviderName = ref('')
 
 // Whether we are showing the final "complete" screen (not part of the step flow)
@@ -25,7 +25,7 @@ const showComplete = ref(false)
 interface StepDef {
   id: string
   label: string
-  component: 'welcome' | 'admin' | 'provider' | 'company' | 'agent'
+  component: 'welcome' | 'admin' | 'provider' | 'company' | 'review'
 }
 
 // Always show all 5 steps -- admin never disappears. Step indices stay
@@ -35,7 +35,7 @@ const steps = computed<StepDef[]>(() => [
   { id: 'admin', label: 'Admin', component: 'admin' },
   { id: 'provider', label: 'Provider', component: 'provider' },
   { id: 'company', label: 'Company', component: 'company' },
-  { id: 'agent', label: 'Agent', component: 'agent' },
+  { id: 'review', label: 'Review', component: 'review' },
 ])
 
 const currentStep = computed(() => steps.value[setup.currentStep] ?? steps.value[0])
@@ -86,16 +86,16 @@ async function handleProviderComplete() {
   }
 }
 
-async function handleCompanyCreated(companyName: string) {
+async function handleCompanyCreated(companyName: string, agentCount: number) {
   createdCompanyName.value = companyName
+  createdAgentCount.value = agentCount
   await setup.fetchStatus()
   if (setup.statusLoaded) {
     setup.nextStep(steps.value.length)
   }
 }
 
-async function handleAgentComplete(agentName: string, providerName: string) {
-  createdAgentName.value = agentName
+async function handleReviewComplete(providerName: string) {
   createdProviderName.value = providerName
   await setup.fetchStatus()
   if (setup.statusLoaded) {
@@ -180,7 +180,7 @@ onMounted(async () => {
       <template v-else-if="showComplete">
         <SetupComplete
           :company-name="createdCompanyName"
-          :agent-name="createdAgentName"
+          :agent-count="createdAgentCount"
           :provider-name="createdProviderName"
         />
       </template>
@@ -245,9 +245,9 @@ onMounted(async () => {
           @next="handleCompanyCreated"
           @previous="handlePrevious"
         />
-        <SetupAgent
-          v-else-if="currentStep.component === 'agent'"
-          @complete="handleAgentComplete"
+        <SetupReviewOrg
+          v-else-if="currentStep.component === 'review'"
+          @complete="handleReviewComplete"
           @previous="handlePrevious"
         />
       </template>

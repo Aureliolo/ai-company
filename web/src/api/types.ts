@@ -866,11 +866,24 @@ export interface SetupAgentRequest {
   budget_limit_monthly: number | null
 }
 
+export interface SetupAgentSummary {
+  name: string
+  role: string
+  department: string
+  level: string
+  model_provider: string
+  model_id: string
+  tier: string
+  personality_preset: string | null
+}
+
 export interface SetupCompanyResponse {
   company_name: string
   description: string | null
   template_applied: string | null
   department_count: number
+  agent_count: number
+  agents: SetupAgentSummary[]
 }
 
 export interface SetupAgentResponse {
@@ -879,6 +892,15 @@ export interface SetupAgentResponse {
   department: string
   model_provider: string
   model_id: string
+}
+
+export interface UpdateAgentModelRequest {
+  model_provider: string
+  model_id: string
+}
+
+export interface SetupAgentsListResponse {
+  agents: SetupAgentSummary[]
 }
 
 // ── Settings ────────────────────────────────────────────────

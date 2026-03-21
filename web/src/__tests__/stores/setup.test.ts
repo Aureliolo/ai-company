@@ -4,11 +4,15 @@ import { setActivePinia, createPinia } from 'pinia'
 const mockGetSetupStatus = vi.fn()
 const mockListTemplates = vi.fn()
 const mockCompleteSetup = vi.fn()
+const mockGetAgents = vi.fn()
+const mockUpdateAgentModel = vi.fn()
 
 vi.mock('@/api/endpoints/setup', () => ({
   getSetupStatus: (...args: unknown[]) => mockGetSetupStatus(...args),
   listTemplates: (...args: unknown[]) => mockListTemplates(...args),
   completeSetup: (...args: unknown[]) => mockCompleteSetup(...args),
+  getAgents: (...args: unknown[]) => mockGetAgents(...args),
+  updateAgentModel: (...args: unknown[]) => mockUpdateAgentModel(...args),
 }))
 
 import { useSetupStore } from '@/stores/setup'
@@ -97,7 +101,7 @@ describe('useSetupStore', () => {
       expect(store.isStepComplete('admin')).toBe(true)
       expect(store.isStepComplete('provider')).toBe(true)
       expect(store.isStepComplete('company')).toBe(true)
-      expect(store.isStepComplete('agent')).toBe(false)
+      expect(store.isStepComplete('review')).toBe(false)
     })
 
     it('marks welcome as complete when currentStep > 0', async () => {
@@ -140,7 +144,7 @@ describe('useSetupStore', () => {
       expect(store.isStepComplete('admin')).toBe(false)
       expect(store.isStepComplete('provider')).toBe(false)
       expect(store.isStepComplete('company')).toBe(false)
-      expect(store.isStepComplete('agent')).toBe(false)
+      expect(store.isStepComplete('review')).toBe(false)
     })
 
     it('enforces sequential ordering (company without provider is incomplete)', async () => {
@@ -161,7 +165,7 @@ describe('useSetupStore', () => {
       // Company exists in backend but provider is missing, so
       // the stepper must not show company as done.
       expect(store.isStepComplete('company')).toBe(false)
-      expect(store.isStepComplete('agent')).toBe(false)
+      expect(store.isStepComplete('review')).toBe(false)
     })
 
     it('enforces sequential ordering (agent without admin is incomplete)', async () => {
@@ -181,7 +185,7 @@ describe('useSetupStore', () => {
       expect(store.isStepComplete('admin')).toBe(false)
       expect(store.isStepComplete('provider')).toBe(false)
       expect(store.isStepComplete('company')).toBe(false)
-      expect(store.isStepComplete('agent')).toBe(false)
+      expect(store.isStepComplete('review')).toBe(false)
     })
 
     it('correctly re-syncs when status regresses (provider deleted)', async () => {

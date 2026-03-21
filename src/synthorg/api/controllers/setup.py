@@ -2,21 +2,32 @@
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
-from litestar import Controller, get, post
+from litestar import Controller, get, post, put
 from litestar.datastructures import State  # noqa: TC002
-from litestar.status_codes import HTTP_201_CREATED
+from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 
 from synthorg.api.auth.config import AuthConfig
+from synthorg.api.controllers.setup_agents import (
+    build_agent_config,
+    expand_template_agents,
+    get_existing_agents,
+    match_and_assign_models,
+    validate_agents_value,
+    validate_provider_and_model,
+)
 from synthorg.api.controllers.setup_models import (
     SetupAgentRequest,
     SetupAgentResponse,
+    SetupAgentsListResponse,
+    SetupAgentSummary,
     SetupCompanyRequest,
     SetupCompanyResponse,
     SetupCompleteResponse,
     SetupStatusResponse,
     TemplateInfoResponse,
+    UpdateAgentModelRequest,
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
@@ -25,16 +36,15 @@ from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.setup import (
     SETUP_AGENT_CREATED,
-    SETUP_AGENTS_CORRUPTED,
-    SETUP_AGENTS_READ_FALLBACK,
+    SETUP_AGENT_MODEL_UPDATED,
+    SETUP_AGENTS_AUTO_CREATED,
+    SETUP_AGENTS_LISTED,
     SETUP_ALREADY_COMPLETE,
     SETUP_COMPANY_CREATED,
     SETUP_COMPLETED,
-    SETUP_MODEL_NOT_FOUND,
     SETUP_NO_AGENTS,
     SETUP_NO_COMPANY,
     SETUP_NO_PROVIDERS,
-    SETUP_PROVIDER_NOT_FOUND,
     SETUP_STATUS_CHECKED,
     SETUP_STATUS_SETTINGS_DEFAULT_USED,
     SETUP_STATUS_SETTINGS_UNAVAILABLE,
@@ -168,8 +178,9 @@ class SetupController(Controller):
     ) -> ApiResponse[SetupCompanyResponse]:
         """Create company configuration during first-run setup.
 
-        Persists company name, description, and optionally applies a
-        template.  Re-calling overwrites previous values.
+        Persists company name, description, departments, and -- when a
+        template is selected -- auto-creates all template agents with
+        model assignments matched to the configured provider(s).
 
         Args:
             data: Company creation payload.
@@ -185,9 +196,10 @@ class SetupController(Controller):
         settings_svc = app_state.settings_service
         await _check_setup_not_complete(settings_svc)
 
-        departments_json, department_count, template_applied = _resolve_template(
-            data.template_name
-        )
+        template_result = _resolve_template(data.template_name)
+        departments_json = template_result.departments_json
+        department_count = template_result.department_count
+        template_applied = template_result.template_applied
         description = _normalize_description(data.description)
 
         await _persist_company_settings(
@@ -197,6 +209,27 @@ class SetupController(Controller):
             departments_json,
         )
 
+        # Auto-create agents from template.
+        agent_summaries: tuple[SetupAgentSummary, ...] = ()
+        if template_result.template is not None:
+            agents = expand_template_agents(template_result.template)
+            providers = await app_state.provider_management.list_providers()
+            match_and_assign_models(agents, providers)
+
+            async with _AGENT_LOCK:
+                await settings_svc.set(
+                    "company",
+                    "agents",
+                    json.dumps(agents),
+                )
+
+            agent_summaries = _agents_to_summaries(agents)
+            logger.info(
+                SETUP_AGENTS_AUTO_CREATED,
+                count=len(agents),
+                template=template_applied,
+            )
+
         logger.info(
             SETUP_COMPANY_CREATED,
             company_name=data.company_name,
@@ -204,6 +237,7 @@ class SetupController(Controller):
             description_length=len(description) if description else 0,
             template=template_applied,
             department_count=department_count,
+            agent_count=len(agent_summaries),
         )
 
         return ApiResponse(
@@ -212,6 +246,8 @@ class SetupController(Controller):
                 description=description,
                 template_applied=template_applied,
                 department_count=department_count,
+                agent_count=len(agent_summaries),
+                agents=agent_summaries,
             ),
         )
 
@@ -227,8 +263,8 @@ class SetupController(Controller):
     ) -> ApiResponse[SetupAgentResponse]:
         """Create an agent during first-run setup.
 
-        Validates provider/model, builds agent config, and appends
-        to company settings.
+        Used for the "Start Blank" path where no template is selected
+        and agents are added manually from the Review Org step.
 
         Args:
             data: Agent creation payload.
@@ -247,13 +283,11 @@ class SetupController(Controller):
         await _check_setup_not_complete(settings_svc)
 
         providers = await app_state.provider_management.list_providers()
-        _validate_provider_and_model(providers, data)
-        agent_config = _build_agent_config(data)
+        validate_provider_and_model(providers, data)
+        agent_config = build_agent_config(data)
 
-        # Serialize the read-modify-write so concurrent requests
-        # cannot overwrite each other's appended agents.
         async with _AGENT_LOCK:
-            existing_agents = await _get_existing_agents(settings_svc)
+            existing_agents = await get_existing_agents(settings_svc)
             updated_agents = [*existing_agents, agent_config]
             await settings_svc.set(
                 "company",
@@ -277,6 +311,93 @@ class SetupController(Controller):
                 model_provider=data.model_provider,
                 model_id=data.model_id,
             ),
+        )
+
+    @get(
+        "/agents",
+        guards=[require_read_access],
+    )
+    async def list_agents(
+        self,
+        state: State,
+    ) -> ApiResponse[SetupAgentsListResponse]:
+        """List agents currently configured during setup.
+
+        Used by the Review Org step to display the current org and
+        allow model reassignment.
+
+        Args:
+            state: Application state.
+
+        Returns:
+            Agents list envelope.
+        """
+        app_state: AppState = state.app_state
+        settings_svc = app_state.settings_service
+
+        agents = await get_existing_agents(settings_svc)
+        summaries = _agents_to_summaries(agents)
+
+        logger.debug(SETUP_AGENTS_LISTED, count=len(summaries))
+        return ApiResponse(
+            data=SetupAgentsListResponse(agents=summaries),
+        )
+
+    @put(
+        "/agents/{agent_index:int}/model",
+        status_code=HTTP_200_OK,
+        guards=[require_write_access],
+    )
+    async def update_agent_model(
+        self,
+        agent_index: int,
+        data: UpdateAgentModelRequest,
+        state: State,
+    ) -> ApiResponse[SetupAgentSummary]:
+        """Update a single agent's model assignment during setup.
+
+        Args:
+            agent_index: Zero-based index of the agent to update.
+            data: New model assignment.
+            state: Application state.
+
+        Returns:
+            Updated agent summary.
+
+        Raises:
+            ConflictError: If setup has already been completed.
+            NotFoundError: If the agent index is out of range.
+            ApiValidationError: If the provider/model is invalid.
+        """
+        app_state: AppState = state.app_state
+        settings_svc = app_state.settings_service
+        await _check_setup_not_complete(settings_svc)
+
+        async with _AGENT_LOCK:
+            agents = await get_existing_agents(settings_svc)
+            if agent_index < 0 or agent_index >= len(agents):
+                msg = f"Agent index {agent_index} out of range (0-{len(agents) - 1})"
+                raise NotFoundError(msg)
+
+            agents[agent_index]["model"] = {
+                "provider": data.model_provider,
+                "model_id": data.model_id,
+            }
+            await settings_svc.set(
+                "company",
+                "agents",
+                json.dumps(agents),
+            )
+
+        logger.info(
+            SETUP_AGENT_MODEL_UPDATED,
+            agent_index=agent_index,
+            provider=data.model_provider,
+            model=data.model_id,
+        )
+
+        return ApiResponse(
+            data=_agent_dict_to_summary(agents[agent_index]),
         )
 
     @post(
@@ -464,40 +585,7 @@ async def _check_has_agents(
         return False
     if not entry.value:
         return False
-    return _validate_agents_value(entry.value, strict=strict)
-
-
-def _validate_agents_value(raw: str, *, strict: bool) -> bool:
-    """Parse *raw* as JSON and return True if it is a non-empty list.
-
-    When *strict* is True, raises ``ApiValidationError`` on corrupted
-    data instead of returning False.
-    """
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning(
-            SETUP_AGENTS_CORRUPTED,
-            reason="invalid_json",
-            exc_info=True,
-        )
-        if strict:
-            msg = "Stored agents list is not valid JSON"
-            raise ApiValidationError(msg) from None
-        return False
-
-    if not isinstance(parsed, list):
-        logger.warning(
-            SETUP_AGENTS_CORRUPTED,
-            reason="non_list_json",
-            raw_type=type(parsed).__name__,
-        )
-        if strict:
-            msg = f"Stored agents list is {type(parsed).__name__}, expected list"
-            raise ApiValidationError(msg)
-        return False
-
-    return bool(parsed)
+    return validate_agents_value(entry.value, strict=strict)
 
 
 async def _resolve_min_password_length(
@@ -579,89 +667,37 @@ async def _is_setup_complete(settings_svc: SettingsService) -> bool:
         return entry.value == "true"
 
 
-def _validate_provider_and_model(
-    providers: dict[str, Any],
-    data: SetupAgentRequest,
-) -> None:
-    """Validate that the provider and model exist in the given providers dict.
-
-    Args:
-        providers: Provider name -> config mapping from management service.
-        data: Agent creation payload.
-
-    Raises:
-        NotFoundError: If the provider does not exist.
-        ApiValidationError: If the model is not found in the provider.
-    """
-    if data.model_provider not in providers:
-        msg = f"Provider {data.model_provider!r} not found"
-        logger.warning(
-            SETUP_PROVIDER_NOT_FOUND,
-            provider=data.model_provider,
-        )
-        raise NotFoundError(msg)
-
-    provider_config = providers[data.model_provider]
-    model_ids = {m.id for m in provider_config.models}
-    if data.model_id not in model_ids:
-        msg = f"Model {data.model_id!r} not found in provider {data.model_provider!r}"
-        logger.warning(
-            SETUP_MODEL_NOT_FOUND,
-            provider=data.model_provider,
-            model=data.model_id,
-        )
-        raise ApiValidationError(msg)
-
-
-def _build_agent_config(data: SetupAgentRequest) -> dict[str, Any]:
-    """Build an agent config dict for settings persistence.
-
-    Args:
-        data: Validated agent creation payload.
-
-    Returns:
-        Agent configuration dict suitable for JSON serialization.
-    """
-    from synthorg.templates.presets import (  # noqa: PLC0415
-        get_personality_preset,
-    )
-
-    personality_dict = get_personality_preset(data.personality_preset)
-    agent_config: dict[str, Any] = {
-        "name": data.name,
-        "role": data.role,
-        "department": data.department,
-        "level": data.level.value,
-        "personality": personality_dict,
-        "model": {
-            "provider": data.model_provider,
-            "model_id": data.model_id,
-        },
-    }
-    if data.budget_limit_monthly is not None:
-        agent_config["budget_limit_monthly"] = data.budget_limit_monthly
-    return agent_config
-
-
 def _normalize_description(raw: str | None) -> str | None:
     """Strip whitespace from description, treating blank as None."""
     return (raw.strip() or None) if raw else None
 
 
-def _resolve_template(
-    template_name: str | None,
-) -> tuple[str, int, str | None]:
-    """Validate template and extract department data.
+class _TemplateResult(NamedTuple):
+    departments_json: str
+    department_count: int
+    template_applied: str | None
+    template: Any
+
+
+def _resolve_template(template_name: str | None) -> _TemplateResult:
+    """Validate template and extract department data + template object.
 
     Returns:
-        Tuple of (departments_json, department_count, template_applied).
+        ``_TemplateResult`` with departments, counts, and the parsed
+        ``CompanyTemplate`` (None for blank companies).
     """
     if template_name is None:
-        return ("", 0, None)
+        return _TemplateResult("", 0, None, None)
 
-    departments_json = _extract_template_departments(template_name)
+    loaded = _load_template_safe(template_name)
+    departments_json = _departments_to_json(loaded.template.departments)
     department_count = len(json.loads(departments_json)) if departments_json else 0
-    return (departments_json, department_count, template_name)
+    return _TemplateResult(
+        departments_json,
+        department_count,
+        template_name,
+        loaded.template,
+    )
 
 
 async def _persist_company_settings(
@@ -685,15 +721,14 @@ async def _persist_company_settings(
     )
 
 
-def _extract_template_departments(template_name: str) -> str:
-    """Load a template and extract its departments as a JSON string.
+def _load_template_safe(template_name: str) -> Any:
+    """Load a template by name with API-friendly error handling.
 
     Args:
         template_name: Template name to load.
 
     Returns:
-        JSON array of department dicts, or empty string if template
-        has no departments.
+        ``LoadedTemplate`` instance.
 
     Raises:
         NotFoundError: If the template does not exist.
@@ -707,13 +742,10 @@ def _extract_template_departments(template_name: str) -> str:
     from synthorg.templates.loader import load_template  # noqa: PLC0415
 
     try:
-        loaded = load_template(template_name)
+        return load_template(template_name)
     except TemplateNotFoundError as exc:
         msg = f"Template {template_name!r} not found"
-        logger.warning(
-            SETUP_TEMPLATE_NOT_FOUND,
-            template=template_name,
-        )
+        logger.warning(SETUP_TEMPLATE_NOT_FOUND, template=template_name)
         raise NotFoundError(msg) from exc
     except (TemplateRenderError, TemplateValidationError) as exc:
         msg = f"Template {template_name!r} is invalid: {exc}"
@@ -724,69 +756,34 @@ def _extract_template_departments(template_name: str) -> str:
         )
         raise ApiValidationError(msg) from exc
 
-    departments = loaded.template.departments
+
+def _departments_to_json(departments: Any) -> str:
+    """Convert template departments to a JSON string."""
     if not departments:
         return ""
-
     dept_list = [
         {"name": d.name, "budget_percent": d.budget_percent} for d in departments
     ]
     return json.dumps(dept_list)
 
 
-async def _get_existing_agents(
-    settings_svc: SettingsService,
-) -> list[dict[str, Any]]:
-    """Read the current agents list from settings.
+def _agents_to_summaries(
+    agents: list[dict[str, Any]],
+) -> tuple[SetupAgentSummary, ...]:
+    """Convert agent config dicts to summary DTOs."""
+    return tuple(_agent_dict_to_summary(a) for a in agents)
 
-    Only the "entry not found" case yields an empty list. JSON parse
-    errors and non-list values are surfaced so ``create_agent`` does
-    not silently overwrite corrupted data.
 
-    Args:
-        settings_svc: Settings service instance.
-
-    Returns:
-        List of agent config dicts (empty if entry is absent or None).
-
-    Raises:
-        ApiValidationError: If the stored value is not valid JSON or
-            not a JSON array.
-    """
-    try:
-        entry = await settings_svc.get_entry("company", "agents")
-    except MemoryError, RecursionError:
-        raise
-    except SettingNotFoundError:
-        logger.debug(SETUP_AGENTS_READ_FALLBACK, reason="entry_not_found")
-        return []
-
-    if entry.source != SettingSource.DATABASE:
-        logger.debug(
-            SETUP_AGENTS_READ_FALLBACK,
-            reason="non_database_source",
-            source=entry.source,
-        )
-        return []
-
-    try:
-        parsed = json.loads(entry.value)
-    except json.JSONDecodeError as exc:
-        logger.warning(
-            SETUP_AGENTS_CORRUPTED,
-            reason="invalid_json",
-            exc_info=True,
-        )
-        msg = "Stored agents list is not valid JSON"
-        raise ApiValidationError(msg) from exc
-
-    if not isinstance(parsed, list):
-        logger.warning(
-            SETUP_AGENTS_CORRUPTED,
-            reason="non_list_json",
-            raw_type=type(parsed).__name__,
-        )
-        msg = f"Stored agents list is {type(parsed).__name__}, expected list"
-        raise ApiValidationError(msg)
-
-    return parsed
+def _agent_dict_to_summary(agent: dict[str, Any]) -> SetupAgentSummary:
+    """Convert a single agent config dict to a summary DTO."""
+    model = agent.get("model", {})
+    return SetupAgentSummary(
+        name=agent.get("name", ""),
+        role=agent.get("role", ""),
+        department=agent.get("department", ""),
+        level=agent.get("level", ""),
+        model_provider=model.get("provider", ""),
+        model_id=model.get("model_id", ""),
+        tier=agent.get("tier", "medium"),
+        personality_preset=agent.get("personality_preset"),
+    )

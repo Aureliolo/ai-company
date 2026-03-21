@@ -10,6 +10,8 @@ Public API
     render_template
     CompanyTemplate
     LoadedTemplate
+    ModelMatch
+    ModelRequirement
     TemplateInfo
     TemplateMetadata
     TemplateVariable
@@ -37,6 +39,12 @@ from synthorg.templates.loader import (
     load_template,
     load_template_file,
 )
+from synthorg.templates.model_matcher import ModelMatch, match_all_agents, match_model
+from synthorg.templates.model_requirements import (
+    ModelRequirement,
+    parse_model_requirement,
+    resolve_model_requirement,
+)
 from synthorg.templates.renderer import render_template
 from synthorg.templates.schema import (
     CompanyTemplate,
@@ -49,6 +57,8 @@ from synthorg.templates.schema import (
 __all__ = [
     "CompanyTemplate",
     "LoadedTemplate",
+    "ModelMatch",
+    "ModelRequirement",
     "TemplateAgentConfig",
     "TemplateDepartmentConfig",
     "TemplateError",
@@ -63,5 +73,9 @@ __all__ = [
     "list_templates",
     "load_template",
     "load_template_file",
+    "match_all_agents",
+    "match_model",
+    "parse_model_requirement",
     "render_template",
+    "resolve_model_requirement",
 ]
