@@ -7,6 +7,7 @@ import pytest
 
 from synthorg.communication.meeting.errors import NoParticipantsResolvedError
 from synthorg.communication.meeting.participant import (
+    PassthroughParticipantResolver,
     RegistryParticipantResolver,
 )
 
@@ -155,3 +156,50 @@ class TestRegistryParticipantResolver:
         """Empty participant refs raise NoParticipantsResolvedError."""
         with pytest.raises(NoParticipantsResolvedError):
             await resolver.resolve(())
+
+
+@pytest.mark.unit
+class TestPassthroughParticipantResolver:
+    """Tests for PassthroughParticipantResolver."""
+
+    @pytest.fixture
+    def resolver(self) -> PassthroughParticipantResolver:
+        return PassthroughParticipantResolver()
+
+    async def test_resolve_returns_refs_as_literal_ids(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Refs are returned as-is as literal agent IDs."""
+        result = await resolver.resolve(("agent-1", "agent-2", "agent-3"))
+
+        assert result == ("agent-1", "agent-2", "agent-3")
+
+    async def test_resolve_deduplicates_preserving_order(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Duplicate refs are removed, first occurrence wins."""
+        result = await resolver.resolve(("a", "b", "a", "c", "b"))
+
+        assert result == ("a", "b", "c")
+
+    async def test_resolve_raises_on_empty_refs(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Empty refs raise NoParticipantsResolvedError."""
+        with pytest.raises(NoParticipantsResolvedError):
+            await resolver.resolve(())
+
+    async def test_resolve_uses_context_when_available(
+        self,
+        resolver: PassthroughParticipantResolver,
+    ) -> None:
+        """Context values are resolved before pass-through."""
+        result = await resolver.resolve(
+            ("author", "reviewer"),
+            context={"author": "ctx-agent-1"},
+        )
+
+        assert result == ("ctx-agent-1", "reviewer")

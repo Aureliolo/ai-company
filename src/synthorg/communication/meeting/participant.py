@@ -43,6 +43,64 @@ class ParticipantResolver(Protocol):
         ...
 
 
+class PassthroughParticipantResolver:
+    """Resolves participants by treating refs as literal agent IDs.
+
+    Fallback resolver for when no agent registry is available.
+    Context lookup is supported; all other entries pass through
+    as literal agent IDs.  Results are deduplicated while
+    preserving insertion order.
+    """
+
+    async def resolve(
+        self,
+        participant_refs: tuple[str, ...],
+        context: dict[str, Any] | None = None,
+    ) -> tuple[str, ...]:
+        """Resolve participant references to agent IDs.
+
+        Args:
+            participant_refs: Participant entries (treated as literal IDs).
+            context: Optional event context for dynamic resolution.
+
+        Returns:
+            Deduplicated tuple of agent ID strings.
+
+        Raises:
+            NoParticipantsResolvedError: When all entries resolve to empty.
+        """
+        resolved: list[str] = []
+        ctx = context or {}
+
+        for entry in participant_refs:
+            if entry in ctx:
+                val = ctx[entry]
+                if isinstance(val, str):
+                    stripped = val.strip()
+                    if stripped:
+                        resolved.append(stripped)
+                elif isinstance(val, (list, tuple)):
+                    resolved.extend(
+                        v.strip() for v in val if isinstance(v, str) and v.strip()
+                    )
+            else:
+                resolved.append(entry)
+
+        # Deduplicate while preserving order.
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for agent_id in resolved:
+            if agent_id not in seen:
+                seen.add(agent_id)
+                deduped.append(agent_id)
+
+        if not deduped:
+            msg = f"No participants resolved from refs: {participant_refs!r}"
+            raise NoParticipantsResolvedError(msg)
+
+        return tuple(deduped)
+
+
 class RegistryParticipantResolver:
     """Resolves participants via the agent registry.
 

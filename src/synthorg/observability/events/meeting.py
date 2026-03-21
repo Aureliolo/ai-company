@@ -54,5 +54,8 @@ MEETING_PARTICIPANTS_RESOLVED: Final[str] = "meeting.scheduler.participants_reso
 MEETING_NO_PARTICIPANTS: Final[str] = "meeting.scheduler.no_participants"
 MEETING_SCHEDULER_ERROR: Final[str] = "meeting.scheduler.error"
 
+# Auto-wiring
+MEETING_STUB_AGENT_CALLER: Final[str] = "meeting.auto_wire.stub_agent_caller"
+
 # API-level meeting events
 MEETING_NOT_FOUND: Final[str] = "meeting.api.not_found"
