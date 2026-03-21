@@ -514,14 +514,19 @@ class TestTameThirdPartyLoggers:
 
     @pytest.fixture(autouse=True)
     def _reset_third_party_loggers(self) -> Iterator[None]:
-        """Reset third-party logger state after each test."""
+        """Reset third-party logger state before and after each test."""
+
+        def _reset() -> None:
+            for name, level in _THIRD_PARTY_LOGGER_LEVELS:
+                lg = logging.getLogger(name)
+                for handler in lg.handlers[:]:
+                    lg.removeHandler(handler)
+                lg.setLevel(level.value)
+                lg.propagate = True
+
+        _reset()
         yield
-        for name, _ in _THIRD_PARTY_LOGGER_LEVELS:
-            lg = logging.getLogger(name)
-            for handler in lg.handlers[:]:
-                lg.removeHandler(handler)
-            lg.setLevel(logging.WARNING)
-            lg.propagate = True
+        _reset()
 
     def test_clears_litellm_handlers(self) -> None:
         """LiteLLM's own StreamHandler is removed after taming."""
@@ -616,6 +621,23 @@ class TestTameThirdPartyLoggers:
         lg = logging.getLogger("LiteLLM")
         lg.addHandler(logging.StreamHandler())
         configure_logging(_console_only_config())
+        assert lg.handlers == []
+
+    def test_explicit_override_takes_precedence_over_taming(self) -> None:
+        """config.logger_levels overrides taming's WARNING default."""
+        config = LogConfig(
+            sinks=(
+                SinkConfig(
+                    sink_type=SinkType.CONSOLE,
+                    level=LogLevel.DEBUG,
+                    json_format=False,
+                ),
+            ),
+            logger_levels=(("httpx", LogLevel.INFO),),
+        )
+        configure_logging(config)
+        lg = logging.getLogger("httpx")
+        assert lg.level == logging.INFO
         assert lg.handlers == []
 
     def test_messages_still_reach_root_sinks(

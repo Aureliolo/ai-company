@@ -1285,8 +1285,11 @@ names. Format: `"<domain>.<noun>.<verb>"` (e.g., `"api.request.started"`).
 Uvicorn's default access logger is **disabled** (`access_log=False`, `log_config=None`).
 HTTP access logging is handled by `RequestLoggingMiddleware`, which provides richer structured
 fields (method, path, status_code, duration_ms, request_id) through structlog. Uvicorn's own
-startup/error messages propagate through stdlib's root handler (which structlog wraps via
-`ProcessorFormatter`).
+handlers are cleared by `_tame_third_party_loggers()` and its loggers (`uvicorn`,
+`uvicorn.error`, `uvicorn.access`) are set to `WARNING` with `propagate = True` -- startup
+INFO messages (e.g., "Uvicorn running on ...") are intentionally suppressed since the
+application's own lifecycle logging provides equivalent structured events via structlog.
+Warning and error messages still propagate through the structlog pipeline.
 
 ### Litestar Integration
 
