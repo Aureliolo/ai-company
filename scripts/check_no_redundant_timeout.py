@@ -11,19 +11,24 @@ import sys
 from pathlib import Path
 
 _PATTERN = re.compile(r"pytest\.mark\.timeout\(\s*30\s*\)")
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def main() -> int:
     """Scan files for redundant pytest.mark.timeout(30) and report locations."""
     found = False
     for path in sys.argv[1:]:
+        resolved = Path(path).resolve()
+        if not resolved.is_relative_to(_REPO_ROOT):
+            continue
         try:
-            with Path(path).open(encoding="utf-8") as f:
+            with resolved.open(encoding="utf-8") as f:
                 for lineno, line in enumerate(f, 1):
                     if _PATTERN.search(line):
                         print(f"{path}:{lineno}: {line.rstrip()}")
                         found = True
-        except UnicodeDecodeError, OSError:
+        except (UnicodeDecodeError, OSError) as exc:
+            print(f"WARNING: skipping {path}: {exc}", file=sys.stderr)
             continue
     if found:
         print(

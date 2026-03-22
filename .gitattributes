@@ -1,11 +1,11 @@
 # Go tooling (gofmt, golangci-lint) requires LF line endings.
 # Without this, core.autocrlf=true on Windows converts to CRLF on checkout,
-# causing spurious "not properly formatted" errors — especially in worktrees.
+# causing spurious "not properly formatted" errors -- especially in worktrees.
 *.go text eol=lf
 go.mod text eol=lf
 go.sum text eol=lf
 
-# Go templates and golden test data — template output is LF;
+# Go templates and golden test data -- template output is LF;
 # byte-for-byte golden comparisons break if checked out as CRLF.
 *.tmpl text eol=lf
 cli/testdata/**/*.yml text eol=lf
@@ -13,8 +13,8 @@ cli/testdata/**/*.yml text eol=lf
 # Shell scripts must use LF (bash can't parse CRLF).
 *.sh text eol=lf
 
-# Dockerfiles run in Linux containers — CRLF breaks shell continuations and heredocs.
+# Dockerfiles run in Linux containers -- CRLF breaks shell continuations and heredocs.
 Dockerfile text eol=lf
 
-# PowerShell scripts — Windows expects CRLF.
+# PowerShell scripts -- Windows expects CRLF.
 *.ps1 text eol=crlf
