@@ -1,6 +1,6 @@
 """First-run setup controller.
 
-Status, templates, company, agents, model update, complete.
+Status, templates, company, name locales, agents, model update, complete.
 """
 
 import asyncio
@@ -26,6 +26,7 @@ from synthorg.api.controllers.setup_agents import (
     validate_provider_and_model,
 )
 from synthorg.api.controllers.setup_models import (
+    AvailableLocalesResponse,
     SetupAgentRequest,
     SetupAgentResponse,
     SetupAgentsListResponse,
@@ -54,6 +55,8 @@ from synthorg.observability.events.setup import (
     SETUP_COMPANY_CREATED,
     SETUP_COMPLETE_CHECK_ERROR,
     SETUP_COMPLETED,
+    SETUP_NAME_LOCALES_CORRUPTED,
+    SETUP_NAME_LOCALES_INVALID,
     SETUP_NAME_LOCALES_LISTED,
     SETUP_NAME_LOCALES_SAVED,
     SETUP_NO_AGENTS,
@@ -445,10 +448,14 @@ class SetupController(Controller):
     async def get_available_locales(
         self,
         state: State,  # noqa: ARG002
-    ) -> ApiResponse[dict[str, Any]]:
+    ) -> ApiResponse[AvailableLocalesResponse]:
         """List available locales grouped by region.
 
-        Returns region -> locale list mapping plus display names.
+        Args:
+            state: Application state.
+
+        Returns:
+            Region-grouped locale data envelope.
         """
         from synthorg.templates.locales import (  # noqa: PLC0415
             LOCALE_DISPLAY_NAMES,
@@ -456,10 +463,10 @@ class SetupController(Controller):
         )
 
         return ApiResponse(
-            data={
-                "regions": dict(LOCALE_REGIONS),
-                "display_names": dict(LOCALE_DISPLAY_NAMES),
-            },
+            data=AvailableLocalesResponse(
+                regions={k: list(v) for k, v in LOCALE_REGIONS.items()},
+                display_names=dict(LOCALE_DISPLAY_NAMES),
+            ),
         )
 
     @get(
@@ -519,13 +526,24 @@ class SetupController(Controller):
         settings_svc = app_state.settings_service
         await _check_setup_not_complete(settings_svc)
 
-        # Validate locale codes.
+        if ALL_LOCALES_SENTINEL in data.locales and len(data.locales) > 1:
+            msg = (
+                f"'{ALL_LOCALES_SENTINEL}' cannot be combined"
+                " with explicit locale codes"
+            )
+            logger.warning(SETUP_NAME_LOCALES_INVALID, reason="mixed_sentinel")
+            raise ApiValidationError(msg)
+
         invalid = [
             loc
             for loc in data.locales
             if loc != ALL_LOCALES_SENTINEL and loc not in VALID_LOCALE_CODES
         ]
         if invalid:
+            logger.warning(
+                SETUP_NAME_LOCALES_INVALID,
+                invalid_locales=invalid,
+            )
             msg = f"Invalid locale codes: {invalid}"
             raise ApiValidationError(msg)
 
@@ -734,12 +752,26 @@ async def _check_has_agents(
 
 
 async def _check_has_name_locales(settings_svc: SettingsService) -> bool:
-    """Check whether name locales have been explicitly configured."""
+    """Check whether name locales have been explicitly configured.
+
+    Args:
+        settings_svc: Settings service instance.
+
+    Returns:
+        True if name locales are user-configured, False otherwise.
+    """
     try:
         entry = await settings_svc.get_entry("company", "name_locales")
     except MemoryError, RecursionError:
         raise
     except SettingNotFoundError:
+        return False
+    except Exception:
+        logger.warning(
+            SETUP_STATUS_SETTINGS_UNAVAILABLE,
+            setting="name_locales",
+            exc_info=True,
+        )
         return False
     return entry.source == SettingSource.DATABASE and bool(entry.value)
 
@@ -818,7 +850,19 @@ async def _auto_create_template_agents(
 
 
 async def _read_name_locales(settings_svc: SettingsService) -> list[str] | None:
-    """Read stored name locale preference, returning None for default."""
+    """Read stored name locale preference, returning None for default.
+
+    Deserialises the JSON-encoded locale list from settings, validates
+    it as a list, and resolves it through ``resolve_locales`` (which
+    filters out invalid codes).  Returns ``None`` when the setting is
+    absent, unparseable, or resolves to an empty list.
+
+    Args:
+        settings_svc: Settings service instance.
+
+    Returns:
+        Resolved locale codes, or None to use the default (all locales).
+    """
     from synthorg.templates.locales import resolve_locales  # noqa: PLC0415
 
     try:
@@ -827,11 +871,28 @@ async def _read_name_locales(settings_svc: SettingsService) -> list[str] | None:
         raise
     except SettingNotFoundError:
         return None
+    except Exception:
+        logger.warning(
+            SETUP_STATUS_SETTINGS_UNAVAILABLE,
+            setting="name_locales",
+            exc_info=True,
+        )
+        return None
     try:
         parsed = json.loads(entry.value)
     except json.JSONDecodeError:
+        logger.warning(
+            SETUP_NAME_LOCALES_CORRUPTED,
+            reason="invalid_json",
+            raw=entry.value[:200] if entry.value else None,
+        )
         return None
     if not isinstance(parsed, list):
+        logger.warning(
+            SETUP_NAME_LOCALES_CORRUPTED,
+            reason="expected_list",
+            actual_type=type(parsed).__name__,
+        )
         return None
     return resolve_locales(parsed) or None
 

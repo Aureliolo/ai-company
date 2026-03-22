@@ -246,20 +246,21 @@ function getCodeMode(ns: string): 'json' | 'yaml' {
           </div>
 
           <!-- GUI mode -->
-          <SettingGroupRenderer
-            v-if="editMode.getEffectiveMode(ns).value === 'gui'"
-            :entries="settingsStore.entriesByNamespace(ns as SettingNamespace)"
-            :show-advanced="settingsStore.showAdvanced"
-            :saving-key="settingsStore.savingKey"
-            @save="handleSettingSave"
-            @reset="handleSettingReset"
-            @dirty="handleDirty"
-          />
+          <template v-if="editMode.getEffectiveMode(ns).value === 'gui'">
+            <SettingGroupRenderer
+              :entries="settingsStore.entriesByNamespace(ns as SettingNamespace)"
+              :show-advanced="settingsStore.showAdvanced"
+              :saving-key="settingsStore.savingKey"
+              @save="handleSettingSave"
+              @reset="handleSettingReset"
+              @dirty="handleDirty"
+            />
 
-          <!-- Custom name locale selector for company tab (GUI mode only) -->
-          <SettingsNameLocales
-            v-if="ns === 'company' && editMode.getEffectiveMode(ns).value === 'gui'"
-          />
+            <!-- Custom name locale selector for company tab -->
+            <SettingsNameLocales
+              v-if="ns === 'company'"
+            />
+          </template>
 
           <!-- JSON / YAML mode -->
           <SettingsCodeView

@@ -36,8 +36,9 @@ onMounted(async () => {
     if (locales.length > 0) {
       selectedLocales.value = locales
     }
-  } catch {
-    // Default to "all" on fetch failure
+  } catch (err) {
+    console.warn('[SetupNameLocale] Failed to load saved locales:', err)
+    error.value = 'Could not load your saved locale preferences. Defaulting to worldwide.'
   }
 })
 </script>

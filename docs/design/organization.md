@@ -144,28 +144,32 @@ template:
     autonomy:
       level: "semi"
 
+  # Built-in templates use explicit names drawn from Faker at build time.
+  # User-defined templates may use Jinja2 placeholders (e.g. {{ name | auto }})
+  # which trigger Faker-based auto-generation at render time using the
+  # locales selected in the Names setup step.
   agents:
     - role: "CEO"
-      name: "{{ ceo_name | auto }}"
+      name: "Amara Okafor"
       model: "large"
       personality_preset: "visionary_leader"
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
-      name: "{{ dev1_name | auto }}"
+      name: "Kenji Matsuda"
       level: "senior"
       model: "medium"
       personality_preset: "pragmatic_builder"
 
     - role: "Full-Stack Developer"
       merge_id: "fullstack-mid"
-      name: "{{ dev2_name | auto }}"
+      name: "Sofia Reyes"
       level: "mid"
       model: "small"
       personality_preset: "eager_learner"
 
     - role: "Product Manager"
-      name: "{{ pm_name | auto }}"
+      name: "Liam Chen"
       model: "medium"
       personality_preset: "strategic_planner"
 
@@ -233,13 +237,16 @@ Scalars (`company_name`, `company_type`)
 
 ## Company Builder
 
-The web dashboard includes a setup wizard with five substantive steps (Welcome, Admin,
-Provider, Company, Review Org) followed by a completion screen. When a template is selected
-in the Company step, all template agents are auto-created with models matched to configured
-providers via a cost-based tier classification engine. The Review Org step lets users inspect
-agents and reassign models before completing setup. All configuration is persisted to the
-database via REST API calls. To re-run the setup wizard from scratch, use `synthorg wipe`
-(creates a backup, wipes all data, restarts the stack, and re-opens the wizard).
+The web dashboard includes a setup wizard with six substantive steps (Welcome, Admin,
+Provider, Names, Company, Review Org) followed by a completion screen. The Names step lets
+users choose which cultural locales are used for Faker-based agent name generation (e.g.,
+English, Japanese, Yoruba); selected locales are persisted and applied when templates render
+agent names. When a template is selected in the Company step, all template agents are
+auto-created with models matched to configured providers via a cost-based tier classification
+engine. The Review Org step lets users inspect agents and reassign models before completing
+setup. All configuration is persisted to the database via REST API calls. To re-run the
+setup wizard from scratch, use `synthorg wipe` (creates a backup, wipes all data, restarts
+the stack, and re-opens the wizard).
 
 ---
 

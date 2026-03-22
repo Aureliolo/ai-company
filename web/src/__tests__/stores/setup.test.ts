@@ -6,6 +6,8 @@ const mockListTemplates = vi.fn()
 const mockCompleteSetup = vi.fn()
 const mockGetAgents = vi.fn()
 const mockUpdateAgentModel = vi.fn()
+const mockGetNameLocales = vi.fn()
+const mockSaveNameLocales = vi.fn()
 
 vi.mock('@/api/endpoints/setup', () => ({
   getSetupStatus: (...args: unknown[]) => mockGetSetupStatus(...args),
@@ -13,6 +15,8 @@ vi.mock('@/api/endpoints/setup', () => ({
   completeSetup: (...args: unknown[]) => mockCompleteSetup(...args),
   getAgents: (...args: unknown[]) => mockGetAgents(...args),
   updateAgentModel: (...args: unknown[]) => mockUpdateAgentModel(...args),
+  getNameLocales: (...args: unknown[]) => mockGetNameLocales(...args),
+  saveNameLocales: (...args: unknown[]) => mockSaveNameLocales(...args),
 }))
 
 import { useSetupStore } from '@/stores/setup'
@@ -438,6 +442,59 @@ describe('useSetupStore', () => {
       store.currentStep = 3
       store.setStep(0)
       expect(store.currentStep).toBe(0)
+    })
+  })
+
+  describe('fetchNameLocales', () => {
+    it('returns locales on success', async () => {
+      mockGetNameLocales.mockResolvedValue({ locales: ['en_US', 'fr_FR'] })
+
+      const store = useSetupStore()
+      const result = await store.fetchNameLocales()
+
+      expect(result).toEqual(['en_US', 'fr_FR'])
+      expect(store.error).toBeNull()
+    })
+
+    it('sets error and returns empty array on failure', async () => {
+      mockGetNameLocales.mockRejectedValue(new Error('Network error'))
+
+      const store = useSetupStore()
+      const result = await store.fetchNameLocales()
+
+      expect(result).toEqual([])
+      expect(store.error).toBe('Network error')
+    })
+  })
+
+  describe('saveNameLocales', () => {
+    it('calls API and refreshes status on success', async () => {
+      mockSaveNameLocales.mockResolvedValue({ locales: ['en_US'] })
+      mockGetSetupStatus.mockResolvedValue({
+        needs_admin: false,
+        needs_setup: true,
+        has_providers: true,
+        has_name_locales: true,
+        has_company: false,
+        has_agents: false,
+        min_password_length: 12,
+      })
+
+      const store = useSetupStore()
+      await store.saveNameLocales(['en_US'])
+
+      expect(mockSaveNameLocales).toHaveBeenCalledWith({ locales: ['en_US'] })
+      expect(mockGetSetupStatus).toHaveBeenCalled()
+      expect(store.error).toBeNull()
+    })
+
+    it('sets error and re-throws on failure', async () => {
+      mockSaveNameLocales.mockRejectedValue(new Error('Validation failed'))
+
+      const store = useSetupStore()
+      await expect(store.saveNameLocales(['invalid_XX'])).rejects.toThrow('Validation failed')
+
+      expect(store.error).toBe('Validation failed')
     })
   })
 })

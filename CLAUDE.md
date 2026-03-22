@@ -116,7 +116,7 @@ src/synthorg/
   providers/      # LLM provider abstraction, presets, model auto-discovery, runtime CRUD (management/), provider families, discovery SSRF allowlist
   settings/       # Runtime-editable settings (DB > env > YAML > code), Fernet encryption, ConfigResolver, definitions/, subscribers/
   security/       # Rule engine, audit log, output scanner, progressive trust, autonomy levels, timeout policies, LLM fallback evaluator, custom policy rules
-  templates/      # Pre-built company templates, personality presets, model requirements, tier-to-model matching
+  templates/      # Pre-built company templates, personality presets, model requirements, tier-to-model matching, locale-aware name generation
   tools/          # Tool registry, built-in tools, git SSRF prevention, MCP bridge, sandbox factory
 
 web/src/          # Vue 3 + PrimeVue + Tailwind CSS dashboard
@@ -247,7 +247,7 @@ site/             # Astro landing page (synthorg.io)
 
 - **Pinned**: all versions use `==` in `pyproject.toml`
 - **Groups**: `test` (pytest + plugins, hypothesis), `dev` (includes test + ruff, mypy, pre-commit, commitizen, pip-audit)
-- **Required**: `mem0ai` (Mem0 memory backend -- the default and currently only backend), `cryptography` (Fernet encryption for sensitive settings at rest)
+- **Required**: `mem0ai` (Mem0 memory backend -- the default and currently only backend), `cryptography` (Fernet encryption for sensitive settings at rest), `faker` (multi-locale agent name generation for templates and setup wizard)
 - **Install**: `uv sync` installs everything (dev group is default)
 - **Web dashboard**: Node.js 20+, dependencies in `web/package.json` (Vue 3, PrimeVue, Tailwind CSS, Pinia, VueFlow, ECharts, Axios, vue-draggable-plus, CodeMirror 6 (vue-codemirror), js-yaml, Vitest, fast-check, ESLint, vue-tsc)
 - **CLI**: Go 1.26+, dependencies in `cli/go.mod` (Cobra, charmbracelet/huh, charmbracelet/lipgloss, sigstore-go, go-containerregistry, go-tuf)

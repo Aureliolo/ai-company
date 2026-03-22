@@ -125,7 +125,7 @@ async function handleReviewComplete(providerName: string) {
 /**
  * Compute the correct step to resume at based on the setup status.
  * Uses backend-reported completion state to skip already-done steps.
- * Step indices are now stable (always 0-4).
+ * Step indices are now stable (always 0-5).
  */
 function computeResumeStep(): number {
   const status = setup.status

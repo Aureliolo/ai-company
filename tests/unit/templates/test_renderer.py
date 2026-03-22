@@ -583,3 +583,35 @@ class TestRosterCounts:
         assert default_backend == 3
         assert override_backend == 5
         assert override_backend - default_backend == 2
+
+
+@pytest.mark.unit
+class TestJinja2PlaceholderAutoName:
+    """Agent names containing __JINJA2__ trigger auto-name generation."""
+
+    def test_jinja2_placeholder_triggers_auto_name(self) -> None:
+        """An agent name containing __JINJA2__ is replaced by an auto-name."""
+        from synthorg.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Backend Developer",
+            "name": "__JINJA2__ Dev",
+            "department": "engineering",
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        # The auto-generated name should NOT contain the placeholder.
+        assert "__JINJA2__" not in result["name"]
+        assert len(result["name"]) > 0
+
+    def test_jinja2_placeholder_exact_match(self) -> None:
+        """An agent name that is exactly __JINJA2__ is auto-named."""
+        from synthorg.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "CEO",
+            "name": "__JINJA2__",
+            "department": "executive",
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        assert "__JINJA2__" not in result["name"]
+        assert len(result["name"]) > 0

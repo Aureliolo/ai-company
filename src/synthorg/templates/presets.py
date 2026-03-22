@@ -5,6 +5,7 @@ and behavioral enums, plus internationally diverse auto-name generation
 backed by the Faker library.
 """
 
+import functools
 from types import MappingProxyType
 from typing import Any
 
@@ -401,13 +402,17 @@ def generate_auto_name(
 ) -> str:
     """Generate an internationally diverse agent name using Faker.
 
-    Uses a multi-locale Faker instance seeded deterministically.
-    The *role* parameter is accepted for API compatibility but does
-    not influence name generation -- all names come from the
-    configured locale pool.
+    When *seed* is provided, a local ``random.Random`` deterministically
+    selects a locale, then a fresh single-locale Faker instance (cached)
+    generates the name.  No global Faker state is mutated.
+
+    The *role* parameter is accepted because callers
+    (``setup_agents.py``, ``renderer.py``) pass it positionally;
+    it does not influence name generation.
 
     Args:
-        role: The agent's role name (unused, kept for compatibility).
+        role: The agent's role name.  Unused since the switch from
+            role-based name pools to Faker.
         seed: Optional random seed for deterministic naming.
         locales: Faker locale codes to draw from.  Defaults to all
             Latin-script locales when ``None`` or empty.
@@ -415,12 +420,28 @@ def generate_auto_name(
     Returns:
         A generated full name string.
     """
-    from faker import Faker  # noqa: PLC0415
+    import random  # noqa: PLC0415
 
     from synthorg.templates.locales import ALL_LATIN_LOCALES  # noqa: PLC0415
 
     locale_list = locales or list(ALL_LATIN_LOCALES)
-    fake = Faker(locale_list)
     if seed is not None:
-        Faker.seed(seed)
-    return fake.name()
+        rng = random.Random(seed)  # noqa: S311
+        chosen_locale = rng.choice(locale_list)
+        fake = _get_faker((chosen_locale,))
+        fake.seed_instance(seed)
+    else:
+        fake = _get_faker(tuple(locale_list))
+    return str(fake.name())
+
+
+@functools.lru_cache(maxsize=128)
+def _get_faker(locale_tuple: tuple[str, ...]) -> Any:
+    """Return a cached Faker instance for the given locale tuple.
+
+    Caching avoids re-initialising locale providers on every call.
+    The cache is keyed by locale tuple (immutable, hashable).
+    """
+    from faker import Faker  # noqa: PLC0415
+
+    return Faker(list(locale_tuple))

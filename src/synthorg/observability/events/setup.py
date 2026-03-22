@@ -84,3 +84,9 @@ SETUP_NAME_LOCALES_SAVED: Final[str] = "setup.name_locales.saved"
 
 # Name locale preferences retrieved
 SETUP_NAME_LOCALES_LISTED: Final[str] = "setup.name_locales.listed"
+
+# Invalid locale codes submitted
+SETUP_NAME_LOCALES_INVALID: Final[str] = "setup.name_locales.invalid"
+
+# Stored name locale data corrupted (invalid JSON or wrong type)
+SETUP_NAME_LOCALES_CORRUPTED: Final[str] = "setup.name_locales.corrupted"

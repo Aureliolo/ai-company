@@ -169,3 +169,17 @@ class TestLocalesModule:
 
         # fr_QC is deprecated in Faker, should not be in our list
         assert "fr_QC" not in ALL_LATIN_LOCALES
+
+    def test_resolve_locales_empty_list(self) -> None:
+        """Empty list is falsy, so resolve_locales returns all locales."""
+        from synthorg.templates.locales import ALL_LATIN_LOCALES, resolve_locales
+
+        result = resolve_locales([])
+        assert result == list(ALL_LATIN_LOCALES)
+
+    def test_resolve_locales_all_invalid(self) -> None:
+        """All invalid locale codes are filtered out, returning empty list."""
+        from synthorg.templates.locales import resolve_locales
+
+        result = resolve_locales(["invalid_XX", "bogus_YY"])
+        assert result == []

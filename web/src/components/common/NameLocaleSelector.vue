@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Checkbox from 'primevue/checkbox'
 import * as setupApi from '@/api/endpoints/setup'
@@ -94,13 +94,6 @@ function toggleLocale(locale: string, selected: boolean) {
     emit('update:modelValue', [...current])
   }
 }
-
-// Watch for external "all" toggle-off to expand to individual locales
-watch(isAll, (newVal, oldVal) => {
-  if (oldVal && !newVal && props.modelValue.length === 0) {
-    // User toggled off "all" -- leave empty for manual selection
-  }
-})
 
 onMounted(async () => {
   try {
