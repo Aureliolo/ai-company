@@ -822,3 +822,93 @@ func TestDownloadBundleInvalidJSON(t *testing.T) {
 		t.Errorf("expected sigstore verification error, got: %v", err)
 	}
 }
+
+func TestCheckDevFromURL(t *testing.T) {
+	asset := assetName()
+	releases := []devRelease{
+		{TagName: "v0.4.7.dev3", Prerelease: true, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.7.dev3/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.7.dev3/checksums.txt"},
+		}},
+		{TagName: "v0.4.6", Prerelease: false, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.6/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.6/checksums.txt"},
+		}},
+	}
+	body, _ := json.Marshal(releases)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	result, err := CheckDevFromURL(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("CheckDevFromURL: %v", err)
+	}
+	// Dev v0.4.7.dev3 is newer than stable v0.4.6, so dev should be selected.
+	if result.LatestVersion != "v0.4.7.dev3" {
+		t.Errorf("LatestVersion = %q, want v0.4.7.dev3", result.LatestVersion)
+	}
+}
+
+func TestCheckDevFromURLPrefersStable(t *testing.T) {
+	asset := assetName()
+	releases := []devRelease{
+		{TagName: "v0.4.7.dev3", Prerelease: true, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.7.dev3/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.7.dev3/checksums.txt"},
+		}},
+		{TagName: "v0.4.7", Prerelease: false, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.7/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.7/checksums.txt"},
+		}},
+	}
+	body, _ := json.Marshal(releases)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	result, err := CheckDevFromURL(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("CheckDevFromURL: %v", err)
+	}
+	// Stable v0.4.7 should beat dev v0.4.7.dev3 at same base version.
+	if result.LatestVersion != "v0.4.7" {
+		t.Errorf("LatestVersion = %q, want v0.4.7", result.LatestVersion)
+	}
+}
+
+func TestCheckDevFromURLAllDrafts(t *testing.T) {
+	releases := []devRelease{
+		{TagName: "v0.4.7", Draft: true},
+		{TagName: "v0.4.7.dev1", Draft: true, Prerelease: true},
+	}
+	body, _ := json.Marshal(releases)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	_, err := CheckDevFromURL(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("expected error when all releases are drafts")
+	}
+}
+
+func TestCheckDevFromURLRateLimited(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	_, err := CheckDevFromURL(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("expected error for rate-limited response")
+	}
+	if !strings.Contains(err.Error(), "rate-limited") {
+		t.Errorf("expected rate-limit error message, got: %v", err)
+	}
+}

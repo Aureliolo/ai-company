@@ -109,8 +109,13 @@ func updateCLI(cmd *cobra.Command) error {
 		_, _ = fmt.Fprintln(out, "Warning: running a dev build -- update check will always report an update available.")
 	}
 
-	_, _ = fmt.Fprintln(out, "Checking for updates...")
-	result, err := selfupdate.Check(ctx)
+	channel := resolveUpdateChannel()
+	if channel == "dev" {
+		_, _ = fmt.Fprintln(out, "Checking for updates (dev channel)...")
+	} else {
+		_, _ = fmt.Fprintln(out, "Checking for updates...")
+	}
+	result, err := selfupdate.CheckForChannel(ctx, channel)
 	if err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check for updates: %v\n", err)
 		return nil
@@ -147,6 +152,16 @@ func updateCLI(cmd *cobra.Command) error {
 	// Signal the caller to re-exec the new binary so the rest of the
 	// update (compose refresh, image pull) uses the new embedded template.
 	return errReexec
+}
+
+// resolveUpdateChannel reads the update channel from config, defaulting to
+// "stable" if the config cannot be loaded or the channel is empty.
+func resolveUpdateChannel() string {
+	dir := resolveDataDir()
+	if state, err := config.Load(dir); err == nil && state.Channel != "" {
+		return state.Channel
+	}
+	return "stable"
 }
 
 // ChildExitError carries the exit code from a re-exec'd child process.
