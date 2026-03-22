@@ -134,18 +134,17 @@ class TestRenderTemplateAgents:
         names = [a.name for a in config.agents]
         assert len(names) == len(set(names))
 
-    def test_agent_name_from_jinja2(self) -> None:
+    def test_agent_name_from_template(self) -> None:
         loaded = load_template("solo_founder")
         config = render_template(loaded, variables={"company_name": "ACME"})
-        # The CEO agent's name is "{{ company_name }} CEO" → "ACME CEO".
+        # The CEO agent has an explicit name in the template.
         ceo_agents = [a for a in config.agents if a.role == "CEO"]
         assert len(ceo_agents) == 1
-        assert "ACME" in ceo_agents[0].name
+        assert ceo_agents[0].name == "Nia Oduya"
 
-    def test_auto_name_for_unnamed_agents(self) -> None:
+    def test_agents_have_nonempty_names(self) -> None:
         loaded = load_template("research_lab")
         config = render_template(loaded)
-        # research_lab agents don't have explicit names.
         for agent in config.agents:
             assert agent.name != ""
             assert len(agent.name) > 0
