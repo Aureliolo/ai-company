@@ -284,6 +284,66 @@ func TestConfigShowAutoCleanup(t *testing.T) {
 	}
 }
 
+func TestConfigSetLogLevel(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{"set to debug", "debug", "debug"},
+		{"set to info", "info", "info"},
+		{"set to warn", "warn", "warn"},
+		{"set to error", "error", "error"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			state := config.DefaultState()
+			state.DataDir = dir
+			if err := config.Save(state); err != nil {
+				t.Fatal(err)
+			}
+
+			var buf bytes.Buffer
+			rootCmd.SetOut(&buf)
+			rootCmd.SetErr(&buf)
+			rootCmd.SetArgs([]string{"config", "set", "log_level", tt.value, "--data-dir", dir})
+			if err := rootCmd.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			loaded, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load after set: %v", err)
+			}
+			if loaded.LogLevel != tt.want {
+				t.Errorf("LogLevel = %q, want %q", loaded.LogLevel, tt.want)
+			}
+		})
+	}
+}
+
+func TestConfigSetRejectsInvalidLogLevel(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, value := range []string{"verbose", "trace", "INFO", "Debug", ""} {
+		var buf bytes.Buffer
+		rootCmd.SetOut(&buf)
+		rootCmd.SetErr(&buf)
+		rootCmd.SetArgs([]string{"config", "set", "log_level", value, "--data-dir", dir})
+		err := rootCmd.Execute()
+		if err == nil {
+			t.Errorf("expected error for log_level=%q", value)
+		}
+	}
+}
+
 func TestConfigSetRejectsUnknownKey(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()

@@ -187,21 +187,16 @@ async def probe_preset_urls(
 ) -> ProbeResult:
     """Probe candidate URLs for a preset and return the first reachable one.
 
-    Resolves candidate URLs from the preset registry internally so that
-    only hardcoded preset URLs are probed (SSRF validation is skipped).
-    Returns an empty result if the preset name is unknown.
-
-    Tries each URL sequentially (short timeout per URL).  For the first
-    URL that responds, parses the model list from the same response
-    (single round-trip per candidate).
+    Resolves candidate URLs from the preset registry so only hardcoded
+    preset URLs are probed (SSRF validation is skipped).  Tries each URL
+    sequentially with a short timeout; the first response is parsed for
+    models (single round-trip per candidate).
 
     Args:
-        preset_name: Preset name for discovery endpoint selection
-            and logging.
+        preset_name: Preset name for endpoint selection and logging.
 
     Returns:
-        Probe result with the reachable URL and model count,
-        or an empty result if no URL responded.
+        Probe result with reachable URL and model count, or empty.
     """
     from synthorg.providers.presets import get_preset  # noqa: PLC0415
 

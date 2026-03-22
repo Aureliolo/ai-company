@@ -1238,6 +1238,11 @@ Eleven default sinks, activated at startup via `bootstrap_logging()`:
 Logger name routing is implemented via `_LoggerNameFilter` on file handlers. Sinks without
 explicit routing are catch-all (accept all loggers at their configured level).
 
+Exception formatting differs between sink types: `format_exc_info` is applied only to JSON
+file sinks (converting `exc_info` tuples to formatted traceback strings for serialization).
+The console sink omits this processor because `ConsoleRenderer` handles exception rendering
+natively with colored, human-readable output.
+
 ### Log Directory
 
 - **Docker**: `/data/logs/` (under the `synthorg-data` volume, persisted across restarts)
@@ -1328,7 +1333,7 @@ overrides so explicit user settings take precedence) resolves this by:
   avoids triggering LiteLLM's expensive import side-effects)
 - Clearing all handlers from `LiteLLM`, `LiteLLM Router`, `LiteLLM Proxy`, `aiosqlite`,
   `httpcore`, `httpcore.http11`, `httpcore.connection`, `httpx`, `uvicorn`, `uvicorn.error`,
-  `uvicorn.access`, `anyio`, and `multipart` loggers
+  `uvicorn.access`, `anyio`, `multipart`, `faker`, and `faker.factory` loggers
 - Setting each to `WARNING` and `propagate = True` so warnings and errors still flow through
   the structlog pipeline
 

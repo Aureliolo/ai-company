@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 def _foreign_pre_chain() -> list[structlog.types.Processor]:
     return [
         structlog.stdlib.add_log_level,
-        structlog.processors.format_exc_info,
     ]
 
 
@@ -78,6 +77,26 @@ class TestBuildHandlerConsole:
         handler = build_handler(sink, tmp_path, _foreign_pre_chain())
         handler_cleanup.append(handler)
         assert handler.level == logging.ERROR
+
+    def test_console_sink_excludes_format_exc_info(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
+        """Console sinks omit format_exc_info; ConsoleRenderer handles exceptions."""
+        sink = SinkConfig(sink_type=SinkType.CONSOLE, json_format=False)
+        handler = build_handler(sink, tmp_path, _foreign_pre_chain())
+        handler_cleanup.append(handler)
+        assert isinstance(handler.formatter, ProcessorFormatter)
+        assert structlog.processors.format_exc_info not in handler.formatter.processors
+
+    def test_json_console_sink_includes_format_exc_info(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
+        """JSON console sinks include format_exc_info for serialization."""
+        sink = SinkConfig(sink_type=SinkType.CONSOLE, json_format=True)
+        handler = build_handler(sink, tmp_path, _foreign_pre_chain())
+        handler_cleanup.append(handler)
+        assert isinstance(handler.formatter, ProcessorFormatter)
+        assert structlog.processors.format_exc_info in handler.formatter.processors
 
 
 @pytest.mark.unit
@@ -146,6 +165,21 @@ class TestBuildHandlerFileBuiltin:
         handler = build_handler(sink, tmp_path, _foreign_pre_chain())
         handler_cleanup.append(handler)
         assert isinstance(handler.formatter, ProcessorFormatter)
+
+    def test_json_file_sink_includes_format_exc_info(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
+        """JSON file sinks include format_exc_info for traceback serialization."""
+        sink = SinkConfig(
+            sink_type=SinkType.FILE,
+            file_path="app.log",
+            json_format=True,
+            rotation=RotationConfig(),
+        )
+        handler = build_handler(sink, tmp_path, _foreign_pre_chain())
+        handler_cleanup.append(handler)
+        assert isinstance(handler.formatter, ProcessorFormatter)
+        assert structlog.processors.format_exc_info in handler.formatter.processors
 
     def test_default_rotation_when_none(
         self, tmp_path: Path, handler_cleanup: list[logging.Handler]

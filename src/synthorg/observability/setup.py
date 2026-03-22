@@ -135,6 +135,43 @@ def _configure_structlog(*, enable_correlation: bool = True) -> None:
     )
 
 
+_CRITICAL_SINKS = frozenset({"audit.log", "access.log"})
+
+
+def _handle_sink_failure(
+    sink: SinkConfig,
+    exc: Exception,
+) -> None:
+    """Handle a sink initialisation failure.
+
+    Critical sinks (audit, access) cause a hard failure.  Others are
+    skipped with a stderr warning.
+
+    Raises:
+        RuntimeError: If the failed sink is critical.
+    """
+    if sink.file_path in _CRITICAL_SINKS:
+        print(  # noqa: T201
+            f"CRITICAL: Log sink '{sink.file_path}' could not "
+            f"be initialised: {exc}. Refusing to start with "
+            "missing audit/access logs.",
+            file=sys.stderr,
+            flush=True,
+        )
+        msg = (
+            f"Critical log sink '{sink.file_path}' could not be "
+            "initialised. Refusing to start with missing "
+            "audit/access logs."
+        )
+        raise RuntimeError(msg) from exc
+    print(  # noqa: T201
+        f"WARNING: Failed to initialise log sink "
+        f"{sink!r}: {exc}. This sink will be skipped.",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def _attach_handlers(
     config: LogConfig,
     root_logger: logging.Logger,
@@ -144,9 +181,7 @@ def _attach_handlers(
 
     Failures on individual sinks are logged to stderr and skipped so
     that the remaining sinks can still be initialised.  Critical sinks
-    (``audit.log``, ``access.log``) cause a hard failure if they cannot
-    be created -- silently dropping security audit or access records is
-    not acceptable.
+    cause a hard failure via :func:`_handle_sink_failure`.
 
     Args:
         config: The logging configuration.
@@ -154,10 +189,8 @@ def _attach_handlers(
         shared_processors: Processor chain for the foreign pre-chain.
 
     Raises:
-        RuntimeError: If a critical sink (audit or access) fails to
-            initialise.
+        RuntimeError: If a critical sink fails to initialise.
     """
-    _critical_sinks = frozenset({"audit.log", "access.log"})
     log_dir = Path(config.log_dir)
     for sink in config.sinks:
         try:
@@ -168,26 +201,7 @@ def _attach_handlers(
             )
             root_logger.addHandler(handler)
         except (OSError, RuntimeError, ValueError) as exc:
-            if sink.file_path in _critical_sinks:
-                print(  # noqa: T201
-                    f"CRITICAL: Log sink '{sink.file_path}' could not "
-                    f"be initialised: {exc}. Refusing to start with "
-                    "missing audit/access logs.",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                msg = (
-                    f"Critical log sink '{sink.file_path}' could not be "
-                    "initialised. Refusing to start with missing "
-                    "audit/access logs."
-                )
-                raise RuntimeError(msg) from exc
-            print(  # noqa: T201
-                f"WARNING: Failed to initialise log sink "
-                f"{sink!r}: {exc}. This sink will be skipped.",
-                file=sys.stderr,
-                flush=True,
-            )
+            _handle_sink_failure(sink, exc)
 
 
 def _apply_logger_levels(config: LogConfig) -> None:
@@ -309,10 +323,7 @@ def configure_logging(config: LogConfig | None = None) -> None:
             defaults with all standard sinks.
 
     Raises:
-        RuntimeError: If a critical sink (``audit.log`` or
-            ``access.log``) fails to initialise.  The logging system
-            may be in a partially configured state (structlog reset,
-            old handlers cleared, some new handlers attached).
+        RuntimeError: If a critical sink fails to initialise.
     """
     if config is None:
         config = LogConfig(sinks=DEFAULT_SINKS)

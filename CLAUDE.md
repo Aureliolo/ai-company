@@ -159,7 +159,7 @@ site/             # Astro landing page (synthorg.io)
 ## Logging
 
 - **Every module** with business logic MUST have: `from synthorg.observability import get_logger` then `logger = get_logger(__name__)`
-- **Never** use `import logging` / `logging.getLogger()` / `print()` in application code
+- **Never** use `import logging` / `logging.getLogger()` / `print()` in application code (exception: `observability/setup.py` and `observability/sinks.py` may use stdlib `logging` and `print(..., file=sys.stderr)` for bootstrap and handler-cleanup code that runs before or during logging system configuration)
 - **Variable name**: always `logger` (not `_logger`, not `log`)
 - **Event names**: always use constants from the domain-specific module under `synthorg.observability.events` (e.g., `API_REQUEST_STARTED` from `events.api`, `TOOL_INVOKE_START` from `events.tool`, `GIT_COMMAND_START` from `events.git`, `CONTEXT_BUDGET_FILL_UPDATED` from `events.context_budget`, `BACKUP_STARTED` from `events.backup`, `SETUP_COMPLETED` from `events.setup`). Each domain has its own module -- see `src/synthorg/observability/events/` for the full inventory of constants. Import directly: `from synthorg.observability.events.<domain> import EVENT_CONSTANT`
 - **Structured kwargs**: always `logger.info(EVENT, key=value)` -- never `logger.info("msg %s", val)`

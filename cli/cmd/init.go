@@ -84,15 +84,18 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	printInitSuccess(out, safeDir)
+	return nil
+}
+
+func printInitSuccess(out *ui.UI, dataDir string) {
 	out.Blank()
 	out.Success("SynthOrg initialized")
-	out.KeyValue("Data dir", safeDir)
-	out.KeyValue("Compose file", filepath.Join(safeDir, "compose.yml"))
-	out.KeyValue("Config", config.StatePath(safeDir))
+	out.KeyValue("Data dir", dataDir)
+	out.KeyValue("Compose file", filepath.Join(dataDir, "compose.yml"))
+	out.KeyValue("Config", config.StatePath(dataDir))
 	out.Warn("Keep compose.yml and config.json private -- they contain your secrets.")
 	out.Hint("Run 'synthorg start' to launch.")
-
-	return nil
 }
 
 // setupAnswers holds raw form input before validation.

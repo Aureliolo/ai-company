@@ -113,6 +113,22 @@ class _LoggerNameFilter(logging.Filter):
         return True
 
 
+def _ensure_log_dir(file_path: Path, sink_name: str) -> None:
+    """Create parent directories for a log file path.
+
+    Raises:
+        RuntimeError: If directory creation fails.
+    """
+    try:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        msg = (
+            f"Failed to create log directory '{file_path.parent}' "
+            f"for sink '{sink_name}': {exc}"
+        )
+        raise RuntimeError(msg) from exc
+
+
 def _build_file_handler(
     sink: SinkConfig,
     log_dir: Path,
@@ -138,16 +154,7 @@ def _build_file_handler(
         raise ValueError(msg)
 
     file_path = log_dir / sink.file_path
-
-    try:
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        msg = (
-            f"Failed to create log directory '{file_path.parent}' "
-            f"for sink '{sink.file_path}': {exc}"
-        )
-        raise RuntimeError(msg) from exc
-
+    _ensure_log_dir(file_path, sink.file_path)
     rotation = sink.rotation or RotationConfig()
 
     try:
@@ -157,14 +164,39 @@ def _build_file_handler(
                 maxBytes=rotation.max_bytes,
                 backupCount=rotation.backup_count,
             )
-        return _FlushingWatchedFileHandler(
-            filename=str(file_path),
-        )
+        return _FlushingWatchedFileHandler(filename=str(file_path))
     except OSError as exc:
         msg = (
             f"Failed to open log file '{file_path}' for sink '{sink.file_path}': {exc}"
         )
         raise RuntimeError(msg) from exc
+
+
+def _build_formatter(
+    sink: SinkConfig,
+    foreign_pre_chain: list[Any],
+) -> ProcessorFormatter:
+    """Build a ``ProcessorFormatter`` for the given sink.
+
+    JSON sinks include ``format_exc_info`` to serialize exception tuples.
+    Console sinks omit it because ``ConsoleRenderer`` handles exceptions
+    natively.
+    """
+    renderer: Any
+    if sink.json_format:
+        renderer = structlog.processors.JSONRenderer()
+    else:
+        renderer = structlog.dev.ConsoleRenderer(colors=True)
+
+    processors: list[Any] = [ProcessorFormatter.remove_processors_meta]
+    if sink.json_format:
+        processors.append(structlog.processors.format_exc_info)
+    processors.append(renderer)
+
+    return ProcessorFormatter(
+        processors=processors,
+        foreign_pre_chain=foreign_pre_chain,
+    )
 
 
 def build_handler(
@@ -192,27 +224,8 @@ def build_handler(
         handler = _build_file_handler(sink, log_dir)
 
     handler.setLevel(sink.level.value)
+    handler.setFormatter(_build_formatter(sink, foreign_pre_chain))
 
-    renderer: Any
-    if sink.json_format:
-        renderer = structlog.processors.JSONRenderer()
-    else:
-        renderer = structlog.dev.ConsoleRenderer(colors=True)
-
-    processors: list[Any] = [ProcessorFormatter.remove_processors_meta]
-    if sink.json_format:
-        processors.append(structlog.processors.format_exc_info)
-    processors.append(renderer)
-
-    formatter = ProcessorFormatter(
-        processors=processors,
-        foreign_pre_chain=foreign_pre_chain,
-    )
-    handler.setFormatter(formatter)
-
-    # Attach a logger name filter for dedicated sink files.
-    # Only include_prefixes is used today; exclude_prefixes exists on
-    # _LoggerNameFilter for future routing needs (e.g. noisy-logger suppression).
     if sink.file_path is not None and sink.file_path in _SINK_ROUTING:
         name_filter = _LoggerNameFilter(
             include_prefixes=_SINK_ROUTING[sink.file_path],
