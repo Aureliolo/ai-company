@@ -149,7 +149,7 @@ func selectBestRelease(releases []devRelease) (*devRelease, error) {
 		if r.Draft {
 			continue
 		}
-		if r.Prerelease && strings.Contains(r.TagName, ".dev") {
+		if r.Prerelease && strings.Contains(r.TagName, "-dev.") {
 			if latestDev == nil {
 				latestDev = r
 			}
@@ -244,14 +244,14 @@ func compareWithDev(a, b string) (int, error) {
 	}
 }
 
-// splitDev splits "0.4.7.dev3" into (3, "0.4.7") or (-1, "0.4.7") if no .dev suffix.
+// splitDev splits "0.4.7-dev.3" into (3, "0.4.7") or (-1, "0.4.7") if no -dev. suffix.
 func splitDev(v string) (devNum int, base string) {
-	idx := strings.Index(v, ".dev")
+	idx := strings.Index(v, "-dev.")
 	if idx < 0 {
 		return -1, v
 	}
 	base = v[:idx]
-	numStr := v[idx+4:] // skip ".dev"
+	numStr := v[idx+5:] // skip "-dev."
 	n, err := strconv.Atoi(numStr)
 	if err != nil {
 		return -1, v

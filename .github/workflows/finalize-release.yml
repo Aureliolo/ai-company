@@ -21,14 +21,12 @@ jobs:
     # Only process tag-triggered release builds, not PR-triggered runs.
     # The event != 'pull_request' guard prevents a PR that modifies the
     # Docker/CLI workflows from reaching this privileged publish step.
-    # Only publish stable releases (v0.4.7), not dev pre-releases (v0.4.7.dev3).
-    # Dev pre-releases are created as non-draft by dev-release.yml and need no
-    # finalization -- their Docker/CLI assets attach directly to the pre-release.
+    # Both stable (v0.4.7) and dev (v0.4.7-dev.3) releases go through the
+    # same draft -> finalize pipeline.
     if: >-
       github.event.workflow_run.event == 'push'
       && github.event.workflow_run.head_repository.full_name == github.repository
       && startsWith(github.event.workflow_run.head_branch, 'v')
-      && !contains(github.event.workflow_run.head_branch, '.dev')
     runs-on: ubuntu-latest
     permissions:
       actions: read
