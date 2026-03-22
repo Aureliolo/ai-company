@@ -107,6 +107,21 @@ class TestModelAffinity:
                     f"{name} has invalid priority {affinity['priority']!r}"
                 )
 
+    @pytest.mark.parametrize(
+        ("preset", "expected_priority"),
+        [
+            ("client_advisor", "balanced"),
+            ("code_craftsman", "quality"),
+            ("devil_advocate", "quality"),
+        ],
+    )
+    def test_new_preset_affinity_values(
+        self,
+        preset: str,
+        expected_priority: str,
+    ) -> None:
+        assert MODEL_AFFINITY[preset]["priority"] == expected_priority
+
     def test_affinity_min_context_non_negative(self) -> None:
         for name, affinity in MODEL_AFFINITY.items():
             if "min_context" in affinity:
