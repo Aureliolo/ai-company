@@ -82,6 +82,36 @@ class TestHierarchyResolverConstruction:
         resolver = HierarchyResolver(company)
         assert resolver.get_supervisor("anyone") is None
 
+    def test_headless_department_teams_have_no_dept_supervisor(self) -> None:
+        """When dept.head is None, team leads have no department supervisor."""
+        dept = Department(
+            name="Ops",
+            teams=(Team(name="ops", lead="ops_lead", members=("worker",)),),
+        )
+        company = _make_company(departments=(dept,))
+        resolver = HierarchyResolver(company)
+        # Team lead has no supervisor because there is no dept head
+        assert resolver.get_supervisor("ops_lead") is None
+        # Team member still reports to team lead
+        assert resolver.get_supervisor("worker") == "ops_lead"
+
+    def test_mixed_headless_and_headed_departments(self) -> None:
+        """Headless and headed departments coexist correctly."""
+        headless = Department(
+            name="Ops",
+            teams=(Team(name="ops", lead="ops_lead", members=("ops_dev",)),),
+        )
+        headed = _eng_department()
+        company = _make_company(departments=(headless, headed))
+        resolver = HierarchyResolver(company)
+        # Headed department: lead -> head
+        assert resolver.get_supervisor("backend_lead") == "cto"
+        # Headless department: lead has no supervisor
+        assert resolver.get_supervisor("ops_lead") is None
+        # Both: members still report to their lead
+        assert resolver.get_supervisor("ops_dev") == "ops_lead"
+        assert resolver.get_supervisor("sr_dev") == "backend_lead"
+
 
 @pytest.mark.unit
 class TestGetSupervisor:

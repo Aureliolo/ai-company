@@ -212,4 +212,22 @@ describe('SettingGroupRenderer', () => {
     expect(wrapper.emitted('reset')).toBeTruthy()
     expect(wrapper.emitted('reset')![0]).toEqual([entry])
   })
+
+  it('filters out hidden settings (setup_complete)', () => {
+    const hidden = makeEntry({
+      namespace: 'api',
+      key: 'setup_complete',
+      group: 'Setup',
+      type: 'bool',
+      default: 'false',
+    }, { value: 'false' })
+    const wrapper = mount(SettingGroupRenderer, {
+      props: {
+        entries: [basicLimits(), hidden],
+        showAdvanced: true,
+      },
+    })
+    expect(wrapper.text()).toContain('total_monthly')
+    expect(wrapper.text()).not.toContain('setup_complete')
+  })
 })

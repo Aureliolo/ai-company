@@ -143,7 +143,7 @@ graph TD
     Company --> Config
     Company --> HR["HR Registry"]
 
-    Departments --> DeptHead["Department Head (Agent)"]
+    Departments -.-> DeptHead["Department Head (Agent, optional)"]
     Departments --> Members["Members (Agent[])"]
 
     Projects --> Tasks

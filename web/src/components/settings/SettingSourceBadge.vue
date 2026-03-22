@@ -7,9 +7,9 @@ defineProps<{
 }>()
 
 const SOURCE_LABELS: Record<SettingSource, string> = {
-  db: 'Database',
+  db: 'Custom',
   env: 'Environment',
-  yaml: 'YAML',
+  yaml: 'Config File',
   default: 'Default',
 }
 

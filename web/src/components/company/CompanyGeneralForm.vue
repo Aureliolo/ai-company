@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import SettingField from '@/components/settings/SettingField.vue'
+import SettingGroupRenderer from '@/components/settings/SettingGroupRenderer.vue'
 import type { SettingEntry, SettingNamespace } from '@/api/types'
 
 const props = defineProps<{
@@ -29,14 +29,16 @@ const generalEntries = computed(() =>
   >
     <p class="text-sm text-slate-400">No general company settings available.</p>
   </div>
-  <div v-else class="grid grid-cols-1 gap-4 xl:grid-cols-2">
-    <SettingField
-      v-for="entry in generalEntries"
-      :key="entry.definition.key"
-      :entry="entry"
-      :saving="savingKey === `${entry.definition.namespace}/${entry.definition.key}`"
-      @save="(value: string) => emit('save', entry, value)"
-      @reset="emit('reset', entry)"
+  <div v-else class="space-y-2">
+    <p class="text-sm text-slate-400">
+      Core company identity and operational defaults.
+    </p>
+    <SettingGroupRenderer
+      :entries="generalEntries"
+      :show-advanced="true"
+      :saving-key="savingKey"
+      @save="(entry: SettingEntry, value: string) => emit('save', entry, value)"
+      @reset="(entry: SettingEntry) => emit('reset', entry)"
       @dirty="emit('dirty', $event)"
     />
   </div>

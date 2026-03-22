@@ -22,6 +22,7 @@ class HierarchyResolver:
        team-derived relationships.
     2. ``Team.lead`` for team members
     3. ``Department.head`` for team leads without explicit reporting
+       (skipped when head is ``None``)
 
     Detects cycles at construction time.
 
@@ -41,9 +42,15 @@ class HierarchyResolver:
         for dept in company.departments:
             for team in dept.teams:
                 # Team lead -> department head (lowest priority)
-                if team.lead != dept.head and team.lead not in supervisor_of:
+                if (
+                    dept.head
+                    and team.lead != dept.head
+                    and team.lead not in supervisor_of
+                ):
                     supervisor_of[team.lead] = dept.head
-                    reports_of.setdefault(dept.head, []).append(team.lead)
+                    reports_of.setdefault(dept.head, []).append(
+                        team.lead,
+                    )
 
                 # Team members -> team lead (medium priority)
                 for member in team.members:
@@ -80,9 +87,7 @@ class HierarchyResolver:
             {k: tuple(v) for k, v in reports_of.items()}
         )
         self._known_agents: frozenset[str] = frozenset(
-            set(supervisor_of.keys())
-            | set(supervisor_of.values())
-            | set(reports_of.keys())
+            supervisor_of.keys() | supervisor_of.values() | reports_of.keys()
         )
 
         logger.debug(

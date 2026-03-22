@@ -104,7 +104,7 @@ delegation rights, and typical model tier.
 
 Each department defines:
 
-- **head** -- The agent who leads the department (typically a C-suite or Lead role)
+- **head** (optional) -- The agent who leads the department (typically a C-suite or Lead role).  Defaults to ``None`` when no head is designated; hierarchy resolution skips the team-lead-to-head link for headless departments
 - **budget_percent** -- The share of the company's total budget allocated to this department
 - **teams** -- Named sub-groups within the department, each with a lead and members
 

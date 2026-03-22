@@ -16,6 +16,7 @@ const props = defineProps<{
   visible: boolean
   mode: 'create' | 'edit'
   department?: DepartmentEntry
+  agentNames?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -27,7 +28,7 @@ const AUTONOMY_LEVELS: AutonomyLevel[] = ['full', 'semi', 'supervised', 'locked'
 
 // Form state
 const name = ref('')
-const head = ref('')
+const head = ref<string | null>(null)
 const budgetPercent = ref<number | null>(null)
 const autonomyLevel = ref<AutonomyLevel | null>(null)
 const teamsJson = ref('[]')
@@ -42,7 +43,7 @@ watch(
     jsonError.value = null
     if (props.mode === 'edit' && props.department) {
       name.value = props.department.name
-      head.value = props.department.head ?? ''
+      head.value = props.department.head ?? null
       budgetPercent.value = props.department.budget_percent ?? null
       autonomyLevel.value = props.department.autonomy_level ?? null
       teamsJson.value = JSON.stringify(
@@ -56,7 +57,7 @@ watch(
       )
     } else {
       name.value = ''
-      head.value = ''
+      head.value = null
       budgetPercent.value = null
       autonomyLevel.value = null
       teamsJson.value = '[]'
@@ -110,12 +111,14 @@ function handleSave() {
   const dept: DepartmentEntry = {
     name: name.value.trim(),
     budget_percent: budgetPercent.value ?? undefined,
-    autonomy_level: autonomyLevel.value,
+    autonomy_level: autonomyLevel.value ?? undefined,
     teams: teams as DepartmentEntry['teams'],
     reporting_lines: reportingLines as DepartmentEntry['reporting_lines'],
     policies: policies as Record<string, unknown>,
   }
-  if (head.value.trim()) dept.head = head.value.trim()
+  // PrimeVue Select show-clear sets value to null, so coerce before trim
+  const trimmedHead = (head.value ?? '').trim()
+  if (trimmedHead) dept.head = trimmedHead
 
   emit('save', dept)
   // Dialog close is controlled by the parent after async save succeeds
@@ -134,7 +137,9 @@ function handleSave() {
       <!-- Top-level fields -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label for="dept-name" class="mb-1 block text-xs text-slate-400">Name</label>
+          <label for="dept-name" class="mb-1 block text-xs text-slate-400">
+            Name <span class="text-red-400">*</span>
+          </label>
           <InputText
             id="dept-name"
             v-model="name"
@@ -144,12 +149,16 @@ function handleSave() {
           />
         </div>
         <div>
-          <label for="dept-head" class="mb-1 block text-xs text-slate-400">Head (agent name)</label>
-          <InputText
-            id="dept-head"
+          <label for="dept-head" class="mb-1 block text-xs text-slate-400">
+            Head (agent name)
+          </label>
+          <Select
+            input-id="dept-head"
             v-model="head"
+            :options="agentNames ?? []"
             class="w-full"
-            placeholder="e.g. agent-cto-001"
+            show-clear
+            placeholder="Select an agent"
           />
         </div>
         <div>
@@ -182,18 +191,27 @@ function handleSave() {
         <AccordionPanel value="teams">
           <AccordionHeader>Teams</AccordionHeader>
           <AccordionContent>
+            <p class="mb-2 text-xs text-slate-400">
+              Array of team objects with name, lead, and members fields.
+            </p>
             <CodeEditor v-model="teamsJson" language="json" min-height="100px" />
           </AccordionContent>
         </AccordionPanel>
         <AccordionPanel value="reporting">
           <AccordionHeader>Reporting Lines</AccordionHeader>
           <AccordionContent>
+            <p class="mb-2 text-xs text-slate-400">
+              Array of objects with subordinate and supervisor agent names.
+            </p>
             <CodeEditor v-model="reportingLinesJson" language="json" min-height="100px" />
           </AccordionContent>
         </AccordionPanel>
         <AccordionPanel value="policies">
           <AccordionHeader>Policies</AccordionHeader>
           <AccordionContent>
+            <p class="mb-2 text-xs text-slate-400">
+              Object with review_requirements and approval_chains.
+            </p>
             <CodeEditor v-model="policiesJson" language="json" min-height="100px" />
           </AccordionContent>
         </AccordionPanel>

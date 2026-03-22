@@ -268,17 +268,24 @@ class Department(BaseModel):
 
     Attributes:
         name: Department name (standard or custom).
-        head: Department head agent name (string reference).
+        head: Department head agent name, or ``None`` if the department
+            has no designated head.  When absent, hierarchy resolution
+            skips the team-lead-to-head link for this department.
         budget_percent: Percentage of company budget allocated (0-100).
         teams: Teams within this department.
         reporting_lines: Explicit reporting relationships.
+        autonomy_level: Per-department autonomy level override
+            (``None`` to inherit company default).
         policies: Department-level operational policies.
     """
 
     model_config = ConfigDict(frozen=True)
 
     name: NotBlankStr = Field(description="Department name")
-    head: NotBlankStr = Field(description="Department head agent name")
+    head: NotBlankStr | None = Field(
+        default=None,
+        description="Department head agent name",
+    )
     budget_percent: float = Field(
         default=0.0,
         ge=0.0,
@@ -336,6 +343,7 @@ class CompanyConfig(BaseModel):
 
     Attributes:
         autonomy: Autonomy configuration (level + presets).
+        approval_timeout: Timeout policy for pending approval items.
         budget_monthly: Monthly budget in USD.
         communication_pattern: Default communication pattern name.
         tool_access_default: Default tool access for all agents.

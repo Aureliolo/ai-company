@@ -26,19 +26,19 @@ describe('SystemStatus', () => {
     expect(wrapper.text()).toContain('Unreachable')
   })
 
-  it('shows "ok" status when health is provided', () => {
+  it('shows "OK" status when health is provided', () => {
     const wrapper = mount(SystemStatus, {
       props: { health: mockHealth, wsConnected: true },
     })
-    expect(wrapper.text()).toContain('ok')
+    expect(wrapper.text()).toContain('OK')
   })
 
-  it('shows "degraded" status when health status is degraded', () => {
+  it('shows "DEGRADED" status when health status is degraded', () => {
     const degraded: HealthStatus = { ...mockHealth, status: 'degraded' }
     const wrapper = mount(SystemStatus, {
       props: { health: degraded, wsConnected: true },
     })
-    expect(wrapper.text()).toContain('degraded')
+    expect(wrapper.text()).toContain('DEGRADED')
   })
 
   it('shows WebSocket "Connected" when wsConnected is true', () => {

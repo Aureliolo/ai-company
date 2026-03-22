@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import SettingField from './SettingField.vue'
+import { HIDDEN_SETTINGS } from '@/utils/constants'
 import type { SettingEntry, SettingNamespace } from '@/api/types'
 
 const props = defineProps<{
@@ -15,15 +16,20 @@ const emit = defineEmits<{
   dirty: [payload: { namespace: SettingNamespace; key: string; value: string; isDirty: boolean }]
 }>()
 
-/** Basic entries (always visible). */
+/** Whether a setting is hidden from the GUI (system-managed). */
+function isHidden(e: SettingEntry): boolean {
+  return HIDDEN_SETTINGS.has(`${e.definition.namespace}/${e.definition.key}`)
+}
+
+/** Basic entries (always visible, excluding hidden). */
 const basicEntries = computed(() =>
-  props.entries.filter((e) => e.definition.level === 'basic'),
+  props.entries.filter((e) => e.definition.level === 'basic' && !isHidden(e)),
 )
 
-/** Advanced entries (visible only when showAdvanced is true). */
+/** Advanced entries (visible only when showAdvanced is true, excluding hidden). */
 const advancedEntries = computed(() => {
   if (!props.showAdvanced) return []
-  return props.entries.filter((e) => e.definition.level === 'advanced')
+  return props.entries.filter((e) => e.definition.level === 'advanced' && !isHidden(e))
 })
 
 /** Group entries by their definition.group field. */
