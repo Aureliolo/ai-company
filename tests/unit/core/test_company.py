@@ -548,6 +548,65 @@ class TestReportingLine:
         with pytest.raises(ValidationError):
             r.subordinate = "other"  # type: ignore[misc]
 
+    def test_subordinate_id_accepted(self) -> None:
+        """Accept optional subordinate_id and supervisor_id."""
+        r = ReportingLine(
+            subordinate="Backend Developer",
+            supervisor="Architect",
+            subordinate_id="backend-1",
+            supervisor_id="arch-main",
+        )
+        assert r.subordinate_id == "backend-1"
+        assert r.supervisor_id == "arch-main"
+
+    def test_ids_default_to_none(self) -> None:
+        """IDs default to None when omitted."""
+        r = ReportingLine(subordinate="dev", supervisor="lead")
+        assert r.subordinate_id is None
+        assert r.supervisor_id is None
+
+    def test_same_role_different_ids_accepted(self) -> None:
+        """Same role name with different IDs passes self-report check."""
+        r = ReportingLine(
+            subordinate="Data Analyst",
+            subordinate_id="analyst-secondary",
+            supervisor="Data Analyst",
+            supervisor_id="analyst-primary",
+        )
+        assert r.subordinate == "Data Analyst"
+        assert r.supervisor == "Data Analyst"
+
+    def test_same_id_self_report_rejected(self) -> None:
+        """Reject when subordinate_id equals supervisor_id."""
+        with pytest.raises(ValidationError, match="cannot report to themselves"):
+            ReportingLine(
+                subordinate="Dev A",
+                subordinate_id="dev-1",
+                supervisor="Dev B",
+                supervisor_id="dev-1",
+            )
+
+    def test_id_self_report_case_insensitive(self) -> None:
+        """Self-report ID check is case-insensitive."""
+        with pytest.raises(ValidationError, match="cannot report to themselves"):
+            ReportingLine(
+                subordinate="Dev A",
+                subordinate_id="Dev-1",
+                supervisor="Dev B",
+                supervisor_id="dev-1",
+            )
+
+    def test_subordinate_id_used_for_self_report_over_name(self) -> None:
+        """subordinate_id takes precedence over subordinate for self-report."""
+        r = ReportingLine(
+            subordinate="same-name",
+            subordinate_id="id-a",
+            supervisor="same-name",
+            supervisor_id="id-b",
+        )
+        assert r.subordinate_id == "id-a"
+        assert r.supervisor_id == "id-b"
+
 
 # ── ReviewRequirements ────────────────────────────────────────────
 
@@ -839,6 +898,75 @@ class TestDepartmentExtended:
                     ReportingLine(subordinate=" Alice ", supervisor="manager"),
                 ),
             )
+
+    def test_same_role_different_subordinate_ids_accepted(self) -> None:
+        """Allow same role name when subordinate_ids differ."""
+        dept = Department(
+            name="eng",
+            head="architect",
+            reporting_lines=(
+                ReportingLine(
+                    subordinate="Backend Developer",
+                    subordinate_id="backend-1",
+                    supervisor="architect",
+                ),
+                ReportingLine(
+                    subordinate="Backend Developer",
+                    subordinate_id="backend-2",
+                    supervisor="architect",
+                ),
+                ReportingLine(
+                    subordinate="Backend Developer",
+                    subordinate_id="backend-3",
+                    supervisor="architect",
+                ),
+            ),
+        )
+        assert len(dept.reporting_lines) == 3
+
+    def test_duplicate_subordinate_ids_rejected(self) -> None:
+        """Reject duplicate subordinate_ids."""
+        with pytest.raises(ValidationError, match="Duplicate subordinates"):
+            Department(
+                name="eng",
+                head="architect",
+                reporting_lines=(
+                    ReportingLine(
+                        subordinate="Backend Developer",
+                        subordinate_id="backend-1",
+                        supervisor="architect",
+                    ),
+                    ReportingLine(
+                        subordinate="Backend Developer",
+                        subordinate_id="backend-1",
+                        supervisor="architect",
+                    ),
+                ),
+            )
+
+    def test_mixed_id_and_no_id_subordinates(self) -> None:
+        """Allow mixing entries with and without subordinate_id."""
+        dept = Department(
+            name="eng",
+            head="architect",
+            reporting_lines=(
+                ReportingLine(
+                    subordinate="Frontend Developer",
+                    supervisor="architect",
+                ),
+                ReportingLine(
+                    subordinate="Backend Developer",
+                    subordinate_id="backend-1",
+                    supervisor="architect",
+                ),
+                ReportingLine(
+                    subordinate="Backend Developer",
+                    subordinate_id="backend-2",
+                    supervisor="architect",
+                ),
+            ),
+        )
+        assert len(dept.reporting_lines) == 3
 
 
 # ── CompanyConfig approval timeout ────────────────────────────────

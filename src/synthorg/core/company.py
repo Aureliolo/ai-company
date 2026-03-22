@@ -28,20 +28,37 @@ class ReportingLine(BaseModel):
     Attributes:
         subordinate: Agent name of the subordinate.
         supervisor: Agent name of the supervisor.
+        subordinate_id: Optional unique identifier for the subordinate
+            (e.g. merge_id).  When multiple agents share the same role
+            name, this disambiguates which agent is meant.
+        supervisor_id: Optional unique identifier for the supervisor
+            (e.g. merge_id).  When multiple agents share the same role
+            name, this disambiguates which agent is meant.
     """
 
     model_config = ConfigDict(frozen=True)
 
     subordinate: NotBlankStr = Field(description="Subordinate agent name")
     supervisor: NotBlankStr = Field(description="Supervisor agent name")
+    subordinate_id: NotBlankStr | None = Field(
+        default=None,
+        description="Optional unique identifier for the subordinate",
+    )
+    supervisor_id: NotBlankStr | None = Field(
+        default=None,
+        description="Optional unique identifier for the supervisor",
+    )
 
     @model_validator(mode="after")
     def _validate_not_self_report(self) -> Self:
         """Reject self-reporting relationships."""
-        if self.subordinate.strip().casefold() == self.supervisor.strip().casefold():
+        sub_key = (self.subordinate_id or self.subordinate).strip().casefold()
+        sup_key = (self.supervisor_id or self.supervisor).strip().casefold()
+        if sub_key == sup_key:
             msg = (
                 f"Agent cannot report to themselves: "
-                f"{self.subordinate!r} == {self.supervisor!r}"
+                f"{self.subordinate!r} (id={self.subordinate_id!r})"
+                f" == {self.supervisor!r} (id={self.supervisor_id!r})"
             )
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
@@ -326,7 +343,10 @@ class Department(BaseModel):
     @model_validator(mode="after")
     def _validate_unique_subordinates(self) -> Self:
         """Ensure no duplicate subordinates in reporting lines."""
-        subs = [r.subordinate.strip().casefold() for r in self.reporting_lines]
+        subs = [
+            (r.subordinate_id or r.subordinate).strip().casefold()
+            for r in self.reporting_lines
+        ]
         if len(subs) != len(set(subs)):
             dupes = sorted(s for s, c in Counter(subs).items() if c > 1)
             msg = (

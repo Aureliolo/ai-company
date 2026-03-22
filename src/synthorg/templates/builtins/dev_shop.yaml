@@ -28,9 +28,24 @@ template:
     - name: "engineering"
       budget_percent: 70
       head_role: "Software Architect"
+      reporting_lines:
+        - subordinate: "Backend Developer"
+          subordinate_id: "backend-senior-1"
+          supervisor: "Software Architect"
+        - subordinate: "Backend Developer"
+          subordinate_id: "backend-mid"
+          supervisor: "Software Architect"
+        - subordinate: "Frontend Developer"
+          supervisor: "Software Architect"
+        - subordinate: "Backend Developer"
+          subordinate_id: "backend-senior-2"
+          supervisor: "Software Architect"
     - name: "quality_assurance"
       budget_percent: 20
       head_role: "QA Lead"
+      reporting_lines:
+        - subordinate: "QA Engineer"
+          supervisor: "QA Lead"
     - name: "operations"
       budget_percent: 10
       head_role: "DevOps/SRE Engineer"
@@ -90,3 +105,27 @@ template:
 
   workflow: "agile_kanban"
   communication: "hybrid"
+
+  workflow_handoffs:
+    - from_department: "engineering"
+      to_department: "quality_assurance"
+      trigger: "Code changes ready for QA review and testing"
+      artifacts:
+        - "pull_request"
+        - "test_plan"
+    - from_department: "quality_assurance"
+      to_department: "engineering"
+      trigger: "QA testing complete with bug reports"
+      artifacts:
+        - "test_results"
+        - "bug_reports"
+
+  escalation_paths:
+    - from_department: "quality_assurance"
+      to_department: "engineering"
+      condition: "Critical defect blocking release"
+      priority_boost: 2
+    - from_department: "engineering"
+      to_department: "operations"
+      condition: "Infrastructure or deployment issue impeding development"
+      priority_boost: 1
