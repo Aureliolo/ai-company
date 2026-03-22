@@ -80,6 +80,7 @@ func TestCompareWithDev(t *testing.T) {
 		{"higher base wins despite dev", "v0.5.0", "v0.4.7.dev99", 1, false},
 		{"both stable equal", "v0.4.7", "v0.4.7", 0, false},
 		{"both stable different", "v0.4.8", "v0.4.7", 1, false},
+		{"overflow propagates error", "99999999999999999999.0.0", "v0.4.7", 0, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -113,12 +114,13 @@ func TestIsDevUpdateAvailable(t *testing.T) {
 		wantErr bool
 	}{
 		{"dev", "v0.4.7.dev1", true, false},
-		{"v0.4.7", "v0.4.7.dev3", false, false},      // stable beats dev at same base
-		{"v0.4.6", "v0.4.7.dev1", true, false},       // dev for higher base is an update
-		{"v0.4.7.dev2", "v0.4.7.dev3", true, false},  // higher dev number is an update
-		{"v0.4.7.dev3", "v0.4.7.dev2", false, false}, // lower dev number is not
-		{"v0.4.7.dev3", "v0.4.7", true, false},       // stable release is an update from dev
-		{"v0.4.7", "v0.4.7", false, false},           // same stable, no update
+		{"v0.4.7", "v0.4.7.dev3", false, false},             // stable beats dev at same base
+		{"v0.4.6", "v0.4.7.dev1", true, false},              // dev for higher base is an update
+		{"v0.4.7.dev2", "v0.4.7.dev3", true, false},         // higher dev number is an update
+		{"v0.4.7.dev3", "v0.4.7.dev2", false, false},        // lower dev number is not
+		{"v0.4.7.dev3", "v0.4.7", true, false},              // stable release is an update from dev
+		{"v0.4.7", "v0.4.7", false, false},                  // same stable, no update
+		{"99999999999999999999.0.0", "v0.4.7", false, true}, // overflow propagates error
 	}
 	for _, tt := range tests {
 		t.Run(tt.current+"->"+tt.latest, func(t *testing.T) {

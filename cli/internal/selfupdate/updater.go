@@ -107,45 +107,9 @@ func CheckDevFromURL(ctx context.Context, url string) (CheckResult, error) {
 		return result, fmt.Errorf("no releases found")
 	}
 
-	// Find the most recent dev pre-release and the most recent stable release.
-	var latestDev, latestStable *devRelease
-	for i := range releases {
-		r := &releases[i]
-		if r.Draft {
-			continue
-		}
-		if r.Prerelease && strings.Contains(r.TagName, ".dev") {
-			if latestDev == nil {
-				latestDev = r
-			}
-		} else if !r.Prerelease {
-			if latestStable == nil {
-				latestStable = r
-			}
-		}
-	}
-
-	// Prefer stable if it exists and is newer than (or equal to) the dev release.
-	// A stable v0.4.7 always wins over v0.4.7.dev3.
-	var target *devRelease
-	switch {
-	case latestDev == nil && latestStable == nil:
-		return result, fmt.Errorf("no suitable releases found")
-	case latestDev == nil:
-		target = latestStable
-	case latestStable == nil:
-		target = latestDev
-	default:
-		cmp, err := compareWithDev(latestStable.TagName, latestDev.TagName)
-		if err != nil {
-			return result, fmt.Errorf("comparing release tags %q and %q: %w", latestStable.TagName, latestDev.TagName, err)
-		}
-		if cmp >= 0 {
-			// Stable is newer or equal -- prefer stable.
-			target = latestStable
-		} else {
-			target = latestDev
-		}
+	target, err := selectBestRelease(releases)
+	if err != nil {
+		return result, err
 	}
 
 	result.LatestVersion = target.TagName
@@ -165,6 +129,47 @@ func CheckDevFromURL(ctx context.Context, url string) (CheckResult, error) {
 	result.SigstoreBundURL = bundleURL
 
 	return result, nil
+}
+
+// selectBestRelease picks the best release from a list that may contain both
+// stable and dev pre-releases. Prefers stable if it is newer than or equal to
+// the latest dev release. Assumes releases are ordered newest-first (GitHub API
+// default for GET /repos/{owner}/{repo}/releases).
+func selectBestRelease(releases []devRelease) (*devRelease, error) {
+	var latestDev, latestStable *devRelease
+	for i := range releases {
+		r := &releases[i]
+		if r.Draft {
+			continue
+		}
+		if r.Prerelease && strings.Contains(r.TagName, ".dev") {
+			if latestDev == nil {
+				latestDev = r
+			}
+		} else if !r.Prerelease {
+			if latestStable == nil {
+				latestStable = r
+			}
+		}
+	}
+
+	switch {
+	case latestDev == nil && latestStable == nil:
+		return nil, fmt.Errorf("no suitable releases found")
+	case latestDev == nil:
+		return latestStable, nil
+	case latestStable == nil:
+		return latestDev, nil
+	default:
+		cmp, err := compareWithDev(latestStable.TagName, latestDev.TagName)
+		if err != nil {
+			return nil, fmt.Errorf("comparing release tags %q and %q: %w", latestStable.TagName, latestDev.TagName, err)
+		}
+		if cmp >= 0 {
+			return latestStable, nil
+		}
+		return latestDev, nil
+	}
 }
 
 // fetchJSON fetches a URL and JSON-decodes the response into target.

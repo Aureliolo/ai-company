@@ -104,7 +104,7 @@ func Load(dataDir string) (State, error) {
 var validPersistenceBackends = map[string]bool{"sqlite": true}
 var validMemoryBackends = map[string]bool{"mem0": true}
 var validChannels = map[string]bool{"stable": true, "dev": true}
-var validLogLevels = map[string]bool{"debug": true, "info": true, "warning": true, "error": true}
+var validLogLevels = map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
 
 // IsValidChannel reports whether name is a known update channel.
 func IsValidChannel(name string) bool {
@@ -164,6 +164,9 @@ func (s State) validate() error {
 	}
 	if s.Channel != "" && !IsValidChannel(s.Channel) {
 		return fmt.Errorf("invalid channel %q: must be one of %s", s.Channel, sortedKeys(validChannels))
+	}
+	if s.LogLevel != "" && !IsValidLogLevel(s.LogLevel) {
+		return fmt.Errorf("invalid log_level %q: must be one of %s", s.LogLevel, sortedKeys(validLogLevels))
 	}
 	if s.ImageTag != "" && !IsValidImageTag(s.ImageTag) {
 		return fmt.Errorf("invalid image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", s.ImageTag)

@@ -53,8 +53,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 1. Find last stable release tag
-          LAST_TAG=$(git describe --tags --abbrev=0 --match "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || echo "")
+          # 1. Find last stable release tag (exclude dev tags)
+          LAST_TAG=$(git tag --sort=-v:refname --list "v[0-9]*.[0-9]*.[0-9]*" | grep -vE '\.dev[0-9]+$' | head -1)
+          LAST_TAG=${LAST_TAG:-""}
           if [ -z "$LAST_TAG" ]; then
             echo "::error::No stable release tag found"
             exit 1
@@ -114,13 +115,11 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
 
-          # Create lightweight tag via GitHub API (no git credentials needed)
-          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
-            -f ref="refs/tags/$DEV_TAG" \
-            -f sha="$GITHUB_SHA"
-
-          # Create GitHub pre-release (not latest, not draft)
+          # Create tag + pre-release atomically (gh release create --target
+          # creates the tag if it does not exist, avoiding orphaned tags on
+          # partial failure).
           gh release create "$DEV_TAG" \
+            --target "$GITHUB_SHA" \
             --prerelease \
             --title "$DEV_TAG" \
             --notes "Dev build #${DEV_NUM} toward v${NEXT_VERSION}

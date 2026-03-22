@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
+
+// supportedConfigKeys is the single source of truth for `config set` key names.
+var supportedConfigKeys = []string{"channel", "log_level"}
 
 var configCmd = &cobra.Command{
 	Use:   "config",
@@ -36,7 +40,7 @@ var configSetCmd = &cobra.Command{
 
 Supported keys:
   channel    Update channel: "stable" or "dev"
-  log_level  Log verbosity: "debug", "info", "warning", "error"`,
+  log_level  Log verbosity: "debug", "info", "warn", "error"`,
 	Args: cobra.ExactArgs(2),
 	RunE: runConfigSet,
 }
@@ -112,7 +116,7 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		}
 		state.LogLevel = value
 	default:
-		return fmt.Errorf("unknown config key %q (supported: channel, log_level)", key)
+		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(supportedConfigKeys, ", "))
 	}
 
 	if err := config.Save(state); err != nil {

@@ -204,6 +204,106 @@ func TestLoadRejectsInvalidBackends(t *testing.T) {
 	}
 }
 
+func TestIsValidChannel(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"stable", true},
+		{"dev", true},
+		{"", false},
+		{"nightly", false},
+		{"STABLE", false}, // case-sensitive
+		{"Dev", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := IsValidChannel(tt.input); got != tt.want {
+				t.Errorf("IsValidChannel(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsValidLogLevel(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"debug", true},
+		{"info", true},
+		{"warn", true},
+		{"error", true},
+		{"warning", false}, // "warn" not "warning"
+		{"", false},
+		{"trace", false},
+		{"WARN", false}, // case-sensitive
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			if got := IsValidLogLevel(tt.input); got != tt.want {
+				t.Errorf("IsValidLogLevel(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDisplayChannel(t *testing.T) {
+	tests := []struct {
+		channel string
+		want    string
+	}{
+		{"", "stable"},
+		{"stable", "stable"},
+		{"dev", "dev"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.channel, func(t *testing.T) {
+			s := State{Channel: tt.channel}
+			if got := s.DisplayChannel(); got != tt.want {
+				t.Errorf("DisplayChannel() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidChannelAndLogLevel(t *testing.T) {
+	tests := []struct {
+		name     string
+		channel  string
+		logLevel string
+		wantErr  bool
+	}{
+		{"valid channel and log level", "dev", "warn", false},
+		{"empty channel is ok", "", "info", false},
+		{"invalid channel", "nightly", "info", true},
+		{"invalid log level", "stable", "warning", true},
+		{"empty log level uses default from DefaultState", "", "", false}, // unmarshals onto defaults
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			raw, _ := json.Marshal(map[string]any{
+				"data_dir":            tmp,
+				"image_tag":           "latest",
+				"backend_port":        3001,
+				"web_port":            3000,
+				"log_level":           tt.logLevel,
+				"channel":             tt.channel,
+				"persistence_backend": "sqlite",
+				"memory_backend":      "mem0",
+			})
+			if err := os.WriteFile(filepath.Join(tmp, stateFileName), raw, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Load(tmp)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestStatePath(t *testing.T) {
 	path := StatePath("/some/dir")
 	if filepath.Base(path) != stateFileName {
