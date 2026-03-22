@@ -128,6 +128,7 @@ class DepartmentPoliciesFactory(ModelFactory[DepartmentPolicies]):
 class DepartmentFactory(ModelFactory[Department]):
     __model__ = Department
     budget_percent = 10.0
+    head_id = None
     policies = DepartmentPoliciesFactory
     reporting_lines = ()
 

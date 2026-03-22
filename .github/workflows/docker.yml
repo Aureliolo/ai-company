@@ -635,7 +635,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-          VERSION: ${{ needs.version.outputs.app_version }}
           BACKEND_DIGEST: ${{ needs.build-backend.outputs.digest }}
           WEB_DIGEST: ${{ needs.build-web.outputs.digest }}
           SANDBOX_DIGEST: ${{ needs.build-sandbox.outputs.digest }}
@@ -643,8 +642,8 @@ jobs:
           set -euo pipefail
 
           # Validate required inputs
-          if [ -z "$VERSION" ] || [ -z "$BACKEND_DIGEST" ] || [ -z "$WEB_DIGEST" ] || [ -z "$SANDBOX_DIGEST" ]; then
-            echo "::error::Missing required values: VERSION='$VERSION' BACKEND_DIGEST='$BACKEND_DIGEST' WEB_DIGEST='$WEB_DIGEST' SANDBOX_DIGEST='$SANDBOX_DIGEST'"
+          if [ -z "$TAG" ] || [ -z "$BACKEND_DIGEST" ] || [ -z "$WEB_DIGEST" ] || [ -z "$SANDBOX_DIGEST" ]; then
+            echo "::error::Missing required values: TAG='$TAG' BACKEND_DIGEST='$BACKEND_DIGEST' WEB_DIGEST='$WEB_DIGEST' SANDBOX_DIGEST='$SANDBOX_DIGEST'"
             exit 1
           fi
 
@@ -709,8 +708,8 @@ jobs:
           CONTAINER_SBOM_DATA -->
           BLOCK
           )
-          # Substitute placeholders
-          IMAGES=${IMAGES//VERSION_PH/$VERSION}
+          # Substitute placeholders (strip leading 'v' from tag for image tags)
+          IMAGES=${IMAGES//VERSION_PH/${TAG#v}}
           IMAGES=${IMAGES//BACKEND_DIGEST_PH/$BACKEND_DIGEST}
           IMAGES=${IMAGES//WEB_DIGEST_PH/$WEB_DIGEST}
           IMAGES=${IMAGES//SANDBOX_DIGEST_PH/$SANDBOX_DIGEST}

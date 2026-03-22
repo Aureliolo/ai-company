@@ -28,9 +28,24 @@ template:
     - name: "engineering"
       budget_percent: 30
       head_role: "Software Architect"
+      reporting_lines:
+        - subordinate: "Backend Developer"
+          supervisor: "Software Architect"
     - name: "data_analytics"
       budget_percent: 50
       head_role: "Data Analyst"
+      head_merge_id: "analyst-primary"
+      reporting_lines:
+        - subordinate: "Data Engineer"
+          supervisor: "Data Analyst"
+          supervisor_id: "analyst-primary"
+        - subordinate: "ML Engineer"
+          supervisor: "Data Analyst"
+          supervisor_id: "analyst-primary"
+        - subordinate: "Data Analyst"
+          subordinate_id: "analyst-secondary"
+          supervisor: "Data Analyst"
+          supervisor_id: "analyst-primary"
     - name: "product"
       budget_percent: 20
       head_role: "Technical Writer"
@@ -83,3 +98,33 @@ template:
 
   workflow: "kanban"
   communication: "event_driven"
+
+  workflow_handoffs:
+    - from_department: "data_analytics"
+      to_department: "engineering"
+      trigger: "Data pipeline or model requires engineering implementation"
+      artifacts:
+        - "technical_requirements"
+        - "data_schema"
+    - from_department: "engineering"
+      to_department: "data_analytics"
+      trigger: "Engineering deliverable ready for data validation"
+      artifacts:
+        - "implementation"
+        - "api_docs"
+    - from_department: "data_analytics"
+      to_department: "product"
+      trigger: "Research findings ready for documentation"
+      artifacts:
+        - "analysis_report"
+        - "visualizations"
+
+  escalation_paths:
+    - from_department: "data_analytics"
+      to_department: "engineering"
+      condition: "Data infrastructure limitation blocking research"
+      priority_boost: 1
+    - from_department: "engineering"
+      to_department: "data_analytics"
+      condition: "Data quality issue discovered during implementation"
+      priority_boost: 1

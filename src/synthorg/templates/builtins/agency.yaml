@@ -28,18 +28,41 @@ template:
     - name: "operations"
       budget_percent: 20
       head_role: "Project Manager"
+      reporting_lines:
+        - subordinate: "Product Manager"
+          supervisor: "Project Manager"
+        - subordinate: "Scrum Master"
+          supervisor: "Project Manager"
     - name: "engineering"
       budget_percent: 35
       head_role: "Full-Stack Developer"
+      head_merge_id: "fullstack-senior"
+      reporting_lines:
+        - subordinate: "Frontend Developer"
+          supervisor: "Full-Stack Developer"
+          supervisor_id: "fullstack-senior"
+        - subordinate: "Backend Developer"
+          supervisor: "Full-Stack Developer"
+          supervisor_id: "fullstack-senior"
+        - subordinate: "Full-Stack Developer"
+          subordinate_id: "fullstack-mid"
+          supervisor: "Full-Stack Developer"
+          supervisor_id: "fullstack-senior"
     - name: "design"
       budget_percent: 20
       head_role: "UX Designer"
+      reporting_lines:
+        - subordinate: "UI Designer"
+          supervisor: "UX Designer"
     - name: "quality_assurance"
       budget_percent: 10
       head_role: "QA Engineer"
     - name: "creative_marketing"
       budget_percent: 15
       head_role: "Brand Strategist"
+      reporting_lines:
+        - subordinate: "Content Writer"
+          supervisor: "Brand Strategist"
 
   agents:
     - role: "Project Manager"
@@ -119,3 +142,55 @@ template:
 
   workflow: "kanban"
   communication: "hierarchical"
+
+  workflow_handoffs:
+    - from_department: "operations"
+      to_department: "design"
+      trigger: "Client requirements approved and project brief ready"
+      artifacts:
+        - "project_brief"
+        - "client_requirements"
+    - from_department: "design"
+      to_department: "engineering"
+      trigger: "Design deliverables approved by client"
+      artifacts:
+        - "design_specs"
+        - "mockups"
+    - from_department: "engineering"
+      to_department: "quality_assurance"
+      trigger: "Feature implementation ready for QA"
+      artifacts:
+        - "pull_request"
+        - "test_plan"
+    - from_department: "quality_assurance"
+      to_department: "operations"
+      trigger: "QA sign-off complete for client delivery"
+      artifacts:
+        - "test_results"
+        - "release_notes"
+    - from_department: "operations"
+      to_department: "creative_marketing"
+      trigger: "Client feedback on marketing deliverables"
+      artifacts:
+        - "client_feedback"
+        - "revision_notes"
+    - from_department: "creative_marketing"
+      to_department: "operations"
+      trigger: "Marketing assets ready for client review"
+      artifacts:
+        - "content_drafts"
+        - "brand_assets"
+
+  escalation_paths:
+    - from_department: "engineering"
+      to_department: "operations"
+      condition: "Technical blocker requiring client decision or scope change"
+      priority_boost: 1
+    - from_department: "quality_assurance"
+      to_department: "operations"
+      condition: "Critical defect requiring client communication"
+      priority_boost: 2
+    - from_department: "design"
+      to_department: "operations"
+      condition: "Design revision exceeding project scope"
+      priority_boost: 1

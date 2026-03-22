@@ -162,6 +162,9 @@ class TemplateDepartmentConfig(BaseModel):
         name: Department name (standard or custom).
         budget_percent: Percentage of company budget (0-100).
         head_role: Role name of the department head.
+        head_merge_id: Optional ``merge_id`` of the head agent.
+            Required when multiple agents share the same role used
+            in ``head_role``.
         reporting_lines: Reporting line definitions within this department.
         policies: Department operational policies.
     """
@@ -178,6 +181,10 @@ class TemplateDepartmentConfig(BaseModel):
     head_role: NotBlankStr | None = Field(
         default=None,
         description="Role name of department head",
+    )
+    head_merge_id: NotBlankStr | None = Field(
+        default=None,
+        description="merge_id of the head agent for disambiguation",
     )
     reporting_lines: tuple[dict[str, str], ...] = Field(
         default=(),

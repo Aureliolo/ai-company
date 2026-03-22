@@ -28,9 +28,19 @@ template:
     - name: "executive"
       budget_percent: 20
       head_role: "CEO"
+      reporting_lines:
+        - subordinate: "CTO"
+          supervisor: "CEO"
     - name: "engineering"
       budget_percent: 60
       head_role: "CTO"
+      reporting_lines:
+        - subordinate: "Full-Stack Developer"
+          subordinate_id: "fullstack-senior"
+          supervisor: "CTO"
+        - subordinate: "Full-Stack Developer"
+          subordinate_id: "fullstack-mid"
+          supervisor: "CTO"
     - name: "product"
       budget_percent: 20
       head_role: "Product Manager"
@@ -71,3 +81,21 @@ template:
 
   workflow: "agile_kanban"
   communication: "hybrid"
+
+  workflow_handoffs:
+    - from_department: "engineering"
+      to_department: "product"
+      trigger: "Feature implementation completed for product review"
+      artifacts:
+        - "pull_request"
+        - "release_notes"
+
+  escalation_paths:
+    - from_department: "engineering"
+      to_department: "executive"
+      condition: "Technical blocker requiring executive decision"
+      priority_boost: 1
+    - from_department: "product"
+      to_department: "executive"
+      condition: "Scope or priority conflict needing CEO resolution"
+      priority_boost: 1

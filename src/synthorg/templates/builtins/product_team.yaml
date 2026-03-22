@@ -31,12 +31,30 @@ template:
     - name: "engineering"
       budget_percent: 35
       head_role: "Backend Developer"
+      head_merge_id: "backend-senior"
+      reporting_lines:
+        - subordinate: "Backend Developer"
+          subordinate_id: "backend-mid"
+          supervisor: "Backend Developer"
+          supervisor_id: "backend-senior"
+        - subordinate: "Frontend Developer"
+          supervisor: "Backend Developer"
+          supervisor_id: "backend-senior"
+        - subordinate: "Full-Stack Developer"
+          supervisor: "Backend Developer"
+          supervisor_id: "backend-senior"
     - name: "design"
       budget_percent: 15
       head_role: "UX Designer"
+      reporting_lines:
+        - subordinate: "UX Researcher"
+          supervisor: "UX Designer"
     - name: "quality_assurance"
       budget_percent: 15
       head_role: "QA Engineer"
+      reporting_lines:
+        - subordinate: "Automation Engineer"
+          supervisor: "QA Engineer"
     - name: "data_analytics"
       budget_percent: 10
       head_role: "Data Analyst"
@@ -107,3 +125,49 @@ template:
 
   workflow: "agile_kanban"
   communication: "meeting_based"
+
+  workflow_handoffs:
+    - from_department: "product"
+      to_department: "design"
+      trigger: "Product requirements defined and ready for design"
+      artifacts:
+        - "product_requirements"
+        - "user_stories"
+    - from_department: "design"
+      to_department: "engineering"
+      trigger: "Design specifications and mockups approved"
+      artifacts:
+        - "design_specs"
+        - "mockups"
+    - from_department: "engineering"
+      to_department: "quality_assurance"
+      trigger: "Feature implementation ready for testing"
+      artifacts:
+        - "pull_request"
+        - "test_plan"
+    - from_department: "quality_assurance"
+      to_department: "product"
+      trigger: "Testing complete with quality report for product review"
+      artifacts:
+        - "test_results"
+        - "quality_report"
+    - from_department: "data_analytics"
+      to_department: "product"
+      trigger: "Usage data analysis complete with insights"
+      artifacts:
+        - "analytics_report"
+        - "recommendations"
+
+  escalation_paths:
+    - from_department: "engineering"
+      to_department: "product"
+      condition: "Technical constraint affecting product requirements"
+      priority_boost: 1
+    - from_department: "quality_assurance"
+      to_department: "engineering"
+      condition: "Critical defect requiring immediate engineering attention"
+      priority_boost: 2
+    - from_department: "quality_assurance"
+      to_department: "product"
+      condition: "Quality threshold not met, release decision needed"
+      priority_boost: 1

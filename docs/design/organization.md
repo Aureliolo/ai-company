@@ -79,6 +79,16 @@ delegation rights, and typical model tier.
           - name: "frontend"
             lead: "frontend_lead"
             members: ["sr_frontend_1", "mid_frontend_1"]
+        reporting_lines:
+          - subordinate: "Backend Developer"
+            subordinate_id: "backend-senior"
+            supervisor: "Software Architect"
+          - subordinate: "Backend Developer"
+            subordinate_id: "backend-mid"
+            supervisor: "Backend Developer"
+            supervisor_id: "backend-senior"
+          - subordinate: "Frontend Developer"
+            supervisor: "Software Architect"
       - name: "product"
         head: "cpo"
         budget_percent: 20
@@ -104,9 +114,10 @@ delegation rights, and typical model tier.
 
 Each department defines:
 
-- **head** (optional) -- The agent who leads the department (typically a C-suite or Lead role).  Defaults to ``None`` when no head is designated; hierarchy resolution skips the team-lead-to-head link for headless departments
-- **budget_percent** -- The share of the company's total budget allocated to this department
+- **head** (optional) -- The agent who leads the department (typically a C-suite or Lead role).  Defaults to ``None`` when no head is designated; hierarchy resolution skips the team-lead-to-head link for headless departments.  When multiple agents share the same role name, use the companion ``head_id`` field to disambiguate.  In template YAML this is written as ``head_merge_id`` (matching the agent's ``merge_id``); the renderer maps it to ``head_id`` at runtime -- paralleling how ``subordinate_id``/``supervisor_id`` work in ``reporting_lines``
+- **budget_percent** -- The share of the company's task-execution budget allocated to this department (covers agent compute and API costs, not provider subscriptions or seat licensing)
 - **teams** -- Named sub-groups within the department, each with a lead and members
+- **reporting_lines** -- Explicit subordinate/supervisor relationships within the department.  Each entry has ``subordinate`` and ``supervisor`` (role names), plus optional ``subordinate_id``/``supervisor_id`` for disambiguating agents that share the same role name (typically matching the agent's ``merge_id``)
 
 ---
 
@@ -154,6 +165,11 @@ template:
       model: "large"
       personality_preset: "visionary_leader"
 
+    - role: "CTO"
+      name: "Hiroshi Tanaka"
+      model: "large"
+      personality_preset: "rapid_prototyper"
+
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       name: "Kenji Matsuda"
@@ -173,18 +189,43 @@ template:
       model: "medium"
       personality_preset: "strategic_planner"
 
+  departments:
+    - name: "executive"
+      budget_percent: 20
+      head_role: "CEO"
+      reporting_lines:
+        - subordinate: "CTO"
+          supervisor: "CEO"
+    - name: "engineering"
+      budget_percent: 60
+      head_role: "CTO"
+      reporting_lines:
+        - subordinate: "Full-Stack Developer"
+          subordinate_id: "fullstack-senior"
+          supervisor: "CTO"
+        - subordinate: "Full-Stack Developer"
+          subordinate_id: "fullstack-mid"
+          supervisor: "CTO"
+    - name: "product"
+      budget_percent: 20
+      head_role: "Product Manager"
+
   workflow: "agile_kanban"     # operational configs vary per template --
   communication: "hybrid"      # see Company Types table for each template's defaults
 
   workflow_handoffs:
     - from_department: "engineering"
-      to_department: "qa"
-      trigger: "pr_ready"
+      to_department: "product"
+      trigger: "Feature implementation completed for product review"
+      artifacts:
+        - "pull_request"
+        - "release_notes"
 
   escalation_paths:
     - from_department: "engineering"
-      to_department: "security"
-      condition: "vulnerability_found"
+      to_department: "executive"
+      condition: "Technical blocker requiring executive decision"
+      priority_boost: 1
 ```
 
 Templates support **Jinja2-style variables** (`{{ variable | default(value) }}`) for

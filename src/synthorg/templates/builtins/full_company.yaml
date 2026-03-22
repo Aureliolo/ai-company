@@ -36,30 +36,77 @@ template:
     - name: "executive"
       budget_percent: 10
       head_role: "CEO"
+      reporting_lines:
+        - subordinate: "CTO"
+          supervisor: "CEO"
+        - subordinate: "CFO"
+          supervisor: "CEO"
     - name: "engineering"
       budget_percent: 30
       head_role: "CTO"
+      reporting_lines:
+        - subordinate: "Software Architect"
+          supervisor: "CTO"
+        - subordinate: "DevOps/SRE Engineer"
+          supervisor: "Software Architect"
+        - subordinate: "Database Engineer"
+          supervisor: "Software Architect"
+{% for i in range(num_backend_devs | default(3) | int) %}
+        - subordinate: "Backend Developer"
+          subordinate_id: "backend-{{ i }}"
+          supervisor: "Software Architect"
+{% endfor %}
+{% for i in range(num_frontend_devs | default(2) | int) %}
+        - subordinate: "Frontend Developer"
+          subordinate_id: "frontend-{{ i }}"
+          supervisor: "Software Architect"
+{% endfor %}
     - name: "product"
       budget_percent: 10
       head_role: "Product Manager"
+      reporting_lines:
+        - subordinate: "Technical Writer"
+          supervisor: "Product Manager"
     - name: "design"
       budget_percent: 8
       head_role: "UX Designer"
+      reporting_lines:
+        - subordinate: "UX Researcher"
+          supervisor: "UX Designer"
     - name: "quality_assurance"
       budget_percent: 10
       head_role: "QA Lead"
+      reporting_lines:
+        - subordinate: "QA Engineer"
+          supervisor: "QA Lead"
+        - subordinate: "Automation Engineer"
+          supervisor: "QA Lead"
     - name: "data_analytics"
       budget_percent: 8
       head_role: "Data Analyst"
+      reporting_lines:
+        - subordinate: "Data Engineer"
+          supervisor: "Data Analyst"
     - name: "operations"
       budget_percent: 8
       head_role: "COO"
+      reporting_lines:
+        - subordinate: "Project Manager"
+          supervisor: "COO"
+        - subordinate: "Scrum Master"
+          supervisor: "COO"
     - name: "security"
       budget_percent: 8
       head_role: "Security Engineer"
+      reporting_lines:
+        - subordinate: "Security Operations"
+          supervisor: "Security Engineer"
     - name: "creative_marketing"
       budget_percent: 8
       head_role: "Brand Strategist"
+      reporting_lines:
+        - subordinate: "Content Writer"
+          supervisor: "Brand Strategist"
 
   agents:
     # C-Suite (5)
@@ -244,3 +291,78 @@ template:
 
   workflow: "agile_kanban"
   communication: "hierarchical"
+
+  workflow_handoffs:
+    - from_department: "product"
+      to_department: "design"
+      trigger: "Product requirements and user stories ready for design"
+      artifacts:
+        - "product_requirements"
+        - "user_stories"
+        - "acceptance_criteria"
+    - from_department: "design"
+      to_department: "engineering"
+      trigger: "Design specifications approved and ready for implementation"
+      artifacts:
+        - "design_specs"
+        - "mockups"
+        - "interaction_flows"
+    - from_department: "engineering"
+      to_department: "quality_assurance"
+      trigger: "Feature implementation ready for testing"
+      artifacts:
+        - "pull_request"
+        - "test_plan"
+        - "technical_docs"
+    - from_department: "quality_assurance"
+      to_department: "operations"
+      trigger: "QA approval for release deployment"
+      artifacts:
+        - "test_results"
+        - "release_checklist"
+    - from_department: "engineering"
+      to_department: "security"
+      trigger: "Security review required for sensitive changes"
+      artifacts:
+        - "pull_request"
+        - "threat_model"
+    - from_department: "security"
+      to_department: "engineering"
+      trigger: "Security findings require engineering remediation"
+      artifacts:
+        - "vulnerability_report"
+        - "remediation_guidance"
+    - from_department: "data_analytics"
+      to_department: "product"
+      trigger: "Data insights ready for product strategy review"
+      artifacts:
+        - "analytics_report"
+        - "recommendations"
+    - from_department: "creative_marketing"
+      to_department: "product"
+      trigger: "Marketing content ready for product alignment review"
+      artifacts:
+        - "content_drafts"
+        - "campaign_plan"
+
+  escalation_paths:
+    - from_department: "engineering"
+      to_department: "executive"
+      condition: "Critical technical decision requiring CTO approval"
+      priority_boost: 2
+    - from_department: "quality_assurance"
+      to_department: "engineering"
+      condition: "Release-blocking defect requiring immediate fix"
+      priority_boost: 2
+    - from_department: "security"
+      to_department: "executive"
+      condition: "Critical security vulnerability requiring executive action"
+      priority_boost: 3
+    - from_department: "operations"
+      to_department: "executive"
+      condition: "Operational issue requiring COO or CEO intervention"
+      priority_boost: 1
+    - from_department: "product"
+      to_department: "executive"
+      condition: "Strategic product decision requiring CPO or CEO input"
+      priority_boost: 1
