@@ -16,10 +16,11 @@ const setup = useSetupStore()
 const error = ref<string | null>(null)
 const saving = ref(false)
 const loading = ref(true)
-const selectedLocales = ref<string[]>(['__all__'])
+const loadFailed = ref(false)
+const selectedLocales = ref<string[]>([])
 
 async function handleNext() {
-  if (saving.value || loading.value) return
+  if (saving.value || loading.value || loadFailed.value) return
   saving.value = true
   error.value = null
   try {
@@ -35,12 +36,11 @@ async function handleNext() {
 onMounted(async () => {
   try {
     const locales = await setup.fetchNameLocales()
-    if (locales.length > 0) {
-      selectedLocales.value = locales
-    }
+    selectedLocales.value = locales.length > 0 ? locales : ['__all__']
   } catch (err) {
     console.warn('[SetupNameLocale] Failed to load saved locales:', sanitizeForLog(err))
-    error.value = 'Could not load your saved locale preferences. Defaulting to worldwide.'
+    error.value = 'Could not load your saved locale preferences. Please retry.'
+    loadFailed.value = true
   } finally {
     loading.value = false
   }
@@ -84,7 +84,7 @@ onMounted(async () => {
         icon="pi pi-arrow-right"
         icon-pos="right"
         :loading="saving || loading"
-        :disabled="selectedLocales.length === 0 || loading"
+        :disabled="selectedLocales.length === 0 || loading || loadFailed"
         @click="handleNext"
       />
     </div>
