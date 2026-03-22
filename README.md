@@ -103,7 +103,7 @@ synthorg start      # pull images + start containers
 synthorg status     # check health
 synthorg doctor     # diagnostics if something is wrong
 synthorg config set channel dev  # opt in to pre-release builds
-synthorg wipe       # factory-reset: backup, wipe data, restart fresh
+synthorg wipe       # factory-reset with interactive backup and restart prompts
 synthorg cleanup    # remove old container images
 ```
 

@@ -316,8 +316,8 @@ agent names. When a template is selected in the Company step, all template agent
 auto-created with models matched to configured providers via a cost-based tier classification
 engine. The Review Org step lets users inspect agents and reassign models before completing
 setup. All configuration is persisted to the database via REST API calls. To re-run the
-setup wizard from scratch, use `synthorg wipe` (creates a backup, wipes all data, restarts
-the stack, and re-opens the wizard).
+setup wizard from scratch, use `synthorg wipe` (walks you through an interactive backup,
+wipes all data, and optionally restarts the stack to re-open the wizard).
 
 ---
 
