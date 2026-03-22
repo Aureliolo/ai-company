@@ -105,7 +105,11 @@ var errReexec = errors.New("cli updated, re-exec required")
 // Returns errReexec if the binary was replaced (caller must re-exec).
 func updateCLI(cmd *cobra.Command) error {
 	// After re-exec the CLI was just replaced -- skip the redundant check.
-	if skip, _ := cmd.Flags().GetBool("skip-cli-update"); skip {
+	skip, err := cmd.Flags().GetBool("skip-cli-update")
+	if err != nil {
+		return fmt.Errorf("getting skip-cli-update flag: %w", err)
+	}
+	if skip {
 		return nil
 	}
 

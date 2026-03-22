@@ -48,7 +48,11 @@ func autoCleanupOldImages(cmd *cobra.Command, info docker.Info, state config.Sta
 
 	// Find images not in the keep set.
 	old, err := listNonCurrentImages(ctx, errOut, info, keepIDs)
-	if err != nil || len(old) == 0 {
+	if err != nil {
+		_, _ = fmt.Fprintf(errOut, "Warning: could not list images for auto-cleanup: %v\n", err)
+		return
+	}
+	if len(old) == 0 {
 		return
 	}
 

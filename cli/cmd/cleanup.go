@@ -54,12 +54,13 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 
 	displayOldImages(out, old)
 
-	if err := confirmAndCleanup(ctx, cmd, info, out, old); err != nil {
+	removedAny, err := confirmAndCleanup(ctx, cmd, info, out, old)
+	if err != nil {
 		return err
 	}
 
-	// Hint about auto-cleanup when not already enabled.
-	if !state.AutoCleanup {
+	// Hint about auto-cleanup when images were removed and flag is not enabled.
+	if removedAny && !state.AutoCleanup {
 		out.Blank()
 		out.Hint("Tip: run 'synthorg config set auto_cleanup true' to clean up old images automatically after updates.")
 	}
@@ -84,10 +85,11 @@ func displayOldImages(out *ui.UI, old []oldImage) {
 }
 
 // confirmAndCleanup prompts the user and removes approved images.
-func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info, out *ui.UI, old []oldImage) error {
+// Returns (true, nil) when at least one image was removed.
+func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info, out *ui.UI, old []oldImage) (bool, error) {
 	if !isInteractive() {
 		out.Hint("Non-interactive mode: run interactively to remove, or use 'docker rmi <id>'.")
-		return nil
+		return false, nil
 	}
 
 	var remove bool
@@ -97,10 +99,10 @@ func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info
 			Value(&remove),
 	))
 	if err := form.WithInput(cmd.InOrStdin()).WithOutput(cmd.OutOrStdout()).Run(); err != nil {
-		return err
+		return false, err
 	}
 	if !remove {
-		return nil
+		return false, nil
 	}
 
 	// Remove images one at a time without --force (gentle cleanup -- only
@@ -109,7 +111,7 @@ func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info
 	var removed int
 	for _, img := range old {
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return removed > 0, ctx.Err()
 		}
 		_, rmiErr := docker.RunCmd(ctx, info.DockerPath, "rmi", img.id)
 		if rmiErr != nil {
@@ -135,7 +137,7 @@ func confirmAndCleanup(ctx context.Context, cmd *cobra.Command, info docker.Info
 		out.Hint(fmt.Sprintf("%d image(s) skipped (stop containers first to remove)", skipped))
 	}
 
-	return nil
+	return removed > 0, nil
 }
 
 // isImageInUse checks if a docker rmi error indicates the image is in use
