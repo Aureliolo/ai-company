@@ -97,7 +97,8 @@ class TestProviderSubscriberRebuild:
         assert state.model_router is old_router
 
     async def test_retry_max_attempts_change_is_noop(self) -> None:
-        sub, state = _make_subscriber(get_return_value="5")
+        # get_return_value is irrelevant: advisory keys never call svc.get()
+        sub, state = _make_subscriber()
         old_router = state.model_router
         await sub.on_settings_changed("providers", "retry_max_attempts")
         assert state.model_router is old_router

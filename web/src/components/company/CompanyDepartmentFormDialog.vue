@@ -116,7 +116,9 @@ function handleSave() {
     reporting_lines: reportingLines as DepartmentEntry['reporting_lines'],
     policies: policies as Record<string, unknown>,
   }
-  if (head.value.trim()) dept.head = head.value.trim()
+  // PrimeVue Select show-clear sets value to null, so coerce before trim
+  const trimmedHead = (head.value ?? '').trim()
+  if (trimmedHead) dept.head = trimmedHead
 
   emit('save', dept)
   // Dialog close is controlled by the parent after async save succeeds
