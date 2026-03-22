@@ -75,7 +75,7 @@ repos:
 
       - id: golangci-lint
         name: golangci-lint (CLI)
-        entry: bash -c 'cd cli && golangci-lint run'
+        entry: go -C cli tool golangci-lint run
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false
@@ -83,7 +83,7 @@ repos:
 
       - id: go-vet
         name: go vet (CLI)
-        entry: bash -c 'cd cli && go vet ./...'
+        entry: go -C cli vet ./...
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false
@@ -91,7 +91,7 @@ repos:
 
       - id: go-test
         name: go test (CLI)
-        entry: bash -c 'cd cli && go test ./...'
+        entry: go -C cli test ./...
         language: system
         files: ^cli/.*\.go$
         pass_filenames: false

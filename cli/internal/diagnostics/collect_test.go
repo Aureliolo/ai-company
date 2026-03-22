@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
+	"github.com/Aureliolo/synthorg/cli/internal/images"
 )
 
 func TestTruncate(t *testing.T) {
@@ -385,7 +386,9 @@ func TestParseComposeImageRefs_NonSynthorgImages(t *testing.T) {
 	}
 }
 
-func TestImageRefForDiagnostics(t *testing.T) {
+// TestDiagnosticImageRefPriority verifies the compose-ref-first priority
+// used by checkImages: compose ref > images.RefForService (digest > tag).
+func TestDiagnosticImageRefPriority(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -425,6 +428,18 @@ func TestImageRefForDiagnostics(t *testing.T) {
 			want:            "ghcr.io/aureliolo/synthorg-web:0.4.1",
 		},
 		{
+			name:     "compose ref for different service does not match",
+			svc:      "web",
+			imageTag: "0.4.1",
+			composeRefs: map[string]string{
+				"backend": "ghcr.io/aureliolo/synthorg-backend@sha256:abc",
+			},
+			verifiedDigests: map[string]string{
+				"web": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+			},
+			want: "ghcr.io/aureliolo/synthorg-web@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+		},
+		{
 			name:            "tag fallback when nil maps",
 			svc:             "sandbox",
 			imageTag:        "latest",
@@ -442,26 +457,19 @@ func TestImageRefForDiagnostics(t *testing.T) {
 			},
 			want: "ghcr.io/aureliolo/synthorg-backend:0.4.1",
 		},
-		{
-			name:     "compose ref for different service does not match",
-			svc:      "web",
-			imageTag: "0.4.1",
-			composeRefs: map[string]string{
-				"backend": "ghcr.io/aureliolo/synthorg-backend@sha256:abc",
-			},
-			verifiedDigests: map[string]string{
-				"web": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-			},
-			want: "ghcr.io/aureliolo/synthorg-web@sha256:1111111111111111111111111111111111111111111111111111111111111111",
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := imageRefForDiagnostics(tt.svc, tt.imageTag, tt.composeRefs, tt.verifiedDigests)
+			// Replicate the inline priority from checkImages:
+			// compose ref > images.RefForService (digest > tag).
+			got := tt.composeRefs[tt.svc]
+			if got == "" {
+				got = images.RefForService(tt.svc, tt.imageTag, tt.verifiedDigests)
+			}
 			if got != tt.want {
-				t.Errorf("imageRefForDiagnostics(%q, ...) = %q, want %q", tt.svc, got, tt.want)
+				t.Errorf("diagnostic ref for %q = %q, want %q", tt.svc, got, tt.want)
 			}
 		})
 	}

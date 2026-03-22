@@ -57,13 +57,13 @@ npm --prefix web run test                  # Vitest unit tests
 
 ### CLI (Go Binary)
 
-Note: Go tooling requires the module root as cwd. Use `go -C cli` which changes directory internally without affecting the shell. Never use `cd cli` -- it poisons the cwd for all subsequent Bash calls.
+Note: Go tooling requires the module root as cwd. Use `go -C cli` which changes directory internally without affecting the shell. Never use `cd cli` -- it poisons the cwd for all subsequent Bash calls. golangci-lint is registered as a `tool` in `cli/go.mod` so it runs via `go -C cli tool golangci-lint`.
 
 ```bash
 go -C cli build -o synthorg ./main.go                                  # build CLI
 go -C cli test ./...                                                   # run tests (fuzz targets run seed corpus only without -fuzz flag)
 go -C cli vet ./...                                                    # vet
-(cd cli && golangci-lint run)                                          # lint (no -C flag, use subshell)
+go -C cli tool golangci-lint run                                       # lint
 go -C cli test -fuzz=FuzzYamlStr -fuzztime=30s ./internal/compose/     # fuzz example
 ```
 
@@ -132,7 +132,7 @@ web/src/          # Vue 3 + PrimeVue + Tailwind CSS dashboard
 
 cli/              # Go CLI binary (cross-platform, manages Docker lifecycle)
   cmd/            # Cobra commands (init, start, stop, status, logs, doctor, update, cleanup, wipe, config, etc.)
-  internal/       # version, config, docker, compose, health, diagnostics, selfupdate, completion, ui, verify
+  internal/       # version, config, docker, compose, health, diagnostics, images, selfupdate, completion, ui, verify
 
 site/             # Astro landing page (synthorg.io)
 ```
@@ -196,7 +196,7 @@ site/             # Astro landing page (synthorg.io)
 - **Enforced by**: commitizen (commit-msg hook)
 - **Signed commits**: required on `main` via branch protection -- all commits must be GPG/SSH signed
 - **Branches**: `<type>/<slug>` from main
-- **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting)
+- **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting), golangci-lint + go vet (CLI, conditional on `cli/**/*.go`)
 - **Pre-push hooks**: mypy type-check + pytest unit tests + golangci-lint + go vet + go test (CLI, conditional on `cli/**/*.go`) (fast gate before push, skipped in pre-commit.ci -- dedicated CI jobs already run these)
 - **Pre-commit.ci**: autoupdate disabled (`autoupdate_schedule: never`) -- Dependabot owns hook version bumps via `pre-commit` ecosystem
 - **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) -- MCP `list_issues` has unreliable field data
@@ -239,7 +239,7 @@ site/             # Astro landing page (synthorg.io)
 - **Dependabot**: daily updates (uv, github-actions, npm, pre-commit, docker, gomod), grouped minor/patch, no auto-merge. Use `/review-dep-pr` before merging
 - **Security scanning**: gitleaks (push/PR + weekly), zizmor (workflow analysis), OSSF Scorecard (weekly), Socket.dev (PR supply chain), ZAP DAST (weekly + manual, rules: `.github/zap-rules.tsv`)
 - **Coverage**: Codecov (best-effort, CI not gated on availability)
-- **Dependency review**: `dependency-review.yml` -- license allow-list (permissive only), PR comment summaries
+- **Dependency review**: `dependency-review.yml` -- license allow-list (permissive + weak-copyleft), per-package GPL exemptions for dev-only tool deps (golangci-lint), PR comment summaries
 - **CLA**: `cla.yml` -- contributor-assistant check on PRs, signatures in `.github/cla-signatures.json`
 - **Release**: `release.yml` -- Release Please creates draft release PR. Uses `RELEASE_PLEASE_TOKEN` (PAT)
 - **Dev Release**: `dev-release.yml` -- creates semver dev tags (e.g. `v0.4.7-dev.3`) and draft pre-releases on every push to main (skips Release Please version-bump commits). Tags trigger existing Docker + CLI workflows for full build/scan/sign pipeline. Incrementally prunes old dev pre-releases (keeps 5 most recent); finalize-release deletes all remaining when a stable release is published.

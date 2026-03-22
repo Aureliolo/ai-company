@@ -17,6 +17,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/images"
 	"github.com/Aureliolo/synthorg/cli/internal/version"
 	"go.yaml.in/yaml/v3"
 )
@@ -298,37 +299,22 @@ func checkPorts(ctx context.Context, backendPort, webPort int) []string {
 	return conflicts
 }
 
-const imagePrefix = "ghcr.io/aureliolo/synthorg-"
-
-// imageRefForDiagnostics returns the image reference to inspect for a service.
-// Priority: compose file ref > verified digest > tag-based fallback.
-func imageRefForDiagnostics(name, imageTag string, composeRefs, verifiedDigests map[string]string) string {
-	if image, ok := composeRefs[name]; ok {
-		return image
-	}
-	if d, ok := verifiedDigests[name]; ok && d != "" {
-		return imagePrefix + name + "@" + d
-	}
-	return imagePrefix + name + ":" + imageTag
-}
-
 // checkImages reports whether required Docker images exist locally.
 // It reads the actual compose file to get the image references (which
 // may be digest-pinned), falling back to verified digests from state,
 // then to tag-based lookup if neither is available.
 func checkImages(ctx context.Context, dockerPath, imageTag string, sandbox bool, composePath string, verifiedDigests map[string]string) []string {
-	names := []string{"backend", "web"}
-	if sandbox {
-		names = append(names, "sandbox")
-	}
-
 	// Build a map of service name -> image ref from the compose file.
 	composeRefs := parseComposeImageRefs(composePath)
 
 	var status []string
-	for _, name := range names {
-		image := imageRefForDiagnostics(name, imageTag, composeRefs, verifiedDigests)
-		_, err := docker.RunCmd(ctx, dockerPath, "image", "inspect", image, "--format", "{{.ID}}")
+	for _, name := range images.ServiceNames(sandbox) {
+		// Priority: compose file ref > verified digest > tag-based fallback.
+		image := composeRefs[name]
+		if image == "" {
+			image = images.RefForService(name, imageTag, verifiedDigests)
+		}
+		_, err := images.InspectID(ctx, dockerPath, image)
 		if err != nil {
 			status = append(status, fmt.Sprintf("%s: inspect failed: %v", image, err))
 		} else {
@@ -349,17 +335,21 @@ type composeFile struct {
 // parseComposeImageRefs extracts image references from a compose file
 // using YAML parsing. Returns a map of service name (backend, web,
 // sandbox) to full image ref for SynthOrg images only.
+//
+// All errors (missing file, unreadable, bad YAML) are silently ignored --
+// the caller falls back to images.RefForService when no compose ref is
+// found. This is intentional: diagnostics must never fail due to a
+// corrupt compose file.
 func parseComposeImageRefs(composePath string) map[string]string {
 	refs := make(map[string]string)
 	if composePath == "" {
 		return refs
 	}
 
-	// Validate and canonicalize the path before reading.
+	// Canonicalize the path before reading. The composePath is always
+	// constructed internally (filepath.Join of the data dir), never from
+	// direct user input, so no adversarial traversal is possible.
 	cleaned := filepath.Clean(composePath)
-	if strings.Contains(cleaned, "..") {
-		return refs
-	}
 	if _, err := os.Stat(cleaned); err != nil {
 		return refs
 	}
@@ -375,12 +365,12 @@ func parseComposeImageRefs(composePath string) map[string]string {
 	}
 
 	for svcName, svc := range cf.Services {
-		if !strings.HasPrefix(svc.Image, imagePrefix) {
+		if !strings.HasPrefix(svc.Image, images.RepoPrefix) {
 			continue
 		}
 		// Validate structural format: must contain a tag (:) or digest (@)
 		// separator after the prefix to be a well-formed image reference.
-		suffix := svc.Image[len(imagePrefix):]
+		suffix := svc.Image[len(images.RepoPrefix):]
 		if !strings.Contains(suffix, ":") && !strings.Contains(suffix, "@") {
 			continue
 		}

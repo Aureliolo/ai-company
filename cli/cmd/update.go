@@ -16,6 +16,7 @@ import (
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
 	"github.com/Aureliolo/synthorg/cli/internal/health"
+	"github.com/Aureliolo/synthorg/cli/internal/images"
 	"github.com/Aureliolo/synthorg/cli/internal/selfupdate"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/Aureliolo/synthorg/cli/internal/verify"
@@ -637,7 +638,7 @@ func patchComposeImageRefs(tag string, digestPins map[string]string, sandboxEnab
 		}
 		prefix := sub[1] // e.g. "    image: "
 		name := sub[2]   // e.g. "backend"
-		repo := imageRepoPrefix + name
+		repo := images.RepoPrefix + name
 		replaced[name] = true
 
 		if d, ok := digestPins[name]; ok && d != "" {

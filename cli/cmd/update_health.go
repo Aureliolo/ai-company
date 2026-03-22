@@ -9,6 +9,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/images"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -108,21 +109,6 @@ func promptHealthRecover(cmd *cobra.Command) (bool, error) {
 	return false, nil
 }
 
-// imageRepoPrefix is the GHCR repository prefix for SynthOrg service images.
-const imageRepoPrefix = "ghcr.io/aureliolo/synthorg-"
-
-// imageRefForService returns the Docker image reference for a SynthOrg service.
-// When the state contains a verified digest for the service, returns a
-// digest-pinned reference (ghcr.io/aureliolo/synthorg-<svc>@sha256:...).
-// Otherwise falls back to a tag-based reference (ghcr.io/aureliolo/synthorg-<svc>:<tag>).
-func imageRefForService(svc string, state config.State) string {
-	repo := imageRepoPrefix + svc
-	if d, ok := state.VerifiedDigests[svc]; ok && d != "" {
-		return repo + "@" + d
-	}
-	return repo + ":" + state.ImageTag
-}
-
 // detectMissingImages checks which SynthOrg service images are missing locally
 // for the given state. Uses docker image inspect which works with both
 // digest-pinned (@sha256:...) and tag-based (:tag) references.
@@ -132,15 +118,10 @@ func imageRefForService(svc string, state config.State) string {
 // valid are treated as missing images; context cancellation or timeout errors
 // are ignored to avoid false positives.
 func detectMissingImages(ctx context.Context, info docker.Info, state config.State) []string {
-	services := []string{"backend", "web"}
-	if state.Sandbox {
-		services = append(services, "sandbox")
-	}
-
 	var missing []string
-	for _, svc := range services {
-		ref := imageRefForService(svc, state)
-		_, err := docker.RunCmd(ctx, info.DockerPath, "image", "inspect", ref, "--format", "{{.ID}}")
+	for _, svc := range images.ServiceNames(state.Sandbox) {
+		ref := images.RefForService(svc, state.ImageTag, state.VerifiedDigests)
+		_, err := images.InspectID(ctx, info.DockerPath, ref)
 		if err != nil {
 			if ctx.Err() != nil {
 				// Context expired or cancelled -- can't reliably determine
