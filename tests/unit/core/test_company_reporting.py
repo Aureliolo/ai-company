@@ -339,6 +339,11 @@ class TestDepartmentReportingLines:
         with pytest.raises(ValidationError, match="at least 1 character"):
             Department(name="eng", head="cto", head_id="")
 
+    def test_whitespace_head_id_rejected(self) -> None:
+        """Reject whitespace-only head_id."""
+        with pytest.raises(ValidationError, match="whitespace-only"):
+            Department(name="eng", head="cto", head_id="  ")
+
     def test_head_id_without_head_rejected(self) -> None:
         """Reject head_id when head is None."""
         with pytest.raises(ValidationError, match=r"head_id.*head is None"):

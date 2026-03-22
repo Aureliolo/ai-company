@@ -76,21 +76,18 @@ class TestApprovalChain:
         )
         assert c.min_approvals == 0
 
-    def test_duplicate_approvers_rejected(self) -> None:
-        """Reject approval chain with duplicate approvers."""
+    @pytest.mark.parametrize(
+        "approvers",
+        [("lead", "lead"), ("Lead", "lead")],
+        ids=["exact-duplicate", "case-insensitive"],
+    )
+    def test_duplicate_approvers_rejected(
+        self,
+        approvers: tuple[str, str],
+    ) -> None:
+        """Reject duplicate approvers (exact or case-insensitive)."""
         with pytest.raises(ValidationError, match="Duplicate approvers"):
-            ApprovalChain(
-                action_type="deploy",
-                approvers=("lead", "lead"),
-            )
-
-    def test_duplicate_approvers_case_insensitive(self) -> None:
-        """Reject approvers that differ only by case."""
-        with pytest.raises(ValidationError, match="Duplicate approvers"):
-            ApprovalChain(
-                action_type="deploy",
-                approvers=("Lead", "lead"),
-            )
+            ApprovalChain(action_type="deploy", approvers=approvers)
 
     def test_frozen(self) -> None:
         """Ensure ApprovalChain is immutable."""
@@ -147,21 +144,21 @@ class TestWorkflowHandoff:
         assert h.from_department == "eng"
         assert len(h.artifacts) == 1
 
-    def test_same_department_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        ("from_dept", "to_dept"),
+        [("eng", "eng"), ("Eng", "eng")],
+        ids=["exact", "case-insensitive"],
+    )
+    def test_same_department_rejected(
+        self,
+        from_dept: str,
+        to_dept: str,
+    ) -> None:
         """Reject handoff within the same department."""
         with pytest.raises(ValidationError, match="different departments"):
             WorkflowHandoff(
-                from_department="eng",
-                to_department="eng",
-                trigger="test",
-            )
-
-    def test_same_department_case_insensitive(self) -> None:
-        """Same-department check is case-insensitive."""
-        with pytest.raises(ValidationError, match="different departments"):
-            WorkflowHandoff(
-                from_department="Eng",
-                to_department="eng",
+                from_department=from_dept,
+                to_department=to_dept,
                 trigger="test",
             )
 
@@ -211,20 +208,20 @@ class TestEscalationPath:
                 priority_boost=boost,
             )
 
-    def test_same_department_rejected(self) -> None:
+    @pytest.mark.parametrize(
+        ("from_dept", "to_dept"),
+        [("eng", "eng"), ("Eng", "eng")],
+        ids=["exact", "case-insensitive"],
+    )
+    def test_same_department_rejected(
+        self,
+        from_dept: str,
+        to_dept: str,
+    ) -> None:
         """Reject escalation within the same department."""
         with pytest.raises(ValidationError, match="different departments"):
             EscalationPath(
-                from_department="eng",
-                to_department="eng",
-                condition="test",
-            )
-
-    def test_same_department_case_insensitive(self) -> None:
-        """Same-department check is case-insensitive."""
-        with pytest.raises(ValidationError, match="different departments"):
-            EscalationPath(
-                from_department="Eng",
-                to_department="eng",
+                from_department=from_dept,
+                to_department=to_dept,
                 condition="test",
             )
