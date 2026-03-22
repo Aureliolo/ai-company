@@ -1238,10 +1238,10 @@ Eleven default sinks, activated at startup via `bootstrap_logging()`:
 Logger name routing is implemented via `_LoggerNameFilter` on file handlers. Sinks without
 explicit routing are catch-all (accept all loggers at their configured level).
 
-Exception formatting differs between sink types: `format_exc_info` is applied only to JSON
-file sinks (converting `exc_info` tuples to formatted traceback strings for serialization).
-The console sink omits this processor because `ConsoleRenderer` handles exception rendering
-natively with colored, human-readable output.
+Exception formatting differs between sink types: `format_exc_info` is applied only to sinks
+with `json_format=True` (converting `exc_info` tuples to formatted traceback strings for
+serialization). Sinks with `json_format=False` (the default console sink) omit this
+processor because `ConsoleRenderer` handles exception rendering natively.
 
 ### Log Directory
 
@@ -1345,8 +1345,8 @@ that duplicates or contradicts those structured events.
 
 Two layers of log management:
 
-1. **App-level** (structlog): 10 file sinks with `RotatingFileHandler` (10 MB x 5) writing
-   JSON to `/data/logs/`. Console sink writes colored text to stderr.
+1. **App-level** (structlog): 11 sinks (10 file + 1 console). File sinks use `RotatingFileHandler`
+   (10 MB x 5) writing JSON to `/data/logs/`. Console sink writes colored text to stderr.
 2. **Container-level** (Docker): `json-file` driver with 10 MB x 3 rotation on
    stdout/stderr. Captures console sink output and any uncaught stderr.
 

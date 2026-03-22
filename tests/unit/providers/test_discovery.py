@@ -65,8 +65,8 @@ class TestDiscoverOllama:
         response = _mock_response(
             {
                 "models": [
-                    {"name": "llama3.2:latest"},
-                    {"name": "codellama:7b"},
+                    {"name": "test-large-001:latest"},
+                    {"name": "test-small-001:7b"},
                 ],
             }
         )
@@ -79,8 +79,8 @@ class TestDiscoverOllama:
             )
 
         assert len(result) == 2
-        assert result[0].id == "llama3.2:latest"
-        assert result[1].id == "codellama:7b"
+        assert result[0].id == "test-large-001:latest"
+        assert result[1].id == "test-small-001:7b"
 
     async def test_empty_models_list(self) -> None:
         response = _mock_response({"models": []})
@@ -169,11 +169,11 @@ class TestDiscoverOllama:
         response = _mock_response(
             {
                 "models": [
-                    {"name": "valid-model"},
+                    {"name": "test-model-001"},
                     "not-a-dict",
                     {"name": ""},
                     {"no-name-key": True},
-                    {"name": "also-valid"},
+                    {"name": "test-model-002"},
                 ],
             }
         )
@@ -186,8 +186,8 @@ class TestDiscoverOllama:
             )
 
         assert len(result) == 2
-        assert result[0].id == "valid-model"
-        assert result[1].id == "also-valid"
+        assert result[0].id == "test-model-001"
+        assert result[1].id == "test-model-002"
 
 
 @pytest.mark.usefixtures("_bypass_ssrf")

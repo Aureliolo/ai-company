@@ -166,6 +166,21 @@ class TestBuildHandlerFileBuiltin:
         handler_cleanup.append(handler)
         assert isinstance(handler.formatter, ProcessorFormatter)
 
+    def test_non_json_file_sink_excludes_format_exc_info(
+        self, tmp_path: Path, handler_cleanup: list[logging.Handler]
+    ) -> None:
+        """Non-JSON file sinks omit format_exc_info; not needed for text output."""
+        sink = SinkConfig(
+            sink_type=SinkType.FILE,
+            file_path="app.log",
+            json_format=False,
+            rotation=RotationConfig(),
+        )
+        handler = build_handler(sink, tmp_path, _foreign_pre_chain())
+        handler_cleanup.append(handler)
+        assert isinstance(handler.formatter, ProcessorFormatter)
+        assert structlog.processors.format_exc_info not in handler.formatter.processors
+
     def test_json_file_sink_includes_format_exc_info(
         self, tmp_path: Path, handler_cleanup: list[logging.Handler]
     ) -> None:

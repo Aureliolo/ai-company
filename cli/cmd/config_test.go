@@ -344,6 +344,40 @@ func TestConfigSetRejectsInvalidLogLevel(t *testing.T) {
 	}
 }
 
+func FuzzConfigSetLogLevel(f *testing.F) {
+	f.Add("debug")
+	f.Add("info")
+	f.Add("warn")
+	f.Add("error")
+	f.Add("verbose")
+	f.Add("trace")
+	f.Add("")
+	f.Add("INFO")
+
+	f.Fuzz(func(t *testing.T, value string) {
+		dir := t.TempDir()
+		state := config.DefaultState()
+		state.DataDir = dir
+		if err := config.Save(state); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+
+		var buf bytes.Buffer
+		rootCmd.SetOut(&buf)
+		rootCmd.SetErr(&buf)
+		rootCmd.SetArgs([]string{"config", "set", "log_level", value, "--data-dir", dir})
+		err := rootCmd.Execute()
+
+		allowed := value == "debug" || value == "info" || value == "warn" || value == "error"
+		if allowed && err != nil {
+			t.Fatalf("unexpected error for %q: %v", value, err)
+		}
+		if !allowed && err == nil {
+			t.Fatalf("expected error for %q", value)
+		}
+	})
+}
+
 func TestConfigSetRejectsUnknownKey(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
