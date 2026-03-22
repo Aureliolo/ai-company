@@ -183,7 +183,7 @@ site/             # Astro landing page (synthorg.io)
 - **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`, `@pytest.mark.slow`
 - **Coverage**: 80% minimum (enforced in CI)
 - **Async**: `asyncio_mode = "auto"` -- no manual `@pytest.mark.asyncio` needed
-- **Timeout**: 30 seconds per test
+- **Timeout**: 30 seconds per test (global in `pyproject.toml` -- do not add per-file `pytest.mark.timeout(30)` markers; non-default overrides like `timeout(60)` are allowed)
 - **Parallelism**: `pytest-xdist` via `-n auto` -- **ALWAYS** include `-n auto` when running pytest, never run tests sequentially
 - **Parametrize**: Prefer `@pytest.mark.parametrize` for testing similar cases
 - **Vendor-agnostic everywhere**: NEVER use real vendor names (Anthropic, OpenAI, Claude, GPT, etc.) in project-owned code, docstrings, comments, tests, or config examples. Use generic names: `example-provider`, `example-large-001`, `example-medium-001`, `example-small-001`, `large`/`medium`/`small` as aliases. Vendor names may only appear in: (1) Operations design page provider list (`docs/design/operations.md`), (2) `.claude/` skill/agent files, (3) third-party import paths/module names (e.g. `litellm.types.llms.openai`). Tests must use `test-provider`, `test-small-001`, etc.
@@ -196,7 +196,7 @@ site/             # Astro landing page (synthorg.io)
 - **Enforced by**: commitizen (commit-msg hook)
 - **Signed commits**: required on `main` via branch protection -- all commits must be GPG/SSH signed
 - **Branches**: `<type>/<slug>` from main
-- **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting), golangci-lint + go vet (CLI, conditional on `cli/**/*.go`)
+- **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting), golangci-lint + go vet (CLI, conditional on `cli/**/*.go`), no-em-dashes, no-redundant-timeout
 - **Pre-push hooks**: mypy type-check + pytest unit tests + golangci-lint + go vet + go test (CLI, conditional on `cli/**/*.go`) (fast gate before push, skipped in pre-commit.ci -- dedicated CI jobs already run these)
 - **Pre-commit.ci**: autoupdate disabled (`autoupdate_schedule: never`) -- Dependabot owns hook version bumps via `pre-commit` ecosystem
 - **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) -- MCP `list_issues` has unreliable field data

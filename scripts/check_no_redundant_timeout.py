@@ -10,7 +10,7 @@ import re
 import sys
 from pathlib import Path
 
-_PATTERN = re.compile(r"pytest\.mark\.timeout\(30\)")
+_PATTERN = re.compile(r"pytest\.mark\.timeout\(\s*30\s*\)")
 
 
 def main() -> int:
