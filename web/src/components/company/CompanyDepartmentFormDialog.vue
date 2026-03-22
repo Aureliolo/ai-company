@@ -111,7 +111,7 @@ function handleSave() {
   const dept: DepartmentEntry = {
     name: name.value.trim(),
     budget_percent: budgetPercent.value ?? undefined,
-    autonomy_level: autonomyLevel.value,
+    autonomy_level: autonomyLevel.value ?? undefined,
     teams: teams as DepartmentEntry['teams'],
     reporting_lines: reportingLines as DepartmentEntry['reporting_lines'],
     policies: policies as Record<string, unknown>,
