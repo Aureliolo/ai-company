@@ -71,6 +71,7 @@ onMounted(fetchLocales)
       {{ error }}
       <button
         v-if="loadFailed"
+        type="button"
         class="ml-2 underline hover:text-red-300"
         @click="fetchLocales"
       >
