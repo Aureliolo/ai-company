@@ -104,6 +104,16 @@ class TestEnumMemberCounts:
     def test_skill_pattern_has_5_members(self) -> None:
         assert len(SkillPattern) == 5
 
+    def test_skill_pattern_values(self) -> None:
+        expected = {
+            "tool_wrapper",
+            "generator",
+            "reviewer",
+            "inversion",
+            "pipeline",
+        }
+        assert {sp.value for sp in SkillPattern} == expected
+
     def test_action_type_has_25_members(self) -> None:
         assert len(ActionType) == 25
 
