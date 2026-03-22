@@ -440,8 +440,12 @@ def generate_auto_name(
     except MemoryError, RecursionError:
         raise
     except Exception:
+        from synthorg.observability.events.template import (  # noqa: PLC0415
+            TEMPLATE_NAME_GEN_FAKER_ERROR,
+        )
+
         logger.warning(
-            "name_generation.faker_error",
+            TEMPLATE_NAME_GEN_FAKER_ERROR,
             locales=locale_list[:5],
             seed=seed,
             exc_info=True,

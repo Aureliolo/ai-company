@@ -759,6 +759,11 @@ def _validate_locale_selection(
         logger.warning(SETUP_NAME_LOCALES_INVALID, invalid_locales=invalid)
         msg = f"Invalid locale codes: {invalid}"
         raise ApiValidationError(msg)
+    unique = list(dict.fromkeys(locales))
+    if len(unique) != len(locales):
+        logger.warning(SETUP_NAME_LOCALES_INVALID, reason="duplicates")
+        msg = "Duplicate locale codes are not allowed"
+        raise ApiValidationError(msg)
 
 
 async def _check_has_name_locales(settings_svc: SettingsService) -> bool:
@@ -783,7 +788,13 @@ async def _check_has_name_locales(settings_svc: SettingsService) -> bool:
             exc_info=True,
         )
         return False
-    return entry.source == SettingSource.DATABASE and bool(entry.value)
+    if entry.source != SettingSource.DATABASE or not entry.value:
+        return False
+    try:
+        parsed = json.loads(entry.value)
+    except json.JSONDecodeError, TypeError:
+        return False
+    return isinstance(parsed, list) and len(parsed) > 0
 
 
 async def _resolve_min_password_length(
