@@ -120,6 +120,12 @@ class TestGenerateAutoName:
         assert isinstance(name, str)
         assert len(name) > 0
 
+    def test_role_does_not_affect_output(self) -> None:
+        """Role parameter is unused -- same seed produces same name."""
+        a = generate_auto_name("CEO", seed=42)
+        b = generate_auto_name("CFO", seed=42)
+        assert a == b
+
 
 @pytest.mark.unit
 class TestLocalesModule:

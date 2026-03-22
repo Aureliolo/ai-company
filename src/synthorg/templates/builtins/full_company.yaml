@@ -142,7 +142,7 @@ template:
 {% set backend_names = ["Dante Ribeiro", "Li Jun Chen", "Farid Noori", "Blessing Agu", "Marco Esposito"] %}
 {% for i in range(num_backend_devs | default(3) | int) %}
     - role: "Backend Developer"
-      name: "{{ backend_names[i] }}"
+      name: "{{ backend_names[i % backend_names|length] }}"
       merge_id: "backend-{{ i }}"
 {% if i == 0 %}
       level: "senior"
@@ -159,7 +159,7 @@ template:
 {% set frontend_names = ["Yuna Watanabe", "Priscilla Okafor", "Andres Salazar", "Mina Johansson", "Tariq Haddad"] %}
 {% for i in range(num_frontend_devs | default(2) | int) %}
     - role: "Frontend Developer"
-      name: "{{ frontend_names[i] }}"
+      name: "{{ frontend_names[i % frontend_names|length] }}"
       merge_id: "frontend-{{ i }}"
 {% if i == 0 %}
       level: "senior"

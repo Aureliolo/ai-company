@@ -240,7 +240,7 @@ class SetupNameLocalesResponse(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    locales: list[str]
+    locales: list[NotBlankStr]
 
 
 class AvailableLocalesResponse(BaseModel):

@@ -403,8 +403,8 @@ def generate_auto_name(
     """Generate an internationally diverse agent name using Faker.
 
     When *seed* is provided, a local ``random.Random`` deterministically
-    selects a locale, then a fresh single-locale Faker instance (cached)
-    generates the name.  No global Faker state is mutated.
+    selects a locale, then a **fresh** single-locale Faker instance
+    generates the name -- the cached instance is never mutated.
 
     The *role* parameter is accepted because callers
     (``setup_agents.py``, ``renderer.py``) pass it positionally;
@@ -422,17 +422,35 @@ def generate_auto_name(
     """
     import random  # noqa: PLC0415
 
+    from faker import Faker  # noqa: PLC0415
+
     from synthorg.templates.locales import ALL_LATIN_LOCALES  # noqa: PLC0415
 
     locale_list = locales or list(ALL_LATIN_LOCALES)
-    if seed is not None:
-        rng = random.Random(seed)  # noqa: S311
-        chosen_locale = rng.choice(locale_list)
-        fake = _get_faker((chosen_locale,))
-        fake.seed_instance(seed)
-    else:
-        fake = _get_faker(tuple(locale_list))
-    return str(fake.name())
+    try:
+        if seed is not None:
+            rng = random.Random(seed)  # noqa: S311
+            chosen_locale = rng.choice(locale_list)
+            # Fresh instance -- never mutate the shared cached one.
+            fake = Faker([chosen_locale])
+            fake.seed_instance(seed)
+        else:
+            fake = _get_faker(tuple(locale_list))
+        return str(fake.name())
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        logger.warning(
+            "name_generation.faker_error",
+            locales=locale_list[:5],
+            seed=seed,
+            exc_info=True,
+        )
+        # Fall back to a known-safe locale.
+        fallback = Faker(["en_US"])
+        if seed is not None:
+            fallback.seed_instance(seed)
+        return str(fallback.name())
 
 
 @functools.lru_cache(maxsize=128)
@@ -441,6 +459,9 @@ def _get_faker(locale_tuple: tuple[str, ...]) -> Any:
 
     Caching avoids re-initialising locale providers on every call.
     The cache is keyed by locale tuple (immutable, hashable).
+
+    Only used for the **unseeded** path; seeded callers must create
+    a fresh instance to avoid mutating shared state.
     """
     from faker import Faker  # noqa: PLC0415
 

@@ -5,9 +5,14 @@ Latin-script names, grouped by world region for UI presentation.
 """
 
 from types import MappingProxyType
+from typing import Final
+
+from synthorg.observability import get_logger
+
+logger = get_logger(__name__)
 
 # Sentinel value meaning "use all Latin-script locales".
-ALL_LOCALES_SENTINEL: str = "__all__"
+ALL_LOCALES_SENTINEL: Final[str] = "__all__"
 
 # Every region and its Faker locale codes.  Order matches the
 # intended UI display order (global diversity first, then
@@ -28,9 +33,9 @@ LOCALE_REGIONS: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
         "South Asia": (
             "en_IN",
             "en_PK",
-            "en_TH",
         ),
         "Southeast Asia": (
+            "en_TH",
             "id_ID",
             "vi_VN",
         ),
@@ -93,7 +98,7 @@ LOCALE_REGIONS: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
 )
 
 # Flat tuple of every Latin-script locale (derived from LOCALE_REGIONS).
-ALL_LATIN_LOCALES: tuple[str, ...] = tuple(
+ALL_LATIN_LOCALES: Final[tuple[str, ...]] = tuple(
     locale for locales in LOCALE_REGIONS.values() for locale in locales
 )
 
@@ -161,19 +166,43 @@ LOCALE_DISPLAY_NAMES: MappingProxyType[str, str] = MappingProxyType(
 )
 
 # Valid locale codes (for input validation).
-VALID_LOCALE_CODES: frozenset[str] = frozenset(ALL_LATIN_LOCALES)
+VALID_LOCALE_CODES: Final[frozenset[str]] = frozenset(ALL_LATIN_LOCALES)
+
+# Validate registry consistency at import time.
+assert len(ALL_LATIN_LOCALES) == len(VALID_LOCALE_CODES), (  # noqa: S101
+    f"Duplicate locale codes across regions: "
+    f"{len(ALL_LATIN_LOCALES)} total vs {len(VALID_LOCALE_CODES)} unique"
+)
+_missing_display_names = VALID_LOCALE_CODES - set(LOCALE_DISPLAY_NAMES)
+if _missing_display_names:
+    msg = f"Locales missing display names: {sorted(_missing_display_names)}"
+    raise ValueError(msg)
+del _missing_display_names
 
 
 def resolve_locales(raw: list[str] | None) -> list[str]:
     """Resolve a stored locale list to concrete locale codes.
 
     Args:
-        raw: Stored locale preference.  ``None`` or ``["__all__"]``
-            resolves to all Latin-script locales.
+        raw: Stored locale preference.  ``None``, ``[]``, or
+            ``["__all__"]`` resolves to all Latin-script locales.
 
     Returns:
         List of concrete Faker locale codes.
     """
     if not raw or raw == [ALL_LOCALES_SENTINEL]:
         return list(ALL_LATIN_LOCALES)
-    return [loc for loc in raw if loc in VALID_LOCALE_CODES]
+    valid = []
+    dropped = []
+    for loc in raw:
+        if loc in VALID_LOCALE_CODES:
+            valid.append(loc)
+        else:
+            dropped.append(loc)
+    if dropped:
+        logger.warning(
+            "locales.resolve_dropped_invalid",
+            dropped=dropped,
+            kept_count=len(valid),
+        )
+    return valid

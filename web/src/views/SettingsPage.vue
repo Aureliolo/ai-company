@@ -248,7 +248,7 @@ function getCodeMode(ns: string): 'json' | 'yaml' {
           <!-- GUI mode -->
           <template v-if="editMode.getEffectiveMode(ns).value === 'gui'">
             <SettingGroupRenderer
-              :entries="settingsStore.entriesByNamespace(ns as SettingNamespace)"
+              :entries="settingsStore.entriesByNamespace(ns as SettingNamespace).filter((e) => !(ns === 'company' && e.definition.key === 'name_locales'))"
               :show-advanced="settingsStore.showAdvanced"
               :saving-key="settingsStore.savingKey"
               @save="handleSettingSave"

@@ -61,6 +61,7 @@ The SynthOrg engine is structured as a set of loosely coupled subsystems. Each b
 | **Tool Integration** | MCP SDK (`mcp`) | Industry standard for LLM-to-tool integration. See [Industry Standards](../reference/standards.md). |
 | **Agent Communication** | A2A Protocol compatible | Future-proof inter-agent communication. See [Industry Standards](../reference/standards.md). |
 | **Authentication** | PyJWT + argon2-cffi | JWT (HMAC HS256/384/512) for session tokens, Argon2id for password hashing, HMAC-SHA256 for API key storage (keyed with server secret). |
+| **Name Generation** | Faker | Multi-locale agent name generation for templates and setup wizard. 57 Latin-script locales across 12 world regions, cached Faker instances, deterministic seeding for reproducible names. |
 | **Config Format** | YAML + Pydantic validation | Human-readable config with strict validation. |
 | **CLI** | Go (Cobra + charmbracelet/huh) | Cross-platform binary for Docker lifecycle management: `init`, `start`, `stop`, `status`, `logs`, `update`, `doctor`, `uninstall`, `version`, `cleanup`, `backup`, `wipe`, `config`, `completion-install`. Distributed via GoReleaser + install scripts (`curl \| bash`, `irm \| iex`). Syft generates CycloneDX JSON SBOMs per archive (via GoReleaser `sboms:` stanza). Cosign keyless signing of checksums file (`.sig` + `.pem`). SLSA Level 3 provenance attestations on all release archives. Sigstore provenance bundle (`.sigstore.json`) attached to releases. |
 

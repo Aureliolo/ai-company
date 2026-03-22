@@ -159,6 +159,7 @@ def _render_to_dict(
         child_config=child_config,
         loaded=loaded,
         vars_dict=vars_dict,
+        locales=locales,
         _chain=_chain,
     )
 
@@ -168,6 +169,7 @@ def _resolve_inheritance(
     child_config: dict[str, Any],
     loaded: LoadedTemplate,
     vars_dict: dict[str, Any],
+    locales: list[str] | None = None,
     _chain: frozenset[str],
 ) -> dict[str, Any]:
     """Resolve template inheritance for a child config.
@@ -179,6 +181,7 @@ def _resolve_inheritance(
         child_config: Already-rendered child config dict.
         loaded: The child's :class:`LoadedTemplate`.
         vars_dict: Child's resolved variables.
+        locales: Faker locale codes for auto-name generation.
         _chain: Already-visited parent names for circular detection.
 
     Returns:
@@ -205,6 +208,7 @@ def _resolve_inheritance(
         child_config,
         vars_dict,
         _chain,
+        locales=locales,
     )
     logger.info(
         TEMPLATE_INHERIT_RESOLVE_SUCCESS,
@@ -252,6 +256,8 @@ def _render_and_merge_parent(
     child_config: dict[str, Any],
     vars_dict: dict[str, Any],
     _chain: frozenset[str],
+    *,
+    locales: list[str] | None = None,
 ) -> dict[str, Any]:
     """Load, render, and merge a parent template with a child config."""
     from synthorg.templates.loader import load_template  # noqa: PLC0415
@@ -264,6 +270,7 @@ def _render_and_merge_parent(
     parent_config = _render_to_dict(
         parent_loaded,
         parent_vars,
+        locales=locales,
         _chain=_chain | {parent_name},
     )
     return merge_template_configs(parent_config, child_config)

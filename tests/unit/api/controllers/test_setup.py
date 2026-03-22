@@ -874,6 +874,19 @@ class TestSaveNameLocales:
         data = resp.json()["data"]
         assert data["locales"] == ["__all__"]
 
+    def test_rejects_mixed_sentinel_with_explicit_codes(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Mixing __all__ with explicit locale codes returns 422."""
+        resp = test_client.put(
+            "/api/v1/setup/name-locales",
+            json={"locales": ["__all__", "en_US"]},
+        )
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["success"] is False
+
     def test_rejects_invalid_locale_codes(
         self,
         test_client: TestClient[Any],
@@ -956,13 +969,31 @@ class TestCheckHasNameLocales:
         finally:
             repo._store.pop(("company", "name_locales"), None)
 
+    async def test_returns_false_on_generic_exception(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Returns False when get_entry raises a generic exception."""
+        from synthorg.api.controllers.setup import _check_has_name_locales
+
+        app_state = test_client.app.state.app_state
+        settings_svc = app_state.settings_service
+
+        original = settings_svc.get_entry
+        settings_svc.get_entry = AsyncMock(
+            side_effect=RuntimeError("db connection lost"),
+        )
+        try:
+            result = await _check_has_name_locales(settings_svc)
+            assert result is False
+        finally:
+            settings_svc.get_entry = original
+
     async def test_returns_false_on_setting_not_found_error(
         self,
         test_client: TestClient[Any],
     ) -> None:
         """Returns False when get_entry raises SettingNotFoundError."""
-        from unittest.mock import AsyncMock
-
         from synthorg.api.controllers.setup import _check_has_name_locales
         from synthorg.settings.errors import SettingNotFoundError
 
@@ -1006,8 +1037,6 @@ class TestReadNameLocales:
         test_client: TestClient[Any],
     ) -> None:
         """Returns None when get_entry raises SettingNotFoundError."""
-        from unittest.mock import AsyncMock
-
         from synthorg.api.controllers.setup import _read_name_locales
         from synthorg.settings.errors import SettingNotFoundError
 

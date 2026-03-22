@@ -5,6 +5,8 @@ import NameLocaleSelector from '@/components/common/NameLocaleSelector.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useToast } from 'primevue/usetoast'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
+
 const settingsStore = useSettingsStore()
 const toast = useToast()
 
@@ -21,9 +23,16 @@ async function loadLocales() {
       const parsed = JSON.parse(entry.value)
       if (Array.isArray(parsed)) {
         selectedLocales.value = parsed
+      } else {
+        console.warn('[SettingsNameLocales] name_locales setting is not an array:', sanitizeForLog(parsed))
+        toast.add({
+          severity: 'warn',
+          summary: 'Saved locale preference is corrupted. Showing default.',
+          life: 5000,
+        })
       }
     } catch (err) {
-      console.warn('[SettingsNameLocales] Failed to parse name_locales:', err)
+      console.warn('[SettingsNameLocales] Failed to parse name_locales:', sanitizeForLog(err))
       toast.add({
         severity: 'warn',
         summary: 'Could not load saved locale preference. Showing default.',

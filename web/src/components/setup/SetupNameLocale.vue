@@ -4,6 +4,7 @@ import Button from 'primevue/button'
 import NameLocaleSelector from '@/components/common/NameLocaleSelector.vue'
 import { useSetupStore } from '@/stores/setup'
 import { getErrorMessage } from '@/utils/errors'
+import { sanitizeForLog } from '@/utils/logging'
 
 const emit = defineEmits<{
   next: []
@@ -37,7 +38,7 @@ onMounted(async () => {
       selectedLocales.value = locales
     }
   } catch (err) {
-    console.warn('[SetupNameLocale] Failed to load saved locales:', err)
+    console.warn('[SetupNameLocale] Failed to load saved locales:', sanitizeForLog(err))
     error.value = 'Could not load your saved locale preferences. Defaulting to worldwide.'
   }
 })

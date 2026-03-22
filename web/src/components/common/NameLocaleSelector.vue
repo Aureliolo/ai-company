@@ -58,6 +58,10 @@ function isRegionPartial(regionLocales: string[]): boolean {
 
 function toggleRegion(regionLocales: string[], selected: boolean) {
   const current = new Set(props.modelValue.filter((l) => l !== ALL_SENTINEL))
+  if (isAll.value) {
+    // Switching from "all" to explicit set at region granularity
+    for (const loc of allLocales.value) current.add(loc)
+  }
   if (selected) {
     for (const loc of regionLocales) current.add(loc)
   } else {

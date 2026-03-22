@@ -107,6 +107,7 @@ describe('useSetupStore', () => {
 
       expect(store.isStepComplete('admin')).toBe(true)
       expect(store.isStepComplete('provider')).toBe(true)
+      expect(store.isStepComplete('names')).toBe(true)
       expect(store.isStepComplete('company')).toBe(true)
       expect(store.isStepComplete('review')).toBe(false)
     })
@@ -152,6 +153,7 @@ describe('useSetupStore', () => {
       expect(store.isStepComplete('welcome')).toBe(false)
       expect(store.isStepComplete('admin')).toBe(false)
       expect(store.isStepComplete('provider')).toBe(false)
+      expect(store.isStepComplete('names')).toBe(false)
       expect(store.isStepComplete('company')).toBe(false)
       expect(store.isStepComplete('review')).toBe(false)
     })
@@ -172,6 +174,7 @@ describe('useSetupStore', () => {
 
       expect(store.isStepComplete('admin')).toBe(true)
       expect(store.isStepComplete('provider')).toBe(false)
+      expect(store.isStepComplete('names')).toBe(false)
       // Company exists in backend but provider is missing, so
       // the stepper must not show company as done.
       expect(store.isStepComplete('company')).toBe(false)
@@ -195,6 +198,7 @@ describe('useSetupStore', () => {
       // Nothing should be complete because admin is not done.
       expect(store.isStepComplete('admin')).toBe(false)
       expect(store.isStepComplete('provider')).toBe(false)
+      expect(store.isStepComplete('names')).toBe(false)
       expect(store.isStepComplete('company')).toBe(false)
       expect(store.isStepComplete('review')).toBe(false)
     })
@@ -456,14 +460,25 @@ describe('useSetupStore', () => {
       expect(store.error).toBeNull()
     })
 
-    it('sets error and returns empty array on failure', async () => {
+    it('sets error and re-throws on failure', async () => {
       mockGetNameLocales.mockRejectedValue(new Error('Network error'))
 
       const store = useSetupStore()
-      const result = await store.fetchNameLocales()
+      await expect(store.fetchNameLocales()).rejects.toThrow('Network error')
 
-      expect(result).toEqual([])
       expect(store.error).toBe('Network error')
+    })
+  })
+
+  describe('fetchStatus error handling', () => {
+    it('sets error and keeps statusLoaded false on failure', async () => {
+      mockGetSetupStatus.mockRejectedValue(new Error('Server down'))
+
+      const store = useSetupStore()
+      await store.fetchStatus()
+
+      expect(store.error).toBe('Server down')
+      expect(store.statusLoaded).toBe(false)
     })
   })
 

@@ -525,27 +525,11 @@ class SetupController(Controller):
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
         await _check_setup_not_complete(settings_svc)
-
-        if ALL_LOCALES_SENTINEL in data.locales and len(data.locales) > 1:
-            msg = (
-                f"'{ALL_LOCALES_SENTINEL}' cannot be combined"
-                " with explicit locale codes"
-            )
-            logger.warning(SETUP_NAME_LOCALES_INVALID, reason="mixed_sentinel")
-            raise ApiValidationError(msg)
-
-        invalid = [
-            loc
-            for loc in data.locales
-            if loc != ALL_LOCALES_SENTINEL and loc not in VALID_LOCALE_CODES
-        ]
-        if invalid:
-            logger.warning(
-                SETUP_NAME_LOCALES_INVALID,
-                invalid_locales=invalid,
-            )
-            msg = f"Invalid locale codes: {invalid}"
-            raise ApiValidationError(msg)
+        _validate_locale_selection(
+            data.locales,
+            ALL_LOCALES_SENTINEL,
+            VALID_LOCALE_CODES,
+        )
 
         await settings_svc.set(
             "company",
@@ -751,6 +735,32 @@ async def _check_has_agents(
     return validate_agents_value(entry.value, strict=strict)
 
 
+def _validate_locale_selection(
+    locales: list[str],
+    sentinel: str,
+    valid_codes: frozenset[str],
+) -> None:
+    """Validate locale selection, raising on invalid input.
+
+    Args:
+        locales: User-submitted locale codes.
+        sentinel: The "all locales" sentinel value.
+        valid_codes: Set of valid locale codes.
+
+    Raises:
+        ApiValidationError: On mixed sentinel or invalid codes.
+    """
+    if sentinel in locales and len(locales) > 1:
+        msg = f"'{sentinel}' cannot be combined with explicit locale codes"
+        logger.warning(SETUP_NAME_LOCALES_INVALID, reason="mixed_sentinel")
+        raise ApiValidationError(msg)
+    invalid = [loc for loc in locales if loc != sentinel and loc not in valid_codes]
+    if invalid:
+        logger.warning(SETUP_NAME_LOCALES_INVALID, invalid_locales=invalid)
+        msg = f"Invalid locale codes: {invalid}"
+        raise ApiValidationError(msg)
+
+
 async def _check_has_name_locales(settings_svc: SettingsService) -> bool:
     """Check whether name locales have been explicitly configured.
 
@@ -877,6 +887,8 @@ async def _read_name_locales(settings_svc: SettingsService) -> list[str] | None:
             setting="name_locales",
             exc_info=True,
         )
+        return None
+    if not entry.value:
         return None
     try:
         parsed = json.loads(entry.value)

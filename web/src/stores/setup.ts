@@ -113,7 +113,7 @@ export const useSetupStore = defineStore('setup', () => {
       return result.locales
     } catch (err) {
       error.value = getErrorMessage(err)
-      return []
+      throw err
     }
   }
 
