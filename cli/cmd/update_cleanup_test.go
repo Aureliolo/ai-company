@@ -277,14 +277,28 @@ func FuzzMergeKeepIDs(f *testing.F) {
 		current := toMap(currentCSV)
 		previous := toMap(previousCSV)
 		got := mergeKeepIDs(current, previous)
+
+		// Build expected union.
+		expected := make(map[string]bool)
 		for id := range current {
-			if !got[id] {
-				t.Fatalf("missing current id %q", id)
-			}
+			expected[id] = true
 		}
 		for id := range previous {
+			expected[id] = true
+		}
+
+		// Assert exact union: correct size, all expected present, no extras.
+		if len(got) != len(expected) {
+			t.Fatalf("len(got) = %d, want %d", len(got), len(expected))
+		}
+		for id := range expected {
 			if !got[id] {
-				t.Fatalf("missing previous id %q", id)
+				t.Fatalf("missing expected id %q", id)
+			}
+		}
+		for id := range got {
+			if !expected[id] {
+				t.Fatalf("unexpected extra id %q", id)
 			}
 		}
 	})

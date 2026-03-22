@@ -200,6 +200,38 @@ func TestConfigSetAutoCleanup(t *testing.T) {
 	}
 }
 
+func FuzzConfigSetAutoCleanup(f *testing.F) {
+	f.Add("true")
+	f.Add("false")
+	f.Add("TRUE")
+	f.Add("1")
+	f.Add("yes")
+	f.Add("")
+
+	f.Fuzz(func(t *testing.T, value string) {
+		dir := t.TempDir()
+		state := config.DefaultState()
+		state.DataDir = dir
+		if err := config.Save(state); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+
+		var buf bytes.Buffer
+		rootCmd.SetOut(&buf)
+		rootCmd.SetErr(&buf)
+		rootCmd.SetArgs([]string{"config", "set", "auto_cleanup", value, "--data-dir", dir})
+		err := rootCmd.Execute()
+
+		allowed := value == "true" || value == "false"
+		if allowed && err != nil {
+			t.Fatalf("unexpected error for %q: %v", value, err)
+		}
+		if !allowed && err == nil {
+			t.Fatalf("expected error for %q", value)
+		}
+	})
+}
+
 func TestConfigSetRejectsInvalidAutoCleanup(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()
@@ -237,11 +269,18 @@ func TestConfigShowAutoCleanup(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "Auto cleanup") {
-		t.Error("expected 'Auto cleanup' label in output")
+	found := false
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "Auto cleanup") {
+			found = true
+			if !strings.Contains(line, "false") {
+				t.Errorf("Auto cleanup line should contain 'false', got: %s", line)
+			}
+			break
+		}
 	}
-	if !strings.Contains(out, "false") {
-		t.Error("expected 'false' value in output for default auto_cleanup")
+	if !found {
+		t.Error("expected 'Auto cleanup' label in output")
 	}
 }
 
