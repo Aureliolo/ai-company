@@ -1,7 +1,7 @@
 """Tests for template loading from built-in and file-system sources."""
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -353,17 +353,24 @@ class TestBuiltinOperationalConfigs:
     """Each builtin template must declare the operational profile that fits
     its organizational archetype.  This test prevents silent regression."""
 
+    _EXPECTED_CONFIGS: ClassVar[list[tuple[str, str, str, str]]] = [
+        ("solo_founder", "full", "event_driven", "kanban"),
+        ("startup", "semi", "hybrid", "agile_kanban"),
+        ("dev_shop", "semi", "hybrid", "agile_kanban"),
+        ("product_team", "semi", "meeting_based", "agile_kanban"),
+        ("agency", "supervised", "hierarchical", "kanban"),
+        ("research_lab", "full", "event_driven", "kanban"),
+        ("full_company", "supervised", "hierarchical", "agile_kanban"),
+    ]
+
+    def test_matrix_covers_all_builtins(self) -> None:
+        """Fail if a builtin template is added without updating this matrix."""
+        tested = {row[0] for row in self._EXPECTED_CONFIGS}
+        assert tested == set(BUILTIN_TEMPLATES)
+
     @pytest.mark.parametrize(
         ("name", "autonomy_level", "communication", "workflow"),
-        [
-            ("solo_founder", "full", "event_driven", "kanban"),
-            ("startup", "semi", "hybrid", "agile_kanban"),
-            ("dev_shop", "semi", "hybrid", "agile_kanban"),
-            ("product_team", "semi", "meeting_based", "agile_kanban"),
-            ("agency", "supervised", "hierarchical", "kanban"),
-            ("research_lab", "full", "event_driven", "kanban"),
-            ("full_company", "supervised", "hierarchical", "agile_kanban"),
-        ],
+        _EXPECTED_CONFIGS,
         ids=[
             "solo_founder",
             "startup",
