@@ -22,18 +22,35 @@ logger = get_logger(__name__)
 # ── Department internal structure models ─────────────────────────
 
 
+def _identity_key(
+    name: str,
+    id_: str | None,
+) -> tuple[str, str]:
+    """Return ``(namespace, normalized_key)`` for identity comparison.
+
+    Uses the explicit *id_* when provided, falling back to *name*.
+    Namespacing prevents false collisions when an ID value happens
+    to match a name from a different reporting line.
+    """
+    if id_ is not None:
+        return ("id", id_.strip().casefold())
+    return ("name", name.strip().casefold())
+
+
 class ReportingLine(BaseModel):
     """Explicit reporting relationship within a department.
 
     Attributes:
         subordinate: Agent name of the subordinate.
         supervisor: Agent name of the supervisor.
-        subordinate_id: Optional unique identifier for the subordinate
-            (e.g. merge_id). When multiple agents share the same role
-            name, this disambiguates which agent is meant.
-        supervisor_id: Optional unique identifier for the supervisor
-            (e.g. merge_id). When multiple agents share the same role
-            name, this disambiguates which agent is meant.
+        subordinate_id: Optional unique identifier for the subordinate.
+            When multiple agents share the same role name, this
+            disambiguates which agent is meant.  Templates typically
+            use the agent's ``merge_id`` for this purpose.
+        supervisor_id: Optional unique identifier for the supervisor.
+            When multiple agents share the same role name, this
+            disambiguates which agent is meant.  Templates typically
+            use the agent's ``merge_id`` for this purpose.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -52,22 +69,34 @@ class ReportingLine(BaseModel):
     @model_validator(mode="after")
     def _validate_not_self_report(self) -> Self:
         """Reject self-reporting relationships."""
-        if self.subordinate_id is not None and self.supervisor_id is not None:
-            sub_key = self.subordinate_id.strip().casefold()
-            sup_key = self.supervisor_id.strip().casefold()
-        elif self.subordinate_id is None and self.supervisor_id is None:
-            sub_key = self.subordinate.strip().casefold()
-            sup_key = self.supervisor.strip().casefold()
-        else:
-            # Asymmetric ID presence: one side identified by ID, the
-            # other by name -- they cannot be the same agent.
+        sub_ns, sub_key = _identity_key(
+            self.subordinate,
+            self.subordinate_id,
+        )
+        sup_ns, sup_key = _identity_key(
+            self.supervisor,
+            self.supervisor_id,
+        )
+        if sub_ns != sup_ns:
+            # Different namespaces (one identified by ID, the other
+            # by name only).  We treat these as distinct because
+            # comparing across namespaces would produce false
+            # positives in legitimate configurations.
             return self
         if sub_key == sup_key:
-            msg = (
-                f"Agent cannot report to themselves: "
-                f"{self.subordinate!r} (id={self.subordinate_id!r})"
-                f" == {self.supervisor!r} (id={self.supervisor_id!r})"
-            )
+            if self.subordinate_id is not None or self.supervisor_id is not None:
+                msg = (
+                    f"Agent cannot report to themselves: "
+                    f"{self.subordinate!r}"
+                    f" (id={self.subordinate_id!r})"
+                    f" == {self.supervisor!r}"
+                    f" (id={self.supervisor_id!r})"
+                )
+            else:
+                msg = (
+                    f"Agent cannot report to themselves: "
+                    f"{self.subordinate!r} == {self.supervisor!r}"
+                )
             logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self
@@ -350,17 +379,19 @@ class Department(BaseModel):
 
     @model_validator(mode="after")
     def _validate_unique_subordinates(self) -> Self:
-        """Ensure no duplicate subordinates in reporting lines."""
+        """Ensure no duplicate subordinates in reporting lines.
+
+        Uses ``subordinate_id`` when present, falling back to
+        ``subordinate`` name.  Keys are namespace-tagged to prevent
+        false collisions between IDs and names.
+        """
         subs = [
-            (
-                r.subordinate_id.strip().casefold()
-                if r.subordinate_id is not None
-                else r.subordinate.strip().casefold()
-            )
-            for r in self.reporting_lines
+            _identity_key(r.subordinate, r.subordinate_id) for r in self.reporting_lines
         ]
         if len(subs) != len(set(subs)):
-            dupes = sorted(s for s, c in Counter(subs).items() if c > 1)
+            dupes = sorted(
+                f"{ns}:{key}" for (ns, key), c in Counter(subs).items() if c > 1
+            )
             msg = (
                 f"Duplicate subordinates in reporting lines "
                 f"for department {self.name!r}: {dupes}"
