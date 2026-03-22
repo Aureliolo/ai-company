@@ -20,6 +20,7 @@ defineEmits<{
       <div>
         <h4 class="text-sm font-medium text-slate-200">{{ department.name }}</h4>
         <p v-if="department.head" class="text-xs text-slate-400">Head: {{ department.head }}</p>
+        <p v-else class="text-xs text-amber-400">No head assigned</p>
       </div>
       <div class="flex gap-1">
         <Button

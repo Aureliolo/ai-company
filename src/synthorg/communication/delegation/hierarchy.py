@@ -41,9 +41,15 @@ class HierarchyResolver:
         for dept in company.departments:
             for team in dept.teams:
                 # Team lead -> department head (lowest priority)
-                if team.lead != dept.head and team.lead not in supervisor_of:
+                if (
+                    dept.head
+                    and team.lead != dept.head
+                    and team.lead not in supervisor_of
+                ):
                     supervisor_of[team.lead] = dept.head
-                    reports_of.setdefault(dept.head, []).append(team.lead)
+                    reports_of.setdefault(dept.head, []).append(
+                        team.lead,
+                    )
 
                 # Team members -> team lead (medium priority)
                 for member in team.members:

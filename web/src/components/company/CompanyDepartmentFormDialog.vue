@@ -97,9 +97,7 @@ function tryParseJsonObject(text: string, label: string): Record<string, unknown
   }
 }
 
-const canSave = computed(() =>
-  name.value.trim().length > 0 && head.value.trim().length > 0,
-)
+const canSave = computed(() => name.value.trim().length > 0)
 
 function handleSave() {
   jsonError.value = null
@@ -112,13 +110,13 @@ function handleSave() {
 
   const dept: DepartmentEntry = {
     name: name.value.trim(),
-    head: head.value.trim(),
     budget_percent: budgetPercent.value ?? undefined,
     autonomy_level: autonomyLevel.value,
     teams: teams as DepartmentEntry['teams'],
     reporting_lines: reportingLines as DepartmentEntry['reporting_lines'],
     policies: policies as Record<string, unknown>,
   }
+  if (head.value.trim()) dept.head = head.value.trim()
 
   emit('save', dept)
   // Dialog close is controlled by the parent after async save succeeds
@@ -150,7 +148,7 @@ function handleSave() {
         </div>
         <div>
           <label for="dept-head" class="mb-1 block text-xs text-slate-400">
-            Head (agent name) <span class="text-red-400">*</span>
+            Head (agent name)
           </label>
           <Select
             input-id="dept-head"

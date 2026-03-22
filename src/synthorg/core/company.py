@@ -268,7 +268,7 @@ class Department(BaseModel):
 
     Attributes:
         name: Department name (standard or custom).
-        head: Department head agent name (string reference).
+        head: Department head agent name (optional).
         budget_percent: Percentage of company budget allocated (0-100).
         teams: Teams within this department.
         reporting_lines: Explicit reporting relationships.
@@ -278,7 +278,10 @@ class Department(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: NotBlankStr = Field(description="Department name")
-    head: NotBlankStr = Field(description="Department head agent name")
+    head: NotBlankStr | None = Field(
+        default=None,
+        description="Department head agent name",
+    )
     budget_percent: float = Field(
         default=0.0,
         ge=0.0,
