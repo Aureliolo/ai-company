@@ -439,6 +439,24 @@ func TestDiagnosticImageRefPriority(t *testing.T) {
 			},
 			want: "ghcr.io/aureliolo/synthorg-web@sha256:1111111111111111111111111111111111111111111111111111111111111111",
 		},
+		{
+			name:            "tag fallback when nil maps",
+			svc:             "sandbox",
+			imageTag:        "latest",
+			composeRefs:     nil,
+			verifiedDigests: nil,
+			want:            "ghcr.io/aureliolo/synthorg-sandbox:latest",
+		},
+		{
+			name:        "tag fallback when digest value is empty",
+			svc:         "backend",
+			imageTag:    "0.4.1",
+			composeRefs: map[string]string{},
+			verifiedDigests: map[string]string{
+				"backend": "",
+			},
+			want: "ghcr.io/aureliolo/synthorg-backend:0.4.1",
+		},
 	}
 
 	for _, tt := range tests {

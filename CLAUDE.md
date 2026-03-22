@@ -196,7 +196,7 @@ site/             # Astro landing page (synthorg.io)
 - **Enforced by**: commitizen (commit-msg hook)
 - **Signed commits**: required on `main` via branch protection -- all commits must be GPG/SSH signed
 - **Branches**: `<type>/<slug>` from main
-- **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting)
+- **Pre-commit hooks**: trailing-whitespace, end-of-file-fixer, check-yaml, check-toml, check-json, check-merge-conflict, check-added-large-files, no-commit-to-branch (main), ruff check+format, gitleaks, hadolint (Dockerfile linting), golangci-lint + go vet (CLI, conditional on `cli/**/*.go`)
 - **Pre-push hooks**: mypy type-check + pytest unit tests + golangci-lint + go vet + go test (CLI, conditional on `cli/**/*.go`) (fast gate before push, skipped in pre-commit.ci -- dedicated CI jobs already run these)
 - **Pre-commit.ci**: autoupdate disabled (`autoupdate_schedule: never`) -- Dependabot owns hook version bumps via `pre-commit` ecosystem
 - **GitHub issue queries**: use `gh issue list` via Bash (not MCP tools) -- MCP `list_issues` has unreliable field data
@@ -239,7 +239,7 @@ site/             # Astro landing page (synthorg.io)
 - **Dependabot**: daily updates (uv, github-actions, npm, pre-commit, docker, gomod), grouped minor/patch, no auto-merge. Use `/review-dep-pr` before merging
 - **Security scanning**: gitleaks (push/PR + weekly), zizmor (workflow analysis), OSSF Scorecard (weekly), Socket.dev (PR supply chain), ZAP DAST (weekly + manual, rules: `.github/zap-rules.tsv`)
 - **Coverage**: Codecov (best-effort, CI not gated on availability)
-- **Dependency review**: `dependency-review.yml` -- license allow-list (permissive only), PR comment summaries
+- **Dependency review**: `dependency-review.yml` -- license allow-list (permissive + weak-copyleft), per-package GPL exemptions for dev-only tool deps (golangci-lint), PR comment summaries
 - **CLA**: `cla.yml` -- contributor-assistant check on PRs, signatures in `.github/cla-signatures.json`
 - **Release**: `release.yml` -- Release Please creates draft release PR. Uses `RELEASE_PLEASE_TOKEN` (PAT)
 - **Dev Release**: `dev-release.yml` -- creates semver dev tags (e.g. `v0.4.7-dev.3`) and draft pre-releases on every push to main (skips Release Please version-bump commits). Tags trigger existing Docker + CLI workflows for full build/scan/sign pipeline. Incrementally prunes old dev pre-releases (keeps 5 most recent); finalize-release deletes all remaining when a stable release is published.

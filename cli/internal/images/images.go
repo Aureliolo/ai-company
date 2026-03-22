@@ -69,7 +69,7 @@ func ListLocal(ctx context.Context, dockerPath string) ([]LocalImage, error) {
 // LocalImage values, keeping only rows whose repository starts with
 // RepoPrefix.
 func parseImageList(raw string) []LocalImage {
-	var images []LocalImage
+	var result []LocalImage
 	for line := range strings.SplitSeq(strings.TrimSpace(strings.ReplaceAll(raw, "\r\n", "\n")), "\n") {
 		if line == "" {
 			continue
@@ -82,7 +82,7 @@ func parseImageList(raw string) []LocalImage {
 		if !strings.HasPrefix(repo, RepoPrefix) {
 			continue
 		}
-		images = append(images, LocalImage{
+		result = append(result, LocalImage{
 			Repository: repo,
 			Tag:        parts[1],
 			Size:       parts[2],
@@ -90,7 +90,7 @@ func parseImageList(raw string) []LocalImage {
 			Digest:     parts[4],
 		})
 	}
-	return images
+	return result
 }
 
 // InspectID returns the Docker image ID for the given image reference.
