@@ -10,6 +10,7 @@ import (
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/docker"
+	"github.com/Aureliolo/synthorg/cli/internal/images"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -65,13 +66,9 @@ func findOldImages(ctx context.Context, errOut io.Writer, info docker.Info, stat
 
 // listNonCurrentImages lists all SynthOrg images that are not in the
 // currentIDs set. Used by both findOldImages (which resolves current IDs
-// from state) and the cleanup command.
+// from state) and the uninstall command (with nil currentIDs to list all).
 func listNonCurrentImages(ctx context.Context, errOut io.Writer, info docker.Info, currentIDs map[string]bool) ([]oldImage, error) {
-	imageRef := imageRepoPrefix + "*"
-	// Include size in bytes for threshold calculations and digest for display.
-	allOut, listErr := docker.RunCmd(ctx, info.DockerPath, "images",
-		"--filter", "reference="+imageRef,
-		"--format", "{{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.ID}}\t{{.Digest}}")
+	all, listErr := images.ListLocal(ctx, info.DockerPath)
 	if listErr != nil {
 		_, _ = fmt.Fprintf(errOut, "Note: could not list images for cleanup: %v\n", listErr)
 		return nil, listErr
@@ -79,15 +76,8 @@ func listNonCurrentImages(ctx context.Context, errOut io.Writer, info docker.Inf
 
 	var old []oldImage
 	seen := make(map[string]bool)
-	for _, line := range strings.Split(strings.TrimSpace(strings.ReplaceAll(allOut, "\r\n", "\n")), "\n") {
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 5)
-		if len(parts) < 5 {
-			continue
-		}
-		repo, tag, sizeStr, id, digest := parts[0], parts[1], parts[2], parts[3], parts[4]
+	for _, img := range all {
+		id := img.ID
 		// currentIDs may be nil (when listing all images); reading a nil map
 		// returns the zero value (false), which is the intended behavior.
 		if !isValidDockerID(id) || currentIDs[id] || seen[id] {
@@ -95,9 +85,8 @@ func listNonCurrentImages(ctx context.Context, errOut io.Writer, info docker.Inf
 		}
 		seen[id] = true
 
-		// Build a human-readable display string.
-		display := buildImageDisplay(repo, tag, digest, sizeStr, id)
-		sizeB := parseDockerSize(sizeStr)
+		display := buildImageDisplay(img.Repository, img.Tag, img.Digest, img.Size, id)
+		sizeB := parseDockerSize(img.Size)
 		old = append(old, oldImage{display: display, id: id, sizeB: sizeB})
 	}
 	return old, nil
@@ -134,19 +123,15 @@ func buildImageDisplay(repo, tag, digest, size, id string) string {
 // Returns an error if any service ID cannot be resolved (to avoid
 // accidentally deleting current images).
 func collectCurrentImageIDs(ctx context.Context, info docker.Info, state config.State) (map[string]bool, error) {
-	services := []string{"backend", "web"}
-	if state.Sandbox {
-		services = append(services, "sandbox")
-	}
+	services := images.ServiceNames(state.Sandbox)
 
 	currentIDs := make(map[string]bool, len(services))
 	for _, svc := range services {
-		ref := imageRefForService(svc, state)
-		idOut, err := docker.RunCmd(ctx, info.DockerPath, "image", "inspect", ref, "--format", "{{.ID}}")
+		ref := images.RefForService(svc, state.ImageTag, state.VerifiedDigests)
+		id, err := images.InspectID(ctx, info.DockerPath, ref)
 		if err != nil {
 			return nil, fmt.Errorf("resolving image ID for %s: %w", svc, err)
 		}
-		id := strings.TrimSpace(idOut)
 		if id == "" {
 			return nil, fmt.Errorf("no image ID found for %s (image may not be pulled)", svc)
 		}

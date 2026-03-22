@@ -57,13 +57,13 @@ npm --prefix web run test                  # Vitest unit tests
 
 ### CLI (Go Binary)
 
-Note: Go tooling requires the module root as cwd. Use `go -C cli` which changes directory internally without affecting the shell. Never use `cd cli` -- it poisons the cwd for all subsequent Bash calls.
+Note: Go tooling requires the module root as cwd. Use `go -C cli` which changes directory internally without affecting the shell. Never use `cd cli` -- it poisons the cwd for all subsequent Bash calls. golangci-lint is registered as a `tool` in `cli/go.mod` so it runs via `go -C cli tool golangci-lint`.
 
 ```bash
 go -C cli build -o synthorg ./main.go                                  # build CLI
 go -C cli test ./...                                                   # run tests (fuzz targets run seed corpus only without -fuzz flag)
 go -C cli vet ./...                                                    # vet
-(cd cli && golangci-lint run)                                          # lint (no -C flag, use subshell)
+go -C cli tool golangci-lint run                                       # lint
 go -C cli test -fuzz=FuzzYamlStr -fuzztime=30s ./internal/compose/     # fuzz example
 ```
 
