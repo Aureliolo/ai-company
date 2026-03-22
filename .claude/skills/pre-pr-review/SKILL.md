@@ -205,19 +205,19 @@ Run these sequentially, fixing as we go:
 10. **Vet:**
 
    ```bash
-   cd cli && go vet ./...
+   go -C cli vet ./...
    ```
 
 11. **Test:**
 
    ```bash
-   cd cli && go test ./...
+   go -C cli test ./...
    ```
 
 12. **Build check:**
 
    ```bash
-   cd cli && go build ./...
+   go -C cli build ./...
    ```
 
 If steps 10-12 fail, fix the Go code and re-run.

@@ -121,11 +121,17 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
 
-          # Create draft pre-release + tag atomically. The draft follows the
-          # same lifecycle as stable releases: Docker + CLI workflows attach
-          # assets, then finalize-release publishes once both succeed.
-          gh release create "$DEV_TAG" \
-            --target "$GITHUB_SHA" \
+          # 1. Create the tag via API (PAT ensures the tag push triggers
+          #    downstream Docker + CLI workflows).
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$DEV_TAG" \
+            -f sha="$GITHUB_SHA"
+
+          # 2. Create a draft pre-release pointing at the tag. The draft
+          #    follows the same lifecycle as stable releases: Docker + CLI
+          #    workflows attach assets, then finalize-release publishes
+          #    once both succeed. Clean up the tag on failure.
+          if ! gh release create "$DEV_TAG" \
             --draft \
             --prerelease \
             --title "$DEV_TAG" \
@@ -134,7 +140,11 @@ jobs:
           **Commit:** ${SHORT_SHA}
           **Full pipeline:** Docker images, CLI binaries, cosign signatures, and SLSA provenance will be attached by downstream workflows.
 
-          > This is a pre-release for testing. Use \`synthorg config set channel dev\` to opt in."
+          > This is a pre-release for testing. Use \`synthorg config set channel dev\` to opt in."; then
+            echo "::warning::Release creation failed, cleaning up tag"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$DEV_TAG" || true
+            exit 1
+          fi
 
       - name: Clean up old dev pre-releases
         if: >-
