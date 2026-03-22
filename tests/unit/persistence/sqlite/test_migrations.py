@@ -50,6 +50,7 @@ _EXPECTED_INDEXES = {
     "idx_pc_approval_id",
     "idx_ae_timestamp",
     "idx_ae_agent_id",
+    "idx_users_role",
     "idx_ae_action_type",
     "idx_ae_verdict",
     "idx_ae_risk_level",
