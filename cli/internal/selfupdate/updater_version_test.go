@@ -46,13 +46,13 @@ func TestSplitDev(t *testing.T) {
 		wantNum  int
 		wantBase string
 	}{
-		{"0.4.7.dev3", 3, "0.4.7"},
-		{"0.4.7.dev1", 1, "0.4.7"},
-		{"0.4.7.dev0", 0, "0.4.7"},
+		{"0.4.7-dev.3", 3, "0.4.7"},
+		{"0.4.7-dev.1", 1, "0.4.7"},
+		{"0.4.7-dev.0", 0, "0.4.7"},
 		{"0.4.7", -1, "0.4.7"},
 		{"1.0.0", -1, "1.0.0"},
-		{"0.4.7.dev", -1, "0.4.7.dev"},       // empty suffix treated as stable
-		{"0.4.7.devNaN", -1, "0.4.7.devNaN"}, // non-numeric treated as stable
+		{"0.4.7-dev.", -1, "0.4.7-dev."},       // empty suffix treated as stable
+		{"0.4.7-dev.NaN", -1, "0.4.7-dev.NaN"}, // non-numeric treated as stable
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -72,12 +72,12 @@ func TestCompareWithDev(t *testing.T) {
 		wantCmp int // >0, 0, <0
 		wantErr bool
 	}{
-		{"stable beats same-base dev", "v0.4.7", "v0.4.7.dev3", 1, false},
-		{"higher dev beats lower dev", "v0.4.7.dev3", "v0.4.7.dev2", 1, false},
-		{"lower dev loses to higher dev", "v0.4.7.dev2", "v0.4.7.dev3", -1, false},
-		{"same dev equal", "v0.4.7.dev3", "v0.4.7.dev3", 0, false},
-		{"lower base loses despite stable", "v0.4.6", "v0.4.7.dev1", -1, false},
-		{"higher base wins despite dev", "v0.5.0", "v0.4.7.dev99", 1, false},
+		{"stable beats same-base dev", "v0.4.7", "v0.4.7-dev.3", 1, false},
+		{"higher dev beats lower dev", "v0.4.7-dev.3", "v0.4.7-dev.2", 1, false},
+		{"lower dev loses to higher dev", "v0.4.7-dev.2", "v0.4.7-dev.3", -1, false},
+		{"same dev equal", "v0.4.7-dev.3", "v0.4.7-dev.3", 0, false},
+		{"lower base loses despite stable", "v0.4.6", "v0.4.7-dev.1", -1, false},
+		{"higher base wins despite dev", "v0.5.0", "v0.4.7-dev.99", 1, false},
 		{"both stable equal", "v0.4.7", "v0.4.7", 0, false},
 		{"both stable different", "v0.4.8", "v0.4.7", 1, false},
 		{"overflow propagates error", "99999999999999999999.0.0", "v0.4.7", 0, true},
@@ -113,12 +113,12 @@ func TestIsDevUpdateAvailable(t *testing.T) {
 		want    bool
 		wantErr bool
 	}{
-		{"dev", "v0.4.7.dev1", true, false},
-		{"v0.4.7", "v0.4.7.dev3", false, false},             // stable beats dev at same base
-		{"v0.4.6", "v0.4.7.dev1", true, false},              // dev for higher base is an update
-		{"v0.4.7.dev2", "v0.4.7.dev3", true, false},         // higher dev number is an update
-		{"v0.4.7.dev3", "v0.4.7.dev2", false, false},        // lower dev number is not
-		{"v0.4.7.dev3", "v0.4.7", true, false},              // stable release is an update from dev
+		{"dev", "v0.4.7-dev.1", true, false},
+		{"v0.4.7", "v0.4.7-dev.3", false, false},            // stable beats dev at same base
+		{"v0.4.6", "v0.4.7-dev.1", true, false},             // dev for higher base is an update
+		{"v0.4.7-dev.2", "v0.4.7-dev.3", true, false},       // higher dev number is an update
+		{"v0.4.7-dev.3", "v0.4.7-dev.2", false, false},      // lower dev number is not
+		{"v0.4.7-dev.3", "v0.4.7", true, false},             // stable release is an update from dev
 		{"v0.4.7", "v0.4.7", false, false},                  // same stable, no update
 		{"99999999999999999999.0.0", "v0.4.7", false, true}, // overflow propagates error
 	}

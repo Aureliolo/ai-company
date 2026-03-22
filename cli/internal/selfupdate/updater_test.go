@@ -826,9 +826,9 @@ func TestDownloadBundleInvalidJSON(t *testing.T) {
 func TestCheckDevFromURL(t *testing.T) {
 	asset := assetName()
 	releases := []devRelease{
-		{TagName: "v0.4.7.dev3", Prerelease: true, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.7.dev3/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.7.dev3/checksums.txt"},
+		{TagName: "v0.4.7-dev.3", Prerelease: true, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.7-dev.3/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.7-dev.3/checksums.txt"},
 		}},
 		{TagName: "v0.4.6", Prerelease: false, Assets: []Asset{
 			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.6/" + asset},
@@ -846,18 +846,18 @@ func TestCheckDevFromURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CheckDevFromURL: %v", err)
 	}
-	// Dev v0.4.7.dev3 is newer than stable v0.4.6, so dev should be selected.
-	if result.LatestVersion != "v0.4.7.dev3" {
-		t.Errorf("LatestVersion = %q, want v0.4.7.dev3", result.LatestVersion)
+	// Dev v0.4.7-dev.3 is newer than stable v0.4.6, so dev should be selected.
+	if result.LatestVersion != "v0.4.7-dev.3" {
+		t.Errorf("LatestVersion = %q, want v0.4.7-dev.3", result.LatestVersion)
 	}
 }
 
 func TestCheckDevFromURLPrefersStable(t *testing.T) {
 	asset := assetName()
 	releases := []devRelease{
-		{TagName: "v0.4.7.dev3", Prerelease: true, Assets: []Asset{
-			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.7.dev3/" + asset},
-			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.7.dev3/checksums.txt"},
+		{TagName: "v0.4.7-dev.3", Prerelease: true, Assets: []Asset{
+			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.7-dev.3/" + asset},
+			{Name: "checksums.txt", BrowserDownloadURL: expectedURLPrefix + "v0.4.7-dev.3/checksums.txt"},
 		}},
 		{TagName: "v0.4.7", Prerelease: false, Assets: []Asset{
 			{Name: asset, BrowserDownloadURL: expectedURLPrefix + "v0.4.7/" + asset},
@@ -875,7 +875,7 @@ func TestCheckDevFromURLPrefersStable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CheckDevFromURL: %v", err)
 	}
-	// Stable v0.4.7 should beat dev v0.4.7.dev3 at same base version.
+	// Stable v0.4.7 should beat dev v0.4.7-dev.3 at same base version.
 	if result.LatestVersion != "v0.4.7" {
 		t.Errorf("LatestVersion = %q, want v0.4.7", result.LatestVersion)
 	}
@@ -884,7 +884,7 @@ func TestCheckDevFromURLPrefersStable(t *testing.T) {
 func TestCheckDevFromURLAllDrafts(t *testing.T) {
 	releases := []devRelease{
 		{TagName: "v0.4.7", Draft: true},
-		{TagName: "v0.4.7.dev1", Draft: true, Prerelease: true},
+		{TagName: "v0.4.7-dev.1", Draft: true, Prerelease: true},
 	}
 	body, _ := json.Marshal(releases)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

@@ -95,7 +95,7 @@ curl http://localhost:3000/api/v1/health   # backend (via web proxy)
 - **Images**: backend (Chainguard distroless, non-root), web (nginx-unprivileged, SPA + API proxy), sandbox (Python + Node.js, non-root)
 - **Config**: all Docker files in `docker/` -- Dockerfiles, compose, `.env.example`. Single root `.dockerignore` (all images build with `context: .`)
 - **Verification**: CLI verifies cosign signatures + SLSA provenance at pull time; bypass with `--skip-verify`
-- **Tags**: version from `pyproject.toml`, semver, SHA, plus dev tags (`v0.4.7.dev3`, `dev` rolling) for dev channel builds
+- **Tags**: version from `pyproject.toml`, semver, SHA, plus dev tags (`v0.4.7-dev.3`, `dev` rolling) for dev channel builds
 
 ## Package Structure
 
@@ -223,7 +223,7 @@ site/             # Astro landing page (synthorg.io)
 - **Version bumping** (pre-1.0): `fix:`/`feat:` = patch, `feat!:`/`BREAKING CHANGE` = minor. Post-1.0: standard semver
 - **`Release-As` trailer**: add `Release-As: 0.4.0` as the **final paragraph** of the PR body (separated by blank line). Mid-body placement is silently ignored.
 - **Release flow**: merge release PR -> draft Release + tag -> Docker + CLI workflows attach assets -> finalize-release publishes
-- **Dev channel**: every push to `main` (except Release Please bumps) creates a dev pre-release (e.g. `v0.4.7.dev3`) via `dev-release.yml`. Users opt in with `synthorg config set channel dev`. Dev releases flow through the same Docker + CLI pipelines as stable releases.
+- **Dev channel**: every push to `main` (except Release Please bumps) creates a dev pre-release (e.g. `v0.4.7-dev.3`) via `dev-release.yml`. Users opt in with `synthorg config set channel dev`. Dev releases flow through the same Docker + CLI pipelines as stable releases.
 - **Config**: `.github/release-please-config.json`, `.github/.release-please-manifest.json` (do not edit manually)
 - **Changelog**: `.github/CHANGELOG.md` (auto-generated, do not edit)
 - **Version locations**: `pyproject.toml` (`[tool.commitizen].version`), `src/synthorg/__init__.py` (`__version__`)
@@ -242,8 +242,8 @@ site/             # Astro landing page (synthorg.io)
 - **Dependency review**: `dependency-review.yml` -- license allow-list (permissive only), PR comment summaries
 - **CLA**: `cla.yml` -- contributor-assistant check on PRs, signatures in `.github/cla-signatures.json`
 - **Release**: `release.yml` -- Release Please creates draft release PR. Uses `RELEASE_PLEASE_TOKEN` (PAT)
-- **Dev Release**: `dev-release.yml` -- creates PEP 440 dev tags (e.g. `v0.4.7.dev3`) and GitHub pre-releases on every push to main (skips Release Please version-bump commits). Tags trigger existing Docker + CLI workflows for full build/scan/sign pipeline. Old dev pre-releases auto-cleaned (keeps 5 most recent).
-- **Finalize Release**: `finalize-release.yml` -- publishes draft after Docker + CLI workflows succeed for tag. Immutable releases enabled. Skips dev pre-releases.
+- **Dev Release**: `dev-release.yml` -- creates semver dev tags (e.g. `v0.4.7-dev.3`) and draft pre-releases on every push to main (skips Release Please version-bump commits). Tags trigger existing Docker + CLI workflows for full build/scan/sign pipeline. Old dev pre-releases auto-cleaned (keeps 5 most recent).
+- **Finalize Release**: `finalize-release.yml` -- publishes draft after Docker + CLI workflows succeed for tag. Immutable releases enabled. Handles both stable and dev releases.
 
 ## Dependencies
 
