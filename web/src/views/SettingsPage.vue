@@ -38,6 +38,12 @@ const loading = ref(true)
 // Advanced warning dialog
 const showWarningDialog = ref(false)
 
+// Local buffer for the toggle switch -- PrimeVue ToggleSwitch flips its visual
+// state on click before the handler fires, so we need a local ref that we can
+// explicitly reset on dialog cancel to keep the visual in sync with the store.
+const advancedToggleValue = ref(settingsStore.showAdvanced)
+watch(() => settingsStore.showAdvanced, (v) => { advancedToggleValue.value = v })
+
 // Tab management -- dynamic namespace tabs + user
 const allTabValues = computed(() => {
   return [...settingsStore.namespaces, 'user'] as string[]
@@ -79,12 +85,18 @@ onMounted(retryFetch)
 function handleAdvancedToggle() {
   const result = settingsStore.toggleAdvanced()
   if (result === 'needs_warning') {
+    // Store didn't change showAdvanced -- force local ref back to false
+    advancedToggleValue.value = false
     showWarningDialog.value = true
   }
 }
 
 function handleAdvancedConfirm() {
   settingsStore.confirmAdvanced()
+}
+
+function handleAdvancedCancel() {
+  advancedToggleValue.value = false
 }
 
 // Settings save/reset handlers
@@ -188,7 +200,7 @@ function getCodeMode(ns: string): 'json' | 'yaml' {
           <div class="flex items-center gap-2 text-sm text-slate-400">
             <span>Basic</span>
             <ToggleSwitch
-              :model-value="settingsStore.showAdvanced"
+              :model-value="advancedToggleValue"
               aria-label="Toggle advanced settings"
               @update:model-value="handleAdvancedToggle()"
             />
@@ -348,6 +360,7 @@ function getCodeMode(ns: string): 'json' | 'yaml' {
     <AdvancedWarningDialog
       v-model:visible="showWarningDialog"
       @confirm="handleAdvancedConfirm"
+      @cancel="handleAdvancedCancel"
     />
   </AppShell>
 </template>

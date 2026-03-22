@@ -381,6 +381,7 @@ async function handleCodeViewSave(updates: Array<{ namespace: SettingNamespace; 
       v-model:visible="deptDialogVisible"
       :mode="deptDialogMode"
       :department="editingDept"
+      :agent-names="agents.map(a => a.name)"
       @save="saveDept"
     />
     <ConfirmDialog />

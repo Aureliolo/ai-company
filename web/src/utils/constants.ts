@@ -107,6 +107,11 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
 /** sessionStorage key for the advanced-mode first-toggle warning. */
 export const SETTINGS_ADVANCED_WARNED_KEY = 'settings_advanced_warned'
 
+/** Settings that should never be shown in the GUI (internal/system-managed). */
+export const HIDDEN_SETTINGS = new Set([
+  'api/setup_complete',
+])
+
 /** Settings that are simple string arrays and should render as chip inputs in GUI mode. */
 export const SIMPLE_ARRAY_SETTINGS = new Set([
   'api/cors_allowed_origins',

@@ -65,7 +65,6 @@ class TestProviderSubscriberProtocol:
     def test_watched_keys(self) -> None:
         sub, _ = _make_subscriber()
         assert ("providers", "routing_strategy") in sub.watched_keys
-        assert ("providers", "default_provider") in sub.watched_keys
         assert ("providers", "retry_max_attempts") in sub.watched_keys
 
     def test_subscriber_name(self) -> None:
@@ -111,22 +110,6 @@ class TestProviderSubscriberRebuild:
         with pytest.raises(UnknownStrategyError):
             await sub.on_settings_changed("providers", "routing_strategy")
         # Old router is still in place (swap never called)
-        assert state.model_router is old_router
-
-    async def test_default_provider_change_is_noop(self) -> None:
-        cfg = RootConfig(company_name="test")
-        state = _make_state(cfg)
-        old_router = state.model_router
-
-        svc = AsyncMock()
-        svc.get = AsyncMock(return_value=_setting_value("some-provider"))
-        sub = ProviderSettingsSubscriber(
-            config=cfg,
-            app_state=state,
-            settings_service=svc,
-        )
-        await sub.on_settings_changed("providers", "default_provider")
-        # Router not swapped for advisory-only settings
         assert state.model_router is old_router
 
     async def test_retry_max_attempts_change_is_noop(self) -> None:

@@ -24,7 +24,7 @@ defineEmits<{
       <div class="flex gap-1">
         <Button
           icon="pi pi-pencil"
-          text
+          outlined
           rounded
           size="small"
           severity="secondary"
@@ -33,7 +33,7 @@ defineEmits<{
         />
         <Button
           icon="pi pi-trash"
-          text
+          outlined
           rounded
           size="small"
           severity="danger"

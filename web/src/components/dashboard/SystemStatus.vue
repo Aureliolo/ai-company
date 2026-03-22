@@ -22,7 +22,7 @@ defineProps<{
             health?.status === 'ok' ? 'text-green-400' : health ? 'text-yellow-400' : 'text-red-400',
           ]"
         >
-          {{ health?.status ?? 'Unreachable' }}
+          {{ health ? health.status.toUpperCase() : 'Unreachable' }}
         </span>
       </div>
 

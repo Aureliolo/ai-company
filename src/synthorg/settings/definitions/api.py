@@ -168,5 +168,6 @@ _r.register(
         default="false",
         description="Whether first-run setup has been completed",
         group="Setup",
+        level=SettingLevel.ADVANCED,
     )
 )

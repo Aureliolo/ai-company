@@ -16,6 +16,7 @@ const props = defineProps<{
   visible: boolean
   mode: 'create' | 'edit'
   department?: DepartmentEntry
+  agentNames?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -96,7 +97,9 @@ function tryParseJsonObject(text: string, label: string): Record<string, unknown
   }
 }
 
-const canSave = computed(() => name.value.trim().length > 0)
+const canSave = computed(() =>
+  name.value.trim().length > 0 && head.value.trim().length > 0,
+)
 
 function handleSave() {
   jsonError.value = null
@@ -109,13 +112,13 @@ function handleSave() {
 
   const dept: DepartmentEntry = {
     name: name.value.trim(),
+    head: head.value.trim(),
     budget_percent: budgetPercent.value ?? undefined,
     autonomy_level: autonomyLevel.value,
     teams: teams as DepartmentEntry['teams'],
     reporting_lines: reportingLines as DepartmentEntry['reporting_lines'],
     policies: policies as Record<string, unknown>,
   }
-  if (head.value.trim()) dept.head = head.value.trim()
 
   emit('save', dept)
   // Dialog close is controlled by the parent after async save succeeds
@@ -134,7 +137,9 @@ function handleSave() {
       <!-- Top-level fields -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label for="dept-name" class="mb-1 block text-xs text-slate-400">Name</label>
+          <label for="dept-name" class="mb-1 block text-xs text-slate-400">
+            Name <span class="text-red-400">*</span>
+          </label>
           <InputText
             id="dept-name"
             v-model="name"
@@ -144,12 +149,17 @@ function handleSave() {
           />
         </div>
         <div>
-          <label for="dept-head" class="mb-1 block text-xs text-slate-400">Head (agent name)</label>
-          <InputText
-            id="dept-head"
+          <label for="dept-head" class="mb-1 block text-xs text-slate-400">
+            Head (agent name) <span class="text-red-400">*</span>
+          </label>
+          <Select
+            input-id="dept-head"
             v-model="head"
+            :options="agentNames ?? []"
             class="w-full"
-            placeholder="e.g. agent-cto-001"
+            editable
+            show-clear
+            placeholder="Select or type agent name"
           />
         </div>
         <div>
@@ -182,18 +192,27 @@ function handleSave() {
         <AccordionPanel value="teams">
           <AccordionHeader>Teams</AccordionHeader>
           <AccordionContent>
+            <p class="mb-2 text-xs text-slate-400">
+              Array of team objects with name, lead, and members fields.
+            </p>
             <CodeEditor v-model="teamsJson" language="json" min-height="100px" />
           </AccordionContent>
         </AccordionPanel>
         <AccordionPanel value="reporting">
           <AccordionHeader>Reporting Lines</AccordionHeader>
           <AccordionContent>
+            <p class="mb-2 text-xs text-slate-400">
+              Array of objects with subordinate and supervisor agent names.
+            </p>
             <CodeEditor v-model="reportingLinesJson" language="json" min-height="100px" />
           </AccordionContent>
         </AccordionPanel>
         <AccordionPanel value="policies">
           <AccordionHeader>Policies</AccordionHeader>
           <AccordionContent>
+            <p class="mb-2 text-xs text-slate-400">
+              Object with review_requirements and approval_chains.
+            </p>
             <CodeEditor v-model="policiesJson" language="json" min-height="100px" />
           </AccordionContent>
         </AccordionPanel>

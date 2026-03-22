@@ -10,17 +10,6 @@ _r = get_registry()
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.PROVIDERS,
-        key="default_provider",
-        type=SettingType.STRING,
-        default=None,
-        description="Default LLM provider name for new tasks",
-        group="General",
-    )
-)
-
-_r.register(
-    SettingDefinition(
-        namespace=SettingNamespace.PROVIDERS,
         key="routing_strategy",
         type=SettingType.ENUM,
         default="cost_aware",

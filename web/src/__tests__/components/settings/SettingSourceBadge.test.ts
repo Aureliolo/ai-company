@@ -12,9 +12,9 @@ import SettingSourceBadge from '@/components/settings/SettingSourceBadge.vue'
 
 describe('SettingSourceBadge', () => {
   it.each([
-    ['db', 'Database', 'info'],
+    ['db', 'Custom', 'info'],
     ['env', 'Environment', 'warn'],
-    ['yaml', 'YAML', 'secondary'],
+    ['yaml', 'Config File', 'secondary'],
     ['default', 'Default', 'contrast'],
   ] as const)('renders %s source with label "%s" and severity "%s"', (source, label, severity) => {
     const wrapper = mount(SettingSourceBadge, { props: { source } })

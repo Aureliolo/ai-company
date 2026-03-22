@@ -18,7 +18,6 @@ logger = get_logger(__name__)
 
 _WATCHED: frozenset[tuple[str, str]] = frozenset(
     {
-        ("providers", "default_provider"),
         ("providers", "routing_strategy"),
         ("providers", "retry_max_attempts"),
     }
@@ -31,10 +30,10 @@ class ProviderSettingsSubscriber:
     On ``routing_strategy`` change, rebuilds :class:`ModelRouter`
     with the new strategy and swaps it into ``AppState``.
 
-    ``default_provider`` and ``retry_max_attempts`` are advisory-only:
-    they are read through :class:`ConfigResolver` at use time and do
-    not require a service rebuild.  They are watched so the operator
-    sees a log entry confirming the change was detected.
+    ``retry_max_attempts`` is advisory-only: it is read through
+    :class:`ConfigResolver` at use time and does not require a
+    service rebuild.  It is watched so the operator sees a log entry
+    confirming the change was detected.
 
     Errors during rebuild propagate to the dispatcher, which logs
     them with full subscriber context and continues to the next

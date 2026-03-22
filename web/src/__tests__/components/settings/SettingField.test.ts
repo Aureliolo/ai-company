@@ -128,7 +128,7 @@ describe('SettingField', () => {
     const wrapper = mount(SettingField, {
       props: { entry: makeEntry({ source: 'yaml' }), saving: false },
     })
-    expect(wrapper.text()).toContain('YAML')
+    expect(wrapper.text()).toContain('Config File')
   })
 
   it('shows advanced chip for advanced-level settings', () => {
@@ -388,5 +388,29 @@ describe('SettingField', () => {
     await saveBtn?.trigger('click')
 
     expect(wrapper.emitted('save')).toBeFalsy()
+  })
+
+  // ── Environment-sourced settings ────────────────────────────
+
+  it('disables input when source is env', () => {
+    const wrapper = mount(SettingField, {
+      props: { entry: makeEntry({ source: 'env' }), saving: false },
+    })
+    const input = wrapper.find('input[type="number"]')
+    expect(input.attributes('disabled')).toBeDefined()
+  })
+
+  it('shows environment variable message when source is env', () => {
+    const wrapper = mount(SettingField, {
+      props: { entry: makeEntry({ source: 'env' }), saving: false },
+    })
+    expect(wrapper.text()).toContain('Set via environment variable')
+  })
+
+  it('does not show environment message for non-env sources', () => {
+    const wrapper = mount(SettingField, {
+      props: { entry: makeEntry({ source: 'db' }), saving: false },
+    })
+    expect(wrapper.text()).not.toContain('Set via environment variable')
   })
 })

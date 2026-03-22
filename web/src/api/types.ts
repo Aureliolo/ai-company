@@ -981,7 +981,7 @@ export interface DepartmentReportingLine {
 
 export interface DepartmentEntry {
   name: string
-  head?: string
+  head: string
   budget_percent?: number
   teams?: DepartmentTeam[]
   reporting_lines?: DepartmentReportingLine[]
