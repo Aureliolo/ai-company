@@ -79,13 +79,16 @@ The framework supports multiple communication patterns, configurable per company
 
 === "Pattern 4: Hybrid"
 
-    **Recommended for Full Company**
-
     Combines all three patterns:
 
     - **Message bus** for async daily work and notifications
     - **Hierarchical delegation** for task assignment and approvals
     - **Meetings** for cross-team decisions and planning ceremonies
+
+Built-in templates select the communication pattern that fits their archetype (e.g.
+`event_driven` for Solo Founder and Research Lab, `hierarchical` for Agency and Full Company,
+`meeting_based` for Product Team). See the
+[Company Types table](organization.md#company-types) for per-template defaults.
 
 ---
 

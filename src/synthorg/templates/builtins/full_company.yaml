@@ -30,7 +30,7 @@ template:
     type: "full_company"
     budget_monthly: {{ budget | default(200.0) }}
     autonomy:
-      level: "semi"
+      level: "supervised"
 
   departments:
     - name: "executive"
@@ -243,4 +243,4 @@ template:
       department: "creative_marketing"
 
   workflow: "agile_kanban"
-  communication: "hybrid"
+  communication: "hierarchical"

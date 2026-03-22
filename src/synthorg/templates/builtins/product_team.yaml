@@ -106,4 +106,4 @@ template:
       department: "data_analytics"
 
   workflow: "agile_kanban"
-  communication: "hybrid"
+  communication: "meeting_based"

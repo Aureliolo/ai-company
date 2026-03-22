@@ -9,16 +9,16 @@ description: Company types, organizational hierarchy, department configuration, 
 
 SynthOrg provides pre-built company templates for common organizational patterns:
 
-| Template | Size | Roles | Use Case |
-|----------|------|-------|----------|
-| **Solo Founder** | 1-2 | CEO + Full-Stack Dev | Quick prototypes, solo projects |
-| **Startup** | 3-5 | CEO, CTO, 2 Devs, PM | Small projects, MVPs |
-| **Dev Shop** | 5-10 | Lead, Sr Dev, Jr Devs, QA, DevOps | Software development focus |
-| **Product Team** | 8-15 | PM, Designer, Devs, QA, Data Analyst | Product-focused development |
-| **Agency** | 10-20 | Multiple PMs, Designers, Devs, Content | Client work, multiple projects |
-| **Full Company** | 20-50+ | All departments, full hierarchy | Enterprise simulation |
-| **Research Lab** | 5-10 | Lead Researcher, Analysts, Engineers | Research and analysis |
-| **Custom** | Any | User-defined | Anything |
+| Template | Size | Autonomy | Communication | Workflow | Use Case |
+|----------|------|----------|---------------|----------|----------|
+| **Solo Founder** | 1-2 | full | event_driven | kanban | Quick prototypes, solo projects |
+| **Startup** | 3-5 | semi | hybrid | agile_kanban | Small projects, MVPs |
+| **Dev Shop** | 5-10 | semi | hybrid | agile_kanban | Software development focus |
+| **Product Team** | 8-15 | semi | meeting_based | agile_kanban | Product-focused development |
+| **Agency** | 10-20 | supervised | hierarchical | kanban | Client work, multiple projects |
+| **Full Company** | 20-50+ | supervised | hierarchical | agile_kanban | Enterprise simulation |
+| **Research Lab** | 5-10 | full | event_driven | kanban | Research and analysis |
+| **Custom** | Any | semi | hybrid | agile_kanban | Anything |
 
 See the [Template System](#template-system) section for details on how templates are defined,
 inherited, and customized.
@@ -173,8 +173,8 @@ template:
       model: "medium"
       personality_preset: "strategic_planner"
 
-  workflow: "agile_kanban"
-  communication: "hybrid"
+  workflow: "agile_kanban"     # operational configs vary per template --
+  communication: "hybrid"      # see Company Types table for each template's defaults
 
   workflow_handoffs:
     - from_department: "engineering"
