@@ -21,6 +21,7 @@ export const useSetupStore = defineStore('setup', () => {
     welcome: false,
     admin: false,
     provider: false,
+    names: false,
     company: false,
     review: false,
   })
@@ -52,12 +53,14 @@ export const useSetupStore = defineStore('setup', () => {
     if (!status.value) return
     const adminDone = !status.value.needs_admin
     const providerDone = adminDone && status.value.has_providers
-    const companyDone = providerDone && status.value.has_company
+    const namesDone = providerDone && status.value.has_name_locales
+    const companyDone = namesDone && status.value.has_company
     const reviewDone = companyDone && status.value.has_agents
     completedSteps.value = {
       welcome: currentStep.value > 0,
       admin: adminDone,
       provider: providerDone,
+      names: namesDone,
       company: companyDone,
       review: reviewDone,
     }
@@ -101,6 +104,28 @@ export const useSetupStore = defineStore('setup', () => {
 
   function setAgents(newAgents: SetupAgentSummary[]) {
     agents.value = newAgents
+  }
+
+  async function fetchNameLocales(): Promise<string[]> {
+    error.value = null
+    try {
+      const result = await setupApi.getNameLocales()
+      return result.locales
+    } catch (err) {
+      error.value = getErrorMessage(err)
+      throw err
+    }
+  }
+
+  async function saveNameLocales(locales: string[]) {
+    error.value = null
+    try {
+      await setupApi.saveNameLocales({ locales })
+      await fetchStatus()
+    } catch (err) {
+      error.value = getErrorMessage(err)
+      throw err
+    }
   }
 
   async function fetchAgents() {
@@ -179,6 +204,8 @@ export const useSetupStore = defineStore('setup', () => {
     syncCompletionFromStatus,
     fetchStatus,
     fetchTemplates,
+    fetchNameLocales,
+    saveNameLocales,
     setAgents,
     fetchAgents,
     updateAgentModel,

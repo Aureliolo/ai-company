@@ -356,6 +356,7 @@ template:
 
   agents:
     - role: "Data Analyst"
+      name: "Kai Analytics"
       level: "mid"
       model: "medium"
       personality_preset: "data_driven_optimizer"

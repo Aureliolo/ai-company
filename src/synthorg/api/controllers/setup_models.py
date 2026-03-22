@@ -16,6 +16,7 @@ class SetupStatusResponse(BaseModel):
         needs_admin: True if no user with the CEO role exists yet.
         needs_setup: True if setup has not been completed.
         has_providers: True if at least one provider is configured.
+        has_name_locales: True if name locale preferences have been configured.
         has_company: True if a company name has been set.
         has_agents: True if at least one agent has been created.
         min_password_length: Backend-configured minimum password length.
@@ -26,6 +27,7 @@ class SetupStatusResponse(BaseModel):
     needs_admin: bool
     needs_setup: bool
     has_providers: bool
+    has_name_locales: bool
     has_company: bool
     has_agents: bool
     min_password_length: int = Field(ge=8)
@@ -214,6 +216,45 @@ class SetupAgentsListResponse(BaseModel):
     def agent_count(self) -> int:
         """Number of agents currently configured."""
         return len(self.agents)
+
+
+class SetupNameLocalesRequest(BaseModel):
+    """Name locale selection payload.
+
+    Attributes:
+        locales: List of Faker locale codes (1--100 entries), or
+            ``["__all__"]`` for all Latin-script locales.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    locales: list[NotBlankStr] = Field(min_length=1, max_length=100)
+
+
+class SetupNameLocalesResponse(BaseModel):
+    """Current name locale configuration.
+
+    Attributes:
+        locales: Stored locale codes (``["__all__"]`` if worldwide).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    locales: list[NotBlankStr]
+
+
+class AvailableLocalesResponse(BaseModel):
+    """Available locales grouped by region.
+
+    Attributes:
+        regions: Mapping of region display name to locale codes.
+        display_names: Mapping of locale code to human-readable name.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    regions: dict[str, list[str]]
+    display_names: dict[str, str]
 
 
 class SetupCompleteResponse(BaseModel):

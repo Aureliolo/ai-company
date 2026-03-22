@@ -26,6 +26,7 @@ template:
 
   agents:
     - role: "Backend Developer"
+      name: "Test Backend Dev"
       level: "mid"
       model: "medium"
       department: "engineering"
@@ -112,6 +113,7 @@ template:
 
   agents:
     - role: "QA Engineer"
+      name: "Ava Testington"
       level: "mid"
       model: "small"
       personality_preset: "quality_guardian"
@@ -132,6 +134,7 @@ template:
 
   agents:
     - role: "Full-Stack Developer"
+      name: "Override Dev Lead"
       level: "lead"
       model: "large"
       personality_preset: "visionary_leader"
@@ -155,6 +158,7 @@ template:
       department: "engineering"
       _remove: true
     - role: "Backend Developer"
+      name: "Liam Codsworth"
       level: "senior"
       model: "medium"
       personality_preset: "pragmatic_builder"
@@ -175,6 +179,7 @@ template:
 
   agents:
     - role: "Backend Developer"
+      name: "Circular Dev"
       level: "mid"
       model: "medium"
       department: "engineering"

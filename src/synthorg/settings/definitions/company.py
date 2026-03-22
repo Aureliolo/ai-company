@@ -65,6 +65,22 @@ _r.register(
 _r.register(
     SettingDefinition(
         namespace=SettingNamespace.COMPANY,
+        key="name_locales",
+        type=SettingType.JSON,
+        default='["__all__"]',
+        description=(
+            "Faker locales for agent name generation. "
+            'Use ["__all__"] for all Latin-script locales or a list of '
+            'locale codes (e.g. ["en_US", "fr_FR", "de_DE"]).'
+        ),
+        group="Names",
+        yaml_path="name_locales",
+    )
+)
+
+_r.register(
+    SettingDefinition(
+        namespace=SettingNamespace.COMPANY,
         key="agents",
         type=SettingType.JSON,
         default=None,

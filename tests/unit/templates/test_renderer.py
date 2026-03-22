@@ -134,18 +134,17 @@ class TestRenderTemplateAgents:
         names = [a.name for a in config.agents]
         assert len(names) == len(set(names))
 
-    def test_agent_name_from_jinja2(self) -> None:
+    def test_agent_name_from_template(self) -> None:
         loaded = load_template("solo_founder")
         config = render_template(loaded, variables={"company_name": "ACME"})
-        # The CEO agent's name is "{{ company_name }} CEO" → "ACME CEO".
+        # The CEO agent has an explicit name in the template.
         ceo_agents = [a for a in config.agents if a.role == "CEO"]
         assert len(ceo_agents) == 1
-        assert "ACME" in ceo_agents[0].name
+        assert ceo_agents[0].name == "Nia Oduya"
 
-    def test_auto_name_for_unnamed_agents(self) -> None:
+    def test_agents_have_nonempty_names(self) -> None:
         loaded = load_template("research_lab")
         config = render_template(loaded)
-        # research_lab agents don't have explicit names.
         for agent in config.agents:
             assert agent.name != ""
             assert len(agent.name) > 0
@@ -584,3 +583,35 @@ class TestRosterCounts:
         assert default_backend == 3
         assert override_backend == 5
         assert override_backend - default_backend == 2
+
+
+@pytest.mark.unit
+class TestJinja2PlaceholderAutoName:
+    """Agent names containing __JINJA2__ trigger auto-name generation."""
+
+    def test_jinja2_placeholder_triggers_auto_name(self) -> None:
+        """An agent name containing __JINJA2__ is replaced by an auto-name."""
+        from synthorg.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "Backend Developer",
+            "name": "__JINJA2__ Dev",
+            "department": "engineering",
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        # The auto-generated name should NOT contain the placeholder.
+        assert "__JINJA2__" not in result["name"]
+        assert len(result["name"]) > 0
+
+    def test_jinja2_placeholder_exact_match(self) -> None:
+        """An agent name that is exactly __JINJA2__ is auto-named."""
+        from synthorg.templates.renderer import _expand_single_agent
+
+        agent: dict[str, object] = {
+            "role": "CEO",
+            "name": "__JINJA2__",
+            "department": "executive",
+        }
+        result = _expand_single_agent(agent, 0, set(), has_extends=False)
+        assert "__JINJA2__" not in result["name"]
+        assert len(result["name"]) > 0

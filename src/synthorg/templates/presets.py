@@ -1,10 +1,11 @@
 """Personality presets and auto-name generation for templates.
 
 Provides comprehensive personality presets with Big Five dimensions
-and behavioral enums, plus role-aware auto-name generation.
+and behavioral enums, plus internationally diverse auto-name generation
+backed by the Faker library.
 """
 
-import random
+import functools
 from types import MappingProxyType
 from typing import Any
 
@@ -348,60 +349,6 @@ PERSONALITY_PRESETS: MappingProxyType[str, MappingProxyType[str, Any]] = (
 )
 del _RAW_PRESETS
 
-# Role-aware auto-generated name pools (gender-neutral names).
-_AUTO_NAMES: MappingProxyType[str, tuple[str, ...]] = MappingProxyType(
-    {
-        "ceo": ("Alex Chen", "Jordan Park", "Morgan Lee", "Taylor Kim"),
-        "cto": ("Quinn Zhang", "Sage Patel", "Avery Nakamura", "Reese Torres"),
-        "cfo": ("Drew Collins", "Casey Rivera", "Blake Morrison", "Ellis Ward"),
-        "coo": ("Rowan Blake", "Finley Cruz", "Emery Santos", "Harper Quinn"),
-        "cpo": ("Phoenix Reed", "Kendall Brooks", "Harley Stone", "Lennox Hayes"),
-        "full-stack developer": ("Riley Sharma", "Dakota Wei", "Skyler Okafor"),
-        "backend developer": ("Cameron Ito", "Hayden Reyes", "Jamie Novak"),
-        "frontend developer": ("Kai Jensen", "Noel Andersen", "Sage Hoffman"),
-        "product manager": ("Emery Cho", "Phoenix Larsen", "Lennox Dunn"),
-        "qa lead": ("Jordan Vega", "Taylor Marsh", "Morgan Frost"),
-        "qa engineer": ("Riley Tran", "Avery Grant", "Blake Russell"),
-        "devops/sre engineer": ("Quinn Mercer", "Drew Kemp", "Casey Mills"),
-        "software architect": ("Sage Holloway", "Rowan Fischer", "Emery Drake"),
-        "ux designer": ("Kai Sinclair", "Harper Lane", "Noel Ashford"),
-        "ui designer": ("Finley Archer", "Lennox Byrne", "Phoenix Dale"),
-        "data analyst": ("Drew Hartley", "Casey Lowe", "Blake Summers"),
-        "data engineer": ("Reese Gallagher", "Jordan Holt", "Taylor Crane"),
-        "security engineer": ("Quinn Steele", "Morgan Wolfe", "Avery Knox"),
-        "content writer": ("Harper Ellis", "Kendall Frost", "Sage Monroe"),
-        "scrum master": ("Rowan Calloway", "Emery Dalton", "Finley Whitmore"),
-        "hr manager": ("Casey Pemberton", "Drew Langford", "Morgan Ashworth"),
-        "ml engineer": ("Quinn Fairchild", "Sage Navarro", "Avery Thornton"),
-        "performance engineer": (
-            "Jordan Blackwell",
-            "Taylor Winslow",
-            "Blake Prescott",
-        ),
-        "automation engineer": (
-            "Riley Kendrick",
-            "Dakota Ellsworth",
-            "Skyler Hargrove",
-        ),
-        "brand strategist": (
-            "Phoenix Carmichael",
-            "Lennox Whitfield",
-            "Kendall Beaumont",
-        ),
-        "growth marketer": ("Harper Kingsley", "Noel Radcliffe", "Kai Vandermeer"),
-        "ux researcher": ("Finley Lockwood", "Emery Ashford", "Rowan Sinclair"),
-        "technical writer": ("Drew Fairbanks", "Casey Ellington", "Blake Holcombe"),
-        "database engineer": ("Reese Northcott", "Jordan Aldridge", "Taylor Wyndham"),
-        "security operations": (
-            "Quinn Blackwood",
-            "Morgan Westbrook",
-            "Avery Cartwright",
-        ),
-        "project manager": ("Sage Pembroke", "Harley Kensington", "Lennox Beaufort"),
-        "_default": ("Agent Alpha", "Agent Beta", "Agent Gamma", "Agent Delta"),
-    }
-)
-
 
 def get_personality_preset(name: str) -> dict[str, Any]:
     """Look up a personality preset by name.
@@ -447,20 +394,79 @@ _validate_presets()
 del _validate_presets
 
 
-def generate_auto_name(role: str, *, seed: int | None = None) -> str:
-    """Generate a contextual agent name based on role.
+def generate_auto_name(
+    role: str,  # noqa: ARG001
+    *,
+    seed: int | None = None,
+    locales: list[str] | None = None,
+) -> str:
+    """Generate an internationally diverse agent name using Faker.
 
-    Uses a deterministic PRNG when *seed* is provided, ensuring
-    reproducible name generation across runs.
+    When *seed* is provided, a local ``random.Random`` deterministically
+    selects a locale, then a **fresh** single-locale Faker instance
+    generates the name -- the cached instance is never mutated.
+
+    The *role* parameter is accepted because callers
+    (``setup_agents.py``, ``renderer.py``) pass it positionally;
+    it does not influence name generation.
 
     Args:
-        role: The agent's role name.
+        role: The agent's role name.  Unused since the switch from
+            role-based name pools to Faker.
         seed: Optional random seed for deterministic naming.
+        locales: Faker locale codes to draw from.  Defaults to all
+            Latin-script locales when ``None`` or empty.
 
     Returns:
-        A generated agent name string.
+        A generated full name string.
     """
-    key = role.strip().lower()
-    pool = _AUTO_NAMES.get(key, _AUTO_NAMES["_default"])
-    rng = random.Random(seed)  # noqa: S311
-    return rng.choice(pool)
+    import random  # noqa: PLC0415
+
+    from faker import Faker  # noqa: PLC0415
+
+    from synthorg.templates.locales import ALL_LATIN_LOCALES  # noqa: PLC0415
+
+    locale_list = locales or list(ALL_LATIN_LOCALES)
+    try:
+        if seed is not None:
+            rng = random.Random(seed)  # noqa: S311
+            chosen_locale = rng.choice(locale_list)
+            # Fresh instance -- never mutate the shared cached one.
+            fake = Faker([chosen_locale])
+            fake.seed_instance(seed)
+        else:
+            fake = _get_faker(tuple(locale_list))
+        return str(fake.name())
+    except MemoryError, RecursionError:
+        raise
+    except Exception:
+        from synthorg.observability.events.template import (  # noqa: PLC0415
+            TEMPLATE_NAME_GEN_FAKER_ERROR,
+        )
+
+        logger.warning(
+            TEMPLATE_NAME_GEN_FAKER_ERROR,
+            locales=locale_list[:5],
+            seed=seed,
+            exc_info=True,
+        )
+        # Fall back to a known-safe locale.
+        fallback = Faker(["en_US"])
+        if seed is not None:
+            fallback.seed_instance(seed)
+        return str(fallback.name())
+
+
+@functools.lru_cache(maxsize=128)
+def _get_faker(locale_tuple: tuple[str, ...]) -> Any:
+    """Return a cached Faker instance for the given locale tuple.
+
+    Caching avoids re-initialising locale providers on every call.
+    The cache is keyed by locale tuple (immutable, hashable).
+
+    Only used for the **unseeded** path; seeded callers must create
+    a fresh instance to avoid mutating shared state.
+    """
+    from faker import Faker  # noqa: PLC0415
+
+    return Faker(list(locale_tuple))

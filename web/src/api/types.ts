@@ -833,6 +833,7 @@ export interface SetupStatusResponse {
   needs_admin: boolean
   needs_setup: boolean
   has_providers: boolean
+  has_name_locales: boolean
   has_company: boolean
   has_agents: boolean
   min_password_length: number
@@ -903,6 +904,19 @@ export interface UpdateAgentModelRequest {
 export interface SetupAgentsListResponse {
   agents: SetupAgentSummary[]
   agent_count: number
+}
+
+export interface SetupNameLocalesRequest {
+  locales: string[]
+}
+
+export interface SetupNameLocalesResponse {
+  locales: string[]
+}
+
+export interface AvailableLocalesResponse {
+  regions: Record<string, string[]>
+  display_names: Record<string, string>
 }
 
 // ── Settings ────────────────────────────────────────────────

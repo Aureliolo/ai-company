@@ -37,7 +37,10 @@ logger = get_logger(__name__)
 _REQUIRED_AGENT_KEYS: frozenset[str] = frozenset({"name", "role"})
 
 
-def expand_template_agents(template: CompanyTemplate) -> list[dict[str, Any]]:
+def expand_template_agents(
+    template: CompanyTemplate,
+    locales: list[str] | None = None,
+) -> list[dict[str, Any]]:
     """Expand template agent configs into persistable agent dicts.
 
     Uses the same building blocks as the renderer (personality presets,
@@ -46,6 +49,8 @@ def expand_template_agents(template: CompanyTemplate) -> list[dict[str, Any]]:
 
     Args:
         template: Parsed ``CompanyTemplate`` from the loader.
+        locales: Faker locale codes for name generation.  ``None``
+            uses all Latin-script locales.
 
     Returns:
         List of agent config dicts with ``tier`` metadata.
@@ -60,8 +65,8 @@ def expand_template_agents(template: CompanyTemplate) -> list[dict[str, Any]]:
 
     for idx, agent_cfg in enumerate(template.agents):
         name = agent_cfg.name.strip() if agent_cfg.name else ""
-        if not name or name.startswith("{{"):
-            name = generate_auto_name(agent_cfg.role, seed=idx)
+        if not name or name.startswith("{{") or "__JINJA2__" in name:
+            name = generate_auto_name(agent_cfg.role, seed=idx, locales=locales)
 
         # Deduplicate names.
         base_name = name

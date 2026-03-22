@@ -1,12 +1,15 @@
 import { apiClient, unwrap } from '../client'
 import type {
   ApiResponse,
+  AvailableLocalesResponse,
   SetupAgentRequest,
   SetupAgentResponse,
   SetupAgentSummary,
   SetupAgentsListResponse,
   SetupCompanyRequest,
   SetupCompanyResponse,
+  SetupNameLocalesRequest,
+  SetupNameLocalesResponse,
   SetupStatusResponse,
   TemplateInfoResponse,
   UpdateAgentModelRequest,
@@ -50,6 +53,21 @@ export async function updateAgentModel(
     `/setup/agents/${index}/model`,
     data,
   )
+  return unwrap(response)
+}
+
+export async function getAvailableLocales(): Promise<AvailableLocalesResponse> {
+  const response = await apiClient.get<ApiResponse<AvailableLocalesResponse>>('/setup/name-locales/available')
+  return unwrap(response)
+}
+
+export async function getNameLocales(): Promise<SetupNameLocalesResponse> {
+  const response = await apiClient.get<ApiResponse<SetupNameLocalesResponse>>('/setup/name-locales')
+  return unwrap(response)
+}
+
+export async function saveNameLocales(data: SetupNameLocalesRequest): Promise<SetupNameLocalesResponse> {
+  const response = await apiClient.put<ApiResponse<SetupNameLocalesResponse>>('/setup/name-locales', data)
   return unwrap(response)
 }
 
