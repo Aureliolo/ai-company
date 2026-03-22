@@ -376,10 +376,10 @@ class UserRepository(Protocol):
         ...
 
     async def list_users(self) -> tuple[User, ...]:
-        """List all users.
+        """List all human users (excludes the system user).
 
         Returns:
-            All users as a tuple.
+            Human users as a tuple.
 
         Raises:
             PersistenceError: If the operation fails.
@@ -387,10 +387,10 @@ class UserRepository(Protocol):
         ...
 
     async def count(self) -> int:
-        """Count the number of users.
+        """Count the number of human users (excludes the system user).
 
         Returns:
-            Total user count.
+            Human user count.
 
         Raises:
             PersistenceError: If the operation fails.

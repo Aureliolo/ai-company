@@ -220,16 +220,22 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
 
     async def list_users(self) -> tuple[User, ...]:
-        """List all users ordered by creation date.
+        """List all human users ordered by creation date.
+
+        The system user (internal CLI identity) is excluded from the
+        result.  Use ``get`` with the system user ID if you need it.
 
         Returns:
-            Tuple of all ``User`` records, oldest first.
+            Tuple of human ``User`` records, oldest first.
 
         Raises:
             QueryError: If the database query or deserialization fails.
         """
         try:
-            cursor = await self._db.execute("SELECT * FROM users ORDER BY created_at")
+            cursor = await self._db.execute(
+                "SELECT * FROM users WHERE role != ? ORDER BY created_at",
+                (HumanRole.SYSTEM.value,),
+            )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list users"
@@ -245,7 +251,7 @@ ON CONFLICT(id) DO UPDATE SET
         return users
 
     async def count(self) -> int:
-        """Return the total number of persisted users.
+        """Return the number of human users (excludes system user).
 
         Returns:
             Non-negative integer count.
@@ -254,7 +260,10 @@ ON CONFLICT(id) DO UPDATE SET
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute("SELECT COUNT(*) FROM users")
+            cursor = await self._db.execute(
+                "SELECT COUNT(*) FROM users WHERE role != ?",
+                (HumanRole.SYSTEM.value,),
+            )
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count users"

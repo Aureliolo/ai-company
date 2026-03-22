@@ -41,6 +41,7 @@ API_AUTH_PASSWORD_CHANGED: Final[str] = "api.auth.password_changed"  # noqa: S10
 API_TASK_TRANSITION_FAILED: Final[str] = "api.task.transition_failed"
 API_TASK_MUTATION_FAILED: Final[str] = "api.task.mutation_failed"
 API_TASK_CREATED_BY_MISMATCH: Final[str] = "api.task.created_by_mismatch"
+API_AUTH_SYSTEM_USER_ENSURED: Final[str] = "api.auth.system_user_ensured"
 API_AUTH_FALLBACK: Final[str] = "api.auth.fallback"
 API_ROUTE_NOT_FOUND: Final[str] = "api.route.not_found"
 API_COORDINATION_STARTED: Final[str] = "api.coordination.started"

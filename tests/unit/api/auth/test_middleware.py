@@ -384,3 +384,99 @@ class TestAuthMiddlewareExcludePaths:
         with TestClient(app) as client:
             resp = client.get("/public")
             assert resp.status_code == 200
+
+
+@pytest.mark.unit
+class TestAuthMiddlewareSystemUser:
+    """System user JWTs (from CLI) skip pwd_sig validation."""
+
+    async def test_system_user_jwt_without_pwd_sig_authenticates(
+        self,
+    ) -> None:
+        """CLI-style JWT with sub=system and no pwd_sig passes auth."""
+        import jwt as pyjwt
+
+        svc = _make_auth_service()
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+
+        # Create system user with random hash (like ensure_system_user does)
+        now = datetime.now(UTC)
+        system_user = User(
+            id="system",
+            username="system",
+            password_hash=svc.hash_password("random-password-12chars"),
+            role=HumanRole.SYSTEM,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        await persistence.users.save(system_user)
+
+        # Build a CLI-style JWT (no pwd_sig, no username, no role, no aud)
+        token = pyjwt.encode(
+            {
+                "sub": "system",
+                "iss": "synthorg-cli",
+                "iat": now,
+                "exp": now + timedelta(seconds=60),
+            },
+            _SECRET,
+            algorithm="HS256",
+        )
+
+        app = _build_app(auth_service=svc, persistence=persistence)
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 200
+
+    async def test_system_user_resolves_to_system_role(self) -> None:
+        """Middleware resolves system user JWT to SYSTEM role."""
+        import jwt as pyjwt
+
+        from synthorg.api.auth.middleware import _resolve_jwt_user
+
+        svc = _make_auth_service()
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+
+        now = datetime.now(UTC)
+        system_user = User(
+            id="system",
+            username="system",
+            password_hash=svc.hash_password("random-password-12chars"),
+            role=HumanRole.SYSTEM,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        await persistence.users.save(system_user)
+
+        # Build minimal claims (no pwd_sig)
+        claims = svc.decode_token(
+            pyjwt.encode(
+                {
+                    "sub": "system",
+                    "iat": now,
+                    "exp": now + timedelta(seconds=60),
+                },
+                _SECRET,
+                algorithm="HS256",
+            ),
+        )
+
+        class _FakeAppState:
+            def __init__(self) -> None:
+                self.persistence = persistence
+
+        result = await _resolve_jwt_user(
+            claims,
+            _FakeAppState(),  # type: ignore[arg-type]
+            "/admin/backups",
+        )
+        assert result is not None
+        assert result.role == HumanRole.SYSTEM
+        assert result.user_id == "system"

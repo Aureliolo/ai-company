@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.api.auth.service import AuthService  # noqa: TC001
+from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.auth.ticket_store import TicketLimitExceededError
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ConflictError, UnauthorizedError
@@ -278,8 +279,8 @@ class AuthController(Controller):
         auth_service: AuthService = app_state.auth_service
         persistence = app_state.persistence
 
-        user_count = await persistence.users.count()
-        if user_count > 0:
+        ceo_count = await persistence.users.count_by_role(HumanRole.CEO)
+        if ceo_count > 0:
             logger.warning(API_AUTH_FAILED, reason="setup_already_completed")
             msg = "Setup already completed"
             raise ConflictError(msg)
@@ -298,8 +299,8 @@ class AuthController(Controller):
         await persistence.users.save(user)
 
         # Race guard: undo if another setup completed concurrently
-        post_count = await persistence.users.count()
-        if post_count > 1:
+        post_ceo_count = await persistence.users.count_by_role(HumanRole.CEO)
+        if post_ceo_count > 1:
             await persistence.users.delete(user.id)
             logger.warning(API_AUTH_FAILED, reason="setup_race_detected")
             msg = "Setup already completed"
@@ -341,7 +342,12 @@ class AuthController(Controller):
         persistence = app_state.persistence
 
         user = await persistence.users.get_by_username(data.username)
-        if user is not None:
+        if user is not None and is_system_user(user.id):
+            # System user cannot log in -- run dummy hash for
+            # constant-time rejection (prevent timing enumeration).
+            await auth_service.verify_password_async(data.password, _DUMMY_ARGON2_HASH)
+            password_valid = False
+        elif user is not None:
             password_valid = await auth_service.verify_password_async(
                 data.password, user.password_hash
             )
@@ -393,6 +399,10 @@ class AuthController(Controller):
         if not isinstance(auth_user, AuthenticatedUser):
             msg = "Authentication required"
             raise UnauthorizedError(msg)
+        if is_system_user(auth_user.user_id):
+            raise PermissionDeniedException(
+                detail="System user cannot be modified",
+            )
         app_state = request.app.state["app_state"]
         auth_service: AuthService = app_state.auth_service
         persistence = app_state.persistence

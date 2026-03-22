@@ -189,7 +189,7 @@ func TestBuildLocalJWT(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decoding payload: %v", err)
 	}
-	for _, claim := range []string{`"sub":"synthorg-cli"`, `"iss":"synthorg-cli"`, `"aud":"synthorg-backend"`} {
+	for _, claim := range []string{`"sub":"system"`, `"iss":"synthorg-cli"`} {
 		if !strings.Contains(string(payloadJSON), claim) {
 			t.Errorf("payload missing claim %s: %s", claim, payloadJSON)
 		}

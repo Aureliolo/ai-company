@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from synthorg.api.auth.secret import resolve_jwt_secret
 from synthorg.api.auth.service import AuthService
+from synthorg.api.auth.system_user import ensure_system_user
 from synthorg.backup.models import BackupTrigger
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import API_APP_SHUTDOWN, API_APP_STARTUP
@@ -199,6 +200,7 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             # if migrate() or JWT resolution fails below.
             started_persistence = True
             await _init_persistence(persistence, app_state)
+            await ensure_system_user(persistence)
 
         if message_bus is not None:
             try:

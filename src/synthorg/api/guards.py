@@ -23,6 +23,7 @@ class HumanRole(StrEnum):
     BOARD_MEMBER = "board_member"
     PAIR_PROGRAMMER = "pair_programmer"
     OBSERVER = "observer"
+    SYSTEM = "system"
 
 
 _WRITE_ROLES: frozenset[HumanRole] = frozenset(
@@ -31,6 +32,7 @@ _WRITE_ROLES: frozenset[HumanRole] = frozenset(
         HumanRole.MANAGER,
         HumanRole.BOARD_MEMBER,
         HumanRole.PAIR_PROGRAMMER,
+        HumanRole.SYSTEM,
     }
 )
 _READ_ROLES: frozenset[HumanRole] = _WRITE_ROLES | frozenset({HumanRole.OBSERVER})
@@ -60,7 +62,7 @@ def require_write_access(
     """Guard that allows only write-capable roles.
 
     Checks ``connection.user.role`` for ``ceo``, ``manager``,
-    ``board_member``, or ``pair_programmer``.
+    ``board_member``, ``pair_programmer``, or ``system``.
 
     Args:
         connection: The incoming connection.

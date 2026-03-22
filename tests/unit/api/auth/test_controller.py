@@ -377,3 +377,121 @@ class TestWsTicket:
 
         # Single-use: second consume fails
         assert app_state.ticket_store.validate_and_consume(ticket) is None
+
+
+@pytest.mark.unit
+class TestSystemUserBlocking:
+    """Verify the system user cannot log in or change its password."""
+
+    def test_login_rejects_system_user(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        """System user login returns 401 (same as invalid credentials)."""
+        from datetime import UTC, datetime
+
+        from synthorg.api.auth.models import User
+        from synthorg.api.auth.system_user import (
+            SYSTEM_USER_ID,
+            SYSTEM_USERNAME,
+        )
+
+        # Seed a system user directly
+        app_state = bare_client.app.state["app_state"]
+        now = datetime.now(UTC)
+        svc = app_state.auth_service
+        system_user = User(
+            id=SYSTEM_USER_ID,
+            username=SYSTEM_USERNAME,
+            password_hash=svc.hash_password("irrelevant-password-12"),
+            role=HumanRole.SYSTEM,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        app_state.persistence._users._users[SYSTEM_USER_ID] = system_user
+
+        response = bare_client.post(
+            "/api/v1/auth/login",
+            json={
+                "username": "system",
+                "password": "irrelevant-password-12",
+            },
+        )
+        assert response.status_code == 401
+
+    def test_change_password_rejects_system_user(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        """System user cannot change its password (403)."""
+        from datetime import UTC, datetime
+
+        from synthorg.api.auth.models import User
+        from synthorg.api.auth.service import AuthService
+        from synthorg.api.auth.system_user import (
+            SYSTEM_USER_ID,
+            SYSTEM_USERNAME,
+        )
+
+        app_state = bare_client.app.state["app_state"]
+        svc: AuthService = app_state.auth_service
+        now = datetime.now(UTC)
+        system_user = User(
+            id=SYSTEM_USER_ID,
+            username=SYSTEM_USERNAME,
+            password_hash=svc.hash_password("random-password-12chars"),
+            role=HumanRole.SYSTEM,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        app_state.persistence._users._users[SYSTEM_USER_ID] = system_user
+        token, _ = svc.create_token(system_user)
+
+        response = bare_client.post(
+            "/api/v1/auth/change-password",
+            json={
+                "current_password": "any-password-12chars",
+                "new_password": "new-password-12chars",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 403
+
+    def test_setup_succeeds_with_system_user_present(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        """Setup endpoint returns 201 when only the system user exists."""
+        from datetime import UTC, datetime
+
+        from synthorg.api.auth.models import User
+        from synthorg.api.auth.system_user import (
+            SYSTEM_USER_ID,
+            SYSTEM_USERNAME,
+        )
+
+        app_state = bare_client.app.state["app_state"]
+        # Clear all users, then add only the system user
+        app_state.persistence._users._users.clear()
+        now = datetime.now(UTC)
+        system_user = User(
+            id=SYSTEM_USER_ID,
+            username=SYSTEM_USERNAME,
+            password_hash="$argon2id$v=19$m=65536,t=3,p=4$fake$hash",
+            role=HumanRole.SYSTEM,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        app_state.persistence._users._users[SYSTEM_USER_ID] = system_user
+
+        response = bare_client.post(
+            "/api/v1/auth/setup",
+            json={
+                "username": "newadmin",
+                "password": "super-secure-password-12",
+            },
+        )
+        assert response.status_code == 201

@@ -15,6 +15,7 @@ from litestar.middleware import (
 
 from synthorg.api.auth.models import AuthenticatedUser, AuthMethod
 from synthorg.api.auth.service import SecretNotConfiguredError
+from synthorg.api.guards import HumanRole
 from synthorg.observability import get_logger
 from synthorg.observability.events.api import (
     API_AUTH_FAILED,
@@ -176,6 +177,10 @@ async def _resolve_jwt_user(
 
     The ``pwd_sig`` is a plain SHA-256 truncation (not HMAC) of
     the stored password hash, protected by the JWT signature.
+
+    System users (CLI tokens) skip ``pwd_sig`` validation because
+    their random password hash is never known and never changes.
+    The JWT signature alone authenticates these tokens.
     """
     user_id = claims.get("sub")
     if not user_id:
@@ -192,15 +197,24 @@ async def _resolve_jwt_user(
         )
         return None
 
-    expected_sig = hashlib.sha256(db_user.password_hash.encode()).hexdigest()[:16]
-    if not _hmac.compare_digest(claims.get("pwd_sig", ""), expected_sig):
-        logger.warning(
-            API_AUTH_FAILED,
-            reason="password_changed_since_token_issued",
-            user_id=user_id,
-            path=path,
-        )
-        return None
+    # System users have a random password hash nobody knows --
+    # pwd_sig validation is meaningless and skipped.  The shared
+    # JWT secret signature is the sole authentication gate.
+    if db_user.role != HumanRole.SYSTEM:
+        expected_sig = hashlib.sha256(
+            db_user.password_hash.encode(),
+        ).hexdigest()[:16]
+        if not _hmac.compare_digest(
+            claims.get("pwd_sig", ""),
+            expected_sig,
+        ):
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="password_changed_since_token_issued",
+                user_id=user_id,
+                path=path,
+            )
+            return None
 
     logger.info(
         API_AUTH_SUCCESS,

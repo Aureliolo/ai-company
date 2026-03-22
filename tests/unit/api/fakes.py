@@ -293,10 +293,10 @@ class FakeUserRepository:
         return None
 
     async def list_users(self) -> tuple[User, ...]:
-        return tuple(self._users.values())
+        return tuple(u for u in self._users.values() if u.role != HumanRole.SYSTEM)
 
     async def count(self) -> int:
-        return len(self._users)
+        return sum(1 for u in self._users.values() if u.role != HumanRole.SYSTEM)
 
     async def count_by_role(self, role: HumanRole) -> int:
         return sum(1 for u in self._users.values() if u.role == role)
