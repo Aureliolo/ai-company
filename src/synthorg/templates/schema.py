@@ -241,6 +241,18 @@ class TemplateMetadata(BaseModel):
             raise ValueError(msg)
         return self
 
+    @model_validator(mode="after")
+    def _validate_unique_skill_patterns(self) -> Self:
+        """Reject duplicate skill_patterns entries."""
+        if len(self.skill_patterns) != len(set(self.skill_patterns)):
+            dupes = sorted(
+                sp.value for sp, c in Counter(self.skill_patterns).items() if c > 1
+            )
+            msg = f"Duplicate skill_patterns: {dupes}"
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
+            raise ValueError(msg)
+        return self
+
 
 class CompanyTemplate(BaseModel):
     """A complete company template definition.

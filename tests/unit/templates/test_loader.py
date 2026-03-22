@@ -179,7 +179,7 @@ class TestLoadTemplate:
             user_dir,
         ):
             loaded = load_template("solo_founder")
-            # User template has "Test Template" name, not "Solo Founder".
+            # User template has "Test Template" name, not "Solo Builder".
             assert loaded.template.metadata.name == "Test Template"
 
 
@@ -233,6 +233,26 @@ class TestLoadTemplateFile:
         path = tmp_template_file(MINIMAL_TEMPLATE_YAML)
         loaded = load_template_file(str(path))
         assert isinstance(loaded, LoadedTemplate)
+
+    def test_invalid_skill_pattern_raises_validation_error(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        yaml_content = """\
+template:
+  name: "Bad Pattern"
+  company:
+    type: "custom"
+  skill_patterns:
+    - "not_a_real_pattern"
+  agents:
+    - role: "Dev"
+      level: "mid"
+      model: "medium"
+"""
+        path = tmp_template_file(yaml_content)
+        with pytest.raises(TemplateValidationError):
+            load_template_file(path)
 
 
 # ── LoadedTemplate dataclass ─────────────────────────────────────
@@ -459,5 +479,5 @@ class TestBuiltinSkillPatterns:
         expected: tuple[str, ...],
     ) -> None:
         loaded = load_template(name)
-        actual = tuple(sp.value for sp in loaded.template.metadata.skill_patterns)
-        assert actual == expected
+        actual = {sp.value for sp in loaded.template.metadata.skill_patterns}
+        assert actual == set(expected)

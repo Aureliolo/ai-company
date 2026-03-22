@@ -238,6 +238,17 @@ class TestTemplateMetadata:
         with pytest.raises(ValidationError):
             TemplateMetadata(name="T", company_type="nonexistent_type")  # type: ignore[arg-type]
 
+    def test_duplicate_skill_patterns_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Duplicate skill_patterns"):
+            TemplateMetadata(
+                name="Dupes",
+                company_type=CompanyType.CUSTOM,
+                skill_patterns=(
+                    SkillPattern.PIPELINE,
+                    SkillPattern.PIPELINE,
+                ),
+            )
+
 
 # ── CompanyTemplate ──────────────────────────────────────────────
 

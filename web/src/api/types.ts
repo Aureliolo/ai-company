@@ -844,13 +844,20 @@ export interface DiscoverModelsResponse {
   provider_name: string
 }
 
+export type SkillPattern =
+  | 'tool_wrapper'
+  | 'generator'
+  | 'reviewer'
+  | 'inversion'
+  | 'pipeline'
+
 export interface TemplateInfoResponse {
   name: string
   display_name: string
   description: string
   source: 'builtin' | 'user'
   tags: readonly string[]
-  skill_patterns: readonly string[]
+  skill_patterns: readonly SkillPattern[]
 }
 
 export interface SetupCompanyRequest {

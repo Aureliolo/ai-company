@@ -843,7 +843,7 @@ autonomy:
 ```
 
 Built-in templates set autonomy levels appropriate to their archetype (e.g. `full` for
-Solo Founder and Research Lab, `supervised` for Agency and Full Company). See the
+Solo Builder and Research Lab, `supervised` for Agency and Enterprise Org). See the
 [Company Types table](organization.md#company-types) for per-template defaults.
 
 **Autonomy scope** ([Decision Log](../architecture/decisions.md) D6): Three-level

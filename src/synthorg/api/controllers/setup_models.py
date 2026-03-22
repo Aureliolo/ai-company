@@ -45,7 +45,7 @@ class TemplateInfoResponse(BaseModel):
         skill_patterns: Skill interaction patterns.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: NotBlankStr
     display_name: NotBlankStr
