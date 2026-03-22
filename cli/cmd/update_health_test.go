@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/Aureliolo/synthorg/cli/internal/images"
@@ -115,36 +114,4 @@ func TestRefForService(t *testing.T) {
 			}
 		})
 	}
-}
-
-func FuzzRefForService(f *testing.F) {
-	f.Add("backend", "0.4.1", "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
-	f.Add("web", "0.4.1", "")
-	f.Add("sandbox", "latest", "")
-	f.Add("backend", "", "")
-
-	f.Fuzz(func(t *testing.T, svc, tag, digest string) {
-		var digests map[string]string
-		if digest != "" {
-			digests = map[string]string{svc: digest}
-		}
-		got := images.RefForService(svc, tag, digests)
-
-		// Invariant: result always starts with the repo prefix + service name.
-		wantPrefix := images.RepoPrefix + svc
-		if !strings.HasPrefix(got, wantPrefix) {
-			t.Errorf("RefForService(%q, ...) = %q, missing prefix %q", svc, got, wantPrefix)
-		}
-
-		// Invariant: result contains either "@" (digest) or ":" (tag) separator.
-		rest := got[len(wantPrefix):]
-		if !strings.HasPrefix(rest, "@") && !strings.HasPrefix(rest, ":") {
-			t.Errorf("RefForService(%q, ...) = %q, no @ or : separator after prefix", svc, got)
-		}
-
-		// Invariant: digest path chosen only when digest is non-empty.
-		if digest != "" && !strings.Contains(got, "@") {
-			t.Errorf("RefForService(%q, ...) = %q, expected @ for non-empty digest", svc, got)
-		}
-	})
 }

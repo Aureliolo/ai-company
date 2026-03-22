@@ -335,17 +335,21 @@ type composeFile struct {
 // parseComposeImageRefs extracts image references from a compose file
 // using YAML parsing. Returns a map of service name (backend, web,
 // sandbox) to full image ref for SynthOrg images only.
+//
+// All errors (missing file, unreadable, bad YAML) are silently ignored --
+// the caller falls back to images.RefForService when no compose ref is
+// found. This is intentional: diagnostics must never fail due to a
+// corrupt compose file.
 func parseComposeImageRefs(composePath string) map[string]string {
 	refs := make(map[string]string)
 	if composePath == "" {
 		return refs
 	}
 
-	// Validate and canonicalize the path before reading.
+	// Canonicalize the path before reading. The composePath is always
+	// constructed internally (filepath.Join of the data dir), never from
+	// direct user input, so no adversarial traversal is possible.
 	cleaned := filepath.Clean(composePath)
-	if strings.Contains(cleaned, "..") {
-		return refs
-	}
 	if _, err := os.Stat(cleaned); err != nil {
 		return refs
 	}

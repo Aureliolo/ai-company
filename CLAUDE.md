@@ -132,7 +132,7 @@ web/src/          # Vue 3 + PrimeVue + Tailwind CSS dashboard
 
 cli/              # Go CLI binary (cross-platform, manages Docker lifecycle)
   cmd/            # Cobra commands (init, start, stop, status, logs, doctor, update, cleanup, wipe, config, etc.)
-  internal/       # version, config, docker, compose, health, diagnostics, selfupdate, completion, ui, verify
+  internal/       # version, config, docker, compose, health, diagnostics, images, selfupdate, completion, ui, verify
 
 site/             # Astro landing page (synthorg.io)
 ```

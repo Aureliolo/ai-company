@@ -258,8 +258,13 @@ func FuzzRefForService(f *testing.F) {
 			t.Errorf("RefForService(%q, ...) = %q, no @ or : separator", svc, got)
 		}
 
+		// Invariant: digest path chosen only when digest is non-empty.
 		if digest != "" && !strings.Contains(got, "@") {
 			t.Errorf("RefForService(%q, ...) = %q, expected @ for non-empty digest", svc, got)
+		}
+		// Converse: tag path chosen when digest is empty (no @ in result).
+		if digest == "" && strings.Contains(got, "@") {
+			t.Errorf("RefForService(%q, ...) = %q, unexpected @ when digest is empty", svc, got)
 		}
 	})
 }

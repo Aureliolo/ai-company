@@ -95,8 +95,9 @@ func listNonCurrentImages(ctx context.Context, errOut io.Writer, info docker.Inf
 // buildImageDisplay creates a readable display string for an image.
 // Prefers tag, falls back to digest short form, then Docker short ID.
 func buildImageDisplay(repo, tag, digest, size, id string) string {
-	// Strip registry org prefix for brevity in display.
-	short := strings.TrimPrefix(repo, "ghcr.io/aureliolo/")
+	// Strip the full image prefix and re-add "synthorg-" for readable display
+	// (e.g. "synthorg-backend:0.4.6" instead of the full GHCR path).
+	short := "synthorg-" + strings.TrimPrefix(repo, images.RepoPrefix)
 
 	label := short
 	switch {
