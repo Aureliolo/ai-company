@@ -120,7 +120,7 @@ func CheckDevFromURL(ctx context.Context, url string) (CheckResult, error) {
 	}
 
 	result.LatestVersion = target.TagName
-	avail, err := isDevUpdateAvailable(version.Version, target.TagName)
+	avail, err := isUpdateAvailable(version.Version, target.TagName)
 	if err != nil {
 		return result, fmt.Errorf("comparing versions: %w", err)
 	}
@@ -257,19 +257,6 @@ func splitDev(v string) (devNum int, base string) {
 		return -1, v
 	}
 	return n, base
-}
-
-// isDevUpdateAvailable checks if latest is newer than current, with dev awareness.
-func isDevUpdateAvailable(current, latest string) (bool, error) {
-	cur := strings.TrimPrefix(current, "v")
-	if cur == "dev" {
-		return true, nil
-	}
-	cmp, err := compareWithDev(latest, current)
-	if err != nil {
-		return false, fmt.Errorf("current=%q latest=%q: %w", current, latest, err)
-	}
-	return cmp > 0, nil
 }
 
 // CheckFromURL queries the given releases URL and compares versions.

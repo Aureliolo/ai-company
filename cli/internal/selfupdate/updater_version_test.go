@@ -18,10 +18,15 @@ func TestIsUpdateAvailable(t *testing.T) {
 		{"v1.1.0", "v1.0.0", false, false},                  // downgrade prevented
 		{"v1.0.1", "v1.0.0", false, false},                  // downgrade prevented
 		{"v1.10.0", "v1.9.0", false, false},                 // multi-digit minor downgrade
-		{"0.4.8-dev.4", "v0.4.8", true, false},              // stable release updates dev build on stable channel
+		{"0.4.8-dev.4", "v0.4.8", true, false},              // stable release updates dev build
 		{"0.4.8-dev.4", "v0.4.9", true, false},              // higher stable updates dev build
 		{"0.4.8-dev.4", "v0.4.7", false, false},             // lower stable does not downgrade dev build
 		{"0.4.8-dev.4", "v0.4.8-dev.4", false, false},       // same dev version, no update
+		{"v0.4.7", "v0.4.7-dev.3", false, false},            // stable beats dev at same base
+		{"v0.4.6", "v0.4.7-dev.1", true, false},             // dev for higher base is an update
+		{"v0.4.7-dev.2", "v0.4.7-dev.3", true, false},       // higher dev number is an update
+		{"v0.4.7-dev.3", "v0.4.7-dev.2", false, false},      // lower dev number is not
+		{"v0.4.7-dev.3", "v0.4.7", true, false},             // stable release is an update from dev
 		{"v1.0.0", "99999999999999999999.0.0", false, true}, // overflow in latest
 		{"99999999999999999999.0.0", "v1.0.0", false, true}, // overflow in current
 	}
@@ -105,41 +110,6 @@ func TestCompareWithDev(t *testing.T) {
 				t.Errorf("compareWithDev(%q, %q) = %d, want < 0", tt.a, tt.b, got)
 			case tt.wantCmp == 0 && got != 0:
 				t.Errorf("compareWithDev(%q, %q) = %d, want 0", tt.a, tt.b, got)
-			}
-		})
-	}
-}
-
-func TestIsDevUpdateAvailable(t *testing.T) {
-	tests := []struct {
-		current string
-		latest  string
-		want    bool
-		wantErr bool
-	}{
-		{"dev", "v0.4.7-dev.1", true, false},
-		{"v0.4.7", "v0.4.7-dev.3", false, false},            // stable beats dev at same base
-		{"v0.4.6", "v0.4.7-dev.1", true, false},             // dev for higher base is an update
-		{"v0.4.7-dev.2", "v0.4.7-dev.3", true, false},       // higher dev number is an update
-		{"v0.4.7-dev.3", "v0.4.7-dev.2", false, false},      // lower dev number is not
-		{"v0.4.7-dev.3", "v0.4.7", true, false},             // stable release is an update from dev
-		{"v0.4.7", "v0.4.7", false, false},                  // same stable, no update
-		{"99999999999999999999.0.0", "v0.4.7", false, true}, // overflow propagates error
-	}
-	for _, tt := range tests {
-		t.Run(tt.current+"->"+tt.latest, func(t *testing.T) {
-			got, err := isDevUpdateAvailable(tt.current, tt.latest)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tt.want {
-				t.Errorf("isDevUpdateAvailable(%q, %q) = %v, want %v", tt.current, tt.latest, got, tt.want)
 			}
 		})
 	}
