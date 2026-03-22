@@ -504,6 +504,8 @@ class TestReportingLinesWithIds:
 
     def test_reporting_line_with_id_overrides_team_structure(self) -> None:
         """Explicit line with matching ID overrides team-inferred."""
+        # Use member name "alice" distinct from subordinate_id "alice"
+        # to prove the key transformation actually matters
         dept = Department(
             name="Engineering",
             head="cto",
@@ -512,13 +514,13 @@ class TestReportingLinesWithIds:
                 Team(
                     name="backend",
                     lead="backend_lead",
-                    members=("backend-senior",),
+                    members=("alice",),
                 ),
             ),
             reporting_lines=(
                 ReportingLine(
                     subordinate="Backend Developer",
-                    subordinate_id="backend-senior",
+                    subordinate_id="alice",
                     supervisor="cto",
                 ),
             ),
@@ -526,8 +528,44 @@ class TestReportingLinesWithIds:
         company = _make_company(departments=(dept,))
         resolver = HierarchyResolver(company)
 
-        # backend-senior should report to cto via explicit line, not backend_lead
-        assert resolver.get_supervisor("backend-senior") == "cto"
+        # alice should report to cto via explicit line, not backend_lead
+        assert resolver.get_supervisor("alice") == "cto"
+
+    def test_chain_walking_with_id_keys(self) -> None:
+        """get_ancestors and is_subordinate work with ID-based keys."""
+        dept = Department(
+            name="Engineering",
+            budget_percent=50.0,
+            teams=(),
+            reporting_lines=(
+                ReportingLine(
+                    subordinate="Developer",
+                    subordinate_id="dev-junior",
+                    supervisor="Developer",
+                    supervisor_id="dev-senior",
+                ),
+                ReportingLine(
+                    subordinate="Developer",
+                    subordinate_id="dev-senior",
+                    supervisor="architect",
+                ),
+            ),
+        )
+        company = _make_company(departments=(dept,))
+        resolver = HierarchyResolver(company)
+
+        assert resolver.get_ancestors("dev-junior") == (
+            "dev-senior",
+            "architect",
+        )
+        assert resolver.is_subordinate("architect", "dev-junior")
+        assert (
+            resolver.get_delegation_depth(
+                "architect",
+                "dev-junior",
+            )
+            == 2
+        )
 
     def test_no_id_backward_compatible(self) -> None:
         """Reporting lines without IDs still work as before."""
@@ -565,6 +603,31 @@ class TestCycleDetection:
             budget_percent=50.0,
             teams=(Team(name="t1", lead="b", members=("c",)),),
             reporting_lines=(ReportingLine(subordinate="a", supervisor="c"),),
+        )
+        company = _make_company(departments=(dept,))
+        with pytest.raises(HierarchyResolutionError, match="Cycle"):
+            HierarchyResolver(company)
+
+    def test_cycle_detected_with_id_keys(self) -> None:
+        """Cycle detection works when keys are ID-based."""
+        dept = Department(
+            name="Engineering",
+            budget_percent=50.0,
+            teams=(),
+            reporting_lines=(
+                ReportingLine(
+                    subordinate="Role",
+                    subordinate_id="agent-a",
+                    supervisor="Role",
+                    supervisor_id="agent-b",
+                ),
+                ReportingLine(
+                    subordinate="Role",
+                    subordinate_id="agent-b",
+                    supervisor="Role",
+                    supervisor_id="agent-a",
+                ),
+            ),
         )
         company = _make_company(departments=(dept,))
         with pytest.raises(HierarchyResolutionError, match="Cycle"):

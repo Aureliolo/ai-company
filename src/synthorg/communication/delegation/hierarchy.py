@@ -18,8 +18,9 @@ class HierarchyResolver:
 
     Built from three sources, in priority order:
 
-    1. Explicit ``ReportingLine.supervisor`` (most specific) -- overrides
-       team-derived relationships.
+    1. Explicit ``ReportingLine`` entries (most specific) -- uses
+       ``subordinate_key``/``supervisor_key`` (which prefer ``_id``
+       fields when set) and overrides team-derived relationships.
     2. ``Team.lead`` for team members
     3. ``Department.head`` for team leads without explicit reporting
        (skipped when head is ``None``)
