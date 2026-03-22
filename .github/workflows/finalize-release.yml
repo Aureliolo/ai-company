@@ -84,6 +84,8 @@ jobs:
 
           if [ "$IS_DRAFT" != "true" ]; then
             echo "Release $TAG is not a draft (isDraft=$IS_DRAFT). Already published."
+            # Still signal published so the cleanup step can run on reruns
+            echo "published=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
