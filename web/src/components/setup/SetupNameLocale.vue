@@ -33,7 +33,10 @@ async function handleNext() {
   }
 }
 
-onMounted(async () => {
+async function fetchLocales() {
+  loading.value = true
+  loadFailed.value = false
+  error.value = null
   try {
     const locales = await setup.fetchNameLocales()
     selectedLocales.value = locales.length > 0 ? locales : ['__all__']
@@ -44,7 +47,9 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(fetchLocales)
 </script>
 
 <template>
@@ -64,6 +69,13 @@ onMounted(async () => {
       class="mb-4 rounded bg-red-500/10 p-3 text-center text-sm text-red-400"
     >
       {{ error }}
+      <button
+        v-if="loadFailed"
+        class="ml-2 underline hover:text-red-300"
+        @click="fetchLocales"
+      >
+        Retry
+      </button>
     </div>
 
     <!-- Locale selector -->
