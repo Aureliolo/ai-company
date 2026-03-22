@@ -69,7 +69,11 @@ class ReportingLine(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def subordinate_key(self) -> str:
-        """Identity key: subordinate_id when set, else subordinate."""
+        """Hierarchy lookup key: ``subordinate_id`` when set, else ``subordinate``.
+
+        Unlike ``_identity_key()``, returns the raw value without
+        case-folding or namespace tagging.
+        """
         if self.subordinate_id is not None:
             return self.subordinate_id
         return self.subordinate
@@ -77,7 +81,11 @@ class ReportingLine(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def supervisor_key(self) -> str:
-        """Identity key: supervisor_id when set, else supervisor."""
+        """Hierarchy lookup key: ``supervisor_id`` when set, else ``supervisor``.
+
+        Unlike ``_identity_key()``, returns the raw value without
+        case-folding or namespace tagging.
+        """
         if self.supervisor_id is not None:
             return self.supervisor_id
         return self.supervisor

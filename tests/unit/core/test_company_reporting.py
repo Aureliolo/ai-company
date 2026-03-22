@@ -144,6 +144,23 @@ class TestReportingLine:
         r = ReportingLine(subordinate="dev", supervisor="lead")
         assert r.supervisor_key == "lead"
 
+    def test_computed_keys_in_model_dump_roundtrip(self) -> None:
+        """Computed keys appear in model_dump and survive round-trip."""
+        r = ReportingLine(
+            subordinate="Backend Developer",
+            subordinate_id="backend-senior",
+            supervisor="Team Lead",
+            supervisor_id="lead-001",
+        )
+        data = r.model_dump()
+        assert data["subordinate_key"] == "backend-senior"
+        assert data["supervisor_key"] == "lead-001"
+
+        # Round-trip: computed fields are ignored on input
+        r2 = ReportingLine.model_validate(data)
+        assert r2.subordinate_key == "backend-senior"
+        assert r2.supervisor_key == "lead-001"
+
     @pytest.mark.parametrize(
         ("field", "value", "match"),
         [
