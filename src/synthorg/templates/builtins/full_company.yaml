@@ -117,7 +117,7 @@ template:
       name: ""
       level: "mid"
       model: "medium"
-      personality_preset: "user_advocate"
+      personality_preset: "independent_researcher"
       department: "design"
     # Engineering -- static (3)
     - role: "Software Architect"
@@ -130,13 +130,13 @@ template:
       name: ""
       level: "mid"
       model: "medium"
-      personality_preset: "process_optimizer"
+      personality_preset: "disciplined_executor"
       department: "engineering"
     - role: "Database Engineer"
       name: ""
       level: "mid"
       model: "medium"
-      personality_preset: "systems_thinker"
+      personality_preset: "methodical_analyst"
       department: "engineering"
     # Engineering -- dynamic backend devs
 {% for i in range(num_backend_devs | default(3) | int) %}
@@ -166,7 +166,7 @@ template:
 {% else %}
       level: "mid"
       model: "small"
-      personality_preset: "eager_learner"
+      personality_preset: "team_diplomat"
 {% endif %}
       department: "engineering"
 {% endfor %}
@@ -207,13 +207,13 @@ template:
       name: ""
       level: "senior"
       model: "medium"
-      personality_preset: "process_optimizer"
+      personality_preset: "communication_bridge"
       department: "operations"
     - role: "Scrum Master"
       name: ""
       level: "senior"
       model: "medium"
-      personality_preset: "process_optimizer"
+      personality_preset: "empathetic_mentor"
       department: "operations"
     # Security (2)
     - role: "Security Engineer"
@@ -233,7 +233,7 @@ template:
       name: ""
       level: "mid"
       model: "small"
-      personality_preset: "technical_communicator"
+      personality_preset: "creative_innovator"
       department: "creative_marketing"
     - role: "Brand Strategist"
       name: ""

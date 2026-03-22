@@ -52,7 +52,7 @@ template:
       name: ""
       level: "senior"
       model: "medium"
-      personality_preset: "pragmatic_builder"
+      personality_preset: "disciplined_executor"
       department: "data_analytics"
     - role: "Data Analyst"
       name: ""

@@ -43,7 +43,7 @@ template:
       name: ""
       level: "senior"
       model: "medium"
-      personality_preset: "pragmatic_builder"
+      personality_preset: "rapid_prototyper"
       department: "engineering"
 
   workflow: "kanban"
