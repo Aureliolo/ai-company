@@ -15,7 +15,7 @@ from synthorg.api.state import AppState
 from synthorg.core.approval import ApprovalItem
 from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 def _make_pending_item(approval_id: str = "approval-1") -> ApprovalItem:

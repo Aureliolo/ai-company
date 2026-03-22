@@ -33,8 +33,6 @@ from synthorg.providers.models import (
     TokenUsage,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 class _StubProvider(BaseCompletionProvider):
     """Minimal concrete provider for testing the base class."""

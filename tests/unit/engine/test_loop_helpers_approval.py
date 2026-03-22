@@ -17,7 +17,7 @@ from synthorg.providers.models import (
     ToolResult,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 def _make_escalation(

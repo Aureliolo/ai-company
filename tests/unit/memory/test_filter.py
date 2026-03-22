@@ -14,8 +14,6 @@ from synthorg.memory.filter import (
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.ranking import ScoredMemory
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_scored_memory(
     *,

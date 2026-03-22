@@ -35,7 +35,6 @@ from ._hybrid_loop_helpers import (
 if TYPE_CHECKING:
     from .conftest import MockCompletionProvider
 
-
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------

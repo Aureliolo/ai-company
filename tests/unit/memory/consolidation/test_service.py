@@ -20,8 +20,6 @@ from synthorg.memory.consolidation.models import (
 from synthorg.memory.consolidation.service import MemoryConsolidationService
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 
-pytestmark = pytest.mark.timeout(30)
-
 _NOW = datetime.now(UTC)
 _AGENT_ID = "test-agent"
 

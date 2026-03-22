@@ -6,7 +6,7 @@ import pytest
 
 from synthorg.config.schema import RootConfig
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestRunServerUvicornParams:

@@ -4,8 +4,6 @@ import pytest
 
 from synthorg.budget.call_category import LLMCallCategory, OrchestrationAlertLevel
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestLLMCallCategory:

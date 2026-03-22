@@ -13,8 +13,6 @@ from synthorg.memory.models import (
 )
 from synthorg.memory.shared import SharedKnowledgeStore
 
-pytestmark = pytest.mark.timeout(30)
-
 
 class _FakeSharedKnowledgeStore:
     """Minimal implementation for protocol compliance testing."""

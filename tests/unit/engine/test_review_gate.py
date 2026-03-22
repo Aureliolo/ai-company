@@ -8,8 +8,6 @@ from synthorg.core.enums import TaskStatus
 from synthorg.engine.review_gate import ReviewGateService
 from synthorg.engine.task_engine_models import TaskMutationResult
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_mock_task_engine(
     return_value: TaskMutationResult | None = None,

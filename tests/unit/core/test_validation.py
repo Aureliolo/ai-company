@@ -4,7 +4,7 @@ import pytest
 
 from synthorg.core.validation import is_valid_action_type
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestIsValidActionType:

@@ -10,7 +10,7 @@ from synthorg.hr.promotion.seniority_model_mapping import (
 
 from .conftest import make_agent_identity
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.unit

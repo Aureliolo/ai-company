@@ -6,8 +6,6 @@ from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.security.models import SecurityContext, SecurityVerdictType
 from synthorg.security.rules.policy_validator import PolicyValidator
 
-pytestmark = pytest.mark.timeout(30)
-
 # Default policy lists matching SecurityConfig defaults.
 _HARD_DENY: frozenset[str] = frozenset(
     {"deploy:production", "db:admin", "org:fire"},

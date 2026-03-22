@@ -23,9 +23,6 @@ from synthorg.budget.quota import (
 )
 from synthorg.budget.quota_tracker import QuotaTracker
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # Frozen reference time for deterministic delay computation in QUEUE tests.
 _FROZEN_NOW = datetime(2026, 3, 20, 12, 0, 0, tzinfo=UTC)
 

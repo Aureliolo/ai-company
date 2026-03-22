@@ -11,8 +11,6 @@ from synthorg.tools.file_system._path_validator import PathValidator
 if TYPE_CHECKING:
     from pathlib import Path
 
-pytestmark = pytest.mark.timeout(30)
-
 _SYMLINK_SUPPORTED = not (sys.platform == "win32" and not os.environ.get("CI"))
 
 

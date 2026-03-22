@@ -15,11 +15,8 @@ from synthorg.security.models import (
     SecurityVerdictType,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 # Shared timezone-aware timestamp for tests.
 _NOW = datetime(2026, 3, 10, 12, 0, 0, tzinfo=UTC)
-
 
 # ── SecurityVerdictType ──────────────────────────────────────────
 

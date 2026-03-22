@@ -6,8 +6,6 @@ from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.security.models import SecurityContext, SecurityVerdictType
 from synthorg.security.rules.credential_detector import CredentialDetector
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _ctx(
     arguments: dict[str, object] | None = None,

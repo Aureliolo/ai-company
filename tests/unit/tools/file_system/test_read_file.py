@@ -10,8 +10,6 @@ from synthorg.tools.file_system.read_file import MAX_FILE_SIZE_BYTES, ReadFileTo
 if TYPE_CHECKING:
     from pathlib import Path
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestReadFileToolProperties:

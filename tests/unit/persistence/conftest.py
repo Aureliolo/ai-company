@@ -11,7 +11,6 @@ from synthorg.core.task import Task
 if TYPE_CHECKING:
     from uuid import UUID
 
-
 _REQUIRES_ASSIGNEE = frozenset(
     {
         TaskStatus.ASSIGNED,

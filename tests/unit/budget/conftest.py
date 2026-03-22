@@ -236,7 +236,6 @@ def sample_spending_summary() -> SpendingSummary:
 
 # ── CostTracker fixtures ─────────────────────────────────────────
 
-
 _DEPARTMENT_MAP: dict[str, str] = {
     "alice": "Engineering",
     "bob": "Engineering",

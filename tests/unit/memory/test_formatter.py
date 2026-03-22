@@ -18,8 +18,6 @@ from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.memory.ranking import ScoredMemory
 from synthorg.providers.enums import MessageRole
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_scored(
     *,

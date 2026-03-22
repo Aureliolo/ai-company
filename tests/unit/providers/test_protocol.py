@@ -23,9 +23,6 @@ from synthorg.providers.resilience.rate_limiter import RateLimiter
 
 from .conftest import FakeProvider, ModelCapabilitiesFactory, TokenUsageFactory
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Protocol structural typing ────────────────────────────────────
 
 

@@ -13,8 +13,7 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
+pytestmark = pytest.mark.unit
 _NOW = datetime.now(UTC)
 
 

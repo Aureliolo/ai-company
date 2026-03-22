@@ -11,7 +11,7 @@ from synthorg.tools.mcp.cache import MCPResultCache
 from synthorg.tools.mcp.client import MCPClient
 from synthorg.tools.mcp.config import MCPServerConfig
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.integration
 
 
 def _make_connected_client(

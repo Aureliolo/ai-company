@@ -7,8 +7,6 @@ from synthorg.communication.meeting._parsing import (
     parse_decisions,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestParseDecisions:

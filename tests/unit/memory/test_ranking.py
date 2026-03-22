@@ -18,8 +18,6 @@ from synthorg.memory.ranking import (
 )
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_entry(  # noqa: PLR0913
     *,

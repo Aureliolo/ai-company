@@ -32,7 +32,7 @@ if TYPE_CHECKING:
         ToolDefinition,
     )
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.integration
 
 
 class _FailingProvider:

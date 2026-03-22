@@ -16,8 +16,6 @@ from synthorg.security.trust.milestone_strategy import MilestoneTrustStrategy
 from synthorg.security.trust.models import TrustState
 from tests.unit.security.trust.conftest import make_performance_snapshot
 
-pytestmark = pytest.mark.timeout(30)
-
 _NOW = datetime(2026, 3, 10, 12, 0, 0, tzinfo=UTC)
 
 # Minimal milestone to satisfy non-empty milestones validation

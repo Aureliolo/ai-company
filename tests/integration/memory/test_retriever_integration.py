@@ -21,8 +21,6 @@ from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 from synthorg.providers.enums import MessageRole
 
-pytestmark = pytest.mark.timeout(30)
-
 
 class InMemoryBackend:
     """Minimal in-memory MemoryBackend for integration tests."""

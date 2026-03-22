@@ -8,7 +8,7 @@ import pytest
 from synthorg.tools.base import ToolExecutionResult
 from synthorg.tools.mcp.cache import MCPResultCache, _make_hashable
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestCacheHitMiss:

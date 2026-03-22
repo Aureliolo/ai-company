@@ -16,7 +16,7 @@ from synthorg.tools.mcp.models import MCPToolInfo
 if TYPE_CHECKING:
     from synthorg.tools.mcp.cache import MCPResultCache
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

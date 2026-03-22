@@ -15,8 +15,6 @@ from synthorg.memory.config import (
 from synthorg.memory.errors import MemoryConfigError
 from synthorg.memory.factory import create_memory_backend
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _test_embedder() -> Mem0EmbedderConfig:
     """Vendor-agnostic embedder config for tests."""

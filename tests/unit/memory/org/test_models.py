@@ -13,8 +13,6 @@ from synthorg.memory.org.models import (
     OrgMemoryQuery,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 _NOW = datetime.now(UTC)
 
 

@@ -6,7 +6,7 @@ import pytest
 
 from synthorg.tools._process_cleanup import close_subprocess_transport
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestCloseSubprocessTransport:

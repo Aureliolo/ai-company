@@ -20,8 +20,6 @@ from synthorg.communication.errors import (
     NotSubscribedError,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 class TestCommunicationError:
     """Tests for the base CommunicationError."""

@@ -5,9 +5,6 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from synthorg.core.types import NotBlankStr, validate_unique_strings
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Test models ─────────────────────────────────────────────────
 
 

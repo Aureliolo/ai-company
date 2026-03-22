@@ -11,8 +11,6 @@ from synthorg.backup.errors import RetentionError
 from synthorg.backup.models import BackupComponent, BackupManifest, BackupTrigger
 from synthorg.backup.retention import RetentionManager
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_manifest(
     backup_id: str,

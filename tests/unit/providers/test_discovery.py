@@ -18,7 +18,7 @@ from synthorg.providers.probing import (
     probe_preset_urls,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 def _mock_response(json_data: Any, status_code: int = 200) -> httpx.Response:

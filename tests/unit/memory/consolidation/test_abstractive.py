@@ -11,8 +11,6 @@ from synthorg.memory.models import MemoryEntry, MemoryMetadata
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import CompletionResponse, TokenUsage
 
-pytestmark = pytest.mark.timeout(30)
-
 _NOW = datetime.now(UTC)
 
 

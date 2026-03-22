@@ -8,8 +8,6 @@ from synthorg.config.loader import bootstrap_logging
 from synthorg.config.schema import RootConfig
 from synthorg.observability.config import DEFAULT_SINKS, LogConfig
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestBootstrapLogging:

@@ -10,7 +10,7 @@ from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
 from synthorg.tools.mcp.factory import MCPToolFactory
 from synthorg.tools.mcp.models import MCPToolInfo
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 def _make_mock_client(

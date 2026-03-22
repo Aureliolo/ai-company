@@ -24,9 +24,6 @@ from synthorg.security.output_scanner import OutputScanner
 from synthorg.security.rules.engine import RuleEngine
 from synthorg.security.service import SecOpsService
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # -- Helpers ---------------------------------------------------------------
 
 

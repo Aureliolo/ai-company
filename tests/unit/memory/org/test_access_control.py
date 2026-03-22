@@ -12,8 +12,6 @@ from synthorg.memory.org.access_control import (
 from synthorg.memory.org.errors import OrgMemoryAccessDeniedError
 from synthorg.memory.org.models import OrgFactAuthor
 
-pytestmark = pytest.mark.timeout(30)
-
 _HUMAN = OrgFactAuthor(is_human=True)
 _SENIOR_AGENT = OrgFactAuthor(
     agent_id="agent-senior",

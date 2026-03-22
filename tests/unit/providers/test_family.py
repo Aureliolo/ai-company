@@ -6,8 +6,6 @@ import pytest
 
 from synthorg.providers.family import get_family, providers_excluding_family
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _mock_config(family: str | None = None) -> MagicMock:
     config = MagicMock()

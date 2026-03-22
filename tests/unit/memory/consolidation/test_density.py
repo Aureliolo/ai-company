@@ -8,8 +8,6 @@ from synthorg.core.enums import MemoryCategory
 from synthorg.memory.consolidation.density import ContentDensity, DensityClassifier
 from synthorg.memory.models import MemoryEntry, MemoryMetadata
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestContentDensity:

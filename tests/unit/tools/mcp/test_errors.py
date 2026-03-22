@@ -11,7 +11,7 @@ from synthorg.tools.mcp.errors import (
     MCPTimeoutError,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestMCPErrorHierarchy:

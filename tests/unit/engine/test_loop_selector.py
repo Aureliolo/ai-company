@@ -23,9 +23,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_LOOP_NO_RULE_MATCH,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── select_loop_type: default rules ─────────────────────────
 
 

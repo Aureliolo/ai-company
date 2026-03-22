@@ -14,10 +14,7 @@ from synthorg.security.trust.models import (
     TrustState,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 _NOW = datetime(2026, 3, 10, 12, 0, 0, tzinfo=UTC)
-
 
 # ── TrustState ───────────────────────────────────────────────────
 

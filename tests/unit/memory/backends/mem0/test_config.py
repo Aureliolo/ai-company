@@ -11,8 +11,6 @@ from synthorg.memory.backends.mem0.config import (
 )
 from synthorg.memory.config import CompanyMemoryConfig, MemoryStorageConfig
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _embedder(
     *,

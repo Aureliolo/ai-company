@@ -9,7 +9,6 @@ from synthorg.engine.task_engine_models import CreateTaskData
 if TYPE_CHECKING:
     from synthorg.core.enums import TaskStatus
 
-
 # ── Fakes ─────────────────────────────────────────────────────
 
 

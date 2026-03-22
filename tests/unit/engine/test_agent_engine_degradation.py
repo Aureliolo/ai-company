@@ -22,8 +22,6 @@ from .conftest import (
     make_completion_response,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_budget_config() -> BudgetConfig:
     return BudgetConfig(

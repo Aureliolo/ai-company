@@ -15,7 +15,7 @@ from synthorg.hr.promotion.models import (
     PromotionRequest,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.unit

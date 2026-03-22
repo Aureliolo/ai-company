@@ -12,8 +12,6 @@ from synthorg.observability.config import LogConfig, SinkConfig
 from synthorg.observability.enums import LogLevel, SinkType
 from synthorg.observability.setup import configure_logging
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _read_log(path: Path) -> str:
     """Read a log file, returning empty string if not found."""

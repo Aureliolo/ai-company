@@ -14,15 +14,12 @@ from synthorg.budget.quota import (
 )
 from synthorg.budget.quota_tracker import QuotaTracker
 
-pytestmark = pytest.mark.timeout(30)
-
 # Fixed timestamps for deterministic tests
 _NOW = datetime(2026, 3, 15, 14, 30, 0, tzinfo=UTC)
 _MINUTE_START = datetime(2026, 3, 15, 14, 30, tzinfo=UTC)
 _HOUR_START = datetime(2026, 3, 15, 14, 0, tzinfo=UTC)
 _DAY_START = datetime(2026, 3, 15, tzinfo=UTC)
 _MONTH_START = datetime(2026, 3, 1, tzinfo=UTC)
-
 
 # ── Helpers ────────────────────────────────────────────────────────
 

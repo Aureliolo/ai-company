@@ -4,8 +4,6 @@ import pytest
 
 from synthorg.providers.enums import FinishReason, MessageRole, StreamEventType
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestMessageRole:

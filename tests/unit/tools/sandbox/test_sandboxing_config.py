@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from synthorg.tools.sandbox.docker_config import DockerSandboxConfig
 from synthorg.tools.sandbox.sandboxing_config import SandboxingConfig
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestSandboxingConfigDefaults:

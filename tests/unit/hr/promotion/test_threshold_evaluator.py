@@ -14,7 +14,7 @@ from .conftest import make_performance_snapshot
 if TYPE_CHECKING:
     from synthorg.hr.promotion.config import PromotionCriteriaConfig
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 @pytest.mark.unit

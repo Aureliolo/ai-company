@@ -20,9 +20,6 @@ from synthorg.communication.enums import (
 )
 from synthorg.communication.meeting.frequency import MeetingFrequency
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── MessageBusConfig ────────────────────────────────────────────
 
 

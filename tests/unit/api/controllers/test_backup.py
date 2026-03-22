@@ -34,8 +34,6 @@ from synthorg.backup.models import (
 )
 from tests.unit.api.conftest import make_auth_headers
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_manifest(
     *,

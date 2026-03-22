@@ -17,8 +17,6 @@ from synthorg.observability.events.budget import (
 
 from .conftest import make_cost_record
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── TestCostTrackerRecord ────────────────────────────────────────
 
 

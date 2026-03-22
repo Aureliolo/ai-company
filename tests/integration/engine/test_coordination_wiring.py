@@ -52,10 +52,8 @@ from tests.unit.engine.task_engine_helpers import (
     FakePersistence,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
-
+pytestmark = pytest.mark.integration
 _TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"
-
 
 # ── Mock Provider ──────────────────────────────────────────────────
 

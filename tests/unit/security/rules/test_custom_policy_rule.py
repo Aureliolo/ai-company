@@ -14,9 +14,7 @@ from synthorg.security.models import (
 from synthorg.security.rules.custom_policy_rule import CustomPolicyRule
 from synthorg.security.rules.protocol import SecurityRule
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
-
+pytestmark = pytest.mark.unit
 # -- Helpers ---------------------------------------------------------
 
 

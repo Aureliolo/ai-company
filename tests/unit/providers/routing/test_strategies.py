@@ -25,9 +25,7 @@ from synthorg.providers.routing.strategies import (
     SmartStrategy,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
-
+pytestmark = pytest.mark.unit
 # ── Protocol conformance ─────────────────────────────────────────
 
 

@@ -30,8 +30,6 @@ from .conftest import (
     TeamFactory,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── Team ───────────────────────────────────────────────────────────
 
 

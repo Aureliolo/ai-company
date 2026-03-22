@@ -8,8 +8,6 @@ from synthorg.memory.org.factory import create_org_memory_backend
 from synthorg.memory.org.hybrid_backend import HybridPromptRetrievalBackend
 from synthorg.memory.org.store import SQLiteOrgFactStore
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestCreateOrgMemoryBackend:

@@ -9,10 +9,7 @@ from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.handlers.config_handler import ConfigComponentHandler
 from synthorg.backup.models import BackupComponent
 
-pytestmark = pytest.mark.timeout(30)
-
 _SAMPLE_YAML = "company:\n  name: test-org\n  departments: []\n"
-
 
 # -- component property -------------------------------------------------------
 

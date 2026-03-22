@@ -15,8 +15,6 @@ from synthorg.security.output_scan_policy_factory import (
     build_output_scan_policy,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_autonomy() -> EffectiveAutonomy:
     return EffectiveAutonomy(

@@ -14,9 +14,6 @@ from synthorg.security.models import (
 from synthorg.security.rules.engine import RuleEngine
 from synthorg.security.rules.risk_classifier import RiskClassifier
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Helpers ───────────────────────────────────────────────────────
 
 

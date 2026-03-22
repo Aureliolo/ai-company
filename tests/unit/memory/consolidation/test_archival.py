@@ -8,8 +8,6 @@ from synthorg.core.enums import MemoryCategory
 from synthorg.memory.consolidation.archival import ArchivalStore
 from synthorg.memory.consolidation.models import ArchivalEntry, ArchivalMode
 
-pytestmark = pytest.mark.timeout(30)
-
 _NOW = datetime.now(UTC)
 
 

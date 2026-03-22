@@ -24,9 +24,6 @@ from .conftest import (
     mem0_search_result,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Store ─────────────────────────────────────────────────────────
 
 

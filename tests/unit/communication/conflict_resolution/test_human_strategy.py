@@ -12,8 +12,6 @@ from synthorg.communication.enums import ConflictResolutionStrategy
 
 from .conftest import make_conflict
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestHumanEscalationResolver:

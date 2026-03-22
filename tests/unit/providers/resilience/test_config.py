@@ -5,8 +5,6 @@ from pydantic import ValidationError
 
 from synthorg.core.resilience_config import RateLimiterConfig, RetryConfig
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestRetryConfig:

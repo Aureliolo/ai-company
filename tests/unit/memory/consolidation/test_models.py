@@ -16,8 +16,6 @@ from synthorg.memory.consolidation.models import (
 )
 from synthorg.memory.models import MemoryMetadata
 
-pytestmark = pytest.mark.timeout(30)
-
 _NOW = datetime.now(UTC)
 
 

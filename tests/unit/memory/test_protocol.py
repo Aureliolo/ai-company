@@ -15,8 +15,6 @@ from synthorg.memory.models import (
 )
 from synthorg.memory.protocol import MemoryBackend
 
-pytestmark = pytest.mark.timeout(30)
-
 
 class _FakeMemoryBackend:
     """Minimal in-memory backend for protocol compliance testing."""

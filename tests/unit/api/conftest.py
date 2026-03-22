@@ -36,7 +36,6 @@ from tests.unit.api.fakes import (
 
 __all__ = ["FakeMessageBus", "FakePersistenceBackend"]
 
-
 # ── Test auth constants ───────────────────────────────────────
 
 _TEST_JWT_SECRET = "test-secret-that-is-at-least-32-characters-long"

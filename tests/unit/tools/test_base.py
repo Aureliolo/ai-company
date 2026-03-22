@@ -9,9 +9,6 @@ from synthorg.core.enums import ToolCategory
 from synthorg.providers.models import ToolDefinition
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── ToolExecutionResult ──────────────────────────────────────────
 
 

@@ -5,9 +5,6 @@ import pytest
 from synthorg.security.models import ScanOutcome
 from synthorg.security.output_scanner import OutputScanner
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Helpers ───────────────────────────────────────────────────────
 
 

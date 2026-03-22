@@ -12,9 +12,6 @@ from synthorg.engine.plan_models import ExecutionPlan, PlanStep, StepStatus
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage, CompletionResponse, TokenUsage
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

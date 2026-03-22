@@ -9,8 +9,6 @@ if TYPE_CHECKING:
 
     from synthorg.tools.file_system.edit_file import EditFileTool
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestEditFileExecution:

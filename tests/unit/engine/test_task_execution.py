@@ -23,8 +23,6 @@ from synthorg.providers.models import (
     add_token_usage,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestStatusTransition:

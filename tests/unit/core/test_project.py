@@ -7,8 +7,6 @@ from synthorg.core.enums import ProjectStatus
 from synthorg.core.project import Project
 from tests.unit.core.conftest import ProjectFactory
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── Helpers ──────────────────────────────────────────────────────
 
 _PROJECT_KWARGS: dict[str, object] = {

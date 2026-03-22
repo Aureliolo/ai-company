@@ -14,8 +14,6 @@ from synthorg.core.company import (
     Team,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_company(
     departments: tuple[Department, ...] = (),

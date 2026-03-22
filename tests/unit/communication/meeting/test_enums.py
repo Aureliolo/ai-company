@@ -8,8 +8,6 @@ from synthorg.communication.meeting.enums import (
     MeetingStatus,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestMeetingProtocolType:

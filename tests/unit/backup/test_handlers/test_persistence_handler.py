@@ -9,8 +9,6 @@ from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.handlers.persistence import PersistenceComponentHandler
 from synthorg.backup.models import BackupComponent
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _create_test_db(path: Path) -> None:
     """Create a minimal valid SQLite database at *path*."""

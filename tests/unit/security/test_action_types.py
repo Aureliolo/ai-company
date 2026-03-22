@@ -5,9 +5,6 @@ import pytest
 from synthorg.core.enums import ActionType
 from synthorg.security.action_types import ActionTypeCategory, ActionTypeRegistry
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # -- ActionTypeCategory enum --------------------------------------------------
 
 

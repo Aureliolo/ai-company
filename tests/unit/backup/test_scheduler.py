@@ -8,8 +8,6 @@ import pytest
 from synthorg.backup.models import BackupTrigger
 from synthorg.backup.scheduler import BackupScheduler
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_mock_service() -> MagicMock:
     """Build a mock BackupService with an async create_backup."""

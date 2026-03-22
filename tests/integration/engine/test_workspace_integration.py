@@ -18,8 +18,7 @@ from synthorg.engine.workspace.git_worktree import (
 )
 from synthorg.engine.workspace.models import WorkspaceRequest
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
-
+pytestmark = pytest.mark.integration
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

@@ -11,9 +11,6 @@ from synthorg.budget.cost_tiers import (
     resolve_tiers,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── CostTierDefinition ─────────────────────────────────────────────
 
 

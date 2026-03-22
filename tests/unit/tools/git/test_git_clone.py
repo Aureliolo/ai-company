@@ -14,9 +14,6 @@ from synthorg.tools.git_url_validator import (
 
 from .conftest import _run_git
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── GitCloneTool ──────────────────────────────────────────────────
 
 

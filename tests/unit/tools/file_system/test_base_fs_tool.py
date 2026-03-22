@@ -4,8 +4,6 @@ import pytest
 
 from synthorg.tools.file_system._base_fs_tool import _map_os_error
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 @pytest.mark.parametrize(

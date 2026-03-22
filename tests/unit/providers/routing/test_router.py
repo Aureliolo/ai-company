@@ -17,7 +17,7 @@ from synthorg.providers.routing.errors import (
 from synthorg.providers.routing.models import RoutingRequest
 from synthorg.providers.routing.router import ModelRouter
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestModelRouterConstruction:

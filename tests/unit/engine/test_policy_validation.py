@@ -10,7 +10,7 @@ from synthorg.engine.policy_validation import (
 )
 from synthorg.observability.events.prompt import PROMPT_POLICY_QUALITY_ISSUE
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestPolicyQualityIssueModel:

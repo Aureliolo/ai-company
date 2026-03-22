@@ -23,8 +23,6 @@ from synthorg.providers.models import (
     ToolDefinition,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 class _ShutdownTriggeringProvider:
     """Provider that triggers shutdown on the first call.

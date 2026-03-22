@@ -14,9 +14,7 @@ from synthorg.providers.discovery_policy import (
     seed_from_presets,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
-
+pytestmark = pytest.mark.unit
 # ── ProviderDiscoveryPolicy model ────────────────────────────────
 
 

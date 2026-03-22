@@ -25,8 +25,6 @@ from synthorg.observability.events.execution import (
     EXECUTION_RECOVERY_START,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestRecoveryStrategyProtocol:

@@ -205,7 +205,6 @@ class TestDiscoverModelsEndpoint:
 
 
 @pytest.mark.unit
-@pytest.mark.timeout(30)
 class TestProbePresetEndpoint:
     """Tests for POST /providers/probe-preset."""
 

@@ -5,8 +5,6 @@ import pytest
 from synthorg.communication.meeting._prompts import build_agenda_prompt
 from synthorg.communication.meeting.models import MeetingAgenda, MeetingAgendaItem
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestBuildAgendaPrompt:

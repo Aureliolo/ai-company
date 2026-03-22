@@ -13,9 +13,6 @@ from synthorg.persistence.sqlite.heartbeat_repo import (
 if TYPE_CHECKING:
     import aiosqlite
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

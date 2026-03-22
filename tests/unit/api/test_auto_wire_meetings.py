@@ -15,8 +15,6 @@ from synthorg.communication.meeting.participant import (
 from synthorg.communication.meeting.scheduler import MeetingScheduler
 from synthorg.config.schema import RootConfig
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _default_config() -> RootConfig:
     return RootConfig(company_name="test-company")

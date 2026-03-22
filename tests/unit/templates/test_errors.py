@@ -9,8 +9,6 @@ from synthorg.templates.errors import (
     TemplateValidationError,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestTemplateValidationErrorStr:

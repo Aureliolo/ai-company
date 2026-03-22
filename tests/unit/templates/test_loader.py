@@ -32,8 +32,6 @@ from .conftest import (
     TEMPLATE_WITH_VARIABLES_YAML,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── list_builtin_templates ───────────────────────────────────────
 
 

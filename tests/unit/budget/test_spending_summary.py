@@ -20,8 +20,6 @@ from .conftest import (
     SpendingSummaryFactory,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── PeriodSpending ────────────────────────────────────────────────
 
 

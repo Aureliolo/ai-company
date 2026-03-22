@@ -8,8 +8,6 @@ from synthorg.budget.errors import (
     QuotaExhaustedError,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestBudgetErrorHierarchy:

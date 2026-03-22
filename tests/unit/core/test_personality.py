@@ -12,8 +12,6 @@ from synthorg.core.personality import (
     compute_team_compatibility,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestComputeCompatibility:

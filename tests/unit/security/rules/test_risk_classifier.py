@@ -5,9 +5,6 @@ import pytest
 from synthorg.core.enums import ActionType, ApprovalRiskLevel
 from synthorg.security.rules.risk_classifier import RiskClassifier
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── CRITICAL risk level ──────────────────────────────────────────────
 
 

@@ -10,8 +10,6 @@ from synthorg.communication.dispatcher import DispatchResult, MessageDispatcher
 from synthorg.communication.enums import MessagePriority, MessageType
 from synthorg.communication.message import Message
 
-pytestmark = pytest.mark.timeout(30)
-
 _MESSAGE_KWARGS: dict[str, object] = {
     "timestamp": datetime(2026, 3, 7, 12, 0, tzinfo=UTC),
     "sender": "agent-a",

@@ -14,8 +14,6 @@ if TYPE_CHECKING:
 
     from .conftest import _ConcurrencyTrackingTool
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestInvokeSuccess:

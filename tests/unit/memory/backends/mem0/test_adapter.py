@@ -17,9 +17,6 @@ from synthorg.memory.shared import SharedKnowledgeStore
 
 from .conftest import make_store_request
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Properties ────────────────────────────────────────────────────
 
 

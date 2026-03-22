@@ -14,7 +14,7 @@ from synthorg.observability.events.provider import (
 )
 from synthorg.providers.resilience.rate_limiter import RateLimiter
 
-pytestmark = [pytest.mark.timeout(30), pytest.mark.unit]
+pytestmark = pytest.mark.unit
 
 
 class TestRateLimiterDisabled:

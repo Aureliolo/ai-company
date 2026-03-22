@@ -11,9 +11,7 @@ from synthorg.tools.sandbox.config import SubprocessSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
-
+pytestmark = pytest.mark.unit
 # ── Constructor ──────────────────────────────────────────────────
 
 

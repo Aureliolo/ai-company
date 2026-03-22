@@ -12,8 +12,6 @@ from synthorg.memory.errors import (
     MemoryStoreError,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestMemoryErrorHierarchy:

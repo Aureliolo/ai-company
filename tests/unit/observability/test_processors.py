@@ -4,8 +4,6 @@ import pytest
 
 from synthorg.observability.processors import sanitize_sensitive_fields
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestSanitizeSensitiveFields:

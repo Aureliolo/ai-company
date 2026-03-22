@@ -12,8 +12,6 @@ from synthorg.backup.errors import (
     RetentionError,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestBackupErrorHierarchy:

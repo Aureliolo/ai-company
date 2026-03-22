@@ -32,9 +32,6 @@ from .conftest import (
     CIRCULAR_SELF_YAML,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── TestMergeAgents ──────────────────────────────────────────────
 
 

@@ -6,7 +6,7 @@ from synthorg.config.schema import ProviderConfig, ProviderModelConfig
 from synthorg.providers.routing.errors import ModelResolutionError
 from synthorg.providers.routing.resolver import ModelResolver
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestResolverFromConfig:

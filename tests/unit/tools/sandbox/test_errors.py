@@ -9,7 +9,7 @@ from synthorg.tools.sandbox.errors import (
     SandboxTimeoutError,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestSandboxErrors:

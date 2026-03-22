@@ -12,9 +12,6 @@ from synthorg.persistence.sqlite.checkpoint_repo import (
 if TYPE_CHECKING:
     import aiosqlite
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

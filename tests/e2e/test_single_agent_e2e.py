@@ -31,7 +31,7 @@ from .conftest import (
     make_tool_call_response,
 )
 
-pytestmark = [pytest.mark.e2e, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.e2e
 
 
 class TestFileToolAgent:

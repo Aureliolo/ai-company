@@ -13,8 +13,6 @@ from synthorg.observability.enums import LogLevel, RotationStrategy, SinkType
 
 from .conftest import LogConfigFactory, RotationConfigFactory, SinkConfigFactory
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── RotationConfig ─────────────────────────────────────────────────
 
 

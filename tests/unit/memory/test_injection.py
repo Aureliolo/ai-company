@@ -10,9 +10,6 @@ from synthorg.memory.injection import (
     TokenEstimator,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── InjectionStrategy enum ──────────────────────────────────────
 
 

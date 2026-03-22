@@ -11,8 +11,6 @@ from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, TimeoutAction
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.timeout_checker import TimeoutChecker
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_approval_item(**overrides: Any) -> ApprovalItem:
     """Create a valid pending ApprovalItem with sensible defaults."""

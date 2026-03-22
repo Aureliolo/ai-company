@@ -11,9 +11,6 @@ from synthorg.memory.config import (
 )
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── MemoryStorageConfig ──────────────────────────────────────────
 
 

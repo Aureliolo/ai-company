@@ -14,9 +14,6 @@ from synthorg.security.output_scan_policy import (
     WithholdPolicy,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Helpers ──────────────────────────────────────────────────────
 
 

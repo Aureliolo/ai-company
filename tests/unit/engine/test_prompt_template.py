@@ -8,8 +8,6 @@ from synthorg.engine.prompt_template import (
     DEFAULT_TEMPLATE,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestAutonomyInstructions:

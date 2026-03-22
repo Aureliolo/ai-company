@@ -18,8 +18,6 @@ from synthorg.engine.errors import DecompositionError
 from synthorg.engine.parallel import ParallelExecutor
 from synthorg.engine.routing.service import TaskRoutingService
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _mock_engine() -> MagicMock:
     """Create a mock AgentEngine for the factory."""

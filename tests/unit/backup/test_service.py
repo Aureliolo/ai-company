@@ -15,8 +15,6 @@ from synthorg.backup.models import (
 )
 from synthorg.backup.service import BackupService
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_handler(component: BackupComponent) -> MagicMock:
     """Build a mock ComponentHandler for testing."""

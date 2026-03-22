@@ -25,8 +25,6 @@ from synthorg.communication.errors import (
 )
 from synthorg.communication.message import Message
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_message(
     *,

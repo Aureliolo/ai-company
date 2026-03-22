@@ -12,8 +12,6 @@ from synthorg.memory.consolidation.config import (
 )
 from synthorg.memory.consolidation.models import RetentionRule
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestRetentionConfig:

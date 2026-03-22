@@ -15,8 +15,6 @@ from synthorg.security.trust.per_category_strategy import (
 )
 from tests.unit.security.trust.conftest import make_performance_snapshot
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_per_category_config(
     *,

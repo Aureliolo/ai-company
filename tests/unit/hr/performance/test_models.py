@@ -21,7 +21,6 @@ from .conftest import make_calibration_record, make_collab_metric, make_task_met
 
 NOW = datetime(2026, 3, 10, 12, 0, 0, tzinfo=UTC)
 
-
 # ── TaskMetricRecord ──────────────────────────────────────────────
 
 

@@ -5,8 +5,6 @@ import structlog
 
 from synthorg.observability.correlation import with_correlation_async
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestWithCorrelationAsync:

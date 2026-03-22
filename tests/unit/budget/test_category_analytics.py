@@ -14,8 +14,6 @@ from synthorg.budget.coordination_config import OrchestrationAlertThresholds
 from synthorg.budget.cost_record import CostRecord
 from synthorg.budget.tracker import CostTracker
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _record(  # noqa: PLR0913
     *,

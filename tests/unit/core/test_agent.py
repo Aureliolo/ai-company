@@ -36,8 +36,6 @@ from .conftest import (
     ToolPermissionsFactory,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── PersonalityConfig ──────────────────────────────────────────────
 
 

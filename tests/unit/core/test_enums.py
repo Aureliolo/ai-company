@@ -29,8 +29,6 @@ from synthorg.core.enums import (
     compare_seniority,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── Member Counts ──────────────────────────────────────────────────
 
 

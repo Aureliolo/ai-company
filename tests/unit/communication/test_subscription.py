@@ -12,7 +12,7 @@ from synthorg.communication.enums import (
 from synthorg.communication.message import Message
 from synthorg.communication.subscription import DeliveryEnvelope, Subscription
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestSubscription:

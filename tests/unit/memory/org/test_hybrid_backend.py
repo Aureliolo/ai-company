@@ -23,8 +23,6 @@ from synthorg.memory.org.store import SQLiteOrgFactStore
 if TYPE_CHECKING:
     from synthorg.core.types import NotBlankStr
 
-pytestmark = pytest.mark.timeout(30)
-
 _HUMAN = OrgFactAuthor(is_human=True)
 _SENIOR = OrgFactAuthor(
     agent_id="agent-sr",

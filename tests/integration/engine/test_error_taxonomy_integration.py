@@ -22,7 +22,7 @@ from synthorg.engine.loop_protocol import (
 from synthorg.providers.enums import FinishReason, MessageRole
 from synthorg.providers.models import ChatMessage, ToolResult
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.integration
 
 
 def _identity() -> AgentIdentity:

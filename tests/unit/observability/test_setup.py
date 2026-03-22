@@ -24,8 +24,6 @@ from synthorg.observability.setup import (
     configure_logging,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _console_only_config() -> LogConfig:
     return LogConfig(

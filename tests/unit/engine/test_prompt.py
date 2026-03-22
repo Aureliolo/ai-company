@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     from synthorg.core.task import Task
     from synthorg.providers.models import ToolDefinition
 
-
 # ── TestBuildSystemPrompt ────────────────────────────────────────
 
 

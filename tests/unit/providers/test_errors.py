@@ -14,8 +14,6 @@ from synthorg.providers.errors import (
     RateLimitError,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestProviderError:

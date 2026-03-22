@@ -19,9 +19,6 @@ from synthorg.budget.quota import (
     window_start,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── QuotaWindow ────────────────────────────────────────────────────
 
 

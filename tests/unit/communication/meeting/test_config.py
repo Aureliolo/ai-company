@@ -11,8 +11,6 @@ from synthorg.communication.meeting.config import (
 )
 from synthorg.communication.meeting.enums import MeetingProtocolType
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestRoundRobinConfig:

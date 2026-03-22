@@ -6,8 +6,6 @@ from synthorg.communication.loop_prevention.dedup import (
     DelegationDeduplicator,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestDelegationDeduplicator:

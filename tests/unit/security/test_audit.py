@@ -8,9 +8,6 @@ from synthorg.core.enums import ApprovalRiskLevel, ToolCategory
 from synthorg.security.audit import AuditLog
 from synthorg.security.models import AuditEntry, AuditVerdictStr
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Helpers ───────────────────────────────────────────────────────
 
 

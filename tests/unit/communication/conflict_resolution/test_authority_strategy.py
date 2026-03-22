@@ -17,8 +17,6 @@ from synthorg.core.enums import SeniorityLevel
 
 from .conftest import make_conflict, make_position
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestAuthorityResolverSeniority:

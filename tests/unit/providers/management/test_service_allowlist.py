@@ -12,9 +12,7 @@ from tests.unit.api.fakes import FakePersistenceBackend
 
 from .conftest import make_create_request
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
-
+pytestmark = pytest.mark.unit
 # ── Helpers ──────────────────────────────────────────────────────
 
 

@@ -11,8 +11,6 @@ from synthorg.communication.loop_prevention.guard import (
     DelegationGuard,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_config(**overrides: object) -> LoopPreventionConfig:
     """Create a LoopPreventionConfig with test-friendly defaults."""

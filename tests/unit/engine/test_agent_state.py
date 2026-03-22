@@ -13,9 +13,6 @@ from synthorg.engine.agent_state import AgentRuntimeState
 if TYPE_CHECKING:
     from synthorg.engine.context import AgentContext
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

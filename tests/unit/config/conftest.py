@@ -173,7 +173,6 @@ ENV_VAR_MISSING_YAML = """\
 company_name: ${UNDEFINED_VAR}
 """
 
-
 # ── Fixtures ──────────────────────────────────────────────────────
 
 

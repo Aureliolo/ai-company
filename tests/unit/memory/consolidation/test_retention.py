@@ -11,8 +11,6 @@ from synthorg.memory.consolidation.models import RetentionRule
 from synthorg.memory.consolidation.retention import RetentionEnforcer
 from synthorg.memory.models import MemoryEntry, MemoryMetadata, MemoryQuery
 
-pytestmark = pytest.mark.timeout(30)
-
 _NOW = datetime.now(UTC)
 _AGENT_ID = "test-agent"
 

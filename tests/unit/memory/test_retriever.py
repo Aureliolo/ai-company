@@ -26,8 +26,6 @@ from synthorg.providers.enums import MessageRole
 if TYPE_CHECKING:
     from synthorg.memory.ranking import ScoredMemory
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_entry(
     *,

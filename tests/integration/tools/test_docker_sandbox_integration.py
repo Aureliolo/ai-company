@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(60)]
 
-
 _TEST_IMAGE = "python:3.12-slim"
 
 

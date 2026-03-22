@@ -7,8 +7,6 @@ from synthorg.tools.examples.echo import EchoTool
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestEchoToolProperties:

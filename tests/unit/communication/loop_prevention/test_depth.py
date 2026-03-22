@@ -6,8 +6,6 @@ from synthorg.communication.loop_prevention.depth import (
     check_delegation_depth,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestCheckDelegationDepth:

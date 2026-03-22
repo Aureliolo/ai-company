@@ -18,10 +18,8 @@ from synthorg.tools.sandbox.docker_sandbox import (
 )
 from synthorg.tools.sandbox.errors import SandboxError, SandboxStartError
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
+pytestmark = pytest.mark.unit
 _DOCKER_MODULE = "synthorg.tools.sandbox.docker_sandbox.aiodocker"
-
 
 # ── Helpers ──────────────────────────────────────────────────────
 

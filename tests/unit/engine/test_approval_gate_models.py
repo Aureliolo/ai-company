@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.engine.approval_gate_models import EscalationInfo, ResumePayload
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestEscalationInfo:

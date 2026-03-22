@@ -8,8 +8,6 @@ from synthorg.security.trust.disabled_strategy import DisabledTrustStrategy
 from synthorg.security.trust.models import TrustState
 from tests.unit.security.trust.conftest import make_performance_snapshot
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestDisabledTrustStrategy:

@@ -4,7 +4,7 @@ import pytest
 
 from synthorg.providers.url_utils import is_self_url
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestIsSelfUrl:

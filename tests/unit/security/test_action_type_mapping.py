@@ -5,9 +5,6 @@ import pytest
 from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # -- Coverage: every ToolCategory has a mapping --------------------------------
 
 

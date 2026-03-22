@@ -14,7 +14,7 @@ from synthorg.hr.promotion.seniority_approval_strategy import (
 
 from .conftest import make_agent_identity
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 def _make_evaluation(

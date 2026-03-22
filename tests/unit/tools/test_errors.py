@@ -9,8 +9,6 @@ from synthorg.tools.errors import (
     ToolParameterError,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestToolError:

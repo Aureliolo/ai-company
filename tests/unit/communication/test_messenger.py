@@ -16,8 +16,6 @@ from synthorg.communication.message import Message
 from synthorg.communication.messenger import AgentMessenger
 from synthorg.communication.subscription import Subscription
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_mock_bus() -> MagicMock:
     """Create a mock MessageBus with all async methods."""

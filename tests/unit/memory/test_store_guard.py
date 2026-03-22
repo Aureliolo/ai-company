@@ -11,8 +11,6 @@ from synthorg.observability.events.memory import (
     MEMORY_FILTER_STORE_MISSING_TAG,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestValidateMemoryTags:

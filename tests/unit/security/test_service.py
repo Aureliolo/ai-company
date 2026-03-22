@@ -30,9 +30,6 @@ from synthorg.security.service import SecOpsService
 if TYPE_CHECKING:
     from synthorg.security.output_scan_policy import OutputScanResponsePolicy
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Helpers ───────────────────────────────────────────────────────
 
 

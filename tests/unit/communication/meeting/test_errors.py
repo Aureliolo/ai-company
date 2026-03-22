@@ -11,8 +11,6 @@ from synthorg.communication.meeting.errors import (
     MeetingProtocolNotFoundError,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestMeetingErrorHierarchy:

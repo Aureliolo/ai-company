@@ -8,8 +8,6 @@ from synthorg.memory.org.config import (
     OrgMemoryConfig,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestExtendedStoreConfig:

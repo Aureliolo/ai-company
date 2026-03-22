@@ -17,7 +17,7 @@ from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.result import SandboxResult
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestGitToolsWithSandbox:

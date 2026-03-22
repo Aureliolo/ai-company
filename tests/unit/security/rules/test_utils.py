@@ -6,8 +6,6 @@ import pytest
 
 from synthorg.security.rules._utils import walk_string_values
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestWalkStringValuesFlat:

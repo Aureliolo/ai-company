@@ -11,7 +11,7 @@ from synthorg.settings.enums import (
 )
 from synthorg.settings.models import SettingDefinition, SettingEntry, SettingValue
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestSettingDefinition:

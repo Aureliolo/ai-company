@@ -8,9 +8,7 @@ from synthorg.core.enums import ToolCategory
 from synthorg.tools.code_runner import CodeRunnerTool
 from synthorg.tools.sandbox.result import SandboxResult
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
-
+pytestmark = pytest.mark.unit
 # ── Helpers ──────────────────────────────────────────────────────
 
 

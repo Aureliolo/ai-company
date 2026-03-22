@@ -17,8 +17,6 @@ from synthorg.templates.schema import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── TemplateVariable ─────────────────────────────────────────────
 
 

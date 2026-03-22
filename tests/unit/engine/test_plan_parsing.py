@@ -8,8 +8,6 @@ from synthorg.engine.plan_parsing import parse_plan
 from synthorg.providers.enums import FinishReason
 from synthorg.providers.models import CompletionResponse, TokenUsage
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _usage() -> TokenUsage:
     return TokenUsage(input_tokens=10, output_tokens=5, cost_usd=0.001)

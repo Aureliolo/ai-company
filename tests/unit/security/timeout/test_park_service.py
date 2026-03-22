@@ -11,8 +11,6 @@ from synthorg.core.enums import SeniorityLevel
 from synthorg.engine.context import AgentContext
 from synthorg.security.timeout.park_service import ParkService
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_agent_context() -> AgentContext:
     """Create a minimal AgentContext for testing."""

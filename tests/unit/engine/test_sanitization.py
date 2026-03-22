@@ -4,8 +4,6 @@ import pytest
 
 from synthorg.engine.sanitization import sanitize_message
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestSanitizeMessagePaths:

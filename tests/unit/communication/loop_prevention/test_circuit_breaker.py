@@ -8,8 +8,6 @@ from synthorg.communication.loop_prevention.circuit_breaker import (
     DelegationCircuitBreaker,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestDelegationCircuitBreaker:

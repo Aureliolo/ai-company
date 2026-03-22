@@ -4,8 +4,6 @@ import pytest
 
 import synthorg.memory as memory_module
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestMemoryExports:

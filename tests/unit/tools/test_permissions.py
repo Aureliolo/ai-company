@@ -11,9 +11,6 @@ from synthorg.tools.errors import ToolPermissionDeniedError
 from synthorg.tools.permissions import ToolPermissionChecker
 from synthorg.tools.registry import ToolRegistry
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Local test tool ──────────────────────────────────────────────
 
 

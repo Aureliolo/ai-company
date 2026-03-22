@@ -21,8 +21,6 @@ if TYPE_CHECKING:
 
 from .conftest import make_completion_response as _make_completion_response
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestAgentEnginePostExecutionTransitions:

@@ -32,8 +32,6 @@ from synthorg.memory.models import (
     MemoryStoreRequest,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_entry(  # noqa: PLR0913
     *,

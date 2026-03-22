@@ -11,8 +11,6 @@ from synthorg.memory.org.errors import (
     OrgMemoryWriteError,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestOrgMemoryErrorHierarchy:

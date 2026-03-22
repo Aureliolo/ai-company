@@ -24,8 +24,6 @@ from synthorg.core.enums import Priority
 _NOW = datetime(2026, 3, 8, 10, 0, tzinfo=UTC)
 _LATER = datetime(2026, 3, 8, 10, 30, tzinfo=UTC)
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestAgentResponse:

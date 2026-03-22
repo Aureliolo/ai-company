@@ -31,8 +31,6 @@ from tests.unit.api.conftest import (
     make_auth_headers,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_agent(name: str = "test-agent") -> AgentIdentity:
     return AgentIdentity(

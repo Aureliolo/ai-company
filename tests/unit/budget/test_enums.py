@@ -4,8 +4,6 @@ import pytest
 
 from synthorg.budget.enums import BudgetAlertLevel
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestBudgetAlertLevel:

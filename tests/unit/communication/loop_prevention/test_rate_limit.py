@@ -7,8 +7,6 @@ from synthorg.communication.loop_prevention.rate_limit import (
     DelegationRateLimiter,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestDelegationRateLimiter:

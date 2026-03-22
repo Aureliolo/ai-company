@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from synthorg.tools.mcp.config import MCPConfig, MCPServerConfig
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestMCPServerConfigStdio:

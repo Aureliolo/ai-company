@@ -19,9 +19,6 @@ from synthorg.tools.base import BaseTool, ToolExecutionResult
 from synthorg.tools.invoker import ToolInvoker
 from synthorg.tools.registry import ToolRegistry
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Concrete test tool ───────────────────────────────────────────
 
 

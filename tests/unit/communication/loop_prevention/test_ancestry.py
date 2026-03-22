@@ -6,8 +6,6 @@ from synthorg.communication.loop_prevention.ancestry import (
     check_ancestry,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestCheckAncestry:

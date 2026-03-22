@@ -27,9 +27,6 @@ from synthorg.security.models import (
     SecurityVerdictType,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # -- Helpers ---------------------------------------------------------------
 
 

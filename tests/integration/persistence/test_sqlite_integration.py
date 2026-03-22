@@ -9,7 +9,7 @@ from synthorg.persistence.config import SQLiteConfig
 from synthorg.persistence.sqlite.backend import SQLitePersistenceBackend
 from tests.unit.persistence.conftest import make_message, make_task
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.integration
 
 
 class TestSQLiteOnDisk:

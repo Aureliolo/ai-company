@@ -10,7 +10,7 @@ from synthorg.engine._security_factory import (
 )
 from synthorg.engine.errors import ExecutionStateError
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 def _make_audit_log() -> MagicMock:

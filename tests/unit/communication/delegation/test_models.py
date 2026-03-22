@@ -13,8 +13,6 @@ from synthorg.communication.delegation.models import (
 from synthorg.core.enums import TaskType
 from synthorg.core.task import Task
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_task(**overrides: object) -> Task:
     defaults: dict[str, object] = {

@@ -11,8 +11,6 @@ from synthorg.communication.enums import (
     MessageType,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestMessageType:

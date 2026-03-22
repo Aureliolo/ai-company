@@ -10,7 +10,7 @@ from synthorg.tools.sandbox.config import SubprocessSandboxConfig
 from synthorg.tools.sandbox.errors import SandboxError
 from synthorg.tools.sandbox.subprocess_sandbox import SubprocessSandbox
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.integration
 
 
 class TestRealGitWithSandbox:

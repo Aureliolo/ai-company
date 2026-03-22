@@ -23,8 +23,6 @@ from synthorg.providers.resilience.errors import RetryExhaustedError
 
 from .conftest import build_model_response
 
-pytestmark = pytest.mark.timeout(30)
-
 _PATCH_ACOMPLETION = "litellm.acompletion"
 
 

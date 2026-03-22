@@ -21,9 +21,6 @@ if TYPE_CHECKING:
     from synthorg.core.agent import AgentIdentity
     from synthorg.engine.task_execution import TaskExecution
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

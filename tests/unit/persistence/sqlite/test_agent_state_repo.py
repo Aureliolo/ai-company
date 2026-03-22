@@ -14,9 +14,6 @@ from synthorg.persistence.sqlite.agent_state_repo import (
 if TYPE_CHECKING:
     import aiosqlite
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

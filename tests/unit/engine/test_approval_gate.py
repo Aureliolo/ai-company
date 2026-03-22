@@ -10,7 +10,7 @@ from synthorg.engine.approval_gate_models import EscalationInfo
 from synthorg.persistence.repositories import ParkedContextRepository
 from synthorg.security.timeout.park_service import ParkService
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 def _make_escalation(  # noqa: PLR0913

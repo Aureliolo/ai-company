@@ -15,8 +15,6 @@ from synthorg.core.enums import (
 from synthorg.core.task import AcceptanceCriterion, Task
 from synthorg.observability.events.task import TASK_STATUS_CHANGED
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── Helpers ──────────────────────────────────────────────────────
 
 _TASK_KWARGS: dict[str, object] = {

@@ -24,8 +24,6 @@ from synthorg.settings.service import SettingsService
 
 from .conftest import make_create_request
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestCreateProvider:

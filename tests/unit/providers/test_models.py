@@ -26,9 +26,6 @@ from .conftest import (
     ToolResultFactory,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── TokenUsage ────────────────────────────────────────────────────
 
 

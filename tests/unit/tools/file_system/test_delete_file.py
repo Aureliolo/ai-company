@@ -9,8 +9,6 @@ if TYPE_CHECKING:
 
     from synthorg.tools.file_system.delete_file import DeleteFileTool
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestDeleteFileProperties:

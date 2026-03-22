@@ -6,9 +6,6 @@ from pydantic import ValidationError
 from synthorg.communication.channel import Channel
 from synthorg.communication.enums import ChannelType
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Channel: Construction & Defaults ────────────────────────────
 
 

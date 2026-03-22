@@ -22,8 +22,6 @@ from synthorg.providers.errors import (
 from synthorg.providers.resilience.errors import RetryExhaustedError
 from synthorg.providers.resilience.retry import RetryHandler
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _fast_config(
     max_retries: int = 3,

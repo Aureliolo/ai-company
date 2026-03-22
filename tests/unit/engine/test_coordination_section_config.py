@@ -9,8 +9,6 @@ from synthorg.engine.coordination.section_config import (
 )
 from synthorg.engine.routing.models import AutoTopologyConfig
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestCoordinationSectionConfigDefaults:

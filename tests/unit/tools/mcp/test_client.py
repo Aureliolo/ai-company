@@ -15,7 +15,7 @@ from synthorg.tools.mcp.errors import (
 )
 from synthorg.tools.mcp.models import MCPToolInfo
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestMCPClientConnection:

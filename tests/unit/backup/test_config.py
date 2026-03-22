@@ -6,9 +6,6 @@ from pydantic import ValidationError
 from synthorg.backup.config import BackupConfig, RetentionConfig
 from synthorg.backup.models import BackupComponent
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # -- RetentionConfig ----------------------------------------------------------
 
 

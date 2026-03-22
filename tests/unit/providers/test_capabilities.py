@@ -7,8 +7,6 @@ from synthorg.providers.capabilities import ModelCapabilities
 
 from .conftest import ModelCapabilitiesFactory
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestModelCapabilities:

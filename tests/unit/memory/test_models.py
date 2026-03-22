@@ -13,9 +13,6 @@ from synthorg.memory.models import (
     MemoryStoreRequest,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── MemoryMetadata ────────────────────────────────────────────────
 
 

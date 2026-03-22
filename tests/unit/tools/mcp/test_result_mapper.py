@@ -12,7 +12,7 @@ from mcp.types import (
 from synthorg.tools.mcp.models import MCPRawResult
 from synthorg.tools.mcp.result_mapper import map_call_tool_result
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestTextContentMapping:

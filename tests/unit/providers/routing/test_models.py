@@ -15,7 +15,7 @@ from tests.unit.providers.routing.conftest import (
     RoutingRequestFactory,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 class TestResolvedModel:

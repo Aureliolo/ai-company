@@ -22,8 +22,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _foreign_pre_chain() -> list[structlog.types.Processor]:
     return [

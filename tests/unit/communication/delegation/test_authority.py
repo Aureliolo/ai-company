@@ -21,8 +21,6 @@ from synthorg.core.company import (
 from synthorg.core.enums import SeniorityLevel
 from synthorg.core.role import Authority
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_agent(
     name: str,

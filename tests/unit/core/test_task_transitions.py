@@ -9,8 +9,6 @@ from synthorg.core.enums import TaskStatus
 from synthorg.core.task_transitions import VALID_TRANSITIONS, validate_transition
 from synthorg.observability.events.task import TASK_TRANSITION_INVALID
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── Valid Transitions ─────────────────────────────────────────────
 
 

@@ -9,8 +9,6 @@ from synthorg.backup.errors import ComponentBackupError
 from synthorg.backup.handlers.memory import MemoryComponentHandler
 from synthorg.backup.models import BackupComponent
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _populate_memory_dir(path: Path) -> int:
     """Create a fake memory directory tree and return total bytes."""

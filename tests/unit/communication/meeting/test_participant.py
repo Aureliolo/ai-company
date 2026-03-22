@@ -12,8 +12,6 @@ from synthorg.communication.meeting.participant import (
 )
 from synthorg.core.agent import AgentIdentity
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_identity(
     agent_id: str | None = None,

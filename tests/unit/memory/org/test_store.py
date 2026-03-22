@@ -15,8 +15,6 @@ from synthorg.memory.org.errors import (
 from synthorg.memory.org.models import OrgFact, OrgFactAuthor
 from synthorg.memory.org.store import SQLiteOrgFactStore, _row_to_org_fact
 
-pytestmark = pytest.mark.timeout(30)
-
 _NOW = datetime.now(UTC)
 _HUMAN_AUTHOR = OrgFactAuthor(is_human=True)
 _AGENT_AUTHOR = OrgFactAuthor(

@@ -5,8 +5,6 @@ import pytest
 from synthorg.providers.errors import ProviderError, RateLimitError
 from synthorg.providers.resilience.errors import RetryExhaustedError
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestRetryExhaustedError:

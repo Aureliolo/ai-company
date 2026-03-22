@@ -21,11 +21,8 @@ from synthorg.budget.quota import (
 from synthorg.budget.quota_tracker import QuotaTracker
 from synthorg.budget.tracker import CostTracker
 
-pytestmark = pytest.mark.timeout(30)
-
 _BILLING_START = datetime(2026, 3, 1, tzinfo=UTC)
 _DAY_START = datetime(2026, 3, 15, tzinfo=UTC)
-
 
 # ── Helpers ────────────────────────────────────────────────────────
 

@@ -9,8 +9,6 @@ from synthorg.settings.subscribers.backup_subscriber import (
     BackupSettingsSubscriber,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_subscriber(
     *,

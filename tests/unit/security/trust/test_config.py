@@ -16,9 +16,6 @@ from synthorg.security.trust.config import (
 )
 from synthorg.security.trust.enums import TrustStrategyType
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── TrustConfig Defaults ────────────────────────────────────────
 
 

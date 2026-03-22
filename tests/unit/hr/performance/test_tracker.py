@@ -24,7 +24,6 @@ from .conftest import make_acceptance_criterion, make_collab_metric, make_task_m
 
 NOW = datetime(2026, 3, 10, 12, 0, 0, tzinfo=UTC)
 
-
 # ── Mock Strategies ───────────────────────────────────────────────
 
 

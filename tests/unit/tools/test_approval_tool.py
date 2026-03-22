@@ -9,7 +9,7 @@ from synthorg.core.enums import ApprovalRiskLevel
 from synthorg.security.timeout.risk_tier_classifier import DefaultRiskTierClassifier
 from synthorg.tools.approval_tool import RequestHumanApprovalTool
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
+pytestmark = pytest.mark.unit
 
 
 @pytest.fixture

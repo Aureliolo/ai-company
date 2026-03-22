@@ -25,10 +25,8 @@ from .conftest import (
     make_provider_config,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
-
+pytestmark = pytest.mark.integration
 _PATCH_TARGET = "synthorg.providers.drivers.litellm_driver._litellm.acompletion"
-
 
 # ── Happy-path: config → registry → complete ─────────────────────
 

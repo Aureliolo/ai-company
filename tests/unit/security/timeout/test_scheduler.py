@@ -10,8 +10,6 @@ from synthorg.core.enums import ApprovalRiskLevel, ApprovalStatus, TimeoutAction
 from synthorg.security.timeout.models import TimeoutAction
 from synthorg.security.timeout.scheduler import ApprovalTimeoutScheduler
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_pending_item(
     approval_id: str = "approval-test-1",

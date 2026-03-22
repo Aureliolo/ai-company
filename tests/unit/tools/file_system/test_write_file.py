@@ -11,8 +11,6 @@ if TYPE_CHECKING:
 
     from synthorg.tools.file_system.write_file import WriteFileTool
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestWriteFileExecution:

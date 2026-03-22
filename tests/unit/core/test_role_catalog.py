@@ -18,8 +18,6 @@ from synthorg.core.role_catalog import (
     get_seniority_info,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── Seniority Info ─────────────────────────────────────────────────
 
 

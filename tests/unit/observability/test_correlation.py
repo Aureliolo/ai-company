@@ -13,8 +13,6 @@ from synthorg.observability.correlation import (
     with_correlation,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestGenerateCorrelationId:

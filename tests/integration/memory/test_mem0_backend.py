@@ -21,8 +21,6 @@ from synthorg.memory.models import MemoryQuery, MemoryStoreRequest
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.memory.retriever import ContextInjectionStrategy
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _test_embedder() -> Mem0EmbedderConfig:
     """Vendor-agnostic embedder config for tests."""

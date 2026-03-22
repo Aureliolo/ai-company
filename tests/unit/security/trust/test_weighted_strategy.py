@@ -14,8 +14,6 @@ from tests.unit.security.trust.conftest import make_performance_snapshot
 if TYPE_CHECKING:
     from synthorg.security.trust.config import TrustConfig
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestWeightedTrustStrategy:

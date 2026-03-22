@@ -82,9 +82,7 @@ if TYPE_CHECKING:
 
     from synthorg.providers.capabilities import ModelCapabilities
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
-
-
+pytestmark = pytest.mark.integration
 # ── Mock Provider ──────────────────────────────────────────────────
 
 

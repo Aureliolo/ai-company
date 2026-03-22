@@ -137,8 +137,7 @@ from synthorg.observability.events.workspace import (
     WORKSPACE_TEARDOWN_START,
 )
 
-pytestmark = [pytest.mark.unit, pytest.mark.timeout(30)]
-
+pytestmark = pytest.mark.unit
 _DOT_PATTERN = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 

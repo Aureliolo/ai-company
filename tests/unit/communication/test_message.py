@@ -13,8 +13,6 @@ from synthorg.communication.enums import (
 )
 from synthorg.communication.message import Attachment, Message, MessageMetadata
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── Helpers ──────────────────────────────────────────────────────
 
 _MESSAGE_KWARGS: dict[str, object] = {

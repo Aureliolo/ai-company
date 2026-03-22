@@ -8,8 +8,6 @@ from synthorg.security.rules.path_traversal_detector import (
     PathTraversalDetector,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _ctx(
     arguments: dict[str, object] | None = None,

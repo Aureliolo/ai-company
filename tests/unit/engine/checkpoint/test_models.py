@@ -11,9 +11,6 @@ from synthorg.engine.checkpoint.models import (
     Heartbeat,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

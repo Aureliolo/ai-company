@@ -30,13 +30,10 @@ from synthorg.providers.routing.resolver import ModelResolver
 
 from .conftest import make_cost_record
 
-pytestmark = pytest.mark.timeout(30)
-
 # Timestamps within the test billing period (March 2026)
 _BILLING_START = datetime(2026, 3, 1, tzinfo=UTC)
 _DAY_START = datetime(2026, 3, 15, tzinfo=UTC)
 _RECORD_TS = datetime(2026, 3, 15, 12, 0, 0, tzinfo=UTC)
-
 
 # ── Helpers ──────────────────────────────────────────────────────────
 

@@ -8,8 +8,6 @@ from pydantic import ValidationError
 
 from synthorg.security.timeout.parked_context import ParkedContext
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_parked_context(**overrides: Any) -> ParkedContext:
     """Create a valid ParkedContext with sensible defaults."""

@@ -10,8 +10,6 @@ from synthorg.budget.cost_record import CostRecord
 
 from .conftest import CostRecordFactory
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestCostRecord:

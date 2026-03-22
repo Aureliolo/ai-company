@@ -31,8 +31,6 @@ from synthorg.core.enums import SeniorityLevel
 
 from .conftest import make_position
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_service(
     hierarchy: HierarchyResolver,

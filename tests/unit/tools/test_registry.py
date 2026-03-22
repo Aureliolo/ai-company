@@ -11,8 +11,6 @@ from synthorg.tools.registry import ToolRegistry
 if TYPE_CHECKING:
     from synthorg.tools.base import BaseTool
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestToolRegistryEmpty:

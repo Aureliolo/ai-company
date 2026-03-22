@@ -9,8 +9,6 @@ from synthorg.engine.context import AgentContext
 from synthorg.providers.enums import MessageRole
 from synthorg.providers.models import ChatMessage
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _msg(role: MessageRole, content: str) -> ChatMessage:
     """Create a chat message."""

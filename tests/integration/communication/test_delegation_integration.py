@@ -36,8 +36,6 @@ from synthorg.core.enums import SeniorityLevel, TaskStatus, TaskType
 from synthorg.core.role import Authority
 from synthorg.core.task import Task
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _model_config() -> ModelConfig:
     return ModelConfig(

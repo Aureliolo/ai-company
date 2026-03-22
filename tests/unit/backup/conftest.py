@@ -11,8 +11,6 @@ from synthorg.backup.models import (
     BackupTrigger,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.fixture
 def backup_config() -> BackupConfig:

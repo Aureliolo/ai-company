@@ -15,8 +15,6 @@ from .conftest import (
     TeamBudgetFactory,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── TeamBudget ────────────────────────────────────────────────────
 
 

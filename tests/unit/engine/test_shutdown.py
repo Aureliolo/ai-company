@@ -16,9 +16,6 @@ from synthorg.engine.shutdown import (
     ShutdownStrategy,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Protocol compliance ──────────────────────────────────────────
 
 

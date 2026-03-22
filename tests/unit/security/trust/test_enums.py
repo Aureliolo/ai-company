@@ -4,9 +4,6 @@ import pytest
 
 from synthorg.security.trust.enums import TrustChangeReason, TrustStrategyType
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── TrustStrategyType ────────────────────────────────────────────
 
 

@@ -2,7 +2,7 @@ ci:
   autoupdate_schedule: never
   autofix_prs: true
   autofix_commit_msg: "style: auto-fix pre-commit hooks"
-  skip: [commitizen, gitleaks, hadolint-docker, no-em-dashes, mypy, pytest-unit, golangci-lint, go-vet, go-test]
+  skip: [commitizen, gitleaks, hadolint-docker, no-em-dashes, no-redundant-timeout, mypy, pytest-unit, golangci-lint, go-vet, go-test]
 
 default_install_hook_types: [pre-commit, commit-msg, pre-push]
 
@@ -56,6 +56,12 @@ repos:
         entry: bash -c 'uv run python scripts/check_no_em_dashes.py "$@"' --
         language: system
         types: [text]
+
+      - id: no-redundant-timeout
+        name: no redundant pytest.mark.timeout(30)
+        entry: bash -c 'uv run python scripts/check_no_redundant_timeout.py "$@"' --
+        language: system
+        files: ^tests/.*\.py$
 
       - id: mypy
         name: mypy type-check

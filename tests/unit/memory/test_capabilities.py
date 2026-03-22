@@ -5,8 +5,6 @@ import pytest
 from synthorg.core.enums import MemoryCategory
 from synthorg.memory.capabilities import MemoryCapabilities
 
-pytestmark = pytest.mark.timeout(30)
-
 
 class _FakeMemoryCapabilities:
     """Minimal implementation for protocol compliance testing."""

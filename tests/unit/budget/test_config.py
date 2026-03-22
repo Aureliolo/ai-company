@@ -15,8 +15,6 @@ from .conftest import (
     BudgetConfigFactory,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 # ── BudgetAlertConfig ─────────────────────────────────────────────
 
 

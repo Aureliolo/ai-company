@@ -21,8 +21,6 @@ from synthorg.tools.git_tools import (
 
 from .conftest import _run_git
 
-pytestmark = pytest.mark.timeout(30)
-
 _ALL_GIT_TOOL_CLASSES = [
     GitStatusTool,
     GitLogTool,
@@ -31,7 +29,6 @@ _ALL_GIT_TOOL_CLASSES = [
     GitCommitTool,
     GitCloneTool,
 ]
-
 
 # ── Workspace validation (shared across tools) ───────────────────
 

@@ -6,8 +6,6 @@ import pytest
 
 from synthorg.observability.sinks import _SINK_ROUTING, _LoggerNameFilter
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_record(name: str) -> logging.LogRecord:
     """Create a minimal LogRecord with the given logger name."""

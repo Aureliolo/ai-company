@@ -8,9 +8,6 @@ from synthorg.core.enums import ActionType, ToolCategory
 from synthorg.security.action_type_mapping import DEFAULT_CATEGORY_ACTION_MAP
 from synthorg.tools.base import BaseTool, ToolExecutionResult
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── Concrete test tool ───────────────────────────────────────────
 
 

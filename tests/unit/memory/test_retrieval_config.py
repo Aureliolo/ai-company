@@ -9,8 +9,6 @@ from synthorg.memory.ranking import FusionStrategy
 from synthorg.memory.retrieval_config import MemoryRetrievalConfig
 from synthorg.observability.events.config import CONFIG_VALIDATION_FAILED
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestMemoryRetrievalConfigDefaults:

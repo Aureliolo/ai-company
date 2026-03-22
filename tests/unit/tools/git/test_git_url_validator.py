@@ -22,9 +22,6 @@ from synthorg.tools.git_url_validator import (
 from .conftest import dns_result as _dns_result
 from .conftest import dns_result_v6 as _dns_result_v6
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # ── _extract_hostname ─────────────────────────────────────────────
 
 

@@ -9,8 +9,6 @@ from synthorg.core.enums import SeniorityLevel
 from synthorg.engine.prompt import build_system_prompt
 from synthorg.engine.prompt_template import PROMPT_TEMPLATE_VERSION
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _make_agent() -> AgentIdentity:
     """Build a minimal AgentIdentity for prompt tests."""

@@ -10,8 +10,6 @@ from synthorg.communication.conflict_resolution.config import (
 )
 from synthorg.communication.enums import ConflictResolutionStrategy
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestDebateConfig:

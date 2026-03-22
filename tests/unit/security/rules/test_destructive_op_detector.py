@@ -8,8 +8,6 @@ from synthorg.security.rules.destructive_op_detector import (
     DestructiveOpDetector,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
 
 def _ctx(
     arguments: dict[str, object] | None = None,

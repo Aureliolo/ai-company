@@ -17,8 +17,7 @@ if TYPE_CHECKING:
 
 from .conftest import build_model_response, make_openrouter_config
 
-pytestmark = [pytest.mark.integration, pytest.mark.timeout(30)]
-
+pytestmark = pytest.mark.integration
 _PATCH_TARGET = "synthorg.providers.drivers.litellm_driver._litellm.acompletion"
 
 

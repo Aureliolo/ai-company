@@ -12,9 +12,6 @@ from synthorg.backup.models import (
     RestoreResponse,
 )
 
-pytestmark = pytest.mark.timeout(30)
-
-
 # -- BackupTrigger enum ------------------------------------------------------
 
 

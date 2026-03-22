@@ -13,8 +13,6 @@ from synthorg.observability.setup import configure_logging
 if TYPE_CHECKING:
     from pathlib import Path
 
-pytestmark = pytest.mark.timeout(30)
-
 
 @pytest.mark.unit
 class TestGetLogger:
