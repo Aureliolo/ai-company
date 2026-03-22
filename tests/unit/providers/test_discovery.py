@@ -79,8 +79,8 @@ class TestDiscoverOllama:
             )
 
         assert len(result) == 2
-        assert result[0].id == "ollama/llama3.2:latest"
-        assert result[1].id == "ollama/codellama:7b"
+        assert result[0].id == "llama3.2:latest"
+        assert result[1].id == "codellama:7b"
 
     async def test_empty_models_list(self) -> None:
         response = _mock_response({"models": []})
@@ -186,8 +186,8 @@ class TestDiscoverOllama:
             )
 
         assert len(result) == 2
-        assert result[0].id == "ollama/valid-model"
-        assert result[1].id == "ollama/also-valid"
+        assert result[0].id == "valid-model"
+        assert result[1].id == "also-valid"
 
 
 @pytest.mark.usefixtures("_bypass_ssrf")

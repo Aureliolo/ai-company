@@ -35,8 +35,8 @@ class TestDiscoverModelsForProvider:
             ),
         )
         discovered = (
-            ProviderModelConfig(id="ollama/test-model-a"),
-            ProviderModelConfig(id="ollama/test-model-b"),
+            ProviderModelConfig(id="test-model-a"),
+            ProviderModelConfig(id="test-model-b"),
         )
         with patch(
             "synthorg.providers.management.service.discover_models",
@@ -114,8 +114,8 @@ class TestCreateFromPresetAutoDiscovery:
     ) -> None:
         """Preset with auth_type=none, empty models, and base_url triggers discovery."""
         discovered = (
-            ProviderModelConfig(id="ollama/test-model-x"),
-            ProviderModelConfig(id="ollama/test-model-y"),
+            ProviderModelConfig(id="test-model-x"),
+            ProviderModelConfig(id="test-model-y"),
         )
         with patch(
             "synthorg.providers.management.service.discover_models",
@@ -138,7 +138,7 @@ class TestCreateFromPresetAutoDiscovery:
         service: ProviderManagementService,
     ) -> None:
         """User-supplied base_url not in seeded allowlist is NOT trusted."""
-        discovered = (ProviderModelConfig(id="ollama/test-model-z"),)
+        discovered = (ProviderModelConfig(id="test-model-z"),)
         with patch(
             "synthorg.providers.management.service.discover_models",
             new_callable=AsyncMock,

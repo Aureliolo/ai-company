@@ -165,8 +165,8 @@ class TestDiscoverModelsEndpoint:
         """Successful discovery returns models and provider name."""
         state, mgmt = _make_provider_state_and_mgmt()
         discovered = (
-            ProviderModelConfig(id="ollama/test-model-a"),
-            ProviderModelConfig(id="ollama/test-model-b"),
+            ProviderModelConfig(id="test-model-a"),
+            ProviderModelConfig(id="test-model-b"),
         )
         mgmt.discover_models_for_provider = AsyncMock(
             return_value=discovered,

@@ -53,6 +53,8 @@ _THIRD_PARTY_LOGGER_LEVELS: tuple[tuple[str, LogLevel], ...] = (
     ("uvicorn.access", LogLevel.WARNING),
     ("anyio", LogLevel.WARNING),
     ("multipart", LogLevel.WARNING),
+    ("faker", LogLevel.WARNING),
+    ("faker.factory", LogLevel.WARNING),
 )
 
 # Processors shared between structlog and stdlib (foreign) chains.
@@ -62,7 +64,6 @@ _BASE_PROCESSORS: tuple[Any, ...] = (
     structlog.stdlib.PositionalArgumentsFormatter(),
     structlog.processors.TimeStamper(fmt="iso", utc=True),
     structlog.processors.StackInfoRenderer(),
-    structlog.processors.format_exc_info,
     structlog.processors.UnicodeDecoder(),
     sanitize_sensitive_fields,
 )

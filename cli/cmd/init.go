@@ -135,14 +135,6 @@ func runSetupForm() (setupAnswers, error) {
 			huh.NewInput().Title("Docker socket path").Value(&a.dockerSock),
 		).WithHideFunc(func() bool { return !a.sandbox }),
 		huh.NewGroup(
-			huh.NewSelect[string]().Title("Log level").Options(
-				huh.NewOption("Debug", "debug"),
-				huh.NewOption("Info", "info"),
-				huh.NewOption("Warning", "warn"),
-				huh.NewOption("Error", "error"),
-			).Value(&a.logLevel),
-		),
-		huh.NewGroup(
 			huh.NewNote().Title("Backends").
 				Description(fmt.Sprintf(
 					"Persistence: %s · Memory: %s\n(More options coming soon)",

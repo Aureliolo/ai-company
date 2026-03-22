@@ -199,11 +199,13 @@ def build_handler(
     else:
         renderer = structlog.dev.ConsoleRenderer(colors=True)
 
+    processors: list[Any] = [ProcessorFormatter.remove_processors_meta]
+    if sink.json_format:
+        processors.append(structlog.processors.format_exc_info)
+    processors.append(renderer)
+
     formatter = ProcessorFormatter(
-        processors=[
-            ProcessorFormatter.remove_processors_meta,
-            renderer,
-        ],
+        processors=processors,
         foreign_pre_chain=foreign_pre_chain,
     )
     handler.setFormatter(formatter)

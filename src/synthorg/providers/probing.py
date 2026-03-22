@@ -261,7 +261,7 @@ def _parse_ollama_models(
         name = entry.get("name")
         if not isinstance(name, str) or not name.strip():
             continue
-        models.append(ProviderModelConfig(id=f"ollama/{name}"))
+        models.append(ProviderModelConfig(id=name))
     return tuple(models)
 
 
