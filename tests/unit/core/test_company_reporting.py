@@ -116,6 +116,51 @@ class TestReportingLine:
         assert r.subordinate_id is None
         assert r.supervisor_id == "analyst-primary"
 
+    def test_subordinate_key_returns_id_when_present(self) -> None:
+        """subordinate_key returns subordinate_id when set."""
+        r = ReportingLine(
+            subordinate="Backend Developer",
+            subordinate_id="backend-senior",
+            supervisor="architect",
+        )
+        assert r.subordinate_key == "backend-senior"
+
+    def test_subordinate_key_returns_name_when_no_id(self) -> None:
+        """subordinate_key falls back to subordinate when no ID."""
+        r = ReportingLine(subordinate="dev", supervisor="lead")
+        assert r.subordinate_key == "dev"
+
+    def test_supervisor_key_returns_id_when_present(self) -> None:
+        """supervisor_key returns supervisor_id when set."""
+        r = ReportingLine(
+            subordinate="dev",
+            supervisor="Backend Developer",
+            supervisor_id="backend-senior",
+        )
+        assert r.supervisor_key == "backend-senior"
+
+    def test_supervisor_key_returns_name_when_no_id(self) -> None:
+        """supervisor_key falls back to supervisor when no ID."""
+        r = ReportingLine(subordinate="dev", supervisor="lead")
+        assert r.supervisor_key == "lead"
+
+    def test_computed_keys_in_model_dump_roundtrip(self) -> None:
+        """Computed keys appear in model_dump and survive round-trip."""
+        r = ReportingLine(
+            subordinate="Backend Developer",
+            subordinate_id="backend-senior",
+            supervisor="Team Lead",
+            supervisor_id="lead-001",
+        )
+        data = r.model_dump()
+        assert data["subordinate_key"] == "backend-senior"
+        assert data["supervisor_key"] == "lead-001"
+
+        # Round-trip: computed fields are ignored on input
+        r2 = ReportingLine.model_validate(data)
+        assert r2.subordinate_key == "backend-senior"
+        assert r2.supervisor_key == "lead-001"
+
     @pytest.mark.parametrize(
         ("field", "value", "match"),
         [

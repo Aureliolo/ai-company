@@ -18,7 +18,9 @@ class HierarchyResolver:
 
     Built from three sources, in priority order:
 
-    1. Explicit ``ReportingLine.supervisor`` (most specific) -- overrides
+    1. Explicit ``ReportingLine`` entries (most specific) -- uses
+       ``subordinate_key``/``supervisor_key`` (which resolve to the
+       ``_id`` field when set, falling back to the name) and overrides
        team-derived relationships.
     2. ``Team.lead`` for team members
     3. ``Department.head`` for team leads without explicit reporting
@@ -62,19 +64,17 @@ class HierarchyResolver:
 
             # Explicit reporting lines (highest priority -- override)
             for line in dept.reporting_lines:
-                old_sup = supervisor_of.get(line.subordinate)
-                if old_sup == line.supervisor:
+                sub_key = line.subordinate_key
+                sup_key = line.supervisor_key
+                old_sup = supervisor_of.get(sub_key)
+                if old_sup == sup_key:
                     continue
                 if old_sup is not None:
                     # Remove from old supervisor's reports
                     old_reports = reports_of.get(old_sup, [])
-                    reports_of[old_sup] = [
-                        r for r in old_reports if r != line.subordinate
-                    ]
-                supervisor_of[line.subordinate] = line.supervisor
-                reports_of.setdefault(line.supervisor, []).append(
-                    line.subordinate,
-                )
+                    reports_of[old_sup] = [r for r in old_reports if r != sub_key]
+                supervisor_of[sub_key] = sup_key
+                reports_of.setdefault(sup_key, []).append(sub_key)
 
         # Cycle detection
         self._detect_cycles(supervisor_of)
@@ -142,10 +142,11 @@ class HierarchyResolver:
         """Get the direct supervisor of an agent.
 
         Args:
-            agent_name: Agent name to look up.
+            agent_name: Agent name or ID (matching the key used by
+                ``ReportingLine`` entries).
 
         Returns:
-            Supervisor name or None if the agent is at the top.
+            Supervisor name/ID or ``None`` if the agent is at the top.
         """
         return self._supervisor_of.get(agent_name)
 
@@ -156,10 +157,10 @@ class HierarchyResolver:
         """Get all direct reports of an agent.
 
         Args:
-            agent_name: Supervisor agent name.
+            agent_name: Supervisor agent name or ID.
 
         Returns:
-            Tuple of direct report agent names.
+            Tuple of direct report agent names/IDs.
         """
         return self._reports_of.get(agent_name, ())
 
@@ -171,8 +172,8 @@ class HierarchyResolver:
         """Check if subordinate directly reports to supervisor.
 
         Args:
-            supervisor: Supervisor agent name.
-            subordinate: Potential subordinate agent name.
+            supervisor: Supervisor agent name or ID.
+            subordinate: Potential subordinate agent name or ID.
 
         Returns:
             True if subordinate is a direct report.
@@ -189,8 +190,8 @@ class HierarchyResolver:
         Walks up the hierarchy from subordinate to root.
 
         Args:
-            supervisor: Supervisor agent name.
-            subordinate: Potential subordinate agent name.
+            supervisor: Supervisor agent name or ID.
+            subordinate: Potential subordinate agent name or ID.
 
         Returns:
             True if subordinate is below supervisor at any depth.
@@ -206,11 +207,11 @@ class HierarchyResolver:
         """Get all ancestors from agent up to root.
 
         Args:
-            agent_name: Agent to start from.
+            agent_name: Agent name or ID to start from.
 
         Returns:
-            Tuple of ancestor names, bottom-up (immediate supervisor
-            first, root last).
+            Tuple of ancestor names/IDs, bottom-up (immediate
+            supervisor first, root last).
         """
         ancestors: list[str] = []
         current = agent_name
@@ -231,11 +232,11 @@ class HierarchyResolver:
         agent, that agent is returned directly.
 
         Args:
-            agent_a: First agent name.
-            agent_b: Second agent name.
+            agent_a: First agent name or ID.
+            agent_b: Second agent name or ID.
 
         Returns:
-            Name of the lowest common manager, or None if no
+            Name/ID of the lowest common manager, or ``None`` if no
             common manager exists.
         """
         if agent_a == agent_b:
@@ -265,8 +266,10 @@ class HierarchyResolver:
         """Get hierarchy levels between two agents.
 
         Args:
-            from_agent: Higher-level agent (potential supervisor).
-            to_agent: Lower-level agent (potential subordinate).
+            from_agent: Higher-level agent name or ID (potential
+                supervisor).
+            to_agent: Lower-level agent name or ID (potential
+                subordinate).
 
         Returns:
             Number of hierarchy levels between them, or None if

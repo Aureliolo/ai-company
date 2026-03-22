@@ -4,7 +4,7 @@ from collections import Counter
 from typing import Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from synthorg.constants import BUDGET_ROUNDING_PRECISION
 from synthorg.core.enums import AutonomyLevel, CompanyType
@@ -65,6 +65,30 @@ class ReportingLine(BaseModel):
         default=None,
         description="Optional unique identifier for the supervisor",
     )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def subordinate_key(self) -> str:
+        """Hierarchy lookup key: ``subordinate_id`` when set, else ``subordinate``.
+
+        Unlike ``_identity_key()``, returns the raw value without
+        case-folding or namespace tagging.
+        """
+        if self.subordinate_id is not None:
+            return self.subordinate_id
+        return self.subordinate
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def supervisor_key(self) -> str:
+        """Hierarchy lookup key: ``supervisor_id`` when set, else ``supervisor``.
+
+        Unlike ``_identity_key()``, returns the raw value without
+        case-folding or namespace tagging.
+        """
+        if self.supervisor_id is not None:
+            return self.supervisor_id
+        return self.supervisor
 
     @model_validator(mode="after")
     def _validate_not_self_report(self) -> Self:
