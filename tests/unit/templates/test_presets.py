@@ -42,8 +42,8 @@ class TestGetPersonalityPreset:
             preset = get_personality_preset(name)
             assert required_keys.issubset(preset.keys()), f"{name} missing keys"
 
-    def test_preset_count_at_least_20(self) -> None:
-        assert len(PERSONALITY_PRESETS) >= 20
+    def test_preset_count_at_least_23(self) -> None:
+        assert len(PERSONALITY_PRESETS) >= 23
 
     @pytest.mark.parametrize(
         "preset_name",
@@ -53,6 +53,9 @@ class TestGetPersonalityPreset:
             "growth_hacker",
             "technical_communicator",
             "systems_thinker",
+            "client_advisor",
+            "code_craftsman",
+            "devil_advocate",
         ],
     )
     def test_new_presets_produce_valid_personality_config(
@@ -62,6 +65,27 @@ class TestGetPersonalityPreset:
         preset = get_personality_preset(preset_name)
         config = PersonalityConfig(**preset)
         assert isinstance(config, PersonalityConfig)
+
+    def test_client_advisor_profile(self) -> None:
+        preset = get_personality_preset("client_advisor")
+        config = PersonalityConfig(**preset)
+        assert config.agreeableness >= 0.7
+        assert config.collaboration.value == "team"
+        assert config.decision_making.value == "consultative"
+
+    def test_code_craftsman_profile(self) -> None:
+        preset = get_personality_preset("code_craftsman")
+        config = PersonalityConfig(**preset)
+        assert config.conscientiousness >= 0.85
+        assert config.risk_tolerance.value == "low"
+        assert config.collaboration.value == "pair"
+
+    def test_devil_advocate_profile(self) -> None:
+        preset = get_personality_preset("devil_advocate")
+        config = PersonalityConfig(**preset)
+        assert config.agreeableness <= 0.3
+        assert config.conflict_approach.value == "compete"
+        assert config.collaboration.value == "independent"
 
     def test_all_presets_produce_valid_personality_config(self) -> None:
         for name in PERSONALITY_PRESETS:

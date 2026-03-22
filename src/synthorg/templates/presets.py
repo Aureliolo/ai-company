@@ -342,6 +342,60 @@ _RAW_PRESETS: dict[str, dict[str, Any]] = {
         "verbosity": "balanced",
         "conflict_approach": "collaborate",
     },
+    "client_advisor": {
+        "traits": ("consultative", "trustworthy", "structured"),
+        "communication_style": "warm",
+        "risk_tolerance": "medium",
+        "creativity": "medium",
+        "description": (
+            "A consultative advisor who builds client trust and manages expectations."
+        ),
+        "openness": 0.6,
+        "conscientiousness": 0.8,
+        "extraversion": 0.7,
+        "agreeableness": 0.75,
+        "stress_response": 0.7,
+        "decision_making": "consultative",
+        "collaboration": "team",
+        "verbosity": "balanced",
+        "conflict_approach": "collaborate",
+    },
+    "code_craftsman": {
+        "traits": ("meticulous", "principled", "patient"),
+        "communication_style": "precise",
+        "risk_tolerance": "low",
+        "creativity": "medium",
+        "description": (
+            "A meticulous craftsman who prioritizes correctness and maintainability."
+        ),
+        "openness": 0.5,
+        "conscientiousness": 0.9,
+        "extraversion": 0.35,
+        "agreeableness": 0.55,
+        "stress_response": 0.75,
+        "decision_making": "analytical",
+        "collaboration": "pair",
+        "verbosity": "balanced",
+        "conflict_approach": "compete",
+    },
+    "devil_advocate": {
+        "traits": ("contrarian", "rigorous", "provocative"),
+        "communication_style": "direct",
+        "risk_tolerance": "medium",
+        "creativity": "high",
+        "description": (
+            "A contrarian thinker who challenges consensus and conventional wisdom."
+        ),
+        "openness": 0.85,
+        "conscientiousness": 0.7,
+        "extraversion": 0.6,
+        "agreeableness": 0.25,
+        "stress_response": 0.8,
+        "decision_making": "analytical",
+        "collaboration": "independent",
+        "verbosity": "balanced",
+        "conflict_approach": "compete",
+    },
 }
 # Both the outer mapping and each inner mapping are read-only.
 PERSONALITY_PRESETS: MappingProxyType[str, MappingProxyType[str, Any]] = (
