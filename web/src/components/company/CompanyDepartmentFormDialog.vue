@@ -28,7 +28,7 @@ const AUTONOMY_LEVELS: AutonomyLevel[] = ['full', 'semi', 'supervised', 'locked'
 
 // Form state
 const name = ref('')
-const head = ref<string | null>('')
+const head = ref<string | null>(null)
 const budgetPercent = ref<number | null>(null)
 const autonomyLevel = ref<AutonomyLevel | null>(null)
 const teamsJson = ref('[]')
@@ -43,7 +43,7 @@ watch(
     jsonError.value = null
     if (props.mode === 'edit' && props.department) {
       name.value = props.department.name
-      head.value = props.department.head ?? ''
+      head.value = props.department.head ?? null
       budgetPercent.value = props.department.budget_percent ?? null
       autonomyLevel.value = props.department.autonomy_level ?? null
       teamsJson.value = JSON.stringify(
@@ -57,7 +57,7 @@ watch(
       )
     } else {
       name.value = ''
-      head.value = ''
+      head.value = null
       budgetPercent.value = null
       autonomyLevel.value = null
       teamsJson.value = '[]'
