@@ -343,3 +343,46 @@ class TestToFloat:
     )
     def test_to_float_coercion(self, input_val: object, expected: float) -> None:
         assert _to_float(input_val) == expected
+
+
+# -- builtin operational configs ------------------------------------------
+
+
+@pytest.mark.unit
+class TestBuiltinOperationalConfigs:
+    """Each builtin template must declare the operational profile that fits
+    its organizational archetype.  This test prevents silent regression."""
+
+    @pytest.mark.parametrize(
+        ("name", "autonomy_level", "communication", "workflow"),
+        [
+            ("solo_founder", "full", "event_driven", "kanban"),
+            ("startup", "semi", "hybrid", "agile_kanban"),
+            ("dev_shop", "semi", "hybrid", "agile_kanban"),
+            ("product_team", "semi", "meeting_based", "agile_kanban"),
+            ("agency", "supervised", "hierarchical", "kanban"),
+            ("research_lab", "full", "event_driven", "kanban"),
+            ("full_company", "supervised", "hierarchical", "agile_kanban"),
+        ],
+        ids=[
+            "solo_founder",
+            "startup",
+            "dev_shop",
+            "product_team",
+            "agency",
+            "research_lab",
+            "full_company",
+        ],
+    )
+    def test_operational_config(
+        self,
+        name: str,
+        autonomy_level: str,
+        communication: str,
+        workflow: str,
+    ) -> None:
+        loaded = load_template(name)
+        tpl = loaded.template
+        assert tpl.autonomy == {"level": autonomy_level}
+        assert tpl.communication == communication
+        assert tpl.workflow == workflow
