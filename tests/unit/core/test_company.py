@@ -596,16 +596,43 @@ class TestReportingLine:
                 supervisor_id="dev-1",
             )
 
-    def test_subordinate_id_used_for_self_report_over_name(self) -> None:
-        """subordinate_id takes precedence over subordinate for self-report."""
+    def test_asymmetric_id_presence_not_self_report(self) -> None:
+        """Asymmetric ID presence (one side has ID, other doesn't) is accepted."""
         r = ReportingLine(
-            subordinate="same-name",
-            subordinate_id="id-a",
-            supervisor="same-name",
-            supervisor_id="id-b",
+            subordinate="dev",
+            subordinate_id="dev-1",
+            supervisor="dev",
         )
-        assert r.subordinate_id == "id-a"
-        assert r.supervisor_id == "id-b"
+        assert r.subordinate_id == "dev-1"
+        assert r.supervisor_id is None
+
+    def test_asymmetric_id_name_collision_accepted(self) -> None:
+        """Name matching other side's ID is accepted when ID presence differs."""
+        r = ReportingLine(
+            subordinate="analyst-primary",
+            supervisor="Data Analyst",
+            supervisor_id="analyst-primary",
+        )
+        assert r.subordinate == "analyst-primary"
+        assert r.supervisor_id == "analyst-primary"
+
+    def test_blank_subordinate_id_rejected(self) -> None:
+        """Reject empty string subordinate_id."""
+        with pytest.raises(ValidationError):
+            ReportingLine(
+                subordinate="dev",
+                supervisor="lead",
+                subordinate_id="",
+            )
+
+    def test_whitespace_only_supervisor_id_rejected(self) -> None:
+        """Reject whitespace-only supervisor_id."""
+        with pytest.raises(ValidationError):
+            ReportingLine(
+                subordinate="dev",
+                supervisor="lead",
+                supervisor_id="  ",
+            )
 
 
 # ── ReviewRequirements ────────────────────────────────────────────
@@ -967,6 +994,26 @@ class TestDepartmentExtended:
             ),
         )
         assert len(dept.reporting_lines) == 3
+
+    def test_duplicate_subordinate_ids_case_insensitive(self) -> None:
+        """Reject subordinate_ids that differ only by case."""
+        with pytest.raises(ValidationError, match="Duplicate subordinates"):
+            Department(
+                name="eng",
+                head="architect",
+                reporting_lines=(
+                    ReportingLine(
+                        subordinate="Backend Developer",
+                        subordinate_id="Backend-1",
+                        supervisor="architect",
+                    ),
+                    ReportingLine(
+                        subordinate="Backend Developer",
+                        subordinate_id="backend-1",
+                        supervisor="architect",
+                    ),
+                ),
+            )
 
 
 # ── CompanyConfig approval timeout ────────────────────────────────

@@ -79,6 +79,15 @@ delegation rights, and typical model tier.
           - name: "frontend"
             lead: "frontend_lead"
             members: ["sr_frontend_1", "mid_frontend_1"]
+        reporting_lines:
+          - subordinate: "Backend Developer"
+            subordinate_id: "backend-senior"
+            supervisor: "Software Architect"
+          - subordinate: "Backend Developer"
+            subordinate_id: "backend-mid"
+            supervisor: "Software Architect"
+          - subordinate: "Frontend Developer"
+            supervisor: "Software Architect"
       - name: "product"
         head: "cpo"
         budget_percent: 20
@@ -107,6 +116,7 @@ Each department defines:
 - **head** (optional) -- The agent who leads the department (typically a C-suite or Lead role).  Defaults to ``None`` when no head is designated; hierarchy resolution skips the team-lead-to-head link for headless departments
 - **budget_percent** -- The share of the company's total budget allocated to this department
 - **teams** -- Named sub-groups within the department, each with a lead and members
+- **reporting_lines** -- Explicit subordinate/supervisor relationships within the department.  Each entry has ``subordinate`` and ``supervisor`` (role names), plus optional ``subordinate_id``/``supervisor_id`` for disambiguating agents that share the same role name (typically matching the agent's ``merge_id``)
 
 ---
 

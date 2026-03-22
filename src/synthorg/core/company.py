@@ -29,10 +29,10 @@ class ReportingLine(BaseModel):
         subordinate: Agent name of the subordinate.
         supervisor: Agent name of the supervisor.
         subordinate_id: Optional unique identifier for the subordinate
-            (e.g. merge_id).  When multiple agents share the same role
+            (e.g. merge_id). When multiple agents share the same role
             name, this disambiguates which agent is meant.
         supervisor_id: Optional unique identifier for the supervisor
-            (e.g. merge_id).  When multiple agents share the same role
+            (e.g. merge_id). When multiple agents share the same role
             name, this disambiguates which agent is meant.
     """
 
@@ -52,8 +52,16 @@ class ReportingLine(BaseModel):
     @model_validator(mode="after")
     def _validate_not_self_report(self) -> Self:
         """Reject self-reporting relationships."""
-        sub_key = (self.subordinate_id or self.subordinate).strip().casefold()
-        sup_key = (self.supervisor_id or self.supervisor).strip().casefold()
+        if self.subordinate_id is not None and self.supervisor_id is not None:
+            sub_key = self.subordinate_id.strip().casefold()
+            sup_key = self.supervisor_id.strip().casefold()
+        elif self.subordinate_id is None and self.supervisor_id is None:
+            sub_key = self.subordinate.strip().casefold()
+            sup_key = self.supervisor.strip().casefold()
+        else:
+            # Asymmetric ID presence: one side identified by ID, the
+            # other by name -- they cannot be the same agent.
+            return self
         if sub_key == sup_key:
             msg = (
                 f"Agent cannot report to themselves: "
@@ -344,7 +352,11 @@ class Department(BaseModel):
     def _validate_unique_subordinates(self) -> Self:
         """Ensure no duplicate subordinates in reporting lines."""
         subs = [
-            (r.subordinate_id or r.subordinate).strip().casefold()
+            (
+                r.subordinate_id.strip().casefold()
+                if r.subordinate_id is not None
+                else r.subordinate.strip().casefold()
+            )
             for r in self.reporting_lines
         ]
         if len(subs) != len(set(subs)):
