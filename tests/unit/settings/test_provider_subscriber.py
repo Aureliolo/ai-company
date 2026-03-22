@@ -41,11 +41,13 @@ def _make_subscriber(
     config: RootConfig | None = None,
     app_state: AppState | None = None,
     settings_service: AsyncMock | None = None,
+    get_return_value: str = "cost_aware",
 ) -> tuple[ProviderSettingsSubscriber, AppState]:
     cfg = config or RootConfig(company_name="test")
     state = app_state or _make_state(cfg)
     svc = settings_service or AsyncMock()
-    svc.get = AsyncMock(return_value=_setting_value("cost_aware"))
+    if not settings_service:
+        svc.get = AsyncMock(return_value=_setting_value(get_return_value))
     sub = ProviderSettingsSubscriber(
         config=cfg,
         app_state=state,
@@ -77,35 +79,17 @@ class TestProviderSubscriberRebuild:
     """on_settings_changed rebuilds ModelRouter when strategy changes."""
 
     async def test_routing_strategy_change_swaps_router(self) -> None:
-        cfg = RootConfig(company_name="test")
-        state = _make_state(cfg)
+        sub, state = _make_subscriber()
         old_router = state.model_router
-
-        svc = AsyncMock()
-        svc.get = AsyncMock(return_value=_setting_value("cost_aware"))
-        sub = ProviderSettingsSubscriber(
-            config=cfg,
-            app_state=state,
-            settings_service=svc,
-        )
         await sub.on_settings_changed("providers", "routing_strategy")
         assert state.model_router is not old_router
 
     async def test_rebuild_failure_propagates(self) -> None:
         """Errors in _rebuild_router propagate to the dispatcher."""
-        cfg = RootConfig(company_name="test")
-        state = _make_state(cfg)
+        sub, state = _make_subscriber(
+            get_return_value="nonexistent_strategy",
+        )
         old_router = state.model_router
-
-        svc = AsyncMock()
-        svc.get = AsyncMock(
-            return_value=_setting_value("nonexistent_strategy"),
-        )
-        sub = ProviderSettingsSubscriber(
-            config=cfg,
-            app_state=state,
-            settings_service=svc,
-        )
         # Error propagates (dispatcher catches it for logging)
         with pytest.raises(UnknownStrategyError):
             await sub.on_settings_changed("providers", "routing_strategy")
@@ -113,33 +97,17 @@ class TestProviderSubscriberRebuild:
         assert state.model_router is old_router
 
     async def test_retry_max_attempts_change_is_noop(self) -> None:
-        cfg = RootConfig(company_name="test")
-        state = _make_state(cfg)
+        sub, state = _make_subscriber(get_return_value="5")
         old_router = state.model_router
-
-        svc = AsyncMock()
-        svc.get = AsyncMock(return_value=_setting_value("5"))
-        sub = ProviderSettingsSubscriber(
-            config=cfg,
-            app_state=state,
-            settings_service=svc,
-        )
         await sub.on_settings_changed("providers", "retry_max_attempts")
         assert state.model_router is old_router
 
     async def test_settings_service_failure_preserves_old_router(self) -> None:
         """When SettingsService.get() fails, old router stays in place."""
-        cfg = RootConfig(company_name="test")
-        state = _make_state(cfg)
-        old_router = state.model_router
-
         svc = AsyncMock()
         svc.get = AsyncMock(side_effect=RuntimeError("db down"))
-        sub = ProviderSettingsSubscriber(
-            config=cfg,
-            app_state=state,
-            settings_service=svc,
-        )
+        sub, state = _make_subscriber(settings_service=svc)
+        old_router = state.model_router
         with pytest.raises(RuntimeError, match="db down"):
             await sub.on_settings_changed("providers", "routing_strategy")
         assert state.model_router is old_router

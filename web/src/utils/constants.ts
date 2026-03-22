@@ -108,9 +108,15 @@ export const NAMESPACE_DISPLAY_NAMES: Readonly<Record<SettingNamespace, string>>
 export const SETTINGS_ADVANCED_WARNED_KEY = 'settings_advanced_warned'
 
 /** Settings that should never be shown in the GUI (internal/system-managed). */
-export const HIDDEN_SETTINGS = new Set([
-  'api/setup_complete',
-])
+const HIDDEN_SETTING_KEYS = ['api/setup_complete'] as const
+export const HIDDEN_SETTINGS: ReadonlySet<string> = new Set(HIDDEN_SETTING_KEYS)
+
+/**
+ * Settings that carry elevated security risk when misconfigured.
+ * The GUI shows an additional warning for these keys.
+ */
+const SECURITY_SENSITIVE_KEYS = ['api/auth_exclude_paths'] as const
+export const SECURITY_SENSITIVE_SETTINGS: ReadonlySet<string> = new Set(SECURITY_SENSITIVE_KEYS)
 
 /** Settings that are simple string arrays and should render as chip inputs in GUI mode. */
 export const SIMPLE_ARRAY_SETTINGS = new Set([

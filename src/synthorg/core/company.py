@@ -268,10 +268,14 @@ class Department(BaseModel):
 
     Attributes:
         name: Department name (standard or custom).
-        head: Department head agent name (optional).
+        head: Department head agent name, or ``None`` if the department
+            has no designated head.  When absent, hierarchy resolution
+            skips the team-lead-to-head link for this department.
         budget_percent: Percentage of company budget allocated (0-100).
         teams: Teams within this department.
         reporting_lines: Explicit reporting relationships.
+        autonomy_level: Per-department autonomy level override
+            (``None`` to inherit company default).
         policies: Department-level operational policies.
     """
 
@@ -339,6 +343,7 @@ class CompanyConfig(BaseModel):
 
     Attributes:
         autonomy: Autonomy configuration (level + presets).
+        approval_timeout: Timeout policy for pending approval items.
         budget_monthly: Monthly budget in USD.
         communication_pattern: Default communication pattern name.
         tool_access_default: Default tool access for all agents.

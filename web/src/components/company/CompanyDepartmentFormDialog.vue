@@ -155,9 +155,8 @@ function handleSave() {
             v-model="head"
             :options="agentNames ?? []"
             class="w-full"
-            editable
             show-clear
-            placeholder="Select or type agent name"
+            placeholder="Select an agent"
           />
         </div>
         <div>

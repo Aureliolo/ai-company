@@ -79,7 +79,7 @@ class ProviderSettingsSubscriber:
             namespace: Changed setting namespace.
             key: Changed setting key.
         """
-        if key == "routing_strategy":
+        if namespace == "providers" and key == "routing_strategy":
             await self._rebuild_router()
         else:
             logger.info(

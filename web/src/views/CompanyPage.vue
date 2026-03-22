@@ -247,6 +247,14 @@ async function handleSettingSave(entry: SettingEntry, value: string) {
   }
 }
 
+function handleDirty(payload: { namespace: SettingNamespace; key: string; value: string; isDirty: boolean }) {
+  if (payload.isDirty) {
+    settingsStore.setDirty(payload.namespace, payload.key, payload.value)
+  } else {
+    settingsStore.clearDirty(payload.namespace, payload.key)
+  }
+}
+
 async function handleSettingReset(entry: SettingEntry) {
   try {
     await settingsStore.resetSetting(entry.definition.namespace, entry.definition.key)
@@ -307,6 +315,7 @@ async function handleCodeViewSave(updates: Array<{ namespace: SettingNamespace; 
             :saving-key="settingsStore.savingKey"
             @save="handleSettingSave"
             @reset="handleSettingReset"
+            @dirty="handleDirty"
           />
         </TabPanel>
 

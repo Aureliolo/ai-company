@@ -22,6 +22,7 @@ class HierarchyResolver:
        team-derived relationships.
     2. ``Team.lead`` for team members
     3. ``Department.head`` for team leads without explicit reporting
+       (skipped when head is ``None``)
 
     Detects cycles at construction time.
 
@@ -86,9 +87,7 @@ class HierarchyResolver:
             {k: tuple(v) for k, v in reports_of.items()}
         )
         self._known_agents: frozenset[str] = frozenset(
-            set(supervisor_of.keys())
-            | set(supervisor_of.values())
-            | set(reports_of.keys())
+            supervisor_of.keys() | supervisor_of.values() | reports_of.keys()
         )
 
         logger.debug(

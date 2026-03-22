@@ -238,7 +238,8 @@ describe('SettingField', () => {
     await flushPromises()
 
     const saveBtn = wrapper.findAll('button').find((b) => b.text() === 'Save')
-    await saveBtn?.trigger('click')
+    expect(saveBtn).toBeDefined()
+    await saveBtn!.trigger('click')
 
     expect(wrapper.emitted('save')).toBeTruthy()
     expect(wrapper.emitted('save')![0][0]).toBe('200')
@@ -251,7 +252,8 @@ describe('SettingField', () => {
     })
 
     const resetBtn = wrapper.findAll('button').find((b) => b.text() === 'Reset')
-    await resetBtn?.trigger('click')
+    expect(resetBtn).toBeDefined()
+    await resetBtn!.trigger('click')
 
     expect(wrapper.emitted('reset')).toBeTruthy()
   })
@@ -385,7 +387,8 @@ describe('SettingField', () => {
 
     // Try to save via button click
     const saveBtn = wrapper.findAll('button').find((b) => b.text() === 'Save')
-    await saveBtn?.trigger('click')
+    expect(saveBtn).toBeDefined()
+    await saveBtn!.trigger('click')
 
     expect(wrapper.emitted('save')).toBeFalsy()
   })

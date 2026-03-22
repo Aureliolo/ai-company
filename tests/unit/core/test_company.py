@@ -135,6 +135,12 @@ class TestDepartment:
         assert dept.budget_percent == 0.0
         assert dept.teams == ()
 
+    def test_head_defaults_to_none(self) -> None:
+        """Department can be created without a head (defaults to None)."""
+        dept = Department(name="Test")
+        assert dept.head is None
+        assert dept.budget_percent == 0.0
+
     def test_budget_percent_zero(self) -> None:
         """Accept budget_percent at lower boundary (0.0)."""
         dept = Department(name="Test", head="head", budget_percent=0.0)
@@ -362,6 +368,12 @@ class TestCompany:
         assert co.departments == ()
         assert isinstance(co.config, CompanyConfig)
         assert isinstance(co.hr_registry, HRRegistry)
+
+    def test_headless_department_in_company(self) -> None:
+        """Company accepts departments with head=None."""
+        dept = Department(name="Eng")
+        co = Company(name="Test", departments=(dept,))
+        assert co.departments[0].head is None
 
     def test_budget_sum_at_100_accepted(self) -> None:
         """Accept departments whose budget_percent sums to exactly 100."""

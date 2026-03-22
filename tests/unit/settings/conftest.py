@@ -43,12 +43,12 @@ class FakeDepartment(BaseModel):
 
     Attributes:
         name: Department identifier.
-        head: Department head name.
+        head: Department head name (optional, mirrors real model).
     """
 
     model_config = ConfigDict(frozen=True)
     name: str = "eng"
-    head: str = "lead"
+    head: str | None = "lead"
 
 
 class FakeProviderConfig(BaseModel):
