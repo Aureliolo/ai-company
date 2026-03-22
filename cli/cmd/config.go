@@ -74,11 +74,7 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	out.KeyValue("Config file", statePath)
 	out.KeyValue("Data directory", state.DataDir)
 	out.KeyValue("Image tag", state.ImageTag)
-	channel := state.Channel
-	if channel == "" {
-		channel = "stable"
-	}
-	out.KeyValue("Channel", channel)
+	out.KeyValue("Channel", state.DisplayChannel())
 	out.KeyValue("Backend port", strconv.Itoa(state.BackendPort))
 	out.KeyValue("Web port", strconv.Itoa(state.WebPort))
 	out.KeyValue("Log level", state.LogLevel)
@@ -111,6 +107,9 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		}
 		state.Channel = value
 	case "log_level":
+		if !config.IsValidLogLevel(value) {
+			return fmt.Errorf("invalid log_level %q: must be one of %s", value, config.LogLevelNames())
+		}
 		state.LogLevel = value
 	default:
 		return fmt.Errorf("unknown config key %q (supported: channel, log_level)", key)

@@ -27,8 +27,8 @@ import (
 const (
 	// DefaultReleasesURL is the GitHub API endpoint for the latest stable release.
 	DefaultReleasesURL = "https://api.github.com/repos/" + repoSlug + "/releases/latest"
-	// DevReleasesURL lists all releases (including pre-releases) for dev channel.
-	DevReleasesURL = "https://api.github.com/repos/" + repoSlug + "/releases?per_page=20"
+	// devReleasesURL lists all releases (including pre-releases) for dev channel.
+	devReleasesURL = "https://api.github.com/repos/" + repoSlug + "/releases?per_page=20"
 	binaryName     = "synthorg"
 	repoSlug       = "Aureliolo/synthorg"
 
@@ -92,14 +92,14 @@ type devRelease struct {
 // and compares versions. If a stable release is newer than the latest dev
 // release, the stable release is returned instead.
 func CheckDev(ctx context.Context) (CheckResult, error) {
-	return CheckDevFromURL(ctx, DevReleasesURL)
+	return CheckDevFromURL(ctx, devReleasesURL)
 }
 
 // CheckDevFromURL is the testable core of CheckDev.
 func CheckDevFromURL(ctx context.Context, url string) (CheckResult, error) {
 	result := CheckResult{CurrentVersion: version.Version}
 
-	releases, err := fetchDevReleases(ctx, url)
+	releases, err := fetchJSON[[]devRelease](ctx, url)
 	if err != nil {
 		return result, err
 	}
@@ -137,7 +137,10 @@ func CheckDevFromURL(ctx context.Context, url string) (CheckResult, error) {
 		target = latestDev
 	default:
 		cmp, err := compareWithDev(latestStable.TagName, latestDev.TagName)
-		if err != nil || cmp >= 0 {
+		if err != nil {
+			return result, fmt.Errorf("comparing release tags %q and %q: %w", latestStable.TagName, latestDev.TagName, err)
+		}
+		if cmp >= 0 {
 			// Stable is newer or equal -- prefer stable.
 			target = latestStable
 		} else {
@@ -164,35 +167,42 @@ func CheckDevFromURL(ctx context.Context, url string) (CheckResult, error) {
 	return result, nil
 }
 
-func fetchDevReleases(ctx context.Context, url string) ([]devRelease, error) {
+// fetchJSON fetches a URL and JSON-decodes the response into target.
+// Shared by fetchRelease and fetchDevReleases to avoid duplication.
+func fetchJSON[T any](ctx context.Context, url string) (T, error) {
+	var zero T
 	client := &http.Client{Timeout: 30 * time.Second}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
+		return zero, fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "synthorg-cli/"+version.Version)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("querying GitHub releases: %w", err)
+		return zero, fmt.Errorf("querying GitHub releases: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
+		return zero, fmt.Errorf("github API rate-limited (HTTP %d) -- try again later", resp.StatusCode)
+	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("github API returned %d", resp.StatusCode)
+		return zero, fmt.Errorf("github API returned %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponseBytes))
 	if err != nil {
-		return nil, fmt.Errorf("reading API response: %w", err)
+		return zero, fmt.Errorf("reading API response: %w", err)
 	}
 
-	var releases []devRelease
-	if err := json.Unmarshal(body, &releases); err != nil {
-		return nil, fmt.Errorf("decoding releases: %w", err)
+	var result T
+	if err := json.Unmarshal(body, &result); err != nil {
+		return zero, fmt.Errorf("decoding response: %w", err)
 	}
-	return releases, nil
+	return result, nil
 }
 
 // compareWithDev compares two version strings that may contain .dev suffixes.
@@ -280,34 +290,7 @@ func CheckFromURL(ctx context.Context, url string) (CheckResult, error) {
 }
 
 func fetchRelease(ctx context.Context, url string) (Release, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return Release{}, fmt.Errorf("creating request: %w", err)
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return Release{}, fmt.Errorf("querying GitHub releases: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return Release{}, fmt.Errorf("github API returned %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponseBytes))
-	if err != nil {
-		return Release{}, fmt.Errorf("reading API response: %w", err)
-	}
-
-	var release Release
-	if err := json.Unmarshal(body, &release); err != nil {
-		return Release{}, fmt.Errorf("decoding release: %w", err)
-	}
-	return release, nil
+	return fetchJSON[Release](ctx, url)
 }
 
 func isUpdateAvailable(current, latest string) (bool, error) {

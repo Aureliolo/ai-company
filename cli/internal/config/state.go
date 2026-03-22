@@ -46,6 +46,14 @@ func DefaultState() State {
 	}
 }
 
+// DisplayChannel returns the channel for display, defaulting to "stable" when empty.
+func (s State) DisplayChannel() string {
+	if s.Channel == "" {
+		return "stable"
+	}
+	return s.Channel
+}
+
 // StatePath returns the path to the config file inside the data directory.
 func StatePath(dataDir string) string {
 	return filepath.Join(dataDir, stateFileName)
@@ -96,6 +104,7 @@ func Load(dataDir string) (State, error) {
 var validPersistenceBackends = map[string]bool{"sqlite": true}
 var validMemoryBackends = map[string]bool{"mem0": true}
 var validChannels = map[string]bool{"stable": true, "dev": true}
+var validLogLevels = map[string]bool{"debug": true, "info": true, "warning": true, "error": true}
 
 // IsValidChannel reports whether name is a known update channel.
 func IsValidChannel(name string) bool {
@@ -104,6 +113,14 @@ func IsValidChannel(name string) bool {
 
 // ChannelNames returns the allowed channel names.
 func ChannelNames() string { return sortedKeys(validChannels) }
+
+// IsValidLogLevel reports whether name is a known log level.
+func IsValidLogLevel(name string) bool {
+	return validLogLevels[name]
+}
+
+// LogLevelNames returns the allowed log level names.
+func LogLevelNames() string { return sortedKeys(validLogLevels) }
 
 // sortedKeys returns a comma-separated sorted list of map keys.
 func sortedKeys(m map[string]bool) string {

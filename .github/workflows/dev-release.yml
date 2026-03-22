@@ -11,6 +11,10 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: dev-release
+  cancel-in-progress: true
+
 jobs:
   dev-release:
     name: Create Dev Pre-Release
@@ -87,10 +91,12 @@ jobs:
       - name: Check if dev tag already exists
         if: steps.check-tag.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
         id: tag-exists
+        env:
+          DEV_TAG: ${{ steps.version.outputs.dev_tag }}
         run: |
-          if git rev-parse "${{ steps.version.outputs.dev_tag }}" >/dev/null 2>&1; then
+          if git rev-parse "$DEV_TAG" >/dev/null 2>&1; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Tag ${{ steps.version.outputs.dev_tag }} already exists, skipping"
+            echo "Tag $DEV_TAG already exists, skipping"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
@@ -108,9 +114,10 @@ jobs:
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
 
-          # Create lightweight tag
-          git tag "$DEV_TAG"
-          git push origin "$DEV_TAG"
+          # Create lightweight tag via GitHub API (no git credentials needed)
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$DEV_TAG" \
+            -f sha="$GITHUB_SHA"
 
           # Create GitHub pre-release (not latest, not draft)
           gh release create "$DEV_TAG" \
@@ -132,8 +139,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Keep the 5 most recent dev pre-releases, delete the rest
-          gh release list --limit 50 --json tagName,isPrerelease \
-            --jq '[.[] | select(.isPrerelease and (.tagName | contains(".dev")))] | .[5:] | .[].tagName' \
+          gh release list --limit 50 --json tagName,isPrerelease,createdAt \
+            --jq '[.[] | select(.isPrerelease and (.tagName | contains(".dev")))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' \
           | while read -r tag; do
               echo "Deleting old dev release: $tag"
               gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
