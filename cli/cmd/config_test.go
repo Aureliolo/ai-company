@@ -331,6 +331,7 @@ func TestConfigSetRejectsInvalidLogLevel(t *testing.T) {
 	if err := config.Save(state); err != nil {
 		t.Fatal(err)
 	}
+	orig := state.LogLevel
 
 	for _, value := range []string{"verbose", "trace", "INFO", "Debug", ""} {
 		var buf bytes.Buffer
@@ -340,6 +341,13 @@ func TestConfigSetRejectsInvalidLogLevel(t *testing.T) {
 		err := rootCmd.Execute()
 		if err == nil {
 			t.Errorf("expected error for log_level=%q", value)
+		}
+		loaded, loadErr := config.Load(dir)
+		if loadErr != nil {
+			t.Fatalf("Load after rejected %q: %v", value, loadErr)
+		}
+		if loaded.LogLevel != orig {
+			t.Errorf("rejected %q mutated LogLevel: got %q, want %q", value, loaded.LogLevel, orig)
 		}
 	}
 }
