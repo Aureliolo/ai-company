@@ -26,6 +26,7 @@ jobs:
       && !contains(github.event.head_commit.message, 'Release-As:')
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: release
     permissions:
       contents: write
     steps:
