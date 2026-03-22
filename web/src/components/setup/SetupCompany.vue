@@ -16,7 +16,7 @@ const setup = useSetupStore()
 
 const companyName = ref('')
 const companyDescription = ref('')
-const selectedTemplate = ref<string | null>(null)
+const selectedTemplate = ref<string | null>('startup')
 const error = ref<string | null>(null)
 const creating = ref(false)
 /** Whether the user clicked Edit on the completed summary. */
