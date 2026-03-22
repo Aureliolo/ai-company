@@ -89,7 +89,7 @@ All API responses include:
 | `Permissions-Policy` | `geolocation=(), camera=(), microphone=()` |
 | `Cross-Origin-Resource-Policy` | `same-origin` |
 | `Cross-Origin-Opener-Policy` | `same-origin` (API); `same-origin-allow-popups` (docs) |
-| `Cache-Control` | `no-store` (API); `public, max-age=300` (docs) |
+| `Cache-Control` | `no-store` (API); `no-cache` (dashboard HTML); `public, max-age=31536000, immutable` (dashboard hashed assets); `public, max-age=300` (docs) |
 | `Content-Security-Policy` | Strict default; relaxed only for docs UI |
 
 ---
@@ -231,12 +231,16 @@ suppresses validated false positives and informational findings:
 | Client Error Responses | 100000 | Ignore | ZAP sends literal path params, expected 4xx |
 | Base64 Disclosure | 10094 | Ignore | OpenAPI schema contains UUID/JWT-format refs, not secrets |
 | Sec-Fetch-* Missing | 90005 | Ignore | JWT auth (not cookies) -- no CSRF risk, would break non-browser clients |
-| Non-Storable Content | 10049 | Warn | API endpoints correctly use `no-store`; docs use `public, max-age=300` |
+| Non-Storable Content | 10049 | Warn | API endpoints correctly use `no-store`; dashboard HTML uses `no-cache`; hashed assets use `immutable`; docs use `public, max-age=300` |
 
 The rules file is reviewed when ZAP or the API surface changes.
 Cache-Control is path-aware: API data endpoints use `no-store` to prevent
-sensitive data caching, while documentation endpoints (`/docs/*`) allow brief
-client and proxy caching since they serve public, non-user-specific content.
+sensitive data caching, the web dashboard entry point (`index.html`) uses
+`no-cache` to force revalidation on every request (ensuring fresh deployments),
+content-hashed dashboard assets (`/assets/*`) use `public, max-age=31536000,
+immutable` for long-lived caching, and documentation endpoints (`/docs/*`)
+allow brief client and proxy caching since they serve public, non-user-specific
+content.
 
 ### Branch Protection
 
