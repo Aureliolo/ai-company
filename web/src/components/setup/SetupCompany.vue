@@ -79,6 +79,8 @@ onMounted(async () => {
   // fetchTemplates catches errors internally; surface to component.
   if (setup.error) {
     error.value = setup.error
+  } else if (setup.templates.some((t) => t.name === 'startup')) {
+    selectedTemplate.value = 'startup'
   }
 })
 </script>

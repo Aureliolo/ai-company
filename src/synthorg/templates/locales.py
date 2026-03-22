@@ -200,8 +200,12 @@ def resolve_locales(raw: list[str] | None) -> list[str]:
         else:
             dropped.append(loc)
     if dropped:
+        from synthorg.observability.events.template import (  # noqa: PLC0415
+            TEMPLATE_LOCALES_DROPPED_INVALID,
+        )
+
         logger.warning(
-            "locales.resolve_dropped_invalid",
+            TEMPLATE_LOCALES_DROPPED_INVALID,
             dropped=dropped,
             kept_count=len(valid),
         )

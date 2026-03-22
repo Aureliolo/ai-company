@@ -13,6 +13,7 @@ import type {
   SetupStatusResponse,
   TemplateInfoResponse,
   UpdateAgentModelRequest,
+  UpdateAgentNameRequest,
 } from '../types'
 
 // Note: getSetupStatus doesn't need auth -- the endpoint is public.
@@ -52,6 +53,32 @@ export async function updateAgentModel(
   const response = await apiClient.put<ApiResponse<SetupAgentSummary>>(
     `/setup/agents/${index}/model`,
     data,
+  )
+  return unwrap(response)
+}
+
+export async function updateAgentName(
+  index: number,
+  data: UpdateAgentNameRequest,
+): Promise<SetupAgentSummary> {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`Invalid agent index: ${index}`)
+  }
+  const response = await apiClient.put<ApiResponse<SetupAgentSummary>>(
+    `/setup/agents/${index}/name`,
+    data,
+  )
+  return unwrap(response)
+}
+
+export async function randomizeAgentName(
+  index: number,
+): Promise<SetupAgentSummary> {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`Invalid agent index: ${index}`)
+  }
+  const response = await apiClient.post<ApiResponse<SetupAgentSummary>>(
+    `/setup/agents/${index}/randomize-name`,
   )
   return unwrap(response)
 }

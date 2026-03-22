@@ -39,6 +39,7 @@ from synthorg.api.controllers.setup_models import (
     SetupStatusResponse,
     TemplateInfoResponse,
     UpdateAgentModelRequest,
+    UpdateAgentNameRequest,
 )
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ApiValidationError, ConflictError, NotFoundError
@@ -49,6 +50,8 @@ from synthorg.observability.events.setup import (
     SETUP_AGENT_CREATED,
     SETUP_AGENT_INDEX_OUT_OF_RANGE,
     SETUP_AGENT_MODEL_UPDATED,
+    SETUP_AGENT_NAME_RANDOMIZED,
+    SETUP_AGENT_NAME_UPDATED,
     SETUP_AGENTS_AUTO_CREATED,
     SETUP_AGENTS_LISTED,
     SETUP_ALREADY_COMPLETE,
@@ -87,6 +90,24 @@ _DEFAULT_MIN_PASSWORD_LENGTH: int = AuthConfig.model_fields[
 
 # Module-level lock: serializes read-modify-write on agents settings.
 _AGENT_LOCK = asyncio.Lock()
+
+
+def _validate_agent_index(
+    agent_index: int,
+    agents: list[dict[str, Any]],
+) -> None:
+    """Raise ``NotFoundError`` if *agent_index* is out of range."""
+    if agent_index < 0 or agent_index >= len(agents):
+        if not agents:
+            msg = f"Agent index {agent_index} out of range (no agents configured)"
+        else:
+            msg = f"Agent index {agent_index} out of range (0-{len(agents) - 1})"
+        logger.warning(
+            SETUP_AGENT_INDEX_OUT_OF_RANGE,
+            agent_index=agent_index,
+            agent_count=len(agents),
+        )
+        raise NotFoundError(msg)
 
 
 # ── Controller ───────────────────────────────────────────────
@@ -396,21 +417,7 @@ class SetupController(Controller):
 
         async with _AGENT_LOCK:
             agents = await get_existing_agents(settings_svc)
-            if agent_index < 0 or agent_index >= len(agents):
-                if not agents:
-                    msg = (
-                        f"Agent index {agent_index} out of range (no agents configured)"
-                    )
-                else:
-                    msg = (
-                        f"Agent index {agent_index} out of range (0-{len(agents) - 1})"
-                    )
-                logger.warning(
-                    SETUP_AGENT_INDEX_OUT_OF_RANGE,
-                    agent_index=agent_index,
-                    agent_count=len(agents),
-                )
-                raise NotFoundError(msg)
+            _validate_agent_index(agent_index, agents)
 
             updated_agent = {
                 **agents[agent_index],
@@ -435,6 +442,129 @@ class SetupController(Controller):
             agent_index=agent_index,
             provider=data.model_provider,
             model=data.model_id,
+        )
+
+        return ApiResponse(
+            data=agent_dict_to_summary(agents[agent_index]),
+        )
+
+    @put(
+        "/agents/{agent_index:int}/name",
+        status_code=HTTP_200_OK,
+        guards=[require_write_access],
+    )
+    async def update_agent_name(
+        self,
+        agent_index: int,
+        data: UpdateAgentNameRequest,
+        state: State,
+    ) -> ApiResponse[SetupAgentSummary]:
+        """Update a single agent's display name during setup.
+
+        Args:
+            agent_index: Zero-based index of the agent to update.
+            data: New name assignment.
+            state: Application state.
+
+        Returns:
+            Updated agent summary.
+
+        Raises:
+            ConflictError: If setup has already been completed.
+            NotFoundError: If the agent index is out of range.
+        """
+        app_state: AppState = state.app_state
+        settings_svc = app_state.settings_service
+        await _check_setup_not_complete(settings_svc)
+
+        async with _AGENT_LOCK:
+            agents = await get_existing_agents(settings_svc)
+            _validate_agent_index(agent_index, agents)
+
+            updated_agent = {
+                **agents[agent_index],
+                "name": data.name,
+            }
+            agents = [
+                *agents[:agent_index],
+                updated_agent,
+                *agents[agent_index + 1 :],
+            ]
+            await settings_svc.set(
+                "company",
+                "agents",
+                json.dumps(agents),
+            )
+
+        logger.info(
+            SETUP_AGENT_NAME_UPDATED,
+            agent_index=agent_index,
+            name=data.name,
+        )
+
+        return ApiResponse(
+            data=agent_dict_to_summary(agents[agent_index]),
+        )
+
+    @post(
+        "/agents/{agent_index:int}/randomize-name",
+        status_code=HTTP_200_OK,
+        guards=[require_write_access],
+    )
+    async def randomize_agent_name(
+        self,
+        agent_index: int,
+        state: State,
+    ) -> ApiResponse[SetupAgentSummary]:
+        """Generate a random name for an agent using locale preferences.
+
+        Args:
+            agent_index: Zero-based index of the agent to update.
+            state: Application state.
+
+        Returns:
+            Updated agent summary with a new random name.
+
+        Raises:
+            ConflictError: If setup has already been completed.
+            NotFoundError: If the agent index is out of range.
+        """
+        from synthorg.templates.presets import (  # noqa: PLC0415
+            generate_auto_name,
+        )
+
+        app_state: AppState = state.app_state
+        settings_svc = app_state.settings_service
+        await _check_setup_not_complete(settings_svc)
+
+        locales = await _read_name_locales(settings_svc)
+
+        async with _AGENT_LOCK:
+            agents = await get_existing_agents(settings_svc)
+            _validate_agent_index(agent_index, agents)
+
+            role = agents[agent_index].get("role", "Agent")
+            new_name = generate_auto_name(role, locales=locales)
+
+            updated_agent = {
+                **agents[agent_index],
+                "name": new_name,
+            }
+            agents = [
+                *agents[:agent_index],
+                updated_agent,
+                *agents[agent_index + 1 :],
+            ]
+            await settings_svc.set(
+                "company",
+                "agents",
+                json.dumps(agents),
+            )
+
+        logger.info(
+            SETUP_AGENT_NAME_RANDOMIZED,
+            agent_index=agent_index,
+            name=new_name,
         )
 
         return ApiResponse(
@@ -491,7 +621,7 @@ class SetupController(Controller):
 
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        locales = await _read_name_locales(settings_svc)
+        locales = await _read_name_locales(settings_svc, resolve=False)
         stored = locales or [ALL_LOCALES_SENTINEL]
         logger.debug(SETUP_NAME_LOCALES_LISTED, count=len(stored))
         return ApiResponse(
@@ -793,6 +923,11 @@ async def _check_has_name_locales(settings_svc: SettingsService) -> bool:
     try:
         parsed = json.loads(entry.value)
     except json.JSONDecodeError, TypeError:
+        logger.warning(
+            SETUP_NAME_LOCALES_CORRUPTED,
+            reason="invalid_json_or_type",
+            raw=entry.value[:200] if entry.value else None,
+        )
         return False
     return isinstance(parsed, list) and len(parsed) > 0
 
@@ -870,22 +1005,57 @@ async def _auto_create_template_agents(
     return agents_to_summaries(agents)
 
 
-async def _read_name_locales(settings_svc: SettingsService) -> list[str] | None:
-    """Read stored name locale preference, returning None for default.
+def _parse_locale_json(raw: str) -> list[str] | None:
+    """Parse and validate a JSON-encoded locale list.
+
+    Returns a ``list`` on success, or ``None`` when the value is
+    invalid JSON or not a list.  Logs a warning with context on
+    failure.
+    """
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning(
+            SETUP_NAME_LOCALES_CORRUPTED,
+            reason="invalid_json",
+            raw=raw[:200] if raw else None,
+        )
+        return None
+    if not isinstance(parsed, list):
+        logger.warning(
+            SETUP_NAME_LOCALES_CORRUPTED,
+            reason="expected_list",
+            actual_type=type(parsed).__name__,
+        )
+        return None
+    return parsed
+
+
+async def _read_name_locales(
+    settings_svc: SettingsService,
+    *,
+    resolve: bool = True,
+) -> list[str] | None:
+    """Read stored name locale preference, optionally resolving sentinels.
 
     Deserialises the JSON-encoded locale list from settings, validates
-    it as a list, and resolves it through ``resolve_locales`` (which
-    filters out invalid codes).  Returns ``None`` when the setting is
-    absent, unparseable, or resolves to an empty list.
+    it as a list, and optionally resolves it through ``resolve_locales``
+    (which filters out invalid codes and expands the ``__all__``
+    sentinel).  Returns ``None`` when the setting is absent,
+    unparseable, or resolves to an empty list.
 
     Args:
         settings_svc: Settings service instance.
+        resolve: When True (default), expand the ``__all__`` sentinel
+            to concrete locale codes via ``resolve_locales``.  When
+            False, return the raw stored list (including the sentinel)
+            without expansion -- used by the GET endpoint so the
+            frontend receives the sentinel value.
 
     Returns:
-        Resolved locale codes, or None to use the default (all locales).
+        Locale codes (resolved or raw), or None when the setting is
+        absent, unparseable, or the resulting list is empty.
     """
-    from synthorg.templates.locales import resolve_locales  # noqa: PLC0415
-
     try:
         entry = await settings_svc.get_entry("company", "name_locales")
     except MemoryError, RecursionError:
@@ -901,23 +1071,14 @@ async def _read_name_locales(settings_svc: SettingsService) -> list[str] | None:
         return None
     if not entry.value:
         return None
-    try:
-        parsed = json.loads(entry.value)
-    except json.JSONDecodeError:
-        logger.warning(
-            SETUP_NAME_LOCALES_CORRUPTED,
-            reason="invalid_json",
-            raw=entry.value[:200] if entry.value else None,
-        )
+    parsed = _parse_locale_json(entry.value)
+    if parsed is None:
         return None
-    if not isinstance(parsed, list):
-        logger.warning(
-            SETUP_NAME_LOCALES_CORRUPTED,
-            reason="expected_list",
-            actual_type=type(parsed).__name__,
-        )
-        return None
-    return resolve_locales(parsed) or None
+    if resolve:
+        from synthorg.templates.locales import resolve_locales  # noqa: PLC0415
+
+        parsed = resolve_locales(parsed)
+    return parsed or None
 
 
 async def _is_setup_complete(settings_svc: SettingsService) -> bool:

@@ -780,6 +780,117 @@ class TestSetupAgentModelUpdate:
 
 
 @pytest.mark.unit
+class TestUpdateAgentName:
+    """PUT /api/v1/setup/agents/{index}/name -- rename an agent."""
+
+    def test_successful_name_update(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Renaming an agent persists the new name."""
+        app_state, original = _setup_mock_providers(test_client)
+        try:
+            test_client.post(
+                "/api/v1/setup/company",
+                json={
+                    "company_name": "Name Test",
+                    "template_name": "solo_founder",
+                },
+            )
+            resp = test_client.put(
+                "/api/v1/setup/agents/0/name",
+                json={"name": "New Agent Name"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["name"] == "New Agent Name"
+
+            # Verify persistence.
+            get_resp = test_client.get("/api/v1/setup/agents")
+            agents = get_resp.json()["data"]["agents"]
+            assert agents[0]["name"] == "New Agent Name"
+        finally:
+            app_state._provider_management = original
+
+    def test_out_of_range_index(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Out-of-range index returns 404."""
+        resp = test_client.put(
+            "/api/v1/setup/agents/99/name",
+            json={"name": "Some Name"},
+        )
+        assert resp.status_code == 404
+
+    def test_blank_name_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Empty or whitespace-only name is rejected by validation."""
+        app_state, original = _setup_mock_providers(test_client)
+        try:
+            test_client.post(
+                "/api/v1/setup/company",
+                json={
+                    "company_name": "Blank Name Test",
+                    "template_name": "solo_founder",
+                },
+            )
+            resp = test_client.put(
+                "/api/v1/setup/agents/0/name",
+                json={"name": "   "},
+            )
+            assert resp.status_code == 400
+        finally:
+            app_state._provider_management = original
+
+
+@pytest.mark.unit
+class TestRandomizeAgentName:
+    """POST /api/v1/setup/agents/{index}/randomize-name."""
+
+    def test_randomize_generates_new_name(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Randomize endpoint generates a non-empty name."""
+        app_state, original = _setup_mock_providers(test_client)
+        try:
+            test_client.post(
+                "/api/v1/setup/company",
+                json={
+                    "company_name": "Randomize Test",
+                    "template_name": "solo_founder",
+                },
+            )
+            resp = test_client.post(
+                "/api/v1/setup/agents/0/randomize-name",
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["name"] != ""
+            assert len(data["name"]) >= 3
+
+            # Verify persistence.
+            get_resp = test_client.get("/api/v1/setup/agents")
+            agents = get_resp.json()["data"]["agents"]
+            assert agents[0]["name"] == data["name"]
+        finally:
+            app_state._provider_management = original
+
+    def test_out_of_range_index(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Out-of-range index returns 404."""
+        resp = test_client.post(
+            "/api/v1/setup/agents/99/randomize-name",
+        )
+        assert resp.status_code == 404
+
+
+@pytest.mark.unit
 class TestGetAvailableLocales:
     """GET /api/v1/setup/name-locales/available -- list available locales."""
 
@@ -805,24 +916,22 @@ class TestGetAvailableLocales:
 class TestGetNameLocales:
     """GET /api/v1/setup/name-locales -- get current locale configuration."""
 
-    def test_returns_all_locales_when_not_configured(
+    def test_returns_all_sentinel_when_not_configured(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Returns all resolved locales when no DB preference is stored.
+        """Returns the ``__all__`` sentinel when no DB preference is stored.
 
-        The code default is ["__all__"], which resolve_locales expands
-        to the full Latin-script locale list.
+        The endpoint returns the raw sentinel so the frontend can show
+        the "All (worldwide)" toggle as ON.  Resolution to concrete
+        locale codes happens only in the name-generation path.
         """
         resp = test_client.get("/api/v1/setup/name-locales")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         data = body["data"]
-        # Code default ["__all__"] is resolved to the full locale list.
-        assert isinstance(data["locales"], list)
-        assert len(data["locales"]) >= 50
-        assert "en_US" in data["locales"]
+        assert data["locales"] == ["__all__"]
 
     def test_returns_stored_locales_when_configured(
         self,
@@ -841,6 +950,31 @@ class TestGetNameLocales:
             assert resp.status_code == 200
             data = resp.json()["data"]
             assert data["locales"] == ["en_US", "fr_FR"]
+        finally:
+            repo._store.pop(("company", "name_locales"), None)
+
+    def test_returns_all_sentinel_when_explicitly_stored(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Returns ``__all__`` sentinel when it is explicitly stored in DB.
+
+        Verifies the round-trip: saving ``["__all__"]`` then reading it
+        back returns the sentinel, not the full expanded list of
+        concrete locale codes.
+        """
+        app_state = test_client.app.state.app_state
+        repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "name_locales")] = (
+            json.dumps(["__all__"]),
+            now,
+        )
+        try:
+            resp = test_client.get("/api/v1/setup/name-locales")
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["locales"] == ["__all__"]
         finally:
             repo._store.pop(("company", "name_locales"), None)
 
@@ -1130,5 +1264,53 @@ class TestReadNameLocales:
         try:
             result = await _read_name_locales(settings_svc)
             assert result == ["en_US", "fr_FR"]
+        finally:
+            repo._store.pop(("company", "name_locales"), None)
+
+    async def test_resolve_false_returns_sentinel_as_is(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """With resolve=False, the __all__ sentinel passes through raw."""
+        from synthorg.api.controllers.setup import _read_name_locales
+
+        app_state = test_client.app.state.app_state
+        settings_svc = app_state.settings_service
+        repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "name_locales")] = (
+            json.dumps(["__all__"]),
+            now,
+        )
+        try:
+            result = await _read_name_locales(
+                settings_svc,
+                resolve=False,
+            )
+            assert result == ["__all__"]
+        finally:
+            repo._store.pop(("company", "name_locales"), None)
+
+    async def test_resolve_false_skips_validation_filtering(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """With resolve=False, invalid codes are not filtered out."""
+        from synthorg.api.controllers.setup import _read_name_locales
+
+        app_state = test_client.app.state.app_state
+        settings_svc = app_state.settings_service
+        repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "name_locales")] = (
+            json.dumps(["en_US", "invalid_XX"]),
+            now,
+        )
+        try:
+            result = await _read_name_locales(
+                settings_svc,
+                resolve=False,
+            )
+            assert result == ["en_US", "invalid_XX"]
         finally:
             repo._store.pop(("company", "name_locales"), None)

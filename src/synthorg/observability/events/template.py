@@ -38,6 +38,9 @@ TEMPLATE_MODEL_REQUIREMENT_RESOLVED: Final[str] = "template.model_requirement.re
 # Name generation
 TEMPLATE_NAME_GEN_FAKER_ERROR: Final[str] = "template.name_generation.faker_error"
 
+# Locale resolution
+TEMPLATE_LOCALES_DROPPED_INVALID: Final[str] = "template.locales.dropped_invalid"
+
 # Model matching
 TEMPLATE_MODEL_MATCH_SUCCESS: Final[str] = "template.model_match.success"
 TEMPLATE_MODEL_MATCH_FAILED: Final[str] = "template.model_match.failed"
