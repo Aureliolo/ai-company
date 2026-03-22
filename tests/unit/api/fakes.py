@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from synthorg.api.auth.models import ApiKey, User
+from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
 from synthorg.budget.cost_record import CostRecord
 from synthorg.communication.channel import Channel
@@ -302,7 +303,7 @@ class FakeUserRepository:
         return sum(1 for u in self._users.values() if u.role == role)
 
     async def delete(self, user_id: str) -> bool:
-        if user_id == "system":
+        if is_system_user(user_id):
             msg = "System user cannot be deleted"
             raise QueryError(msg)
         return self._users.pop(user_id, None) is not None

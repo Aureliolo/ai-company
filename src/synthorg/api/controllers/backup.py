@@ -1,6 +1,7 @@
 """Backup controller -- admin endpoints for backup/restore operations.
 
-All endpoints require write access.
+All endpoints require write access or the internal SYSTEM role
+(used by the CLI for ``synthorg backup`` / ``synthorg wipe``).
 """
 
 from litestar import Controller, delete, get, post
@@ -43,7 +44,9 @@ logger = get_logger(__name__)
 class BackupController(Controller):
     """Admin endpoints for backup and restore operations.
 
-    All endpoints require write access.
+    All endpoints require human write access (CEO, Manager,
+    Board Member, Pair Programmer) or the internal SYSTEM role
+    (CLI-to-backend identity).
     """
 
     path = "/admin/backups"

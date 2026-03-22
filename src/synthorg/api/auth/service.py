@@ -194,6 +194,12 @@ class AuthService:
     def decode_token(self, token: str) -> dict[str, Any]:
         """Decode and validate a JWT.
 
+        Audience (``aud``) verification is intentionally disabled
+        here (``verify_aud=False``) because audience validation is
+        performed per-role in the auth middleware's
+        ``_resolve_jwt_user``.  System-user tokens require
+        ``aud=synthorg-backend``; regular user tokens omit ``aud``.
+
         Args:
             token: Encoded JWT string.
 

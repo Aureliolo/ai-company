@@ -34,19 +34,21 @@ async def fake_persistence() -> FakePersistenceBackend:
 
 @pytest.mark.unit
 class TestIsSystemUser:
-    def test_true_for_system_id(self) -> None:
-        assert is_system_user(SYSTEM_USER_ID) is True
-
-    def test_false_for_other_id(self) -> None:
-        assert is_system_user("some-other-id") is False
-
-    def test_false_for_empty(self) -> None:
-        assert is_system_user("") is False
+    @pytest.mark.parametrize(
+        ("user_id", "expected"),
+        [
+            (SYSTEM_USER_ID, True),
+            ("some-other-id", False),
+            ("", False),
+        ],
+    )
+    def test_is_system_user(self, user_id: str, expected: bool) -> None:
+        assert is_system_user(user_id) is expected
 
 
 @pytest.mark.unit
 class TestEnsureSystemUser:
-    async def test_creates_user_on_empty_db(
+    async def test_creates_user_with_correct_attributes(
         self, auth_svc: AuthService, fake_persistence: FakePersistenceBackend
     ) -> None:
         await ensure_system_user(fake_persistence, auth_svc)
@@ -55,32 +57,8 @@ class TestEnsureSystemUser:
         assert user is not None
         assert user.id == SYSTEM_USER_ID
         assert user.username == SYSTEM_USERNAME
-
-    async def test_system_user_has_system_role(
-        self, auth_svc: AuthService, fake_persistence: FakePersistenceBackend
-    ) -> None:
-        await ensure_system_user(fake_persistence, auth_svc)
-
-        user = await fake_persistence.users.get(SYSTEM_USER_ID)
-        assert user is not None
         assert user.role == HumanRole.SYSTEM
-
-    async def test_system_user_has_argon2id_hash(
-        self, auth_svc: AuthService, fake_persistence: FakePersistenceBackend
-    ) -> None:
-        await ensure_system_user(fake_persistence, auth_svc)
-
-        user = await fake_persistence.users.get(SYSTEM_USER_ID)
-        assert user is not None
         assert user.password_hash.startswith("$argon2id$")
-
-    async def test_system_user_must_change_password_false(
-        self, auth_svc: AuthService, fake_persistence: FakePersistenceBackend
-    ) -> None:
-        await ensure_system_user(fake_persistence, auth_svc)
-
-        user = await fake_persistence.users.get(SYSTEM_USER_ID)
-        assert user is not None
         assert user.must_change_password is False
 
     async def test_idempotent(

@@ -80,6 +80,7 @@ async def ensure_system_user(
         logger.debug(
             API_AUTH_SYSTEM_USER_ENSURED,
             action="already_exists",
+            user_id=SYSTEM_USER_ID,
         )
         return
 
