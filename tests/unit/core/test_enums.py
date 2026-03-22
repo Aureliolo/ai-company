@@ -24,6 +24,7 @@ from synthorg.core.enums import (
     RiskTolerance,
     SeniorityLevel,
     SkillCategory,
+    SkillPattern,
     TaskStatus,
     TaskType,
     compare_seniority,
@@ -99,6 +100,19 @@ class TestEnumMemberCounts:
 
     def test_consolidation_interval_has_4_members(self) -> None:
         assert len(ConsolidationInterval) == 4
+
+    def test_skill_pattern_has_5_members(self) -> None:
+        assert len(SkillPattern) == 5
+
+    def test_skill_pattern_values(self) -> None:
+        expected = {
+            "tool_wrapper",
+            "generator",
+            "reviewer",
+            "inversion",
+            "pipeline",
+        }
+        assert {sp.value for sp in SkillPattern} == expected
 
     def test_action_type_has_25_members(self) -> None:
         assert len(ActionType) == 25

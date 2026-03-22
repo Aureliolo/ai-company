@@ -5,7 +5,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.core.enums import CompanyType, SeniorityLevel
+from synthorg.core.enums import CompanyType, SeniorityLevel, SkillPattern
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import TEMPLATE_SCHEMA_VALIDATION_ERROR
@@ -163,8 +163,8 @@ class TemplateDepartmentConfig(BaseModel):
         budget_percent: Percentage of company budget (0-100).
         head_role: Role name of the department head.
         head_merge_id: Optional ``merge_id`` of the head agent.
-            Required when multiple agents share the same role used
-            in ``head_role``.
+            Should be provided when multiple agents share the same
+            role used in ``head_role``.
         reporting_lines: Reporting line definitions within this department.
         policies: Department operational policies.
     """
@@ -195,6 +195,18 @@ class TemplateDepartmentConfig(BaseModel):
         description="Department operational policies",
     )
 
+    @model_validator(mode="after")
+    def _validate_head_merge_id_requires_head_role(self) -> Self:
+        """Reject head_merge_id without a corresponding head_role."""
+        if self.head_merge_id is not None and self.head_role is None:
+            msg = (
+                f"Department {self.name!r}: head_merge_id is set "
+                f"but head_role is missing"
+            )
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
+            raise ValueError(msg)
+        return self
+
 
 class TemplateMetadata(BaseModel):
     """Metadata about a company template.
@@ -207,6 +219,8 @@ class TemplateMetadata(BaseModel):
         min_agents: Minimum number of agents.
         max_agents: Maximum number of agents.
         tags: Categorization tags.
+        skill_patterns: Skill interaction patterns this template
+            exhibits.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -221,13 +235,31 @@ class TemplateMetadata(BaseModel):
     )
     min_agents: int = Field(default=1, ge=1, description="Minimum agents")
     max_agents: int = Field(default=100, ge=1, description="Maximum agents")
-    tags: tuple[NotBlankStr, ...] = Field(default=(), description="Categorization tags")
+    tags: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Categorization tags",
+    )
+    skill_patterns: tuple[SkillPattern, ...] = Field(
+        default=(),
+        description="Skill interaction patterns",
+    )
 
     @model_validator(mode="after")
     def _validate_agent_range(self) -> Self:
         """Ensure min_agents <= max_agents."""
         if self.min_agents > self.max_agents:
             msg = f"min_agents ({self.min_agents}) > max_agents ({self.max_agents})"
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_unique_skill_patterns(self) -> Self:
+        """Reject duplicate skill_patterns entries."""
+        counts = Counter(self.skill_patterns)
+        if len(counts) != len(self.skill_patterns):
+            dupes = sorted(sp.value for sp, c in counts.items() if c > 1)
+            msg = f"Duplicate skill_patterns: {dupes}"
             logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
         return self

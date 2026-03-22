@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import CompanyType, SeniorityLevel
+from synthorg.core.enums import CompanyType, SeniorityLevel, SkillPattern
 from synthorg.templates.schema import (
     CompanyTemplate,
     TemplateAgentConfig,
@@ -185,6 +185,44 @@ class TestTemplateDepartmentConfig:
         with pytest.raises(ValidationError):
             TemplateDepartmentConfig(name="")
 
+    def test_head_merge_id_default_none(self) -> None:
+        d = TemplateDepartmentConfig(name="eng")
+        assert d.head_merge_id is None
+
+    def test_head_merge_id_accepted_with_head_role(self) -> None:
+        d = TemplateDepartmentConfig(
+            name="eng",
+            head_role="CTO",
+            head_merge_id="cto-1",
+        )
+        assert d.head_merge_id == "cto-1"
+
+    def test_head_merge_id_blank_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TemplateDepartmentConfig(
+                name="eng",
+                head_role="CTO",
+                head_merge_id="",
+            )
+
+    def test_head_merge_id_whitespace_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            TemplateDepartmentConfig(
+                name="eng",
+                head_role="CTO",
+                head_merge_id="   ",
+            )
+
+    def test_head_merge_id_without_head_role_rejected(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="head_merge_id is set but head_role is missing",
+        ):
+            TemplateDepartmentConfig(
+                name="eng",
+                head_merge_id="cto-1",
+            )
+
 
 # ── TemplateMetadata ─────────────────────────────────────────────
 
@@ -198,6 +236,7 @@ class TestTemplateMetadata:
         assert m.min_agents == 1
         assert m.max_agents == 100
         assert m.tags == ()
+        assert m.skill_patterns == ()
 
     def test_valid_full(self) -> None:
         m = TemplateMetadata(
@@ -208,9 +247,17 @@ class TestTemplateMetadata:
             min_agents=2,
             max_agents=10,
             tags=("startup", "mvp"),
+            skill_patterns=(
+                SkillPattern.TOOL_WRAPPER,
+                SkillPattern.PIPELINE,
+            ),
         )
         assert m.version == "2.0.0"
         assert m.tags == ("startup", "mvp")
+        assert m.skill_patterns == (
+            SkillPattern.TOOL_WRAPPER,
+            SkillPattern.PIPELINE,
+        )
 
     def test_min_greater_than_max_rejected(self) -> None:
         with pytest.raises(ValidationError, match="min_agents"):
@@ -228,6 +275,17 @@ class TestTemplateMetadata:
     def test_invalid_company_type_rejected(self) -> None:
         with pytest.raises(ValidationError):
             TemplateMetadata(name="T", company_type="nonexistent_type")  # type: ignore[arg-type]
+
+    def test_duplicate_skill_patterns_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="Duplicate skill_patterns"):
+            TemplateMetadata(
+                name="Dupes",
+                company_type=CompanyType.CUSTOM,
+                skill_patterns=(
+                    SkillPattern.PIPELINE,
+                    SkillPattern.PIPELINE,
+                ),
+            )
 
 
 # ── CompanyTemplate ──────────────────────────────────────────────

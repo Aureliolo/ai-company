@@ -1,6 +1,10 @@
 template:
-  name: "Full Company"
-  description: "Enterprise simulation with all departments and full hierarchy"
+  name: "Enterprise Org"
+  description: >-
+    A full enterprise simulation spanning all departments with C-suite
+    executives, department heads, and individual contributors. Uses
+    all five skill patterns and covers the complete range of
+    organizational capabilities from strategy to execution.
   version: "1.0.0"
   min_agents: 1
   max_agents: 50
@@ -8,6 +12,15 @@ template:
     - "enterprise"
     - "full-hierarchy"
     - "all-departments"
+    - "c-suite"
+    - "comprehensive"
+    - "compliance"
+  skill_patterns:
+    - "tool_wrapper"
+    - "generator"
+    - "reviewer"
+    - "inversion"
+    - "pipeline"
 
   variables:
     - name: "company_name"

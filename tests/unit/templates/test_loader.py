@@ -148,12 +148,12 @@ class TestLoadTemplate:
     def test_load_builtin_by_name(self) -> None:
         loaded = load_template("solo_founder")
         assert isinstance(loaded, LoadedTemplate)
-        assert loaded.template.metadata.name == "Solo Founder"
+        assert loaded.template.metadata.name == "Solo Builder"
         assert "<builtin:" in loaded.source_name
 
     def test_load_builtin_case_insensitive(self) -> None:
         loaded = load_template("  Solo_Founder  ")
-        assert loaded.template.metadata.name == "Solo Founder"
+        assert loaded.template.metadata.name == "Solo Builder"
 
     def test_all_builtins_load_successfully(self) -> None:
         for name in BUILTIN_TEMPLATES:
@@ -178,7 +178,7 @@ class TestLoadTemplate:
             user_dir,
         ):
             loaded = load_template("solo_founder")
-            # User template has "Test Template" name, not "Solo Founder".
+            # User template has "Test Template" name, not "Solo Builder".
             assert loaded.template.metadata.name == "Test Template"
 
 
@@ -232,6 +232,26 @@ class TestLoadTemplateFile:
         path = tmp_template_file(MINIMAL_TEMPLATE_YAML)
         loaded = load_template_file(str(path))
         assert isinstance(loaded, LoadedTemplate)
+
+    def test_invalid_skill_pattern_raises_validation_error(
+        self,
+        tmp_template_file: TemplateFileFactory,
+    ) -> None:
+        yaml_content = """\
+template:
+  name: "Bad Pattern"
+  company:
+    type: "custom"
+  skill_patterns:
+    - "not_a_real_pattern"
+  agents:
+    - role: "Dev"
+      level: "mid"
+      model: "medium"
+"""
+        path = tmp_template_file(yaml_content)
+        with pytest.raises(TemplateValidationError):
+            load_template_file(path)
 
 
 # ── LoadedTemplate dataclass ─────────────────────────────────────
@@ -393,3 +413,54 @@ class TestBuiltinOperationalConfigs:
         assert tpl.autonomy == {"level": autonomy_level}
         assert tpl.communication == communication
         assert tpl.workflow == workflow
+
+
+# -- builtin skill patterns -----------------------------------------------
+
+
+@pytest.mark.unit
+class TestBuiltinSkillPatterns:
+    """Each builtin template must declare at least one skill pattern."""
+
+    _EXPECTED_PATTERNS: ClassVar[list[tuple[str, tuple[str, ...]]]] = [
+        ("solo_founder", ("tool_wrapper",)),
+        ("startup", ("generator", "pipeline", "tool_wrapper")),
+        ("dev_shop", ("pipeline", "reviewer", "tool_wrapper")),
+        ("product_team", ("inversion", "pipeline", "reviewer")),
+        ("agency", ("generator", "pipeline", "reviewer")),
+        (
+            "full_company",
+            (
+                "generator",
+                "inversion",
+                "pipeline",
+                "reviewer",
+                "tool_wrapper",
+            ),
+        ),
+        ("research_lab", ("generator", "inversion", "reviewer")),
+    ]
+
+    def test_matrix_covers_all_builtins(self) -> None:
+        tested = {row[0] for row in self._EXPECTED_PATTERNS}
+        assert tested == set(BUILTIN_TEMPLATES)
+
+    def test_all_builtins_have_patterns(self) -> None:
+        for name in BUILTIN_TEMPLATES:
+            loaded = load_template(name)
+            meta = loaded.template.metadata
+            assert len(meta.skill_patterns) >= 1, f"{name} has no skill_patterns"
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        _EXPECTED_PATTERNS,
+        ids=[row[0] for row in _EXPECTED_PATTERNS],
+    )
+    def test_expected_patterns(
+        self,
+        name: str,
+        expected: tuple[str, ...],
+    ) -> None:
+        loaded = load_template(name)
+        actual = {sp.value for sp in loaded.template.metadata.skill_patterns}
+        assert actual == set(expected)

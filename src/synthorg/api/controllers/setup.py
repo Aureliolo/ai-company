@@ -202,6 +202,8 @@ class SetupController(Controller):
                 display_name=t.display_name,
                 description=t.description,
                 source=t.source,
+                tags=t.tags,
+                skill_patterns=t.skill_patterns,
             )
             for t in templates
         )

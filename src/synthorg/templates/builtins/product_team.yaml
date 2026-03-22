@@ -1,13 +1,24 @@
 template:
-  name: "Product Team"
-  description: "Product-focused development with design and QA"
+  name: "Product Studio"
+  description: >-
+    A product organization where UX research gathers requirements
+    before any build begins. Designers, engineers, QA, and a data
+    analyst coordinate through structured meetings. Balances
+    user-centered discovery with engineering delivery.
   version: "1.0.0"
   min_agents: 8
   max_agents: 12
   tags:
     - "product"
-    - "design"
-    - "user-centered"
+    - "design-system"
+    - "user-research"
+    - "cross-functional"
+    - "data-driven"
+    - "meeting-based"
+  skill_patterns:
+    - "inversion"
+    - "pipeline"
+    - "reviewer"
 
   variables:
     - name: "company_name"
