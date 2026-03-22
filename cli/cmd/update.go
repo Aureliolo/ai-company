@@ -490,7 +490,12 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 	// Best-effort: if this fails, auto-cleanup keeps only current.
 	var previousIDs map[string]bool
 	if state.AutoCleanup {
-		previousIDs, _ = collectCurrentImageIDs(ctx, info, state)
+		var captureErr error
+		previousIDs, captureErr = collectCurrentImageIDs(ctx, info, state)
+		if captureErr != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+				"Warning: could not capture previous image IDs for auto-cleanup: %v\n", captureErr)
+		}
 	}
 
 	ok, err := confirmUpdate(fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag))
@@ -507,6 +512,12 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 
 	updatedState := state
 	updatedState.ImageTag = tag
+	return postPullActions(cmd, info, safeDir, state, updatedState, previousIDs)
+}
+
+// postPullActions handles restart, auto-cleanup, and old image hints after
+// a successful image pull.
+func postPullActions(cmd *cobra.Command, info docker.Info, safeDir string, oldState, updatedState config.State, previousIDs map[string]bool) error {
 	restarted, restartErr := restartIfRunning(cmd, info, safeDir, updatedState)
 	if restartErr != nil {
 		return restartErr
@@ -515,7 +526,7 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 	// Auto-cleanup old images if enabled, otherwise show a passive hint.
 	// Auto-cleanup runs regardless of restart (docker rmi skips in-use images).
 	// The passive hint only shows after restart (old containers are stopped).
-	if state.AutoCleanup {
+	if oldState.AutoCleanup {
 		autoCleanupOldImages(cmd, info, updatedState, previousIDs)
 	} else if restarted {
 		hintOldImages(cmd, info, updatedState)

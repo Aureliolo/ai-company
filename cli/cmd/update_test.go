@@ -502,6 +502,8 @@ var updateBoilerplateOnlyCases = []struct {
 		want:     false,
 	},
 	{
+		// Empty-to-empty returns true here, but the caller (refreshCompose)
+		// hits bytes.Equal first and never reaches isUpdateBoilerplateOnly.
 		name:     "empty input",
 		existing: "",
 		fresh:    "",
