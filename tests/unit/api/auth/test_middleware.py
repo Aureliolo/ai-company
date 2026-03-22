@@ -413,7 +413,7 @@ class TestAuthMiddlewareSystemUser:
         )
         await persistence.users.save(system_user)
 
-        # Build a CLI-style JWT (no pwd_sig, no username, no role, no aud)
+        # Build a CLI-style JWT (no pwd_sig, no aud, iss=synthorg-cli)
         token = pyjwt.encode(
             {
                 "sub": "system",
@@ -455,11 +455,12 @@ class TestAuthMiddlewareSystemUser:
         )
         await persistence.users.save(system_user)
 
-        # Build minimal claims (no pwd_sig)
+        # Build CLI-style claims (no pwd_sig, iss=synthorg-cli)
         claims = svc.decode_token(
             pyjwt.encode(
                 {
                     "sub": "system",
+                    "iss": "synthorg-cli",
                     "iat": now,
                     "exp": now + timedelta(seconds=60),
                 },
@@ -480,3 +481,33 @@ class TestAuthMiddlewareSystemUser:
         assert result is not None
         assert result.role == HumanRole.SYSTEM
         assert result.user_id == "system"
+
+    async def test_non_system_user_without_pwd_sig_returns_401(self) -> None:
+        """Regular user JWT without pwd_sig is still rejected."""
+        import jwt as pyjwt
+
+        svc = _make_auth_service()
+        user = _make_user(svc)
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+        await persistence.users.save(user)
+
+        # Build a JWT for a regular user WITHOUT pwd_sig
+        now = datetime.now(UTC)
+        token = pyjwt.encode(
+            {
+                "sub": user.id,
+                "iat": now,
+                "exp": now + timedelta(seconds=60),
+            },
+            _SECRET,
+            algorithm="HS256",
+        )
+
+        app = _build_app(auth_service=svc, persistence=persistence)
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 401

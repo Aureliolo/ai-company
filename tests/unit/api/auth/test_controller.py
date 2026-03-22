@@ -425,29 +425,28 @@ class TestSystemUserBlocking:
         bare_client: TestClient[Any],
     ) -> None:
         """System user cannot change its password (403)."""
-        from datetime import UTC, datetime
+        from datetime import UTC, datetime, timedelta
 
-        from synthorg.api.auth.models import User
-        from synthorg.api.auth.service import AuthService
-        from synthorg.api.auth.system_user import (
-            SYSTEM_USER_ID,
-            SYSTEM_USERNAME,
-        )
+        import jwt as pyjwt
 
+        from synthorg.api.auth.system_user import SYSTEM_USER_ID
+
+        # The system user is bootstrapped at app startup, so it
+        # already exists.  Build a CLI-style JWT with iss=synthorg-cli
+        # (required by the middleware's issuer check).
         app_state = bare_client.app.state["app_state"]
-        svc: AuthService = app_state.auth_service
+        secret = app_state.auth_service._config.jwt_secret
         now = datetime.now(UTC)
-        system_user = User(
-            id=SYSTEM_USER_ID,
-            username=SYSTEM_USERNAME,
-            password_hash=svc.hash_password("random-password-12chars"),
-            role=HumanRole.SYSTEM,
-            must_change_password=False,
-            created_at=now,
-            updated_at=now,
+        token = pyjwt.encode(
+            {
+                "sub": SYSTEM_USER_ID,
+                "iss": "synthorg-cli",
+                "iat": now,
+                "exp": now + timedelta(seconds=60),
+            },
+            secret,
+            algorithm="HS256",
         )
-        app_state.persistence._users._users[SYSTEM_USER_ID] = system_user
-        token, _ = svc.create_token(system_user)
 
         response = bare_client.post(
             "/api/v1/auth/change-password",

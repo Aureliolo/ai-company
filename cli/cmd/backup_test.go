@@ -194,6 +194,10 @@ func TestBuildLocalJWT(t *testing.T) {
 			t.Errorf("payload missing claim %s: %s", claim, payloadJSON)
 		}
 	}
+	// aud claim must be absent -- backend rejects unvalidated audience.
+	if strings.Contains(string(payloadJSON), `"aud"`) {
+		t.Errorf("payload must not contain aud claim: %s", payloadJSON)
+	}
 }
 
 func TestBuildLocalJWT_TooShort(t *testing.T) {

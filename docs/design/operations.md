@@ -1153,6 +1153,7 @@ and retry guidance.
 | **Manager** | Department-level authority | Manages one team/department directly |
 | **Observer** | Read-only | Watch the company operate, no intervention |
 | **Pair Programmer** | Direct collaboration with one agent | Work alongside a specific agent in real-time |
+| **System** | Write (internal only) | Internal CLI-to-backend identity. Cannot log in, be deleted, or be modified. Bootstrapped at startup. |
 
 ## Backup and Restore
 

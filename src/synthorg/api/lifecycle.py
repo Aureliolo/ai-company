@@ -200,7 +200,14 @@ async def _safe_startup(  # noqa: PLR0913, PLR0912, PLR0915, C901
             # if migrate() or JWT resolution fails below.
             started_persistence = True
             await _init_persistence(persistence, app_state)
-            await ensure_system_user(persistence)
+            try:
+                await ensure_system_user(persistence, app_state.auth_service)
+            except Exception:
+                logger.exception(
+                    API_APP_STARTUP,
+                    error="Failed to bootstrap system user",
+                )
+                raise
 
         if message_bus is not None:
             try:

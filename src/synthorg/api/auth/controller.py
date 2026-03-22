@@ -397,9 +397,19 @@ class AuthController(Controller):
         """Validate current password and set new one."""
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="change_password_auth_required",
+                path=str(request.url.path),
+            )
             msg = "Authentication required"
             raise UnauthorizedError(msg)
         if is_system_user(auth_user.user_id):
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="system_user_modification_blocked",
+                user_id=auth_user.user_id,
+            )
             raise PermissionDeniedException(
                 detail="System user cannot be modified",
             )
@@ -467,6 +477,11 @@ class AuthController(Controller):
         """Return information about the authenticated user."""
         auth_user = request.scope.get("user")
         if not isinstance(auth_user, AuthenticatedUser):
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="me_auth_required",
+                path=str(request.url.path),
+            )
             msg = "Authentication required"
             raise UnauthorizedError(msg)
 

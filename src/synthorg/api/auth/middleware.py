@@ -200,7 +200,19 @@ async def _resolve_jwt_user(
     # System users have a random password hash nobody knows --
     # pwd_sig validation is meaningless and skipped.  The shared
     # JWT secret signature is the sole authentication gate.
-    if db_user.role != HumanRole.SYSTEM:
+    # Additionally, require iss=synthorg-cli to constrain which
+    # tokens may skip pwd_sig.
+    if db_user.role == HumanRole.SYSTEM:
+        if claims.get("iss") != "synthorg-cli":
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="system_token_wrong_issuer",
+                user_id=user_id,
+                iss=claims.get("iss"),
+                path=path,
+            )
+            return None
+    else:
         expected_sig = hashlib.sha256(
             db_user.password_hash.encode(),
         ).hexdigest()[:16]
