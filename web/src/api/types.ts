@@ -1004,11 +1004,14 @@ export interface DepartmentTeam {
 export interface DepartmentReportingLine {
   subordinate: string
   supervisor: string
+  subordinate_id?: string | null
+  supervisor_id?: string | null
 }
 
 export interface DepartmentEntry {
   name: string
   head?: string
+  head_id?: string | null
   budget_percent?: number
   teams?: DepartmentTeam[]
   reporting_lines?: DepartmentReportingLine[]

@@ -31,6 +31,12 @@ def _identity_key(
     Uses the explicit *id_* when provided, falling back to *name*.
     Namespacing prevents false collisions when an ID value happens
     to match a name from a different reporting line.
+
+    Examples:
+        ``_identity_key("Backend Developer", "backend-1")``
+        returns ``("id", "backend-1")``.
+        ``_identity_key("Backend Developer", None)``
+        returns ``("name", "backend developer")``.
     """
     if id_ is not None:
         return ("id", id_.strip().casefold())
@@ -41,22 +47,24 @@ class ReportingLine(BaseModel):
     """Explicit reporting relationship within a department.
 
     Attributes:
-        subordinate: Agent name of the subordinate.
-        supervisor: Agent name of the supervisor.
+        subordinate: Role name (or agent identifier) of the subordinate.
+        supervisor: Role name (or agent identifier) of the supervisor.
         subordinate_id: Optional unique identifier for the subordinate.
             When multiple agents share the same role name, this
-            disambiguates which agent is meant.  Templates typically
-            use the agent's ``merge_id`` for this purpose.
+            disambiguates which agent is meant.  Any stable unique
+            string is valid (e.g. the agent's ``merge_id`` in
+            the template system).
         supervisor_id: Optional unique identifier for the supervisor.
             When multiple agents share the same role name, this
-            disambiguates which agent is meant.  Templates typically
-            use the agent's ``merge_id`` for this purpose.
+            disambiguates which agent is meant.  Any stable unique
+            string is valid (e.g. the agent's ``merge_id`` in
+            the template system).
     """
 
     model_config = ConfigDict(frozen=True)
 
-    subordinate: NotBlankStr = Field(description="Subordinate agent name")
-    supervisor: NotBlankStr = Field(description="Supervisor agent name")
+    subordinate: NotBlankStr = Field(description="Subordinate role name or identifier")
+    supervisor: NotBlankStr = Field(description="Supervisor role name or identifier")
     subordinate_id: NotBlankStr | None = Field(
         default=None,
         description="Optional unique identifier for the subordinate",
@@ -346,13 +354,15 @@ class Department(BaseModel):
 
     Attributes:
         name: Department name (standard or custom).
-        head: Department head agent name, or ``None`` if the department
-            has no designated head.  When absent, hierarchy resolution
-            skips the team-lead-to-head link for this department.
+        head: Department head role name (or agent identifier), or ``None``
+            if the department has no designated head.  When absent,
+            hierarchy resolution skips the team-lead-to-head link for
+            this department.
         head_id: Optional unique identifier for the department head.
             When multiple agents share the same role name used in
-            ``head``, this disambiguates which agent is meant.
-            Templates typically use the agent's ``merge_id``.
+            ``head``, this disambiguates which agent is meant.  Any
+            stable unique string is valid (e.g. the agent's ``merge_id``
+            in the template system).
         budget_percent: Percentage of company budget allocated (0-100).
         teams: Teams within this department.
         reporting_lines: Explicit reporting relationships.
@@ -366,7 +376,7 @@ class Department(BaseModel):
     name: NotBlankStr = Field(description="Department name")
     head: NotBlankStr | None = Field(
         default=None,
-        description="Department head agent name",
+        description="Department head role name or identifier",
     )
     head_id: NotBlankStr | None = Field(
         default=None,

@@ -21,6 +21,7 @@ import yaml
 from pydantic import ValidationError
 
 from synthorg.config.errors import ConfigLocation
+from synthorg.core.enums import SkillPattern  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import (
     TEMPLATE_BUILTIN_DEFECT,
@@ -68,8 +69,9 @@ class TemplateInfo:
         display_name: Human-readable display name.
         description: Short description.
         source: Where the template was found (``"builtin"`` or ``"user"``).
-        tags: Categorization tags.
-        skill_patterns: Skill interaction patterns.
+        tags: Free-form categorization tags for filtering and discovery.
+        skill_patterns: Skill design pattern identifiers describing how
+            the template's agents interact.
     """
 
     name: str
@@ -77,7 +79,7 @@ class TemplateInfo:
     description: str
     source: Literal["builtin", "user"]
     tags: tuple[str, ...] = ()
-    skill_patterns: tuple[str, ...] = ()
+    skill_patterns: tuple[SkillPattern, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -120,7 +122,7 @@ def list_templates() -> tuple[TemplateInfo, ...]:
                     description=meta.description,
                     source="builtin",
                     tags=meta.tags,
-                    skill_patterns=tuple(sp.value for sp in meta.skill_patterns),
+                    skill_patterns=meta.skill_patterns,
                 )
             except (TemplateRenderError, TemplateValidationError, OSError) as exc:
                 logger.exception(
@@ -147,7 +149,7 @@ def _collect_user_templates(seen: dict[str, TemplateInfo]) -> None:
                 description=meta.description,
                 source="user",
                 tags=meta.tags,
-                skill_patterns=tuple(sp.value for sp in meta.skill_patterns),
+                skill_patterns=meta.skill_patterns,
             )
         except (TemplateRenderError, TemplateValidationError, OSError) as exc:
             logger.warning(

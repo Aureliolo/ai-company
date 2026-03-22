@@ -6,7 +6,6 @@ from unittest.mock import patch
 
 import pytest
 
-from synthorg.core.enums import SkillPattern
 from synthorg.templates.errors import (
     TemplateNotFoundError,
     TemplateRenderError,
@@ -425,30 +424,21 @@ class TestBuiltinSkillPatterns:
 
     _EXPECTED_PATTERNS: ClassVar[list[tuple[str, tuple[str, ...]]]] = [
         ("solo_founder", ("tool_wrapper",)),
-        ("startup", ("tool_wrapper", "generator", "pipeline")),
-        (
-            "dev_shop",
-            ("pipeline", "reviewer", "tool_wrapper"),
-        ),
-        (
-            "product_team",
-            ("inversion", "pipeline", "reviewer"),
-        ),
-        ("agency", ("pipeline", "generator", "reviewer")),
+        ("startup", ("generator", "pipeline", "tool_wrapper")),
+        ("dev_shop", ("pipeline", "reviewer", "tool_wrapper")),
+        ("product_team", ("inversion", "pipeline", "reviewer")),
+        ("agency", ("generator", "pipeline", "reviewer")),
         (
             "full_company",
             (
-                "tool_wrapper",
                 "generator",
-                "reviewer",
                 "inversion",
                 "pipeline",
+                "reviewer",
+                "tool_wrapper",
             ),
         ),
-        (
-            "research_lab",
-            ("inversion", "generator", "reviewer"),
-        ),
+        ("research_lab", ("generator", "inversion", "reviewer")),
     ]
 
     def test_matrix_covers_all_builtins(self) -> None:
@@ -460,13 +450,6 @@ class TestBuiltinSkillPatterns:
             loaded = load_template(name)
             meta = loaded.template.metadata
             assert len(meta.skill_patterns) >= 1, f"{name} has no skill_patterns"
-
-    def test_all_pattern_values_are_valid(self) -> None:
-        valid = {p.value for p in SkillPattern}
-        for name in BUILTIN_TEMPLATES:
-            loaded = load_template(name)
-            for sp in loaded.template.metadata.skill_patterns:
-                assert sp.value in valid, f"{name}: unknown pattern {sp!r}"
 
     @pytest.mark.parametrize(
         ("name", "expected"),

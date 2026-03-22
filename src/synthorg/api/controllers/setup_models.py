@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from synthorg.core.enums import SeniorityLevel
+from synthorg.core.enums import SeniorityLevel, SkillPattern
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.templates.model_requirements import ModelTier  # noqa: TC001
 
@@ -41,8 +41,9 @@ class TemplateInfoResponse(BaseModel):
         display_name: Human-readable name.
         description: Short description.
         source: Where the template was found (builtin or user).
-        tags: Categorization tags.
-        skill_patterns: Skill interaction patterns.
+        tags: Free-form categorization tags for template filtering and discovery.
+        skill_patterns: Skill design pattern identifiers describing how the
+            template's agents interact (e.g. ``"tool_wrapper"``, ``"pipeline"``).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -51,13 +52,13 @@ class TemplateInfoResponse(BaseModel):
     display_name: NotBlankStr
     description: str
     source: Literal["builtin", "user"]
-    tags: tuple[str, ...] = Field(
+    tags: tuple[NotBlankStr, ...] = Field(
         default=(),
-        description="Categorization tags",
+        description="Categorization tags for filtering and discovery",
     )
-    skill_patterns: tuple[str, ...] = Field(
+    skill_patterns: tuple[SkillPattern, ...] = Field(
         default=(),
-        description="Skill interaction patterns",
+        description="Skill design pattern identifiers",
     )
 
 

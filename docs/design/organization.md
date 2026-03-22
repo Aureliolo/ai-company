@@ -46,7 +46,7 @@ Templates declare which patterns they exhibit via the `skill_patterns` metadata 
 | **Engineering Squad** | Pipeline, Reviewer, Tool Wrapper |
 | **Product Studio** | Inversion, Pipeline, Reviewer |
 | **Agency** | Pipeline, Generator, Reviewer |
-| **Enterprise Org** | All five |
+| **Enterprise Org** | Tool Wrapper, Generator, Reviewer, Inversion, Pipeline |
 | **Research Lab** | Inversion, Generator, Reviewer |
 
 Patterns compose naturally: a Pipeline can embed a Reviewer step at each gate, a Generator

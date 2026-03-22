@@ -163,8 +163,8 @@ class TemplateDepartmentConfig(BaseModel):
         budget_percent: Percentage of company budget (0-100).
         head_role: Role name of the department head.
         head_merge_id: Optional ``merge_id`` of the head agent.
-            Required when multiple agents share the same role used
-            in ``head_role``.
+            Should be provided when multiple agents share the same
+            role used in ``head_role``.
         reporting_lines: Reporting line definitions within this department.
         policies: Department operational policies.
     """
@@ -194,6 +194,18 @@ class TemplateDepartmentConfig(BaseModel):
         default=None,
         description="Department operational policies",
     )
+
+    @model_validator(mode="after")
+    def _validate_head_merge_id_requires_head_role(self) -> Self:
+        """Reject head_merge_id without a corresponding head_role."""
+        if self.head_merge_id is not None and self.head_role is None:
+            msg = (
+                f"Department {self.name!r}: head_merge_id is set "
+                f"but head_role is missing"
+            )
+            logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
+            raise ValueError(msg)
+        return self
 
 
 class TemplateMetadata(BaseModel):
@@ -244,10 +256,9 @@ class TemplateMetadata(BaseModel):
     @model_validator(mode="after")
     def _validate_unique_skill_patterns(self) -> Self:
         """Reject duplicate skill_patterns entries."""
-        if len(self.skill_patterns) != len(set(self.skill_patterns)):
-            dupes = sorted(
-                sp.value for sp, c in Counter(self.skill_patterns).items() if c > 1
-            )
+        counts = Counter(self.skill_patterns)
+        if len(counts) != len(self.skill_patterns):
+            dupes = sorted(sp.value for sp, c in counts.items() if c > 1)
             msg = f"Duplicate skill_patterns: {dupes}"
             logger.warning(TEMPLATE_SCHEMA_VALIDATION_ERROR, error=msg)
             raise ValueError(msg)
