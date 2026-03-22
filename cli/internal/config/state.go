@@ -16,6 +16,7 @@ const stateFileName = "config.json"
 type State struct {
 	DataDir            string            `json:"data_dir"`
 	ImageTag           string            `json:"image_tag"`
+	Channel            string            `json:"channel"`
 	BackendPort        int               `json:"backend_port"`
 	WebPort            int               `json:"web_port"`
 	Sandbox            bool              `json:"sandbox"`
@@ -35,6 +36,7 @@ func DefaultState() State {
 	return State{
 		DataDir:            DataDir(),
 		ImageTag:           "latest",
+		Channel:            "stable",
 		BackendPort:        3001,
 		WebPort:            3000,
 		Sandbox:            true,
@@ -93,6 +95,15 @@ func Load(dataDir string) (State, error) {
 
 var validPersistenceBackends = map[string]bool{"sqlite": true}
 var validMemoryBackends = map[string]bool{"mem0": true}
+var validChannels = map[string]bool{"stable": true, "dev": true}
+
+// IsValidChannel reports whether name is a known update channel.
+func IsValidChannel(name string) bool {
+	return validChannels[name]
+}
+
+// ChannelNames returns the allowed channel names.
+func ChannelNames() string { return sortedKeys(validChannels) }
 
 // sortedKeys returns a comma-separated sorted list of map keys.
 func sortedKeys(m map[string]bool) string {
@@ -133,6 +144,9 @@ func (s State) validate() error {
 	}
 	if !IsValidMemoryBackend(s.MemoryBackend) {
 		return fmt.Errorf("invalid memory_backend %q: must be one of %s", s.MemoryBackend, sortedKeys(validMemoryBackends))
+	}
+	if s.Channel != "" && !IsValidChannel(s.Channel) {
+		return fmt.Errorf("invalid channel %q: must be one of %s", s.Channel, sortedKeys(validChannels))
 	}
 	if s.ImageTag != "" && !IsValidImageTag(s.ImageTag) {
 		return fmt.Errorf("invalid image_tag %q: must match [a-zA-Z0-9][a-zA-Z0-9._-]*", s.ImageTag)

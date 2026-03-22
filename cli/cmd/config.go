@@ -29,8 +29,21 @@ var configShowCmd = &cobra.Command{
 	RunE:  runConfigShow,
 }
 
+var configSetCmd = &cobra.Command{
+	Use:   "set <key> <value>",
+	Short: "Set a configuration value",
+	Long: `Set a configuration value.
+
+Supported keys:
+  channel    Update channel: "stable" or "dev"
+  log_level  Log verbosity: "debug", "info", "warning", "error"`,
+	Args: cobra.ExactArgs(2),
+	RunE: runConfigSet,
+}
+
 func init() {
 	configCmd.AddCommand(configShowCmd)
+	configCmd.AddCommand(configSetCmd)
 	rootCmd.AddCommand(configCmd)
 }
 
@@ -61,6 +74,11 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	out.KeyValue("Config file", statePath)
 	out.KeyValue("Data directory", state.DataDir)
 	out.KeyValue("Image tag", state.ImageTag)
+	channel := state.Channel
+	if channel == "" {
+		channel = "stable"
+	}
+	out.KeyValue("Channel", channel)
 	out.KeyValue("Backend port", strconv.Itoa(state.BackendPort))
 	out.KeyValue("Web port", strconv.Itoa(state.WebPort))
 	out.KeyValue("Log level", state.LogLevel)
@@ -73,6 +91,35 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	out.KeyValue("JWT secret", maskSecret(state.JWTSecret))
 	out.KeyValue("Settings key", maskSecret(state.SettingsKey))
 
+	return nil
+}
+
+func runConfigSet(cmd *cobra.Command, args []string) error {
+	key, value := args[0], args[1]
+	dir := resolveDataDir()
+	out := ui.NewUI(cmd.OutOrStdout())
+
+	state, err := config.Load(dir)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	switch key {
+	case "channel":
+		if !config.IsValidChannel(value) {
+			return fmt.Errorf("invalid channel %q: must be one of %s", value, config.ChannelNames())
+		}
+		state.Channel = value
+	case "log_level":
+		state.LogLevel = value
+	default:
+		return fmt.Errorf("unknown config key %q (supported: channel, log_level)", key)
+	}
+
+	if err := config.Save(state); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+	out.Success(fmt.Sprintf("Set %s = %s", key, value))
 	return nil
 }
 

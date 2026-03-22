@@ -109,8 +109,19 @@ func updateCLI(cmd *cobra.Command) error {
 		_, _ = fmt.Fprintln(out, "Warning: running a dev build -- update check will always report an update available.")
 	}
 
-	_, _ = fmt.Fprintln(out, "Checking for updates...")
-	result, err := selfupdate.Check(ctx)
+	// Determine update channel from config (default: stable).
+	channel := "stable"
+	dir := resolveDataDir()
+	if state, err := config.Load(dir); err == nil && state.Channel != "" {
+		channel = state.Channel
+	}
+
+	if channel == "dev" {
+		_, _ = fmt.Fprintln(out, "Checking for updates (dev channel)...")
+	} else {
+		_, _ = fmt.Fprintln(out, "Checking for updates...")
+	}
+	result, err := selfupdate.CheckForChannel(ctx, channel)
 	if err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not check for updates: %v\n", err)
 		return nil

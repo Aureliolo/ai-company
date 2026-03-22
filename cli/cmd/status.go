@@ -77,6 +77,11 @@ func printVersionInfo(out *ui.UI, state config.State) {
 	out.KeyValue("CLI version", fmt.Sprintf("%s (%s)", version.Version, version.Commit))
 	out.KeyValue("Data dir", state.DataDir)
 	out.KeyValue("Image tag", state.ImageTag)
+	channel := state.Channel
+	if channel == "" {
+		channel = "stable"
+	}
+	out.KeyValue("Channel", channel)
 	_, _ = fmt.Fprintln(out.Writer())
 }
 
