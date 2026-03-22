@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 from pydantic import ValidationError
 
-from synthorg.core.enums import CompanyType, SeniorityLevel
+from synthorg.core.enums import CompanyType, SeniorityLevel, SkillPattern
 from synthorg.templates.schema import (
     CompanyTemplate,
     TemplateAgentConfig,
@@ -198,6 +198,7 @@ class TestTemplateMetadata:
         assert m.min_agents == 1
         assert m.max_agents == 100
         assert m.tags == ()
+        assert m.skill_patterns == ()
 
     def test_valid_full(self) -> None:
         m = TemplateMetadata(
@@ -208,9 +209,17 @@ class TestTemplateMetadata:
             min_agents=2,
             max_agents=10,
             tags=("startup", "mvp"),
+            skill_patterns=(
+                SkillPattern.TOOL_WRAPPER,
+                SkillPattern.PIPELINE,
+            ),
         )
         assert m.version == "2.0.0"
         assert m.tags == ("startup", "mvp")
+        assert m.skill_patterns == (
+            SkillPattern.TOOL_WRAPPER,
+            SkillPattern.PIPELINE,
+        )
 
     def test_min_greater_than_max_rejected(self) -> None:
         with pytest.raises(ValidationError, match="min_agents"):

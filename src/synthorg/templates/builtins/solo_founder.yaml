@@ -1,13 +1,21 @@
 template:
-  name: "Solo Founder"
-  description: "Minimal setup for quick prototypes and solo projects"
+  name: "Solo Builder"
+  description: >-
+    A lean two-agent setup for maximum autonomy and fast iteration.
+    The CEO and a full-stack developer operate event-driven without
+    approval gates or hierarchy overhead. Ideal for solo projects,
+    proof-of-concepts, and rapid prototyping.
   version: "1.0.0"
   min_agents: 2
   max_agents: 3
   tags:
     - "minimal"
     - "solo"
-    - "prototype"
+    - "rapid-prototyping"
+    - "no-hierarchy"
+    - "autonomous"
+  skill_patterns:
+    - "tool_wrapper"
 
   variables:
     - name: "company_name"

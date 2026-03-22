@@ -1,13 +1,24 @@
 template:
   name: "Agency"
-  description: "Client-focused agency with project management and creative roles"
+  description: >-
+    A client-services organization with project management, creative,
+    and delivery roles under supervised autonomy. Client deliverables
+    flow through a structured pipeline with quality review at each
+    checkpoint before handoff.
   version: "1.0.0"
   min_agents: 10
   max_agents: 15
   tags:
     - "agency"
-    - "client-work"
+    - "client-management"
+    - "project-management"
     - "creative"
+    - "multi-project"
+    - "supervised"
+  skill_patterns:
+    - "pipeline"
+    - "generator"
+    - "reviewer"
 
   variables:
     - name: "company_name"

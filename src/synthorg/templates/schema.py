@@ -5,7 +5,7 @@ from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from synthorg.core.enums import CompanyType, SeniorityLevel
+from synthorg.core.enums import CompanyType, SeniorityLevel, SkillPattern
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
 from synthorg.observability.events.template import TEMPLATE_SCHEMA_VALIDATION_ERROR
@@ -207,6 +207,8 @@ class TemplateMetadata(BaseModel):
         min_agents: Minimum number of agents.
         max_agents: Maximum number of agents.
         tags: Categorization tags.
+        skill_patterns: Skill interaction patterns this template
+            exhibits.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -221,7 +223,14 @@ class TemplateMetadata(BaseModel):
     )
     min_agents: int = Field(default=1, ge=1, description="Minimum agents")
     max_agents: int = Field(default=100, ge=1, description="Maximum agents")
-    tags: tuple[NotBlankStr, ...] = Field(default=(), description="Categorization tags")
+    tags: tuple[NotBlankStr, ...] = Field(
+        default=(),
+        description="Categorization tags",
+    )
+    skill_patterns: tuple[SkillPattern, ...] = Field(
+        default=(),
+        description="Skill interaction patterns",
+    )
 
     @model_validator(mode="after")
     def _validate_agent_range(self) -> Self:

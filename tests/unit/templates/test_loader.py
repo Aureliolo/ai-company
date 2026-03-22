@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from synthorg.core.enums import SkillPattern
 from synthorg.templates.errors import (
     TemplateNotFoundError,
     TemplateRenderError,
@@ -148,12 +149,12 @@ class TestLoadTemplate:
     def test_load_builtin_by_name(self) -> None:
         loaded = load_template("solo_founder")
         assert isinstance(loaded, LoadedTemplate)
-        assert loaded.template.metadata.name == "Solo Founder"
+        assert loaded.template.metadata.name == "Solo Builder"
         assert "<builtin:" in loaded.source_name
 
     def test_load_builtin_case_insensitive(self) -> None:
         loaded = load_template("  Solo_Founder  ")
-        assert loaded.template.metadata.name == "Solo Founder"
+        assert loaded.template.metadata.name == "Solo Builder"
 
     def test_all_builtins_load_successfully(self) -> None:
         for name in BUILTIN_TEMPLATES:
@@ -393,3 +394,70 @@ class TestBuiltinOperationalConfigs:
         assert tpl.autonomy == {"level": autonomy_level}
         assert tpl.communication == communication
         assert tpl.workflow == workflow
+
+
+# -- builtin skill patterns -----------------------------------------------
+
+
+@pytest.mark.unit
+class TestBuiltinSkillPatterns:
+    """Each builtin template must declare at least one skill pattern."""
+
+    _EXPECTED_PATTERNS: ClassVar[list[tuple[str, tuple[str, ...]]]] = [
+        ("solo_founder", ("tool_wrapper",)),
+        ("startup", ("tool_wrapper", "generator", "pipeline")),
+        (
+            "dev_shop",
+            ("pipeline", "reviewer", "tool_wrapper"),
+        ),
+        (
+            "product_team",
+            ("inversion", "pipeline", "reviewer"),
+        ),
+        ("agency", ("pipeline", "generator", "reviewer")),
+        (
+            "full_company",
+            (
+                "tool_wrapper",
+                "generator",
+                "reviewer",
+                "inversion",
+                "pipeline",
+            ),
+        ),
+        (
+            "research_lab",
+            ("inversion", "generator", "reviewer"),
+        ),
+    ]
+
+    def test_matrix_covers_all_builtins(self) -> None:
+        tested = {row[0] for row in self._EXPECTED_PATTERNS}
+        assert tested == set(BUILTIN_TEMPLATES)
+
+    def test_all_builtins_have_patterns(self) -> None:
+        for name in BUILTIN_TEMPLATES:
+            loaded = load_template(name)
+            meta = loaded.template.metadata
+            assert len(meta.skill_patterns) >= 1, f"{name} has no skill_patterns"
+
+    def test_all_pattern_values_are_valid(self) -> None:
+        valid = {p.value for p in SkillPattern}
+        for name in BUILTIN_TEMPLATES:
+            loaded = load_template(name)
+            for sp in loaded.template.metadata.skill_patterns:
+                assert sp.value in valid, f"{name}: unknown pattern {sp!r}"
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        _EXPECTED_PATTERNS,
+        ids=[row[0] for row in _EXPECTED_PATTERNS],
+    )
+    def test_expected_patterns(
+        self,
+        name: str,
+        expected: tuple[str, ...],
+    ) -> None:
+        loaded = load_template(name)
+        actual = tuple(sp.value for sp in loaded.template.metadata.skill_patterns)
+        assert actual == expected

@@ -41,6 +41,8 @@ class TemplateInfoResponse(BaseModel):
         display_name: Human-readable name.
         description: Short description.
         source: Where the template was found (builtin or user).
+        tags: Categorization tags.
+        skill_patterns: Skill interaction patterns.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -49,6 +51,14 @@ class TemplateInfoResponse(BaseModel):
     display_name: NotBlankStr
     description: str
     source: Literal["builtin", "user"]
+    tags: tuple[str, ...] = Field(
+        default=(),
+        description="Categorization tags",
+    )
+    skill_patterns: tuple[str, ...] = Field(
+        default=(),
+        description="Skill interaction patterns",
+    )
 
 
 class SetupCompanyRequest(BaseModel):

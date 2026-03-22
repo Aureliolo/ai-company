@@ -11,17 +11,47 @@ SynthOrg provides pre-built company templates for common organizational patterns
 
 | Template | Size | Autonomy | Communication | Workflow | Use Case |
 |----------|------|----------|---------------|----------|----------|
-| **Solo Founder** | 1-2 | full | event_driven | kanban | Quick prototypes, solo projects |
-| **Startup** | 3-5 | semi | hybrid | agile_kanban | Small projects, MVPs |
-| **Dev Shop** | 5-10 | semi | hybrid | agile_kanban | Software development focus |
-| **Product Team** | 8-15 | semi | meeting_based | agile_kanban | Product-focused development |
+| **Solo Builder** | 1-2 | full | event_driven | kanban | Quick prototypes, solo projects |
+| **Tech Startup** | 3-5 | semi | hybrid | agile_kanban | Small projects, MVPs |
+| **Engineering Squad** | 5-10 | semi | hybrid | agile_kanban | Software development focus |
+| **Product Studio** | 8-15 | semi | meeting_based | agile_kanban | Product-focused development |
 | **Agency** | 10-20 | supervised | hierarchical | kanban | Client work, multiple projects |
-| **Full Company** | 20-50+ | supervised | hierarchical | agile_kanban | Enterprise simulation |
+| **Enterprise Org** | 20-50+ | supervised | hierarchical | agile_kanban | Enterprise simulation |
 | **Research Lab** | 5-10 | full | event_driven | kanban | Research and analysis |
 | **Custom** | Any | semi | hybrid | agile_kanban | Anything |
 
 See the [Template System](#template-system) section for details on how templates are defined,
 inherited, and customized.
+
+### Skill Pattern Taxonomy
+
+Each template is classified using a five-pattern taxonomy that describes how its agents
+interact to accomplish work. Based on
+[Google Cloud's agent skill design patterns](https://cloud.google.com/blog/topics/developers-practitioners/5-agent-skill-design-patterns):
+
+| Pattern | Description |
+|---------|-------------|
+| **Tool Wrapper** | On-demand domain expertise; agents self-direct using specialized context |
+| **Generator** | Consistent structured output from reusable templates |
+| **Reviewer** | Modular rubric-based evaluation; separates what to check from how to check it |
+| **Inversion** | Agent interviews user before acting; structured requirements gathering |
+| **Pipeline** | Strict sequential workflow with hard checkpoints between stages |
+
+Templates declare which patterns they exhibit via the `skill_patterns` metadata field:
+
+| Template | Skill Patterns |
+|----------|----------------|
+| **Solo Builder** | Tool Wrapper |
+| **Tech Startup** | Tool Wrapper, Generator, Pipeline |
+| **Engineering Squad** | Pipeline, Reviewer, Tool Wrapper |
+| **Product Studio** | Inversion, Pipeline, Reviewer |
+| **Agency** | Pipeline, Generator, Reviewer |
+| **Enterprise Org** | All five |
+| **Research Lab** | Inversion, Generator, Reviewer |
+
+Patterns compose naturally: a Pipeline can embed a Reviewer step at each gate, a Generator
+can begin with an Inversion phase to gather variables, and individual Pipeline stages can
+activate different Tool Wrapper skills depending on the domain.
 
 ---
 

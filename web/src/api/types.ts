@@ -849,6 +849,8 @@ export interface TemplateInfoResponse {
   display_name: string
   description: string
   source: 'builtin' | 'user'
+  tags: readonly string[]
+  skill_patterns: readonly string[]
 }
 
 export interface SetupCompanyRequest {

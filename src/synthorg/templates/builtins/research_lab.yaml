@@ -1,13 +1,23 @@
 template:
   name: "Research Lab"
-  description: "Research and analysis focused team"
+  description: >-
+    An autonomous research organization where analysis begins with
+    structured inquiry to define the research question before data
+    work starts. Output is peer-reviewed before publication,
+    producing rigorous, structured research artifacts.
   version: "1.0.0"
   min_agents: 5
   max_agents: 10
   tags:
     - "research"
     - "analysis"
-    - "data"
+    - "data-pipeline"
+    - "peer-review"
+    - "autonomous"
+  skill_patterns:
+    - "inversion"
+    - "generator"
+    - "reviewer"
 
   variables:
     - name: "company_name"

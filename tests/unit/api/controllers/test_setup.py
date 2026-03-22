@@ -46,6 +46,8 @@ class TestSetupTemplates:
             assert "display_name" in template
             assert "description" in template
             assert "source" in template
+            assert "tags" in template
+            assert "skill_patterns" in template
 
     def test_observer_can_read_templates(
         self,

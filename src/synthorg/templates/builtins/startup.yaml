@@ -1,6 +1,10 @@
 template:
   name: "Tech Startup"
-  description: "Small team for building MVPs and prototypes"
+  description: >-
+    A five-agent team oriented around shipping MVPs quickly. CEO and
+    CTO lead directly, with two full-stack developers and a product
+    manager iterating in agile sprints. Semi-autonomous with hybrid
+    communication for fast decision-making.
   version: "1.0.0"
   min_agents: 3
   max_agents: 5
@@ -8,6 +12,13 @@ template:
     - "startup"
     - "mvp"
     - "small-team"
+    - "agile"
+    - "iterative"
+    - "lean"
+  skill_patterns:
+    - "tool_wrapper"
+    - "generator"
+    - "pipeline"
 
   variables:
     - name: "company_name"

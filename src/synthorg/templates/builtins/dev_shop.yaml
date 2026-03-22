@@ -1,13 +1,23 @@
 template:
-  name: "Dev Shop"
-  description: "Software development focused team with QA and DevOps"
+  name: "Engineering Squad"
+  description: >-
+    A lean engineering team built for shipping. No C-suite overhead
+    -- a Software Architect leads directly. Three backend developers,
+    a frontend specialist, QA pipeline, and a DevOps engineer.
+    Optimized for throughput with quality gates.
   version: "1.0.0"
   min_agents: 6
   max_agents: 10
   tags:
-    - "development"
     - "engineering"
-    - "qa"
+    - "ci-cd"
+    - "code-review"
+    - "quality-gates"
+    - "devops"
+  skill_patterns:
+    - "pipeline"
+    - "reviewer"
+    - "tool_wrapper"
 
   variables:
     - name: "company_name"
