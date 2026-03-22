@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.6](https://github.com/Aureliolo/synthorg/compare/v0.4.5...v0.4.6) (2026-03-22)
+
+
+### Features
+
+* dynamic SSRF allowlist for provider discovery ([#684](https://github.com/Aureliolo/synthorg/issues/684)) ([be235b8](https://github.com/Aureliolo/synthorg/commit/be235b8a6f9d3a84facf414bb7c544f96a3f63e6))
+* overhaul settings page with Company/Providers extraction, grid layout, and CodeMirror editor ([#683](https://github.com/Aureliolo/synthorg/issues/683)) ([1974184](https://github.com/Aureliolo/synthorg/commit/19741846a5bae5db7bc55df4081c8da1517f458d))
+* replace setup command with wipe for full factory reset ([#682](https://github.com/Aureliolo/synthorg/issues/682)) ([c0e12cc](https://github.com/Aureliolo/synthorg/commit/c0e12cced06247ff1c517157709df469d0f74d86))
+
+
+### Bug Fixes
+
+* auto-wire meeting orchestrator and scheduler ([#669](https://github.com/Aureliolo/synthorg/issues/669)) ([#680](https://github.com/Aureliolo/synthorg/issues/680)) ([8900df5](https://github.com/Aureliolo/synthorg/commit/8900df5fa77f5493b3f1e4d894e389eef7722070))
+* move healthchecks to Dockerfiles, remove compose overrides ([#678](https://github.com/Aureliolo/synthorg/issues/678)) ([f0a7a0e](https://github.com/Aureliolo/synthorg/commit/f0a7a0e0d2aa27db5c67a25f79856c51aa68814b))
+* resolve port 8000 collision between vLLM preset and backend ([#681](https://github.com/Aureliolo/synthorg/issues/681)) ([ed59ff9](https://github.com/Aureliolo/synthorg/commit/ed59ff97bf67f32a2ac7e8a646787ffa6813ad4c))
+
 ## [0.4.5](https://github.com/Aureliolo/synthorg/compare/v0.4.4...v0.4.5) (2026-03-21)
 
 
