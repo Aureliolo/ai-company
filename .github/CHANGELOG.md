@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.4.8](https://github.com/Aureliolo/synthorg/compare/v0.4.7...v0.4.8) (2026-03-22)
+
+
+### Features
+
+* add auto_cleanup config and improve update UX ([#741](https://github.com/Aureliolo/synthorg/issues/741)) ([289638f](https://github.com/Aureliolo/synthorg/commit/289638f91e4beead51b8593a283aaf0563d9a11f))
+* add reporting lines, escalation paths, and workflow handoffs to templates ([#745](https://github.com/Aureliolo/synthorg/issues/745)) ([c374cc9](https://github.com/Aureliolo/synthorg/commit/c374cc934b40fbd407a87df1b458c516050a56fc))
+* differentiate template operational configs ([#742](https://github.com/Aureliolo/synthorg/issues/742)) ([9b48345](https://github.com/Aureliolo/synthorg/commit/9b4834599416bef76b0e1684ff7dab40f4fcf349))
+* diversify personality preset assignments across templates ([#743](https://github.com/Aureliolo/synthorg/issues/743)) ([15487a5](https://github.com/Aureliolo/synthorg/commit/15487a5c3a23799355639cdb1cf48064a90854ba))
+* improve template metadata -- skill taxonomy, descriptions, tags, and display names ([#752](https://github.com/Aureliolo/synthorg/issues/752)) ([f333f24](https://github.com/Aureliolo/synthorg/commit/f333f243182caec6cabdb42f0cf04ee4a07d0709))
+
+
+### Bug Fixes
+
+* resolve log analysis findings (Ollama prefix, logging, init) ([#748](https://github.com/Aureliolo/synthorg/issues/748)) ([8f871a4](https://github.com/Aureliolo/synthorg/commit/8f871a4b975db603fa105afb48c713c9a43769ec))
+* use git tag for dev release container image tags ([#749](https://github.com/Aureliolo/synthorg/issues/749)) ([f30d071](https://github.com/Aureliolo/synthorg/commit/f30d071c2f2ef017dc78aa2f6566150f326c66d0))
+* use subordinate_id/supervisor_id in HierarchyResolver ([#751](https://github.com/Aureliolo/synthorg/issues/751)) ([118235b](https://github.com/Aureliolo/synthorg/commit/118235b9ce6867e5eb36a9e1db90529d4d42e156))
+
+
+### Performance
+
+* add long-lived cache headers for content-hashed static assets ([#747](https://github.com/Aureliolo/synthorg/issues/747)) ([4d350b5](https://github.com/Aureliolo/synthorg/commit/4d350b55347227a08670c07b1242cacb46a4883a))
+* use worksteal distribution for pytest-xdist ([#750](https://github.com/Aureliolo/synthorg/issues/750)) ([b7dd7de](https://github.com/Aureliolo/synthorg/commit/b7dd7de30c0b762c3c9f1ea4fbeb3884783a3d2a))
+
 ## [0.4.7](https://github.com/Aureliolo/synthorg/compare/v0.4.6...v0.4.7) (2026-03-22)
 
 
