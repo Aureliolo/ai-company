@@ -108,7 +108,11 @@ jobs:
           && steps.version.outputs.skip != 'true'
           && steps.tag-exists.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          # Use PAT instead of github.token so the tag push triggers
+          # downstream workflows (Docker, CLI). Tags created with the
+          # default GITHUB_TOKEN do not fire push events for other
+          # workflows -- a GitHub Actions anti-recursion safeguard.
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           DEV_TAG: ${{ steps.version.outputs.dev_tag }}
           DEV_NUM: ${{ steps.version.outputs.dev_num }}
           NEXT_VERSION: ${{ steps.version.outputs.next_version }}
