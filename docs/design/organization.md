@@ -165,6 +165,11 @@ template:
       model: "large"
       personality_preset: "visionary_leader"
 
+    - role: "CTO"
+      name: "Hiroshi Tanaka"
+      model: "large"
+      personality_preset: "rapid_prototyper"
+
     - role: "Full-Stack Developer"
       merge_id: "fullstack-senior"
       name: "Kenji Matsuda"
