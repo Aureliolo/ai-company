@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.4.7](https://github.com/Aureliolo/synthorg/compare/v0.4.6...v0.4.7) (2026-03-22)
+
+
+### Features
+
+* add system user for CLI-to-backend authentication ([#710](https://github.com/Aureliolo/synthorg/issues/710)) ([dc6bd3f](https://github.com/Aureliolo/synthorg/commit/dc6bd3f0c9faa733862fc6079cddedf26aad4eb8))
+* dev channel builds with incremental pre-releases between stable releases ([#715](https://github.com/Aureliolo/synthorg/issues/715)) ([0e8a714](https://github.com/Aureliolo/synthorg/commit/0e8a7141cb0cd23a7b9ec00c8b992f7f74545ffd))
+* replace hardcoded name pools with Faker multi-locale name generation ([#714](https://github.com/Aureliolo/synthorg/issues/714)) ([5edc6ec](https://github.com/Aureliolo/synthorg/commit/5edc6ecbb22d9daff50958bf531cb5d5cb99a7cb))
+
+
+### Bug Fixes
+
+* dev-release tag creation, dependabot coverage, go -C cli convention ([#730](https://github.com/Aureliolo/synthorg/issues/730)) ([7634843](https://github.com/Aureliolo/synthorg/commit/763484398c7212788a82c82b53c367a122cd3cce))
+* improve name generation step UX and fix sentinel expansion bug ([#739](https://github.com/Aureliolo/synthorg/issues/739)) ([f03fd05](https://github.com/Aureliolo/synthorg/commit/f03fd050687e35bd53449c53cd012da0e1185e0b))
+* settings page UX polish -- toggle bug, source badges, form improvements ([#712](https://github.com/Aureliolo/synthorg/issues/712)) ([d16a0ac](https://github.com/Aureliolo/synthorg/commit/d16a0acec025b8abf07d30d748363ce1baed4aed))
+* switch dev tags to semver and use same release pipeline as stable ([#729](https://github.com/Aureliolo/synthorg/issues/729)) ([4df6b9b](https://github.com/Aureliolo/synthorg/commit/4df6b9b4513245f618103fa89e42ee3a250bc269)), closes [#713](https://github.com/Aureliolo/synthorg/issues/713)
+* unify CLI image discovery and standardize Go tooling ([#738](https://github.com/Aureliolo/synthorg/issues/738)) ([712a785](https://github.com/Aureliolo/synthorg/commit/712a785a14f416d9892ea7a8ab26502e45f617e4))
+* use PAT in dev-release workflow to trigger downstream pipelines ([#716](https://github.com/Aureliolo/synthorg/issues/716)) ([d767aa3](https://github.com/Aureliolo/synthorg/commit/d767aa38366745d1af8bdc3505759df36ca5412a))
+
+
+### CI/CD
+
+* bump astral-sh/setup-uv from 7.4.0 to 7.6.0 in /.github/actions/setup-python-uv in the minor-and-patch group ([#731](https://github.com/Aureliolo/synthorg/issues/731)) ([7887257](https://github.com/Aureliolo/synthorg/commit/7887257de38168238ff0f11dda4a38b6abdec554))
+* bump the minor-and-patch group with 3 updates ([#735](https://github.com/Aureliolo/synthorg/issues/735)) ([7cd253a](https://github.com/Aureliolo/synthorg/commit/7cd253a8910e7bb23529ef2fae59495871a797ec))
+* bump wrangler from 4.75.0 to 4.76.0 in /.github in the minor-and-patch group ([#732](https://github.com/Aureliolo/synthorg/issues/732)) ([a6cafc7](https://github.com/Aureliolo/synthorg/commit/a6cafc782ec0ac242adf7ee46e091be9a90b9670))
+* clean up all dev releases and tags on stable release ([#737](https://github.com/Aureliolo/synthorg/issues/737)) ([8d90f5c](https://github.com/Aureliolo/synthorg/commit/8d90f5ca2f6092316fc096b3eae25c6376c3be09))
+
+
+### Maintenance
+
+* bump the minor-and-patch group across 2 directories with 2 updates ([#733](https://github.com/Aureliolo/synthorg/issues/733)) ([2b60069](https://github.com/Aureliolo/synthorg/commit/2b60069da2d83133507c3442af5dfdc8baf8ff01))
+* bump the minor-and-patch group with 3 updates ([#734](https://github.com/Aureliolo/synthorg/issues/734)) ([859bc25](https://github.com/Aureliolo/synthorg/commit/859bc25ec1101ef309e7c327ccb7d058ea13d278))
+* fix dependabot labels and add scope tags ([#736](https://github.com/Aureliolo/synthorg/issues/736)) ([677eb15](https://github.com/Aureliolo/synthorg/commit/677eb15fdb1a1165eefcfdbf884bd31d47548511))
+* remove redundant pytest.mark.timeout(30) markers ([#740](https://github.com/Aureliolo/synthorg/issues/740)) ([9ec2163](https://github.com/Aureliolo/synthorg/commit/9ec2163e4ee29a2ea4f92ed1dc0e30097435b96d))
+
 ## [0.4.6](https://github.com/Aureliolo/synthorg/compare/v0.4.5...v0.4.6) (2026-03-22)
 
 
