@@ -420,6 +420,143 @@ class TestGetLowestCommonManager:
 
 
 @pytest.mark.unit
+class TestReportingLinesWithIds:
+    """Tests for hierarchy resolution using subordinate_id/supervisor_id."""
+
+    def test_duplicate_role_names_with_subordinate_ids_distinguished(self) -> None:
+        """Agents sharing a role name but with different IDs get separate entries."""
+        dept = Department(
+            name="Engineering",
+            head="architect",
+            budget_percent=50.0,
+            teams=(),
+            reporting_lines=(
+                ReportingLine(
+                    subordinate="Backend Developer",
+                    subordinate_id="backend-senior",
+                    supervisor="architect",
+                ),
+                ReportingLine(
+                    subordinate="Backend Developer",
+                    subordinate_id="backend-mid",
+                    supervisor="architect",
+                ),
+                ReportingLine(
+                    subordinate="Backend Developer",
+                    subordinate_id="backend-junior",
+                    supervisor="architect",
+                ),
+            ),
+        )
+        company = _make_company(departments=(dept,))
+        resolver = HierarchyResolver(company)
+
+        assert resolver.get_supervisor("backend-senior") == "architect"
+        assert resolver.get_supervisor("backend-mid") == "architect"
+        assert resolver.get_supervisor("backend-junior") == "architect"
+
+        reports = resolver.get_direct_reports("architect")
+        assert "backend-senior" in reports
+        assert "backend-mid" in reports
+        assert "backend-junior" in reports
+        assert len(reports) == 3
+
+    def test_supervisor_id_used_as_key(self) -> None:
+        """supervisor_id is used as the supervisor dict key when present."""
+        dept = Department(
+            name="Engineering",
+            budget_percent=50.0,
+            teams=(),
+            reporting_lines=(
+                ReportingLine(
+                    subordinate="junior-dev",
+                    supervisor="Backend Developer",
+                    supervisor_id="backend-senior",
+                ),
+            ),
+        )
+        company = _make_company(departments=(dept,))
+        resolver = HierarchyResolver(company)
+
+        assert resolver.get_supervisor("junior-dev") == "backend-senior"
+        assert "junior-dev" in resolver.get_direct_reports("backend-senior")
+
+    def test_both_ids_present(self) -> None:
+        """Both subordinate_id and supervisor_id used as dict keys."""
+        dept = Department(
+            name="Engineering",
+            budget_percent=50.0,
+            teams=(),
+            reporting_lines=(
+                ReportingLine(
+                    subordinate="Backend Developer",
+                    subordinate_id="backend-mid",
+                    supervisor="Backend Developer",
+                    supervisor_id="backend-senior",
+                ),
+            ),
+        )
+        company = _make_company(departments=(dept,))
+        resolver = HierarchyResolver(company)
+
+        assert resolver.get_supervisor("backend-mid") == "backend-senior"
+        assert "backend-mid" in resolver.get_direct_reports("backend-senior")
+
+    def test_reporting_line_with_id_overrides_team_structure(self) -> None:
+        """Explicit line with matching ID overrides team-inferred."""
+        dept = Department(
+            name="Engineering",
+            head="cto",
+            budget_percent=50.0,
+            teams=(
+                Team(
+                    name="backend",
+                    lead="backend_lead",
+                    members=("backend-senior",),
+                ),
+            ),
+            reporting_lines=(
+                ReportingLine(
+                    subordinate="Backend Developer",
+                    subordinate_id="backend-senior",
+                    supervisor="cto",
+                ),
+            ),
+        )
+        company = _make_company(departments=(dept,))
+        resolver = HierarchyResolver(company)
+
+        # backend-senior should report to cto via explicit line, not backend_lead
+        assert resolver.get_supervisor("backend-senior") == "cto"
+
+    def test_no_id_backward_compatible(self) -> None:
+        """Reporting lines without IDs still work as before."""
+        dept = Department(
+            name="Engineering",
+            head="cto",
+            budget_percent=50.0,
+            teams=(
+                Team(
+                    name="backend",
+                    lead="backend_lead",
+                    members=("sr_dev",),
+                ),
+            ),
+            reporting_lines=(
+                ReportingLine(
+                    subordinate="sr_dev",
+                    supervisor="cto",
+                ),
+            ),
+        )
+        company = _make_company(departments=(dept,))
+        resolver = HierarchyResolver(company)
+
+        assert resolver.get_supervisor("sr_dev") == "cto"
+        assert "sr_dev" in resolver.get_direct_reports("cto")
+
+
+@pytest.mark.unit
 class TestCycleDetection:
     def test_cycle_raises_hierarchy_error(self) -> None:
         dept = Department(

@@ -62,19 +62,17 @@ class HierarchyResolver:
 
             # Explicit reporting lines (highest priority -- override)
             for line in dept.reporting_lines:
-                old_sup = supervisor_of.get(line.subordinate)
-                if old_sup == line.supervisor:
+                sub_key = line.subordinate_key
+                sup_key = line.supervisor_key
+                old_sup = supervisor_of.get(sub_key)
+                if old_sup == sup_key:
                     continue
                 if old_sup is not None:
                     # Remove from old supervisor's reports
                     old_reports = reports_of.get(old_sup, [])
-                    reports_of[old_sup] = [
-                        r for r in old_reports if r != line.subordinate
-                    ]
-                supervisor_of[line.subordinate] = line.supervisor
-                reports_of.setdefault(line.supervisor, []).append(
-                    line.subordinate,
-                )
+                    reports_of[old_sup] = [r for r in old_reports if r != sub_key]
+                supervisor_of[sub_key] = sup_key
+                reports_of.setdefault(sup_key, []).append(sub_key)
 
         # Cycle detection
         self._detect_cycles(supervisor_of)
