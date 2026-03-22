@@ -45,6 +45,8 @@ template:
       budget_percent: 30
       head_role: "CTO"
       reporting_lines:
+        - subordinate: "Software Architect"
+          supervisor: "CTO"
         - subordinate: "DevOps/SRE Engineer"
           supervisor: "Software Architect"
         - subordinate: "Database Engineer"

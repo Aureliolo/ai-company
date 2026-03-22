@@ -200,24 +200,15 @@ class TestEscalationPath:
         assert low.priority_boost == 0
         assert high.priority_boost == 3
 
-    def test_priority_boost_above_3_rejected(self) -> None:
-        """Reject priority_boost above 3."""
+    @pytest.mark.parametrize("boost", [4, -1])
+    def test_priority_boost_invalid_rejected(self, boost: int) -> None:
+        """Reject priority_boost outside 0-3 range."""
         with pytest.raises(ValidationError):
             EscalationPath(
                 from_department="a",
                 to_department="b",
                 condition="c",
-                priority_boost=4,
-            )
-
-    def test_priority_boost_negative_rejected(self) -> None:
-        """Reject negative priority_boost."""
-        with pytest.raises(ValidationError):
-            EscalationPath(
-                from_department="a",
-                to_department="b",
-                condition="c",
-                priority_boost=-1,
+                priority_boost=boost,
             )
 
     def test_same_department_rejected(self) -> None:

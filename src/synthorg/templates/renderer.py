@@ -789,7 +789,7 @@ def _build_departments(
             "head": head_role,
             "budget_percent": budget_pct,
         }
-        if head_merge_id:
+        if head_merge_id and dept.get("head_role"):
             dept_dict["head_id"] = head_merge_id
         reporting_lines = dept.get("reporting_lines")
         if reporting_lines is not None:

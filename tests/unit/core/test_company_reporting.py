@@ -338,3 +338,8 @@ class TestDepartmentReportingLines:
         """Reject empty string head_id."""
         with pytest.raises(ValidationError, match="at least 1 character"):
             Department(name="eng", head="cto", head_id="")
+
+    def test_head_id_without_head_rejected(self) -> None:
+        """Reject head_id when head is None."""
+        with pytest.raises(ValidationError, match=r"head_id.*head is None"):
+            Department(name="eng", head_id="backend-senior")

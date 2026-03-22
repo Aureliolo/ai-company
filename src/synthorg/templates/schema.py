@@ -182,8 +182,8 @@ class TemplateDepartmentConfig(BaseModel):
         default=None,
         description="Role name of department head",
     )
-    head_merge_id: str = Field(
-        default="",
+    head_merge_id: NotBlankStr | None = Field(
+        default=None,
         description="merge_id of the head agent for disambiguation",
     )
     reporting_lines: tuple[dict[str, str], ...] = Field(

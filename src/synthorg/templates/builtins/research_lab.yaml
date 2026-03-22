@@ -34,6 +34,7 @@ template:
     - name: "data_analytics"
       budget_percent: 50
       head_role: "Data Analyst"
+      head_merge_id: "analyst-primary"
       reporting_lines:
         - subordinate: "Data Engineer"
           supervisor: "Data Analyst"

@@ -372,6 +372,18 @@ class Department(BaseModel):
     )
 
     @model_validator(mode="after")
+    def _validate_head_id_requires_head(self) -> Self:
+        """Reject head_id without a corresponding head."""
+        if self.head_id is not None and self.head is None:
+            msg = (
+                f"head_id {self.head_id!r} is set but head is None "
+                f"for department {self.name!r}"
+            )
+            logger.warning(COMPANY_VALIDATION_ERROR, error=msg)
+            raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
     def _validate_unique_team_names(self) -> Self:
         """Ensure no duplicate team names within a department (case-insensitive)."""
         names = [t.name.strip().casefold() for t in self.teams]
