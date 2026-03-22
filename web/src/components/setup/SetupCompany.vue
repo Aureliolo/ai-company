@@ -16,7 +16,7 @@ const setup = useSetupStore()
 
 const companyName = ref('')
 const companyDescription = ref('')
-const selectedTemplate = ref<string | null>('startup')
+const selectedTemplate = ref<string | null>(null)
 const error = ref<string | null>(null)
 const creating = ref(false)
 /** Whether the user clicked Edit on the completed summary. */
@@ -79,6 +79,8 @@ onMounted(async () => {
   // fetchTemplates catches errors internally; surface to component.
   if (setup.error) {
     error.value = setup.error
+  } else if (setup.templates.some((t) => t.name === 'startup')) {
+    selectedTemplate.value = 'startup'
   }
 })
 </script>

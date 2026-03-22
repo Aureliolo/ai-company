@@ -780,6 +780,117 @@ class TestSetupAgentModelUpdate:
 
 
 @pytest.mark.unit
+class TestUpdateAgentName:
+    """PUT /api/v1/setup/agents/{index}/name -- rename an agent."""
+
+    def test_successful_name_update(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Renaming an agent persists the new name."""
+        app_state, original = _setup_mock_providers(test_client)
+        try:
+            test_client.post(
+                "/api/v1/setup/company",
+                json={
+                    "company_name": "Name Test",
+                    "template_name": "solo_founder",
+                },
+            )
+            resp = test_client.put(
+                "/api/v1/setup/agents/0/name",
+                json={"name": "New Agent Name"},
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["name"] == "New Agent Name"
+
+            # Verify persistence.
+            get_resp = test_client.get("/api/v1/setup/agents")
+            agents = get_resp.json()["data"]["agents"]
+            assert agents[0]["name"] == "New Agent Name"
+        finally:
+            app_state._provider_management = original
+
+    def test_out_of_range_index(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Out-of-range index returns 404."""
+        resp = test_client.put(
+            "/api/v1/setup/agents/99/name",
+            json={"name": "Some Name"},
+        )
+        assert resp.status_code == 404
+
+    def test_blank_name_rejected(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Empty or whitespace-only name is rejected by validation."""
+        app_state, original = _setup_mock_providers(test_client)
+        try:
+            test_client.post(
+                "/api/v1/setup/company",
+                json={
+                    "company_name": "Blank Name Test",
+                    "template_name": "solo_founder",
+                },
+            )
+            resp = test_client.put(
+                "/api/v1/setup/agents/0/name",
+                json={"name": "   "},
+            )
+            assert resp.status_code == 400
+        finally:
+            app_state._provider_management = original
+
+
+@pytest.mark.unit
+class TestRandomizeAgentName:
+    """POST /api/v1/setup/agents/{index}/randomize-name."""
+
+    def test_randomize_generates_new_name(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Randomize endpoint generates a non-empty name."""
+        app_state, original = _setup_mock_providers(test_client)
+        try:
+            test_client.post(
+                "/api/v1/setup/company",
+                json={
+                    "company_name": "Randomize Test",
+                    "template_name": "solo_founder",
+                },
+            )
+            resp = test_client.post(
+                "/api/v1/setup/agents/0/randomize-name",
+            )
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["name"] != ""
+            assert len(data["name"]) >= 3
+
+            # Verify persistence.
+            get_resp = test_client.get("/api/v1/setup/agents")
+            agents = get_resp.json()["data"]["agents"]
+            assert agents[0]["name"] == data["name"]
+        finally:
+            app_state._provider_management = original
+
+    def test_out_of_range_index(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Out-of-range index returns 404."""
+        resp = test_client.post(
+            "/api/v1/setup/agents/99/randomize-name",
+        )
+        assert resp.status_code == 404
+
+
+@pytest.mark.unit
 class TestGetAvailableLocales:
     """GET /api/v1/setup/name-locales/available -- list available locales."""
 
@@ -834,10 +945,13 @@ class TestGetNameLocales:
             json.dumps(["en_US", "fr_FR"]),
             now,
         )
-        resp = test_client.get("/api/v1/setup/name-locales")
-        assert resp.status_code == 200
-        data = resp.json()["data"]
-        assert data["locales"] == ["en_US", "fr_FR"]
+        try:
+            resp = test_client.get("/api/v1/setup/name-locales")
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["locales"] == ["en_US", "fr_FR"]
+        finally:
+            repo._store.pop(("company", "name_locales"), None)
 
     def test_returns_all_sentinel_when_explicitly_stored(
         self,
@@ -846,7 +960,8 @@ class TestGetNameLocales:
         """Returns ``__all__`` sentinel when it is explicitly stored in DB.
 
         Verifies the round-trip: saving ``["__all__"]`` then reading it
-        back returns the sentinel, not 57 expanded locale codes.
+        back returns the sentinel, not the full expanded list of
+        concrete locale codes.
         """
         app_state = test_client.app.state.app_state
         repo = app_state.persistence._settings_repo
@@ -855,10 +970,13 @@ class TestGetNameLocales:
             json.dumps(["__all__"]),
             now,
         )
-        resp = test_client.get("/api/v1/setup/name-locales")
-        assert resp.status_code == 200
-        data = resp.json()["data"]
-        assert data["locales"] == ["__all__"]
+        try:
+            resp = test_client.get("/api/v1/setup/name-locales")
+            assert resp.status_code == 200
+            data = resp.json()["data"]
+            assert data["locales"] == ["__all__"]
+        finally:
+            repo._store.pop(("company", "name_locales"), None)
 
 
 @pytest.mark.unit

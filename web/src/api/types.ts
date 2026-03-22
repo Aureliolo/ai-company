@@ -901,6 +901,10 @@ export interface UpdateAgentModelRequest {
   model_id: string
 }
 
+export interface UpdateAgentNameRequest {
+  name: string
+}
+
 export interface SetupAgentsListResponse {
   agents: SetupAgentSummary[]
   agent_count: number

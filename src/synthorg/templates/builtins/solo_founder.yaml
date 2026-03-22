@@ -34,13 +34,13 @@ template:
 
   agents:
     - role: "CEO"
-      name: "Nia Oduya"
+      name: ""
       level: "c_suite"
       model: "large"
       personality_preset: "visionary_leader"
       department: "executive"
     - role: "Full-Stack Developer"
-      name: "Tomas Bergqvist"
+      name: ""
       level: "senior"
       model: "medium"
       personality_preset: "pragmatic_builder"

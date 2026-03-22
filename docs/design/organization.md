@@ -240,7 +240,7 @@ Scalars (`company_name`, `company_type`)
 The web dashboard includes a setup wizard with six substantive steps (Welcome, Admin,
 Provider, Names, Company, Review Org) followed by a completion screen. The Names step lets
 users choose which cultural locales are used for Faker-based agent name generation (e.g.,
-English, Japanese, Yoruba); selected locales are persisted and applied when templates render
+English, Portuguese, Yoruba); selected locales are persisted and applied when templates render
 agent names. When a template is selected in the Company step, all template agents are
 auto-created with models matched to configured providers via a cost-based tier classification
 engine. The Review Org step lets users inspect agents and reassign models before completing

@@ -132,13 +132,14 @@ class TestRenderTemplateAgents:
         names = [a.name for a in config.agents]
         assert len(names) == len(set(names))
 
-    def test_agent_name_from_template(self) -> None:
+    def test_agent_name_auto_generated(self) -> None:
         loaded = load_template("solo_founder")
         config = render_template(loaded, variables={"company_name": "ACME"})
-        # The CEO agent has an explicit name in the template.
+        # Built-in templates have empty names; Faker generates them.
         ceo_agents = [a for a in config.agents if a.role == "CEO"]
         assert len(ceo_agents) == 1
-        assert ceo_agents[0].name == "Nia Oduya"
+        assert ceo_agents[0].name != ""
+        assert len(ceo_agents[0].name) >= 3
 
     def test_agents_have_nonempty_names(self) -> None:
         loaded = load_template("research_lab")

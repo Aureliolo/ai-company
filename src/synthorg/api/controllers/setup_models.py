@@ -199,6 +199,18 @@ class UpdateAgentModelRequest(BaseModel):
     model_id: NotBlankStr = Field(max_length=200)
 
 
+class UpdateAgentNameRequest(BaseModel):
+    """Request to update an agent's display name during setup.
+
+    Attributes:
+        name: New agent display name.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: NotBlankStr = Field(max_length=200)
+
+
 class SetupAgentsListResponse(BaseModel):
     """List of agents currently configured in setup.
 

@@ -90,3 +90,9 @@ SETUP_NAME_LOCALES_INVALID: Final[str] = "setup.name_locales.invalid"
 
 # Stored name locale data corrupted (invalid JSON or wrong type)
 SETUP_NAME_LOCALES_CORRUPTED: Final[str] = "setup.name_locales.corrupted"
+
+# Agent name updated during setup review
+SETUP_AGENT_NAME_UPDATED: Final[str] = "setup.agent.name_updated"
+
+# Agent name randomized during setup review
+SETUP_AGENT_NAME_RANDOMIZED: Final[str] = "setup.agent.name_randomized"

@@ -154,6 +154,32 @@ export const useSetupStore = defineStore('setup', () => {
     }
   }
 
+  async function updateAgentName(index: number, name: string) {
+    if (index < 0 || index >= agents.value.length) return
+    error.value = null
+    try {
+      const updated = await setupApi.updateAgentName(index, { name })
+      const copy = [...agents.value]
+      copy[index] = updated
+      agents.value = copy
+    } catch (err) {
+      error.value = getErrorMessage(err)
+    }
+  }
+
+  async function randomizeAgentName(index: number) {
+    if (index < 0 || index >= agents.value.length) return
+    error.value = null
+    try {
+      const updated = await setupApi.randomizeAgentName(index)
+      const copy = [...agents.value]
+      copy[index] = updated
+      agents.value = copy
+    } catch (err) {
+      error.value = getErrorMessage(err)
+    }
+  }
+
   function nextStep(maxSteps: number) {
     if (currentStep.value < maxSteps - 1) {
       currentStep.value++
@@ -209,6 +235,8 @@ export const useSetupStore = defineStore('setup', () => {
     setAgents,
     fetchAgents,
     updateAgentModel,
+    updateAgentName,
+    randomizeAgentName,
     nextStep,
     prevStep,
     setStep,

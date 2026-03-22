@@ -28,11 +28,31 @@ const newAgentProvider = ref('')
 const newAgentModel = ref('')
 const addingAgent = ref(false)
 
+/** Per-agent editable name values, keyed by index. */
+const editableNames = ref<Record<number, string>>({})
+/** Tracks which agents have an in-flight name save. */
+const savingName = ref<Record<number, boolean>>({})
+/** Tracks which agents have an in-flight randomize. */
+const randomizing = ref<Record<number, boolean>>({})
+
 // Reset model selection when the provider changes to prevent
 // submitting an invalid provider/model pair.
 watch(newAgentProvider, () => {
   newAgentModel.value = ''
 })
+
+/** Sync editable names whenever the agents list changes. */
+watch(
+  () => setup.agents,
+  (agents) => {
+    const names: Record<number, string> = {}
+    agents.forEach((a, i) => {
+      names[i] = a.name
+    })
+    editableNames.value = names
+  },
+  { immediate: true },
+)
 
 const hasAgents = computed(() => setup.agents.length > 0)
 
@@ -87,6 +107,35 @@ async function handleModelChange(index: number, value: string) {
   if (setup.error) {
     error.value = setup.error
   }
+}
+
+async function handleNameBlur(index: number) {
+  const newName = editableNames.value[index]?.trim()
+  if (!newName || newName === setup.agents[index]?.name) return
+  savingName.value = { ...savingName.value, [index]: true }
+  error.value = null
+  await setup.updateAgentName(index, newName)
+  if (setup.error) {
+    error.value = setup.error
+  }
+  savingName.value = { ...savingName.value, [index]: false }
+}
+
+function handleNameKeydown(event: KeyboardEvent, index: number) {
+  if (event.key === 'Enter') {
+    ;(event.target as HTMLInputElement)?.blur()
+    handleNameBlur(index)
+  }
+}
+
+async function handleRandomizeName(index: number) {
+  randomizing.value = { ...randomizing.value, [index]: true }
+  error.value = null
+  await setup.randomizeAgentName(index)
+  if (setup.error) {
+    error.value = setup.error
+  }
+  randomizing.value = { ...randomizing.value, [index]: false }
 }
 
 function tierBadgeClass(tier: string): string {
@@ -164,11 +213,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-lg">
+  <div class="mx-auto w-full max-w-2xl">
     <div class="mb-6 text-center">
       <h2 class="text-2xl font-semibold text-slate-100">Review Your Organization</h2>
       <p class="mt-1 text-sm text-slate-400">
-        Review the agents in your organization and adjust model assignments.
+        Review the agents in your organization. Edit names, randomize them, and adjust model assignments.
       </p>
     </div>
 
@@ -188,11 +237,27 @@ onMounted(async () => {
         :key="agent.name || `${agent.role}-${index}`"
         class="rounded-lg border border-slate-700 bg-slate-900 p-4"
       >
-        <div class="mb-2 flex items-center justify-between">
-          <div>
-            <span class="font-medium text-slate-100">{{ agent.name }}</span>
-            <span class="ml-2 text-xs text-slate-400">{{ agent.role }}</span>
-          </div>
+        <div class="mb-2 flex items-center gap-2">
+          <InputText
+            v-model="editableNames[index]"
+            class="flex-1"
+            :aria-label="`Name for ${agent.role}`"
+            :disabled="savingName[index] || randomizing[index]"
+            @blur="handleNameBlur(index)"
+            @keydown="handleNameKeydown($event, index)"
+          />
+          <Button
+            icon="pi pi-sync"
+            severity="secondary"
+            size="small"
+            rounded
+            text
+            :loading="randomizing[index]"
+            :disabled="savingName[index]"
+            aria-label="Randomize name"
+            @click="handleRandomizeName(index)"
+          />
+          <span class="text-xs text-slate-400">{{ agent.role }}</span>
           <span
             class="rounded-full px-2 py-0.5 text-xs font-medium"
             :class="tierBadgeClass(agent.tier)"
