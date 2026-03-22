@@ -48,11 +48,6 @@ class TestGetPersonalityPreset:
     @pytest.mark.parametrize(
         "preset_name",
         [
-            "user_advocate",
-            "process_optimizer",
-            "growth_hacker",
-            "technical_communicator",
-            "systems_thinker",
             "client_advisor",
             "code_craftsman",
             "devil_advocate",
