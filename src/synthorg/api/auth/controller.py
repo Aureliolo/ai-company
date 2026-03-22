@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from synthorg.api.auth.config import AuthConfig
 from synthorg.api.auth.models import AuthenticatedUser, AuthMethod, User
 from synthorg.api.auth.service import AuthService  # noqa: TC001
-from synthorg.api.auth.system_user import is_system_user
+from synthorg.api.auth.system_user import SYSTEM_USERNAME, is_system_user
 from synthorg.api.auth.ticket_store import TicketLimitExceededError
 from synthorg.api.dto import ApiResponse
 from synthorg.api.errors import ConflictError, UnauthorizedError
@@ -279,6 +279,15 @@ class AuthController(Controller):
         auth_service: AuthService = app_state.auth_service
         persistence = app_state.persistence
 
+        if data.username == SYSTEM_USERNAME:
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="setup_reserved_username",
+                username=data.username,
+            )
+            msg = "Username 'system' is reserved"
+            raise ConflictError(msg)
+
         ceo_count = await persistence.users.count_by_role(HumanRole.CEO)
         if ceo_count > 0:
             logger.warning(API_AUTH_FAILED, reason="setup_already_completed")
@@ -520,6 +529,16 @@ class AuthController(Controller):
             )
             msg = "Authentication required"
             raise UnauthorizedError(msg)
+
+        if is_system_user(auth_user.user_id):
+            logger.warning(
+                API_AUTH_FAILED,
+                reason="system_user_ws_ticket_blocked",
+                user_id=auth_user.user_id,
+            )
+            raise PermissionDeniedException(
+                detail="System user cannot request WebSocket tickets",
+            )
 
         if auth_user.auth_method != AuthMethod.JWT:
             logger.warning(

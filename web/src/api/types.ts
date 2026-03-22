@@ -49,6 +49,7 @@ export type HumanRole =
   | 'board_member'
   | 'pair_programmer'
   | 'observer'
+  | 'system'
 
 export type DepartmentName =
   | 'executive'

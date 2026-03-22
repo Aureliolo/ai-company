@@ -13,7 +13,7 @@ from litestar.exceptions import (
 from litestar.status_codes import HTTP_204_NO_CONTENT
 
 from synthorg.api.dto import ApiResponse
-from synthorg.api.guards import require_write_access
+from synthorg.api.guards import require_system_or_write_access
 from synthorg.api.path_params import PathId  # noqa: TC001
 from synthorg.api.state import AppState  # noqa: TC001
 from synthorg.backup.errors import (
@@ -48,7 +48,7 @@ class BackupController(Controller):
 
     path = "/admin/backups"
     tags = ("admin", "backup")
-    guards = [require_write_access]  # noqa: RUF012
+    guards = [require_system_or_write_access]  # noqa: RUF012
 
     @post()
     async def create_backup(

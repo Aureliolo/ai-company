@@ -184,19 +184,39 @@ func TestBuildLocalJWT(t *testing.T) {
 	if !strings.Contains(string(headerJSON), `"alg":"HS256"`) {
 		t.Errorf("header missing HS256 alg: %s", headerJSON)
 	}
-	// Verify payload contains expected claims.
+	// Verify payload contains expected claims via JSON unmarshal.
 	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		t.Fatalf("decoding payload: %v", err)
 	}
-	for _, claim := range []string{`"sub":"system"`, `"iss":"synthorg-cli"`} {
-		if !strings.Contains(string(payloadJSON), claim) {
-			t.Errorf("payload missing claim %s: %s", claim, payloadJSON)
-		}
+	var claims map[string]any
+	if err := json.Unmarshal(payloadJSON, &claims); err != nil {
+		t.Fatalf("unmarshalling payload: %v", err)
 	}
-	// aud claim must be absent -- backend rejects unvalidated audience.
-	if strings.Contains(string(payloadJSON), `"aud"`) {
-		t.Errorf("payload must not contain aud claim: %s", payloadJSON)
+	// Cross-language: sub and iss must match the Python backend constants
+	// in src/synthorg/api/auth/system_user.py -- keep in sync.
+	if sub, _ := claims["sub"].(string); sub != "system" {
+		t.Errorf("sub = %q, want %q", sub, "system")
+	}
+	if iss, _ := claims["iss"].(string); iss != "synthorg-cli" {
+		t.Errorf("iss = %q, want %q", iss, "synthorg-cli")
+	}
+	// aud is validated by the backend middleware for system tokens
+	// (defense-in-depth alongside the iss check).
+	if aud, _ := claims["aud"].(string); aud != "synthorg-backend" {
+		t.Errorf("aud = %q, want %q", aud, "synthorg-backend")
+	}
+	// iat and exp must be present with a 60-second window.
+	iat, _ := claims["iat"].(float64)
+	exp, _ := claims["exp"].(float64)
+	if iat == 0 {
+		t.Error("payload missing iat claim")
+	}
+	if exp == 0 {
+		t.Error("payload missing exp claim")
+	}
+	if exp-iat != 60 {
+		t.Errorf("expected exp-iat=60, got %v", exp-iat)
 	}
 }
 

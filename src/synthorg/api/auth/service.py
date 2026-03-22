@@ -209,7 +209,7 @@ class AuthService:
             token,
             secret,
             algorithms=[self._config.jwt_algorithm],
-            options={"require": ["exp", "iat", "sub"]},
+            options={"require": ["exp", "iat", "sub"], "verify_aud": False},
         )
 
     def hash_api_key(self, raw_key: str) -> str:

@@ -302,6 +302,9 @@ class FakeUserRepository:
         return sum(1 for u in self._users.values() if u.role == role)
 
     async def delete(self, user_id: str) -> bool:
+        if user_id == "system":
+            msg = "System user cannot be deleted"
+            raise QueryError(msg)
         return self._users.pop(user_id, None) is not None
 
 

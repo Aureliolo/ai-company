@@ -94,6 +94,35 @@ class TestSQLiteUserRepository:
         await user_repo.save(_make_user())
         assert await user_repo.count() == 1
 
+    async def test_list_users_excludes_system_user(
+        self, user_repo: SQLiteUserRepository
+    ) -> None:
+        await user_repo.save(_make_user(user_id="u1", username="alice"))
+        await user_repo.save(
+            _make_user(user_id="system", username="system", role=HumanRole.SYSTEM),
+        )
+        users = await user_repo.list_users()
+        assert len(users) == 1
+        assert users[0].id == "u1"
+
+    async def test_count_excludes_system_user(
+        self, user_repo: SQLiteUserRepository
+    ) -> None:
+        await user_repo.save(_make_user())
+        await user_repo.save(
+            _make_user(user_id="system", username="system", role=HumanRole.SYSTEM),
+        )
+        assert await user_repo.count() == 1
+
+    async def test_delete_rejects_system_user(
+        self, user_repo: SQLiteUserRepository
+    ) -> None:
+        await user_repo.save(
+            _make_user(user_id="system", username="system", role=HumanRole.SYSTEM),
+        )
+        with pytest.raises(Exception, match="System user cannot be deleted"):
+            await user_repo.delete("system")
+
     async def test_count_by_role_empty(self, user_repo: SQLiteUserRepository) -> None:
         assert await user_repo.count_by_role(HumanRole.CEO) == 0
 

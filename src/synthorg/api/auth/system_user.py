@@ -2,7 +2,8 @@
 
 The system user is bootstrapped at application startup and serves as
 the JWT subject for CLI commands (``synthorg backup``, ``synthorg wipe``,
-etc.).  It cannot be logged into, deleted, or modified through the API.
+etc.).  It cannot be logged into or modified through the API.  Delete
+protection is enforced at the repository layer.
 """
 
 import os
@@ -22,8 +23,20 @@ logger = get_logger(__name__)
 
 # The ID and username are deliberately identical.  Security gates
 # use the ID (via ``is_system_user``), not the username.
+# Cross-language: the Go CLI (cli/cmd/backup.go) hard-codes
+# sub="system" in the JWT payload -- keep in sync.
 SYSTEM_USER_ID: Final[str] = "system"
 SYSTEM_USERNAME: Final[str] = "system"
+
+# Issuer claim required in CLI JWTs that skip pwd_sig validation.
+# Cross-language: the Go CLI (cli/cmd/backup.go) hard-codes
+# iss="synthorg-cli" -- keep in sync.
+SYSTEM_ISSUER: Final[str] = "synthorg-cli"
+
+# Audience claim included in CLI JWTs for defense-in-depth.
+# Cross-language: the Go CLI (cli/cmd/backup.go) hard-codes
+# aud="synthorg-backend" -- keep in sync.
+SYSTEM_AUDIENCE: Final[str] = "synthorg-backend"
 
 
 def is_system_user(user_id: str) -> bool:
@@ -44,15 +57,19 @@ async def ensure_system_user(
 ) -> None:
     """Create the system user if it does not already exist.
 
-    Safe to call on every startup.  Under concurrent startup the
-    underlying upsert (``ON CONFLICT ... DO UPDATE``) means the
-    last writer wins, regenerating the password hash.  This is
-    harmless because CLI tokens skip ``pwd_sig`` validation and
-    the random plaintext is never persisted.
+    Safe to call on every startup.  If the user already exists,
+    returns immediately.  Under concurrent startup a narrow TOCTOU
+    window exists between the existence check and the save; the
+    underlying persistence backend's upsert semantics ensure this
+    is harmless -- the last writer wins, regenerating the password
+    hash.  This is safe because CLI tokens authenticate via the
+    shared JWT HMAC signature and skip ``pwd_sig`` validation
+    (enforced in ``_resolve_jwt_user``).
 
     The system user receives a random Argon2id password hash
-    generated from 64 bytes of ``os.urandom``.  Nobody knows the
-    plaintext, preventing login via ``/auth/login``.
+    generated from a 128-character hex string derived from 64
+    bytes of ``os.urandom``.  Nobody knows the plaintext,
+    preventing login via ``/auth/login``.
 
     Args:
         persistence: Connected persistence backend.
@@ -68,7 +85,7 @@ async def ensure_system_user(
 
     # Generate a random password nobody will ever know.
     random_password = os.urandom(64).hex()
-    password_hash = auth_service.hash_password(random_password)
+    password_hash = await auth_service.hash_password_async(random_password)
 
     now = datetime.now(UTC)
     user = User(

@@ -413,11 +413,12 @@ class TestAuthMiddlewareSystemUser:
         )
         await persistence.users.save(system_user)
 
-        # Build a CLI-style JWT (no pwd_sig, no aud, iss=synthorg-cli)
+        # Build a CLI-style JWT (no pwd_sig, iss=synthorg-cli, aud=synthorg-backend)
         token = pyjwt.encode(
             {
                 "sub": "system",
                 "iss": "synthorg-cli",
+                "aud": "synthorg-backend",
                 "iat": now,
                 "exp": now + timedelta(seconds=60),
             },
@@ -455,12 +456,13 @@ class TestAuthMiddlewareSystemUser:
         )
         await persistence.users.save(system_user)
 
-        # Build CLI-style claims (no pwd_sig, iss=synthorg-cli)
+        # Build CLI-style claims (no pwd_sig, iss=synthorg-cli, aud=synthorg-backend)
         claims = svc.decode_token(
             pyjwt.encode(
                 {
                     "sub": "system",
                     "iss": "synthorg-cli",
+                    "aud": "synthorg-backend",
                     "iat": now,
                     "exp": now + timedelta(seconds=60),
                 },
@@ -481,6 +483,136 @@ class TestAuthMiddlewareSystemUser:
         assert result is not None
         assert result.role == HumanRole.SYSTEM
         assert result.user_id == "system"
+
+    async def test_system_user_jwt_with_wrong_issuer_returns_401(
+        self,
+    ) -> None:
+        """System user JWT with wrong iss is rejected."""
+        import jwt as pyjwt
+
+        svc = _make_auth_service()
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+
+        now = datetime.now(UTC)
+        system_user = User(
+            id="system",
+            username="system",
+            password_hash=svc.hash_password("random-password-12chars"),
+            role=HumanRole.SYSTEM,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        await persistence.users.save(system_user)
+
+        # JWT has sub=system but wrong iss
+        token = pyjwt.encode(
+            {
+                "sub": "system",
+                "iss": "attacker",
+                "aud": "synthorg-backend",
+                "iat": now,
+                "exp": now + timedelta(seconds=60),
+            },
+            _SECRET,
+            algorithm="HS256",
+        )
+
+        app = _build_app(auth_service=svc, persistence=persistence)
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 401
+
+    async def test_system_user_jwt_with_wrong_audience_returns_401(
+        self,
+    ) -> None:
+        """System user JWT with wrong aud is rejected."""
+        import jwt as pyjwt
+
+        svc = _make_auth_service()
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+
+        now = datetime.now(UTC)
+        system_user = User(
+            id="system",
+            username="system",
+            password_hash=svc.hash_password("random-password-12chars"),
+            role=HumanRole.SYSTEM,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        await persistence.users.save(system_user)
+
+        # JWT has correct iss but wrong aud
+        token = pyjwt.encode(
+            {
+                "sub": "system",
+                "iss": "synthorg-cli",
+                "aud": "wrong-audience",
+                "iat": now,
+                "exp": now + timedelta(seconds=60),
+            },
+            _SECRET,
+            algorithm="HS256",
+        )
+
+        app = _build_app(auth_service=svc, persistence=persistence)
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 401
+
+    async def test_system_user_jwt_with_pwd_sig_still_authenticates(
+        self,
+    ) -> None:
+        """System user JWT with an extra pwd_sig claim still works."""
+        import jwt as pyjwt
+
+        svc = _make_auth_service()
+        persistence = FakePersistenceBackend()
+        await persistence.connect()
+
+        now = datetime.now(UTC)
+        system_user = User(
+            id="system",
+            username="system",
+            password_hash=svc.hash_password("random-password-12chars"),
+            role=HumanRole.SYSTEM,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        await persistence.users.save(system_user)
+
+        # JWT includes a stale pwd_sig -- should be ignored for system users
+        token = pyjwt.encode(
+            {
+                "sub": "system",
+                "iss": "synthorg-cli",
+                "aud": "synthorg-backend",
+                "pwd_sig": "stale-signature-",
+                "iat": now,
+                "exp": now + timedelta(seconds=60),
+            },
+            _SECRET,
+            algorithm="HS256",
+        )
+
+        app = _build_app(auth_service=svc, persistence=persistence)
+        with TestClient(app) as client:
+            resp = client.get(
+                "/protected",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 200
 
     async def test_non_system_user_without_pwd_sig_returns_401(self) -> None:
         """Regular user JWT without pwd_sig is still rejected."""

@@ -12,6 +12,7 @@ import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.api.auth.models import ApiKey, User
+from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -310,6 +311,9 @@ ON CONFLICT(id) DO UPDATE SET
     async def delete(self, user_id: NotBlankStr) -> bool:
         """Delete a user by primary key.
 
+        The system user cannot be deleted -- attempts are rejected
+        with a ``QueryError``.
+
         Args:
             user_id: Unique user identifier.
 
@@ -317,8 +321,17 @@ ON CONFLICT(id) DO UPDATE SET
             ``True`` if a row was deleted, ``False`` if not found.
 
         Raises:
-            QueryError: If the database operation fails.
+            QueryError: If the user is the system user or the
+                database operation fails.
         """
+        if is_system_user(user_id):
+            msg = "System user cannot be deleted"
+            logger.warning(
+                PERSISTENCE_USER_DELETE_FAILED,
+                user_id=user_id,
+                error=msg,
+            )
+            raise QueryError(msg)
         try:
             cursor = await self._db.execute(
                 "DELETE FROM users WHERE id = ?", (user_id,)
