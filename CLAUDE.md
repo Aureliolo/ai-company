@@ -242,8 +242,8 @@ site/             # Astro landing page (synthorg.io)
 - **Dependency review**: `dependency-review.yml` -- license allow-list (permissive only), PR comment summaries
 - **CLA**: `cla.yml` -- contributor-assistant check on PRs, signatures in `.github/cla-signatures.json`
 - **Release**: `release.yml` -- Release Please creates draft release PR. Uses `RELEASE_PLEASE_TOKEN` (PAT)
-- **Dev Release**: `dev-release.yml` -- creates semver dev tags (e.g. `v0.4.7-dev.3`) and draft pre-releases on every push to main (skips Release Please version-bump commits). Tags trigger existing Docker + CLI workflows for full build/scan/sign pipeline. Old dev pre-releases auto-cleaned (keeps 5 most recent).
-- **Finalize Release**: `finalize-release.yml` -- publishes draft after Docker + CLI workflows succeed for tag. Immutable releases enabled. Handles both stable and dev releases.
+- **Dev Release**: `dev-release.yml` -- creates semver dev tags (e.g. `v0.4.7-dev.3`) and draft pre-releases on every push to main (skips Release Please version-bump commits). Tags trigger existing Docker + CLI workflows for full build/scan/sign pipeline. Incrementally prunes old dev pre-releases (keeps 5 most recent); finalize-release deletes all remaining when a stable release is published.
+- **Finalize Release**: `finalize-release.yml` -- publishes draft after Docker + CLI workflows succeed for tag. Immutable releases enabled. Handles both stable and dev releases. Deletes all dev pre-releases and tags when a stable release is published.
 
 ## Dependencies
 

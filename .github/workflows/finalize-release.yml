@@ -289,7 +289,7 @@ jobs:
             --jq '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+-dev\\.[0-9]+$")) | .tag_name' \
           | while read -r dev_tag; do
               echo "Deleting dev release + tag: $dev_tag"
-              gh release delete "$dev_tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+              gh release delete "$dev_tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
             done
 
           # 2. Delete orphan dev tags (tags without a release, e.g. from failed builds).
@@ -298,7 +298,7 @@ jobs:
           | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+$' || true; } \
           | while read -r dev_tag; do
               echo "Deleting orphan dev tag: $dev_tag"
-              gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$dev_tag" 2>/dev/null || true
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$dev_tag" || true
             done
 
           echo "Dev pre-release cleanup complete"
