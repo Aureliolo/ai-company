@@ -385,3 +385,20 @@ func TestIsValidBool(t *testing.T) {
 		})
 	}
 }
+
+func FuzzIsValidBool(f *testing.F) {
+	f.Add("true")
+	f.Add("false")
+	f.Add("")
+	f.Add("TRUE")
+	f.Add("1")
+	f.Add("yes")
+
+	f.Fuzz(func(t *testing.T, s string) {
+		got := IsValidBool(s)
+		want := s == "true" || s == "false"
+		if got != want {
+			t.Fatalf("IsValidBool(%q) = %v, want %v", s, got, want)
+		}
+	})
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
@@ -160,53 +161,42 @@ func TestConfigSetRejectsInvalidChannel(t *testing.T) {
 }
 
 func TestConfigSetAutoCleanup(t *testing.T) {
-	dir := t.TempDir()
-	state := config.DefaultState()
-	state.DataDir = dir
-	if err := config.Save(state); err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name     string
+		initial  bool
+		setValue string
+		want     bool
+	}{
+		{"set to true", false, "true", true},
+		{"set to false", true, "false", false},
 	}
 
-	var buf bytes.Buffer
-	rootCmd.SetOut(&buf)
-	rootCmd.SetErr(&buf)
-	rootCmd.SetArgs([]string{"config", "set", "auto_cleanup", "true", "--data-dir", dir})
-	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			state := config.DefaultState()
+			state.DataDir = dir
+			state.AutoCleanup = tt.initial
+			if err := config.Save(state); err != nil {
+				t.Fatal(err)
+			}
 
-	loaded, err := config.Load(dir)
-	if err != nil {
-		t.Fatalf("Load after set: %v", err)
-	}
-	if !loaded.AutoCleanup {
-		t.Error("AutoCleanup should be true after setting")
-	}
-}
+			var buf bytes.Buffer
+			rootCmd.SetOut(&buf)
+			rootCmd.SetErr(&buf)
+			rootCmd.SetArgs([]string{"config", "set", "auto_cleanup", tt.setValue, "--data-dir", dir})
+			if err := rootCmd.Execute(); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 
-func TestConfigSetAutoCleanupFalse(t *testing.T) {
-	dir := t.TempDir()
-	state := config.DefaultState()
-	state.DataDir = dir
-	state.AutoCleanup = true
-	if err := config.Save(state); err != nil {
-		t.Fatal(err)
-	}
-
-	var buf bytes.Buffer
-	rootCmd.SetOut(&buf)
-	rootCmd.SetErr(&buf)
-	rootCmd.SetArgs([]string{"config", "set", "auto_cleanup", "false", "--data-dir", dir})
-	if err := rootCmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	loaded, err := config.Load(dir)
-	if err != nil {
-		t.Fatalf("Load after set: %v", err)
-	}
-	if loaded.AutoCleanup {
-		t.Error("AutoCleanup should be false after setting")
+			loaded, err := config.Load(dir)
+			if err != nil {
+				t.Fatalf("Load after set: %v", err)
+			}
+			if loaded.AutoCleanup != tt.want {
+				t.Errorf("AutoCleanup = %v, want %v", loaded.AutoCleanup, tt.want)
+			}
+		})
 	}
 }
 
@@ -247,10 +237,10 @@ func TestConfigShowAutoCleanup(t *testing.T) {
 	}
 
 	out := buf.String()
-	if !bytes.Contains([]byte(out), []byte("Auto cleanup")) {
+	if !strings.Contains(out, "Auto cleanup") {
 		t.Error("expected 'Auto cleanup' label in output")
 	}
-	if !bytes.Contains([]byte(out), []byte("false")) {
+	if !strings.Contains(out, "false") {
 		t.Error("expected 'false' value in output for default auto_cleanup")
 	}
 }

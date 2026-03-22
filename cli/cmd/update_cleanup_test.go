@@ -258,6 +258,38 @@ func TestMergeKeepIDs(t *testing.T) {
 	}
 }
 
+func FuzzMergeKeepIDs(f *testing.F) {
+	f.Add("aaa,bbb", "bbb,ccc")
+	f.Add("", "")
+	f.Add("x", "")
+	f.Add("", "y")
+	f.Fuzz(func(t *testing.T, currentCSV, previousCSV string) {
+		toMap := func(csv string) map[string]bool {
+			m := map[string]bool{}
+			for _, p := range strings.Split(csv, ",") {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					m[p] = true
+				}
+			}
+			return m
+		}
+		current := toMap(currentCSV)
+		previous := toMap(previousCSV)
+		got := mergeKeepIDs(current, previous)
+		for id := range current {
+			if !got[id] {
+				t.Fatalf("missing current id %q", id)
+			}
+		}
+		for id := range previous {
+			if !got[id] {
+				t.Fatalf("missing previous id %q", id)
+			}
+		}
+	})
+}
+
 func FuzzIsAllHex(f *testing.F) {
 	f.Add("0123456789abcdef")
 	f.Add("0123456789ABCDEF")

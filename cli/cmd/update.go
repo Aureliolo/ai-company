@@ -486,6 +486,14 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 		return nil
 	}
 
+	ok, err := confirmUpdate(fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
 	// Capture previous image IDs before pull for auto-cleanup.
 	// Best-effort: if this fails, auto-cleanup keeps only current.
 	var previousIDs map[string]bool
@@ -496,14 +504,6 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 				"Warning: could not capture previous image IDs for auto-cleanup: %v\n", captureErr)
 		}
-	}
-
-	ok, err := confirmUpdate(fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag))
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return nil
 	}
 
 	if err := pullAndPersist(ctx, cmd, info, state, tag, safeDir, preserveCompose); err != nil {
