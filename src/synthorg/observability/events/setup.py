@@ -78,3 +78,9 @@ SETUP_COMPLETE_CHECK_ERROR: Final[str] = "setup.flow.complete_check_error"
 
 # Agent dict missing critical fields during summary conversion
 SETUP_AGENT_SUMMARY_MISSING_FIELDS: Final[str] = "setup.agent.summary_missing_fields"
+
+# Name locale preferences saved
+SETUP_NAME_LOCALES_SAVED: Final[str] = "setup.name_locales.saved"
+
+# Name locale preferences retrieved
+SETUP_NAME_LOCALES_LISTED: Final[str] = "setup.name_locales.listed"

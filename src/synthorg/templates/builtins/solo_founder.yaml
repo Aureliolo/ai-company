@@ -34,12 +34,13 @@ template:
 
   agents:
     - role: "CEO"
-      name: "{{ company_name | default('My Company') }} CEO"
+      name: "Nia Oduya"
       level: "c_suite"
       model: "large"
       personality_preset: "visionary_leader"
       department: "executive"
     - role: "Full-Stack Developer"
+      name: "Tomas Bergqvist"
       level: "senior"
       model: "medium"
       personality_preset: "pragmatic_builder"

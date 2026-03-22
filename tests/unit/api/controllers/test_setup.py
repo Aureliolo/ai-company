@@ -550,6 +550,7 @@ class TestSetupDTOs:
             needs_admin=True,
             needs_setup=True,
             has_providers=False,
+            has_name_locales=False,
             has_company=False,
             has_agents=False,
             min_password_length=12,

@@ -20,6 +20,7 @@ import AdvancedBanner from '@/components/common/AdvancedBanner.vue'
 import FloatingSaveButton from '@/components/common/FloatingSaveButton.vue'
 import SettingGroupRenderer from '@/components/settings/SettingGroupRenderer.vue'
 import SettingsCodeView from '@/components/settings/SettingsCodeView.vue'
+import SettingsNameLocales from '@/components/settings/SettingsNameLocales.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
 import { useEditMode } from '@/composables/useEditMode'
@@ -253,6 +254,11 @@ function getCodeMode(ns: string): 'json' | 'yaml' {
             @save="handleSettingSave"
             @reset="handleSettingReset"
             @dirty="handleDirty"
+          />
+
+          <!-- Custom name locale selector for company tab (GUI mode only) -->
+          <SettingsNameLocales
+            v-if="ns === 'company' && editMode.getEffectiveMode(ns).value === 'gui'"
           />
 
           <!-- JSON / YAML mode -->

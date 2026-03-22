@@ -599,7 +599,7 @@ def _expand_single_agent(
         raise TemplateRenderError(msg)
     name = str(agent.get("name", "")).strip()
 
-    if not name or name.startswith("{{"):
+    if not name or name.startswith("{{") or "__JINJA2__" in name:
         name = generate_auto_name(role, seed=idx)
 
     base_name = name

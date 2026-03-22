@@ -6,6 +6,7 @@ import { useSetupStore } from '@/stores/setup'
 import SetupWelcome from '@/components/setup/SetupWelcome.vue'
 import SetupAdmin from '@/components/setup/SetupAdmin.vue'
 import SetupProvider from '@/components/setup/SetupProvider.vue'
+import SetupNameLocale from '@/components/setup/SetupNameLocale.vue'
 import SetupCompany from '@/components/setup/SetupCompany.vue'
 import SetupReviewOrg from '@/components/setup/SetupReviewOrg.vue'
 import SetupComplete from '@/components/setup/SetupComplete.vue'
@@ -25,15 +26,16 @@ const showComplete = ref(false)
 interface StepDef {
   id: string
   label: string
-  component: 'welcome' | 'admin' | 'provider' | 'company' | 'review'
+  component: 'welcome' | 'admin' | 'provider' | 'names' | 'company' | 'review'
 }
 
-// Always show all 5 steps -- admin never disappears. Step indices stay
+// Always show all 6 steps -- admin never disappears. Step indices stay
 // consistent across refreshes so navigation doesn't break.
 const steps = computed<StepDef[]>(() => [
   { id: 'welcome', label: 'Welcome', component: 'welcome' },
   { id: 'admin', label: 'Admin', component: 'admin' },
   { id: 'provider', label: 'Provider', component: 'provider' },
+  { id: 'names', label: 'Names', component: 'names' },
   { id: 'company', label: 'Company', component: 'company' },
   { id: 'review', label: 'Review', component: 'review' },
 ])
@@ -86,6 +88,13 @@ async function handleProviderComplete() {
   }
 }
 
+async function handleNameLocaleComplete() {
+  await setup.fetchStatus()
+  if (setup.statusLoaded) {
+    setup.nextStep(steps.value.length)
+  }
+}
+
 async function handleCompanyCreated(companyName: string, agentCount: number) {
   createdCompanyName.value = companyName
   createdAgentCount.value = agentCount
@@ -129,8 +138,9 @@ function computeResumeStep(): number {
 
   // Admin is done -- resume at the first incomplete step.
   if (!status.has_providers) return 2 // Provider step
-  if (!status.has_company) return 3 // Company step
-  if (status.needs_setup) return 4 // Review step (setup not fully complete)
+  if (!status.has_name_locales) return 3 // Names step
+  if (!status.has_company) return 4 // Company step
+  if (status.needs_setup) return 5 // Review step (setup not fully complete)
 
   // Everything is done -- shouldn't be here (redirect handles this).
   return 0
@@ -258,6 +268,11 @@ onMounted(async () => {
         <SetupProvider
           v-else-if="currentStep.component === 'provider'"
           @next="handleProviderComplete"
+          @previous="handlePrevious"
+        />
+        <SetupNameLocale
+          v-else-if="currentStep.component === 'names'"
+          @next="handleNameLocaleComplete"
           @previous="handlePrevious"
         />
         <SetupCompany

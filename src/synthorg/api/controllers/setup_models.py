@@ -26,6 +26,7 @@ class SetupStatusResponse(BaseModel):
     needs_admin: bool
     needs_setup: bool
     has_providers: bool
+    has_name_locales: bool
     has_company: bool
     has_agents: bool
     min_password_length: int = Field(ge=8)
@@ -214,6 +215,31 @@ class SetupAgentsListResponse(BaseModel):
     def agent_count(self) -> int:
         """Number of agents currently configured."""
         return len(self.agents)
+
+
+class SetupNameLocalesRequest(BaseModel):
+    """Name locale selection payload.
+
+    Attributes:
+        locales: List of Faker locale codes, or ``["__all__"]``
+            for all Latin-script locales.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    locales: list[str] = Field(min_length=1, max_length=100)
+
+
+class SetupNameLocalesResponse(BaseModel):
+    """Current name locale configuration.
+
+    Attributes:
+        locales: Stored locale codes (``["__all__"]`` if worldwide).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    locales: list[str]
 
 
 class SetupCompleteResponse(BaseModel):
