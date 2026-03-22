@@ -40,7 +40,14 @@ const (
 	maxArchiveEntryBytes = 128 * 1024 * 1024 // 128 MiB per archive entry
 
 	httpTimeout = 5 * time.Minute
+	apiTimeout  = 30 * time.Second
 )
+
+// apiClient is a shared HTTP client for lightweight GitHub API requests
+// (release metadata). Reuses connections across calls within a single
+// CLI invocation. The download path uses its own client with a longer
+// timeout (httpTimeout).
+var apiClient = &http.Client{Timeout: apiTimeout}
 
 // Release represents a GitHub release.
 type Release struct {
@@ -176,7 +183,6 @@ func selectBestRelease(releases []devRelease) (*devRelease, error) {
 // Shared by fetchRelease and fetchDevReleases to avoid duplication.
 func fetchJSON[T any](ctx context.Context, url string) (T, error) {
 	var zero T
-	client := &http.Client{Timeout: 30 * time.Second}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -185,7 +191,7 @@ func fetchJSON[T any](ctx context.Context, url string) (T, error) {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "synthorg-cli/"+version.Version)
 
-	resp, err := client.Do(req)
+	resp, err := apiClient.Do(req)
 	if err != nil {
 		return zero, fmt.Errorf("querying GitHub releases: %w", err)
 	}
