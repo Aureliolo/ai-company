@@ -892,10 +892,9 @@ async def _read_name_locales(
             frontend receives the sentinel value.
 
     Returns:
-        Locale codes (resolved or raw), or None for the default.
+        Locale codes (resolved or raw), or None when the setting is
+        absent, unparseable, or the resulting list is empty.
     """
-    from synthorg.templates.locales import resolve_locales  # noqa: PLC0415
-
     try:
         entry = await settings_svc.get_entry("company", "name_locales")
     except MemoryError, RecursionError:
@@ -927,8 +926,11 @@ async def _read_name_locales(
             actual_type=type(parsed).__name__,
         )
         return None
-    result = resolve_locales(parsed) if resolve else parsed
-    return result or None
+    if resolve:
+        from synthorg.templates.locales import resolve_locales  # noqa: PLC0415
+
+        parsed = resolve_locales(parsed)
+    return parsed or None
 
 
 async def _is_setup_complete(settings_svc: SettingsService) -> bool:

@@ -834,13 +834,31 @@ class TestGetNameLocales:
             json.dumps(["en_US", "fr_FR"]),
             now,
         )
-        try:
-            resp = test_client.get("/api/v1/setup/name-locales")
-            assert resp.status_code == 200
-            data = resp.json()["data"]
-            assert data["locales"] == ["en_US", "fr_FR"]
-        finally:
-            repo._store.pop(("company", "name_locales"), None)
+        resp = test_client.get("/api/v1/setup/name-locales")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["locales"] == ["en_US", "fr_FR"]
+
+    def test_returns_all_sentinel_when_explicitly_stored(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """Returns ``__all__`` sentinel when it is explicitly stored in DB.
+
+        Verifies the round-trip: saving ``["__all__"]`` then reading it
+        back returns the sentinel, not 57 expanded locale codes.
+        """
+        app_state = test_client.app.state.app_state
+        repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "name_locales")] = (
+            json.dumps(["__all__"]),
+            now,
+        )
+        resp = test_client.get("/api/v1/setup/name-locales")
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["locales"] == ["__all__"]
 
 
 @pytest.mark.unit
@@ -1128,5 +1146,53 @@ class TestReadNameLocales:
         try:
             result = await _read_name_locales(settings_svc)
             assert result == ["en_US", "fr_FR"]
+        finally:
+            repo._store.pop(("company", "name_locales"), None)
+
+    async def test_resolve_false_returns_sentinel_as_is(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """With resolve=False, the __all__ sentinel passes through raw."""
+        from synthorg.api.controllers.setup import _read_name_locales
+
+        app_state = test_client.app.state.app_state
+        settings_svc = app_state.settings_service
+        repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "name_locales")] = (
+            json.dumps(["__all__"]),
+            now,
+        )
+        try:
+            result = await _read_name_locales(
+                settings_svc,
+                resolve=False,
+            )
+            assert result == ["__all__"]
+        finally:
+            repo._store.pop(("company", "name_locales"), None)
+
+    async def test_resolve_false_skips_validation_filtering(
+        self,
+        test_client: TestClient[Any],
+    ) -> None:
+        """With resolve=False, invalid codes are not filtered out."""
+        from synthorg.api.controllers.setup import _read_name_locales
+
+        app_state = test_client.app.state.app_state
+        settings_svc = app_state.settings_service
+        repo = app_state.persistence._settings_repo
+        now = datetime.now(UTC).isoformat()
+        repo._store[("company", "name_locales")] = (
+            json.dumps(["en_US", "invalid_XX"]),
+            now,
+        )
+        try:
+            result = await _read_name_locales(
+                settings_svc,
+                resolve=False,
+            )
+            assert result == ["en_US", "invalid_XX"]
         finally:
             repo._store.pop(("company", "name_locales"), None)
