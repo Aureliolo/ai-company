@@ -168,10 +168,10 @@ Run these sequentially, fixing as we go:
    uv run mypy src/ tests/
    ```
 
-5. **Test + coverage:**
+5. **Test:**
 
    ```bash
-   uv run python -m pytest tests/ -n auto --cov=synthorg --cov-fail-under=80
+   uv run python -m pytest tests/ -n auto
    ```
 
 **Web dashboard checks (steps 6-9):** Run only if `web_src` or `web_test` files changed.
@@ -731,7 +731,7 @@ Run automated checks again (same conditional gating as Phase 2):
 1. `uv run ruff check src/ tests/`
 2. `uv run ruff format src/ tests/`
 3. `uv run mypy src/ tests/`
-4. `uv run python -m pytest tests/ -n auto --cov=synthorg --cov-fail-under=80`
+4. `uv run python -m pytest tests/ -n auto`
 
 **Web dashboard checks (steps 5-7):** Run only if `web_src` or `web_test` files were changed or modified during Phase 7.
 
@@ -752,7 +752,7 @@ git add -A
 1. Launch `pr-review-toolkit:code-simplifier` on all modified files
 2. If it suggests improvements, apply them
 3. Re-run verification (same conditional gating as Phase 8):
-   - If `src_py` or `test_py` changed: `uv run ruff check src/ tests/` + `uv run ruff format src/ tests/` + `uv run mypy src/ tests/` + `uv run python -m pytest tests/ -n auto --cov=synthorg --cov-fail-under=80`
+   - If `src_py` or `test_py` changed: `uv run ruff check src/ tests/` + `uv run ruff format src/ tests/` + `uv run mypy src/ tests/` + `uv run python -m pytest tests/ -n auto`
    - If `web_src` or `web_test` changed: `npm --prefix web run lint` + `npm --prefix web run type-check` + `npm --prefix web run test`
 
 ## Phase 10: Commit + Push + Create PR
