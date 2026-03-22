@@ -120,7 +120,7 @@ func CheckDevFromURL(ctx context.Context, url string) (CheckResult, error) {
 	}
 
 	result.LatestVersion = target.TagName
-	avail, err := isDevUpdateAvailable(version.Version, target.TagName)
+	avail, err := isUpdateAvailable(version.Version, target.TagName)
 	if err != nil {
 		return result, fmt.Errorf("comparing versions: %w", err)
 	}
@@ -259,19 +259,6 @@ func splitDev(v string) (devNum int, base string) {
 	return n, base
 }
 
-// isDevUpdateAvailable checks if latest is newer than current, with dev awareness.
-func isDevUpdateAvailable(current, latest string) (bool, error) {
-	cur := strings.TrimPrefix(current, "v")
-	if cur == "dev" {
-		return true, nil
-	}
-	cmp, err := compareWithDev(latest, current)
-	if err != nil {
-		return false, fmt.Errorf("current=%q latest=%q: %w", current, latest, err)
-	}
-	return cmp > 0, nil
-}
-
 // CheckFromURL queries the given releases URL and compares versions.
 // This is the testable core of Check.
 func CheckFromURL(ctx context.Context, url string) (CheckResult, error) {
@@ -309,9 +296,11 @@ func isUpdateAvailable(current, latest string) (bool, error) {
 	if cur == "dev" {
 		return true, nil
 	}
-	lat := strings.TrimPrefix(latest, "v")
-	// Only offer update when latest is strictly greater than current.
-	cmp, err := compareSemver(lat, cur)
+	// Use compareWithDev so a stable release is correctly detected as
+	// newer than a dev pre-release at the same base version (e.g.
+	// 0.4.8 > 0.4.8-dev.4). compareSemver ignores pre-release
+	// suffixes and would treat them as equal.
+	cmp, err := compareWithDev(latest, current)
 	if err != nil {
 		return false, fmt.Errorf("current=%q latest=%q: %w", current, latest, err)
 	}
