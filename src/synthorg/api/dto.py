@@ -491,7 +491,7 @@ class CoordinationResultResponse(BaseModel):
 
 _PROVIDER_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$")
 _RESERVED_PROVIDER_NAMES: frozenset[str] = frozenset(
-    {"presets", "from-preset", "probe-preset"},
+    {"presets", "from-preset", "probe-preset", "discovery-policy"},
 )
 
 
