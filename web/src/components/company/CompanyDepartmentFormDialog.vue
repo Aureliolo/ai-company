@@ -28,7 +28,7 @@ const AUTONOMY_LEVELS: AutonomyLevel[] = ['full', 'semi', 'supervised', 'locked'
 
 // Form state
 const name = ref('')
-const head = ref('')
+const head = ref<string | null>('')
 const budgetPercent = ref<number | null>(null)
 const autonomyLevel = ref<AutonomyLevel | null>(null)
 const teamsJson = ref('[]')
