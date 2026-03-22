@@ -842,6 +842,10 @@ autonomy:
       security_agent: true        # still runs for audit logging
 ```
 
+Built-in templates set autonomy levels appropriate to their archetype (e.g. `full` for
+Solo Founder and Research Lab, `supervised` for Agency and Full Company). See the
+[Company Types table](organization.md#company-types) for per-template defaults.
+
 **Autonomy scope** ([Decision Log](../architecture/decisions.md) D6): Three-level
 resolution chain: per-agent > per-department > company default. Seniority validation prevents
 Juniors/Interns from being set to `full`.

@@ -22,7 +22,7 @@ template:
     type: "agency"
     budget_monthly: {{ budget | default(100.0) }}
     autonomy:
-      level: "semi"
+      level: "supervised"
 
   departments:
     - name: "operations"
@@ -118,4 +118,4 @@ template:
       department: "engineering"
 
   workflow: "kanban"
-  communication: "hybrid"
+  communication: "hierarchical"

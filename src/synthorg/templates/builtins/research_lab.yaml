@@ -22,7 +22,7 @@ template:
     type: "research_lab"
     budget_monthly: {{ budget | default(60.0) }}
     autonomy:
-      level: "semi"
+      level: "full"
 
   departments:
     - name: "engineering"
@@ -82,4 +82,4 @@ template:
       department: "product"
 
   workflow: "kanban"
-  communication: "hybrid"
+  communication: "event_driven"
