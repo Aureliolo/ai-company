@@ -31,6 +31,7 @@ LABEL org.opencontainers.image.title="synthorg-web" \
       org.opencontainers.image.vendor="Aureliolo"
 
 COPY web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY web/security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=builder /app/dist/ /usr/share/nginx/html/
 
 EXPOSE 8080
