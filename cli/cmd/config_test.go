@@ -159,6 +159,102 @@ func TestConfigSetRejectsInvalidChannel(t *testing.T) {
 	}
 }
 
+func TestConfigSetAutoCleanup(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "set", "auto_cleanup", "true", "--data-dir", dir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	loaded, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load after set: %v", err)
+	}
+	if !loaded.AutoCleanup {
+		t.Error("AutoCleanup should be true after setting")
+	}
+}
+
+func TestConfigSetAutoCleanupFalse(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	state.AutoCleanup = true
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "set", "auto_cleanup", "false", "--data-dir", dir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	loaded, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load after set: %v", err)
+	}
+	if loaded.AutoCleanup {
+		t.Error("AutoCleanup should be false after setting")
+	}
+}
+
+func TestConfigSetRejectsInvalidAutoCleanup(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, value := range []string{"yes", "1", "YES", "True"} {
+		var buf bytes.Buffer
+		rootCmd.SetOut(&buf)
+		rootCmd.SetErr(&buf)
+		rootCmd.SetArgs([]string{"config", "set", "auto_cleanup", value, "--data-dir", dir})
+		err := rootCmd.Execute()
+		if err == nil {
+			t.Errorf("expected error for auto_cleanup=%q", value)
+		}
+	}
+}
+
+func TestConfigShowAutoCleanup(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "show", "--data-dir", dir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !bytes.Contains([]byte(out), []byte("Auto cleanup")) {
+		t.Error("expected 'Auto cleanup' label in output")
+	}
+	if !bytes.Contains([]byte(out), []byte("false")) {
+		t.Error("expected 'false' value in output for default auto_cleanup")
+	}
+}
+
 func TestConfigSetRejectsUnknownKey(t *testing.T) {
 	dir := t.TempDir()
 	state := config.DefaultState()

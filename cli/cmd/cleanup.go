@@ -57,6 +57,12 @@ func runCleanup(cmd *cobra.Command, _ []string) error {
 	if err := confirmAndCleanup(ctx, cmd, info, out, old); err != nil {
 		return err
 	}
+
+	// Hint about auto-cleanup when not already enabled.
+	if !state.AutoCleanup {
+		out.Blank()
+		out.Hint("Tip: run 'synthorg config set auto_cleanup true' to clean up old images automatically after updates.")
+	}
 	return nil
 }
 

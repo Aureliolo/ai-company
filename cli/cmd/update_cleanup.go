@@ -28,6 +28,74 @@ type oldImage struct {
 // output format which uses decimal units via parseDockerSize).
 const hintThresholdBytes = 5e9
 
+// autoCleanupOldImages removes old SynthOrg images after a successful update,
+// keeping only the current (just pulled) and previous (what was running before)
+// image sets. This is best-effort: failures are logged as warnings but do not
+// fail the update command. Called only when state.AutoCleanup is true.
+func autoCleanupOldImages(cmd *cobra.Command, info docker.Info, state config.State, previousIDs map[string]bool) {
+	ctx := cmd.Context()
+	out := ui.NewUI(cmd.OutOrStdout())
+	errOut := cmd.ErrOrStderr()
+
+	// Build the keep set: current IDs (just pulled) + previous IDs.
+	currentIDs, err := collectCurrentImageIDs(ctx, info, state)
+	if err != nil {
+		_, _ = fmt.Fprintf(errOut, "Warning: could not determine current image IDs, skipping auto-cleanup: %v\n", err)
+		return
+	}
+
+	keepIDs := mergeKeepIDs(currentIDs, previousIDs)
+
+	// Find images not in the keep set.
+	old, err := listNonCurrentImages(ctx, errOut, info, keepIDs)
+	if err != nil || len(old) == 0 {
+		return
+	}
+
+	out.Blank()
+	out.Step(fmt.Sprintf("Auto-cleaning %d old image(s)...", len(old)))
+
+	var freedB float64
+	var removed int
+	for _, img := range old {
+		if ctx.Err() != nil {
+			_, _ = fmt.Fprintf(errOut, "Warning: auto-cleanup interrupted\n")
+			break
+		}
+		_, rmiErr := docker.RunCmd(ctx, info.DockerPath, "rmi", img.id)
+		if rmiErr != nil {
+			if isImageInUse(rmiErr) {
+				out.Warn(fmt.Sprintf("%-12s skipped (in use)", img.id))
+			} else {
+				out.Warn(fmt.Sprintf("%-12s skipped: %v", img.id, rmiErr))
+			}
+		} else {
+			out.Success(fmt.Sprintf("%-12s removed", img.id))
+			removed++
+			freedB += img.sizeB
+		}
+	}
+
+	if removed > 0 && freedB > 0 {
+		out.Success(fmt.Sprintf("Freed %s (%d image(s) removed)", formatBytes(freedB), removed))
+	} else if removed > 0 {
+		out.Success(fmt.Sprintf("Removed %d image(s)", removed))
+	}
+}
+
+// mergeKeepIDs combines current and previous image ID sets into a single
+// keep set for auto-cleanup.
+func mergeKeepIDs(current, previous map[string]bool) map[string]bool {
+	keep := make(map[string]bool, len(current)+len(previous))
+	for id := range current {
+		keep[id] = true
+	}
+	for id := range previous {
+		keep[id] = true
+	}
+	return keep
+}
+
 // hintOldImages prints a passive hint about old images after a successful
 // update, but only when the total old image size exceeds hintThresholdBytes.
 // Replaces the former interactive cleanup prompt.

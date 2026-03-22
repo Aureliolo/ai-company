@@ -37,6 +37,9 @@ func TestDefaultState(t *testing.T) {
 	if s.SettingsKey != "" {
 		t.Errorf("SettingsKey should default to empty, got %q", s.SettingsKey)
 	}
+	if s.AutoCleanup {
+		t.Error("AutoCleanup should default to false")
+	}
 }
 
 func TestSaveAndLoad(t *testing.T) {
@@ -325,6 +328,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		SettingsKey:        "super-settings-key",
 		PersistenceBackend: "sqlite",
 		MemoryBackend:      "mem0",
+		AutoCleanup:        true,
 	}
 
 	if err := Save(original); err != nil {
@@ -344,5 +348,40 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 	if loaded.DockerSock != original.DockerSock {
 		t.Errorf("DockerSock = %q, want %q", loaded.DockerSock, original.DockerSock)
+	}
+	if loaded.AutoCleanup != original.AutoCleanup {
+		t.Errorf("AutoCleanup = %v, want %v", loaded.AutoCleanup, original.AutoCleanup)
+	}
+}
+
+func TestIsValidBool(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"true", true},
+		{"false", true},
+		{"", false},
+		{"1", false},
+		{"0", false},
+		{"yes", false},
+		{"no", false},
+		{"True", false},
+		{"TRUE", false},
+		{"False", false},
+		{"FALSE", false},
+		{"t", false},
+		{"f", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			if got := IsValidBool(tt.input); got != tt.want {
+				t.Errorf("IsValidBool(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
 	}
 }

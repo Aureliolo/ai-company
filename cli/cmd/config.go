@@ -13,7 +13,7 @@ import (
 )
 
 // supportedConfigKeys is the single source of truth for `config set` key names.
-var supportedConfigKeys = []string{"channel", "log_level"}
+var supportedConfigKeys = []string{"auto_cleanup", "channel", "log_level"}
 
 var configCmd = &cobra.Command{
 	Use:   "config",
@@ -39,8 +39,9 @@ var configSetCmd = &cobra.Command{
 	Long: `Set a configuration value.
 
 Supported keys:
-  channel    Update channel: "stable" or "dev"
-  log_level  Log verbosity: "debug", "info", "warn", "error"`,
+  auto_cleanup  Automatically remove old images after update: "true" or "false"
+  channel       Update channel: "stable" or "dev"
+  log_level     Log verbosity: "debug", "info", "warn", "error"`,
 	Args: cobra.ExactArgs(2),
 	RunE: runConfigSet,
 }
@@ -88,6 +89,7 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	}
 	out.KeyValue("Persistence backend", state.PersistenceBackend)
 	out.KeyValue("Memory backend", state.MemoryBackend)
+	out.KeyValue("Auto cleanup", strconv.FormatBool(state.AutoCleanup))
 	out.KeyValue("JWT secret", maskSecret(state.JWTSecret))
 	out.KeyValue("Settings key", maskSecret(state.SettingsKey))
 
@@ -105,6 +107,11 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	}
 
 	switch key {
+	case "auto_cleanup":
+		if !config.IsValidBool(value) {
+			return fmt.Errorf("invalid auto_cleanup %q: must be one of %s", value, config.BoolNames())
+		}
+		state.AutoCleanup = value == "true"
 	case "channel":
 		if !config.IsValidChannel(value) {
 			return fmt.Errorf("invalid channel %q: must be one of %s", value, config.ChannelNames())

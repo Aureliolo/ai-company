@@ -453,6 +453,13 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 		return nil
 	}
 
+	// Capture previous image IDs before pull for auto-cleanup.
+	// Best-effort: if this fails, auto-cleanup keeps only current.
+	var previousIDs map[string]bool
+	if state.AutoCleanup {
+		previousIDs, _ = collectCurrentImageIDs(ctx, info, state)
+	}
+
 	ok, err := confirmUpdate(fmt.Sprintf("Update container images from %s to %s?", state.ImageTag, tag))
 	if err != nil {
 		return err
@@ -472,10 +479,12 @@ func updateContainerImages(cmd *cobra.Command, state config.State, preserveCompo
 		return restartErr
 	}
 
-	// Show a hint about old images if they exceed the size threshold.
-	// Actual cleanup is deferred to 'synthorg cleanup' to avoid removing
-	// images that might still be referenced by other containers.
-	if restarted {
+	// Auto-cleanup old images if enabled, otherwise show a passive hint.
+	// Auto-cleanup runs regardless of restart (docker rmi skips in-use images).
+	// The passive hint only shows after restart (old containers are stopped).
+	if state.AutoCleanup {
+		autoCleanupOldImages(cmd, info, updatedState, previousIDs)
+	} else if restarted {
 		hintOldImages(cmd, info, updatedState)
 	}
 	return nil

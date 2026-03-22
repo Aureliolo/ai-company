@@ -26,6 +26,7 @@ type State struct {
 	SettingsKey        string            `json:"settings_key,omitempty"`
 	PersistenceBackend string            `json:"persistence_backend"`
 	MemoryBackend      string            `json:"memory_backend"`
+	AutoCleanup        bool              `json:"auto_cleanup"`
 	VerifiedDigests    map[string]string `json:"verified_digests,omitempty"`
 }
 
@@ -131,6 +132,14 @@ func sortedKeys(m map[string]bool) string {
 	sort.Strings(keys)
 	return strings.Join(keys, ", ")
 }
+
+// IsValidBool reports whether value is a strict boolean string ("true" or "false").
+func IsValidBool(value string) bool {
+	return value == "true" || value == "false"
+}
+
+// BoolNames returns the allowed boolean values.
+func BoolNames() string { return "true, false" }
 
 // IsValidPersistenceBackend reports whether name is a known persistence backend.
 func IsValidPersistenceBackend(name string) bool {
