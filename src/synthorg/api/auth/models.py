@@ -20,7 +20,7 @@ class User(BaseModel):
     """Persisted user account.
 
     Attributes:
-        id: Unique user identifier (UUID).
+        id: Unique user identifier.
         username: Login username.
         password_hash: Argon2id hash (excluded from repr).
         role: Access control role.

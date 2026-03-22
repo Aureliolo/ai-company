@@ -182,6 +182,8 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TEXT NOT NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+
 -- ── API keys ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS api_keys (
     id TEXT PRIMARY KEY,

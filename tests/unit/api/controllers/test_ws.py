@@ -270,10 +270,17 @@ class TestWsTicketAuth:
             f"/api/v1/ws not matched by exclude: {instance.exclude.pattern}"  # type: ignore[union-attr]
         )
 
-    def test_read_roles_includes_all_human_roles(self) -> None:
-        """The WS handler's _READ_ROLES should include all HumanRole values."""
+    def test_read_roles_includes_all_human_roles_except_system(self) -> None:
+        """_READ_ROLES includes all HumanRole values except SYSTEM.
+
+        The SYSTEM role is scoped to backup/wipe endpoints only and
+        is intentionally excluded from WebSocket access.
+        """
         for role in HumanRole:
-            assert role in _READ_ROLES
+            if role == HumanRole.SYSTEM:
+                assert role not in _READ_ROLES
+            else:
+                assert role in _READ_ROLES
 
     def test_ws_close_codes_in_application_range(self) -> None:
         """WS close codes should be in the RFC 6455 application range."""

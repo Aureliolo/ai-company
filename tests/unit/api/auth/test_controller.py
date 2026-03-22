@@ -6,7 +6,7 @@ import pytest
 from litestar.testing import TestClient
 
 from synthorg.api.guards import HumanRole
-from tests.unit.api.conftest import make_auth_headers
+from tests.unit.api.conftest import _TEST_JWT_SECRET, make_auth_headers
 
 
 @pytest.fixture
@@ -377,3 +377,185 @@ class TestWsTicket:
 
         # Single-use: second consume fails
         assert app_state.ticket_store.validate_and_consume(ticket) is None
+
+
+@pytest.mark.unit
+class TestSystemUserBlocking:
+    """Verify the system user cannot log in or change its password."""
+
+    def test_login_rejects_system_user(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        """System user login returns 401 (same as invalid credentials)."""
+        from datetime import UTC, datetime
+
+        from synthorg.api.auth.models import User
+        from synthorg.api.auth.system_user import (
+            SYSTEM_USER_ID,
+            SYSTEM_USERNAME,
+        )
+
+        # Seed a system user via the public save() API
+        app_state = bare_client.app.state["app_state"]
+        now = datetime.now(UTC)
+        svc = app_state.auth_service
+        system_user = User(
+            id=SYSTEM_USER_ID,
+            username=SYSTEM_USERNAME,
+            password_hash=svc.hash_password("irrelevant-password-12"),
+            role=HumanRole.SYSTEM,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        # Use internal dict because save() is async and this is a sync test
+        app_state.persistence._users._users[SYSTEM_USER_ID] = system_user
+
+        response = bare_client.post(
+            "/api/v1/auth/login",
+            json={
+                "username": "system",
+                "password": "irrelevant-password-12",
+            },
+        )
+        assert response.status_code == 401
+
+    def test_change_password_rejects_system_user(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        """System user cannot change its password (403)."""
+        from datetime import UTC, datetime, timedelta
+
+        import jwt as pyjwt
+
+        from synthorg.api.auth.models import User
+        from synthorg.api.auth.system_user import (
+            SYSTEM_USER_ID,
+            SYSTEM_USERNAME,
+        )
+
+        # Explicitly seed the system user so the test is self-contained
+        app_state = bare_client.app.state["app_state"]
+        now = datetime.now(UTC)
+        svc = app_state.auth_service
+        system_user = User(
+            id=SYSTEM_USER_ID,
+            username=SYSTEM_USERNAME,
+            password_hash=svc.hash_password("irrelevant-password-12"),
+            role=HumanRole.SYSTEM,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        app_state.persistence._users._users[SYSTEM_USER_ID] = system_user
+
+        # Build a CLI-style JWT with iss + aud (required by middleware)
+        token = pyjwt.encode(
+            {
+                "sub": SYSTEM_USER_ID,
+                "iss": "synthorg-cli",
+                "aud": "synthorg-backend",
+                "iat": now,
+                "exp": now + timedelta(seconds=60),
+            },
+            _TEST_JWT_SECRET,
+            algorithm="HS256",
+        )
+
+        response = bare_client.post(
+            "/api/v1/auth/change-password",
+            json={
+                "current_password": "any-password-12chars",
+                "new_password": "new-password-12chars",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 403
+
+    def test_setup_succeeds_with_system_user_present(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        """Setup endpoint returns 201 when only the system user exists."""
+        from datetime import UTC, datetime
+
+        from synthorg.api.auth.models import User
+        from synthorg.api.auth.system_user import (
+            SYSTEM_USER_ID,
+            SYSTEM_USERNAME,
+        )
+
+        app_state = bare_client.app.state["app_state"]
+        # Clear all users, then add only the system user
+        app_state.persistence._users._users.clear()
+        now = datetime.now(UTC)
+        system_user = User(
+            id=SYSTEM_USER_ID,
+            username=SYSTEM_USERNAME,
+            password_hash="$argon2id$v=19$m=65536,t=3,p=4$fake$hash",
+            role=HumanRole.SYSTEM,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        app_state.persistence._users._users[SYSTEM_USER_ID] = system_user
+
+        response = bare_client.post(
+            "/api/v1/auth/setup",
+            json={
+                "username": "newadmin",
+                "password": "super-secure-password-12",
+            },
+        )
+        assert response.status_code == 201
+
+    def test_setup_rejects_reserved_system_username(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        """Setup rejects the reserved 'system' username with 409."""
+        app_state = bare_client.app.state["app_state"]
+        app_state.persistence._users._users.clear()
+
+        response = bare_client.post(
+            "/api/v1/auth/setup",
+            json={
+                "username": "system",
+                "password": "super-secure-password-12",
+            },
+        )
+        assert response.status_code == 409
+
+    def test_setup_succeeds_with_non_ceo_human_users_present(
+        self,
+        bare_client: TestClient[Any],
+    ) -> None:
+        """Setup succeeds when only non-CEO human users exist."""
+        from datetime import UTC, datetime
+
+        from synthorg.api.auth.models import User
+
+        app_state = bare_client.app.state["app_state"]
+        app_state.persistence._users._users.clear()
+        now = datetime.now(UTC)
+        observer = User(
+            id="observer-001",
+            username="watcher",
+            password_hash="$argon2id$v=19$m=65536,t=3,p=4$fake$hash",
+            role=HumanRole.OBSERVER,
+            must_change_password=False,
+            created_at=now,
+            updated_at=now,
+        )
+        app_state.persistence._users._users["observer-001"] = observer
+
+        response = bare_client.post(
+            "/api/v1/auth/setup",
+            json={
+                "username": "firstadmin",
+                "password": "super-secure-password-12",
+            },
+        )
+        assert response.status_code == 201

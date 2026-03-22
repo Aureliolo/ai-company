@@ -12,6 +12,7 @@ import aiosqlite
 from pydantic import ValidationError
 
 from synthorg.api.auth.models import ApiKey, User
+from synthorg.api.auth.system_user import is_system_user
 from synthorg.api.guards import HumanRole
 from synthorg.core.types import NotBlankStr  # noqa: TC001
 from synthorg.observability import get_logger
@@ -220,16 +221,22 @@ ON CONFLICT(id) DO UPDATE SET
             raise QueryError(msg) from exc
 
     async def list_users(self) -> tuple[User, ...]:
-        """List all users ordered by creation date.
+        """List all human users ordered by creation date.
+
+        The system user (internal CLI identity) is excluded from the
+        result.  Use ``get`` with the system user ID if you need it.
 
         Returns:
-            Tuple of all ``User`` records, oldest first.
+            Tuple of human ``User`` records, oldest first.
 
         Raises:
             QueryError: If the database query or deserialization fails.
         """
         try:
-            cursor = await self._db.execute("SELECT * FROM users ORDER BY created_at")
+            cursor = await self._db.execute(
+                "SELECT * FROM users WHERE role != ? ORDER BY created_at",
+                (HumanRole.SYSTEM.value,),
+            )
             rows = await cursor.fetchall()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to list users"
@@ -245,7 +252,7 @@ ON CONFLICT(id) DO UPDATE SET
         return users
 
     async def count(self) -> int:
-        """Return the total number of persisted users.
+        """Return the number of human users (excludes system user).
 
         Returns:
             Non-negative integer count.
@@ -254,7 +261,10 @@ ON CONFLICT(id) DO UPDATE SET
             QueryError: If the database query fails.
         """
         try:
-            cursor = await self._db.execute("SELECT COUNT(*) FROM users")
+            cursor = await self._db.execute(
+                "SELECT COUNT(*) FROM users WHERE role != ?",
+                (HumanRole.SYSTEM.value,),
+            )
             row = await cursor.fetchone()
         except (sqlite3.Error, aiosqlite.Error) as exc:
             msg = "Failed to count users"
@@ -301,6 +311,9 @@ ON CONFLICT(id) DO UPDATE SET
     async def delete(self, user_id: NotBlankStr) -> bool:
         """Delete a user by primary key.
 
+        The system user cannot be deleted -- attempts are rejected
+        with a ``QueryError``.
+
         Args:
             user_id: Unique user identifier.
 
@@ -308,8 +321,17 @@ ON CONFLICT(id) DO UPDATE SET
             ``True`` if a row was deleted, ``False`` if not found.
 
         Raises:
-            QueryError: If the database operation fails.
+            QueryError: If the user is the system user or the
+                database operation fails.
         """
+        if is_system_user(user_id):
+            msg = "System user cannot be deleted"
+            logger.warning(
+                PERSISTENCE_USER_DELETE_FAILED,
+                user_id=user_id,
+                error=msg,
+            )
+            raise QueryError(msg)
         try:
             cursor = await self._db.execute(
                 "DELETE FROM users WHERE id = ?", (user_id,)

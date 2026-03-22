@@ -176,7 +176,7 @@ func buildLocalJWT(secret string) (string, error) {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
 	now := time.Now().Unix()
 	payload := base64.RawURLEncoding.EncodeToString(
-		fmt.Appendf(nil, `{"sub":"synthorg-cli","iss":"synthorg-cli","aud":"synthorg-backend","iat":%d,"exp":%d}`, now, now+60),
+		fmt.Appendf(nil, `{"sub":"system","iss":"synthorg-cli","aud":"synthorg-backend","iat":%d,"exp":%d}`, now, now+60),
 	)
 	signingInput := header + "." + payload
 	mac := hmac.New(sha256.New, []byte(secret))

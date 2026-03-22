@@ -67,7 +67,8 @@ on resolution.
 
 ### Authentication & Authorization
 
-- **JWT bearer tokens** with password-change detection (`pwd_sig` claim)
+- **JWT bearer tokens** with password-change detection (`pwd_sig` claim, skipped for system user)
+- **System user (CLI)** -- internal identity bootstrapped at startup with a random Argon2id password hash. CLI tokens use `sub: "system"` with `iss: "synthorg-cli"` and skip `pwd_sig` validation (JWT HMAC signature is the sole authentication gate). The system user cannot log in, change its password, or be modified through the API.
 - **API key authentication** via HMAC-SHA256 deterministic hashing
 - **Argon2id password hashing** (time_cost=3, memory_cost=64 MB, parallelism=4)
 - **Timing-attack prevention** -- dummy hash computation for non-existent users
