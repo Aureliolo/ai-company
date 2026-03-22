@@ -18,6 +18,10 @@ func TestIsUpdateAvailable(t *testing.T) {
 		{"v1.1.0", "v1.0.0", false, false},                  // downgrade prevented
 		{"v1.0.1", "v1.0.0", false, false},                  // downgrade prevented
 		{"v1.10.0", "v1.9.0", false, false},                 // multi-digit minor downgrade
+		{"0.4.8-dev.4", "v0.4.8", true, false},              // stable release updates dev build on stable channel
+		{"0.4.8-dev.4", "v0.4.9", true, false},              // higher stable updates dev build
+		{"0.4.8-dev.4", "v0.4.7", false, false},             // lower stable does not downgrade dev build
+		{"0.4.8-dev.4", "v0.4.8-dev.4", false, false},       // same dev version, no update
 		{"v1.0.0", "99999999999999999999.0.0", false, true}, // overflow in latest
 		{"99999999999999999999.0.0", "v1.0.0", false, true}, // overflow in current
 	}

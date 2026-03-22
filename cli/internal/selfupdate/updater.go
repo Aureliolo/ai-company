@@ -309,9 +309,11 @@ func isUpdateAvailable(current, latest string) (bool, error) {
 	if cur == "dev" {
 		return true, nil
 	}
-	lat := strings.TrimPrefix(latest, "v")
-	// Only offer update when latest is strictly greater than current.
-	cmp, err := compareSemver(lat, cur)
+	// Use compareWithDev so a stable release is correctly detected as
+	// newer than a dev pre-release at the same base version (e.g.
+	// 0.4.8 > 0.4.8-dev.4). compareSemver ignores pre-release
+	// suffixes and would treat them as equal.
+	cmp, err := compareWithDev(latest, current)
 	if err != nil {
 		return false, fmt.Errorf("current=%q latest=%q: %w", current, latest, err)
 	}
