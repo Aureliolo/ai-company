@@ -53,7 +53,7 @@ onMounted(fetchLocales)
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-lg">
+  <div class="mx-auto w-full max-w-3xl">
     <div class="mb-6 text-center">
       <h2 class="text-2xl font-semibold text-slate-100">Name Generation</h2>
       <p class="mt-1 text-sm text-slate-400">

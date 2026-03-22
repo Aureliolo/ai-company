@@ -491,7 +491,7 @@ class SetupController(Controller):
 
         app_state: AppState = state.app_state
         settings_svc = app_state.settings_service
-        locales = await _read_name_locales(settings_svc)
+        locales = await _read_name_locales(settings_svc, resolve=False)
         stored = locales or [ALL_LOCALES_SENTINEL]
         logger.debug(SETUP_NAME_LOCALES_LISTED, count=len(stored))
         return ApiResponse(
@@ -870,19 +870,29 @@ async def _auto_create_template_agents(
     return agents_to_summaries(agents)
 
 
-async def _read_name_locales(settings_svc: SettingsService) -> list[str] | None:
+async def _read_name_locales(
+    settings_svc: SettingsService,
+    *,
+    resolve: bool = True,
+) -> list[str] | None:
     """Read stored name locale preference, returning None for default.
 
     Deserialises the JSON-encoded locale list from settings, validates
-    it as a list, and resolves it through ``resolve_locales`` (which
-    filters out invalid codes).  Returns ``None`` when the setting is
-    absent, unparseable, or resolves to an empty list.
+    it as a list, and optionally resolves it through ``resolve_locales``
+    (which filters out invalid codes and expands the ``__all__``
+    sentinel).  Returns ``None`` when the setting is absent,
+    unparseable, or resolves to an empty list.
 
     Args:
         settings_svc: Settings service instance.
+        resolve: When True (default), expand the ``__all__`` sentinel
+            to concrete locale codes via ``resolve_locales``.  When
+            False, return the raw stored list (including the sentinel)
+            without expansion -- used by the GET endpoint so the
+            frontend receives the sentinel value.
 
     Returns:
-        Resolved locale codes, or None to use the default (all locales).
+        Locale codes (resolved or raw), or None for the default.
     """
     from synthorg.templates.locales import resolve_locales  # noqa: PLC0415
 
@@ -917,7 +927,8 @@ async def _read_name_locales(settings_svc: SettingsService) -> list[str] | None:
             actual_type=type(parsed).__name__,
         )
         return None
-    return resolve_locales(parsed) or None
+    result = resolve_locales(parsed) if resolve else parsed
+    return result or None
 
 
 async def _is_setup_complete(settings_svc: SettingsService) -> bool:

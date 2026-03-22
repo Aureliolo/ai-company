@@ -805,24 +805,22 @@ class TestGetAvailableLocales:
 class TestGetNameLocales:
     """GET /api/v1/setup/name-locales -- get current locale configuration."""
 
-    def test_returns_all_locales_when_not_configured(
+    def test_returns_all_sentinel_when_not_configured(
         self,
         test_client: TestClient[Any],
     ) -> None:
-        """Returns all resolved locales when no DB preference is stored.
+        """Returns the ``__all__`` sentinel when no DB preference is stored.
 
-        The code default is ["__all__"], which resolve_locales expands
-        to the full Latin-script locale list.
+        The endpoint returns the raw sentinel so the frontend can show
+        the "All (worldwide)" toggle as ON.  Resolution to concrete
+        locale codes happens only in the name-generation path.
         """
         resp = test_client.get("/api/v1/setup/name-locales")
         assert resp.status_code == 200
         body = resp.json()
         assert body["success"] is True
         data = body["data"]
-        # Code default ["__all__"] is resolved to the full locale list.
-        assert isinstance(data["locales"], list)
-        assert len(data["locales"]) >= 50
-        assert "en_US" in data["locales"]
+        assert data["locales"] == ["__all__"]
 
     def test_returns_stored_locales_when_configured(
         self,

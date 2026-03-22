@@ -147,7 +147,7 @@ onMounted(async () => {
       </div>
 
       <!-- Region groups -->
-      <div class="space-y-3">
+      <div v-show="!isAll" class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div
           v-for="(locales, region) in regions"
           :key="region"
