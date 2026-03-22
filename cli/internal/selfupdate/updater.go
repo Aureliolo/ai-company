@@ -25,10 +25,12 @@ import (
 )
 
 const (
-	// DefaultReleasesURL is the GitHub API endpoint for latest releases.
+	// DefaultReleasesURL is the GitHub API endpoint for the latest stable release.
 	DefaultReleasesURL = "https://api.github.com/repos/" + repoSlug + "/releases/latest"
-	binaryName         = "synthorg"
-	repoSlug           = "Aureliolo/synthorg"
+	// devReleasesURL lists all releases (including pre-releases) for dev channel.
+	devReleasesURL = "https://api.github.com/repos/" + repoSlug + "/releases?per_page=20"
+	binaryName     = "synthorg"
+	repoSlug       = "Aureliolo/synthorg"
 
 	// expectedURLPrefix validates that asset download URLs point to the expected domain.
 	expectedURLPrefix = "https://github.com/" + repoSlug + "/releases/download/"
@@ -38,7 +40,14 @@ const (
 	maxArchiveEntryBytes = 128 * 1024 * 1024 // 128 MiB per archive entry
 
 	httpTimeout = 5 * time.Minute
+	apiTimeout  = 30 * time.Second
 )
+
+// apiClient is a shared HTTP client for lightweight GitHub API requests
+// (release metadata). Reuses connections across calls within a single
+// CLI invocation. The download path uses its own client with a longer
+// timeout (httpTimeout).
+var apiClient = &http.Client{Timeout: apiTimeout}
 
 // Release represents a GitHub release.
 type Release struct {
@@ -62,10 +71,205 @@ type CheckResult struct {
 	SigstoreBundURL string // Sigstore bundle for checksums.txt (optional)
 }
 
+// CheckForChannel queries GitHub for the appropriate release based on channel.
+// "stable" checks only the latest non-prerelease; "dev" checks all releases
+// including pre-releases, preferring stable if it is newer.
+func CheckForChannel(ctx context.Context, channel string) (CheckResult, error) {
+	if channel == "dev" {
+		return CheckDev(ctx)
+	}
+	return Check(ctx)
+}
+
 // Check queries GitHub for the latest release and compares versions.
 // Uses DefaultReleasesURL.
 func Check(ctx context.Context) (CheckResult, error) {
 	return CheckFromURL(ctx, DefaultReleasesURL)
+}
+
+// devRelease extends Release with the pre-release flag from the GitHub API.
+type devRelease struct {
+	TagName    string  `json:"tag_name"`
+	Assets     []Asset `json:"assets"`
+	Prerelease bool    `json:"prerelease"`
+	Draft      bool    `json:"draft"`
+}
+
+// CheckDev queries GitHub for the most recent release (including pre-releases)
+// and compares versions. If a stable release is newer than the latest dev
+// release, the stable release is returned instead.
+func CheckDev(ctx context.Context) (CheckResult, error) {
+	return CheckDevFromURL(ctx, devReleasesURL)
+}
+
+// CheckDevFromURL is the testable core of CheckDev.
+func CheckDevFromURL(ctx context.Context, url string) (CheckResult, error) {
+	result := CheckResult{CurrentVersion: version.Version}
+
+	releases, err := fetchJSON[[]devRelease](ctx, url)
+	if err != nil {
+		return result, err
+	}
+	if len(releases) == 0 {
+		return result, fmt.Errorf("no releases found")
+	}
+
+	target, err := selectBestRelease(releases)
+	if err != nil {
+		return result, err
+	}
+
+	result.LatestVersion = target.TagName
+	avail, err := isDevUpdateAvailable(version.Version, target.TagName)
+	if err != nil {
+		return result, fmt.Errorf("comparing versions: %w", err)
+	}
+	result.UpdateAvail = avail
+
+	rel := Release{TagName: target.TagName, Assets: target.Assets}
+	assetURL, checksumURL, bundleURL, err := findAssets(rel)
+	if err != nil {
+		return result, err
+	}
+	result.AssetURL = assetURL
+	result.ChecksumURL = checksumURL
+	result.SigstoreBundURL = bundleURL
+
+	return result, nil
+}
+
+// selectBestRelease picks the best release from a list that may contain both
+// stable and dev pre-releases. Prefers stable if it is newer than or equal to
+// the latest dev release. Assumes releases are ordered newest-first (GitHub API
+// default for GET /repos/{owner}/{repo}/releases).
+func selectBestRelease(releases []devRelease) (*devRelease, error) {
+	var latestDev, latestStable *devRelease
+	for i := range releases {
+		r := &releases[i]
+		if r.Draft {
+			continue
+		}
+		if r.Prerelease && strings.Contains(r.TagName, ".dev") {
+			if latestDev == nil {
+				latestDev = r
+			}
+		} else if !r.Prerelease {
+			if latestStable == nil {
+				latestStable = r
+			}
+		}
+	}
+
+	switch {
+	case latestDev == nil && latestStable == nil:
+		return nil, fmt.Errorf("no suitable releases found")
+	case latestDev == nil:
+		return latestStable, nil
+	case latestStable == nil:
+		return latestDev, nil
+	default:
+		cmp, err := compareWithDev(latestStable.TagName, latestDev.TagName)
+		if err != nil {
+			return nil, fmt.Errorf("comparing release tags %q and %q: %w", latestStable.TagName, latestDev.TagName, err)
+		}
+		if cmp >= 0 {
+			return latestStable, nil
+		}
+		return latestDev, nil
+	}
+}
+
+// fetchJSON fetches a URL and JSON-decodes the response into target.
+// Shared by fetchRelease and fetchDevReleases to avoid duplication.
+func fetchJSON[T any](ctx context.Context, url string) (T, error) {
+	var zero T
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return zero, fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "synthorg-cli/"+version.Version)
+
+	resp, err := apiClient.Do(req)
+	if err != nil {
+		return zero, fmt.Errorf("querying GitHub releases: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
+		return zero, fmt.Errorf("github API rate-limited (HTTP %d) -- try again later", resp.StatusCode)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return zero, fmt.Errorf("github API returned %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponseBytes))
+	if err != nil {
+		return zero, fmt.Errorf("reading API response: %w", err)
+	}
+
+	var result T
+	if err := json.Unmarshal(body, &result); err != nil {
+		return zero, fmt.Errorf("decoding response: %w", err)
+	}
+	return result, nil
+}
+
+// compareWithDev compares two version strings that may contain .dev suffixes.
+// Returns >0 if a > b, 0 if equal, <0 if a < b.
+// v0.4.7 > v0.4.7.dev3 > v0.4.7.dev2 > v0.4.6.
+func compareWithDev(a, b string) (int, error) {
+	aDev, aBase := splitDev(strings.TrimPrefix(a, "v"))
+	bDev, bBase := splitDev(strings.TrimPrefix(b, "v"))
+
+	cmp, err := compareSemver(aBase, bBase)
+	if err != nil {
+		return 0, err
+	}
+	if cmp != 0 {
+		return cmp, nil
+	}
+
+	// Same base version -- stable (no .dev) beats dev.
+	switch {
+	case aDev < 0 && bDev < 0:
+		return 0, nil // both stable
+	case aDev < 0:
+		return 1, nil // a is stable, b is dev
+	case bDev < 0:
+		return -1, nil // a is dev, b is stable
+	default:
+		return aDev - bDev, nil // both dev, compare dev number
+	}
+}
+
+// splitDev splits "0.4.7.dev3" into (3, "0.4.7") or (-1, "0.4.7") if no .dev suffix.
+func splitDev(v string) (devNum int, base string) {
+	idx := strings.Index(v, ".dev")
+	if idx < 0 {
+		return -1, v
+	}
+	base = v[:idx]
+	numStr := v[idx+4:] // skip ".dev"
+	n, err := strconv.Atoi(numStr)
+	if err != nil {
+		return -1, v
+	}
+	return n, base
+}
+
+// isDevUpdateAvailable checks if latest is newer than current, with dev awareness.
+func isDevUpdateAvailable(current, latest string) (bool, error) {
+	cur := strings.TrimPrefix(current, "v")
+	if cur == "dev" {
+		return true, nil
+	}
+	cmp, err := compareWithDev(latest, current)
+	if err != nil {
+		return false, fmt.Errorf("current=%q latest=%q: %w", current, latest, err)
+	}
+	return cmp > 0, nil
 }
 
 // CheckFromURL queries the given releases URL and compares versions.
@@ -97,34 +301,7 @@ func CheckFromURL(ctx context.Context, url string) (CheckResult, error) {
 }
 
 func fetchRelease(ctx context.Context, url string) (Release, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return Release{}, fmt.Errorf("creating request: %w", err)
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return Release{}, fmt.Errorf("querying GitHub releases: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return Release{}, fmt.Errorf("github API returned %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponseBytes))
-	if err != nil {
-		return Release{}, fmt.Errorf("reading API response: %w", err)
-	}
-
-	var release Release
-	if err := json.Unmarshal(body, &release); err != nil {
-		return Release{}, fmt.Errorf("decoding release: %w", err)
-	}
-	return release, nil
+	return fetchJSON[Release](ctx, url)
 }
 
 func isUpdateAvailable(current, latest string) (bool, error) {

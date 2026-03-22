@@ -113,3 +113,66 @@ func TestConfigShowDisplaysFields(t *testing.T) {
 		t.Errorf("expected at least 2 masked secrets (****), got %d", maskCount)
 	}
 }
+
+func TestConfigSetChannel(t *testing.T) {
+	dir := t.TempDir()
+	// Create initial config.
+	state := config.DefaultState()
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "set", "channel", "dev", "--data-dir", dir})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify the channel was persisted.
+	loaded, err := config.Load(dir)
+	if err != nil {
+		t.Fatalf("Load after set: %v", err)
+	}
+	if loaded.Channel != "dev" {
+		t.Errorf("Channel = %q, want dev", loaded.Channel)
+	}
+}
+
+func TestConfigSetRejectsInvalidChannel(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "set", "channel", "nightly", "--data-dir", dir})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for invalid channel")
+	}
+}
+
+func TestConfigSetRejectsUnknownKey(t *testing.T) {
+	dir := t.TempDir()
+	state := config.DefaultState()
+	state.DataDir = dir
+	if err := config.Save(state); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	rootCmd.SetErr(&buf)
+	rootCmd.SetArgs([]string{"config", "set", "unknown_key", "value", "--data-dir", dir})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unknown key")
+	}
+}

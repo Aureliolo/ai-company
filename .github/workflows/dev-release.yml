@@ -1,0 +1,151 @@
+name: Dev Release
+
+# Create incremental pre-release builds on every push to main between stable
+# releases. Computes a PEP 440 dev version (e.g. v0.4.7.dev3) and creates a
+# lightweight git tag + GitHub pre-release. The tag triggers the existing
+# Docker and CLI workflows for full build/scan/sign pipeline.
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: dev-release
+  cancel-in-progress: true
+
+jobs:
+  dev-release:
+    name: Create Dev Pre-Release
+    # Skip Release Please version-bump merges and tag pushes (handled by
+    # the stable release pipeline). Also skip if a v* tag already points
+    # at this commit (the stable release just landed).
+    if: >-
+      !startsWith(github.event.head_commit.message, 'chore(main): release')
+      && !contains(github.event.head_commit.message, 'Release-As:')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check if commit already has a stable tag
+        id: check-tag
+        run: |
+          # If this commit already has a v* tag (without .dev), skip -- it is
+          # a stable release and will be handled by Release Please.
+          TAGS=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          if [ -n "$TAGS" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Commit already tagged as stable release: $TAGS"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute dev version
+        if: steps.check-tag.outputs.skip != 'true'
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 1. Find last stable release tag (exclude dev tags)
+          LAST_TAG=$(git tag --sort=-v:refname --list "v[0-9]*.[0-9]*.[0-9]*" | grep -vE '\.dev[0-9]+$' | head -1)
+          LAST_TAG=${LAST_TAG:-""}
+          if [ -z "$LAST_TAG" ]; then
+            echo "::error::No stable release tag found"
+            exit 1
+          fi
+          echo "Last stable tag: $LAST_TAG"
+
+          # 2. Get next version from Release Please pending PR
+          NEXT_VERSION=$(gh pr list --label "autorelease: pending" --state open --json title --jq '.[0].title // ""' | grep -oP '\d+\.\d+\.\d+' || true)
+          if [ -z "$NEXT_VERSION" ]; then
+            # Fallback: bump patch from last tag
+            LAST_VERSION="${LAST_TAG#v}"
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
+            NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+            echo "No Release Please PR found, computed next version: $NEXT_VERSION"
+          else
+            echo "Next version from Release Please: $NEXT_VERSION"
+          fi
+
+          # 3. Count commits since last stable tag
+          DEV_NUM=$(git rev-list "${LAST_TAG}..HEAD" --count)
+          if [ "$DEV_NUM" -eq 0 ]; then
+            echo "::notice::No commits since $LAST_TAG, skipping dev release"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          DEV_TAG="v${NEXT_VERSION}.dev${DEV_NUM}"
+          echo "Dev version: $DEV_TAG"
+          echo "dev_tag=$DEV_TAG" >> "$GITHUB_OUTPUT"
+          echo "dev_num=$DEV_NUM" >> "$GITHUB_OUTPUT"
+          echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Check if dev tag already exists
+        if: steps.check-tag.outputs.skip != 'true' && steps.version.outputs.skip != 'true'
+        id: tag-exists
+        env:
+          DEV_TAG: ${{ steps.version.outputs.dev_tag }}
+        run: |
+          if git rev-parse "$DEV_TAG" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $DEV_TAG already exists, skipping"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create dev tag and pre-release
+        if: >-
+          steps.check-tag.outputs.skip != 'true'
+          && steps.version.outputs.skip != 'true'
+          && steps.tag-exists.outputs.skip != 'true'
+        env:
+          # Use PAT instead of github.token so the tag push triggers
+          # downstream workflows (Docker, CLI). Tags created with the
+          # default GITHUB_TOKEN do not fire push events for other
+          # workflows -- a GitHub Actions anti-recursion safeguard.
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          DEV_TAG: ${{ steps.version.outputs.dev_tag }}
+          DEV_NUM: ${{ steps.version.outputs.dev_num }}
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          # Create tag + pre-release atomically (gh release create --target
+          # creates the tag if it does not exist, avoiding orphaned tags on
+          # partial failure).
+          gh release create "$DEV_TAG" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "$DEV_TAG" \
+            --notes "Dev build #${DEV_NUM} toward v${NEXT_VERSION}
+
+          **Commit:** ${SHORT_SHA}
+          **Full pipeline:** Docker images, CLI binaries, cosign signatures, and SLSA provenance will be attached by downstream workflows.
+
+          > This is a pre-release for testing. Use \`synthorg config set channel dev\` to opt in."
+
+      - name: Clean up old dev pre-releases
+        if: >-
+          steps.check-tag.outputs.skip != 'true'
+          && steps.version.outputs.skip != 'true'
+          && steps.tag-exists.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Keep the 5 most recent dev pre-releases, delete the rest
+          gh release list --limit 50 --json tagName,isPrerelease,createdAt \
+            --jq '[.[] | select(.isPrerelease and (.tagName | contains(".dev")))] | sort_by(.createdAt) | reverse | .[5:] | .[].tagName' \
+          | while read -r tag; do
+              echo "Deleting old dev release: $tag"
+              gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+            done

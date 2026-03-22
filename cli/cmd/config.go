@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/Aureliolo/synthorg/cli/internal/config"
 	"github.com/Aureliolo/synthorg/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
+
+// supportedConfigKeys is the single source of truth for `config set` key names.
+var supportedConfigKeys = []string{"channel", "log_level"}
 
 var configCmd = &cobra.Command{
 	Use:   "config",
@@ -29,8 +33,21 @@ var configShowCmd = &cobra.Command{
 	RunE:  runConfigShow,
 }
 
+var configSetCmd = &cobra.Command{
+	Use:   "set <key> <value>",
+	Short: "Set a configuration value",
+	Long: `Set a configuration value.
+
+Supported keys:
+  channel    Update channel: "stable" or "dev"
+  log_level  Log verbosity: "debug", "info", "warn", "error"`,
+	Args: cobra.ExactArgs(2),
+	RunE: runConfigSet,
+}
+
 func init() {
 	configCmd.AddCommand(configShowCmd)
+	configCmd.AddCommand(configSetCmd)
 	rootCmd.AddCommand(configCmd)
 }
 
@@ -61,6 +78,7 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	out.KeyValue("Config file", statePath)
 	out.KeyValue("Data directory", state.DataDir)
 	out.KeyValue("Image tag", state.ImageTag)
+	out.KeyValue("Channel", state.DisplayChannel())
 	out.KeyValue("Backend port", strconv.Itoa(state.BackendPort))
 	out.KeyValue("Web port", strconv.Itoa(state.WebPort))
 	out.KeyValue("Log level", state.LogLevel)
@@ -73,6 +91,38 @@ func runConfigShow(cmd *cobra.Command, _ []string) error {
 	out.KeyValue("JWT secret", maskSecret(state.JWTSecret))
 	out.KeyValue("Settings key", maskSecret(state.SettingsKey))
 
+	return nil
+}
+
+func runConfigSet(cmd *cobra.Command, args []string) error {
+	key, value := args[0], args[1]
+	dir := resolveDataDir()
+	out := ui.NewUI(cmd.OutOrStdout())
+
+	state, err := config.Load(dir)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	switch key {
+	case "channel":
+		if !config.IsValidChannel(value) {
+			return fmt.Errorf("invalid channel %q: must be one of %s", value, config.ChannelNames())
+		}
+		state.Channel = value
+	case "log_level":
+		if !config.IsValidLogLevel(value) {
+			return fmt.Errorf("invalid log_level %q: must be one of %s", value, config.LogLevelNames())
+		}
+		state.LogLevel = value
+	default:
+		return fmt.Errorf("unknown config key %q (supported: %s)", key, strings.Join(supportedConfigKeys, ", "))
+	}
+
+	if err := config.Save(state); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+	out.Success(fmt.Sprintf("Set %s = %s", key, value))
 	return nil
 }
 
