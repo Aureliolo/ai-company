@@ -161,10 +161,8 @@ def build_discovery_headers(
 def infer_preset_hint(base_url: str) -> str | None:
     """Infer the preset name from a provider base URL.
 
-    Uses port-based heuristics for common local providers.  Only
-    three ports are recognized: 11434 (ollama), 1234 (lm-studio),
-    8000 (vllm).  Port 8000 is mapped to vLLM as a best-effort
-    guess; it is also used by the SynthOrg backend and other services.
+    Uses port-based heuristics for common local providers.
+    Recognized ports: 11434 (ollama), 1234 (lm-studio).
 
     Args:
         base_url: Provider base URL.
@@ -172,7 +170,10 @@ def infer_preset_hint(base_url: str) -> str | None:
     Returns:
         Preset name hint, or ``None`` if unrecognized.
     """
-    port = urlparse(base_url).port
+    try:
+        port = urlparse(base_url).port
+    except ValueError:
+        return None
     if port is None:
         return None
     return PORT_TO_PRESET.get(port)
