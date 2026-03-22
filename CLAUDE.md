@@ -223,7 +223,7 @@ site/             # Astro landing page (synthorg.io)
 - **Version bumping** (pre-1.0): `fix:`/`feat:` = patch, `feat!:`/`BREAKING CHANGE` = minor. Post-1.0: standard semver
 - **`Release-As` trailer**: add `Release-As: 0.4.0` as the **final paragraph** of the PR body (separated by blank line). Mid-body placement is silently ignored.
 - **Release flow**: merge release PR -> draft Release + tag -> Docker + CLI workflows attach assets -> finalize-release publishes
-- **Dev channel**: every push to `main` (except Release Please bumps) creates a dev pre-release (e.g. `v0.4.7-dev.3`) via `dev-release.yml`. Users opt in with `synthorg config set channel dev`. Dev releases flow through the same Docker + CLI pipelines as stable releases.
+- **Dev channel**: every push to `main` (except Release Please bumps) creates a dev pre-release (e.g. `v0.4.7-dev.3`) via `dev-release.yml`. Users opt in with `synthorg config set channel dev`. Dev releases flow through the same Docker + CLI pipelines as stable releases. All dev releases and tags are deleted when a stable release is published.
 - **Config**: `.github/release-please-config.json`, `.github/.release-please-manifest.json` (do not edit manually)
 - **Changelog**: `.github/CHANGELOG.md` (auto-generated, do not edit)
 - **Version locations**: `pyproject.toml` (`[tool.commitizen].version`), `src/synthorg/__init__.py` (`__version__`)
