@@ -46,7 +46,7 @@ template:
       name: ""
       level: "mid"
       model: "medium"
-      personality_preset: "pragmatic_builder"
+      personality_preset: "independent_researcher"
       department: "engineering"
     - role: "Data Engineer"
       name: ""

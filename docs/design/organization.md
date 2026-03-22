@@ -166,7 +166,7 @@ template:
       name: "Sofia Reyes"
       level: "mid"
       model: "small"
-      personality_preset: "eager_learner"
+      personality_preset: "team_diplomat"
 
     - role: "Product Manager"
       name: "Liam Chen"

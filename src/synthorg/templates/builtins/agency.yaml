@@ -95,7 +95,7 @@ template:
       name: ""
       level: "mid"
       model: "small"
-      personality_preset: "quality_guardian"
+      personality_preset: "process_optimizer"
       department: "quality_assurance"
     - role: "Content Writer"
       name: ""
@@ -114,7 +114,7 @@ template:
       merge_id: "fullstack-mid"
       level: "mid"
       model: "small"
-      personality_preset: "eager_learner"
+      personality_preset: "empathetic_mentor"
       department: "engineering"
 
   workflow: "kanban"
