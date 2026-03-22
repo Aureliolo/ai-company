@@ -18,6 +18,7 @@ updates:
     reviewers:
       - Aureliolo
     labels:
+      - dependencies
       - type:chore
 
   - package-ecosystem: github-actions
@@ -37,7 +38,8 @@ updates:
     reviewers:
       - Aureliolo
     labels:
-      - type:ci
+      - dependencies
+      - type:infra
 
   - package-ecosystem: github-actions
     directory: /.github/actions/setup-python-uv
@@ -56,7 +58,8 @@ updates:
     reviewers:
       - Aureliolo
     labels:
-      - type:ci
+      - dependencies
+      - type:infra
 
   - package-ecosystem: pre-commit
     directory: /
@@ -75,12 +78,11 @@ updates:
     reviewers:
       - Aureliolo
     labels:
+      - dependencies
       - type:chore
 
   - package-ecosystem: npm
-    directories:
-      - /web
-      - /site
+    directory: /web
     schedule:
       interval: daily
       time: "06:00"
@@ -96,7 +98,30 @@ updates:
     reviewers:
       - Aureliolo
     labels:
+      - dependencies
       - type:chore
+      - scope:web
+
+  - package-ecosystem: npm
+    directory: /site
+    schedule:
+      interval: daily
+      time: "06:00"
+      timezone: Etc/UTC
+    commit-message:
+      prefix: "chore"
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+      major:
+        update-types: [major]
+    open-pull-requests-limit: 10
+    reviewers:
+      - Aureliolo
+    labels:
+      - dependencies
+      - type:chore
+      - scope:site
 
   - package-ecosystem: npm
     directory: /.github
@@ -115,7 +140,8 @@ updates:
     reviewers:
       - Aureliolo
     labels:
-      - type:ci
+      - dependencies
+      - type:infra
 
   - package-ecosystem: gomod
     directory: /cli
@@ -134,7 +160,9 @@ updates:
     reviewers:
       - Aureliolo
     labels:
+      - dependencies
       - type:chore
+      - scope:cli
 
   - package-ecosystem: docker
     directory: /docker/backend
@@ -155,7 +183,9 @@ updates:
     ignore:
       - dependency-name: chainguard/python
     labels:
+      - dependencies
       - type:chore
+      - scope:docker
 
   - package-ecosystem: docker
     directory: /docker/web
@@ -174,7 +204,9 @@ updates:
     reviewers:
       - Aureliolo
     labels:
+      - dependencies
       - type:chore
+      - scope:docker
 
   - package-ecosystem: docker
     directory: /docker/sandbox
@@ -193,4 +225,6 @@ updates:
     reviewers:
       - Aureliolo
     labels:
+      - dependencies
       - type:chore
+      - scope:docker
